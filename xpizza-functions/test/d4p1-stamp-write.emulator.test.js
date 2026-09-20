@@ -20,6 +20,10 @@ let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4p1-stamp-write(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
 
 const { writeVersion } = require('../catalog/catalog-publish');
+const { backfillIdentities } = require('../catalog/identity-backfill');
+const { lookupByLegacyKeys } = require('../catalog/identity-registry');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const readVersion = async (rid, versionId) => {
   const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
   const [rec, items, extras] = await Promise.all([vref.get(), vref.collection('menu_items').get(), vref.collection('extras').get()]);
@@ -61,11 +65,29 @@ const readVersion = async (rid, versionId) => {
   ok(`a client-carried identity_id on ${forgedCount} input objects is DISCARDED — stamps come from the server plan or not at all`);
 
   // ── 2. A PLAN → EVERY NAMED OBJECT CARRIES ITS CERTIFIED ID, AND THE VERSION SAYS SO ────────
+  /* 🔴 THE PLAN'S IDS COME FROM THE REGISTRY NOW, AND THAT IS THE CELL GETTING STRONGER RATHER THAN
+     WEAKER. This used to invent them — PLANDISH00, PLANEXTRA00 — which proved the writer copies a map
+     into the documents and nothing more. Slice D made writeVersion RE-VERIFY the map against the
+     registry object by object, so an invented map is now refused, correctly: a map the registry does
+     not confirm is exactly what must never become certification. Resolving the real ids keeps the
+     original property (every named object carries the id the plan supplied, extras included) and adds
+     the one the invented map could never show — that the written stamp is the id the registry holds
+     for that NAME. */
+  await backfillIdentities(db, rid, catalogSnapshot(rid));
+  const [dishIds, extraIds] = await Promise.all([
+    lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: A.items.map((i) => i.key) }),
+    lookupByLegacyKeys(db, { rid, kind: 'extra', legacyKeys: A.extras.map((e) => e.key) }),
+  ]);
   const stamps = { dish: {}, extra: {} };
-  A.items.forEach((i, k) => { stamps.dish[i.key] = `PLANDISH${String(k).padStart(2, '0')}`; });
-  A.extras.forEach((e, k) => { stamps.extra[e.key] = `PLANEXTRA${String(k).padStart(2, '0')}`; });
+  A.items.forEach((i) => { if (dishIds.get(i.key)) stamps.dish[i.key] = dishIds.get(i.key); });
+  A.extras.forEach((e) => { if (extraIds.get(e.key)) stamps.extra[e.key] = extraIds.get(e.key); });
+  assert.ok(Object.keys(stamps.dish).length === A.items.length && Object.keys(stamps.extra).length === A.extras.length,
+    'premise — the registry holds an id for every object, so the plan below is complete');
 
-  const stamped = await writeVersion(db, rid, { ...input, stamps }, admin.firestore.Timestamp.now());
+  /* The fence pair, which a stamped version must record: the map's membership decisions were made
+     against THIS baseline, and writeVersion refuses to freeze a map it cannot bind to one. */
+  const live = await getActivePointer(db, rid);
+  const stamped = await writeVersion(db, rid, { ...input, stamps, baseline: live }, admin.firestore.Timestamp.now());
   const B = await readVersion(rid, stamped.versionId || stamped.version || stamped);
   assert.strictEqual(B.rec.identity_certified, true, '🔴 a planned version is not marked certified');
   for (const i of B.items) {
@@ -97,6 +119,82 @@ const readVersion = async (rid, versionId) => {
   assert.notStrictEqual(C.rec.content_hash, A.rec.content_hash,
     '🔴 SENSITIVITY: content_hash does not respond to a price change — it is not hashing content, so cell 3 proves nothing');
   ok(`content_hash/menu_hash/extras_hash are identical stamped vs unstamped — and a price change still moves content_hash`);
+
+  // ── 4. 🔴 THE MAP IS RE-VERIFIED AGAINST THE REGISTRY — THE CHECK THE PARTITION LAW CANNOT MAKE ──
+  /* 🔴 THE HEADLINE CASE IS THE SWAP, and it is the reason this check exists at all. The partition law
+     proves every carried id is in the active certified SET. It cannot prove that THIS id belongs to
+     THIS object, because moving one live dish's id onto another live dish leaves C ⊆ A perfectly
+     satisfied — same set, different owners. The ids reach the server through `display`, which
+     round-trips losslessly through the merchant's editor, so without this a field the merchant
+     controls becomes server certification FOR THE WRONG OBJECT, frozen into a create-only version
+     where it can never be edited out.
+     Driven through the real writer with a map that is wrong in exactly that way. */
+  {
+    const keys = A.items.map((i) => i.key);
+    assert.ok(keys.length >= 2, 'premise — two objects to swap between');
+    const swapped = { dish: { ...stamps.dish }, extra: { ...stamps.extra } };
+    swapped.dish[keys[0]] = stamps.dish[keys[1]];
+    swapped.dish[keys[1]] = stamps.dish[keys[0]];
+    assert.notStrictEqual(swapped.dish[keys[0]], stamps.dish[keys[0]], 'premise — the two ids really differ');
+
+    await assert.rejects(
+      () => writeVersion(db, rid, { ...input, stamps: swapped, baseline: live }, admin.firestore.Timestamp.now()),
+      /stamp_registry_disagrees/,
+      '🔴 TWO OBJECTS SWAPPED IDS AND THE WRITER CERTIFIED IT — every id is still in the active certified set, so the partition law sees nothing wrong; only asking the registry per NAME can catch it');
+
+    // An id the registry has never issued for this name — the forged-map case.
+    const invented = { dish: { ...stamps.dish }, extra: { ...stamps.extra } };
+    invented.dish[keys[0]] = 'NEVERISSUED';
+    await assert.rejects(
+      () => writeVersion(db, rid, { ...input, stamps: invented, baseline: live }, admin.firestore.Timestamp.now()),
+      /stamp_registry_disagrees/,
+      '🔴 an id the registry never issued was written as certification');
+
+    // A map naming an object this candidate does not contain — resolved against a different draft.
+    const foreign = { dish: { ...stamps.dish, 'No Such Dish': stamps.dish[keys[0]] }, extra: { ...stamps.extra } };
+    await assert.rejects(
+      () => writeVersion(db, rid, { ...input, stamps: foreign, baseline: live }, admin.firestore.Timestamp.now()),
+      /stamp_not_in_candidate/,
+      '🔴 a map naming an object this version does not contain was accepted — it was resolved against a different draft');
+
+    /* SENSITIVITY — the same map, unswapped, still writes. Without this the three rejections above are
+       satisfied by a writer that refuses everything. */
+    const good = await writeVersion(db, rid, { ...input, stamps, baseline: live }, admin.firestore.Timestamp.now());
+    const G = await readVersion(rid, good.versionId || good.version || good);
+    assert.strictEqual(G.rec.identity_certified, true, '🔴 SENSITIVITY: the correct map no longer writes either — the refusals above prove nothing');
+    ok('a swapped, a forged and a foreign stamp map are each REFUSED by name at the writer; the correct map still certifies');
+  }
+
+  // ── 5. 🔴 THE FENCE: A MAP RESOLVED AGAINST A BASELINE THAT MOVED IS NOT WRITTEN ────────────
+  /* A version is create-only. If the pointer moves after the map was resolved, every membership
+     decision behind it was made against a menu that is no longer live — and the flip's CAS would
+     refuse the activation later anyway. Refusing HERE is the difference between a refused publish and
+     a permanent retained version nobody can ever activate. */
+  {
+    const moved = { version: live.version, generation: (live.generation || 0) + 1 };
+    await assert.rejects(
+      () => writeVersion(db, rid, { ...input, stamps, baseline: moved }, admin.firestore.Timestamp.now()),
+      /stamp_fence_moved/,
+      '🔴 a stamp map bound to a baseline that is not live was frozen into an immutable version');
+
+    await assert.rejects(
+      () => writeVersion(db, rid, { ...input, stamps }, admin.firestore.Timestamp.now()),
+      /stamp_fence_unbound/,
+      '🔴 a stamped version was written with no record of the baseline its ids were resolved against');
+
+    /* 🔴 AND AN EMPTY MAP IS NOT A CERTIFICATION — the second lock, at the write point. deriveStampMap
+       returns null for an unstamped draft, so production never sends one; but writeVersion is
+       EXPORTED and the parameter is reachable from any caller, and `!!stamps` alone is true for
+       `{dish:{},extra:{}}`. A version marked certified with zero stamps has an EMPTY active certified
+       set — which is precisely the A = ∅ state the publish lockout is made of, so getting this wrong
+       would move the bug rather than fix it. */
+    const hollow = await writeVersion(db, rid, { ...input, stamps: { dish: {}, extra: {} }, baseline: live }, admin.firestore.Timestamp.now());
+    const H = await readVersion(rid, hollow.versionId || hollow.version || hollow);
+    assert.strictEqual(H.rec.identity_certified, undefined,
+      '🔴 an EMPTY stamp map certified the version — its active certified set is empty, so the next publish refuses as carried_unknown and the merchant is locked out');
+    assert.ok(H.items.every((i) => !i.display || i.display.identity_id === undefined), '…and nothing was stamped, which is the point');
+    ok('a stamp map bound to a moved baseline, or to none at all, is refused before the version exists; an EMPTY map certifies nothing');
+  }
 
   FINISHED = true;
   console.log(`d4p1-stamp-write(emulator): OK (${n})`);

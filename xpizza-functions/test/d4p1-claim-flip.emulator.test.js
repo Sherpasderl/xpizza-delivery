@@ -21,6 +21,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4p1-clai
 
 const { publishVersion } = require('../catalog/catalog-publish');
 const { sourceRefOf, encodeUpdateTime, canonicalize, sourceToBuildInputs } = require('../catalog/source-store');
+const versionsColOf = (d, rid) => d.collection('restaurants').doc(rid).collection('versions');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { bootstrapIdentityStamps, readActiveVersion } = require('../catalog/identity-bootstrap');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
@@ -255,14 +256,33 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     await declareDeletion(liveId);
     const before = await snapshotClaim();
 
+    /* 🔴 THE BUMP MOVED, BECAUSE SLICE D ADDED A GUARD IN FRONT OF THIS ONE. It used to fire on the
+       FIRST transaction, which is `acquireLease` — so the generation moved before the candidate was
+       even built, and writeVersion's stamp-map fence now refuses there with
+       `stamp_fence_resolved_elsewhere`. That refusal is correct and is its own cell; it is simply not
+       THIS cell's property. The window the in-tx claim check alone owns is writeVersion → flip, so the
+       bump fires on the SECOND transaction: publish has exactly three transaction sites — acquireLease
+       (:164), flipPointer (:262) and releaseLease (:473) — and the second one IS the flip.
+       🔴 AND THE COUNT IS CHECKED, NOT TRUSTED. A cell that depends on how many transactions a
+       function happens to open is a cell that silently retargets when someone adds one. At fire time
+       it asserts the candidate version document already exists, which is only true once writeVersion
+       has committed — so if the ordering ever changes, this fails loudly instead of testing the guard
+       it used to test. */
+    const versionCount = async () => (await versionsColOf(db, RID).get()).size;
+    const versionsBefore = await versionCount();
     const orig = db.runTransaction.bind(db);
-    let bumped = false;
+    let calls = 0, bumped = false, bumpedAfterWrite = null;
     const racing = new Proxy(db, {
       get(t, prop) {
         if (prop === 'runTransaction') {
           return async (fn, o) => {
+            calls += 1;
             // Same version, newer generation — invisible to the CAS, fatal to a claim bound at g.
-            if (!bumped) { bumped = true; await activePointerRefOf().set({ version: cur.version, at: new Date(), generation: cur.generation + 1 }); }
+            if (calls === 2 && !bumped) {
+              bumped = true;
+              bumpedAfterWrite = (await versionCount()) > versionsBefore;
+              await activePointerRefOf().set({ version: cur.version, at: new Date(), generation: cur.generation + 1 });
+            }
             return orig(fn, o);
           };
         }
@@ -278,6 +298,8 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     } catch (e) { threw = e; }
 
     assert.ok(bumped, 'premise — the generation really moved between the pre-flight check and the flip');
+    assert.strictEqual(bumpedAfterWrite, true,
+      '🔴 the bump landed BEFORE the candidate was written, so this cell is exercising the stamp-map fence rather than the in-tx claim check — publish\'s transaction order changed under it');
     assert.ok(threw && /deleted_ids_stale_baseline/.test(String(threw.message)),
       `🔴 a claim that went stale BETWEEN the pre-flight check and the flip rode the activation through: ${threw && threw.message}`);
     assert.deepStrictEqual(await snapshotClaim(), before, '…and the claim is untouched');

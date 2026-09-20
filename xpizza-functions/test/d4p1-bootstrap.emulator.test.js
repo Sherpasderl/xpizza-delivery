@@ -105,9 +105,30 @@ async function seed(rid, sha) {
    candidate that was abandoned. At the real cutover the live version predates all of that. Any cell
    here that publishes a baseline and then bootstraps it must therefore strip the record, or it is
    testing a sequence the cutover cannot be in. */
+/* 🔴 MAKE A VERSION PRE-P1 SHAPED — WHICH IS WHAT THIS HELPER'S NAME ALWAYS CLAIMED AND ONLY HALF DID.
+   It used to delete the activation record and nothing else, because that WAS the whole difference: a
+   published version carried no stamps and no `identity_certified`, since nothing supplied writeVersion
+   a stamp map. Slice D gave the map a producer, so a publish now certifies — and a helper that removed
+   one of the three markers would leave cells reasoning about a version that is pre-P1 in name only.
+   Constructing the legacy shape EXPLICITLY is also more honest than the old route, which obtained it as
+   a side effect of the very gap Slice D closed: these cells are about bootstrap meeting a pre-cutover
+   version, and this now says that in one place instead of depending on publish staying broken. */
 const asPreP1 = async (rid, versionId) => {
-  await db.collection('restaurants').doc(rid).collection('versions').doc(versionId)
-    .update({ identity_activation: admin.firestore.FieldValue.delete() });
+  const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
+  const strip = async (col) => {
+    const snap = await vref.collection(col).get();
+    await Promise.all((snap.docs || []).map((d) => {
+      const display = (d.data() || {}).display;
+      if (!display || display.identity_id === undefined) return null;
+      const { identity_id, ...rest } = display;   // eslint-disable-line no-unused-vars
+      return d.ref.update({ display: rest });
+    }).filter(Boolean));
+  };
+  await Promise.all([strip('menu_items'), strip('extras')]);
+  await vref.update({
+    identity_activation: admin.firestore.FieldValue.delete(),
+    identity_certified: admin.firestore.FieldValue.delete(),
+  });
 };
 
 (async () => {
@@ -535,7 +556,17 @@ const asPreP1 = async (rid, versionId) => {
     const candidate = cur.record.identity_certified === true
       ? { ...(await candidateFromSource(rid)), source_sha: `fresh-${Date.now()}` }
       : { ...buildPublishCandidate(rid, { activeVersionId: cur.versionId }, { source_sha: `fresh-${Date.now()}` }).input };
-    await publishVersion(db, rid, candidate, { expected: { activeVersionId: cur.versionId } });
+    const pub = await publishVersion(db, rid, candidate, { expected: { activeVersionId: cur.versionId } });
+
+    /* 🔴 THE OLD ROUTE HERE WAS THE BUG ITSELF. This used to publish and stop, because a lawful publish
+       from a certified baseline produced an UNCERTIFIED version — which is precisely the defect Slice D
+       closed (bootstrap certifies v1, publish decertifies, and the publish after that is refused as
+       unaccounted: a one-publish lockout). The helper's own comment said so and treated it as a
+       limitation to work around. So the version is now made pre-P1 shaped EXPLICITLY, by the same
+       helper every other legacy fixture uses, instead of being handed that shape by a broken writer.
+       These cells are about bootstrap meeting a PRE-CUTOVER version; constructing that state directly
+       says what they mean, and it no longer depends on publish staying wrong to stay green. */
+    await asPreP1(rid, pub.versionId);
 
     const src = (await sourceRefOf(db, rid).get()).data();
     const strip = (rows) => (Array.isArray(rows) ? rows : []).map((o) => {
@@ -827,11 +858,23 @@ const asPreP1 = async (rid, versionId) => {
     ok(`${rid21}: an id retired WITHOUT its reverse row being cleaned up refuses — isolating the in-tx claimant query as the only guard that can see it`);
   }
 
-  // ── 🔴 THE C-ERA LIMITATION, PINNED RATHER THAN DISCOVERED ────────────────────────────────
-  /* P1a is deployable only as a WHOLE. C validates the partition but has no writer that stamps a NEW
-     version — that is D's activation writer — so the first publish after bootstrap produces an
+  // ── 🔴 THE CUTOVER RUNS: bootstrap → publish → publish, EVERY VERSION CERTIFIED ───────────
+  /* 🔴 THIS CELL ASSERTED THE OPPOSITE UNTIL SLICE D, AND THE INVERSION IS THE FIX RATHER THAN A
+     FLIP-FLOP — the old reasoning is kept below so the history reads as what it is.
+     WHAT IT USED TO PIN, verbatim in intent: "C validates the partition but has no writer that stamps
+     a NEW version — that is D's activation writer — so the first publish after bootstrap produces an
      UNCERTIFIED version, which empties A while the source still carries its stamps. The next publish
-     then refuses as carried_unknown: the draft names ids no certified version has.
+     then refuses as carried_unknown." That was an accurate description of the code, and it was pinned
+     as an accepted limitation of a slice that was never meant to deploy alone.
+     🔴 IT WAS ALSO A PRODUCTION LOCKOUT, which is what nobody had said out loud. Read it as the
+     merchant experiences it: bootstrap certifies v1 and stamps the source; their first publish
+     succeeds and quietly decertifies the menu; their SECOND publish is REFUSED, and so is every one
+     after it, because the draft carries ids no certified version has. One publish after cutover, then
+     locked out of their own menu — and stripping the stamps from the source to escape is refused by
+     the same law. A green cell asserted the first half of that and called it a limitation.
+     Slice D gave the stamp map a producer, so this now asserts the behaviour the cutover actually
+     needs: every publish after bootstrap is certified, and the ids are STABLE across the sequence —
+     which is the property that makes rename-stability mean anything later.
      🔴 IT SETS UP ITS OWN STATE rather than depending on where the suite left off. The first version
      of this cell branched on whatever the previous cells happened to leave behind and took the
      "nothing to test" path — a cell that reports a pass for doing nothing is worse than no cell. */
@@ -848,20 +891,33 @@ const asPreP1 = async (rid, versionId) => {
     assert.ok((srcNow.items || []).some((o) => o && o.display && o.display.identity_id),
       'premise — and the SOURCE carries stamps, so a draft built from it is lawful against A');
 
-    // Lawful: the draft carries exactly the active certified ids.
-    await publishVersion(db, ridL, { ...(await candidateFromSource(ridL)), source_sha: 'limitation-1' },
-      { expected: { activeVersionId: cur.versionId } });
-    const after = await readActiveVersion(db, ridL);
-    assert.strictEqual(after.record.identity_certified, undefined,
-      'premise — the version it produced is UNCERTIFIED, because C has no writer that stamps one');
+    /* The id map BEFORE any publish, by key. Every publish below must preserve it exactly: a stamped
+       version whose ids drift is worse than an unstamped one, because the drift is now certified. */
+    const idsByKey = (v) => {
+      const m = {};
+      for (const o of [...v.dishes, ...v.extras]) m[o.data.key] = o.data.display && o.data.display.identity_id;
+      return m;
+    };
+    const atBootstrap = idsByKey(cur);
+    assert.ok(Object.keys(atBootstrap).length > 0 && Object.values(atBootstrap).every(Boolean),
+      'premise — bootstrap stamped every object, so there is a full map to hold the publishes against');
 
-    // And now A is empty while the source still carries ids, so the very next publish refuses.
-    const next = { ...(await candidateFromSource(ridL)), source_sha: 'limitation-2' };
-    await assert.rejects(
-      () => publishVersion(db, ridL, next, { expected: { activeVersionId: after.versionId } }),
-      /identity_partition_carried_unknown/,
-      '🔴 a stamped draft published onto an UNCERTIFIED baseline — A is empty, so the ids it carries were never certified');
-    ok('C-era limitation pinned: the first post-bootstrap publish empties A, and the next refuses until D stamps versions');
+    /* THREE lawful publishes in a row — the sequence nothing has ever driven end to end. One publish
+       proved nothing before: the lockout only appeared on the SECOND, which is exactly why it survived
+       three slices of green cells. */
+    let prev = cur.versionId;
+    for (const tag of ['cutover-1', 'cutover-2', 'cutover-3']) {
+      await publishVersion(db, ridL, { ...(await candidateFromSource(ridL)), source_sha: tag },
+        { expected: { activeVersionId: prev } });
+      const v = await readActiveVersion(db, ridL);
+      assert.notStrictEqual(v.versionId, prev, `${tag}: premise — a new version really was activated`);
+      assert.strictEqual(v.record.identity_certified, true,
+        `🔴 ${tag} produced an UNCERTIFIED version — A is now empty, the next publish refuses as carried_unknown, and the merchant is locked out of their own menu`);
+      assert.deepStrictEqual(idsByKey(v), atBootstrap,
+        `🔴 ${tag} changed an object's certified id — the stamps drifted across a publish, and a drifting id that is CERTIFIED is worse than no stamp at all`);
+      prev = v.versionId;
+    }
+    ok('the cutover runs: bootstrap → publish → publish → publish, every version certified and every id stable across all three');
   }
 
   // ── 🔴 A PENDING UNPUBLISHED RENAME REFUSES THE WHOLE PASS ───────────────────────────────

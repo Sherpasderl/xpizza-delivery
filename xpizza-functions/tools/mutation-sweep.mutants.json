@@ -6050,8 +6050,9 @@
   ],
   "label": "🔴 a version claims CERTIFICATION with no server plan - the discriminator stops separating certified from pre-P1",
   "kills_with": "an unplanned version claims certification",
-  "from": "  const certified = !!stamps;",
-  "to": "  const certified = true;"
+  "from": "  const certified = !!stamps && (Object.keys(stamps.dish || {}).length + Object.keys(stamps.extra || {}).length) > 0;",
+  "to": "  const certified = true;",
+  "why": "🔴 RE-POINTED in Slice D when the map got a producer. The check grew a second half: `!!stamps` alone is true for an EMPTY map, which would mark a version certified while stamping nothing — and a certified version with no stamps has an empty active certified set, which is the A = ∅ state the publish lockout is made of. The mutant still says the same thing (certification without a server plan); it just has more to defeat."
  },
  {
   "id": "d4p1a-06",
@@ -7109,6 +7110,151 @@
   "from": "    if (truncated === true) {\n      return { name, landingId, via,",
   "to": "    if (false) {\n      return { name, landingId, via,",
   "why": "v7.1 asks for ONE explicit bounded abort rather than N places to truncate silently. With the scan-level refusal gone, a truncated scan falls through to per-destination judgement and every name absent from the short result reads as unclaimed — precisely the orphan the scan failed to reach. The per-destination copy of this check is d4p1dc-01; separate sites, separate mutants."
+ },
+ {
+  "id": "d4p1s-01",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 the registry is not consulted - a draft-carried id becomes certification for the wrong object",
+  "kills_with": "a draft claiming ANOTHER live object's id was certified",
+  "from": "  if (keyRowId !== claimedId) {",
+  "to": "  if (false) {",
+  "why": "THE check. The partition law proves an id is in the active certified SET; it cannot prove this id belongs to THIS object, because a swap between two live objects leaves C ⊆ A satisfied. Without this the `display` field the merchant controls becomes server certification for the wrong object, frozen into a create-only version.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-02",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 an unregistered name is stamped - the server certifies an id it never issued",
+  "kills_with": "an id the server never issued was accepted as certification",
+  "from": "  if (!isStr(keyRowId)) {",
+  "to": "  if (false) {",
+  "why": "With the key row absent and this branch gone, the next comparison is `null !== claimedId`, so it still refuses — but as `stamp_registry_disagrees`, naming a registry value that does not exist. The cell asserts the CODE for that reason. The kill lands on the CODE assertion, not ok/false: without the branch the verdict still refuses, as stamp_registry_disagrees. The cell's message was rewritten to carry that, because 'expected X, got Y' would have recorded a real kill against a string saying nothing about what broke.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-03",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 the reverse row is not read - a key row pointing at a retired id certifies it",
+  "kills_with": "a RETIRED id was certified into an immutable version",
+  "from": "  if (idRow.status !== STATUS_LIVE) {",
+  "to": "  if (false) {",
+  "why": "bootstrap's assertKeyRowAgrees settled this division: a forward row is a POINTER, and a pointer at a retired id looks healthy from the forward side. A retired id certified into a create-only version can never be corrected there.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-04",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 an id that claims another name is still stamped for this one",
+  "kills_with": "an id whose own row claims a DIFFERENT name was certified for this one",
+  "from": "  if (idRow.legacy_key !== key) {",
+  "to": "  if (false) {",
+  "why": "The forward and reverse rows disagreeing means the id moved after the key row was written. Trusting the forward row alone freezes the stale half.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-05",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 a map from another draft is written - objects this version does not contain are stamped",
+  "kills_with": "a map resolved against a DIFFERENT draft was written into this version",
+  "from": "  if (inCandidate !== true) {",
+  "to": "  if (false) {",
+  "why": "A map naming a key the candidate does not have was resolved against a different draft, so every membership decision in it is about other objects.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-06",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 the fence compares versions only - a rollback-and-forward slips through at the same version",
+  "kills_with": [
+   "a map bound to a baseline that is no longer live was written",
+   "the SAME version at a newer generation was read as unmoved"
+  ],
+  "from": "  const b = pair(baseline);\n  const l = pair(live);",
+  "to": "  const b = baseline.version;\n  const l = live.version;",
+  "why": "The generation is the whole fence: a rollback moves the pointer BACK to a version it has held before, so comparing versions alone calls v1@3 and v1@5 equal — the same blindness `seq` has, one layer up. kills_with is an ARRAY: dropping the generation from the comparison breaks BOTH fence cases in cell 7 and the plain moved-baseline one is asserted first. Same property either way — the pair, not the version, is the fence.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-07",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 the pre-lease window is not fenced - a map validated against a replaced menu is written",
+  "kills_with": "a map validated against a menu that had already been replaced was written",
+  "from": "    if (pair(resolvedAgainst) !== pair(baseline)) {",
+  "to": "    if (false) {",
+  "why": "The partition law runs BEFORE the lease, deliberately, so another publish can land between the law's pointer read and the candidate's. The map's membership decisions were made against the law's pair; without this they are never compared to the candidate's.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-08",
+  "file": "catalog/identity-stampmap.js",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ],
+  "label": "🔴 an unstamped draft produces an EMPTY map instead of null - a pre-cutover version claims certification",
+  "kills_with": "a draft carrying NO ids produced a map",
+  "from": "  return isEmptyMap(out) ? null : out;",
+  "to": "  return out;",
+  "why": "writeVersion reads `!!stamps` as certified and an empty object is truthy, so this would mark a pre-cutover version CERTIFIED with zero stamps — whose active certified set is empty, which is the A = ∅ state the publish lockout is made of. It would have moved the bug, not fixed it.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-09",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-stamp"
+  ],
+  "label": "🔴 the writer stops re-verifying the map - a swapped or forged plan is certified end to end",
+  "kills_with": "TWO OBJECTS SWAPPED IDS AND THE WRITER CERTIFIED IT",
+  "from": "  if (stamps) {\n    const wanted =",
+  "to": "  if (false) {\n    const wanted =",
+  "why": "The whole re-verification, removed at the call site rather than in the predicate — so this is the mutant that proves the predicate is CONSULTED with real registry data, which a unit cell cannot show. Driven end to end through the real writer.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-10",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-stamp"
+  ],
+  "label": "🔴 an empty stamp map certifies the version - A goes empty and the next publish is locked out",
+  "kills_with": "an EMPTY stamp map certified the version",
+  "from": "  const certified = !!stamps && (Object.keys(stamps.dish || {}).length + Object.keys(stamps.extra || {}).length) > 0;",
+  "to": "  const certified = !!stamps;",
+  "why": "The second lock on the empty map, at the write point. deriveStampMap returns null today, but writeVersion is exported and the parameter is reachable from any caller; a certified version with no stamps has an empty active certified set, which is exactly the lockout state. SURVIVED at first: deriveStampMap returns null for an unstamped draft, so no cell was handing writeVersion an empty map at all — the second lock had no path to it. The stamp-write suite now passes one explicitly, which is the only way to reach a parameter that production never sends but an exported writer accepts.",
+  "slice": "d4p1s"
  },
  {
   "id": "pah-01",

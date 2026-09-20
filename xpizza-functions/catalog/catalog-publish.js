@@ -40,6 +40,8 @@ const IDENTITY_PRESERVE_TIMEOUT_MS = 5000;
 const { candidateSource, assertCandidateValid } = require('./candidate-validate');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 const { validateDeletionClaim, validatePartition } = require('./identity-partition');
+const { deriveStampMap, judgeStampMap } = require('./identity-stampmap');
+const { lookupByLegacyKeys, idsColOf } = require('./identity-registry');
 const { pointerStateOf, getActivePointer } = require('./catalog-firestore');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
@@ -515,7 +517,7 @@ function normalizeInputs({ items, extras, extraRecords }) {
    function was not given is a stamp that does not exist, which is what keeps a draft field from ever
    becoming certification. The discriminator is what later separates "certified but a stamp is
    broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
-async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null }, nowServer) {
+async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined }, nowServer) {
   const { menuTable, extraTable, v2ByKey, v2ExtrasByKey } = normalizeInputs({ items, extras, extraRecords });
   const desc = integrityDescriptor(menuTable, extraTable);
   if (desc.item_count === 0) throw new Error(`publish_refused_empty: ${rid} — a version must have ≥1 item`);
@@ -534,6 +536,60 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
   const versionId = newVersionId(nowServer);
   const vref = versionsColOf(db, rid).doc(versionId);
   const { itemDocs, extraDocs } = catalogDocsForRestaurant(menuTable, extraTable, v2ByKey, v2ExtrasByKey);
+
+  /* ── 1D D4-P1 — THE STAMP MAP IS RE-VERIFIED HERE, NOT TRUSTED ────────────────────────────────
+     🔴 AGAINST THE REGISTRY, BY NAME, PER OBJECT — which is the check the partition law structurally
+     cannot make. The law proves every carried id is in the active certified SET; it cannot prove that
+     THIS id belongs to THIS object, because moving one live dish's id onto another dish satisfies
+     C ⊆ A perfectly. The ids arrive through `display`, which round-trips through the merchant's
+     editor, so without this a field the merchant controls becomes server certification for the wrong
+     object — inv #1's one prohibition — frozen into an immutable version where it can never be
+     corrected.
+     🔴 BEFORE ANY WRITE, and before the version exists. A version is create-only: certifying the
+     wrong id is not a mistake that can be edited out later, it is a retained document that has to age
+     out of retention. Refusing costs a publish; writing costs the history.
+     Under the LEASE and re-reading the live pointer, so the three pairs that must agree — what the
+     partition law validated against, what this candidate was built against, and what is live now —
+     are compared in one place rather than trusted to have stayed equal. */
+  if (stamps) {
+    const wanted = { dish: Object.keys(stamps.dish || {}), extra: Object.keys(stamps.extra || {}) };
+    const [dishKeys, extraKeys, live] = await Promise.all([
+      lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: wanted.dish }),
+      lookupByLegacyKeys(db, { rid, kind: 'extra', legacyKeys: wanted.extra }),
+      getActivePointer(db, rid),
+    ]);
+    /* The reverse row too, not only the forward one — the division bootstrap's assertKeyRowAgrees
+       settled. A key row is a POINTER, and a pointer at a retired or re-keyed id looks perfectly
+       healthy from the forward side. */
+    const rows = { dish: dishKeys, extra: extraKeys };
+    const registry = { dish: new Map(), extra: new Map() };
+    for (const kind of ['dish', 'extra']) {
+      const ids = [...new Set([...rows[kind].values()])];
+      const idSnaps = await Promise.all(ids.map((id) => idsColOf(db, rid, kind).doc(id).get()));
+      const byId = new Map(ids.map((id, i) => [id, idSnaps[i] && idSnaps[i].exists ? (idSnaps[i].data() || {}) : null]));
+      for (const key of wanted[kind]) {
+        const keyRowId = rows[kind].get(key) || null;
+        registry[kind].set(key, { keyRowId, idRow: keyRowId ? byId.get(keyRowId) || null : null });
+      }
+    }
+    const judged = judgeStampMap({
+      stamps,
+      candidateKeys: { dish: new Set(itemDocs.map((d) => d.key)), extra: new Set(extraDocs.map((d) => d.key)) },
+      registry, baseline, live, resolvedAgainst: stampsResolvedAgainst,
+    });
+    if (!judged.fence.ok) {
+      throw new Error(`${judged.fence.code}: ${rid} — ${judged.fence.detail}`);
+    }
+    /* EVERY bad stamp is named, not the first one. A merchant (or an operator reading the log) told
+       about one wrong object at a time cannot see the shape of what happened — one moved id reads as
+       a typo, five reads as a client that has lost the mapping. */
+    const bad = judged.stamps.filter((e) => !e.verdict.ok);
+    if (bad.length) {
+      const first = bad[0].verdict;
+      throw new Error(`${first.code}: ${rid} — ${bad.length} stamp(s) refused — ${bad.map((e) => e.verdict.detail).join(' · ')}`);
+    }
+  }
+
   const ops = [];
   /* Applied to the DISPLAY the doc already carries, so an object with no display and an object with
      no stamp both behave exactly as before — the stamp is additive, never constructive. */
@@ -555,7 +611,12 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
     if (id === undefined) return bare;
     return { ...(bare || {}), identity_id: id };
   };
-  const certified = !!stamps;
+  /* 🔴 AN EMPTY MAP IS NOT A CERTIFICATION. `!!stamps` alone is true for `{dish:{},extra:{}}`, which
+     would mark a version certified while stamping nothing — and a certified version with no stamps
+     has an EMPTY active certified set, which is exactly the A = ∅ state the publish lockout is made
+     of. deriveStampMap already returns null in that case; this is the second lock, because the
+     parameter is reachable from any caller of an exported writeVersion. */
+  const certified = !!stamps && (Object.keys(stamps.dish || {}).length + Object.keys(stamps.extra || {}).length) > 0;
   for (const d of itemDocs) ops.push((b) => b.create(vref.collection('menu_items').doc(d.id), {
     key: d.key, price: d.price,
     ...(withStamp('dish', d) !== undefined ? { display: withStamp('dish', d) } : {}),
@@ -691,6 +752,17 @@ async function assertDraftPartition(db, rid, input) {
   for (const kind of ['dish', 'extra']) {
     validatePartition({ activeCertified: A[kind], carried: carried[kind], deletedIds: deleted[kind], unidentified: unidentified[kind] });
   }
+
+  /* 🔴 THE MAP IS DERIVED HERE, FROM THE DRAFT THIS FUNCTION JUST VALIDATED, and returned rather than
+     re-derived by the caller. validatePartition throws on any violation, so past this line every
+     carried id is lawful against A — which makes this the one place where "the validated set" and
+     "the map that gets written" are the same walk over the same rows. Deriving it again in
+     publishVersion would be two derivations that must agree forever, and the second one would not be
+     the one the law checked.
+     It is still only a CLAIM. The law proves each id is in the active certified SET; it cannot prove
+     this id belongs to THIS object, because moving one live object's id onto another satisfies
+     C ⊆ A perfectly. writeVersion re-verifies every entry against the registry, by name. */
+  return { stamps: deriveStampMap(input), baseline: p };
 }
 
 async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {
@@ -702,7 +774,12 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
   assertCandidateValid(rid, candidateSource(rid, { items: input && input.items, extras: input && input.extraRecords, structure: input && input.structure }), `${rid} (pre-publish)`);
 
   // §3.3 — the whole draft accounts for the active certified set before anything is minted or moved.
-  await assertDraftPartition(db, rid, input);
+  /* …and it hands back the stamp map it validated, plus the pointer pair it validated AGAINST. Both
+     travel to writeVersion, which re-verifies them: the map against the registry object by object,
+     and the pair against the candidate's own baseline and the live pointer. Returning them rather
+     than re-deriving them downstream is what keeps "the set the law checked" and "the map that gets
+     written" the same walk over the same rows. */
+  const { stamps: draftStamps, baseline: partitionBaseline } = await assertDraftPartition(db, rid, input);
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
@@ -716,7 +793,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
        the claim and that comparison is the check. */
     const baselineAtBuild = await getActivePointer(db, rid);
     const { versionId, descriptor, seq, menuTable, extraTable } = await writeVersion(
-      db, rid, { ...input, baseline: baselineAtBuild }, nowServer);
+      db, rid, { ...input, stamps: draftStamps, baseline: baselineAtBuild, stampsResolvedAgainst: partitionBaseline }, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
