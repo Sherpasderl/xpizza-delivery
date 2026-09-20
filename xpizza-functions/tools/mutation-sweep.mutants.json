@@ -7257,6 +7257,98 @@
   "slice": "d4p1s"
  },
  {
+  "id": "d4p1e1-01",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "node",
+   "catalog/pointer-state.test.js"
+  ],
+  "label": "🔴 a present-but-unusable generation coerces to 0 again - the fence opens itself",
+  "kills_with": [
+   "a negative generation read as 0",
+   "was accepted and read as"
+  ],
+  "from": "  if (present(d.generation) && !(Number.isInteger(d.generation) && d.generation >= 0)) {",
+  "to": "  if (false) {",
+  "why": "The defect this slice exists to fix, restored. 0 is not a neutral default: it is the pre-cutover baseline that every claim bound before the cutover compares equal to, so a fence handed 0 for garbage opens itself. Killed by the census cell, which asserts there is NO input for which the reader returns 0 from a present-but-unusable generation. kills_with is an ARRAY: cell 3 enumerates the malformed generations by name and runs BEFORE cell 4's census, so the first assertion to fire is cell 3's. Both are the same property.",
+  "slice": "d4p1e1"
+ },
+ {
+  "id": "d4p1e1-02",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "node",
+   "catalog/pointer-state.test.js"
+  ],
+  "label": "🔴 a present-but-unusable version reads as 'nothing published yet' - a corrupt pointer becomes a fresh restaurant",
+  "kills_with": "was read as \"unpublished\"",
+  "from": "  if (present(d.version) && !(typeof d.version === 'string' && d.version)) {",
+  "to": "  if (false) {",
+  "why": "The dangerous direction. Every caller reads version null as 'nothing is published yet', and a first publish's CAS expects exactly that — so a corrupt pointer read as null lets a publish past the check that stops it overwriting a live menu.",
+  "slice": "d4p1e1"
+ },
+ {
+  "id": "d4p1e1-03",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "node",
+   "catalog/pointer-state.test.js"
+  ],
+  "label": "🔴 absent is treated as malformed - every un-migrated restaurant refuses",
+  "kills_with": "was REFUSED as malformed",
+  "from": "  const present = (v) => v !== undefined && v !== null;",
+  "to": "  const present = (v) => true;",
+  "why": "The opposite failure, and the one that would take production down on the day this ships: a pointer with no generation is the genuine pre-cutover state, and refusing it refuses every restaurant that has not been through bootstrap. The cells assert absent still reads {null, 0}, so a reader that refuses everything dies here rather than looking strict. 🔴 The cell was changed, not just the record: this mutant first died on an UNCAUGHT throw, which is a kill scored on the absence of a try/catch rather than on the property. Cell 1 now catches and fails with a message naming the consequence — refusing absent refuses every restaurant not yet through bootstrap.",
+  "slice": "d4p1e1"
+ },
+ {
+  "id": "d4p1e1-04",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "node",
+   "catalog/pointer-state.test.js"
+  ],
+  "label": "🔴 the refusal stops naming the field and the value - an operator cannot find the document to fix",
+  "kills_with": [
+   "names the restaurant",
+   "names the field"
+  ],
+  "from": "    throw new Error(`active_pointer_malformed: ${at}generation is ${JSON.stringify(d.generation)}; a fence value that is present but unusable must not read as 0, which is the value every pre-cutover claim compares equal to`);",
+  "to": "    throw new Error('active_pointer_malformed');",
+  "why": "A refusal an operator cannot act on is a refusal that gets suppressed. Naming the restaurant, the field and the stored value is the difference between a one-minute fix and an investigation. kills_with is an ARRAY because the bare message fails the restaurant check first; either half means the same thing — an operator cannot find the document to fix.",
+  "slice": "d4p1e1"
+ },
+ {
+  "id": "d4p1e1-05",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-activation"
+  ],
+  "label": "🔴 the real publish path stops reading the pointer through the checked reader",
+  "kills_with": "getActivePointer coerced a stored generation",
+  "from": "  return snap.exists ? pointerStateOf(snap.data(), restaurantId) : { version: null, generation: 0 };",
+  "to": "  return snap.exists ? { version: (snap.data() || {}).version || null, generation: (snap.data() || {}).generation || 0 } : { version: null, generation: 0 };",
+  "why": "🔴 SURVIVED at first, and the reason is worth keeping: the PUBLISH path reads the pointer twice — assertDraftPartition through getActivePointer before the lease, and the flip through pointerStateOf inside its transaction — so removing either one leaves the other refusing, and a plain publish cell cannot kill this. That is real defence in depth, not weak code. The activation suite now drives getActivePointer with no transaction behind it, which is the shape every non-transactional caller has (the editor's claim-base stamp among them), and that isolation is what kills this.",
+  "slice": "d4p1e1"
+ },
+ {
+  "id": "d4p1e1-06",
+  "slice": "d4p1e1",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-activation"
+  ],
+  "label": "🔴 the flip's in-tx read stops going through the checked reader - it bumps from a baseline that was never real",
+  "kills_with": "the flip's own in-transaction read coerced a stored generation",
+  "from": "    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;",
+  "to": "    const priorGeneration = (pointerSnap.exists ? (pointerSnap.data() || {}).generation : 0) || 0;",
+  "why": "The sibling of d4p1e1-05, at the OTHER reader. The flip writes priorGeneration + 1, so a coerced value here is not merely read wrong — it is the number written into the pointer, on a baseline that never existed. Killed only by the direct flipPointer drive, since flipPointer is exported and does not pre-flight, leaving the in-tx read as the only guard on that path."
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",

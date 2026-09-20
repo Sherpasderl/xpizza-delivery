@@ -171,6 +171,78 @@ const publish = async (expectedActive, tag) => {
     ok('rollback re-activates an already-activated version, which a publish may not — the exemption is explicit, not inferred');
   }
 
+  // ── 🔴 A MALFORMED GENERATION REACHES NO FENCE AS 0 — ON THE REAL PATH ──────────────────────
+  /* The unit suite proves the READER cannot return 0 for a stored-but-unusable generation. That is a
+     property of a pure function, and it is only half the claim: it says nothing about whether the
+     real publish path reads the pointer through that reader at all. A publish that built its own
+     coercion somewhere else would satisfy every unit cell and still hand a fence a 0.
+     So the pointer is corrupted in the emulator — generation stored as the STRING "0", which is the
+     shape a bad migration or a hand-edit writes, and the one that would coerce to exactly the
+     pre-cutover baseline — and a REAL publish is driven against it. It must refuse by name rather
+     than proceed. The version is left valid so the refusal can only be about the generation. */
+  {
+    const live = await getActivePointer(db, RID);
+    const ref = db.collection('restaurants').doc(RID).collection('meta').doc('active_version');
+    const good = (await ref.get()).data();
+
+    await ref.set({ ...good, generation: '0' });
+    let threw = null;
+    try { await publish(live.version, 'malformed-gen'); } catch (e) { threw = e; }
+    assert.ok(threw && /active_pointer_malformed/.test(String(threw.message)),
+      `🔴 a publish ran against a pointer whose generation is the STRING "0" — it coerced to the pre-cutover baseline instead of refusing: ${threw && threw.message}`);
+    assert.match(String(threw.message), /generation/, '…and the refusal names the field, not just "malformed"');
+
+    const after = (await ref.get()).data();
+    assert.strictEqual(after.generation, '0', '🔴 the refused publish REPAIRED the pointer — corruption must be surfaced, not silently rewritten');
+    assert.strictEqual(after.version, good.version, '…and it did not move the pointer');
+
+    // Restore, and prove the same publish succeeds once the pointer is well-formed: the refusal was
+    // about the corruption, not about anything else this cell happened to set up.
+    await ref.set(good);
+    const v = await publish(live.version, 'after-repair');
+    const healed = await getActivePointer(db, RID);
+    assert.strictEqual(healed.version, v, 'SENSITIVITY: the identical publish succeeds against a well-formed pointer');
+    assert.strictEqual(healed.generation, live.generation + 1, '…and the fence advances normally again');
+    ok('a stored generation of "0" REFUSES a real publish by name rather than coercing to the pre-cutover baseline; the same publish succeeds once repaired');
+  }
+
+  // ── 🔴 EACH READER ISOLATED — BECAUSE THE PUBLISH PATH GUARDS THIS TWICE ────────────────────
+  /* The cell above is satisfied by EITHER reader refusing, which I found out by mutating one of them
+     and watching it pass: `assertDraftPartition` reads the pointer through getActivePointer before the
+     lease, and the flip reads it again through pointerStateOf inside its own transaction. That is real
+     defence in depth and worth keeping — but it means no single-site mutant can be killed by a plain
+     publish, and a survivor there reads as "the property is unguarded" when in fact it is guarded
+     twice. So each reader is driven where it is the ONLY one that can see the corruption. */
+  {
+    const { acquireLease, flipPointer, releaseLease, snapshotRefOf } = require('../catalog/catalog-publish');
+    const ref = db.collection('restaurants').doc(RID).collection('meta').doc('active_version');
+    const good = (await ref.get()).data();
+
+    // (a) getActivePointer ALONE — no transaction, no second read behind it.
+    await ref.set({ ...good, generation: '0' });
+    let direct = null;
+    try { await getActivePointer(db, RID); } catch (e) { direct = e; }
+    assert.ok(direct && /active_pointer_malformed/.test(String(direct.message)),
+      `🔴 getActivePointer coerced a stored generation of "0" instead of refusing — every caller that reads the pair WITHOUT a transaction behind it (the editor's claim-base stamp, among others) would be handed the pre-cutover baseline: ${direct && direct.message}`);
+
+    /* (b) THE IN-TX READER ALONE. flipPointer is exported and does not pre-flight, so a direct flip
+       reaches the transaction's own pointerStateOf with nothing in front of it. The lease and snapshot
+       are real; the flip must refuse on the corruption rather than on anything else, which is why the
+       message is asserted rather than just the throw. */
+    const snapshot = (await snapshotRefOf(db, RID).get()).data();
+    const token = await acquireLease(db, RID);
+    let inTx = null;
+    try {
+      await flipPointer(db, RID, token, snapshot.version, snapshot, { activeVersionId: good.version });
+    } catch (e) { inTx = e; } finally { await releaseLease(db, RID, token); }
+    assert.ok(inTx && /active_pointer_malformed/.test(String(inTx.message)),
+      `🔴 the flip's own in-transaction read coerced a stored generation of "0" — the value it would then have written is priorGeneration + 1 on a baseline that was never real: ${inTx && inTx.message}`);
+
+    await ref.set(good);
+    assert.strictEqual((await getActivePointer(db, RID)).generation, good.generation, 'premise — the pointer is repaired for the cells that follow');
+    ok('each reader refuses on its own: getActivePointer with no transaction behind it, and the flip\'s in-tx read with no pre-flight in front of it');
+  }
+
   FINISHED = true;
   console.log(`d4p1-activation(emulator): OK (${n})`);
   process.exit(0);

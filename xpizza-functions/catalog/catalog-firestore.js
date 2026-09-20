@@ -57,15 +57,38 @@ function mapDocs(snap, where) {
 function activePointerRef(db, restaurantId) {
   return db.collection('restaurants').doc(restaurantId).collection('meta').doc('active_version');
 }
-function pointerStateOf(data) {
+/* 🔴 ABSENT IS PRE-P1; PRESENT-BUT-UNUSABLE IS A FAULT. These are different states and this used to
+   collapse them, silently, in the direction that opens the fence:
+     · a `version` that is present but not a usable string became `null` — which every caller reads as
+       "nothing is published yet", so a CORRUPT pointer looked like a FRESH RESTAURANT, and a first
+       publish (whose CAS expects `activeVersionId: null`) would sail past the check that exists to
+       stop it overwriting a live menu;
+     · a `generation` that is present but not a non-negative integer became `0` — the pre-cutover
+       baseline — so a malformed fence value read as the one value every claim bound at generation 0
+       compares equal to. A fence that answers "0" to garbage is a fence that opens itself, which is
+       the same defect class as the pointer write that dropped the field entirely (D-1).
+   🔴 AND THE TWO READERS OF THIS DOCUMENT DISAGREED. getActiveVersionId (:below) already throws
+   `active_version_malformed` on exactly the bytes this function quietly turned into `null`, so the
+   same pointer was a hard fault on one read path and a clean "unpublished" on the other. Whichever
+   reader a caller happened to use decided whether corruption was visible.
+   Absent still means pre-P1: a pointer with no generation reads 0, and no version reads null, because
+   that is the genuine pre-cutover state and refusing it would refuse every un-migrated restaurant. */
+function pointerStateOf(data, where = '') {
   const d = data || {};
-  const g = d.generation;
-  return { version: (typeof d.version === 'string' && d.version) ? d.version : null,
-    generation: (Number.isInteger(g) && g >= 0) ? g : 0 };
+  const at = where ? `${where} — ` : '';
+  const present = (v) => v !== undefined && v !== null;
+
+  if (present(d.version) && !(typeof d.version === 'string' && d.version)) {
+    throw new Error(`active_pointer_malformed: ${at}version is ${JSON.stringify(d.version)}; a pointer that HAS a version but not a usable one is corrupt, and reading it as "unpublished" would let a first publish overwrite a live menu`);
+  }
+  if (present(d.generation) && !(Number.isInteger(d.generation) && d.generation >= 0)) {
+    throw new Error(`active_pointer_malformed: ${at}generation is ${JSON.stringify(d.generation)}; a fence value that is present but unusable must not read as 0, which is the value every pre-cutover claim compares equal to`);
+  }
+  return { version: present(d.version) ? d.version : null, generation: present(d.generation) ? d.generation : 0 };
 }
 async function getActivePointer(db, restaurantId) {
   const snap = await activePointerRef(db, restaurantId).get();
-  return snap.exists ? pointerStateOf(snap.data()) : { version: null, generation: 0 };
+  return snap.exists ? pointerStateOf(snap.data(), restaurantId) : { version: null, generation: 0 };
 }
 
 async function getActiveVersionId(db, restaurantId) {
