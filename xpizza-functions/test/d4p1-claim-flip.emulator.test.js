@@ -330,11 +330,33 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
        standing. Clearing that claim and publishing would refuse as `unaccounted`, which is the
        partition law correctly reporting an incoherent fixture. So the claim is CARRIED OUT, which is
        both the honest repair and the prior version this cell needs to roll back from. */
-    await ensureCertifiedBaseline();
+    /* 🔴 CELL 6'S REFUSAL IS LOAD-BEARING SETUP FOR THIS CELL, so what it leaves behind is ASSERTED,
+       not assumed. The failure mode of an ordered fixture is not a red cell — it is a green one: if
+       cell 6's refusal ever moves, this cell quietly starts testing a different scenario and still
+       passes. These four preconditions are the whole of the inherited state, stated so that a change
+       upstream lands here as a named failure. */
+    const inherited = await readClaim();
+    assert.ok(inherited && Array.isArray(inherited.ids) && inherited.ids.length === 1,
+      `precondition — cell 6 left exactly one declared id standing: ${JSON.stringify(inherited)}`);
+    const orphan = inherited.ids[0];
+    const draft = (await sourceRefOf(db, RID).get()).data();
+    const inDraft = [...(draft.items || []), ...(draft.extras || [])]
+      .some((o) => o && o.display && o.display.identity_id === orphan);
+    assert.strictEqual(inDraft, false,
+      'precondition — the declared object is OUT of the draft, which is why its claim is the only thing accounting for it');
+
     const cur = await getActivePointer(db, RID);
-    const carried = await readClaim();
-    assert.ok(carried && carried.ids && carried.ids.length,
-      'premise — cell 6 left its declaration standing, and it is what accounts for the draft');
+    assert.strictEqual(inherited.base_version, cur.version,
+      'precondition — cell 6 REFUSED: its claim is still bound to the version that is live, so nothing activated underneath it');
+    assert.strictEqual(inherited.base_generation, cur.generation,
+      'precondition — …and to the live generation, so the publish below can consume it rather than refusing it as stale');
+
+    /* A no-op while the baseline above is certified — and if it ever is not, it CLEARS the claim, so
+       the state this cell depends on is re-checked on the far side of it rather than trusted. */
+    await ensureCertifiedBaseline();
+    assert.deepStrictEqual(await readClaim(), inherited,
+      'precondition — re-establishing the baseline did not clear the claim out from under this cell');
+
     await publishOnce();
     const moved = await getActivePointer(db, RID);
     assert.notStrictEqual(moved.version, cur.version, 'premise — there is a real prior version to roll back to');

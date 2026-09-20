@@ -437,7 +437,14 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
         /* WHAT this activation carried out, recorded on the immutable version rather than on the
            source. The source is the merchant's working document and the editor REPLACES it on every
            save — any history parked there is nulled by the next ordinary edit — so the only durable
-           place to say which deletion a publish executed is the version that executed it. */
+           place to say which deletion a publish executed is the version that executed it.
+           🔴 ITS READER IS SLICE F's restoreIdentity, and it is written one slice ahead of that
+           reader — said here so nobody deletes it as write-only. F has to restore the SAME identity
+           on a rollback, and a rollback to a version published BEFORE a deletion must restore the
+           ids that deletion retired rather than mint new ones for them. Nothing else in the system
+           can answer "which ids did this activation retire": the claim that named them is consumed
+           by this very transaction, and the source that held it is replaced on the merchant's next
+           save. Per-version and immutable is exactly the shape that question needs. */
         ...(consumedIds ? { 'identity_activation.consumed_deleted_ids': consumedIds } : {}),
       });
     }

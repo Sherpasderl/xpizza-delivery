@@ -32,6 +32,20 @@
 //
 // Brand-agnostic on purpose: P1 is scoped to x_pizza, but that scoping belongs to the CALLER. A
 // `rid === 'x_pizza'` branch in here would be exactly the hardwired ternary D5 exists to delete.
+//
+// 🔴 RUNBOOK — AFTER THIS RUNS, PUBLISHES MUST COME FROM THE SOURCE STORE, NOT FROM CODE. Once this
+// pass certifies the live version, A (the active certified set) is non-empty and every later publish
+// has to account for it. A code-derived candidate carries no `display.identity_id` on its objects, so
+// it is short of every id and the partition law refuses it as `identity_partition_unaccounted` — the
+// law working, not a bug. Two consequences worth stating rather than rediscovering:
+//   * the code path (`buildPublishCandidate` / seed-from-code) is a PRE-cutover tool. After bootstrap
+//     it is for a fresh restaurant with no certified baseline, and nothing else.
+//   * a STANDING DELETION CLAIM makes that mandatory rather than advisory. Consuming a claim means
+//     writing the source, which needs a `draftRevision` to compare against, and a code-derived
+//     publish has no draft to be stale against — so it carries no revision and the flip refuses with
+//     `flip_claim_needs_draft_cas` (catalog-publish.js). Refusing is the safe direction: the
+//     alternative is a publish that carries out the deletion, reports success, and leaves the
+//     declaration standing to be replayed against the next baseline.
 // ---------------------------------------------------------------------------
 const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 const { legacyKeyOf } = require('./identity-backfill');
