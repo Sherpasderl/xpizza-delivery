@@ -920,6 +920,77 @@ const asPreP1 = async (rid, versionId) => {
     ok('the cutover runs: bootstrap → publish → publish → publish, every version certified and every id stable across all three');
   }
 
+  // ── 🔴 THE CONSTRUCTED PRE-P1 SHAPE IS THE REAL ONE — ASSERTED, NOT ASSUMED ────────────────
+  /* Six cells below reach their subject through `asPreP1`, which HAND-BUILDS a pre-cutover version by
+     stripping three things off a published one. Before Slice D that shape came for free, because
+     publish never certified; now it is constructed, and a constructed fixture whose fidelity is
+     asserted nowhere is the class that has bitten this programme three times — most recently a
+     reservation seeded with `status` where production writes `state`. So the construction is compared,
+     once, against a version that was genuinely published BEFORE bootstrap ever ran.
+     🔴 COMPARED ON SHAPE, NOT VALUES, and that is not a weakening. Version id, seq, created_at,
+     source_sha and the hashes differ between any two publishes for reasons that have nothing to do
+     with identity. What must match is which FIELDS exist — because every way this fixture could lie
+     is a field left behind or a field missing, not a different timestamp. */
+  {
+    const ridE = 'x_pizza';
+    const shapeOf = (snap) => {
+      const keys = (o) => Object.keys(o || {}).sort();
+      const docsShape = (col) => {
+        const out = new Set();
+        for (const d of Object.values(col || {})) {
+          out.add(keys(d).join(','));
+          out.add(`display:${keys(d.display).join(',')}`);
+        }
+        return [...out].sort();
+      };
+      return { record: keys(snap.record), menu_items: docsShape(snap.menu_items), extras: docsShape(snap.extras) };
+    };
+
+    const cur = await readActiveVersion(db, ridE);
+    await publishVersion(db, ridE, { ...(await candidateFromSource(ridE)), source_sha: 'fidelity' },
+      { expected: { activeVersionId: cur.versionId } });
+    const fresh = await readActiveVersion(db, ridE);
+    assert.strictEqual(fresh.record.identity_certified, true, 'premise — a genuinely certified, post-bootstrap version to strip');
+    const certifiedShape = shapeOf(await snapshotVersion(ridE, fresh.versionId));
+
+    await asPreP1(ridE, fresh.versionId);
+
+    /* 🔴 SENSITIVITY FIRST, AND IT HAS TO LIVE INSIDE THIS CELL. I tried proving this comparison can
+       fail by half-breaking asPreP1 and re-running the suite: it DID fail, but at cell 6, which
+       reaches the incomplete fixture first — so the run said nothing about whether THIS cell can see
+       the difference. A cell whose sensitivity depends on no earlier cell failing first is a cell
+       whose sensitivity is unmeasured.
+       So the failure is staged here: put ONE marker back, which is exactly what a future incomplete
+       asPreP1 would leave, and the comparison below must reject it. */
+    await vrefOf(ridE, fresh.versionId).update({ identity_certified: true });
+    assert.notDeepStrictEqual(shapeOf(await snapshotVersion(ridE, fresh.versionId)), shapeOf(before),
+      '🔴 SENSITIVITY: a version with the discriminator LEFT BEHIND compares equal to a genuine pre-cutover one — this cell cannot see an incomplete asPreP1, which is the only thing it exists to catch');
+    await vrefOf(ridE, fresh.versionId).update({ identity_certified: admin.firestore.FieldValue.delete() });
+
+    const constructed = await snapshotVersion(ridE, fresh.versionId);
+
+    /* `before` is the version as it stood BEFORE bootstrap ran in cell 1 — a real pre-cutover
+       published version, not a reconstruction. */
+    assert.deepStrictEqual(shapeOf(constructed), shapeOf(before),
+      '🔴 the hand-built pre-P1 shape is NOT what a genuine pre-bootstrap version looks like — six cells below reason about a state that never existed in production');
+
+    // …and the three markers are named explicitly, so the cell states its property rather than only comparing.
+    assert.strictEqual(constructed.record.identity_certified, undefined, 'no discriminator');
+    assert.strictEqual(constructed.record.identity_activation, undefined, 'no activation record');
+    for (const col of ['menu_items', 'extras']) {
+      for (const [id, d] of Object.entries(constructed[col])) {
+        assert.strictEqual(d.display && d.display.identity_id, undefined, `🔴 ${col}/${id} kept its stamp`);
+      }
+    }
+
+    /* 🔴 SENSITIVITY, WITHOUT WHICH THE EQUALITY ABOVE PROVES NOTHING. If shapeOf were too coarse to
+       notice a stamp, it would report every version equal to every other and the comparison would pass
+       for any fixture at all. The CERTIFIED version it was stripped from must NOT match. */
+    assert.notDeepStrictEqual(certifiedShape, shapeOf(before),
+      '🔴 SENSITIVITY: a certified version has the same shape as a pre-cutover one — the comparison above cannot tell them apart and asserts nothing');
+    ok('the hand-built pre-P1 shape is field-for-field what a genuine pre-bootstrap version has, and a certified one is distinguishable from both');
+  }
+
   // ── 🔴 A PENDING UNPUBLISHED RENAME REFUSES THE WHOLE PASS ───────────────────────────────
   /* The cutover hazard. Unpublished ADDITIONS are harmless — no id, unidentified, they mint. But an
      object RENAMED or REMOVED in the draft and not yet published has no counterpart under its active
