@@ -97,6 +97,14 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
           });
         } catch (_) { /* best-effort: the park is what matters */ }
       }
+      /* 🔴 THE AUDIT IS WRITTEN ON A REPEAT TOO, AND THAT IS DELIBERATE — the contract is "moves no
+         money and does not disturb the order", not "writes nothing at all". The order and the attempt
+         are byte-identical across repeats and the dispatcher is alerted once; what a second press
+         DOES record is that a human pressed it again, which is the only trace that someone is stuck
+         or did not understand the queue. Losing that would make operator confusion invisible, and
+         this whole commit exists because a failure was invisible. The cell asserts exactly this —
+         one alert, no order or attempt change, one audit row per press — rather than asserting
+         silence. */
       if (landed || alreadyParked) await audit('manual_refund_required', { repeat: !landed });
       return {
         status: 409,

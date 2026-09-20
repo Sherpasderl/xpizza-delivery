@@ -65,10 +65,23 @@ async function parkForManualRefund(deps, orderId, now) {
     landed = false; alreadyParked = false;
     if (cur === null) return null;                                   // null-first-safe
     if (!cur) return;                                                // gone → nothing to park
-    if (cur.payment_status !== 'manual_reconciliation') return;      // in flight or resolved → DO NOT TOUCH
+    /* 🔴 BOTH STATES A PARKABLE ORDER CAN BE IN, and the second one is a defect I called unreachable.
+       There are TWO hours lookups on this path: the early one, before the claim, and the guard's own,
+       after the attempt has been stamped captured and the order committed `confirmed`. If the early
+       lookup THROWS, or the kitchen's hours change between them, only the guard sees "closed" — and
+       with the conditional accepting manual_reconciliation alone, the park refused the now-confirmed
+       order and the guard still answered "held": HTTP 200, no park, no alert, a captured attempt and
+       an unmaterialized confirmed order, eligible for automatic recovery.
+       `confirmed` is not an in-flight refund; it is the state this path just created. What must never
+       be overwritten is a reversal already running, which is refunding_paid_after_close and anything
+       terminal — and those are still refused. */
+    if (cur.payment_status !== 'manual_reconciliation' && cur.payment_status !== 'confirmed') return;
     if (cur.blocked_reason === PARK_REASON) { alreadyParked = true; return; }   // already parked → no write, no re-alert
     landed = true;
-    return { ...cur, blocked_reason: PARK_REASON, manual_refund_required_at: now };
+    /* A confirmed order is moved back to manual_reconciliation — leaving it `confirmed` with captured
+       money and no food is the exact state this branch exists to prevent. An order already in
+       manual_reconciliation keeps that status and only gains the reason. */
+    return { ...cur, payment_status: 'manual_reconciliation', blocked_reason: PARK_REASON, manual_refund_required_at: now };
   });
   return { landed: !!(tx.committed && landed), alreadyParked };
 }

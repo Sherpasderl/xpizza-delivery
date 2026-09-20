@@ -2569,6 +2569,13 @@ function resolveDeps(db) {
     restaurant: RESTAURANT,
     genToken: generateTrackingToken,
     getIdentity: getRestaurantIdentity,   // paid-after-close re-check at manual materialize (Codex-on-diff)
+    /* 🔴 THE SAME GRACE READER THE CONFIRM PATH USES. materialize-guard falls back to a hardcoded 15
+       when this dep is absent, and confirmDeps supplied the configured reader while this factory did
+       not — so the two callers of one "shared" decision read different inputs. At 20 minutes past
+       close with a configured grace of 30, the dispatcher path required a refund while the automatic
+       path permitted materialization. Inert today (config/order_grace_minutes is unset in production,
+       so both resolve to 15) but a shared head that reads different inputs is not shared. */
+    getGraceMinutes,
     alert: (kind, detail) => paymentAlert(db, kind, detail),
     sanitizeText,
     serverTimestamp: ServerValue.TIMESTAMP,

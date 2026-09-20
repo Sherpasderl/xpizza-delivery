@@ -2786,13 +2786,17 @@ function alertContent(a) {
       return { title: 'Driver sin señal GPS',
         detail: `${name} está sin señal GPS reciente — revisá su última ubicación en el mapa.` };
     }
-    case 'paid_after_close_manual_refund_required': {
-      /* 🔴 THIS ALERT IS AN INSTRUCTION, AND THE FALLBACK THREW THE INSTRUCTION AWAY. Unknown kinds are
-         humanised into "Alerta — paid after close manual refund required": English, no order number,
-         no action — so the one thing this alert exists to say never reached the person who must act. */
-      const oid = escapeHtml(String(a.order_id || a.orderId || '—'));
+    case 'payment_paid_after_close_manual_refund_required': {
+      /* 🔴 THIS ALERT IS AN INSTRUCTION, AND IT REACHED NOBODY — TWICE. First the unknown-kind
+         fallback humanised it into "Alerta — paid after close manual refund required": English, no
+         order number, no action. Then my fix matched the UNPREFIXED kind and read top-level ids,
+         while paymentAlert emits `payment_${kind}` with everything nested under `detail` — so it
+         still fell through the same fallback and still said nothing. Both times the diff looked
+         right; neither time was the renderer executed against a real payload. It is now, in
+         dispatch-paid-after-close.test.js, with a payload built by the real emitter's shape. */
+      const d = a.detail || {};
       return { title: 'Reembolso manual requerido',
-        detail: `El pedido <strong>${oid}</strong> se pagó después del cierre y no puede reembolsarse automáticamente — presioná <strong>Reembolsar</strong> en la cola de Pedidos.` };
+        detail: `El pedido ${label(d.orderId || d.order_id)} se pagó después del cierre y no puede reembolsarse automáticamente — presioná <strong>Reembolsar</strong> en la cola de Pedidos.` };
     }
     default: {
       // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.

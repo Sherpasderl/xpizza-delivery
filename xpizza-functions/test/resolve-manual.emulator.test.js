@@ -42,13 +42,17 @@ const ALL_CLOSED = mk({ open: false });
 // ── deps factories ──
 const clientVoid = (result) => ({ voidTransaction: async () => result });            // {ok:true}=anulada, {ok:false}=else
 const clientThrow = () => ({ voidTransaction: async () => { throw new Error('412 PreconditionalResponse'); } });
-function mkDeps(client, overDb, hours) {
+/* `over` lets a cell replace one dep without hand-building the whole object. It is spread LAST so an
+   override actually wins — a silently ignored override is how a cell ends up testing the default and
+   reporting a pass; the premise assertion in the two-lookups cell caught exactly that. */
+function mkDeps(client, overDb, hours, over = {}) {
   const alerts = [];
   const deps = {
     db: overDb || db, client, buildMaterializeUpdates, restaurant: RESTAURANT,
     genToken: () => 'TOK', alert: async (k, d) => { alerts.push([k, d]); },
     getIdentity: async () => ({ active: true, hours: hours || ALL_OPEN }),   // materialize-time hours re-check
     sanitizeText: (s) => String(s || '').slice(0, 200), serverTimestamp: 111,
+    ...over,
   };
   return { deps, alerts };
 }
@@ -248,8 +252,12 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
      doing it, so this is a documented state rather than a stopgap. */
   {
     await clearAll();
+    /* Seeded WITHOUT capture_verified/manual_verified on purpose: the resolver stamps both when it
+       runs its confirm step, so their absence afterwards is the observable proof that nothing moved
+       before the decision. With the seed pre-stamped, a decision made too late looks identical to one
+       made in time. */
     await seed({ order_type: 'delivery', customer_phone: '50488887777', lat: 15.6, lng: -88.1, address_detected: 'Calle 1', address_details: 'azul' },
-      { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+      { payment_uuid: 'S-1', status: 'captured' });
     let providerCalls = 0;
     const { deps, alerts } = mkDeps({ voidTransaction: async () => { providerCalls += 1; return { ok: true }; } }, undefined, ALL_CLOSED);
     const r = await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
@@ -259,6 +267,8 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     assert.strictEqual(providerCalls, 0, '🔴 a provider call was made on a path that cannot complete a refund');
     assert.notStrictEqual(o.payment_status, 'refunded', '🔴 reported a refund this path cannot perform');
     assert.strictEqual((await aVal()).status, 'captured', 'the attempt is untouched — no reversal was begun');
+    assert.ok(!(await aVal()).manual_verified,
+      '🔴 the resolver stamped the attempt before anyone asked whether this path can refund — the decision came after the state changes it was supposed to prevent');
     // …and the order was NOT materialized onto a dark kitchen
     assert.notStrictEqual(o.status, 'new', 'NOT materialized');
     assert.strictEqual((await db.ref('order_tracking').once('value')).val(), null, 'no tracking');
@@ -347,6 +357,62 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     ok('a park write that FAILS leaves the order untouched and still actionable — no transitions happened first');
   }
 
+  /* ── 🔴 THE TWO HOURS LOOKUPS CAN DISAGREE, AND THE ORDER MUST NOT BE STRANDED ───────────────
+     There are two: the early one before the claim, and the guard's own, after the attempt is stamped
+     captured and the order committed `confirmed`. If the early lookup THROWS (or the kitchen's hours
+     change between them), only the guard sees "closed". I had called that branch unreachable and
+     deleted its mutant; it is reachable, and it left HTTP 200, no park, no alert, a captured attempt
+     and an unmaterialized CONFIRMED order — eligible for automatic recovery. */
+  {
+    await clearAll();
+    await seed({}, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    let lookups = 0;
+    const { deps, alerts } = mkDeps(clientVoid({ ok: true }), undefined, ALL_CLOSED, {
+      getIdentity: async () => {
+        lookups += 1;
+        if (lookups === 1) throw new Error('config read failed');   // early lookup fails
+        return { active: true, hours: ALL_CLOSED };                 // the guard's lookup sees closed
+      },
+    });
+    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CH1' });
+    const o = await oVal();
+    assert.ok(lookups >= 2, 'premise — both lookups really ran');
+    assert.notStrictEqual(o.payment_status, 'confirmed',
+      '🔴 the order was left CONFIRMED with captured money and no food — unmaterialized, unparked, and eligible for automatic recovery');
+    assert.strictEqual(o.payment_status, 'manual_reconciliation', 'it is parked where a human can act on it');
+    assert.strictEqual(o.blocked_reason, 'manual_refund_required_paid_after_close');
+    assert.ok(alerts.some(([k]) => k === 'paid_after_close_manual_refund_required'), '🔴 nobody was told');
+    assert.ok(!o.materialized_at, 'and it was not materialized onto a dark kitchen');
+    ok('early hours lookup fails / hours change → the guard still parks the confirmed order and alerts, never strands it');
+  }
+
+  /* ── 🔴 BOTH CALLERS RESOLVE THE SAME GRACE WINDOW FROM THE SAME CONFIG ───────────────────────
+     materialize-guard falls back to a hardcoded 15 when the reader dep is absent. confirmDeps
+     supplied the configured reader and resolveDeps did not, so at 20 minutes past close with a
+     configured grace of 30 the dispatcher path required a refund while the automatic path permitted
+     materialization — one "shared" decision reading two different inputs. Inert today because
+     config/order_grace_minutes is unset in production and both resolve to 15, which is exactly why
+     it could sit there unnoticed. */
+  {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+    const bodyOf = (name) => {
+      const at = src.search(new RegExp(`function\\s+${name}\\s*\\(`));
+      assert.notStrictEqual(at, -1, `premise — ${name} is in index.js`);
+      let i = src.indexOf('{', at), depth = 0, end = i;
+      for (; end < src.length; end++) { if (src[end] === '{') depth++; else if (src[end] === '}') { depth--; if (!depth) break; } }
+      return src.slice(i, end).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    };
+    for (const f of ['confirmDeps', 'resolveDeps']) {
+      assert.match(bodyOf(f), /(^|[{,\s])getGraceMinutes\s*,/,
+        `🔴 ${f} does not pass the shared getGraceMinutes — the two callers can resolve different windows from the same config`);
+    }
+    const grace = bodyOf('getGraceMinutes');
+    assert.match(grace, /config\/order_grace_minutes/, 'it reads the configured key');
+    assert.match(grace, /catch\s*\(_\)\s*\{\s*return 15;/,
+      'and a config READ FAILURE falls back to the same 15 on both paths, because it is one function');
+    ok('confirmDeps and resolveDeps pass the SAME grace reader; a config read failure resolves identically for both');
+  }
+
   /* ── 🔴 ONE ALERT PER PARK, AND A REPEAT IS A TRUE NO-OP (P-3) ────────────────────────────────
      The previous idempotence cell compared selected final fields, so it passed while every repeat
      re-alerted and re-ran claim/capture/confirm — charged_at moved between two identical requests.
@@ -365,7 +431,15 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     assert.strictEqual(second.blocked_reason, first.blocked_reason, 'the park is unchanged');
     assert.strictEqual(second.charged_at, first.charged_at, '🔴 a repeat re-ran the confirm path — charged_at moved on a no-op request');
     assert.deepStrictEqual(await aVal(), firstAttempt, '🔴 a repeat re-stamped the attempt');
-    ok('repeat materialize → ONE alert, unchanged charged_at, attempt byte-identical: a true no-op');
+    /* 🔴 ONE THING A REPEAT DOES WRITE, ON PURPOSE: an audit row per press. The contract is "moves no
+       money and does not disturb the order", not "writes nothing" — a second press is the only
+       record that a human is stuck or has misread the queue, and this commit exists because a
+       failure was invisible. Asserted explicitly so the choice is visible rather than inferred from
+       a passing silence. */
+    const parkAudits = (await audits()).filter((a) => a.outcome === 'manual_refund_required');
+    assert.strictEqual(parkAudits.length, 2, 'each press is audited — the repeat is recorded, not swallowed');
+    assert.strictEqual(parkAudits.filter((a) => a.repeat === true).length, 1, 'and the second is marked as a repeat');
+    ok('repeat materialize → ONE alert, unchanged charged_at, attempt byte-identical, and one audit row per press (deliberate)');
   }
 
   // Same, but kitchen OPEN → materializes to new (normal flow unchanged).

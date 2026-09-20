@@ -6008,10 +6008,13 @@
    "test:resolve-manual"
   ],
   "label": "🔴 the decision moves back AFTER the claim - the order transitions through confirmed before anyone asks",
-  "kills_with": "parked for a human",
+  "kills_with": [
+   "the resolver stamped the attempt before anyone asked",
+   "premise — both lookups really ran"
+  ],
   "from": "  if (action === 'materialize' && !MG.canAutoRefund(deps)) {",
   "to": "  if (false && action === 'materialize' && !MG.canAutoRefund(deps)) {",
-  "why": "the placement IS the fix. Without this the resolver claims the order, stamps the attempt captured and commits `confirmed` before anything asks whether this caller can refund — and `confirmed` enables the automatic, fully wired refund path. The guard's own park then cannot land (it only writes from manual_reconciliation, and the order is confirmed by then), so the order is left confirmed with captured money and no park. Killed on the operator-visible consequence: the block reason no longer names the situation."
+  "why": "the placement IS the fix. Without this the resolver claims the order, stamps the attempt captured and commits `confirmed` before anything asks whether this caller can refund — and `confirmed` enables the automatic, fully wired refund path. The guard's own park then cannot land (it only writes from manual_reconciliation, and the order is confirmed by then), so the order is left confirmed with captured money and no park. Killed on the operator-visible consequence: the block reason no longer names the situation. kills_with is an ARRAY: the direct observable is the attempt being stamped before the decision (the resolver's confirm step ran), and the two-lookups cell's premise also stops holding because only one lookup happens. Both are real consequences of moving the decision late; the first is the one that names the harm."
  },
  {
   "id": "pah-03",
@@ -6023,10 +6026,13 @@
    "test:resolve-manual"
   ],
   "label": "🔴 the park becomes an unconditional write - it lands on an in-flight refund and re-offers it",
-  "kills_with": "an in-flight refund was LABELLED as needing a manual one",
-  "from": "    if (cur.payment_status !== 'manual_reconciliation') return;      // in flight or resolved → DO NOT TOUCH",
+  "kills_with": [
+   "the park OVERWROTE an in-flight refund",
+   "an in-flight refund was LABELLED as needing a manual one"
+  ],
+  "from": "    if (cur.payment_status !== 'manual_reconciliation' && cur.payment_status !== 'confirmed') return;",
   "to": "    // unconditional",
-  "why": "an unconditional update lands on an order whose reversal is already in flight — automatic recovery at refunding_paid_after_close with the attempt `reversing` and a provider call outstanding — and moving it to manual_reconciliation re-offers it to the dispatcher, whose Reembolsar issues a SECOND provider call outside the attempt CAS. The cell asserts the in-flight order is untouched and zero provider calls follow."
+  "why": "an unconditional update lands on an order whose reversal is already in flight — automatic recovery at refunding_paid_after_close with the attempt `reversing` and a provider call outstanding — and moving it to manual_reconciliation re-offers it to the dispatcher, whose Reembolsar issues a SECOND provider call outside the attempt CAS. The cell asserts the in-flight order is untouched and zero provider calls follow. (Re-anchored when the condition widened to accept `confirmed`: pah-02 narrows that same line and this one removes it entirely — the two failure directions of one guard.) kills_with is an ARRAY because the park now also restores payment_status for the confirmed case (Q-1), so an unconditional write moves BOTH the status and the label on an in-flight order; the status assertion fires first and the label assertion is the subtler harm."
  },
  {
   "id": "pah-04",
@@ -6042,5 +6048,49 @@
   "from": "    if (cur.blocked_reason === PARK_REASON) { alreadyParked = true; return; }   // already parked → no write, no re-alert",
   "to": "    // no idempotence marker",
   "why": "without the already-parked check the park rewrites and re-reports on every press, so pressing the button twice pages a dispatcher twice for one order and keeps rewriting a record nobody asked to change. The cell asserts exactly one alert across two identical requests."
+ },
+ {
+  "id": "pah-02",
+  "slice": "pah",
+  "file": "materialize-guard.js",
+  "command": [
+   "npm",
+   "run",
+   "test:resolve-manual"
+  ],
+  "label": "🔴 the guard's park refuses a confirmed order - it is left confirmed + captured + unmaterialized",
+  "kills_with": "the order was left CONFIRMED with captured money and no food",
+  "from": "    if (cur.payment_status !== 'manual_reconciliation' && cur.payment_status !== 'confirmed') return;",
+  "to": "    if (cur.payment_status !== 'manual_reconciliation') return;",
+  "why": "🔴 RESTORED AFTER I DELETED IT AS UNREACHABLE, WHICH WAS WRONG. There are TWO hours lookups: the early one before the claim, and the guard's own, after the attempt is stamped captured and the order committed `confirmed`. If the early lookup throws or the kitchen's hours change between them, only the guard sees closed — and with the park refusing a confirmed order it answered 'held' anyway: HTTP 200, no park, no alert, captured money, unmaterialized, eligible for automatic recovery. `confirmed` is not an in-flight reversal; it is the state this path just created."
+ },
+ {
+  "id": "pah-05",
+  "slice": "pah",
+  "file": "index.js",
+  "command": [
+   "npm",
+   "run",
+   "test:resolve-manual"
+  ],
+  "label": "🔴 resolveDeps loses the grace reader - the two callers resolve different windows from one config",
+  "kills_with": "does not pass the shared getGraceMinutes",
+  "from": "    getGraceMinutes,\n    alert: (kind, detail) => paymentAlert(db, kind, detail),\n    sanitizeText,",
+  "to": "    alert: (kind, detail) => paymentAlert(db, kind, detail),\n    sanitizeText,",
+  "why": "materialize-guard falls back to a hardcoded 15 when the reader is absent, so without this the dispatcher path uses 15 while the automatic path uses config/order_grace_minutes — at 20 minutes past close with a configured grace of 30, one requires a refund and the other permits materialization. Inert while the key is unset in production, which is precisely why it could sit unnoticed behind a claim that the two callers share one decision."
+ },
+ {
+  "id": "pah-06",
+  "slice": "pah",
+  "file": "../xpizza-dispatch/index.html",
+  "command": [
+   "node",
+   "../xpizza-dispatch/dispatch-paid-after-close.test.js"
+  ],
+  "label": "🔴 the alert matches the unprefixed kind again - the dispatcher gets a humanised English type with no instruction",
+  "kills_with": "the alert fell through the unknown-kind fallback",
+  "from": "    case 'payment_paid_after_close_manual_refund_required': {",
+  "to": "    case 'paid_after_close_manual_refund_required': {",
+  "why": "the defect that survived TWO rounds because nobody executed the renderer. paymentAlert emits `payment_${kind}` with the ids nested under detail; matching the bare kind sends this alert through the humanising fallback, where a dispatcher sees 'Alerta — paid after close manual refund required' with no order number and no action. The whole point of the commit is that a human is told what to do, so this is scored by executing the real renderer against a payload shaped the way the real emitter writes it."
  }
 ]
