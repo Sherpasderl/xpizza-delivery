@@ -44,7 +44,17 @@ From the `xpizza-functions/` directory:
 cd xpizza-functions
 firebase use xpizza-delivery   # tell the CLI which project to deploy to
 npm install                    # install firebase-admin, firebase-functions
+npm --prefix ../xpizza-portal install   # the portal test harness (acorn, acorn-walk)
 ```
+
+🔴 **That second install is not optional and not a one-off.** `xpizza-portal/node_modules` is
+gitignored, so EVERY fresh checkout and worktree needs it, and without it the eight portal test
+files do not run at all — they fail with `ERR_MODULE_NOT_FOUND` from inside `wiring-ast.mjs`, which
+reads like a bug in the portal code rather than a missing install. Both this checkout and the gate
+checkout had it uninstalled at the same time and neither noticed, because nothing in the default
+test chain reached those files. `npm run test:portal` now preflights the install and says exactly
+this, and the gate runner counts a missing install as a real failure rather than a skip — a suite
+that cannot run is a coverage gap, not an inconvenience.
 
 If `firebase use` complains, run `firebase init functions` first and pick the
 `xpizza-delivery` project, JavaScript (not TypeScript), no ESLint, install
