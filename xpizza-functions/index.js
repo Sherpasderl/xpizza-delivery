@@ -87,6 +87,7 @@ const { alertsToPrune } = require('./alert-prune');   // auto-dismiss dispatcher
 const { recoverRefundingDecision } = require('./materialize-guard');   // stale-recovery for a crash mid-paid-after-close-refund  //   reservation lifecycle + confirm-settle + sweeps + [B] hold-or-alert at manual entries + paid-after-close hold release
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
+const { suppressCancelledNotification } = require('./cancel-notify');   // suppress cancel WhatsApp for never-placed (abandoned) orders
 const { notifyWithinDeadline } = require('./notify-deadline');   // cash createOrder: bound the best-effort "received" WhatsApp so a slow gateway can't hold the 200
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
@@ -2714,9 +2715,11 @@ exports.allocateDisplayNumberOnSale = onValueWritten(
     if (isTransition) {
       // ALLOCATE atomically. Null-run-safe: the update fn COMMITS (returns .next), so on contention RTDB re-runs
       // with the true server value — a concurrent handler's reservation then wins idempotently (one number, no gap).
+      const crypto = require('crypto');
+      const randInt = (lo, hi) => crypto.randomInt(lo, hi + 1);   // uniform [lo,hi]; fresh per txn re-run
       try {
         await db.ref(counterPath).transaction((cur) => {
-          const d = decideDisplayNumber(cur, orderId);
+          const d = decideDisplayNumber(cur, orderId, randInt);
           allocated = d.number;
           return d.next === undefined ? undefined : d.next;   // undefined ⇒ abort (already reserved → idempotent)
         });
@@ -4200,10 +4203,15 @@ exports.sendOrderStatusNotifications = onValueWritten(
         });
 
       } else if (after === 'cancelled') {
-        body = whatsapp.tplCancelled({
-          orderId,
-          restaurantId
-        });
+        // Suppress the generic "tu pedido fue cancelado" for an order the customer never actually placed
+        // (an abandoned cart discarded from reconciliation → payment_status:'abandoned') — see cancel-notify.js.
+        // Every real cancellation still notifies. (The paid-after-close double-message is a separate slice.)
+        if (!suppressCancelledNotification(order)) {
+          body = whatsapp.tplCancelled({
+            orderId,
+            restaurantId
+          });
+        }
       }
 
       if (!body) return;

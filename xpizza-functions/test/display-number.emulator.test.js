@@ -29,46 +29,54 @@ const seed = (id, o) => db.ref(`orders/${id}`).set(order({ id, ...o }));
 const reset = () => db.ref('/').set(null);
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
+const inRange = (x) => Number.isInteger(x) && x >= 100 && x <= 999;   // NON-SEQUENTIAL 3-digit label
 
 (async () => {
-  // 1. live/Sale order → #1 on BOTH /orders and order_tracking; counter node correct
+  // 1. live/Sale order → a 3-digit number on BOTH /orders and order_tracking; counter node records it
   await reset();
   await seed('A', {});
   await app.allocateDisplayNumberOnSale.run(ev('A', order({ id: 'A' })));
-  assert.strictEqual(await dn('A'), 1, '/orders/A/display_number #1');
-  assert.strictEqual(await trackDn('TOK-A'), 1, 'order_tracking/TOK-A/display_number #1');
-  assert.deepStrictEqual(await counter('x_pizza'), { last: 1, by_order: { A: 1 } }, 'counter { last:1, by_order:{A:1} }');
-  ok('live/Sale order → #1 on /orders AND order_tracking; counter correct');
+  const nA = await dn('A');
+  assert.ok(inRange(nA), '/orders/A/display_number is a 3-digit number');
+  assert.strictEqual(await trackDn('TOK-A'), nA, 'order_tracking/TOK-A mirrors the same number');
+  assert.deepStrictEqual(await counter('x_pizza'), { last: nA, by_order: { A: nA } }, 'counter records A → nA');
+  ok('live/Sale order → a 3-digit number on /orders AND order_tracking; counter correct');
 
-  // 2. second order → #2
+  // 2. second order → a DIFFERENT 3-digit number (non-sequential, unique within the day — NOT #2)
   await seed('B', {});
   await app.allocateDisplayNumberOnSale.run(ev('B', order({ id: 'B' })));
-  assert.strictEqual(await dn('B'), 2, 'second order → #2');
-  assert.deepStrictEqual((await counter('x_pizza')).by_order, { A: 1, B: 2 });
-  ok('second order → #2 (per-day sequence advances)');
+  const nB = await dn('B');
+  assert.ok(inRange(nB), 'second order → a 3-digit number');
+  assert.notStrictEqual(nB, nA, 'second order gets a DIFFERENT number (unique within the day)');
+  assert.deepStrictEqual((await counter('x_pizza')).by_order, { A: nA, B: nB });
+  ok('second order → a different 3-digit number (non-sequential, unique, no volume signal)');
 
-  // 3. IDEMPOTENT re-fire of A → still #1, counter.last unchanged (no re-burn/gap)
+  // 3. IDEMPOTENT re-fire of A → still nA, counter unchanged (no re-burn/duplicate)
   await app.allocateDisplayNumberOnSale.run(ev('A', order({ id: 'A' })));
-  assert.strictEqual(await dn('A'), 1, 'A still #1');
-  assert.strictEqual((await counter('x_pizza')).last, 2, 'counter.last unchanged (no re-burn)');
-  ok('idempotent re-fire of A → same #1, last still 2 (no re-burn/gap)');
+  assert.strictEqual(await dn('A'), nA, 'A still nA');
+  assert.deepStrictEqual((await counter('x_pizza')).by_order, { A: nA, B: nB }, 'by_order unchanged (no re-burn)');
+  ok('idempotent re-fire of A → same number, by_order unchanged (no re-burn/duplicate)');
 
-  // 4. CONCURRENCY: two handlers for one fresh order → exactly one number, counter +1
+  // 4. CONCURRENCY: two handlers for one fresh order → exactly one number
   await seed('C', {});
   await Promise.all([
     app.allocateDisplayNumberOnSale.run(ev('C', order({ id: 'C' }))),
     app.allocateDisplayNumberOnSale.run(ev('C', order({ id: 'C' }))),
   ]);
-  assert.strictEqual(await dn('C'), 3, 'C got a single number (#3)');
-  assert.strictEqual((await counter('x_pizza')).last, 3, 'counter advanced by exactly 1 (no double-burn)');
-  ok('concurrency: two handlers for one order → one #, counter +1 (no double-burn/gap)');
+  const nC = await dn('C');
+  assert.ok(inRange(nC), 'C got a 3-digit number');
+  const byO = (await counter('x_pizza')).by_order;
+  assert.strictEqual(byO.C, nC, 'C has exactly one recorded number');
+  assert.strictEqual(Object.keys(byO).length, 3, 'exactly A,B,C recorded (no double-burn)');
+  ok('concurrency: two handlers for one order → one number (no double-burn)');
 
-  // 5. per-restaurant: la_musa has its OWN #1 (independent of x_pizza's sequence)
+  // 5. per-restaurant: la_musa gets its OWN number from an independent node (brand-agnostic obscuring)
   await seed('L', { restaurant_id: 'la_musa', tracking_token: 'TOK-L' });
   await app.allocateDisplayNumberOnSale.run(ev('L', order({ id: 'L', restaurant_id: 'la_musa', tracking_token: 'TOK-L' })));
-  assert.strictEqual(await dn('L'), 1, 'la_musa → its own #1');
-  assert.deepStrictEqual(await counter('la_musa'), { last: 1, by_order: { L: 1 } });
-  ok('per-restaurant counter: la_musa gets a clean #1, independent of x_pizza');
+  const nL = await dn('L');
+  assert.ok(inRange(nL), 'la_musa → its own 3-digit number');
+  assert.deepStrictEqual(await counter('la_musa'), { last: nL, by_order: { L: nL } });
+  ok('per-restaurant counter: la_musa gets its own 3-digit number, independent of x_pizza');
 
   // 6. NOT eligible → no number, no counter burn
   await reset();
@@ -93,7 +101,7 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
   await db.ref('orders/H').set(order({ id: 'H', created_at: liveTs }));
   await app.allocateDisplayNumberOnSale.run(ev('H', order({ id: 'H', created_at: liveTs }), null));  // transition → allocate
   const n = await dn('H');
-  assert.ok(Number.isFinite(n), 'H allocated a number');
+  assert.ok(inRange(n), 'H allocated a 3-digit number');
   const liveNode = async () => (await db.ref(`counters/order_display_seq/x_pizza/${liveDay}`).once('value')).val();
   assert.strictEqual((await liveNode()).by_order.H, n, 'reservation lives in the LIVE-day node (F2: day from created_at, not trigger time)');
   // simulate a stamp-fail (the /orders stamp never landed) THEN a later non-transition write (status → preparing)
