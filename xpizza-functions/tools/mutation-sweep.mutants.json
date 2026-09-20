@@ -311,8 +311,8 @@
   "slice": "task7",
   "label": "the write point stops validating (back to trusting its callers)",
   "file": "catalog/catalog-publish.js",
-  "from": "  await verifyVersionStructure(db, rid, versionId);\n  const wantsDraftCas",
-  "to": "  const wantsDraftCas"
+  "from": "  const served = await verifyVersionStructure(db, rid, versionId);",
+  "to": "  const served = { items: [], extras: [] };"
  },
  {
   "id": "task7-16",
@@ -6620,9 +6620,9 @@
   ],
   "label": "🔴 the in-tx claim check is dropped - a claim from a superseded baseline rides the activation through",
   "kills_with": "a claim that went stale BETWEEN the pre-flight check and the flip rode the activation through",
-  "from": "      validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
-  "to": "      if (false) validateDeletionClaim(liveClaim, {\n        activeVersionId: liveActive,",
-  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close. 🔴 WHICH HALF THIS KILL ACTUALLY COVERS: validateDeletionClaim refuses on two grounds and this mutant dies on ONE of them, the staleness ground, which cell 5 reaches. The malformed ground is not reachable THROUGH publishVersion — that path pre-flights, and making a claim malformed after pre-flight moves the source revision, which the draft CAS refuses first. It IS reachable directly: flipPointer is exported and rollbackVersion forwards `expected` with no assertDraftPartition, so a direct flip with a valid lease and a matching draft revision hits the validator with a malformed claim. So the branch is live defence for non-publishVersion callers, covered as a unit in identity-partition.test.js and at pre-flight (claim-flip cell 4), and NOT dead code — an earlier note here said it was flatly unreachable, which was too broad. Scoring this kill as covering both grounds would still be the 'true, but not measuring what its label claims' class."
+  "from": "        const { ids, declared } = validateDeletionClaim(liveClaim, {\n          activeVersionId: liveActive,\n          activeGeneration: priorGeneration,",
+  "to": "        const { ids, declared } = validateDeletionClaim(liveClaim, {\n          activeVersionId: liveClaim.base_version,\n          activeGeneration: liveClaim.base_generation,",
+  "why": "isolated by cell 5. The pre-flight pass in publishVersion validates the claim too, so an ALREADY-stale claim never reaches the transaction and this mutant survived — the masking guard was one I added myself in the same slice. Cell 5 bumps the GENERATION between the pre-flight check and the flip, leaving the version untouched: the CAS compares versions and passes, the pre-flight check saw the old generation and passed, and only the in-tx read of the pointer this transaction holds can notice. That is exactly the tear C-2 exists to close. 🔴 WHICH HALF THIS KILL ACTUALLY COVERS: validateDeletionClaim refuses on two grounds and this mutant dies on ONE of them, the staleness ground, which cell 5 reaches. The malformed ground is not reachable THROUGH publishVersion — that path pre-flights, and making a claim malformed after pre-flight moves the source revision, which the draft CAS refuses first. It IS reachable directly: flipPointer is exported and rollbackVersion forwards `expected` with no assertDraftPartition, so a direct flip with a valid lease and a matching draft revision hits the validator with a malformed claim. So the branch is live defence for non-publishVersion callers, covered as a unit in identity-partition.test.js and at pre-flight (claim-flip cell 4), and NOT dead code — an earlier note here said it was flatly unreachable, which was too broad. Scoring this kill as covering both grounds would still be the 'true, but not measuring what its label claims' class. 🔴 RE-POINTED when D added consumption. The old form wrapped the whole call in `if (false)`, which was faithful while C discarded the return value; now `ids`/`declared` drive the consumption, so suppressing the call would change TWO things and the kill could be scored on either. The mutant instead validates the claim against its OWN recorded baseline, which is the identity comparison — staleness can never fire, malformed still does, and consumption is untouched. The only observable difference is the refusal this cell exists to see."
  },
  {
   "id": "d4p1c-25",
@@ -6774,6 +6774,159 @@
   "from": "      if (st !== 'activated') {\n        throw new Error(`identity_bootstrap_activation_present:",
   "to": "      if (st === 'never_matches_anything') {\n        throw new Error(`identity_bootstrap_activation_present:",
   "why": "the property the narrowing must NOT have widened: promoting a `pending` candidate that never committed, or reviving an `abandoned` one, is bootstrap manufacturing activation authority — exactly what the original blanket rule existed to prevent. The cell drives pending, abandoned AND an unmodelled status, because a status we do not recognise is not one we may overwrite either. kills_with is an ARRAY because Slice B ALREADY had a cell for this property ('bootstrap upgraded an existing pending record to activated'), and it fires before the new one. That is the right outcome — the narrowing was supposed to leave that guarantee untouched, and the pre-existing cell proving it still bites is better evidence of that than my new cell alone."
+ },
+ {
+  "id": "d4p1d-03",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "node",
+   "catalog/activation-eligibility.test.js"
+  ],
+  "label": "🔴 a candidate bound to a superseded baseline is activated anyway",
+  "kills_with": "activated while",
+  "from": "  if (boundTo !== currentGeneration) {",
+  "to": "  if (false && boundTo !== currentGeneration) {",
+  "why": "🔴 RESTORED ONCE THE PREDICATE BECAME TESTABLE. This mutant was deleted when no cell could reach the branch end-to-end — the lease serializes activations, so nothing can move the generation under a held candidate. That made it unreachable, NOT dead: Slice F's rollback eligibility is its real caller, because a retained version can carry a `pending` record left by a publish that staged and never flipped. Extracting the predicate as a pure function makes the branch drivable directly, so the mutant is honest again."
+ },
+ {
+  "id": "d4p1d-04",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "node",
+   "catalog/activation-eligibility.test.js"
+  ],
+  "label": "🔴 an abandoned candidate is treated as merely not-pending - the refusal stops foreclosing a retry",
+  "kills_with": "abandoned has its OWN code",
+  "from": "  if (status === 'abandoned') {",
+  "to": "  if (false) {",
+  "why": "abandoned is a DECISION, not a state that happens to be non-pending, and its refusal has to say that a new lease does not revive it — otherwise the obvious next move for an operator is to retry harder, which is exactly what must not work. Folding it into the generic not-pending message loses that, and the cell asserts the distinct code and the foreclosing sentence."
+ },
+ {
+  "id": "d4p1d-06",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "node",
+   "catalog/activation-eligibility.test.js"
+  ],
+  "label": "🔴 an unmodelled status is treated as activatable - unknown becomes harmless",
+  "kills_with": [
+   "an activated version was activated again as a publish",
+   "was treated as activatable"
+  ],
+  "from": "  if (status !== 'pending') {",
+  "to": "  if (status === 'never_matches_anything') {",
+  "why": "the states nobody modelled are exactly the ones that must not authorise an activation. With the check inverted, any future status — or a typo, or a number — sails through as though it were `pending`. Seven such values are driven directly. kills_with is an ARRAY: inverting the non-pending check lets `activated` through as well as every unmodelled status, and the activated cell runs first. Both are the same property — anything that is not `pending` must refuse — and recording only the later one made a correct kill read as DRIFTED."
+ },
+ {
+  "id": "d4p1d-07",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the consumption write is dropped - the deletion is carried out and the declaration left standing to replay",
+  "kills_with": "the claim SURVIVED the activation that carried it out",
+  "from": "    if (consumedIds) tx.update(sourceRefOf(db, rid), { deleted_ids: null });",
+  "to": "    if (false && consumedIds) tx.update(sourceRefOf(db, rid), { deleted_ids: null });",
+  "why": "This is the whole of D's half of the claim lifecycle. Without it the flip retires the ids and leaves the declaration in the source, where it goes stale at the next baseline and sends the merchant back to re-review a deletion that already happened — the replay the binding exists to prevent, arriving through the publish that was supposed to close it."
+ },
+ {
+  "id": "d4p1d-08",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 consumption stops requiring the draft CAS - the source is written with nothing to compare against",
+  "kills_with": "a publish that cannot consume the standing claim activated anyway, stranding the deletion",
+  "from": "          if (!wantsDraftCas) {",
+  "to": "          if (false) {",
+  "why": "Dropping the requirement does not merely skip a check: the publish then ACTIVATES and clears the claim with no revision to compare against, clobbering whatever the merchant saved while it was in flight. Cell 6 sees the activation that should not have happened."
+ },
+ {
+  "id": "d4p1d-09",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 a claim is consumed by a version that still CARRIES the id - the declaration vanishes and the object stays live",
+  "kills_with": "a flip consumed a deletion claim naming an id the version still carries",
+  "from": "          if (stillCarried.length) {",
+  "to": "          if (false) {",
+  "why": "The half of the partition law (C ∩ D = ∅) that consumption depends on, re-checked at the write point. publishVersion cannot reach it — its pre-flight pass refuses a draft that both carries and deletes an id — so cell 8 drives flipPointer directly, which is the caller the guard exists for. Without it a direct flip clears a declaration nothing executed."
+ },
+ {
+  "id": "d4p1d-10",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 rollback consumes the claim too - an emergency flip deletes a declaration it never carried out",
+  "kills_with": [
+   "the rollback CONSUMED a claim it never carried out",
+   "the rollback was REFUSED while a deletion claim was standing"
+  ],
+  "from": "  const claimPolicy = isRollback ? 'ignore' : 'consume';",
+  "to": "  const claimPolicy = 'consume';",
+  "why": "A rollback re-activates a version from before the claim was ever declared, so it retires nothing. Under 'consume' it would clear the merchant's standing declaration while leaving the object live. This was true by ACCIDENT before D (rollbackVersion omits draftRevision, and the claim was only read when a CAS was present); the mutant exists because the policy is now stated and a stated policy can be restated wrongly. kills_with is an ARRAY because the mutant breaks the policy in BOTH directions and the blocking one lands first: rollbackVersion passes no draftRevision, so under 'consume' a standing claim hits the CAS requirement and the rollback is refused outright. Either symptom is this mutant and both are cell 7's property."
+ },
+ {
+  "id": "d4p1d-11",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the source is only read when a draft CAS is present - a publish cannot see the claim it is about to strand",
+  "kills_with": "the claim must be settled before this flip, and the source was never read",
+  "from": "    const draftSnap = (wantsDraftCas || claimPolicy === 'consume') ? await tx.get(sourceRefOf(db, rid)) : null;",
+  "to": "    const draftSnap = wantsDraftCas ? await tx.get(sourceRefOf(db, rid)) : null;",
+  "why": "The pre-D reading, restored. It looks like a pure optimisation and is the reason the CAS requirement in d4p1d-08 is reachable at all: a publish that omits draftRevision never reads the source, so the standing claim is invisible and the flip proceeds. Same kill text as d4p1d-08 by construction — both make the identical publish succeed — and they are separate mutants because they are separate ways to lose the same guarantee. 🔴 RE-AIMED, and the re-aiming fixed the code rather than the record. The mutant first died on a TypeError — the consume block dereferenced a null draftSnap — which is a crash, not a decision, and a kill scored on it would have been scored on the absence of a null check. The invariant is now a named fail-closed refusal at the top of the block, so this mutant dies saying exactly what the narrowing cost. Nothing reaches that refusal under real code, by construction; this mutant is the only thing that does, which is why it is the one that proves it."
+ },
+ {
+  "id": "d4p1d-12",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the version stops recording which deletion it executed - the claim is gone and nothing says where",
+  "kills_with": "the version does not record which deletion it executed",
+  "from": "        ...(consumedIds ? { 'identity_activation.consumed_deleted_ids': consumedIds } : {}),",
+  "to": "        ...(false ? { 'identity_activation.consumed_deleted_ids': consumedIds } : {}),",
+  "why": "The source is REPLACED on every save, so any account of what a publish executed that lived there would be nulled by the next ordinary edit. The immutable version is the only durable place for it, and without this a consumed claim is indistinguishable from a withdrawn one after the fact."
+ },
+ {
+  "id": "d4p1d-13",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 an inert claim is treated as a declaration - a publish refuses over a deletion that would have been a no-op",
+  "kills_with": "a claim declaring NO ids triggered the consumption CAS requirement",
+  "from": "        if (declared) {",
+  "to": "        if (ids) {",
+  "why": "`ids` is always an array and always truthy, so this is the gate removed while still reading like a gate. A present-but-empty claim retires nothing, and treating it as a declaration makes the CAS requirement fire where it protects nothing — friction on the safe path, which is how the requirement gets weakened on the unsafe one. Cell 9 pins it by the refusal it must NOT get."
  },
  {
   "id": "pah-01",

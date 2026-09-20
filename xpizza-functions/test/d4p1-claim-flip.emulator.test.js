@@ -130,20 +130,33 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
   const REAL_ID = activeNow.dishes[0].data.display.identity_id;
   assert.ok(REAL_ID, 'premise — a real certified id to name in the claim');
 
-  // ── 1. 🔴 C VALIDATES THE CLAIM AND LEAVES IT STANDING — CONSUMPTION BELONGS TO D ─────────
-  /* A cleared claim must mean "carried out", never "dropped". C has no writer that retires the
-     declared ids, so clearing here would discard a merchant's declared intent while reporting
-     success — strictly worse than leaving it. It survives, and goes stale at the next baseline, which
-     is correct: C alone is not a deploy target. Consumption arrives with D's activation writer, which
-     is the thing that actually executes the deletion. */
+  // ── 1. 🔴 THE ACTIVATION THAT EXECUTES THE DELETION IS THE ONE THAT CONSUMES THE CLAIM ────
+  /* This cell asserted the OPPOSITE under C, and the inversion is the point rather than a revision:
+     C validated the claim and left it standing because it had no writer that retired the declared
+     ids, so clearing would have discarded a merchant's intent while reporting success. D has that
+     writer. The claim is now consumed by the flip that carries it out — the same transaction, so
+     "cleared" means "carried out" by construction and cannot come to mean anything else.
+     Three things are checked, because clearing the field is the easy third of it: the claim is gone,
+     the VERSION records which ids it retired (the source is replaced on every save, so the only
+     durable account of what a publish executed is the version that executed it), and the id really
+     has left the certified set — a consumed claim whose id was still live would be the silent
+     discard in a different costume. */
   {
     await declareDeletion(REAL_ID);
     const standing = (await sourceRefOf(db, RID).get()).data().deleted_ids;
+    assert.deepStrictEqual(standing.ids, [REAL_ID], 'premise — a declared claim really is standing before the publish');
 
     await publishOnce();
-    assert.deepStrictEqual(await readClaim(), standing,
-      '🔴 the claim was CONSUMED by an activation that retires nothing — a declared deletion silently discarded while the publish reports success');
-    ok('a valid claim is validated and left STANDING — C never clears what it cannot carry out');
+
+    assert.strictEqual(await readClaim(), null,
+      '🔴 the claim SURVIVED the activation that carried it out — it now goes stale against the next baseline and the merchant is sent back to re-review a deletion that already happened');
+    const after = await readActiveVersion(db, RID);
+    assert.deepStrictEqual((after.record.identity_activation || {}).consumed_deleted_ids, [REAL_ID],
+      '🔴 the version does not record which deletion it executed — the claim is gone and nothing says where it went');
+    const stillLive = after.dishes.some((d) => d.data.display.identity_id === REAL_ID);
+    assert.strictEqual(stillLive, false,
+      '🔴 the claim was consumed by a version that still carries the id — the declaration is gone and the object is not');
+    ok('the activation that retires the ids CONSUMES the claim, records what it retired, and the ids are really gone');
   }
 
   // ── 2. 🔴 A DRAFT THAT MOVED UNDER THE PUBLISH ABORTS EVERYTHING ──────────────────────────
@@ -151,10 +164,10 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
      abort, and the evidence is that the POINTER does not move — nothing activated. (The claim being
      intact is not evidence here, since C writes the source at all.) */
   {
-    /* 🔴 CLEAR THE STANDING CLAIM FIRST. C validates but does not consume, so cell 1's claim is still
-       there and is now stale against the baseline its own publish advanced — the pre-flip check would
-       refuse this publish for that reason and the cell would "pass" its abort assertion for entirely
-       the wrong cause. */
+    /* Cell 1's claim is already consumed, so this is a no-op today — kept because the cell must not
+       depend on WHO cleared it. A standing claim here would be stale against the baseline cell 1's
+       own publish advanced, and the pre-flip check would refuse this publish for that reason, so the
+       cell would "pass" its abort assertion for entirely the wrong cause. */
     await sourceRefOf(db, RID).update({ deleted_ids: null });
     await ensureCertifiedBaseline();
     const before = await getActivePointer(db, RID);
@@ -270,6 +283,160 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     assert.deepStrictEqual(await snapshotClaim(), before, '…and the claim is untouched');
     await activePointerRefOf().set({ version: cur.version, at: new Date(), generation: cur.generation });
     ok('a claim that goes stale between the pre-flight check and the flip is caught INSIDE the transaction');
+  }
+
+  // ── 6. 🔴 A STANDING CLAIM AND NO DRAFT CAS REFUSES — IT DOES NOT PUBLISH AND LEAVE IT ───
+  /* Consuming means WRITING the source, and writing it without a revision to compare against would
+     clobber whatever the merchant saved while the publish was in flight. So the publish that cannot
+     consume is refused rather than allowed through: the alternative is an activation that carries out
+     the deletion, reports success, and leaves the declaration standing to be replayed against the next
+     baseline — the exact replay the binding exists to prevent.
+     🔴 AND THE SOURCE IS READ EVEN WITHOUT THE CAS, which is what makes this reachable at all. While
+     the claim was only read when a draftRevision was present, a publish that omitted one could not
+     see the standing claim it was about to strand. */
+  {
+    await ensureCertifiedBaseline();
+    const baseline = await readActiveVersion(db, RID);
+    const liveId = baseline.dishes[0].data.display.identity_id;
+    await declareDeletion(liveId);
+    const standing = await snapshotClaim();
+    const before = await getActivePointer(db, RID);
+
+    let threw = null;
+    try { await publishOnce({ withDraftCas: false }); } catch (e) { threw = e; }
+
+    assert.ok(threw && /flip_claim_needs_draft_cas/.test(String(threw.message)),
+      `🔴 a publish that cannot consume the standing claim activated anyway, stranding the deletion: ${threw && threw.message}`);
+    const after = await getActivePointer(db, RID);
+    assert.strictEqual(after.version, before.version, '🔴 THE POINTER MOVED — the refusal came after the activation, not instead of it');
+    assert.strictEqual(after.generation, before.generation, '…and the fence did not advance either');
+    assert.deepStrictEqual(await snapshotClaim(), standing, '…and the claim is exactly as the merchant left it');
+    ok('a standing claim with no draft CAS REFUSES the flip — nothing activated, nothing consumed, the declaration intact');
+  }
+
+  // ── 7. 🔴 ROLLBACK IGNORES THE CLAIM — IT NEITHER CONSUMES IT NOR IS BLOCKED BY IT ────────
+  /* Two failures in opposite directions, and the explicit policy is what rules out both. A rollback
+     re-activates a version from before the claim was ever declared, so it retires nothing and must not
+     consume — a consumed claim here would delete the merchant's declaration and leave the object live.
+     And it must not be BLOCKED either: rollback is the emergency path, and a pending deletion is not a
+     reason to keep a bad menu in front of customers.
+     This was true by ACCIDENT before, because rollbackVersion happens to omit draftRevision and the
+     claim was only read when a CAS was present. The policy is now stated, so a rollback that did pass
+     a draftRevision behaves the same way. */
+  {
+    /* 🔴 LAND CELL 6'S REFUSED PUBLISH FIRST, and not as tidying. Cell 6 refused AFTER declareDeletion
+       had already taken the object out of the draft, so the source is short of an id the active
+       certified set still has — and the only thing that accounts for it is the very claim cell 6 left
+       standing. Clearing that claim and publishing would refuse as `unaccounted`, which is the
+       partition law correctly reporting an incoherent fixture. So the claim is CARRIED OUT, which is
+       both the honest repair and the prior version this cell needs to roll back from. */
+    await ensureCertifiedBaseline();
+    const cur = await getActivePointer(db, RID);
+    const carried = await readClaim();
+    assert.ok(carried && carried.ids && carried.ids.length,
+      'premise — cell 6 left its declaration standing, and it is what accounts for the draft');
+    await publishOnce();
+    const moved = await getActivePointer(db, RID);
+    assert.notStrictEqual(moved.version, cur.version, 'premise — there is a real prior version to roll back to');
+    assert.strictEqual(await readClaim(), null, 'premise — and that publish consumed it, so the claim below is the only one standing');
+
+    const baseline = await ensureCertifiedBaseline();
+    const liveId = baseline.dishes[0].data.display.identity_id;
+    assert.ok(liveId, 'premise — a currently certified id to declare');
+
+    // NOW declare a deletion, and roll back with it standing.
+    await declareDeletion(liveId);
+    const standing = await snapshotClaim();
+
+    const { rollbackVersion } = require('../catalog/catalog-publish');
+    /* CAUGHT, not awaited bare. The "not blocked" half of this cell is a property in its own right and
+       needs its own assertion: a rollback refused by the consumption machinery would otherwise surface
+       as an uncaught error attributed to whatever the suite was doing, and the one sentence that says
+       WHY it matters — the emergency path is not the merchant's to gate — would never be printed. */
+    let refused = null;
+    try {
+      await rollbackVersion(db, RID, cur.version, { expected: { activeVersionId: moved.version } });
+    } catch (e) { refused = e; }
+    assert.strictEqual(refused, null,
+      `🔴 the rollback was REFUSED while a deletion claim was standing — a pending deletion is not the merchant's to gate the emergency path with: ${refused && refused.message}`);
+
+    const landed = await getActivePointer(db, RID);
+    assert.strictEqual(landed.version, cur.version, '🔴 the rollback did not land on its target version');
+    assert.strictEqual(landed.generation, moved.generation + 1, '…and a rollback still advances the fence');
+    assert.deepStrictEqual(await snapshotClaim(), standing,
+      '🔴 the rollback CONSUMED a claim it never carried out — the declaration is gone and the object is still live');
+    ok('a rollback with a claim standing neither consumes it nor is blocked by it — the ignore policy, stated rather than inherited from an omitted argument');
+  }
+
+  // ── 8. 🔴 CONSUMPTION REQUIRES EXECUTION — A VERSION THAT STILL CARRIES THE ID REFUSES ────
+  /* The half of the partition law that consumption depends on (C ∩ D = ∅), re-checked at the write
+     point against the PERSISTED candidate instead of assumed of the caller. publishVersion cannot
+     reach this — its pre-flight pass refuses a draft that both carries and deletes an id — but
+     flipPointer is EXPORTED, and a caller that holds a lease reaches the consumption path with no
+     partition pass anywhere behind it. Without this guard that flip clears a declaration nothing
+     executed: the id stays live, the merchant's deletion is gone, and the publish reports success.
+     Driven through flipPointer directly, because that is the caller the guard exists for. */
+  {
+    await ensureCertifiedBaseline();
+    await sourceRefOf(db, RID).update({ deleted_ids: null });
+    const live = await getActivePointer(db, RID);
+    const baseline = await readActiveVersion(db, RID);
+    const carriedId = baseline.dishes[0].data.display.identity_id;
+    assert.ok(carriedId, 'premise — an id the LIVE version genuinely carries');
+
+    /* Written straight onto the source WITHOUT removing the object, which is the incoherent state
+       the pre-flight pass exists to refuse and a direct flip never sees. */
+    await sourceRefOf(db, RID).update({ deleted_ids: claimOf([carriedId], live.version, live.generation) });
+    const standing = await snapshotClaim();
+
+    const { acquireLease, flipPointer, releaseLease } = require('../catalog/catalog-publish');
+    const snapshot = (await require('../catalog/catalog-publish').snapshotRefOf(db, RID).get()).data();
+    assert.strictEqual(snapshot.version, live.version, 'premise — the live snapshot describes the live version');
+
+    const token = await acquireLease(db, RID);
+    let threw = null;
+    try {
+      await flipPointer(db, RID, token, live.version, snapshot,
+        { activeVersionId: live.version, draftRevision: await revision() });
+    } catch (e) { threw = e; } finally { await releaseLease(db, RID, token); }
+
+    assert.ok(threw && /flip_claim_not_executed/.test(String(threw.message)),
+      `🔴 a flip consumed a deletion claim naming an id the version still carries: ${threw && threw.message}`);
+    assert.ok(/carries/.test(String(threw.message)) && String(threw.message).includes(carriedId),
+      '…and the refusal names the id that was not retired');
+    assert.deepStrictEqual(await snapshotClaim(), standing, '…and the claim is untouched');
+    assert.strictEqual((await getActivePointer(db, RID)).generation, live.generation,
+      '…and nothing activated');
+    await sourceRefOf(db, RID).update({ deleted_ids: null });
+    ok('a flip whose version still CARRIES a claimed id refuses rather than consuming a deletion nobody executed');
+  }
+
+  // ── 9. 🔴 AN INERT CLAIM IS NOT A DECLARATION — IT MUST NOT DRAG THE CAS REQUIREMENT IN ──
+  /* A claim that is present but declares no ids retires nothing, so there is nothing to consume and
+     nothing to strand. Refusing a publish over one would be friction bought for nothing, and friction
+     on the safe path is exactly how a requirement gets weakened on the UNSAFE path — the CAS rule in
+     cell 6 is worth keeping strict precisely because it never fires where it is pointless.
+     Driven through flipPointer with no draftRevision, and asserted as the error it is NOT: the flip
+     still refuses, because the live version is already `activated` and this is an activate intent,
+     and that is the whole evidence — the inert claim did not change which refusal we got. */
+  {
+    const live = await getActivePointer(db, RID);
+    await sourceRefOf(db, RID).update({ deleted_ids: { ids: [], base_version: live.version, base_generation: live.generation } });
+    const { acquireLease, flipPointer, releaseLease, snapshotRefOf } = require('../catalog/catalog-publish');
+    const snapshot = (await snapshotRefOf(db, RID).get()).data();
+    const token = await acquireLease(db, RID);
+    let threw = null;
+    try {
+      await flipPointer(db, RID, token, live.version, snapshot, { activeVersionId: live.version });
+    } catch (e) { threw = e; } finally { await releaseLease(db, RID, token); }
+
+    assert.ok(threw, 'premise — this flip refuses for its own reasons; the cell is about WHICH reason');
+    assert.ok(!/flip_claim_needs_draft_cas/.test(String(threw.message)),
+      `🔴 a claim declaring NO ids triggered the consumption CAS requirement — a publish refused over a deletion that would have been a no-op: ${threw.message}`);
+    assert.ok(/flip_activation_not_pending/.test(String(threw.message)),
+      `sensitivity — it refused on the activation record, the reason that has nothing to do with the claim: ${threw.message}`);
+    await sourceRefOf(db, RID).update({ deleted_ids: null });
+    ok('a claim declaring no ids is inert — it neither consumes nor demands a draft CAS');
   }
 
   FINISHED = true;

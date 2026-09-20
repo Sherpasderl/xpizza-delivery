@@ -103,6 +103,46 @@ async function writeMirror(mirror, alarm, rid, payload) {
 }
 const versionsColOf = (db, rid) => db.collection('restaurants').doc(rid).collection('versions');
 
+/* 🔴 ACTIVATION ELIGIBILITY, AS A PURE FUNCTION — extracted so every branch can be driven directly.
+   Inputs: the version's activation record, the generation live RIGHT NOW (inside the flip's own
+   transaction), and the caller's INTENT. Output: a typed verdict. No reads, no writes, no clock.
+
+   🔴 WHY THE REFUSAL BRANCHES EXIST, NAMED SO NOBODY DELETES THEM AS UNREACHABLE. Today they cannot
+   be reached end-to-end: the per-restaurant lease serializes activations, a candidate holds it from
+   before its baseline capture until after its flip, and writeVersion always writes `pending` — so no
+   candidate arrives non-pending and nothing can move the generation underneath one. I tried twice to
+   build a cell that reached them and both attempts measured something else.
+   THEIR REAL CALLER IS SLICE F. Rollback eligibility targets a RETAINED version, and a retained
+   version can carry a `pending` record — that is exactly what writeVersion leaves behind when a
+   publish stages a version and then never flips it (a crash, a lost lease, a failed CAS). Rolling
+   back to such a version must be REFUSED, and this is the thing that refuses it; the same goes for
+   `abandoned` once F can produce it. Two mutants have already been deleted in this programme on false
+   unreachability claims — this comment is cheap insurance against a third.
+
+   Rollback is currently EXEMPT, deliberately unchanged by the extraction: a rollback re-activates a
+   version whose record already says `activated`, which is its history. F tightens this to refuse a
+   `pending` or `abandoned` target; that is a behaviour change and belongs with F, not here. */
+function activationVerdict(record, { currentGeneration, intent }) {
+  if (record === undefined || record === null) return { ok: true, code: 'no_record' };
+  if (intent === 'rollback') return { ok: true, code: 'rollback_exempt' };
+
+  const status = record.status;
+  if (status === 'abandoned') {
+    return { ok: false, code: 'flip_activation_abandoned',
+      detail: 'this candidate was abandoned and is permanently ineligible; acquiring a new lease does not revive it' };
+  }
+  if (status !== 'pending') {
+    return { ok: false, code: 'flip_activation_not_pending',
+      detail: `status ${JSON.stringify(status)} is not activatable (an already-activated version is eligible only for rollback)` };
+  }
+  const boundTo = Number.isInteger(record.base_generation) ? record.base_generation : 0;
+  if (boundTo !== currentGeneration) {
+    return { ok: false, code: 'flip_activation_stale_baseline',
+      detail: `built against generation ${boundTo} but ${currentGeneration} is live; something was activated since this candidate was prepared` };
+  }
+  return { ok: true, code: 'activatable' };
+}
+
 // A trustworthy SERVER timestamp — write serverTimestamp() to an ephemeral doc and read it back. Never
 // the client wall clock. Best-effort cleanup (an orphaned probe is harmless).
 async function serverNow(db, rid) {
@@ -192,8 +232,28 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
   // Before the transaction deliberately: a transaction body can be retried, and these reads are not
   // part of the compare-and-set. What the CAS protects is the pointer's own movement; what this
   // protects is where it is allowed to move to.
-  await verifyVersionStructure(db, rid, versionId);
+  /* 🔴 THE CARRIED SET COMES FROM WHAT WAS PERSISTED, not from what the publisher passed in. Same
+     division as the line above: the pre-flight partition pass validated the publisher's INTENTION,
+     and this reads the FACT out of the immutable version that is about to go live. Reading it
+     outside the transaction is sound precisely because the version is immutable — nothing can add a
+     carried id to a written version, so there is no tear to lose here. (The pointer pair is the
+     opposite case and is read inside the transaction, for exactly that reason.) */
+  const served = await verifyVersionStructure(db, rid, versionId);
+  const carriedIds = new Set();
+  for (const o of [...(served.items || []), ...(served.extras || [])]) {
+    const id = o && o.display && o.display.identity_id;
+    if (id) carriedIds.add(id);
+  }
   const wantsDraftCas = Object.prototype.hasOwnProperty.call(expected, 'draftRevision');
+  /* 🔴 THE CLAIM POLICY IS STATED, NOT INFERRED FROM WHAT THE CALLER HAPPENED TO PASS. Rollback
+     IGNORES the deletion claim: it re-activates a version from before the claim was ever declared,
+     so it retires nothing and has no business consuming — and it must not be BLOCKED by a standing
+     claim either, because rollback is the emergency path and the merchant's pending deletion is not
+     a reason to keep a bad menu live. That was already true by accident, since rollbackVersion
+     omits draftRevision and the claim was only read when a draft CAS was present. Accident is the
+     wrong mechanism: a direct flipPointer(..., { rollback: true }) that DID pass a draftRevision
+     would have fallen into the publish path and consumed a claim no rollback executed. */
+  const claimPolicy = isRollback ? 'ignore' : 'consume';
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);
   const pointerRef = pointerRefOf(db, rid);
@@ -201,7 +261,12 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     // Every read first — a Firestore transaction refuses a read after a write.
     const snap = await tx.get(lockRef);
     const pointerSnap = await tx.get(pointerRef);
-    const draftSnap = wantsDraftCas ? await tx.get(sourceRefOf(db, rid)) : null;
+    /* Read for EITHER reason: the revision CAS needs it, and so does settling the claim — a publish
+       that omits draftRevision must still be told that a claim is standing, which it cannot be if
+       the source is never read. Deliberately NOT read under the ignore policy: a read joins the
+       transaction's conflict set, and a rollback that aborted because a merchant saved their draft
+       would be an emergency path made fragile by a document it does not even consult. */
+    const draftSnap = (wantsDraftCas || claimPolicy === 'consume') ? await tx.get(sourceRefOf(db, rid)) : null;
     /* Every read before any write — Firestore refuses a read after a write — and this one is the
        candidate's own version doc, so the eligibility predicate is evaluated against the record as it
        stands at the serialization point rather than as it looked when the candidate was built. */
@@ -213,6 +278,11 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     if (liveActive !== expected.activeVersionId) {
       throw new Error(`flip_cas_stale: ${rid} — validated against active ${JSON.stringify(expected.activeVersionId)} but ${JSON.stringify(liveActive)} is live; this publish would overwrite a newer one`);
     }
+    /* Hoisted above the claim settlement so the baseline the claim is validated against, the fence
+       the eligibility predicate is decided against, and the value the pointer is bumped from are all
+       ONE read. Two reads of the same pointer inside one transaction cannot tear today; writing it
+       three times invites the next edit to move one of them out. */
+    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;
     if (wantsDraftCas) {
       const liveRevision = draftSnap.exists ? encodeUpdateTime(draftSnap.updateTime) : null;
       if (liveRevision !== expected.draftRevision) {
@@ -249,21 +319,62 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        flat, which was wrong. flipPointer is EXPORTED, and rollbackVersion forwards `expected` straight
        here with no assertDraftPartition. A direct flip holding a valid lease and a matching draft
        revision reaches this validator with a malformed claim and nothing upstream to stop it, so the
-       branch is live defence for every caller that is not publishVersion. See the rollback hazard on
-       D's list: rollback must run under an explicit 'ignore' claim policy rather than relying on its
-       callers to keep omitting draftRevision. */
-    const liveClaim = draftSnap && draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : undefined;
-    if (liveClaim !== undefined && liveClaim !== null) {
-      validateDeletionClaim(liveClaim, {
-        activeVersionId: liveActive,
-        activeGeneration: pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation,
-      });
-      /* 🔴 NOT CONSUMED HERE. C validates the claim; it does not execute it. Clearing a claim that
-         nothing retired would discard a merchant's declared intent while reporting success — strictly
-         worse than leaving it standing. Consumption belongs with D's activation writer, which is the
-         thing that actually retires the declared ids, so that a cleared claim means "carried out" by
-         construction rather than by convention. A claim therefore SURVIVES a C-era publish and goes
-         stale at the next baseline, which is correct: C alone is not a deploy target. */
+       branch is live defence for every caller that is not publishVersion. The rollback half of that
+       hazard is now closed above: rollback runs under an explicit 'ignore' policy and never reaches
+       this validator at all, rather than relying on its callers to keep omitting draftRevision. */
+    let consumedIds = null;
+    if (claimPolicy === 'consume') {
+      /* 🔴 THE INVARIANT THE READ ABOVE OWES THIS BLOCK, STATED RATHER THAN ASSUMED. Under the consume
+         policy the source has been read unconditionally, so this cannot fire today — it is here
+         because the coupling is invisible from the read site, and the first version of this code
+         dereferenced a null draftSnap and died with a TypeError when a mutant narrowed that read.
+         A TypeError is a crash, not a decision: it aborts the transaction, which happens to be safe,
+         for a reason nobody chose. Whoever narrows the read next gets a named refusal that says what
+         the narrowing cost — a publish that cannot SEE the claim it is about to strand. */
+      if (!draftSnap) {
+        throw new Error(`flip_claim_source_unread: ${rid}/${versionId} — the claim must be settled before this flip, and the source was never read; a publish that cannot see a standing claim cannot be allowed to strand it`);
+      }
+      const liveClaim = draftSnap.exists ? (draftSnap.data() || {}).deleted_ids : undefined;
+      if (liveClaim !== undefined && liveClaim !== null) {
+        const { ids, declared } = validateDeletionClaim(liveClaim, {
+          activeVersionId: liveActive,
+          activeGeneration: priorGeneration,
+        });
+        /* An inert claim — present but declaring no ids — retires nothing, so there is nothing to
+           consume and nothing to protect. It must not drag the CAS requirement below in with it:
+           refusing a publish over a claim that would have been a no-op is friction bought for
+           nothing, and friction on the safe path is how the requirement gets removed from the
+           unsafe one. */
+        if (declared) {
+          /* 🔴 CONSUMPTION REQUIRES THE DRAFT CAS, AND THE REFUSAL IS THE POINT. Clearing the claim
+             means WRITING the source, and writing the source without a revision to compare against
+             would clobber whatever the merchant saved while this publish was in flight. So a
+             standing claim and no CAS is refused rather than activated: the alternative is a publish
+             that carries out the deletion, reports success, and leaves the declaration standing to be
+             replayed against the next baseline — the exact replay the binding exists to prevent.
+             This is protected by construction: there is no path that executes a deletion and cannot
+             consume it, because that path refuses. */
+          if (!wantsDraftCas) {
+            throw new Error(`flip_claim_needs_draft_cas: ${rid}/${versionId} — a deletion claim declaring ${ids.length} id(s) is standing, and consuming it means writing the source, which this flip cannot do without a draftRevision to compare against`);
+          }
+          /* 🔴 AND THE CANDIDATE MUST ACTUALLY HAVE EXECUTED IT. Consuming a claim the version still
+             CARRIES would discard the merchant's declared intent while reporting success — C's note
+             here called that strictly worse than leaving the claim standing, and it is: the id stays
+             live, the declaration is gone, and nobody is told. publishVersion's partition law already
+             forbids it (C ∩ D = ∅) — but flipPointer is EXPORTED, and the law lives in a pre-flight
+             pass that only publishVersion runs, so any other caller holding a lease reaches the
+             consumption path with nothing behind it. (Not rollbackVersion: that one is on the ignore
+             policy and never gets here. The caller this defends is the direct activate-intent flip,
+             which is exactly the caller a pre-flight pass cannot reach.) So the half of the law that
+             consumption depends on is re-checked here, against the persisted candidate rather than
+             assumed of whoever called us. */
+          const stillCarried = ids.filter((id) => carriedIds.has(id));
+          if (stillCarried.length) {
+            throw new Error(`flip_claim_not_executed: ${rid}/${versionId} — the deletion claim names ${stillCarried.join(', ')}, which this version still carries; a claim is consumed only by the activation that retires it`);
+          }
+          consumedIds = ids.slice();
+        }
+      }
     }
 
     /* 🔴 THE POINTER WRITE IS A FULL REPLACE, AND IT DROPPED THE GENERATION. tx.set overwrites the
@@ -281,7 +392,6 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        flipPointer is also the rollback's writer (:581), so rollback advances the generation too —
        which is required: `seq` cannot fence a rollback, because a rollback moves the pointer
        BACKWARDS to a version whose seq is lower than the one it replaces. */
-    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;
 
     /* 🔴 ELIGIBILITY IS DECIDED HERE, AGAINST THE GENERATION THIS TRANSACTION IS ABOUT TO ADVANCE.
        Not against a value read before the lease, not against the caller's `expected` — against
@@ -306,19 +416,12 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        skew, or a future caller that flips without one all end here, and at that point this is the
        last thing standing between a superseded candidate and an activation. */
     const activation = candidateSnap.exists ? (candidateSnap.data() || {}).identity_activation : undefined;
-    if (activation !== undefined && activation !== null && !isRollback) {
-      const status = activation.status;
-      if (status === 'abandoned') {
-        throw new Error(`flip_activation_abandoned: ${rid}/${versionId} — this candidate was abandoned and is permanently ineligible; acquiring a new lease does not revive it`);
-      }
-      if (status !== 'pending') {
-        throw new Error(`flip_activation_not_pending: ${rid}/${versionId} — status ${JSON.stringify(status)} is not activatable (an already-activated version is eligible only for rollback)`);
-      }
-      const boundTo = Number.isInteger(activation.base_generation) ? activation.base_generation : 0;
-      if (boundTo !== priorGeneration) {
-        throw new Error(`flip_activation_stale_baseline: ${rid}/${versionId} — built against generation ${boundTo} but ${priorGeneration} is live; something was activated since this candidate was prepared`);
-      }
-    }
+    const verdict = activationVerdict(activation, {
+      currentGeneration: priorGeneration,          // read from the pointer in THIS transaction, a few lines above
+      intent: isRollback ? 'rollback' : 'activate',
+    });
+    if (!verdict.ok) throw new Error(`${verdict.code}: ${rid}/${versionId} — ${verdict.detail}`);
+
     tx.set(pointerRef, {
       version: versionId,
       generation: priorGeneration + 1,
@@ -331,8 +434,23 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       tx.update(versionsColOf(db, rid).doc(versionId), {
         'identity_activation.status': 'activated',
         'identity_activation.activated_at_generation': priorGeneration + 1,
+        /* WHAT this activation carried out, recorded on the immutable version rather than on the
+           source. The source is the merchant's working document and the editor REPLACES it on every
+           save — any history parked there is nulled by the next ordinary edit — so the only durable
+           place to say which deletion a publish executed is the version that executed it. */
+        ...(consumedIds ? { 'identity_activation.consumed_deleted_ids': consumedIds } : {}),
       });
     }
+    /* 🔴 THE CONSUMPTION RIDES THE SAME TRANSACTION AS THE POINTER MOVE, which is the whole reason
+       it is here and not in the publish handler afterwards. A clear that landed separately could
+       succeed against a flip that aborted (the deletion withdrawn but never carried out) or fail
+       after a flip that landed (the deletion carried out but still standing, to be replayed against
+       the next baseline). Both are the replay this binding exists to prevent; neither is reachable
+       from inside the transaction that moves the pointer.
+       NULL, not a field delete: the cleared sentinel the editor already reads as "there are no
+       deletions", so a consumed claim and a withdrawn one are the same state to everything
+       downstream. The draft CAS a few lines above is what makes this write safe. */
+    if (consumedIds) tx.update(sourceRefOf(db, rid), { deleted_ids: null });
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
     tx.set(snapshotRefOf(db, rid), snapshot);
@@ -751,6 +869,7 @@ function tablesFromVersionDocs({ itemDocs, extraDocs }) {
 }
 
 module.exports = {
+  activationVerdict,
   publishVersion, rollbackVersion, previewVersion, pruneRetention,
   snapshotRefOf, snapshotOf, writeMirror, tablesFromVersionDocs, MIRROR_DEADLINE_MS,
   acquireLease, flipPointer, releaseLease, serverNow, writeVersion, deleteVersion, verifyVersionStructure,
