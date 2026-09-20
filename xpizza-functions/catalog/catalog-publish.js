@@ -257,7 +257,27 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected) {
          stale at the next baseline, which is correct: C alone is not a deploy target. */
     }
 
-    tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });
+    /* 🔴 THE POINTER WRITE IS A FULL REPLACE, AND IT DROPPED THE GENERATION. tx.set overwrites the
+       document, so writing {version, at} deleted any `generation` field — and pointerStateOf reads an
+       ABSENT generation as 0. The two together mean a real activation silently reset the fence to
+       zero, and a claim bound at generation 0 would then pass a check that had just been defeated by
+       the very activation it was meant to fence. Harmless while nothing wrote a generation; the
+       moment D does, it is a fence that opens itself.
+       The bump is written HERE, inside the flip's own transaction, for two reasons. It is the
+       serialization point, so the generation advances exactly when the pointer moves — and an
+       activation that ABORTS (lease lost, CAS stale, claim refused) bumps nothing, because the whole
+       transaction is discarded. "Never on a failed or abandoned attempt" is therefore structural
+       rather than a rule someone has to remember: there is no path that advances the generation
+       without moving the pointer.
+       flipPointer is also the rollback's writer (:581), so rollback advances the generation too —
+       which is required: `seq` cannot fence a rollback, because a rollback moves the pointer
+       BACKWARDS to a version whose seq is lower than the one it replaces. */
+    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;
+    tx.set(pointerRef, {
+      version: versionId,
+      generation: priorGeneration + 1,
+      at: FieldValue.serverTimestamp(),
+    });
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
     tx.set(snapshotRefOf(db, rid), snapshot);

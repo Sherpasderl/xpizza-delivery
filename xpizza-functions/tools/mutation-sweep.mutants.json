@@ -6189,9 +6189,13 @@
    "test:d4p1-bootstrap"
   ],
   "label": "🔴 the activation record is written with an UNCAPTURED generation - the fence it anchors becomes meaningless",
-  "kills_with": "the activation record was written with a generation it did not capture",
+  "kills_with": [
+   "carries an activation record proving it was LIVE, at the captured generation",
+   "the activation record was written with a generation it did not capture"
+  ],
   "from": "      identity_activation: { status: 'activated', base_generation: active.generation, attempt, at: stamp },",
-  "to": "      identity_activation: { status: 'activated', base_generation: 0, attempt, at: stamp },"
+  "to": "      identity_activation: { status: 'activated', base_generation: 0, attempt, at: stamp },",
+  "why": " 🔴 kills_with BECAME AN ARRAY WHEN SLICE D MADE THE GENERATION REAL. Until D, the pointer carried no generation at all, so active.generation was ALWAYS 0 and this mutation was a semantic no-op that happened to be caught downstream. Now that the flip writes a real, advancing generation, the substitution of 0 is visible EARLIER — the record no longer matches the captured generation at all — so the first assertion to notice changed. The property is guarded in both places and both are recorded, rather than re-aiming at whichever fires today and leaving the next reader to wonder why the note names an assertion that no longer trips."
  },
  {
   "id": "d4p1b-10",
@@ -6705,6 +6709,36 @@
   "from": "    report.already = true;\n    return report;",
   "to": "    report.already = true;\n    await sourceRefOf(db, rid).update({ churned_by_rerun: 'a re-run wrote the draft' });\n    return report;",
   "why": "🔴 THIS IS AN ORDERING MUTANT — do not re-point it at the corruption itself. Its job is not 'bootstrap must not write junk'; its job is to fail under one CELL ORDERING and pass under another, which is the only way to show the old ordering measured nothing. It corrupts the source on the ALREADY-CERTIFIED re-run path with the SAME value on every pass. Under the old cell — which captured its baseline AFTER one re-run — both reads carried the stray field, agreed, and this mutant SURVIVED. Capturing the baseline BEFORE any re-run is the only change that kills it. If a future reader re-aims it at a value that differs per pass, or moves it off the already-certified path, it stops discriminating the ordering and becomes an ordinary source-write mutant that the cell would have caught either way — which would quietly retire the evidence for C-R8."
+ },
+ {
+  "id": "d4p1d-01",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-activation"
+  ],
+  "label": "🔴 the pointer write drops the generation again - a full REPLACE resets the fence to absent",
+  "kills_with": "the flip wrote no generation",
+  "from": "    tx.set(pointerRef, {\n      version: versionId,\n      generation: priorGeneration + 1,\n      at: FieldValue.serverTimestamp(),\n    });",
+  "to": "    tx.set(pointerRef, { version: versionId, at: FieldValue.serverTimestamp() });",
+  "why": "the defect as it stood. tx.set REPLACES the document, so omitting the field deletes it, and pointerStateOf reads an absent generation as 0 — a real activation silently resets the fence to zero and a claim bound at generation 0 then passes a check the activation had just defeated. Killed by driving the REAL publish and reading the pointer back, not by inspecting the write."
+ },
+ {
+  "id": "d4p1d-02",
+  "slice": "d4p1d",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-activation"
+  ],
+  "label": "🔴 the generation is written but never advances - the fence freezes at its first value",
+  "kills_with": "the generation did not strictly increase across two REAL consecutive flips",
+  "from": "      generation: priorGeneration + 1,",
+  "to": "      generation: 1,",
+  "why": "a frozen fence is worse than an absent one: it LOOKS like a fence and passes every equality check forever, so a claim bound at any baseline stays valid through unlimited activations. The cell drives two consecutive real publishes and compares, which is the only way to tell a fence that advances from one that merely exists. (Expressed as a CONSTANT 1 rather than `priorGeneration`: freezing at priorGeneration writes 0 on the very first flip, which trips the 'no generation written' assertion instead — the same kill as d4p1d-01, and it would have made this mutant look like a duplicate of that one. A fence stuck at 1 passes 'a generation exists' and fails only on 'it advances', which is the property this mutant is for.)"
  },
  {
   "id": "pah-01",

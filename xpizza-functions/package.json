@@ -49,6 +49,7 @@
     "test:d4p1-stamp": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-stamp-write.emulator.test.js\"",
     "test:d4p1-bootstrap": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-bootstrap.emulator.test.js\"",
     "test:d4p1-claim": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-claim-flip.emulator.test.js\"",
+    "test:d4p1-activation": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-activation.emulator.test.js\"",
     "test:d4p1-roundtrip": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-save-publish.emulator.test.js\"",
     "test:catalog-versioned": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-versioned.emulator.test.js\"",
     "test:kitchen-staff-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
