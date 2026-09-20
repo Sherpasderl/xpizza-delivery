@@ -19,7 +19,8 @@
  * }
  */
 const MR = require('./manual-resolve');
-const { holdIfClosedAtMaterialize } = require('./materialize-guard');   // paid-after-close re-check (Codex-on-diff)
+const MG = require('./materialize-guard');
+const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
 const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
 
 // [#7/#8] Materialize a manual-verified order WITHOUT reopening the race: CAS resolving_materialize → confirmed
@@ -71,6 +72,38 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
 
   // 'keep' does NOT mutate payment_status → no claim needed.
   if (action === 'keep') { await audit('kept_queued'); return { status: 200, body: { ok: true, outcome: 'kept_queued' } }; }
+
+  /* 🔴 DECIDED BEFORE ANYTHING MOVES. A materialize on this path ends at the paid-after-close guard,
+     and this caller cannot reverse a payment — but by the time the guard could say so, the resolver
+     has already claimed the order, stamped the attempt `captured` and committed `confirmed`. That
+     `confirmed` transition is not inert: it enables materializeOnConfirm, which runs the FULLY WIRED
+     automatic refund path, so a park applied afterwards could land on an order whose reversal was
+     already in flight and re-offer it to a dispatcher — whose Reembolsar then issues a SECOND
+     provider call outside the attempt CAS. Deciding here means none of those transitions happen at
+     all: no claim, no capture stamp, no confirmed, no second call to be had.
+     The capability test is free and runs first; the order is only read when the answer is "cannot",
+     so the wired confirm path pays nothing for this. */
+  if (action === 'materialize' && !MG.canAutoRefund(deps)) {
+    const pre = (await orderRef.once('value')).val();
+    if (pre && await MG.needsPaidAfterCloseRefund(deps, pre, now)) {
+      const { landed, alreadyParked } = await MG.parkForManualRefund(deps, orderId, now);
+      /* Alert ONCE per park: a repeat finds the reason already set, writes nothing and stays quiet,
+         so pressing the button twice does not page a dispatcher twice for one order. */
+      if (landed && alert) {
+        try {
+          await alert(MG.PARK_ALERT, {
+            orderId, order_id: orderId, restaurant_id: (pre.restaurant_id || 'x_pizza'),
+            missing: ['voidOrRefund'], action: MG.PARK_ACTION,
+          });
+        } catch (_) { /* best-effort: the park is what matters */ }
+      }
+      if (landed || alreadyParked) await audit('manual_refund_required', { repeat: !landed });
+      return {
+        status: 409,
+        body: { ok: false, outcome: 'manual_refund_required', detail: 'Reembolsar este pedido manualmente — el reembolso automático no está disponible en esta ruta' },
+      };
+    }
+  }
 
   // ── Atomic claim: whole-order-node tx (null-first-safe; only from manual_reconciliation) ──
   const claimTx = await orderRef.transaction((cur) => MR.claimDecision(cur, action, claimId, now));

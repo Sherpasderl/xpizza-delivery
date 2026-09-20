@@ -2786,6 +2786,14 @@ function alertContent(a) {
       return { title: 'Driver sin señal GPS',
         detail: `${name} está sin señal GPS reciente — revisá su última ubicación en el mapa.` };
     }
+    case 'paid_after_close_manual_refund_required': {
+      /* 🔴 THIS ALERT IS AN INSTRUCTION, AND THE FALLBACK THREW THE INSTRUCTION AWAY. Unknown kinds are
+         humanised into "Alerta — paid after close manual refund required": English, no order number,
+         no action — so the one thing this alert exists to say never reached the person who must act. */
+      const oid = escapeHtml(String(a.order_id || a.orderId || '—'));
+      return { title: 'Reembolso manual requerido',
+        detail: `El pedido <strong>${oid}</strong> se pagó después del cierre y no puede reembolsarse automáticamente — presioná <strong>Reembolsar</strong> en la cola de Pedidos.` };
+    }
     default: {
       // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.
       const humanType = String(a.type || '').replace(/^(payment|factura)_/, '').replace(/_/g, ' ').trim();
@@ -4180,6 +4188,24 @@ function setTabBadge(id, count) {
   el.classList.toggle('has', count > 0);
 }
 
+/* 🔴 THE CARD SAID THE SAME THING FOR EVERY ORDER. "Pago en línea sin confirmar" was hardcoded, so an
+   order parked because this path cannot refund it automatically looked identical to an ordinary
+   unconfirmed payment — indistinguishable in the queue, and the one needing a specific action looked
+   like the one needing a glance. blocked_reason already carries the distinction; this renders it.
+   An unrecognised reason falls back to the original text rather than showing a dispatcher a raw key. */
+function reconReason(o) {
+  switch (o && o.blocked_reason) {
+    case 'manual_refund_required_paid_after_close':
+      return 'Pagado después del cierre — <strong>reembolsar manualmente</strong>';
+    case 'refund_pending_paid_after_close':
+      return 'Reembolso en curso — no requiere acción';
+    case 'refunded_paid_after_close':
+      return 'Reembolsado (pagado después del cierre)';
+    default:
+      return 'Pago en línea sin confirmar';
+  }
+}
+
 function renderReconciliationSection() {
   const group = $('reconciliation-group');
   const list = $('reconciliation-list');
@@ -4199,7 +4225,7 @@ function renderReconciliationSection() {
           <span class="recon-total">L${escapeHtml(String(o.total ?? '—'))}</span>
         </div>
         <div class="recon-sub">${escapeHtml(brand)} · ${escapeHtml(o.customer_name || '—')} · hace ${reconAge(o.created_at)}</div>
-        <div class="recon-reason">Pago en línea sin confirmar</div>
+        <div class="recon-reason">${reconReason(o)}</div>
         <div class="recon-actions">
           <button class="recon-btn materialize" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="materialize">Materializar</button>
           <button class="recon-btn refund" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="refund">Reembolsar</button>

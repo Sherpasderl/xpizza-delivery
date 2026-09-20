@@ -6001,20 +6001,20 @@
  {
   "id": "pah-01",
   "slice": "pah",
-  "file": "materialize-guard.js",
+  "file": "resolve-manual.js",
   "command": [
    "npm",
    "run",
    "test:resolve-manual"
   ],
-  "label": "🔴 the capability check is gone - the dispatcher path crashes silently again and blames PixelPay",
-  "kills_with": "the block reason does not name the real situation",
-  "from": "  if (cannotRefund.length) {",
-  "to": "  if (false && cannotRefund.length) {",
-  "why": "the defect itself. Without the check the guard commits to a refund it cannot perform: deps.voidOrRefund is undefined, the unguarded call throws, and the catch reports it as a provider failure — the order is blocked with refund_failed_paid_after_close and an alert says the refund failed, while PixelPay was never contacted. The cell fails on the REASON, which is the operator-visible consequence: a dispatcher reading that alert is told the payment processor failed when what actually happened is that this code path was never wired to refund."
+  "label": "🔴 the decision moves back AFTER the claim - the order transitions through confirmed before anyone asks",
+  "kills_with": "parked for a human",
+  "from": "  if (action === 'materialize' && !MG.canAutoRefund(deps)) {",
+  "to": "  if (false && action === 'materialize' && !MG.canAutoRefund(deps)) {",
+  "why": "the placement IS the fix. Without this the resolver claims the order, stamps the attempt captured and commits `confirmed` before anything asks whether this caller can refund — and `confirmed` enables the automatic, fully wired refund path. The guard's own park then cannot land (it only writes from manual_reconciliation, and the order is confirmed by then), so the order is left confirmed with captured money and no park. Killed on the operator-visible consequence: the block reason no longer names the situation."
  },
  {
-  "id": "pah-02",
+  "id": "pah-03",
   "slice": "pah",
   "file": "materialize-guard.js",
   "command": [
@@ -6022,10 +6022,25 @@
    "run",
    "test:resolve-manual"
   ],
-  "label": "🔴 the park does not hold the order - it materializes onto a dark kitchen instead",
-  "kills_with": "NOT materialized",
-  "from": "    return true;   // held, not materialized, not refunded — a human owns it now",
-  "to": "    return false;",
-  "why": "returning false tells the caller 'nothing to see here, carry on', so the order materializes after the kitchen has closed — the exact thing this guard exists to prevent, and worse than the silent crash it replaces because food is now expected to be made. Killed on the customer consequence (the order went to 'new' and tracking was written), not on a status code."
+  "label": "🔴 the park becomes an unconditional write - it lands on an in-flight refund and re-offers it",
+  "kills_with": "an in-flight refund was LABELLED as needing a manual one",
+  "from": "    if (cur.payment_status !== 'manual_reconciliation') return;      // in flight or resolved → DO NOT TOUCH",
+  "to": "    // unconditional",
+  "why": "an unconditional update lands on an order whose reversal is already in flight — automatic recovery at refunding_paid_after_close with the attempt `reversing` and a provider call outstanding — and moving it to manual_reconciliation re-offers it to the dispatcher, whose Reembolsar issues a SECOND provider call outside the attempt CAS. The cell asserts the in-flight order is untouched and zero provider calls follow."
+ },
+ {
+  "id": "pah-04",
+  "slice": "pah",
+  "file": "materialize-guard.js",
+  "command": [
+   "npm",
+   "run",
+   "test:resolve-manual"
+  ],
+  "label": "🔴 every repeat re-alerts - a dispatcher is paged again for an order already parked",
+  "kills_with": "a repeat re-alerted",
+  "from": "    if (cur.blocked_reason === PARK_REASON) { alreadyParked = true; return; }   // already parked → no write, no re-alert",
+  "to": "    // no idempotence marker",
+  "why": "without the already-parked check the park rewrites and re-reports on every press, so pressing the button twice pages a dispatcher twice for one order and keeps rewriting a record nobody asked to change. The cell asserts exactly one alert across two identical requests."
  }
 ]

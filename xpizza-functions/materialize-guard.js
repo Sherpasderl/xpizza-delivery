@@ -24,23 +24,67 @@
 const SCHED = require('./scheduled-orders');
 const { orderContentKey, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write
 
-async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
-  // Scheduled orders hold via their own path; this guard is ASAP-only. (G)
-  if (Number.isFinite(Number(order && order.scheduled_for))) return false;
-  // No config reader → can't re-check → materialize (never strand paid money). Matches legacy callers.
-  if (!deps || !deps.getIdentity) return false;
-  // Idempotent re-entry: a prior guard pass already resolved this order (refunded / cancelled / materialized). (E)
-  // A materialized order also cannot reach here — confirmAndMaterialize returns at its materialized_at check
-  // BEFORE calling this guard — so the refund branch never runs on a materialized (factura-issued) order.
-  if (order && (order.payment_status === 'refunded' || order.status === 'cancelled' || order.materialized_at)) return true;
+/* 🔴 Can THIS caller reverse a payment at all? voidOrRefund is the one dep the guard calls without
+   checking first, so its absence is the difference between "refunds" and "throws mid-refund". Checked
+   as a callable, not a presence: null, 0 or a stray object would pass a presence test and still throw. */
+function canAutoRefund(deps) {
+  return typeof (deps || {}).voidOrRefund === 'function';
+}
+
+/* 🔴 WOULD THIS ORDER NEED A PAID-AFTER-CLOSE REVERSAL? Extracted from the guard's own head so there
+   is ONE implementation, because it is now asked from two places: the guard, and — before it touches
+   anything — the dispatcher path, which must know whether it is heading for a refund it cannot
+   perform BEFORE it claims the order, stamps the attempt captured and commits `confirmed`.
+   Returns false for every legitimate non-refund outcome (scheduled, already resolved, open kitchen,
+   within grace, config outage) so a caller that only reaches those is never parked. */
+async function needsPaidAfterCloseRefund(deps, order, now) {
+  if (Number.isFinite(Number(order && order.scheduled_for))) return false;   // scheduled holds via its own path
+  if (!deps || !deps.getIdentity) return false;                              // no config reader → cannot re-check
+  if (order && (order.payment_status === 'refunded' || order.status === 'cancelled' || order.materialized_at)) return false;
 
   const rid = (order && order.restaurant_id) || 'x_pizza';
   let hours;
   try { hours = (await deps.getIdentity(deps.db, rid)).hours; }
-  catch (_) { return false; }   // (F) config outage → materialize (never strand captured money over a blip)
+  catch (_) { return false; }   // config outage → materialize (never strand captured money over a blip)
 
   const graceMin = deps.getGraceMinutes ? await deps.getGraceMinutes(deps.db) : 15;
-  if (SCHED.isWithinGrace(hours, now, graceMin)) return false;   // (A/B) open OR within post-close grace → materialize normally
+  return !SCHED.isWithinGrace(hours, now, graceMin);
+}
+
+/* 🔴 THE PARK IS A CONDITIONAL WRITE, NEVER AN UNCONDITIONAL ONE. An unconditional update could land
+   on an order whose payment is already in flight — automatic recovery reaching
+   refunding_paid_after_close with the attempt `reversing` and a provider call outstanding — and
+   overwriting that to manual_reconciliation re-offers it to the dispatcher, whose Reembolsar issues a
+   SECOND provider call outside the attempt CAS. So the park only writes from the state it expects to
+   find, and reports whether it actually landed and whether it CHANGED anything (so the alert fires
+   once per park rather than on every repeat). */
+async function parkForManualRefund(deps, orderId, now) {
+  let landed = false;
+  let alreadyParked = false;
+  const tx = await deps.db.ref(`orders/${orderId}`).transaction((cur) => {
+    landed = false; alreadyParked = false;
+    if (cur === null) return null;                                   // null-first-safe
+    if (!cur) return;                                                // gone → nothing to park
+    if (cur.payment_status !== 'manual_reconciliation') return;      // in flight or resolved → DO NOT TOUCH
+    if (cur.blocked_reason === PARK_REASON) { alreadyParked = true; return; }   // already parked → no write, no re-alert
+    landed = true;
+    return { ...cur, blocked_reason: PARK_REASON, manual_refund_required_at: now };
+  });
+  return { landed: !!(tx.committed && landed), alreadyParked };
+}
+
+const PARK_REASON = 'manual_refund_required_paid_after_close';
+const PARK_ALERT = 'paid_after_close_manual_refund_required';
+const PARK_ACTION = 'Reembolsar el pedido desde la cola de Pedidos — el reembolso automático no está disponible en esta ruta';
+
+async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
+  if (Number.isFinite(Number(order && order.scheduled_for))) return false;
+  if (!deps || !deps.getIdentity) return false;
+  // Idempotent re-entry: a prior pass already resolved this order (refunded / cancelled / materialized). (E)
+  if (order && (order.payment_status === 'refunded' || order.status === 'cancelled' || order.materialized_at)) return true;
+
+  const rid = (order && order.restaurant_id) || 'x_pizza';
+  if (!(await needsPaidAfterCloseRefund(deps, order, now))) return false;   // open, within grace, or unknowable → materialize
 
   /* 🔴 A CALLER THAT CANNOT REFUND MUST SAY SO, NOT DISCOVER IT MID-REFUND. Below this line the guard
      commits to reversing a payment, and it calls deps.voidOrRefund UNGUARDED while checking every
@@ -55,28 +99,16 @@ async function holdIfClosedAtMaterialize(deps, orderId, order, now) {
      Checked here rather than at the top of the function because everything above is a legitimate
      non-refund outcome — a scheduled order, an already-resolved one, an open kitchen, a config
      outage — and callers that only ever reach those genuinely do not need refund wiring. */
-  /* 🔴 voidOrRefund ALONE, and the narrowness is deliberate. It is the only dep this guard calls
-     without checking first, so it is the only one whose absence turns into a TypeError mid-refund;
-     releaseRewardHold and sendPaidAfterCloseRefund are optional-guarded, and a caller missing them
-     still performs the reversal — less completely, but it moves the money. Requiring all three made
-     pixelpay-confirm's own suite fail, which was the code saying I had widened past the question:
-     "can this caller refund at all?" is what decides an honest park. Whether a refund is COMPLETE is
-     a different question and it belongs with the reversal-machinery work, not here. */
-  const cannotRefund = typeof (deps || {}).voidOrRefund !== 'function' ? ['voidOrRefund'] : [];
-  if (cannotRefund.length) {
-    /* typeof === 'function', not merely present: null, 0, a number or a stray object would otherwise
-       pass and the call would still throw — the same silent crash one step later. */
-    await deps.db.ref(`orders/${orderId}`).update({
-      payment_status: 'manual_reconciliation',
-      blocked_reason: 'manual_refund_required_paid_after_close',
-    });
-    if (deps.alert) {
-      try {
-        await deps.alert('paid_after_close_manual_refund_required', {
-          orderId, restaurant_id: rid, missing: cannotRefund,
-          action: 'Reembolsar el pedido desde la cola de Pedidos — el reembolso automático no está disponible en esta ruta',
-        });
-      } catch (_) { /* best-effort: the park above is what matters */ }
+  /* 🔴 DEFENCE IN DEPTH, AND NO MUTANT CAN KILL IT — stated rather than left to look covered. The
+     dispatcher path decides before it claims and therefore never arrives here unwired, and every
+     other caller today IS wired, so no cell reaches this branch. It is kept because reaching this
+     point means the guard is about to reverse a payment, and a future caller wired like resolveDeps
+     was would otherwise crash mid-refund exactly as this whole commit exists to prevent. The mutant
+     that covered it was deleted rather than re-aimed at something it does not test. */
+  if (!canAutoRefund(deps)) {
+    const { landed } = await parkForManualRefund(deps, orderId, now);
+    if (landed && deps.alert) {
+      try { await deps.alert(PARK_ALERT, { orderId, restaurant_id: rid, order_id: orderId, missing: ['voidOrRefund'], action: PARK_ACTION }); } catch (_) {}
     }
     return true;   // held, not materialized, not refunded — a human owns it now
   }
@@ -240,4 +272,4 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
   }
 }
 
-module.exports = { holdIfClosedAtMaterialize, recoverRefundingDecision, holdIfDuplicateSibling, duplicateSiblingDecision };
+module.exports = { holdIfClosedAtMaterialize, canAutoRefund, needsPaidAfterCloseRefund, parkForManualRefund, PARK_REASON, PARK_ALERT, PARK_ACTION, recoverRefundingDecision, holdIfDuplicateSibling, duplicateSiblingDecision };

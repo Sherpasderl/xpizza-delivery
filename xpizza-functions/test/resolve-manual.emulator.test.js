@@ -290,20 +290,82 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     ok('a parked order is still refundable by the dispatcher: Reembolsar → one provider call → refunded');
   }
 
-  /* Idempotent: pressing materialize again re-parks without drifting or re-alerting into a loop. */
+  /* ── 🔴 THE PARK DECIDES BEFORE ANYTHING MOVES, AND NEVER LANDS ON AN IN-FLIGHT REFUND ────────
+     P-1: the park used to happen inside the guard, by which point the resolver had already claimed
+     the order, stamped the attempt captured and committed `confirmed`. That `confirmed` enables the
+     automatic, fully-wired refund path — so a park applied afterwards could overwrite an order whose
+     reversal was already in flight, hand it back to a dispatcher, and their Reembolsar would issue a
+     SECOND provider call outside the attempt CAS. Here the order is mid-reversal when a dispatcher
+     presses materialize: nothing may touch it. */
+  {
+    await clearAll();
+    await seed({ payment_status: 'refunding_paid_after_close', refunding_at: NOW }, { payment_uuid: 'S-1', status: 'reversing', reversing_phase: 'side_effect_started', reversing_at: NOW });
+    let providerCalls = 0;
+    const { deps } = mkDeps({ voidTransaction: async () => { providerCalls += 1; return { ok: true }; } }, undefined, ALL_CLOSED);
+    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW + 1, claimId: 'CP1' });
+    const o = await oVal();
+    assert.strictEqual(o.payment_status, 'refunding_paid_after_close',
+      '🔴 the park OVERWROTE an in-flight refund — the order is re-offered and a second provider call becomes possible');
+    /* 🔴 THE LABEL MATTERS EVEN WHEN payment_status SURVIVES. The park writes blocked_reason, and
+       stamping "a human must refund this" onto an order whose reversal is ALREADY RUNNING tells a
+       dispatcher to do the one thing that would double-charge the customer. The claim rule happens to
+       refuse such an order today, so the second provider call is blocked one layer further in — but
+       the instruction would still be wrong, and correctness here should not rest on a different
+       function's precondition. */
+    assert.notStrictEqual(o.blocked_reason, 'manual_refund_required_paid_after_close',
+      '🔴 an in-flight refund was LABELLED as needing a manual one — the dispatcher is told to refund an order that is already reversing');
+    assert.strictEqual((await aVal()).status, 'reversing', 'the reversal is left alone');
+    assert.strictEqual(providerCalls, 0, 'and nothing was sent to the provider');
+    ok('a materialize on an order whose refund is IN FLIGHT parks nothing and issues zero provider calls');
+  }
+
+  /* ── 🔴 NOTHING MOVES BEFORE THE DECISION ────────────────────────────────────────────────────
+     P-1 again, from the other side: the old placement left the order `confirmed` with a captured
+     attempt and no materialization if the park write failed. Deciding before the claim means an
+     unrefundable materialize never transitions the order at all — so even a failed park leaves it
+     exactly where a human can still act on it. */
   {
     await clearAll();
     await seed({}, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
-    const { deps } = mkDeps(clientVoid({ ok: true }), undefined, ALL_CLOSED);
-    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'C1' });
-    const first = await oVal();
-    const second = await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW + 1, claimId: 'C2' });
+    const before = await oVal();
+    const blindDb = new Proxy(db, {
+      get(t, prop) {
+        if (prop === 'ref') return (path) => (String(path) === `orders/${OID}`
+          ? Object.assign(Object.create(Object.getPrototypeOf(t.ref(path))), t.ref(path), { transaction: async () => { throw new Error('park write failed'); } })
+          : t.ref(path));
+        const v = t[prop];
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+    });
+    const { deps } = mkDeps(clientVoid({ ok: true }), blindDb, ALL_CLOSED);
+    try { await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CP2' }); } catch (_) { /* the write failed; the point is what it left behind */ }
     const after = await oVal();
-    assert.strictEqual(after.payment_status, first.payment_status, 'the park is stable across a repeat');
-    assert.strictEqual(after.blocked_reason, first.blocked_reason);
-    assert.strictEqual((await aVal()).status, 'captured', 'and the attempt is still untouched');
-    assert.ok(second.status === 200 || second.status === 409, 'a repeat is answered, not crashed');
-    ok('repeat materialize on a parked order → same park, no drift, attempt untouched');
+    assert.strictEqual(after.payment_status, before.payment_status,
+      '🔴 a failed park left the order somewhere else — it must not have moved through confirmed');
+    assert.notStrictEqual(after.payment_status, 'confirmed', 'never left confirmed with captured money and no food');
+    assert.strictEqual((await aVal()).status, 'captured', 'and the attempt was not re-stamped');
+    ok('a park write that FAILS leaves the order untouched and still actionable — no transitions happened first');
+  }
+
+  /* ── 🔴 ONE ALERT PER PARK, AND A REPEAT IS A TRUE NO-OP (P-3) ────────────────────────────────
+     The previous idempotence cell compared selected final fields, so it passed while every repeat
+     re-alerted and re-ran claim/capture/confirm — charged_at moved between two identical requests.
+     A dispatcher pressing the button twice must not be paged twice, and must not move the order. */
+  {
+    await clearAll();
+    await seed({}, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+    const { deps, alerts } = mkDeps(clientVoid({ ok: true }), undefined, ALL_CLOSED);
+    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CR1' });
+    const first = await oVal();
+    const firstAttempt = await aVal();
+    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW + 5000, claimId: 'CR2' });
+    const second = await oVal();
+    const parkAlerts = alerts.filter(([k]) => k === 'paid_after_close_manual_refund_required');
+    assert.strictEqual(parkAlerts.length, 1, '🔴 a repeat re-alerted — a dispatcher is paged twice for one order');
+    assert.strictEqual(second.blocked_reason, first.blocked_reason, 'the park is unchanged');
+    assert.strictEqual(second.charged_at, first.charged_at, '🔴 a repeat re-ran the confirm path — charged_at moved on a no-op request');
+    assert.deepStrictEqual(await aVal(), firstAttempt, '🔴 a repeat re-stamped the attempt');
+    ok('repeat materialize → ONE alert, unchanged charged_at, attempt byte-identical: a true no-op');
   }
 
   // Same, but kitchen OPEN → materializes to new (normal flow unchanged).
