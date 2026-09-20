@@ -383,7 +383,32 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     assert.strictEqual(o.blocked_reason, 'manual_refund_required_paid_after_close');
     assert.ok(alerts.some(([k]) => k === 'paid_after_close_manual_refund_required'), '🔴 nobody was told');
     assert.ok(!o.materialized_at, 'and it was not materialized onto a dark kitchen');
-    ok('early hours lookup fails / hours change → the guard still parks the confirmed order and alerts, never strands it');
+    ok('early hours lookup FAILS → the guard still parks the confirmed order and alerts, never strands it');
+  }
+  {
+    /* 🔴 THE SECOND TRIGGER, DRIVEN RATHER THAN ASSUMED. The label above used to claim both cases
+       while the cell exercised only the throw. Hours CHANGING between the two lookups reaches the
+       same branch by a different route: the early lookup sees an open kitchen and permits the
+       materialize, the guard's lookup sees it closed, and the order is already confirmed by then. */
+    await clearAll();
+    await seed({}, { payment_uuid: 'S-1', status: 'captured' });
+    let lookups = 0;
+    const { deps, alerts } = mkDeps(clientVoid({ ok: true }), undefined, undefined, {
+      getIdentity: async () => {
+        lookups += 1;
+        return { active: true, hours: lookups === 1 ? ALL_OPEN : ALL_CLOSED };   // open, then closed
+      },
+    });
+    await resolveManualReconciliationCore(deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CH2' });
+    const o = await oVal();
+    assert.ok(lookups >= 2, 'premise — both lookups really ran');
+    assert.notStrictEqual(o.payment_status, 'confirmed',
+      '🔴 hours closing between the two lookups left the order CONFIRMED with captured money and no food');
+    assert.strictEqual(o.payment_status, 'manual_reconciliation', 'it is parked where a human can act on it');
+    assert.strictEqual(o.blocked_reason, 'manual_refund_required_paid_after_close');
+    assert.ok(alerts.some(([k]) => k === 'paid_after_close_manual_refund_required'), '🔴 nobody was told');
+    assert.ok(!o.materialized_at, 'and it was not materialized onto a dark kitchen');
+    ok('hours CHANGE between the two lookups → same park, same alert, never stranded');
   }
 
   /* ── 🔴 BOTH CALLERS RESOLVE THE SAME GRACE WINDOW FROM THE SAME CONFIG ───────────────────────
@@ -430,6 +455,11 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     assert.strictEqual(parkAlerts.length, 1, '🔴 a repeat re-alerted — a dispatcher is paged twice for one order');
     assert.strictEqual(second.blocked_reason, first.blocked_reason, 'the park is unchanged');
     assert.strictEqual(second.charged_at, first.charged_at, '🔴 a repeat re-ran the confirm path — charged_at moved on a no-op request');
+    /* 🔴 THE WHOLE ORDER, NOT A LIST OF FIELDS I THOUGHT OF. Checking blocked_reason and charged_at
+       is how the earlier drift hid: everything named was stable and everything unnamed was free to
+       move. Comparing the entire record means a field nobody anticipated cannot change quietly. */
+    assert.deepStrictEqual(second, first,
+      '🔴 a repeat changed the order somewhere other than the fields this cell happened to name');
     assert.deepStrictEqual(await aVal(), firstAttempt, '🔴 a repeat re-stamped the attempt');
     /* 🔴 ONE THING A REPEAT DOES WRITE, ON PURPOSE: an audit row per press. The contract is "moves no
        money and does not disturb the order", not "writes nothing" — a second press is the only
