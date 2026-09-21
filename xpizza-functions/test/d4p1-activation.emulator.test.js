@@ -105,6 +105,14 @@ const publish = async (expectedActive, tag) => {
       .orderBy('__name__').get();
     const target = history.docs.map((d) => d.id).find((id) => id !== current.version);
     assert.ok(target, 'premise — there is an earlier version to roll back to');
+    /* 🔴 THE TARGET MUST CARRY AN `activated` RECORD, asserted rather than assumed. Since the D-2 fix a
+       rollback requires its target to be activated, so a broken status transition makes this rollback
+       throw — and without this premise it throws UNCAUGHT, killing the suite with a stack trace
+       instead of a sentence. A kill scored on an uncaught error is a kill scored on the absence of a
+       try/catch; this says what actually broke. */
+    const targetRec = await db.collection('restaurants').doc(RID).collection('versions').doc(target).get();
+    assert.strictEqual(((targetRec.data() || {}).identity_activation || {}).status, 'activated',
+      '🔴 premise — the rollback target does not carry an `activated` record, so the status transition never ran; a version the pointer reached must say it was activated, or nothing can ever be rolled back to it');
 
     await rollbackVersion(db, RID, target, { expected: { activeVersionId: current.version } });
     const afterRollback = await getActivePointer(db, RID);
@@ -278,7 +286,17 @@ const publish = async (expectedActive, tag) => {
     /* SENSITIVITY — a rollback to a genuinely ACTIVATED version still works. Without this the refusal
        above is satisfied by a rollback path that refuses everything, which would be a worse bug than
        the one being fixed: rollback is the emergency lever. */
+    /* 🔴 THE TARGET MUST HAVE BEEN ACTIVATED BY THIS RUN, AND THE CELL PROVES IT. Taking whatever was
+       live at cell start makes the outcome depend on emulator state a previous run left behind — and
+       that is not hypothetical: the mutant that removes the status transition PASSED this cell on a
+       warm database (the target was already `activated` from an earlier run) and died under the sweep
+       on a cold one. A cell whose verdict depends on what ran before it measures the database, not the
+       code. */
     const target = live.version;
+    const targetRec = await db.collection('restaurants').doc(RID).collection('versions').doc(target).get();
+    assert.strictEqual(((targetRec.data() || {}).identity_activation || {}).status, 'activated',
+      '🔴 premise — the rollback target must carry an `activated` record written by THIS run; if it does not, the transition is broken and the sensitivity below would pass on stale state');
+
     const v = await publish(target, 'so-we-can-roll-back');
     const moved = await getActivePointer(db, RID);
     assert.strictEqual(moved.version, v, 'premise — something newer is live, so there is something to roll back FROM');

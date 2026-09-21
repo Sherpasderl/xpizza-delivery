@@ -572,6 +572,133 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     ok('a claim bound before a FAILED publish survives it unchanged and is accepted and consumed by the retry — the fence contract identity-partition depends on and cannot enforce');
   }
 
+  // ── 11. 🔴 THE STAMP MAP IS RE-VERIFIED AT ACTIVATION — THE GATE'S TWO REPRODUCTIONS ────────
+  /* D-5 claimed "re-verify at the write point" and verified BEFORE it: writeVersion's registry reads
+     are ordinary reads and the version is written through db.batch(), so between them and the flip the
+     world can move and a certified version is still created. The gate reproduced both cases. The
+     version WRITE cannot be made transactional — a menu can exceed a transaction's limits, which is
+     why it batches — so the guarantee attaches to the thing that IS atomic: the activation.
+     A stale candidate may still be CREATED. §4 says so explicitly: "the guarantee is atomic
+     ACTIVATION, not nothing committed before the flip". What these cells prove is that it can no
+     longer be ACTIVATED.
+     Both are staged by racing the FLIP's transaction — publish has exactly three transaction sites
+     (acquireLease :164, flipPointer, releaseLease), so firing on the second puts the change squarely
+     between writeVersion's reads and the activation, which is the window the gate found. */
+  {
+    const { retireIdentity, idsColOf } = require('../catalog/identity-registry');
+
+    const raceTheFlip = async (act, tag) => {
+      const baseline = await ensureCertifiedBaseline();
+      const cur = await getActivePointer(db, RID);
+      await sourceRefOf(db, RID).update({ deleted_ids: null });
+      const victim = baseline.dishes[0].data.display.identity_id;
+      const key = baseline.dishes[0].data.key;
+
+      const orig = db.runTransaction.bind(db);
+      let calls = 0, fired = false;
+      const racing = new Proxy(db, {
+        get(t, prop) {
+          if (prop === 'runTransaction') {
+            return async (fn, o) => {
+              calls += 1;
+              if (calls === 2 && !fired) { fired = true; await act(victim, key); }
+              return orig(fn, o);
+            };
+          }
+          const v = t[prop];
+          return typeof v === 'function' ? v.bind(t) : v;
+        },
+      });
+
+      let threw = null;
+      try {
+        const input = { ...(await candidateFromSource()), source_sha: `${tag}-${Date.now()}` };
+        await publishVersion(racing, RID, input, { expected: { activeVersionId: cur.version, draftRevision: await revision() } });
+      } catch (e) { threw = e; }
+      assert.ok(fired, `premise — ${tag}: the registry really changed between writeVersion's reads and the flip`);
+      const after = await getActivePointer(db, RID);
+      return { threw, cur, after, victim, key };
+    };
+
+    /* (a) AN ID RETIRES AFTER ITS READ. The gate's second reproduction: the writer certified it
+       anyway. A real retireIdentity also deletes the reverse row, so the activation sees a name the
+       registry no longer maps — either way it refuses, and the version never becomes live. */
+    {
+      const { threw, cur, after, victim, key } = await raceTheFlip(
+        async (v) => { await retireIdentity(db, { rid: RID, kind: 'dish', canonicalId: v }); }, 'retire');
+      assert.ok(threw && /stamp_unregistered|stamp_id_retired|stamp_registry_disagrees/.test(String(threw.message)),
+        `🔴 an id retired between the writer's read and the flip was CERTIFIED AND ACTIVATED anyway: ${threw && threw.message}`);
+      assert.match(String(threw.message), /AT ACTIVATION/, '…and the refusal says it came from the activation, not the pre-flight pass');
+      assert.strictEqual(after.version, cur.version, '🔴 the pointer moved — a version certifying a retired id went live');
+      assert.strictEqual(after.generation, cur.generation, '…and the fence did not advance');
+
+      /* 🔴 PUT THE REGISTRY BACK — BOTH ROWS. retireIdentity deletes the reverse row as well as
+         marking the id retired, and my first version of this cell restored only the status. The next
+         case then failed at PRE-FLIGHT on a missing key row instead of reaching the activation check
+         it exists to test — a cell refusing earlier than the guard it is named after, which is the
+         failure this suite has caught three times now. */
+      const { keysColOf, encodeKey } = require('../catalog/identity-registry');
+      await idsColOf(db, RID, 'dish').doc(victim).update({ status: 'live' });
+      await keysColOf(db, RID, 'dish').doc(encodeKey(key)).set({ canonical_id: victim, kind: 'dish', created_at: new Date().toISOString() });
+      const restored = await keysColOf(db, RID, 'dish').doc(encodeKey(key)).get();
+      assert.strictEqual((restored.data() || {}).canonical_id, victim, 'premise — the registry is coherent again for the case below');
+    }
+
+    /* (b) A HALF-DONE RETIREMENT — the id row goes retired while the key row still points at it. This
+       isolates the retired-id branch specifically, and it is a state this codebase already worries
+       about: a forward row is a pointer, and from the forward side a retired id looks healthy. */
+    {
+      const { threw, cur, after, victim } = await raceTheFlip(async (v) => {
+        const ref = idsColOf(db, RID, 'dish').doc(v);
+        await ref.update({ status: 'retired' });
+      }, 'half-retire');
+      assert.ok(threw && /stamp_id_retired/.test(String(threw.message)),
+        `🔴 a RETIRED id behind a surviving key row was certified at activation: ${threw && threw.message}`);
+      assert.strictEqual(after.version, cur.version, '🔴 the pointer moved');
+      // put it back so the cells that follow see a coherent registry
+      await idsColOf(db, RID, 'dish').doc(victim).update({ status: 'live' });
+    }
+
+    /* SENSITIVITY — with nothing changed under it, the identical publish SUCCEEDS. Without this the
+       two refusals above are satisfied by an activation path that refuses everything. */
+    {
+      const baseline = await ensureCertifiedBaseline();
+      assert.ok(baseline.versionId, 'premise — a certified baseline to publish from');
+      const cur = await getActivePointer(db, RID);
+      await sourceRefOf(db, RID).update({ deleted_ids: null });
+      await publishOnce();
+      const after = await getActivePointer(db, RID);
+      assert.notStrictEqual(after.version, cur.version,
+        '🔴 SENSITIVITY: the identical publish with NOTHING changed underneath was also refused — the activation check refuses everything, which is worse than the defect it fixes');
+      assert.strictEqual(after.generation, cur.generation + 1, '…and the fence advanced exactly once');
+    }
+    /* (c) OVER BUDGET ABORTS, AND VERIFIES NOTHING PARTIALLY. §4's rule for claimant discovery applied
+       to stamps: a truncated verification misses exactly the stamp that went stale, which is the one
+       the check exists for. A real over-budget menu is 400 objects — not something to build in an
+       emulator on every run — so the budget is lowered for this call instead. Driven through a DIRECT
+       flipPointer, which is the seam that reaches in-tx branches the lease otherwise serializes. */
+    {
+      const { acquireLease, flipPointer, releaseLease, snapshotRefOf } = require('../catalog/catalog-publish');
+      const cur = await ensureCertifiedBaseline();
+      const live = await getActivePointer(db, RID);
+      const snapshot = (await snapshotRefOf(db, RID).get()).data();
+      assert.strictEqual(snapshot.version, live.version, 'premise — the live snapshot describes the live version');
+
+      const token = await acquireLease(db, RID);
+      let threw = null;
+      try {
+        await flipPointer(db, RID, token, live.version, snapshot, { activeVersionId: live.version }, { stampBudget: 1 });
+      } catch (e) { threw = e; } finally { await releaseLease(db, RID, token); }
+
+      assert.ok(threw && /flip_stamp_budget_exceeded/.test(String(threw.message)),
+        `🔴 an activation that could not verify every stamp went ahead anyway — whichever stamp fell outside the budget is the one that would have gone stale: ${threw && threw.message}`);
+      assert.match(String(threw.message), new RegExp(`${cur.dishes.length + cur.extras.length} objects`),
+        '…and it names how many it would have had to verify, so the budget can be judged rather than guessed');
+      assert.strictEqual((await getActivePointer(db, RID)).generation, live.generation, '…and nothing activated');
+    }
+    ok('a stamp that goes stale between the writer\'s reads and the flip — a retired id, or a half-done retirement — is refused AT ACTIVATION; an over-budget activation aborts; an unchanged publish still succeeds');
+  }
+
   FINISHED = true;
   console.log(`d4p1-claim(emulator): OK (${n})`);
   process.exit(0);

@@ -6753,10 +6753,13 @@
    "test:d4p1-activation"
   ],
   "label": "🔴 the record is never transitioned - an activated version stays activatable forever",
-  "kills_with": "the record did not transition",
+  "kills_with": [
+   "the record did not transition",
+   "the rollback target does not carry an `activated` record"
+  ],
   "from": "      tx.update(versionsColOf(db, rid).doc(versionId), {\n        'identity_activation.status': 'activated',",
   "to": "      if (false) tx.update(versionsColOf(db, rid).doc(versionId), {\n        'identity_activation.status': 'activated',",
-  "why": "a record stuck at `pending` is a version that can be activated again — and since the transition rides the SAME transaction as the pointer move and the generation bump, dropping it also lets the record disagree with the pointer about what happened. Killed on the record's own state after a real publish."
+  "why": "a record stuck at `pending` is a version that can be activated again — and since the transition rides the SAME transaction as the pointer move and the generation bump, dropping it also lets the record disagree with the pointer about what happened. Killed on the record's own state after a real publish. 🔴 kills_with is an ARRAY because the D-2 rollback fix gave this mutant a SECOND consequence: with no transition, no version ever reaches `activated`, so nothing can be rolled back to either. It first DRIFTED — and diagnosing it found a real weakness in the new rollback cell, which took whatever was live at cell start as its target and so PASSED on a warm database where an earlier run had already activated it. The cell now asserts the target carries an `activated` record written by this run, which is what makes the second kill deterministic rather than a function of what ran before. The kill now lands on cell 3's premise: since the D-2 fix a rollback REQUIRES its target to be activated, so a missing transition makes that rollback throw — and it threw UNCAUGHT until the premise was added, which is a kill scored on the absence of a try/catch rather than on the property."
  },
  {
   "id": "d4p1b-27",
@@ -7327,10 +7330,13 @@
    "test:d4p1-activation"
   ],
   "label": "🔴 the real publish path stops reading the pointer through the checked reader",
-  "kills_with": "getActivePointer coerced a stored generation",
+  "kills_with": [
+   "getActivePointer coerced a stored generation",
+   "it coerced to the pre-cutover baseline instead of refusing"
+  ],
   "from": "  return snap.exists ? pointerStateOf(snap.data(), restaurantId) : { version: null, generation: 0 };",
   "to": "  return snap.exists ? { version: (snap.data() || {}).version || null, generation: (snap.data() || {}).generation || 0 } : { version: null, generation: 0 };",
-  "why": "🔴 SURVIVED at first, and the reason is worth keeping: the PUBLISH path reads the pointer twice — assertDraftPartition through getActivePointer before the lease, and the flip through pointerStateOf inside its transaction — so removing either one leaves the other refusing, and a plain publish cell cannot kill this. That is real defence in depth, not weak code. The activation suite now drives getActivePointer with no transaction behind it, which is the shape every non-transactional caller has (the editor's claim-base stamp among them), and that isolation is what kills this.",
+  "why": "🔴 SURVIVED at first, and the reason is worth keeping: the PUBLISH path reads the pointer twice — assertDraftPartition through getActivePointer before the lease, and the flip through pointerStateOf inside its transaction — so removing either one leaves the other refusing, and a plain publish cell cannot kill this. That is real defence in depth, not weak code. The activation suite now drives getActivePointer with no transaction behind it, which is the shape every non-transactional caller has (the editor's claim-base stamp among them), and that isolation is what kills this. 🔴 kills_with is an ARRAY because the D-2 baseline requirement now catches this too, and EARLIER: a coerced generation arrives at writeVersion as the string \"0\", which the required-baseline check refuses as write_version_no_baseline before the isolation cell runs. So the end-to-end cell fires first, on its own message. Two independent guards catch the same corruption, which is worth knowing — the earlier one is not the one this mutant is named for.",
   "slice": "d4p1e1"
  },
  {
@@ -7449,6 +7455,36 @@
   "why": "🔴 DECLARED EQUIVALENT — NO INPUT REACHES IT, and that is the point rather than an excuse. D-3.1 was real: consumption and the audit were independent, so a candidate with no activation record carried a deletion out and recorded nothing, losing the durable evidence Slice F's restoreIdentity reads. The fix closed the door UPSTREAM — writeVersion now requires a baseline so no recordless version is creatable, and the eligibility predicate refuses a recordless candidate BEFORE the flip reaches any write. Trace what would have to be true to reach this guard: consumption requires the consume policy (so not a rollback) and a declared claim, while an absent record now refuses earlier in the same transaction. There is no ordering of inputs that arrives here. It stays as defence in depth because the door that closes it is two checks in two functions, and the last four gate refusals were each about a guarantee that rested on something being unreachable. Recorded as equivalent rather than deleted, and rather than left in the count as a survivor that reads like weak coverage.",
   "slice": "d4p1sf",
   "equivalent": true
+ },
+ {
+  "id": "d4p1s-11",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the activation stops re-verifying the stamp map - a stamp that went stale after the writer's read is certified live",
+  "kills_with": "was CERTIFIED AND ACTIVATED anyway",
+  "from": "    const certifiedCandidate = candidateSnap.exists && (candidateSnap.data() || {}).identity_certified === true;",
+  "to": "    const certifiedCandidate = false;",
+  "why": "🔴 THE D-5 DEFECT ITSELF. writeVersion's registry reads are ordinary reads and the version is written through db.batch(), so between them and the flip an id can retire and the writer still creates a certified version — the gate reproduced it. The version WRITE cannot be transactional (a menu can exceed a transaction's limits), so the guarantee attaches to the ACTIVATION instead. With this block gone the stale candidate becomes live.",
+  "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1s-12",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 the over-budget activation verifies a subset instead of aborting",
+  "kills_with": "an activation that could not verify every stamp went ahead anyway",
+  "from": "      if (objectCount > stampBudget) {",
+  "to": "      if (false) {",
+  "why": "§4's rule for claimant discovery applied to stamps: an overflow must ABORT the activation, never verify part of it. A truncated verification misses exactly the stamp that went stale, which is the one the check exists for. NB no cell drives a 400-object menu, so this is expected to need either a budget cell or an equivalent declaration — recorded rather than assumed. 🔴 It DID survive at first, exactly as recorded above: no cell drove a 400-object menu, so the branch was unreachable. Rather than declare it equivalent, the budget was made injectable — production never passes it, and a cell now drives the abort through a direct flipPointer with a budget of 1. A guard whose only branch needs a 400-object fixture is a guard nobody exercises. kills_with is the CELL's message, not the production error text: with the branch gone nothing throws, so the kill lands on the assertion that expected a refusal — 'exceeds the' is a string that only exists when the guard works.",
+  "slice": "d4p1s"
  },
  {
   "id": "pah-01",

@@ -41,7 +41,10 @@ const { candidateSource, assertCandidateValid } = require('./candidate-validate'
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 const { validateDeletionClaim, validatePartition } = require('./identity-partition');
 const { walkDraftIdentities, judgeStampMap } = require('./identity-stampmap');
-const { lookupByLegacyKeys, idsColOf } = require('./identity-registry');
+const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey } = require('./identity-registry');
+/* The activation's own verification budget: the same ceiling bootstrap uses, for the same reason —
+   one transaction can only verify so much, and verifying a SUBSET is worse than refusing. */
+const BOOTSTRAP_MAX_OBJECTS = 400;
 const { pointerStateOf, getActivePointer } = require('./catalog-firestore');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
@@ -234,7 +237,12 @@ async function acquireLease(db, rid) {
    publish are indistinguishable at this boundary — both move the pointer to a version that exists —
    and guessing from, say, whether the target is older would make the eligibility rule depend on
    version ordering rather than on the caller's intent. The caller knows which it is; it says so. */
-async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false } = {}) {
+/* `stampBudget` exists so the over-budget ABORT is reachable from a cell. Production never passes it
+   — publishVersion and rollbackVersion both take the default — and a real over-budget menu is 400
+   objects, which is not a thing to build in an emulator every run. A guard whose only branch needs a
+   400-object fixture is a guard nobody exercises, and this programme's recurring defect is exactly
+   that. Stated here rather than left to look like a caller knob. */
+async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false, stampBudget = BOOTSTRAP_MAX_OBJECTS } = {}) {
   const isRollback = !!rollback;
   // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
   // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
@@ -447,6 +455,75 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        They stay because a lease is a time-based assertion, not a proof: an expired lease, a clock
        skew, or a future caller that flips without one all end here, and at that point this is the
        last thing standing between a superseded candidate and an activation. */
+    /* ── 1D D4-P1 D-5 — THE STAMP MAP IS RE-VERIFIED **HERE**, INSIDE THE ACTIVATION ────────────
+       🔴 WHY IT MOVED. writeVersion re-verifies the map too, and the D-5 gate was right that this is
+       not the same guarantee: those reads are ORDINARY reads and the version is written through
+       db.batch(), so between them and this flip the pointer can advance or an id can retire, and the
+       writer still creates a certified version against the world it saw. The reproductions were exact.
+       What CANNOT be made transactional is the version WRITE — a menu can exceed a transaction's
+       limits, which is why writeVersion batches — so the guarantee has to attach to the thing that IS
+       atomic: the ACTIVATION. §4 already says so, and already expects this transaction to gather its
+       registry reads before writing.
+       So the division is the one B-5, R-1 and the claim check each settled: the pre-flight pass is the
+       FAST, SPECIFIC error a merchant sees, and this is the guarantee. A stale candidate may still be
+       CREATED — the spec tolerates that explicitly, "the guarantee is atomic ACTIVATION, not nothing
+       committed before the flip" — but it can no longer be ACTIVATED.
+
+       🔴 READ COST, STATED. The flip already reads 4 documents (lock, pointer, source, candidate
+       record). Verifying per stamp would be 2N more; instead this uses §4's own shape — ONE query per
+       KIND — so it is 6 more reads regardless of menu size: the candidate's items and extras, the key
+       rows per kind, and the live id rows per kind. Bounded, and the object count is budgeted below
+       rather than left to scale with whatever the menu becomes. */
+    const certifiedCandidate = candidateSnap.exists && (candidateSnap.data() || {}).identity_certified === true;
+    if (certifiedCandidate) {
+      const vref = versionsColOf(db, rid).doc(versionId);
+      const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([
+        tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')),
+        tx.get(keysColOf(db, rid, 'dish')), tx.get(keysColOf(db, rid, 'extra')),
+        tx.get(idsColOf(db, rid, 'dish')), tx.get(idsColOf(db, rid, 'extra')),
+      ]);
+
+      const persisted = { dish: {}, extra: {} };
+      const candidateKeys = { dish: new Set(), extra: new Set() };
+      for (const [kind, snap] of [['dish', itemsSnap], ['extra', extrasSnap]]) {
+        for (const d of (snap.docs || [])) {
+          const data = d.data() || {};
+          if (typeof data.key !== 'string' || !data.key) continue;
+          candidateKeys[kind].add(data.key);
+          const id = (data.display || {}).identity_id;
+          if (typeof id === 'string' && id) persisted[kind][data.key] = id;
+        }
+      }
+      const objectCount = candidateKeys.dish.size + candidateKeys.extra.size;
+      /* 🔴 OVER BUDGET ABORTS THE ACTIVATION; it never verifies a subset. A truncated verification
+         would miss exactly the stamp that had gone stale, which is the same reasoning §4 gives for
+         refusing rather than truncating claimant discovery. */
+      if (objectCount > stampBudget) {
+        throw new Error(`flip_stamp_budget_exceeded: ${rid}/${versionId} — ${objectCount} objects exceeds the ${stampBudget} this transaction can verify; activating without verifying every stamp would certify whichever one went stale`);
+      }
+
+      const registry = { dish: new Map(), extra: new Map() };
+      for (const [kind, keysSnap, idsSnap] of [['dish', dishKeys, dishIds], ['extra', extraKeys, extraIds]]) {
+        const byEncoded = new Map((keysSnap.docs || []).map((d) => [d.id, (d.data() || {}).canonical_id]));
+        const rows = new Map((idsSnap.docs || []).map((d) => [d.id, d.data() || {}]));
+        for (const key of candidateKeys[kind]) {
+          const keyRowId = byEncoded.get(encodeKey(key)) || null;
+          registry[kind].set(key, { keyRowId, idRow: keyRowId ? rows.get(keyRowId) || null : null });
+        }
+      }
+
+      const livePair = { version: liveActive, generation: priorGeneration };
+      const judged = judgeStampMap({
+        stamps: (Object.keys(persisted.dish).length + Object.keys(persisted.extra).length) ? persisted : null,
+        candidateKeys, registry, baseline: livePair, live: livePair,
+      });
+      if (!judged.fence.ok) throw new Error(`${judged.fence.code}: ${rid}/${versionId} — ${judged.fence.detail}`);
+      const bad = judged.stamps.filter((e) => !e.verdict.ok);
+      if (bad.length) {
+        throw new Error(`${bad[0].verdict.code}: ${rid}/${versionId} — ${bad.length} stamp(s) refused AT ACTIVATION — ${bad.map((e) => e.verdict.detail).join(' · ')}`);
+      }
+    }
+
     const activation = candidateSnap.exists ? (candidateSnap.data() || {}).identity_activation : undefined;
     const verdict = activationVerdict(activation, {
       currentGeneration: priorGeneration,          // read from the pointer in THIS transaction, a few lines above
