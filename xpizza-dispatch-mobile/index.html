@@ -614,10 +614,16 @@ function displayDriverId(id, order){
   const dt = STORE.tasks[`${id}_delivery`], pt = STORE.tasks[`${id}_pickup`];
   const byKey = (dt && dt.assigned_driver_id) || (pt && pt.assigned_driver_id);
   if (byKey) return byKey;
-  // Key convention failed. Stop trusting `<id>_pickup` / `<id>_delivery` and search the tasks by
-  // their OWN order_id field — every task carries it (createOrderWithTasks writes it). This is
-  // robust to any id scheme, to orders created by a path that names tasks differently, and to
-  // extra task types. O(tasks) but only on sheet/pass render, and only when the key lookup missed.
+  // NOTE ON WHY THIS OFTEN FINDS NOTHING — and it is not a key-naming problem.
+  // The key convention is correct: the order's own delivery_task_id resolves to
+  // `<orderId>_delivery` exactly. The task is simply GONE. retentionSweepTasks
+  // (xpizza-functions/index.js:3965) deletes terminal orders' tasks every 6 hours, and the driver
+  // identity lives ONLY on the task — no order field carries it. So for any completed order past
+  // one sweep the driver is unrecoverable HERE and on the desktop alike (which resolves it the same
+  // way at xpizza-dispatch/index.html:4131 and :4335, and shows "—").
+  // The real fix is a delivered_by snapshot written onto the order at completion — see
+  // HANDOFF-delivered-by-snapshot.md. This scan stays only as a cheap safety net for tasks that are
+  // present but named unexpectedly; it is NOT what makes the driver appear.
   const oid = (order && order.order_id) || id;
   for (const t of Object.values(STORE.tasks)) {
     if (t && t.order_id === oid && t.assigned_driver_id) return t.assigned_driver_id;
