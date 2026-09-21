@@ -73,33 +73,66 @@ const rec = (over = {}) => ({ status: 'pending', base_version: 'v-1', base_gener
   ok('seven unmodelled status values are each REFUSED — unknown is not assumed harmless');
 }
 
-// ── 6. A VERSION WITH NO RECORD IS PERMITTED ─────────────────────────────────────────────────
-/* Pre-P1 versions, written before any of this existed, carry no record. Refusing them would block
-   every rollback to the history the cutover is migrating from. */
+// ── 6. 🔴 A VERSION WITH NO RECORD IS REFUSED — THE LEGACY FAIL-CLOSED RULE ─────────────────
+/* THIS CELL ASSERTED THE OPPOSITE, and the old reasoning is kept so the history reads as a fix:
+   "Pre-P1 versions, written before any of this existed, carry no record. Refusing them would block
+   every rollback to the history the cutover is migrating from."
+   What that missed is that RETENTION IS NOT PROOF OF ACTIVATION. writeVersion creates the version
+   BEFORE the flip, so a crash or a failed CAS leaves a complete, retained, NEVER-ACTIVATED version —
+   a pre-cutover price-only candidate whose publish failed looks exactly like one that went live.
+   Permitting recordless versions therefore authorised activating a menu no customer ever saw.
+   Bootstrap marks `activated` only the version the pointer actually names (§3.0), which is the only
+   trustworthy evidence, so a recordless version is one whose activation cannot be proven.
+   THE COST IS REAL AND DOCUMENTED: during the migration window, rolling back to a pre-cutover
+   NON-current version refuses. The cutover-live version and everything published after it roll back
+   normally, and the refused cohort ages out of retention. That is §3.0's trade, made deliberately —
+   this cell exists so it is a named refusal rather than something discovered later. */
 {
   for (const absent of [undefined, null]) {
-    const v = activationVerdict(absent, { currentGeneration: 7, intent: 'activate' });
-    assert.strictEqual(v.ok, true, 'a pre-P1 version has no record and is not refused for lacking one');
-    assert.strictEqual(v.code, 'no_record');
+    for (const intent of ['activate', 'rollback']) {
+      const v = activationVerdict(absent, { currentGeneration: 7, intent });
+      assert.strictEqual(v.ok, false,
+        `🔴 a recordless version was ${intent === 'rollback' ? 'rolled back to' : 'activated'} — retention is not proof of activation, and a failed pre-cutover publish leaves a complete retained version that was never live`);
+      assert.strictEqual(v.code, 'flip_activation_no_record',
+        `🔴 a recordless version refused under ${v.code} — the legacy case needs its own code, because an operator seeing it must know the version is pre-cutover rather than broken`);
+    }
   }
-  ok('no record (a pre-P1 version) → permitted, for both undefined and null');
+  ok('no record → REFUSED for BOTH intents, with the legacy code: retention is not proof of activation');
 }
 
-// ── 7. ROLLBACK IS EXEMPT TODAY — AND THIS IS THE BRANCH SLICE F CHANGES ─────────────────────
-/* A rollback re-activates a version whose record already says `activated`: that is its history.
-   🔴 F TIGHTENS THIS. A retained version can carry a `pending` record — what writeVersion leaves
-   behind when a publish stages and never flips — and rolling back to one must be refused. This cell
-   PINS TODAY'S BEHAVIOUR so that change is deliberate and visible rather than incidental: when F
-   lands, this cell must be updated, and a diff that changes it silently is the thing to catch. */
+// ── 7. 🔴 ROLLBACK RE-ACTIVATES HISTORY — IT DOES NOT AUTHORISE A CANDIDATE THAT WAS NEVER LIVE ──
+/* THIS CELL PINNED THE OLD BLANKET EXEMPTION, deliberately, so that tightening it would be visible
+   rather than incidental — its own note said "when F lands, this cell must be updated, and a diff
+   that changes it silently is the thing to catch". It landed earlier than F, in the D-2 gate, and the
+   tripwire worked: the cell had to be rewritten by hand.
+   WHAT THE EXEMPTION ALLOWED, reproduced through the real functions: publish A; let a publish of B
+   fail so B is left `pending`; roll back to B. It SUCCEEDED — the pointer moved to a version that had
+   never been activated, B's record stayed `pending` because the transition excludes rollback too, and
+   bootstrap then REFUSES that live version for carrying no `activated` record. A cutover breaker.
+   A rollback targets a version's OWN history. `activated` is what history looks like. */
 {
-  for (const status of ['activated', 'pending', 'abandoned', 'anything_at_all']) {
-    const v = activationVerdict(rec({ status }), { currentGeneration: 999, intent: 'rollback' });
-    assert.strictEqual(v.ok, true, `rollback is exempt today, including for ${status}`);
-    assert.strictEqual(v.code, 'rollback_exempt');
+  const v = activationVerdict(rec({ status: 'activated' }), { currentGeneration: 999, intent: 'rollback' });
+  assert.strictEqual(v.ok, true, '🔴 a rollback to a genuinely ACTIVATED version was refused — that is what rollback is for');
+  assert.strictEqual(v.code, 'rollback_to_activated', `expected rollback_to_activated, got ${v.code}`);
+
+  for (const status of ['pending', 'anything_at_all', 'staged']) {
+    const r = activationVerdict(rec({ status }), { currentGeneration: 999, intent: 'rollback' });
+    assert.strictEqual(r.ok, false,
+      `🔴 rollback to a ${JSON.stringify(status)} version was PERMITTED — a candidate that was never live would become live, and bootstrap then refuses the version it finds under the pointer`);
+    assert.strictEqual(r.code, 'flip_activation_rollback_not_activated',
+      `🔴 rollback to ${JSON.stringify(status)} refused under ${r.code} rather than the code that says why`);
   }
-  const v = activationVerdict(rec({ base_generation: 1 }), { currentGeneration: 500, intent: 'rollback' });
-  assert.strictEqual(v.ok, true, 'and the generation is not consulted for a rollback, by design');
-  ok('rollback is exempt for every status today — pinned here because Slice F is going to tighten it');
+  /* Abandoned keeps its OWN refusal even for a rollback: permanently ineligible is permanent, and a
+     reader must not be told "not activated" when the truth is "deliberately abandoned". */
+  const ab = activationVerdict(rec({ status: 'abandoned' }), { currentGeneration: 999, intent: 'rollback' });
+  assert.strictEqual(ab.code, 'flip_activation_abandoned',
+    `🔴 an abandoned version refused under ${ab.code} for a rollback — abandonment is permanent and says so in its own code`);
+
+  /* The generation is still NOT consulted for a rollback: a rollback moves the pointer backwards on
+     purpose, so requiring the target to be bound to the current generation would refuse every one. */
+  const old2 = activationVerdict(rec({ status: 'activated', base_generation: 1 }), { currentGeneration: 500, intent: 'rollback' });
+  assert.strictEqual(old2.ok, true, 'a rollback to an activated version built long ago is still permitted — the generation fences activation, not history');
+  ok('rollback permits an ACTIVATED target and refuses pending, unmodelled and abandoned ones — history, not a licence');
 }
 
 // ── 8. THE VERDICT IS PURE — no reads, no clock, no hidden state ─────────────────────────────

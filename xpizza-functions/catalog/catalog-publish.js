@@ -125,13 +125,43 @@ const versionsColOf = (db, rid) => db.collection('restaurants').doc(rid).collect
    version whose record already says `activated`, which is its history. F tightens this to refuse a
    `pending` or `abandoned` target; that is a behaviour change and belongs with F, not here. */
 function activationVerdict(record, { currentGeneration, intent }) {
-  if (record === undefined || record === null) return { ok: true, code: 'no_record' };
-  if (intent === 'rollback') return { ok: true, code: 'rollback_exempt' };
+  /* 🔴 NO RECORD IS NO LONGER A PERMIT — IT IS THE LEGACY REFUSAL (§3.0, fail-closed eligibility).
+     This returned ok, on the reasoning that a version written before the record existed should not be
+     refused for lacking one. Two things make that wrong now. writeVersion REQUIRES a baseline, so no
+     new version can be recordless — "recordless" therefore means exactly one thing, a PRE-CUTOVER
+     retained version. And retention is NOT proof of activation: writeVersion creates the version
+     BEFORE the flip, so a crash or a failed CAS leaves a complete, retained, NEVER-ACTIVATED version,
+     and bootstrap deliberately marks `activated` only the version the pointer currently names.
+     Permitting a recordless version authorised activating a candidate that may never have been live —
+     pre-cutover prices, a menu no customer ever saw. The cost is the spec's documented
+     weakened-guarantee window: rollback to a pre-cutover NON-current version refuses until that cohort
+     ages out of retention. That is the trade §3.0 makes, and it is a NAMED refusal rather than an
+     incidental one. */
+  if (record === undefined || record === null) {
+    return { ok: false, code: 'flip_activation_no_record',
+      detail: 'this version carries no activation record, so it is pre-cutover and its activation cannot be proven; retention is not proof of activation, and only the version bootstrap found under the pointer is eligible' };
+  }
 
   const status = record.status;
   if (status === 'abandoned') {
     return { ok: false, code: 'flip_activation_abandoned',
       detail: 'this candidate was abandoned and is permanently ineligible; acquiring a new lease does not revive it' };
+  }
+  /* 🔴 ROLLBACK RE-ACTIVATES HISTORY; IT DOES NOT AUTHORISE A CANDIDATE THAT WAS NEVER LIVE. This was
+     a blanket exemption — any rollback intent skipped every check below — and the gate reproduced what
+     that allows through the REAL functions: publish A, let a publish of B fail so B is left `pending`,
+     then roll back to B. It SUCCEEDED. The pointer moved to a version that had never been activated,
+     B's record stayed `pending` because the transition excludes rollback too, and bootstrap then
+     REFUSES that live version for carrying no `activated` record. A cutover breaker, and it disproved
+     the claim that every live P1 version has transitioned.
+     So rollback requires the target to be `activated` — its OWN history, which is exactly what a
+     rollback is for — rather than being exempt from having any. */
+  if (intent === 'rollback') {
+    if (status !== 'activated') {
+      return { ok: false, code: 'flip_activation_rollback_not_activated',
+        detail: `rollback targets a version's own history, and status ${JSON.stringify(status)} is not history — a candidate that was never activated cannot be rolled back TO` };
+    }
+    return { ok: true, code: 'rollback_to_activated' };
   }
   if (status !== 'pending') {
     return { ok: false, code: 'flip_activation_not_pending',
@@ -459,6 +489,19 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        NULL, not a field delete: the cleared sentinel the editor already reads as "there are no
        deletions", so a consumed claim and a withdrawn one are the same state to everything
        downstream. The draft CAS a few lines above is what makes this write safe. */
+    /* 🔴 CONSUME AND RECORD ARE ONE WRITE OR NEITHER. These were independent: the audit rode on the
+       activation-record update, which was conditional on a record EXISTING, while the clear below was
+       conditional only on there being something to consume. So a candidate with no record carried the
+       deletion out and recorded nothing — the merchant's declaration gone, the ids retired, and no
+       durable account of which ones. That account is exactly what Slice F's restoreIdentity reads to
+       restore the SAME ids on a rollback, so losing it breaks the reader the field exists for.
+       The recordless path is now closed upstream (writeVersion requires a baseline, and the predicate
+       refuses a recordless candidate), which makes this unreachable — and it is here anyway, because
+       "unreachable" is what the last four refusals were each about. It refuses rather than consuming
+       silently. */
+    if (consumedIds && !(activation !== undefined && activation !== null && !isRollback)) {
+      throw new Error(`flip_claim_consume_without_record: ${rid}/${versionId} — a deletion claim would be carried out by an activation that records nothing; the version must carry the audit of what it retired, because that is what a later rollback reads to restore the same ids`);
+    }
     if (consumedIds) tx.update(sourceRefOf(db, rid), { deleted_ids: null });
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
@@ -518,6 +561,22 @@ function normalizeInputs({ items, extras, extraRecords }) {
    becoming certification. The discriminator is what later separates "certified but a stamp is
    broken" (an anomaly) from "genuinely unstamped, pre-P1" (serve by name, as today). */
 async function writeVersion(db, rid, { items, structure, extras, extraRecords, source_sha, stamps = null, baseline = null, stampsResolvedAgainst = undefined }, nowServer) {
+  /* 🔴 THE BASELINE IS REQUIRED, SO "RECORDLESS" STOPS BEING A STATE ANYONE CAN CREATE. It defaulted
+     to null and the record was omitted when absent — and the eligibility predicate then treated an
+     absent record as permitted, so a version with no record at all was creatable through this exported
+     function AND activatable through the flip. Refusing here rather than at the flip is the difference
+     between a publish that fails and a retained version nobody can account for.
+     Every caller was enumerated before this was made required. In production there is exactly one —
+     publishVersion, which captures the pair under the lease and passes it — and nothing in tools or
+     any CLI path calls it. The rest are test fixtures, which now state the baseline they were written
+     against: the same honest cost the fence charges.
+     `{version: null, generation: 0}` is a legitimate baseline — a FIRST publish, nothing active yet.
+     Absent is not. */
+  if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)
+      || !Object.prototype.hasOwnProperty.call(baseline, 'version')
+      || !Number.isInteger(baseline.generation) || baseline.generation < 0) {
+    throw new Error(`write_version_no_baseline: ${rid} — a version must record the {version, generation} pair it was built against; got ${JSON.stringify(baseline)}. A version with no activation record cannot be proven to have been live, and retention is not proof.`);
+  }
   const { menuTable, extraTable, v2ByKey, v2ExtrasByKey } = normalizeInputs({ items, extras, extraRecords });
   const desc = integrityDescriptor(menuTable, extraTable);
   if (desc.item_count === 0) throw new Error(`publish_refused_empty: ${rid} — a version must have ≥1 item`);

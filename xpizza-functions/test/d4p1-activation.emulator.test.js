@@ -243,6 +243,53 @@ const publish = async (expectedActive, tag) => {
     ok('each reader refuses on its own: getActivePointer with no transaction behind it, and the flip\'s in-tx read with no pre-flight in front of it');
   }
 
+  // ── 🔴 THE CUTOVER BREAKER THE GATE FOUND: ROLLBACK TO A NEVER-ACTIVATED CANDIDATE ─────────
+  /* Reproduced through the REAL functions exactly as codex did, then fixed. The rollback branch used
+     to be a blanket exemption — any rollback intent skipped every eligibility check — so: publish A,
+     let a publish of B FAIL so B is left `pending`, roll back to B. It SUCCEEDED. The pointer moved to
+     a version that had never been live, B's record stayed `pending` because the transition excludes
+     rollback too, and bootstrap then REFUSES that live version for carrying no `activated` record.
+     A cutover breaker, and it disproved the claim that every live P1 version has transitioned.
+     A rollback targets a version's OWN history; `activated` is what history looks like. */
+  {
+    const live = await getActivePointer(db, RID);
+
+    /* Stage a REAL never-activated candidate: writeVersion creates the version, and the flip never
+       happens. That is precisely what a failed publish leaves behind, which is why retention cannot be
+       read as proof of activation. */
+    const { writeVersion, serverNow } = require('../catalog/catalog-publish');
+    const { input } = buildPublishCandidate(RID, { activeVersionId: live.version }, { source_sha: 'never-live' });
+    const staged = await writeVersion(db, RID, { ...input, baseline: live }, await serverNow(db, RID));
+    const stagedId = staged.versionId || staged.version || staged;
+
+    const rec = await db.collection('restaurants').doc(RID).collection('versions').doc(stagedId).get();
+    assert.strictEqual(((rec.data() || {}).identity_activation || {}).status, 'pending',
+      'premise — the staged candidate really is pending: written, never flipped');
+
+    let threw = null;
+    try { await rollbackVersion(db, RID, stagedId, { expected: { activeVersionId: live.version } }); } catch (e) { threw = e; }
+    assert.ok(threw && /flip_activation_rollback_not_activated/.test(String(threw.message)),
+      `🔴 A ROLLBACK ACTIVATED A VERSION THAT WAS NEVER LIVE — prices no customer ever saw would be serving, and bootstrap would then refuse the version it finds under the pointer: ${threw && threw.message}`);
+
+    const after = await getActivePointer(db, RID);
+    assert.strictEqual(after.version, live.version, '…and the pointer did not move');
+    assert.strictEqual(after.generation, live.generation, '…and the fence did not advance');
+
+    /* SENSITIVITY — a rollback to a genuinely ACTIVATED version still works. Without this the refusal
+       above is satisfied by a rollback path that refuses everything, which would be a worse bug than
+       the one being fixed: rollback is the emergency lever. */
+    const target = live.version;
+    const v = await publish(target, 'so-we-can-roll-back');
+    const moved = await getActivePointer(db, RID);
+    assert.strictEqual(moved.version, v, 'premise — something newer is live, so there is something to roll back FROM');
+    await rollbackVersion(db, RID, target, { expected: { activeVersionId: v } });
+    const landed = await getActivePointer(db, RID);
+    assert.strictEqual(landed.version, target,
+      '🔴 SENSITIVITY: a rollback to a genuinely ACTIVATED version was refused — the emergency lever is broken, which is worse than the defect being fixed');
+    assert.strictEqual(landed.generation, moved.generation + 1, '…and it still advances the fence');
+    ok('a rollback to a never-activated PENDING candidate is refused by name; a rollback to a genuinely activated version still works');
+  }
+
   FINISHED = true;
   console.log(`d4p1-activation(emulator): OK (${n})`);
   process.exit(0);

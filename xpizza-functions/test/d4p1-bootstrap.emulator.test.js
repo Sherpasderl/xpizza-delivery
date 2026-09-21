@@ -31,6 +31,11 @@ const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { bootstrapIdentityStamps, reconcileLegacyOrphans, readActiveVersion } = require('../catalog/identity-bootstrap');
 const { ensureIdentity, retireIdentity, idsColOf, STATUS_LIVE } = require('../catalog/identity-registry');
 const { readActiveVersion: _ravUnused } = require('../catalog/identity-bootstrap');
+/* 🔴 EVERY VERSION STATES THE BASELINE IT WAS BUILT AGAINST (D-2 gate fix). writeVersion no longer
+   accepts an absent baseline: a version with no activation record cannot be proven to have been live,
+   and retention is not proof. These fixtures read the live pair rather than inventing one, because a
+   baseline chosen to satisfy the check is a fixture asserting against a world that does not exist. */
+const baselineOf = (d, r) => require('../catalog/catalog-firestore').getActivePointer(d, r);
 
 const vrefOf = (rid, v) => db.collection('restaurants').doc(rid).collection('versions').doc(v);
 const pointerOf = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
@@ -364,7 +369,7 @@ const asPreP1 = async (rid, versionId) => {
        rollback eligibility; a run that gave it one would let a rollback activate prices that were
        never live. Created here by calling writeVersion and NOT flipping, which is what the failure
        actually looks like. */
-    const neverLive = await writeVersion(db, rid5, { ...(await candidateFromSource(rid5)), source_sha: 'never-activated' }, admin.firestore.Timestamp.now());
+    const neverLive = await writeVersion(db, rid5, { ...(await candidateFromSource(rid5)), source_sha: 'never-activated', baseline: await baselineOf(db, rid5) }, admin.firestore.Timestamp.now());
     const neverLiveId = neverLive.versionId || neverLive.version || neverLive;
     const ptr = await pointerOf(rid5).get();
     assert.notStrictEqual((ptr.data() || {}).version, neverLiveId, 'premise — the pointer never named it');
@@ -372,7 +377,17 @@ const asPreP1 = async (rid, versionId) => {
     const r7b = await bootstrapIdentityStamps(db, rid5);
     assert.strictEqual(r7b.already, true, 'the live version is already certified, so this run is a no-op');
     const orphanRec = await vrefOf(rid5, neverLiveId).get();
-    assert.strictEqual((orphanRec.data() || {}).identity_activation, undefined,
+    /* 🔴 THE ASSERTION MOVED FROM "no record" TO "a PENDING record", and that is a strengthening. It
+       used to be absent because writeVersion omitted the record when no baseline was supplied — which
+       was itself the D-2 defect: a version with no record at all was creatable, and the flip's
+       predicate then treated absent as permitted. writeVersion now requires a baseline, so this
+       staged-and-never-flipped version says what it actually is: `pending`. That is strictly more
+       informative than silence, and it is the exact state the rollback rule now refuses — a candidate
+       that was never activated cannot be rolled back TO. What must never happen is `activated`. */
+    const orphanActivation = (orphanRec.data() || {}).identity_activation || {};
+    assert.strictEqual(orphanActivation.status, 'pending',
+      `🔴 a staged, never-flipped version does not say it is pending (${JSON.stringify(orphanActivation.status)}) — the record is what distinguishes "was live" from "was written"`);
+    assert.notStrictEqual(orphanActivation.status, 'activated',
       '🔴 A NEVER-ACTIVATED VERSION WAS MARKED ACTIVATED — retention would have become proof of activation, and a rollback could activate prices that were never live');
     assert.strictEqual((orphanRec.data() || {}).identity_certified, undefined, '…and it was not certified either');
     const total = (await db.collection('restaurants').doc(rid5).collection('versions').get()).docs.length;

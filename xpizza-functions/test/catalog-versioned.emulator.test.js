@@ -34,6 +34,11 @@ const read = async (rid) => { const d = await getRestaurantDocs(db, rid); return
 // that rots in the suite nobody can run without an emulator — which is how this file ended up
 // "updated but failing if run" after the validator landed.
 const { mkVersion } = require('../catalog/synthetic-version');
+/* 🔴 EVERY VERSION STATES THE BASELINE IT WAS BUILT AGAINST (D-2 gate fix). writeVersion no longer
+   accepts an absent baseline: a version with no activation record cannot be proven to have been live,
+   and retention is not proof. These fixtures read the live pair rather than inventing one, because a
+   baseline chosen to satisfy the check is a fixture asserting against a world that does not exist. */
+const baselineOf = (d, r) => require('../catalog/catalog-firestore').getActivePointer(d, r);
 
 // 1A Task 7 — the pointer flip is a compare-and-set, so every publish states which active version it
 // was validated against. These helpers state the truth (whatever is live right now); the RACE cases
@@ -122,7 +127,7 @@ const buildReader = (codeMap = null) => {
     const rid = 'flip_shop';
     const v1 = (await publishAt(rid, mkVersion({ A: 10 }))).versionId;
     const tok = await acquireLease(db, rid);
-    const { versionId: v2 } = await writeVersion(db, rid, mkVersion({ A: 20 }), await serverNow(db, rid));   // written, NOT flipped
+    const { versionId: v2 } = await writeVersion(db, rid, { ...mkVersion({ A: 20 }), baseline: await baselineOf(db, rid) }, await serverNow(db, rid));   // written, NOT flipped
     assert.strictEqual((await read(rid)).menu.A, 10, 'mid-publish reader sees the OLD version (v2 docs written, pointer not flipped)');
     assert.strictEqual(await getActiveVersionId(db, rid), v1, 'pointer still v1 before the flip');
     await flipAt(rid, tok, v2, { version: v2, seq: 1, rid, menu: {}, extras: {} });   // 1b: the pointer cannot move without its snapshot
@@ -223,7 +228,7 @@ const buildReader = (codeMap = null) => {
     // A REAL, servable target: 1A Task 7 made flipPointer validate the candidate before it opens the
     // transaction, so a made-up version id would now be refused for being missing and this test would
     // pass without ever reaching the lease check it exists to prove.
-    const { versionId: target } = await writeVersion(db, rid, mkVersion({ A: 1 }), await serverNow(db, rid));
+    const { versionId: target } = await writeVersion(db, rid, { ...mkVersion({ A: 1 }), baseline: await baselineOf(db, rid) }, await serverNow(db, rid));
     await releaseLease(db, rid, t0);
     const t1 = await acquireLease(db, rid);
     const nowS = await serverNow(db, rid);
@@ -241,8 +246,8 @@ const buildReader = (codeMap = null) => {
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 60000) });   // t1's lease expired
     const t2 = await acquireLease(db, rid);                                 // reclaim (expired) → new token
     assert.notStrictEqual(t1, t2, 'reclaim allocates a FRESH owner_token');
-    const { versionId: vOld } = await writeVersion(db, rid, mkVersion({ A: 1 }), await serverNow(db, rid));   // a real prior version to try to revert TO
-    const { versionId: vNew } = await writeVersion(db, rid, mkVersion({ A: 99 }), await serverNow(db, rid));
+    const { versionId: vOld } = await writeVersion(db, rid, { ...mkVersion({ A: 1 }), baseline: await baselineOf(db, rid) }, await serverNow(db, rid));   // a real prior version to try to revert TO
+    const { versionId: vNew } = await writeVersion(db, rid, { ...mkVersion({ A: 99 }), baseline: await baselineOf(db, rid) }, await serverNow(db, rid));
     await flipAt(rid, t2, vNew, { version: vNew, seq: 2, rid, menu: {}, extras: {} });   // t2 flips → the newer version is live
     await assert.rejects(() => flipPointer(db, rid, t1, vOld, { version: vOld, seq: 1, rid, menu: {}, extras: {} }, { activeVersionId: vNew }), /lease_lost|lease_expired/);   // stale t1 cannot revert
     assert.strictEqual((await read(rid)).menu.A, 99, 'the reclaimer\'s version stays live — no stale revert');
@@ -255,7 +260,7 @@ const buildReader = (codeMap = null) => {
   {
     const rid = 'crash_shop';
     const t1 = await acquireLease(db, rid);
-    const { versionId: orphan } = await writeVersion(db, rid, mkVersion({ A: 1 }), await serverNow(db, rid));   // wrote docs, then crash (no flip, no release)
+    const { versionId: orphan } = await writeVersion(db, rid, { ...mkVersion({ A: 1 }), baseline: await baselineOf(db, rid) }, await serverNow(db, rid));   // wrote docs, then crash (no flip, no release)
     const nowS = await serverNow(db, rid);
     await lockRef(rid).set({ owner_token: t1, acquired_at: nowS, expires_at: Timestamp.fromMillis(nowS.toMillis() - 1) });        // lease expires
     const res = await publishAt(rid, mkVersion({ A: 2 }));         // reclaim + complete, fresh id
@@ -459,7 +464,7 @@ const buildReader = (codeMap = null) => {
     const first = await publishAt(rid, mkVersion({ A: 1 }), { mirror: mirror.fn });
     const before = await snapshotOfRid(rid);
     const token = await acquireLease(db, rid);
-    const { versionId: v2, menuTable } = await writeVersion(db, rid, mkVersion({ A: 2 }), await serverNow(db, rid));
+    const { versionId: v2, menuTable } = await writeVersion(db, rid, { ...mkVersion({ A: 2 }), baseline: await baselineOf(db, rid) }, await serverNow(db, rid));
     await releaseLease(db, rid, token);                       // drop the lease → the flip must fail
     await assert.rejects(() => flipPointer(db, rid, token, v2, { version: v2, seq: 2, rid, menu: menuTable, extras: {} }, { activeVersionId: first.versionId }), /lease_lost|lease_expired/);
     assert.strictEqual(await getActiveVersionId(db, rid), first.versionId, 'the pointer did not move');

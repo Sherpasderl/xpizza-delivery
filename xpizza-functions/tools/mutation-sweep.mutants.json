@@ -7377,6 +7377,80 @@
   "slice": "d4p1dc"
  },
  {
+  "id": "d4p1sf-01",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "node",
+   "catalog/activation-eligibility.test.js"
+  ],
+  "label": "🔴 a recordless version is activatable again - retention becomes proof of activation",
+  "kills_with": "retention is not proof of activation",
+  "from": "  if (record === undefined || record === null) {\n    return { ok: false, code: 'flip_activation_no_record',",
+  "to": "  if (record === undefined || record === null) {\n    return { ok: true, code: 'no_record', detail: '',\n      _unused: 'flip_activation_no_record',",
+  "why": "The D-2.2 defect restored. writeVersion creates the version BEFORE the flip, so a crash or failed CAS leaves a complete retained NEVER-ACTIVATED version; permitting a recordless one authorises activating a menu no customer ever saw. §3.0 fail-closed legacy eligibility.",
+  "slice": "d4p1sf"
+ },
+ {
+  "id": "d4p1sf-02",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "node",
+   "catalog/activation-eligibility.test.js"
+  ],
+  "label": "🔴 rollback is exempt from eligibility again - a never-live candidate can be rolled back TO",
+  "kills_with": "rollback to a ",
+  "from": "  if (intent === 'rollback') {\n    if (status !== 'activated') {",
+  "to": "  if (intent === 'rollback') {\n    if (false) {",
+  "why": "🔴 THE CUTOVER BREAKER. The blanket exemption let a `pending` candidate — what a failed publish leaves behind — be rolled back to: the pointer moves to a version that was never live, its record stays pending because the transition also excludes rollback, and bootstrap then refuses the version it finds under the pointer.",
+  "slice": "d4p1sf"
+ },
+ {
+  "id": "d4p1sf-03",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-activation"
+  ],
+  "label": "🔴 the never-activated rollback is permitted end to end - reproduced through the real functions",
+  "kills_with": "A ROLLBACK ACTIVATED A VERSION THAT WAS NEVER LIVE",
+  "from": "    if (status !== 'activated') {\n      return { ok: false, code: 'flip_activation_rollback_not_activated',",
+  "to": "    if (String(status) === '\\u0000never') {\n      return { ok: false, code: 'flip_activation_rollback_not_activated',",
+  "why": "The same defect as d4p1sf-02 but scored through the REAL rollbackVersion against a real staged candidate, which is what proves the predicate is consulted on the production path rather than only by its unit cells.",
+  "slice": "d4p1sf"
+ },
+ {
+  "id": "d4p1sf-04",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-stamp"
+  ],
+  "label": "🔴 writeVersion accepts a missing baseline again - a recordless version becomes creatable",
+  "kills_with": "a version was written with no record of the baseline it was built against",
+  "from": "  if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)\n      || !Object.prototype.hasOwnProperty.call(baseline, 'version')\n      || !Number.isInteger(baseline.generation) || baseline.generation < 0) {\n    throw new Error(`write_version_no_baseline: ${rid} — a version must record the {version, generation} pair it was built against; got ${JSON.stringify(baseline)}. A version with no activation record cannot be proven to have been live, and retention is not proof.`);\n  }",
+  "to": "  if (false) { throw new Error('write_version_no_baseline: unreachable'); }",
+  "why": "With the requirement gone, `recordless` is a creatable state again — which is the state the predicate above must then refuse, and the pair of them is how D-2.2 and D-3.1 both arose. Scored end to end because the cells that stage a never-activated candidate depend on writeVersion writing the record. 🔴 The anchor is the WHOLE condition and its throw: my first attempt inserted `false &&` before a multi-line condition, which left unbalanced parentheses — the suite then died on a SyntaxError rather than on the property, which is a kill scored on a broken file. 🔴 It first SURVIVED against the activation suite: every caller there now supplies a baseline, so the guard never fires and the mutant changed nothing observable. The cell that actually drives a baseline-less call is in d4p1-stamp-write, which is where the requirement is asserted — the command is the difference between measuring the guard and measuring a suite that happens not to touch it.",
+  "slice": "d4p1sf"
+ },
+ {
+  "id": "d4p1sf-05",
+  "file": "catalog/catalog-publish.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ],
+  "label": "🔴 a claim is consumed by an activation that records nothing - F's restoreIdentity loses its input",
+  "kills_with": "the activation that retires the ids CONSUMES the claim",
+  "from": "    if (consumedIds && !(activation !== undefined && activation !== null && !isRollback)) {",
+  "to": "    if (false) {",
+  "why": "🔴 DECLARED EQUIVALENT — NO INPUT REACHES IT, and that is the point rather than an excuse. D-3.1 was real: consumption and the audit were independent, so a candidate with no activation record carried a deletion out and recorded nothing, losing the durable evidence Slice F's restoreIdentity reads. The fix closed the door UPSTREAM — writeVersion now requires a baseline so no recordless version is creatable, and the eligibility predicate refuses a recordless candidate BEFORE the flip reaches any write. Trace what would have to be true to reach this guard: consumption requires the consume policy (so not a rollback) and a declared claim, while an absent record now refuses earlier in the same transaction. There is no ordering of inputs that arrives here. It stays as defence in depth because the door that closes it is two checks in two functions, and the last four gate refusals were each about a guarantee that rested on something being unreachable. Recorded as equivalent rather than deleted, and rather than left in the count as a survivor that reads like weak coverage.",
+  "slice": "d4p1sf",
+  "equivalent": true
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",

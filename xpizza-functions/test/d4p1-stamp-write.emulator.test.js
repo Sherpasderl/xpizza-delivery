@@ -24,6 +24,11 @@ const { backfillIdentities } = require('../catalog/identity-backfill');
 const { lookupByLegacyKeys } = require('../catalog/identity-registry');
 const { getActivePointer } = require('../catalog/catalog-firestore');
 const { catalogSnapshot } = require('../catalog/generate-form-bundle');
+/* 🔴 EVERY VERSION STATES THE BASELINE IT WAS BUILT AGAINST (D-2 gate fix). writeVersion no longer
+   accepts an absent baseline: a version with no activation record cannot be proven to have been live,
+   and retention is not proof. These fixtures read the live pair rather than inventing one, because a
+   baseline chosen to satisfy the check is a fixture asserting against a world that does not exist. */
+const baselineOf = (d, r) => require('../catalog/catalog-firestore').getActivePointer(d, r);
 const readVersion = async (rid, versionId) => {
   const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
   const [rec, items, extras] = await Promise.all([vref.get(), vref.collection('menu_items').get(), vref.collection('extras').get()]);
@@ -35,7 +40,7 @@ const readVersion = async (rid, versionId) => {
   const { input } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'd4p1-stamp' });
 
   // ── 1. NO PLAN → PRE-P1 BEHAVIOUR, EXACTLY ──────────────────────────────────────────────────
-  const plain = await writeVersion(db, rid, input, admin.firestore.Timestamp.now());
+  const plain = await writeVersion(db, rid, { ...input, baseline: await baselineOf(db, rid) }, admin.firestore.Timestamp.now());
   const A = await readVersion(rid, plain.versionId || plain.version || plain);
   assert.ok(A.items.length > 0 && A.extras.length > 0, 'premise — a real version was written');
   assert.ok(A.items.every((i) => !i.display || i.display.identity_id === undefined),
@@ -56,7 +61,7 @@ const readVersion = async (rid, versionId) => {
     if (it && it.display) { it.display.identity_id = 'CLIENTFORGED'; forgedCount += 1; }
   }
   assert.ok(forgedCount > 0, 'premise — the input really does carry a client-supplied stamp');
-  const fv = await writeVersion(db, rid, forged, admin.firestore.Timestamp.now());
+  const fv = await writeVersion(db, rid, { ...forged, baseline: await baselineOf(db, rid) }, admin.firestore.Timestamp.now());
   const F = await readVersion(rid, fv.versionId || fv.version || fv);
   assert.ok(F.items.every((i) => !i.display || i.display.identity_id === undefined),
     '🔴 A CLIENT-SUPPLIED identity_id WAS WRITTEN AS THE STAMP — a field the merchant controls became certification');
@@ -114,7 +119,7 @@ const readVersion = async (rid, versionId) => {
   const bumped = JSON.parse(JSON.stringify(input));
   const firstKey = Object.keys(bumped.items)[0] !== undefined && Array.isArray(bumped.items) ? null : null;
   if (Array.isArray(bumped.items) && bumped.items.length) bumped.items[0].price += 1;
-  const moved = await writeVersion(db, rid, bumped, admin.firestore.Timestamp.now());
+  const moved = await writeVersion(db, rid, { ...bumped, baseline: await baselineOf(db, rid) }, admin.firestore.Timestamp.now());
   const C = await readVersion(rid, moved.versionId || moved.version || moved);
   assert.notStrictEqual(C.rec.content_hash, A.rec.content_hash,
     '🔴 SENSITIVITY: content_hash does not respond to a price change — it is not hashing content, so cell 3 proves nothing');
@@ -177,10 +182,16 @@ const readVersion = async (rid, versionId) => {
       /stamp_fence_moved/,
       '🔴 a stamp map bound to a baseline that is not live was frozen into an immutable version');
 
+    /* 🔴 THE REFUSAL MOVED EARLIER, AND THAT IS THE D-2 FIX. This asserted `stamp_fence_unbound` —
+       the stamp map refusing to be frozen without a baseline. writeVersion now refuses a missing
+       baseline for EVERY version, stamped or not, because a version with no activation record cannot
+       be proven to have been live and retention is not proof. So the same input is still refused, by
+       a check that fires before the stamp machinery is reached. Asserted under the new code rather
+       than loosened to match both: which guard refuses is the thing worth knowing. */
     await assert.rejects(
       () => writeVersion(db, rid, { ...input, stamps }, admin.firestore.Timestamp.now()),
-      /stamp_fence_unbound/,
-      '🔴 a stamped version was written with no record of the baseline its ids were resolved against');
+      /write_version_no_baseline/,
+      '🔴 a version was written with no record of the baseline it was built against');
 
     /* 🔴 AND AN EMPTY MAP IS NOT A CERTIFICATION — the second lock, at the write point. deriveStampMap
        returns null for an unstamped draft, so production never sends one; but writeVersion is
