@@ -30,3 +30,21 @@ If a dispatcher **manually** cancels at the same instant the auto-refund fires, 
 
 ## Then
 Advisor re-runs the codex money-gate on the v3 diff → owner deploys (functions-only, off `1e0ec32`). Confirm D3's disposition with the owner before finalizing scope.
+
+---
+
+## UPDATE — v3 (`bf80f2c`) built + gated → REVISE again (2026-09-21)
+
+The advisor built v3 (at owner's "finish it here"): at-least-once via `paid_after_close_refund_sent_at` + a `refundReconciler` notification-recovery branch + the pure `paid-after-close-notify.js` core (9 tests). Codex money-gate → **not approved; one BLOCKING defect + fail-safe gaps.** Money-inert re-confirmed (materialize-guard byte-identical); normal-case double stays fixed.
+
+### 🔴 BLOCKING — `sent_at` set on an UNCONFIRMED send (false success → permanent silent refund)
+`whatsapp.sendMessage` returns `{}` (truthy) on HTTP success even when the provider body is unreadable/unconfirmed (`whatsapp.js:137`). The sender treats **any non-null** result as success and stamps `paid_after_close_refund_sent_at` (`index.js:~1979`). So an unconfirmed send permanently disables recovery → the customer can be permanently un-notified — the exact silent-refund the change exists to prevent, via a false-positive success signal.
+**Fix:** require POSITIVE provider acceptance before stamping `sent_at` (inspect the provider response for a real accepted/queued signal, not merely non-null). Until confirmed, leave `sent_at` unset so the sweep re-drives.
+
+### Secondary
+- **Missing-phone / whatsapp-disabled early exits** omit the durable unresolved marker (`index.js:~1971`) — record state so a phone-less/disabled order is visible and doesn't silently churn recovery forever.
+- **Fail-safe coercion (`paid-after-close-notify.js:27`):** `now - (Number.isFinite(refundedAt)?refundedAt:now)` — `Number(null|''|false)===0` is finite → treated as epoch-0 → huge age → wrongly ELIGIBLE. Intent was conservative-skip on unknown age. Use a stricter parse (only a real finite positive ms counts; else skip). Add null/''/false + exact 120000/120001 boundary tests.
+- **Coverage (gate REQUIRES for merge):** a composition test — DB emulator + MOCKED provider — covering finalize→crash→sweep recovery, failed-send re-drive, marker-write failure, dedupe across finalize+sweep, and a malformed/unconfirmed provider response. Pure predicates + money-inert diffs do not prove truthful send-confirmation.
+
+### Direction for the executor build (v4)
+Build TDD from the composition test. Keep the at-least-once contract + D3-accepted. The load-bearing correctness is **truthful send-confirmation**: `sent_at` must mean "the provider actually accepted it," never "the HTTP call returned." That single property is what makes at-least-once real.
