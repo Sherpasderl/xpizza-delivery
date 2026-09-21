@@ -46,6 +46,21 @@
 //     `flip_claim_needs_draft_cas` (catalog-publish.js). Refusing is the safe direction: the
 //     alternative is a publish that carries out the deletion, reports success, and leaves the
 //     declaration standing to be replayed against the next baseline.
+//
+// 🔴 RUNBOOK — PRE-FLIGHT BEFORE THIS PASS RUNS. Assert every restaurant's active_version document is
+// either genuinely ABSENT or carries a valid string version. Since E-1a a document that EXISTS and
+// names no version is a FAULT on every read path, including the customer menu — correct, because only
+// the flip writes that document and it always writes a version, so a versionless one is a partial
+// write and reading it as "unpublished" would let a first publish's CAS overwrite whatever is live.
+// 🔴 AND IT IS NOT SELF-HEALING. A versionless pointer refuses on READ and on PUBLISH — the draft
+// partition reads it through the same shared reader before anything else runs — so "just publish
+// again" leaves an operator stuck. The repair is to DELETE the document, which is the genuine
+// "nothing published" state, after which a first publish succeeds. Asserted in
+// test/catalog-versioned.emulator.test.js, not just described here.
+//   npm run preflight:pointers --project xpizza-delivery
+// Checked against production on 2026-09-20: both brands carry a valid version and NO generation field
+// at all — absent, which reads as pre-P1 zero exactly as designed — so no live restaurant is in the
+// fault state today. Run it again before the cutover rather than trusting that.
 // ---------------------------------------------------------------------------
 const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 const { legacyKeyOf } = require('./identity-backfill');

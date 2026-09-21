@@ -376,6 +376,24 @@ const inputsFor = (rid, over = {}) => {
       return true;
     });
 
+    /* 🔴 AND THE GENERATION FAULT REACHES THE SAME ALARM. E-1a gave the two pointer faults separate
+       names — the version keeps the established one, the generation gets its own, because a name that
+       does not say which field sends an operator to read the whole document. The question that
+       leaves is whether the NEW name is alarmed on at all, or only the old one. It is: the menu path
+       wraps the reader in coded('active_version_unreadable', …), which tags ANY throw with the same
+       branchable outer code and keeps the specific reason in the message. Asserted rather than
+       assumed — a new fault name that no alarm path carries is a fault nobody sees. */
+    const { db: gdb, rid: rid3 } = await freshShop('x_pizza');
+    await gdb.collection('restaurants').doc(rid3).collection('meta').doc('active_version')
+      .set({ version: 'v-real', generation: '0' });
+    await assert.rejects(() => getRestaurantMenu(gdb, rid3), (e) => {
+      assert.strictEqual(e.code, 'active_version_unreadable',
+        `🔴 an unusable GENERATION is not branchable as a pointer fault, got ${e.code} — the alarm path would not recognise it`);
+      assert.match(e.message, /active_pointer_malformed/,
+        '🔴 …and the specific reason must survive for the log, or an operator sees "unreadable" with no field named');
+      return true;
+    });
+
     // 🔴 AND A FOREIGN CODE IS NOT A TYPED ONE. A Firestore rejection arrives carrying `code` already
     // — 14 for UNAVAILABLE — so "does it have a code?" is the wrong question and would have passed
     // the SDK's vocabulary straight through to a caller branching on ours. The marker, not the

@@ -31,6 +31,7 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "deploy": "firebase deploy --only functions",
+    "preflight:pointers": "node tools/preflight-pointers.js",
     "sync:rules": "node -e \"require('fs').copyFileSync('../xpizza-reference/database.rules.json','database.rules.json')\"",
     "check:rules": "npm run sync:rules && node scripts/assert-rules-synced.js && node restaurants-rules.guard.test.js && node pickup-ready-rules.guard.test.js && node counters-rules.guard.test.js && node user-auth-rules.guard.test.js",
     "test:rules": "node tools/emulator-run.js --only database \"node test/restaurants-rules.emulator.test.js\"",

@@ -174,6 +174,30 @@ const buildReader = (codeMap = null) => {
     await pointerRef('malformed_shop').set({ oops: true });
     await assert.rejects(() => getRestaurantDocs(db, 'malformed_shop'), /active_version_malformed/);
     ok('ERROR (c): malformed pointer (no version field) → THROW (never silently falls to flat)');
+
+    /* ── 🔴 (c2) AND THE RECOVERY PATH, BECAUSE "RECOVERABLE" IS THE WHOLE JUSTIFICATION ────────
+       E-1a made a pointer document that EXISTS but names no version a FAULT rather than "nothing
+       published yet" — the reasoning being that only the flip writes that document and it always
+       writes a version, so a versionless one is a partial write, and reading it as an unpublished
+       restaurant lets a FIRST publish's CAS overwrite whatever is really live.
+       🔴 I TOLD THE ADVISOR A FIRST PUBLISH COULD THEN OVERWRITE IT, AND THAT IS WRONG. Driven here
+       rather than reasoned: the publish ALSO refuses, because assertDraftPartition reads the pointer
+       through the same shared reader before anything else happens. The real recovery is to DELETE the
+       document, which is the genuine "nothing published" state. That is a materially different
+       runbook instruction — "publish again" would leave an operator stuck — so it is asserted, not
+       described. */
+    await pointerRef('recover_shop').set({ generation: 0 });
+    await assert.rejects(() => getRestaurantDocs(db, 'recover_shop'), /active_version_malformed/,
+      'a versionless pointer refuses on READ');
+    await assert.rejects(
+      () => publishVersion(db, 'recover_shop', mkVersion({ A: 1 }), { expected: { activeVersionId: null } }),
+      /active_version_malformed/,
+      '🔴 …and refuses on PUBLISH too — an operator told to "just publish again" would be stuck, because the draft partition reads the pointer through the same shared reader before anything else runs');
+    await pointerRef('recover_shop').delete();
+    await publishVersion(db, 'recover_shop', mkVersion({ A: 1 }), { expected: { activeVersionId: null } });
+    const healed = await baselineOf(db, 'recover_shop');
+    assert.ok(healed.version, '🔴 deleting the document did NOT restore publishability — then the fault would be unrecoverable, which is not a trade worth making for a read that would otherwise be silently degraded');
+    ok('RECOVERY: a versionless pointer refuses on read AND on publish; DELETING the document is what restores it — the runbook instruction is "delete", not "republish"');
     // (c') pointer → MISSING version → THROW
     await pointerRef('dangling_shop').set({ version: 'ghost', at: FieldValue.serverTimestamp() });
     await assert.rejects(() => getRestaurantDocs(db, 'dangling_shop'), /version_missing/);
