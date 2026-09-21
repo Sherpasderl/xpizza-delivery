@@ -52,16 +52,18 @@ const pickerJs = html.slice(openIdx, closeEnd);
   ok('overlay is role=dialog, aria-modal, labelled by #picker-title');
 }
 
-// FEATURE 2 — focus is moved IN on open and RESTORED on close
+// FEATURE 2 — focus is moved IN on open and RESTORED (to a re-resolved, visible target) on close
 {
   assert.match(pickerJs, /pickerOpener\s*=\s*document\.activeElement/, 'captures opener at top of openPicker');
   // focus moves into the list (first row) or the cancel button on open
   assert.match(pickerJs, /querySelector\('\.picker-row'\)\s*\|\|\s*\$\('picker-cancel-btn'\)/, 'first-focusable = first row else cancel');
   assert.match(pickerJs, /firstFocusable\.focus\(/, 'focus() moved into dialog on open');
-  // restore in closePicker
-  assert.match(pickerJs, /opener\.focus\(\)/, 'closePicker restores focus to opener');
+  // restore in closePicker goes through the stable-identity resolver (NOT a raw stale node)
+  assert.match(pickerJs, /const returnOrderId = pickerOrderId;/, 'orderId captured before closePicker resets');
+  assert.match(pickerJs, /pickerReturnFocusTarget\(opener, returnOrderId, document\)/, 'closePicker resolves a visible return target');
+  assert.doesNotMatch(pickerJs, /if \(opener && typeof opener\.focus === 'function'\) opener\.focus\(\)/, 'no longer focuses the raw (possibly detached) opener node');
   assert.match(pickerJs, /pickerOpener\s*=\s*null/, 'opener reference cleared on close');
-  ok('focus captured on open, moved into dialog, restored to opener on close');
+  ok('focus captured on open, moved into dialog, restored via re-resolved visible target on close');
 }
 
 // FEATURE 3 — reduced-motion: focus is non-scrolling under prefers-reduced-motion
@@ -101,7 +103,11 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.doesNotMatch(html, /\.picker-row\.disabled\s*\{[^}]*opacity/, 'old .picker-row.disabled opacity rule removed');
   assert.doesNotMatch(html, /\.picker-row[^{]*\{[^}]*pointer-events:\s*none/, 'no pointer-events:none on picker rows');
   assert.doesNotMatch(html, /\.picker-row\.needs-confirm[^{]*\{[^}]*cursor:\s*not-allowed/, 'needs-confirm never cursor:not-allowed');
-  ok('needs-confirm amber warning replaces fake-disabled; row stays clickable');
+  // the row <button> must NEVER carry a `disabled` attribute (that would truly block the click + confirm override)
+  const btnOpen = pickerJs.match(/<button type="button" class="picker-row[\s\S]*?>/);
+  assert.ok(btnOpen, 'row button open-tag located');
+  assert.doesNotMatch(btnOpen[0], /\sdisabled(\s|=|>)/, 'row button has no disabled attribute');
+  ok('needs-confirm amber warning replaces fake-disabled; row stays clickable (no disabled attr)');
 }
 
 // FEATURE 6 — Esc + focus trap, guarded on pickerOpen, scoped to the overlay
@@ -124,7 +130,11 @@ const pickerJs = html.slice(openIdx, closeEnd);
   const anchors = [
     ['CAS freeze',            'pickerFromDriver = allTasks[`${orderId}_delivery`]?.assigned_driver_id ?? null;'],
     ['requireConfirm policy', 'const requireConfirm = full || enRoute || unreachable;'],
-    ['ordersByDriver count',  "if (t.status === 'completed' || t.status === 'cancelled') return;"],
+    ['ordersByDriver skip terminal', "if (t.status === 'completed' || t.status === 'cancelled') return;"],
+    ['distinct-driver set init', 'if (!ordersByDriver[t.assigned_driver_id]) ordersByDriver[t.assigned_driver_id] = new Set();'],
+    ['distinct-order add',    'if (t.order_id) ordersByDriver[t.assigned_driver_id].add(t.order_id);'],
+    ['orderCount = set.size',  'const orderCount = ordersByDriver[uid] ? ordersByDriver[uid].size : 0;'],
+    ['full = count >= 2',     'const full = orderCount >= 2;'],
     ['confirm() full',        "if (!confirm('Este repartidor ya tiene 2 pedidos (al límite). ¿Asignar de todas formas?')) return;"],
     ['confirm() en-route',    "if (!confirm('Este repartidor ya salió a entregar (en camino). ¿Asignar de todas formas?')) return;"],
     ['confirm() unreachable', "if (!confirm('Este repartidor no tiene notificaciones activadas. ¿Asignar de todas formas?')) return;"],
@@ -184,6 +194,81 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.ok(!escapedAttr.includes('"'), 'no raw double-quote survives (cannot break out of the attribute)');
   assert.match(escapedAttr, /&quot;/, 'quote entity-encoded');
   ok('escapeHtml (from source) neutralises hostile name in the aria-label attribute sink');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BEHAVIORAL (executable) — focus RESTORATION survives the board's re-render.
+// The gate's real bug: the board re-renders on a ~5s timer → the opener node is DETACHED → restoring to the
+// raw node is a no-op ("focus nowhere"). Extract pickerReturnFocusTarget and drive it with a fake DOM.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const m = html.match(/function pickerReturnFocusTarget\(opener, orderId, doc\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(m, 'pickerReturnFocusTarget source located');
+  // eslint-disable-next-line no-new-func
+  const resolve = new Function('CSS', `${m[0]}; return pickerReturnFocusTarget;`)(undefined);
+
+  const el = (props) => ({ isConnected: true, offsetParent: {}, focus() {}, ...props });
+  // A fake document keyed by a small selector → element map.
+  const fakeDoc = (map, byId) => ({
+    querySelector: (sel) => (sel in map ? map[sel] : null),
+    getElementById: (id) => (byId && id in byId ? byId[id] : null),
+  });
+
+  // (a) THE BUG: opener detached by a re-render; a fresh trigger for the same order now exists → resolve the
+  //     fresh trigger, NOT the detached opener, NOT nothing.
+  {
+    const detachedOpener = el({ isConnected: false, offsetParent: null });
+    const freshTrigger = el({});
+    const doc = fakeDoc({ '[data-assign-order="O1"]': freshTrigger });
+    const r = resolve(detachedOpener, 'O1', doc);
+    assert.notStrictEqual(r.el, detachedOpener, 'does NOT return the detached opener');
+    assert.strictEqual(r.el, freshTrigger, 'returns the re-rendered visible trigger');
+    assert.strictEqual(r.el.isConnected, true, 'return target is attached');
+    assert.ok(r.el.offsetParent != null, 'return target is visible');
+  }
+  // (b) unreachable opener (detached) AND the order is entirely gone (assigned/cancelled) → fall back to the
+  //     stable board landmark; NEVER null/nowhere while the landmark exists.
+  {
+    const detachedOpener = el({ isConnected: false, offsetParent: null });
+    const landmark = el({});
+    const doc = fakeDoc({}, { 'unassigned-group': landmark });
+    const r = resolve(detachedOpener, 'GONE', doc);
+    assert.strictEqual(r.el, landmark, 'falls back to #unassigned-group landmark');
+    assert.strictEqual(r.temp, true, 'landmark flagged temp (needs tabindex to receive focus)');
+  }
+  // (b2) detail-modal reassign: opener is a HIDDEN button (offsetParent null but still connected) → rejected;
+  //      re-query finds the visible reassign trigger.
+  {
+    const hiddenOpener = el({ offsetParent: null });   // inside a display:none modal
+    const reassignTrigger = el({});
+    const doc = fakeDoc({ '[data-reassign-order="O2"]': reassignTrigger });
+    const r = resolve(hiddenOpener, 'O2', doc);
+    assert.strictEqual(r.el, reassignTrigger, 'hidden opener rejected → visible reassign trigger used');
+  }
+  // (c) happy path: opener still attached+visible (no re-render) → keep it.
+  {
+    const opener = el({});
+    const r = resolve(opener, 'O3', fakeDoc({}));
+    assert.strictEqual(r.el, opener, 'attached+visible opener is preserved');
+    assert.strictEqual(r.temp, false, 'real button never flagged temp');
+  }
+  ok('pickerReturnFocusTarget: detached/hidden opener → re-resolved visible trigger / landmark, never nowhere');
+}
+
+// BEHAVIORAL (executable) — Tab focus-trap wraps BOTH directions.
+{
+  const m = html.match(/function focusTrapTarget\(shiftKey, active, focusables\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(m, 'focusTrapTarget source located');
+  // eslint-disable-next-line no-new-func
+  const trap = new Function(`${m[0]}; return focusTrapTarget;`)();
+  const a = 'A', b = 'B', c = 'C';
+  const list = [a, b, c];
+  assert.strictEqual(trap(false, c, list), a, 'forward Tab at LAST wraps → first');
+  assert.strictEqual(trap(true, a, list), c, 'backward Shift-Tab at FIRST wraps → last');
+  assert.strictEqual(trap(false, b, list), null, 'Tab in the middle → browser default (null)');
+  assert.strictEqual(trap(true, b, list), null, 'Shift-Tab in the middle → browser default (null)');
+  assert.strictEqual(trap(false, a, []), null, 'empty list → null');
+  ok('focusTrapTarget: Tab AND Shift-Tab wrap at both ends; interior/empty → default');
 }
 
 console.log(`\ndispatch-picker-a11y: OK (${n} groups)`);

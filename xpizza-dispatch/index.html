@@ -4812,8 +4812,47 @@ function updateCustomerMarkers() {
 // ============================================================
 // Driver picker (assignment overlay)
 // ============================================================
+
+// a11y: choose where focus returns when the picker closes. "Restore document.activeElement" is UNSAFE on this
+// board — renderUnassignedSection() replaces #unassigned-list's innerHTML on a ~5s tick (DETACHING the opener
+// button), and the detail-modal reassign entry (:4534) HIDES its modal before openPicker captures focus. So:
+// prefer the original opener ONLY while it's still attached+visible; else re-query the CURRENT visible trigger
+// for this order by stable identity (data-assign-order / data-reassign-order); else the order's card; else a
+// stable board landmark (#unassigned-group). Never a detached/hidden node, never nowhere. Returns
+// { el, temp }: temp=true means el is non-interactive and needs a tabindex=-1 to receive programmatic focus.
+// Pure (doc injected) so it's unit-testable without a live DOM.
+function pickerReturnFocusTarget(opener, orderId, doc) {
+  doc = doc || document;
+  const attachedVisible = (el) => !!el && el.isConnected !== false && el.offsetParent != null;
+  const focusable = (el) => attachedVisible(el) && typeof el.focus === 'function';
+  if (focusable(opener)) return { el: opener, temp: false };
+  if (orderId != null && typeof doc.querySelector === 'function') {
+    const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(String(orderId)) : String(orderId);
+    for (const q of [`[data-assign-order="${sel}"]`, `[data-reassign-order="${sel}"]`]) {
+      let el = null; try { el = doc.querySelector(q); } catch (_) {}
+      if (focusable(el)) return { el, temp: false };
+    }
+    let card = null; try { card = doc.querySelector(`.ord[data-order-id="${sel}"]`); } catch (_) {}
+    if (attachedVisible(card)) return { el: card, temp: true };
+  }
+  const landmark = typeof doc.getElementById === 'function' ? doc.getElementById('unassigned-group') : null;
+  if (attachedVisible(landmark)) return { el: landmark, temp: true };
+  return { el: null, temp: false };
+}
+
+// Pure focus-trap decision: on Tab / Shift-Tab at `active` within `focusables` (document order), return the
+// element focus should move to (wrapping at BOTH ends), or null to let the browser advance normally. Testable.
+function focusTrapTarget(shiftKey, active, focusables) {
+  if (!focusables || focusables.length === 0) return null;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (shiftKey && active === first) return last;   // backward wrap: first → last
+  if (!shiftKey && active === last) return first;  // forward wrap:  last  → first
+  return null;
+}
+
 function openPicker(orderId, isReassign = false) {
-  // a11y: remember who opened the picker so closePicker() can restore focus there (keyboard/SR users).
+  // a11y: remember who opened the picker (first-choice return target if it's still attached+visible on close).
   pickerOpener = document.activeElement;
   pickerOpen = true;
   pickerOrderId = orderId;
@@ -4945,15 +4984,22 @@ function openPicker(orderId, isReassign = false) {
 }
 
 function closePicker() {
+  const returnOrderId = pickerOrderId;   // capture BEFORE the resets — needed to re-find the current trigger
   pickerOpen = false;
   pickerOrderId = null;
   pickerIsReassign = false;
   pickerFromDriver = null;
   $('picker-overlay').classList.add('hidden');
-  // a11y: restore focus to whatever opened the picker (the "Asignar"/"Reasignar" button).
+  // a11y: restore focus to a VISIBLE, attached target for EVERY dismissal path (Enter/click-assign, Cancel,
+  // backdrop, Esc). The board re-renders on a timer, so the raw opener node may be detached — resolve the
+  // current visible trigger for this order (or the card / a board landmark) instead of a stale node.
   const opener = pickerOpener;
   pickerOpener = null;
-  if (opener && typeof opener.focus === 'function') opener.focus();
+  const { el, temp } = pickerReturnFocusTarget(opener, returnOrderId, document);
+  if (el) {
+    if (temp && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    try { el.focus(); } catch (_) {}
+  }
 }
 
 $('picker-cancel-btn').addEventListener('click', closePicker);
@@ -4975,15 +5021,10 @@ $('picker-overlay').addEventListener('keydown', (e) => {
   }
   if (e.key === 'Tab') {
     const focusables = [...$('picker-overlay').querySelectorAll('button:not([disabled])')];
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
+    const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+    if (target) {
       e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
+      target.focus();
     }
     return;
   }
