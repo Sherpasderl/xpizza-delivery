@@ -610,9 +610,31 @@ function displayLabel(id, order){
 // desktop correctly attributes.
 // NOT a replacement for board-model's assignedDriverId(): that one keys on the _delivery task by
 // design and drives isUnassignedDelivery/canReassign, i.e. the assignment CAS. It stays untouched.
-function displayDriverId(id){
+function displayDriverId(id, order){
   const dt = STORE.tasks[`${id}_delivery`], pt = STORE.tasks[`${id}_pickup`];
-  return (dt && dt.assigned_driver_id) || (pt && pt.assigned_driver_id) || null;
+  const byKey = (dt && dt.assigned_driver_id) || (pt && pt.assigned_driver_id);
+  if (byKey) return byKey;
+  // Key convention failed. Stop trusting `<id>_pickup` / `<id>_delivery` and search the tasks by
+  // their OWN order_id field — every task carries it (createOrderWithTasks writes it). This is
+  // robust to any id scheme, to orders created by a path that names tasks differently, and to
+  // extra task types. O(tasks) but only on sheet/pass render, and only when the key lookup missed.
+  const oid = (order && order.order_id) || id;
+  for (const t of Object.values(STORE.tasks)) {
+    if (t && t.order_id === oid && t.assigned_driver_id) return t.assigned_driver_id;
+  }
+  return null;
+}
+// Same fallback for the tasks themselves, so the timeline finds them too.
+function tasksFor(id, order){
+  let dt = STORE.tasks[`${id}_delivery`] || null, pt = STORE.tasks[`${id}_pickup`] || null;
+  if (dt && pt) return { dt, pt };
+  const oid = (order && order.order_id) || id;
+  for (const t of Object.values(STORE.tasks)) {
+    if (!t || t.order_id !== oid) continue;
+    if (!dt && t.type === 'delivery') dt = t;
+    if (!pt && t.type === 'pickup') pt = t;
+  }
+  return { dt, pt };
 }
 const hhmm = (ts) => {
   if (!Number.isFinite(ts)) return '';
@@ -626,11 +648,15 @@ const hhmm = (ts) => {
 // The order's real history, mirroring the desktop timeline (xpizza-dispatch/index.html:4400-4417).
 // Only events that actually happened are listed; nothing is inferred.
 function timelineHTML(orderId, order){
-  const pt = STORE.tasks[`${orderId}_pickup`], dt = STORE.tasks[`${orderId}_delivery`];
+  const { dt, pt } = tasksFor(orderId, order);
+  const hasDrv = !!displayDriverId(orderId, order);
   const ev = [];
   const push = (label, ts) => { if (Number.isFinite(ts)) ev.push({ label, ts }); };
   push('Pedido recibido', order.created_at);
-  push('Repartidor asignado', (pt && (pt.assigned_at || pt.created_at)));
+  // Only claim an assignment happened when one did. The desktop falls back to the pickup task's
+  // created_at, which stamps "Repartidor asignado" at task CREATION even when nobody was ever
+  // assigned — the same class of fabrication as reading created_at as a delivery time.
+  push('Repartidor asignado', pt && (pt.assigned_at || (hasDrv ? pt.created_at : undefined)));
   push('Repartidor aceptó', pt && pt.accepted_at);
   push('Recogido en restaurante', order.picked_up_at || (pt && pt.completed_at));
   push('Entregado', order.delivered_at || (dt && dt.completed_at));
@@ -677,7 +703,7 @@ const minutesOf = (o) => Math.floor(agingSeconds(agingBaselineMs(o), Date.now())
 // tasks/<id>_delivery/completed_at in one atomic update, so either proves a real delivery — and a
 // path that stamps only the task still yields a true time. Still never falls back to created_at.
 const finishedAt = (o, id) => {
-  const dt = id ? (STORE.tasks[`${id}_delivery`] || null) : null;
+  const dt = id ? tasksFor(id, o).dt : null;
   const t = [o && o.delivered_at, o && o.completed_at, dt && dt.completed_at].find(v => Number.isFinite(v));
   return Number.isFinite(t) ? t : 0;
 };
@@ -801,7 +827,7 @@ function passHTML(id, order){
   // LIVE: the delivery task is the truth — it is what the assignment CAS keys on, so showing a
   // pickup-task driver here would contradict the "Sin repartidor" chip beside it.
   // DONE: the question changes to "who delivered this", so read either task, like the desktop.
-  const drvId = done ? displayDriverId(id) : assignedDriverId(id, STORE.tasks);
+  const drvId = done ? displayDriverId(id, order) : assignedDriverId(id, STORE.tasks);
   const d = drvId ? (STORE.drivers[drvId] || {}) : null;
   const isOpen = openPass === id;
   const isProg = order.status === 'scheduled';
@@ -1119,7 +1145,7 @@ function openDetail(orderId){
   const isScheduled = order.status === 'scheduled' || (!!STORE.scheduled[orderId] && !STORE.orders[orderId]);
   const isDoneOrder = sectionForOrder(order) === 'completados';
   // Same split as the pass: either task once it is finished, delivery task while it is live.
-  const drvId = isDoneOrder ? displayDriverId(orderId) : assignedDriverId(orderId, STORE.tasks);
+  const drvId = isDoneOrder ? displayDriverId(orderId, order) : assignedDriverId(orderId, STORE.tasks);
   const d = drvId ? (STORE.drivers[drvId] || {}) : null;
   const actionable = canReassign(order, orderId, STORE.tasks);   // action: board-model's predicate, unchanged
   const lv = levelOf(orderId, order);
