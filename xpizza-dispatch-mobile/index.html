@@ -283,6 +283,12 @@
   .pstep s{ margin-top:10px; font-size:10.5px; font-weight:700; color:var(--ink3); text-decoration:none; text-align:center }
   .pstep.act s{ color:var(--ink) }
 
+  .tl{ display:flex; align-items:baseline; gap:12px; padding:9px 0; position:relative }
+  .tl::before{ content:""; position:absolute; left:4.5px; top:16px; bottom:-9px; width:1.5px; background:var(--hair) }
+  .tl.last::before{ display:none }
+  .tl-dot{ flex:0 0 auto; width:10px; height:10px; border-radius:50%; background:var(--violet-solid); margin-top:5px }
+  .tl-l{ flex:1 1 auto; font-size:15.5px; letter-spacing:-.2px }
+  .tl-t{ flex:0 0 auto; font-size:15px; font-weight:600; color:var(--ink2) }
   .dl-item{ display:flex; gap:12px; align-items:baseline; padding:3px 0 }
   .dl-qty{ font-size:15.5px; font-weight:700; color:var(--ink3); min-width:26px }
   .dl-item span{ font-size:16.5px; letter-spacing:-.3px }
@@ -597,6 +603,48 @@ function displayLabel(id, order){
   const s = id != null ? String(id) : '';
   return s ? '#' + s.slice(-4).toUpperCase() : '#—';
 }
+// DISPLAY-ONLY driver resolution, mirroring the desktop's order-detail modal
+// (xpizza-dispatch/index.html:4314): the driver lives on EITHER task, and assignOrderToDriver sets
+// both — but a path that stamps only the pickup task still identifies who took the order. The
+// phone was reading _delivery alone, which is why it said "Sin repartidor asignado" for orders the
+// desktop correctly attributes.
+// NOT a replacement for board-model's assignedDriverId(): that one keys on the _delivery task by
+// design and drives isUnassignedDelivery/canReassign, i.e. the assignment CAS. It stays untouched.
+function displayDriverId(id){
+  const dt = STORE.tasks[`${id}_delivery`], pt = STORE.tasks[`${id}_pickup`];
+  return (dt && dt.assigned_driver_id) || (pt && pt.assigned_driver_id) || null;
+}
+const hhmm = (ts) => {
+  if (!Number.isFinite(ts)) return '';
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: TZ_HN, hour:'numeric', minute:'2-digit', hour12:true })
+      .formatToParts(new Date(ts))
+      .reduce((a, p) => p.type === 'dayPeriod' ? a + ' ' + p.value.toUpperCase().replace(/[^APM]/g, '')
+                      : (p.type === 'literal' && p.value === ' ' ? a : a + p.value), '');
+  } catch { return ''; }
+};
+// The order's real history, mirroring the desktop timeline (xpizza-dispatch/index.html:4400-4417).
+// Only events that actually happened are listed; nothing is inferred.
+function timelineHTML(orderId, order){
+  const pt = STORE.tasks[`${orderId}_pickup`], dt = STORE.tasks[`${orderId}_delivery`];
+  const ev = [];
+  const push = (label, ts) => { if (Number.isFinite(ts)) ev.push({ label, ts }); };
+  push('Pedido recibido', order.created_at);
+  push('Repartidor asignado', (pt && (pt.assigned_at || pt.created_at)));
+  push('Repartidor aceptó', pt && pt.accepted_at);
+  push('Recogido en restaurante', order.picked_up_at || (pt && pt.completed_at));
+  push('Entregado', order.delivered_at || (dt && dt.completed_at));
+  push('Cancelado', order.cancelled_at);
+  ev.sort((a, b) => a.ts - b.ts);
+  if (!ev.length) return '';
+  return `<div class="panel" style="padding:6px 16px 10px">${ev.map((e, i) => `
+    <div class="tl${i === ev.length - 1 ? ' last' : ''}">
+      <span class="tl-dot"></span>
+      <span class="tl-l">${escapeHtml(e.label)}</span>
+      <span class="tl-t num">${escapeHtml(hhmm(e.ts))}</span>
+    </div>`).join('')}</div>`;
+}
+
 function doneClock(order, id){
   const t = finishedAt(order, id);   // display: never guess a time we do not have
   if (!t) return '';
@@ -750,7 +798,10 @@ function passHTML(id, order){
   const lv = levelOf(id, order);
   const done = lv === 'done';
   const m = minutesOf(order);
-  const drvId = assignedDriverId(id, STORE.tasks);
+  // LIVE: the delivery task is the truth — it is what the assignment CAS keys on, so showing a
+  // pickup-task driver here would contradict the "Sin repartidor" chip beside it.
+  // DONE: the question changes to "who delivered this", so read either task, like the desktop.
+  const drvId = done ? displayDriverId(id) : assignedDriverId(id, STORE.tasks);
   const d = drvId ? (STORE.drivers[drvId] || {}) : null;
   const isOpen = openPass === id;
   const isProg = order.status === 'scheduled';
@@ -1066,9 +1117,11 @@ function openDetail(orderId){
   const order = STORE.orders[orderId] || STORE.scheduled[orderId];
   if (!order) return;
   const isScheduled = order.status === 'scheduled' || (!!STORE.scheduled[orderId] && !STORE.orders[orderId]);
-  const drvId = assignedDriverId(orderId, STORE.tasks);
+  const isDoneOrder = sectionForOrder(order) === 'completados';
+  // Same split as the pass: either task once it is finished, delivery task while it is live.
+  const drvId = isDoneOrder ? displayDriverId(orderId) : assignedDriverId(orderId, STORE.tasks);
   const d = drvId ? (STORE.drivers[drvId] || {}) : null;
-  const actionable = canReassign(order, orderId, STORE.tasks);
+  const actionable = canReassign(order, orderId, STORE.tasks);   // action: board-model's predicate, unchanged
   const lv = levelOf(orderId, order);
   const m = minutesOf(order);
   const slot = isScheduled && Number(order.scheduled_for) ? slotLabelSafe(order.scheduled_for) : '';
@@ -1117,6 +1170,7 @@ function openDetail(orderId){
       </div>
     </div>
     <div style="margin-top:20px">${pipeHTML(order)}</div>
+    ${timelineHTML(orderId, order) ? `<div style="height:12px"></div>${timelineHTML(orderId, order)}` : ''}
     <div class="grid2" style="margin-top:10px">
       <div class="fact"><s>Total</s><b class="num">L ${escapeHtml(Number(order.total || 0).toFixed(2))}</b></div>
       <div class="fact"><s>Estado</s><b>${escapeHtml(isScheduled ? 'Programado' : (SECTION_LABELS[sectionForOrder(order)] || '—'))}</b></div>
