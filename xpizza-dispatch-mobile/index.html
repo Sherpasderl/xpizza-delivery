@@ -598,7 +598,7 @@ function displayLabel(id, order){
   return s ? '#' + s.slice(-4).toUpperCase() : '#—';
 }
 function doneClock(order){
-  const t = completedAt(order);
+  const t = finishedAt(order);   // display: never guess a time we do not have
   if (!t) return '';
   try {
     return new Intl.DateTimeFormat('en-US', { timeZone:'America/Tegucigalpa', hour:'numeric', minute:'2-digit', hour12:true })
@@ -620,11 +620,18 @@ const slotLabelSafe = (ms) => { try { return slotLabel(Number(ms), Date.now()); 
 const minutesOf = (o) => Math.floor(agingSeconds(agingBaselineMs(o), Date.now()) / 60);
 // When an order actually finished. delivered_at is stamped on delivery completion
 // (xpizza-delivery.js completeTask); pickups fall back through picked_up_at to created_at.
-const completedAt = (o) => {
-  const t = [o && o.delivered_at, o && o.completed_at, o && o.picked_up_at, o && o.created_at]
-    .find(v => Number.isFinite(v));
+// TWO different questions, deliberately not the same function.
+// finishedAt: when the order ACTUALLY finished. Only a real completion stamp counts.
+// completeTask() writes delivered_at; the KDS close (xpizza-kitchen setOrderStatus(id,'completed'))
+// writes ONLY { status } and stamps nothing — so a KDS-closed order has no finish time and we must
+// not invent one. Falling back to created_at here relabelled "placed at 2:35" as "delivered at 2:35".
+const finishedAt = (o) => {
+  const t = [o && o.delivered_at, o && o.completed_at].find(v => Number.isFinite(v));
   return Number.isFinite(t) ? t : 0;
 };
+// sortKey: ordering only, where an approximate key is fine and every order needs one.
+const completedAt = (o) => finishedAt(o) || (Number.isFinite(o && o.picked_up_at) ? o.picked_up_at : 0)
+  || (Number.isFinite(o && o.created_at) ? o.created_at : 0);
 
 const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:'Listos', camino:'En camino', completados:'Completados' };
 const STATUS_ES = { nuevos:'en cocina', preparacion:'en cocina', listos:'listo', camino:'en camino', completados:'entregado' };
@@ -1083,7 +1090,7 @@ function openDetail(orderId){
          <span style="width:44px;height:44px;border-radius:50%;${isDone ? 'background:var(--sunken);' : 'border:2px dashed var(--ink3);'}display:grid;place-items:center;color:var(--ink3)">${isDone ? IC_CHECK : IC_PLUS}</span>
          <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">${isDone ? 'Sin repartidor asignado' : 'Sin asignar'}</b>
          <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${isDone
-             ? `Entregado${clock ? ' a las ' + escapeHtml(clock) : ''}`
+             ? (clock ? `Entregado a las ${escapeHtml(clock)}` : 'Cerrado desde la cocina — sin hora de entrega registrada')
              : isScheduled ? 'Se activa a la hora programada' : `Esperando desde hace ${m} minutos`}</s></span>
        </div>`;
 
@@ -1101,7 +1108,7 @@ function openDetail(orderId){
         ${isScheduled
           ? `<div style="font-size:15px;font-weight:700">${escapeHtml(slot)}</div>`
           : isDone
-            ? `<div style="font-size:17px;font-weight:700">${escapeHtml(clock || '—')}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">entregado</div>`
+            ? `<div style="font-size:17px;font-weight:700">${escapeHtml(clock || 'Listo')}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">${clock ? 'entregado' : 'cerrado'}</div>`
             : `<div style="font-size:30px;font-weight:700;line-height:.9;letter-spacing:-1.5px">${m}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">min</div>`}
       </div>
     </div>
