@@ -597,8 +597,8 @@ function displayLabel(id, order){
   const s = id != null ? String(id) : '';
   return s ? '#' + s.slice(-4).toUpperCase() : '#—';
 }
-function doneClock(order){
-  const t = finishedAt(order);   // display: never guess a time we do not have
+function doneClock(order, id){
+  const t = finishedAt(order, id);   // display: never guess a time we do not have
   if (!t) return '';
   try {
     return new Intl.DateTimeFormat('en-US', { timeZone:'America/Tegucigalpa', hour:'numeric', minute:'2-digit', hour12:true })
@@ -625,12 +625,16 @@ const minutesOf = (o) => Math.floor(agingSeconds(agingBaselineMs(o), Date.now())
 // completeTask() writes delivered_at; the KDS close (xpizza-kitchen setOrderStatus(id,'completed'))
 // writes ONLY { status } and stamps nothing — so a KDS-closed order has no finish time and we must
 // not invent one. Falling back to created_at here relabelled "placed at 2:35" as "delivered at 2:35".
-const finishedAt = (o) => {
-  const t = [o && o.delivered_at, o && o.completed_at].find(v => Number.isFinite(v));
+// Read BOTH records. completeTask() writes orders/<id>/delivered_at and
+// tasks/<id>_delivery/completed_at in one atomic update, so either proves a real delivery — and a
+// path that stamps only the task still yields a true time. Still never falls back to created_at.
+const finishedAt = (o, id) => {
+  const dt = id ? (STORE.tasks[`${id}_delivery`] || null) : null;
+  const t = [o && o.delivered_at, o && o.completed_at, dt && dt.completed_at].find(v => Number.isFinite(v));
   return Number.isFinite(t) ? t : 0;
 };
 // sortKey: ordering only, where an approximate key is fine and every order needs one.
-const completedAt = (o) => finishedAt(o) || (Number.isFinite(o && o.picked_up_at) ? o.picked_up_at : 0)
+const completedAt = (o, id) => finishedAt(o, id) || (Number.isFinite(o && o.picked_up_at) ? o.picked_up_at : 0)
   || (Number.isFinite(o && o.created_at) ? o.created_at : 0);
 
 const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:'Listos', camino:'En camino', completados:'Completados' };
@@ -670,7 +674,7 @@ function dotVar(id, order){
 // Two parts, not a dot-joined string: the fact that matters carries weight, the stage recedes.
 function stateParts(id, order){
   const sec = sectionForOrder(order);
-  if (sec === 'completados') return { lead:'Entregado', tail: doneClock(order) };
+  if (sec === 'completados') return { lead:'Entregado', tail: doneClock(order, id) };
   if (order.order_type === 'pickup') return { lead:'Pickup', tail: STATUS_ES[sec] || '' };
   const drvId = assignedDriverId(id, STORE.tasks);
   if (!drvId) return { lead:'Sin repartidor', tail: STATUS_ES[sec] || '' };
@@ -758,7 +762,7 @@ function passHTML(id, order){
   else right = `<span class="av empty">${IC_PLUS}</span>`;
 
   const timeCol = done
-    ? `<span class="t" style="display:grid;place-items:center;height:42px" title="${escapeHtml(doneClock(order))}">${IC_CHECK}</span>`
+    ? `<span class="t" style="display:grid;place-items:center;height:42px" title="${escapeHtml(doneClock(order, id))}">${IC_CHECK}</span>`
     : isProg
       ? `<span class="t rd" style="font-size:13px;font-weight:700;color:var(--lilac-ink);line-height:1.2">${escapeHtml(slotLabelSafe(order.scheduled_for))}</span>`
       : `<span class="t rd num"><b>${m}</b><s>min</s></span>`;
@@ -881,8 +885,8 @@ function renderBoard(){
     // it here interleaved the two types and put the oldest at the top, which read as unsorted.
     const today = dayKey(Date.now());
     const hechos = bucket.done
-      .filter(id => dayKey(completedAt(STORE.orders[id])) === today)
-      .sort((a, b) => completedAt(STORE.orders[b]) - completedAt(STORE.orders[a]))
+      .filter(id => dayKey(completedAt(STORE.orders[id], id)) === today)
+      .sort((a, b) => completedAt(STORE.orders[b], b) - completedAt(STORE.orders[a], a))
       .map(id => [id, STORE.orders[id]]);
 
     if (!ids.length) {
@@ -1077,7 +1081,7 @@ function openDetail(orderId){
   // A finished order is never "waiting". Elapsed-since-created is meaningless once it is done, and
   // a driver's live GPS/status says nothing about a delivery that already happened.
   const isDone = lv === 'done';
-  const clock = isDone ? doneClock(order) : '';
+  const clock = isDone ? doneClock(order, orderId) : '';
   const drvPanel = d
     ? `<div class="panel pad" style="display:flex;align-items:center;gap:14px">
          <span class="av rd" style="width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:17px;font-weight:700;color:#fff;background:${isDone ? 'var(--ink3)' : driverColorVar(d)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>
@@ -1090,7 +1094,7 @@ function openDetail(orderId){
          <span style="width:44px;height:44px;border-radius:50%;${isDone ? 'background:var(--sunken);' : 'border:2px dashed var(--ink3);'}display:grid;place-items:center;color:var(--ink3)">${isDone ? IC_CHECK : IC_PLUS}</span>
          <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">${isDone ? 'Sin repartidor asignado' : 'Sin asignar'}</b>
          <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${isDone
-             ? (clock ? `Entregado a las ${escapeHtml(clock)}` : 'Cerrado desde la cocina — sin hora de entrega registrada')
+             ? (clock ? `Entregado a las ${escapeHtml(clock)}` : 'No se registró quién la entregó ni a qué hora')
              : isScheduled ? 'Se activa a la hora programada' : `Esperando desde hace ${m} minutos`}</s></span>
        </div>`;
 
