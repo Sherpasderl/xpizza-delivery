@@ -163,7 +163,10 @@
     transition:margin-top .44s var(--ease), box-shadow .3s var(--ease) }
   .pass.lv-act{ background:var(--rose-bg) }
   .pass.lv-watch{ background:var(--lilac-bg) }
-  .pass.lv-done{ background:transparent; box-shadow:inset 0 0 0 1px var(--hair) }
+  /* Completed passes must be OPAQUE. They were transparent while they had no body and therefore
+     no overlap; now they stack like every other pass, and a transparent card lets the one beneath
+     read straight through it. Recessed surface keeps them quiet without making them see-through. */
+  .pass.lv-done{ background:var(--sunken); box-shadow:var(--shadow-m), inset 0 0 0 1px var(--ring) }
   .pass.open{ box-shadow:var(--shadow-m), var(--lift-open), inset 0 0 0 1px var(--ring) }
   .peek{ display:flex; align-items:flex-start; gap:14px; width:100%; height:80px; padding:15px 16px 0;
     background:transparent; border:none; text-align:left; cursor:pointer; transition:transform .16s var(--ease) }
