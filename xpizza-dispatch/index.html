@@ -1684,10 +1684,30 @@
     cursor: pointer;
     transition: background 0.15s;
     margin-bottom: 4px;
+    /* Rows are real <button>s (keyboard + screen-reader operable); neutralise the UA button chrome
+       so they render exactly like the former <div>. */
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    font: inherit;
+    color: inherit;
+    -webkit-appearance: none;
+    appearance: none;
   }
   .picker-row:hover { background: var(--surface-2); }
-  .picker-row.disabled { opacity: 0.4; cursor: not-allowed; }
-  .picker-row.disabled:hover { background: transparent; }
+  .picker-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* "Requiere confirmación" drivers (full | en-route | unreachable): allowed-with-caution, NOT disabled.
+     Amber cue + inline reason; the row stays fully clickable (the confirm() override is unchanged). */
+  .picker-row.needs-confirm { background: var(--warn-soft); }
+  .picker-row.needs-confirm:hover { background: var(--warn-soft); }
+  .picker-row .confirm-reason {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--warn);
+    margin-top: 3px;
+  }
   .picker-row .name {
     font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;
     font-size: 16px;
@@ -2249,7 +2269,7 @@
 </div>
 
 <!-- Driver picker overlay -->
-<div class="overlay-bg hidden" id="picker-overlay">
+<div class="overlay-bg hidden" id="picker-overlay" role="dialog" aria-modal="true" aria-labelledby="picker-title">
   <div class="picker-panel">
     <div class="picker-header">
       <div class="picker-title" id="picker-title">Asignar pedido</div>
@@ -2419,6 +2439,7 @@ let pickerOpen = false;
 let pickerOrderId = null;
 let pickerIsReassign = false;
 let pickerFromDriver = null;   // the delivery driver shown when the reassign picker OPENED (stale-view guard)
+let pickerOpener = null;        // element focused when the picker opened; focus is restored to it on close (a11y)
 let renderTickInterval = null;
 let toastTimer = null;
 
@@ -4792,6 +4813,8 @@ function updateCustomerMarkers() {
 // Driver picker (assignment overlay)
 // ============================================================
 function openPicker(orderId, isReassign = false) {
+  // a11y: remember who opened the picker so closePicker() can restore focus there (keyboard/SR users).
+  pickerOpener = document.activeElement;
   pickerOpen = true;
   pickerOrderId = orderId;
   pickerIsReassign = isReassign;
@@ -4862,20 +4885,39 @@ function openPicker(orderId, isReassign = false) {
       const loadPill = orderCount > 0
         ? `<span class="status-pill">${orderCount} pedido${orderCount === 1 ? '' : 's'}${full ? ' · lleno' : ''}</span>`
         : '';
+      // Warning affordance (P1): confirm-required rows read as "allowed with caution", not "disabled".
+      // Reason priority mirrors the confirm() cascade below (full → en-route → unreachable), so the visible
+      // reason always names the confirm the click will actually raise. Presentation only — requireConfirm
+      // and the click override are unchanged.
+      const confirmReason = full ? 'requiere confirmación · lleno'
+        : enRoute ? 'requiere confirmación · en camino'
+        : unreachable ? 'requiere confirmación · sin notificaciones'
+        : '';
+      // Screen-reader summary of the whole row (name · status · load · distance · reason). This is an
+      // ATTRIBUTE sink → escape the composed string (covers the untrusted driver.name); no raw ${…} in the attr.
+      const statusLabel = `${statusEs[driver.status] || driver.status}${staleNote}`;
+      const loadLabel = orderCount > 0
+        ? `${orderCount} pedido${orderCount === 1 ? '' : 's'}${full ? ' · lleno' : ''}`
+        : 'sin pedidos';
+      const distLabel = `${formatDistance(distBase)} a base, ${formatDistance(distCust)} a cliente`;
+      const ariaLabel = [driver.name || '—', statusLabel, loadLabel, distLabel, confirmReason]
+        .filter(Boolean).join(' · ');
       return `
-        <div class="picker-row ${requireConfirm ? 'disabled' : ''}" data-driver-uid="${uid}"
-             ${full ? 'data-full="1"' : ''} ${enRoute ? 'data-enroute="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}>
+        <button type="button" class="picker-row ${requireConfirm ? 'needs-confirm' : ''}" data-driver-uid="${uid}"
+             ${full ? 'data-full="1"' : ''} ${enRoute ? 'data-enroute="1"' : ''} ${unreachable ? 'data-unreachable="1"' : ''}
+             aria-label="${escapeHtml(String(ariaLabel))}">
           <div class="status-dot ${getDotClass(driver)}"></div>
           <div class="name">${escapeHtml(driver.name || '—')}</div>
           <div>
             <span class="status-pill ${driver.status}">${statusEs[driver.status] || driver.status}${staleNote}</span>
             ${loadPill}
+            ${confirmReason ? `<div class="confirm-reason">${escapeHtml(confirmReason)}</div>` : ''}
           </div>
           <div class="distances">
             <div><strong>${formatDistance(distBase)}</strong> a base</div>
             <div>${formatDistance(distCust)} a cliente</div>
           </div>
-        </div>
+        </button>
       `;
     }).join('');
 
@@ -4894,6 +4936,12 @@ function openPicker(orderId, isReassign = false) {
   }
 
   $('picker-overlay').classList.remove('hidden');
+
+  // a11y: move focus into the dialog (first/highest-priority driver, else the Cancel button when empty).
+  // preventScroll under reduced-motion so no focus-scroll animation runs.
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const firstFocusable = $('picker-list').querySelector('.picker-row') || $('picker-cancel-btn');
+  if (firstFocusable) firstFocusable.focus({ preventScroll: reduceMotion });
 }
 
 function closePicker() {
@@ -4902,11 +4950,52 @@ function closePicker() {
   pickerIsReassign = false;
   pickerFromDriver = null;
   $('picker-overlay').classList.add('hidden');
+  // a11y: restore focus to whatever opened the picker (the "Asignar"/"Reasignar" button).
+  const opener = pickerOpener;
+  pickerOpener = null;
+  if (opener && typeof opener.focus === 'function') opener.focus();
 }
 
 $('picker-cancel-btn').addEventListener('click', closePicker);
 $('picker-overlay').addEventListener('click', (e) => {
   if (e.target === $('picker-overlay')) closePicker();
+});
+
+// a11y: when the picker is open it OWNS the keyboard — Esc closes it (and only it), Tab/Shift-Tab cycle
+// within the overlay (focus trap), and ↑/↓ (or j/k) move between driver rows. Guarded on pickerOpen so it
+// never fires for the board behind; the listener lives on the overlay so it can't fight the document-level
+// Esc handlers for the detail/message modals (:2901, :5132) — Esc here stops propagation so only the picker acts.
+$('picker-overlay').addEventListener('keydown', (e) => {
+  if (!pickerOpen) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closePicker();
+    return;
+  }
+  if (e.key === 'Tab') {
+    const focusables = [...$('picker-overlay').querySelectorAll('button:not([disabled])')];
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+    return;
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k') {
+    const rows = [...$('picker-list').querySelectorAll('.picker-row')];
+    if (rows.length === 0) return;
+    const idx = rows.indexOf(document.activeElement);
+    if (idx === -1) return;
+    e.preventDefault();
+    const dir = (e.key === 'ArrowDown' || e.key === 'j') ? 1 : -1;
+    rows[(idx + dir + rows.length) % rows.length].focus();
+  }
 });
 
 // S3d: map assignOrderToDriver's {ok:false,reason} (the S3b CAS lost a race to the sweeper or another
