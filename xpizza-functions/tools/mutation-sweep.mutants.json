@@ -6961,9 +6961,9 @@
   "id": "d4p1dc-03",
   "label": "🔴 a pre-existing fork is written over instead of refused - two live ids on one name get a third",
   "kills_with": "a pre-existing fork was written over",
-  "from": "  if (others.length > 1) {",
+  "from": "  if (claimantIds.length > 1) {",
   "to": "  if (false) {",
-  "why": "🔵 One of the two refusals that are STRICTER than §4 read literally (advisor-approved, recorded as a spec amendment). With the branch gone, a name held by two live ids that the plan releases falls through to a permit — an activation laundering corruption that predates it.",
+  "why": "🔵 One of the two refusals that are STRICTER than §4 read literally (advisor-approved, recorded as a spec amendment). With the branch gone, a name held by two live ids that the plan releases falls through to a permit — an activation laundering corruption that predates it. 🔴 RE-POINTED when the gate found the count was wrong: it used to exclude the landing id before counting, so the anchor line changed. d4p1dc-14 anchors the SAME line with a narrower mutation — this one removes the fork check, that one restores the exclusion — because those are two different ways to lose the same rule.",
   "slice": "d4p1dc",
   "file": "catalog/identity-destination.js",
   "command": [
@@ -7017,9 +7017,9 @@
   "id": "d4p1dc-07",
   "label": "🔴 an unread key row defaults to absent - forgetting to read a destination defeats the guard",
   "kills_with": "a destination whose key row was never read was treated as one whose row is absent",
-  "from": "    if (!rowsOf.has(name)) {",
+  "from": "    if (!rowRead) {",
   "to": "    if (false) {",
-  "why": "The most dangerous default available here. Key rows are per-destination document reads and CAN be forgotten; with the check gone an unread destination is indistinguishable from one whose row is absent, so the guard is defeated by an OMISSION rather than a decision — and an omission leaves no evidence. 🔴 RE-POINTED when the aggregate moved to v7.1's ONE-scan model: the claimant map is now complete by construction (one query per kind), so an absent CLAIMANT legitimately means unclaimed and only the key row can be 'unread'.",
+  "why": "The most dangerous default available here. Key rows are per-destination document reads and CAN be forgotten; with the check gone an unread destination is indistinguishable from one whose row is absent, so the guard is defeated by an OMISSION rather than a decision — and an omission leaves no evidence. 🔴 RE-POINTED when the aggregate moved to v7.1's ONE-scan model: the claimant map is now complete by construction (one query per kind), so an absent CLAIMANT legitimately means unclaimed and only the key row can be 'unread'. 🔴 RE-POINTED: the read test grew a second half (an entry present with an UNDEFINED value is not a read), so the anchor moved to the named predicate. d4p1dc-15 covers that half.",
   "slice": "d4p1dc",
   "file": "catalog/identity-destination.js",
   "command": [
@@ -7347,6 +7347,34 @@
   "from": "    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;",
   "to": "    const priorGeneration = (pointerSnap.exists ? (pointerSnap.data() || {}).generation : 0) || 0;",
   "why": "The sibling of d4p1e1-05, at the OTHER reader. The flip writes priorGeneration + 1, so a coerced value here is not merely read wrong — it is the number written into the pointer, on a baseline that never existed. Killed only by the direct flipPointer drive, since flipPointer is exported and does not pre-flight, leaving the in-tx read as the only guard on that path."
+ },
+ {
+  "id": "d4p1dc-14",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ],
+  "label": "🔴 the fork count excludes the landing id again - a fork is invisible when the lander is one of its claimants",
+  "kills_with": "the fork is the fork whoever is writing",
+  "from": "  if (claimantIds.length > 1) {",
+  "to": "  if (claimantIds.filter((id) => id !== landingId).length > 1) {",
+  "why": "🔴 THE EXACT DEFECT THE GATE FOUND, restored. Counting only the OTHER claimants makes a name held by X and Y read as 'one other claimant' when X is the one landing — so the fork permits, under the rule (v7.2) that exists to refuse it. My original cell could not see this because it used a third id as the lander; the cell now drives both shapes.",
+  "slice": "d4p1dc"
+ },
+ {
+  "id": "d4p1dc-15",
+  "file": "catalog/identity-destination.js",
+  "command": [
+   "node",
+   "catalog/destination-claimant.test.js"
+  ],
+  "label": "🔴 an undefined-valued read entry counts as read - unread and absent collapse",
+  "kills_with": "an unread destination became a free one",
+  "from": "    const rowRead = rowsOf.has(name) && rowsOf.get(name) !== undefined;",
+  "to": "    const rowRead = rowsOf.has(name);",
+  "why": "Membership alone was the original test, so `{A: undefined}` counted as read and fell through to `|| null`, which is the shape that means 'read it, there is no row'. It collapses the two states this function exists to separate, and it arrives by an ordinary mistake: rows[name] = snap.exists ? snap.data() : undefined.",
+  "slice": "d4p1dc"
  },
  {
   "id": "pah-01",

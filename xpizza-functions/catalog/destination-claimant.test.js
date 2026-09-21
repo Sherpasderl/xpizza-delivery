@@ -29,7 +29,8 @@ const NO_PLAN = { moves: [], mints: [], retires: [] };
 {
   const free = destinationVerdict({ name: 'Margherita', landingId: 'X', keyRow: null, liveClaimants: [], plan: NO_PLAN });
   assert.strictEqual(free.ok, true, '🔴 a name with no key row and no live claimant was refused');
-  assert.strictEqual(free.code, 'unclaimed', `expected unclaimed, got ${free.code}`);
+  assert.strictEqual(free.code, 'unclaimed',
+    `🔴 a free name was permitted for the WRONG reason (${free.code}) — 'nobody holds this' and 'we already hold this' are different facts about the registry, and a caller may skip the write for one`);
 
   /* The landing id already holding the name is a NO-OP re-write, not a conflict with itself. It gets
      its own code rather than sharing `unclaimed`, because "nobody holds this" and "we already hold
@@ -100,10 +101,29 @@ const NO_PLAN = { moves: [], mints: [], retires: [] };
     plan: { moves: [{ id: 'X', from: 'Margherita', to: 'A' }, { id: 'Y', from: 'Margherita', to: 'B' }, { id: 'Z', from: 'C', to: 'Margherita' }], mints: [], retires: [] },
   });
   assert.strictEqual(v.ok, false, '🔴 an activation landed on a name TWO live ids already claim — a pre-existing fork was written over');
-  assert.strictEqual(v.code, 'destination_forked', `expected destination_forked, got ${v.code}`);
+  assert.strictEqual(v.code, 'destination_forked',
+    `🔴 a pre-existing fork was refused under the wrong code (${v.code}) — the code is how a reader knows reconciliation clears it rather than a plan change`);
   assert.deepStrictEqual(v.live_claimants.slice().sort(), ['X', 'Y'], 'and it names both holders, which is what reconciliation needs');
-  assert.notStrictEqual(v.code, 'destination_claimed', 'a fork must not be reported as the ordinary single-claimant case');
-  ok('a name with TWO live claimants refuses with its own code even when the plan releases both');
+  assert.notStrictEqual(v.code, 'destination_claimed',
+    `🔴 a pre-existing fork was reported as the ordinary single-claimant case (${v.code}) — reconciliation is what clears a fork, and the two need different answers`);
+
+  /* 🔴 THE CASE THIS CELL SIDESTEPPED, AND THE BUG IT HID. Above, the lander is a THIRD id, Z. Choose
+     the lander from AMONG the claimants instead and the original implementation permitted: it excluded
+     the landing id before counting, so X and Y both claiming A with X landing read as "one other
+     claimant, released by the plan". The rule I argued for and the advisor approved — more than one
+     live claimant refuses, whoever is landing — was not the rule the code implemented, and the cell
+     chose the variant that cannot tell the difference. */
+  const landerIsAClaimant = destinationVerdict({
+    name: 'Margherita', landingId: 'X', keyRow: row('X'),
+    liveClaimants: [live('X', 'Margherita'), live('Y', 'Margherita')],
+    plan: { moves: [], mints: [], retires: [{ id: 'Y', name: 'Margherita' }] },
+  });
+  assert.strictEqual(landerIsAClaimant.ok, false,
+    '🔴 a name TWO live ids already claim was landed on because one of them was the lander — the fork is the fork whoever is writing');
+  assert.strictEqual(landerIsAClaimant.code, 'destination_forked',
+    `🔴 a fork with the lander among the claimants was not reported as a fork (${landerIsAClaimant.code}) — excluding the lander before counting is what made it invisible`);
+  assert.deepStrictEqual(landerIsAClaimant.live_claimants.slice().sort(), ['X', 'Y'], 'and BOTH are named, the lander included');
+  ok('a name with TWO live claimants refuses with its own code even when the plan releases both — and whether or not the lander is one of them');
 }
 
 // ── 5. 🔴 §4'S ACCEPTANCE SCENARIO, IN BOTH DIRECTIONS ───────────────────────────────────────
@@ -261,7 +281,32 @@ const NO_PLAN = { moves: [], mints: [], retires: [] };
   const noRow = judgePlanDestinations(plan, { claimants: { A: [] }, keyRows: { A: null } });
   const unread = noRow.find((j) => j.name === 'Brand New');
   assert.strictEqual(unread.verdict.ok, false, '🔴 a destination whose key row was never read was treated as one whose row is absent');
-  assert.strictEqual(unread.verdict.code, 'destination_key_row_unread', `expected destination_key_row_unread, got ${unread.verdict.code}`);
+  assert.strictEqual(unread.verdict.code, 'destination_key_row_unread',
+    `🔴 an unread key row refused under the wrong code (${unread.verdict.code}) — the code is what tells a caller to go READ it rather than to reconcile something`);
+
+  /* 🔴 PRESENT WITH AN UNDEFINED VALUE IS NOT A READ, and membership alone could not tell. The first
+     implementation tested `has(name)` only, so `{A: undefined}` counted as read and then fell through
+     to `|| null` — which is the shape that MEANS "read it, there is no row". That collapses the exact
+     two states this function exists to keep apart, and it arrives by an ordinary mistake:
+     `rows[name] = snap.exists ? snap.data() : undefined`. Both spellings are asserted, object and Map,
+     because a caller may hand either. */
+  for (const [label, reads] of [
+    ['an object entry with an undefined value', { claimants: {}, keyRows: { A: undefined, 'Brand New': null } }],
+    ['a Map entry with an undefined value', { claimants: new Map(), keyRows: new Map([['A', undefined], ['Brand New', null]]) }],
+  ]) {
+    const j = judgePlanDestinations({ moves: [{ id: 'Y', from: 'B', to: 'A' }], mints: [], retires: [] }, reads);
+    const a = j.find((x) => x.name === 'A');
+    assert.strictEqual(a.verdict.ok, false,
+      `🔴 ${label} was treated as a READ key row that is absent — an unread destination became a free one, which is the guard defeated by an omission`);
+    assert.strictEqual(a.verdict.code, 'destination_key_row_unread',
+      `🔴 ${label} refused under ${a.verdict.code} rather than as unread`);
+  }
+  /* SENSITIVITY: an explicit null is still a real read and still permits, or the distinction above
+     would be satisfied by refusing everything. */
+  const explicitNull = judgePlanDestinations({ moves: [], mints: [{ id: 'N', name: 'A' }], retires: [] },
+    { claimants: {}, keyRows: { A: null } });
+  assert.strictEqual(explicitNull[0].verdict.ok, true,
+    '🔴 SENSITIVITY: an explicit null key row was refused — null is the answer "I read it and there is none", and refusing it blocks every fresh mint');
 
   /* ONE ABORT: a truncated scan refuses EVERY destination, including ones that would otherwise be
      clean. A per-name flag would put the decision back in N places, which is what v7.1 removed. */

@@ -139,19 +139,23 @@ function destinationVerdict({ name, landingId, keyRow = null, liveClaimants = []
       { key_row_id: rowId, live_claimants: claimantIds.slice() });
   }
 
-  const others = claimantIds.filter((id) => id !== landingId);
-
-  /* 🔵 MINE (stricter than §4 read literally). Two live ids already claiming one name is the fork
-     inv #2/#4 says no path may produce, so it is corruption that predates this plan. §4 read literally
-     would permit landing when the plan releases both; this refuses, because an activation is not the
-     place to launder a fork — reconciliation retires deliberately and logged (§3.0), and the
-     activation succeeds afterwards. Its own code, so it can never be read as the ordinary
+  /* 🔵 MINE (stricter than §4 read literally), AND IT COUNTS EVERY LIVE CLAIMANT — INCLUDING THE ONE
+     LANDING. The first version of this counted only the OTHERS, i.e. it excluded the landing id before
+     counting, so a name already claimed by X and Y with X landing on it read as "one other claimant,
+     released by the plan" and PERMITTED. That is the fork the rule exists to refuse, wearing the
+     lander's own name — and my own cell missed it because it used a third id, Z, as the lander.
+     Two live ids already claiming one name is corruption that predates this plan whoever is landing.
+     §4 read literally would permit when the plan releases them; this refuses, because an activation is
+     not the place to launder a fork — reconciliation retires deliberately and logged (§3.0) and the
+     activation succeeds afterwards. Its own code, so it is never read as the ordinary
      orphan-in-the-way case. */
-  if (others.length > 1) {
+  if (claimantIds.length > 1) {
     return refuse('destination_forked',
-      `${name}: ${others.sort().join(', ')} all live-claim it already; that fork predates this activation and must be reconciled deliberately, not written over`,
-      { live_claimants: others.slice() });
+      `${name}: ${claimantIds.slice().sort().join(', ')} all live-claim it already; that fork predates this activation and must be reconciled deliberately, not written over`,
+      { live_claimants: claimantIds.slice() });
   }
+
+  const others = claimantIds.filter((id) => id !== landingId);
 
   if (others.length === 1) {
     const held = others[0];
@@ -197,10 +201,18 @@ function judgePlanDestinations(plan, scan) {
         verdict: refuse('destination_claimants_truncated',
           `${name}: the live-claimant scan hit its cap, so no destination in this activation can be judged; the orphan may simply not have been read`) };
     }
-    if (!rowsOf.has(name)) {
+    /* 🔴 PRESENT-WITH-AN-UNDEFINED-VALUE IS NOT A READ. Membership alone was the test, so `{A: undefined}`
+       — or a Map carrying an undefined value — counted as read and then fell through to `|| null`,
+       which is the shape that MEANS "read it, there is no row". That collapses the exact two states
+       this function exists to keep apart, and it is reachable by an ordinary mistake: building the map
+       with `rows[name] = snap.exists ? snap.data() : undefined`.
+       So the contract is explicit: `null` is the answer "I read it and there is no row"; missing or
+       undefined is "nobody read it", and only null permits. */
+    const rowRead = rowsOf.has(name) && rowsOf.get(name) !== undefined;
+    if (!rowRead) {
       return { name, landingId, via,
         verdict: refuse('destination_key_row_unread',
-          `${name}: this activation writes it but its key row was never read; an unread row is not an absent one`) };
+          `${name}: this activation writes it but its key row was never read (absent from the reads, or present with an undefined value); an unread row is not an absent one, and only an explicit null says "read, and there is none"`) };
     }
     return { name, landingId, via,
       verdict: destinationVerdict({ name, landingId, keyRow: rowsOf.get(name) || null, liveClaimants: claimantsOf.get(name) || [], plan }) };
