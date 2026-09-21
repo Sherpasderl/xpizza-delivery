@@ -88,6 +88,7 @@ const { recoverRefundingDecision } = require('./materialize-guard');   // stale-
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');  //   config version for the reservation binding
 const { shouldSendOrderReceived } = require('./order-received');   // order-received WhatsApp (online orders) decision core
 const { suppressCancelledNotification } = require('./cancel-notify');   // suppress cancel WhatsApp for never-placed (abandoned) orders
+const { alreadyRefundNotified, needsRefundNotifyRecovery } = require('./paid-after-close-notify');   // AT-LEAST-ONCE refund-message reliability (pure)
 const { notifyWithinDeadline } = require('./notify-deadline');   // cash createOrder: bound the best-effort "received" WhatsApp so a slow gateway can't hold the 200
 const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe (online: plumbed onto the pending order here)
 const { decideStatusMirror } = require('./status-mirror');          // P3 — status-sync trigger core (update-only-if-exists)
@@ -1948,37 +1949,44 @@ async function getGraceMinutes(db) {
   } catch (_) { return 15; }
 }
 
-// Paid-after-close AUTO-REFUND customer message — the SINGLE, reliable channel for this message (the generic
-// "tu pedido fue cancelado" is suppressed for these orders, see cancel-notify.js, so there is no double send).
-// It runs from the finalize paths right after a CONFIRMED reversal (not on a fragile status→cancelled edge that a
-// concurrent cancel could consume), and is hardened like the order-received notification:
-//   • AT-MOST-ONCE via a mark-before-send claim (paid_after_close_refund_notified_at), so a concurrent guard pass,
-//     a recovery-sweep re-drive, or a trigger redelivery cannot double-send. Sibling of /status ⇒ does not
-//     re-trigger the status watcher.
-//   • DURABLE, RECOVERABLE failure: whatsapp.sendMessage returns null on a bad phone / provider error (it does not
-//     throw); a null result is recorded as paid_after_close_refund_send_unresolved_at so a dropped refund message
-//     is visible and recoverable, never silent. A failed send never un-does the refund.
+// Paid-after-close AUTO-REFUND customer message — the SINGLE channel for this message (the generic
+// "tu pedido fue cancelado" is suppressed for these orders, see cancel-notify.js). Called from the finalize
+// paths right after a CONFIRMED reversal AND re-driven by the refundReconciler sweep.
+//
+// 🔴 CONTRACT: AT-LEAST-ONCE, not exactly-once. A fire-and-forget WhatsApp send plus a possible crash between the
+// terminal write and the send make "exactly one" provably impossible; for a REFUND notice the right failure
+// direction is never-SILENT (a refunded customer must hear about it), so a rare duplicate is accepted (both
+// messages are true, money is safe — the same low-harm class as the concurrent-manual-cancel double we accept).
+//   • Dedupe on `paid_after_close_refund_sent_at` — the source of truth, written ONLY after a CONFIRMED send.
+//     Once set, this and the sweep both skip → no re-send. (A stale read can at worst cause one extra message.)
+//   • DURABLE failure: whatsapp.sendMessage returns null on a bad phone / provider error (never throws). We do
+//     NOT mark sent; we record `paid_after_close_refund_send_unresolved_at` and leave sent_at unset → the sweep
+//     re-drives on its next pass. A failed send never un-does the refund.
+//   • Crash-safe: a crash after the terminal write but before sent_at lands leaves sent_at unset → the sweep
+//     re-drives (§refundReconciler notification-recovery branch). Closes the zero-message gap.
 // total = the whole-lempira refunded amount.
 async function sendPaidAfterCloseRefund(db, { orderId, order }) {
   try {
     const rid = (order && order.restaurant_id) || 'x_pizza';
     if (!order || !order.customer_phone) { console.warn(`sendPaidAfterCloseRefund: ${orderId} has no customer_phone`); return; }
+    if (alreadyRefundNotified(order)) return;   // CONFIRMED-sent already → idempotent skip (at-least-once dedupe)
     if (!(await whatsapp.isEnabledForRestaurant(db, rid))) { console.log(`sendPaidAfterCloseRefund: whatsapp disabled for ${rid}, skip`); return; }
-    let claim;
-    try { claim = await db.ref(`orders/${orderId}/paid_after_close_refund_notified_at`).transaction((cur) => (cur ? undefined : ServerValue.TIMESTAMP)); }
-    catch (e) { console.warn(`sendPaidAfterCloseRefund: claim failed ${orderId}`, e.message); return; }
-    if (!claim.committed) return;   // already notified (at-most-once)
     const total = Number.isFinite(Number(order.total_cents)) ? Math.round(Number(order.total_cents) / 100) : (Number(order.total) || 0);
     const body = inbound.tplPaidAfterCloseRefunded({ customerName: order.customer_name, total, restaurantId: rid });
     let res = null;
     try { res = await whatsapp.sendMessage(order.customer_phone, body, rid); }
     catch (e) { console.error(`sendPaidAfterCloseRefund: send threw ${orderId}`, e.message); }
     if (res == null) {
-      try { await db.ref(`orders/${orderId}/paid_after_close_refund_send_unresolved_at`).set(ServerValue.TIMESTAMP); } catch (_) {}
-      console.warn(`sendPaidAfterCloseRefund: send unresolved ${orderId} — marked for visibility, not retried`);
-    } else {
-      console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
+      // NOT sent → record durably (visible) and leave sent_at UNSET so the sweep re-drives. Not swallowed.
+      try { await db.ref(`orders/${orderId}/paid_after_close_refund_send_unresolved_at`).set(ServerValue.TIMESTAMP); }
+      catch (e) { console.warn(`sendPaidAfterCloseRefund: unresolved-marker write failed ${orderId} (sweep will re-drive)`, e && e.message); }
+      console.warn(`sendPaidAfterCloseRefund: send unresolved ${orderId} — sweep will re-drive`);
+      return;
     }
+    // CONFIRMED sent → stamp the source-of-truth marker (dedupes every later finalize/sweep pass).
+    try { await db.ref(`orders/${orderId}/paid_after_close_refund_sent_at`).set(ServerValue.TIMESTAMP); }
+    catch (e) { console.warn(`sendPaidAfterCloseRefund: sent-marker write failed ${orderId} (may re-send once)`, e && e.message); }
+    console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
   } catch (e) { console.warn(`sendPaidAfterCloseRefund failed for ${orderId}`, e && e.message); }
 }
 
@@ -2919,9 +2927,18 @@ exports.refundReconciler = onSchedule(
     // guard's voidOrRefund and its order-update; money already safe via the attempt's own CAS/idempotency).
     // Re-read the attempt's TERMINAL state and finalize the hanging ORDER/customer outcome (>5 min stale).
     const orders = (await db.ref('orders').once('value')).val() || {};
-    let recovered = 0;
+    let recovered = 0, notifyRecovered = 0;
     for (const orderId of Object.keys(orders)) {
       const o = orders[orderId];
+      // 🔴 NOTIFICATION RECOVERY (add-only): a paid-after-close refund that already FINALIZED (refunded +
+      // 'refunded_paid_after_close') but never CONFIRMED its customer message — a crash after the terminal write
+      // before the send, or a send that returned null. sendPaidAfterCloseRefund is idempotent on
+      // paid_after_close_refund_sent_at → this re-drives to AT-LEAST-ONCE (never a silently-refunded customer),
+      // and no-ops once sent. Gated on refunded_at age so it can't race an in-flight finalize's own send.
+      if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {
+        try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}
+        continue;   // terminal order — no further (refund) recovery action applies
+      }
       // Hanging paid-after-close ORDER outcomes: the crash-stuck 'refunding_paid_after_close' AND the
       // in-flight 'refund_pending' + 'refund_pending_paid_after_close' (reconciler drove the attempt to
       // terminal, but nothing finalized the ORDER → refunded-but-silent). recoverRefundingDecision handles both.
@@ -2943,7 +2960,7 @@ exports.refundReconciler = onSchedule(
         await db.ref(`orders/${orderId}`).update({ payment_status: 'manual_reconciliation', blocked_reason: 'refund_failed_paid_after_close' });
       }
     }
-    if (recovered) console.log(`refundReconciler: stale-refunding recovered=${recovered}`);
+    if (recovered || notifyRecovered) console.log(`refundReconciler: stale-refunding recovered=${recovered} notifyRecovered=${notifyRecovered}`);
   }
 );
 
