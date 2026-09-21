@@ -24,6 +24,13 @@
  *   5. no customer_phone → un-sendable marker recorded, NO send; the sweep never selects it (no churn).
  *   6. whatsapp disabled (global kill switch) → no send, sent_at unset; re-enable → the sweep delivers (self-heal).
  */
+/* 🔴 REFUSE A FOREIGN OR ABSENT EMULATOR, like every other emulator suite on this branch. Added when
+   the D4-P1a rebase brought this suite in from main, where the runner and this guard do not exist yet:
+   without it the suite will happily attach to ANOTHER CHECKOUT'S emulator and assert against its data,
+   reporting green on a tree it never touched. That false-green has actually happened on this machine,
+   which is why the guard exists — and it caught this on the first rebase after the runner landed. */
+require('./_emulator-required')('database');
+
 const assert = require('assert');
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'test-secret';
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';

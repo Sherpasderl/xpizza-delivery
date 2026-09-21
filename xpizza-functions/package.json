@@ -78,6 +78,6 @@
     "test:portal": "node tools/portal-preflight.js && node --test \"../xpizza-portal/*.test.mjs\"",
     "test:emulators:all": "node tools/gate-all.js --emulators",
     "test:gate": "node tools/gate-all.js",
-    "test:paid-after-close-notify": "firebase emulators:exec --only database --project demo-xpizza \"node test/paid-after-close-notify.emulator.test.js\""
+    "test:paid-after-close-notify": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/paid-after-close-notify.emulator.test.js\""
   }
 }
