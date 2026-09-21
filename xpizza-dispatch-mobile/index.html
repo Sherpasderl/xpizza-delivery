@@ -4,340 +4,384 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- FIRST-PAINT root background: on an iOS installed PWA the screen is taller than the web viewport
-     (e.g. 852 vs 793) and iOS paints the out-of-bounds bottom strip itself, sampling the DOCUMENT-ROOT
-     background at first paint — BEFORE the main <style> applies. This tiny style must come first so
-     <html> already carries --bg the instant iOS samples it (else the strip renders grey). -->
-<style>html{background:#f5f6f8}@media(prefers-color-scheme:dark){html{background:#0e1013}}</style>
+     and iOS paints the out-of-bounds bottom strip itself, sampling the DOCUMENT-ROOT background at
+     first paint — BEFORE the main <style> applies. This tiny style must come first so <html> already
+     carries the ground the instant iOS samples it (else the strip renders grey). -->
+<style>html{background:#F6F4FB}@media(prefers-color-scheme:dark){html{background:#131120}}</style>
 <title>Dispatch · X. Pizza + La Musa</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131120" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F6F4FB" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Dispatch">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
-  @font-face {
-    font-family: 'Hanken Grotesk';
-    font-weight: 400 700;
-    font-display: swap;
-    src: url('fonts/hankengrotesk-var.woff2') format('woff2');
-  }
-  /* ── Visual token layer — exact KDS status colors + both themes (spec §3.5) ──
-     Dark board is the default (OS-dark or the toggle picks it); light is white-on-white.
-     Component CSS below reads tokens ONLY, never raw hex. */
+  /* ── Token layer ────────────────────────────────────────────────────────────
+     Light is the base. Dark redefines ONLY tokens, guarded so an explicit light
+     choice beats a dark OS. Component CSS below reads tokens and never raw hex,
+     with one sanctioned exception: Google Maps markers/styles cannot read CSS
+     custom properties, so driverMarkerColor() + DARK_MAP_STYLE keep their own
+     copy. Change a status colour here and change it there too.
+     Semantics: mint = calm · sky = moving · lilac = watch · rose = act now. */
   :root{
-    /* dark board (default) */
-    --bg:#0e1013; --stage:#16181d; --card:#1c1f26; --card2:#22262e; --line:#2b3038;
-    --ink:#f2f4f8; --ink-mute:#9aa1ac;
-    --accent:#2c313a; --accent-fg:#f2f4f8; --sheet:#1a1d23;
-    /* status — KDS-exact, plus the two mobile-only additions (KDS has no en-camino/done) */
-    --nuevo:#6FBEEC; --prep:#6FBEEC; --listo:#46A24A; --camino:#6E77CC;
-    --gold:#E6B93E; --done:#6f7681; --amber:#EE9F3C; --red:#C4392A;
-    /* mockup aliases (r2 — match the approved mockup verbatim): muted/dim ink, GPS vivo/inact,
-       scheduled gold, pin ink, brand accents. */
-    --mut:#9aa3b0; --dim:#6b7481; --vivo:#3ecb6e; --inact:#e0a73c; --prog:#E6B93E; --pin-ink:#0c1116;
-    --xp:#e8543a; --lm:#d7a94b;
-    --ease:cubic-bezier(.22,.61,.36,1);
-    --shadow:0 1px 3px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.25);
+    --ground:#F6F4FB; --card:#FFFFFF; --sunken:#EFEBF7;
+    --ink:#191627; --ink2:#5E5A75; --ink3:#8E89A6;
+    --hair:rgba(40,25,80,.10); --ring:rgba(40,25,80,.07);
+    --violet:#8D4DD5; --violet-solid:#9256D7; --violet-wash:#F1E8FC;
+    --rose-bg:#FFE3EE; --rose-ink:#C8205E;
+    --lilac-bg:#EEE6FD; --lilac-ink:#7E45E1;
+    --sky-bg:#E2EFFE; --sky-ink:#1F6BC1;
+    --mint-bg:#DFF6EC; --mint-ink:#147B5C;
+    --xp:#D13B6D; --lm:#9558CA;
+    --shadow-s:0 1px 2px rgba(40,25,80,.07);
+    --shadow-m:0 10px 22px -12px rgba(40,25,80,.34), 0 1px 2px rgba(40,25,80,.06);
+    --shadow-l:0 -14px 44px rgba(40,25,80,.18);
+    --lift-accent:0 10px 22px -12px rgba(146,86,215,.55);
+    --lift-open:0 22px 44px -18px rgba(40,25,80,.42);
+    --bar:rgba(255,255,255,.82);
+    --scrim:rgba(30,20,55,.42);
+    --ease:cubic-bezier(.32,.72,0,1);
   }
-  :root[data-theme="light"]{
-    --bg:#f5f6f8; --stage:#eef0f3; --card:#ffffff; --card2:#f6f7f9; --line:#e6e8ec;
-    --ink:#1b1e24; --ink-mute:#6b727c;
-    --accent:#2c2a26; --accent-fg:#f7f4ee; --sheet:#ffffff;
-    --done:#9aa1ac;
-    --mut:#6b7280; --dim:#9ca3af; --vivo:#38ab68; --inact:#d19640; --pin-ink:#1b1e24;
-    --xp:#cb604a; --lm:#bd8c37;
-    --shadow:0 1px 2px rgba(20,24,31,.06), 0 8px 24px rgba(20,24,31,.06);
-  }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme]){
-      --bg:#f5f6f8; --stage:#eef0f3; --card:#ffffff; --card2:#f6f7f9; --line:#e6e8ec;
-      --ink:#1b1e24; --ink-mute:#6b727c; --accent:#2c2a26; --accent-fg:#f7f4ee; --sheet:#ffffff; --done:#9aa1ac;
-      --mut:#6b7280; --dim:#9ca3af; --vivo:#38ab68; --inact:#d19640; --pin-ink:#1b1e24; --xp:#cb604a; --lm:#bd8c37;
-      --shadow:0 1px 2px rgba(20,24,31,.06), 0 8px 24px rgba(20,24,31,.06);
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#131120; --card:#1C1930; --sunken:#181528;
+      --ink:#F1EFFA; --ink2:#A7A1C2; --ink3:#7A748F;
+      --hair:rgba(255,255,255,.11); --ring:rgba(255,255,255,.08);
+      --violet:#A565EE; --violet-solid:#9256D7; --violet-wash:#241A3A;
+      --rose-bg:#2E1726; --rose-ink:#F58FB4;
+      --lilac-bg:#221A38; --lilac-ink:#B79BF5;
+      --sky-bg:#152238; --sky-ink:#79B4F2;
+      --mint-bg:#11281F; --mint-ink:#5FD3A8;
+      --xp:#F07CA5; --lm:#B79BF5;
+      --shadow-s:0 1px 2px rgba(0,0,0,.5);
+      --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
+      --shadow-l:0 -16px 48px rgba(0,0,0,.6);
+      --lift-accent:0 10px 22px -12px rgba(0,0,0,.72);
+      --lift-open:0 20px 40px -18px rgba(0,0,0,.8);
+      --bar:rgba(34,30,52,.82);
+      --scrim:rgba(0,0,0,.58);
     }
   }
+  :root[data-theme="dark"]{
+    --ground:#131120; --card:#1C1930; --sunken:#181528;
+    --ink:#F1EFFA; --ink2:#A7A1C2; --ink3:#7A748F;
+    --hair:rgba(255,255,255,.11); --ring:rgba(255,255,255,.08);
+    --violet:#A565EE; --violet-solid:#9256D7; --violet-wash:#241A3A;
+    --rose-bg:#2E1726; --rose-ink:#F58FB4;
+    --lilac-bg:#221A38; --lilac-ink:#B79BF5;
+    --sky-bg:#152238; --sky-ink:#79B4F2;
+    --mint-bg:#11281F; --mint-ink:#5FD3A8;
+    --xp:#F07CA5; --lm:#B79BF5;
+    --shadow-s:0 1px 2px rgba(0,0,0,.5);
+    --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
+    --shadow-l:0 -16px 48px rgba(0,0,0,.6);
+    --lift-accent:0 10px 22px -12px rgba(0,0,0,.72);
+    --lift-open:0 20px 40px -18px rgba(0,0,0,.8);
+    --bar:rgba(34,30,52,.82);
+    --scrim:rgba(0,0,0,.58);
+  }
 
-  /* Solid --bg on the root + body so the Android dynamic-viewport gesture-nav inset never exposes a
-     grey band behind the shell/tab-bar; color-scheme keeps the UA overscroll canvas on-theme. */
-  html{ background:var(--bg); color-scheme:dark light; }
+  /* Radius scale — four roles, nothing else:
+     22 surface (pass, sheet, app mark) · 18 group (panel, warn, toast, map-msg)
+     14 control (button, fact, input, segmented) · 999 pill (chip, tab bar, tab, avatar)
+     The 10px inside .seg button is that control's geometric inset (14 − 4 padding), not a fifth value. */
+  html{ background:var(--ground); color-scheme:light dark; }
   :root[data-theme="light"]{ color-scheme:light; }
-  html,body{ margin:0; min-height:100dvh; font-family:'Hanken Grotesk',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
-  body{ background:var(--bg); color:var(--ink); min-height:100dvh; transition:background .35s var(--ease), color .35s var(--ease); }
-  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; animation:none !important; } }
-  .full-screen{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
-  .hidden{ display:none !important; }
+  :root[data-theme="dark"]{ color-scheme:dark; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:var(--ground); color:var(--ink); overscroll-behavior:none;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  *{ box-sizing:border-box }
+  button{ font:inherit; color:inherit; -webkit-tap-highlight-color:transparent }
+  :focus-visible{ outline:3px solid var(--violet); outline-offset:2px; border-radius:10px }
+  ::selection{ background:var(--violet-wash); color:var(--ink) }
+  .rd{ font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif }
+  .num{ font-variant-numeric:tabular-nums }
+  .sr{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0 }
+  .hidden{ display:none !important }
+  @media (prefers-reduced-motion: reduce){ *{ transition-duration:.001ms !important; animation-duration:.001ms !important } }
 
-  /* ── Login ── */
-  .login-form{ display:flex; flex-direction:column; gap:10px; width:min(320px,86vw); }
-  .login-form h2{ margin:0 0 6px; font-weight:700; letter-spacing:-.02em; }
-  .login-form input{ padding:13px 14px; font:inherit; color:var(--ink); background:var(--card);
-    border:1px solid var(--line); border-radius:12px; }
-  .login-form button{ padding:13px; font:inherit; font-weight:600; color:var(--accent-fg);
-    background:var(--accent); border:none; border-radius:12px; cursor:pointer; }
-  #login-error{ color:var(--red); font-size:13px; min-height:16px; text-align:center; }
+  /* iOS standalone PWA miscomputes viewport height at first paint (a grey band below the shell that
+     only fills after the first scroll). __fitShell pins the height in px from visualViewport; this
+     100dvh is only the pre-JS fallback. */
+  #screen-main{ position:fixed; top:0; left:0; right:0; height:100dvh; display:flex; flex-direction:column;
+    overflow:hidden; background:var(--ground); }
 
-  /* ── App shell — a 100dvh flex COLUMN so the tab bar is a real flex child at the true bottom (NOT
-     position:fixed). This kills the fresh-load grey band (a fixed bar anchored to the layout viewport
-     before the URL bar collapsed). header (fixed height) · main (flex:1, scrolls) · tab bar (flex:none). */
-  /* iOS standalone PWA miscomputes viewport height at first paint (100dvh AND inset:0 both leave the
-     shell short → a grey band below it that only fills after the first scroll). The reliable fix is to
-     PIN the height in JS from window.visualViewport.height (see __fitShell). This top-anchored 100dvh is
-     only the pre-JS fallback; __fitShell overrides the exact px height. */
-  #screen-main{ position:fixed; top:0; left:0; right:0; bottom:auto; height:100dvh; flex-direction:column;
-    align-items:stretch; justify-content:flex-start; background:var(--bg); overflow:hidden; }
+  /* ── header ── */
+  .hdr{ flex:0 0 auto; padding:calc(env(safe-area-inset-top) + 10px) 20px 8px }
+  .hdr-top{ display:flex; align-items:center; gap:10px }
+  .ttl{ font-size:32px; font-weight:700; letter-spacing:-.9px; line-height:1 }
+  .sub{ font-size:14.5px; color:var(--ink2); margin-top:6px; letter-spacing:-.15px }
+  .sub b{ color:var(--rose-ink); font-weight:600 }
+  .ibtn{ width:38px; height:38px; border-radius:50%; border:none; background:var(--card); box-shadow:inset 0 0 0 1px var(--ring);
+    display:grid; place-items:center; cursor:pointer; flex:0 0 auto; color:var(--ink2) }
+  .live{ display:inline-flex; align-items:center; gap:7px; padding:7px 12px 7px 9px; border-radius:999px; border:none;
+    background:var(--card); box-shadow:inset 0 0 0 1px var(--ring); font-size:13px; font-weight:600; color:var(--ink2);
+    cursor:pointer; white-space:nowrap; margin-left:auto }
+  .live i{ width:7px; height:7px; border-radius:50%; background:var(--mint-ink); flex:0 0 auto }
+  .live.off i{ background:var(--rose-ink) }
+  .live.wait i{ background:var(--lilac-ink) }
 
-  /* topbar — mockup .apphead (per-tab title + subtitle + En-vivo dot + theme toggle) */
-  .apphead{ flex:0 0 auto; padding:calc(env(safe-area-inset-top) + 6px) 18px 12px; display:flex;
-    align-items:center; justify-content:space-between; gap:10px; border-bottom:1px solid var(--line); }
-  .apphead .t{ font-size:24px; font-weight:800; letter-spacing:-.026em; line-height:1.04; }
-  .apphead .sub{ font-size:13px; color:var(--mut); margin-top:3px; font-weight:600; letter-spacing:.004em; }
-  .head-r{ display:flex; align-items:center; gap:12px; }
-  .theme-btn{ width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--stage);
-    color:var(--ink); display:grid; place-items:center; cursor:pointer; padding:0; }
-  .theme-btn svg{ width:17px; height:17px; }
-  #push-toggle.on{ color:var(--vivo); border-color:color-mix(in srgb,var(--vivo) 45%,var(--line)); }
-  .live-dot{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--mut); font-weight:600; white-space:nowrap; }
-  .live-dot i{ width:7px; height:7px; border-radius:50%; background:var(--vivo); animation:pulse 2s infinite; }
-  @keyframes pulse{ 0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--vivo) 55%, transparent);} 70%{ box-shadow:0 0 0 6px transparent;} 100%{ box-shadow:0 0 0 0 transparent;} }
+  /* ── chips ── */
+  .chips{ flex:0 0 auto; display:flex; gap:8px; overflow-x:auto; padding:8px 20px 12px; scrollbar-width:none }
+  .chips::-webkit-scrollbar{ display:none }
+  .chip{ flex:0 0 auto; height:36px; padding:0 15px; border-radius:999px; border:none; background:var(--card);
+    box-shadow:inset 0 0 0 1px var(--ring); font-size:14.5px; font-weight:600; letter-spacing:-.2px; color:var(--ink2);
+    display:inline-flex; align-items:center; gap:7px; cursor:pointer;
+    transition:background .18s var(--ease), color .18s var(--ease) }
+  .chip .ct{ font-size:13px; font-weight:700; color:var(--ink3) }
+  .chip[aria-pressed="true"]{ background:var(--ink); color:var(--ground) }
+  .chip[aria-pressed="true"] .ct{ color:var(--ground); opacity:.7 }
+  .chip.alert .ct{ color:var(--rose-ink) }
+  .chip.alert[aria-pressed="true"] .ct{ color:var(--ground) }
 
-  main{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:14px 14px 18px; }
-  .tab-pane{ animation:fade .38s var(--ease); }
-  @keyframes fade{ from{ opacity:0; transform:translateY(8px);} to{ opacity:1; transform:none;} }
-  .board-fade{ animation:fade .38s var(--ease); }   /* r8: applied to the fresh .board-body ONLY on a chip change */
+  /* ── scroll body ── */
+  main{ flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 14px 150px }
+  .sec{ padding:12px 8px; font-size:12px; font-weight:700; letter-spacing:1.1px; text-transform:uppercase;
+    color:var(--ink3); display:flex; align-items:center; gap:8px; width:100%; background:none; border:none;
+    text-align:left; cursor:default }
+  button.sec{ cursor:pointer }
+  .sec .n{ margin-left:auto; letter-spacing:0 }
+  .sec .chev{ transition:transform .22s var(--ease) }
+  .sec[aria-expanded="true"] .chev{ transform:rotate(90deg) }
+  .slot-h{ margin:14px 8px 8px; font-size:13px; font-weight:700; color:var(--lilac-ink); letter-spacing:-.1px }
 
-  #tabbar{ flex:0 0 auto; display:flex; gap:6px; padding:6px 10px calc(env(safe-area-inset-bottom) + 6px);
-    background:var(--bg); border-top:1px solid var(--line); }
-  .tab-btn{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px;
-    font:inherit; font-size:11px; font-weight:600; color:var(--mut); background:transparent; border:none;
-    border-radius:12px; cursor:pointer; transition:color .25s var(--ease); }
-  .tab-btn[aria-selected="true"]{ color:var(--ink); }
-  .tab-btn svg{ opacity:.9; }
+  /* ── wallet-style pass deck ── */
+  .deck{ display:flex; flex-direction:column; padding-bottom:4px }
+  .pass{ position:relative; width:100%; border-radius:22px; background:var(--card);
+    box-shadow:var(--shadow-m), inset 0 0 0 1px var(--ring); overflow:hidden;
+    transition:margin-top .44s var(--ease), box-shadow .3s var(--ease) }
+  .pass.lv-act{ background:var(--rose-bg) }
+  .pass.lv-watch{ background:var(--lilac-bg) }
+  .pass.lv-done{ background:transparent; box-shadow:inset 0 0 0 1px var(--hair) }
+  .pass.open{ box-shadow:var(--shadow-m), var(--lift-open), inset 0 0 0 1px var(--ring) }
+  .peek{ display:flex; align-items:flex-start; gap:14px; width:100%; height:80px; padding:15px 16px 0;
+    background:transparent; border:none; text-align:left; cursor:pointer; transition:transform .16s var(--ease) }
+  .peek:active{ transform:scale(.988) }
+  .peek .t{ flex:0 0 auto; width:52px }
+  .peek .t b{ display:block; font-size:33px; font-weight:700; letter-spacing:-1.8px; line-height:.88 }
+  .peek .t s{ display:block; font-size:11px; font-weight:600; letter-spacing:.2px; margin-top:3px; color:var(--ink3); text-decoration:none }
+  .lv-act .t b{ color:var(--rose-ink) }   .lv-act .t s{ color:var(--rose-ink); opacity:.85 }
+  .lv-watch .t b{ color:var(--lilac-ink) } .lv-watch .t s{ color:var(--lilac-ink); opacity:.85 }
+  .peek .m{ flex:1 1 auto; min-width:0 }
+  .r1{ display:flex; align-items:center; gap:8px }
+  .nm{ font-size:18px; font-weight:600; letter-spacing:-.45px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .bm{ flex:0 0 auto; width:19px; height:19px; border-radius:50%; display:grid; place-items:center;
+    font-size:10.5px; font-weight:700; color:#fff }
+  .onum{ margin-left:auto; flex:0 0 auto; font-size:13px; font-weight:600; color:var(--ink3) }
+  .st{ display:flex; align-items:center; gap:7px; margin-top:5px; font-size:13.5px; font-weight:600; color:var(--ink2);
+    letter-spacing:-.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .st i{ width:7px; height:7px; border-radius:50%; flex:0 0 auto }
+  .st b{ font-weight:600 }
+  .st q{ font-weight:400; color:var(--ink3); quotes:none }
+  .st q::before{ content:", " }
+  .peek .av{ flex:0 0 auto; width:42px; height:42px; border-radius:50%; display:grid; place-items:center;
+    font-size:16px; font-weight:700; background:var(--sunken); color:var(--ink) }
+  .lv-act .av, .lv-watch .av{ background:var(--card) }
+  .av.empty{ background:transparent; border:2px dashed var(--ink3); color:var(--ink3) }
+  .lv-act .av.empty{ border-color:var(--rose-ink); color:var(--rose-ink) }
+  .lv-watch .av.empty{ border-color:var(--lilac-ink); color:var(--lilac-ink) }
+  /* The assignment moment — the app's single authored animation. The empty ring fills with the
+     driver's initial, then the pass migrates from Ahora into En curso under its own power (FLIP).
+     Cause and effect, triggered by the user's own action. Nothing else on this surface animates
+     without being asked. */
+  @keyframes av-fill{ 0%{ transform:scale(.3); opacity:0 } 62%{ transform:scale(1.09); opacity:1 } 100%{ transform:none } }
+  .av-fill{ animation:av-fill .5s var(--ease) both }
+  .pbody{ padding:2px 16px 16px }
+  .pbody .ln{ font-size:14.5px; color:var(--ink2); letter-spacing:-.15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pacts{ display:flex; gap:9px; margin-top:12px }
+  .pact{ flex:1 1 0; height:44px; border-radius:14px; border:none; font-size:15px; font-weight:700; letter-spacing:-.25px;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; text-decoration:none;
+    background:var(--card); color:var(--violet); box-shadow:inset 0 0 0 1px var(--ring) }
+  .pact.solid{ flex:1.35 1 0; background:var(--violet-solid); color:#fff; box-shadow:var(--lift-accent) }
+  .pact.mini{ flex:0 0 48px; width:48px }
 
-  /* ── Chip bar ── */
-  .chipbar{ display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin:0 -2px 4px;
-    scrollbar-width:none; -webkit-overflow-scrolling:touch; }
-  .chipbar::-webkit-scrollbar{ display:none; }
-  .chip{ flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; padding:9px 14px; font:inherit;
-    font-size:14px; font-weight:600; color:var(--ink-mute); background:var(--card); border:1px solid var(--line);
-    border-radius:999px; cursor:pointer; white-space:nowrap; transition:background .22s var(--ease), color .22s var(--ease), border-color .22s var(--ease); }
-  .chip.on{ background:var(--accent); color:var(--accent-fg); border-color:transparent; }
-  .chip .ct{ font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-mute); }
-  .chip.on .ct{ color:var(--accent-fg); opacity:.85; }
-  .chip .ct.attn{ color:var(--listo); }
-  .chip.on .ct.attn{ color:var(--accent-fg); }
-  .chip .chk{ display:inline-grid; place-items:center; font-size:11px; line-height:1; }
-  .attn-dot{ width:7px; height:7px; border-radius:50%; background:var(--listo); }
+  .empty{ text-align:center; padding:46px 24px; color:var(--ink2) }
+  .empty b{ display:block; font-size:19px; font-weight:600; color:var(--ink); letter-spacing:-.4px; margin-bottom:6px }
+  .empty p{ margin:0; font-size:15px; line-height:1.45 }
 
-  /* ── Sections — mockup .sec-h (chevron LEFT · stripe · UPPERCASE name · count pill right) ── */
-  .sec{ margin:0 0 14px; }
-  .sec-h{ display:flex; align-items:center; gap:10px; padding:10px 6px; cursor:pointer; user-select:none;
-    width:100%; box-sizing:border-box; background:transparent; border:none; text-align:left; }
-  .sec-h .chev{ width:15px; height:15px; color:var(--dim); transition:transform .2s; flex:0 0 auto; }
-  .sec.collapsed .chev{ transform:rotate(-90deg); }
-  .sec-h .stripe{ width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
-  .sec-h .name{ font-size:16px; font-weight:800; letter-spacing:.095em; text-transform:uppercase; color:var(--ink); }
-  .sec.prog .sec-h .name{ color:var(--prog); }
-  .sec-h .cnt{ margin-left:auto; font-size:12px; font-weight:800; color:var(--mut); background:var(--stage);
-    border:1px solid var(--line); border-radius:20px; padding:2px 9px; min-width:24px; text-align:center; }
-  /* r8 collapse glide: grid-rows 1fr↔0fr on .sec-body clips the .sec-inner (its single grid item),
-     which carries the card flex-column. prefers-reduced-motion kills the transition via the global guard. */
-  .sec-body{ display:grid; grid-template-rows:1fr; transition:grid-template-rows .28s var(--ease); }
-  .sec.collapsed .sec-body{ grid-template-rows:0fr; }
-  .sec-inner{ display:flex; flex-direction:column; gap:9px; padding-top:4px; overflow:hidden; min-height:0; transition:opacity .2s var(--ease); }
-  .sec.collapsed .sec-inner{ opacity:0; }
-  .slot{ margin:0 0 6px; }
-  .slot h4{ margin:8px 2px 6px; font-size:12px; font-weight:700; color:var(--gold); letter-spacing:.01em; }
+  /* ── tab bar ── */
+  .fade{ position:absolute; left:0; right:0; bottom:0; height:140px; pointer-events:none; z-index:5;
+    background:linear-gradient(to top, var(--ground) 32%, transparent) }
+  #tabbar{ position:absolute; left:50%; transform:translateX(-50%); bottom:calc(env(safe-area-inset-bottom) + 20px);
+    z-index:10; display:flex; align-items:center; gap:5px; padding:7px; border-radius:999px; background:var(--bar);
+    backdrop-filter:saturate(180%) blur(24px); -webkit-backdrop-filter:saturate(180%) blur(24px);
+    box-shadow:inset 0 0 0 1px var(--ring) }
+  .tab{ flex:0 0 auto; width:56px; height:46px; border:none; background:transparent; border-radius:999px;
+    display:grid; place-items:center; color:var(--ink3); cursor:pointer;
+    transition:color .22s var(--ease), background .22s var(--ease) }
+  .tab[aria-selected="true"]{ background:var(--violet-solid); color:#fff }
 
-  /* ── Order card — mockup 3-part (header / items / footer). NOTE: card chips use .cchip (NOT .chip —
-     .chip is the filter chip-bar above; sharing the name would collide, cf. the r4 .gps bug). ── */
-  .card{ background:var(--card); border:1px solid var(--line); border-radius:15px; padding:12px 13px 12px 14px; cursor:pointer; position:relative; overflow:hidden; transition:background-color .2s var(--ease), border-color .2s var(--ease), transform .12s var(--ease); }
-  .card:active{ background:var(--card2); transform:scale(.988); }
-  .card .edge{ position:absolute; left:0; top:0; bottom:0; width:4px; }   /* status spine — stage / KDS aging color */
-  .c-r1{ display:flex; align-items:center; gap:8px; }
-  .c-name{ font-size:15px; font-weight:700; letter-spacing:-.012em; }
-  .c-num{ margin-left:auto; font-size:13px; font-weight:800; color:var(--mut); font-variant-numeric:tabular-nums; }
-  .c-items{ font-size:12.5px; color:var(--mut); margin-top:4px; line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .c-r3{ display:flex; align-items:center; gap:8px; margin-top:8px; }
-  .c-right{ margin-left:auto; display:inline-flex; align-items:center; gap:8px; }
-  .cchip{ font-size:11px; font-weight:700; padding:3px 8px; border-radius:7px; background:var(--stage); border:1px solid var(--line); color:var(--mut); display:inline-flex; align-items:center; gap:5px; }
-  .cchip svg{ width:11px; height:11px; }
-  .cchip.slot{ color:var(--prog); background:color-mix(in srgb,var(--prog) 12%,transparent); border-color:color-mix(in srgb,var(--prog) 30%,var(--line)); font-weight:800; }
-  .cchip.aging{ background:color-mix(in srgb,currentColor 13%,transparent); border-color:color-mix(in srgb,currentColor 34%,transparent); font-weight:800; }
-  .drv{ margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; }
-  .drv .ld{ width:8px; height:8px; border-radius:50%; }
-  .ld.vivo{ background:var(--vivo); } .ld.inact{ background:var(--inact); }
-  .unassigned{ margin-left:auto; font-size:11.5px; font-weight:800; color:var(--listo); background:color-mix(in srgb,var(--listo) 13%,transparent); border:1px solid color-mix(in srgb,var(--listo) 30%,transparent); border-radius:7px; padding:3px 9px; }
-  .pickup-tag{ margin-left:auto; display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; color:var(--mut); }
-  .pickup-tag svg{ width:12px; height:12px; }
-  .pickup-tag.ready{ color:var(--listo); }
-  .card.done{ opacity:.62; }
-  .card.done .c-name{ font-weight:600; }
-  .map-btn{ flex:0 0 auto; width:28px; height:28px; border-radius:9px; border:1px solid var(--line); background:var(--card2); color:var(--mut); display:grid; place-items:center; cursor:pointer; }
-  .map-btn:active{ background:var(--line); color:var(--ink); }
-  .map-btn svg{ width:14px; height:14px; }
+  /* ── map ── */
+  .map-wrap{ position:absolute; left:0; right:0; top:0; bottom:0 }
+  #map{ position:absolute; inset:0; background:var(--sunken) }
+  #ver-todos{ position:absolute; top:12px; right:14px; z-index:6; height:38px; padding:0 16px; border-radius:999px;
+    border:none; background:var(--bar); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    color:var(--ink); font-size:14px; font-weight:600; box-shadow:var(--shadow-s), inset 0 0 0 1px var(--ring); cursor:pointer }
+  .map-msg{ position:absolute; left:50%; transform:translateX(-50%); bottom:118px; z-index:6; max-width:82%;
+    padding:12px 16px; border-radius:18px; background:var(--card); color:var(--ink); font-size:14px; text-align:center;
+    box-shadow:var(--shadow-m) }
 
-  .empty{ padding:18px 2px; font-size:13px; color:var(--ink-mute); text-align:center; }
+  /* ── sheet ── */
+  #scrim{ position:absolute; inset:0; z-index:20; background:var(--scrim); opacity:0; visibility:hidden; border:none;
+    width:100%; padding:0; transition:opacity .3s var(--ease), visibility .3s var(--ease) }
+  #scrim.on{ opacity:1; visibility:visible }
+  #sheet{ position:absolute; left:0; right:0; bottom:0; z-index:30; max-height:92%; display:flex; flex-direction:column;
+    background:var(--ground); border-radius:22px 22px 0 0; box-shadow:var(--shadow-l);
+    transform:translateY(101%); transition:transform .38s var(--ease) }
+  #sheet.on{ transform:none }
+  .grab{ flex:0 0 auto; width:38px; height:5px; border-radius:3px; background:var(--hair); margin:9px auto 2px }
+  .sh{ flex:1 1 auto; overflow-y:auto; padding:10px 18px calc(env(safe-area-inset-bottom) + 26px) }
+  .sh-nav{ display:flex; align-items:center; gap:4px; margin:0 0 6px -10px }
+  .back{ width:44px; height:44px; border:none; background:transparent; border-radius:50%; display:grid; place-items:center;
+    color:var(--violet); cursor:pointer }
+  .sh-h{ font-size:25px; font-weight:700; letter-spacing:-.7px; margin:0 }
+  .sh-s{ font-size:14.5px; color:var(--ink2); letter-spacing:-.15px; margin-top:2px }
+  .lbl{ font-size:15px; font-weight:600; letter-spacing:-.2px; color:var(--ink2); margin:24px 4px 10px }
+  .panel{ background:var(--card); border-radius:18px; box-shadow:inset 0 0 0 1px var(--ring) }
+  .pad{ padding:15px 16px }
+  .grid2{ display:flex; flex-wrap:wrap; gap:10px }
+  .fact{ flex:1 1 44%; background:var(--card); border-radius:14px; padding:12px 14px; box-shadow:inset 0 0 0 1px var(--ring) }
+  .fact s{ display:block; font-size:13.5px; font-weight:400; letter-spacing:-.1px; color:var(--ink2); text-decoration:none }
+  .fact b{ display:block; font-size:17px; font-weight:600; letter-spacing:-.35px; margin-top:4px }
 
-  /* ── Drivers roster (r2-C, Option 1) — mockup .drow/.gpspill/.dord + .rsec reuses .sec-h.
-     NOTE: the pill is .gpspill, NOT .gps — .gps is the 7×7 order-card liveness DOT above; sharing the
-     name clamped the roster pill to 7px and overlapped the order#. ── */
-  .roster{ padding:4px 0 6px; }
-  .drow{ display:flex; align-items:center; gap:11px; margin:0 0 8px; padding:12px 13px; background:var(--card);
-    border:1px solid var(--line); border-radius:14px; cursor:pointer; transition:background-color .2s var(--ease), transform .12s var(--ease); }
-  .drow:active{ background:var(--card2); transform:scale(.99); }
-  .dstat{ width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
-  .dinfo{ flex:1; min-width:0; }
-  .dnm{ font-size:15px; font-weight:700; letter-spacing:-.012em; }
-  .dsub{ font-size:12px; color:var(--mut); margin-top:2px; font-weight:600; }
-  .dright{ display:flex; align-items:center; gap:9px; flex:0 0 auto; }
-  .gpspill{ flex:0 0 auto; white-space:nowrap; font-size:10px; font-weight:800; padding:3px 8px 3px 7px; border-radius:20px; display:inline-flex; align-items:center; gap:5px; letter-spacing:.01em; }
-  .gpspill::before{ content:""; width:6px; height:6px; border-radius:50%; flex:0 0 auto; }
-  .gpspill.vivo{ color:var(--vivo); background:color-mix(in srgb,var(--vivo) 14%,transparent); }
-  .gpspill.vivo::before{ background:var(--vivo); }
-  .gpspill.inact{ color:var(--inact); background:color-mix(in srgb,var(--inact) 16%,transparent); }
-  .gpspill.inact::before{ background:var(--inact); }
-  .dord{ flex:0 0 auto; white-space:nowrap; font-size:13px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; min-width:38px; text-align:right; }
-  .dord.dash{ color:var(--dim); font-weight:700; }
-  .rsec{ margin:0 0 10px; }
-  .rsec .sec-h{ cursor:default; }
+  .pipe{ display:flex; align-items:flex-start; padding:18px 6px 10px }
+  .pstep{ flex:1 1 0; position:relative; display:flex; flex-direction:column; align-items:center }
+  .pstep .ln{ position:absolute; top:6.5px; height:3px; border-radius:2px; background:var(--hair) }
+  .pstep .ln.l{ left:0; right:50% } .pstep .ln.r{ left:50%; right:0 }
+  .pstep .ln.fill{ background:var(--violet-solid) }
+  .pdot{ position:relative; width:15px; height:15px; border-radius:50%; background:var(--hair) }
+  .pdot.done{ background:var(--violet-solid) }
+  .pdot.now{ background:var(--card); border:4px solid var(--violet-solid); box-shadow:0 0 0 5px var(--violet-wash) }
+  .pstep s{ margin-top:10px; font-size:10.5px; font-weight:700; color:var(--ink3); text-decoration:none; text-align:center }
+  .pstep.act s{ color:var(--ink) }
 
-  /* ── Mapa — a fixed layer between the header and the tab bar (ignores board scroll) ── */
-  #tab-mapa{ animation:none; }   /* the map layer is fixed; skip the pane fade so tiles don't reflow */
-  .map-wrap{ position:fixed; left:0; right:0; top:calc(env(safe-area-inset-top) + 62px);
-    bottom:calc(env(safe-area-inset-bottom) + 70px); }
-  #map{ position:absolute; inset:0; background:var(--stage); }
-  #ver-todos{ position:absolute; top:12px; right:12px; z-index:5; padding:9px 14px; font:inherit;
-    font-size:13px; font-weight:600; color:var(--ink); background:color-mix(in srgb, var(--card) 92%, transparent);
-    border:1px solid var(--line); border-radius:999px; box-shadow:var(--shadow); cursor:pointer; }
-  .map-msg{ position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:5; max-width:80%;
-    padding:9px 14px; font-size:13px; color:var(--ink); background:var(--card); border:1px solid var(--line);
-    border-radius:12px; box-shadow:var(--shadow); text-align:center; }
+  .dl-item{ display:flex; gap:12px; align-items:baseline; padding:3px 0 }
+  .dl-qty{ font-size:15.5px; font-weight:700; color:var(--ink3); min-width:26px }
+  .dl-item span{ font-size:16.5px; letter-spacing:-.3px }
+  .dl-extra{ font-size:14px; color:var(--lilac-ink); margin:2px 0 8px 38px; letter-spacing:-.1px }
+  .dl-extra-tag{ color:var(--ink3); font-weight:600 }
 
-  /* ── Bottom sheet + scrim + toast — mockup sheets (.grab/.sh-body/.kv/.status-row/.btn/.dpick/.confirm-flow) ── */
-  #scrim{ position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.45); opacity:0; visibility:hidden;
-    transition:opacity .28s var(--ease), visibility .28s var(--ease); }
-  #scrim.on{ opacity:1; visibility:visible; }
-  #sheet{ position:fixed; left:0; right:0; bottom:0; z-index:41; background:var(--sheet); color:var(--ink);
-    border-radius:24px 24px 0 0; box-shadow:0 -8px 44px -14px rgba(0,0,0,.55); max-height:88vh;
-    display:flex; flex-direction:column; border-top:1px solid var(--line);
-    transform:translateY(101%); transition:transform .34s var(--ease); }
-  #sheet.on{ transform:translateY(0); }
-  .grab{ width:38px; height:5px; border-radius:3px; background:var(--line); margin:9px auto 3px; flex:0 0 auto; }
-  .sh-body{ overflow-y:auto; padding:6px 18px calc(env(safe-area-inset-bottom) + 24px); }
-  .sh-body::-webkit-scrollbar{ width:0; }
-  .sh-title{ font-size:19px; font-weight:800; letter-spacing:-.01em; }
-  .sh-sub{ font-size:12.5px; color:var(--mut); margin-top:2px; }
-  .brand{ display:inline-flex; align-items:center; gap:5px; font-size:10px; font-weight:800; letter-spacing:.03em; padding:2px 7px; border-radius:6px; flex:0 0 auto; }
-  .brand.xp{ color:var(--xp); background:color-mix(in srgb,var(--xp) 14%,transparent); }
-  .brand.lm{ color:var(--lm); background:color-mix(in srgb,var(--lm) 16%,transparent); }
-  .status-row .av svg{ width:16px; height:16px; }
-  .kv{ display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
-  .kv .k{ color:var(--mut); } .kv .v{ font-weight:600; text-align:right; }
-  .items-box{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin:12px 0; }
-  .status-row{ display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 13px; margin:12px 0; }
-  .status-row .av{ width:34px; height:34px; border-radius:50%; display:grid; place-items:center; font-weight:800; color:var(--pin-ink); font-size:15px; flex:0 0 auto; }
-  .btn{ display:block; width:100%; text-align:center; padding:14px; border-radius:14px; font-size:15px; font-weight:800; border:none; cursor:pointer; margin-top:10px; }
-  .btn-primary{ background:var(--accent); color:var(--accent-fg); }
-  .btn-ghost{ background:transparent; color:var(--mut); border:1px solid var(--line); }
-  .btn-warn{ background:var(--camino); color:#fff; }
-  .btn:disabled{ opacity:.55; }
-  .mini-map{ height:150px; border-radius:14px; overflow:hidden; border:1px solid var(--line); margin:10px 0 14px; position:relative; background:var(--stage); }
-  .mini-map img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .pick-label{ font-size:11.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--mut); margin:2px 2px 9px; }
-  .dpick{ display:flex; align-items:center; gap:11px; padding:12px; border:1px solid var(--line); border-radius:13px; margin-bottom:9px; cursor:pointer; background:var(--card); }
-  .dpick:active{ background:var(--card2); }
-  .dpick.current{ border-color:var(--inact); cursor:default; }
-  .dpick .av{ width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-weight:800; color:var(--pin-ink); font-size:14px; flex:0 0 auto; }
-  .dpick .info{ flex:1; min-width:0; }
-  .dpick .dn{ font-size:14.5px; font-weight:700; display:flex; align-items:center; gap:7px; }
-  .dpick .ds{ font-size:11.5px; color:var(--mut); margin-top:2px; }
-  .dpick .meta{ text-align:right; font-size:11.5px; color:var(--mut); font-weight:700; flex:0 0 auto; }
-  .dpick .meta .dist{ color:var(--ink); font-size:14px; }
-  .tagcur{ font-size:9.5px; font-weight:800; color:var(--inact); background:color-mix(in srgb,var(--inact) 15%,transparent); border:1px solid color-mix(in srgb,var(--inact) 35%,transparent); padding:1px 6px; border-radius:5px; }
-  .tagfree{ font-size:9.5px; font-weight:800; color:var(--vivo); background:color-mix(in srgb,var(--vivo) 14%,transparent); padding:1px 6px; border-radius:5px; }
-  .confirm-flow{ display:flex; align-items:center; justify-content:center; gap:12px; margin:18px 0; }
-  .cf-node{ text-align:center; }
-  .cf-av{ width:52px; height:52px; border-radius:50%; display:grid; place-items:center; font-weight:800; color:var(--pin-ink); font-size:19px; margin:0 auto 6px; }
-  .cf-nm{ font-size:12px; font-weight:700; }
-  .cf-arrow{ color:var(--mut); font-size:22px; }
-  .cf-note{ font-size:12.5px; color:var(--mut); text-align:center; margin-bottom:6px; }
-  /* Itemized order summary (KDS-style, kept): qty× name + red "↳ extras" sub-lines, inside .items-box. */
-  .detail-items{ display:flex; flex-direction:column; gap:3px; }
-  .dl-item{ display:flex; align-items:baseline; gap:9px; font-size:14.5px; color:var(--ink); line-height:1.4; }
-  .dl-item.muted{ color:var(--mut); font-size:13.5px; }
-  .dl-qty{ font-weight:700; color:var(--mut); font-variant-numeric:tabular-nums; min-width:26px; }
-  .dl-extra{ font-size:12.5px; color:var(--red); margin:0 0 2px 35px; line-height:1.3; }
-  .dl-extra-tag{ color:var(--mut); font-size:12px; font-weight:600; }
+  .row{ display:flex; align-items:center; gap:14px; padding:13px 16px; border-top:1px solid var(--hair);
+    background:transparent; border-left:none; border-right:none; border-bottom:none; width:100%; text-align:left; cursor:pointer; color:inherit }
+  .row:first-child{ border-top:none }
+  .row .av{ flex:0 0 auto; width:44px; height:44px; border-radius:50%; display:grid; place-items:center; font-size:17px; font-weight:700; color:#fff }
+  .row .m{ flex:1 1 auto; min-width:0 }
+  .row .m b{ display:block; font-size:17px; font-weight:600; letter-spacing:-.35px }
+  .row .m s{ display:block; font-size:14px; color:var(--ink2); text-decoration:none; margin-top:2px }
+  .row .d{ flex:0 0 auto; font-size:17px; font-weight:700; color:var(--ink2) }
+  .row[disabled]{ opacity:.45; cursor:default }
 
-  #toast{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%) scale(.96);
-    z-index:50; max-width:82vw; padding:11px 16px; font-size:14px; font-weight:600; color:var(--accent-fg);
-    background:var(--accent); border-radius:12px; box-shadow:var(--shadow); opacity:0; visibility:hidden;
-    transition:opacity .25s var(--ease), transform .25s var(--ease), visibility .25s var(--ease); }
-  #toast.on{ opacity:1; visibility:visible; transform:translate(-50%,-50%) scale(1); }
-  #toast.error{ background:var(--red); color:#fff; }
+  .btn{ display:block; width:100%; padding:16px; border:none; border-radius:14px; font-size:17px; font-weight:700;
+    letter-spacing:-.35px; cursor:pointer; margin-top:12px; transition:transform .14s var(--ease) }
+  .btn:active{ transform:scale(.985) }
+  .btn-p{ background:var(--violet-solid); color:#fff; box-shadow:var(--lift-accent) }
+  .btn-g{ background:var(--card); color:var(--violet); box-shadow:inset 0 0 0 1px var(--ring) }
+  .btn-d{ background:var(--card); color:var(--rose-ink); box-shadow:inset 0 0 0 1px var(--ring) }
+  .btn:disabled{ opacity:.55; cursor:default }
+  .call{ flex:0 0 auto; width:50px; height:50px; border-radius:50%; display:grid; place-items:center;
+    background:var(--violet-solid); color:#fff; text-decoration:none; box-shadow:var(--lift-accent) }
+
+  .warn{ display:flex; gap:11px; align-items:flex-start; background:var(--lilac-bg); border-radius:18px; padding:14px 15px; margin-top:14px }
+  .warn p{ margin:0; font-size:14.5px; line-height:1.4; color:var(--ink) }
+
+  .flow{ display:flex; align-items:center; justify-content:center; gap:20px; margin:36px 0 26px }
+  .flow div{ text-align:center }
+  .flow .big{ width:64px; height:64px; border-radius:50%; display:grid; place-items:center; font-size:25px; font-weight:700;
+    color:#fff; margin:0 auto 10px; box-shadow:var(--shadow-m) }
+  .flow .big.empty{ background:transparent; border:2px dashed var(--ink3); color:var(--ink3); box-shadow:none }
+  .flow b{ display:block; font-size:15px; font-weight:600; letter-spacing:-.3px }
+  .flow s{ display:block; font-size:13px; color:var(--ink2); text-decoration:none; margin-top:1px }
+
+  .seg{ display:flex; gap:4px; padding:4px; border-radius:14px; background:var(--sunken) }
+  .seg button{ flex:1 1 0; padding:9px 6px; border:none; border-radius:10px; background:transparent; font-size:14px;
+    font-weight:600; color:var(--ink2); cursor:pointer }
+  .seg button[aria-pressed="true"]{ background:var(--card); color:var(--ink) }
+
+  #toast{ position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 96px); transform:translate(-50%,14px);
+    z-index:40; max-width:84%; padding:13px 18px; border-radius:18px; background:var(--ink); color:var(--ground);
+    font-size:15px; font-weight:600; letter-spacing:-.2px; box-shadow:var(--shadow-m); opacity:0; visibility:hidden;
+    transition:opacity .25s var(--ease), transform .25s var(--ease), visibility .25s var(--ease) }
+  #toast.on{ opacity:1; visibility:visible; transform:translate(-50%,0) }
+  #toast.bad{ background:var(--rose-ink); color:#fff }
+
+  /* ── login ── */
+  #screen-login{ position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:12px; padding:32px; background:var(--ground) }
+  .mark{ width:66px; height:66px; border-radius:22px; background:var(--violet-solid); color:#fff; display:grid;
+    place-items:center; font-size:30px; font-weight:700; box-shadow:var(--lift-accent) }
+  #screen-login h1{ margin:14px 0 0; font-size:30px; font-weight:700; letter-spacing:-.8px }
+  .lf{ display:flex; flex-direction:column; gap:10px; width:min(330px,86vw); margin-top:18px }
+  .lf input{ height:52px; padding:0 16px; font:inherit; font-size:17px; color:var(--ink); background:var(--card);
+    border:none; border-radius:14px; box-shadow:inset 0 0 0 1px var(--ring) }
+  #login-error{ min-height:18px; font-size:14px; font-weight:600; color:var(--rose-ink); text-align:center }
 </style>
 </head>
 <body>
-  <div id="screen-login" class="full-screen hidden">
-    <div class="login-form">
-      <h2>Dispatch</h2>
-      <input type="email" id="login-email" placeholder="email" autocomplete="email">
-      <input type="password" id="login-password" placeholder="contraseña" autocomplete="current-password">
-      <button id="login-btn">Entrar</button>
-      <div id="login-error"></div>
+  <form id="screen-login" class="hidden">
+    <div class="mark rd">D</div>
+    <h1 class="rd">Dispatch</h1>
+    <div class="lf">
+      <label class="sr" for="login-email">Email</label>
+      <input type="email" id="login-email" name="email" placeholder="email" autocomplete="email" inputmode="email" enterkeyhint="next" required>
+      <label class="sr" for="login-password">Contraseña</label>
+      <input type="password" id="login-password" name="password" placeholder="contraseña" autocomplete="current-password" enterkeyhint="go" required>
+      <button class="btn btn-p" id="login-btn" type="submit">Entrar</button>
+      <div id="login-error" role="alert"></div>
     </div>
-  </div>
+  </form>
 
-  <div id="screen-main" class="full-screen hidden">
-    <div class="apphead">
-      <div>
-        <div class="t" id="head-title">Pedidos</div>
-        <div class="sub" id="head-sub">— activos · — marcas</div>
+  <div id="screen-main" class="hidden">
+    <header class="hdr">
+      <div class="hdr-top">
+        <div class="ttl rd" id="head-title">Pedidos</div>
+        <button class="live on" id="live" type="button" aria-describedby="live-txt">
+          <i></i><span id="live-txt">En vivo</span>
+        </button>
+        <button class="ibtn" id="menu-btn" type="button" aria-label="Ajustes">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+        </button>
       </div>
-      <div class="head-r">
-        <button class="theme-btn" id="push-toggle" aria-label="Notificaciones" hidden></button>
-        <button class="theme-btn" id="theme-toggle" aria-label="Cambiar tema"></button>
-        <div class="live-dot"><i></i> En vivo</div>
-      </div>
+      <div class="sub" id="head-sub"></div>
+    </header>
+
+    <nav class="chips" id="chips" aria-label="Filtros"></nav>
+
+    <main id="pane"></main>
+
+    <div class="map-wrap hidden" id="map-wrap">
+      <div id="map"></div>
+      <button id="ver-todos" class="hidden" type="button">Ver todos</button>
+      <div id="map-msg" class="map-msg hidden" role="status"></div>
     </div>
 
-    <main>
-      <section id="tab-pedidos" class="tab-pane"></section>
-      <section id="tab-mapa" class="tab-pane hidden">
-        <div class="map-wrap">
-          <div id="map"></div>
-          <button id="ver-todos" class="hidden">Ver todos</button>
-          <div id="map-msg" class="map-msg hidden"></div>
-        </div>
-      </section>
-      <section id="tab-drivers" class="tab-pane hidden"></section>
-    </main>
-
-    <nav id="tabbar">
-      <button class="tab-btn" data-tab="pedidos" aria-selected="true">
-        <!-- receipt line icon -->
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6 3h12v18l-2.2-1.5L13.6 21 12 19.5 10.4 21 8.2 19.5 6 21z"/><path d="M9 8h6M9 12h6"/></svg>
-        <span>Pedidos</span>
+    <div class="fade"></div>
+    <nav id="tabbar" role="tablist" aria-label="Secciones">
+      <button class="tab" role="tab" data-tab="pedidos" aria-selected="true" type="button">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+        <span class="sr">Pedidos</span>
       </button>
-      <button class="tab-btn" data-tab="mapa" aria-selected="false">
-        <!-- folded-map line icon -->
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M9 4 3 6.2v13.6L9 18l6 2 6-2.2V4.2L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg>
-        <span>Mapa</span>
+      <button class="tab" role="tab" data-tab="mapa" aria-selected="false" type="button">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6.2v13.6L9 18l6 2 6-2.2V4.2L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg>
+        <span class="sr">Mapa</span>
       </button>
-      <button class="tab-btn" data-tab="drivers" aria-selected="false">
-        <!-- steering-wheel line icon (Drivers), stroke 1.7 to match -->
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="2.3"/><path d="M12 9.7V4.1M13.95 13.15l4.85 3.05M10.05 13.15l-4.85 3.05"/></svg>
-        <span>Drivers</span>
+      <button class="tab" role="tab" data-tab="drivers" aria-selected="false" type="button">
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16.5V13l1.9-4.6A2 2 0 0 1 7.8 7h8.4a2 2 0 0 1 1.9 1.4L20 13v3.5"/><path d="M4 13h16"/><circle cx="7.5" cy="16.5" r="1.6"/><circle cx="16.5" cy="16.5" r="1.6"/></svg>
+        <span class="sr">Repartidores</span>
       </button>
     </nav>
-  </div>
 
-  <!-- Bottom sheet (order detail → driver pick → confirm) + scrim + toast -->
-  <div id="scrim"></div>
-  <div id="sheet" role="dialog" aria-modal="true"><div class="grab"></div><div class="sh-body" id="sheet-body"></div></div>
-  <div id="toast"></div>
+    <button id="scrim" type="button" aria-label="Cerrar"></button>
+    <section id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="grab"></div>
+      <div class="sh" id="sheet-body"></div>
+    </section>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js';
@@ -352,12 +396,11 @@ import { agingBaselineMs, agingSeconds, agingBand, formatAging } from './dispatc
 import { driverPickList } from './reassign-model.js';
 import { pushSupport } from './push-support.js';
 import { createGlideEngine } from './driver-glide.js';   // bundled verbatim from xpizza-dispatch (parity test)
-// DB helpers for the ONE direct write (own push subscription) — same firebase-database module the SDK
-// imports (v10.13.2, browser-deduped); NOT an edit to the bundled SDK.
-import { ref, set, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+// DB helpers: the ONE direct write (own push subscription) plus a READ of /.info/connected for the
+// liveness pill. Same firebase-database module the SDK imports (v10.13.2, browser-deduped).
+import { ref, set, onValue, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 
 // apiKey is NOT a secret — it identifies the project; real access is gated by Auth + RTDB rules.
-// Copied verbatim from xpizza-dispatch/index.html's firebaseConfig block.
 const firebaseConfig = {
   apiKey: "AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU",
   authDomain: "xpizza-delivery.firebaseapp.com",
@@ -371,14 +414,13 @@ const $ = (id) => document.getElementById(id);
 const show = (which) => {
   $('screen-login').classList.toggle('hidden', which !== 'login');
   $('screen-main').classList.toggle('hidden', which !== 'main');
-  if (which === 'main') requestAnimationFrame(__fitShell);   // pin the shell height once it's visible
+  if (which === 'main') requestAnimationFrame(__fitShell);
 };
 
-// iOS standalone PWA miscomputes the viewport height at first paint (a grey band below the shell that
-// only fills after the first scroll — CSS 100dvh/inset:0 don't beat it). Pin #screen-main to the ACTUAL
+// iOS standalone PWA miscomputes the viewport height at first paint. Pin #screen-main to the ACTUAL
 // visual viewport height so it always reaches the true bottom.
 function __fitShell(){
-  const el = document.getElementById('screen-main');
+  const el = $('screen-main');
   const vv = window.visualViewport;
   const h = (vv && vv.height) ? vv.height : window.innerHeight;
   if (el && h) el.style.height = h + 'px';
@@ -390,23 +432,42 @@ window.addEventListener('orientationchange', () => { __fitShell(); setTimeout(__
 window.addEventListener('load', () => { __fitShell(); requestAnimationFrame(__fitShell); setTimeout(__fitShell, 300); });
 __fitShell(); requestAnimationFrame(__fitShell);
 
+// ── Module state ─────────────────────────────────────────────────────────────
+// ALL mutable module state is declared here, above every function and callback that reads it.
+// `let` bindings are in a temporal dead zone until their declaration is evaluated, so state
+// scattered further down the file throws a ReferenceError the moment anything at load time touches
+// it — the module then halts and the PWA boots blank. Add new state HERE, never beside its user.
+// boot.test.mjs executes this module to enforce it.
+const STORE = { orders:{}, scheduled:{}, drivers:{}, tasks:{} };
+let activeChip = 'todos';
+let started = false;
+let tab = 'pedidos';
+let openPass = null;
+let collapsedDone = true;
+let connected = true;
+let lastData = null;
+let map = null, driverMarkers = {}, focusLayer = { markers:[], line:null, route:null };
+let mapReady = false, mapFailed = false, mapInit = null;
+
 XPD.initDelivery(firebaseConfig);
 
 XPD.onAuth((user) => {
   // Staff-only surface. A customer token can technically auth but the RTDB rules
-  // deny /orders + /drivers reads (auth.token.customer !== true), so the board stays empty.
-  if (!user) { show('login'); return; }
+  // deny /orders + /drivers reads, so the board stays empty.
+  if (!user) { started = false; show('login'); return; }
   show('main');
-  window.__startApp?.();   // later tasks define __startApp (subscriptions + render)
+  window.__startApp?.();
 });
 
-$('login-btn').addEventListener('click', async () => {
+$('screen-login').addEventListener('submit', async (e) => {
+  e.preventDefault();
   const email = $('login-email').value.trim();
   const password = $('login-password').value;
   if (!email || !password) { $('login-error').textContent = 'Email y contraseña requeridos'; return; }
   $('login-btn').disabled = true;
   try {
     await XPD.signIn(email, password);
+    $('login-error').textContent = '';
   } catch (e) {
     const code = String(e?.code || e);
     $('login-error').textContent = /invalid-credential|wrong-password|user-not-found/.test(code)
@@ -416,71 +477,40 @@ $('login-btn').addEventListener('click', async () => {
   }
 });
 
-// ── Theme (light/dark) — persists to localStorage; the toggle swaps MOON/SUN by theme (mockup). ──
-const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.5 4.5l1.8 1.8M17.7 17.7l1.8 1.8M2 12h2.5M19.5 12H22M4.5 19.5l1.8-1.8M17.7 6.3l1.8-1.8"/></svg>';
-const MOON='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 14.5A8.2 8.2 0 0 1 9.5 4 8.3 8.3 0 1 0 20 14.5Z"/></svg>';
-const themeIsLight = () => (document.documentElement.getAttribute('data-theme')
-  || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'light';
-function syncThemeIcon(){ const b = $('theme-toggle'); if (b) b.innerHTML = themeIsLight() ? MOON : SUN; }
-window.__setTheme = (mode) => {
-  document.documentElement.setAttribute('data-theme', mode);
-  try { localStorage.setItem('dl-theme', mode); } catch {}
-  syncThemeIcon();
-};
-(() => {
-  const saved = (() => { try { return localStorage.getItem('dl-theme'); } catch { return null; } })();
-  if (saved) document.documentElement.setAttribute('data-theme', saved); // else CSS media default rules
-  syncThemeIcon();
-  $('theme-toggle').addEventListener('click', () => window.__setTheme(themeIsLight() ? 'dark' : 'light'));
-})();
-
-// ── Tab switch (Pedidos / Mapa / Drivers) — panes + topbar title/subtitle ──
-const TAB_TITLES = { pedidos:'Pedidos', mapa:'Mapa', drivers:'Drivers' };
-// r8: restart a CSS animation on an element (the "set none → reflow → clear" trick).
-function fadeInPane(el){ if (!el) return; el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; }
-
-window.__showTab = (which) => {
-  document.querySelectorAll('.tab-btn').forEach(b =>
-    b.setAttribute('aria-selected', String(b.dataset.tab === which)));
-  $('tab-pedidos').classList.toggle('hidden', which !== 'pedidos');
-  $('tab-mapa').classList.toggle('hidden', which !== 'mapa');
-  $('tab-drivers').classList.toggle('hidden', which !== 'drivers');
-  const ht = $('head-title'); if (ht) ht.textContent = TAB_TITLES[which] || 'Dispatch';
-  const hs = $('head-sub'); if (hs) hs.style.display = which === 'pedidos' ? 'block' : 'none';
-  fadeInPane($('tab-' + which));   // r8: fade the incoming content pane (Mapa's CSS animation:none → instant, no tile reflow)
-  if (which === 'mapa') window.__onMapaShown?.();   // Task 6 lazy-inits Maps here
-  if (which === 'drivers') renderDriversTab();       // r2-C — read-only roster
-};
-document.querySelectorAll('.tab-btn').forEach(b =>
-  b.addEventListener('click', () => window.__showTab(b.dataset.tab)));
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pedidos board — live subscriptions → pure models → DOM. READ-ONLY (no writes).
-// ─────────────────────────────────────────────────────────────────────────────
-const STORE = { orders:{}, scheduled:{}, drivers:{}, tasks:{} };
-let activeChip = 'todos';
-let started = false;
-const collapsed = new Set();   // section labels the user has collapsed (persists across re-renders)
+// ── Theme: sistema / claro / oscuro, persisted ──
+function applyTheme(){
+  const el = document.documentElement;
+  if (theme === 'system') el.removeAttribute('data-theme');
+  else el.setAttribute('data-theme', theme);
+  if (mapReady && map) map.setOptions({ styles: mapStyles() });
+}
+let theme = (() => { try { return localStorage.getItem('dl-theme') || 'system'; } catch { return 'system'; } })();
+if (!['system','light','dark'].includes(theme)) theme = 'system';
+applyTheme();
 
 window.__startApp = () => {
   if (started) return; started = true;
-  XPD.subscribeToOrders((o)          => { STORE.orders = o || {};    renderBoard(); });
-  XPD.subscribeToScheduledOrders((s) => { STORE.scheduled = s || {}; renderBoard(); });
-  XPD.subscribeToDrivers((d)         => { STORE.drivers = d || {};   renderBoard(); window.__driversUpdated?.(); });
-  XPD.subscribeToTasks((t)           => { STORE.tasks = t || {};     renderBoard(); });
-  setInterval(renderBoard, 30000);   // refresh elapsed/aging chips
+  XPD.subscribeToOrders((o)          => { STORE.orders = o || {};    lastData = Date.now(); renderBoard(); });
+  XPD.subscribeToScheduledOrders((s) => { STORE.scheduled = s || {}; lastData = Date.now(); renderBoard(); });
+  XPD.subscribeToDrivers((d)         => { STORE.drivers = d || {};   lastData = Date.now(); renderBoard(); window.__driversUpdated?.(); });
+  XPD.subscribeToTasks((t)           => { STORE.tasks = t || {};     lastData = Date.now(); renderBoard(); });
+  // Liveness: a READ of the RTDB's own connection flag. The pill must never claim "En vivo" while
+  // the socket is down — an empty board and a green dot are otherwise indistinguishable.
+  try {
+    onValue(ref(XPD.getDb(), '.info/connected'), (snap) => {
+      connected = snap.val() === true;
+      renderLive();
+    });
+  } catch { /* liveness is auxiliary: the board still works */ }
+  setInterval(() => { renderLive(); if (tab === 'pedidos') renderBoard(); else if (tab === 'drivers') renderDriversTab(); }, 20000);
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Staff web push (Phase 2a) — opt-in + PushManager.subscribe → own staff_push node.
-// The staff_push set() is the SECOND and ONLY other RTDB write in the app (readonly.test guards it).
-// ─────────────────────────────────────────────────────────────────────────────
-const VAPID_PUBLIC_KEY_B64 = "BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ";  // PUBLIC key — safe to hardcode
+// ── Staff web push (opt-in, the SECOND and ONLY other RTDB write) ──
+const VAPID_PUBLIC_KEY_B64 = "BE5fD1EXpWBalKvLopadT1n7ffCE0o0vBDB-JCRIB9Lrn7AyrA953IWLyIqy1-_24wSZ_TKas1gWC-08NecHxWQ";
 const urlB64ToU8 = (b64) => { const pad='='.repeat((4-b64.length%4)%4); const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/'); const raw=atob(s); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); };
 const iosVer = () => { const m=navigator.userAgent.match(/OS (\d+)_(\d+)/); return m ? parseFloat(`${m[1]}.${m[2]}`) : null; };
-const PUSH_MSG = { 'not-installed':'Añadí la app a tu pantalla de inicio primero', 'ios-too-old':'Requiere iOS 16.4+', 'unsupported':'Tu navegador no soporta notificaciones', 'denied':'Permiso denegado — activalo en Ajustes' };
-const BELL    = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 1.6 5.5 2 6H4c.4-.5 2-1 2-6z"/><path d="M10.4 20a1.8 1.8 0 0 0 3.2 0"/></svg>';
-const BELL_ON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 1.6 5.5 2 6H4c.4-.5 2-1 2-6z"/><path d="M10.4 20a1.8 1.8 0 0 0 3.2 0" fill="none" stroke-width="1.7" stroke-linecap="round"/></svg>';
+const PUSH_MSG = { 'not-installed':'Añadí la app a tu pantalla de inicio primero', 'ios-too-old':'Requiere iOS 16.4+', 'unsupported':'Tu navegador no soporta notificaciones', 'denied':'Permiso denegado — activalo en Ajustes del teléfono' };
+let pushOn = false;
 
 function currentPushSupport(){
   return pushSupport({
@@ -491,71 +521,131 @@ function currentPushSupport(){
     permission: (window.Notification && Notification.permission) || 'default',
   });
 }
-function syncPushToggle(on){
-  const b = $('push-toggle'); if (!b) return;
-  b.innerHTML = on ? BELL_ON : BELL;
-  b.classList.toggle('on', !!on);
-  b.setAttribute('aria-pressed', String(!!on));
-  b.title = on ? 'Notificaciones activadas' : 'Activar notificaciones';
-}
 async function enableStaffPush(){
   const sup = currentPushSupport();
-  if (!sup.ok) { toast(PUSH_MSG[sup.reason] || 'No disponible', 'error'); return; }
-  const perm = await Notification.requestPermission();   // requires the user gesture (this tap)
-  if (perm !== 'granted') { toast('Permiso denegado', 'error'); return; }
+  if (!sup.ok) { toast(PUSH_MSG[sup.reason] || 'No disponible', true); return; }
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { toast('Permiso denegado — activalo en Ajustes del teléfono', true); return; }
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToU8(VAPID_PUBLIC_KEY_B64) });
     const uid = XPD.getAuthInstance().currentUser?.uid;
-    if (!uid) { toast('Iniciá sesión', 'error'); return; }
-    // THE SECOND (and only other) WRITE — the user's OWN push subscription. Direct set via the SDK's getDb().
+    if (!uid) { toast('Iniciá sesión', true); return; }
+    // THE SECOND (and only other) WRITE — the user's OWN push subscription.
     await set(ref(XPD.getDb(), `staff_push/${uid}`), { subscription: sub.toJSON(), updated_at: serverTimestamp() });
-    toast('Notificaciones activadas'); syncPushToggle(true);
-  } catch (e) { toast('No se pudo activar', 'error'); }
+    pushOn = true; toast('Notificaciones activadas'); openSettings();
+  } catch (e) { toast('No se pudo activar', true); }
 }
-// Reveal the bell only where push is even possible; wire the tap; reflect an existing subscription on load.
-(() => {
-  const b = $('push-toggle');
-  if (!b || !('PushManager' in window) || !('serviceWorker' in navigator)) return;   // stays hidden on unsupported
-  b.hidden = false;
-  syncPushToggle(false);
-  b.addEventListener('click', enableStaffPush);
-  navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((s) => { if (s) syncPushToggle(true); }).catch(() => {});
-})();
+if ('serviceWorker' in navigator && 'PushManager' in window) {
+  navigator.serviceWorker.ready
+    .then((reg) => reg.pushManager.getSubscription())
+    .then((s) => { if (s) pushOn = true; })
+    .catch(() => {});
+}
 
-// A notification tap (SW postMessage) or a cold "#order=<id>" open → open that order's detail sheet once loaded.
+// A notification tap (SW postMessage) or a cold "#order=<id>" open → open that order's detail.
 let __pendingOrderId = (() => { const m = String(location.hash || '').match(/order=([^&]+)/); return m ? decodeURIComponent(m[1]) : null; })();
 function openOrderWhenReady(orderId){
   if (!orderId) return;
-  if (STORE.orders[orderId] || STORE.scheduled[orderId]) { __pendingOrderId = null; window.__openOrderDetail?.(orderId); }
-  else { __pendingOrderId = orderId; }   // not loaded yet — renderBoard retries when data arrives
+  if (STORE.orders[orderId] || STORE.scheduled[orderId]) { __pendingOrderId = null; openDetail(orderId); }
+  else { __pendingOrderId = orderId; }
 }
 navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data?.type === 'open-order' && e.data.orderId) openOrderWhenReady(e.data.orderId); });
 
-// ── small helpers ──
+// ── helpers ──
 function escapeHtml(s){
   if (s == null) return '';
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' })[c]);
 }
 // Human-facing label — '#<display_number>' once the server allocates one, else a short order-id
-// fallback. DISPLAY ONLY (mirrors the desktop's displayOrderLabel); never used as a key/selector/arg.
+// fallback. DISPLAY ONLY; never used as a key/selector/arg.
 function displayLabel(id, order){
   const dn = order && order.display_number;
   if (Number.isFinite(dn)) return '#' + dn;
   const s = id != null ? String(id) : '';
   return s ? '#' + s.slice(-4).toUpperCase() : '#—';
 }
+function doneClock(order){
+  const t = completedAt(order);
+  if (!t) return '';
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone:'America/Tegucigalpa', hour:'numeric', minute:'2-digit', hour12:true })
+      .formatToParts(new Date(t))
+      .reduce((acc, p) => p.type === 'dayPeriod' ? acc + ' ' + p.value.toUpperCase().replace(/[^APM]/g, '') : (p.type === 'literal' && p.value === ' ' ? acc : acc + p.value), '');
+  } catch { return ''; }
+}
+const TZ_HN = 'America/Tegucigalpa';
+// Stable local day-key "2026-09-21" (en-CA is YYYY-MM-DD in every ICU build) — same trick slot-format
+// uses. Completados is capped to today so the list can't grow without bound over a service.
+const dayKey = (ms) => {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ_HN, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(ms)); }
+  catch { return ''; }
+};
+const brandKey = (o) => (o && o.restaurant_id === 'la_musa' ? 'lm' : 'xp');
+const brandMark = (o) => (brandKey(o) === 'lm' ? 'M' : 'X');
+const brandName = (o) => (brandKey(o) === 'lm' ? 'La Musa' : 'X. Pizza');
+const slotLabelSafe = (ms) => { try { return slotLabel(Number(ms), Date.now()); } catch { return ''; } };
+const minutesOf = (o) => Math.floor(agingSeconds(agingBaselineMs(o), Date.now()) / 60);
+// When an order actually finished. delivered_at is stamped on delivery completion
+// (xpizza-delivery.js completeTask); pickups fall back through picked_up_at to created_at.
+const completedAt = (o) => {
+  const t = [o && o.delivered_at, o && o.completed_at, o && o.picked_up_at, o && o.created_at]
+    .find(v => Number.isFinite(v));
+  return Number.isFinite(t) ? t : 0;
+};
+
+const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:'Listos', camino:'En camino', completados:'Completados' };
+const STATUS_ES = { nuevos:'en cocina', preparacion:'en cocina', listos:'listo', camino:'en camino', completados:'entregado' };
+const DRIVER_STATUS_ES = {
+  off_shift:'Fuera de turno', available:'Disponible', assigned:'Asignado',
+  at_restaurant:'En restaurante', en_route_delivery:'En camino', returning:'Regresando', on_break:'En descanso',
+};
+
+// Urgency: what the phone is actually for. Colour answers "does this need me", never "what stage is it".
+function levelOf(id, order){
+  const sec = sectionForOrder(order);
+  if (sec === 'completados') return 'done';
+  const secs = agingSeconds(agingBaselineMs(order), Date.now());
+  const unassigned = isUnassignedDelivery(order, id, STORE.tasks);
+  // Thresholds: call agingBand() BARE so both surfaces read the module default (5 min amber /
+  // 10 min red) — the desktop calls it bare too, so the phone can never drift from the board again.
+  // The clock is total age from created_at, so heat applies ONLY while the order is still the
+  // kitchen's problem, or while it has no driver — an order 25 min into a normal delivery is not
+  // late, and reddening it would drown the orders that are.
+  const heats = sec === 'nuevos' || sec === 'preparacion' || unassigned;
+  const band = heats ? agingBand(secs) : 'green';
+  if (unassigned && band !== 'green') return 'act';
+  if (band === 'red') return 'act';
+  if (unassigned) return 'watch';
+  const drvId = assignedDriverId(id, STORE.tasks);
+  if (drvId && XPD.isStalePing((STORE.drivers[drvId] || {}).last_ping)) return 'watch';
+  if (band === 'amber') return 'watch';
+  return 'calm';
+}
+function dotVar(id, order){
+  const sec = sectionForOrder(order);
+  if (sec === 'camino') return 'var(--sky-ink)';
+  if (sec === 'listos') return 'var(--mint-ink)';
+  return 'var(--ink3)';
+}
+// Two parts, not a dot-joined string: the fact that matters carries weight, the stage recedes.
+function stateParts(id, order){
+  const sec = sectionForOrder(order);
+  if (sec === 'completados') return { lead:'Entregado', tail: doneClock(order) };
+  if (order.order_type === 'pickup') return { lead:'Pickup', tail: STATUS_ES[sec] || '' };
+  const drvId = assignedDriverId(id, STORE.tasks);
+  if (!drvId) return { lead:'Sin repartidor', tail: STATUS_ES[sec] || '' };
+  const d = STORE.drivers[drvId] || {};
+  const first = String(d.name || 'Repartidor').split(' ')[0];
+  return XPD.isStalePing(d.last_ping) ? { lead:first, tail:'sin señal' } : { lead:first, tail: STATUS_ES[sec] || '' };
+}
 function oneLineItems(order){ return (order && order.items_text) ? String(order.items_text) : '—'; }
 
-// Itemized order summary for the detail sheet — qty× name + "↳ extras" per line, matching the KDS card.
-// Ported from xpizza-kitchen renderItems (the canonical consumer of items_text): parses the same
-// ' | '-joined "Nx Name (Lprice) [extras]" string the KDS parses, so the phone reads identically to the
-// kitchen screen. (Structured order.items is id-keyed for La Musa → names need the menu we don't bundle;
-// summary_lines is rewards-only. items_text is present on every order, both brands, name-resolved.)
+// Itemized order summary — parses the same ' | '-joined items_text the KDS parses, so the phone reads
+// identically to the kitchen screen.
 function renderOrderItems(order){
   const itemsText = order && order.items_text;
-  if (!itemsText || itemsText === '—') return '<div class="dl-item muted">Sin detalle del pedido</div>';
-  // Split items by ' | ' but NOT inside [] (extras).
+  if (!itemsText || itemsText === '—') return '<div class="dl-item"><span style="color:var(--ink2)">Sin detalle del pedido</span></div>';
   const parts = [];
   let depth = 0, cur = '';
   for (let i = 0; i < itemsText.length; i++) {
@@ -568,7 +658,6 @@ function renderOrderItems(order){
   if (cur.trim()) parts.push(cur.trim());
 
   return parts.map(part => {
-    // Qty, Name, optional (Lprice), optional [extras]
     const m = part.match(/^(\d+)x\s+(.+?)(?:\s+\(L[\d.]+\))?(?:\s+\[(.+)\])?$/);
     if (!m) return `<div class="dl-item"><span>${escapeHtml(part)}</span></div>`;
     const qty = parseInt(m[1], 10);
@@ -577,245 +666,658 @@ function renderOrderItems(order){
     let extrasHtml = '';
     if (extrasRaw) {
       if (extrasRaw.includes('Pizza ')) {
-        // Per-instance "Pizza N:" extras. Strip the prefix only when qty===1 (else it says WHICH one).
         const perPizza = extrasRaw.split(/\s*\|\s*(?=Pizza \d)/);
         if (qty === 1) {
-          extrasHtml = `<div class="dl-extra">↳ ${perPizza[0].replace(/^Pizza \d+:\s*/, '').trim()}</div>`;
+          extrasHtml = `<div class="dl-extra">${perPizza[0].replace(/^Pizza \d+:\s*/, '').trim()}</div>`;
         } else {
           const allSame = perPizza.length === qty && perPizza.every((p, i, arr) =>
             p.replace(/^Pizza \d+:\s*/, '').trim() === arr[0].replace(/^Pizza \d+:\s*/, '').trim());
           extrasHtml = allSame
-            ? `<div class="dl-extra">↳ ${perPizza[0].replace(/^Pizza \d+:\s*/, '').trim()} <span class="dl-extra-tag">(todas)</span></div>`
-            : perPizza.map(p => `<div class="dl-extra">↳ ${p.trim()}</div>`).join('');
+            ? `<div class="dl-extra">${perPizza[0].replace(/^Pizza \d+:\s*/, '').trim()} <span class="dl-extra-tag">· todas</span></div>`
+            : perPizza.map(p => `<div class="dl-extra">${p.trim()}</div>`).join('');
         }
       } else {
-        extrasHtml = `<div class="dl-extra">↳ ${extrasRaw}</div>`;
+        extrasHtml = `<div class="dl-extra">${extrasRaw}</div>`;
       }
     }
-    return `<div class="dl-item"><span class="dl-qty">${qty}×</span><span>${name}</span></div>${extrasHtml}`;
+    return `<div class="dl-item"><span class="dl-qty rd num">${qty}×</span><span>${name}</span></div>${extrasHtml}`;
   }).join('');
 }
 
-const SECTION_LABELS = { nuevos:'Nuevos', preparacion:'En preparación', listos:'Listos', camino:'En camino', completados:'Completados' };
-const SECTION_VAR = { nuevos:'--nuevo', preparacion:'--prep', listos:'--listo', camino:'--camino', completados:'--done', gold:'--gold' };
-function statusColorVar(section){ return SECTION_VAR[section] || '--line'; }
+const IC_PHONE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h3l2 5-2.5 1.5a13 13 0 0 0 6 6L15 13l5 2v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3 5.2 2 2 0 0 1 5 3z"/></svg>';
+const IC_PLUS  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+const IC_STORE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h16l-1-4H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg>';
+const IC_CHECK = '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="var(--ink3)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+const IC_CHEV  = '<svg class="chev" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+const IC_BACK  = '<svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>';
 
-const CARET_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
-const PIN_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
-
-// ── chip bar — Todos · Sin asignar · Delivery · Pickup · Programados ──
-const CHIPS = [
-  { key:'todos', label:'Todos' },
-  { key:'unassigned', label:'Sin asignar', attn:true },
-  { key:'delivery', label:'Delivery' },
-  { key:'pickup', label:'Pickup' },
-  { key:'programados', label:'Programados' },
-];
-function renderChips(counts){
-  return CHIPS.map(c => {
-    const active = activeChip === c.key;
-    const n = counts[c.key] ?? 0;
-    const dot = (c.attn && !active && n > 0) ? '<span class="attn-dot"></span>' : '';
-    const check = active ? '<span class="chk">✓</span>' : '';
-    const countCls = c.attn ? 'ct attn' : 'ct';
-    return `<button class="chip${active?' on':''}" data-chip="${c.key}">${check}${dot}${escapeHtml(c.label)} <span class="${countCls}">${n}</span></button>`;
-  }).join('');
+// ── liveness pill ──
+function renderLive(){
+  const el = $('live'); if (!el) return;
+  const txt = $('live-txt');
+  if (!connected){ el.className = 'live off'; txt.textContent = 'Sin conexión'; return; }
+  if (!lastData){ el.className = 'live wait'; txt.textContent = 'Conectando…'; return; }
+  el.className = 'live on'; txt.textContent = 'En vivo';
 }
 
-// ── footer-right cluster (mirrors the mockup cardRight): slot / clock / pickup-tag / driver / Sin asignar / — ──
-// Pure display; reuses assignedDriverId + isUnassignedDelivery + XPD.isStalePing (data derivation unchanged).
-function cardRight(id, order, section, isProg){
-  if (isProg) return `<span class="cchip slot">${IC_CAL} ${escapeHtml(slotLabelSafe(order.scheduled_for))}</span>`;
-  if (section === 'completados') return `<span class="cchip">${IC_CLOCK} ${escapeHtml(formatAging(agingSeconds(agingBaselineMs(order), Date.now())))}</span>`;
-  if (order.order_type === 'pickup') {
-    const ready = section === 'listos';
-    return `<span class="pickup-tag ${ready?'ready':''}">${IC_STORE} ${ready?'Listo p/ recoger':'Recoge el cliente'}</span>`;
-  }
+// ── board ──
+const PEEK = 80;
+
+function passHTML(id, order){
+  const lv = levelOf(id, order);
+  const done = lv === 'done';
+  const m = minutesOf(order);
   const drvId = assignedDriverId(id, STORE.tasks);
-  if (drvId) {
-    const d = STORE.drivers[drvId] || {};
-    const live = !XPD.isStalePing(d.last_ping);
-    const first = escapeHtml(String(d.name || 'Repartidor').split(' ')[0]);
-    return `<span class="drv"><span class="ld ${live?'vivo':'inact'}"></span>${first}</span>`;
-  }
-  if (isUnassignedDelivery(order, id, STORE.tasks)) return `<span class="unassigned">Sin asignar</span>`;
-  return `<span class="drv" style="color:var(--dim);font-weight:600">—</span>`;
-}
-
-// ── one order card — mockup 3-part structure (header · items · footer). All data derivation kept. ──
-function orderCard(id, order, now){
-  const section = sectionForOrder(order);
+  const d = drvId ? (STORE.drivers[drvId] || {}) : null;
+  const isOpen = openPass === id;
   const isProg = order.status === 'scheduled';
-  const isDone = section === 'completados';
-  const brandC = order.restaurant_id === 'la_musa' ? 'lm' : 'xp';
-  const typeIcon = order.order_type === 'pickup' ? IC_BAG : IC_BIKE;
-  const typeText = order.order_type === 'pickup' ? 'Recoger' : 'Entregar';
-  const secs = agingSeconds(agingBaselineMs(order), now);
-  // Aging cue: ONLY Nuevos/En preparación heat up (spec §3.5). agingBand returns 'green'|'amber'|'red';
-  // spec thresholds amber 8min / red 15min. ac (aging color) → edge spine + the elapsed clock chip heat.
-  const heats = section === 'nuevos' || section === 'preparacion';
-  const band = heats ? agingBand(secs, { amber: 480, red: 900 }) : 'green';
-  const ac = band === 'red' ? 'var(--red)' : band === 'amber' ? 'var(--amber)' : null;
-  const edgeColor = ac || `var(${isProg ? '--gold' : statusColorVar(section)})`;
-  const el = formatAging(secs);
-  const showEl = !isProg && !isDone;   // elapsed/clock chip in the footer for live orders (moved out of the header)
-  const elChip = showEl
-    ? (ac ? `<span class="cchip aging" style="color:${ac};border-color:${ac}">${IC_CLOCK} ${escapeHtml(el)}</span>`
-          : `<span class="cchip">${IC_CLOCK} ${escapeHtml(el)}</span>`)
-    : '';
-  const mapBtn = order.order_type === 'delivery'
-    ? `<button class="map-btn" data-order="${id}" aria-label="Ver en mapa" title="Ver en mapa">${IC_MAPPIN}</button>` : '';
-  return `
-    <article class="card${isDone?' done':''}" data-order="${id}">
-      <span class="edge" style="background:${edgeColor}"></span>
-      <div class="c-r1">
-        <span class="c-name">${escapeHtml(order.customer_name || 'Cliente')}</span>
-        <span class="brand ${brandC}">${brandC === 'xp' ? 'X.PIZZA' : 'LA MUSA'}</span>
-        <span class="c-num">${escapeHtml(displayLabel(id, order))}</span>
-      </div>
-      <div class="c-items">${escapeHtml(oneLineItems(order))}</div>
-      <div class="c-r3">
-        <span class="cchip">${typeIcon} ${escapeHtml(typeText)}</span>
-        ${elChip}
-        <span class="c-right">${cardRight(id, order, section, isProg)}${mapBtn}</span>
-      </div>
-    </article>`;
-}
 
-function sectionBlock(label, innerHTML, sectionKey, count){
-  const isCollapsed = collapsed.has(label);
-  const cnt = (count != null) ? `<span class="cnt">${count}</span>` : '';
-  const isProg = sectionKey === 'gold';
-  return `<section class="sec${isProg?' prog':''}${isCollapsed?' collapsed':''}" data-sec="${escapeHtml(label)}">
-    <div class="sec-h">
-      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-      <span class="stripe" style="background:var(${statusColorVar(sectionKey)})"></span>
-      <span class="name">${escapeHtml(label)}</span>
-      ${cnt}
-    </div>
-    <div class="sec-body"><div class="sec-inner">${innerHTML}</div></div>
-  </section>`;
-}
-function emptyState(text){ return `<div class="empty">${escapeHtml(text)}</div>`; }
+  let right;
+  if (done) right = '';
+  else if (d) right = `<span class="av rd" data-av="${escapeHtml(id)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>`;
+  else if (order.order_type === 'pickup') right = `<span class="av">${IC_STORE}</span>`;
+  else right = `<span class="av empty">${IC_PLUS}</span>`;
 
-function renderBoard(){
-  if (!started) return;
-  const now = Date.now();
-  const counts = chipCounts(STORE.orders, STORE.tasks, Object.keys(STORE.scheduled).length);
-  const chipBar = `<div class="chipbar">${renderChips(counts)}</div>`;
-
-  // Topbar subtitle — live count of in-flight (non-completed) board orders + distinct brands among them.
-  const activeIds = Object.keys(STORE.orders).filter(id => { const s = sectionForOrder(STORE.orders[id]); return s && s !== 'completados'; });
-  const brands = new Set(activeIds.map(id => STORE.orders[id].restaurant_id).filter(Boolean));
-  const hs = $('head-sub');
-  if (hs) hs.textContent = `${activeIds.length} activo${activeIds.length===1?'':'s'} · ${brands.size} marca${brands.size===1?'':'s'}`;
+  const timeCol = done
+    ? `<span class="t" style="display:grid;place-items:center;height:42px" title="${escapeHtml(doneClock(order))}">${IC_CHECK}</span>`
+    : isProg
+      ? `<span class="t rd" style="font-size:13px;font-weight:700;color:var(--lilac-ink);line-height:1.2">${escapeHtml(slotLabelSafe(order.scheduled_for))}</span>`
+      : `<span class="t rd num"><b>${m}</b><s>min</s></span>`;
 
   let body = '';
-  if (activeChip === 'programados') {
-    const groups = groupScheduledBySlot(STORE.scheduled, now);
-    body = groups.length
-      ? groups.map(g => sectionBlock(g.label, g.orders.map(({id,order}) => orderCard(id, order, now)).join(''), 'gold', g.orders.length)).join('')
-      : emptyState('No hay pedidos programados');
-  } else {
-    // live sections
-    const ids = Object.keys(STORE.orders).filter(id =>
-      matchesChip(STORE.orders[id], id, STORE.tasks, activeChip));
-    const bySection = Object.fromEntries(SECTIONS.map(s => [s, []]));
-    for (const id of ids) {
-      const sec = sectionForOrder(STORE.orders[id]);
-      if (sec) bySection[sec].push(id);
+  if (!done) {
+    const phone = String(order.customer_phone || order.phone || '').replace(/[^+\d]/g, '');
+    const callBtn = phone
+      ? `<a class="pact mini" href="tel:${escapeHtml(phone)}" aria-label="Llamar a ${escapeHtml(order.customer_name || 'cliente')}">${IC_PHONE}</a>`
+      : '';
+    const assignBtn = canReassign(order, id, STORE.tasks)
+      ? `<button class="pact solid" type="button" data-pick="${escapeHtml(id)}">${drvId ? 'Reasignar' : 'Asignar'}</button>`
+      : '';
+    body = `<div class="pbody">
+      <div class="ln">${escapeHtml(order.address_detected || order.address_details || '—')}</div>
+      <div class="ln" style="margin-top:3px">${escapeHtml(oneLineItems(order))}</div>
+      <div class="pacts">${callBtn}<button class="pact" type="button" data-detail="${escapeHtml(id)}">Ver pedido</button>${assignBtn}</div>
+    </div>`;
+  }
+
+  return `<div class="pass lv-${lv}${isOpen ? ' open' : ''}" data-pass="${escapeHtml(id)}">
+    <button class="peek" type="button" data-toggle="${escapeHtml(id)}" aria-expanded="${isOpen}">
+      ${timeCol}
+      <span class="m">
+        <span class="r1">
+          <span class="nm">${escapeHtml(order.customer_name || 'Cliente')}</span>
+          <span class="bm" style="background:var(--${brandKey(order)})">${brandMark(order)}</span>
+          <span class="onum num">${escapeHtml(displayLabel(id, order))}</span>
+        </span>
+        <span class="st">${done ? '' : `<i style="background:${dotVar(id, order)}"></i>`}<b>${escapeHtml(stateParts(id, order).lead)}</b>${stateParts(id, order).tail ? `<q>${escapeHtml(stateParts(id, order).tail)}</q>` : ''}</span>
+      </span>
+      ${right}
+    </button>${body}
+  </div>`;
+}
+
+function deckHTML(entries){
+  return `<div class="deck">${entries.map(([id, o]) => passHTML(id, o)).join('')}</div>`;
+}
+
+// Set by a successful assignment, consumed by the next render. Expires so a board that never
+// re-rendered (offline, backgrounded) can't play a stale animation minutes later.
+let pendingSettle = null;
+
+function playSettle(st){
+  const el = document.querySelector(`.pass[data-pass="${st.id}"]`);
+  if (!el) return;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { el.scrollIntoView({ block:'nearest' }); return; }
+  // FLIP: the pass has just been re-sorted into another deck. Move it back to where the eye last
+  // saw it, then let it travel to its new home, so the migration reads as a consequence.
+  if (st.from) {
+    const to = el.getBoundingClientRect();
+    const dy = st.from - to.top;
+    if (Math.abs(dy) > 2) {
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      void el.offsetHeight;
+      el.style.transition = 'transform .62s var(--ease)';
+      el.style.transform = '';
+      setTimeout(() => { el.style.transition = ''; el.style.transform = ''; }, 720);
     }
-    body = SECTIONS.map(sec => {
-      const list = bySection[sec].sort((a,b) => orderCompare(STORE.orders[a], STORE.orders[b]));
-      if (!list.length && activeChip !== 'todos') return '';   // hide empty under a filter
-      const cards = list.map(id => orderCard(id, STORE.orders[id], now)).join('') || emptyState('No hay pedidos ' + SECTION_LABELS[sec].toLowerCase());
-      return sectionBlock(SECTION_LABELS[sec], cards, sec, list.length);
-    }).join('');
-    // Programados section sits LAST on Todos (not under a type filter, per spec §3.2 partition)
-    if (activeChip === 'todos') {
-      const groups = groupScheduledBySlot(STORE.scheduled, now);
-      if (groups.length) {
-        const inner = groups.map(g => `<div class="slot"><h4>${escapeHtml(g.label)}</h4>${g.orders.map(({id,order}) => orderCard(id, order, now)).join('')}</div>`).join('');
-        body += sectionBlock('Programados', inner, 'gold', groups.reduce((n,g)=>n+g.orders.length,0));
+  }
+  const av = el.querySelector('[data-av]');
+  if (av) { av.classList.add('av-fill'); setTimeout(() => av.classList.remove('av-fill'), 560); }
+  setTimeout(() => el.scrollIntoView({ block:'nearest', behavior:'smooth' }), 80);
+}
+
+function layoutDecks(){
+  document.querySelectorAll('.deck').forEach((deck) => {
+    const passes = deck.querySelectorAll('.pass');
+    passes.forEach((p, i) => {
+      if (i === 0) { p.style.marginTop = '0px'; return; }
+      const prev = passes[i - 1];
+      p.style.marginTop = prev.classList.contains('open') ? '0px' : `${-(prev.offsetHeight - PEEK)}px`;
+    });
+  });
+}
+
+function renderChips(){
+  const counts = chipCounts(STORE.orders, STORE.tasks, Object.keys(STORE.scheduled).length);
+  const defs = [
+    { k:'todos', l:'Todos', n:counts.todos },
+    { k:'unassigned', l:'Sin repartidor', n:counts.unassigned, alert:true },
+    { k:'delivery', l:'Entrega', n:counts.delivery },
+    { k:'pickup', l:'Pickup', n:counts.pickup },
+    { k:'programados', l:'Programados', n:counts.programados },
+  ];
+  $('chips').innerHTML = defs.map(c =>
+    `<button class="chip${c.alert ? ' alert' : ''}" type="button" data-chip="${c.k}" aria-pressed="${activeChip === c.k}">${escapeHtml(c.l)}<span class="ct num">${c.n}</span></button>`
+  ).join('');
+}
+
+function renderBoard(){
+  if (!started || tab !== 'pedidos') return;
+  const pane = $('pane');
+  const keep = pane.scrollTop;
+  renderChips();
+
+  let html = '';
+
+  if (activeChip === 'programados') {
+    const groups = groupScheduledBySlot(STORE.scheduled, Date.now());
+    html = groups.length
+      ? groups.map(g => `<div class="slot-h">${escapeHtml(g.label)}</div>${deckHTML(g.orders.map(({id, order}) => [id, order]))}`).join('')
+      : `<div class="empty"><b>Sin programados</b><p>No hay pedidos agendados para más tarde.</p></div>`;
+  } else {
+    const ids = Object.keys(STORE.orders).filter(id => matchesChip(STORE.orders[id], id, STORE.tasks, activeChip));
+    const bucket = { act:[], watch:[], calm:[], done:[] };
+    for (const id of ids) bucket[levelOf(id, STORE.orders[id])].push(id);
+    const sortLive = (a, b) => orderCompare(STORE.orders[a], STORE.orders[b]);
+    const ahora = [...bucket.act, ...bucket.watch].sort(sortLive).map(id => [id, STORE.orders[id]]);
+    const curso = bucket.calm.sort(sortLive).map(id => [id, STORE.orders[id]]);
+    // Completados is a history list: most recently finished first, by completion time.
+    // orderCompare() is the LIVE-board comparator (pickup after delivery, then oldest first) — using
+    // it here interleaved the two types and put the oldest at the top, which read as unsorted.
+    const today = dayKey(Date.now());
+    const hechos = bucket.done
+      .filter(id => dayKey(completedAt(STORE.orders[id])) === today)
+      .sort((a, b) => completedAt(STORE.orders[b]) - completedAt(STORE.orders[a]))
+      .map(id => [id, STORE.orders[id]]);
+
+    if (!ids.length) {
+      html = `<div class="empty"><b>Nada por aquí</b><p>Ningún pedido coincide con este filtro.</p></div>`;
+    } else {
+      html += ahora.length
+        ? `<div class="sec">Ahora<span class="n num">${ahora.length}</span></div>${deckHTML(ahora)}`
+        : `<div class="empty" style="padding:30px 24px"><b>Todo bajo control</b><p>Ningún pedido necesita tu atención ahora mismo.</p></div>`;
+      if (curso.length) html += `<div class="sec">En curso<span class="n num">${curso.length}</span></div>${deckHTML(curso)}`;
+      if (hechos.length) {
+        html += `<button class="sec" type="button" data-donetoggle="1" aria-expanded="${!collapsedDone}">${IC_CHEV}Completados hoy<span class="n num">${hechos.length}</span></button>`;
+        if (!collapsedDone) html += deckHTML(hechos);
+      }
+      if (activeChip === 'todos') {
+        const groups = groupScheduledBySlot(STORE.scheduled, Date.now());
+        if (groups.length) {
+          html += `<div class="sec">Programados<span class="n num">${groups.reduce((n,g)=>n+g.orders.length,0)}</span></div>`;
+          html += groups.map(g => `<div class="slot-h">${escapeHtml(g.label)}</div>${deckHTML(g.orders.map(({id, order}) => [id, order]))}`).join('');
+        }
       }
     }
   }
-  $('tab-pedidos').innerHTML = chipBar + `<div class="board-body">${body || emptyState('Sin pedidos activos')}</div>`;
-  bindBoardEvents();
-  if (__pendingOrderId) openOrderWhenReady(__pendingOrderId);   // deferred notification/#order= open, once data is in
 
+  pane.innerHTML = html;
+  pane.scrollTop = keep;
+  layoutDecks();
+
+  if (pendingSettle) {
+    const st = pendingSettle;
+    pendingSettle = null;
+    if (Date.now() - st.at < 6000) requestAnimationFrame(() => playSettle(st));
+  }
+
+  const activeIds = Object.keys(STORE.orders).filter(id => { const s = sectionForOrder(STORE.orders[id]); return s && s !== 'completados'; });
+  const unassigned = activeIds.filter(id => isUnassignedDelivery(STORE.orders[id], id, STORE.tasks)).length;
+  $('head-sub').innerHTML = `${activeIds.length} activo${activeIds.length === 1 ? '' : 's'}${unassigned ? `, <b>${unassigned} sin repartidor</b>` : ''}`;
+
+  if (__pendingOrderId) openOrderWhenReady(__pendingOrderId);
 }
 
-function bindBoardEvents(){
-  const root = $('tab-pedidos');
-  root.querySelectorAll('.chip').forEach(b =>
-    b.addEventListener('click', () => { activeChip = b.dataset.chip; renderBoard(); root.querySelector('.board-body')?.classList.add('board-fade'); }));   // r8: fade only on chip change, not data re-renders
-  root.querySelectorAll('.sec-h').forEach(h =>
-    h.addEventListener('click', () => {
-      const sec = h.closest('.sec'); const label = sec?.dataset.sec;
-      if (!label) return;
-      if (collapsed.has(label)) collapsed.delete(label); else collapsed.add(label);
-      sec.classList.toggle('collapsed');
-    }));
-  root.querySelectorAll('.map-btn').forEach(b =>
-    b.addEventListener('click', (e) => { e.stopPropagation(); window.__showTab('mapa'); window.__focusOrderOnMap?.(b.dataset.order); }));
-  root.querySelectorAll('.card').forEach(c =>
-    c.addEventListener('click', () => window.__openOrderDetail?.(c.dataset.order)));
+// ── drivers roster ──
+function driverColorVar(d){
+  if (!d) return 'var(--ink3)';
+  if (d.status === XPD.DRIVER_STATUS.OFF_SHIFT) return 'var(--ink3)';
+  if (XPD.isStalePing(d.last_ping)) return 'var(--lilac-ink)';
+  if (d.status === 'en_route_delivery' || d.status === 'returning' || d.status === 'assigned') return 'var(--sky-ink)';
+  return 'var(--mint-ink)';
 }
+function orderForDriver(uid){
+  for (const id of Object.keys(STORE.orders)) {
+    const sec = sectionForOrder(STORE.orders[id]);
+    if (sec === null || sec === 'completados') continue;
+    if (assignedDriverId(id, STORE.tasks) === uid) return id;
+  }
+  return null;
+}
+function driverRow(uid, d){
+  const oid = orderForDriver(uid);
+  const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '—';
+  const lead = XPD.isStalePing(d.last_ping) ? 'Sin señal' : statusEs;
+  return `<button class="row" type="button" data-drvfocus="${escapeHtml(uid)}">
+    <span class="av rd" style="background:${driverColorVar(d)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>
+    <span class="m"><b>${escapeHtml(d.name || 'Repartidor')}</b><s>${escapeHtml(lead)}, ${oid ? escapeHtml(displayLabel(oid, STORE.orders[oid])) : 'sin pedido'}</s></span>
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--ink3)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+  </button>`;
+}
+function renderDriversTab(){
+  const all = Object.entries(STORE.drivers).filter(([, d]) => d && (d.name || typeof d.lat === 'number' || d.status));
+  const byLiveName = ([, a], [, b]) =>
+    (XPD.isStalePing(a.last_ping) ? 1 : 0) - (XPD.isStalePing(b.last_ping) ? 1 : 0)
+    || String(a.name || '').localeCompare(String(b.name || ''));
+  const on = all.filter(([, d]) => d.status !== XPD.DRIVER_STATUS.OFF_SHIFT).sort(byLiveName);
+  const off = all.filter(([, d]) => d.status === XPD.DRIVER_STATUS.OFF_SHIFT).sort(byLiveName);
+  $('pane').innerHTML = (on.length || off.length)
+    ? `<div class="sec">En turno<span class="n num">${on.length}</span></div>
+       <div class="panel">${on.map(([u, d]) => driverRow(u, d)).join('') || '<div class="empty" style="padding:24px"><p>Nadie en turno.</p></div>'}</div>
+       <div class="sec">Fuera de turno<span class="n num">${off.length}</span></div>
+       <div class="panel">${off.map(([u, d]) => driverRow(u, d)).join('') || '<div class="empty" style="padding:24px"><p>Nadie fuera de turno.</p></div>'}</div>`
+    : `<div class="empty"><b>Sin repartidores</b><p>Todavía no hay repartidores registrados.</p></div>`;
+}
+
+// ── tabs ──
+function showTab(which){
+  tab = which;
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === which)));
+  $('head-title').textContent = which === 'pedidos' ? 'Pedidos' : which === 'mapa' ? 'Mapa' : 'Repartidores';
+  $('head-sub').classList.toggle('hidden', which !== 'pedidos');
+  $('chips').classList.toggle('hidden', which !== 'pedidos');
+  $('pane').classList.toggle('hidden', which === 'mapa');
+  $('map-wrap').classList.toggle('hidden', which !== 'mapa');
+  if (which === 'pedidos') renderBoard();
+  if (which === 'drivers') renderDriversTab();
+  if (which === 'mapa') window.__onMapaShown?.();
+}
+
+// ── sheet plumbing ──
+let lastFocus = null;
+function openSheet(html){
+  if (!$('sheet').classList.contains('on')) lastFocus = document.activeElement;
+  $('sheet-body').innerHTML = html;
+  $('sheet-body').scrollTop = 0;
+  $('scrim').classList.add('on');
+  $('sheet').classList.add('on');
+  $('screen-main').setAttribute('aria-hidden', 'false');
+  const f = $('sheet').querySelector('button:not([disabled]), a[href]');
+  if (f) setTimeout(() => f.focus(), 60);
+}
+function closeSheet(){
+  $('scrim').classList.remove('on');
+  $('sheet').classList.remove('on');
+  $('sheet-body').innerHTML = '';
+  pickerFromDriver = null; pickerIsReassign = false;
+  if (lastFocus && lastFocus.focus) lastFocus.focus();
+  lastFocus = null;
+}
+$('scrim').addEventListener('click', closeSheet);
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if ($('sheet').classList.contains('on')) closeSheet();
+});
+// Keep Tab inside the sheet while it is open.
+document.addEventListener('focusin', (e) => {
+  const sheet = $('sheet');
+  if (!sheet.classList.contains('on')) return;
+  if (!sheet.contains(e.target) && e.target !== document.body) {
+    const f = sheet.querySelector('button:not([disabled]), a[href], input');
+    if (f) f.focus();
+  }
+});
+
+let _toastT;
+function toast(msg, bad){
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = bad ? 'on bad' : 'on';
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => { el.className = bad ? 'bad' : ''; }, 2800);
+}
+
+// Failure copy — mirrors the desktop's assignFailMsg.
+function assignFailMsg(reason){
+  switch (reason) {
+    case 'already_assigned':
+    case 'pickup_taken': return 'Ya fue asignada a otro repartidor';
+    case 'claim_stale': return 'La asignación cambió — el tablero ya se actualizó, intentá de nuevo';
+    case 'write_failed': return 'No se pudo asignar (error de red) — reintentá';
+    default: return 'No se pudo asignar';
+  }
+}
+
+// ── detail sheet ──
+const STAGE_ORDER = ['nuevos', 'preparacion', 'listos', 'camino', 'completados'];
+const STAGE_LABEL = { nuevos:'Nuevo', preparacion:'Cocina', listos:'Listo', camino:'Camino', completados:'Entregado' };
+
+function pipeHTML(order){
+  const sec = sectionForOrder(order);
+  const idx = Math.max(0, STAGE_ORDER.indexOf(sec));
+  const isPickup = order.order_type === 'pickup';
+  const stages = isPickup ? ['nuevos', 'preparacion', 'listos', 'completados'] : STAGE_ORDER;
+  const here = Math.max(0, stages.indexOf(sec));
+  return `<div class="panel"><div class="pipe">${stages.map((s, i) => {
+    const cls = i < here ? 'done' : i === here ? 'now' : '';
+    return `<span class="pstep${i <= here ? ' act' : ''}">
+      ${i === 0 ? '' : `<span class="ln l${i <= here ? ' fill' : ''}"></span>`}
+      ${i === stages.length - 1 ? '' : `<span class="ln r${i < here ? ' fill' : ''}"></span>`}
+      <span class="pdot ${cls}"></span><s>${STAGE_LABEL[s]}</s></span>`;
+  }).join('')}</div></div>`;
+}
+
+function openDetail(orderId){
+  const order = STORE.orders[orderId] || STORE.scheduled[orderId];
+  if (!order) return;
+  const isScheduled = order.status === 'scheduled' || (!!STORE.scheduled[orderId] && !STORE.orders[orderId]);
+  const drvId = assignedDriverId(orderId, STORE.tasks);
+  const d = drvId ? (STORE.drivers[drvId] || {}) : null;
+  const actionable = canReassign(order, orderId, STORE.tasks);
+  const lv = levelOf(orderId, order);
+  const m = minutesOf(order);
+  const slot = isScheduled && Number(order.scheduled_for) ? slotLabelSafe(order.scheduled_for) : '';
+  const direccion = order.address_detected || order.address_details || '—';
+  const phoneRaw = String(order.customer_phone || order.phone || '');
+  const phone = phoneRaw.replace(/[^+\d]/g, '');
+  const chipBg = lv === 'act' ? 'var(--rose-bg)' : lv === 'watch' ? 'var(--lilac-bg)' : 'var(--sunken)';
+  const chipIn = lv === 'act' ? 'var(--rose-ink)' : lv === 'watch' ? 'var(--lilac-ink)' : 'var(--ink)';
+
+  const drvPanel = d
+    ? `<div class="panel pad" style="display:flex;align-items:center;gap:14px">
+         <span class="av rd" style="width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:17px;font-weight:700;color:#fff;background:${driverColorVar(d)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>
+         <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">${escapeHtml(d.name || 'Repartidor')}</b>
+         <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${XPD.isStalePing(d.last_ping) ? 'Sin señal GPS' : 'GPS activo'} · ${escapeHtml(DRIVER_STATUS_ES[d.status] || d.status || '')}</s></span>
+       </div>`
+    : `<div class="panel pad" style="display:flex;align-items:center;gap:14px">
+         <span style="width:44px;height:44px;border-radius:50%;border:2px dashed var(--ink3);display:grid;place-items:center;color:var(--ink3)">${IC_PLUS}</span>
+         <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">Sin asignar</b>
+         <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${isScheduled ? 'Se activa a la hora programada' : `Esperando desde hace ${m} minutos`}</s></span>
+       </div>`;
+
+  openSheet(`
+    <div style="display:flex;align-items:flex-start;gap:14px">
+      <div style="flex:1 1 auto;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="bm" style="background:var(--${brandKey(order)});width:22px;height:22px;font-size:11px">${brandMark(order)}</span>
+          <span style="font-size:14.5px;font-weight:600;color:var(--ink2)">${order.order_type === 'pickup' ? 'Pickup' : 'Entrega'} en ${brandName(order)}</span>
+          <span class="num" style="margin-left:auto;font-size:14.5px;font-weight:600;color:var(--ink3)">${escapeHtml(displayLabel(orderId, order))}</span>
+        </div>
+        <h2 id="sheet-title" class="sh-h rd" style="margin-top:9px">${escapeHtml(order.customer_name || 'Cliente')}</h2>
+      </div>
+      <div class="rd num" style="flex:0 0 auto;text-align:center;border-radius:18px;padding:11px 14px;background:${chipBg};color:${chipIn}">
+        ${isScheduled
+          ? `<div style="font-size:15px;font-weight:700">${escapeHtml(slot)}</div>`
+          : `<div style="font-size:30px;font-weight:700;line-height:.9;letter-spacing:-1.5px">${m}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">min</div>`}
+      </div>
+    </div>
+    <div style="margin-top:20px">${pipeHTML(order)}</div>
+    <div class="grid2" style="margin-top:10px">
+      <div class="fact"><s>Total</s><b class="num">L ${escapeHtml(Number(order.total || 0).toFixed(2))}</b></div>
+      <div class="fact"><s>Estado</s><b>${escapeHtml(isScheduled ? 'Programado' : (SECTION_LABELS[sectionForOrder(order)] || '—'))}</b></div>
+    </div>
+    <div style="height:22px"></div><div class="panel pad">${renderOrderItems(order)}</div>
+    <div style="height:12px"></div>
+    <div class="panel pad" style="display:flex;align-items:center;gap:14px">
+      <span style="flex:1 1 auto;min-width:0">
+        ${phoneRaw ? `<b class="rd num" style="display:block;font-size:18px;font-weight:700;letter-spacing:-.4px">${escapeHtml(phoneRaw)}</b>` : `<b style="display:block;font-size:17px;font-weight:600;color:var(--ink2)">Sin teléfono</b>`}
+        <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:3px">${escapeHtml(direccion)}</s>
+      </span>
+      ${phone ? `<a class="call" href="tel:${escapeHtml(phone)}" aria-label="Llamar a ${escapeHtml(order.customer_name || 'cliente')}">${IC_PHONE}</a>` : ''}
+    </div>
+    <div style="height:12px"></div>${drvPanel}
+    ${actionable ? `<button class="btn btn-p" type="button" data-pick="${escapeHtml(orderId)}">${drvId ? 'Reasignar' : 'Asignar'} repartidor</button>` : ''}
+    ${order.order_type === 'pickup' ? '' : `<button class="btn btn-g" type="button" data-map="${escapeHtml(orderId)}">Ver en mapa</button>`}
+    <button class="btn btn-g" type="button" data-close="1">Cerrar</button>
+  `);
+}
+
+// ── assign / reassign — the ONE mutation. Mirrors the DESKTOP dispatch exactly:
+//   • reassign of an ALREADY-assigned order → SDK reassignOrder (id, drv, fromDriver), CAS-anchored
+//     on the driver captured at pick-open
+//   • fresh assign of an UNASSIGNED order   → SDK assignOrderToDriver (id, drv)
+// Both are the bundled, byte-identical SDK paths — we add/subtract NO assignment rules.
+let pickerFromDriver = null;
+let pickerIsReassign = false;
+
+const HUBS = { x_pizza:{ lat:15.507489753573818, lng:-88.0398486953722 }, la_musa:{ lat:15.50414, lng:-88.03848 } };
+
+function fmtDist(mtrs){
+  if (!Number.isFinite(mtrs)) return '—';
+  return mtrs >= 1000 ? (mtrs / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(mtrs) + ' m';
+}
+
+function openPicker(orderId){
+  const order = STORE.orders[orderId] || STORE.scheduled[orderId];
+  if (!order) return;
+  // FROZEN write setup: freeze the from-driver AS SHOWN at pick-open — reassignOrder's CAS anchors on
+  // pickerFromDriver so a moved order aborts instead of clobbering.
+  pickerFromDriver = assignedDriverId(orderId, STORE.tasks);
+  pickerIsReassign = !!pickerFromDriver;
+  const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
+  const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });
+
+  // Off-shift drivers are NOT offered. driverPickList ranks by distance alone, which put a driver
+  // who had gone home — but parked near the restaurant — at the top of the list for the app's only
+  // mutation. The map already excludes them; the picker now agrees.
+  const onShift = list.filter(r => (STORE.drivers[r.id] || {}).status !== XPD.DRIVER_STATUS.OFF_SHIFT);
+  const hiddenOff = list.length - onShift.length;
+  const bucketOf = (r) => {
+    const st = (STORE.drivers[r.id] || {}).status;
+    return (st === 'available' || st === 'at_restaurant') ? 'free' : 'busy';
+  };
+  const rowOf = (r) => {
+    const dObj = STORE.drivers[r.id] || {};
+    // Say the exception, not the normal case: "GPS activo" on every row is noise.
+    const statusEs = r.live ? (DRIVER_STATUS_ES[dObj.status] || r.status || '') : 'Sin señal';
+    return `<button class="row" type="button" data-choose="${escapeHtml(r.id)}"${r.isCurrent ? ' disabled' : ''}>
+      <span class="av rd" style="background:${driverColorVar(dObj)}">${escapeHtml(String(r.name || '?').charAt(0).toUpperCase())}</span>
+      <span class="m"><b>${escapeHtml(r.name)}${r.isCurrent ? ' <span style="font-size:12px;font-weight:600;color:var(--ink3)">— actual</span>' : ''}</b>
+      <s>${escapeHtml(statusEs)}, ${r.load} pedido${r.load === 1 ? '' : 's'}</s></span>
+      <span class="d rd num">${fmtDist(r.distanceM)}</span>
+    </button>`;
+  };
+  const group = (rows, title, colour) => rows.length
+    ? `<div class="lbl" style="color:${colour}">${title}</div><div class="panel">${rows.map(rowOf).join('')}</div>` : '';
+
+  const free = onShift.filter(r => bucketOf(r) === 'free');
+  const busy = onShift.filter(r => bucketOf(r) === 'busy');
+
+  const offNote = hiddenOff
+    ? `<p style="font-size:13.5px;color:var(--ink2);line-height:1.45;margin:18px 4px 0">${hiddenOff} repartidor${hiddenOff === 1 ? '' : 'es'} fuera de turno no ${hiddenOff === 1 ? 'se muestra' : 'se muestran'}.</p>`
+    : '';
+
+  const body = onShift.length
+    ? group(free, 'Disponibles', 'var(--mint-ink)') + group(busy, 'En entrega', 'var(--sky-ink)') + offNote
+    : `<div class="empty"><b>No hay repartidores en turno</b><p>${hiddenOff ? `${hiddenOff} está${hiddenOff === 1 ? '' : 'n'} fuera de turno. Alguien tiene que entrar antes de poder asignar.` : 'Nadie está registrado todavía.'}</p></div>`;
+
+  openSheet(`
+    <div class="sh-nav">
+      <button class="back" type="button" data-detail="${escapeHtml(orderId)}" aria-label="Atrás">${IC_BACK}</button>
+      <h2 id="sheet-title" class="sh-h rd">Elegir repartidor</h2>
+    </div>
+    <div class="sh-s" style="margin-left:4px">${escapeHtml(order.customer_name || 'Cliente')}, ${escapeHtml(order.address_detected || order.address_details || '—')}</div>
+    ${body}
+  `);
+}
+
+function openConfirm(orderId, driverId){
+  const order = STORE.orders[orderId] || STORE.scheduled[orderId] || {};
+  const toD = STORE.drivers[driverId] || {};
+  const fromD = pickerFromDriver ? (STORE.drivers[pickerFromDriver] || {}) : null;
+  const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
+  const row = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing }).find(r => r.id === driverId);
+  const stale = XPD.isStalePing(toD.last_ping);
+  const isOff = toD.status === XPD.DRIVER_STATUS.OFF_SHIFT;
+  const busyLoad = row ? row.load : 0;
+
+  let warn = '';
+  if (isOff) warn = 'Está fuera de turno. Puede que no esté en la calle.';
+  else if (stale) warn = 'Su GPS no reporta hace rato. La distancia puede no ser exacta.';
+  else if (busyLoad > 0) warn = `Ya tiene ${busyLoad} pedido${busyLoad === 1 ? '' : 's'} en curso. La entrega puede tardar más.`;
+
+  const initial = (n) => escapeHtml(String(n || '?').charAt(0).toUpperCase());
+  openSheet(`
+    <div class="sh-nav">
+      <button class="back" type="button" data-pick="${escapeHtml(orderId)}" aria-label="Atrás">${IC_BACK}</button>
+      <h2 id="sheet-title" class="sh-h rd">${pickerIsReassign ? 'Reasignar' : 'Confirmar'}</h2>
+    </div>
+    <div class="flow">
+      <div>${fromD
+        ? `<div class="big rd" style="background:var(--ink3)">${initial(fromD.name)}</div><b>${escapeHtml(String(fromD.name || '—').split(' ')[0])}</b><s>ahora</s>`
+        : `<div class="big empty">${IC_PLUS}</div><b>Sin asignar</b><s>&nbsp;</s>`}</div>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--ink3)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+      <div><div class="big rd" style="background:${driverColorVar(toD)}">${initial(toD.name)}</div><b>${escapeHtml(String(toD.name || 'Repartidor').split(' ')[0])}</b><s>${row ? fmtDist(row.distanceM) : ''}</s></div>
+    </div>
+    ${warn ? `<div class="warn"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--lilac-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:1px" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><p>${escapeHtml(warn)}</p></div>` : ''}
+    <div class="grid2" style="margin-top:14px">
+      <div class="fact"><s>Pedido</s><b class="num">${escapeHtml(displayLabel(orderId, order))}</b></div>
+      <div class="fact"><s>Esperando</s><b class="num">${minutesOf(order)} min</b></div>
+    </div>
+    <p style="font-size:13.5px;color:var(--ink2);line-height:1.45;margin:14px 4px 0">La recolección y la entrega se mueven juntas. El repartidor anterior queda libre.</p>
+    <button class="btn btn-p" id="confirm-yes" type="button" data-commit="${escapeHtml(driverId)}" data-order="${escapeHtml(orderId)}">Confirmar</button>
+    <button class="btn btn-g" type="button" data-pick="${escapeHtml(orderId)}">Elegir otro</button>
+  `);
+}
+
+async function commitAssign(orderId, driverId){
+  const btn = $('confirm-yes');
+  if (btn) { btn.disabled = true; btn.textContent = 'Asignando…'; }
+  try {
+    // THE ONE (RE)ASSIGNMENT WRITE — desktop path per case.
+    const res = pickerIsReassign
+      ? await XPD.reassignOrder(orderId, driverId, pickerFromDriver)
+      : await XPD.assignOrderToDriver(orderId, driverId);
+    if (res && res.ok) {
+      const name = String((STORE.drivers[driverId] || {}).name || 'repartidor').split(' ')[0];
+      // Capture the pass's current position BEFORE the data lands and re-sorts the board.
+      const before = document.querySelector(`.pass[data-pass="${orderId}"]`);
+      pendingSettle = { id: orderId, at: Date.now(), from: before ? before.getBoundingClientRect().top : null };
+      toast((pickerIsReassign ? 'Reasignado a ' : 'Asignado a ') + name);
+      closeSheet();
+    } else {
+      toast(assignFailMsg(res?.reason), true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
+    }
+  } catch (e) {
+    toast('Error de red — reintentá', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
+  }
+}
+
+// ── settings ──
+function openSettings(){
+  const sup = currentPushSupport();
+  openSheet(`
+    <h2 id="sheet-title" class="sh-h rd">Ajustes</h2>
+    <div class="lbl">Apariencia</div>
+    <div class="seg" role="group" aria-label="Apariencia">
+      ${[['system','Sistema'],['light','Claro'],['dark','Oscuro']].map(([k,l]) =>
+        `<button type="button" data-settheme="${k}" aria-pressed="${theme === k}">${l}</button>`).join('')}
+    </div>
+    <div class="lbl">Notificaciones</div>
+    ${pushOn
+      ? `<div class="panel pad" style="font-size:15px;color:var(--ink2)">Activadas en este teléfono.</div>`
+      : sup.ok
+        ? `<button class="btn btn-g" type="button" data-push="1" style="margin-top:0">Activar notificaciones</button>`
+        : `<div class="panel pad" style="font-size:15px;color:var(--ink2)">${escapeHtml(PUSH_MSG[sup.reason] || 'No disponible en este teléfono')}</div>`}
+    <div class="lbl">Sesión</div>
+    <button class="btn btn-d" type="button" data-signout="1" style="margin-top:0">Cerrar sesión</button>
+    <button class="btn btn-g" type="button" data-close="1">Listo</button>
+  `);
+}
+
+// ── delegated events ──
+document.addEventListener('click', (e) => {
+  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-signout],[data-drvfocus],[data-donetoggle],[data-map]');
+  if (!el) return;
+  const ds = el.dataset;
+
+  if (ds.toggle){
+    openPass = (openPass === ds.toggle) ? null : ds.toggle;
+    document.querySelectorAll('.pass').forEach(p => {
+      const on = p.dataset.pass === openPass;
+      p.classList.toggle('open', on);
+      p.querySelector('.peek')?.setAttribute('aria-expanded', String(on));
+    });
+    layoutDecks();
+    return;
+  }
+  if (ds.donetoggle){ collapsedDone = !collapsedDone; renderBoard(); return; }
+  if (ds.chip){ activeChip = ds.chip; openPass = null; renderBoard(); return; }
+  if (ds.tab){ showTab(ds.tab); return; }
+  if (ds.detail){ openDetail(ds.detail); return; }
+  if (ds.pick){ openPicker(ds.pick); return; }
+  if (ds.choose){
+    const oid = $('sheet-body').querySelector('[data-detail]')?.dataset.detail;
+    if (oid) openConfirm(oid, ds.choose);
+    return;
+  }
+  if (ds.commit){ commitAssign(ds.order, ds.commit); return; }
+  if (ds.close){ closeSheet(); return; }
+  if (ds.settheme){
+    theme = ds.settheme;
+    try { localStorage.setItem('dl-theme', theme); } catch {}
+    applyTheme(); openSettings();
+    return;
+  }
+  if (ds.push){ enableStaffPush(); return; }
+  if (ds.signout){
+    closeSheet();
+    XPD.signOutUser().catch(() => toast('No se pudo cerrar sesión', true));
+    return;
+  }
+  if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }
+  if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }
+});
+
+$('menu-btn').addEventListener('click', openSettings);
+$('live').addEventListener('click', () => {
+  if (connected) toast(lastData ? 'Tablero en vivo · datos al instante' : 'Conectando…');
+  else toast('Sin conexión — el tablero no se está actualizando', true);
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mapa — live Google map of drivers + per-order focus. Auxiliary: degrades to the
 // board if Maps fails. No writes.
 // ─────────────────────────────────────────────────────────────────────────────
-const mapsApiKey = "AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A";   // same key as xpizza-dispatch/index.html (project x-pizza-delivery)
-// Restaurant hubs — the full-precision seed coords the SDK's ALLOWED_HUBS uses (display/focus only).
-const HUBS = { x_pizza:{ lat:15.507489753573818, lng:-88.0398486953722 }, la_musa:{ lat:15.50414, lng:-88.03848 } };
-// Dark map styling, copied from xpizza-dispatch/index.html (applied only in the dark theme).
+const mapsApiKey = "AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A";
+// Dark map styling — tuned to the dark token ground (#131120). Keep in step with the token layer.
 const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#131826' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0a0d18' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#9ca3af' }] },
-  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d4d4d8' }] },
+  { elementType: 'geometry', stylers: [{ color: '#1C1930' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#131120' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#A7A1C2' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#F1EFFA' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#0d1f1a' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#3a4459' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#131826' }] },
-  { featureType: 'road.local', elementType: 'geometry', stylers: [{ color: '#3a4459' }] },
-  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#4a5670' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#5a6685' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#131826' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#11281F' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2E2A45' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1C1930' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#3A3559' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#463F6B' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1C1930' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1929' }] }
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#152238' }] }
 ];
 
-let map, driverMarkers = {}, focusLayer = { markers:[], line:null, route:null }, mapReady = false, mapFailed = false;
 
-// Smoothly glide driver pins between the native service's ~10s pings instead of teleporting. The engine
-// is pure (driver-glide.js, bundled verbatim from the desktop); here we wire it to the real clock, rAF, and
-// a setPosition sink. An open InfoWindow is marker-anchored, so it tracks the gliding pin automatically.
 const glide = createGlideEngine({
-  options: { marginFactor: 1.15, maxDurationMs: 15000 },   // each glide runs ~15% past the ping interval (kills micro-stops)
+  options: { marginFactor: 1.15, maxDurationMs: 15000 },
   now: () => performance.now(),
   raf: (cb) => requestAnimationFrame(cb),
   caf: (id) => cancelAnimationFrame(id),
   apply: (uid, pos) => { const m = driverMarkers[uid]; if (m) m.setPosition(pos); },
 });
 let driverInfoWindow = null, dirService = null;
-// Spanish driver-status labels (XPD.formatStatus returns English; the mobile UI is Spanish — mirror
-// the desktop dispatch's statusEs).
-const DRIVER_STATUS_ES = {
-  off_shift:'Fuera de turno', available:'Disponible', assigned:'Asignado',
-  at_restaurant:'En restaurante', en_route_delivery:'En camino', returning:'Regresando', on_break:'En descanso',
-};
 
-const currentTheme = () => document.documentElement.getAttribute('data-theme')
+const resolvedTheme = () => document.documentElement.getAttribute('data-theme')
   || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-const mapStyles = () => currentTheme() === 'dark' ? DARK_MAP_STYLE : null;
+const mapStyles = () => resolvedTheme() === 'dark' ? DARK_MAP_STYLE : null;
 
 function loadMaps() {
   return new Promise((resolve, reject) => {
     if (window.google && window.google.maps && window.google.maps.Map) return resolve();
-    // Inline the official Google Maps bootstrap loader (verbatim from xpizza-dispatch/index.html).
     (g => { var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window; b = b[c] || (b[c] = {}); var d = b.maps || (b.maps = {}), r = new Set, e = new URLSearchParams, u = () => h || (h = new Promise(async (f, n) => { await (a = m.createElement("script")); e.set("libraries", [...r] + ""); for (k in g) e.set(k.replace(/[A-Z]/g, t => "_" + t[0].toLowerCase()), g[k]); e.set("callback", c + ".maps." + q); a.src = `https://maps.${c}apis.com/maps/api/js?` + e; d[q] = f; a.onerror = () => h = n(Error(p + " could not load.")); a.nonce = m.querySelector("script[nonce]")?.nonce || ""; m.head.append(a); })); d[l] ? console.warn(p + " only loads once. Ignoring:", g) : d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)); })({ key: mapsApiKey, v: "weekly" });
     google.maps.importLibrary("maps").then(() => resolve()).catch(reject);
   });
@@ -823,62 +1325,57 @@ function loadMaps() {
 
 function showMapMsg(text){ const el = $('map-msg'); if (!el) return; el.textContent = text; el.classList.toggle('hidden', !text); }
 
+function initMap(){
+  return loadMaps().then(() => {
+    map = new google.maps.Map($('map'), {
+      center: { lat:15.5063, lng:-88.0250 }, zoom:13, styles: mapStyles(),
+      disableDefaultUI:true, gestureHandling:'greedy',
+    });
+    mapReady = true;
+    driverMarkers = {};   // any markers from a previous instance are orphaned
+    if (window.ResizeObserver) new ResizeObserver(() => { if (map) google.maps.event.trigger(map, 'resize'); }).observe($('map-wrap'));
+  });
+}
+// SINGLE-FLIGHT: showTab('mapa') and __focusDriverOnMap/__focusOrderOnMap all call this, and the
+// focus helpers await it. Without one shared promise both callers raced past `mapReady` and built a
+// SECOND Map on the same div — the first map's markers then lived on a detached instance, so pins
+// vanished and never came back (renderDrivers only setIcon()s markers it already has).
 window.__onMapaShown = async () => {
   if (mapFailed) return;
-  if (!mapReady) {
-    try {
-      await loadMaps();
-      map = new google.maps.Map($('map'), {
-        center: { lat:15.5063, lng:-88.0250 }, zoom:13, styles: mapStyles(),
-        disableDefaultUI:true, gestureHandling:'greedy', backgroundColor:'#131826',
-      });
-      mapReady = true;
-      if (window.ResizeObserver) new ResizeObserver(() => { if (map) google.maps.event.trigger(map, 'resize'); }).observe(document.querySelector('.map-wrap'));
-    } catch (e) {
-      mapFailed = true; showMapMsg('Mapa no disponible — el tablero sigue en vivo.'); return;
-    }
-  } else {
-    google.maps.event.trigger(map, 'resize');
+  if (!mapInit) {
+    mapInit = initMap().catch((e) => {
+      mapFailed = true; mapInit = null;
+      showMapMsg('Mapa no disponible — tocá para reintentar. El tablero sigue en vivo.');
+      throw e;
+    });
   }
+  try { await mapInit; } catch { return; }
+  showMapMsg('');
+  google.maps.event.trigger(map, 'resize');
   renderDrivers();
 };
+$('map-msg').addEventListener('click', () => {
+  if (!mapFailed) return;
+  mapFailed = false; showMapMsg(''); window.__onMapaShown();
+});
 
-// Restyle the live map when the theme toggles (registered AFTER Task 2's toggle handler, which flips
-// data-theme first, so this reads the new theme).
-$('theme-toggle').addEventListener('click', () => { if (mapReady && map) map.setOptions({ styles: mapStyles() }); });
-
-function orderForDriver(uid){
-  for (const id of Object.keys(STORE.orders)) {
-    const sec = sectionForOrder(STORE.orders[id]);
-    if (sec === null || sec === 'completados') continue;   // assigned_driver_id persists after completion —
-    if (assignedDriverId(id, STORE.tasks) === uid) return id;  //   a finished/non-live order is not "current"
-  }
-  return null;
-}
-
-window.__driversUpdated = () => {
-  if (mapReady) renderDrivers();
-  const dt = $('tab-drivers'); if (dt && !dt.classList.contains('hidden')) renderDriversTab();   // r2-C live roster
-};
-
-// Marker fill by status/staleness — brand tokens (mirrors the desktop dispatch's color tiers).
+// Marker fill by status/staleness. Google markers cannot read CSS custom properties, so these mirror
+// the token layer by hand — change one, change the other.
 function driverMarkerColor(status, stale){
-  if (stale) return '#EE9F3C';                                       // amber — reachable, just idle
+  if (stale) return '#8B5CF6';                                        // lilac — reachable, just quiet
   switch (status) {
-    case 'available': case 'at_restaurant': return '#46A24A';        // green (--listo)
-    case 'en_route_delivery': return '#6E77CC';                      // indigo (--camino)
-    case 'returning': case 'assigned': return '#EE9F3C';             // amber
-    default: return '#6f7681';                                       // grey (--done)
+    case 'available': case 'at_restaurant': return '#1F9E6E';         // mint
+    case 'en_route_delivery': return '#3B82D6';                       // sky
+    case 'returning': case 'assigned': return '#8B5CF6';              // lilac
+    default: return '#8E89A6';                                        // ink3
   }
 }
 
 function renderDrivers(){
   if (!mapReady) return;
-  const strokeCol = currentTheme() === 'dark' ? '#131826' : '#ffffff';
+  const strokeCol = resolvedTheme() === 'dark' ? '#131120' : '#ffffff';
   const seen = new Set();
   for (const [uid, d] of Object.entries(STORE.drivers)) {
-    // Only plot ON-SHIFT drivers with real coords — an off-shift driver's last stale position is not
-    // a live pin (was: every driver with lat/lng → bare red pins, incl. off-shift/stale).
     if (!d || d.status === XPD.DRIVER_STATUS.OFF_SHIFT) continue;
     if (typeof d.lat !== 'number' || typeof d.lng !== 'number') continue;
     seen.add(uid);
@@ -886,18 +1383,20 @@ function renderDrivers(){
     const pos = { lat:d.lat, lng:d.lng };
     const icon = { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: driverMarkerColor(d.status, stale),
                    fillOpacity: 1, strokeColor: strokeCol, strokeWeight: 2.5 };
-    const label = { text: (d.name || '?').charAt(0).toUpperCase(), color:'#fff', fontFamily:'Hanken Grotesk', fontSize:'11px', fontWeight:'700' };
-    if (driverMarkers[uid]) { glide.update(uid, pos, { snap: stale }); driverMarkers[uid].setIcon(icon); driverMarkers[uid].setLabel(label); }   // glide between pings; snap a stale ping so it doesn't drift from an old spot
+    const label = { text: (d.name || '?').charAt(0).toUpperCase(), color:'#fff', fontSize:'11px', fontWeight:'700' };
+    if (driverMarkers[uid]) {
+      if (driverMarkers[uid].getMap() !== map) driverMarkers[uid].setMap(map);   // survive a map re-init
+      glide.update(uid, pos, { snap: stale }); driverMarkers[uid].setIcon(icon); driverMarkers[uid].setLabel(label);
+    }
     else {
       const mk = new google.maps.Marker({ map, position:pos, icon, label, title: d.name || 'Repartidor', zIndex:1000 });
-      mk.addListener('click', () => openDriverInfo(uid));   // styled info window (name · status · order#)
+      mk.addListener('click', () => openDriverInfo(uid));
       driverMarkers[uid] = mk;
     }
   }
-  for (const uid of Object.keys(driverMarkers)) if (!seen.has(uid)) { glide.cancel(uid); driverMarkers[uid].setMap(null); delete driverMarkers[uid]; }   // cancel any in-flight glide for a removed/off-shift driver
+  for (const uid of Object.keys(driverMarkers)) if (!seen.has(uid)) { glide.cancel(uid); driverMarkers[uid].setMap(null); delete driverMarkers[uid]; }
 }
 
-// Driver info window (rendered in Google's light bubble → fixed dark text): name · status · current order#.
 function openDriverInfo(uid){
   const d = STORE.drivers[uid], mk = driverMarkers[uid];
   if (!d || !mk) return;
@@ -905,14 +1404,19 @@ function openDriverInfo(uid){
   const oid = orderForDriver(uid);
   const ordLabel = oid ? displayLabel(oid, STORE.orders[oid]) : null;
   const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '';
-  driverInfoWindow.setContent(`<div style="font-family:'Hanken Grotesk',system-ui,sans-serif;padding:1px 3px;min-width:118px">
-    <div style="font-weight:700;font-size:14px;color:#1b1e24">${escapeHtml(d.name || 'Repartidor')}</div>
-    <div style="font-size:12px;color:#6b727c;margin-top:1px">${escapeHtml(statusEs)}${ordLabel ? ` · ${escapeHtml(ordLabel)}` : ''}</div>
+  // Google's bubble is always light — these literals are intentional, not theme tokens.
+  driverInfoWindow.setContent(`<div style="font-family:-apple-system,system-ui,sans-serif;padding:1px 3px;min-width:118px">
+    <div style="font-weight:700;font-size:14px;color:#191627">${escapeHtml(d.name || 'Repartidor')}</div>
+    <div style="font-size:12px;color:#5E5A75;margin-top:1px">${escapeHtml(statusEs)}${ordLabel ? ` · ${escapeHtml(ordLabel)}` : ''}</div>
   </div>`);
   driverInfoWindow.open(map, mk);
 }
 
-// Tap a roster row → Mapa focused on that driver (reuse the map + info window).
+window.__driversUpdated = () => {
+  if (mapReady) renderDrivers();
+  if (tab === 'drivers') renderDriversTab();
+};
+
 window.__focusDriverOnMap = async (uid) => {
   await window.__onMapaShown();
   if (!mapReady) return;
@@ -920,61 +1424,11 @@ window.__focusDriverOnMap = async (uid) => {
   const d = STORE.drivers[uid];
   if (d && typeof d.lat === 'number' && typeof d.lng === 'number') {
     map.panTo({ lat:d.lat, lng:d.lng }); map.setZoom(15);
-    openDriverInfo(uid);   // no-op if off-shift (no marker); the pan still frames their last position
+    openDriverInfo(uid);
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Drivers tab (r2-C) — read-only roster from STORE.drivers, grouped En turno / Fuera de turno.
-// ─────────────────────────────────────────────────────────────────────────────
-function driverRowHtml(uid, d){
-  const stale = XPD.isStalePing(d.last_ping);
-  const col = driverMarkerColor(d.status, stale);
-  const statusEs = DRIVER_STATUS_ES[d.status] || d.status || '—';
-  const oid = orderForDriver(uid);
-  const ordLabel = oid ? displayLabel(oid, STORE.orders[oid]) : null;
-  const live = !stale;
-  return `<div class="drow" data-drv="${escapeHtml(uid)}">
-    <span class="dstat" style="background:${col}"></span>
-    <div class="dinfo"><div class="dnm">${escapeHtml(d.name || 'Repartidor')}</div><div class="dsub">${escapeHtml(statusEs)}</div></div>
-    <div class="dright">
-      <span class="gpspill ${live?'vivo':'inact'}">${live?'GPS vivo':'inactivo'}</span>
-      ${ordLabel ? `<span class="dord">${escapeHtml(ordLabel)}</span>` : '<span class="dord dash">sin pedido</span>'}
-    </div>
-  </div>`;
-}
-function rosterSection(title, entries, stripeVar){
-  const rows = entries.map(([uid, d]) => driverRowHtml(uid, d)).join('') || emptyState('No hay repartidores ' + title.toLowerCase());
-  return `<div class="rsec"><div class="sec-h">
-      <span class="stripe" style="background:var(${stripeVar})"></span>
-      <span class="name">${escapeHtml(title)}</span>
-      <span class="cnt">${entries.length}</span>
-    </div><div class="sec-body"><div class="sec-inner">${rows}</div></div></div>`;
-}
-function renderDriversTab(){
-  const all = Object.entries(STORE.drivers).filter(([, d]) => d && (d.name || typeof d.lat === 'number' || d.status));
-  const onShift = all.filter(([, d]) => d.status !== XPD.DRIVER_STATUS.OFF_SHIFT);
-  const offShift = all.filter(([, d]) => d.status === XPD.DRIVER_STATUS.OFF_SHIFT);
-  const byLiveName = ([, a], [, b]) =>
-    (XPD.isStalePing(a.last_ping) ? 1 : 0) - (XPD.isStalePing(b.last_ping) ? 1 : 0)
-    || String(a.name || '').localeCompare(String(b.name || ''));
-  onShift.sort(byLiveName); offShift.sort(byLiveName);
-  const html = (onShift.length || offShift.length)
-    ? `<div class="roster">${rosterSection('En turno', onShift, '--listo')}${rosterSection('Fuera de turno', offShift, '--done')}</div>`
-    : `<div class="empty" style="padding:44px 16px">Sin repartidores</div>`;
-  $('tab-drivers').innerHTML = html;
-  $('tab-drivers').querySelectorAll('.drow').forEach(r =>
-    r.addEventListener('click', () => { window.__showTab('mapa'); window.__focusDriverOnMap?.(r.dataset.drv); }));
-}
-
-function clearFocus(){
-  focusLayer.markers.forEach(m => m.setMap(null)); focusLayer.markers = [];
-  if (focusLayer.line) { focusLayer.line.setMap(null); focusLayer.line = null; }
-  if (focusLayer.route) { focusLayer.route.setMap(null); focusLayer.route = null; }
-  $('ver-todos')?.classList.add('hidden');
-}
-
-// Per-order focus (Ver en mapa): destination pin + assigned-driver pin + a route line driver→dest.
+// Per-order focus: destination pin + assigned-driver pin + a real road route between them.
 // Pickup focuses the restaurant origin (no delivery destination).
 window.__focusOrderOnMap = async (orderId) => {
   await window.__onMapaShown();
@@ -983,7 +1437,7 @@ window.__focusOrderOnMap = async (orderId) => {
   const dt = STORE.tasks[`${orderId}_delivery`];
   const order = STORE.orders[orderId];
   $('ver-todos')?.classList.remove('hidden');
-  if (order?.order_type === 'pickup') {   // focus origin/restaurant
+  if (order?.order_type === 'pickup') {
     const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
     map.panTo(hub); map.setZoom(15);
     focusLayer.markers.push(new google.maps.Marker({ map, position:hub, label:'R' }));
@@ -995,216 +1449,32 @@ window.__focusOrderOnMap = async (orderId) => {
   const drvId = dt?.assigned_driver_id; const drv = drvId && STORE.drivers[drvId];
   if (dest) { focusLayer.markers.push(new google.maps.Marker({ map, position:dest, label:'D' })); map.panTo(dest); map.setZoom(15); }
   if (drv && finite(drv.lat)) focusLayer.markers.push(new google.maps.Marker({ map, position:{lat:drv.lat,lng:drv.lng}, opacity: XPD.isStalePing(drv.last_ping)?0.5:1 }));
-  // Real road route (was a literal straight segment): DirectionsService → DirectionsRenderer, drawn only
-  // when there's a live driver + destination; keep our own dest/driver pins (suppressMarkers). Auxiliary:
-  // a Directions failure degrades to no line, never breaks the map (the pins still convey it).
   if (dest && drv && finite(drv.lat)) {
     if (!dirService) dirService = new google.maps.DirectionsService();
     const renderer = new google.maps.DirectionsRenderer({
       map, suppressMarkers:true, preserveViewport:true,
-      polylineOptions: { strokeColor:'#6E77CC', strokeOpacity:0.9, strokeWeight:5 },
+      polylineOptions: { strokeColor:'#3B82D6', strokeOpacity:0.9, strokeWeight:5 },
     });
     focusLayer.route = renderer;
-    dirService.route({
-      origin: { lat:drv.lat, lng:drv.lng }, destination: dest, travelMode: google.maps.TravelMode.DRIVING,
-    }, (res, status) => {
-      if (focusLayer.route !== renderer) { renderer.setMap(null); return; }   // a newer focus/clear superseded us
-      if (status === 'OK' && res) renderer.setDirections(res);
-      else { renderer.setMap(null); focusLayer.route = null; }                // degrade: no line
-    });
+    dirService.route({ origin: { lat:drv.lat, lng:drv.lng }, destination: dest, travelMode: google.maps.TravelMode.DRIVING },
+      (res, status) => {
+        if (focusLayer.route !== renderer) { renderer.setMap(null); return; }   // a newer focus superseded us
+        if (status === 'OK' && res) renderer.setDirections(res);
+        else { renderer.setMap(null); focusLayer.route = null; }                // degrade: no line
+      });
   }
 };
+
+function clearFocus(){
+  focusLayer.markers.forEach(m => m.setMap(null)); focusLayer.markers = [];
+  if (focusLayer.line) { focusLayer.line.setMap(null); focusLayer.line = null; }
+  if (focusLayer.route) { focusLayer.route.setMap(null); focusLayer.route = null; }
+  $('ver-todos')?.classList.add('hidden');
+}
 
 $('ver-todos').addEventListener('click', () => { clearFocus(); if (mapReady) { map.setZoom(13); renderDrivers(); } });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Assign / reassign — the ONE mutation. Order detail → driver pick → confirm → write.
-// The write mirrors the DESKTOP dispatch EXACTLY (xpizza-dispatch/index.html assignOrder):
-//   • reassign of an ALREADY-assigned order → SDK reassignOrder (id, drv, fromDriver)
-//     (CAS against the driver captured at pick-open + old-driver current_task_id/status cleanup)
-//   • fresh assign of an UNASSIGNED order   → SDK assignOrderToDriver (id, drv)
-// Both are the bundled, byte-identical SDK paths — we add/subtract NO assignment rules. Using only
-// assignOrderToDriver (as the plan sketch did) would fail every real reassign: its CAS commits only
-// when the delivery task is currently unassigned, so an already-assigned order returns
-// {ok:false, reason:'already_assigned'} and never moves + never releases the old driver.
-// ─────────────────────────────────────────────────────────────────────────────
-let pickerFromDriver = null;   // driver frozen at pick-open — reassignOrder's CAS anchor (stale-view guard)
-let pickerIsReassign = false;
-
-function openSheet(html){ $('sheet-body').innerHTML = html; $('scrim').classList.add('on'); $('sheet').classList.add('on'); }
-function closeSheet(){ $('scrim').classList.remove('on'); $('sheet').classList.remove('on'); }
-$('scrim').addEventListener('click', closeSheet);
-
-let _toastT;
-function toast(msg, kind){
-  const el = $('toast'); el.textContent = msg; el.className = kind === 'error' ? 'on error' : 'on';
-  clearTimeout(_toastT); _toastT = setTimeout(() => el.classList.remove('on'), 2600);
-}
-
-// Failure copy — mirrors the desktop's assignFailMsg.
-function assignFailMsg(reason){
-  switch (reason) {
-    case 'already_assigned':
-    case 'pickup_taken': return 'Ya fue asignada a otro repartidor';
-    case 'claim_stale': return 'La asignación cambió — actualizá e intentá de nuevo';
-    case 'write_failed': return 'No se pudo asignar (error de red) — reintentá';
-    default: return 'No se pudo asignar';
-  }
-}
-
-// Sheet icons (calendar for scheduled, storefront for pickup) — stroke=currentColor to sit on the av bg.
-// Card + sheet icons — copied verbatim from the mockup (sized per-context via CSS: .cchip svg 11px,
-// .pickup-tag svg 12px, .map-btn svg 14px, .status-row .av svg 16px).
-const IC_CLOCK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></svg>';
-const IC_BIKE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 18 10 8h4l2 4M9 8h5"/></svg>';
-const IC_BAG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l1 13H5L6 7Z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>';
-const IC_STORE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16l-1-4H5L4 9Z"/><path d="M5 9v10h14V9M9 19v-5h6v5"/></svg>';
-const IC_CAL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>';
-const IC_MAPPIN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5.2-8 11-8 11s-8-5.8-8-11a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>';
-
-const brandCls = (order) => order && order.restaurant_id === 'la_musa' ? 'lm' : 'xp';
-const brandName = (order) => order && order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza';
-const slotLabelSafe = (ms) => { try { return slotLabel(Number(ms), Date.now()); } catch { return ''; } };
-
-// A small real Google Static Maps thumbnail focused on the order pin (the lightest faithful real map —
-// one <img>, no live map instance in a transient sheet). Degrades to nothing if it fails to load.
-function miniMapHtml(focus){
-  if (!focus) return '';
-  const c = `${focus.lat},${focus.lng}`;
-  const url = `https://maps.googleapis.com/maps/api/staticmap?center=${c}&zoom=15&size=340x150&scale=2`
-    + `&markers=color:0x6E77CC%7C${c}&key=${encodeURIComponent(mapsApiKey)}`;
-  return `<div class="mini-map"><img src="${url}" alt="Ubicación del pedido" onerror="this.closest('.mini-map').style.display='none'"></div>`;
-}
-function orderFocus(orderId, order){
-  const finite = (v) => typeof v === 'number' && isFinite(v);
-  if (order.order_type === 'pickup') return HUBS[order.restaurant_id] || HUBS.x_pizza;
-  const dt = STORE.tasks[`${orderId}_delivery`];
-  if (finite(dt?.destination_lat)) return { lat:dt.destination_lat, lng:dt.destination_lng };
-  if (finite(order.lat)) return { lat:order.lat, lng:order.lng };
-  return null;
-}
-
-window.__openOrderDetail = (orderId) => {
-  const order = STORE.orders[orderId] || STORE.scheduled[orderId]; if (!order) return;
-  const isScheduled = order.status === 'scheduled' || (!!STORE.scheduled[orderId] && !STORE.orders[orderId]);
-  const drvId = assignedDriverId(orderId, STORE.tasks);
-  const actionable = canReassign(order, orderId, STORE.tasks);   // any live delivery (new/preparing/ready/en camino) → Asignar/Reasignar; pickup/scheduled/completed → no action
-  const section = sectionForOrder(order);
-  const estado = isScheduled ? 'Programado' : (SECTION_LABELS[section] || '—');
-  const slot = isScheduled && Number(order.scheduled_for) ? slotLabelSafe(order.scheduled_for) : '';
-  const direccion = order.address_detected || order.address_details || '—';
-  const tiempo = formatAging(agingSeconds(agingBaselineMs(order), Date.now()));
-  const totalStr = Number(order.total || 0).toFixed(2);
-
-  // status-row — 4 branches (scheduled / pickup / assigned-driver / unassigned), mockup markup.
-  let statusRow;
-  if (isScheduled) {
-    statusRow = `<div class="status-row"><span class="av" style="background:var(--prog)">${IC_CAL}</span>
-      <div style="flex:1"><div style="font-weight:700;font-size:14px">Programado${slot?' · '+escapeHtml(slot):''}</div><div style="font-size:11.5px;color:var(--mut)">Se activa automáticamente a la hora</div></div></div>`;
-  } else if (order.order_type === 'pickup') {
-    const ready = section === 'listos';
-    statusRow = `<div class="status-row"><span class="av" style="background:${ready?'var(--listo)':'var(--dim)'};color:#fff">${IC_STORE}</span>
-      <div style="flex:1"><div style="font-weight:700;font-size:14px">${ready?'Listo para recoger':'Recoge el cliente'}</div><div style="font-size:11.5px;color:var(--mut)">Pedido de mostrador · sin repartidor</div></div></div>`;
-  } else if (drvId) {
-    const dObj = STORE.drivers[drvId] || {}; const stale = XPD.isStalePing(dObj.last_ping);
-    const statusEs = DRIVER_STATUS_ES[dObj.status] || dObj.status || '';
-    statusRow = `<div class="status-row"><span class="av" style="background:${stale?'var(--inact)':'var(--vivo)'}">${escapeHtml((dObj.name||'?').charAt(0).toUpperCase())}</span>
-      <div style="flex:1"><div style="font-weight:700;font-size:14px">${escapeHtml(dObj.name||'Repartidor')}</div><div style="font-size:11.5px;color:var(--mut)">GPS ${stale?'inactivo':'vivo'} · ${escapeHtml(statusEs)}</div></div>
-      ${stale?'<span class="tagcur">Sin señal</span>':''}</div>`;
-  } else {
-    statusRow = `<div class="status-row"><span class="av" style="background:var(--line);color:var(--mut)">?</span>
-      <div style="flex:1"><div style="font-weight:700;font-size:14px">Sin asignar</div><div style="font-size:11.5px;color:var(--mut)">Ningún repartidor asignado</div></div></div>`;
-  }
-
-  const typeLabel = order.order_type === 'pickup' ? 'Recoge el cliente' : 'Delivery';
-  openSheet(`
-    <div style="display:flex;align-items:center;gap:9px"><div class="sh-title">${escapeHtml(order.customer_name||'Cliente')}</div><span class="brand ${brandCls(order)}">${brandCls(order)==='xp'?'X.PIZZA':'LA MUSA'}</span></div>
-    <div class="sh-sub">Pedido ${escapeHtml(displayLabel(orderId, order))} · ${escapeHtml(brandName(order))} · ${escapeHtml(typeLabel)}</div>
-    <div class="items-box"><div class="detail-items">${renderOrderItems(order)}</div></div>
-    <div class="kv"><span class="k">Estado</span><span class="v">${escapeHtml(estado)}</span></div>
-    ${isScheduled && slot ? `<div class="kv"><span class="k">Horario</span><span class="v">${escapeHtml(slot)}</span></div>` : ''}
-    <div class="kv"><span class="k">Dirección</span><span class="v">${escapeHtml(direccion)}</span></div>
-    ${isScheduled ? '' : `<div class="kv"><span class="k">Tiempo</span><span class="v">${escapeHtml(tiempo)}</span></div>`}
-    <div class="kv"><span class="k">Total</span><span class="v">L ${escapeHtml(totalStr)}</span></div>
-    ${statusRow}
-    ${actionable
-      ? `<button id="do-reassign" class="btn ${drvId?'btn-warn':'btn-primary'}">${drvId?'Reasignar':'Asignar'} repartidor</button>
-         <button id="detail-close" class="btn btn-ghost">Cerrar</button>`
-      : `<button id="detail-close" class="btn btn-ghost">Cerrar</button>`}
-  `);
-  $('detail-close').addEventListener('click', closeSheet);
-  if (actionable) $('do-reassign').addEventListener('click', () => openDriverPick(orderId));
-};
-
-function openDriverPick(orderId){
-  const order = STORE.orders[orderId] || STORE.scheduled[orderId]; if (!order) return;
-  // FROZEN write setup (unchanged): freeze the from-driver + reassign-ness AS SHOWN at pick-open — the
-  // reassignOrder CAS anchors on pickerFromDriver so a moved order aborts instead of clobbering.
-  pickerFromDriver = assignedDriverId(orderId, STORE.tasks);
-  pickerIsReassign = !!pickerFromDriver;
-  const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
-  const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });
-  const rows = list.length ? list.map(d => {
-    const col = d.live ? 'var(--vivo)' : 'var(--inact)';
-    const dist = Number.isFinite(d.distanceM) ? Math.round(d.distanceM) + ' m' : '—';
-    const statusEs = DRIVER_STATUS_ES[STORE.drivers[d.id]?.status] || d.status || '';
-    const tag = d.isCurrent ? '<span class="tagcur">actual</span>' : '';
-    return `<div class="dpick${d.isCurrent?' current':''}" data-drv="${escapeHtml(d.id)}">
-      <span class="av" style="background:${col}">${escapeHtml((d.name||'?').charAt(0).toUpperCase())}</span>
-      <div class="info">
-        <div class="dn">${escapeHtml(d.name)} ${tag}</div>
-        <div class="ds"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:middle;background:${col}"></span> GPS ${d.live?'vivo':'inactivo'} · ${escapeHtml(statusEs)} · ${d.load} pedido${d.load===1?'':'s'}</div>
-      </div>
-      <div class="meta"><div class="dist">${escapeHtml(dist)}</div></div>
-    </div>`;
-  }).join('') : `<div class="empty" style="padding:20px 2px">No hay repartidores en turno</div>`;
-  const addr = order.address_detected || order.address_details || '—';
-  openSheet(`
-    <div class="sh-title">${pickerIsReassign?'Reasignar':'Asignar'} ${escapeHtml(displayLabel(orderId, order))}</div>
-    <div class="sh-sub">${escapeHtml(order.customer_name||'Cliente')} · ${escapeHtml(addr)} · ${escapeHtml(brandName(order))}</div>
-    ${miniMapHtml(orderFocus(orderId, order))}
-    <div class="pick-label">Repartidores cercanos</div>
-    ${rows}
-    <button id="pick-cancel" class="btn btn-ghost">Cancelar</button>
-  `);
-  $('pick-cancel').addEventListener('click', closeSheet);
-  document.querySelectorAll('#sheet .dpick:not(.current)').forEach(b =>
-    b.addEventListener('click', () => confirmReassign(orderId, b.dataset.drv)));
-}
-
-function confirmReassign(orderId, driverId){
-  const order = STORE.orders[orderId] || STORE.scheduled[orderId] || {};
-  const fromD = pickerFromDriver ? (STORE.drivers[pickerFromDriver] || {}) : null;
-  const toD = STORE.drivers[driverId] || {};
-  const hub = HUBS[order.restaurant_id] || HUBS.x_pizza;
-  const toRow = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing }).find(r => r.id === driverId);
-  const toDist = toRow && Number.isFinite(toRow.distanceM) ? Math.round(toRow.distanceM) + ' m' : '';
-  const av = (d, live) => `<div class="cf-av" style="background:${live?'var(--vivo)':'var(--inact)'}">${escapeHtml((d.name||'?').charAt(0).toUpperCase())}</div>`;
-  const fromNode = fromD
-    ? `<div class="cf-node">${av(fromD, !XPD.isStalePing(fromD.last_ping))}<div class="cf-nm">${escapeHtml((fromD.name||'—').split(' ')[0])}</div><div style="font-size:10px;color:var(--inact);font-weight:700">${XPD.isStalePing(fromD.last_ping)?'sin señal':''}</div></div><div class="cf-arrow">→</div>`
-    : '';
-  const toNode = `<div class="cf-node">${av(toD, !XPD.isStalePing(toD.last_ping))}<div class="cf-nm">${escapeHtml((toD.name||'Repartidor').split(' ')[0])}</div><div style="font-size:10px;color:var(--vivo);font-weight:700">${escapeHtml(toDist)}</div></div>`;
-  openSheet(`
-    <div class="sh-title">${pickerIsReassign?'¿Reasignar':'¿Asignar'} ${escapeHtml(displayLabel(orderId, order))}?</div>
-    <div class="sh-sub">${escapeHtml(order.customer_name||'Cliente')} · ${escapeHtml(brandName(order))}</div>
-    <div class="confirm-flow">${fromNode}${toNode}</div>
-    <div class="cf-note">Se aplican las mismas reglas que en el dispatch — las tareas de recolección + entrega se mueven juntas.</div>
-    <button id="confirm-yes" class="btn btn-primary">Confirmar</button>
-    <button id="confirm-no" class="btn btn-ghost">Cancelar</button>
-  `);
-  $('confirm-no').addEventListener('click', closeSheet);
-  $('confirm-yes').addEventListener('click', async () => {
-    const btn = $('confirm-yes'); btn.disabled = true;
-    try {
-      // THE ONE (RE)ASSIGNMENT WRITE — FROZEN, byte-identical to the gated version (desktop path per case).
-      const res = pickerIsReassign
-        ? await XPD.reassignOrder(orderId, driverId, pickerFromDriver)
-        : await XPD.assignOrderToDriver(orderId, driverId);
-      if (res && res.ok) { toast(pickerIsReassign ? 'Reasignado' : 'Asignado'); closeSheet(); }
-      else { toast(assignFailMsg(res?.reason), 'error'); btn.disabled = false; }
-    } catch (e) { toast('Error de red — reintentá', 'error'); btn.disabled = false; }
-  });
-}
+renderLive();
 </script>
 </body>
 </html>

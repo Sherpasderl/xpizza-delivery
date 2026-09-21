@@ -1,8 +1,8 @@
 // Static-shell service worker + Phase-2a staff web push. Precaches ONLY the app shell and NEVER
 // intercepts live RTDB/Maps requests (staleness would violate "never present stale data as live").
-// v3: skipWaiting()/clients.claim() so a deployed SW/push update takes control of existing installs
+// v5: pastel redesign shell. skipWaiting()/clients.claim() so a deployed SW/push update takes control of existing installs
 //     immediately (else it stays 'waiting' until every tab closes — a re-install for the owner).
-const SHELL = 'dl-shell-v4';
+const SHELL = 'dl-shell-v5';
 const ASSETS = [
   './index.html', './xpizza-delivery.js', './board-model.js', './slot-format.js',
   './reassign-model.js', './dispatch-aging.js', './driver-glide.js', './push-support.js', './fonts/hankengrotesk-var.woff2', './manifest.json',
