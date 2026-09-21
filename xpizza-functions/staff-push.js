@@ -98,7 +98,8 @@ function orderAgeAnchor(order) {
  * Is an order stuck, and how? PURE (no firebase). The caller pairs each order with its `_delivery`
  * task (dispatch's assignedDriverId keys off that task) and passes thresholds from config/push.
  *   unassigned = a DELIVERY order at 'ready' with no assigned driver, older than unassignedMs.
- *   aging      = any live (non-terminal) order older than agingMs.
+ *   aging      = a live order older than agingMs that NOBODY IS CURRENTLY MOVING — i.e. anything
+ *                except a delivery already out_for_delivery in a driver's hands.
  *   unassigned takes precedence (a ready unassigned delivery reports 'unassigned', not 'aging').
  * @returns { stuck:boolean, kind:'unassigned'|'aging'|null, minutes:number }
  */
@@ -112,7 +113,13 @@ function isStuck(order, deliveryTask, now, thresholds) {
   if (isDelivery && order.status === 'ready' && !hasDriver && ageMs > thresholds.unassignedMs) {
     return { stuck: true, kind: 'unassigned', minutes };   // precedence
   }
-  if (ageMs > thresholds.agingMs) {
+  // An order a driver already has, and is out delivering, is not stuck — it is being delivered.
+  // Ageing it anyway fired "⚠️ lleva N min sin completar" at the owner for orders that were moving
+  // normally, which is how the alert became noise. Everything else past agingMs still stands: an
+  // order the kitchen has not finished, a pickup nobody collected, a ready order whose assigned
+  // driver never showed up.
+  const enRoute = isDelivery && hasDriver && order.status === 'out_for_delivery';
+  if (ageMs > thresholds.agingMs && !enRoute) {
     return { stuck: true, kind: 'aging', minutes };
   }
   return { stuck: false, kind: null, minutes };
@@ -132,12 +139,14 @@ function stuckDedupe(prevAlerted, stuckNow) {
 
 /**
  * Stuck notification text. `⚠️ Pedido #<n>` / `Lleva <m> min sin repartidor` (unassigned) or
- * `… sin completar` (aging). ⚠️ lives only in OS notification text (matches the desktop alert
- * language), never in the PWA's own UI. #<n> omitted if display_number isn't stamped.
+ * `… sin salir` (aging). "sin salir" — not "sin completar" — because the aging alert now only fires
+ * for orders that have NOT left yet; one already out for delivery no longer alerts at all. ⚠️ lives
+ * only in OS notification text (matches the desktop alert language), never in the PWA's own UI.
+ * #<n> omitted if display_number isn't stamped.
  */
 function formatStuck(order, result) {
   const n = (order && Number.isFinite(order.display_number)) ? ` #${order.display_number}` : '';
-  const tail = result.kind === 'unassigned' ? 'sin repartidor' : 'sin completar';
+  const tail = result.kind === 'unassigned' ? 'sin repartidor' : 'sin salir';
   return { title: `⚠️ Pedido${n}`, body: `Lleva ${result.minutes} min ${tail}` };
 }
 

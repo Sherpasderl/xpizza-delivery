@@ -124,6 +124,18 @@ test('isStuck: unassigned takes precedence over aging', () => {
   const o = { status: 'ready', order_type: 'delivery', created_at: NOW - min(30) };  // past BOTH thresholds
   assert.equal(isStuck(o, { assigned_driver_id: null }, NOW, TH).kind, 'unassigned');
 });
+test('isStuck: out_for_delivery WITH a driver → never aging-stuck (a moving order is not stuck)', () => {
+  const o = { status: 'out_for_delivery', order_type: 'delivery', created_at: NOW - min(99) };
+  assert.equal(isStuck(o, { assigned_driver_id: 'd1' }, NOW, TH).stuck, false);
+});
+test('isStuck: out_for_delivery with NO driver still ages (nobody is moving it)', () => {
+  const o = { status: 'out_for_delivery', order_type: 'delivery', created_at: NOW - min(99) };
+  assert.equal(isStuck(o, null, NOW, TH).kind, 'aging');
+});
+test('isStuck: ready WITH a driver who never showed still ages', () => {
+  const o = { status: 'ready', order_type: 'delivery', created_at: NOW - min(99) };
+  assert.equal(isStuck(o, { assigned_driver_id: 'd1' }, NOW, TH).kind, 'aging');
+});
 test('isStuck: terminal/ pre-live status → never stuck', () => {
   for (const status of ['delivered', 'completed', 'cancelled', 'pending_payment', 'scheduled']) {
     assert.equal(isStuck({ status, created_at: NOW - min(99) }, null, NOW, TH).stuck, false, status);
@@ -142,11 +154,11 @@ test('stuckDedupe: alert once, then skip, clear when unstuck, else skip', () => 
 });
 
 // ---- formatStuck ----
-test('formatStuck: unassigned → "sin repartidor", aging → "sin completar", #n when stamped', () => {
+test('formatStuck: unassigned → "sin repartidor", aging → "sin salir", #n when stamped', () => {
   const u = formatStuck({ display_number: 7 }, { kind: 'unassigned', minutes: 14 });
   assert.match(u.title, /⚠️ Pedido #7/); assert.match(u.body, /14 min sin repartidor/);
   const a = formatStuck({ display_number: 7 }, { kind: 'aging', minutes: 40 });
-  assert.match(a.body, /40 min sin completar/);
+  assert.match(a.body, /40 min sin salir/);
   const noN = formatStuck({}, { kind: 'aging', minutes: 40 });
   assert.equal(/#/.test(noN.title), false);
 });
