@@ -1067,16 +1067,24 @@ function openDetail(orderId){
   const chipBg = lv === 'act' ? 'var(--rose-bg)' : lv === 'watch' ? 'var(--lilac-bg)' : 'var(--sunken)';
   const chipIn = lv === 'act' ? 'var(--rose-ink)' : lv === 'watch' ? 'var(--lilac-ink)' : 'var(--ink)';
 
+  // A finished order is never "waiting". Elapsed-since-created is meaningless once it is done, and
+  // a driver's live GPS/status says nothing about a delivery that already happened.
+  const isDone = lv === 'done';
+  const clock = isDone ? doneClock(order) : '';
   const drvPanel = d
     ? `<div class="panel pad" style="display:flex;align-items:center;gap:14px">
-         <span class="av rd" style="width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:17px;font-weight:700;color:#fff;background:${driverColorVar(d)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>
+         <span class="av rd" style="width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:17px;font-weight:700;color:#fff;background:${isDone ? 'var(--ink3)' : driverColorVar(d)}">${escapeHtml(String(d.name || '?').charAt(0).toUpperCase())}</span>
          <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">${escapeHtml(d.name || 'Repartidor')}</b>
-         <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${XPD.isStalePing(d.last_ping) ? 'Sin señal GPS' : 'GPS activo'} · ${escapeHtml(DRIVER_STATUS_ES[d.status] || d.status || '')}</s></span>
+         <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${isDone
+             ? `Entregó este pedido${clock ? ' a las ' + escapeHtml(clock) : ''}`
+             : escapeHtml(XPD.isStalePing(d.last_ping) ? 'Sin señal' : (DRIVER_STATUS_ES[d.status] || d.status || ''))}</s></span>
        </div>`
     : `<div class="panel pad" style="display:flex;align-items:center;gap:14px">
-         <span style="width:44px;height:44px;border-radius:50%;border:2px dashed var(--ink3);display:grid;place-items:center;color:var(--ink3)">${IC_PLUS}</span>
-         <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">Sin asignar</b>
-         <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${isScheduled ? 'Se activa a la hora programada' : `Esperando desde hace ${m} minutos`}</s></span>
+         <span style="width:44px;height:44px;border-radius:50%;${isDone ? 'background:var(--sunken);' : 'border:2px dashed var(--ink3);'}display:grid;place-items:center;color:var(--ink3)">${isDone ? IC_CHECK : IC_PLUS}</span>
+         <span style="flex:1 1 auto"><b style="display:block;font-size:17px;font-weight:600;letter-spacing:-.35px">${isDone ? 'Sin repartidor asignado' : 'Sin asignar'}</b>
+         <s style="display:block;font-size:14px;color:var(--ink2);text-decoration:none;margin-top:2px">${isDone
+             ? `Entregado${clock ? ' a las ' + escapeHtml(clock) : ''}`
+             : isScheduled ? 'Se activa a la hora programada' : `Esperando desde hace ${m} minutos`}</s></span>
        </div>`;
 
   openSheet(`
@@ -1092,7 +1100,9 @@ function openDetail(orderId){
       <div class="rd num" style="flex:0 0 auto;text-align:center;border-radius:18px;padding:11px 14px;background:${chipBg};color:${chipIn}">
         ${isScheduled
           ? `<div style="font-size:15px;font-weight:700">${escapeHtml(slot)}</div>`
-          : `<div style="font-size:30px;font-weight:700;line-height:.9;letter-spacing:-1.5px">${m}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">min</div>`}
+          : isDone
+            ? `<div style="font-size:17px;font-weight:700">${escapeHtml(clock || '—')}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">entregado</div>`
+            : `<div style="font-size:30px;font-weight:700;line-height:.9;letter-spacing:-1.5px">${m}</div><div style="font-size:10.5px;font-weight:600;margin-top:4px;opacity:.8">min</div>`}
       </div>
     </div>
     <div style="margin-top:20px">${pipeHTML(order)}</div>
