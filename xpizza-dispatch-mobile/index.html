@@ -730,21 +730,25 @@ function passHTML(id, order){
       ? `<span class="t rd" style="font-size:13px;font-weight:700;color:var(--lilac-ink);line-height:1.2">${escapeHtml(slotLabelSafe(order.scheduled_for))}</span>`
       : `<span class="t rd num"><b>${m}</b><s>min</s></span>`;
 
-  let body = '';
-  if (!done) {
-    const phone = String(order.customer_phone || order.phone || '').replace(/[^+\d]/g, '');
-    const callBtn = phone
-      ? `<a class="pact mini" href="tel:${escapeHtml(phone)}" aria-label="Llamar a ${escapeHtml(order.customer_name || 'cliente')}">${IC_PHONE}</a>`
-      : '';
-    const assignBtn = canReassign(order, id, STORE.tasks)
-      ? `<button class="pact solid" type="button" data-pick="${escapeHtml(id)}">${drvId ? 'Reasignar' : 'Asignar'}</button>`
-      : '';
-    body = `<div class="pbody">
-      <div class="ln">${escapeHtml(order.address_detected || order.address_details || '—')}</div>
-      <div class="ln" style="margin-top:3px">${escapeHtml(oneLineItems(order))}</div>
-      <div class="pacts">${callBtn}<button class="pact" type="button" data-detail="${escapeHtml(id)}">Ver pedido</button>${assignBtn}</div>
-    </div>`;
-  }
+  // Every pass expands, completed ones included — the owner still needs to reach a customer after
+  // delivery, and a pass that opens onto nothing is worse than one that does not open at all.
+  // canReassign() already returns false for completados, so no assign button appears there.
+  const phone = String(order.customer_phone || order.phone || '').replace(/[^+\d]/g, '');
+  const callBtn = phone
+    ? `<a class="pact mini" href="tel:${escapeHtml(phone)}" aria-label="Llamar a ${escapeHtml(order.customer_name || 'cliente')}">${IC_PHONE}</a>`
+    : '';
+  const assignBtn = canReassign(order, id, STORE.tasks)
+    ? `<button class="pact solid" type="button" data-pick="${escapeHtml(id)}">${drvId ? 'Reasignar' : 'Asignar'}</button>`
+    : '';
+  const byLine = done && d
+    ? `<div class="ln" style="margin-top:3px">Entregado por ${escapeHtml(String(d.name || 'repartidor').split(' ')[0])}</div>`
+    : '';
+  const body = `<div class="pbody">
+    <div class="ln">${escapeHtml(order.address_detected || order.address_details || '—')}</div>
+    <div class="ln" style="margin-top:3px">${escapeHtml(oneLineItems(order))}</div>
+    ${byLine}
+    <div class="pacts">${callBtn}<button class="pact" type="button" data-detail="${escapeHtml(id)}">Ver pedido</button>${assignBtn}</div>
+  </div>`;
 
   return `<div class="pass lv-${lv}${isOpen ? ' open' : ''}" data-pass="${escapeHtml(id)}">
     <button class="peek" type="button" data-toggle="${escapeHtml(id)}" aria-expanded="${isOpen}">
