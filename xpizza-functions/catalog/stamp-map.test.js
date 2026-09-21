@@ -14,7 +14,7 @@
  * decision still, emulator cells prove the decision is actually consulted with real data.
  */
 const assert = require('assert');
-const { deriveStampMap, stampVerdict, fenceVerdict, judgeStampMap } = require('./identity-stampmap');
+const { walkDraftIdentities, stampVerdict, fenceVerdict, judgeStampMap } = require('./identity-stampmap');
 const { STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -141,25 +141,38 @@ const good = (over = {}) => ({ kind: 'dish', key: 'Margherita', claimedId: 'X', 
   ok('the fence: unmoved permits, a moved or elsewhere-resolved pair refuses by its own name, and a first publish still passes');
 }
 
-// ── 8. THE MAP IS DERIVED FROM WHAT THE DRAFT CARRIES — AND IS NULL WHEN IT CARRIES NOTHING ─
+// ── 8. ONE WALK PRODUCES THE LAW'S SETS AND THE WRITER'S MAP — AND IS NULL WHEN NOTHING IS STAMPED ──
 /* 🔴 NULL, NOT AN EMPTY MAP. writeVersion reads `!!stamps` as "certified", and `{dish:{},extra:{}}` is
    truthy — so a pre-cutover draft would have produced a version marked CERTIFIED with zero stamps,
    whose active certified set is empty. That is the A = ∅ state the publish lockout is made of: it
-   would have moved the bug rather than fixed it. */
+   would have moved the bug rather than fixed it.
+   🔴 AND IT IS ONE WALK. The partition law's `carried`/`unidentified` and the writer's `stamps` come
+   out of the same iteration over the same rows. They used to be two traversals with a comment claiming
+   otherwise — a provenance defect the D-5a gate named — so the walk itself is now the shared thing and
+   these cells drive it directly. */
 {
-  assert.strictEqual(deriveStampMap({ items: [{ key: 'a' }, { key: 'b' }] }), null,
+  assert.strictEqual(walkDraftIdentities({ items: [{ key: 'a' }, { key: 'b' }] }).stamps, null,
     '🔴 a draft carrying NO ids produced a map — a pre-cutover publish would be marked certified with nothing stamped');
-  assert.strictEqual(deriveStampMap({}), null, 'an empty draft has no map');
-  assert.strictEqual(deriveStampMap(), null, 'and neither does no draft at all');
+  assert.strictEqual(walkDraftIdentities({}).stamps, null, 'an empty draft has no map');
+  assert.strictEqual(walkDraftIdentities().stamps, null, 'and neither does no draft at all');
 
-  const m = deriveStampMap({
+  const w = walkDraftIdentities({
     items: [{ key: 'a', display: { identity_id: 'X' } }, { key: 'b' }, { display: { identity_id: 'Z' } }],
     extraRecords: [{ key: 'e1', display: { identity_id: 'E' } }],
   });
-  assert.deepStrictEqual(m, { dish: { a: 'X' }, extra: { e1: 'E' } },
+  assert.deepStrictEqual(w.stamps, { dish: { a: 'X' }, extra: { e1: 'E' } },
     '🔴 the map is not exactly the carried (key → id) pairs');
-  assert.ok(!('b' in m.dish), 'an object carrying no id is absent — it is the unidentified bucket, which P1a does not mint');
-  ok('the map is exactly the carried key→id pairs, EXTRAS included, and is null when the draft carries none');
+  assert.ok(!('b' in w.stamps.dish), 'an object carrying no id is absent — it is the unidentified bucket, which P1a does not mint');
+
+  /* 🔴 THE SAME ROWS FEED BOTH, which is the whole claim. The id on the keyless object (Z) is CARRIED
+     — the law must account for it — while it cannot be stamped, because a stamp is keyed by the
+     object's key. A second traversal deriving only the map would have been free to disagree about
+     that row; one walk cannot. */
+  assert.deepStrictEqual(w.carried, { dish: ['X', 'Z'], extra: ['E'] },
+    '🔴 the law\'s carried set is not what the same walk saw — a keyless object still carries its id');
+  assert.strictEqual(w.unidentified.dish.length, 1, 'and the object with no id at all is unidentified, for minting');
+  assert.strictEqual(w.unidentified.extra.length, 0, 'extras: none unidentified here');
+  ok('one walk yields the law\'s carried/unidentified sets AND the writer\'s map, EXTRAS included, null when the draft carries none');
 }
 
 // ── 9. THE WHOLE MAP — EVERY BAD ENTRY IS NAMED, NOT THE FIRST ──────────────────────────────
@@ -197,8 +210,8 @@ const good = (over = {}) => ({ kind: 'dish', key: 'Margherita', claimedId: 'X', 
 {
   const input = { items: [{ key: 'a', display: { identity_id: 'X' } }] };
   const frozen = JSON.parse(JSON.stringify(input));
-  deriveStampMap(input);
-  assert.deepStrictEqual(input, frozen, '🔴 deriveStampMap MUTATED the draft it was reading');
+  walkDraftIdentities(input);
+  assert.deepStrictEqual(input, frozen, '🔴 the walk MUTATED the draft it was reading');
 
   const args = good();
   const argsFrozen = JSON.parse(JSON.stringify(args));

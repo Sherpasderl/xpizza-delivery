@@ -7221,9 +7221,9 @@
   ],
   "label": "🔴 an unstamped draft produces an EMPTY map instead of null - a pre-cutover version claims certification",
   "kills_with": "a draft carrying NO ids produced a map",
-  "from": "  return isEmptyMap(out) ? null : out;",
-  "to": "  return out;",
-  "why": "writeVersion reads `!!stamps` as certified and an empty object is truthy, so this would mark a pre-cutover version CERTIFIED with zero stamps — whose active certified set is empty, which is the A = ∅ state the publish lockout is made of. It would have moved the bug, not fixed it.",
+  "from": "  return { carried, unidentified, stamps: isEmptyMap(stamps) ? null : stamps };",
+  "to": "  return { carried, unidentified, stamps };",
+  "why": "writeVersion reads `!!stamps` as certified and an empty object is truthy, so this would mark a pre-cutover version CERTIFIED with zero stamps — whose active certified set is empty, which is the A = ∅ state the publish lockout is made of. It would have moved the bug, not fixed it. 🔴 RE-POINTED when deriveStampMap was folded into walkDraftIdentities: the law's sets and the writer's map now come out of ONE walk, because deriving them separately was a provenance defect the D-5a gate named — the comment claimed 'the same walk' and it was two.",
   "slice": "d4p1s"
  },
  {

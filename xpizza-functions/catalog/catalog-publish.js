@@ -40,7 +40,7 @@ const IDENTITY_PRESERVE_TIMEOUT_MS = 5000;
 const { candidateSource, assertCandidateValid } = require('./candidate-validate');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 const { validateDeletionClaim, validatePartition } = require('./identity-partition');
-const { deriveStampMap, judgeStampMap } = require('./identity-stampmap');
+const { walkDraftIdentities, judgeStampMap } = require('./identity-stampmap');
 const { lookupByLegacyKeys, idsColOf } = require('./identity-registry');
 const { pointerStateOf, getActivePointer } = require('./catalog-firestore');
 
@@ -779,16 +779,12 @@ async function assertDraftPartition(db, rid, input) {
     }
   }
 
-  const idOf = (o) => (o && o.display && o.display.identity_id) || undefined;
-  const carried = { dish: [], extra: [] };
-  const unidentified = { dish: [], extra: [] };
-  for (const [kind, rows] of [['dish', input && input.items], ['extra', input && input.extraRecords]]) {
-    for (const o of (Array.isArray(rows) ? rows : [])) {
-      const id = idOf(o);
-      if (id === undefined) unidentified[kind].push({});
-      else carried[kind].push(id);
-    }
-  }
+  /* 🔴 ONE WALK, SHARED WITH THE WRITER. `carried` and `unidentified` drive the law below; `stamps`
+     is what writeVersion freezes into the version. They come out of the SAME iteration over the SAME
+     rows, which is the property the returned map's provenance rests on — deriving them separately
+     agreed today and was two places to change tomorrow. The walk is pure and lives beside the
+     verdicts it feeds, so every branch of it is unit-testable without a database. */
+  const { carried, unidentified, stamps } = walkDraftIdentities(input);
 
   const deleted = { dish: [], extra: [] };
   let claim;
@@ -812,16 +808,15 @@ async function assertDraftPartition(db, rid, input) {
     validatePartition({ activeCertified: A[kind], carried: carried[kind], deletedIds: deleted[kind], unidentified: unidentified[kind] });
   }
 
-  /* 🔴 THE MAP IS DERIVED HERE, FROM THE DRAFT THIS FUNCTION JUST VALIDATED, and returned rather than
-     re-derived by the caller. validatePartition throws on any violation, so past this line every
-     carried id is lawful against A — which makes this the one place where "the validated set" and
-     "the map that gets written" are the same walk over the same rows. Deriving it again in
-     publishVersion would be two derivations that must agree forever, and the second one would not be
-     the one the law checked.
+  /* The map built in the walk above is returned rather than re-derived by the caller.
+     validatePartition throws on any violation, so past this line every carried id is lawful against A
+     — and because `carried` and `stamps` were filled from the same row in the same iteration, "the
+     set the law checked" and "the map that gets written" are the same objects rather than two
+     traversals that happen to agree.
      It is still only a CLAIM. The law proves each id is in the active certified SET; it cannot prove
      this id belongs to THIS object, because moving one live object's id onto another satisfies
-     C ⊆ A perfectly. writeVersion re-verifies every entry against the registry, by name. */
-  return { stamps: deriveStampMap(input), baseline: p };
+     C ⊆ A perfectly. The registry re-verification is what answers that, per object and by name. */
+  return { stamps, baseline: p };
 }
 
 async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {

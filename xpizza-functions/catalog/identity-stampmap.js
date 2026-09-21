@@ -47,21 +47,40 @@ const refuse = (code, detail, extra) => ({ ok: false, code, detail, ...(extra ||
 const isEmptyMap = (stamps) => !stamps
   || (Object.keys(stamps.dish || {}).length === 0 && Object.keys(stamps.extra || {}).length === 0);
 
-/* 🔴 NULL WHEN NOTHING IS STAMPED, NOT AN EMPTY MAP. `writeVersion` reads `!!stamps` as "this version
+/* 🔴 ONE WALK OVER THE DRAFT, PRODUCING EVERYTHING THAT IS DERIVED FROM IT. The partition law needs
+   `carried` and `unidentified`; the writer needs the stamp map. Deriving those in two traversals —
+   which is what this module used to do, with the law walking the rows and `deriveStampMap` walking
+   them again afterwards — means two places to change and a comment claiming they are "the same walk"
+   that is not true. The D-5a gate called that exactly right: one derivation site, no downstream
+   re-derivation, but not the thing the comment said.
+   So the walk itself is the shared thing. The set the law validates and the map that gets written are
+   filled from the same row in the same iteration, which is the property the claim rested on.
+
+   🔴 NULL WHEN NOTHING IS STAMPED, NOT AN EMPTY MAP. `writeVersion` reads `!!stamps` as "this version
    is certified", and an empty object is truthy — so a pre-cutover draft, which carries no ids at all,
    would have produced a version marked CERTIFIED with zero stamps. That version's active certified set
-   is empty, which is the A = ∅ state the lockout above is made of; it would have moved the bug rather
-   than fixed it. Null is the same value the parameter has always defaulted to, so every pre-cutover
-   path stays byte-for-byte what it was. */
-function deriveStampMap(input) {
-  const out = { dish: {}, extra: {} };
+   is empty, which is the A = ∅ state the publish lockout is made of: it would have moved the bug
+   rather than fixed it. Null is the value the parameter has always defaulted to, so every pre-cutover
+   path stays byte-for-byte what it was.
+
+   🔴 A VERSION IS STILL CERTIFIED WITH SOME OBJECTS UNSTAMPED, deliberately. `identity_certified` says
+   "this version's stamps are the server's", not "every object has one". If a single newly-added dish
+   decertified the whole version, the merchant's next publish would read A = ∅ and hit exactly the
+   lockout above — a brand-new dish would lock the menu. The unstamped new object is simply not in A
+   next time, carries no id, and stays lawful as `unidentified` until E mints it in the atomic writer. */
+function walkDraftIdentities(input) {
+  const carried = { dish: [], extra: [] };
+  const unidentified = { dish: [], extra: [] };
+  const stamps = { dish: {}, extra: {} };
   for (const [kind, rows] of [['dish', input && input.items], ['extra', input && input.extraRecords]]) {
     for (const o of (Array.isArray(rows) ? rows : [])) {
       const id = o && o.display && o.display.identity_id;
-      if (isStr(id) && isStr(o.key)) out[kind][o.key] = id;
+      if (!isStr(id)) { unidentified[kind].push({}); continue; }
+      carried[kind].push(id);
+      if (isStr(o.key)) stamps[kind][o.key] = id;
     }
   }
-  return isEmptyMap(out) ? null : out;
+  return { carried, unidentified, stamps: isEmptyMap(stamps) ? null : stamps };
 }
 
 /* ONE OBJECT'S STAMP, JUDGED AGAINST THE REGISTRY.
@@ -179,4 +198,4 @@ function judgeStampMap({ stamps, candidateKeys = {}, registry = {}, baseline = n
   return { empty: false, fence, stamps: out };
 }
 
-module.exports = { deriveStampMap, stampVerdict, fenceVerdict, judgeStampMap };
+module.exports = { walkDraftIdentities, stampVerdict, fenceVerdict, judgeStampMap };

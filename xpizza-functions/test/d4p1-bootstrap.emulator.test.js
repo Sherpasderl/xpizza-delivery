@@ -935,61 +935,56 @@ const asPreP1 = async (rid, versionId) => {
     ok('the cutover runs: bootstrap → publish → publish → publish, every version certified and every id stable across all three');
   }
 
-  // ── 🔴 THE CONSTRUCTED PRE-P1 SHAPE IS THE REAL ONE — ASSERTED, NOT ASSUMED ────────────────
+  // ── 🔴 asPreP1 REMOVES EXACTLY THE THREE P1 MARKERS AND NOTHING ELSE ───────────────────────
   /* Six cells below reach their subject through `asPreP1`, which HAND-BUILDS a pre-cutover version by
-     stripping three things off a published one. Before Slice D that shape came for free, because
-     publish never certified; now it is constructed, and a constructed fixture whose fidelity is
-     asserted nowhere is the class that has bitten this programme three times — most recently a
-     reservation seeded with `status` where production writes `state`. So the construction is compared,
-     once, against a version that was genuinely published BEFORE bootstrap ever ran.
-     🔴 COMPARED ON SHAPE, NOT VALUES, and that is not a weakening. Version id, seq, created_at,
-     source_sha and the hashes differ between any two publishes for reasons that have nothing to do
-     with identity. What must match is which FIELDS exist — because every way this fixture could lie
-     is a field left behind or a field missing, not a different timestamp. */
+     stripping a published one. A constructed fixture whose fidelity is asserted nowhere is the class
+     that has bitten this programme repeatedly, so it is asserted here — and the D-5a gate found BOTH
+     of my first attempts at asserting it were themselves broken.
+     🔴 WHAT WAS WRONG THE FIRST TIME (1): the sensitivity staging REPAIRED the defect it was meant to
+     detect. It wrote identity_certified back, asserted the comparison rejected it, then DELETED it
+     again — before capturing the value it validated. So a broken asPreP1 that leaves the discriminator
+     behind was repaired by my own cleanup, and the whole cell passed with the helper broken. The
+     untouched result is now captured and validated FIRST; sensitivity is staged afterwards on a
+     SEPARATE version, so nothing the cell does can launder the thing under test.
+     🔴 WHAT WAS WRONG THE FIRST TIME (2): the comparison was a field-NAME "shape" against a different
+     version, which cannot prove field-for-field fidelity — `meta` was omitted entirely (so losing
+     menu_structure's item_order/extra_order was invisible), nested structure was ignored, and
+     documents collapsed into a set, losing identity and multiplicity. It also passed when the shape
+     function ignored every item and extra field, because the discriminator alone satisfied it.
+     The claim is now made against the SAME version instead, which needs no cross-version
+     normalisation and is exact: `constructed` must deep-equal the certified snapshot MINUS precisely
+     the three markers. That catches a field left behind, a field removed that should not have been,
+     and any change to meta, nested structure, ordering or multiplicity. */
   {
     const ridE = 'x_pizza';
-    const shapeOf = (snap) => {
-      const keys = (o) => Object.keys(o || {}).sort();
-      const docsShape = (col) => {
-        const out = new Set();
-        for (const d of Object.values(col || {})) {
-          out.add(keys(d).join(','));
-          out.add(`display:${keys(d.display).join(',')}`);
-        }
-        return [...out].sort();
-      };
-      return { record: keys(snap.record), menu_items: docsShape(snap.menu_items), extras: docsShape(snap.extras) };
-    };
-
     const cur = await readActiveVersion(db, ridE);
     await publishVersion(db, ridE, { ...(await candidateFromSource(ridE)), source_sha: 'fidelity' },
       { expected: { activeVersionId: cur.versionId } });
     const fresh = await readActiveVersion(db, ridE);
     assert.strictEqual(fresh.record.identity_certified, true, 'premise — a genuinely certified, post-bootstrap version to strip');
-    const certifiedShape = shapeOf(await snapshotVersion(ridE, fresh.versionId));
+
+    const certified = await snapshotVersion(ridE, fresh.versionId);
+
+    /* The expected result, computed from the certified snapshot by removing exactly the three P1
+       markers — the definition of what asPreP1 is FOR, written independently of how it does it. */
+    const expected = JSON.parse(JSON.stringify(certified));
+    delete expected.record.identity_certified;
+    delete expected.record.identity_activation;
+    for (const col of ['menu_items', 'extras']) {
+      for (const d of Object.values(expected[col] || {})) {
+        if (d && d.display) delete d.display.identity_id;
+      }
+    }
 
     await asPreP1(ridE, fresh.versionId);
-
-    /* 🔴 SENSITIVITY FIRST, AND IT HAS TO LIVE INSIDE THIS CELL. I tried proving this comparison can
-       fail by half-breaking asPreP1 and re-running the suite: it DID fail, but at cell 6, which
-       reaches the incomplete fixture first — so the run said nothing about whether THIS cell can see
-       the difference. A cell whose sensitivity depends on no earlier cell failing first is a cell
-       whose sensitivity is unmeasured.
-       So the failure is staged here: put ONE marker back, which is exactly what a future incomplete
-       asPreP1 would leave, and the comparison below must reject it. */
-    await vrefOf(ridE, fresh.versionId).update({ identity_certified: true });
-    assert.notDeepStrictEqual(shapeOf(await snapshotVersion(ridE, fresh.versionId)), shapeOf(before),
-      '🔴 SENSITIVITY: a version with the discriminator LEFT BEHIND compares equal to a genuine pre-cutover one — this cell cannot see an incomplete asPreP1, which is the only thing it exists to catch');
-    await vrefOf(ridE, fresh.versionId).update({ identity_certified: admin.firestore.FieldValue.delete() });
-
     const constructed = await snapshotVersion(ridE, fresh.versionId);
 
-    /* `before` is the version as it stood BEFORE bootstrap ran in cell 1 — a real pre-cutover
-       published version, not a reconstruction. */
-    assert.deepStrictEqual(shapeOf(constructed), shapeOf(before),
-      '🔴 the hand-built pre-P1 shape is NOT what a genuine pre-bootstrap version looks like — six cells below reason about a state that never existed in production');
+    /* 🔴 THE UNTOUCHED RESULT, VALIDATED BEFORE THE CELL TOUCHES ANYTHING. Exact deep equality over
+       the whole snapshot — record, every menu_item, every extra, and meta with its nested structure. */
+    assert.deepStrictEqual(constructed, expected,
+      '🔴 asPreP1 did not remove exactly the three P1 markers — it left one behind, or changed something else about the version, and six cells below reason about whatever it produced');
 
-    // …and the three markers are named explicitly, so the cell states its property rather than only comparing.
+    // …and the markers are named explicitly, so the cell states its property rather than only comparing.
     assert.strictEqual(constructed.record.identity_certified, undefined, 'no discriminator');
     assert.strictEqual(constructed.record.identity_activation, undefined, 'no activation record');
     for (const col of ['menu_items', 'extras']) {
@@ -997,13 +992,60 @@ const asPreP1 = async (rid, versionId) => {
         assert.strictEqual(d.display && d.display.identity_id, undefined, `🔴 ${col}/${id} kept its stamp`);
       }
     }
+    /* meta is compared by the deep equality above; asserted by name too, because it was the field the
+       previous version of this cell omitted and therefore could not have missed. */
+    assert.ok(constructed.meta && constructed.meta.menu_structure, 'premise — meta/menu_structure is in the snapshot at all, so the comparison covers it');
+    assert.deepStrictEqual(constructed.meta, certified.meta,
+      '🔴 asPreP1 touched meta — menu_structure carries item_order and extra_order, and losing an ordering is invisible in a field-name comparison');
 
-    /* 🔴 SENSITIVITY, WITHOUT WHICH THE EQUALITY ABOVE PROVES NOTHING. If shapeOf were too coarse to
-       notice a stamp, it would report every version equal to every other and the comparison would pass
-       for any fixture at all. The CERTIFIED version it was stripped from must NOT match. */
-    assert.notDeepStrictEqual(certifiedShape, shapeOf(before),
-      '🔴 SENSITIVITY: a certified version has the same shape as a pre-cutover one — the comparison above cannot tell them apart and asserts nothing');
-    ok('the hand-built pre-P1 shape is field-for-field what a genuine pre-bootstrap version has, and a certified one is distinguishable from both');
+    /* 🔴 SENSITIVITY, ON A SEPARATE VERSION SO IT CANNOT REPAIR ANYTHING. Each marker is put back on a
+       DIFFERENT published version, one at a time, and the same equality must reject it. Staging on the
+       version already validated is what made the first attempt worthless. */
+    for (const marker of ['identity_certified', 'identity_activation', 'stamp']) {
+      /* 🔴 STAGED ON A VERSION THAT IS NEVER ACTIVATED, for two reasons. It cannot repair or disturb
+         the version validated above — the trap that made my first attempt worthless. And publishing
+         three more times would not work anyway: asPreP1 decertifies whatever it strips, so a publish
+         onto that baseline reads A = ∅ while the source still carries ids and is refused as
+         carried_unknown. That is the publish lockout, reproduced by my own fixture, which is a fair
+         reminder that the state is easy to fall into. writeVersion creates a real version without
+         touching the pointer, which is also closer to how asPreP1 is used elsewhere in this suite. */
+      const { writeVersion, serverNow } = require('../catalog/catalog-publish');
+      const { walkDraftIdentities } = require('../catalog/identity-stampmap');
+      const live2 = await getActivePointer(db, ridE);
+      const cand2 = await candidateFromSource(ridE);
+      /* The stamp map comes from the PRODUCTION walk, not from fixture arithmetic: publishVersion
+         derives it inside the partition law, and a fixture that built its own would be asserting
+         against a map the server would never produce. writeVersion re-verifies it against the
+         registry anyway, so an invented one would be refused. */
+      const { stamps: stamps2 } = walkDraftIdentities(cand2);
+      const staged = await writeVersion(db, ridE,
+        { ...cand2, source_sha: `sens-${marker}`, baseline: live2, stamps: stamps2, stampsResolvedAgainst: live2 },
+        await serverNow(db, ridE));
+      const stagedId = staged.versionId || staged.version || staged;
+
+      const before2 = await snapshotVersion(ridE, stagedId);
+      assert.strictEqual(before2.record.identity_certified, true, `premise — the staged version carries the markers to strip (${marker})`);
+      const want2 = JSON.parse(JSON.stringify(before2));
+      delete want2.record.identity_certified; delete want2.record.identity_activation;
+      for (const col of ['menu_items', 'extras']) for (const d of Object.values(want2[col] || {})) { if (d && d.display) delete d.display.identity_id; }
+
+      await asPreP1(ridE, stagedId);
+      const clean = await snapshotVersion(ridE, stagedId);
+      assert.deepStrictEqual(clean, want2, `premise — asPreP1 stripped the staged version correctly before ${marker} is put back`);
+
+      // …then put ONE marker back, exactly as an incomplete asPreP1 would have left it.
+      const vref2 = vrefOf(ridE, stagedId);
+      if (marker === 'identity_certified') await vref2.update({ identity_certified: true });
+      else if (marker === 'identity_activation') await vref2.update({ identity_activation: { status: 'pending' } });
+      else {
+        const one = (await vref2.collection('menu_items').get()).docs[0];
+        await one.ref.update({ display: { ...(one.data().display || {}), identity_id: 'LEFTBEHIND1' } });
+      }
+      const broken = await snapshotVersion(ridE, stagedId);
+      assert.notDeepStrictEqual(broken, want2,
+        `🔴 SENSITIVITY: a version with ${marker} LEFT BEHIND compared equal to a correctly stripped one — this cell cannot see an incomplete asPreP1, which is the only thing it exists to catch`);
+    }
+    ok('asPreP1 removes EXACTLY the three P1 markers and nothing else — deep equality over record, items, extras and meta, with each marker\'s absence proven by putting it back on a separate version');
   }
 
   // ── 🔴 A PENDING UNPUBLISHED RENAME REFUSES THE WHOLE PASS ───────────────────────────────
