@@ -2114,7 +2114,7 @@
 <!-- MAIN DISPATCHER UI -->
 <!-- ================================ -->
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
-  <header class="topbar">
+  <header class="topbar" id="topbar">
     <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg><span class="rail-badge" id="left-rail-badge"></span></button>
     <span class="tb-brand"><span class="tb-x">X</span> Dispatch</span>
     <span class="tb-restaurant" id="tb-restaurant">X. Pizza</span>
@@ -4823,8 +4823,27 @@ function updateCustomerMarkers() {
 // Pure (doc injected) so it's unit-testable without a live DOM.
 function pickerReturnFocusTarget(opener, orderId, doc) {
   doc = doc || document;
-  const attachedVisible = (el) => !!el && el.isConnected !== false && el.offsetParent != null;
-  const focusable = (el) => attachedVisible(el) && typeof el.focus === 'function';
+  // A COLLAPSED rail keeps its content's LAYOUT (offsetParent stays non-null) but clips it in a zero-width
+  // column (.app:not(.left-open) .main { --lw: 0 } + .col overflow:hidden, while .rail-inner keeps a fixed
+  // 380px box). So offsetParent alone can't tell "visible" from "clipped in a collapsed rail", and the
+  // clipped element's OWN getBoundingClientRect can still report non-zero width. Reject a candidate that is
+  // zero-size OR sits inside a collapsed rail; the final fallback is an ALWAYS-EXPOSED top-level landmark
+  // (#topbar) that is never inside a collapsible column, so focus can never land in hidden content.
+  const rectSized = (el) => {
+    if (typeof el.getBoundingClientRect !== 'function') return true;   // no rect info (unit fakes) → don't reject
+    const r = el.getBoundingClientRect();
+    return !!r && r.width > 0 && r.height > 0;
+  };
+  const railClipped = (el) => {
+    if (!el || typeof el.closest !== 'function') return false;         // no closest (unit fakes) → rect check governs
+    const app = (typeof doc.querySelector === 'function') ? doc.querySelector('.app') : null;
+    const has = (c) => !!(app && app.classList && app.classList.contains(c));
+    if (el.closest('.col.left'))  return !has('left-open');
+    if (el.closest('.col.right')) return !has('right-open');
+    return false;
+  };
+  const shown = (el) => !!el && el.isConnected !== false && el.offsetParent != null && rectSized(el) && !railClipped(el);
+  const focusable = (el) => shown(el) && typeof el.focus === 'function';
   if (focusable(opener)) return { el: opener, temp: false };
   if (orderId != null && typeof doc.querySelector === 'function') {
     const sel = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(String(orderId)) : String(orderId);
@@ -4833,10 +4852,13 @@ function pickerReturnFocusTarget(opener, orderId, doc) {
       if (focusable(el)) return { el, temp: false };
     }
     let card = null; try { card = doc.querySelector(`.ord[data-order-id="${sel}"]`); } catch (_) {}
-    if (attachedVisible(card)) return { el: card, temp: true };
+    if (shown(card)) return { el: card, temp: true };
   }
   const landmark = typeof doc.getElementById === 'function' ? doc.getElementById('unassigned-group') : null;
-  if (attachedVisible(landmark)) return { el: landmark, temp: true };
+  if (shown(landmark)) return { el: landmark, temp: true };
+  // Guaranteed last resort: the always-exposed top-level header, never inside a collapsible rail.
+  const exposed = typeof doc.getElementById === 'function' ? doc.getElementById('topbar') : null;
+  if (exposed) return { el: exposed, temp: true };
   return { el: null, temp: false };
 }
 

@@ -252,7 +252,38 @@ const pickerJs = html.slice(openIdx, closeEnd);
     assert.strictEqual(r.el, opener, 'attached+visible opener is preserved');
     assert.strictEqual(r.temp, false, 'real button never flagged temp');
   }
-  ok('pickerReturnFocusTarget: detached/hidden opener → re-resolved visible trigger / landmark, never nowhere');
+  // (i) CLIPPED (zero-size): opener + card + landmark all report a zero-size box → all rejected → the
+  //     always-exposed #topbar is the guaranteed visible last resort (never the clipped landmark, never null).
+  {
+    const clipped = () => el({ getBoundingClientRect: () => ({ width: 0, height: 0 }) });
+    const exposed = el({ getBoundingClientRect: () => ({ width: 320, height: 44 }) });
+    const doc = fakeDoc(
+      { '[data-assign-order="Z"]': clipped(), '.ord[data-order-id="Z"]': clipped() },
+      { 'unassigned-group': clipped(), 'topbar': exposed },
+    );
+    const r = resolve(clipped(), 'Z', doc);
+    assert.ok(r.el, 'never null — always a visible last resort');
+    assert.strictEqual(r.el, exposed, 'zero-size candidates rejected → always-exposed #topbar');
+    assert.ok(r.el.getBoundingClientRect().width > 0, 'return target has non-zero size');
+  }
+  // (ii) CLIPPED by a COLLAPSED RAIL — the production case. A collapsed .col.left keeps its content's LAYOUT
+  //      (offsetParent non-null) and the fixed-width .rail-inner keeps a NON-ZERO box, so rect>0 alone MISSES
+  //      it; rejection must key off the rail state (.app lacks .left-open). Card + landmark live in the
+  //      collapsed left rail → rejected → #topbar.
+  {
+    const app = { classList: { contains: () => false } };            // neither left-open nor right-open
+    const inLeftRail = el({ getBoundingClientRect: () => ({ width: 380, height: 200 }),
+                            closest: (s) => (s === '.col.left' ? {} : null) });
+    const exposed = el({ getBoundingClientRect: () => ({ width: 320, height: 44 }) });
+    const doc = {
+      querySelector: (sel) => (sel === '.app' ? app : (sel === '.ord[data-order-id="R"]' ? inLeftRail : null)),
+      getElementById: (id) => (({ 'unassigned-group': inLeftRail, 'topbar': exposed })[id] || null),
+    };
+    const detached = el({ isConnected: false, offsetParent: null });
+    const r = resolve(detached, 'R', doc);
+    assert.strictEqual(r.el, exposed, 'collapsed-rail candidate (non-zero rect) rejected via rail state → #topbar');
+  }
+  ok('pickerReturnFocusTarget: detached/hidden/clipped/collapsed-rail candidate → re-resolved visible target / #topbar, never in hidden content, never nowhere');
 }
 
 // BEHAVIORAL (executable) — Tab focus-trap wraps BOTH directions.
