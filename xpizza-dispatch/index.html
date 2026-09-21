@@ -1189,6 +1189,21 @@
     flex-shrink: 0;
   }
   .unassigned-card .assign-self-btn:hover { background: #15803d; }
+  /* Cola de acción (Slice B) — stalled / at-risk rows use Reasignar as the primary action. */
+  .unassigned-card .reassign-btn {
+    flex: 1;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px;
+    border-radius: 5px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+  }
+  .unassigned-card .reassign-btn:hover { background: #b91c1c; }
 
   /* ==================== EXPANDED TASK DETAILS ==================== */
   .task-expanded {
@@ -1961,7 +1976,49 @@
   .ord .meta .m.wa .d   { background: var(--success); }
   .ord .meta .m.warn { color: var(--accent); } .ord .meta .m.warn .d { background: var(--accent); }
   .ord .meta .m.slip { color: var(--accent); } .ord .meta .m.slip .d { background: var(--accent); }
+  .ord .meta .m.stall { color: var(--accent); } .ord .meta .m.stall .d { background: var(--accent); }
   .ord .actions { display: flex; gap: 6px; margin-top: 11px; }
+
+  /* ==================== COLA DE ACCIÓN — segmented filter (Slice B) ==================== */
+  .cola-seg {
+    display: flex;
+    gap: 2px;
+    margin: 10px 0 12px;
+    padding: 3px;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 9px;
+  }
+  .cola-seg-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 4px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-dim);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 11.5px;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .cola-seg-btn:hover { color: var(--text-soft); }
+  .cola-seg-btn.on { background: var(--surface-3); color: var(--text); }
+  .cola-seg-n {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--surface-2);
+    border-radius: 99px;
+    padding: 0 5px;
+  }
+  .cola-seg-btn.on .cola-seg-n { background: var(--accent-soft); color: var(--accent); }
 
   /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
   .cash-bar { background: linear-gradient(180deg, #262f3e, #222a37); box-shadow: var(--shadow); border-radius: 13px; padding: 14px 15px; margin: 4px 0 14px; }
@@ -2168,14 +2225,19 @@
       <div class="rail-resize" id="rail-resize-left" title="Ajustar ancho del panel"></div>
       <div class="rail-inner">
       <div id="torre-list"></div>
-      <div id="risk-summary"></div>
 
-      <div class="tree-group" id="unassigned-group">
+      <div class="tree-group cola-group" id="unassigned-group">
         <div class="tree-group-header">
-          <div class="tree-group-title">Sin asignar</div>
-          <div class="tree-group-meta" id="unassigned-meta">0 pedidos</div>
+          <div class="tree-group-title">Cola de acción</div>
+          <div class="tree-group-meta" id="unassigned-meta">0</div>
         </div>
-        <div id="unassigned-list"><div class="tree-empty">Sin pedidos pendientes</div></div>
+        <div class="cola-seg" id="cola-seg">
+          <button class="cola-seg-btn on" data-seg="all">Todos <span class="cola-seg-n" id="seg-all-n">0</span></button>
+          <button class="cola-seg-btn" data-seg="unassigned">Sin asignar <span class="cola-seg-n" id="seg-unassigned-n">0</span></button>
+          <button class="cola-seg-btn" data-seg="stalled">Detenidos <span class="cola-seg-n" id="seg-stalled-n">0</span></button>
+          <button class="cola-seg-btn" data-seg="atrisk">En riesgo <span class="cola-seg-n" id="seg-atrisk-n">0</span></button>
+        </div>
+        <div id="unassigned-list"><div class="tree-empty">Sin pedidos que necesiten acción</div></div>
       </div>
 
       <!-- Repartidores roster moved to the right rail (Task 10a) -->
@@ -2830,10 +2892,15 @@ function alertContent(a) {
 // Renders the exceptions queue into #torre-list (left rail). Replaces the old floating
 // #dispatcher-alerts strip. sortAlertEntries preserves each alert id (dismiss) + classifies
 // severity/icon; unknown/factura_* fall into an "Otros / Revisar" bucket (nothing dropped).
+// Slice B: the order-action alert types (a repartidor never accepted / no drivers / strand) are now
+// represented directly in the Cola de acción (unassigned/stalled/at-risk, from state) — so retire them from
+// the Torre exceptions strip to kill the duplicate surface. Payment/reconciliation + driver-GPS + unknown
+// alerts are NOT order-action items and stay. (dispatch-alert-nav.js / alertNavTarget are untouched.)
+const COLA_OWNED_ALERT_TYPES = new Set(['no_drivers_available', 'no_response_takeover', 'assignment_strand']);
 function renderDispatcherAlerts(alerts) {
   const container = $('torre-list');
   if (!container) return;
-  const entries = sortAlertEntries(alerts);
+  const entries = sortAlertEntries(alerts).filter((e) => !(e.alert && COLA_OWNED_ALERT_TYPES.has(e.alert.type)));
   // ☰ collapsed-rail exceptions badge (Task 11) — count shown only when the left rail is collapsed.
   const badge = $('left-rail-badge');
   if (badge) { badge.textContent = String(entries.length); badge.classList.toggle('has', entries.length > 0); }
@@ -3210,7 +3277,7 @@ const expandedOrderIds = new Set();
 function renderSidebar() {
   // Drivers start COLLAPSED — a clean roster card each; tap a driver to expand its
   // full task detail. (Drivers with active orders still show the inline .dt summary.)
-  renderUnassignedSection();
+  renderCola();
   renderDriversSection();
   renderDeliveredSection();
   renderReconciliationSection();
@@ -3300,41 +3367,118 @@ function updateRiskSummary() {
   el.innerHTML = count > 0 ? `<span class="risk-count">${count} pedido(s) en riesgo de retraso</span>` : '';
 }
 
-function renderUnassignedSection() {
-  updateRiskSummary();
-  const orders = getPendingOrders();
+// ============================================================
+// Cola de acción — the ONE needs-action queue (Slice B).
+// Unifies the three old order-action surfaces (the "Sin asignar" list, En Fila's unassigned-delivery rows,
+// and the Torre order alerts) into one deduped, urgency-ordered queue with ONE authoritative count.
+//   unassigned = getPendingOrders()  (delivery, no driver — the BYTE-IDENTICAL pending predicate; superset view)
+//   stalled    = delivery task isStalledAssignment (assigned but offered-and-expired)
+//   atrisk     = deliveryRisk.level !== 'ok' (aging/slipping), across pending + assigned in-flight
+// Buckets are EXCLUSIVE by priority (unassigned > stalled > atrisk) so the segment counts PARTITION the total
+// (Todos == Sin asignar + Detenidos + En riesgo == queue length; an order in two buckets shows ONCE, with a
+// cue chip for the extra). Recoger/pickup + Programados/scheduled are NOT in this union — they stay in En Fila
+// (Slice B keeps them visible; Slice D relocates Programados). buildActionQueue is PURE (deps injected) so the
+// union / dedup / partition / ordering is unit-testable without the live board.
+// ============================================================
+function buildActionQueue(unassigned, stalled, atrisk, bandOf) {
+  const byId = new Map();
+  const mark = (list, bucket) => (list || []).forEach(o => {
+    if (!o || o.order_id == null) return;
+    let e = byId.get(o.order_id);
+    if (!e) { e = { order: o, buckets: new Set() }; byId.set(o.order_id, e); }
+    e.buckets.add(bucket);
+  });
+  mark(unassigned, 'unassigned'); mark(stalled, 'stalled'); mark(atrisk, 'atrisk');
+  const pr = (b) => (b === 'unassigned' ? 0 : b === 'stalled' ? 1 : 2);   // exclusive-bucket priority
+  const bandRank = (b) => (b === 'red' ? 0 : b === 'amber' ? 1 : 2);       // urgency order
+  const entries = [...byId.values()].map(e => {
+    const primary = [...e.buckets].sort((a, b) => pr(a) - pr(b))[0];
+    const band = bandOf ? bandOf(e.order) : 'green';
+    return { order: e.order, orderId: e.order.order_id, primary, buckets: e.buckets, band };
+  });
+  entries.sort((a, b) => bandRank(a.band) - bandRank(b.band) || pr(a.primary) - pr(b.primary) || ((a.order.created_at || 0) - (b.order.created_at || 0)));
+  const counts = { all: entries.length, unassigned: 0, stalled: 0, atrisk: 0 };
+  entries.forEach(e => { counts[e.primary]++; });
+  return { entries, counts };
+}
+
+// Live-data adapter: pulls the three sources from board state + computes the per-order risk band.
+function getActionQueue(nowTs) {
+  nowTs = nowTs || Date.now();
+  const riskOf = (o) => deliveryRisk({
+    agingSeconds: agingSeconds(agingBaselineMs(o), nowTs),
+    baselineArrivalMs: etaSnapshots.baseline(o.order_id),
+    currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
+  });
+  const unassigned = getPendingOrders();
+  const stalled = Object.values(allOrders).filter(o => {
+    const dt = allTasks[`${o.order_id}_delivery`];
+    return dt && dt.assigned_driver_id && isStalledAssignment(dt, nowTs, allTasks[`${o.order_id}_pickup`]);
+  });
+  const atrisk = [];
+  const consider = (o) => { if (riskOf(o).level !== 'ok') atrisk.push(o); };
+  unassigned.forEach(consider);                                          // unassigned aging
+  for (const uid of Object.keys(allDrivers)) getOrdersForDriver(uid).forEach(consider);  // assigned in-flight slipping
+  return buildActionQueue(unassigned, stalled, atrisk, (o) => riskOf(o).band);
+}
+
+let colaFilter = 'all';   // 'all' | 'unassigned' | 'stalled' | 'atrisk'
+
+function renderCola() {
+  initColaSegments();
   const list = $('unassigned-list');
   const meta = $('unassigned-meta');
+  if (!list || !meta) return;
+  const { entries, counts } = getActionQueue(Date.now());
 
-  meta.textContent = orders.length === 1 ? '1 pedido' : `${orders.length} pedidos`;
-  meta.classList.toggle('hot', orders.length > 0);
+  // ONE count — mirrored to the Cola header meta, the segment chips, and (via updateStats) the topbar KPI.
+  meta.textContent = String(counts.all);
+  meta.classList.toggle('hot', counts.all > 0);
+  const setSeg = (id, n) => { const el = $(id); if (el) el.textContent = String(n); };
+  setSeg('seg-all-n', counts.all); setSeg('seg-unassigned-n', counts.unassigned);
+  setSeg('seg-stalled-n', counts.stalled); setSeg('seg-atrisk-n', counts.atrisk);
 
-  if (orders.length === 0) {
-    list.innerHTML = '<div class="tree-empty">Sin pedidos pendientes</div>';
-    return;
+  const shown = colaFilter === 'all' ? entries : entries.filter(e => e.primary === colaFilter);
+  if (shown.length === 0) {
+    list.innerHTML = `<div class="tree-empty">${counts.all === 0 ? 'Sin pedidos que necesiten acción' : 'Nada en este filtro'}</div>`;
+  } else {
+    const showSelfBtn = isCurrentUserAlsoDriver();
+    list.innerHTML = shown.map(e => colaCard(e, showSelfBtn)).join('');
   }
+  wireColaHandlers(list);
+}
 
-  const showSelfBtn = isCurrentUserAlsoDriver();
-
-  list.innerHTML = orders.map(o => {
-    const expanded = expandedOrderIds.has(o.order_id);
-    // Aging (created-time) + delivery-risk drive the row-edge band from ONE computation.
-    const secs = agingSeconds(agingBaselineMs(o), Date.now());
-    const risk = deliveryRisk({
-      agingSeconds: secs,
-      baselineArrivalMs: etaSnapshots.baseline(o.order_id),   // null for unassigned → aging-only
-      currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
-    });
-    const edge = risk.band === 'red' ? ' late' : risk.band === 'amber' ? ' aging' : '';
-    const isCash = isCashPayment(o.payment_method);
-    const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
-    const waChip = o.order_received_notified_at
-      ? '<span class="m wa"><span class="d"></span>WhatsApp ✓</span>'
-      : o.order_received_send_unresolved_at
-        ? '<span class="m warn"><span class="d"></span>WhatsApp no entregado</span>'
-        : '';
-    const slip = risk.level === 'slipping' ? '<span class="m slip"><span class="d"></span>slipping vs primer estimado</span>' : '';
-    return `
+// One queue row — the unassigned card extended to the stalled / at-risk buckets. The exclusive primary drives
+// the primary action; any extra bucket adds a cue chip. Every customer field escapeHtml(String(...))'d.
+function colaCard(e, showSelfBtn) {
+  const o = e.order;
+  const secs = agingSeconds(agingBaselineMs(o), Date.now());
+  const risk = deliveryRisk({
+    agingSeconds: secs,
+    baselineArrivalMs: etaSnapshots.baseline(o.order_id),
+    currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
+  });
+  const edge = risk.band === 'red' ? ' late' : risk.band === 'amber' ? ' aging' : '';
+  const isCash = isCashPayment(o.payment_method);
+  const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
+  const waChip = o.order_received_notified_at
+    ? '<span class="m wa"><span class="d"></span>WhatsApp ✓</span>'
+    : o.order_received_send_unresolved_at
+      ? '<span class="m warn"><span class="d"></span>WhatsApp no entregado</span>'
+      : '';
+  const dt = allTasks[`${o.order_id}_delivery`];
+  const stalledName = e.buckets.has('stalled') ? (allDrivers[dt && dt.assigned_driver_id]?.name || 'repartidor') : '';
+  const stallChip = e.buckets.has('stalled') ? `<span class="m stall"><span class="d"></span>${escapeHtml(stalledName)} · sin aceptar · expiró</span>` : '';
+  const slipChip = (!e.buckets.has('stalled') && risk.level === 'slipping') ? '<span class="m slip"><span class="d"></span>retrasándose</span>' : '';
+  const expanded = expandedOrderIds.has(o.order_id);
+  let actions;
+  if (e.primary === 'unassigned') {
+    actions = `${showSelfBtn ? `<button class="assign-self-btn" data-assign-self="${escapeHtml(o.order_id)}" title="Asignar a mí">A mí</button>` : ''}`
+      + `<button class="assign-btn" data-assign-order="${escapeHtml(o.order_id)}">Asignar</button>`;
+  } else {
+    actions = `<button class="reassign-btn" data-reassign-order="${escapeHtml(o.order_id)}">Reasignar</button>`;
+  }
+  return `
     <div class="ord unassigned-card${edge}" data-order-id="${escapeHtml(o.order_id)}">
       <div class="r1">
         <span class="num">${escapeHtml(displayOrderLabel(o))}</span>
@@ -3342,33 +3486,31 @@ function renderUnassignedSection() {
         <span class="ord-age band-${risk.band}" data-aging="${escapeHtml(String(o.created_at ?? ''))}">${formatAging(secs)}</span>
       </div>
       <div class="items">${escapeHtml(o.items_text || o.address_detected || '—')}</div>
-      <div class="meta">${payChip}${waChip}${slip}</div>
+      <div class="meta">${payChip}${waChip}${stallChip}${slipChip}</div>
       ${scheduledBadge(o)}
       ${expanded ? renderOrderExpanded(o) : ''}
       <div class="actions">
-        ${showSelfBtn ? `<button class="assign-self-btn" data-assign-self="${o.order_id}" title="Asignar a mí">A mí</button>` : ''}
-        <button class="assign-btn" data-assign-order="${o.order_id}">Asignar</button>
-        <button class="more-btn" data-more-unassigned="${o.order_id}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
+        ${actions}
+        <button class="more-btn" data-more-cola="${escapeHtml(o.order_id)}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
       </div>
     </div>
-  `}).join('');
+  `;
+}
 
-  // Card click → open the full detail modal (same rich view as completed orders).
+function wireColaHandlers(list) {
+  // Card body → detail modal; action buttons stopPropagation (no swallowed assign).
   list.querySelectorAll('.ord[data-order-id]').forEach(card => {
     card.addEventListener('click', (e) => {
-      // ignore clicks on action buttons
       if (e.target.closest('button')) return;
       openOrderDetailModal(card.dataset.orderId);
     });
   });
-
   list.querySelectorAll('[data-assign-order]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openPicker(btn.dataset.assignOrder);
-    });
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.assignOrder); });
   });
-
+  list.querySelectorAll('[data-reassign-order]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.reassignOrder, true); });
+  });
   list.querySelectorAll('[data-assign-self]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -3382,11 +3524,10 @@ function renderUnassignedSection() {
       }
     });
   });
-
-  list.querySelectorAll('[data-more-unassigned]').forEach(btn => {
+  list.querySelectorAll('[data-more-cola]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const oid = btn.dataset.moreUnassigned;
+      const oid = btn.dataset.moreCola;
       const order = allOrders[oid];
       const items = [
         order?.customer_phone ? {
@@ -3395,14 +3536,24 @@ function renderUnassignedSection() {
           action: () => window.location.href = `tel:${order.customer_phone}`
         } : null,
         order?.customer_phone ? { divider: true } : null,
-        {
-          label: 'Cancelar pedido',
-          icon: ICONS.close,
-          danger: true,
-          action: () => confirmCancelOrder(oid)
-        }
+        { label: 'Cancelar pedido', icon: ICONS.close, danger: true, action: () => confirmCancelOrder(oid) }
       ].filter(Boolean);
       showActionMenu(btn, items);
+    });
+  });
+}
+
+// Segmented filter (Todos / Sin asignar / Detenidos / En riesgo) — wired once (idempotent). The strip is
+// static markup, so only #unassigned-list re-renders; the active-segment state persists across renders.
+function initColaSegments() {
+  const seg = $('cola-seg');
+  if (!seg || seg.dataset.wired) return;
+  seg.dataset.wired = '1';
+  seg.querySelectorAll('[data-seg]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      colaFilter = btn.dataset.seg;
+      seg.querySelectorAll('[data-seg]').forEach(b => b.classList.toggle('on', b === btn));
+      renderCola();
     });
   });
 }
@@ -3493,13 +3644,15 @@ function getPickupQueue() {
 // Recoger / Programados). Tap any row → detail modal (cancel / call / message there).
 function renderPedidosTab() {
   const el = $('pedidos-list'); if (!el) return;
-  const delivery = getDeliveryQueue();
+  // Slice B: unassigned deliveries moved to the Cola de acción (the ONE needs-action queue). En Fila is now
+  // the reference pipeline for what the Cola does NOT own — ASSIGNED in-flight deliveries + Recoger (pickup)
+  // + Programados (scheduled) — so pickup + scheduled orders STAY visible here. The attention badge is retired
+  // (the single needs-me count lives in the Cola), so this tab no longer shows a red count.
+  const delivery = getDeliveryQueue().filter(o => allTasks[`${o.order_id}_delivery`]?.assigned_driver_id);
   const pickup = getPickupQueue();
   const scheduled = Object.values(allScheduled || {}).sort((a, b) => (a.scheduled_for || 0) - (b.scheduled_for || 0));
   const total = delivery.length + pickup.length + scheduled.length;
-  // Badge shows NEEDS-ATTENTION (unassigned + stalled deliveries), not the full queue total. The list
-  // below still renders off `total` (delivery + pickup + scheduled). (Owner-approved semantic change.)
-  setTabBadge('tab-pedidos-n', enFilaAttentionCount(allOrders, allTasks, Date.now()));
+  setTabBadge('tab-pedidos-n', 0);
 
   if (total === 0) { el.innerHTML = '<div class="tree-empty">Sin pedidos en fila</div>'; return; }
 
@@ -4814,7 +4967,7 @@ function updateCustomerMarkers() {
 // ============================================================
 
 // a11y: choose where focus returns when the picker closes. "Restore document.activeElement" is UNSAFE on this
-// board — renderUnassignedSection() replaces #unassigned-list's innerHTML on a ~5s tick (DETACHING the opener
+// board — renderCola() replaces #unassigned-list's innerHTML on a ~5s tick (DETACHING the opener
 // button), and the detail-modal reassign entry (:4534) HIDES its modal before openPicker captures focus. So:
 // prefer the original opener ONLY while it's still attached+visible; else re-query the CURRENT visible trigger
 // for this order by stable identity (data-assign-order / data-reassign-order); else the order's card; else a
@@ -5098,7 +5251,9 @@ async function assignOrder(orderId, driverId) {
 // ============================================================
 function updateStats() {
   $('stat-drivers').textContent = getActiveDrivers().length;
-  const pendingCount = getPendingOrders().length;
+  // Slice B: the topbar "En cola" KPI mirrors the ONE Cola de acción needs-action count (unassigned ∪ stalled
+  // ∪ at-risk, deduped) — the same authoritative number shown in the Cola header + the segment "Todos".
+  const pendingCount = getActionQueue(Date.now()).counts.all;
   $('stat-pending').textContent = pendingCount;
   $('stat-active').textContent = getActiveOrders().length;
   $('stat-delivered').textContent = getDeliveredTodayCount();
