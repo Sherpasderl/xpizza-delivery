@@ -216,5 +216,49 @@ function mkDeps(db, over = {}) {
   // a GENERIC refund_pending (not paid-after-close) is never touched
   assert.equal(recoverRefundingDecision({ payment_status: 'refund_pending', refunding_at: 0 }, { status: 'refunded' }, STALE + 1, STALE).action, 'none'); ok('recover: generic refund_pending (no paid-after-close reason) → none');
 
+  /* ── 🔴 THE COMBINATION: A PARKED ORDER MUST NEVER BE TOLD ITS REFUND IS COMING ─────────────
+     main's paid-after-close NOTIFY work (v3/v4/v4.1) guarantees the customer a message when the
+     AUTOMATIC path refunds. This branch's park fix is the MANUAL path: it REFUSES to refund and parks
+     for a human instead. They are adjacent, and adjacency is where this programme keeps finding
+     defects — so the question is whether any notify path can fire "your refund is on its way" for an
+     order that was parked rather than refunded. A truthful sent-marker on a refund that never
+     happened would be worse than the silence we started with.
+     It cannot, and the reason is structural rather than incidental: every send site is gated on a
+     state the park path never writes. Driven here through the REAL predicate rather than by reading:
+       · materialize-guard sends only inside its confirmed-reversal branch (voided === true), and the
+         park path returns before it;
+       · the sweep's notification recovery requires payment_status 'refunded' AND blocked_reason
+         'refunded_paid_after_close';
+       · the stale-refunding recovery requires 'refunding_paid_after_close', or 'refund_pending' with
+         its own paid-after-close reason.
+     A parked order is manual_reconciliation / manual_refund_required_paid_after_close, with its
+     attempt still `captured` — it matches none of them. */
+  {
+    const { needsRefundNotifyRecovery } = require('./paid-after-close-notify');
+    const NOW = 1700000000000, STALE_MS = 2 * 60 * 1000;
+    const phone = '50488887777';
+    // Exactly the shape the park fix writes (asserted in test/resolve-manual.emulator.test.js).
+    const parked = { payment_status: 'manual_reconciliation', blocked_reason: 'manual_refund_required_paid_after_close',
+      customer_phone: phone, refunded_at: NOW - 10 * 60 * 1000 };
+    assert.equal(needsRefundNotifyRecovery(parked, NOW, STALE_MS), false,
+      '🔴 A PARKED ORDER WAS SELECTED FOR THE REFUND MESSAGE — the customer would be told their refund is on its way for a refund that was deliberately NOT performed, which is worse than the silence this fix replaced');
+
+    /* SENSITIVITY — a genuinely refunded order IS selected, so the assertion above is not satisfied by
+       a predicate that says no to everything. */
+    const refunded = { payment_status: 'refunded', blocked_reason: 'refunded_paid_after_close',
+      customer_phone: phone, refunded_at: NOW - 10 * 60 * 1000 };
+    assert.equal(needsRefundNotifyRecovery(refunded, NOW, STALE_MS), true,
+      '🔴 SENSITIVITY: a genuinely refunded order is not selected either — the check above passes for the wrong reason');
+
+    /* And the near-miss that would matter most: the park's own blocked_reason with a refunded status,
+       or the refunded reason with the park's status. Neither is a state either path writes, but they
+       are the two one-field slips that would turn the guard above into a coincidence. */
+    assert.equal(needsRefundNotifyRecovery({ ...refunded, payment_status: 'manual_reconciliation' }, NOW, STALE_MS), false,
+      'the refunded reason alone does not select — the status is checked too');
+    assert.equal(needsRefundNotifyRecovery({ ...parked, payment_status: 'refunded' }, NOW, STALE_MS), false,
+      'the refunded status alone does not select — the reason is checked too');
+    ok('a PARKED paid-after-close order is never selected for the refund message; a genuinely refunded one is');
+  }
+
   console.log(`\n${n} passed`);
 })();
