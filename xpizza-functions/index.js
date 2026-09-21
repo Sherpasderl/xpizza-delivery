@@ -1959,16 +1959,32 @@ async function getGraceMinutes(db) {
 // messages are true, money is safe — the same low-harm class as the concurrent-manual-cancel double we accept).
 //   • Dedupe on `paid_after_close_refund_sent_at` — the source of truth, written ONLY after a CONFIRMED send.
 //     Once set, this and the sweep both skip → no re-send. (A stale read can at worst cause one extra message.)
-//   • DURABLE failure: whatsapp.sendMessage returns null on a bad phone / provider error (never throws). We do
-//     NOT mark sent; we record `paid_after_close_refund_send_unresolved_at` and leave sent_at unset → the sweep
-//     re-drives on its next pass. A failed send never un-does the refund.
+//   • TRUTHFUL sent-marker (load-bearing): `sent_at` means "the provider ACCEPTED the message," never merely
+//     "the HTTP call returned." whatsapp.sendMessage returns a truthy `{}` on an HTTP-200 with an unreadable body
+//     (whatsapp.js `resp.json().catch(()=>({}))`) — treating that as success would permanently disable recovery
+//     and SILENTLY leave a refunded customer un-notified (the exact failure this change exists to prevent). So we
+//     stamp ONLY on whatsapp.isSendConfirmed(res) (a real `sent`/`id` acceptance signal), NOT on `res != null`.
+//   • DURABLE failure/unconfirmed: a null (bad phone / provider error) OR an unconfirmed `{}` → do NOT mark sent;
+//     record `paid_after_close_refund_send_unresolved_at` and leave sent_at unset → the sweep re-drives on its
+//     next pass. A failed/unconfirmed send never un-does the refund.
+//   • Un-sendable (no customer_phone): record a durable `paid_after_close_refund_unsendable_at` marker (visible to
+//     ops) — the sweep's needsRefundNotifyRecovery also skips phone-less orders so this never churns recovery.
 //   • Crash-safe: a crash after the terminal write but before sent_at lands leaves sent_at unset → the sweep
 //     re-drives (§refundReconciler notification-recovery branch). Closes the zero-message gap.
 // total = the whole-lempira refunded amount.
 async function sendPaidAfterCloseRefund(db, { orderId, order }) {
   try {
     const rid = (order && order.restaurant_id) || 'x_pizza';
-    if (!order || !order.customer_phone) { console.warn(`sendPaidAfterCloseRefund: ${orderId} has no customer_phone`); return; }
+    if (!order || !order.customer_phone) {
+      // Permanently un-sendable (no phone) → record a durable, visible marker. The sweep selector skips phone-less
+      // orders (needsRefundNotifyRecovery) so this can't churn every pass; a re-drive could never succeed anyway.
+      console.warn(`sendPaidAfterCloseRefund: ${orderId} has no customer_phone`);
+      if (order) {
+        try { await db.ref(`orders/${orderId}`).update({ paid_after_close_refund_unsendable_at: ServerValue.TIMESTAMP, paid_after_close_refund_unsendable_reason: 'no_customer_phone' }); }
+        catch (e) { console.warn(`sendPaidAfterCloseRefund: unsendable-marker write failed ${orderId}`, e && e.message); }
+      }
+      return;
+    }
     if (alreadyRefundNotified(order)) return;   // CONFIRMED-sent already → idempotent skip (at-least-once dedupe)
     if (!(await whatsapp.isEnabledForRestaurant(db, rid))) { console.log(`sendPaidAfterCloseRefund: whatsapp disabled for ${rid}, skip`); return; }
     const total = Number.isFinite(Number(order.total_cents)) ? Math.round(Number(order.total_cents) / 100) : (Number(order.total) || 0);
@@ -1976,14 +1992,15 @@ async function sendPaidAfterCloseRefund(db, { orderId, order }) {
     let res = null;
     try { res = await whatsapp.sendMessage(order.customer_phone, body, rid); }
     catch (e) { console.error(`sendPaidAfterCloseRefund: send threw ${orderId}`, e.message); }
-    if (res == null) {
-      // NOT sent → record durably (visible) and leave sent_at UNSET so the sweep re-drives. Not swallowed.
+    if (!whatsapp.isSendConfirmed(res)) {
+      // NOT positively accepted (null, or a truthy-but-unconfirmed `{}`) → record durably (visible) and leave
+      // sent_at UNSET so the sweep re-drives. NEVER stamp sent_at on an unconfirmed send. Not swallowed.
       try { await db.ref(`orders/${orderId}/paid_after_close_refund_send_unresolved_at`).set(ServerValue.TIMESTAMP); }
       catch (e) { console.warn(`sendPaidAfterCloseRefund: unresolved-marker write failed ${orderId} (sweep will re-drive)`, e && e.message); }
       console.warn(`sendPaidAfterCloseRefund: send unresolved ${orderId} — sweep will re-drive`);
       return;
     }
-    // CONFIRMED sent → stamp the source-of-truth marker (dedupes every later finalize/sweep pass).
+    // CONFIRMED accepted by the provider → stamp the source-of-truth marker (dedupes every later finalize/sweep pass).
     try { await db.ref(`orders/${orderId}/paid_after_close_refund_sent_at`).set(ServerValue.TIMESTAMP); }
     catch (e) { console.warn(`sendPaidAfterCloseRefund: sent-marker write failed ${orderId} (may re-send once)`, e && e.message); }
     console.log(`sendPaidAfterCloseRefund: ${orderId} → refund WhatsApp sent to ${order.customer_phone}`);
@@ -6188,6 +6205,9 @@ exports.pruneInactiveAccounts = onSchedule(
 // per-token claimPrefill throttle (checkRateLimit + the claim_token bucket) directly.
 module.exports.checkRateLimit = checkRateLimit;
 module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
+// paid-after-close refund-notify composition test drives the REAL sender directly (finalize-path call) alongside
+// app.refundReconciler.run() (the sweep) against the RTDB emulator + a mocked provider.
+module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;
 
 // ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
 // Thin wrappers only. The handler bodies live in catalog/edit-catalog-handler.js so they can be

@@ -24,6 +24,23 @@ assert.equal(w.resolveWhatsappConfig('la_musa', { ULTRAMSG_INSTANCE_ID_LA_MUSA: 
 // must NOT fall back to the x_pizza link, or a la_musa order could send with an X. Pizza tracker URL).
 assert.equal(w.resolveWhatsappConfig('la_musa', { ULTRAMSG_INSTANCE_ID_LA_MUSA: 'iLM', ULTRAMSG_TOKEN_LA_MUSA: 'tLM' }), null); ok('la_musa no TRACKING_BASE_LA_MUSA → null (no x_pizza-link fallback)');
 
+// ── isSendConfirmed — POSITIVE provider-acceptance signal (the load-bearing truthful-sent gate) ──
+// The critical kill: a bare {} (HTTP-200, unreadable body from sendMessage's resp.json().catch(()=>({}))) is
+// TRUTHY but proves NOTHING → must NOT count as confirmed. If it did, sent_at would be stamped on an
+// unconfirmed send → recovery permanently disabled → a silently-un-notified refunded customer.
+assert.equal(w.isSendConfirmed({}), false); ok('isSendConfirmed({}) → false (unconfirmed HTTP-200 body never counts as accepted — the blocking-defect guard)');
+assert.equal(w.isSendConfirmed(null), false); ok('isSendConfirmed(null) → false (send failure/skip)');
+assert.equal(w.isSendConfirmed(undefined), false); ok('isSendConfirmed(undefined) → false');
+assert.equal(w.isSendConfirmed('true'), false); ok('isSendConfirmed(non-object) → false');
+assert.equal(w.isSendConfirmed({ error: 'x', id: 5 }), false); ok('isSendConfirmed(error body) → false (defensive, even with an id)');
+// Genuine UltraMsg acceptance signals: sent:true/"true" and/or a real message id.
+assert.equal(w.isSendConfirmed({ sent: 'true', message: 'ok', id: 12345 }), true); ok('isSendConfirmed(sent:"true"+id) → true (real UltraMsg accept)');
+assert.equal(w.isSendConfirmed({ sent: true }), true); ok('isSendConfirmed(sent:true bool) → true');
+assert.equal(w.isSendConfirmed({ id: 987 }), true); ok('isSendConfirmed(numeric id only) → true');
+assert.equal(w.isSendConfirmed({ id: 'ABC-1' }), true); ok('isSendConfirmed(string id only) → true');
+assert.equal(w.isSendConfirmed({ id: '' }), false); ok('isSendConfirmed(empty-string id) → false (no real id)');
+assert.equal(w.isSendConfirmed({ sent: 'false' }), false); ok('isSendConfirmed(sent:"false", no id) → false');
+
 // ── trackingUrl (x_pizza) ──
 assert.equal(w.trackingUrl('TOK', 'x_pizza'), `${X_TRACK}/TOK`); ok('trackingUrl x_pizza → constant base');
 

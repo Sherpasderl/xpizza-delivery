@@ -23,9 +23,15 @@ function needsRefundNotifyRecovery(order, now, staleMs) {
   if (!order) return false;
   if (order.payment_status !== 'refunded') return false;              // must be the terminal refunded state
   if (order.blocked_reason !== 'refunded_paid_after_close') return false;  // ...specifically paid-after-close
-  if (order.paid_after_close_refund_sent_at) return false;            // already confirmed sent → nothing to recover
-  const refundedAt = Number(order.refunded_at);
-  const age = now - (Number.isFinite(refundedAt) ? refundedAt : now); // missing refunded_at → age 0 → not yet stale (conservative)
+  if (!order.customer_phone) return false;                           // un-sendable (no phone) → never churn the sweep (sender records the unsendable marker)
+  if (order.paid_after_close_refund_sent_at) return false;           // already confirmed sent → nothing to recover
+  // KNOWN age requires a real finite POSITIVE ms timestamp. A permissive Number() is a trap here: Number(null),
+  // Number(''), Number(false) all === 0 (finite) → an epoch-0 age → wrongly huge → wrongly ELIGIBLE. Intent is a
+  // CONSERVATIVE-SKIP on unknown age (only re-drive an order whose refund we can prove is old enough not to be
+  // racing an in-flight finalize's own send). So accept ONLY a number; reject null/''/false/undefined/0/negative/NaN.
+  const refundedAt = order.refunded_at;
+  if (typeof refundedAt !== 'number' || !Number.isFinite(refundedAt) || refundedAt <= 0) return false;
+  const age = now - refundedAt;
   return age > staleMs;
 }
 

@@ -10,6 +10,7 @@
     "test:driver-freshness": "firebase emulators:exec --only database --project demo-xpizza \"node test/driver-freshness.emulator.test.js\"",
     "test:graduation": "firebase emulators:exec --only database --project demo-xpizza \"node test/graduation-monitor.emulator.test.js\"",
     "test:display-number": "firebase emulators:exec --only database --project demo-xpizza \"node test/display-number.emulator.test.js\"",
+    "test:paid-after-close-notify": "firebase emulators:exec --only database --project demo-xpizza \"node test/paid-after-close-notify.emulator.test.js\"",
     "test:ingest-liveness": "firebase emulators:exec --only database --project demo-xpizza \"node test/ingest-liveness.emulator.test.js\"",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

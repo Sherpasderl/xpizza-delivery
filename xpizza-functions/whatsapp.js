@@ -148,6 +148,27 @@ async function sendMessage(toPhone, body, restaurantId = 'x_pizza') {
 }
 
 /**
+ * POSITIVE provider-acceptance signal for a sendMessage RESULT.
+ *
+ * `sendMessage` returns `data` (the parsed UltraMsg JSON) on `resp.ok && !data.error`, but `resp.json()` is
+ * `.catch(()=>({}))` — so an HTTP-200 with an unreadable/empty body yields a bare `{}` that is TRUTHY yet proves
+ * NOTHING was accepted. Any caller that must record "the provider actually accepted this message" (e.g. the
+ * paid-after-close refund notice, whose whole reliability rests on a truthful sent-marker) MUST gate on this,
+ * never on `res != null`. A genuinely accepted UltraMsg send returns `sent:true`/`"true"` and/or a message `id`
+ * (logged at the send site); `{}` has neither → NOT confirmed → the caller leaves its sent-marker unset so a
+ * recovery sweep re-drives. Pure + exported so the acceptance semantics live in one tested place.
+ */
+function isSendConfirmed(result) {
+  if (!result || typeof result !== 'object') return false;         // null (failure/skip) or non-object → not confirmed
+  if (result.error) return false;                                  // defensive: an error body is never acceptance
+  if (result.sent === true || result.sent === 'true') return true; // UltraMsg positive-accept flag (bool or string)
+  const id = result.id;                                            // ...or a real message id
+  if (typeof id === 'number' && Number.isFinite(id)) return true;
+  if (typeof id === 'string' && id.trim() !== '') return true;
+  return false;                                                    // bare {} / no id / no sent flag → UNCONFIRMED
+}
+
+/**
  * Check the kill-switch flag in Firebase config.
  * Returns true if WhatsApp is enabled (default), false if explicitly disabled.
  */
@@ -314,6 +335,7 @@ function tplPickupReady({ customerName, trackingToken, restaurantId }) {
 
 module.exports = {
   sendMessage,
+  isSendConfirmed,
   isEnabled,
   isEnabledForRestaurant,
   resolveWhatsappConfig,
