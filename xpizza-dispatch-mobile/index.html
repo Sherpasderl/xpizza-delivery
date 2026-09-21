@@ -198,6 +198,20 @@
      driver's initial, then the pass migrates from Ahora into En curso under its own power (FLIP).
      Cause and effect, triggered by the user's own action. Nothing else on this surface animates
      without being asked. */
+  /* View transitions. These answer a TAP, never a data update: the board re-renders on every RTDB
+     event and on a 20s tick, and fading those would make the deck pulse all night. Only a user
+     action sets the flag that plays them.
+     Tabs cross-fade (what iOS does — a tab bar is lateral, not hierarchical). The sheet slides
+     directionally because detail → picker → confirm IS a navigation stack: the direction tells you
+     whether you went deeper or came back. */
+  @keyframes pane-in{ from{ opacity:0 } to{ opacity:1 } }
+  .pane-in{ animation:pane-in .2s var(--ease) both }
+  @keyframes list-in{ from{ opacity:0 } to{ opacity:1 } }
+  .list-in{ animation:list-in .22s var(--ease) both }
+  @keyframes sh-push{ from{ opacity:0; transform:translateX(18px) } to{ opacity:1; transform:none } }
+  @keyframes sh-pop{ from{ opacity:0; transform:translateX(-18px) } to{ opacity:1; transform:none } }
+  .sh-push{ animation:sh-push .26s var(--ease) both }
+  .sh-pop{ animation:sh-pop .26s var(--ease) both }
   @keyframes av-fill{ 0%{ transform:scale(.3); opacity:0 } 62%{ transform:scale(1.09); opacity:1 } 100%{ transform:none } }
   .av-fill{ animation:av-fill .5s var(--ease) both }
   .pbody{ padding:2px 16px 16px }
@@ -457,6 +471,15 @@ let connected = true;
 let lastData = null;
 let map = null, driverMarkers = {}, focusLayer = { markers:[], line:null, route:null };
 let mapReady = false, mapFailed = false, mapInit = null;
+let animateBoard = false;   // set ONLY by a user action (chip change); consumed by renderBoard
+let sheetDir = null;        // 'push' | 'pop' for the next openSheet; null for a root sheet
+// Re-trigger a CSS animation on an element that may already carry the class.
+function replay(el, cls){
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
 
 XPD.initDelivery(firebaseConfig);
 
@@ -879,6 +902,7 @@ function renderBoard(){
   pane.innerHTML = html;
   pane.scrollTop = keep;
   layoutDecks();
+  if (animateBoard) { animateBoard = false; replay(pane, 'list-in'); }
 
   if (pendingSettle) {
     const st = pendingSettle;
@@ -946,14 +970,19 @@ function showTab(which){
   if (which === 'pedidos') renderBoard();
   if (which === 'drivers') renderDriversTab();
   if (which === 'mapa') window.__onMapaShown?.();
+  replay(which === 'mapa' ? $('map-wrap') : $('pane'), 'pane-in');
 }
 
 // ── sheet plumbing ──
 let lastFocus = null;
 function openSheet(html){
-  if (!$('sheet').classList.contains('on')) lastFocus = document.activeElement;
+  const wasOpen = $('sheet').classList.contains('on');
+  if (!wasOpen) lastFocus = document.activeElement;
   $('sheet-body').innerHTML = html;
   $('sheet-body').scrollTop = 0;
+  // Animate a step only WITHIN an already-open sheet; the sheet's own rise covers the first one.
+  if (wasOpen && sheetDir) replay($('sheet-body'), sheetDir === 'pop' ? 'sh-pop' : 'sh-push');
+  sheetDir = null;
   $('scrim').classList.add('on');
   $('sheet').classList.add('on');
   $('screen-main').setAttribute('aria-hidden', 'false');
@@ -1148,7 +1177,7 @@ function openPicker(orderId){
 
   openSheet(`
     <div class="sh-nav">
-      <button class="back" type="button" data-detail="${escapeHtml(orderId)}" aria-label="Atrás">${IC_BACK}</button>
+      <button class="back" type="button" data-detail="${escapeHtml(orderId)}" data-back="1" aria-label="Atrás">${IC_BACK}</button>
       <h2 id="sheet-title" class="sh-h rd">Elegir repartidor</h2>
     </div>
     <div class="sh-s" style="margin-left:4px">${escapeHtml(order.customer_name || 'Cliente')}, ${escapeHtml(order.address_detected || order.address_details || '—')}</div>
@@ -1174,7 +1203,7 @@ function openConfirm(orderId, driverId){
   const initial = (n) => escapeHtml(String(n || '?').charAt(0).toUpperCase());
   openSheet(`
     <div class="sh-nav">
-      <button class="back" type="button" data-pick="${escapeHtml(orderId)}" aria-label="Atrás">${IC_BACK}</button>
+      <button class="back" type="button" data-pick="${escapeHtml(orderId)}" data-back="1" aria-label="Atrás">${IC_BACK}</button>
       <h2 id="sheet-title" class="sh-h rd">${pickerIsReassign ? 'Reasignar' : 'Confirmar'}</h2>
     </div>
     <div class="flow">
@@ -1244,7 +1273,7 @@ function openSettings(){
 
 // ── delegated events ──
 document.addEventListener('click', (e) => {
-  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-signout],[data-drvfocus],[data-donetoggle],[data-map]');
+  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back]');
   if (!el) return;
   const ds = el.dataset;
 
@@ -1259,13 +1288,13 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (ds.donetoggle){ collapsedDone = !collapsedDone; renderBoard(); return; }
-  if (ds.chip){ activeChip = ds.chip; openPass = null; renderBoard(); return; }
+  if (ds.chip){ activeChip = ds.chip; openPass = null; animateBoard = true; renderBoard(); return; }
   if (ds.tab){ showTab(ds.tab); return; }
-  if (ds.detail){ openDetail(ds.detail); return; }
-  if (ds.pick){ openPicker(ds.pick); return; }
+  if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }
+  if (ds.pick){ sheetDir = ds.back ? 'pop' : 'push'; openPicker(ds.pick); return; }
   if (ds.choose){
     const oid = $('sheet-body').querySelector('[data-detail]')?.dataset.detail;
-    if (oid) openConfirm(oid, ds.choose);
+    if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }
     return;
   }
   if (ds.commit){ commitAssign(ds.order, ds.commit); return; }
