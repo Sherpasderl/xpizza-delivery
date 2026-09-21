@@ -89,7 +89,13 @@
   html{ background:var(--ground); color-scheme:light dark; }
   :root[data-theme="light"]{ color-scheme:light; }
   :root[data-theme="dark"]{ color-scheme:dark; }
-  html,body{ height:100%; margin:0; }
+  /* Kill double-tap-to-zoom (and the legacy 300ms tap delay) on an app-like surface, WITHOUT
+     touching pinch-zoom: `manipulation` permits panning and pinch, and only drops the
+     non-standard double-tap gesture. Deliberately NOT user-scalable=no in the viewport meta —
+     that would disable pinch too, and pinch is the presbyopic owner's only text-size remedy on an
+     installed PWA (WCAG 1.4.4). */
+  html,body{ height:100%; margin:0; touch-action:manipulation; }
+  button,a,[role="tab"],[role="dialog"]{ touch-action:manipulation; }
   body{
     background:var(--ground); color:var(--ink); overscroll-behavior:none;
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
