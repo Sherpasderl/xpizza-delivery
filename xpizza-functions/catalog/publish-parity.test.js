@@ -169,11 +169,20 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // read a moment ago; if a publish lands in between, an unconditional flip buries a version nobody
   // ever saw. The CLI must roll back FROM the pointer it actually read, not from whatever is live by
   // the time the transaction runs. (Asserted structurally — this CLI is argv-driven and owner-run.)
-  assert.ok(/const active = pointer\.exists \? \(pointer\.data\(\) \|\| \{\}\)\.version : null;/.test(RB),
-    'the rollback CLI must read the live pointer');
+  /* 🔴 THE SPELLING CHANGED, THE PROPERTY DID NOT. This pinned the raw extraction
+     `pointer.exists ? (pointer.data()||{}).version : null`, which the E-1 gate found was the problem:
+     the rollback CLI parsed the pointer with NO validation, and this is the path D-2.1 showed can move
+     the pointer to a version that was never live. It now goes through readPointerSnap, the same parse
+     the serving path uses. What this cell asserts is unchanged — the CLI reads the LIVE pointer and
+     rolls back FROM that exact value — so the regex follows the code rather than the code being kept
+     ugly to satisfy the regex. */
+  assert.ok(/active = readPointerSnap\(pointer, RID\)\.version;/.test(RB),
+    'the rollback CLI must read the live pointer, through the shared reader');
+  assert.ok(/readPointerSnap/.test(RB),
+    'and it must not parse the pointer document for itself — three CLI tools doing that is what the E-1 gate found');
   assert.ok(/expected: \{ activeVersionId: active \}/.test(RB),
     'and must roll back FROM that exact pointer — an unconditional flip buries whatever landed in between');
-  assert.ok(RB.indexOf('const active =') < RB.indexOf('await rollbackVersion('),
+  assert.ok(RB.indexOf('active = readPointerSnap(') < RB.indexOf('await rollbackVersion('),
     'and it must read it BEFORE the rollback, not after');
   ok('the rollback CLI is explicit-target, CAS-bound to the pointer it read, refuses unretained/already-active targets, and lists read-only');
 }

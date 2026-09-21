@@ -319,8 +319,9 @@
   "slice": "task7",
   "label": "the CLI reads the pointer AFTER the source (the interleave window reopens)",
   "file": "tools/publish-version.js",
-  "from": "  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  const activeVersionId = pointer.exists ? ((pointer.data() || {}).version || null) : null;\n  if (!fromStore) return { activeVersionId, source: null, revision: null };\n  const { source, revision } = await readSource(db, rid);   // fail-closed: missing/malformed throws\n  return { activeVersionId, source, revision };",
-  "to": "  const pre = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  if (!fromStore) return { activeVersionId: pre.exists ? ((pre.data() || {}).version || null) : null, source: null, revision: null };\n  const { source, revision } = await readSource(db, rid);\n  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  const activeVersionId = pointer.exists ? ((pointer.data() || {}).version || null) : null;\n  return { activeVersionId, source, revision };"
+  "from": "  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  const activeVersionId = readPointerSnap(pointer, rid).version;\n  if (!fromStore) return { activeVersionId, source: null, revision: null };\n  const { source, revision } = await readSource(db, rid);   // fail-closed: missing/malformed throws\n  return { activeVersionId, source, revision };",
+  "to": "  const pre = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  if (!fromStore) return { activeVersionId: readPointerSnap(pre, rid).version, source: null, revision: null };\n  const { source, revision } = await readSource(db, rid);\n  const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();\n  const activeVersionId = readPointerSnap(pointer, rid).version;\n  return { activeVersionId, source, revision };",
+  "why": "🔴 RE-POINTED when the E-1 gate found this CLI parsed the pointer for itself with `|| null` — it now goes through readPointerSnap. The mutation is unchanged in meaning: it moves the pointer read AFTER the source read, reopening the interleave window. Only the spelling of the read moved."
  },
  {
   "id": "task7-17",
@@ -7334,9 +7335,9 @@
    "getActivePointer coerced a stored generation",
    "it coerced to the pre-cutover baseline instead of refusing"
   ],
-  "from": "  return snap.exists ? pointerStateOf(snap.data(), restaurantId) : { version: null, generation: 0 };",
-  "to": "  return snap.exists ? { version: (snap.data() || {}).version || null, generation: (snap.data() || {}).generation || 0 } : { version: null, generation: 0 };",
-  "why": "🔴 SURVIVED at first, and the reason is worth keeping: the PUBLISH path reads the pointer twice — assertDraftPartition through getActivePointer before the lease, and the flip through pointerStateOf inside its transaction — so removing either one leaves the other refusing, and a plain publish cell cannot kill this. That is real defence in depth, not weak code. The activation suite now drives getActivePointer with no transaction behind it, which is the shape every non-transactional caller has (the editor's claim-base stamp among them), and that isolation is what kills this. 🔴 kills_with is an ARRAY because the D-2 baseline requirement now catches this too, and EARLIER: a coerced generation arrives at writeVersion as the string \"0\", which the required-baseline check refuses as write_version_no_baseline before the isolation cell runs. So the end-to-end cell fires first, on its own message. Two independent guards catch the same corruption, which is worth knowing — the earlier one is not the one this mutant is named for.",
+  "from": "  const state = pointerStateOf(snap.data(), restaurantId);",
+  "to": "  const state = { version: (snap.data() || {}).version || null, generation: (snap.data() || {}).generation || 0 };",
+  "why": "🔴 SURVIVED at first, and the reason is worth keeping: the PUBLISH path reads the pointer twice — assertDraftPartition through getActivePointer before the lease, and the flip through pointerStateOf inside its transaction — so removing either one leaves the other refusing, and a plain publish cell cannot kill this. That is real defence in depth, not weak code. The activation suite now drives getActivePointer with no transaction behind it, which is the shape every non-transactional caller has (the editor's claim-base stamp among them), and that isolation is what kills this. 🔴 kills_with is an ARRAY because the D-2 baseline requirement now catches this too, and EARLIER: a coerced generation arrives at writeVersion as the string \"0\", which the required-baseline check refuses as write_version_no_baseline before the isolation cell runs. So the end-to-end cell fires first, on its own message. Two independent guards catch the same corruption, which is worth knowing — the earlier one is not the one this mutant is named for. 🔴 RE-POINTED when the E-1 gate found the two readers still parsed independently: getActivePointer and getActiveVersionId now BOTH go through readPointerSnap, so the coercion this mutant restores belongs at that one shared site rather than in one reader's body. Restoring it there defeats both readers at once, which is the point of having one.",
   "slice": "d4p1e1"
  },
  {
@@ -7485,6 +7486,20 @@
   "to": "      if (false) {",
   "why": "§4's rule for claimant discovery applied to stamps: an overflow must ABORT the activation, never verify part of it. A truncated verification misses exactly the stamp that went stale, which is the one the check exists for. NB no cell drives a 400-object menu, so this is expected to need either a budget cell or an equivalent declaration — recorded rather than assumed. 🔴 It DID survive at first, exactly as recorded above: no cell drove a 400-object menu, so the branch was unreachable. Rather than declare it equivalent, the budget was made injectable — production never passes it, and a cell now drives the abort through a direct flipPointer with a budget of 1. A guard whose only branch needs a 400-object fixture is a guard nobody exercises. kills_with is the CELL's message, not the production error text: with the branch gone nothing throws, so the kill lands on the assertion that expected a refusal — 'exceeds the' is a string that only exists when the guard works.",
   "slice": "d4p1s"
+ },
+ {
+  "id": "d4p1e1-07",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "node",
+   "catalog/pointer-state.test.js"
+  ],
+  "slice": "d4p1e1",
+  "label": "🔴 an existing pointer that names NO version reads as 'nothing published' again",
+  "kills_with": "read as \"nothing published yet\"",
+  "from": "  if (state.version === null) {",
+  "to": "  if (false) {",
+  "why": "Only flipPointer writes this document and it always writes a version, so a versionless one is a partial write or corruption. Reading it as an unpublished restaurant is the same defect E-1 fixed for a version of the wrong TYPE — a corrupt pointer that looks like a fresh one, which a first publish's CAS is allowed to overwrite. The ABSENT document is the genuine 'nothing published' case and the only one. kills_with is the CELL's message, not the production error text: with the branch gone nothing throws, so the kill lands on the assertion that expected a refusal — the production string only exists when the guard works."
  },
  {
   "id": "pah-01",

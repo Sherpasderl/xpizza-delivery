@@ -10,6 +10,7 @@
 // 🔒 Value-identity: version 1 == the flat catalog == code (the emulator money-proof gates this). The
 // reader serves version 1 via the pointer; the 1b guard still serves CODE + alarms on any divergence.
 const { execSync } = require('child_process');
+const { readPointerSnap } = require('../catalog/catalog-firestore');
 const admin = require('firebase-admin');
 const { requireProject } = require('./require-project');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
@@ -32,8 +33,13 @@ const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { enc
 // The revision comes back FROM readSource, not from a second read, for the same reason: "the draft I
 // built this from" and "the draft I am claiming to be current" must be the same sentence.
 async function readPublishBaseline(db, rid, { fromStore }) {
+  /* 🔴 THROUGH THE SHARED READER, NOT `|| null`. This coerced: an empty-string version, `false` or `0`
+     all became "nothing published", so a corrupt pointer looked like a fresh restaurant and the CAS
+     below would bind to `null` — which is the expectation a FIRST publish carries, i.e. the one that
+     is allowed to overwrite nothing. readPointerSnap refuses a present-but-unusable pointer instead,
+     and is the same parse the serving path uses. */
   const pointer = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();
-  const activeVersionId = pointer.exists ? ((pointer.data() || {}).version || null) : null;
+  const activeVersionId = readPointerSnap(pointer, rid).version;
   if (!fromStore) return { activeVersionId, source: null, revision: null };
   const { source, revision } = await readSource(db, rid);   // fail-closed: missing/malformed throws
   return { activeVersionId, source, revision };

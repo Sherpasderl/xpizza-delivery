@@ -72,33 +72,57 @@ function activePointerRef(db, restaurantId) {
    same pointer was a hard fault on one read path and a clean "unpublished" on the other. Whichever
    reader a caller happened to use decided whether corruption was visible.
    Absent still means pre-P1: a pointer with no generation reads 0, and no version reads null, because
-   that is the genuine pre-cutover state and refusing it would refuse every un-migrated restaurant. */
+   that is the genuine pre-cutover state and refusing it would refuse every un-migrated restaurant.
+   🔴 THE NAME SAYS WHICH FIELD. Unifying the two readers first produced ONE reader with TWO names for
+   "this pointer is unusable" — which is the same asymmetry in miniature, decided by which field
+   happened to be wrong. `active_version_malformed` is the established name for an unusable version
+   and two suites already alarm on it; the generation is a condition that did not exist before E-1 and
+   keeps its own. One fault, one name, and the name tells an operator which field to look at. */
 function pointerStateOf(data, where = '') {
   const d = data || {};
   const at = where ? `${where} — ` : '';
   const present = (v) => v !== undefined && v !== null;
 
   if (present(d.version) && !(typeof d.version === 'string' && d.version)) {
-    throw new Error(`active_pointer_malformed: ${at}version is ${JSON.stringify(d.version)}; a pointer that HAS a version but not a usable one is corrupt, and reading it as "unpublished" would let a first publish overwrite a live menu`);
+    throw new Error(`active_version_malformed: ${at}version is ${JSON.stringify(d.version)}; a pointer that HAS a version but not a usable one is corrupt, and reading it as "unpublished" would let a first publish overwrite a live menu`);
   }
   if (present(d.generation) && !(Number.isInteger(d.generation) && d.generation >= 0)) {
     throw new Error(`active_pointer_malformed: ${at}generation is ${JSON.stringify(d.generation)}; a fence value that is present but unusable must not read as 0, which is the value every pre-cutover claim compares equal to`);
   }
   return { version: present(d.version) ? d.version : null, generation: present(d.generation) ? d.generation : 0 };
 }
-async function getActivePointer(db, restaurantId) {
-  const snap = await activePointerRef(db, restaurantId).get();
-  return snap.exists ? pointerStateOf(snap.data(), restaurantId) : { version: null, generation: 0 };
+/* 🔴 THE ONE PLACE A POINTER DOCUMENT IS TURNED INTO A DECISION. Both readers go through this, which
+   is what E-1 set out to achieve and did not finish: the first pass fixed pointerStateOf's coercion
+   but left getActiveVersionId parsing the same bytes for itself, so `{}` was "nothing published" to
+   one reader and a hard fault to the other, and a generation of "0" was a fault to one and invisible
+   to the other. Same document, two verdicts, decided by which function a caller happened to call.
+   🔴 AN EXISTING DOCUMENT THAT NAMES NO VERSION IS A FAULT, not "nothing published yet". Only
+   flipPointer writes this document and it always writes a version, so a versionless one is a partial
+   write or corruption — and reading it as an empty restaurant is the same defect E-1 fixed for a
+   version of the wrong TYPE: a corrupt pointer that looks like a fresh one. The ABSENT document is
+   the genuine "nothing published" case, and it is the only one. */
+function readPointerSnap(snap, restaurantId) {
+  if (!snap.exists) return { version: null, generation: 0, exists: false };
+  const state = pointerStateOf(snap.data(), restaurantId);
+  if (state.version === null) {
+    throw new Error(`active_version_malformed: ${restaurantId} — the pointer document exists but names no version; only the flip writes it and it always writes one, so this is a partial write rather than an unpublished restaurant`);
+  }
+  return { ...state, exists: true };
 }
 
+async function getActivePointer(db, restaurantId) {
+  const { version, generation } = readPointerSnap(await activePointerRef(db, restaurantId).get(), restaurantId);
+  return { version, generation };
+}
+
+/* Returns the versionId, or null for a CLEAN pointer-absent. Throws on a MALFORMED pointer — and
+   "malformed" now means exactly what it means to getActivePointer, because both go through
+   readPointerSnap. It used to re-implement the check here, which is how the two drifted apart:
+   this one validated the version and IGNORED the generation entirely, so a pointer whose fence value
+   was garbage served happily through this path while refusing through the other. */
 async function getActiveVersionId(db, restaurantId) {
-  const snap = await db.collection('restaurants').doc(restaurantId).collection('meta').doc('active_version').get();
-  if (!snap.exists) return null;                                   // CLEAN absent → the caller falls back to flat
-  const d = snap.data() || {};
-  if (typeof d.version !== 'string' || !d.version) {
-    throw new Error(`active_version_malformed: ${restaurantId}`);  // pointer exists but unusable → fault, NOT flat
-  }
-  return d.version;
+  const { version } = readPointerSnap(await activePointerRef(db, restaurantId).get(), restaurantId);
+  return version;   // null ONLY when the document is absent
 }
 
 // ── Read a specific IMMUTABLE version's pricing docs + VERIFY completeness ───────────────────────
@@ -147,4 +171,4 @@ async function getRestaurantDocs(db, restaurantId) {
   return { versionId, seq, itemDocs, extraDocs };
 }
 
-module.exports = { activePointerRef, getActivePointer, pointerStateOf, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };
+module.exports = { activePointerRef, getActivePointer, pointerStateOf, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };

@@ -35,6 +35,7 @@ const { SCHEMA_VERSION, KNOWN_STRUCTURE_FIELDS, validateSource, sourceToBuildInp
 const { buildCatalogV2, pricingKeyOf, formSource, readLiteral, readSetLiteral } = require('../catalog/form-menu-source');
 const { attachExposure, assertExposureMatchesToday } = require('../catalog/exposure-source');
 const { attachRedeemFields } = require('../catalog/redeem-source');
+const { readPointerSnap } = require('../catalog/catalog-firestore');
 
 const refuse = (reason, detail) => { const e = new Error(`migration_refused_${reason}: ${detail}`); e.code = `migration_refused_${reason}`; throw e; };
 
@@ -273,8 +274,13 @@ function buildMigrationCandidate(restaurantId, captured, artifact, { source_sha 
 async function captureActiveVersion(db, restaurantId) {
   const pointer = await db.collection('restaurants').doc(restaurantId).collection('meta').doc('active_version').get();
   if (!pointer.exists) refuse('no_active_version', `${restaurantId} — nothing is published; there is no live catalog to migrate`);
-  const versionId = (pointer.data() || {}).version;
-  if (typeof versionId !== 'string' || !versionId) refuse('no_active_version', `${restaurantId} — the active_version pointer is malformed`);
+  /* 🔴 THROUGH THE SHARED READER. This validated the version itself and IGNORED the generation
+     entirely, so a pointer whose fence value was garbage migrated happily here while the serving path
+     refused it — the same two-readers-one-document split E-1 exists to remove. The tool's own typed
+     refusal is kept, so an operator still gets a sentence rather than a stack. */
+  let versionId;
+  try { versionId = readPointerSnap(pointer, restaurantId).version; }
+  catch (e) { refuse('no_active_version', `${restaurantId} — ${(e && e.message) || e}`); }
   const vref = db.collection('restaurants').doc(restaurantId).collection('versions').doc(versionId);
   const [rec, itemSnap, extraSnap, structSnap] = await Promise.all([
     vref.get(), vref.collection('menu_items').get(), vref.collection('extras').get(), vref.collection('meta').doc('menu_structure').get(),

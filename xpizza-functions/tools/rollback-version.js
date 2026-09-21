@@ -18,6 +18,7 @@
 // you are trying to escape.
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
+const { readPointerSnap } = require('../catalog/catalog-firestore');
 const { requireProject } = require('./require-project');
 const { rollbackVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');
@@ -51,7 +52,18 @@ const db = admin.firestore();
 
   const col = db.collection('restaurants').doc(RID).collection('versions');
   const [snap, pointer] = await Promise.all([col.get(), db.collection('restaurants').doc(RID).collection('meta').doc('active_version').get()]);
-  const active = pointer.exists ? (pointer.data() || {}).version : null;
+  /* 🔴 THROUGH THE SHARED READER, AND THIS IS THE TOOL THAT MATTERS MOST. It extracted the version
+     with NO validation at all, and this is the ROLLBACK path — the one D-2.1 just showed can move the
+     pointer to a version that was never live. A malformed pointer read raw here becomes the
+     `expected.activeVersionId` a rollback CASes against, so the tool would be deciding what to
+     overwrite from a value nothing checked. */
+  let active;
+  try { active = readPointerSnap(pointer, RID).version; }
+  catch (e) {
+    console.error(`\nREFUSED — ${RID}'s active_version pointer is unusable: ${(e && e.message) || e}`);
+    console.error('Nothing was read or written. A rollback decides what to overwrite from this pointer, so a malformed one must stop it.\n');
+    process.exit(1);
+  }
   const rows = snap.docs.map((d) => {
     const v = d.data() || {};
     const created = v.created_at && v.created_at.toMillis ? new Date(v.created_at.toMillis()).toISOString() : '(no timestamp)';
