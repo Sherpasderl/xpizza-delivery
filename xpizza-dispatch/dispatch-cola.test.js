@@ -103,7 +103,7 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
 {
   assert.match(colaJs, /\$\{escapeHtml\(o\.customer_name \|\| '—'\)\}/, 'customer_name escaped');
   assert.match(colaJs, /\$\{escapeHtml\(o\.items_text \|\| o\.address_detected \|\| '—'\)\}/, 'items_text/address escaped');
-  assert.match(colaJs, /\$\{escapeHtml\(stalledName\)\}/, 'stalled driver name escaped');
+  assert.match(colaJs, /\$\{escapeHtml\(nm\)\}/, 'stalled driver name escaped');
   assert.match(colaJs, /data-order-id="\$\{escapeHtml\(o\.order_id\)\}"/, 'data-order-id attribute escaped');
   // no raw interpolation of a customer field straight into the template
   assert.doesNotMatch(colaJs, /\$\{o\.customer_name\}/, 'no raw customer_name');
@@ -135,7 +135,7 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
   assert.match(r, /setSeg\('seg-stalled-n', counts\.stalled\)/, 'segment Detenidos = counts.stalled');
   assert.match(r, /setSeg\('seg-atrisk-n', counts\.atrisk\)/, 'segment En riesgo = counts.atrisk');
   const us = html.slice(html.indexOf('function updateStats('), html.indexOf('function getDotClass('));
-  assert.match(us, /getActionQueue\(Date\.now\(\)\)\.counts\.all/, 'topbar KPI stat-pending = getActionQueue().counts.all');
+  assert.match(us, /const pendingCount = \(precomputed \|\| getActionQueue\(Date\.now\(\)\)\)\.counts\.all;/, 'topbar KPI stat-pending = shared queue counts.all');
   assert.doesNotMatch(us, /getPendingOrders\(\)\.length/, 'KPI no longer the unassigned-only count');
   ok('ONE count mirrored: Cola meta + 4 segment chips + topbar KPI all from the same counts');
 }
@@ -145,14 +145,20 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
 // now excludes unassigned (moved to the Cola).
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const p = html.slice(html.indexOf('function renderPedidosTab('), html.indexOf('function renderCommsTab('));
-  assert.match(p, /getPickupQueue\(\)/, 'pickup queue still rendered (Recoger not dropped)');
-  assert.match(p, /allScheduled/, 'scheduled still rendered (Programados not dropped)');
-  assert.match(p, /cat\('Recoger'/, 'Recoger category present');
-  assert.match(p, /cat\('Programados'/, 'Programados category present');
-  assert.match(p, /getDeliveryQueue\(\)\.filter\(o => allTasks\[`\$\{o\.order_id\}_delivery`\]\?\.assigned_driver_id\)/, 'Entrega now ASSIGNED-only (unassigned moved to Cola)');
-  assert.match(p, /setTabBadge\('tab-pedidos-n', 0\)/, 'En Fila attention badge zeroed (one count lives in the Cola)');
-  ok('En Fila keeps Recoger + Programados (pickup/scheduled not dropped); badge zeroed; Entrega assigned-only');
+  const full = html.slice(html.indexOf('function renderPedidosTab('), html.indexOf('function renderCommsTab('));
+  // Strip // line-comments so the guard CANNOT be satisfied by prose — the vacuity the gate flagged (the words
+  // "Recoger"/"Programados" appear in comments). Assert on the executable code that iterates the data arrays.
+  const body = full.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  assert.match(body, /const pickup = getPickupQueue\(\);/, 'pickup sourced from getPickupQueue()');
+  assert.match(body, /const scheduled = Object\.values\(allScheduled \|\| \{\}\)/, 'scheduled sourced from allScheduled');
+  assert.match(body, /const pickupRows = pickup\.map\(/, 'pickup array iterated into rows');
+  assert.match(body, /const schedRows = scheduled\.map\(/, 'scheduled array iterated into rows');
+  // …and those rows are assembled into el.innerHTML off the array length (empty array → the category vanishes).
+  assert.match(body, /cat\('Recoger', pickup\.length, pickupRows\)/, 'Recoger rows assembled into el.innerHTML');
+  assert.match(body, /cat\('Programados', scheduled\.length, schedRows\)/, 'Programados rows assembled into el.innerHTML');
+  assert.match(body, /getDeliveryQueue\(\)\.filter\(o => allTasks\[`\$\{o\.order_id\}_delivery`\]\?\.assigned_driver_id\)/, 'Entrega assigned-only (unassigned moved to Cola)');
+  assert.match(body, /setTabBadge\('tab-pedidos-n', 0\)/, 'En Fila attention badge zeroed');
+  ok('En Fila iterates Recoger(pickup) + Programados(scheduled) into the DOM (code, not comment tokens); Entrega assigned-only; badge zeroed');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,6 +168,74 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
   assert.match(html, /const COLA_OWNED_ALERT_TYPES = new Set\(\['no_drivers_available', 'no_response_takeover', 'assignment_strand'\]\)/, 'order-alert types set defined');
   assert.match(html, /sortAlertEntries\(alerts\)\.filter\(\(e\) => !\(e\.alert && COLA_OWNED_ALERT_TYPES\.has\(e\.alert\.type\)\)\)/, 'renderDispatcherAlerts filters order-alert types out of the Torre');
   ok('Torre retires no_drivers_available / no_response_takeover / assignment_strand (Cola owns them)');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-a — a retired-alert order (delivery-claimed strand / no-drivers / takeover) is SOURCED INTO the Cola.
+// The SAME COLA_OWNED_ALERT_TYPES set drives BOTH retirement and inclusion → filter-set == inclusion-set,
+// per type, landing red + in counts.all (Detenidos). So retiring the Torre alert can't make an order vanish.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  assert.match(html, /const exceptions = collectExceptionOrders\(latestAlerts, allOrders, COLA_OWNED_ALERT_TYPES\)/,
+    'getActionQueue sources exceptions from COLA_OWNED_ALERT_TYPES (same set that retires them from the Torre)');
+  // …and the sourced exceptions are actually WIRED into the queue (used, not just computed) — else a strand
+  // would still vanish. Assert the union into the stalled/Detenidos input AND the forced-red band.
+  assert.match(html, /const stalled = timerStalled\.concat\(exceptions\);/, 'exceptions unioned into the stalled (Detenidos) input');
+  assert.match(html, /exceptionIds\.has\(o\.order_id\) \? 'red' : riskOf\(o\)\.band/, 'exceptions forced to red band');
+
+  const hm = html.match(/function collectExceptionOrders\(alertsObj, ordersObj, ownedTypes\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(hm, 'collectExceptionOrders source located');
+  // eslint-disable-next-line no-new-func
+  const collect = new Function(`${hm[0]}; return collectExceptionOrders;`)();
+  // eslint-disable-next-line no-new-func
+  const build = new Function(`${html.match(/function buildActionQueue\(unassigned, stalled, atrisk, bandOf\)\s*\{[\s\S]*?\n\}/)[0]}; return buildActionQueue;`)();
+  // Track the REAL owned-type set parsed from source (not a hand-copied list) so the guard follows drift.
+  const setSrc = html.match(/const COLA_OWNED_ALERT_TYPES = new Set\((\[[^\]]*\])\)/);
+  assert.ok(setSrc, 'COLA_OWNED_ALERT_TYPES literal located');
+  const OWNED = JSON.parse(setSrc[1].replace(/'/g, '"'));
+  assert.ok(OWNED.includes('assignment_strand') && OWNED.includes('no_drivers_available') && OWNED.includes('no_response_takeover'),
+    'owned set covers all three order-action alert types');
+  const owned = new Set(OWNED);
+
+  for (const type of OWNED) {
+    // A fresh order none of the three PRIMARY sources catch (not pending, not timer-stalled, not aging) —
+    // represented ONLY by its retired alert (the strand shape: order exists, alert names it).
+    const orders = { S1: { order_id: 'S1', created_at: 1 } };
+    const alerts = { a1: { type, order_id: 'S1' }, aX: { type: 'driver_freshness_stale', driver_id: 'd9' } };
+    const ex = collect(alerts, orders, owned);
+    assert.deepStrictEqual(ex.map(o => o.order_id), ['S1'], `type ${type}: order sourced into the Cola`);
+    const { entries, counts } = build([], ex, [], () => 'red');   // exception → the stalled (Detenidos) input, red
+    assert.strictEqual(entries.length, 1, `type ${type}: present in the queue`);
+    assert.strictEqual(entries[0].orderId, 'S1');
+    assert.strictEqual(entries[0].band, 'red', `type ${type}: red band (act now)`);
+    assert.strictEqual(entries[0].primary, 'stalled', `type ${type}: Detenidos segment`);
+    assert.strictEqual(counts.all, 1, `type ${type}: in counts.all`);
+  }
+  assert.deepStrictEqual(collect({ z: { type: 'driver_freshness_stale', order_id: 'S1' } }, { S1: {} }, owned), [],
+    'a non-owned alert type does not drag an order into the Cola');
+  assert.strictEqual(collect({ a: { type: 'assignment_strand', order_id: 'S1' }, b: { type: 'no_drivers_available', order_id: 'S1' } }, { S1: { order_id: 'S1' } }, owned).length, 1,
+    'same order via two owned alerts → deduped to one');
+  ok('retired-alert orders sourced into the Cola per COLA_OWNED_ALERT_TYPES (red · Detenidos · counts.all); non-owned excluded; deduped');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-b — the Cola header and the topbar KPI are driven by ONE shared queue per render cycle (the 5s tick can
+// never refresh one count without the other; no two-timestamp divergence).
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const sync = html.slice(html.indexOf('function syncActionQueueViews('), html.indexOf('function renderCola('));
+  assert.match(sync, /const q = precomputed \|\| getActionQueue\(Date\.now\(\)\);/, 'shared path computes the queue ONCE');
+  assert.match(sync, /renderCola\(q\);/, 'shared path feeds the Cola header the shared queue');
+  assert.match(sync, /updateStats\(q\);/, 'shared path feeds the topbar KPI the SAME shared queue');
+  const sb = html.slice(html.indexOf('function renderSidebar('), html.indexOf('function renderSidebar(') + 500);
+  assert.match(sb, /syncActionQueueViews\(\);/, 'renderSidebar routes through the shared count path');
+  assert.doesNotMatch(sb, /\brenderCola\(\)/, 'renderSidebar never refreshes the Cola alone (that would skip the KPI on a tick)');
+  assert.match(html, /function renderCola\(precomputed\)/, 'renderCola accepts a precomputed queue');
+  assert.match(html, /function updateStats\(precomputed\)/, 'updateStats accepts a precomputed queue');
+  assert.match(html, /const pendingCount = \(precomputed \|\| getActionQueue\(Date\.now\(\)\)\)\.counts\.all;/, 'KPI reads counts.all from the shared queue');
+  const tick = html.slice(html.indexOf('function startRenderTick('), html.indexOf('function startRenderTick(') + 260);
+  assert.match(tick, /renderSidebar\(\);/, 'the 5s render tick calls renderSidebar (→ the shared count path)');
+  ok('one shared queue drives Cola header + KPI; renderSidebar (and the 5s tick) can never refresh one count without the other');
 }
 
 console.log(`\ndispatch-cola: OK (${n} groups)`);

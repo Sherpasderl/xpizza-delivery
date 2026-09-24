@@ -2462,6 +2462,10 @@ let allDrivers = {};
 // threshold. Drives the red "sin señal GPS" sidebar row (renderDriverNode); the banner for these
 // is suppressed. Kept in sync from the dispatcher-alerts subscription.
 let staleDriverUids = new Set();
+// Slice B REVISE (P1-a): the latest dispatcher_alerts, so the Cola can source the orders behind the
+// order-action alert types it retired from the Torre (see COLA_OWNED_ALERT_TYPES) — same set drives both
+// retirement AND inclusion, so they can't drift and a stranded order can never vanish from both surfaces.
+let latestAlerts = {};
 let allTasks = {};
 let allOrders = {};
 let allScheduled = {};           // scheduled/releasing held orders (own read-only sub; not in allOrders)
@@ -2791,8 +2795,12 @@ function subscribeAll() {
       || [...flagged].some(uid => !staleDriverUids.has(uid));
     staleDriverUids = flagged;
 
+    latestAlerts = alerts || {};
     renderDispatcherAlerts(alerts);
     if (flaggedChanged) renderDriversSection();
+    // An order-action alert (strand / no-drivers / takeover) appearing or clearing changes the Cola's fourth
+    // source, so refresh the Cola header + KPI together (one shared queue → the two counts can't diverge).
+    syncActionQueueViews();
   });
 
   // Customer WhatsApp messages that the classifier didn't auto-handle.
@@ -3277,7 +3285,9 @@ const expandedOrderIds = new Set();
 function renderSidebar() {
   // Drivers start COLLAPSED — a clean roster card each; tap a driver to expand its
   // full task detail. (Drivers with active orders still show the inline .dt summary.)
-  renderCola();
+  // Slice B REVISE (P1-b): one shared queue drives BOTH the Cola header and the topbar KPI — so the 5s render
+  // tick (which calls renderSidebar) can never refresh one count without the other.
+  syncActionQueueViews();
   renderDriversSection();
   renderDeliveredSection();
   renderReconciliationSection();
@@ -3402,7 +3412,25 @@ function buildActionQueue(unassigned, stalled, atrisk, bandOf) {
   return { entries, counts };
 }
 
-// Live-data adapter: pulls the three sources from board state + computes the per-order risk band.
+// PURE: the orders behind the RETIRED order-action alerts (a delivery-claimed strand has no pending flag, no
+// armed offer timer, and may not be aging → it is invisible to all three primary Cola sources; retiring its
+// Torre alert without this would make it vanish from BOTH surfaces). Driven by the SAME ownedTypes set that
+// renderDispatcherAlerts uses to retire them, so filter-set == inclusion-set and cannot drift. Deduped here;
+// buildActionQueue dedupes again across sources. (index.html-only; server strand shape stays the source of truth.)
+function collectExceptionOrders(alertsObj, ordersObj, ownedTypes) {
+  const out = [];
+  const seen = new Set();
+  for (const a of Object.values(alertsObj || {})) {
+    if (!a || !ownedTypes.has(a.type)) continue;
+    const oid = a.order_id;
+    if (oid == null || seen.has(oid)) continue;
+    const o = ordersObj[oid];
+    if (o) { out.push(o); seen.add(oid); }
+  }
+  return out;
+}
+
+// Live-data adapter: pulls the FOUR sources from board state + computes the per-order urgency band.
 function getActionQueue(nowTs) {
   nowTs = nowTs || Date.now();
   const riskOf = (o) => deliveryRisk({
@@ -3411,25 +3439,40 @@ function getActionQueue(nowTs) {
     currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
   });
   const unassigned = getPendingOrders();
-  const stalled = Object.values(allOrders).filter(o => {
+  const timerStalled = Object.values(allOrders).filter(o => {
     const dt = allTasks[`${o.order_id}_delivery`];
     return dt && dt.assigned_driver_id && isStalledAssignment(dt, nowTs, allTasks[`${o.order_id}_pickup`]);
   });
+  // Fourth source: retired-alert orders (strand / no-drivers / takeover) — land in Detenidos with timer-stalls.
+  const exceptions = collectExceptionOrders(latestAlerts, allOrders, COLA_OWNED_ALERT_TYPES);
+  const exceptionIds = new Set(exceptions.map(o => o.order_id));
+  const stalled = timerStalled.concat(exceptions);   // both → the Detenidos bucket (buildActionQueue dedupes)
   const atrisk = [];
   const consider = (o) => { if (riskOf(o).level !== 'ok') atrisk.push(o); };
   unassigned.forEach(consider);                                          // unassigned aging
   for (const uid of Object.keys(allDrivers)) getOrdersForDriver(uid).forEach(consider);  // assigned in-flight slipping
-  return buildActionQueue(unassigned, stalled, atrisk, (o) => riskOf(o).band);
+  // Exceptions read as red (act now) even when aging alone wouldn't trip.
+  const bandOf = (o) => (exceptionIds.has(o.order_id) ? 'red' : riskOf(o).band);
+  return buildActionQueue(unassigned, stalled, atrisk, bandOf);
 }
 
 let colaFilter = 'all';   // 'all' | 'unassigned' | 'stalled' | 'atrisk'
 
-function renderCola() {
+// Slice B REVISE (P1-b): compute the action queue ONCE and drive BOTH count surfaces from it, so no caller can
+// refresh the Cola header without the topbar KPI (and both read a single timestamp). The one shared path.
+function syncActionQueueViews(precomputed) {
+  const q = precomputed || getActionQueue(Date.now());
+  renderCola(q);
+  updateStats(q);
+  return q;
+}
+
+function renderCola(precomputed) {
   initColaSegments();
   const list = $('unassigned-list');
   const meta = $('unassigned-meta');
   if (!list || !meta) return;
-  const { entries, counts } = getActionQueue(Date.now());
+  const { entries, counts } = precomputed || getActionQueue(Date.now());
 
   // ONE count — mirrored to the Cola header meta, the segment chips, and (via updateStats) the topbar KPI.
   meta.textContent = String(counts.all);
@@ -3458,7 +3501,7 @@ function colaCard(e, showSelfBtn) {
     baselineArrivalMs: etaSnapshots.baseline(o.order_id),
     currentArrivalMs: etaCache[o.order_id]?.arrivalMs ?? null,
   });
-  const edge = risk.band === 'red' ? ' late' : risk.band === 'amber' ? ' aging' : '';
+  const edge = e.band === 'red' ? ' late' : e.band === 'amber' ? ' aging' : '';   // urgency band (incl. red exceptions)
   const isCash = isCashPayment(o.payment_method);
   const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
   const waChip = o.order_received_notified_at
@@ -3467,8 +3510,18 @@ function colaCard(e, showSelfBtn) {
       ? '<span class="m warn"><span class="d"></span>WhatsApp no entregado</span>'
       : '';
   const dt = allTasks[`${o.order_id}_delivery`];
-  const stalledName = e.buckets.has('stalled') ? (allDrivers[dt && dt.assigned_driver_id]?.name || 'repartidor') : '';
-  const stallChip = e.buckets.has('stalled') ? `<span class="m stall"><span class="d"></span>${escapeHtml(stalledName)} · sin aceptar · expiró</span>` : '';
+  // Detenidos cue: a genuine offer-timer stall names the driver ("sin aceptar · expiró"); an exception-sourced
+  // entry (strand / rollback) reads "asignación incompleta · revisar" instead of an inaccurate stall message.
+  let stallChip = '';
+  if (e.buckets.has('stalled')) {
+    const timerStalled = !!(dt && dt.assigned_driver_id && isStalledAssignment(dt, Date.now(), allTasks[`${o.order_id}_pickup`]));
+    if (timerStalled) {
+      const nm = allDrivers[dt.assigned_driver_id]?.name || 'repartidor';
+      stallChip = `<span class="m stall"><span class="d"></span>${escapeHtml(nm)} · sin aceptar · expiró</span>`;
+    } else {
+      stallChip = '<span class="m stall"><span class="d"></span>Asignación incompleta · revisar</span>';
+    }
+  }
   const slipChip = (!e.buckets.has('stalled') && risk.level === 'slipping') ? '<span class="m slip"><span class="d"></span>retrasándose</span>' : '';
   const expanded = expandedOrderIds.has(o.order_id);
   let actions;
@@ -5249,11 +5302,13 @@ async function assignOrder(orderId, driverId) {
 // ============================================================
 // Stats + UI helpers
 // ============================================================
-function updateStats() {
+function updateStats(precomputed) {
   $('stat-drivers').textContent = getActiveDrivers().length;
   // Slice B: the topbar "En cola" KPI mirrors the ONE Cola de acción needs-action count (unassigned ∪ stalled
-  // ∪ at-risk, deduped) — the same authoritative number shown in the Cola header + the segment "Todos".
-  const pendingCount = getActionQueue(Date.now()).counts.all;
+  // ∪ at-risk ∪ exceptions, deduped) — the same authoritative number shown in the Cola header + the segment
+  // "Todos". REVISE (P1-b): reuse the render cycle's precomputed queue when given, so the header and KPI are
+  // always derived from a single computation (never two timestamps, never one refreshed without the other).
+  const pendingCount = (precomputed || getActionQueue(Date.now())).counts.all;
   $('stat-pending').textContent = pendingCount;
   $('stat-active').textContent = getActiveOrders().length;
   $('stat-delivered').textContent = getDeliveredTodayCount();
