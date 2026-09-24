@@ -102,6 +102,17 @@ function pointerStateOf(data, where = '') {
    version of the wrong TYPE: a corrupt pointer that looks like a fresh one. The ABSENT document is
    the genuine "nothing published" case, and it is the only one. */
 function readPointerSnap(snap, restaurantId) {
+  /* 🔴 THE SNAPSHOT REQUIREMENT IS ENFORCED, NOT ASSUMED — and it was not, which put the conflation
+     this whole sequence has been closing INSIDE the guard meant to close it. `!snap.exists` is falsy
+     for any plain object, so raw data read as "nothing published yet": `{}`, `{version: null}` and
+     even a fully populated `{version: 'v1', generation: 9}` all came back as an absent pointer. A
+     caller who reached for the raw-data habit got the most dangerous possible answer — the one a
+     first publish's CAS is allowed to overwrite — from the door built to refuse it.
+     The shape is checked against what a DocumentSnapshot actually guarantees: a BOOLEAN `exists` and
+     a CALLABLE `data`. A plain object has neither, so it can no longer be mistaken for one. */
+  if (!snap || typeof snap.exists !== 'boolean' || typeof snap.data !== 'function') {
+    throw new Error(`active_pointer_not_a_snapshot: ${restaurantId} — this reader takes the pointer SNAPSHOT, not its data; it was handed ${snap === null ? 'null' : typeof snap}${snap && typeof snap === 'object' ? ` with keys [${Object.keys(snap).join(', ')}]` : ''}. Reading raw data here would report a populated pointer as "nothing published yet", which is the value a first publish is allowed to overwrite.`);
+  }
   if (!snap.exists) return { version: null, generation: 0, exists: false };
   const state = pointerStateOf(snap.data(), restaurantId);
   if (state.version === null) {
@@ -171,12 +182,18 @@ async function getRestaurantDocs(db, restaurantId) {
   return { versionId, seq, itemDocs, extraDocs };
 }
 
-/* 🔴 pointerStateOf IS NOT EXPORTED, AND THAT IS THE FIX RATHER THAN A TIDY-UP. Three rounds running
-   I searched for independent interpretations of this document, fixed the ones I found, and said there
-   were none left — and a fourth, fifth and sixth turned up each time. The search was never the
-   problem's shape: pointerStateOf took RAW DATA and was public, so any caller could interpret the
-   document for itself and nothing structurally prevented it. `readPointerSnap` is now the only door,
-   it takes a SNAPSHOT, and it carries the existing-document/version requirement that raw-data callers
-   kept missing. "We looked and found none" becomes "the shape does not permit one", which is the same
-   distinction this codebase already draws about source-pattern censuses: a lint versus a guarantee. */
+/* 🔴 ONE INTERPRETATION SITE — BY CONVENTION, ENFORCED, BUT NOT BY CONSTRUCTION. Saying it precisely
+   because the previous version of this comment claimed the stronger thing and the gate was right that
+   the claim was false. A comment promising a guarantee the code does not provide is worse than no
+   comment: the next reader stops looking.
+   WHAT IS TRUE. pointerStateOf is private, so no caller can interpret this document's FIELDS for
+   itself. readPointerSnap REFUSES anything that is not a real snapshot, so the raw-data habit cannot
+   quietly succeed. Every production caller is routed through it, and pointer-state's census walks the
+   tree to catch a new one.
+   WHAT IS NOT TRUE. `activePointerRef` is exported and must stay: identity-bootstrap does two
+   TRANSACTIONAL reads (`tx.get(activePointerRef(db, rid))` at :274 and :465) and a transactional read
+   is impossible without the ref. So a determined caller can still fetch the snapshot and call
+   `.data()` on it. What stops that is convention plus the census — a lint, in this codebase's own
+   words — not construction. The census would also miss it if spelled differently, which is exactly
+   how the flip's reader survived three rounds. */
 module.exports = { activePointerRef, getActivePointer, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };

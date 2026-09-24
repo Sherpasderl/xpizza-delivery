@@ -226,7 +226,46 @@ const refuses = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza
   ok('the shared reader: absent means unpublished, an existing document naming no version is a FAULT, and every field-level fault reaches it');
 }
 
-// ── 8. 🔴 NO FOURTH READER — THE CENSUS, WALKED FROM DISK ───────────────────────────────────
+// ── 8. 🔴 RAW DATA CANNOT BE MISTAKEN FOR A SNAPSHOT ────────────────────────────────────────
+/* The guard had the defect it exists to prevent. `!snap.exists` is falsy for ANY plain object, so raw
+   data read as "nothing published yet" — and not only the empty shapes: a fully populated
+   `{version: 'v1', generation: 9}` came back as an ABSENT pointer, which is the one answer a first
+   publish's CAS is allowed to overwrite. A caller reaching for the old raw-data habit got the most
+   dangerous possible result from the door built to refuse it.
+   🔴 THE POPULATED CASE IS THE ONE THAT MATTERS. An empty object reading as absent is nearly
+   harmless; a LIVE pointer's data reading as absent is how a menu gets overwritten. It is asserted
+   first for that reason. */
+{
+  const refusesRaw = (v, label) => {
+    let out;
+    try { out = readPointerSnap(v, 'x_pizza'); }
+    catch (e) {
+      assert.match(e.message, /active_pointer_not_a_snapshot/,
+        `${label} was refused, but not as a snapshot-shape fault: ${e.message}`);
+      return;
+    }
+    assert.fail(`🔴 ${label} was read as a pointer and returned ${JSON.stringify(out)} — raw data must never be mistaken for a snapshot, and reading a populated pointer as "nothing published yet" is the value a first publish is allowed to overwrite`);
+  };
+  refusesRaw({ version: 'v1', generation: 9 }, 'a fully POPULATED plain object');
+  refusesRaw({}, 'an empty plain object');
+  refusesRaw({ version: null }, 'a plain object with a null version');
+  refusesRaw(null, 'null');
+  refusesRaw(undefined, 'undefined');
+  refusesRaw('v1', 'a bare string');
+  refusesRaw({ exists: true }, 'an object with exists but no data()');
+  refusesRaw({ data: () => ({}) }, 'an object with data() but no exists');
+  refusesRaw({ exists: 'yes', data: () => ({}) }, 'an object whose exists is not a BOOLEAN');
+
+  /* SENSITIVITY — real snapshots still work, both states. Without this the refusals above are
+     satisfied by a reader that refuses everything, which would break every pointer read there is. */
+  assert.strictEqual(readPointerSnap({ exists: false, data: () => undefined }, 'x').exists, false,
+    '🔴 SENSITIVITY: a genuine ABSENT snapshot was refused');
+  assert.strictEqual(readPointerSnap({ exists: true, data: () => ({ version: 'v1', generation: 3 }) }, 'x').generation, 3,
+    '🔴 SENSITIVITY: a genuine PRESENT snapshot was refused');
+  ok('nine raw shapes — a populated plain object first — are refused as snapshot-shape faults; real snapshots in both states still read');
+}
+
+// ── 9. 🔴 NO FOURTH READER — THE CENSUS, WALKED FROM DISK ───────────────────────────────────
 /* E-1 claimed there was no third reader and the gate proved it false: three CLI tools parsed the
    pointer document for themselves — one coercing with `|| null`, one validating the version and
    IGNORING the generation, one with no validation at all, and that one was the ROLLBACK tool, the

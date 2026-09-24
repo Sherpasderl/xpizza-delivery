@@ -7518,6 +7518,20 @@
   "why": "SAME ANCHOR as d4p1e1-07, DIFFERENT SUITE, and that is the point: -07 proves the shared reader refuses a versionless document, this proves the FLIP's refusal actually depends on it — end to end, through a real rollback that would otherwise take the pointer. 🔴 It exists because my first attempt armed the wrong lines: I added mutants on the flip's `liveActive` and `priorGeneration` derivations, and both SURVIVED, because readPointerSnap throws BEFORE either runs. They were equivalent by construction, so they were removed rather than left in the count or declared equivalent — the guard is the shared read and the check inside it, not the two derivations downstream of it."
  },
  {
+  "id": "d4p1e1-11",
+  "slice": "d4p1e1",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "node",
+   "catalog/pointer-state.test.js"
+  ],
+  "label": "🔴 raw data is read as a snapshot again - a populated pointer reports as 'nothing published yet'",
+  "kills_with": "was read as a pointer and returned",
+  "from": "  if (!snap || typeof snap.exists !== 'boolean' || typeof snap.data !== 'function') {",
+  "to": "  if (false) {",
+  "why": "The guard had the defect it exists to prevent: `!snap.exists` is falsy for ANY plain object, so raw data read as absent — and not only empty shapes. A fully populated {version:'v1',generation:9} came back as an ABSENT pointer, which is the one answer a first publish's CAS is allowed to overwrite. The populated case is asserted FIRST in the cell because an empty object reading as absent is nearly harmless while a live pointer's data reading as absent is how a menu gets overwritten."
+ },
+ {
   "id": "pah-01",
   "slice": "pah",
   "file": "resolve-manual.js",
