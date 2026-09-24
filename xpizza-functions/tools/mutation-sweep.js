@@ -150,6 +150,81 @@ const runSuite = (command) => {
   console.log(`anchors: all ${MUTANTS.length} mutants anchor live code exactly once (pristine tree)`);
 }
 
+/* 🔴 THE ENVIRONMENT IS CHECKED ONCE, HERE, BEFORE A SINGLE MUTANT IS SCORED.
+   This harness hands every suite an INHERITED environment and never establishes an emulator. An
+   armed suite (test/_emulator-required.js) that is handed the wrong one refuses at REQUIRE time —
+   which exits nonzero, which this harness reads as "the suite noticed", which scores the mutant
+   KILLED on no recorded kills_with: DRIFTED. So an environment fault is reported as a MUTATION
+   FINDING, once per mutant, and it drifts every mutant an armed suite kills. That happened: a sweep
+   read `pah` 1/6 with pah-01..05 drifted and pah-06 clean, and the cause was one line — a port this
+   checkout needs was already bound. Five drifted mutants look exactly like a finding; the round
+   spent telling them apart is the cost this block removes.
+   A refusal exits nonzero with NOTHING scored, because a partial sweep must never read as evidence. */
+{
+  const { resolvePlan, armingOf, preflightVerdict } = require('./sweep-preflight.js');
+  const { planPorts, offsetFor, SERVICE_LISTENERS, HOST_ENV, ROOT: EMU_ROOT } = require('./emulator-run.js');
+  const OFFSET = offsetFor(EMU_ROOT);
+  const EXPECTED = planPorts(OFFSET);
+  const scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts || {};
+
+  const plans = selected.map((m) => ({ id: m.id, plan: resolvePlan(m.command, scripts) }));
+
+  /* Reading a suite to see whether it arms itself. A file that cannot be read is reported by the
+     verdict, never skipped — see the note on ARMING_CALL. */
+  const armedCache = new Map();
+  const armedOf = (f) => {
+    if (!armedCache.has(f)) armedCache.set(f, armingOf(readFileSync(join(ROOT, f), 'utf8')));
+    return armedCache.get(f);
+  };
+
+  /* Which ports the routed plans will need. Probing is I/O, so it happens here and the verdict stays
+     pure; it runs in a child because this harness is synchronous top to bottom and `net` is not. */
+  const wanted = new Set();
+  for (const { plan } of plans) {
+    if (!plan.routed) continue;
+    for (const svc of plan.services) for (const l of [...((SERVICE_LISTENERS[svc]) || [svc]), 'hub']) {
+      if (EXPECTED[l] !== undefined) wanted.add(EXPECTED[l]);
+    }
+  }
+  let portState = {};
+  if (wanted.size) {
+    const probeSrc = `const net=require('net');const ports=${JSON.stringify([...wanted])};const out={};
+      (async()=>{for(const p of ports){out[p]=await new Promise(r=>{const s=net.createServer();
+      s.once('error',e=>r(e&&e.code==='EADDRINUSE'?'in-use':'error:'+((e&&e.code)||e)));
+      s.once('listening',()=>s.close(()=>r('free')));s.listen(p,'127.0.0.1');});}
+      process.stdout.write(JSON.stringify(out));})();`;
+    try {
+      portState = JSON.parse(execFileSync(process.execPath, ['-e', probeSrc], { encoding: 'utf8', timeout: 30000 }));
+    } catch (e) {
+      console.error('\n🔴 SWEEP REFUSED — the port probe did not complete, so this cannot tell whether the emulator ports are free.');
+      console.error(`   ${(e && e.message) || e}`);
+      console.error('   Refusing rather than sweeping blind: an armed suite would drift and read as a finding.\n');
+      process.exit(2);
+    }
+  }
+
+  const v = preflightVerdict({ plans, armedOf, env: process.env, hostVarOf: HOST_ENV, expectedPorts: EXPECTED, portState, serviceListeners: SERVICE_LISTENERS });
+  if (!v.ok) {
+    console.error(`\n🔴 SWEEP REFUSED — ${v.detail}\n`);
+    for (const l of v.lines) console.error(`   ${l}`);
+    console.error(`\n   checkout : ${EMU_ROOT}`);
+    console.error(`   offset   : ${OFFSET}${process.env.XPIZZA_EMU_PORT_OFFSET ? ' (from XPIZZA_EMU_PORT_OFFSET)' : ' (derived from the checkout path)'}`);
+    console.error(`   code     : ${v.code}`);
+    if (v.code === 'sweep_preflight_foreign_checkout') {
+      console.error('\n   Another run holds what this checkout needs. Find it, and wait for it rather than');
+      console.error(`   sweeping beside it:  lsof -nP -iTCP:${EXPECTED.database} -sTCP:LISTEN`);
+      console.error('   Or take a different block:  XPIZZA_EMU_PORT_OFFSET=<multiple of 10, 0..390>');
+    } else if (v.code === 'sweep_preflight_no_emulator') {
+      console.error('\n   Run the sweep so these suites reach an emulator this checkout owns — their scripts');
+      console.error('   route tools/emulator-run.js, which starts one on this checkout\'s band.');
+    }
+    console.error('\n   NOTHING WAS SCORED. A partial sweep is not evidence.\n');
+    process.exit(2);
+  }
+  const armedCount = plans.filter(({ plan }) => plan.routed).length;
+  console.log(`preflight: ${v.detail} (${armedCount}/${plans.length} mutants run an emulator suite; offset ${OFFSET})`);
+}
+
 let killed = 0, drifted = 0; let survived = 0; let missing = 0;
 for (const m of selected) {
   const target = join(ROOT, m.file);

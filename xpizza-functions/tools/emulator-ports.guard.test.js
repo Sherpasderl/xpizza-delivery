@@ -344,11 +344,49 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       'an allowlisted zero-cell suite is excused, like KNOWN_RED');
     assert.strictEqual(classify([{ name: 'test:a', ok: true, cells: 5 }], {}).exitCode, 0, 'an ordinary passing suite is unaffected');
 
+    /* 🔴 THE REASON RULE IS DRIVEN, NOT MERELY LOOPED OVER. KNOWN_RED is empty now that the
+       resolve-manual excuse was deleted, and a `for` loop over an empty table passes while checking
+       nothing — an empty walk is not evidence. So the rule is asserted against a SYNTHETIC entry
+       that breaks it, which is what proves the rule would catch a reasonless excuse if one were
+       added; the live table is then reported as a count, not as a check it passed. */
+    const reasonOk = (reason) => typeof reason === 'string' && reason.length > 40;
+    assert.strictEqual(reasonOk('too short'), false, '🔴 the reason rule accepts an excuse with no substance — an excuse without one is a silent skip');
+    assert.strictEqual(reasonOk(undefined), false, 'and an excuse with no reason at all');
+    assert.strictEqual(reasonOk('a recorded reason long enough to say what is broken and where to look'), true, 'while a substantive reason is accepted');
     for (const [name, reason] of Object.entries(KNOWN_RED)) {
-      assert.ok(typeof reason === 'string' && reason.length > 40,
-        `🔴 KNOWN_RED["${name}"] has no substantive reason — an excuse without one is a silent skip`);
+      assert.ok(reasonOk(reason), `🔴 KNOWN_RED["${name}"] has no substantive reason — an excuse without one is a silent skip`);
     }
-    ok(`fail / excused / stale-excuse / zero-assertion / nothing-measured each decided correctly; all ${Object.keys(KNOWN_RED).length} KNOWN_RED entries carry a reason`);
+    ok(`fail / excused / stale-excuse / zero-assertion / nothing-measured each decided correctly; the reason rule rejects a reasonless excuse (KNOWN_RED currently holds ${Object.keys(KNOWN_RED).length})`);
+  }
+
+  // ── 14b. 🔴 THE RUNNER'S SUCCESS LINE IS NOT AN ASSERTION ──────────────────────────────────
+  /* The firebase CLI ends every emulators:exec run with "✔  Script exited successfully (code 0)",
+     using the SAME U+2714 node --test uses for a real assertion — so all 45 emulator suites counted
+     one cell too many. The danger is not the off-by-one: a suite whose assertions were ALL removed
+     still exits 0 and still emits that line, so it would report 1 cell and PASS the zero-assertion
+     rule — the check built to make a silent suite visible, blind to exactly the suites that need an
+     emulator to say anything. Both directions are driven: the chrome must not count, and the
+     conventions the ✔ was added for must still count. */
+  {
+    const { countCells, classify } = require('./gate-all.js');
+    const CLI = '✔  Script exited successfully (code 0)';
+
+    assert.strictEqual(countCells(`  ✓ 1 first\n  ✓ 2 second\n${CLI}\n`), 2,
+      '🔴 the CLI success line is counted as a cell — every emulator suite overstates what it asserts');
+    assert.strictEqual(countCells(`i  emulators: Starting\n${CLI}\ni  emulators: Shutting down\n`), 0,
+      '🔴 a suite that asserted NOTHING reports a cell, so the zero-assertion rule cannot see it');
+
+    /* …and the rule it protects actually fires on that output. */
+    const silent = classify([{ name: 'test:x', ok: true, cells: countCells(`${CLI}\n`) }], {});
+    assert.strictEqual(silent.rows[0].state, 'zero-cell',
+      '🔴 an emulator suite that stopped asserting entirely passed the gate');
+    assert.strictEqual(silent.exitCode, 1, 'and the gate is red for it');
+
+    // The conventions the ✔ was added for are untouched.
+    assert.strictEqual(countCells('✔ a node --test assertion\n✔ another\n'), 2, 'node --test output still counts');
+    assert.strictEqual(countCells('ok 1 a rules assertion\nok 2 another\n'), 2, 'the rules suites still count');
+    assert.strictEqual(countCells('  ✓ 1 an ordinary suite\n'), 1, 'and the ordinary convention');
+    ok('the runner\'s success line is not a cell; a suite that asserts nothing reports 0 and FAILS the gate');
   }
 
   // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
