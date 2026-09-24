@@ -110,7 +110,7 @@ const contrast = (a, b) => { const la = L(hex(a)), lb = L(hex(b)); return (Math.
   assert.match(html, /<symbol id="i-sun"/, 'sun icon present');
   assert.match(html, /<symbol id="i-moon"/, 'moon icon present');
   assert.match(html, /id="theme-toggle"/, 'toggle button present');
-  const init = html.slice(html.indexOf('function initTheme('), html.indexOf('function initTheme(') + 900);
+  const init = html.slice(html.indexOf('function initTheme('), html.indexOf('function initTheme(') + 1500);
   assert.match(init, /try \{ theme = localStorage\.getItem\('despacho-theme'\) \|\| 'dark'; \} catch \(_\) \{\}/, 'reads localStorage guarded, default dark');
   assert.match(init, /try \{ localStorage\.setItem\('despacho-theme', theme\); \} catch \(_\) \{\}/, 'writes localStorage guarded');
   assert.match(init, /setAttribute\('data-theme', 'light'\)/, 'applies data-theme=light');
@@ -130,6 +130,24 @@ const contrast = (a, b) => { const la = L(hex(a)), lb = L(hex(b)); return (Math.
   }
   assert.match(html, /--success-hover:/, '--success-hover now defined (was undefined)');
   ok('dead card-system CSS + risk-summary retired; live rules intact; --success-hover resolved');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Owner ruling: the map follows the theme — dark = DARK_MAP_STYLE, light = NORMAL map; toggled LIVE.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  assert.match(html, /styles: currentMapStyles\(\),/, 'map init picks style from currentMapStyles() (not a hardcoded DARK_MAP_STYLE)');
+  assert.match(html, /map\.setOptions\(\{ styles: currentMapStyles\(\) \}\)/, 'the theme toggle swaps the LIVE map via setOptions');
+  const m = html.match(/function currentMapStyles\(\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(m, 'currentMapStyles source located');
+  const DARK = ['__DARK_MAP__'];
+  // eslint-disable-next-line no-new-func
+  const light = new Function('document', 'DARK_MAP_STYLE', `${m[0]}; return currentMapStyles;`)({ documentElement: { getAttribute: () => 'light' } }, DARK);
+  // eslint-disable-next-line no-new-func
+  const dark = new Function('document', 'DARK_MAP_STYLE', `${m[0]}; return currentMapStyles;`)({ documentElement: { getAttribute: () => null } }, DARK);
+  assert.deepStrictEqual(light(), [], 'light theme → normal map (styles: [])');
+  assert.strictEqual(dark(), DARK, 'dark theme → DARK_MAP_STYLE');
+  ok('map follows the theme: light → normal map, dark → DARK_MAP_STYLE, swapped live via setOptions');
 }
 
 console.log(`\ndispatch-theme: OK (${n} groups)`);

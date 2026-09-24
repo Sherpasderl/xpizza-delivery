@@ -2274,6 +2274,8 @@ const etaSnapshots = createEtaSnapshotStore();   // session-scoped first-observe
     const use = btn && btn.querySelector('use');
     if (use) use.setAttribute('href', t === 'light' ? '#i-sun' : '#i-moon');
     if (btn) btn.title = t === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro';
+    // Swap the LIVE Google map style immediately (not only on reload). Guarded: at init the map isn't built yet.
+    try { if (map && typeof map.setOptions === 'function') map.setOptions({ styles: currentMapStyles() }); } catch (_) {}
   };
   let theme = 'dark';
   try { theme = localStorage.getItem('despacho-theme') || 'dark'; } catch (_) {}
@@ -2501,13 +2503,20 @@ const DARK_MAP_STYLE = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1929' }] }
 ];
 
+// Slice C-1 (owner ruling): the map follows the theme — dark keeps DARK_MAP_STYLE, light shows the NORMAL
+// (default) Google map. The theme toggle swaps the LIVE map via map.setOptions (below), and init picks from
+// the current theme, so light mode never shows a dark map.
+function currentMapStyles() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? [] : DARK_MAP_STYLE;
+}
+
 function initMap() {
   const _tbr = $('tb-restaurant');
   if (_tbr && XPD.RESTAURANT && XPD.RESTAURANT.name) _tbr.textContent = XPD.RESTAURANT.name;
   map = new google.maps.Map($('map'), {
     center: { lat: XPD.RESTAURANT.lat, lng: XPD.RESTAURANT.lng },
     zoom: 15,
-    styles: DARK_MAP_STYLE,
+    styles: currentMapStyles(),
     disableDefaultUI: true,
     zoomControl: false,
     mapTypeControl: false,
