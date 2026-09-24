@@ -26,7 +26,7 @@
 // mutant tested nothing — re-point it at the current source before believing any count.
 // ---------------------------------------------------------------------------
 const { execFileSync } = require('child_process');
-const { copyFileSync, renameSync, readFileSync, writeFileSync, existsSync } = require('fs');
+const { copyFileSync, renameSync, readFileSync, writeFileSync, existsSync, readdirSync } = require('fs');
 const { join } = require('path');
 
 const ROOT = join(__dirname, '..');
@@ -161,13 +161,14 @@ const runSuite = (command) => {
    spent telling them apart is the cost this block removes.
    A refusal exits nonzero with NOTHING scored, because a partial sweep must never read as evidence. */
 {
-  const { resolvePlan, armingOf, preflightVerdict } = require('./sweep-preflight.js');
+  const { resolvePlan, armingOf, preflightVerdict, portsToProbe } = require('./sweep-preflight.js');
   const { planPorts, offsetFor, SERVICE_LISTENERS, HOST_ENV, ROOT: EMU_ROOT } = require('./emulator-run.js');
   const OFFSET = offsetFor(EMU_ROOT);
   const EXPECTED = planPorts(OFFSET);
   const scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts || {};
 
-  const plans = selected.map((m) => ({ id: m.id, plan: resolvePlan(m.command, scripts) }));
+  const listDir = (d) => readdirSync(join(ROOT, d));
+  const plans = selected.map((m) => ({ id: m.id, plan: resolvePlan(m.command, scripts, listDir) }));
 
   /* Reading a suite to see whether it arms itself. A file that cannot be read is reported by the
      verdict, never skipped — see the note on ARMING_CALL. */
@@ -177,18 +178,14 @@ const runSuite = (command) => {
     return armedCache.get(f);
   };
 
-  /* Which ports the routed plans will need. Probing is I/O, so it happens here and the verdict stays
-     pure; it runs in a child because this harness is synchronous top to bottom and `net` is not. */
-  const wanted = new Set();
-  for (const { plan } of plans) {
-    if (!plan.routed) continue;
-    for (const svc of plan.services) for (const l of [...((SERVICE_LISTENERS[svc]) || [svc]), 'hub']) {
-      if (EXPECTED[l] !== undefined) wanted.add(EXPECTED[l]);
-    }
-  }
+  /* Which ports must be probed comes from the pre-flight itself, so the set judged is the set
+     measured — a caller that probed a different set is how "never probed" silently read as "free".
+     Probing is I/O and runs in a child, because this harness is synchronous top to bottom. */
+  const probeArgs = { plans, armedOf, env: process.env, hostVarOf: HOST_ENV, expectedPorts: EXPECTED, serviceListeners: SERVICE_LISTENERS };
+  const wanted = portsToProbe(probeArgs);
   let portState = {};
-  if (wanted.size) {
-    const probeSrc = `const net=require('net');const ports=${JSON.stringify([...wanted])};const out={};
+  if (wanted.length) {
+    const probeSrc = `const net=require('net');const ports=${JSON.stringify(wanted)};const out={};
       (async()=>{for(const p of ports){out[p]=await new Promise(r=>{const s=net.createServer();
       s.once('error',e=>r(e&&e.code==='EADDRINUSE'?'in-use':'error:'+((e&&e.code)||e)));
       s.once('listening',()=>s.close(()=>r('free')));s.listen(p,'127.0.0.1');});}
@@ -203,7 +200,7 @@ const runSuite = (command) => {
     }
   }
 
-  const v = preflightVerdict({ plans, armedOf, env: process.env, hostVarOf: HOST_ENV, expectedPorts: EXPECTED, portState, serviceListeners: SERVICE_LISTENERS });
+  const v = preflightVerdict({ ...probeArgs, portState });
   if (!v.ok) {
     console.error(`\n🔴 SWEEP REFUSED — ${v.detail}\n`);
     for (const l of v.lines) console.error(`   ${l}`);

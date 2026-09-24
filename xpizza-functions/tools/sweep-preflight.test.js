@@ -13,7 +13,7 @@
  * The verdict is pure, so every cell drives it with injected state: no socket, no emulator, no clock.
  */
 const assert = require('assert');
-const { armingOf, resolvePlan, planFromScript, preflightVerdict } = require('./sweep-preflight.js');
+const { armingOf, resolvePlan, planFromScript, preflightVerdict, portsToProbe } = require('./sweep-preflight.js');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -162,6 +162,13 @@ const judge = (over = {}) => preflightVerdict({
   assert.deepStrictEqual(armingOf("require('./_emulator-required')('firestore', 'database');"), ['firestore', 'database'],
     'both services are reported, so a suite needing two emulators is checked for two');
 
+  /* 🔴 THE MODULE IS CHECKED, NOT JUST THE SHAPE. An immediately-invoked require of ANY module has
+     the same shape as an arming call; reading its arguments as service names would arm half the
+     repo on suites that never mention an emulator. */
+  for (const other of ["require('./helpers')('database');", "require('express')();", "const f = require('./fmt');\nf('database');"]) {
+    assert.strictEqual(armingOf(other), null, `🔴 a require of a DIFFERENT module was read as an emulator arming call: ${other.split('\n')[0]}`);
+  }
+
   const notArmedSrc = [
     "// require('./_emulator-required')('database');",
     "/* this file used to require('./_emulator-required')('database') */",
@@ -178,9 +185,170 @@ const judge = (over = {}) => preflightVerdict({
   for (const [raw, why] of [['evil.example:9120', 'not loopback'], ['0.0.0.0:9120', 'the wildcard bind address is reachable off-box'], ['127.0.0.1', 'no port'], ['127.0.0.1:garbage', 'unreadable port']]) {
     const v = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: raw } });
     assert.strictEqual(v.ok, false, `🔴 ${raw} was accepted — the sweep would assert against another tree's emulator and report green (${why})`);
-    assert.strictEqual(v.code, 'sweep_preflight_foreign_checkout', `${raw} → foreign`);
+    assert.strictEqual(v.code, 'sweep_preflight_foreign_checkout', `🔴 ${raw} was not reported as foreign — the sweep would assert against another tree's emulator and report green`);
   }
   ok('non-loopback, wildcard, portless and unparseable host vars each refuse as foreign');
+}
+
+// ── 13. 🔴 THE RUNNER MUST START WHAT THE SUITE ARMS ITSELF FOR ───────────────────────────────
+/* A database-armed suite routed through `--only firestore` used to return ready. The suite then
+   refuses at require time and every mutant it kills DRIFTS — the exact failure this file prevents,
+   reintroduced through a script naming the wrong service. */
+{
+  const plans = [{ id: 'x-13', plan: { routed: true, services: ['firestore'], files: ['test/db.emulator.test.js'], via: 'npm run test:x' } }];
+  const v = judge({ plans, armedOf: () => ['database'], portState: { 8200: 'free', 8620: 'free', 4520: 'free' } });
+  assert.strictEqual(v.ok, false, '🔴 the runner starts a service the suite does not need and NOT the one it does');
+  assert.strictEqual(v.code, 'sweep_preflight_no_emulator');
+  assert.match(v.lines.join('\n'), /arms itself for the database emulator, but npm run test:x starts only firestore/,
+    'the refusal names what the suite needs and what the script starts');
+  ok('an armed suite whose script starts a DIFFERENT service → refused, naming both');
+}
+
+// ── 14. 🔴 A FOREIGN DISCOVERY HUB IS CAUGHT EVEN WHEN THE SERVICE VAR IS CORRECT ──────────────
+/* rules-unit-testing discovers endpoints through FIREBASE_EMULATOR_HUB and PREFERS them over the
+   per-service variables, so a correct database address plus a foreign hub still lands on another
+   checkout — and _emulator-required refuses it while this returned ready. */
+{
+  const plans = [{ id: 'x-14', plan: { routed: false, services: [], files: ['test/db.emulator.test.js'], via: 'node test/db.emulator.test.js' } }];
+  const v = judge({ plans, armedOf: armedDb,
+    env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120', FIREBASE_EMULATOR_HUB: '127.0.0.1:4710' },
+    portState: { 9120: 'in-use', 4710: 'in-use' } });
+  assert.strictEqual(v.ok, false, '🔴 a foreign hub points the suite at another checkout even with a correct host var');
+  assert.strictEqual(v.code, 'sweep_preflight_foreign_checkout', '🔴 a foreign hub points the suite at another checkout even with a correct host var');
+  assert.match(v.lines.join('\n'), /FIREBASE_EMULATOR_HUB=127\.0\.0\.1:4710 is not this checkout's hub port \(expected 4520\)/);
+  ok('a correct service var + a FOREIGN hub → refused (the hub is checked whether or not the suite named it)');
+}
+
+// ── 15. 🔴 A CORRECTLY-NUMBERED ADDRESS IS NOT A RUNNING EMULATOR ──────────────────────────────
+/* A stale variable from a run that has since exited names exactly the right port with nothing
+   behind it. The number being right was treated as the emulator being there; the suite then fails on
+   connection errors and every mutant DRIFTS. */
+{
+  const plans = [{ id: 'x-15', plan: { routed: false, services: [], files: ['test/db.emulator.test.js'], via: 'node test/db.emulator.test.js' } }];
+  const v = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, portState: { 9120: 'free' } });
+  assert.strictEqual(v.ok, false, '🔴 the variable names the right port but nothing is listening');
+  assert.strictEqual(v.code, 'sweep_preflight_foreign_checkout', '🔴 the variable names the right port but nothing is listening — every armed mutant would DRIFT');
+  assert.match(v.lines.join('\n'), /nothing is listening — the variable is stale/);
+
+  const alive = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, portState: { 9120: 'in-use' } });
+  assert.strictEqual(alive.ok, true, 'and a port something is actually serving is accepted — the check is not a blanket refusal');
+  ok('a stale host var naming an unserved port → refused; a served one → ready');
+}
+
+// ── 16. 🔴 A PORT NOBODY PROBED IS UNKNOWN, NOT FREE ───────────────────────────────────────────
+/* `portState[port] !== undefined` skipped unprobed ports, and a probe error was reported as a
+   FOREIGN checkout — a verdict about someone else's run rather than an admission we cannot tell.
+   Unknown belongs in the verdict that outranks the others. */
+{
+  const plans = [{ id: 'x-16', plan: { routed: true, services: ['database'], files: [], via: 'npm run test:x' } }];
+  const none = judge({ plans, armedOf: armedDb, portState: {} });
+  assert.strictEqual(none.code, 'sweep_preflight_unclassifiable', '🔴 a port nobody probed was treated as free');
+  assert.match(none.lines.join('\n'), /was never probed/);
+
+  const odd = judge({ plans, armedOf: armedDb, portState: { 9120: 'error:EACCES', 4520: 'free' } });
+  assert.strictEqual(odd.code, 'sweep_preflight_unclassifiable', '🔴 a probe that failed for an unknown reason was reported as a foreign checkout');
+  assert.match(odd.lines.join('\n'), /neither free nor bound/);
+  ok('an unprobed port and a non-bind probe error are both UNCLASSIFIABLE, not free and not foreign');
+}
+
+// ── 17. 🔴 A SCRIPT WHOSE CONTENTS CANNOT BE ENUMERATED IS REFUSED, NOT READ AS "RUNS NOTHING" ──
+/* An opaque body resolved to files:[] and returned ready — the pre-flight declaring a suite safe
+   precisely because it could not see it. The test is not "did we find files" but "could this run a
+   JS suite at all". */
+{
+  const opaque = resolvePlan(['npm', 'run', 'test:x'], { 'test:x': 'node tools/gate-all.js' });
+  assert.ok(opaque.unclassifiable, '🔴 an opaque script body was declared safe precisely because it could not be read');
+  assert.match(opaque.unclassifiable, /runs node on a file this cannot enumerate/);
+
+  // …but a body that cannot run a suite at all is not refused.
+  for (const body of ['firebase deploy --only functions', 'npx web-push generate-vapid-keys', 'node -e "require(\'fs\')"']) {
+    const p2 = resolvePlan(['npm', 'run', 'test:x'], { 'test:x': body });
+    assert.ok(!p2.unclassifiable, `🔴 "${body}" was refused although it cannot run a JS suite`);
+  }
+  ok('an unenumerable node script → unclassifiable; a body that cannot run a suite → not refused');
+}
+
+// ── 18. 🔴 A GLOB IS EXPANDED FROM DISK — a literal read finds nothing and hides a whole suite ──
+{
+  const listDir = (d) => (d === '../xpizza-portal' ? ['a.test.mjs', 'b.test.mjs', 'notes.md'] : []);
+  const plan = resolvePlan(['npm', 'run', 'test:portal'], { 'test:portal': 'node --test "../xpizza-portal/*.test.mjs"' }, listDir);
+  assert.ok(!plan.unclassifiable, 'a glob that expands is not refused');
+  assert.deepStrictEqual(plan.files, ['../xpizza-portal/a.test.mjs', '../xpizza-portal/b.test.mjs'],
+    '🔴 a globbed suite is invisible to the pre-flight while still running');
+  ok('a glob is expanded from disk, so globbed suites are checked like any other');
+}
+
+// ── 19. 🔴 THE PROBE SET IS DERIVED BY THE SAME LOGIC THAT JUDGES IT ───────────────────────────
+/* A caller that probed a different set is how "never probed" silently read as "free". */
+{
+  const plans = [
+    { id: 'r', plan: { routed: true, services: ['database'], files: [], via: 'npm run test:r' } },
+    { id: 'u', plan: { routed: false, services: [], files: ['test/db.emulator.test.js'], via: 'node x' } },
+  ];
+  const args = { plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, hostVarOf: HOST_VAR, expectedPorts: PORTS, serviceListeners: LISTENERS };
+  const probe = portsToProbe(args);
+  assert.ok(probe.includes(9120), 'the routed band port is probed');
+  assert.ok(probe.includes(4520), 'the hub is probed');
+  const state = Object.fromEntries(probe.map((p) => [p, p === 9120 ? 'in-use' : 'free']));
+  const v = preflightVerdict({ ...args, portState: state });
+  assert.notStrictEqual(v.code, 'sweep_preflight_unclassifiable',
+    '🔴 the verdict needed a port the probe set did not include — the set judged is not the set measured');
+  ok('portsToProbe covers every port the verdict consults, routed and unrouted alike');
+}
+
+// ── 20. 🔴 THE SPELLINGS THE DETECTOR MISSED, AND THE ONE IT WRONGLY MATCHED ───────────────────
+/* Found by review, not by me: a spaced `require (…)`, an aliased require invoked later, and a call
+   sitting inside a BLOCK comment. Two silent omissions and one false refusal, in one regex. */
+{
+  const armed = [
+    ['ordinary',            "require('./_emulator-required')('database');"],
+    ['spaced require',      "require ('./_emulator-required')('database');"],
+    ['space before args',   "require('./_emulator-required') ('database');"],
+    ['aliased + invoked',   "const need = require('./_emulator-required');\nneed('database');"],
+  ];
+  for (const [name, src] of armed) {
+    assert.deepStrictEqual(armingOf(src), ['database'], `🔴 a real arming call was not detected (${name}) — the suite would sweep with no emulator`);
+  }
+  const notArmed = [
+    ['block comment',       "/*\n  require('./_emulator-required')('database');\n*/"],
+    ['line comment',        "// require('./_emulator-required')('database');"],
+    ['bound, never called', "const p = require('./_emulator-required');"],
+    ['prose mention',       "assert.match(src, /_emulator-required/);"],
+  ];
+  for (const [name, src] of notArmed) {
+    assert.strictEqual(armingOf(src), null, `🔴 a mention was read as an arming call (${name}) — an honest sweep would be refused`);
+  }
+  assert.deepStrictEqual(armingOf("require('./_emulator-required')('firestore', 'database');"), ['firestore', 'database'],
+    'both services are reported, so a suite needing two emulators is checked for two');
+
+  /* 🔴 THE MODULE IS CHECKED, NOT JUST THE SHAPE. An immediately-invoked require of ANY module has
+     the same shape as an arming call; reading its arguments as service names would arm half the
+     repo on suites that never mention an emulator. */
+  for (const other of ["require('./helpers')('database');", "require('express')();", "const f = require('./fmt');\nf('database');"]) {
+    assert.strictEqual(armingOf(other), null, `🔴 a require of a DIFFERENT module was read as an emulator arming call: ${other.split('\n')[0]}`);
+  }
+  ok(`${armed.length} arming spellings detected and ${notArmed.length} non-calls rejected, block comments included`);
+}
+
+// ── 20b. 🔴 A STRING CONTAINING CODE IS DATA — including this file's own fixtures ─────────────
+/* Found by running the tool on the tree rather than by reading it: once the detector stripped
+   comments but not literals, it matched the arming-call TEXT held in the fixtures above and refused
+   THIS FILE as an armed emulator suite. The sweep refused instead of mis-scoring — the pre-flight
+   working — but a guard that fails honest runs is the worse of the two directions. */
+{
+  const fs = require('fs');
+  const self = fs.readFileSync(__filename, 'utf8');
+  assert.strictEqual(armingOf(self), null,
+    '🔴 the detector read its own test fixtures as a live arming call — it cannot tell code from data');
+
+  const inAString = 'const fixture = "require(\'./_emulator-required\')(\'database\');";';
+  assert.strictEqual(armingOf(inAString), null, '🔴 an arming call quoted inside a string was read as code');
+
+  // …and the real suites are still all detected, so the fix did not buy silence with blindness.
+  const real = fs.readdirSync(require('path').join(__dirname, '..', 'test')).filter((f) => f.endsWith('.emulator.test.js'));
+  const armedCount = real.filter((f) => armingOf(fs.readFileSync(require('path').join(__dirname, '..', 'test', f), 'utf8'))).length;
+  assert.strictEqual(armedCount, real.length, `🔴 ${real.length - armedCount} real emulator suites stopped being detected`);
+  ok(`code and data are distinguished: this file's ${real.length ? '' : ''}fixtures are inert, and all ${real.length} real suites are still detected`);
 }
 
 // ── 12. THE VERDICT IS PURE — no reads, no sockets, no environment of its own ──────────────────

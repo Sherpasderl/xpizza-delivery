@@ -7672,9 +7672,9 @@
   "id": "e2a-04",
   "slice": "e2a",
   "file": "tools/sweep-preflight.js",
-  "from": "const ARMING_CALL = /^\\s*require\\(\\s*['\"][^'\"]*_emulator-required['\"]\\s*\\)\\s*\\(([^)]*)\\)/m;",
-  "to": "const ARMING_CALL = /_emulator-required['\"]?\\)?\\s*\\(?([^)]*)\\)?/m;",
-  "label": "the arming detector matches a mention instead of a call",
+  "from": "  const { code, literals } = maskLiterals(stripComments(source));",
+  "to": "  const { code, literals } = maskLiterals(String(source));",
+  "label": "the arming detector reads commented-out code as a call",
   "kills_with": "a mention was read as an arming call",
   "command": [
    "node",
@@ -7685,10 +7685,13 @@
   "id": "e2a-05",
   "slice": "e2a",
   "file": "tools/sweep-preflight.js",
-  "from": "    .filter(([port]) => portState[port] !== undefined && portState[port] !== 'free')",
-  "to": "    .filter(([port]) => portState[port] !== undefined && portState[port] !== 'free' && false)",
+  "from": "    else if (st === 'in-use') bound.push(",
+  "to": "    else if (false) bound.push(",
   "label": "a bound port in this checkout's band is treated as free",
-  "kills_with": "a sweep started while another run held this checkout's port — every armed mutant would DRIFT",
+  "kills_with": [
+   "a bound port is not reported as another run holding it — every armed mutant would DRIFT and read as a finding",
+   "a sweep started while another run held this checkout's port — every armed mutant would DRIFT"
+  ],
   "command": [
    "node",
    "tools/sweep-preflight.test.js"
@@ -7701,7 +7704,7 @@
   "from": "        if (!LOOPBACK.has(host)) { foreign.push(",
   "to": "        if (false) { foreign.push(",
   "label": "a non-loopback emulator host is accepted",
-  "kills_with": "the sweep would assert against another tree's emulator and report green",
+  "kills_with": "was not reported as foreign — the sweep would assert against another tree's emulator and report green",
   "command": [
    "node",
    "tools/sweep-preflight.test.js"
@@ -7761,6 +7764,84 @@
   "command": [
    "node",
    "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2a-11",
+  "slice": "e2a",
+  "file": "tools/sweep-preflight.js",
+  "from": "          if (!started.has(s)) {",
+  "to": "          if (false) {",
+  "label": "the runner's --only is not checked against what the suite arms itself for",
+  "kills_with": "the runner starts a service the suite does not need and NOT the one it does",
+  "command": [
+   "node",
+   "tools/sweep-preflight.test.js"
+  ]
+ },
+ {
+  "id": "e2a-12",
+  "slice": "e2a",
+  "file": "tools/sweep-preflight.js",
+  "from": "      checks.push(['FIREBASE_EMULATOR_HUB', expectedPorts.hub, 'hub', false]);",
+  "to": "      checks.push();",
+  "label": "a foreign discovery hub is not checked",
+  "kills_with": "a foreign hub points the suite at another checkout even with a correct host var",
+  "command": [
+   "node",
+   "tools/sweep-preflight.test.js"
+  ]
+ },
+ {
+  "id": "e2a-13",
+  "slice": "e2a",
+  "file": "tools/sweep-preflight.js",
+  "from": "    else if (st === 'free') dead.push(",
+  "to": "    else if (false) dead.push(",
+  "label": "a stale host variable naming a port nothing serves is accepted",
+  "kills_with": "the variable names the right port but nothing is listening — every armed mutant would DRIFT",
+  "command": [
+   "node",
+   "tools/sweep-preflight.test.js"
+  ]
+ },
+ {
+  "id": "e2a-14",
+  "slice": "e2a",
+  "file": "tools/sweep-preflight.js",
+  "from": "    if (st === undefined) unknown.push(`port ${port} (${what}) was never probed, so this cannot tell whether the runner could bind it`);",
+  "to": "    if (st === undefined) { /* unprobed reads as fine */ }",
+  "label": "a port that was never probed is treated as free",
+  "kills_with": "a port nobody probed was treated as free",
+  "command": [
+   "node",
+   "tools/sweep-preflight.test.js"
+  ]
+ },
+ {
+  "id": "e2a-15",
+  "slice": "e2a",
+  "file": "tools/sweep-preflight.js",
+  "from": "  if (!files.length && runsNodeOnAFile(body)) {",
+  "to": "  if (false) {",
+  "label": "a script whose contents cannot be enumerated is read as running nothing",
+  "kills_with": "an opaque script body was declared safe precisely because it could not be read",
+  "command": [
+   "node",
+   "tools/sweep-preflight.test.js"
+  ]
+ },
+ {
+  "id": "e2a-16",
+  "slice": "e2a",
+  "file": "tools/sweep-preflight.js",
+  "from": "  const isModule = (n) => /_emulator-required/.test(literals[Number(n)] || '');",
+  "to": "  const isModule = () => true;",
+  "label": "any require's arguments are read as emulator services",
+  "kills_with": "a require of a DIFFERENT module was read as an emulator arming call",
+  "command": [
+   "node",
+   "tools/sweep-preflight.test.js"
   ]
  }
 ]
