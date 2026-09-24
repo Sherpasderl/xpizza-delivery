@@ -2307,8 +2307,8 @@
      or any search result. Read-only view of customer + items + timeline
      + driver info. Includes tap-to-call links and a 'center on map' action.
 -->
-<div class="order-detail-modal" id="order-detail-modal">
-  <div class="order-detail-card" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
+<div class="order-detail-modal" id="order-detail-modal" inert>
+  <div class="order-detail-card" id="order-detail-card" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
     <div class="order-detail-header">
       <div class="order-detail-title" id="order-detail-title"></div>
       <button class="order-detail-close" id="order-detail-close" aria-label="Cerrar"><svg class="ic sm"><use href="#i-close"/></svg></button>
@@ -4563,6 +4563,7 @@ function openOrderDetailModal(orderId) {
   detailOpener = document.activeElement;                       // remember focus (the card/button that opened it)
   currentDetailOrderId = orderId;
   renderOrderDetailModal(order);
+  $('order-detail-modal').removeAttribute('inert');            // re-enable tab order / pointer / a11y tree before focusing in
   $('order-detail-modal').classList.add('open');
   // a11y: move focus into the drawer — the always-present close button leads the tab order.
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -4581,6 +4582,9 @@ function closeOrderDetailModal() {
     if (temp && el.setAttribute && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
     try { el.focus(); } catch (_) {}
   }
+  // a11y: with focus moved back out, remove the closed drawer from the tab order + a11y tree (the slide-out
+  // still runs; inert doesn't hide it visually). Prevents Tab/SR from reaching the offscreen close button/links.
+  $('order-detail-modal').setAttribute('inert', '');
 }
 
 function renderOrderDetailModal(order) {

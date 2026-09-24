@@ -87,20 +87,75 @@ const fnSrc = (src, name) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. a11y — dialog semantics + focus-trap + focus-restore + Esc, added WITHOUT touching the content generator.
+// 4. a11y — EXECUTED against a real DOM (not source text): the Tab handler runs, so the id/class null-deref
+//    (the panel needs id="order-detail-card", not just the class) goes red, and the edges actually wrap. The
+//    DOM's getElementById mirrors the real HTML's ids, so a missing id makes $() return null → the handler
+//    throws exactly as the browser would. [structural-tests-blind-to-runtime]
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  assert.match(html, /<div class="order-detail-card" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">/, 'drawer card is an aria dialog');
+  // static semantics
+  assert.match(html, /<div class="order-detail-card" id="order-detail-card" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">/, 'drawer card is an id-addressable aria dialog');
   assert.match(html, /<button class="order-detail-close" id="order-detail-close" aria-label="Cerrar"><svg class="ic sm"><use href="#i-close"\/><\/svg><\/button>/, 'close is a labelled line-icon button');
-  const open = fnSrc(html, 'openOrderDetailModal');
-  const close = fnSrc(html, 'closeOrderDetailModal');
-  assert.match(open, /detailOpener = document\.activeElement/, 'open remembers the focus opener');
-  assert.match(open, /\$\('order-detail-close'\)\.focus\(/, 'open moves focus into the drawer');
-  assert.match(close, /pickerReturnFocusTarget\(opener, returnOrderId, document\)/, 'close restores focus via the shared cascade (no black-hole)');
-  // Esc + Tab-trap wired on the container
-  assert.match(html, /if \(e\.key === 'Escape' && \$\('order-detail-modal'\)\.classList\.contains\('open'\)\) \{\s*closeOrderDetailModal\(\);/, 'Esc closes the drawer');
-  assert.match(html, /\$\('order-detail-modal'\)\.addEventListener\('keydown', \(e\) => \{[\s\S]*?e\.key !== 'Tab'[\s\S]*?focusTrapTarget\(e\.shiftKey/, 'Tab is trapped within the drawer');
-  ok('a11y: aria dialog + focus into drawer on open + shared-cascade restore on close + Esc + Tab-trap');
+  assert.match(html, /<div class="order-detail-modal" id="order-detail-modal" inert>/, 'the drawer starts inert (closed = out of tab order + a11y tree)');
+
+  // ---- build a DOM whose getElementById reflects the REAL HTML's ids ----
+  const ids = new Set([...html.matchAll(/id="([\w-]+)"/g)].map(m => m[1]));
+  const dom = { activeElement: null };
+  const focusList = [];
+  const mkEl = (id) => {
+    const cls = new Set(), attr = {}, ls = {};
+    const el = {
+      id, offsetParent: {}, isConnected: true,
+      classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) },
+      setAttribute: (k, v) => { attr[k] = v === undefined ? '' : v; }, removeAttribute: (k) => { delete attr[k]; },
+      hasAttribute: (k) => k in attr, getAttribute: (k) => attr[k],
+      addEventListener: (t, fn) => { (ls[t] || (ls[t] = [])).push(fn); }, dispatch: (t, e) => { (ls[t] || []).forEach(fn => fn(e)); },
+      focus() { dom.activeElement = el; }, querySelectorAll: () => focusList,
+    };
+    return el;
+  };
+  const registry = {};
+  const getEl = (id) => { if (!ids.has(id)) return null; return registry[id] || (registry[id] = mkEl(id)); };
+  // focusables inside the card: close + two action buttons (share the card's querySelectorAll)
+  const closeBtn = getEl('order-detail-close'); const btnA = mkEl('a'); const btnB = mkEl('b');
+  focusList.push(closeBtn, btnA, btnB);
+  getEl('order-detail-modal').setAttribute('inert', '');       // initial closed state (mirrors the HTML)
+  const win = { matchMedia: () => ({ matches: false }) };
+  const externalOpener = mkEl('ext'); dom.activeElement = externalOpener;
+
+  const focusTrapSrc = fnSrc(html, 'focusTrapTarget');
+  const openSrc = fnSrc(html, 'openOrderDetailModal');
+  const closeSrc = fnSrc(html, 'closeOrderDetailModal');
+  const trapStart = html.indexOf("$('order-detail-modal').addEventListener('keydown'");
+  const trapSrc = html.slice(trapStart, html.indexOf('\n});', trapStart) + 4);
+  assert.ok(focusTrapSrc && openSrc && closeSrc && trapStart > -1, 'located a11y source blocks');
+
+  const api = new Function('$', 'document', 'window', 'renderOrderDetailModal', 'toast', 'pickerReturnFocusTarget', 'allOrders', 'allScheduled',
+    `${focusTrapSrc}\n${openSrc}\n${closeSrc}\n${trapSrc}\n; return { openOrderDetailModal, closeOrderDetailModal };`
+  )(getEl, dom, win, () => {}, () => {}, () => ({ el: externalOpener, temp: false }), { o1: { order_id: 'o1' } }, {});
+
+  // OPEN — clears inert, opens, moves focus into the drawer
+  api.openOrderDetailModal('o1');
+  const modal = getEl('order-detail-modal');
+  assert.ok(!modal.hasAttribute('inert'), 'open clears inert (drawer re-enters tab order)');
+  assert.ok(modal.classList.contains('open'), 'open adds .open');
+  assert.strictEqual(dom.activeElement, closeBtn, 'open moves focus to the close button inside the drawer');
+
+  // TAB at the last focusable wraps to the first; SHIFT-TAB at the first wraps to the last. This EXECUTES the
+  // real handler — if the panel lacked id="order-detail-card", $('order-detail-card') is null and this throws.
+  dom.activeElement = btnB;
+  modal.dispatch('keydown', { key: 'Tab', shiftKey: false, preventDefault() {}, stopPropagation() {} });
+  assert.strictEqual(dom.activeElement, closeBtn, 'Tab at the last focusable wraps to the first');
+  dom.activeElement = closeBtn;
+  modal.dispatch('keydown', { key: 'Tab', shiftKey: true, preventDefault() {}, stopPropagation() {} });
+  assert.strictEqual(dom.activeElement, btnB, 'Shift-Tab at the first focusable wraps to the last');
+
+  // CLOSE — restores focus outward and marks the drawer inert (out of tab order + a11y tree)
+  api.closeOrderDetailModal();
+  assert.ok(!modal.classList.contains('open'), 'close removes .open');
+  assert.strictEqual(dom.activeElement, externalOpener, 'close restores focus outward (via the cascade)');
+  assert.ok(modal.hasAttribute('inert'), 'closed drawer is inert — offscreen close/links are not Tab/SR reachable');
+  ok('a11y EXECUTED: Tab/Shift-Tab wrap at the edges (real handler); open clears inert + focuses in; close restores focus + re-inerts');
 }
 
 console.log(`\ndispatch-drawer: OK (${n} groups)`);
