@@ -213,6 +213,13 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
     'xpizza-dispatch/dispatch-aging.test.js',
     'xpizza-dispatch/dispatch-alert-nav.test.js',
     'xpizza-dispatch/dispatch-alerts.test.js',
+    /* Arrived from main with the park fix. It is NOT uncovered: the mutation sweep reaches it —
+       pah-06 mutates ../xpizza-dispatch/index.html and scores through
+       `node ../xpizza-dispatch/dispatch-paid-after-close.test.js` — which is a real gate. What it
+       lacks is an npm script, which is what this census measures, because that directory has no
+       package.json at all. Recorded with that distinction rather than as plain "uncovered", since
+       being wrong in the safe direction still costs the claim its value. */
+    'xpizza-dispatch/dispatch-paid-after-close.test.js',
     'xpizza-dispatch/dispatch-comms-thread.test.js',
     'xpizza-dispatch/dispatch-delivery-risk.test.js',
     'xpizza-dispatch/dispatch-eta-snapshot.test.js',
