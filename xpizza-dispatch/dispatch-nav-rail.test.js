@@ -33,7 +33,13 @@ const fnSrc = (name) => { const s = html.indexOf(`function ${name}(`); const e =
   // added line icons + layout shift
   for (const ic of ['i-tower', 'i-users', 'i-gear']) assert.match(html, new RegExp(`<symbol id="${ic}"`), `sprite icon ${ic} added`);
   assert.match(html, /header\.topbar, \.app \{ margin-left: 54px; \}/, 'topbar + app shift right by the 54px rail');
-  ok('nav rail: 7 items (Despacho active, Ajustes disabled placeholder), tooltips, Comms badge, brand mark, 54px shift, icons');
+  // flat icon buttons — no native browser chrome (defect 4)
+  const navRule = (html.match(/\n  \.nav \{([^}]*)\}/) || [])[1] || '';
+  assert.match(navRule, /background:\s*none/, '.nav resets native button background (flat)');
+  assert.match(navRule, /border:\s*none/, '.nav resets native button border (flat)');
+  // the badge hides at zero count — the `hidden` attr must win over display:grid (defect 1)
+  assert.match(html, /\.nav-badge\[hidden\] \{ display: none; \}/, '.nav-badge[hidden] hides the badge at zero count');
+  ok('nav rail: 7 items (Despacho active, Ajustes disabled placeholder), tooltips, Comms badge, brand mark, 54px shift, icons, flat buttons, badge-hides-at-zero');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +64,10 @@ const fnSrc = (name) => { const s = html.indexOf(`function ${name}(`); const e =
   const navs = {};
   for (const k of ['despacho', 'pedidos', 'comms', 'programados', 'reconciliacion', 'repartidores']) navs[k] = mkEl({ dataset: { nav: k }, disabled: false });
   navs.ajustes = mkEl({ dataset: { nav: 'ajustes' }, disabled: true });
-  const navList = Object.values(navs);
+  // a disabled button WITH a real route — exercises the runtime `if (btn.disabled) return` (Ajustes alone is
+  // vacuous: it has no route, so the missing-route fallback would block it even without the disabled guard).
+  const disabledRoutable = mkEl({ dataset: { nav: 'repartidores' }, disabled: true });
+  const navList = [...Object.values(navs), disabledRoutable];
   navs.despacho.classList.add('on');
   const rail = { querySelectorAll: () => navList };
   const rtab = (tab) => mkEl({ _tab: tab, click() { calls.rtabClicked.push(tab); } });
@@ -109,7 +118,12 @@ const fnSrc = (name) => { const s = html.indexOf(`function ${name}(`); const e =
   calls.togRail = []; calls.rtabClicked = []; calls.scrolled = []; const before = calls.openMessages;
   click('ajustes');
   assert.deepStrictEqual([calls.togRail, calls.rtabClicked, calls.scrolled, calls.openMessages], [[], [], [], before], 'Ajustes (disabled) is a no-op');
-  ok('EXECUTED routing: each nav item drives its existing surface; Comms=modal (no active move); Ajustes=no-op');
+  // NON-VACUOUS disabled-guard: a disabled button WHOSE data-nav HAS a route must still fire nothing — so
+  // removing `if (btn.disabled) return` makes the repartidores route (scroll) fire → red.
+  calls.togRail = []; calls.scrolled = [];
+  disabledRoutable.dispatch('click', {});
+  assert.deepStrictEqual([calls.togRail, calls.scrolled], [[], []], 'a disabled nav with a real route fires nothing (runtime disabled-guard exercised)');
+  ok('EXECUTED routing: each nav item drives its existing surface; Comms=modal (no active move); disabled-guard non-vacuous');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

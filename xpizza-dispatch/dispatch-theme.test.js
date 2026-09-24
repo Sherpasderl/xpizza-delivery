@@ -204,16 +204,23 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   // component — a descendant like `.rest-x_pizza .ex { color:#F6935F }` has no grant and fails). The remaining
   // grants are legit descendant glyphs (brand mark, info-window) matched by substring.
   const HEX_OK = [
-    ['.tb-brand', ['#e85a58', '#cc2e2c', '#fff']],       // brand mark gradient + white glyph
-    ['.nav-mk', ['#e85a58', '#cc2e2c', '#fff']],         // nav-rail brand mark (same brand gradient + white glyph)
+    ['.tb-brand', ['#e85a58', '#cc2e2c', '#fff']],       // brand mark gradient + white glyph (descendant .tb-x)
     ['.aa-sw', ['#fff']],                                // auto-assign switch thumb
     ['.info-window', ['#0a0a0a', '#555', '#fff']],       // always-white Google info bubble
-    ['.rn', ['#fff']], ['.rail-badge', ['#fff']], ['.nav-badge', ['#fff']],  // white text on red count badges
+    ['.rn', ['#fff']], ['.rail-badge', ['#fff']],        // white text on red count badges
+  ];
+  // EXACT-selector grants: the hex lives on the element ITSELF (no descendant glyph), so match the whole
+  // selector part — substring would launder onto `.nav-mk .x`, `.nav-mk-x`, `.nav-badge .x`, etc.
+  const HEX_OK_EXACT = [
+    ['.nav-mk', ['#e85a58', '#cc2e2c', '#fff']],         // nav-rail brand mark (same brand gradient + white glyph)
+    ['.nav-badge', ['#fff']],                            // white text on the red Comms count badge
   ];
   // TARGET element (last segment) allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted
   // chips. Last-segment match so a descendant (`.rest-x_pizza .ex`) can't launder the brand rgba onto `.ex`.
   const BG_RGBA_OK = ['.msg-modal', '.order-detail-modal', '.overlay-bg', '.comms-scrim', '.rest-x_pizza', '.rest-la_musa'];
-  const grantsHex = (part, h) => HEX_OK.some(([k, list]) => part.includes(k) && list.some(a => a.toLowerCase() === h.toLowerCase()));
+  const grantsHex = (part, h) =>
+    HEX_OK.some(([k, list]) => part.includes(k) && list.some(a => a.toLowerCase() === h.toLowerCase())) ||
+    HEX_OK_EXACT.some(([k, list]) => part === k && list.some(a => a.toLowerCase() === h.toLowerCase()));
   let hexOrphans = [], bgOrphans = [];
   for (const r of RULES) {
     const parts = r.parts.filter(p => !isRoot(p));       // ignore :root token blocks / keyframe stops

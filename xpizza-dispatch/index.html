@@ -151,6 +151,7 @@
   }
   .nav {
     width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+    background: none; border: none;                    /* flat icon button — no native chrome */
     color: var(--text-dim); position: relative; cursor: pointer;
     transition: color .15s, background .15s;
   }
@@ -166,6 +167,7 @@
     font-size: 9.5px; font-weight: 700; display: grid; place-items: center;
     box-shadow: 0 0 0 2px var(--topbar-2); pointer-events: none;
   }
+  .nav-badge[hidden] { display: none; }               /* the grid display would otherwise show a "0" at zero count */
   .nav-sp { flex: 1; }
   .nav[data-tip]:hover::after {
     content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
