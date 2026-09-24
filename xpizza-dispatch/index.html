@@ -1295,33 +1295,40 @@
      Full read-only view of a single past order. Used for callbacks
      where dispatcher needs to see customer/order/timeline/driver info.
      Uses the same overlay shape as msg-modal so it feels consistent. */
+  /* Slice D: the order-detail view is a right-side DRAWER (mockup presentation). The scrim stays a raw-rgba
+     backdrop (allowlisted); the card slides in from the right. Content generation is unchanged — read-only. */
   .order-detail-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.45);
     z-index: 210;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
   }
-  .order-detail-modal.open { display: flex; }
+  .order-detail-modal.open { opacity: 1; pointer-events: auto; }
   .order-detail-card {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 440px;
+    max-width: 92vw;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    width: 100%;
-    max-width: 560px;
-    max-height: 90vh;
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-shadow: var(--shadow-lift);
+    transform: translateX(100%);
+    transition: transform 0.24s cubic-bezier(0.3, 0.8, 0.3, 1);
   }
+  .order-detail-modal.open .order-detail-card { transform: none; }
   .order-detail-header {
-    padding: 14px 18px;
+    padding: 16px 18px;
     border-bottom: 1px solid var(--border-soft);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
   }
   .order-detail-title {
@@ -1342,38 +1349,39 @@
     font-weight: 400;
   }
   .order-detail-close {
-    background: var(--surface-3);
+    background: transparent;
     border: none;
-    color: var(--text);
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
+    color: var(--text-dim);
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex: none;
   }
+  .order-detail-close:hover { background: var(--surface-2); color: var(--text); }
+  .order-detail-close svg { width: 16px; height: 16px; }
   .order-detail-body {
     flex: 1;
     overflow-y: auto;
     padding: 14px 18px 20px;
   }
   .od-section {
-    margin-bottom: 18px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-soft);
   }
-  .od-section:last-child { margin-bottom: 0; }
+  .od-section:first-child { padding-top: 4px; }
+  .od-section:last-child { border-bottom: none; }
   .od-section-title {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     color: var(--text-dim);
-    margin-bottom: 8px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 9px;
   }
   .od-row {
     display: flex;
@@ -2300,10 +2308,10 @@
      + driver info. Includes tap-to-call links and a 'center on map' action.
 -->
 <div class="order-detail-modal" id="order-detail-modal">
-  <div class="order-detail-card">
+  <div class="order-detail-card" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
     <div class="order-detail-header">
       <div class="order-detail-title" id="order-detail-title"></div>
-      <button class="order-detail-close" id="order-detail-close" aria-label="Cerrar">×</button>
+      <button class="order-detail-close" id="order-detail-close" aria-label="Cerrar"><svg class="ic sm"><use href="#i-close"/></svg></button>
     </div>
     <div class="order-detail-body" id="order-detail-body"></div>
     <div class="od-actions" id="order-detail-actions"></div>
@@ -4544,6 +4552,7 @@ function formatDateTime(ts) {
 // =====================================================================
 
 let currentDetailOrderId = null;
+let detailOpener = null;   // a11y: element to restore focus to when the drawer closes
 
 function openOrderDetailModal(orderId) {
   const order = allOrders[orderId] || allScheduled[orderId];   // scheduled orders live outside allOrders
@@ -4551,14 +4560,27 @@ function openOrderDetailModal(orderId) {
     toast('Pedido no encontrado', 'error');
     return;
   }
+  detailOpener = document.activeElement;                       // remember focus (the card/button that opened it)
   currentDetailOrderId = orderId;
   renderOrderDetailModal(order);
   $('order-detail-modal').classList.add('open');
+  // a11y: move focus into the drawer — the always-present close button leads the tab order.
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  try { $('order-detail-close').focus({ preventScroll: reduceMotion }); } catch (_) {}
 }
 
 function closeOrderDetailModal() {
+  const returnOrderId = currentDetailOrderId;                  // capture before reset — needed to re-find the trigger
   $('order-detail-modal').classList.remove('open');
   currentDetailOrderId = null;
+  // a11y: restore focus to a visible, attached target on every dismissal path (close btn / backdrop / Esc /
+  // footer action). The board re-renders on a timer so the opener may be detached — reuse Slice A's cascade.
+  const opener = detailOpener; detailOpener = null;
+  const { el, temp } = pickerReturnFocusTarget(opener, returnOrderId, document);
+  if (el) {
+    if (temp && el.setAttribute && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    try { el.focus(); } catch (_) {}
+  }
 }
 
 function renderOrderDetailModal(order) {
@@ -5521,6 +5543,16 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('order-detail-modal').classList.contains('open')) {
     closeOrderDetailModal();
   }
+});
+// a11y: focus-trap — while the drawer is open, Tab/Shift-Tab cycle within the card so focus can't fall to the
+// board behind it. Reuses focusTrapTarget (Slice A). Read-only; no content or data touched.
+$('order-detail-modal').addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || !$('order-detail-modal').classList.contains('open')) return;
+  const focusables = [...$('order-detail-card').querySelectorAll('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(el => el.offsetParent !== null);
+  if (!focusables.length) return;
+  const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+  if (target) { e.preventDefault(); target.focus(); }
 });
 
 
