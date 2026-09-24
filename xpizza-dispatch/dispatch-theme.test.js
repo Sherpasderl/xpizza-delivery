@@ -205,9 +205,10 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   // grants are legit descendant glyphs (brand mark, info-window) matched by substring.
   const HEX_OK = [
     ['.tb-brand', ['#e85a58', '#cc2e2c', '#fff']],       // brand mark gradient + white glyph
+    ['.nav-mk', ['#e85a58', '#cc2e2c', '#fff']],         // nav-rail brand mark (same brand gradient + white glyph)
     ['.aa-sw', ['#fff']],                                // auto-assign switch thumb
     ['.info-window', ['#0a0a0a', '#555', '#fff']],       // always-white Google info bubble
-    ['.rn', ['#fff']], ['.rail-badge', ['#fff']],        // white text on red count badges
+    ['.rn', ['#fff']], ['.rail-badge', ['#fff']], ['.nav-badge', ['#fff']],  // white text on red count badges
   ];
   // TARGET element (last segment) allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted
   // chips. Last-segment match so a descendant (`.rest-x_pizza .ex`) can't launder the brand rgba onto `.ex`.

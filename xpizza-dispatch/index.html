@@ -133,6 +133,49 @@
   .mono, .num, .ord-age, .task-id, .torre-count, .cola-seg-n { font-variant-numeric: tabular-nums; }
 
   /* ==================== HEADER ==================== */
+  /* ==================== NAV RAIL (Slice D2) ==================== */
+  /* The mockup's left icon rail, adapted to the C-1 token system. A fixed 54px full-height column; the topbar
+     and board shift right by 54px. Navigation over EXISTING surfaces only — see the nav wiring in the script. */
+  .nav-rail {
+    position: fixed; left: 0; top: 0; bottom: 0; width: 54px; z-index: 30;
+    background: var(--topbar-2);
+    border-right: 1px solid var(--border-soft);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 0; gap: 4px;
+  }
+  .nav-mk {
+    width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+    font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 14px; color: #fff;
+    background: linear-gradient(160deg, #e85a58, #cc2e2c);
+    margin-bottom: 10px; box-shadow: 0 2px 8px rgba(204,46,44,0.3);
+  }
+  .nav {
+    width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+    color: var(--text-dim); position: relative; cursor: pointer;
+    transition: color .15s, background .15s;
+  }
+  .nav:hover { color: var(--text-soft); background: var(--hover); }
+  .nav.on { color: var(--text); background: var(--surface-3); }
+  .nav.on::before { content: ''; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 2.5px; border-radius: 99px; background: var(--primary); }
+  .nav:disabled { opacity: 0.4; cursor: default; }
+  .nav:disabled:hover { color: var(--text-dim); background: none; }
+  .nav .ic { width: 18px; height: 18px; }
+  .nav-badge {
+    position: absolute; top: 5px; right: 5px; min-width: 15px; height: 15px; padding: 0 4px;
+    border-radius: 99px; background: var(--accent-solid); color: #fff;
+    font-size: 9.5px; font-weight: 700; display: grid; place-items: center;
+    box-shadow: 0 0 0 2px var(--topbar-2); pointer-events: none;
+  }
+  .nav-sp { flex: 1; }
+  .nav[data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+    background: var(--menu-bg); color: var(--text); font-size: 11.5px; font-weight: 500;
+    padding: 5px 9px; border-radius: 6px; white-space: nowrap; z-index: 300;
+    box-shadow: var(--shadow); pointer-events: none; border: 1px solid var(--border);
+  }
+  /* the nav rail owns the far-left 54px; the topbar + board sit to its right */
+  header.topbar, .app { margin-left: 54px; }
+
   header.topbar {
     height: 60px;
     background: linear-gradient(180deg, var(--card-2), var(--topbar-2));
@@ -2041,6 +2084,9 @@
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
   <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/></symbol>
+  <symbol id="i-tower" viewBox="0 0 24 24"><path d="M12 3v18M7 8l5-3 5 3M6 21h12M8.5 12h7l-1 9h-5Z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M20.5 19a5 5 0 0 0-3.5-4.7"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M5 5l1.8 1.8M17.2 17.2 19 19M3 12h2.5M18.5 12H21M5 19l1.8-1.8M17.2 6.8 19 5"/></symbol>
 </defs></svg>
 
 <!-- ================================ -->
@@ -2079,6 +2125,20 @@
 <!-- MAIN DISPATCHER UI -->
 <!-- ================================ -->
 <div id="screen-main" class="hidden" style="display:flex; flex-direction:column; height:100vh;">
+  <!-- Slice D2: nav rail — navigation over the EXISTING surfaces (no new backend). Each item routes to a
+       surface the board already has; Ajustes is an honest future-anchor (disabled placeholder). -->
+  <nav class="nav-rail" id="nav-rail" aria-label="Navegación">
+    <div class="nav-mk" aria-hidden="true">X</div>
+    <button class="nav on" data-nav="despacho" data-tip="Despacho" aria-label="Despacho" aria-current="page"><svg class="ic"><use href="#i-tower"/></svg></button>
+    <button class="nav" data-nav="pedidos" data-tip="Pedidos" aria-label="Pedidos"><svg class="ic"><use href="#i-receipt"/></svg></button>
+    <button class="nav" data-nav="comms" data-tip="Comms · WhatsApp entrante" aria-label="Comms"><svg class="ic"><use href="#i-message"/></svg><span class="nav-badge" id="nav-comms-badge" hidden>0</span></button>
+    <button class="nav" data-nav="programados" data-tip="Programados" aria-label="Programados"><svg class="ic"><use href="#i-clock"/></svg></button>
+    <button class="nav" data-nav="reconciliacion" data-tip="Reconciliación · Caja" aria-label="Reconciliación"><svg class="ic"><use href="#i-card"/></svg></button>
+    <button class="nav" data-nav="repartidores" data-tip="Repartidores" aria-label="Repartidores"><svg class="ic"><use href="#i-users"/></svg></button>
+    <div class="nav-sp"></div>
+    <button class="nav" data-nav="ajustes" data-tip="Ajustes · próximamente" aria-label="Ajustes (próximamente)" disabled><svg class="ic"><use href="#i-gear"/></svg></button>
+  </nav>
+
   <header class="topbar" id="topbar">
     <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg><span class="rail-badge" id="left-rail-badge"></span></button>
     <span class="tb-brand"><span class="tb-x">X</span> Despacho</span>
@@ -3010,6 +3070,9 @@ function updateMessagesBadge(unhandledCount) {
   if (!btn || !badge) return;
   badge.textContent = String(unhandledCount);
   btn.classList.toggle('has-unhandled', unhandledCount > 0);
+  // D2: the nav-rail Comms badge MIRRORS the topbar unhandled count (same single source).
+  const navBadge = $('nav-comms-badge');
+  if (navBadge) { navBadge.textContent = String(unhandledCount); navBadge.hidden = !(unhandledCount > 0); }
 }
 
 function openMessagesModal() {
@@ -3659,7 +3722,7 @@ function renderPedidosTab() {
     </div>`;
   };
   const cat = (title, count, rows) => count === 0 ? ''
-    : `<div class="q-cat"><div class="q-cat-hd">${title}<span class="q-cat-n">${count}</span></div>${rows}</div>`;
+    : `<div class="q-cat" data-cat="${title}"><div class="q-cat-hd">${title}<span class="q-cat-n">${count}</span></div>${rows}</div>`;
 
   const deliveryRows = delivery.map(o => {
     const dt = allTasks[`${o.order_id}_delivery`];
@@ -5439,6 +5502,39 @@ document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
     }
   });
 });
+
+// Slice D2 — nav rail: each item routes to an EXISTING surface (no new backend). Reuses the rail-toggle,
+// rtab, and messages-modal handlers already on the board; Ajustes is a disabled future-anchor (no-op).
+(function initNavRail() {
+  const rail = $('nav-rail'); if (!rail) return;
+  const ensureRailOpen = (cls) => { if (!$('app').classList.contains(cls)) togRail(cls); };   // open only, never close
+  const activateRtab = (tab) => {
+    const btn = document.querySelector(`#rail-tabs .rtab[data-tab="${tab}"]`);
+    if (btn && !btn.classList.contains('on')) btn.click();     // reuse the existing rtab handler
+  };
+  const scrollTo = (el) => { if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  const setActive = (nav) => rail.querySelectorAll('.nav').forEach((b) => {
+    const on = b === nav;
+    b.classList.toggle('on', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
+  const routes = {
+    despacho() { ensureRailOpen('left-open'); ensureRailOpen('right-open'); },
+    pedidos() { ensureRailOpen('right-open'); activateRtab('pedidos'); scrollTo($('pedidos-list')); },
+    comms() { openMessagesModal(); },                          // opens the shipped modal (transient — no active move)
+    programados() { ensureRailOpen('right-open'); activateRtab('pedidos'); scrollTo(document.querySelector('#pedidos-list [data-cat="Programados"]')); },
+    reconciliacion() { ensureRailOpen('right-open'); activateRtab('caja'); },
+    repartidores() { ensureRailOpen('right-open'); scrollTo($('drivers-live-group')); },
+  };
+  rail.querySelectorAll('.nav[data-nav]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;                                // Ajustes — próximamente placeholder
+      const fn = routes[btn.dataset.nav]; if (!fn) return;
+      if (btn.dataset.nav !== 'comms') setActive(btn);         // a modal doesn't change the persistent surface highlight
+      fn();
+    });
+  });
+})();
 
 // Cobertura drawer toggle (Task 11).
 $('cob-toggle')?.addEventListener('click', () => $('cobertura')?.classList.toggle('open'));
