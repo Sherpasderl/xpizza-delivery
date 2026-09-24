@@ -79,6 +79,7 @@ function buildEnv() {
     clickBackdrop: () => ov.dispatch('click', { target: ov }),
     pressEsc: () => ov.dispatch('keydown', { key: 'Escape', preventDefault() {}, stopPropagation() {} }),
     cmdEnter: () => ov.dispatch('keydown', { key: 'Enter', metaKey: true, preventDefault() {}, stopPropagation() {} }),
+    ctrlEnter: () => ov.dispatch('keydown', { key: 'Enter', ctrlKey: true, preventDefault() {}, stopPropagation() {} }),
     settleXpd: (v) => xpd.res(v),
     lastFocused: () => lastFocused,
     resetFocus: () => { lastFocused = null; },     // clear the dialog-open focus so a dismiss's restore is measured alone
@@ -104,8 +105,11 @@ function buildEnv() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Cancel / Esc / backdrop → settles null → NO server call, no button disable. (A mutation settling '' here
-//    would run a refund on a DISMISSED dialog — these dispatch the REAL dismiss handlers so it goes red.)
+// 2. Cancel / Esc / backdrop → settles null → NO server call, no button disable. Dismiss is synchronous
+//    (settleReconNote(null) → resolveReconciliationAction returns at `if(note===null)return` with NO await),
+//    so the money-safety fact is asserted DIRECTLY (call-count 0 + buttons untouched) — never via a crash. A
+//    mutation settling '' would run a refund on a DISMISSED dialog and hang the pending XPD mock; racing p
+//    against a tick keeps that a clean assertion failure, not an exit-13 unsettled-await crash.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   for (const [name, dismiss] of [['cancel', 'clickCancel'], ['Esc', 'pressEsc'], ['backdrop', 'clickBackdrop']]) {
@@ -114,11 +118,11 @@ function buildEnv() {
     await tick();
     t.setNote('algo');                              // a non-empty textarea must NOT matter on dismiss
     t[dismiss]();
-    await p;
-    assert.strictEqual(t.resolveCalls.length, 0, `${name}: fired no resolve`);
-    assert.ok(t.buttons().every(b => !b.everDisabled), `${name}: buttons never disabled`);
+    await Promise.race([p, tick()]);                // dismiss returns immediately; a '' mutation would hang XPD — don't await it
+    assert.strictEqual(t.resolveCalls.length, 0, `${name}: fired no resolve (dismiss reached no XPD call)`);
+    assert.ok(t.buttons().every(b => !b.everDisabled), `${name}: buttons never disabled (returned before the disable loop)`);
   }
-  ok('cancel / Esc / backdrop → settle null → no resolve, no button disable (real dismiss handlers)');
+  ok('cancel / Esc / backdrop → settle null → no resolve, no button disable (asserted directly, not via crash)');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,18 +176,21 @@ function buildEnv() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. ⌘/Ctrl-Enter confirms with the real textarea value.
+// 5. ⌘Enter (macOS) AND Ctrl-Enter (Windows/Linux) confirm with the real textarea value — both modifiers, so
+//    dropping either e.metaKey or e.ctrlKey from the handler goes red.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const t = buildEnv(); t.setButtons(3);
-  const p = t.resolveReconciliationAction('ord-9', 'materialize');
-  await tick();
-  t.setNote('  via teclado  ');
-  t.cmdEnter();
-  await tick();
-  assert.deepStrictEqual(t.resolveCalls[0], ['ord-9', 'materialize', 'via teclado'], '⌘Enter confirms with trimmed real value');
-  t.settleXpd({ outcome: 'materialized' }); await p;
-  ok('⌘/Ctrl-Enter confirms with the real textarea value');
+  for (const [name, key] of [['⌘Enter', 'cmdEnter'], ['Ctrl-Enter', 'ctrlEnter']]) {
+    const t = buildEnv(); t.setButtons(3);
+    const p = t.resolveReconciliationAction('ord-9', 'materialize');
+    await tick();
+    t.setNote('  via teclado  ');
+    t[key]();
+    await tick();
+    assert.deepStrictEqual(t.resolveCalls[0], ['ord-9', 'materialize', 'via teclado'], `${name} confirms with the real value`);
+    t.settleXpd({ outcome: 'materialized' }); await p;
+  }
+  ok('⌘Enter and Ctrl-Enter both confirm with the real textarea value');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,7 +210,26 @@ function buildEnv() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7. The money-terminal outcome+finally block is byte-identical to base b50a467; native prompt() is gone; the
+// 7. Contract: reconNotePrompt returns the RAW (untrimmed) textarea value on confirm — the caller owns the
+//    .trim(). Locks the dialog directly (a `.value.trim()` in the confirm handler would go red here even
+//    though the downstream server value is identical). Dismiss resolves null.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const t = buildEnv();
+  const q = t.reconNotePrompt('materialize', 'o9');
+  await tick();
+  t.setNote('  raw value  ');
+  t.clickConfirm();
+  assert.strictEqual(await q, '  raw value  ', 'confirm resolves the RAW, untrimmed textarea value (caller trims)');
+  const q2 = t.reconNotePrompt('abandon', 'o9');
+  await tick();
+  t.pressEsc();
+  assert.strictEqual(await q2, null, 'dismiss resolves null');
+  ok('reconNotePrompt returns RAW value on confirm / null on dismiss (caller owns .trim())');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. The money-terminal outcome+finally block is byte-identical to base b50a467; native prompt() is gone; the
 //    styled dialog surface is present + aria-modal.
 // ─────────────────────────────────────────────────────────────────────────────
 {
