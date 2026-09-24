@@ -3,17 +3,21 @@
 // Slice C-2 — reconciliation operator note: native prompt() → styled in-board field (MONEY-ADJACENT).
 // Only the INPUT SURFACE changed; the fed value + resolve/outcome/finally logic stay byte-identical.
 //
-// These guards drive the REAL functions extracted from the shipped file — the real resolveReconciliationAction
-// calling the real reconNotePrompt through a DOM shim (compose the real pieces, not two halves). They enforce
-// the 4-part money contract, each red-when-reverted:
-//   1. value byte-identical — XPD.resolveReconciliation(id, action, note.trim()) across all 3 actions;
-//   2. cancel/dismiss → NO server call (reconNotePrompt(null) ⟶ early return);
-//   3. abandon → required non-blank note: same 'Se requiere una nota para descartar' + no call; materialize/
-//      refund keep the note optional (empty still resolves);
-//   4. in-flight double-fire guard — buttons disabled during the await, re-enabled in finally; and a second
-//      concurrent action while the dialog is open fires NO resolve (single-instance).
-// Plus: reconNotePrompt returns the RAW value on confirm / null on dismiss; the outcome+finally block is
-// byte-identical to the approved base b50a467; and native prompt() is gone from the resolver.
+// These guards drive the REAL WIRING — the real event handlers ($('recon-note-confirm').onclick, the overlay
+// keydown/backdrop, etc.) fire against a DOM shim that actually registers and dispatches events; nothing is
+// stubbed to a no-op and settleReconNote is NEVER called directly. So the whole textarea → handler →
+// settlement → resolveReconciliationAction chain is exercised (compose the real pieces, not two halves), and
+// the money-critical mutations that a direct-settle test let survive now go RED:
+//   • Confirm dropping the value (→ '')            → the value assertion fails
+//   • Cancel / Esc settling '' instead of null     → a DISMISSED dialog fires a refund/materialize
+// 4-part money contract, each red-when-reverted:
+//   1. value byte-identical — resolveReconciliation(id, action, note.trim()) across all 3 actions;
+//   2. cancel/Esc/backdrop → NO server call (dialog settles null; note===null returns);
+//   3. abandon → required non-blank note (same toast, no call); materialize & refund keep it optional;
+//   4. double-fire — buttons disabled during await + re-enabled in finally; a 2nd concurrent action fires no
+//      resolve; and a late Esc after Confirm can't double-settle.
+// Plus: ⌘Enter confirms; focus-restore survives a render tick (no black-hole, defect-2); the outcome+finally
+// block is byte-identical to base b50a467; native prompt() is gone from the resolver.
 import assert from 'node:assert';
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -22,142 +26,188 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, 'index.html');
-const BASE = 'b50a467';                       // approved Slice B tip C-2 stacks on (resolve/outcome logic frozen)
+const BASE = 'b50a467';
 const html = fs.readFileSync(FILE, 'utf8');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const tick = () => new Promise(r => setTimeout(r, 0));
 
 // ---- extract the REAL source blocks ----
 const reconSuccessLine = (html.match(/const RECON_SUCCESS_OUTCOMES = new Set\(\[[^\]]*\]\);/) || [])[0];
-assert.ok(reconSuccessLine, 'RECON_SUCCESS_OUTCOMES located');
+const pickerFocusSrc = html.slice(html.indexOf('function pickerReturnFocusTarget('), html.indexOf('function focusTrapTarget('));
 const promptStart = html.indexOf('let reconNoteSettle = null;');
 const resolveStart = html.indexOf('async function resolveReconciliationAction(');
 const resolveEnd = html.indexOf('function formatTime(');
-assert.ok(promptStart > -1 && resolveStart > promptStart && resolveEnd > resolveStart, 'located recon-note + resolver blocks');
+assert.ok(reconSuccessLine && pickerFocusSrc && promptStart > -1 && resolveStart > promptStart && resolveEnd > resolveStart, 'located source blocks');
 const promptBlock = html.slice(promptStart, resolveStart);
 const resolveSrc = html.slice(resolveStart, resolveEnd);
 
-// ---- harness: eval BOTH real functions in one scope so resolveReconciliationAction calls the REAL reconNotePrompt ----
+// ---- DOM shim with REAL event registration + dispatch (no stubbed addEventListener) ----
 function buildEnv() {
+  let lastFocused = null;
+  const mkEl = (id) => ({
+    id, textContent: '', value: '', _l: {}, offsetParent: {}, isConnected: true,
+    classList: { add() {}, remove() {}, contains: () => false },
+    addEventListener(t, fn) { (this._l[t] ||= []).push(fn); },
+    dispatch(t, evt) { (this._l[t] || []).forEach(fn => fn(evt)); },
+    focus() { lastFocused = this; },
+    hasAttribute: () => false, setAttribute() {}, querySelectorAll: () => [],
+  });
   const els = {};
-  const getEl = (id) => (els[id] ||= { id, textContent: '', value: '', classList: { add() {}, remove() {}, contains: () => false }, addEventListener() {}, focus() {}, disabled: false });
-  let queryButtons = [];
-  let xpd = null;
+  const getEl = (id) => (els[id] ||= mkEl(id));
+  const opener = mkEl('__opener');                 // stands in for the recon button that had focus
+  let queryButtons = [], xpd = null;
   const toasts = [], resolveCalls = [];
-  const doc = { getElementById: getEl, activeElement: null, contains: () => false, querySelectorAll: () => queryButtons, querySelector: () => null };
+  const doc = {
+    getElementById: getEl,
+    get activeElement() { return opener; },
+    querySelector: () => null,                     // no recon card in the shim → focus cascade falls back
+    querySelectorAll: () => queryButtons,
+  };
   const win = { matchMedia: () => ({ matches: false }), CSS: { escape: (s) => s } };
-  const XPD = { resolveReconciliation: (...args) => { resolveCalls.push(args); return new Promise((res, rej) => { xpd = { res, rej }; }); } };
+  const XPD = { resolveReconciliation: (...a) => { resolveCalls.push(a); return new Promise((res, rej) => { xpd = { res, rej }; }); } };
   const api = new Function('$', 'document', 'window', 'CSS', 'toast', 'XPD', 'displayOrderLabel', 'focusTrapTarget',
-    `${reconSuccessLine}\n${promptBlock}\n${resolveSrc}\n; return { resolveReconciliationAction, reconNotePrompt, settleReconNote };`
+    `${reconSuccessLine}\n${pickerFocusSrc}\n${promptBlock}\n${resolveSrc}\n; return { resolveReconciliationAction, reconNotePrompt };`
   )(getEl, doc, win, win.CSS, (m, t) => toasts.push([m, t]), XPD, (x) => String(x), () => null);
+  const ov = getEl('recon-note-overlay'), input = getEl('recon-note-input');
   return {
-    ...api, toasts, resolveCalls,
-    // buttons track everDisabled so a removed cancel-guard (which would run the disable loop before returning)
-    // is caught even though note.trim() on the dismissed value never reaches the resolve call.
+    ...api, toasts, resolveCalls, opener,
     setButtons: (k) => (queryButtons = Array.from({ length: k }, () => { let d = false; return { get disabled() { return d; }, set disabled(v) { if (v) this.everDisabled = true; d = v; }, everDisabled: false }; })),
     buttons: () => queryButtons,
+    setNote: (v) => { input.value = v; },
+    clickConfirm: () => getEl('recon-note-confirm').dispatch('click', {}),
+    clickCancel: () => getEl('recon-note-cancel').dispatch('click', {}),
+    clickBackdrop: () => ov.dispatch('click', { target: ov }),
+    pressEsc: () => ov.dispatch('keydown', { key: 'Escape', preventDefault() {}, stopPropagation() {} }),
+    cmdEnter: () => ov.dispatch('keydown', { key: 'Enter', metaKey: true, preventDefault() {}, stopPropagation() {} }),
     settleXpd: (v) => xpd.res(v),
-    rejectXpd: (e) => xpd.rej(e),
+    lastFocused: () => lastFocused,
+    resetFocus: () => { lastFocused = null; },     // clear the dialog-open focus so a dismiss's restore is measured alone
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Value byte-identical — the string passed to resolveReconciliation is note.trim(), same value, all 3 actions.
+// 1. Value byte-identical — a REAL Confirm click reads the REAL textarea value; note.trim() is what's passed.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   for (const action of ['materialize', 'refund', 'abandon']) {
     const t = buildEnv(); t.setButtons(3);
     const p = t.resolveReconciliationAction('ord-1', action);
     await tick();
-    t.settleReconNote('  nota con espacios  ');       // confirm with a padded note
+    t.setNote('  nota con espacios  ');
+    t.clickConfirm();
     await tick();
     assert.strictEqual(t.resolveCalls.length, 1, `${action}: exactly one resolve`);
-    assert.deepStrictEqual(t.resolveCalls[0], ['ord-1', action, 'nota con espacios'], `${action}: (id, action, note.trim()) byte-identical`);
+    assert.deepStrictEqual(t.resolveCalls[0], ['ord-1', action, 'nota con espacios'], `${action}: (id, action, note.trim())`);
     t.settleXpd({ outcome: 'materialized' }); await p;
   }
-  ok('value byte-identical: resolveReconciliation(id, action, note.trim()) across materialize/refund/abandon');
+  ok('value byte-identical via REAL confirm click: resolveReconciliation(id, action, note.trim()) × 3 actions');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Cancel / dismiss → NO server call (reconNotePrompt resolves null ⟶ early return, buttons never touched).
+// 2. Cancel / Esc / backdrop → settles null → NO server call, no button disable. (A mutation settling '' here
+//    would run a refund on a DISMISSED dialog — these dispatch the REAL dismiss handlers so it goes red.)
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const t = buildEnv(); t.setButtons(3);
-  const p = t.resolveReconciliationAction('ord-1', 'refund');
-  await tick();
-  t.settleReconNote(null);                            // Esc / Cancel / backdrop
-  await p;
-  assert.strictEqual(t.resolveCalls.length, 0, 'dismiss fired no resolve');
-  assert.ok(t.buttons().every(b => !b.everDisabled), 'buttons never disabled on dismiss (guard returned before the disable loop)');
-  ok('cancel/dismiss → no resolve call, no button disable');
+  for (const [name, dismiss] of [['cancel', 'clickCancel'], ['Esc', 'pressEsc'], ['backdrop', 'clickBackdrop']]) {
+    const t = buildEnv(); t.setButtons(3);
+    const p = t.resolveReconciliationAction('ord-1', 'refund');
+    await tick();
+    t.setNote('algo');                              // a non-empty textarea must NOT matter on dismiss
+    t[dismiss]();
+    await p;
+    assert.strictEqual(t.resolveCalls.length, 0, `${name}: fired no resolve`);
+    assert.ok(t.buttons().every(b => !b.everDisabled), `${name}: buttons never disabled`);
+  }
+  ok('cancel / Esc / backdrop → settle null → no resolve, no button disable (real dismiss handlers)');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. Abandon requires a non-blank note (same error, no call); materialize/refund keep it optional.
+// 3. Abandon requires a non-blank note (same error, no call); materialize AND refund keep it optional.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const t = buildEnv(); t.setButtons(3);
   const p = t.resolveReconciliationAction('ord-1', 'abandon');
   await tick();
-  t.settleReconNote('   ');                           // whitespace-only note on abandon
+  t.setNote('   ');                                 // whitespace-only on abandon
+  t.clickConfirm();
   await p;
   assert.strictEqual(t.resolveCalls.length, 0, 'abandon+blank fired no resolve');
   assert.ok(t.toasts.some(([m, tt]) => m === 'Se requiere una nota para descartar' && tt === 'error'), 'same required-note error toast');
 
-  const t2 = buildEnv(); t2.setButtons(3);
-  const p2 = t2.resolveReconciliationAction('ord-2', 'materialize');
-  await tick();
-  t2.settleReconNote('');                             // empty note on materialize → optional, still resolves
-  await tick();
-  assert.strictEqual(t2.resolveCalls.length, 1, 'materialize with empty note still resolves (optional)');
-  assert.strictEqual(t2.resolveCalls[0][2], '', 'empty note passed through as ""');
-  t2.settleXpd({ outcome: 'materialized' }); await p2;
-  ok('abandon requires non-blank note (same error, no call); materialize/refund note optional');
+  for (const action of ['materialize', 'refund']) {
+    const t2 = buildEnv(); t2.setButtons(3);
+    const p2 = t2.resolveReconciliationAction('ord-2', action);
+    await tick();
+    t2.setNote('');                                 // empty note → optional for materialize/refund
+    t2.clickConfirm();
+    await tick();
+    assert.strictEqual(t2.resolveCalls.length, 1, `${action}: empty note still resolves`);
+    assert.strictEqual(t2.resolveCalls[0][2], '', `${action}: empty note passed as ""`);
+    t2.settleXpd({ outcome: 'materialized' }); await p2;
+  }
+  ok('abandon requires non-blank note (same error, no call); materialize & refund note optional');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. Double-fire guard — a 2nd action while the dialog is open fires NO resolve; buttons disable during the
-//    await and re-enable in finally.
+// 4. Double-fire — buttons disabled during await + re-enabled in finally; 2nd concurrent action fires no
+//    resolve; a late Esc after Confirm cannot double-settle.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const t = buildEnv(); const btns = t.setButtons(3);
   const p = t.resolveReconciliationAction('ord-1', 'materialize');
   await tick();
-  const p2 = t.resolveReconciliationAction('ord-1', 'refund');   // second, while the dialog is open
-  await p2;                                                      // single-instance ⟶ reconNotePrompt(null) ⟶ returns
-  assert.strictEqual(t.resolveCalls.length, 0, 'second concurrent action fired no resolve');
-  t.settleReconNote('nota');
+  const p2 = t.resolveReconciliationAction('ord-1', 'refund');   // second while the dialog is open
+  await p2;
+  assert.strictEqual(t.resolveCalls.length, 0, '2nd concurrent action fired no resolve (single-instance)');
+  t.setNote('nota'); t.clickConfirm();
   await tick();
   assert.ok(btns.every(b => b.disabled === true), 'buttons disabled while resolve awaits');
   assert.strictEqual(t.resolveCalls.length, 1, 'exactly one resolve after confirm');
-  t.settleXpd({ outcome: 'materialized' });
-  await p;
+  t.pressEsc();                                     // late Esc — dialog already settled
+  await tick();
+  assert.strictEqual(t.resolveCalls.length, 1, 'late Esc after confirm does not double-settle');
+  t.settleXpd({ outcome: 'materialized' }); await p;
   assert.ok(btns.every(b => b.disabled === false), 'buttons re-enabled in finally');
-  ok('double-fire guard: single-instance dialog + buttons disabled during await, re-enabled in finally');
+  ok('double-fire: single-instance + disabled during await + re-enabled in finally + no late double-settle');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. reconNotePrompt returns the RAW value on confirm (caller trims) / null on dismiss.
+// 5. ⌘/Ctrl-Enter confirms with the real textarea value.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const t = buildEnv();
-  const q = t.reconNotePrompt('materialize', 'o9');
+  const t = buildEnv(); t.setButtons(3);
+  const p = t.resolveReconciliationAction('ord-9', 'materialize');
   await tick();
-  t.settleReconNote('  raw value  ');
-  assert.strictEqual(await q, '  raw value  ', 'confirm resolves the RAW textarea value (untrimmed)');
-  const q2 = t.reconNotePrompt('abandon', 'o9');
+  t.setNote('  via teclado  ');
+  t.cmdEnter();
   await tick();
-  t.settleReconNote(null);
-  assert.strictEqual(await q2, null, 'dismiss resolves null');
-  ok('reconNotePrompt → raw value on confirm, null on dismiss');
+  assert.deepStrictEqual(t.resolveCalls[0], ['ord-9', 'materialize', 'via teclado'], '⌘Enter confirms with trimmed real value');
+  t.settleXpd({ outcome: 'materialized' }); await p;
+  ok('⌘/Ctrl-Enter confirms with the real textarea value');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6. The money-terminal outcome+finally block is byte-identical to the approved base b50a467 (only the input
-//    surface changed). And native prompt() is gone from the resolver.
+// 6. Focus-restore survives a render tick (defect-2): a detached opener at dismiss must not black-hole focus —
+//    the shared cascade lands on a fallback. (Reverting to opener-only restore → nothing focused → red.)
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const outcomeOf = (src) => { const i = src.indexOf('const sel = (window.CSS'); return src.slice(i); };
+  const t = buildEnv(); t.setButtons(3);
+  const p = t.resolveReconciliationAction('ord-1', 'refund');
+  await tick();
+  t.opener.offsetParent = null; t.opener.isConnected = false;    // the ~5s tick replaced the recon buttons
+  t.resetFocus();                                                // measure ONLY the dismiss's focus restore
+  t.pressEsc();
+  await p;
+  assert.ok(t.lastFocused() && t.lastFocused() !== t.opener, 'focus restored to a live fallback, not black-holed to the detached opener');
+  ok('focus-restore survives a render tick — dismiss after detach lands on a fallback (no black-hole)');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. The money-terminal outcome+finally block is byte-identical to base b50a467; native prompt() is gone; the
+//    styled dialog surface is present + aria-modal.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const outcomeOf = (src) => src.slice(src.indexOf('const sel = (window.CSS'));
   let baseHtml;
   try { baseHtml = execSync(`git show ${BASE}:xpizza-dispatch/index.html`, { cwd: __dirname, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); }
   catch (e) { console.error('  ! could not load base blob:', e.message); process.exit(1); }
@@ -165,13 +215,13 @@ function buildEnv() {
   assert.strictEqual(outcomeOf(resolveSrc), outcomeOf(baseResolve), 'outcome+finally block byte-identical to base b50a467');
   const resolveCode = resolveSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');   // strip comments (which mention prompt())
   assert.doesNotMatch(resolveCode, /(?<![\w.])prompt\(/, 'native prompt() removed from resolveReconciliationAction');
-  assert.match(resolveSrc, /await reconNotePrompt\(action, orderId\)/, 'note now collected via the styled reconNotePrompt');
-  // modal surface present + keyboard-operable
+  assert.match(resolveSrc, /await reconNotePrompt\(action, orderId\)/, 'note collected via the styled reconNotePrompt');
+  assert.match(promptBlock, /pickerReturnFocusTarget\(trigger \|\| opener, orderId, document\)/, 'focus-restore reuses the shared cascade (defect-2 fix)');
   assert.match(html, /id="recon-note-overlay"[^>]*role="dialog"[^>]*aria-modal="true"/, 'recon-note dialog present + aria-modal');
   assert.match(html, /<textarea id="recon-note-input"/, 'note textarea present');
   assert.match(html, /id="recon-note-confirm"/, 'confirm button present');
   assert.match(html, /id="recon-note-cancel"/, 'cancel button present');
-  ok('outcome/finally byte-identical to base; native prompt() gone; styled dialog surface present');
+  ok('outcome/finally byte-identical to base; native prompt() gone; focus cascade reused; dialog surface present');
 }
 
 console.log(`\ndispatch-recon-note: OK (${n} groups)`);

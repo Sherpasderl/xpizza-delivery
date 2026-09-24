@@ -4415,13 +4415,28 @@ const RECON_SUCCESS_OUTCOMES = new Set(['materialized', 'confirmed', 'already_co
 // dismiss / required-note / resolve / outcome / finally logic below is unchanged.
 let reconNoteSettle = null;
 let reconNoteOpener = null;
+let reconNoteOrderId = null;
 function settleReconNote(value) {
   if (!reconNoteSettle) return;
   const done = reconNoteSettle;
   reconNoteSettle = null;
   $('recon-note-overlay').classList.add('hidden');
-  const opener = reconNoteOpener; reconNoteOpener = null;
-  if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
+  const opener = reconNoteOpener; const orderId = reconNoteOrderId;
+  reconNoteOpener = null; reconNoteOrderId = null;
+  // a11y: restore focus to a VISIBLE, attached target on EVERY dismissal path. The board re-renders on a ~5s
+  // tick, so the opener may be detached by dismiss-time — re-query the current recon trigger for this order,
+  // then fall through the shared cascade (card → landmark → #topbar) so focus is never black-holed. Reuses
+  // Slice A's pickerReturnFocusTarget unchanged (the re-queried trigger is handed in as its opener).
+  let trigger = null;
+  if (orderId != null) {
+    const sel = (window.CSS && CSS.escape) ? CSS.escape(String(orderId)) : String(orderId);
+    try { trigger = document.querySelector(`.recon-card[data-order-id="${sel}"] .recon-btn`) || document.querySelector(`.recon-card[data-order-id="${sel}"]`); } catch (_) {}
+  }
+  const { el, temp } = pickerReturnFocusTarget(trigger || opener, orderId, document);
+  if (el) {
+    if (temp && el.setAttribute && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    try { el.focus(); } catch (_) {}
+  }
   done(value);
 }
 function reconNotePrompt(action, orderId) {
@@ -4436,6 +4451,7 @@ function reconNotePrompt(action, orderId) {
     if (reconNoteSettle) { resolve(null); return; }             // one dialog at a time
     reconNoteSettle = resolve;
     reconNoteOpener = document.activeElement;
+    reconNoteOrderId = orderId;
     $('recon-note-title').textContent = `${label} el pedido ${displayOrderLabel(orderId)}`;
     $('recon-note-warn').textContent = warn;
     $('recon-note-label').textContent = `Nota${noteRequired ? ' (requerida)' : ' (opcional)'}:`;
