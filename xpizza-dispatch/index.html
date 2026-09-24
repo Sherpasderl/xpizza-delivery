@@ -1972,10 +1972,14 @@
   .cola-seg-btn.on .cola-seg-n { background: var(--primary); color: var(--primary-fg); }
 
   /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
-  .cash-bar { background: linear-gradient(180deg, var(--card-1), var(--card-2)); box-shadow: var(--shadow); border-radius: 13px; padding: 14px 15px; margin: 4px 0 14px; }
-  .cash-lab { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); font-weight: 600; }
-  .cash-val { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; margin-top: 3px; color: var(--text); }
-  .cash-sub { font-size: 11px; color: var(--text-soft); margin-top: 2px; }
+  /* D3: cash/cuadre bar — mockup horizontal layout (figures + divider + Reconciliar link). Display + link only. */
+  .cash-bar { display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, var(--card-1), var(--card-2)); box-shadow: var(--shadow); border-radius: 13px; padding: 12px 14px; margin: 4px 0 14px; }
+  .cash-bar .ci { display: flex; flex-direction: column; line-height: 1.25; }
+  .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; color: var(--text); }
+  .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
+  .cash-div { width: 1px; height: 26px; background: var(--border-soft); flex: none; }
+  .cash-recon-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
+  .cash-recon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--hair-2); }
 
   /* ============ Right-rail tab strip (Task 10b) ============ */
   .rail-tabs { display: flex; gap: 3px; background: var(--track); border-radius: 12px; padding: 4px; margin: 14px 0 10px; }
@@ -2780,6 +2784,7 @@ function subscribeAll() {
     reconciliationOrders = orders || {};
     renderReconciliationSection();
     setTabBadge('tab-caja-n', Object.keys(reconciliationOrders).length);
+    renderCashBar();   // D3: refresh the cash bar's "Cuadres pendientes" count (read-only; keeps last cash snapshot)
   });
 
   // Dispatcher alerts: floating banner + sound when auto-assign couldn't
@@ -3657,26 +3662,39 @@ async function confirmCancelOrder(orderId) {
 // Cash bar — read-only aggregate of today's CLOSED cuadres
 // (driver_cash/{driver}/{shift}/cuadre/{cash_owed,cash_order_count,closed_at}). Open/in-street
 // cash is NOT in this node, so it is intentionally NOT shown (deferred, not fabricated).
+// D3: cash/cuadre bar — DISPLAY + "Reconciliar" LINK ONLY. Reads existing values (driver_cash totals +
+// the pending-reconciliation count); performs no cuadre math beyond summing the already-closed cuadres, and
+// NO write. The reconciliation panel (Caja rtab) owns the resolve logic. `cash` comes from subscribeToDriverCash;
+// the recon subscription calls this with no arg to refresh the pending count, so the last cash snapshot is cached.
+let lastDriverCash = {};
 function renderCashBar(cash) {
+  if (cash !== undefined) lastDriverCash = cash || {};
   const el = $('cash-bar');
   if (!el) return;
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const startMs = dayStart.getTime();
-  let total = 0, orders = 0;
-  for (const shifts of Object.values(cash || {})) {
+  let total = 0;
+  for (const shifts of Object.values(lastDriverCash || {})) {
     for (const shift of Object.values(shifts || {})) {
       const c = shift && shift.cuadre;
       if (c && Number.isFinite(c.closed_at) && c.closed_at >= startMs) {
         total += Number(c.cash_owed) || 0;
-        orders += Number(c.cash_order_count) || 0;
       }
     }
   }
+  const pending = Object.keys(reconciliationOrders || {}).length;   // read-only — pending payment reconciliations
   el.innerHTML = `
-    <div class="cash-lab">Cuadre de hoy</div>
-    <div class="cash-val">L ${escapeHtml(total.toLocaleString('es-HN'))}</div>
-    <div class="cash-sub">${escapeHtml(String(orders))} pedido(s) cerrado(s)</div>
+    <div class="ci"><b>L ${escapeHtml(total.toLocaleString('es-HN'))}</b><span>Efectivo del turno</span></div>
+    <div class="cash-div"></div>
+    <div class="ci"><b>${escapeHtml(String(pending))}</b><span>Cuadres pendientes</span></div>
+    <button class="cash-recon-btn" id="cash-recon-btn" type="button">Reconciliar</button>
   `;
+  // Reconciliar → the shipped reconciliation panel (Caja rtab). Navigation only; no cuadre math/write here.
+  const btn = $('cash-recon-btn');
+  if (btn) btn.addEventListener('click', () => {
+    const rtab = document.querySelector('#rail-tabs .rtab[data-tab="caja"]');
+    if (rtab && !rtab.classList.contains('on')) rtab.click();
+  });
 }
 
 // Pedidos tab — active in-flight orders (getActiveOrders), read-only, click → detail modal.
@@ -4427,7 +4445,8 @@ function setTabBadge(id, count) {
    order parked because this path cannot refund it automatically looked identical to an ordinary
    unconfirmed payment — indistinguishable in the queue, and the one needing a specific action looked
    like the one needing a glance. blocked_reason already carries the distinction; this renders it.
-   An unrecognised reason falls back to the original text rather than showing a dispatcher a raw key. */
+   An unrecognised reason falls back to the original text rather than showing a dispatcher a raw key.
+   (Ported from origin/main c954558 — a LIVE paid-after-close fix the overhaul branch was cut before.) */
 function reconReason(o) {
   switch (o && o.blocked_reason) {
     case 'manual_refund_required_paid_after_close':
