@@ -89,7 +89,9 @@ const selDim = (sel) => {
   const op = decl(sel, 'opacity'); if (op !== undefined) f *= parseFloat(op);
   const anim = decl(sel, 'animation'); if (anim) f *= keyframeMinOpacity(anim.trim().split(/\s+/)[0]);
   const flt = decl(sel, 'filter'); if (flt) { const om = flt.match(/opacity\(\s*([\d.]+)\s*\)/); if (om) f *= parseFloat(om[1]); }
-  return f;   // grayscale/saturate/blur are luminance-preserving → contrast-neutral, not counted
+  return f;   // only opacity-style dimming is counted. The one filter in use is grayscale() on stale rows,
+              // which preserves relative luminance (that row still computes ≥AA: 5.47/5.58); blur/saturate
+              // aren't present, so this guard doesn't model them (they'd need a live-browser pass).
 };
 const val = (M, t) => (M[t] !== undefined ? M[t] : t);                 // token name → its value, else literal
 const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[0]), val(M, spec[1])]) : resolveColor(M, val(M, spec)).rgb);
@@ -150,6 +152,10 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
     { n: 'btn recon materialize', fg: '.recon-btn.materialize', bg: [{ sel: '.recon-btn.materialize' }] },
     { n: 'btn recon refund', fg: '.recon-btn.refund', bg: [{ sel: '.recon-btn.refund' }] },
     { n: 'od-row phone link', fg: '.od-row a', bg: ['--surface'] },
+    // recon-note modal (C-2) surface
+    { n: 'recon-note confirm btn', fg: '.recon-note-btn.confirm', bg: [{ sel: '.recon-note-btn.confirm' }] },
+    { n: 'recon-note input', fg: '.recon-note-input', bg: [{ sel: '.recon-note-input' }] },
+    { n: 'recon-note warn', fg: '.recon-note-warn', bg: ['--surface'] },
   ];
   for (const [M, tag] of [[DARK, 'dark'], [LIGHT, 'light']]) {
     for (const [fg, bg] of TOKEN_PAIRS) {

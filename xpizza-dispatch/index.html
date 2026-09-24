@@ -1608,6 +1608,43 @@
     font-size: 12px;
   }
 
+  /* ==================== RECONCILIATION NOTE MODAL (C-2) ==================== */
+  /* Styled, keyboard-operable replacement for the native prompt() that collected the operator note the
+     server audits. Reuses the .overlay-bg scrim + .picker-panel shell so it matches the assign dialog. */
+  .recon-note-panel { width: 440px; }
+  .recon-note-warn { color: var(--warn); }
+  .recon-note-body { padding: 14px 20px 4px; }
+  .recon-note-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 7px; }
+  .recon-note-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 10px 12px;
+    resize: vertical;
+    min-height: 64px;
+  }
+  .recon-note-input::placeholder { color: var(--text-dim); }
+  .recon-note-input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; border-color: var(--primary); }
+  .recon-note-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px 18px; }
+  .recon-note-btn {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .recon-note-btn.cancel { background: transparent; border: 1px solid var(--border); color: var(--text-soft); }
+  .recon-note-btn.cancel:hover { background: var(--surface-2); color: var(--text); }
+  .recon-note-btn.confirm { background: var(--primary); border: 1px solid var(--primary); color: var(--primary-fg); }
+  .recon-note-btn.confirm:hover { filter: brightness(1.08); }
+
   /* ==================== TOAST ==================== */
   .toast {
     position: fixed;
@@ -2204,6 +2241,24 @@
     <div class="picker-list" id="picker-list"></div>
     <div class="picker-cancel">
       <button id="picker-cancel-btn">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reconciliation operator note (C-2): styled replacement for native prompt(); collects the server-audited note. -->
+<div class="overlay-bg hidden" id="recon-note-overlay" role="dialog" aria-modal="true" aria-labelledby="recon-note-title">
+  <div class="picker-panel recon-note-panel">
+    <div class="picker-header">
+      <div class="picker-title" id="recon-note-title">Resolver</div>
+      <div class="picker-sub recon-note-warn" id="recon-note-warn"></div>
+    </div>
+    <div class="recon-note-body">
+      <label class="recon-note-label" id="recon-note-label" for="recon-note-input">Nota (opcional):</label>
+      <textarea id="recon-note-input" class="recon-note-input" rows="3" aria-labelledby="recon-note-label"></textarea>
+    </div>
+    <div class="recon-note-actions">
+      <button id="recon-note-cancel" class="recon-note-btn cancel" type="button">Cancelar</button>
+      <button id="recon-note-confirm" class="recon-note-btn confirm" type="button">Confirmar</button>
     </div>
   </div>
 </div>
@@ -4352,7 +4407,24 @@ function renderReconciliationSection() {
 // (refund_pending / confirm_claim_failed / attempt_superseded / kept_queued) — those must NOT read as success.
 const RECON_SUCCESS_OUTCOMES = new Set(['materialized', 'confirmed', 'already_confirmed', 'refunded', 'abandoned']);
 
-async function resolveReconciliationAction(orderId, action) {
+// C-2: styled, keyboard-operable replacement for the native prompt() that collected the reconciliation note the
+// server AUDITS. reconNotePrompt returns a Promise<string|null> — the RAW textarea value on Confirm (the caller
+// applies .trim(), byte-identical to the old prompt()), or null on Cancel/Esc/backdrop (the old prompt()===null).
+// Single-instance: a second call while one is open resolves null (the overlay also blocks the board, so a second
+// open can't originate from a recon button). Only the INPUT SURFACE changes; resolveReconciliationAction's
+// dismiss / required-note / resolve / outcome / finally logic below is unchanged.
+let reconNoteSettle = null;
+let reconNoteOpener = null;
+function settleReconNote(value) {
+  if (!reconNoteSettle) return;
+  const done = reconNoteSettle;
+  reconNoteSettle = null;
+  $('recon-note-overlay').classList.add('hidden');
+  const opener = reconNoteOpener; reconNoteOpener = null;
+  if (opener && document.contains(opener)) { try { opener.focus(); } catch (_) {} }
+  done(value);
+}
+function reconNotePrompt(action, orderId) {
   const prompts = {
     materialize: ['Materializar', 'Solo si verificaste el COBRO en PixelPay. Confirma y materializa el pedido.'],
     refund:      ['Reembolsar', 'Anula/reembolsa el cargo en PixelPay y cierra el pedido.'],
@@ -4360,8 +4432,40 @@ async function resolveReconciliationAction(orderId, action) {
   };
   const [label, warn] = prompts[action] || ['Resolver', ''];
   const noteRequired = action === 'abandon';
-  // Confirm + collect an operator note in one dialog (required for abandon — the server audits it).
-  const note = prompt(`${label} el pedido ${displayOrderLabel(orderId)}\n\n${warn}\n\nNota${noteRequired ? ' (requerida)' : ' (opcional)'}:`, '');
+  return new Promise((resolve) => {
+    if (reconNoteSettle) { resolve(null); return; }             // one dialog at a time
+    reconNoteSettle = resolve;
+    reconNoteOpener = document.activeElement;
+    $('recon-note-title').textContent = `${label} el pedido ${displayOrderLabel(orderId)}`;
+    $('recon-note-warn').textContent = warn;
+    $('recon-note-label').textContent = `Nota${noteRequired ? ' (requerida)' : ' (opcional)'}:`;
+    const input = $('recon-note-input');
+    input.value = '';
+    $('recon-note-overlay').classList.remove('hidden');
+    const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    input.focus({ preventScroll: reduceMotion });
+  });
+}
+// Wiring (once): Confirm → RAW value, Cancel/backdrop/Esc → null. ⌘/Ctrl-Enter confirms; Tab is trapped in-dialog.
+$('recon-note-cancel').addEventListener('click', () => settleReconNote(null));
+$('recon-note-confirm').addEventListener('click', () => settleReconNote($('recon-note-input').value));
+$('recon-note-overlay').addEventListener('click', (e) => { if (e.target === $('recon-note-overlay')) settleReconNote(null); });
+$('recon-note-overlay').addEventListener('keydown', (e) => {
+  if (!reconNoteSettle) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); settleReconNote(null); return; }
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); settleReconNote($('recon-note-input').value); return; }
+  if (e.key === 'Tab') {
+    const focusables = [...$('recon-note-overlay').querySelectorAll('textarea, button:not([disabled])')];
+    const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+    if (target) { e.preventDefault(); target.focus(); }
+  }
+});
+
+async function resolveReconciliationAction(orderId, action) {
+  const noteRequired = action === 'abandon';
+  // Collect the operator note via the styled in-board field (replaces native prompt(); required for abandon —
+  // the server audits it). RAW value on confirm, null on dismiss — same shape the prompt() returned.
+  const note = await reconNotePrompt(action, orderId);
   if (note === null) return;                                     // cancelled
   if (noteRequired && !note.trim()) { toast('Se requiere una nota para descartar', 'error'); return; }
 
