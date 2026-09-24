@@ -37,6 +37,7 @@ const { readActiveVersion: _ravUnused } = require('../catalog/identity-bootstrap
    baseline chosen to satisfy the check is a fixture asserting against a world that does not exist. */
 const baselineOf = (d, r) => require('../catalog/catalog-firestore').getActivePointer(d, r);
 
+
 const vrefOf = (rid, v) => db.collection('restaurants').doc(rid).collection('versions').doc(v);
 const pointerOf = (rid) => db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
 
@@ -100,7 +101,7 @@ async function seed(rid, sha) {
      belongs in the runbook, not in a fixture. */
   await db.collection('restaurants').doc(rid).collection('versions').doc(res.versionId)
     .update({ identity_activation: admin.firestore.FieldValue.delete() });
-  await backfillIdentities(db, rid, catalogSnapshot(rid));
+  await backfillIdentities(db, rid, catalogSnapshot(rid), { captured: await getActivePointer(db, rid) });
   return res;
 }
 
@@ -289,7 +290,7 @@ const asPreP1 = async (rid, versionId) => {
      become its certified identity — the reservation broken at the moment of certification. */
   {
     const rid3 = 'la_musa';
-    await backfillIdentities(db, rid3, catalogSnapshot(rid3));
+    await backfillIdentities(db, rid3, catalogSnapshot(rid3), { captured: await getActivePointer(db, rid3) });
     const v = await readActiveVersion(db, rid3);
     const victim = v.dishes[0];
     const key = victim.data.key;
@@ -398,7 +399,7 @@ const asPreP1 = async (rid, versionId) => {
   {
     const rid6 = 'x_pizza';
     const cur = await readActiveVersion(db, rid6);
-    const orphan = await ensureIdentity(db, { rid: rid6, kind: 'dish', legacyKey: 'Churn Residue' });
+    const orphan = await ensureIdentity(db, { rid: rid6, kind: 'dish', legacyKey: 'Churn Residue' , captured: await getActivePointer(db, rid6) });
 
     const warns = []; const realWarn = console.warn;
     console.warn = (...a) => { if (String(a[0]) === 'identity_bootstrap_orphan') warns.push(a); else realWarn(...a); };
@@ -449,7 +450,7 @@ const asPreP1 = async (rid, versionId) => {
   {
     const rid8c = 'x_pizza';
     const cur = await readActiveVersion(db, rid8c);
-    const doomed = await ensureIdentity(db, { rid: rid8c, kind: 'dish', legacyKey: 'Residue Two' });
+    const doomed = await ensureIdentity(db, { rid: rid8c, kind: 'dish', legacyKey: 'Residue Two' , captured: await getActivePointer(db, rid8c) });
     const orig = db.runTransaction.bind(db);
     let moved = false;
     const racing = {
@@ -487,7 +488,7 @@ const asPreP1 = async (rid, versionId) => {
     /* 🔴 A DISH ORPHAN THAT WOULD OTHERWISE BE RETIRED. Without one, this cell proved nothing: every
        la_musa dish name is served, so no dish is eligible and the count is unchanged whether the
        ordering is right or wrong. The cell has to contain something the wrong ordering would destroy. */
-    const doomed8d = await ensureIdentity(db, { rid: rid8d, kind: 'dish', legacyKey: 'Unserved Before Extras' });
+    const doomed8d = await ensureIdentity(db, { rid: rid8d, kind: 'dish', legacyKey: 'Unserved Before Extras' , captured: await getActivePointer(db, rid8d) });
     const eligible = await idsColOf(db, rid8d, 'dish').doc(doomed8d.canonical_id).get();
     assert.strictEqual((eligible.data() || {}).status, STATUS_LIVE, 'premise — the staged dish orphan is live and unserved');
 
@@ -766,7 +767,7 @@ const asPreP1 = async (rid, versionId) => {
   {
     const rid18 = 'x_pizza';
     const v = await freshUncertifiedVersion(rid18);
-    const canary = await ensureIdentity(db, { rid: rid18, kind: 'dish', legacyKey: 'Uncertified Canary' });
+    const canary = await ensureIdentity(db, { rid: rid18, kind: 'dish', legacyKey: 'Uncertified Canary' , captured: await getActivePointer(db, rid18) });
     await assert.rejects(() => reconcileLegacyOrphans(db, rid18), /identity_reconcile_uncertified/,
       '🔴 reconcile ran against an uncertified version, where the certified half of the predicate is empty');
     const row = await idsColOf(db, rid18, 'dish').doc(canary.canonical_id).get();
@@ -789,7 +790,7 @@ const asPreP1 = async (rid, versionId) => {
     const victim = cur.dishes[0];
     const docRef = vrefOf(rid19, cur.versionId).collection('menu_items').doc(victim.id);
     const saved = (await docRef.get()).data();
-    const canary = await ensureIdentity(db, { rid: rid19, kind: 'dish', legacyKey: 'Unkeyable Canary' });
+    const canary = await ensureIdentity(db, { rid: rid19, kind: 'dish', legacyKey: 'Unkeyable Canary' , captured: await getActivePointer(db, rid19) });
 
     // A served object the key resolver cannot key at all.
     const { key: _dropped, ...noKey } = saved;
@@ -1145,7 +1146,7 @@ const asPreP1 = async (rid, versionId) => {
     await sourceRefOf(db, ridA).set(canonicalize(buildSourceFromCode(ridA)));
     const { input } = buildPublishCandidate(ridA, { activeVersionId: null }, { source_sha: 'post-d' });
     const pub = await publishVersion(db, ridA, input, { expected: { activeVersionId: null } });
-    await backfillIdentities(db, ridA, catalogSnapshot(ridA));
+    await backfillIdentities(db, ridA, catalogSnapshot(ridA), { captured: await getActivePointer(db, ridA) });
 
     const vref = db.collection('restaurants').doc(ridA).collection('versions').doc(pub.versionId);
     const before = ((await vref.get()).data() || {}).identity_activation;
@@ -1175,7 +1176,7 @@ const asPreP1 = async (rid, versionId) => {
       await sourceRefOf(db, ridB).set(canonicalize(buildSourceFromCode(ridB)));
       const { input } = buildPublishCandidate(ridB, { activeVersionId: null }, { source_sha: `st-${status}` });
       const pub = await publishVersion(db, ridB, input, { expected: { activeVersionId: null } });
-      await backfillIdentities(db, ridB, catalogSnapshot(ridB));
+      await backfillIdentities(db, ridB, catalogSnapshot(ridB), { captured: await getActivePointer(db, ridB) });
       const vref = db.collection('restaurants').doc(ridB).collection('versions').doc(pub.versionId);
       /* Written onto what the REAL writer produced, not hand-built: only the status is forced, so the
          rest of the record is whatever publishVersion actually wrote. */

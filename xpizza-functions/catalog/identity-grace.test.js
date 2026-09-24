@@ -19,6 +19,13 @@ const { itemPricingKey, PRICING_KEY_STAMP, computeServerTotal, MENU_BY_RESTAURAN
 const { computeServerNet } = require('../compute-server-net');
 const { pricedLineItems } = require('../factura/pricing');
 
+/* 🔴 THE FENCE MAKES THE BASELINE A REQUIRED ARGUMENT, so these fixtures now STATE the baseline they
+   were written against — the same honest cost writeVersion's baseline charged when it was made
+   required, and for the same reason: a parameter nothing supplies is a parameter that protects
+   nothing. `{version: null, generation: 0}` is the pre-P1 pair — nothing published — which is what
+   every one of these restaurants actually has. */
+const PRE_P1 = Object.freeze({ version: null, generation: 0 });
+
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('identity-grace: FAILED — exited without completing'); process.exitCode = 1; } });
@@ -40,8 +47,8 @@ async function seedRegistry(db, rid) {
   const cart = CART[rid]();
   const dishKey = rawLegacyKey(rid, cart[0]);
   const extraKey = rawLegacyKey(rid, cart[0].extras[0]);
-  const d = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: dishKey });
-  const e = await ensureIdentity(db, { rid, kind: 'extra', legacyKey: extraKey });
+  const d = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: dishKey , captured: PRE_P1 });
+  const e = await ensureIdentity(db, { rid, kind: 'extra', legacyKey: extraKey , captured: PRE_P1 });
   return { dishKey, extraKey, dishId: d.canonical_id, extraId: e.canonical_id };
 }
 const withIds = (rid, ids) => {
@@ -93,7 +100,7 @@ const withIds = (rid, ids) => {
       const db = memFirestore();
       const ids = await seedRegistry(db, rid);
       const otherKey = rid === 'la_musa' ? 'dimsum_02' : 'Hawaiana';
-      const other = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: otherKey });
+      const other = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: otherKey , captured: PRE_P1 });
 
       const cart = withIds(rid, ids);
       cart[0].dish_id = other.canonical_id;                 // this line now claims ANOTHER dish's id
@@ -309,11 +316,11 @@ const withIds = (rid, ids) => {
   {
     const rid = 'x_pizza';
     const db = memFirestore();
-    const first = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    const first = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
     await keysCol(db, rid, 'dish').doc(enc('Carnivora'))._delete();          // the reverse row is lost
     const before = (await idsCol(db, rid, 'dish').get()).docs.length;
 
-    const second = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    const second = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
     assert.strictEqual(second.canonical_id, first.canonical_id, '🔴 a SECOND id was minted for one dish — split identity');
     assert.strictEqual(second.adopted, true, 'and it reports the adoption');
     assert.strictEqual((await idsCol(db, rid, 'dish').get()).docs.length, before, 'the id row count is unchanged');
@@ -322,25 +329,25 @@ const withIds = (rid, ids) => {
 
     // Racing callers converge on one adoption rather than one adopting and one minting.
     const db2 = memFirestore();
-    const orig = await ensureIdentity(db2, { rid, kind: 'dish', legacyKey: 'Hawaiana' });
+    const orig = await ensureIdentity(db2, { rid, kind: 'dish', legacyKey: 'Hawaiana' , captured: PRE_P1 });
     await keysCol(db2, rid, 'dish').doc(enc('Hawaiana'))._delete();
-    const raced = await Promise.all([1, 2, 3].map(() => ensureIdentity(db2, { rid, kind: 'dish', legacyKey: 'Hawaiana' })));
+    const raced = await Promise.all([1, 2, 3].map(() => ensureIdentity(db2, { rid, kind: 'dish', legacyKey: 'Hawaiana' , captured: PRE_P1 })));
     assert.strictEqual(new Set(raced.map((r) => r.canonical_id)).size, 1, '🔴 racing adoptions produced more than one id');
     assert.ok(raced.every((r) => r.canonical_id === orig.canonical_id), '…and it is the original');
 
     // A RETIRED id is never revived — the reservation is the whole point.
     const db3 = memFirestore();
-    const r3 = await ensureIdentity(db3, { rid, kind: 'dish', legacyKey: 'Pepperoni' });
+    const r3 = await ensureIdentity(db3, { rid, kind: 'dish', legacyKey: 'Pepperoni' , captured: PRE_P1 });
     await retireIdentity(db3, { rid, kind: 'dish', canonicalId: r3.canonical_id });
-    const after3 = await ensureIdentity(db3, { rid, kind: 'dish', legacyKey: 'Pepperoni' });
+    const after3 = await ensureIdentity(db3, { rid, kind: 'dish', legacyKey: 'Pepperoni' , captured: PRE_P1 });
     assert.notStrictEqual(after3.canonical_id, r3.canonical_id, '🔴 a RETIRED id was revived — it is reserved forever');
 
     // Two LIVE ids for one key is refused, not arbitrated.
     const db4 = memFirestore();
-    const a = await ensureIdentity(db4, { rid, kind: 'dish', legacyKey: 'Vegetariana' });
+    const a = await ensureIdentity(db4, { rid, kind: 'dish', legacyKey: 'Vegetariana' , captured: PRE_P1 });
     await idsCol(db4, rid, 'dish').doc('SECONDLIVE1')._set({ legacy_key: 'Vegetariana', status: 'live', kind: 'dish', created_at: 'x' });
     await keysCol(db4, rid, 'dish').doc(enc('Vegetariana'))._delete();
-    await assert.rejects(() => ensureIdentity(db4, { rid, kind: 'dish', legacyKey: 'Vegetariana' }),
+    await assert.rejects(() => ensureIdentity(db4, { rid, kind: 'dish', legacyKey: 'Vegetariana' , captured: PRE_P1 }),
       /identity_conflicting_live_ids/, '🔴 two live ids for one key must be REFUSED, not silently arbitrated');
     assert.ok(a.canonical_id, 'premise — the original was real');
     ok('the writer adopts an orphan, races converge, a retired id is never revived, and a two-live conflict is refused');
@@ -352,8 +359,8 @@ const withIds = (rid, ids) => {
   {
     const rid = 'la_musa';
     const db = memFirestore();
-    const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' });
-    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_02' });
+    const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' , captured: PRE_P1 });
+    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_02' , captured: PRE_P1 });
     const healthy = (await keysCol(db, rid, 'dish').doc(enc('dimsum_02')).get()).data();
     await keysCol(db, rid, 'dish').doc(enc('dimsum_01'))._delete();
 
@@ -486,7 +493,7 @@ const withIds = (rid, ids) => {
     _resetResolveCache();
     const rid = 'x_pizza';
     const db = memFirestore();
-    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
     const real = (await keysCol(db, rid, 'dish').doc(enc('Carnivora')).get()).data().canonical_id;
 
     let reads = 0;
@@ -528,11 +535,11 @@ const withIds = (rid, ids) => {
   {
     const rid = 'x_pizza';
     const db = memFirestore();
-    const first = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    const first = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
     await keysCol(db, rid, 'dish').doc(enc('Carnivora'))._delete();          // orphan staged
 
     await assert.rejects(
-      () => ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora', shouldStop: () => true }),
+      () => ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora', shouldStop: () => true , captured: PRE_P1 }),
       /identity_abandoned/,
       '🔴 an adoption committed after the caller\'s deadline had passed',
     );
@@ -541,7 +548,7 @@ const withIds = (rid, ids) => {
 
     // SENSITIVITY: the same call without the deadline does adopt, so the refusal above is the guard
     // biting and not the adoption being broken.
-    const after = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora', shouldStop: () => false });
+    const after = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora', shouldStop: () => false , captured: PRE_P1 });
     assert.strictEqual(after.adopted, true, 'non-vacuity: with no deadline the same state adopts');
     assert.strictEqual(after.canonical_id, first.canonical_id, '…to the same id');
     ok('a passed deadline aborts the ADOPTION write too, committing nothing — and without it the adoption still works');
@@ -553,7 +560,7 @@ const withIds = (rid, ids) => {
     // (a) retired between the scan and the repair — the sweep must NOT restore a pointer to it.
     {
       const db = memFirestore();
-      const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' });
+      const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' , captured: PRE_P1 });
       await keysCol(db, rid, 'dish').doc(enc('dimsum_01'))._delete();        // orphan staged
       let raced = false;
       const racing = {
@@ -595,7 +602,7 @@ const withIds = (rid, ids) => {
     // (c) an EXISTING but malformed reverse row is evidence of a fault, not a slot to overwrite.
     {
       const db = memFirestore();
-      const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' });
+      const a = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'dimsum_01' , captured: PRE_P1 });
       await keysCol(db, rid, 'dish').doc(enc('dimsum_01'))._set({ canonical_id: '', kind: 'dish' });
       const r = await sweepIdentityIntegrity(db, rid, 'dish');
       assert.strictEqual(r.repaired, 0, '🔴 the sweep overwrote a row that EXISTS — it repairs missing rows only');
@@ -616,7 +623,7 @@ const withIds = (rid, ids) => {
     _resetResolveCache();
     const rid = 'x_pizza';
     const db = memFirestore();
-    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' });
+    await ensureIdentity(db, { rid, kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
     const real = (await keysCol(db, rid, 'dish').doc(enc('Carnivora')).get()).data().canonical_id;
 
     let reads = 0;

@@ -19,6 +19,8 @@ const { lookupByLegacyKeys } = require('../catalog/identity-registry');
 const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { shadowValidateIds } = require('../catalog/identity-shadow-validate');
 const { keyOf } = require('../catalog/identity-overlay');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+
 
 admin.initializeApp({ projectId: 'demo-xpizza' });     // FIRESTORE_EMULATOR_HOST set by emulators:exec
 const fs = admin.firestore();
@@ -37,7 +39,7 @@ const lineFor = (rid, rec, dishId) => {
 (async () => {
   for (const rid of ['x_pizza', 'la_musa']) {
     const menu = catalogSnapshot(rid);
-    const report = await backfillIdentities(fs, rid, menu);
+    const report = await backfillIdentities(fs, rid, menu, { captured: await getActivePointer(fs, rid) });
     assert.ok(report.dish.total > 0, `${rid}: premise — the REAL backfill registered ${report.dish.total} dishes`);
     const keys = liveKeys(rid, menu);
     const ids = await lookupByLegacyKeys(fs, { rid, kind: 'dish', legacyKeys: keys.dish });

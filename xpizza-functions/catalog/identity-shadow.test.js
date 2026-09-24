@@ -17,6 +17,13 @@ const { classifyClaim, validateClaim } = require('./identity-registry');
 const { memFirestore } = require('./identity-fixture');
 const { ensureIdentity } = require('./identity-registry');
 
+/* 🔴 THE FENCE MAKES THE BASELINE A REQUIRED ARGUMENT, so these fixtures now STATE the baseline they
+   were written against — the same honest cost writeVersion's baseline charged when it was made
+   required, and for the same reason: a parameter nothing supplies is a parameter that protects
+   nothing. `{version: null, generation: 0}` is the pre-P1 pair — nothing published — which is what
+   every one of these restaurants actually has. */
+const PRE_P1 = Object.freeze({ version: null, generation: 0 });
+
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('identity-shadow: FAILED — exited without completing'); process.exitCode = 1; } });
@@ -52,8 +59,8 @@ const cart = (over = {}) => [{
      the other's shape would be asserting a contract change nobody asked for. */
   {
     const db = memFirestore();
-    await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' });
-    const realId = (await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' })).canonical_id;
+    await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
+    const realId = (await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 })).canonical_id;
 
     const cases = [
       ['absent (non-string)', 'Carnivora', 123, 'absent'],
@@ -266,7 +273,7 @@ const cart = (over = {}) => [{
   {
     // Two lines of the SAME dish claiming DIFFERENT ids — the read is deduped, the verdict is not.
     const db = memFirestore();
-    const real = (await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' })).canonical_id;
+    const real = (await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 })).canonical_id;
     const two = [
       { name: 'Carnivora', qty: 1, price: 340, extras: [], dish_id: real },
       { name: 'Carnivora', qty: 1, price: 340, extras: [], dish_id: 'WRONGID999' },

@@ -26,14 +26,21 @@ const { memFirestore, fullRegistry, partialRegistry, availabilityStub } = requir
 const { backfillIdentities, liveKeys } = require('./identity-backfill');
 const { catalogSnapshot } = require('./generate-form-bundle');
 
+/* 🔴 THE FENCE MAKES THE BASELINE A REQUIRED ARGUMENT, so these fixtures now STATE the baseline they
+   were written against — the same honest cost writeVersion's baseline charged when it was made
+   required, and for the same reason: a parameter nothing supplies is a parameter that protects
+   nothing. `{version: null, generation: 0}` is the pre-P1 pair — nothing published — which is what
+   every one of these restaurants actually has. */
+const PRE_P1 = Object.freeze({ version: null, generation: 0 });
+
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 (async () => {
   // ── 1. ONE OBJECT, ONE ID — including on a re-run ─────────────────────────────────────────────
   {
     const db = memFirestore();
-    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' });
-    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' });
+    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
+    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Carnivora' , captured: PRE_P1 });
     assert.strictEqual(a.created, true, 'the first assignment mints');
     assert.strictEqual(b.created, false, '🔴 the second preserves — a backfill that re-mints hands one object two identities');
     /* 🔴 AND IT ANSWERED FROM THE KEY ROW, not from D4's orphan-adoption fallback. Those two paths
@@ -59,7 +66,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const db = memFirestore();
     let retries = 0; db._onRetry = () => { retries += 1; };
     const results = await Promise.all(
-      Array.from({ length: 6 }, () => ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Margherita' })),
+      Array.from({ length: 6 }, () => ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Margherita' , captured: PRE_P1 })),
     );
     const ids = new Set(results.map((r) => r.canonical_id));
     assert.strictEqual(ids.size, 1, `🔴 six concurrent seeds produced ${ids.size} ids — one object must have one identity`);
@@ -77,7 +84,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       ['x_pizza', 'dish', 'Carnivora', false],
       ['x_pizza', 'extra', 'Salsa Roja', false],
     ]) {
-      const r = await ensureIdentity(db, { rid, kind, legacyKey: key });
+      const r = await ensureIdentity(db, { rid, kind, legacyKey: key , captured: PRE_P1 });
       if (expectSame) assert.strictEqual(r.canonical_id, key, `${rid}/${kind}: an already-stable slug is grandfathered, not re-minted`);
       else assert.notStrictEqual(r.canonical_id, key, `${rid}/${kind}: 🔴 a DISPLAY NAME must never become the id`);
     }
@@ -89,8 +96,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // id. If the kinds shared a space, grandfathering la_musa would make them collide constantly.
   {
     const db = memFirestore();
-    const d = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'shared_slug' });
-    const e = await ensureIdentity(db, { rid: 'la_musa', kind: 'extra', legacyKey: 'shared_slug' });
+    const d = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'shared_slug' , captured: PRE_P1 });
+    const e = await ensureIdentity(db, { rid: 'la_musa', kind: 'extra', legacyKey: 'shared_slug' , captured: PRE_P1 });
     assert.strictEqual(d.canonical_id, 'shared_slug');
     assert.strictEqual(e.canonical_id, 'shared_slug');
     assert.strictEqual(d.created && e.created, true, '🔴 both minted independently — the kinds do not collide');
@@ -106,7 +113,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // to a dish nobody meant. Unrepairable after the fact, so it is never freed.
   {
     const db = memFirestore();
-    const first = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Temporal' });
+    const first = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Temporal' , captured: PRE_P1 });
     const r = await retireIdentity(db, { rid: 'x_pizza', kind: 'dish', canonicalId: first.canonical_id });
     assert.strictEqual(r.retired, true);
     const gone = await lookupByLegacyKeys(db, { rid: 'x_pizza', kind: 'dish', legacyKeys: ['Temporal'] });
@@ -115,7 +122,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.ok(idDoc, '🔴 the ID ROW MUST REMAIN — a deleted row is a freed id, and a freed id is alias reuse');
     assert.strictEqual(idDoc.status, 'retired', '🔴 …reserved rather than live');
     // …and a new object with the same name gets a DIFFERENT id.
-    const again = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Temporal' });
+    const again = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Temporal' , captured: PRE_P1 });
     assert.notStrictEqual(again.canonical_id, first.canonical_id,
       '🔴 a re-created object must not inherit the retired id — that is alias reuse');
     ok('a retired id stays reserved; a re-created object gets a new one');
@@ -124,8 +131,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   // ── 6. 🔴 A SUBMITTED ID IS CHECKED, NEVER ADOPTED — INCLUDING A SWAP ─────────────────────────
   {
     const db = memFirestore();
-    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Uno' });
-    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Dos' });
+    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Uno' , captured: PRE_P1 });
+    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Dos' , captured: PRE_P1 });
     assert.deepStrictEqual(await validateClaim(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Uno', claimedId: a.canonical_id }),
       { ok: true, actual: a.canonical_id }, 'the honest claim passes');
     /* THE SWAP: two VALID ids exchanged between two REAL objects. Every field-level check passes —
@@ -145,14 +152,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     const db = memFirestore();
     for (const key of ['Pizza / Media', 'Café con leche.', 'Ñoquis #1', 'a'.repeat(120)]) {
-      const r = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: key });
+      const r = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: key , captured: PRE_P1 });
       const back = await lookupByLegacyKeys(db, { rid: 'x_pizza', kind: 'dish', legacyKeys: [key] });
       assert.strictEqual(back.get(key), r.canonical_id, `${JSON.stringify(key)} round-trips`);
       assert.ok(!encodeKey(key).includes('/'), '🔴 …and never puts a slash in the document path');
     }
     // …and two keys that a sanitiser would collapse stay distinct.
-    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Salsa Roja' });
-    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Salsa/Roja' });
+    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Salsa Roja' , captured: PRE_P1 });
+    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Salsa/Roja' , captured: PRE_P1 });
     assert.notStrictEqual(a.canonical_id, b.canonical_id,
       '🔴 keys that a sanitiser would collapse must stay two identities');
     ok('merchant-typed keys round-trip encoded — slashes, dots, accents, length, and near-collisions');
@@ -256,7 +263,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       assert.ok(expectDish > 0 && expectExtra > 0, `${rid}: the live catalog is non-empty to begin with`);
 
       const db = memFirestore();
-      const first = await backfillIdentities(db, rid, menu);
+      const first = await backfillIdentities(db, rid, menu, { captured: PRE_P1 });
 
       // NONZERO — and not merely nonzero: every live record, so a half-read regression fails too.
       assert.strictEqual(first.dish.total, expectDish,
@@ -283,7 +290,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       }
 
       // PRESERVATION ON RE-RUN — same store, same reader, second pass mints nothing.
-      const second = await backfillIdentities(db, rid, menu);
+      const second = await backfillIdentities(db, rid, menu, { captured: PRE_P1 });
       assert.strictEqual(second.dish.created, 0, `🔴 ${rid}: a re-run mints no dish`);
       assert.strictEqual(second.extra.created, 0, `🔴 ${rid}: a re-run mints no extra`);
       assert.strictEqual(second.dish.preserved, expectDish, `${rid}: it preserves every dish instead`);
@@ -302,12 +309,12 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const db = memFirestore();
     const unreadable = { items: [{ sku: 'X1' }, { sku: 'X2' }], extras: [{ sku: 'E1' }] };
     await assert.rejects(
-      () => backfillIdentities(db, 'x_pizza', unreadable),
+      () => backfillIdentities(db, 'x_pizza', unreadable, { captured: PRE_P1 }),
       /identity_backfill_unkeyable/,
       '🔴 an input this cannot key is reported as a fault — the exact failure that previously returned a report of zeros',
     );
     // Non-vacuity: a genuinely empty catalog is NOT a fault, so the guard is about shape, not emptiness.
-    const empty = await backfillIdentities(db, 'x_pizza', { items: [], extras: [] });
+    const empty = await backfillIdentities(db, 'x_pizza', { items: [], extras: [] }, { captured: PRE_P1 });
     assert.strictEqual(empty.dish.total, 0, 'an empty catalog still reports zero without throwing');
     ok('an unkeyable input throws where an empty one reports zero');
   }
@@ -379,13 +386,13 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
      re-issued, reported as an ordinary idempotent re-run. */
   {
     const db = memFirestore();
-    const first = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' });
+    const first = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' , captured: PRE_P1 });
     assert.strictEqual(first.canonical_id, 'dimsum_01', 'premise — la_musa grandfathers the slug');
     const gone = await retireIdentity(db, { rid: 'la_musa', kind: 'dish', canonicalId: 'dimsum_01' });
     assert.strictEqual(gone.retired, true, 'premise — it really was retired');
 
     let out = null, threw = null;
-    try { out = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' }); }
+    try { out = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' , captured: PRE_P1 }); }
     catch (e) { threw = (e && e.message) || String(e); }
     assert.strictEqual(out, null,
       `🔴 a retired slug must NOT come back as a preserved identity (got ${JSON.stringify(out)})`);
@@ -394,7 +401,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
     // Non-vacuity: a DIFFERENT, unretired slug on the same brand still registers normally, so the
     // refusal is about retirement and not about the grandfathered path being broken.
-    const other = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_02' });
+    const other = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_02' , captured: PRE_P1 });
     assert.strictEqual(other.canonical_id, 'dimsum_02', 'non-vacuity: an unretired slug still grandfathers');
     assert.strictEqual(other.created, true, '…and really is a fresh assignment');
     ok('a retired grandfathered slug is refused by name, not re-issued as a preserved id');
@@ -432,16 +439,16 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
     // …and it reaches the caller through backfillIdentities, which is where an operator meets it.
     await assert.rejects(
-      () => backfillIdentities(db, 'x_pizza', { items: [good, { sku: 'X9' }], extras: [] }),
+      () => backfillIdentities(db, 'x_pizza', { items: [good, { sku: 'X9' }], extras: [] }, { captured: PRE_P1 }),
       /identity_backfill_unkeyable/,
       '🔴 the backfill refuses a partially unkeyable catalog rather than registering the part it understood');
 
     /* NON-VACUITY, three ways — otherwise a guard that threw on everything would pass all of the
        above. A wholly keyable catalog still backfills, an empty one still reports zero, and the real
        reader is still accepted. */
-    const okReport = await backfillIdentities(db, 'x_pizza', { items: [good], extras: [] });
+    const okReport = await backfillIdentities(db, 'x_pizza', { items: [good], extras: [] }, { captured: PRE_P1 });
     assert.strictEqual(okReport.dish.total, 1, 'non-vacuity: a keyable record still registers');
-    const empty = await backfillIdentities(db, 'x_pizza', { items: [], extras: [] });
+    const empty = await backfillIdentities(db, 'x_pizza', { items: [], extras: [] }, { captured: PRE_P1 });
     assert.strictEqual(empty.dish.total, 0, 'non-vacuity: an empty catalog still reports zero without throwing');
     const real = liveKeys('la_musa', catalogSnapshot('la_musa'));
     assert.strictEqual(real.dish.length, 44, 'non-vacuity: the REAL reader passes the per-record guard on every record');

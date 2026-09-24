@@ -30,6 +30,8 @@ const {
   encodeKey, STATUS_LIVE, STATUS_RETIRED, RESOLVE_MAX_LOOKUPS,
 } = require('../catalog/identity-registry');
 const { sweepIdentityIntegrity } = require('../catalog/identity-sweep');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+
 
 admin.initializeApp({ projectId: 'demo-xpizza' });   // FIRESTORE_EMULATOR_HOST set by emulators:exec
 const db = admin.firestore();
@@ -50,7 +52,7 @@ const liveIdsFor = async (rid, kind, legacyKey) =>
 /* Stage the exact corruption D4 exists for: a LIVE id row whose reverse row is gone. Minted by the
    real ensureIdentity — not hand-written — so the orphan has production's own field shape. */
 async function stageOrphan(rid, kind, legacyKey) {
-  const { canonical_id } = await ensureIdentity(db, { rid, kind, legacyKey });
+  const { canonical_id } = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
   await keyRowOf(rid, kind, legacyKey).delete();
   assert.strictEqual((await keyRowOf(rid, kind, legacyKey).get()).exists, false,
     `premise — ${rid}/${kind}/${legacyKey} really is orphaned`);
@@ -103,7 +105,7 @@ function countingFs() {
 
     // Started synchronously into the array, THEN awaited — genuinely in flight together.
     const calls = [];
-    for (let i = 0; i < contenders; i += 1) calls.push(ensureIdentity(counting, { rid, kind, legacyKey }));
+    for (let i = 0; i < contenders; i += 1) calls.push(ensureIdentity(counting, { rid, kind, legacyKey , captured: await getActivePointer(counting, rid) }));
     const out = await Promise.all(calls);
 
     const ids = new Set(out.map((r) => r.canonical_id));
@@ -134,13 +136,13 @@ function countingFs() {
      re-created object arrives in. */
   {
     const rid = 'x_pizza', kind = 'dish', legacyKey = 'Retirada';
-    const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey });
+    const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
     const r = await retireIdentity(db, { rid, kind, canonicalId: retiredId });
     assert.strictEqual(r.retired, true, 'premise — it really was retired');
     assert.strictEqual((await keyRowOf(rid, kind, legacyKey).get()).exists, false,
       'premise — retirement removed the reverse row, leaving exactly cell 1\'s shape but retired');
 
-    const again = await ensureIdentity(db, { rid, kind, legacyKey });
+    const again = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
     assert.notStrictEqual(again.canonical_id, retiredId,
       '🔴 THE RETIRED ID WAS HANDED BACK OUT — every historical record naming it now resolves to a different object');
     assert.strictEqual(again.created, true, 'the re-created object gets a genuine fresh mint, not an adoption');
@@ -158,8 +160,11 @@ function countingFs() {
     await idsCol(rid, kind).doc('AAAAAAAAAA').set({ legacy_key: legacyKey, status: STATUS_LIVE, kind, created_at: 'x' });
     await idsCol(rid, kind).doc('BBBBBBBBBB').set({ legacy_key: legacyKey, status: STATUS_LIVE, kind, created_at: 'x' });
 
+    /* Captured ONCE, before the work — which is what a real caller does anyway, and what keeps the
+       pair out of a non-async arrow. */
+    const cap = await getActivePointer(db, rid);
     await assert.rejects(
-      () => ensureIdentity(db, { rid, kind, legacyKey }),
+      () => ensureIdentity(db, { rid, kind, legacyKey, captured: cap }),
       (e) => /identity_conflicting_live_ids/.test(String(e && e.message)) && String(e.message).includes(legacyKey),
       '🔴 a two-live-id conflict did not refuse by name — it either picked a winner or minted a third',
     );
@@ -174,7 +179,7 @@ function countingFs() {
   {
     const rid = 'la_musa', kind = 'extra', legacyKey = 'salsa_ponzu';
     // Healthy neighbours, so "does not touch healthy rows" is measured against real rows, not an empty set.
-    for (const k of ['salsa_soja', 'salsa_picante']) await ensureIdentity(db, { rid, kind, legacyKey: k });
+    for (const k of ['salsa_soja', 'salsa_picante']) await ensureIdentity(db, { rid, kind, legacyKey: k , captured: await getActivePointer(db, rid) });
     const orphanId = await stageOrphan(rid, kind, legacyKey);
     const before = new Map((await keysCol(rid, kind).get()).docs.map((d) => [d.id, JSON.stringify(d.data())]));
 
@@ -208,7 +213,7 @@ function countingFs() {
      query drifted it would hand a reserved id back out on a schedule, unattended. */
   {
     const rid = 'x_pizza', kind = 'extra', legacyKey = 'Extra Retirado';
-    const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey });
+    const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
     await retireIdentity(db, { rid, kind, canonicalId: retiredId });
     const r = await sweepIdentityIntegrity(db, rid, kind);
     assert.strictEqual((await keyRowOf(rid, kind, legacyKey).get()).exists, false,
@@ -227,7 +232,7 @@ function countingFs() {
     const orphanId = await stageOrphan(rid, kind, legacyKey);
     const [, adopted] = await Promise.all([
       sweepIdentityIntegrity(db, rid, kind),
-      ensureIdentity(db, { rid, kind, legacyKey }),
+      ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) }),
     ]);
     assert.strictEqual(adopted.canonical_id, orphanId, 'the order path adopted the orphan');
     const live = await liveIdsFor(rid, kind, legacyKey);
@@ -245,10 +250,10 @@ function countingFs() {
     const rid = 'x_pizza', kind = 'dish';
     const keys = ['Hawaiana', 'Pepperoni', 'Margarita'];
     const minted = [];
-    for (const k of keys) minted.push((await ensureIdentity(db, { rid, kind, legacyKey: k })).canonical_id);
+    for (const k of keys) minted.push((await ensureIdentity(db, { rid, kind, legacyKey: k , captured: await getActivePointer(db, rid) })).canonical_id);
 
     const retiredKey = 'Temporal';
-    const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey: retiredKey });
+    const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey: retiredKey , captured: await getActivePointer(db, rid) });
     await retireIdentity(db, { rid, kind, canonicalId: retiredId });
 
     const absentId = 'ZZZZZZZZZZ';
@@ -288,7 +293,7 @@ function countingFs() {
     const over = RESOLVE_MAX_LOOKUPS + 7;
     const ids = [];
     for (let i = 0; i < over; i += 1) {
-      ids.push((await ensureIdentity(db, { rid, kind, legacyKey: `Budget ${i}` })).canonical_id);
+      ids.push((await ensureIdentity(db, { rid, kind, legacyKey: `Budget ${i}`, captured: await getActivePointer(db, rid) })).canonical_id);
     }
     const { fs, reads } = countingFs();
     const { byId, incomplete } = await resolveLegacyByIds(fs, rid, kind, ids);
@@ -317,7 +322,7 @@ function countingFs() {
     const rid = 'la_musa', kind = 'extra';
     const keys = Array.from({ length: 7 }, (_, i) => `page_probe_${i}`);
     const minted = [];
-    for (const k of keys) minted.push((await ensureIdentity(db, { rid, kind, legacyKey: k })).canonical_id);
+    for (const k of keys) minted.push((await ensureIdentity(db, { rid, kind, legacyKey: k , captured: await getActivePointer(db, rid) })).canonical_id);
 
     // Orphan every other one, so repairs are spread across several pages rather than sitting in the first.
     const orphaned = keys.filter((_, i) => i % 2 === 0);

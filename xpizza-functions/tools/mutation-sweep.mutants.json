@@ -246,8 +246,8 @@
   "slice": "task7",
   "label": "publishVersion stops passing its expectation to the flip",
   "file": "catalog/catalog-publish.js",
-  "from": "    await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover",
-  "to": "    await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) });   // ← the atomic cutover"
+  "from": "    identityPair = await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover",
+  "to": "    identityPair = await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) });   // ← the atomic cutover"
  },
  {
   "id": "task7-08",
@@ -8053,6 +8053,77 @@
   "command": [
    "node",
    "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2d-01",
+  "slice": "e2d",
+  "file": "catalog/identity-registry.js",
+  "from": "    await assertPointerUnmoved(tx, { db, rid, captured, code: 'identity_mint_pointer_moved' });",
+  "to": "    /* fence removed */",
+  "label": "the mint is not fenced — it lands against a version it was never judged under",
+  "kills_with": "a mint landed against a version that was superseded mid-batch",
+  "command": [
+   "node",
+   "catalog/identity-mint-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2d-02",
+  "slice": "e2d",
+  "file": "catalog/identity-backfill.js",
+  "from": "        r = await ensureIdentity(db, { rid, kind, legacyKey, now, shouldStop, captured });",
+  "to": "        r = await ensureIdentity(db, { rid, kind, legacyKey, now, shouldStop });",
+  "label": "the batch stops handing the captured pair down, so every mint fences against nothing",
+  "kills_with": [
+   "an unmoved pointer refused the whole batch — the captured pair is not reaching the writer",
+   "a publish registered 0 of"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-mint-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2d-03",
+  "slice": "e2d",
+  "file": "catalog/identity-backfill.js",
+  "from": "        if (e && /^identity_abandoned:/.test(String(e.message || ''))) { report.stopped = true; return report; }\n        throw e;",
+  "to": "        report.stopped = true; return report;",
+  "label": "a fence refusal is swallowed into a clean stop instead of propagating",
+  "kills_with": [
+   "a mint landed against a version that was superseded mid-batch",
+   "a fence refusal returned a report instead of propagating"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-mint-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2d-04",
+  "slice": "e2d",
+  "file": "catalog/catalog-publish.js",
+  "from": "        const event = /_pointer_moved:/.test(msg) ? 'identity_preserve_superseded'",
+  "to": "        const event = false ? 'identity_preserve_superseded'",
+  "label": "a benign supersession is logged as a generic failure again",
+  "kills_with": "the log switches on a specific code rather than the shared marker",
+  "command": [
+   "node",
+   "catalog/identity-mint-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2d-05",
+  "slice": "e2d",
+  "file": "catalog/catalog-publish.js",
+  "from": "    identityPair = await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST",
+  "to": "    identityPair = null; await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST",
+  "label": "the publish discards the pair the flip returned, so its writer fences against nothing",
+  "kills_with": "its writer was handed no baseline and refused every one, SILENTLY",
+  "command": [
+   "node",
+   "catalog/identity-mint-fence.test.js"
   ]
  }
 ]

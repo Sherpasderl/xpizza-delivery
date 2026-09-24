@@ -29,6 +29,7 @@ const { catalogSnapshot } = require('../catalog/generate-form-bundle');
    and retention is not proof. These fixtures read the live pair rather than inventing one, because a
    baseline chosen to satisfy the check is a fixture asserting against a world that does not exist. */
 const baselineOf = (d, r) => require('../catalog/catalog-firestore').getActivePointer(d, r);
+
 const readVersion = async (rid, versionId) => {
   const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
   const [rec, items, extras] = await Promise.all([vref.get(), vref.collection('menu_items').get(), vref.collection('extras').get()]);
@@ -78,7 +79,7 @@ const readVersion = async (rid, versionId) => {
      original property (every named object carries the id the plan supplied, extras included) and adds
      the one the invented map could never show — that the written stamp is the id the registry holds
      for that NAME. */
-  await backfillIdentities(db, rid, catalogSnapshot(rid));
+  await backfillIdentities(db, rid, catalogSnapshot(rid), { captured: await getActivePointer(db, rid) });
   const [dishIds, extraIds] = await Promise.all([
     lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: A.items.map((i) => i.key) }),
     lookupByLegacyKeys(db, { rid, kind: 'extra', legacyKeys: A.extras.map((e) => e.key) }),

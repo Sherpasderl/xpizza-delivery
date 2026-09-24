@@ -76,12 +76,12 @@ function liveKeys(rid, menu) {
    SEQUENTIAL per key, not Promise.all: each ensureIdentity is a transaction, and firing hundreds
    concurrently against the same collection turns ordinary contention into retry storms for no gain —
    this is a one-time migration, not a serving path. */
-async function backfillIdentities(db, rid, menu, { now = null } = {}) {
+async function backfillIdentities(db, rid, menu, { now = null, captured = null } = {}) {
   const keys = liveKeys(rid, menu);
   const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 }, ids: { dish: {}, extra: {} } };
   for (const kind of ['dish', 'extra']) {
     for (const legacyKey of keys[kind]) {
-      const r = await ensureIdentity(db, { rid, kind, legacyKey, now });
+      const r = await ensureIdentity(db, { rid, kind, legacyKey, now, captured });
       report[kind].total += 1;
       report[kind][r.created ? 'created' : 'preserved'] += 1;
       report.ids[kind][legacyKey] = r.canonical_id;
@@ -95,7 +95,7 @@ async function backfillIdentities(db, rid, menu, { now = null } = {}) {
    genuinely new one mints. Kept beside the backfill rather than in the registry because it is the same
    operation the backfill performs, and two functions that must agree about "ensure this set" are one
    function. */
-async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null, shouldStop = null } = {}) {
+async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null, shouldStop = null, captured = null } = {}) {
   const report = { rid, dish: { total: 0, created: 0, preserved: 0 }, extra: { total: 0, created: 0, preserved: 0 }, stopped: false };
   for (const kind of ['dish', 'extra']) {
     for (const legacyKey of [...new Set((keysByKind[kind] || []).filter((k) => typeof k === 'string' && k))]) {
@@ -113,7 +113,7 @@ async function ensureIdentitiesForKeys(db, rid, keysByKind, { now = null, should
          clean stop, not a failure: the object stays unregistered exactly as a timed-out one does. */
       let r;
       try {
-        r = await ensureIdentity(db, { rid, kind, legacyKey, now, shouldStop });
+        r = await ensureIdentity(db, { rid, kind, legacyKey, now, shouldStop, captured });
       } catch (e) {
         if (e && /^identity_abandoned:/.test(String(e.message || ''))) { report.stopped = true; return report; }
         throw e;

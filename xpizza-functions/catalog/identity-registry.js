@@ -27,6 +27,7 @@
 // minted. Reserving only the random id would let both win — they would be reserving different rows.
 // ---------------------------------------------------------------------------
 const crypto = require('crypto');
+const { assertPointerUnmoved } = require('./identity-fence');
 
 const KINDS = Object.freeze(['dish', 'extra']);
 const STATUS_LIVE = 'live';
@@ -96,12 +97,25 @@ function proposeId(rid, kind, legacyKey) {
 /* Assign an id to ONE legacy object, exactly once, whatever else is happening concurrently.
    Returns { canonical_id, created } — created:false means it was already there, which is the ordinary
    case on every re-run and every ordinary write. */
-async function ensureIdentity(db, { rid, kind, legacyKey, now = null, shouldStop = null }) {
+async function ensureIdentity(db, { rid, kind, legacyKey, now = null, shouldStop = null, captured = null }) {
   assertKind(kind);
   const keyRef = keysColOf(db, rid, kind).doc(encodeKey(legacyKey));
   const stamp = now || new Date().toISOString();
 
   return db.runTransaction(async (tx) => {
+    /* 🔴 THE GENERATION FENCE, IN THE SAME TRANSACTION THAT WRITES. `captured` is the {version,
+       generation} pair the CALLER took when it decided — for a publish that is the pair the flip
+       itself returned, i.e. the moment this version became active. Re-reading the pointer here and
+       comparing means a mint cannot land against a version that was superseded between the decision
+       and this write.
+       🔴 REQUIRED, AND THIS REFUSES WITHOUT IT. An optional baseline would pass every call and fence
+       nothing, which is exactly how `writeVersion`'s unfed `stamps` map hid a production lockout for
+       four slices while its cells stayed green. The refusal happens at the first call, not four
+       slices later.
+       A refusal STOPS THE BATCH and is absorbed by the publish's existing best-effort handler: the
+       remaining keys belong to a superseded version, and the newer publish registers its own — which
+       is exactly what that handler already promises for a timeout. */
+    await assertPointerUnmoved(tx, { db, rid, captured, code: 'identity_mint_pointer_moved' });
     /* EVERY READ FIRST — a Firestore transaction refuses a read after a write. The key document is the
        contention point: both concurrent seeds read THIS row, so one of them loses and retries, and the
        retry sees the winner's id. */

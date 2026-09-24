@@ -55,6 +55,7 @@ stub('../whatsapp', {
 // through to the real client untouched.
 const FS = { hangIdentity: false };
 const realFirestoreMod = require('firebase-admin/firestore');
+const { getActivePointer } = require('../catalog/catalog-firestore');
 function wrapFs(real) {
   const wrap = (target, path) => new Proxy(target, {
     get(t, prop) {
@@ -75,6 +76,7 @@ stub('firebase-admin/firestore', { ...realFirestoreMod, getFirestore: (...a) => 
 // (3) PixelPay's hosted checkout — so a checkout FAILURE is producible without a gateway.
 const PP = { fail: false, calls: 0 };
 const realHosted = require('../pixelpay-hosted');
+
 stub('../pixelpay-hosted', {
   ...realHosted,
   /* 🔴 THE REAL RETURN SHAPE, `ok` INCLUDED. The caller refuses on `!hosted.ok || !hosted.url` with the
@@ -150,7 +152,7 @@ function post(handler, body) {
   await db.ref(`restaurants/${RID}/identity`).set(identityFor(RID));
 
   const menu = catalogSnapshot(RID);
-  await backfillIdentities(fs, RID, menu);
+  await backfillIdentities(fs, RID, menu, { captured: await getActivePointer(fs, RID) });
   const keys = liveKeys(RID, menu);
   const ids = await lookupByLegacyKeys(fs, { rid: RID, kind: 'dish', legacyKeys: keys.dish });
   const rec = menu.items[0];

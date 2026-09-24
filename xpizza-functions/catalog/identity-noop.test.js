@@ -16,6 +16,14 @@ const { computeServerTotal, MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, itemPricin
 const { computeRedemption } = require('../rewards-redeem');
 const { cartFingerprint, normalizeCartForFingerprint } = require('../quote-token');
 const { fullRegistry, partialRegistry, registryStub, availabilityStub } = require('./identity-fixture');
+const { getActivePointer } = require('./catalog-firestore');
+
+/* 🔴 THE FENCE MAKES THE BASELINE A REQUIRED ARGUMENT, so these fixtures now STATE the baseline they
+   were written against — the same honest cost writeVersion's baseline charged when it was made
+   required, and for the same reason: a parameter nothing supplies is a parameter that protects
+   nothing. `{version: null, generation: 0}` is the pre-P1 pair — nothing published — which is what
+   every one of these restaurants actually has. */
+const PRE_P1 = Object.freeze({ version: null, generation: 0 });
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
@@ -425,7 +433,10 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
 
         await breaker(db);
         const idAbsent = await capture(db);                       // registry genuinely empty, asserted
-        const report = await backfillIdentities(db, rid, catalogSnapshot(rid));
+        /* 🔴 NOT PRE_P1 HERE: this block PUBLISHES first (line ~419), so the pointer names a version
+           and a pre-P1 baseline is genuinely stale — the fence refuses it, correctly. Capturing live is
+           what a real caller does at this point. */
+        const report = await backfillIdentities(db, rid, catalogSnapshot(rid), { captured: await getActivePointer(db, rid) });
         assert.strictEqual(report.dish.created, report.dish.total,
           `${rid}/${label}: 🔴 the identity-PRESENT side must be freshly CREATED, not preserved from a registry that was never cleared (created ${report.dish.created} of ${report.dish.total})`);
         assert.strictEqual(report.extra.created, report.extra.total, `${rid}/${label}: …extras too`);
@@ -537,14 +548,14 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
          record written before it point at a stranger. */
       {
         const db = memFirestore();
-        const before = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys, extra: extraKeys });
+        const before = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys, extra: extraKeys }, { captured: PRE_P1 });
         const idsBefore = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys });
         assert.strictEqual(before.dish.created, dishKeys.length, `${rid}/rollback: premise — the first publish minted`);
 
         // roll back to an older version carrying a SUBSET, then republish the full set
         const subset = dishKeys.slice(0, Math.max(1, dishKeys.length - 2));
-        await ensureIdentitiesForKeys(db, rid, { dish: subset, extra: extraKeys });
-        const republished = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys, extra: extraKeys });
+        await ensureIdentitiesForKeys(db, rid, { dish: subset, extra: extraKeys }, { captured: PRE_P1 });
+        const republished = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys, extra: extraKeys }, { captured: PRE_P1 });
         assert.strictEqual(republished.dish.created, 0,
           `${rid}/rollback: 🔴 a republish after a rollback RE-MINTED ${republished.dish.created} ids`);
         const idsAfter = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys });
@@ -595,14 +606,14 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
          so a stale — or hostile — echoed id cannot become the object's identity. */
       {
         const db = memFirestore();
-        await ensureIdentitiesForKeys(db, rid, { dish: dishKeys.slice(0, 3), extra: [] });
+        await ensureIdentitiesForKeys(db, rid, { dish: dishKeys.slice(0, 3), extra: [] }, { captured: PRE_P1 });
         const trueIds = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys.slice(0, 3) });
         assert.strictEqual(trueIds.size, 3, `${rid}/stale-portal: premise — three objects are registered`);
 
         /* The submission echoes the keys back with ids attached — one stale, one belonging to another
            object. ensureIdentitiesForKeys takes KEYS only; it has no parameter through which an echoed
            id could enter, which is the structural half of the guarantee. */
-        const republish = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys.slice(0, 3), extra: [] });
+        const republish = await ensureIdentitiesForKeys(db, rid, { dish: dishKeys.slice(0, 3), extra: [] }, { captured: PRE_P1 });
         assert.strictEqual(republish.dish.created, 0, `${rid}/stale-portal: a republish of known keys mints nothing`);
         const after = await lookupByLegacyKeys(db, { rid, kind: 'dish', legacyKeys: dishKeys.slice(0, 3) });
         assert.deepStrictEqual([...after.entries()].sort(), [...trueIds.entries()].sort(),
@@ -673,7 +684,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       let threw = null;
       try {
         await Promise.race([
-          ensureIdentitiesForKeys(db, rid, keys, withStop ? { shouldStop: () => expired } : {}),
+          ensureIdentitiesForKeys(db, rid, keys, withStop ? { shouldStop: () => expired, captured: PRE_P1 } : { captured: PRE_P1 }),
           new Promise((_, rej) => setTimeout(() => { expired = true; rej(new Error('identity_preserve_timeout')); }, 40)),
         ]);
       } catch (e) { threw = (e && e.message) || String(e); }
@@ -718,13 +729,13 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         runTransaction: (fn, opts) => (started += 1, base.runTransaction(fn, opts)),
       };
       // Pre-register everything, so the run below is pure preservation — the normal publish.
-      await ensureIdentitiesForKeys(db, rid, keys);
+      await ensureIdentitiesForKeys(db, rid, keys, { captured: PRE_P1 });
       const preRegistered = started;
       assert.ok(preRegistered >= keys.dish.length, `premise — the first pass really registered (${preRegistered} transactions)`);
 
       // The deadline fires after the first key of the second pass.
       let seen = 0;
-      const second = await ensureIdentitiesForKeys(db, rid, keys, { shouldStop: () => seen++ >= 1 });
+      const second = await ensureIdentitiesForKeys(db, rid, keys, { shouldStop: () => seen++ >= 1, captured: PRE_P1 });
       const usedAfter = started - preRegistered;
 
       /* The substantive assertion FIRST, so that when this breaks the failure names the property
@@ -833,7 +844,7 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
     let expired = false, threw = null;
     try {
       await Promise.race([
-        ensureIdentitiesForKeys(db, rid, keys, { shouldStop: () => expired }),
+        ensureIdentitiesForKeys(db, rid, keys, { shouldStop: () => expired, captured: PRE_P1 }),
         new Promise((_, rej) => setTimeout(() => { expired = true; rej(new Error('identity_preserve_timeout')); }, 40)),
       ]);
     } catch (e) { threw = (e && e.message) || String(e); }
@@ -877,14 +888,14 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
       assert.strictEqual(landedId, firstKey,
         `🔴 ${rid}/commit-stall: the late row must carry the canonical id (the grandfathered slug), not an arbitrary one`);
     }
-    const resolved = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: firstKey });
+    const resolved = await ensureIdentity(db, { rid, kind: 'dish', legacyKey: firstKey , captured: PRE_P1 });
     assert.strictEqual(resolved.created, false,
       `🔴 ${rid}/commit-stall: the late row is authoritative — a later call must PRESERVE it, never mint a second identity for the same object`);
     assert.strictEqual(resolved.canonical_id, landedId,
       `🔴 ${rid}/commit-stall: …and resolve to exactly the id that landed late`);
 
     // ── IDEMPOTENT RECONCILIATION: the next backfill closes the gap and does not disturb it ──────
-    const reconcile = await backfillIdentities(db, rid, catalogSnapshot(rid));
+    const reconcile = await backfillIdentities(db, rid, catalogSnapshot(rid), { captured: await getActivePointer(db, rid) });
     assert.strictEqual(reconcile.dish.total + reconcile.extra.total, total,
       `${rid}/commit-stall: the reconciling run covers every object`);
     assert.strictEqual(reconcile.dish.preserved + reconcile.extra.preserved, 1,

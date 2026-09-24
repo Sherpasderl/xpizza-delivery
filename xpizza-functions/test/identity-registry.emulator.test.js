@@ -27,6 +27,8 @@ const assert = require('assert');
 const admin = require('firebase-admin');
 const { ensureIdentity, lookupByLegacyKeys, encodeKey, ALPHABET, ID_LEN } = require('../catalog/identity-registry');
 const { isGrandfathered } = require('../catalog/identity-registry');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+
 
 admin.initializeApp({ projectId: 'demo-xpizza' });   // FIRESTORE_EMULATOR_HOST set by emulators:exec
 const db = admin.firestore();
@@ -73,7 +75,7 @@ const rowsFor = async (rid, kind, legacyKey) => ({
        concurrency's clothes. This is the seed racing itself: two deploys, or a seed and a publish,
        reaching the same object at the same moment. */
     const inFlight = [];
-    for (let i = 0; i < contenders; i += 1) inFlight.push(ensureIdentity(counting, { rid, kind, legacyKey }));
+    for (let i = 0; i < contenders; i += 1) inFlight.push(ensureIdentity(counting, { rid, kind, legacyKey , captured: await getActivePointer(counting, rid) }));
     const results = await Promise.all(inFlight);
 
     const ids = new Set(results.map((r) => r.canonical_id));
@@ -125,7 +127,7 @@ const rowsFor = async (rid, kind, legacyKey) => ({
       '🔴 the overlay\'s own read resolves to the surviving id — the reverse index agrees with the forward one');
 
     // …and a re-run after the race still preserves rather than minting a seventh time.
-    const again = await ensureIdentity(db, { rid, kind, legacyKey });
+    const again = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
     assert.strictEqual(again.created, false, '🔴 a post-race re-run must preserve, not mint');
     assert.strictEqual(again.canonical_id, rows.ids[0].id, '…the same id');
     assert.strictEqual((await rowsFor(rid, kind, legacyKey)).ids.length, 1, 'and still exactly one row');
@@ -138,7 +140,8 @@ const rowsFor = async (rid, kind, legacyKey) => ({
   {
     const rid = 'x_pizza', kind = 'dish';
     const keys = ['Hawaiana', 'Pepperoni', 'Margarita', 'Vegetariana'];
-    const out = await Promise.all(keys.map((k) => ensureIdentity(db, { rid, kind, legacyKey: k })));
+    const cap = await getActivePointer(db, rid);   // captured once, then every concurrent mint fences against the SAME pair
+    const out = await Promise.all(keys.map((k) => ensureIdentity(db, { rid, kind, legacyKey: k, captured: cap })));
     const ids = new Set(out.map((r) => r.canonical_id));
     assert.strictEqual(ids.size, keys.length,
       `🔴 ${keys.length} distinct objects seeded concurrently produced ${ids.size} ids — identities collapsed`);

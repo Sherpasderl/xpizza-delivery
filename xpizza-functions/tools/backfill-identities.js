@@ -38,6 +38,7 @@ const PROJECT_ID = requireProject({ requireFlag: true });
 try { require('dotenv').config(); } catch (_) { /* dotenv is a devDependency; this needs only ADC */ }
 const admin = require('firebase-admin');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
+const { getActivePointer } = require('../catalog/catalog-firestore');
 const { backfillIdentities, liveKeys } = require('../catalog/identity-backfill');
 const { lookupByLegacyKeys } = require('../catalog/identity-registry');
 
@@ -102,7 +103,16 @@ const db = admin.firestore();
     process.exit(0);
   }
 
-  const report = await backfillIdentities(db, RID, menu);
+  /* 🔴 THE PAIR IS CAPTURED HERE, BEFORE ANY WRITE, BECAUSE THIS IS WHERE THE DECISION IS MADE. The
+     menu read above carries `version_id` and `seq` but NO generation, so it cannot form a pair — a
+     fence needs both halves and half a pair is not a baseline. This is a new read on a path that had
+     none, which is the honest cost of fencing an operator tool: if the pointer moves between here and
+     the writes below, the backfill refuses rather than registering keys against a menu that is no
+     longer live. */
+  const captured = await getActivePointer(db, RID);
+  console.log(`  fencing against ${captured.version}@${captured.generation}`);
+
+  const report = await backfillIdentities(db, RID, menu, { captured });
   console.log(`\napplied to ${RID}:`);
   for (const kind of ['dish', 'extra']) {
     console.log(`  ${kind}: ${report[kind].total} total — ${report[kind].created} created, ${report[kind].preserved} preserved`);

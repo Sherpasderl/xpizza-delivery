@@ -32,6 +32,7 @@ const { getActivePointer } = require('../catalog/catalog-firestore');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
 const { bootstrapIdentityStamps, readActiveVersion } = require('../catalog/identity-bootstrap');
 
+
 const RID = 'x_pizza';
 const owner = async () => ({ ok: true, uid: 'u_o', role: 'owner', actor: 'o@x.hn' });
 /* The encoded revision is "<seconds>.<nanoseconds>" and must reconstruct to the EXACT Timestamp,
@@ -81,7 +82,7 @@ const bumpPrice = (src, delta) => {
      server has CERTIFIED — an invented one refuses as deleted_unknown, and a suite that invented its
      ids would be exercising the wrong refusal while claiming to test the token. Bootstrap also stamps
      the source, which is what makes these drafts lawful against A. */
-  await require('../catalog/identity-backfill').backfillIdentities(db, RID, require('../catalog/generate-form-bundle').catalogSnapshot(RID));
+  await require('../catalog/identity-backfill').backfillIdentities(db, RID, require('../catalog/generate-form-bundle').catalogSnapshot(RID), { captured: await getActivePointer(db, RID) });
   const boot = await bootstrapIdentityStamps(db, RID);
   assert.ok(boot.stamped, `premise — certified baseline and stamped source: ${JSON.stringify(boot)}`);
 

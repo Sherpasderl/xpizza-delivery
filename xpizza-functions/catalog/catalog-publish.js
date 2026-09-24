@@ -297,7 +297,13 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
   const nowServer = await serverNow(db, rid);
   const lockRef = lockRefOf(db, rid);
   const pointerRef = pointerRefOf(db, rid);
-  await db.runTransaction(async (tx) => {
+  /* 🔴 THE FLIP RETURNS THE PAIR IT WROTE. Fencing the registry writers needs a {version, generation}
+     captured AT THE DECISION, and the flip IS the decision — it is the moment this version became
+     active. Handing back the pair it just wrote is the strongest capture available: a caller that
+     re-read the pointer afterwards would be comparing against a value observed AFTER the fact, which
+     is the tautology the caller-captures rule exists to prevent, one level up. Both call sites
+     discarded this return before; nothing depended on it being undefined. */
+  return db.runTransaction(async (tx) => {
     // Every read first — a Firestore transaction refuses a read after a write.
     const snap = await tx.get(lockRef);
     const pointerSnap = await tx.get(pointerRef);
@@ -599,6 +605,9 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
     tx.set(snapshotRefOf(db, rid), snapshot);
+    /* Returned from INSIDE the transaction, so the pair handed back is the pair this transaction
+       committed — not one reconstructed by the caller from arguments that were merely intended. */
+    return { version: versionId, generation: priorGeneration + 1 };
   });
 }
 
@@ -930,7 +939,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
-  let identityKeys = null, identityVersionId = null;
+  let identityKeys = null, identityVersionId = null, identityPair = null;
   try {
     const nowServer = await serverNow(db, rid);
     /* 🔴 THE PAIR IS READ HERE, TOGETHER, AND TRAVELS WITH THE CANDIDATE. {version, generation} must
@@ -945,7 +954,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
     const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
-    await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST
+    identityPair = await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
@@ -985,13 +994,23 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
       let timer = null;
       try {
         await Promise.race([
-          ensureIdentitiesForKeys(db, rid, identityKeys, { shouldStop: () => expired }),
+          ensureIdentitiesForKeys(db, rid, identityKeys, { shouldStop: () => expired, captured: identityPair }),
           new Promise((_, rej) => {
             timer = setTimeout(() => { expired = true; rej(new Error('identity_preserve_timeout')); }, IDENTITY_PRESERVE_TIMEOUT_MS);
           }),
         ]);
       } catch (e) {
-        try { console.warn('identity_preserve_failed', JSON.stringify({ rid, versionId: identityVersionId, error: String((e && e.message) || e).slice(0, 160) })); } catch (_) {}
+        /* 🔴 THREE OUTCOMES, THREE NAMES. These all used to log `identity_preserve_failed`, and after
+           fencing they mean different things: a FENCE refusal is benign and self-correcting (another
+           publish flipped after ours, so these keys belong to a superseded version and the newer
+           publish registers its own); a TIMEOUT means the registry is slow and keys went unregistered
+           for a reason worth watching; anything else is broken. One string for all three hides the two
+           that matter — and nothing here changes behaviour, the publish still succeeds either way. */
+        const msg = String((e && e.message) || e);
+        const event = /_pointer_moved:/.test(msg) ? 'identity_preserve_superseded'
+          : /^identity_preserve_timeout$/.test(msg) ? 'identity_preserve_timeout'
+            : 'identity_preserve_failed';
+        try { console.warn(event, JSON.stringify({ rid, versionId: identityVersionId, error: msg.slice(0, 160) })); } catch (_) {}
       } finally {
         // …and the timer is cleared on the happy path, or a fast publish keeps a handle alive for the
         // full deadline for no reason.

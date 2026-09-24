@@ -282,7 +282,13 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const SELF = new Set(['test:gate', 'test:emulators:all']);
     const entries = Object.entries(pkg.scripts || {});
     const wantAll = entries.filter(([k, v]) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(v).trim()).length;
-    const wantEmu = entries.filter(([, v]) => /emulator-run\.js/.test(v)).length;
+    /* 🔴 THE SUBSET IS FILTERED THE SAME WAY THE GATE FILTERS, or the guard is checking a different
+       question than the tool answers. gate-all only ever runs `test` and `test:*` (minus its own two
+       entry points), so a script that routes the emulator WITHOUT being a test script — a measurement
+       harness, say — is legitimately outside the gate. Counting every emulator-routing script here
+       made the guard expect one the listing had correctly excluded. Aligning it is not a weakening:
+       the SELF/test:* filter is the gate's own rule, applied to the same input. */
+    const wantEmu = entries.filter(([k, v]) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && /emulator-run\.js/.test(v)).length;
     assert.ok(wantEmu >= 40 && wantAll > wantEmu, `premise — ${wantEmu} emulator scripts inside ${wantAll} test scripts`);
 
     const list = (args) => {

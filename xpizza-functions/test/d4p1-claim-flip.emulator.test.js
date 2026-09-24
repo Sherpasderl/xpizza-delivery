@@ -27,6 +27,7 @@ const { bootstrapIdentityStamps, readActiveVersion } = require('../catalog/ident
 const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { getActivePointer } = require('../catalog/catalog-firestore');
 
+
 const RID = 'x_pizza';
 const claimOf = (ids, v, g) => ({ ids, base_version: v, base_generation: g });
 
@@ -124,7 +125,7 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
      CERTIFIED; an invented one refuses as deleted_unknown, and a suite that invented its ids would be
      testing the wrong refusal. Bootstrap also stamps the source, which is what makes the publishes
      below lawful against A. */
-  await require('../catalog/identity-backfill').backfillIdentities(db, RID, require('../catalog/generate-form-bundle').catalogSnapshot(RID));
+  await require('../catalog/identity-backfill').backfillIdentities(db, RID, require('../catalog/generate-form-bundle').catalogSnapshot(RID), { captured: await getActivePointer(db, RID) });
   const boot = await bootstrapIdentityStamps(db, RID);
   assert.ok(boot.stamped, `premise — the baseline is certified and the source stamped: ${JSON.stringify(boot)}`);
   const activeNow = await readActiveVersion(db, RID);
