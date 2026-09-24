@@ -418,7 +418,9 @@
     align-items: start;
   }
   .msg-row:last-child { border-bottom: none; }
-  .msg-row.handled { opacity: 0.55; }
+  /* handled → recede via a muted-but-AA color (text-dim, ≥4.5:1 on surface), not opacity,
+     which dropped the functional meta below AA. */
+  .msg-row.handled .msg-row-from, .msg-row.handled .msg-row-body { color: var(--text-dim); }
   .msg-row-from {
     font-family: 'Plus Jakarta Sans', sans-serif;
     font-weight: 600;
@@ -551,7 +553,7 @@
     pointer-events: none;
   }
   .dispatcher-alert {
-    background: var(--accent);
+    background: var(--accent-solid);
     color: white;
     padding: 14px 20px;
     border-radius: 10px;
@@ -720,7 +722,7 @@
     border-radius: 99px;
   }
   .panel-count.hot {
-    background: var(--accent);
+    background: var(--accent-solid);
     color: white;
     animation: pulse-warn 1.5s infinite;
   }
@@ -762,7 +764,7 @@
   .status-pill.assigned { background: var(--warn-soft); color: var(--warn); }
   .status-pill.en_route_delivery { background: var(--info-soft); color: var(--info); }
   .status-pill.returning { background: var(--warn-soft); color: var(--warn); }
-  .status-pill.off_shift { background: var(--surface-3); color: var(--text-dim); }
+  .status-pill.off_shift { background: var(--surface-3); color: var(--text-soft); }
 
   @keyframes flash-new {
     0%, 100% { border-color: var(--border-soft); background: var(--surface-2); }
@@ -806,7 +808,7 @@
     color: var(--text-dim);
   }
   .tree-group-meta.hot {
-    background: var(--accent);
+    background: var(--accent-solid);
     color: white;
     padding: 2px 8px;
     border-radius: 99px;
@@ -859,7 +861,9 @@
     transition: transform 0.16s ease, box-shadow 0.16s ease;
   }
   .driver-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
-  .driver-row.stale { opacity: 0.6; }
+  /* de-emphasize a stale row by DESATURATING (luminance-preserving → functional text stays ≥AA),
+     not by opacity, which drops even --text below 4.5:1. */
+  .driver-row.stale { filter: grayscale(0.65); }
   /* header row */
   .driver-row .dh { display: flex; align-items: center; gap: 10px; padding: 10px 11px; }
   .av {
@@ -1387,7 +1391,7 @@
     word-break: break-word;
   }
   .od-row a {
-    color: var(--accent, var(--accent));
+    color: var(--primary);
     text-decoration: none;
   }
   .od-row a:hover { text-decoration: underline; }
@@ -1872,7 +1876,7 @@
     border-radius: 99px;
     padding: 0 5px;
   }
-  .cola-seg-btn.on .cola-seg-n { background: var(--primary-soft); color: var(--primary); }
+  .cola-seg-btn.on .cola-seg-n { background: var(--primary); color: var(--primary-fg); }
 
   /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
   .cash-bar { background: linear-gradient(180deg, var(--card-1), var(--card-2)); box-shadow: var(--shadow); border-radius: 13px; padding: 14px 15px; margin: 4px 0 14px; }

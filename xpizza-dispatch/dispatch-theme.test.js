@@ -27,29 +27,52 @@ assert.ok(darkBlock && lightBlock, 'both :root (dark) and :root[data-theme="ligh
 const parse = (b) => { const m = {}; for (const mm of b.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) m[mm[1]] = mm[2].trim(); return m; };
 const DARK = parse(darkBlock), LIGHT = parse(lightBlock);
 
+// ---- rule table: parse every flat CSS rule as { parts:[selector,…], body } (skip @-rules / nested) ----
+const styleSrc = html.slice(html.indexOf('<style>') + '<style>'.length, html.indexOf('</style>')).replace(/\/\*[\s\S]*?\*\//g, '');
+const RULES = [];
+for (const m of styleSrc.matchAll(/([^{}]+)\{([^{}]+)\}/g)) {
+  const sel = m[1].trim().replace(/\s+/g, ' ');
+  if (/[{}]/.test(sel) || /^@/.test(sel)) continue;
+  RULES.push({ parts: sel.split(',').map(s => s.trim()), body: m[2] });
+}
+// value of `prop` from the LAST rule that lists EXACTLY `sel` as one of its comma-parts (cascade: last wins)
+const decl = (sel, prop) => {
+  let v;
+  for (const r of RULES) {
+    if (!r.parts.includes(sel)) continue;
+    const re = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'g'); let mm;
+    while ((mm = re.exec(r.body))) v = mm[1].trim();
+  }
+  return v;
+};
+
 // ---- color math (rgb kept in 0..1) ----
 const hex = (h) => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255); };
-const RGBA = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/;
-const parseColor = (v) => {
+const RGBA = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\)/;
+// resolve ANY CSS color value (against a theme's token map) → { rgb, a }: keyword, #hex, rgb(a), var(--x[,fb]), gradient(first stop)
+const resolveColor = (M, v) => {
+  v = String(v).trim();
+  if (v === 'white') return { rgb: [1, 1, 1], a: 1 };
+  if (v === 'black') return { rgb: [0, 0, 0], a: 1 };
+  const vm = v.match(/^var\(\s*(--[\w-]+)(?:\s*,\s*([^)]+))?\)$/);
+  if (vm) { const t = M[vm[1]]; if (t !== undefined) return resolveColor(M, t); if (vm[2]) return resolveColor(M, vm[2]); throw new Error(`undefined var ${vm[1]}`); }
+  if (v.startsWith('linear-gradient')) { const c = v.match(/#[0-9a-fA-F]{3,8}|var\([^)]+\)|rgba?\([^)]+\)|white|black/); return resolveColor(M, c[0]); }
   if (/^#/.test(v)) return { rgb: hex(v), a: 1 };
-  const m = v.match(RGBA);
-  assert.ok(m, `color parses: ${v}`);
-  return { rgb: [+m[1] / 255, +m[2] / 255, +m[3] / 255], a: m[4] !== undefined ? +m[4] : 1 };
+  const rm = v.match(RGBA); if (rm) return { rgb: [+rm[1] / 255, +rm[2] / 255, +rm[3] / 255], a: rm[4] !== undefined ? +rm[4] : 1 };
+  throw new Error(`cannot resolve color: ${v}`);
+};
+const overC = (fg, a, bg) => fg.map((c, i) => c * a + bg[i] * (1 - a));
+// composite a chain of layer VALUES (nearest-first; last must resolve opaque) → the real pixel rgb behind the text
+const composite = (M, layers) => {
+  let bg = resolveColor(M, layers[layers.length - 1]); assert.ok(bg.a >= 1, `bg chain tail opaque: ${layers[layers.length - 1]}`); bg = bg.rgb;
+  for (let i = layers.length - 2; i >= 0; i--) { const c = resolveColor(M, layers[i]); bg = overC(c.rgb, c.a, bg); }
+  return bg;
 };
 const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const L = (rgb) => 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
 const cratio = (a, b) => { const la = L(a), lb = L(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
 const val = (M, t) => (M[t] !== undefined ? M[t] : t);                 // token name → its value, else literal
-// Resolve a background spec to an OPAQUE rgb. spec = token/literal (opaque), or [softToken, baseToken]
-// meaning: composite the (rgba) soft token OVER the opaque base — i.e. the real pixel behind the text.
-const opaqueRgb = (M, spec) => {
-  if (Array.isArray(spec)) {
-    const soft = parseColor(val(M, spec[0])), base = parseColor(val(M, spec[1])).rgb;
-    return soft.rgb.map((c, i) => c * soft.a + base[i] * (1 - soft.a));
-  }
-  const c = parseColor(val(M, spec));
-  return c.rgb; // functional backdrops here are opaque
-};
+const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[0]), val(M, spec[1])]) : resolveColor(M, val(M, spec)).rgb);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Both themes are COMPLETE — the light theme redefines every theme-varying token the dark theme sets, so no
@@ -69,37 +92,62 @@ const opaqueRgb = (M, spec) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPUTED contrast ≥4.5:1 (large ≥3:1) for functional text in BOTH themes. rgba pill/backdrops are
-// ALPHA-COMPOSITED over the real surface, and the on-button foregrounds (white/dark-ink on the --primary/
-// --success/--warn fills) are sampled explicitly — so a fg reverted to white-on-pastel goes RED here.
+// COMPUTED contrast ≥4.5:1 (large ≥3:1) for functional text, in BOTH themes — sampled from the REAL COMPONENTS,
+// not hand-picked token pairs. For each functional element the guard reads its ACTUAL declared `color`,
+// composites its ACTUAL `background` over the real ancestor chain, and multiplies in any `opacity` on the
+// element/ancestors. So a fg reverted to white-on-pastel (on-button), a soft pill sampled over the wrong
+// surface, or an `opacity` that dims meta below AA each go RED here — the class the token-pair guard missed.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  // [fgToken, bgSpec, {large?}]  — bgSpec: token/literal (opaque) or [softToken, baseToken] (composited)
-  const PAIRS = [
-    ['--text', '--bg'], ['--text', '--surface'],
-    ['--text-soft', '--surface'], ['--text-dim', '--surface'], ['--text-dim', '--surface-2'],
-    // semantic text on its own -soft pill (rgba composited over the card surface)
-    ['--primary', ['--primary-soft', '--surface']],
-    ['--accent', ['--accent-soft', '--surface']],
-    ['--success', ['--success-soft', '--surface']],
-    ['--warn', ['--warn-soft', '--surface']],
-    ['--info', ['--info-soft', '--surface']],
-    // semantic text directly on surface (chips without a pill) — incl. the gold capability labels
-    ['--success', '--surface'], ['--warn', '--surface'], ['--info', '--surface'], ['--gold', '--surface'],
-    // ON-BUTTON foregrounds — the pairs the old guard skipped; these must fail on a white-on-pastel revert
-    ['--primary-fg', '--primary'], ['--success-fg', '--success'], ['--warn-fg', '--warn'],
+  // Base text tokens on their grounds (these caught the muted-text regression — keep them).
+  const TOKEN_PAIRS = [
+    ['--text', '--bg'], ['--text', '--surface'], ['--text-soft', '--surface'],
+    ['--text-dim', '--surface'], ['--text-dim', '--surface-2'], ['--gold', '--surface'],
+  ];
+  // Real functional components. bg = layer VALUES nearest→base (a {sel} reads that rule's actual `background`);
+  // op = { sels } whose real `opacity` multiplies, over `backdrop`. Colors/opacity all READ from the file.
+  const rd = (x, M) => (typeof x === 'string' ? x : decl(x.sel, 'background'));
+  const COMPS = [
+    { n: 'hot count .tree-group-meta.hot', fg: '.tree-group-meta.hot', bg: [{ sel: '.tree-group-meta.hot' }] },
+    { n: 'hot count .panel-count.hot', fg: '.panel-count.hot', bg: [{ sel: '.panel-count.hot' }] },
+    { n: '.dispatcher-alert', fg: '.dispatcher-alert', bg: [{ sel: '.dispatcher-alert' }] },
+    { n: 'active Cola count', fg: '.cola-seg-btn.on .cola-seg-n', bg: [{ sel: '.cola-seg-btn.on .cola-seg-n' }, { sel: '.cola-seg-btn.on' }] },
+    { n: 'status available', fg: '.status-pill.available', bg: [{ sel: '.status-pill.available' }, '--card-1'] },
+    { n: 'status assigned', fg: '.status-pill.assigned', bg: [{ sel: '.status-pill.assigned' }, '--card-1'] },
+    { n: 'status en_route', fg: '.status-pill.en_route_delivery', bg: [{ sel: '.status-pill.en_route_delivery' }, '--card-1'] },
+    { n: 'status off_shift', fg: '.status-pill.off_shift', bg: [{ sel: '.status-pill.off_shift' }, '--card-1'] },
+    { n: 'stale row .dm meta', fg: '.who .dm', bg: ['--card-1', '--surface'], op: { sels: ['.driver-row.stale'], backdrop: '--surface' } },
+    { n: 'handled msg body', fg: '.msg-row.handled .msg-row-body', bg: ['--surface'], op: { sels: ['.msg-row.handled'], backdrop: '--surface' } },
+    { n: 'btn assign-self', fg: '.unassigned-card .assign-self-btn', bg: [{ sel: '.unassigned-card .assign-self-btn' }] },
+    { n: 'btn od-action primary', fg: '.od-action-btn.primary', bg: [{ sel: '.od-action-btn.primary' }] },
+    { n: 'btn msg-action primary', fg: '.msg-action-btn.primary', bg: [{ sel: '.msg-action-btn.primary' }] },
+    { n: 'btn recon materialize', fg: '.recon-btn.materialize', bg: [{ sel: '.recon-btn.materialize' }] },
+    { n: 'btn recon refund', fg: '.recon-btn.refund', bg: [{ sel: '.recon-btn.refund' }] },
+    { n: 'od-row phone link', fg: '.od-row a', bg: ['--surface'] },
   ];
   for (const [M, tag] of [[DARK, 'dark'], [LIGHT, 'light']]) {
-    for (const [fg, bg, opt] of PAIRS) {
+    for (const [fg, bg] of TOKEN_PAIRS) {
       const c = cratio(opaqueRgb(M, fg), opaqueRgb(M, bg));
-      const min = opt && opt.large ? 3 : 4.5;
-      assert.ok(c >= min, `${tag} ${fg} on ${Array.isArray(bg) ? bg.join('∘') : bg} = ${c.toFixed(2)} ≥ ${min}`);
+      assert.ok(c >= 4.5, `${tag} ${fg} on ${bg} = ${c.toFixed(2)} ≥ 4.5`);
+    }
+    for (const comp of COMPS) {
+      const fgVal = decl(comp.fg, 'color');
+      assert.ok(fgVal, `${tag} ${comp.n}: real color declaration found`);
+      let fg = resolveColor(M, fgVal).rgb;
+      let bg = composite(M, comp.bg.map(x => { const v = rd(x, M); assert.ok(v, `${comp.n}: background declaration found`); return val(M, v); }));
+      if (comp.op) {
+        let a = 1; for (const s of comp.op.sels) { const o = decl(s, 'opacity'); if (o !== undefined) a *= parseFloat(o); }
+        const bd = resolveColor(M, val(M, comp.op.backdrop)).rgb;
+        fg = overC(fg, a, bd); bg = overC(bg, a, bd);   // opacity dims text AND its bg over the backdrop
+      }
+      const c = cratio(fg, bg);
+      assert.ok(c >= 4.5, `${tag} REAL ${comp.n} (fg ${fgVal}) = ${c.toFixed(2)} ≥ 4.5`);
     }
     // white notification-badge text on the SOLID badge-red
     const badge = cratio(hex('#ffffff'), opaqueRgb(M, '--accent-solid'));
     assert.ok(badge >= 4.5, `${tag} badge white on --accent-solid = ${badge.toFixed(2)}`);
   }
-  ok('computed WCAG contrast ≥4.5:1 (incl. alpha-composited pills + on-button foregrounds) in both themes');
+  ok('computed WCAG ≥4.5:1 from REAL components (declared fg + composited ancestor bg + opacity) in both themes');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,12 +157,9 @@ const opaqueRgb = (M, spec) => {
 // on any other selector fails here.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  let style = html.slice(html.indexOf('<style>') + '<style>'.length, html.indexOf('</style>'));
-  style = style.replace(/\/\*[\s\S]*?\*\//g, '');   // drop comments (hex/ids inside them aren't rules)
-  // Rule-based scoping (NOT a range-strip — single-line :root blocks made a range-strip over-consume): parse
-  // every flat rule, then skip :root token blocks, at-rules, and @keyframes stops; the rest are components.
-  const skipSel = (sel) => /:root\b/.test(sel) || /^@/.test(sel) || /^[\d.]+%$/.test(sel) || /^(from|to)$/.test(sel) || sel === '';
-  // selector → hex literals it is allowed to carry (substring match: key ⊆ rule selector)
+  const isRoot = (part) => /:root\b/.test(part) || /^[\d.]+%$/.test(part) || /^(from|to)$/.test(part);
+  // key ⊆ compound-part grants these hexes. Split on COMMAS first, so a co-selector (`.rest-x_pizza, .ex`)
+  // can't launder a brand hex onto an unrelated part — EVERY part carrying the literal must be granted.
   const HEX_OK = [
     ['.tb-brand', ['#e85a58', '#cc2e2c', '#fff']],       // brand mark gradient + white glyph
     ['.rest-x_pizza', ['#F6935F']], ['.rest-la_musa', ['#46C7BB']], // restaurant-brand chips
@@ -122,30 +167,29 @@ const opaqueRgb = (M, spec) => {
     ['.info-window', ['#0a0a0a', '#555', '#fff']],       // always-white Google info bubble
     ['.rn', ['#fff']], ['.rail-badge', ['#fff']],        // white text on red count badges
   ];
-  // selectors allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted chips
+  // parts allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted chips
   const BG_RGBA_OK = ['.msg-modal', '.order-detail-modal', '.overlay-bg', '.comms-scrim', '.rest-x_pizza', '.rest-la_musa'];
-  const ruleRe = /([^{}]+)\{([^{}]+)\}/g;
-  let m, hexOrphans = [], bgOrphans = [];
-  while ((m = ruleRe.exec(style))) {
-    const sel = m[1].trim().replace(/\s+/g, ' '), body = m[2];
-    if (skipSel(sel)) continue; // :root token blocks, at-rules, keyframe stops
-    for (const d of body.split(';')) {
-      // hex literals — must be granted to this selector
+  const grantsHex = (part, h) => HEX_OK.some(([k, list]) => part.includes(k) && list.some(a => a.toLowerCase() === h.toLowerCase()));
+  let hexOrphans = [], bgOrphans = [];
+  for (const r of RULES) {
+    const parts = r.parts.filter(p => !isRoot(p));       // ignore :root token blocks / keyframe stops
+    if (!parts.length) continue;
+    for (const d of r.body.split(';')) {
+      // a hex applies to EVERY comma-part of the rule → each part must be granted it
       for (const hm of d.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
         const h = hm[0];
-        const granted = HEX_OK.some(([k, list]) => sel.includes(k) && list.some(a => a.toLowerCase() === h.toLowerCase()));
-        if (!granted) hexOrphans.push(`${h} @ ${sel}`);
+        for (const part of parts) if (!grantsHex(part, h)) hexOrphans.push(`${h} @ ${part}`);
       }
-      // raw rgba background — must be a known scrim/brand selector
+      // raw rgba background applies to every comma-part → each must be an allowed scrim/brand part
       const bm = d.match(/(?:^|\b)(background(?:-color)?)\s*:\s*(.+)/);
       if (bm && /rgba?\(/.test(bm[2]) && !/var\(/.test(bm[2])) {
-        if (!BG_RGBA_OK.some(k => sel.includes(k))) bgOrphans.push(`${bm[2].trim()} @ ${sel}`);
+        for (const part of parts) if (!BG_RGBA_OK.some(k => part.includes(k))) bgOrphans.push(`${bm[2].trim()} @ ${part}`);
       }
     }
   }
-  assert.deepStrictEqual(hexOrphans, [], `no hex literal on an un-granted selector (found: ${hexOrphans.join(' ; ')})`);
+  assert.deepStrictEqual(hexOrphans, [], `no hex literal on an un-granted selector part (found: ${hexOrphans.join(' ; ')})`);
   assert.deepStrictEqual(bgOrphans, [], `no un-tokenized rgba background off the scrim/brand allowlist (found: ${bgOrphans.join(' ; ')})`);
-  ok('orphan guard is selector-scoped: brand hex + scrim rgba only on their own selectors; a stray dark tile bg fails');
+  ok('orphan guard is selector-scoped (comma-split): brand hex + scrim rgba only on their own parts; a co-selector or dark tile bg fails');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
