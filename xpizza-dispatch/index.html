@@ -178,6 +178,18 @@
   /* the nav rail owns the far-left 54px; the topbar + board sit to its right */
   header.topbar, .app { margin-left: 54px; }
 
+  /* D4: board-liveness heartbeat pip (read-only status) */
+  .live-pip { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--text-soft); padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border); white-space: nowrap; }
+  .live-pip .d { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px var(--success-soft); flex: none; }
+  .live-pip b { color: var(--text); font-weight: 600; }
+  .live-pip.stale { color: var(--warn); }
+  .live-pip.stale .d { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .live-pip.stale b { color: var(--warn); }
+  /* D4: alerts bell badge */
+  .alerts-bell { position: relative; }
+  .alerts-bell-badge { position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 99px; background: var(--accent-solid); color: #fff; font-size: 9.5px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--topbar-2); pointer-events: none; }
+  .alerts-bell-badge[hidden] { display: none; }
+
   header.topbar {
     height: 60px;
     background: linear-gradient(180deg, var(--card-2), var(--topbar-2));
@@ -2161,6 +2173,8 @@
     </div>
 
     <div class="tb-right">
+      <!-- D4: board-liveness heartbeat pip (read-only, event-freshness). -->
+      <div class="live-pip" id="board-liveness" role="status" title="Frescura de datos del tablero" aria-label="Estado del tablero"><span class="d"></span>Tablero <b id="board-liveness-age">en vivo</b></div>
       <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
         <span class="aa-label">Auto-asignar</span>
         <span class="aa-sw"></span>
@@ -2169,6 +2183,8 @@
         <span class="msg-icon"></span>
         <span class="msg-badge" id="msg-badge">0</span>
       </button>
+      <!-- D4: alerts affordance — surfaces the Torre exceptions (GPS-dark driver, payment/reconciliation, etc.). -->
+      <button class="iconbtn alerts-bell" id="alerts-bell" title="Alertas" aria-label="Alertas"><svg class="ic"><use href="#i-alert"/></svg><span class="alerts-bell-badge" id="alerts-bell-badge" hidden>0</span></button>
       <button class="iconbtn" id="theme-toggle" title="Cambiar tema" aria-label="Cambiar tema"><svg class="ic"><use href="#i-moon"/></svg></button>
       <div class="tb-avatar" id="topbar-avatar" title="Sesión">—</div>
       <span id="topbar-user" hidden></span>
@@ -2757,20 +2773,45 @@ function drawRestaurant() {
 // ============================================================
 // Subscriptions
 // ============================================================
+// D4: board-liveness heartbeat (critique P2). READ-ONLY — reflects the freshness of the real RTDB board
+// events (drivers/tasks/orders). No .info/connected API is exposed by XPD, so it uses event-freshness: green
+// "en vivo" while events keep landing, amber "sin datos · hace Ns" once none has landed within the threshold
+// (a frozen board stops resetting the clock while the local timer keeps counting). It NEVER writes.
+const BOARD_STALE_MS = 60000;
+let lastBoardEventAt = Date.now();
+function boardAgeShort(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `hace ${s}s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `hace ${m}m` : `hace ${Math.floor(m / 60)}h`;
+}
+function renderLivenessPip() {
+  const pip = $('board-liveness'); if (!pip) return;
+  const stale = (Date.now() - lastBoardEventAt) > BOARD_STALE_MS;
+  pip.classList.toggle('stale', stale);
+  const age = $('board-liveness-age');
+  if (age) age.textContent = stale ? `sin datos · ${boardAgeShort(Date.now() - lastBoardEventAt)}` : 'en vivo';
+}
+function markBoardEvent() { lastBoardEventAt = Date.now(); renderLivenessPip(); }
+setInterval(renderLivenessPip, 5000);
+
 function subscribeAll() {
   XPD.subscribeToDrivers((drivers) => {
+    markBoardEvent();                    // D4: board-liveness heartbeat — a real RTDB event landed
     allDrivers = drivers || {};
     renderSidebar();
     updateDriverMarkers();
     refreshDeliveryEtas();
   });
   XPD.subscribeToTasks((tasks) => {
+    markBoardEvent();
     detectNewPending(tasks);
     allTasks = tasks || {};
     renderSidebar();
     updateCustomerMarkers();
   });
   XPD.subscribeToOrders((orders) => {
+    markBoardEvent();
     allOrders = orders || {};
     renderSidebar();
     updateCustomerMarkers();
@@ -2933,6 +2974,9 @@ function renderDispatcherAlerts(alerts) {
   // ☰ collapsed-rail exceptions badge (Task 11) — count shown only when the left rail is collapsed.
   const badge = $('left-rail-badge');
   if (badge) { badge.textContent = String(entries.length); badge.classList.toggle('has', entries.length > 0); }
+  // D4: the topbar alerts bell mirrors the Torre exceptions count (single source: these same entries).
+  const bellBadge = $('alerts-bell-badge');
+  if (bellBadge) { bellBadge.textContent = String(entries.length); bellBadge.hidden = !(entries.length > 0); }
   if (entries.length === 0) { container.innerHTML = ''; return; }
 
   const rowHtml = (e) => {
@@ -3515,7 +3559,7 @@ function colaCard(e, showSelfBtn) {
   const isCash = isCashPayment(o.payment_method);
   const payChip = `<span class="m ${isCash ? 'pay' : 'paid'}"><span class="d"></span>${isCash ? `Efectivo · L${escapeHtml(String(o.total ?? '—'))}` : 'Pagado online'}</span>`;
   const waChip = o.order_received_notified_at
-    ? '<span class="m wa"><span class="d"></span>WhatsApp ✓</span>'
+    ? '<span class="m wa"><span class="d"></span>WhatsApp <svg class="ic" style="width:12px;height:12px;vertical-align:-2px"><use href="#i-check"/></svg></span>'
     : o.order_received_send_unresolved_at
       ? '<span class="m warn"><span class="d"></span>WhatsApp no entregado</span>'
       : '';
@@ -4357,7 +4401,10 @@ function renderDeliveredSection() {
   } else {
     const dCount = orders.filter(o => o.status === 'delivered' || o.status === 'completed').length;
     const cCount = orders.length - dCount;
-    meta.textContent = cCount > 0 ? `${dCount} ✓  ${cCount} ✕` : String(dCount);
+    // dCount/cCount are numeric counts (safe as HTML) — monochrome line icons, not ✓/✕ glyphs.
+    const chk = '<svg class="ic" style="width:11px;height:11px;vertical-align:-1px"><use href="#i-check"/></svg>';
+    const ex = '<svg class="ic" style="width:11px;height:11px;vertical-align:-1px"><use href="#i-close"/></svg>';
+    meta.innerHTML = cCount > 0 ? `${dCount} ${chk}  ${cCount} ${ex}` : String(dCount);
   }
 
   if (orders.length === 0) {
@@ -5499,6 +5546,12 @@ function togRail(cls) {
 }
 $('rail-toggle-left').addEventListener('click', () => togRail('left-open'));
 $('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
+// D4: alerts bell → the Torre exceptions live in the left rail (#torre-list). Open it + scroll them into view.
+$('alerts-bell')?.addEventListener('click', () => {
+  if (!$('app').classList.contains('left-open')) togRail('left-open');
+  const list = $('torre-list');
+  if (list && typeof list.scrollIntoView === 'function') list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 
 // Live-tick the aging timers each second (recompute from each row's created-time baseline in-place).
 setInterval(() => {

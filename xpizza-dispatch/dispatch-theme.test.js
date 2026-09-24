@@ -214,6 +214,7 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   const HEX_OK_EXACT = [
     ['.nav-mk', ['#e85a58', '#cc2e2c', '#fff']],         // nav-rail brand mark (same brand gradient + white glyph)
     ['.nav-badge', ['#fff']],                            // white text on the red Comms count badge
+    ['.alerts-bell-badge', ['#fff']],                    // white text on the red alerts-bell count badge
   ];
   // TARGET element (last segment) allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted
   // chips. Last-segment match so a descendant (`.rest-x_pizza .ex`) can't launder the brand rgba onto `.ex`.
