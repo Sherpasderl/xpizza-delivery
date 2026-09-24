@@ -45,7 +45,7 @@ const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey } = require('./identi
 /* The activation's own verification budget: the same ceiling bootstrap uses, for the same reason —
    one transaction can only verify so much, and verifying a SUBSET is worse than refusing. */
 const BOOTSTRAP_MAX_OBJECTS = 400;
-const { pointerStateOf, getActivePointer } = require('./catalog-firestore');
+const { getActivePointer, readPointerSnap } = require('./catalog-firestore');
 
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
 const RETENTION_MIN_COUNT = 10;                   // keep ≥10 versions ...
@@ -314,15 +314,31 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     const l = snap.exists ? (snap.data() || {}) : {};
     if (l.owner_token !== token) throw new Error(`lease_lost: not owner (versionId=${versionId})`);
     if (!(l.expires_at && l.expires_at.toMillis() > nowServer.toMillis())) throw new Error(`lease_expired: cannot flip (versionId=${versionId})`);
-    const liveActive = pointerSnap.exists ? ((pointerSnap.data() || {}).version || null) : null;
+    /* 🔴 THE FOURTH READER, AND IT WAS INSIDE THE TRANSACTION THAT MATTERS MOST. E-1 unified the two
+       public readers and routed the three CLI tools through them; this one survived because it does
+       not LOOK like a pointer read. It coerced the version with `|| null` — so a document that exists
+       and names no version read as "nothing published", which is the expectation a FIRST publish
+       carries — and then called pointerStateOf for the generation, which checks the FIELDS but not
+       whether an existing document names a version at all. So the exact bytes both public readers now
+       refuse were still accepted at the activation boundary: a rollback expecting `null` would
+       OVERWRITE a `{}` or `{version: null}` pointer, and an ordinary first publish would too if the
+       malformed document appeared between baseline capture and this transaction.
+       🔴 AND A TEXT CENSUS COULD NOT HAVE FOUND IT. The pointer-state census scans production files
+       for a "read the active_version document" spelling; this is a parse of an ARGUMENT — the
+       snapshot was fetched above. That is precisely the alternate-spelling case the census's own
+       comment says a lint walks past, which is why the census is a lint and this is the fix.
+       BOTH fields now come from ONE readPointerSnap: there is no independent parse of this document
+       left anywhere, which is the property E-1 was for. */
+    const livePointer = readPointerSnap(pointerSnap, rid);
+    const liveActive = livePointer.version;
     if (liveActive !== expected.activeVersionId) {
       throw new Error(`flip_cas_stale: ${rid} — validated against active ${JSON.stringify(expected.activeVersionId)} but ${JSON.stringify(liveActive)} is live; this publish would overwrite a newer one`);
     }
-    /* Hoisted above the claim settlement so the baseline the claim is validated against, the fence
-       the eligibility predicate is decided against, and the value the pointer is bumped from are all
-       ONE read. Two reads of the same pointer inside one transaction cannot tear today; writing it
-       three times invites the next edit to move one of them out. */
-    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;
+    /* From the same read as `liveActive`, so the baseline the claim is validated against, the fence
+       the eligibility predicate is decided against, and the value the pointer is bumped from are ONE
+       value. Two parses of the same snapshot cannot tear, but they CAN disagree about what is valid —
+       which is exactly what this defect was. */
+    const priorGeneration = livePointer.generation;
     if (wantsDraftCas) {
       const liveRevision = draftSnap.exists ? encodeUpdateTime(draftSnap.updateTime) : null;
       if (liveRevision !== expected.draftRevision) {

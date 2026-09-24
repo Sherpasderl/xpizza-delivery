@@ -7351,9 +7351,9 @@
   ],
   "label": "🔴 the flip's in-tx read stops going through the checked reader - it bumps from a baseline that was never real",
   "kills_with": "the flip's own in-transaction read coerced a stored generation",
-  "from": "    const priorGeneration = pointerStateOf(pointerSnap.exists ? pointerSnap.data() : null).generation;",
-  "to": "    const priorGeneration = (pointerSnap.exists ? (pointerSnap.data() || {}).generation : 0) || 0;",
-  "why": "The sibling of d4p1e1-05, at the OTHER reader. The flip writes priorGeneration + 1, so a coerced value here is not merely read wrong — it is the number written into the pointer, on a baseline that never existed. Killed only by the direct flipPointer drive, since flipPointer is exported and does not pre-flight, leaving the in-tx read as the only guard on that path."
+  "from": "    const livePointer = readPointerSnap(pointerSnap, rid);",
+  "to": "    const livePointer = { version: (pointerSnap.exists ? (pointerSnap.data() || {}).version : null) || null, generation: (pointerSnap.exists ? (pointerSnap.data() || {}).generation : 0) || 0 };",
+  "why": "The sibling of d4p1e1-05, at the OTHER reader. The flip writes priorGeneration + 1, so a coerced value here is not merely read wrong — it is the number written into the pointer, on a baseline that never existed. Killed only by the direct flipPointer drive, since flipPointer is exported and does not pre-flight, leaving the in-tx read as the only guard on that path. 🔴 RE-POINTED when the D-chain gate found this WAS a fourth reader: the flip coerced the version with `|| null` and then called pointerStateOf for the generation — which checks the fields but not whether an existing document names a version at all. Both fields now come from ONE readPointerSnap, so the mutation restores the independent parse rather than swapping one call."
  },
  {
   "id": "d4p1dc-14",
@@ -7500,6 +7500,21 @@
   "from": "  if (state.version === null) {",
   "to": "  if (false) {",
   "why": "Only flipPointer writes this document and it always writes a version, so a versionless one is a partial write or corruption. Reading it as an unpublished restaurant is the same defect E-1 fixed for a version of the wrong TYPE — a corrupt pointer that looks like a fresh one, which a first publish's CAS is allowed to overwrite. The ABSENT document is the genuine 'nothing published' case and the only one. kills_with is the CELL's message, not the production error text: with the branch gone nothing throws, so the kill lands on the assertion that expected a refusal — the production string only exists when the guard works."
+ },
+ {
+  "id": "d4p1e1-10",
+  "slice": "d4p1e1",
+  "file": "catalog/catalog-firestore.js",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-activation"
+  ],
+  "label": "🔴 the versionless-document check is gone, scored AT THE FLIP - a malformed pointer is overwritten by a rollback",
+  "kills_with": "OVERWROTE an empty document",
+  "from": "  if (state.version === null) {",
+  "to": "  if (false) {",
+  "why": "SAME ANCHOR as d4p1e1-07, DIFFERENT SUITE, and that is the point: -07 proves the shared reader refuses a versionless document, this proves the FLIP's refusal actually depends on it — end to end, through a real rollback that would otherwise take the pointer. 🔴 It exists because my first attempt armed the wrong lines: I added mutants on the flip's `liveActive` and `priorGeneration` derivations, and both SURVIVED, because readPointerSnap throws BEFORE either runs. They were equivalent by construction, so they were removed rather than left in the count or declared equivalent — the guard is the shared read and the check inside it, not the two derivations downstream of it."
  },
  {
   "id": "pah-01",

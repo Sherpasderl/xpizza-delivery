@@ -308,6 +308,74 @@ const publish = async (expectedActive, tag) => {
     ok('a rollback to a never-activated PENDING candidate is refused by name; a rollback to a genuinely activated version still works');
   }
 
+  // ── 🔴 THE FOURTH READER: A MALFORMED POINTER MUST NOT BE OVERWRITTEN AT THE FLIP ───────────
+  /* E-1 unified the two public readers and routed the three CLI tools through them, and the D-chain
+     gate found a FOURTH — inside the flip transaction, the one that matters most. It coerced the
+     version with `|| null`, so a document that EXISTS and names no version read as "nothing published
+     yet", which is the expectation a FIRST publish and a null-expecting ROLLBACK both carry. The bytes
+     both public readers refuse were still accepted at the activation boundary.
+     🔴 AND MY CENSUS COULD NOT HAVE CAUGHT IT. pointer-state's census scans production files for a
+     "read the active_version document" spelling; this is a parse of an ARGUMENT — the snapshot was
+     fetched above it. That is exactly the alternate-spelling case the census's own comment says a lint
+     walks past, which is why it is a lint and this is a cell.
+     Reproduced as the gate reproduced it, through the real functions. */
+  {
+    const ptr = db.collection('restaurants').doc(RID).collection('meta').doc('active_version');
+    const good = (await ptr.get()).data();
+    const { rollbackVersion: rb } = require('../catalog/catalog-publish');
+
+    /* (a) ROLLBACK EXPECTING `null` MUST NOT OVERWRITE A MALFORMED POINTER. Both shapes the gate used. */
+    for (const [label, doc] of [['an empty document', {}], ['an explicit null version', { version: null }]]) {
+      await ptr.set(doc);
+      let threw = null;
+      try { await rb(db, RID, good.version, { expected: { activeVersionId: null } }); } catch (e) { threw = e; }
+      assert.ok(threw && /active_version_malformed/.test(String(threw.message)),
+        `🔴 a rollback expecting "nothing published" OVERWROTE ${label} — a partial write read as a fresh restaurant, and the rollback took the pointer: ${threw && threw.message}`);
+      const after = (await ptr.get()).data() || {};
+      assert.strictEqual(after.version, doc.version, `…and ${label} is untouched — the refusal happened before any write`);
+    }
+
+    /* (b) A FIRST PUBLISH MUST NOT OVERWRITE ONE EITHER — the gate's second case, where the malformed
+       document appears AFTER baseline capture and before the flip's transaction. Raced on the flip's
+       own transaction, which is the window the fourth reader lived in. */
+    await ptr.set(good);
+    const orig = db.runTransaction.bind(db);
+    let calls = 0, fired = false;
+    const racing = new Proxy(db, {
+      get(t, prop) {
+        if (prop === 'runTransaction') {
+          return async (fn, o) => {
+            calls += 1;
+            if (calls === 2 && !fired) { fired = true; await ptr.set({}); }   // malformed, mid-publish
+            return orig(fn, o);
+          };
+        }
+        const v = t[prop];
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+    });
+    let pubThrew = null;
+    try {
+      const { input } = buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'fourth-reader' });
+      await publishVersion(racing, RID, input, { expected: { activeVersionId: null } });
+    } catch (e) { pubThrew = e; }
+    assert.ok(fired, 'premise — the malformed document really appeared between baseline capture and the flip');
+    assert.ok(pubThrew && /active_version_malformed/.test(String(pubThrew.message)),
+      `🔴 a first publish OVERWROTE a pointer that appeared malformed mid-flight — the flip read it as "nothing published" and took it: ${pubThrew && pubThrew.message}`);
+    assert.deepStrictEqual((await ptr.get()).data(), {}, '…and the malformed document is untouched');
+
+    /* SENSITIVITY — with a well-formed pointer the identical flip still works. Without this the two
+       refusals are satisfied by an activation path that refuses everything, which would be a worse
+       bug than the one being fixed. */
+    await ptr.set(good);
+    const live = await getActivePointer(db, RID);
+    const v = await publish(live.version, 'after-fourth-reader');
+    const healed = await getActivePointer(db, RID);
+    assert.strictEqual(healed.version, v, '🔴 SENSITIVITY: an ordinary publish against a well-formed pointer was refused too');
+    assert.strictEqual(healed.generation, live.generation + 1, '…and the fence advanced exactly once');
+    ok('a malformed pointer is refused AT THE FLIP — a null-expecting rollback cannot overwrite it, nor can a first publish that meets it mid-flight; an ordinary publish still works');
+  }
+
   FINISHED = true;
   console.log(`d4p1-activation(emulator): OK (${n})`);
   process.exit(0);
