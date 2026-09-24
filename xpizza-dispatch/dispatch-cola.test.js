@@ -137,7 +137,13 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
   const us = html.slice(html.indexOf('function updateStats('), html.indexOf('function getDotClass('));
   assert.match(us, /const pendingCount = \(precomputed \|\| getActionQueue\(Date\.now\(\)\)\)\.counts\.all;/, 'topbar KPI stat-pending = shared queue counts.all');
   assert.doesNotMatch(us, /getPendingOrders\(\)\.length/, 'KPI no longer the unassigned-only count');
-  ok('ONE count mirrored: Cola meta + 4 segment chips + topbar KPI all from the same counts');
+  // The KPI LABEL must match its count (the whole queue), not the "Sin asignar" segment — else it can read
+  // "1 En cola" while the Sin asignar segment says 0. Spec: the stat-pending KPI label is "En cola".
+  const kpiTag = html.match(/<div class="tb-kpi" id="kpi-pending">[\s\S]*?<\/div>/);
+  assert.ok(kpiTag, 'kpi-pending KPI markup located');
+  assert.match(kpiTag[0], /<span>En cola<\/span>/, 'stat-pending KPI label is "En cola" (matches the union count)');
+  assert.doesNotMatch(kpiTag[0], /Sin asignar/, 'KPI label is no longer the segment-only "Sin asignar"');
+  ok('ONE count mirrored: Cola meta + 4 segment chips + topbar KPI (labelled "En cola") all from the same counts');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
