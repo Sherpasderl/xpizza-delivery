@@ -176,20 +176,14 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
 // per type, landing red + in counts.all (Detenidos). So retiring the Torre alert can't make an order vanish.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  assert.match(html, /const exceptions = collectExceptionOrders\(latestAlerts, allOrders, COLA_OWNED_ALERT_TYPES\)/,
-    'getActionQueue sources exceptions from COLA_OWNED_ALERT_TYPES (same set that retires them from the Torre)');
-  // …and the sourced exceptions are actually WIRED into the queue (used, not just computed) — else a strand
-  // would still vanish. Assert the union into the stalled/Detenidos input AND the forced-red band.
-  assert.match(html, /const stalled = timerStalled\.concat\(exceptions\);/, 'exceptions unioned into the stalled (Detenidos) input');
-  assert.match(html, /exceptionIds\.has\(o\.order_id\) \? 'red' : riskOf\(o\)\.band/, 'exceptions forced to red band');
+  // Comment-stripped structural: the fourth source is computed AND wired in (concat) AND forced red — so a
+  // reversion parked in a comment can't satisfy the guard.
+  const modJs0 = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  assert.match(modJs0, /const exceptions = collectExceptionOrders\(latestAlerts, allOrders, COLA_OWNED_ALERT_TYPES\)/, 'exceptions sourced from the same owned-types set');
+  assert.match(modJs0, /const stalled = timerStalled\.concat\(exceptions\);/, 'exceptions unioned into the stalled (Detenidos) input');
+  assert.match(modJs0, /exceptionIds\.has\(o\.order_id\) \? 'red' : riskOf\(o\)\.band/, 'exceptions forced red');
 
-  const hm = html.match(/function collectExceptionOrders\(alertsObj, ordersObj, ownedTypes\)\s*\{[\s\S]*?\n\}/);
-  assert.ok(hm, 'collectExceptionOrders source located');
-  // eslint-disable-next-line no-new-func
-  const collect = new Function(`${hm[0]}; return collectExceptionOrders;`)();
-  // eslint-disable-next-line no-new-func
-  const build = new Function(`${html.match(/function buildActionQueue\(unassigned, stalled, atrisk, bandOf\)\s*\{[\s\S]*?\n\}/)[0]}; return buildActionQueue;`)();
-  // Track the REAL owned-type set parsed from source (not a hand-copied list) so the guard follows drift.
   const setSrc = html.match(/const COLA_OWNED_ALERT_TYPES = new Set\((\[[^\]]*\])\)/);
   assert.ok(setSrc, 'COLA_OWNED_ALERT_TYPES literal located');
   const OWNED = JSON.parse(setSrc[1].replace(/'/g, '"'));
@@ -197,25 +191,51 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
     'owned set covers all three order-action alert types');
   const owned = new Set(OWNED);
 
+  // Drive the REAL getActionQueue adapter (collectExceptionOrders + buildActionQueue are real source; the rest
+  // are strand-shaped stubs). This exercises the actual wiring end-to-end — "computed but not unioned" fails.
+  const grab = (re) => { const m = html.match(re); assert.ok(m, 'source located: ' + re); return m[0]; };
+  const adapterSrc = grab(/function collectExceptionOrders\(alertsObj, ordersObj, ownedTypes\)\s*\{[\s\S]*?\n\}/) + '\n'
+    + grab(/function buildActionQueue\(unassigned, stalled, atrisk, bandOf\)\s*\{[\s\S]*?\n\}/) + '\n'
+    + grab(/function getActionQueue\(nowTs\)\s*\{[\s\S]*?\n\}/) + '\n; return getActionQueue;';
+  const DEPS = ['deliveryRisk', 'agingSeconds', 'agingBaselineMs', 'etaSnapshots', 'etaCache', 'getPendingOrders',
+    'allOrders', 'allTasks', 'allDrivers', 'isStalledAssignment', 'latestAlerts', 'COLA_OWNED_ALERT_TYPES', 'getOrdersForDriver'];
+
   for (const type of OWNED) {
-    // A fresh order none of the three PRIMARY sources catch (not pending, not timer-stalled, not aging) —
-    // represented ONLY by its retired alert (the strand shape: order exists, alert names it).
-    const orders = { S1: { order_id: 'S1', created_at: 1 } };
-    const alerts = { a1: { type, order_id: 'S1' }, aX: { type: 'driver_freshness_stale', driver_id: 'd9' } };
-    const ex = collect(alerts, orders, owned);
-    assert.deepStrictEqual(ex.map(o => o.order_id), ['S1'], `type ${type}: order sourced into the Cola`);
-    const { entries, counts } = build([], ex, [], () => 'red');   // exception → the stalled (Detenidos) input, red
-    assert.strictEqual(entries.length, 1, `type ${type}: present in the queue`);
+    // Strand shape: the order exists, its delivery task is CLAIMED, it is NOT pending, NOT timer-stalled, NOT
+    // aging — so only the retired alert names it. If getActionQueue didn't union collectExceptionOrders into
+    // its stalled input, this order would be invisible → entries.length 0 → red.
+    // eslint-disable-next-line no-new-func
+    const getAQ = new Function(...DEPS, adapterSrc)(
+      () => ({ level: 'ok', band: 'green' }),          // deliveryRisk
+      () => 0, () => 0,                                // agingSeconds, agingBaselineMs
+      { baseline: () => null }, {},                    // etaSnapshots, etaCache
+      () => [],                                        // getPendingOrders (strand not pending)
+      { S1: { order_id: 'S1', created_at: 1 } },       // allOrders
+      { S1_delivery: { assigned_driver_id: 'd1' } },   // allTasks (delivery claimed, pickup unassigned)
+      {},                                              // allDrivers
+      () => false,                                     // isStalledAssignment (no armed timer)
+      { a1: { type, order_id: 'S1' } },                // latestAlerts (the retired alert)
+      owned,                                           // COLA_OWNED_ALERT_TYPES
+      () => [],                                        // getOrdersForDriver
+    );
+    const { entries, counts } = getAQ(1000);
+    assert.strictEqual(entries.length, 1, `type ${type}: the REAL getActionQueue includes the strand`);
     assert.strictEqual(entries[0].orderId, 'S1');
     assert.strictEqual(entries[0].band, 'red', `type ${type}: red band (act now)`);
     assert.strictEqual(entries[0].primary, 'stalled', `type ${type}: Detenidos segment`);
     assert.strictEqual(counts.all, 1, `type ${type}: in counts.all`);
   }
-  assert.deepStrictEqual(collect({ z: { type: 'driver_freshness_stale', order_id: 'S1' } }, { S1: {} }, owned), [],
-    'a non-owned alert type does not drag an order into the Cola');
-  assert.strictEqual(collect({ a: { type: 'assignment_strand', order_id: 'S1' }, b: { type: 'no_drivers_available', order_id: 'S1' } }, { S1: { order_id: 'S1' } }, owned).length, 1,
-    'same order via two owned alerts → deduped to one');
-  ok('retired-alert orders sourced into the Cola per COLA_OWNED_ALERT_TYPES (red · Detenidos · counts.all); non-owned excluded; deduped');
+
+  // Robustness: collectExceptionOrders must skip a malformed id (array/empty) rather than coerce it into a real
+  // order; a valid string id still resolves; two alerts for one order dedupe.
+  // eslint-disable-next-line no-new-func
+  const collect = new Function(`${grab(/function collectExceptionOrders\(alertsObj, ordersObj, ownedTypes\)\s*\{[\s\S]*?\n\}/)}; return collectExceptionOrders;`)();
+  assert.deepStrictEqual(collect({ a: { type: 'assignment_strand', order_id: ['S1'] } }, { S1: { order_id: 'S1' } }, owned), [], 'array id skipped (no coercion into order S1)');
+  assert.deepStrictEqual(collect({ a: { type: 'assignment_strand', order_id: '' } }, { '': { x: 1 } }, owned), [], 'empty id skipped');
+  assert.deepStrictEqual(collect({ z: { type: 'driver_freshness_stale', order_id: 'S1' } }, { S1: {} }, owned), [], 'non-owned alert type not sourced');
+  assert.deepStrictEqual(collect({ a: { type: 'assignment_strand', order_id: 'S1' } }, { S1: { order_id: 'S1' } }, owned).map(o => o.order_id), ['S1'], 'valid string id still resolves');
+  assert.strictEqual(collect({ a: { type: 'assignment_strand', order_id: 'S1' }, b: { type: 'no_drivers_available', order_id: 'S1' } }, { S1: { order_id: 'S1' } }, owned).length, 1, 'same order via two owned alerts → deduped');
+  ok('real getActionQueue unions retired-alert orders per COLA_OWNED_ALERT_TYPES (red · Detenidos · counts.all); malformed ids skipped; deduped');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +255,15 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
   assert.match(html, /const pendingCount = \(precomputed \|\| getActionQueue\(Date\.now\(\)\)\)\.counts\.all;/, 'KPI reads counts.all from the shared queue');
   const tick = html.slice(html.indexOf('function startRenderTick('), html.indexOf('function startRenderTick(') + 260);
   assert.match(tick, /renderSidebar\(\);/, 'the 5s render tick calls renderSidebar (→ the shared count path)');
-  ok('one shared queue drives Cola header + KPI; renderSidebar (and the 5s tick) can never refresh one count without the other');
+  // CALLER COVERAGE (the whole-flow guard the last round missed — it proved the shared path works, not that
+  // every caller uses it): renderCola( and updateStats( each appear EXACTLY twice in the module — their own
+  // definition + the ONE call inside syncActionQueueViews. Any bare bypass caller (segment click, subscription
+  // callback) makes the count 3+ → red. Comments stripped so a commented reference can't inflate it.
+  const modJs = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1]
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  assert.strictEqual((modJs.match(/renderCola\(/g) || []).length, 2, 'renderCola( only at its def + inside syncActionQueueViews (no bypass caller)');
+  assert.strictEqual((modJs.match(/updateStats\(/g) || []).length, 2, 'updateStats( only at its def + inside syncActionQueueViews (no bypass caller)');
+  ok('one shared queue drives Cola header + KPI; every caller routes through syncActionQueueViews (no bypass)');
 }
 
 console.log(`\ndispatch-cola: OK (${n} groups)`);

@@ -2739,7 +2739,6 @@ function subscribeAll() {
     allDrivers = drivers || {};
     renderSidebar();
     updateDriverMarkers();
-    updateStats();
     refreshDeliveryEtas();
   });
   XPD.subscribeToTasks((tasks) => {
@@ -2747,13 +2746,11 @@ function subscribeAll() {
     allTasks = tasks || {};
     renderSidebar();
     updateCustomerMarkers();
-    updateStats();
   });
   XPD.subscribeToOrders((orders) => {
     allOrders = orders || {};
     renderSidebar();
     updateCustomerMarkers();
-    updateStats();
   });
   XPD.subscribeToDriverCash(renderCashBar);   // read-only cash bar (today's closed cuadres)
   XPD.subscribeToScheduledOrders((scheduled) => {           // read-only held orders → En Fila queue
@@ -3423,7 +3420,9 @@ function collectExceptionOrders(alertsObj, ordersObj, ownedTypes) {
   for (const a of Object.values(alertsObj || {})) {
     if (!a || !ownedTypes.has(a.type)) continue;
     const oid = a.order_id;
-    if (oid == null || seen.has(oid)) continue;
+    // Require a usable string id — order_ids are strings here; a non-string (e.g. an array ["S"]) would
+    // coerce in ordersObj[oid] and inject the wrong order. Skip malformed ids rather than resolve them.
+    if (typeof oid !== 'string' || !oid || seen.has(oid)) continue;
     const o = ordersObj[oid];
     if (o) { out.push(o); seen.add(oid); }
   }
@@ -3606,7 +3605,7 @@ function initColaSegments() {
     btn.addEventListener('click', () => {
       colaFilter = btn.dataset.seg;
       seg.querySelectorAll('[data-seg]').forEach(b => b.classList.toggle('on', b === btn));
-      renderCola();
+      syncActionQueueViews();   // shared path → header + segments + KPI + filtered list all from one queue
     });
   });
 }
