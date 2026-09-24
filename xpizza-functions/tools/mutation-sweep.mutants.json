@@ -7938,10 +7938,10 @@
   "id": "e2c-04",
   "slice": "e2c",
   "file": "catalog/identity-fence.js",
-  "from": "  if (typeof version !== 'string' || !version) {",
+  "from": "  if (!hasVersion) {",
   "to": "  if (false) {",
-  "label": "a baseline naming no version is accepted",
-  "kills_with": "a half-formed baseline was accepted",
+  "label": "a baseline with NO version key at all is accepted (absent read as present-and-null)",
+  "kills_with": "an absent baseline is diagnosed as corruption instead of as a caller that never captured one",
   "command": [
    "node",
    "catalog/identity-fence.test.js"
@@ -8027,6 +8027,32 @@
   "command": [
    "node",
    "tools/registry-writers.test.js"
+  ]
+ },
+ {
+  "id": "e2c-11",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (version !== null && (typeof version !== 'string' || !version)) {",
+  "to": "  if (false) {",
+  "label": "a version present but unusable is taken as a baseline instead of corruption",
+  "kills_with": "a half-formed baseline was accepted",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-12",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (version === null && generation !== 0) {",
+  "to": "  if (false) {",
+  "label": "a torn pair — no version but a non-zero generation — is accepted",
+  "kills_with": "a half-formed baseline was accepted",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
   ]
  }
 ]

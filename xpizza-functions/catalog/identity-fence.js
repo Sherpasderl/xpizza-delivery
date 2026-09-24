@@ -41,10 +41,27 @@ function baselineOf(captured, rid, code) {
      `versionId`, while readPointerSnap returns `version`. Accepting either is not laxity — it is the
      same value under the two names already in use, and normalising here keeps callers from
      reshaping a pair in transit, which is how a pair stops being a pair. */
+  const hasVersion = Object.prototype.hasOwnProperty.call(c, 'version') || Object.prototype.hasOwnProperty.call(c, 'versionId');
   const version = c.versionId !== undefined ? c.versionId : c.version;
   const generation = c.generation;
-  if (typeof version !== 'string' || !version) {
-    throw new Error(`${code}_no_baseline: ${rid} — the captured baseline names no version (${JSON.stringify(version)}); a fence against an unnamed version cannot refuse anything`);
+  /* 🔴 `{version: null, generation: 0}` IS A LEGITIMATE BASELINE — nothing active yet. My first cut
+     refused it, reasoning that a fence against an unnamed version cannot refuse anything. That is
+     WRONG, and the tree already said so: writeVersion's baseline check (catalog-publish.js) requires
+     the KEY to be present while allowing the value to be null, and its comment states the rule
+     outright — "a FIRST publish, nothing active yet. Absent is not."
+     It can refuse: a caller that decided while nothing was published, and then finds `v-1@1`, has
+     been superseded by a first publish landing underneath it — exactly the race worth catching.
+     Refusing it as a baseline would instead mean no unpublished restaurant could ever mint.
+     ABSENT is still refused, because absent means nobody captured anything. Present-and-null means
+     somebody looked and found nothing, which is a fact about the world and a thing to compare. */
+  if (!hasVersion) {
+    throw new Error(`${code}_no_baseline: ${rid} — the captured baseline has no version key at all (${JSON.stringify(c)}); present-and-null means "nothing was active", absent means nobody looked`);
+  }
+  if (version !== null && (typeof version !== 'string' || !version)) {
+    throw new Error(`${code}_no_baseline: ${rid} — the captured baseline's version is neither a name nor null (${JSON.stringify(version)}); a value that is present but unusable is corruption, not a baseline`);
+  }
+  if (version === null && generation !== 0) {
+    throw new Error(`${code}_no_baseline: ${rid} — the captured baseline names no version but claims generation ${JSON.stringify(generation)}; nothing active is generation 0, and any other pairing is a torn read`);
   }
   if (!Number.isInteger(generation) || generation < 0) {
     throw new Error(`${code}_no_baseline: ${rid} — the captured baseline carries no usable generation (${JSON.stringify(generation)}); half a pair is not a baseline`);

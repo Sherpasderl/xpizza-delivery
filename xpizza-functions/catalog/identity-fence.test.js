@@ -64,7 +64,7 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
    nothing supplied; it hid a production lockout for four slices while every cell stayed green. An
    optional baseline here would do the same: every call passes, the fence protects nothing. */
 {
-  for (const bad of [undefined, null, 'v-7', 42]) {
+  for (const bad of [undefined, null, 'v-7', 42]) {   // not an object at all: nobody captured anything
     await assert.rejects(() => fence(bad, snapOf({ version: 'v-7', generation: 3 })),
       /no captured \{version, generation\} at all/,
       `🔴 the fence ran with no captured pair (${JSON.stringify(bad)}) — it would pass every call and protect nothing`);
@@ -80,10 +80,12 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
   const halves = [
     [{ versionId: 'v-7' }, 'generation missing'],
     [{ generation: 3 }, 'version missing'],
-    [{ versionId: null, generation: 3 }, 'pre-P1 pointer: no version'],
+    [{ versionId: null, generation: 3 }, 'null version but a non-zero generation — a torn pair'],
     [{ versionId: 'v-7', generation: null }, 'generation null'],
     [{ versionId: 'v-7', generation: '3' }, 'generation as a string'],
     [{ versionId: 'v-7', generation: 1.5 }, 'generation not an integer'],
+    [{ version: 42, generation: 1 }, 'version present but not a name — corruption, not a baseline'],
+    [{ version: {}, generation: 1 }, 'version present as an object'],
     [{ versionId: 'v-7', generation: -1 }, 'negative generation'],
     [{ versionId: '', generation: 3 }, 'empty version'],
   ];
@@ -165,6 +167,56 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
       new RegExp(`^Error: ${CODE}: ${rid} — `), `every brand refuses identically (${rid})`);
   }
   ok('the fence is brand-agnostic: no brand literal, and three brands refuse identically');
+}
+
+// ── 11b. 🔴 THE PRE-P1 PAIR IS A BASELINE; ABSENT IS NOT — AND THE TREE ALREADY SAID SO ───────
+/* My first cut refused {version: null, generation: 0}, reasoning that a fence against an unnamed
+   version cannot refuse anything. Wrong, and the tree already carried the right rule: writeVersion's
+   baseline check requires the KEY while allowing the value to be null, and its comment says it
+   outright — "a FIRST publish, nothing active yet. Absent is not." Two validators for one concept had
+   drifted apart within one slice, which is the same failure as three comment strippers.
+   It CAN refuse: a caller that decided while nothing was published and then finds v-1@1 has been
+   superseded by a first publish landing underneath it. Refusing the pair instead would mean no
+   unpublished restaurant could ever mint. */
+{
+  assert.deepStrictEqual(baselineOf({ version: null, generation: 0 }, RID, CODE), { version: null, generation: 0 },
+    '🔴 the pre-P1 pair was refused — an unpublished restaurant could never mint');
+
+  // …and it still fences: a first publish landing underneath is caught.
+  await assert.rejects(() => fence({ version: null, generation: 0 }, snapOf({ version: 'v-1', generation: 1 })),
+    /judged against null@0, now "v-1"@1/, '🔴 a first publish landed under a caller that decided on an empty pointer, and the fence passed');
+  // …and an unmoved empty pointer passes.
+  const still = await fence({ version: null, generation: 0 }, { exists: false, data: () => ({}) });
+  assert.strictEqual(still.version, null, 'nothing published, nothing moved → passes');
+
+  /* 🔴 THE TWO VALIDATORS MUST AGREE. They are not merged here — unifying them touches the publish
+     path and belongs in its own increment — so this pins them to each other instead, which is what
+     stops the drift recurring silently. */
+  const pub = require('fs').readFileSync(require('path').join(__dirname, 'catalog-publish.js'), 'utf8');
+  const writeVersionRule = /!Object\.prototype\.hasOwnProperty\.call\(baseline, 'version'\)[\s\S]{0,120}?!Number\.isInteger\(baseline\.generation\) \|\| baseline\.generation < 0/;
+  assert.ok(writeVersionRule.test(pub),
+    '🔴 writeVersion\'s baseline rule changed shape — the fence was aligned to it and the two would now disagree');
+  for (const pair of [{ version: null, generation: 0 }, { version: 'v-1', generation: 2 }]) {
+    assert.doesNotThrow(() => baselineOf(pair, RID, CODE), `both validators accept ${JSON.stringify(pair)}`);
+  }
+  for (const pair of [{ generation: 0 }, { version: 'v-1' }, { version: 'v-1', generation: -1 }]) {
+    assert.throws(() => baselineOf(pair, RID, CODE), /_no_baseline/, `both validators reject ${JSON.stringify(pair)}`);
+  }
+
+  /* 🔴 THE THREE REFUSALS SAY DIFFERENT THINGS, because they send an operator to different places.
+     "Nobody captured a pair" is a CALLER bug — a call site that never took a baseline. "What you
+     captured is not a version" is CORRUPTION in what was read. "No version but generation 3" is a
+     TORN pair. A later check happens to catch all three inputs, so without this the earlier checks
+     can be deleted and every case still refuses — with the wrong sentence. That is precisely the
+     mutant that survived here: refusal preserved, diagnosis lost. */
+  const msgOf = (pair) => { try { baselineOf(pair, RID, CODE); return '(accepted)'; } catch (e) { return e.message; } };
+  assert.match(msgOf({ generation: 0 }), /no version key at all/,
+    '🔴 an absent baseline is diagnosed as corruption instead of as a caller that never captured one');
+  assert.match(msgOf({ version: 42, generation: 1 }), /neither a name nor null/,
+    '🔴 a corrupt version is diagnosed as a missing key instead of as corruption');
+  assert.match(msgOf({ version: null, generation: 3 }), /claims generation 3/,
+    '🔴 a torn pair is not diagnosed as a torn pair');
+  ok('the pre-P1 pair is a baseline and still fences; absent is not; and the fence agrees with writeVersion\'s rule');
 }
 
 // ── 12. baselineOf IS PURE AND TOTAL ──────────────────────────────────────────────────────────
