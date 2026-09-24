@@ -52,39 +52,53 @@ function classify(results, knownRed, zeroCellOk = ZERO_CELL_OK) {
   const rows = results.map((r) => {
     const known = Object.prototype.hasOwnProperty.call(knownRed, r.name);
     if (r.ok && known) return { ...r, state: 'stale-excuse' };
+    /* 🔴 NOT MEASURED IS NOT ZERO. A suite that emitted no ##CELLS trailer was never counted — the
+       preload did not load, or the process died before its exit hook — and reading that as "asserted
+       nothing" would file a BROKEN MEASUREMENT under a rule about silent suites, sending whoever
+       reads the row to the wrong problem. It fails either way; it must fail saying which.
+       Only for a suite that PASSED: one that already failed is reported as the failure it is —
+       a crashed suite legitimately emits no trailer, and burying that under "not measured" would
+       hide the failure behind the measurement. */
+    if (r.ok && (r.cells === null || r.cells === undefined)) return { ...r, state: 'not-measured' };
     if (r.ok && r.cells === 0 && !Object.prototype.hasOwnProperty.call(zeroCellOk, r.name)) return { ...r, state: 'zero-cell' };
     if (r.ok) return { ...r, state: 'pass' };
     if (known) return { ...r, state: 'excused' };
     return { ...r, state: 'fail' };
   });
   const count = (st) => rows.filter((x) => x.state === st).length;
-  const failed = count('fail'), excused = count('excused'), stale = count('stale-excuse'), zero = count('zero-cell');
+  const failed = count('fail'), excused = count('excused'), stale = count('stale-excuse'), zero = count('zero-cell'), unmeasured = count('not-measured');
   // Nothing measured is never a pass — the same rule the mutation sweep enforces.
-  const exitCode = (!rows.length || failed || stale || zero) ? 1 : 0;
-  return { rows, failed, excused, stale, zero, passed: count('pass'), exitCode };
+  const exitCode = (!rows.length || failed || stale || zero || unmeasured) ? 1 : 0;
+  return { rows, failed, excused, stale, zero, unmeasured, passed: count('pass'), exitCode };
 }
 
-/* 🔴 THE RUNNER'S OWN CHROME IS NOT A CELL. The firebase CLI ends every `emulators:exec` run with
-   "✔  Script exited successfully (code 0)" — at the start of a line, with the SAME U+2714 that node
-   --test uses for a real assertion. So every one of the 45 emulator suites reported one cell more
-   than it asserts, and `test:resolve-manual` showed 24 for a suite that prints 23.
+/* 🔴 THE COUNT IS REPORTED BY THE SUITE, NOT INFERRED FROM ITS OUTPUT. This used to pattern-match
+   the combined stdout of a subprocess tree, which is not only the suite's: the firebase CLI writes
+   "✔  Script exited successfully", "✔  firestore: Firestore Emulator was started", "✔  Rules
+   updated." and "✔  Export complete" at line start, with the same U+2714 node --test uses. Stripping
+   those one at a time was a denylist that grew every round — and it grew in BOTH directions, because
+   one suite's own summary line ("✓ driver-diag: 10 tests passed") stood for ten and counted as one.
 
-   That is not a cosmetic off-by-one: it defeats the rule sitting next to it. The zero-assertion rule
-   exists so a suite that stopped asserting is visible at a glance — but an emulator suite whose
-   assertions were ALL removed still exits 0 and still emits the CLI's line, so it would report 1
-   cell and PASS. The check meant to catch a silent suite was blind to it for exactly the suites that
-   need an emulator to say anything.
+   tools/count-marks.js is preloaded into each suite's own process and emits `##CELLS n`. The chrome
+   is written by a DIFFERENT process, so it is excluded by isolation rather than by pattern. Several
+   processes in a chain each emit a trailer (npm and the runner contribute 0), so they SUM.
 
-   Stripped by the line the CLI actually emits, verified by running a suite and listing every line
-   the counter matched, rather than from memory. node --test's "✔ label" is untouched — that is what
-   the ✔ convention was added for. A count is a claim, and a claim that is one off is still wrong. */
-const RUNNER_CHROME = /^\s*✔\s+Script exited successfully.*$/gm;
-const countCells = (out) => ((String(out || '').replace(RUNNER_CHROME, '')).match(/^\s*(?:✓|✔|ok \d)/gm) || []).length;
+   🔴 NO TRAILER IS A FAILURE, NOT A ZERO. A suite that emitted no trailer was not measured — the
+   preload did not load, or the process died before exit — and a number that can go missing silently
+   is what the zero-assertion rule exists to replace. `null` is returned so classify() can tell "not
+   measured" from "asserted nothing"; both fail, for different reasons and with different messages. */
+const TRAILER = /^##CELLS (\d+)$/gm;
+const countCells = (out) => {
+  const hits = [...String(out || '').matchAll(TRAILER)];
+  if (!hits.length) return null;                       // not measured
+  return hits.reduce((n, m) => n + Number(m[1]), 0);
+};
 
 module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells };
 if (require.main !== module) return;
 
 const EMULATORS_ONLY = process.argv.includes('--emulators');
+const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice('--only='.length) || null;
 /* The runner's own entry points are excluded, or it would invoke itself. Everything else that is a
    test script runs — including `test`, the in-process chain, which was previously a separate thing
    a person had to remember to run alongside this one. */
@@ -96,6 +110,12 @@ const scripts = (() => {
   const all = Object.entries(pkg.scripts || {})
     .filter(([k, v]) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(v).trim())
     .filter(([, v]) => (EMULATORS_ONLY ? isEmulator(v) : true))
+    /* 🔴 --only EXISTS SO THE MAIN PATH IS REACHABLE FROM A TEST. Everything below `require.main !==
+       module` is invisible to a suite that REQUIRES this file, and a `join is not defined` in the
+       spawn loop therefore survived a green npm test, six green sweeps and a green guard — the gate
+       itself was the only thing that ran it, and it is the thing being changed. One real script
+       through the whole path is the smallest check that would have caught it. */
+    .filter(([k]) => !ONLY || k === ONLY)
     .map(([k]) => k);
   // `test` first when present: it is the fastest signal and the one most likely to be red.
   return all.sort((a, b) => (a === 'test' ? -1 : b === 'test' ? 1 : a.localeCompare(b)));
@@ -125,7 +145,13 @@ const started = Date.now();
 const results = [];
 for (const name of scripts) {
   const t0 = Date.now();
-  const r = spawnSync('npm', ['run', '--silent', name], { cwd: ROOT, encoding: 'utf8', env: process.env });
+  /* The counter loads in every node process this spawns. npm and the runner write no marks, so they
+     contribute 0 and the totals SUM correctly without anyone having to know which process they are
+     in; emulator-run strips it before reaching firebase and injects it into the suite instead, so the
+     CLI never counts its own chrome. */
+  const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');
+  const childEnvWithCounter = { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require ${COUNTER}`.trim() };
+  const r = spawnSync('npm', ['run', '--silent', name], { cwd: ROOT, encoding: 'utf8', env: childEnvWithCounter });
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   /* 🔴 THREE CELL CONVENTIONS IN THIS REPO, AND EACH ONE I MISSED PRINTED A LIE. Most suites print
      "✓ n label"; the rules suites print "ok n label"; node --test prints "✔ label" with a DIFFERENT
@@ -140,7 +166,7 @@ for (const name of scripts) {
 
 const verdict = classify(results, KNOWN_RED);
 const { failed, excused, stale, zero } = verdict;
-const TAG = { pass: 'pass', excused: 'KNOWN-RED (excused)', fail: '🔴 FAIL', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS' };
+const TAG = { pass: 'pass', excused: 'KNOWN-RED (excused)', fail: '🔴 FAIL', 'stale-excuse': '🔴 KNOWN-RED BUT PASSING', 'zero-cell': '🔴 PASSED, 0 ASSERTIONS', 'not-measured': '🔴 NOT MEASURED (no count)' };
 console.log('');
 for (const r of verdict.rows) {
   console.log(`  ${TAG[r.state].padEnd(26)} ${r.name.padEnd(32)} ${String(r.cells).padStart(3)} cells  ${r.secs.padStart(6)}s`);
@@ -168,5 +194,5 @@ if (zero) {
   console.log('   convention is not recognised here. Both make its green meaningless — fix it, or add');
   console.log('   it to ZERO_CELL_OK with a reason.');
 }
-console.log(`\ngate-all${EMULATORS_ONLY ? ' (emulators only)' : ''}: ${verdict.passed}/${total} passing, ${failed} failing, ${excused} excused, ${stale} stale-excuse, ${zero} zero-assertion — ${((Date.now() - started) / 1000 / 60).toFixed(1)} min`);
+console.log(`\ngate-all${EMULATORS_ONLY ? ' (emulators only)' : ''}: ${verdict.passed}/${total} passing, ${failed} failing, ${excused} excused, ${stale} stale-excuse, ${zero} zero-assertion, ${verdict.unmeasured} not-measured — ${((Date.now() - started) / 1000 / 60).toFixed(1)} min`);
 process.exit(verdict.exitCode);

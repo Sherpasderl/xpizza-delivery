@@ -7753,13 +7753,12 @@
   "id": "e2a-10",
   "slice": "e2a",
   "file": "tools/gate-all.js",
-  "from": "const countCells = (out) => ((String(out || '').replace(RUNNER_CHROME, '')).match(",
-  "to": "const countCells = (out) => ((String(out || '')).match(",
-  "label": "the runner's success line is counted as an assertion again",
+  "from": "  if (!hits.length) return null;                       // not measured",
+  "to": "  if (!hits.length) return 0;                       // not measured",
+  "label": "a suite that emitted no count is reported as having asserted nothing",
   "kills_with": [
-   "the CLI success line is counted as a cell",
-   "a suite that asserted NOTHING reports a cell",
-   "an emulator suite that stopped asserting entirely passed the gate"
+   "a suite that emitted no count was treated as a number rather than as unmeasured",
+   "a broken measurement was filed as a silent suite"
   ],
   "command": [
    "node",
@@ -7842,6 +7841,58 @@
   "command": [
    "node",
    "tools/sweep-preflight.test.js"
+  ]
+ },
+ {
+  "id": "e2a-17",
+  "slice": "e2a",
+  "file": "tools/gate-all.js",
+  "from": "    if (r.ok && (r.cells === null || r.cells === undefined)) return { ...r, state: 'not-measured' };",
+  "to": "    if (false) return { ...r, state: 'not-measured' };",
+  "label": "a suite that was never counted passes the gate",
+  "kills_with": "a suite that was never counted passed the gate",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2a-18",
+  "slice": "e2a",
+  "file": "tools/gate-all.js",
+  "from": "  return hits.reduce((n, m) => n + Number(m[1]), 0);",
+  "to": "  return Number(hits[0][1]);",
+  "label": "only the first chained suite's count is reported",
+  "kills_with": "trailers from a chained script and its wrapper processes sum",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2a-19",
+  "slice": "e2a",
+  "file": "tools/emulator-run.js",
+  "from": "  String(command).replace(/\\bnode\\s+(?=[\\w./-]+\\.(?:js|mjs)\\b)/g, `node -r ${counter} `);",
+  "to": "  String(command).replace(/^node\\s+/, `node -r ${counter} `);",
+  "label": "only the first command in a chained script is preloaded",
+  "kills_with": "a chained script preloaded only some of its suites — the rest report no count at all",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2a-20",
+  "slice": "e2a",
+  "file": "tools/gate-all.js",
+  "from": "  const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');",
+  "to": "  const COUNTER = join(ROOT, 'tools', 'count-marks.js');",
+  "label": "the gate crashes on its own main path (the defect that shipped past six green checks)",
+  "kills_with": "the gate crashes on its own main path",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
   ]
  }
 ]

@@ -138,7 +138,15 @@ function childEnv(services, parentEnv) {
 const DISCOVERY_PREFIX = 'xpizza-emu-discovery.';
 const discoveryDirFor = (pid) => path.join(os.tmpdir(), `${DISCOVERY_PREFIX}${pid}`);
 
-module.exports = { planPorts, offsetFor, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX };
+/* Preload the cell counter into EVERY node invocation of the inner command.
+   🔴 ANCHORED ON `node <file>`, NOT A BARE PREFIX. One routed script is a chain —
+   test:rewards:emulator runs six suites joined by `&&` inside the single command string — so a
+   `^node ` prefix would preload only the first and the other five would report nothing. Exported so
+   that property is DRIVEN rather than asserted by reading: it is the shape the review asked about. */
+const injectCounter = (command, counter) =>
+  String(command).replace(/\bnode\s+(?=[\w./-]+\.(?:js|mjs)\b)/g, `node -r ${counter} `);
+
+module.exports = { planPorts, offsetFor, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, injectCounter };
 if (require.main !== module) return;
 
 /* 🔴 THE SWEEP RUNS BEFORE ANYTHING THAT CAN EXIT — including offsetFor(), which exits 2 on a
@@ -286,7 +294,29 @@ const probe = (port) => new Promise((resolve) => {
      the service, the variable must be absent, so a suite that needs it fails loudly instead. */
   const env = childEnv(services, process.env);
 
-  const child = spawn('firebase', ['emulators:exec', '--config', generated, ...(opts.project ? ['--project', opts.project] : []), '--only', services.join(','), rest[0]], { stdio: 'inherit', cwd: ROOT, env });
+  /* 🔴 THE CELL COUNTER IS INJECTED INTO THE SUITE, NOT INHERITED BY THE CLI. tools/count-marks.js
+     must load in the process that writes the ASSERTIONS and nowhere else: firebase is itself node, so
+     an inherited NODE_OPTIONS would make the CLI count its own "✔ firestore: …" chrome — the exact
+     inflation the counter exists to remove, reintroduced one level up. Injecting here instead means
+     nothing is inherited and no guard has to know which process it is in.
+
+     Anchored on `node <file>`, not a bare prefix, because ONE script is a chain —
+     test:rewards:emulator runs six suites joined by `&&` inside the single command string — and a
+     prefix would preload only the first. Every routed script is `node <file>` repeated, so this is
+     regular rather than a general shell rewrite. If a shape ever escapes it, the suite runs WITHOUT
+     the preload, emits no ##CELLS trailer, and gate-all fails it: a missed injection is loud. */
+  const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');
+  const inner = injectCounter(rest[0], COUNTER);
+  if (!/count-marks\.js/.test(inner)) {
+    console.error(`\nemulator-run: could not inject the cell counter into ${JSON.stringify(rest[0])}.`);
+    console.error('   The suite would run uncounted and the gate would fail it for a missing trailer.');
+    console.error('   Expected a command of the form `node <file>` (possibly chained with &&).\n');
+    process.exit(2);
+  }
+  /* …and it must not reach firebase through the environment either. */
+  if (env.NODE_OPTIONS) env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/--require[= ]\S*count-marks\.js/g, '').trim() || undefined;
+
+  const child = spawn('firebase', ['emulators:exec', '--config', generated, ...(opts.project ? ['--project', opts.project] : []), '--only', services.join(','), inner], { stdio: 'inherit', cwd: ROOT, env });
   child.on('error', (e) => { cleanup(); console.error(`emulator-run: could not launch firebase — ${e && e.message}`); process.exit(1); });
   child.on('exit', (code, signal) => {
     cleanup();

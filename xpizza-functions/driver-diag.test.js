@@ -7,7 +7,11 @@ const assert = require('assert');
 const { validateDiagEvents, computeDiagPrune } = require('./driver-diag');
 
 let pass = 0;
-function t(name, fn) { fn(); pass++; }
+/* 🔴 ONE MARK PER TEST, NOT ONE SUMMARY LINE. This printed a single `✓ driver-diag: N tests passed`,
+   which every mark-counter read as ONE cell standing for N — so the gate's npm-test row was nine
+   assertions light while its emulator rows were one heavy, from the same counter. A summary is a
+   claim about the run; a mark is the run. */
+function t(name, fn) { fn(); console.log(`  ✓ ${++pass} ${name}`); }
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -83,4 +87,4 @@ t('prune: empty / null → nothing to delete', () => {
   assert.deepEqual(computeDiagPrune(null, { now: 1, maxKeep: 200, maxAgeMs: 7 * DAY }), []);
 });
 
-console.log(`✓ driver-diag: ${pass} tests passed`);
+console.log(`driver-diag: OK (${pass})`);

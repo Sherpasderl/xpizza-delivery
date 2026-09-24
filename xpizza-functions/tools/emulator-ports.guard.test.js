@@ -359,34 +359,118 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok(`fail / excused / stale-excuse / zero-assertion / nothing-measured each decided correctly; the reason rule rejects a reasonless excuse (KNOWN_RED currently holds ${Object.keys(KNOWN_RED).length})`);
   }
 
-  // ── 14b. 🔴 THE RUNNER'S SUCCESS LINE IS NOT AN ASSERTION ──────────────────────────────────
-  /* The firebase CLI ends every emulators:exec run with "✔  Script exited successfully (code 0)",
-     using the SAME U+2714 node --test uses for a real assertion — so all 45 emulator suites counted
-     one cell too many. The danger is not the off-by-one: a suite whose assertions were ALL removed
-     still exits 0 and still emits that line, so it would report 1 cell and PASS the zero-assertion
-     rule — the check built to make a silent suite visible, blind to exactly the suites that need an
-     emulator to say anything. Both directions are driven: the chrome must not count, and the
-     conventions the ✔ was added for must still count. */
+  // ── 14b. 🔴 THE COUNT IS REPORTED BY THE SUITE, NOT INFERRED FROM ITS OUTPUT ─────────────────
+  /* Inferring it from a subprocess tree's combined stdout was wrong in BOTH directions and kept
+     getting wronger: the firebase CLI's "✔  Script exited successfully", "✔  firestore: …",
+     "✔  Rules updated." and "✔  Export complete" inflated every emulator suite, while one suite's own
+     summary line ("✓ driver-diag: 10 tests passed") stood for ten and counted as one. Stripping them
+     one at a time was a denylist that grew every round.
+     tools/count-marks.js is preloaded into the SUITE'S OWN PROCESS, so the chrome — written by a
+     different process — is excluded by isolation rather than by pattern. */
   {
     const { countCells, classify } = require('./gate-all.js');
-    const CLI = '✔  Script exited successfully (code 0)';
 
-    assert.strictEqual(countCells(`  ✓ 1 first\n  ✓ 2 second\n${CLI}\n`), 2,
-      '🔴 the CLI success line is counted as a cell — every emulator suite overstates what it asserts');
-    assert.strictEqual(countCells(`i  emulators: Starting\n${CLI}\ni  emulators: Shutting down\n`), 0,
-      '🔴 a suite that asserted NOTHING reports a cell, so the zero-assertion rule cannot see it');
+    // Chrome in the stream is irrelevant now: only trailers are read.
+    const withChrome = [
+      '✔  firestore: Firestore Emulator was started in standard edition.',
+      '✔  firestore: Rules updated.',
+      '  ✓ 1 a real assertion',
+      '##CELLS 1',
+      '✔  Script exited successfully (code 0)',
+      '✔  Export complete',
+    ].join('\n');
+    assert.strictEqual(countCells(withChrome), 1,
+      '🔴 CLI chrome reached the count — emulator suites are inflated by however much the CLI happened to print');
 
-    /* …and the rule it protects actually fires on that output. */
-    const silent = classify([{ name: 'test:x', ok: true, cells: countCells(`${CLI}\n`) }], {});
-    assert.strictEqual(silent.rows[0].state, 'zero-cell',
-      '🔴 an emulator suite that stopped asserting entirely passed the gate');
-    assert.strictEqual(silent.exitCode, 1, 'and the gate is red for it');
+    // Several processes in a chain each report; they sum. test:rewards:emulator runs six suites.
+    assert.strictEqual(countCells('##CELLS 12\n##CELLS 30\n##CELLS 0\n'), 42,
+      'trailers from a chained script and its wrapper processes sum');
 
-    // The conventions the ✔ was added for are untouched.
-    assert.strictEqual(countCells('✔ a node --test assertion\n✔ another\n'), 2, 'node --test output still counts');
-    assert.strictEqual(countCells('ok 1 a rules assertion\nok 2 another\n'), 2, 'the rules suites still count');
-    assert.strictEqual(countCells('  ✓ 1 an ordinary suite\n'), 1, 'and the ordinary convention');
-    ok('the runner\'s success line is not a cell; a suite that asserts nothing reports 0 and FAILS the gate');
+    /* 🔴 NO TRAILER IS "NOT MEASURED", NOT "ZERO". Reading a broken measurement as a silent suite
+       files it under the wrong rule and sends whoever reads the row to the wrong problem. */
+    assert.strictEqual(countCells('  ✓ 1 marks but no trailer\n'), null,
+      '🔴 a suite that emitted no count was treated as a number rather than as unmeasured');
+
+    const unmeasured = classify([{ name: 'test:x', ok: true, cells: null }], {});
+    assert.strictEqual(unmeasured.rows[0].state, 'not-measured', '🔴 a suite that was never counted passed the gate');
+    assert.strictEqual(unmeasured.exitCode, 1, 'and the gate is red for it');
+    assert.notStrictEqual(unmeasured.rows[0].state, 'zero-cell', '🔴 a broken measurement was filed as a silent suite');
+
+    const silent = classify([{ name: 'test:x', ok: true, cells: 0 }], {});
+    assert.strictEqual(silent.rows[0].state, 'zero-cell', 'while a suite that really asserted nothing is still zero-cell');
+    assert.strictEqual(silent.exitCode, 1, 'and also red');
+
+    /* The preload itself, driven end to end: it must count the marks its process writes and no
+       others, and its own trailer must not be counted. */
+    const probe = spawnSync(process.execPath, ['-r', path.join(ROOT, 'tools', 'count-marks.js'), '-e',
+      "console.log('  ✓ 1 one');console.log('ok 2 two');console.log('✔ three');console.log('i  chrome');"],
+      { encoding: 'utf8', timeout: 30000 });
+    assert.match(probe.stdout, /^##CELLS 3$/m, `🔴 the preload miscounted its own process: ${JSON.stringify(probe.stdout)}`);
+    ok('the count comes from the suite\'s own process: CLI chrome is excluded by isolation, chained trailers sum, and no trailer is NOT-MEASURED rather than zero');
+  }
+
+  // ── 14bb. 🔴 EVERY node IN A CHAINED COMMAND IS PRELOADED, NOT JUST THE FIRST ───────────────
+  /* The review asked whether injecting into the inner command holds for every shape it takes. All 46
+     routed scripts are `node <file>` — except test:rewards:emulator, which chains SIX of them with
+     `&&` in one string. A `^node ` prefix preloads the first and leaves five uncounted, and because
+     a missing trailer is NOT-MEASURED rather than zero, that fails loudly instead of quietly
+     reverting to an inferred number — but it still fails, so the chain is driven here. */
+  {
+    const { injectCounter } = require('./emulator-run.js');
+    const C = '/abs/tools/count-marks.js';
+
+    assert.strictEqual(injectCounter('node test/a.emulator.test.js', C), `node -r ${C} test/a.emulator.test.js`,
+      'the ordinary single-suite shape is preloaded');
+
+    const chained = injectCounter('node test/a.js && node test/b.js && node test/c.js', C);
+    assert.strictEqual((chained.match(/-r \/abs/g) || []).length, 3,
+      '🔴 a chained script preloaded only some of its suites — the rest report no count at all');
+
+    // Every routed script in package.json actually receives it.
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    let routed = 0;
+    for (const [name, body] of Object.entries(pkg.scripts || {})) {
+      if (!/emulator-run\.js/.test(body)) continue;
+      routed += 1;
+      const m = body.match(/"([^"]+)"\s*$/);
+      assert.ok(m, `🔴 routed script ${name} has no quoted inner command, so nothing can be injected into it`);
+      const injected = injectCounter(m[1], C);
+      const nodes = (m[1].match(/\bnode\s+[\w./-]+\.(?:js|mjs)\b/g) || []).length;
+      assert.strictEqual((injected.match(/-r \/abs/g) || []).length, nodes,
+        `🔴 ${name}: ${nodes} node invocations but only ${(injected.match(/-r \/abs/g) || []).length} preloaded — the rest would be NOT MEASURED`);
+    }
+    ok(`all ${routed} routed scripts receive the counter in every node invocation, chained ones included`);
+  }
+
+  // ── 14d. 🔴 THE GATE'S OWN MAIN PATH IS EXECUTED, NOT JUST ITS FUNCTIONS ────────────────────
+  /* Everything below `require.main !== module` in gate-all.js is invisible to a suite that REQUIRES
+     it. A `join is not defined` in the spawn loop therefore survived a green npm test, six green
+     sweeps and a green run of THIS file — the only thing that executed it was the gate, which is the
+     thing being changed. Requiring a module proves it parses; it does not prove it runs. */
+  {
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'gate-all.js'), '--only=test:portal'],
+      { cwd: ROOT, encoding: 'utf8', timeout: 180000 });
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
+    assert.ok(!/ReferenceError|TypeError|is not defined|is not a function/.test(out),
+      `🔴 the gate crashes on its own main path: ${out.split('\n').filter((l) => /Error/.test(l))[0] || out.slice(-200)}`);
+    assert.match(out, /gate-all: 1\/1 passing/, `🔴 the gate did not complete one script end to end: ${out.slice(-300)}`);
+    assert.match(out, /\d+ cells/, 'and it reported a cell count, so the counting path ran too');
+    assert.strictEqual(r.status, 0, 'a passing script leaves the gate green');
+    ok('gate-all runs one real script through its whole main path — the code below require.main is executed, not only parsed');
+  }
+
+  // ── 14c. 🔴 A SUMMARY LINE IS NOT A CELL — the same defect, opposite direction ────────────────
+  /* driver-diag printed one `✓ driver-diag: N tests passed`, which every counter read as ONE cell
+     standing for N. So the same counter made emulator rows one high and this row nine low. Fixed at
+     source: one mark per test. */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'driver-diag.test.js'), 'utf8');
+    assert.ok(!/✓ driver-diag: \$\{pass\} tests passed/.test(src),
+      '🔴 driver-diag still reports a summary line that counts as one cell for many assertions');
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'driver-diag.test.js')], { cwd: ROOT, encoding: 'utf8', timeout: 30000 });
+    const marks = (r.stdout.match(/^\s*✓ \d+ /gm) || []).length;
+    assert.ok(marks >= 10, `🔴 driver-diag emits ${marks} marks for its tests — a summary line hides how many assertions ran`);
+    ok(`driver-diag emits one mark per test (${marks}), not one summary line standing for all of them`);
   }
 
   // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
