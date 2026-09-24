@@ -6288,8 +6288,8 @@
   ],
   "label": "🔴 the retirement is not fenced - it commits against an activation it was never judged under",
   "kills_with": "a retirement committed against an activation it was not judged under",
-  "from": "    if (p.version !== active.versionId || p.generation !== active.generation) {\n      throw new Error(`identity_reconcile_pointer_moved: ${rid} — judged against ${active.versionId}@${active.generation}, now ${JSON.stringify(p.version)}@${p.generation}`);\n    }",
-  "to": "    if (false) { throw new Error('unreachable'); }"
+  "from": "    await assertPointerUnmoved(tx, { db, rid, captured: active, code: 'identity_reconcile_pointer_moved' });",
+  "to": "    /* fence removed */"
  },
  {
   "id": "d4p1b-17",
@@ -7893,6 +7893,140 @@
   "command": [
    "node",
    "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2c-01",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (live.version !== base.version || live.generation !== base.generation) {",
+  "to": "  if (live.version !== base.version) {",
+  "label": "the fence compares only the version, ignoring the generation",
+  "kills_with": "the GENERATION moved and the fence did not notice",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-02",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (live.version !== base.version || live.generation !== base.generation) {",
+  "to": "  if (live.generation !== base.generation) {",
+  "label": "the fence compares only the generation, ignoring the version",
+  "kills_with": "the VERSION moved and the fence did not notice",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-03",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (c !== captured) {",
+  "to": "  if (false) {",
+  "label": "a call with no captured pair at all is not refused distinctly",
+  "kills_with": "the fence ran with no captured pair",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-04",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (typeof version !== 'string' || !version) {",
+  "to": "  if (false) {",
+  "label": "a baseline naming no version is accepted",
+  "kills_with": "a half-formed baseline was accepted",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-05",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (!Number.isInteger(generation) || generation < 0) {",
+  "to": "  if (false) {",
+  "label": "half a pair is accepted as a baseline",
+  "kills_with": "a half-formed baseline was accepted",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-06",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (!tx || typeof tx.get !== 'function') {",
+  "to": "  if (false) {",
+  "label": "the fence reads outside the transaction that writes",
+  "kills_with": "the fence accepted a non-transaction",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-07",
+  "slice": "e2c",
+  "file": "catalog/identity-fence.js",
+  "from": "  if (typeof code !== 'string' || !code) {",
+  "to": "  if (false) {",
+  "label": "a call site may refuse without naming which fence refused",
+  "kills_with": "a call site without its own refusal code was allowed",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2c-08",
+  "slice": "e2c",
+  "file": "tools/registry-writers.js",
+  "from": "  const directNames = [...new Set(writes.map((w) => w.fn))];",
+  "to": "  const directNames = [...new Set(writes.filter((w) => w.exported).map((w) => w.fn))];",
+  "label": "the walk follows only EXPORTED writers (the gap the enumeration found in itself)",
+  "kills_with": "the set of entry points that reach a registry writer changed",
+  "command": [
+   "node",
+   "tools/registry-writers.test.js"
+  ]
+ },
+ {
+  "id": "e2c-09",
+  "slice": "e2c",
+  "file": "tools/registry-writers.js",
+  "from": "  const code = stripComments(raw);",
+  "to": "  const code = raw;",
+  "label": "commented-out writes are counted as writes",
+  "kills_with": "the walk counted a commented-out write",
+  "command": [
+   "node",
+   "tools/registry-writers.test.js"
+  ]
+ },
+ {
+  "id": "e2c-10",
+  "slice": "e2c",
+  "file": "tools/registry-writers.js",
+  "from": "      if (isRegistryExpr(m[2])) writes.push({ file, line: i + 1, fn: owner[i], verb: m[1], shape: 'arg', exported: exported.has(owner[i]) });",
+  "to": "      writes.push({ file, line: i + 1, fn: owner[i], verb: m[1], shape: 'arg', exported: exported.has(owner[i]) });",
+  "label": "every transactional write counts, not only registry writes",
+  "kills_with": [
+   "the set of functions that WRITE the identity registry changed",
+   "it is counting writes to other collections",
+   "a read-only user of the path builders was enumerated as a writer"
+  ],
+  "command": [
+   "node",
+   "tools/registry-writers.test.js"
   ]
  }
 ]

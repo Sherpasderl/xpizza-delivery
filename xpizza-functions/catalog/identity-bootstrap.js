@@ -63,6 +63,7 @@
 // fault state today. Run it again before the cutover rather than trusting that.
 // ---------------------------------------------------------------------------
 const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
+const { assertPointerUnmoved } = require('./identity-fence');
 const { legacyKeyOf } = require('./identity-backfill');
 const { activePointerRef, getActivePointer, readPointerSnap } = require('./catalog-firestore');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
@@ -462,14 +463,13 @@ async function reconcileLegacyOrphans(db, rid, { dryRun = false, now = () => new
 async function retireOrphanFenced(db, rid, cand, active, served, certified, now) {
   const idRef = idsColOf(db, rid, cand.kind).doc(cand.id);
   return db.runTransaction(async (tx) => {
-    const [pSnap, idSnap] = await Promise.all([tx.get(activePointerRef(db, rid)), tx.get(idRef)]);
-    /* Same reader as everything else: this interpreted an already-fetched snapshot through the
-       raw-data helper, which validated the FIELDS but never asked whether an existing document names
-       a version — so corruption surfaced here as `pointer_moved` too. */
-    const p = readPointerSnap(pSnap, rid);
-    if (p.version !== active.versionId || p.generation !== active.generation) {
-      throw new Error(`identity_reconcile_pointer_moved: ${rid} — judged against ${active.versionId}@${active.generation}, now ${JSON.stringify(p.version)}@${p.generation}`);
-    }
+    /* 🔴 THE FENCE THIS FUNCTION IS NAMED FOR NOW LIVES IN catalog/identity-fence.js. It was correct
+       here first and three other registry writers need the same thing, so it was EXTRACTED rather
+       than copied — the refusal text is unchanged, which is what makes the extraction checkable
+       against the cell that already asserts it. `active` is the pair the CALLER captured when it
+       decided; this re-reads in-transaction and compares. */
+    const idSnap = await tx.get(idRef);
+    await assertPointerUnmoved(tx, { db, rid, captured: active, code: 'identity_reconcile_pointer_moved' });
     const d = idSnap.exists ? (idSnap.data() || {}) : null;
     if (!d || d.status !== STATUS_LIVE) return false;            // already retired by someone else
     if (d.legacy_key !== cand.legacy_key) {
