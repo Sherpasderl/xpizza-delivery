@@ -50,6 +50,7 @@
     --avatar-1: #333a45; --avatar-2: #262b33;
     --da: #98a3b6; --da-call: #8fd8b4; --da-msg: #9dc0ff; --da-more: #98a3b6;
     --sched-bg: #fbf0ce; --sched-fg: #7a5b0c; --gold: #e9c877;
+    --brand-x: #F6935F; --brand-lamusa: #46C7BB;
     --scroll-thumb: rgba(255,255,255,0.15);
     --sel: rgba(166,160,240,0.30);
     --hair: rgba(255,255,255,0.06); --hair-2: rgba(255,255,255,0.14);
@@ -91,6 +92,7 @@
     --avatar-1: #e7ecf5; --avatar-2: #d8dfeb;
     --da: #5c6980; --da-call: #2f8f63; --da-msg: #3a5fc0; --da-more: #5c6980;
     --sched-bg: #f3ead0; --sched-fg: #8a6118; --gold: #856410;
+    --brand-x: #a8481c; --brand-lamusa: #0d6d66;
     --scroll-thumb: rgba(28,40,66,0.22);
     --sel: rgba(90,95,199,0.20);
     --hair: rgba(28,40,66,0.055); --hair-2: rgba(28,40,66,0.12);
@@ -271,7 +273,6 @@
     color: var(--text-dim);
     letter-spacing: 0.08em;
     padding: 0 8px;
-    opacity: 0.7;
   }
   .topbar-btn {
     background: transparent;
@@ -433,8 +434,8 @@
     font-family: 'Plus Jakarta Sans', sans-serif; font-size: 11px; font-weight: 700;
     letter-spacing: .01em; padding: 2px 8px; border-radius: 20px;
   }
-  .msg-row-rest.rest-x_pizza { background: rgba(242,107,56,.16); color: #F6935F; }
-  .msg-row-rest.rest-la_musa { background: rgba(38,166,154,.18); color: #46C7BB; }
+  .msg-row-rest.rest-x_pizza { background: rgba(242,107,56,.16); color: var(--brand-x); }
+  .msg-row-rest.rest-la_musa { background: rgba(38,166,154,.18); color: var(--brand-lamusa); }
   .msg-row-time {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 11px;
@@ -1756,6 +1757,8 @@
   .da:hover { background: var(--hair); transform: translateY(-1px); filter: brightness(1.2); }
   /* Motion (Phase-1 chrome uses softpulse + rise). Reduced-motion disables all animation. */
   @keyframes softpulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+  /* count "attention" pulse via a text-shadow GLOW, not opacity — the number stays fully legible (≥AA) through the pulse. */
+  @keyframes pulse-count { 0%, 100% { text-shadow: 0 0 0 transparent; } 50% { text-shadow: 0 0 7px var(--accent-glow); } }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 
@@ -1796,7 +1799,7 @@
   .torre-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 12px; }
   .torre-head h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .9px; color: var(--text-dim); font-weight: 700; }
   .torre-count { font-size: 11px; color: var(--text-soft); font-weight: 700; }
-  .torre-count.hot { color: var(--accent); animation: softpulse 2.4s infinite; }
+  .torre-count.hot { color: var(--accent); animation: pulse-count 2.4s infinite; }
   .otros-head { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); font-weight: 700; margin: 14px 2px 8px; }
   .ex-list { display: flex; flex-direction: column; gap: 9px; }
   /* .ex base depth (gradient/shadow/hover-lift) comes from the Task-6 .ex,.ord,.drv,.cash rule. */
@@ -4768,13 +4771,13 @@ function updateDriverMarkers() {
     if (!reachable) {
       color = '#666';  // gray
     } else if (stale) {
-      color = '#f59e0b';  // amber — reachable, just idle
+      color = '#b45309';  // amber (darkened for AA white initials) — reachable, just idle
     } else if (d.status === 'available' || d.status === 'at_restaurant') {
-      color = '#16a34a';  // green
+      color = '#15803d';  // green (darkened for AA white initials)
     } else if (d.status === 'en_route_delivery') {
-      color = '#3b82f6';  // blue
+      color = '#2563eb';  // blue (darkened for AA white initials)
     } else if (d.status === 'returning' || d.status === 'assigned') {
-      color = '#f59e0b';  // amber
+      color = '#b45309';  // amber (darkened for AA white initials)
     } else {
       color = '#666';
     }
