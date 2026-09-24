@@ -171,4 +171,12 @@ async function getRestaurantDocs(db, restaurantId) {
   return { versionId, seq, itemDocs, extraDocs };
 }
 
-module.exports = { activePointerRef, getActivePointer, pointerStateOf, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };
+/* 🔴 pointerStateOf IS NOT EXPORTED, AND THAT IS THE FIX RATHER THAN A TIDY-UP. Three rounds running
+   I searched for independent interpretations of this document, fixed the ones I found, and said there
+   were none left — and a fourth, fifth and sixth turned up each time. The search was never the
+   problem's shape: pointerStateOf took RAW DATA and was public, so any caller could interpret the
+   document for itself and nothing structurally prevented it. `readPointerSnap` is now the only door,
+   it takes a SNAPSHOT, and it carries the existing-document/version requirement that raw-data callers
+   kept missing. "We looked and found none" becomes "the shape does not permit one", which is the same
+   distinction this codebase already draws about source-pattern censuses: a lint versus a guarantee. */
+module.exports = { activePointerRef, getActivePointer, readPointerSnap, getRestaurantDocs, getActiveVersionId, readVersionDocs, readFlatDocs, mapDocs };

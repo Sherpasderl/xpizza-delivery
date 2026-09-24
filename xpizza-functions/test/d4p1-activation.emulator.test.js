@@ -336,33 +336,42 @@ const publish = async (expectedActive, tag) => {
     }
 
     /* (b) A FIRST PUBLISH MUST NOT OVERWRITE ONE EITHER — the gate's second case, where the malformed
-       document appears AFTER baseline capture and before the flip's transaction. Raced on the flip's
-       own transaction, which is the window the fourth reader lived in. */
-    await ptr.set(good);
-    const orig = db.runTransaction.bind(db);
-    let calls = 0, fired = false;
-    const racing = new Proxy(db, {
-      get(t, prop) {
-        if (prop === 'runTransaction') {
-          return async (fn, o) => {
-            calls += 1;
-            if (calls === 2 && !fired) { fired = true; await ptr.set({}); }   // malformed, mid-publish
-            return orig(fn, o);
-          };
-        }
-        const v = t[prop];
-        return typeof v === 'function' ? v.bind(t) : v;
-      },
-    });
-    let pubThrew = null;
-    try {
-      const { input } = buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: 'fourth-reader' });
-      await publishVersion(racing, RID, input, { expected: { activeVersionId: null } });
-    } catch (e) { pubThrew = e; }
-    assert.ok(fired, 'premise — the malformed document really appeared between baseline capture and the flip');
-    assert.ok(pubThrew && /active_version_malformed/.test(String(pubThrew.message)),
-      `🔴 a first publish OVERWROTE a pointer that appeared malformed mid-flight — the flip read it as "nothing published" and took it: ${pubThrew && pubThrew.message}`);
-    assert.deepStrictEqual((await ptr.get()).data(), {}, '…and the malformed document is untouched');
+       document appears AFTER baseline capture and before the flip's transaction.
+       🔴 MY FIRST VERSION SET UP THE WRONG STATE, and the gate caught it: it restored the good pointer
+       before capturing the baseline, so the publish captured a REAL version and merely passed
+       `activeVersionId: null` — simulating a null expectation rather than a genuinely ABSENT baseline.
+       That is the same class as the fixture that repaired its own defect: the cell stages a state
+       ADJACENT to the one it claims. A genuine first publish begins with NO pointer document at all,
+       so the document is DELETED before capture here, and both malformed shapes are driven. */
+    for (const [label, malformed] of [['an empty document', {}], ['an explicit null version', { version: null }]]) {
+      await ptr.delete();                       // a genuine first publish: no pointer document at all
+      assert.strictEqual((await ptr.get()).exists, false, `premise — ${label}: the baseline is genuinely ABSENT, not a real version with a null expectation`);
+
+      const orig = db.runTransaction.bind(db);
+      let calls = 0, fired = false;
+      const racing = new Proxy(db, {
+        get(t, prop) {
+          if (prop === 'runTransaction') {
+            return async (fn, o) => {
+              calls += 1;
+              if (calls === 2 && !fired) { fired = true; await ptr.set(malformed); }   // appears mid-publish
+              return orig(fn, o);
+            };
+          }
+          const v = t[prop];
+          return typeof v === 'function' ? v.bind(t) : v;
+        },
+      });
+      let pubThrew = null;
+      try {
+        const { input } = buildPublishCandidate(RID, { activeVersionId: null }, { source_sha: `fourth-${Date.now()}` });
+        await publishVersion(racing, RID, input, { expected: { activeVersionId: null } });
+      } catch (e) { pubThrew = e; }
+      assert.ok(fired, `premise — ${label} really appeared between baseline capture and the flip`);
+      assert.ok(pubThrew && /active_version_malformed/.test(String(pubThrew.message)),
+        `🔴 a first publish OVERWROTE ${label} that appeared mid-flight — the flip read it as "nothing published" and took it: ${pubThrew && pubThrew.message}`);
+      assert.deepStrictEqual((await ptr.get()).data(), malformed, `…and ${label} is untouched`);
+    }
 
     /* SENSITIVITY — with a well-formed pointer the identical flip still works. Without this the two
        refusals are satisfied by an activation path that refuses everything, which would be a worse

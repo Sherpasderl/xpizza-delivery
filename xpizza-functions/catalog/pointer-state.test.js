@@ -16,7 +16,16 @@
  * so whether corruption was visible depended on which reader a caller happened to use.
  */
 const assert = require('assert');
-const { pointerStateOf, readPointerSnap } = require('./catalog-firestore');
+const { readPointerSnap } = require('./catalog-firestore');
+
+/* 🔴 EVERY CELL DRIVES readPointerSnap, BECAUSE IT IS NOW THE ONLY DOOR. These used to call
+   pointerStateOf with plain objects — which is exactly the raw-data entry point that let callers
+   interpret this document for themselves, and it is no longer exported. Driving the private helper
+   also let the cells conflate two different states: `{}` meant "no version FIELD" to pointerStateOf
+   and could not mean "the DOCUMENT exists but names none", which is the distinction the defect lived
+   in. A snapshot double carries existence, so the cells can now say which one they mean. */
+const snapOf = (data) => ({ exists: data !== undefined && data !== null, data: () => data });
+const pointerStateOf = (data, where = 'x_pizza') => readPointerSnap(snapOf(data), where);
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 /* The fault name says WHICH FIELD: an unusable version is `active_version_malformed` (the established
@@ -25,31 +34,37 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const refusesVersion = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza'), /active_version_malformed/, why);
 const refuses = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza'), /active_pointer_malformed/, why);
 
-// ── 1. ABSENT IS PRE-P1, AND MUST STAY THAT WAY ─────────────────────────────────────────────
-/* The un-migrated restaurant. A pointer with no generation, or no document at all, is the genuine
-   pre-cutover state — refusing it would refuse every restaurant that has not been through bootstrap,
-   which is most of them on the day this ships. */
+// ── 1. AN ABSENT DOCUMENT IS PRE-P1 — AND IT IS THE ONLY THING THAT IS ──────────────────────
+/* 🔴 THIS CELL USED TO CONFLATE TWO STATES, and the conflation is where the defect lived. It drove the
+   private raw-data helper, which cannot see whether the DOCUMENT exists — so `{}` meant "no version
+   FIELD" and was treated as the pre-cutover state, exactly as the flip's fourth reader treated it.
+   Driving the only door, with a snapshot double that carries existence, the two separate:
+     · the DOCUMENT is absent  → nothing published yet. The genuine pre-cutover state.
+     · the document EXISTS and names no version → a partial write, and a FAULT (cell 7).
+   Refusing the first would refuse every restaurant not yet through bootstrap; accepting the second
+   lets a first publish's CAS overwrite whatever is really live. */
 {
-  /* 🔴 CAUGHT, NOT CALLED BARE. A reader that refuses ABSENT would throw here, and a bare call would
-     surface that as an uncaught error attributed to whatever ran last — the failure would be real but
-     it would not SAY anything. This is the direction that takes production down on the day it ships:
-     refusing absent refuses every restaurant that has not been through bootstrap, which is most of
-     them, so the failure has to name that consequence. */
   const preP1 = (data, label) => {
-    try { return pointerStateOf(data); } catch (e) {
-      assert.fail(`🔴 ${label} was REFUSED as malformed — absent is the genuine pre-cutover state, and a reader that refuses it refuses every restaurant not yet through bootstrap: ${e.message}`);
+    try { return readPointerSnap(snapOf(data), 'x_pizza'); } catch (e) {
+      assert.fail(`🔴 ${label} was REFUSED as malformed — an ABSENT document is the genuine pre-cutover state, and a reader that refuses it refuses every restaurant not yet through bootstrap: ${e.message}`);
     }
   };
-  assert.deepStrictEqual(preP1(null, 'no data at all'), { version: null, generation: 0 }, 'no data at all');
-  assert.deepStrictEqual(preP1(undefined, 'undefined'), { version: null, generation: 0 }, 'undefined');
-  assert.deepStrictEqual(preP1({}, 'an empty pointer doc'), { version: null, generation: 0 }, 'an empty pointer doc');
-  assert.deepStrictEqual(preP1({ version: 'v1' }, 'a pre-P1 pointer with no generation'), { version: 'v1', generation: 0 },
-    'a pre-P1 pointer: a real version, no generation yet');
-  assert.deepStrictEqual(preP1({ version: 'v1', generation: 0 }, 'an explicit generation 0'), { version: 'v1', generation: 0 },
-    'generation 0 written explicitly is the same state');
-  assert.deepStrictEqual(preP1({ version: null, generation: null }, 'explicit nulls'), { version: null, generation: 0 },
-    'explicit nulls read as absent, not as malformed — Firestore writes them for a cleared field');
-  ok('absent (and explicitly null) still means pre-P1: version null, generation 0');
+  for (const [label, data] of [['no document at all', undefined], ['a null snapshot payload', null]]) {
+    const r = preP1(data, label);
+    assert.strictEqual(r.version, null, `${label}: nothing is published`);
+    assert.strictEqual(r.generation, 0, `${label}: the fence starts at the pre-cutover baseline`);
+    assert.strictEqual(r.exists, false, `${label}: and the reader says the document is not there, which is what separates this from a partial write`);
+  }
+
+  /* THE REAL PRE-CUTOVER POINTER: a document that names a version and carries NO generation. That is
+     what every un-migrated restaurant looks like — the advisor confirmed both live brands are exactly
+     this shape — and it must keep reading as generation 0. */
+  const legacy = preP1({ version: 'v1' }, 'a pre-P1 pointer with no generation');
+  assert.deepStrictEqual({ version: legacy.version, generation: legacy.generation }, { version: 'v1', generation: 0 },
+    '🔴 a live pre-cutover pointer — a real version, no generation field — must read as generation 0, or the cutover refuses every restaurant it is for');
+  const explicit = preP1({ version: 'v1', generation: 0 }, 'an explicit generation 0');
+  assert.strictEqual(explicit.generation, 0, 'and an explicitly written 0 is the same state');
+  ok('an ABSENT document is the only "nothing published yet"; a pre-cutover pointer (version, no generation) still reads as generation 0');
 }
 
 // ── 2. 🔴 A PRESENT-BUT-UNUSABLE VERSION IS A FAULT, NOT AN "UNPUBLISHED" ───────────────────
@@ -140,8 +155,12 @@ const refuses = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza
     assert.match(e.message, /42/, 'and quotes the value');
   }
   // …and the `where` is optional, so a caller with no rid to hand still gets a usable message.
-  assert.throws(() => pointerStateOf({ generation: -1 }), /active_pointer_malformed: generation is -1/,
-    'without a rid the message still leads with the fault');
+  /* The rid is no longer optional — readPointerSnap is the only door and every caller has one, which
+     is itself part of the shape change: a reader you can call without saying WHICH restaurant is a
+     reader whose errors cannot be acted on. The `where`-less spelling is gone with the raw-data
+     entry point, so what is asserted now is that the rid is always in the message. */
+  assert.throws(() => pointerStateOf({ generation: -1 }, 'some_shop'), /active_pointer_malformed: some_shop — generation is -1/,
+    'the fault, the restaurant and the field all appear together');
   ok('the refusal names the restaurant, the field, and the value the document actually holds');
 }
 
@@ -156,8 +175,13 @@ const refuses = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza
   catch (e) { assert.fail(`🔴 a well-formed pointer — a real version, a real generation, and the ordinary extra fields the flip writes — was REFUSED: ${e.message}`); }
   assert.deepStrictEqual(a, b, 'the same document gives the same pair');
   assert.deepStrictEqual(doc, frozen, '🔴 the reader MUTATED the pointer document');
-  assert.deepStrictEqual(a, { version: 'v1', generation: 4 },
-    'and it returns ONLY the pair — a caller must not be able to reach `at` or anything else through it');
+  /* The reader returns the pair PLUS `exists`, which is part of its contract — it is what separates
+     an absent document from a partial write, and the raw-data helper could not express it. What must
+     still not leak is everything ELSE the flip writes: `at`, and anything a future write adds. */
+  assert.deepStrictEqual(a, { version: 'v1', generation: 4, exists: true },
+    'it returns the pair and the existence fact, and nothing else');
+  assert.deepStrictEqual(Object.keys(a).sort(), ['exists', 'generation', 'version'],
+    '🔴 a caller can reach `at` or another stored field through the reader — the document is bigger than the decision, and handing back the rest invites someone to use it');
   ok('the reader is pure, mutates nothing, and returns only the {version, generation} pair');
 }
 

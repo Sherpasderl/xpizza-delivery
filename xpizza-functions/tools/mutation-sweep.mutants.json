@@ -6151,8 +6151,9 @@
   ],
   "label": "🔴 the GENERATION fence is dropped - a re-activation of the same version is invisible to the pass",
   "kills_with": "the generation advanced under the pass and it stamped anyway",
-  "from": "    if (generationOf(p) !== active.generation) {\n      throw new Error(`identity_bootstrap_generation_moved: ${rid} — captured ${active.generation}, current ${generationOf(p)}`);\n    }",
-  "to": "    if (false) { throw new Error('unreachable'); }"
+  "from": "    if (p.generation !== active.generation) {\n      throw new Error(`identity_bootstrap_generation_moved: ${rid} — captured ${active.generation}, current ${p.generation}`);\n    }",
+  "to": "    if (false) {\n      throw new Error('identity_bootstrap_generation_moved: unreachable');\n    }",
+  "why": "🔴 RE-POINTED when pointerStateOf stopped being exported: bootstrap's `generationOf` helper existed only to pull one field out of a raw-data parse, which was one of the independent interpretations of the pointer document that kept reappearing. The shared reader returns the validated pair, so the generation is now `.generation` on it and the helper is gone. The fence itself is unchanged."
  },
  {
   "id": "d4p1b-07",

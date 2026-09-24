@@ -64,7 +64,7 @@
 // ---------------------------------------------------------------------------
 const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 const { legacyKeyOf } = require('./identity-backfill');
-const { activePointerRef, getActivePointer, pointerStateOf } = require('./catalog-firestore');
+const { activePointerRef, getActivePointer, readPointerSnap } = require('./catalog-firestore');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 
 /* Bounded because it writes every object of a version in ONE transaction: Firestore's hard ceiling is
@@ -80,7 +80,10 @@ const versionRefOf = (db, rid, versionId) => db.collection('restaurants').doc(ri
    same reference by another name must not escape its own module" — and re-deriving the path locally
    would be exactly that by another spelling. catalog-firestore.js is the pointer's READ side, and it
    is where {version, generation} are captured as a PAIR. */
-const generationOf = (pointerData) => pointerStateOf(pointerData).generation;
+/* `generationOf` is GONE. It existed to pull one field out of a raw-data parse, and it was one of the
+   independent interpretations of this document that kept reappearing. The shared reader returns the
+   validated PAIR, so the generation is simply `.generation` on it — a second way to ask the same
+   question is how the two readers drifted apart in the first place. */
 
 async function readActiveVersion(db, rid) {
   const p = await getActivePointer(db, rid);
@@ -279,12 +282,16 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
       const snap = keyRowSnaps[i];
       return [`${k.kind}/${k.key}`, snap && snap.exists ? (snap.data() || {}).canonical_id : undefined];
     }));
-    const p = pSnap.exists ? (pSnap.data() || {}) : {};
+    /* 🔴 THROUGH THE SHARED READER. This extracted and compared the version itself, so a versionless
+       document was refused — but as `pointer_moved`, telling an operator the menu had been republished
+       when in fact the pointer is corrupt. Right outcome, wrong cause, and the wrong cause sends
+       somebody to look for a publish that never happened. */
+    const p = readPointerSnap(pSnap, rid);
     if (p.version !== active.versionId) {
       throw new Error(`identity_bootstrap_pointer_moved: ${rid} — ${active.versionId} was live at read, ${JSON.stringify(p.version)} is live now`);
     }
-    if (generationOf(p) !== active.generation) {
-      throw new Error(`identity_bootstrap_generation_moved: ${rid} — captured ${active.generation}, current ${generationOf(p)}`);
+    if (p.generation !== active.generation) {
+      throw new Error(`identity_bootstrap_generation_moved: ${rid} — captured ${active.generation}, current ${p.generation}`);
     }
     const rec = recSnap.data() || {};
     if (rec.identity_certified === true) {
@@ -456,7 +463,10 @@ async function retireOrphanFenced(db, rid, cand, active, served, certified, now)
   const idRef = idsColOf(db, rid, cand.kind).doc(cand.id);
   return db.runTransaction(async (tx) => {
     const [pSnap, idSnap] = await Promise.all([tx.get(activePointerRef(db, rid)), tx.get(idRef)]);
-    const p = pointerStateOf(pSnap.exists ? pSnap.data() : null);
+    /* Same reader as everything else: this interpreted an already-fetched snapshot through the
+       raw-data helper, which validated the FIELDS but never asked whether an existing document names
+       a version — so corruption surfaced here as `pointer_moved` too. */
+    const p = readPointerSnap(pSnap, rid);
     if (p.version !== active.versionId || p.generation !== active.generation) {
       throw new Error(`identity_reconcile_pointer_moved: ${rid} — judged against ${active.versionId}@${active.generation}, now ${JSON.stringify(p.version)}@${p.generation}`);
     }
