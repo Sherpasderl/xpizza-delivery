@@ -535,20 +535,30 @@ async function addDishToSource(name) {
        A merchant reads the source, starts editing, and an operator rolls back underneath them. Their
        publish must be REFUSED BY NAME against the revision they reviewed — not accepted onto a
        baseline that no longer exists, and not silently overwritten. */
-    const beforeEdit = await sourceRefOf(db, RID).get();
-    const staleRevision = encodeUpdateTime(beforeEdit.updateTime);   // what the merchant is editing against
-
+    /* 🔴 THE STALE DRAFT MUST CARRY AN ID THE ROLLBACK UN-CERTIFIES, OR THIS CELL TESTS NOTHING ABOUT
+       ORDERING. My first version captured the candidate BEFORE the mint publish, so it carried no id
+       the target lacked — the transactional CAS refused it either way and a mutant removing the
+       pre-flight check survived. The merchant's editor loads AFTER the mint and before the rollback,
+       which is exactly the window that produces the confusing diagnosis. */
     const cur = await getActivePointer(db, RID);
     await addDishToSource(`Zz Concurrent ${STAMP}`);
     const newer = await publish(cur.version, `conc-${STAMP}`);
 
+    const beforeEdit = await sourceRefOf(db, RID).get();
+    const staleRevision = encodeUpdateTime(beforeEdit.updateTime);   // what the merchant is editing against
+    const staleCandidate = await candidateFromSource();              // …carrying the id the rollback is about to un-certify
+
     const { rollbackVersion } = require('../catalog/catalog-publish');
     await rollbackVersion(db, RID, cur.version, { expected: { activeVersionId: newer } });
 
+    /* 🔴 THE CANDIDATE IS CAPTURED BEFORE THE ROLLBACK, WHICH THE FIRST VERSION OF THIS CELL DID NOT
+       DO. It rebuilt the candidate AFTER the rollback, so it never held a stale one — the cell
+       constructed away the very condition it was named for, and could not see that partition
+       membership was diagnosed before staleness. Sixth instance of that shape. Captured here, at the
+       moment a merchant's editor would have loaded it. */
     let conflict = null;
     try {
-      const input = { ...(await candidateFromSource()), source_sha: `conc-publish-${STAMP}` };
-      await publishVersion(db, RID, input,
+      await publishVersion(db, RID, { ...staleCandidate, source_sha: `conc-publish-${STAMP}` },
         { expected: { activeVersionId: cur.version, draftRevision: staleRevision } });
     } catch (e) { conflict = (e && e.message) || String(e); }
     assert.ok(conflict && /flip_cas_draft_stale/.test(conflict),
@@ -584,6 +594,92 @@ async function addDishToSource(name) {
     assert.strictEqual(encodeUpdateTime((await sourceRefOf(db, RID).get()).updateTime), revBefore,
       'and the revision is untouched — the weaker of the two checks; see the note above');
     ok('a draft open across a rollback is refused flip_cas_draft_stale BY NAME, and a rollback that changes no stamps does not touch the source at all');
+  }
+
+  // ── 10. 🔴 DELETE, PUBLISH, ROLL BACK, PUBLISH AGAIN — THE THIRD PARTITION LOCKOUT ─────────
+  {
+    /* 🔴 THIS CELL IS THE REPRODUCTION THAT FOUND IT, MADE PERMANENT. The surgical rebase MAPS, so it
+       can only touch rows the source still HAS. The case it could not reach: the merchant deletes an
+       object and publishes — the claim is consumed and CLEARED — and the rollback target still
+       certifies it. Then the version has it, the registry has it, THE SOURCE DOES NOT, and the id sits
+       in A while being neither carried nor declared deleted (the claim is gone, so `deleted_ids`
+       cannot account for it) → `identity_partition_unaccounted`. The merchant rolls back and cannot
+       publish.
+       Third of the family: unaccounted-from-a-missing-stamp, carried_unknown-from-a-stale-source, and
+       this — unaccounted-from-a-source-missing-an-object-the-target-certifies. §5's parenthetical is
+       exactly this case rather than a heavier alternative, and we read past it. */
+    const cur = await getActivePointer(db, RID);
+    const srcNow = (await sourceRefOf(db, RID).get()).data();
+    const victim = (srcNow.items || []).find((o) => (o.display || {}).identity_id);
+    assert.ok(victim, 'premise — a stamped dish to delete');
+    const victimId = victim.display.identity_id;
+    const neighbourAfter = (srcNow.structure.item_order || [])[(srcNow.structure.item_order || []).indexOf(victim.key) + 1] || null;
+
+    /* THE MERCHANT DELETES IT: the object leaves the draft AND a claim is declared. */
+    await sourceRefOf(db, RID).update({
+      items: (srcNow.items || []).filter((o) => o.key !== victim.key),
+      structure: { ...srcNow.structure, item_order: (srcNow.structure.item_order || []).filter((k) => k !== victim.key) },
+      deleted_ids: { ids: [victimId], base_version: cur.version, base_generation: cur.generation },
+    });
+    const afterDelete = await publish(cur.version, `del-${STAMP}`);
+    assert.strictEqual(((await sourceRefOf(db, RID).get()).data() || {}).deleted_ids, null,
+      'premise — the claim was CONSUMED, which is why deleted_ids cannot account for the id below');
+    assert.ok(!((await sourceRefOf(db, RID).get()).data().items || []).some((o) => o.key === victim.key),
+      'premise — and the object really is gone from the source');
+
+    /* ROLL BACK to before the deletion. */
+    const { rollbackVersion } = require('../catalog/catalog-publish');
+    await rollbackVersion(db, RID, cur.version, { expected: { activeVersionId: afterDelete } });
+    assert.strictEqual((await getActivePointer(db, RID)).version, cur.version, 'premise — the rollback landed');
+
+    /* 🔴 THE OBJECT IS BACK, WITH ITS STAMP — which is correct behaviour and not merely lockout
+       avoidance: rolling back to before a deletion SHOULD return the dish to the draft. */
+    const back = (await sourceRefOf(db, RID).get()).data();
+    const restored = (back.items || []).find((o) => o.key === victim.key);
+    assert.ok(restored, `🔴 the rollback did not return the deleted object to the source — the next publish is about to be refused identity_partition_unaccounted for ${victimId}`);
+    assert.strictEqual((restored.display || {}).identity_id, victimId, '🔴 it came back with a different id than the target certifies');
+
+    /* 🔴 AND ITS ORDER ENTRY, OR IT EXISTS AND CANNOT BE SEEN. Placed relative to a SURVIVING
+       neighbour, not at the target's absolute index — the source's order has diverged. */
+    const order = back.structure.item_order || [];
+    assert.ok(order.includes(victim.key),
+      '🔴 the object is back in the source but NOT in item_order — invisible to the renderer, which is half-done in the direction nobody notices');
+    if (neighbourAfter && order.includes(neighbourAfter)) {
+      assert.strictEqual(order[order.indexOf(neighbourAfter) - 1], victim.key,
+        `🔴 the re-added key is not immediately before its surviving neighbour ${neighbourAfter} — it was placed somewhere neither version had it`);
+    }
+
+    /* THE ASSERTION THE WHOLE CELL EXISTS FOR. */
+    let refused = null;
+    try { await publish(cur.version, `post-del-roll-${STAMP}`); }
+    catch (e) { refused = (e && e.message) || String(e); }
+    assert.strictEqual(refused, null,
+      `🔴 THE PUBLISH AFTER ROLLING BACK ACROSS A DELETION WAS REFUSED — the merchant cannot publish their own menu. If this says identity_partition_unaccounted, the rollback did not re-add an object the target certifies that the source had lost: ${refused}`);
+    /* 🔴 AND THE NO-SURVIVING-NEIGHBOUR FALLBACK, which the case above cannot reach. Delete the LAST
+       key in the order: it has no follower to be placed before, so appending is the ONLY thing that
+       puts it back into `item_order`. Without that branch the object returns invisible — and the cell
+       above would not notice, because its victim's neighbour survives. */
+    const s2 = (await sourceRefOf(db, RID).get()).data();
+    const lastKey = (s2.structure.item_order || [])[(s2.structure.item_order || []).length - 1];
+    const lastRow = (s2.items || []).find((o) => o.key === lastKey);
+    assert.ok(lastRow && (lastRow.display || {}).identity_id, 'premise — the last dish in the order is stamped');
+    const lastId = lastRow.display.identity_id;
+    const live2 = await getActivePointer(db, RID);
+    await sourceRefOf(db, RID).update({
+      items: (s2.items || []).filter((o) => o.key !== lastKey),
+      structure: { ...s2.structure, item_order: (s2.structure.item_order || []).filter((k) => k !== lastKey) },
+      deleted_ids: { ids: [lastId], base_version: live2.version, base_generation: live2.generation },
+    });
+    const afterLast = await publish(live2.version, `del-last-${STAMP}`);
+    await rollbackVersion(db, RID, live2.version, { expected: { activeVersionId: afterLast } });
+    const back2 = (await sourceRefOf(db, RID).get()).data();
+    assert.ok((back2.items || []).some((o) => o.key === lastKey), '🔴 the last-in-order dish was not re-added');
+    assert.ok((back2.structure.item_order || []).includes(lastKey),
+      '🔴 a re-added object with NO surviving follower is absent from item_order — the append fallback is missing, and the dish exists while being invisible');
+    let refusedLast = null;
+    try { await publish(live2.version, `post-last-${STAMP}`); } catch (e) { refusedLast = (e && e.message) || String(e); }
+    assert.strictEqual(refusedLast, null, `🔴 the publish after rolling back a last-in-order deletion was refused: ${refusedLast}`);
+    ok('delete, publish, roll back, publish again — the object and its order entry come back, placed by a surviving neighbour or appended when none survives, and the publish SUCCEEDS');
   }
 
   FINISHED = true;

@@ -658,6 +658,15 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       /* THE ROLLBACK'S OWN STAMPS, for classifying retires. Read here because reads close below, and
          only on the rollback path: two bounded subcollection reads, menu-sized, and rollbacks are
          rare. Without them the reconciliation reports every retire `unknown` rather than guessing. */
+      /* 🔴 THE TARGET'S ORDERING, READ WITH THE OTHER READS BECAUSE THE REBASE MAY WRITE IT. Only on
+         the rollback path, one document. It is needed to place an object the source LOST back where
+         the target had it relative to its surviving neighbours — see the re-add note below. */
+      let targetOrder = null;
+      if (isRollback) {
+        const st = await tx.get(versionsColOf(db, rid).doc(versionId).collection('meta').doc('menu_structure'));
+        targetOrder = st.exists ? ((st.data() || {}).item_order || null) : null;
+      }
+
       let activeStamps = null;
       if (isRollback && liveActive) {
         activeStamps = { dish: {}, extra: {} };
@@ -852,11 +861,76 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           if (want === undefined) delete display.identity_id; else display.identity_id = want;
           return { ...o, display };
         });
-        const items = rebase(liveSrc.items, 'dish');
-        const extras = rebase(liveSrc.extras, 'extra');
-        if (rebased) {
-          tx.update(sourceRefOf(db, rid), { items, extras });
-          try { console.log('identity_rollback_source_rebased', JSON.stringify({ rid, target: versionId, objects: rebased })); } catch (_) {}
+        let items = rebase(liveSrc.items, 'dish');
+        let extras = rebase(liveSrc.extras, 'extra');
+
+        /* 🔴 AND RE-ADD WHAT THE SOURCE LOST, WHICH THE MAP ABOVE CANNOT DO. `.map()` only touches rows
+           the source still HAS. The case it cannot reach: the merchant DELETED an object and published
+           — the claim was consumed and cleared — and the rollback target still certifies it. Then the
+           version has it, the registry has it, THE SOURCE DOES NOT, and the id is in A while being
+           neither carried nor declared deleted → `identity_partition_unaccounted`. Reproduced before
+           fixing: "claim after publish: null · source has victim? false · PUBLISH AFTER ROLLBACK:
+           REFUSED".
+           §5's parenthetical is this case, not a heavier alternative to the surgical rebase: "an
+           explicit recovery op that reconstructs the editable baseline from the target".
+           🔴 STILL SURGICAL. Only objects the TARGET CERTIFIES that the source LACKS are added, lifted
+           from the target's own docs — whose shape IS a source row ({key, price, display}), so this is
+           a copy and not a reconstruction. Nothing is removed, and no surviving object is altered
+           beyond the stamp the map above already moves.
+           🔴 AND IT IS CORRECT BEHAVIOUR, NOT MERELY LOCKOUT AVOIDANCE: rolling back to before a
+           deletion SHOULD return that dish to the merchant's draft. */
+        const haveKeys = { dish: new Set(items.map((o) => o && o.key)), extra: new Set(extras.map((o) => o && o.key)) };
+        const readded = { dish: [], extra: [] };
+        for (const [kind, snap] of [['dish', itemsSnap], ['extra', extrasSnap]]) {
+          for (const d of (snap.docs || [])) {
+            const data = d.data() || {};
+            if (typeof data.key !== 'string' || !data.key) continue;
+            if (haveKeys[kind].has(data.key)) continue;
+            if (!persisted[kind][data.key]) continue;          // the target does not certify it; not ours to add
+            readded[kind].push({ key: data.key, price: data.price, display: { ...(data.display || {}) } });
+          }
+        }
+        if (readded.dish.length) items = items.concat(readded.dish);
+        if (readded.extra.length) extras = extras.concat(readded.extra);
+
+        /* 🔴 THE ORDER ENTRY TOO, OR THE OBJECT EXISTS AND CANNOT BE SEEN. An item absent from
+           `item_order` is invisible to the renderer; the claim path already records that the INVERSE —
+           an order naming a key with no object — dereferences undefined. Half-done in either direction
+           is a dish nobody can find.
+           🔴 POSITION FROM SURVIVING NEIGHBOURS, NOT THE TARGET'S ABSOLUTE INDEX. The merchant has been
+           editing, so the source's order has diverged; inserting at the target's numeric index can
+           land an object somewhere neither version ever had it. Instead: walk the target's order and
+           place the re-added key immediately before the first FOLLOWING key that still exists in the
+           source. If none of its followers survive, it goes last — which is stated in the log rather
+           than guessed at silently. */
+        let order = Array.isArray(liveSrc.structure && liveSrc.structure.item_order)
+          ? liveSrc.structure.item_order.slice() : null;
+        let appended = 0;
+        if (order && readded.dish.length) {
+          const tOrder = Array.isArray(targetOrder) ? targetOrder : [];
+          for (const row of readded.dish) {
+            if (order.includes(row.key)) continue;
+            const at = tOrder.indexOf(row.key);
+            let placed = false;
+            if (at !== -1) {
+              for (const follower of tOrder.slice(at + 1)) {
+                const idx = order.indexOf(follower);
+                if (idx !== -1) { order.splice(idx, 0, row.key); placed = true; break; }
+              }
+            }
+            if (!placed) { order.push(row.key); appended += 1; }
+          }
+        }
+
+        const reAddedCount = readded.dish.length + readded.extra.length;
+        if (rebased || reAddedCount) {
+          const patch = { items, extras };
+          if (order) patch.structure = { ...(liveSrc.structure || {}), item_order: order };
+          tx.update(sourceRefOf(db, rid), patch);
+          try {
+            console.log('identity_rollback_source_rebased', JSON.stringify({ rid, target: versionId,
+              stamps_moved: rebased, objects_readded: reAddedCount, appended_without_neighbour: appended }));
+          } catch (_) {}
         }
       }
 
@@ -1268,6 +1342,31 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
      and the pair against the candidate's own baseline and the live pointer. Returning them rather
      than re-deriving them downstream is what keeps "the set the law checked" and "the map that gets
      written" the same walk over the same rows. */
+  /* 🔴 STALENESS IS DIAGNOSED BEFORE MEMBERSHIP, AND THE ORDER IS THE WHOLE POINT. Partition
+     membership is validated here, BEFORE the lease and two stages before the transactional draft CAS
+     inside the flip — so a candidate captured before a rollback, carrying an id that rollback
+     un-certified, met `identity_partition_carried_unknown` first. The merchant was told their draft
+     was structurally wrong when the truth is simply that it is STALE: reload and it is fine.
+     This is an advisory check; the transactional CAS at the flip remains the authority and still
+     refuses anything this admits. It cannot make a publish that succeeds today start failing — if the
+     revision differs, the flip refuses anyway — it only changes WHICH refusal the caller sees, and how
+     early. Verified that nothing keys off the partition code: its only occurrences outside
+     identity-partition.js and the tests are comments. The portal already surfaces a server error code
+     as a first-class field, so a correctly-named refusal lands somewhere that can route it. */
+  if (expected && Object.prototype.hasOwnProperty.call(expected, 'draftRevision')) {
+    /* 🔴 THE EXPECTATION IS ALREADY ENCODED — DO NOT RE-ENCODE IT. My first version wrapped
+       `expected.draftRevision` in encodeUpdateTime, which turns `null` into the STRING "null" and made
+       a genuinely draft-less restaurant's honest `draftRevision: null` claim fail against a real null.
+       publish-paths.test.js caught it, and that cell exists for exactly this — "the presence-by-value
+       trap in the one place where skipping it means publishing against a draft nobody looked at". The
+       comparison mirrors the flip's at :369 byte for byte so the two cannot diverge on the null case. */
+    const preSnap = await sourceRefOf(db, rid).get();
+    const preRevision = preSnap.exists ? encodeUpdateTime(preSnap.updateTime) : null;
+    if (preRevision !== expected.draftRevision) {
+      throw new Error(`flip_cas_draft_stale: ${rid} — the draft moved from ${JSON.stringify(expected.draftRevision)} to ${JSON.stringify(preRevision)} since this edit was reviewed`);
+    }
+  }
+
   const { stamps: draftStamps, baseline: partitionBaseline } = await assertDraftPartition(db, rid, input);
 
   const token = await acquireLease(db, rid);

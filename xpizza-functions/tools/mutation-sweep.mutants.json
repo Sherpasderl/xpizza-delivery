@@ -9408,9 +9408,9 @@
   "id": "e11-11",
   "slice": "e11",
   "file": "catalog/catalog-publish.js",
-  "from": "        if (rebased) {\n          tx.update(sourceRefOf(db, rid), { items, extras });",
-  "to": "        if (true) {\n          tx.update(sourceRefOf(db, rid), { items, extras });",
-  "label": "the rebase writes even when NOTHING changed — every rollback bumps the source revision and invalidates an innocent merchant draft for no reason",
+  "from": "        if (rebased || reAddedCount) {\n          const patch = { items, extras };",
+  "to": "        if (true) {\n          const patch = { items, extras };",
+  "label": "the rebase writes even when NOTHING changed — no stamp moved and no object was re-added, yet every rollback bumps the source revision and invalidates an innocent merchant draft for no reason",
   "kills_with": "a rollback that changed NO stamps still wrote the source",
   "command": [
    "npm",
@@ -9530,6 +9530,76 @@
    "npm",
    "run",
    "test:bootstrap-cli"
+  ]
+ },
+ {
+  "id": "e11-13",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "        if (readded.dish.length) items = items.concat(readded.dish);",
+  "to": "        if (false) items = items.concat(readded.dish);",
+  "label": "🔴 THE OBJECT IS NOT RE-ADDED — rolling back across a DELETION leaves the source without an object the target certifies, so the id sits in A uncarried and undeclared and the next publish is refused identity_partition_unaccounted. The merchant rolls back and cannot publish",
+  "kills_with": "the rollback did not return the deleted object to the source",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-14",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "            if (!placed) { order.push(row.key); appended += 1; }",
+  "to": "            if (!placed) { appended += 1; }",
+  "label": "🔴 THE OBJECT COMES BACK WITHOUT ITS item_order ENTRY — it exists and is INVISIBLE to the renderer. Half-done in the direction nobody notices, and the inverse (an order naming a missing key) dereferences undefined",
+  "kills_with": "the append fallback is missing",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-15",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "        if (order && readded.dish.length) {",
+  "to": "        if (false) {",
+  "label": "the order is never repaired at all — the reverse of e11-13: the object is in the source and absent from the ordering, so the publish succeeds and the dish cannot be seen",
+  "kills_with": "NOT in item_order",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-16",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "              for (const follower of tOrder.slice(at + 1)) {",
+  "to": "              for (const follower of []) {",
+  "label": "position stops being derived from surviving neighbours — every re-added object is APPENDED, landing somewhere neither the target nor the source ever had it",
+  "kills_with": "not immediately before its surviving neighbour",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-17",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "  if (expected && Object.prototype.hasOwnProperty.call(expected, 'draftRevision')) {",
+  "to": "  if (false) {",
+  "label": "🔴 STALENESS IS NO LONGER DIAGNOSED BEFORE MEMBERSHIP — a merchant holding a draft across a rollback is told their draft is structurally wrong (identity_partition_carried_unknown) when the truth is that it is simply stale and reloading fixes it",
+  "kills_with": "a draft open ACROSS the rollback was accepted, or refused for some other reason",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
   ]
  }
 ]
