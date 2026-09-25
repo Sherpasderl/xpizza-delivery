@@ -198,4 +198,47 @@ function judgeStampMap({ stamps, candidateKeys = {}, registry = {}, baseline = n
   return { empty: false, fence, stamps: out };
 }
 
-module.exports = { walkDraftIdentities, stampVerdict, fenceVerdict, judgeStampMap };
+/* ── WHICH REFUSALS ARE ABOUT THE REGISTRY AGREEING, AND WHICH ARE NOT ──────────────────────────
+   🔴 WHY THIS PARTITION EXISTS. Re-read this module's own threat model above: the ids in a DRAFT
+   round-trip through the merchant's editor, which is how "a merchant-controlled field could become
+   server certification". That is what these refusals guard.
+
+   A ROLLBACK TARGET IS NOT A DRAFT. Its stamps are server-written history that THIS MODULE ALREADY
+   VALIDATED when that version was published. Re-running the registry-agreement checks on a rollback
+   re-judges an immutable record against a registry that has legitimately moved since — and calls the
+   disagreement forgery. The registry moving on is not evidence the history was forged; after a
+   deletion it is the GUARANTEED state, and it is precisely what the rollback reconciliation exists to
+   repair. So these five are not a protection being traded away on the rollback path: they are a check
+   applied to an input it was never about.
+
+   🔴 AND THE RECONCILIATION MAY PERMIT WHAT THIS MODULE MUST REFUSE, FOR THE SAME REASON AS
+   THEFT-VERSUS-SWAP. `stampVerdict` judges ONE stamp against the registry WITH NO PLAN.
+   `stamp_registry_disagrees` — the target says K holds X, the registry says K holds Y — is THEFT if Y
+   survives the rollback, and is §5's own delete→recreate→rollback if Y is retired by this same
+   rollback for being absent from the target. Per stamp those are identical. With the plan in hand
+   they are not, and the destination guard's released-by-this-same-plan logic already draws that line.
+   The information was never missing from the system, only from the place being asked.
+
+   🔴 THE OTHER SIX STAY ON EVERY PATH, INCLUDING ROLLBACK. The four fence refusals are about WHEN,
+   not about provenance: a rollback racing another activation must still refuse, and nothing about
+   rolling back weakens that. `stamp_input_malformed` and `stamp_not_in_candidate` are structural — a
+   stamp naming an object the version does not contain is broken whatever the intent, and a rollback
+   cannot make it coherent. */
+const REGISTRY_AGREEMENT_REFUSALS = Object.freeze([
+  'stamp_unregistered',
+  'stamp_registry_disagrees',
+  'stamp_id_row_missing',
+  'stamp_id_retired',
+  'stamp_id_claims_other_name',
+]);
+const NOT_ABOUT_THE_REGISTRY = Object.freeze([
+  'stamp_fence_moved',
+  'stamp_fence_resolved_elsewhere',
+  'stamp_fence_unbound',
+  'stamp_fence_unreadable',
+  'stamp_input_malformed',
+  'stamp_not_in_candidate',
+]);
+
+module.exports = { walkDraftIdentities, stampVerdict, fenceVerdict, judgeStampMap,
+  REGISTRY_AGREEMENT_REFUSALS, NOT_ABOUT_THE_REGISTRY };

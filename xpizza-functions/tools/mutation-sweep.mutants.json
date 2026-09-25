@@ -9033,5 +9033,57 @@
    "run",
    "test:d4p1-mint-atomic"
   ]
+ },
+ {
+  "id": "e12-01",
+  "slice": "e12",
+  "file": "catalog/identity-stampmap.js",
+  "from": "  'stamp_id_claims_other_name',\n]);",
+  "to": "]);",
+  "label": "a registry-agreement refusal is dropped from the partition — it then keeps firing on the rollback path, refusing the exact state the reconciliation exists to repair",
+  "kills_with": "does not account for every refusal this module can produce",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ]
+ },
+ {
+  "id": "e12-02",
+  "slice": "e12",
+  "file": "catalog/identity-stampmap.js",
+  "from": "  'stamp_fence_moved',",
+  "to": "",
+  "label": "🔴 A FENCE REFUSAL IS UNCLASSIFIED — the fence is about WHEN, not provenance, and losing it on the rollback path lets a rollback race another activation",
+  "kills_with": "the fence is about WHEN, and a rollback does not weaken it",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ]
+ },
+ {
+  "id": "e12-03",
+  "slice": "e12",
+  "file": "catalog/identity-stampmap.js",
+  "from": "const NOT_ABOUT_THE_REGISTRY = Object.freeze([\n  'stamp_fence_moved',",
+  "to": "const NOT_ABOUT_THE_REGISTRY = Object.freeze([\n  'stamp_unregistered',\n  'stamp_fence_moved',",
+  "label": "a refusal is put on BOTH sides — it would be both relocated and kept, and which wins is whichever list is read first",
+  "kills_with": "a refusal is on BOTH sides of the partition",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ]
+ },
+ {
+  "id": "e12-04",
+  "slice": "e12",
+  "file": "catalog/identity-stampmap.js",
+  "from": "  'stamp_fence_unbound',\n  'stamp_fence_unreadable',",
+  "to": "  'stamp_fence_unreadable',",
+  "label": "🔴 A FENCE REFUSAL IS REMOVED FROM THE STAY LIST — unclassified, it is no longer guaranteed to fire on the rollback path, and a rollback racing another activation stops refusing",
+  "kills_with": "the fence is about WHEN, and a rollback does not weaken it",
+  "command": [
+   "node",
+   "catalog/stamp-map.test.js"
+  ]
  }
 ]

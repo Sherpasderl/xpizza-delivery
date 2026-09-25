@@ -14,7 +14,11 @@
  * decision still, emulator cells prove the decision is actually consulted with real data.
  */
 const assert = require('assert');
-const { walkDraftIdentities, stampVerdict, fenceVerdict, judgeStampMap } = require('./identity-stampmap');
+const { walkDraftIdentities, stampVerdict, fenceVerdict, judgeStampMap,
+  REGISTRY_AGREEMENT_REFUSALS, NOT_ABOUT_THE_REGISTRY } = require('./identity-stampmap');
+const { readFileSync } = require('fs');
+const { join } = require('path');
+const stripComments = require('../tools/strip-comments.js');
 const { STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -219,6 +223,54 @@ const good = (over = {}) => ({ kind: 'dish', key: 'Margherita', claimedId: 'X', 
   assert.deepStrictEqual(a, b, 'the same inputs give the same verdict');
   assert.deepStrictEqual(args, argsFrozen, '🔴 the predicate MUTATED its arguments');
   ok('derivation and verdict are both pure, and neither mutates its input');
+}
+
+// ── THE ROLLBACK PARTITION IS EXHAUSTIVE, AND ENUMERATED FROM THE SOURCE ────────────────────
+{
+  /* 🔴 WHY THIS IS A SOURCE SCAN AND NOT A LIST COMPARED TO A LIST. The rollback reconciliation takes
+     over five of this module's refusals — the registry-agreement ones — because a rollback target is
+     not a draft and those states are ones a rollback legitimately produces. The other six stay. The
+     hazard is not today's split; it is the SEVENTH refusal somebody adds next year, which will be
+     classified by nobody and will therefore keep firing on the rollback path, or stop firing there,
+     according to which list its author happened to notice. Two hand-maintained lists is the shape
+     that let the CLI census sit at 8 while 10 tools connected.
+     So the codes are read out of the module's own `refuse(...)` calls and every one must be
+     classified exactly once. A new refusal fails this cell until somebody decides which side it is
+     on — which is the decision, made once, in the open. */
+  const src = readFileSync(join(__dirname, 'identity-stampmap.js'), 'utf8');
+  const declared = [...new Set((stripComments(src).match(/refuse\('([a-z_]+)'/g) || [])
+    .map((m) => m.slice("refuse('".length, -1)))].sort();
+  assert.ok(declared.length >= 11, `non-vacuity: the scan must really find the refusals (found ${declared.length})`);
+
+  const moved = REGISTRY_AGREEMENT_REFUSALS.slice().sort();
+  const stays = NOT_ABOUT_THE_REGISTRY.slice().sort();
+  const classified = [...moved, ...stays].sort();
+
+  /* 🔴 THE SPECIFIC CHECKS RUN BEFORE THE EXHAUSTIVE ONE, AND THAT ORDER IS LOAD-BEARING. Any
+     mis-classification also changes the total, so a list-equality assertion placed first catches
+     everything and reports all of it as "the partition is incomplete" — which is true, and tells the
+     reader nothing about WHICH decision went wrong. The sweep said so: two mutants died here on the
+     equality message while the assertions named after their properties never ran. */
+  assert.deepStrictEqual(moved.filter((c) => stays.includes(c)), [],
+    '🔴 a refusal is on BOTH sides of the partition — it would be both relocated and kept, and which one wins is whichever list is consulted first');
+
+  /* The four fence refusals must ALL stay: the fence is about WHEN, not provenance, and a rollback
+     racing another activation must refuse exactly as a publish does. */
+  for (const f of declared.filter((c) => c.startsWith('stamp_fence_'))) {
+    assert.ok(stays.includes(f), `🔴 ${f} was marked registry-agreement — the fence is about WHEN, and a rollback does not weaken it`);
+    assert.ok(!moved.includes(f), `🔴 ${f} would be handed to the rollback reconciliation — a rollback racing another activation would stop refusing`);
+  }
+
+  assert.deepStrictEqual(classified, declared,
+    `🔴 the rollback partition does not account for every refusal this module can produce. Unclassified: ${JSON.stringify(declared.filter((c) => !classified.includes(c)))}; classified but never raised: ${JSON.stringify(classified.filter((c) => !declared.includes(c)))}`);
+
+  /* 🔴 AND THE SPLIT IS PINNED BY SIZE AS WELL AS BY MEMBERSHIP. Equality alone is satisfied by
+     moving everything to one side as the module grows; these numbers are the ruled split, and
+     changing either is a decision that should require editing this line. */
+  assert.strictEqual(moved.length, 5, `🔴 ${moved.length} refusals are marked registry-agreement, not 5 — the ruled split changed without this cell being touched`);
+  assert.strictEqual(stays.length, 6, `🔴 ${stays.length} refusals are marked not-about-the-registry, not 6`);
+
+  ok(`all ${declared.length} stamp refusals are classified exactly once: ${moved.length} move to the rollback reconciliation, ${stays.length} stay on every path`);
 }
 
 console.log(`stamp-map: OK (${n})`);
