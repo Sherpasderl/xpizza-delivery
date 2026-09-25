@@ -17,6 +17,34 @@
  *
  * THE REGISTRY IS: restaurants/{rid}/identity/{kind}/ids/{id}   and   .../keys/{key}
  * built by idsColOf()/keysColOf() in catalog/identity-registry.js.
+ *
+ * 🔴 THIS IS A MAP, NOT A PROOF — AND NOTHING ELSE CARRIES THE PROPERTY IT CANNOT CARRY.
+ * It finds writers. It does NOT establish that there are no others. Three review rounds found
+ * spellings and scopes it missed, and a fourth would find more: reference names are tracked
+ * file-wide rather than per-scope, a builder destructured through a computed key is invisible, and
+ * the alias set does not respect function boundaries. Those are real and they are not all fixed.
+ *
+ * It is tempting to say the fail-closed fence covers the gap. IT DOES NOT, and the distinction is
+ * the whole reason this note exists: fail-closed means a writer that TAKES a captured pair refuses
+ * when the pair is missing. A writer NOBODY EVER FENCED takes no pair, checks nothing, and writes.
+ * So demoting this tool to a map genuinely loses the "have we fenced every writer?" property, and
+ * no other mechanism in the tree currently provides it.
+ *
+ * What we have instead, verified by hand and independently at review rather than by this walk:
+ * production registry writes exist at exactly four places today — identity-registry.js (orphan
+ * adoption, mint, retire), identity-bootstrap.js (retireOrphanFenced) and identity-sweep.js (the
+ * recorded exemption) — and catalog-publish.js uses the builders for READS only. Completeness is
+ * not violated today; it is simply not guaranteed going forward.
+ *
+ * 🔴 THE CONDITION THAT CLOSES THIS, recorded because a deferral without a trigger is how the
+ * destination-claimant guard sat unwired for four slices: THE NEXT REGISTRY WRITE PATH ANYONE ADDS
+ * ARRIVES THROUGH A FENCED ACCESSOR, NOT BESIDE ONE. idsColOf/keysColOf hand out WRITABLE refs to
+ * any caller; the change is for them to hand out read-only refs, with writable ones obtainable only
+ * from something like fencedRegistry(tx, {db, rid, captured, code}) that performs the fence first.
+ * Then an unfenced write is impossible rather than detectable, and the sweep's exemption becomes a
+ * call you have to write at the site — unfencedRegistryFor('sweepIdentityIntegrity', reason) —
+ * instead of an entry in the table below. That lands as the FIRST HALF of the next write path, not
+ * as a retrofit afterwards.
  */
 const fs = require('fs');
 const path = require('path');
@@ -35,7 +63,8 @@ const FENCE_EXEMPT = {
   sweepIdentityIntegrity:
     'repairs a missing reverse row only; the registry is NOT version-scoped, so no baseline can be '
     + 'stale against it, and the three hazards a fence would cover are each established IN-TX '
-    + '(status, legacy_key, and the re-read claimant set). See catalog/identity-sweep.js header.',
+    + '(status, legacy_key, and the re-read claimant set). A fence would instead abort the hourly '
+    + 'pass on any publish IN THAT RESTAURANT. See catalog/identity-sweep.js header.',
 };
 
 function jsFilesUnder(dir, out = []) {

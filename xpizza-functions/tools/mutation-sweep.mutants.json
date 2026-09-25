@@ -7627,129 +7627,6 @@
   "why": "the defect that survived TWO rounds because nobody executed the renderer. paymentAlert emits `payment_${kind}` with the ids nested under detail; matching the bare kind sends this alert through the humanising fallback, where a dispatcher sees 'Alerta — paid after close manual refund required' with no order number and no action. The whole point of the commit is that a human is told what to do, so this is scored by executing the real renderer against a payload shaped the way the real emitter writes it."
  },
  {
-  "id": "e2a-01",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "return { ok: false, code: 'sweep_preflight_foreign_checkout',",
-  "to": "return { ok: false, code: 'sweep_preflight_no_emulator',",
-  "label": "the foreign-checkout verdict reports itself as no-emulator",
-  "kills_with": "the two reasons collapsed into one",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-02",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "  if (unclassifiable.length) {",
-  "to": "  if (false && unclassifiable.length) {",
-  "label": "an undecidable pre-flight falls through to the environment verdicts",
-  "kills_with": [
-   "an unreadable suite was skipped — the pre-flight cannot promise it had an emulator",
-   "an undecidable pre-flight reported an environment verdict instead"
-  ],
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-03",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "        unclassifiable.push(`${id}: cannot read ${f} to tell whether it needs an emulator",
-  "to": "        void (`${id}: cannot read ${f} to tell whether it needs an emulator",
-  "label": "a suite that cannot be read is silently skipped instead of reported",
-  "kills_with": "an unreadable suite was skipped — the pre-flight cannot promise it had an emulator",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-04",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "  if (!ast) throw new Error('arming_detector_unparsable: the suite could not be parsed, so whether it needs an emulator is unknown');",
-  "to": "  if (!ast) return null;",
-  "label": "a suite that cannot be parsed is reported as needing no emulator",
-  "kills_with": "a suite that could not be parsed was reported as needing no emulator",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-05",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "    else if (st === 'in-use') bound.push(",
-  "to": "    else if (false) bound.push(",
-  "label": "a bound port in this checkout's band is treated as free",
-  "kills_with": [
-   "a bound port is not reported as another run holding it — every armed mutant would DRIFT and read as a finding",
-   "a sweep started while another run held this checkout's port — every armed mutant would DRIFT"
-  ],
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-06",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "        if (!LOOPBACK.has(host)) { foreign.push(",
-  "to": "        if (false) { foreign.push(",
-  "label": "a non-loopback emulator host is accepted",
-  "kills_with": "was not reported as foreign — the sweep would assert against another tree's emulator and report green",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-07",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "  if (noEmulator.length) {",
-  "to": "  if (false && noEmulator.length) {",
-  "label": "an armed suite with no emulator configured is allowed to sweep",
-  "kills_with": "an armed suite with no emulator configured was allowed to sweep",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-08",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "  return { unclassifiable: `command does not start with npm or node: ${JSON.stringify(cmd)}` };",
-  "to": "  return { routed: false, services: [], files: [], via: cmd.join(' ') };",
-  "label": "an unreadable command shape is assumed to need no emulator",
-  "kills_with": "an armed suite could sweep with no emulator and every mutant would DRIFT",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-09",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "  if (!services.length) return { unclassifiable: `script \"${name}\" routes the runner but names no --only",
-  "to": "  if (false) return { unclassifiable: `script \"${name}\" routes the runner but names no --only",
-  "label": "a routed script with no --only has its services guessed as none",
-  "kills_with": "a routed script with no --only was assumed to need nothing",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
   "id": "e2a-10",
   "slice": "e2a",
   "file": "tools/gate-all.js",
@@ -7763,84 +7640,6 @@
   "command": [
    "node",
    "tools/emulator-ports.guard.test.js"
-  ]
- },
- {
-  "id": "e2a-11",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "          if (!started.has(s)) {",
-  "to": "          if (false) {",
-  "label": "the runner's --only is not checked against what the suite arms itself for",
-  "kills_with": "the runner starts a service the suite does not need and NOT the one it does",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-12",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "      checks.push(['FIREBASE_EMULATOR_HUB', expectedPorts.hub, 'hub', false]);",
-  "to": "      checks.push();",
-  "label": "a foreign discovery hub is not checked",
-  "kills_with": "a foreign hub points the suite at another checkout even with a correct host var",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-13",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "    else if (st === 'refused' || st === 'free') dead.push(",
-  "to": "    else if (false) dead.push(",
-  "label": "an endpoint that REFUSES a connection is accepted as a serving emulator",
-  "kills_with": "the variable names the right port but nothing is listening",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-14",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "    if (st === undefined) unknown.push(`port ${port} (${what}) was never probed, so this cannot tell whether the runner could bind it`);",
-  "to": "    if (st === undefined) { /* unprobed reads as fine */ }",
-  "label": "a port that was never probed is treated as free",
-  "kills_with": "a port nobody probed was treated as free",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-15",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "  if (!files.length && runsNodeOnAFile(body)) {",
-  "to": "  if (false) {",
-  "label": "a script whose contents cannot be enumerated is read as running nothing",
-  "kills_with": "an opaque script body was declared safe precisely because it could not be read",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
-  ]
- },
- {
-  "id": "e2a-16",
-  "slice": "e2a",
-  "file": "tools/sweep-preflight.js",
-  "from": "    && MODULE_RE.test(String(n.arguments[0].value));",
-  "to": "    && true;",
-  "label": "any require's arguments are read as emulator services",
-  "kills_with": "a require of a DIFFERENT module was read as an emulator arming call",
-  "command": [
-   "node",
-   "tools/sweep-preflight.test.js"
   ]
  },
  {
@@ -8197,6 +7996,48 @@
   "command": [
    "node",
    "catalog/identity-sweep.test.js"
+  ]
+ },
+ {
+  "id": "e2g-01",
+  "slice": "e2g",
+  "file": "tools/mutation-sweep.js",
+  "from": "    if (rc !== 0) {",
+  "to": "    if (false) {",
+  "label": "a suite that fails unmutated does not stop the sweep",
+  "kills_with": [
+   "the refusal does not say the premise failed",
+   "a sweep whose suite fails unmutated exited 0"
+  ],
+  "command": [
+   "node",
+   "tools/sweep-baseline.test.js"
+  ]
+ },
+ {
+  "id": "e2g-03",
+  "slice": "e2g",
+  "file": "tools/mutation-sweep.js",
+  "from": "      const tail = String(out || '').split('\\n').filter(Boolean).slice(-25);\n      for (const line of tail) console.error(`   │ ${line}`);",
+  "to": "      /* the suite's own output is not shown */",
+  "label": "the failing suite's own output is withheld from the operator",
+  "kills_with": "the suite's own output was not shown",
+  "command": [
+   "node",
+   "tools/sweep-baseline.test.js"
+  ]
+ },
+ {
+  "id": "e2g-02",
+  "slice": "e2g",
+  "file": "tools/mutation-sweep.js",
+  "from": "    const key = JSON.stringify(cmd);",
+  "to": "    const key = JSON.stringify(cmd) + m.id;",
+  "label": "every mutant is baselined, not every distinct command",
+  "kills_with": "the baseline did not dedupe",
+  "command": [
+   "node",
+   "tools/sweep-baseline.test.js"
   ]
  }
 ]

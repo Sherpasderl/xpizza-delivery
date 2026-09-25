@@ -30,7 +30,27 @@ const { copyFileSync, renameSync, readFileSync, writeFileSync, existsSync, readd
 const { join } = require('path');
 
 const ROOT = join(__dirname, '..');
-const MUTANTS = require('./mutation-sweep.mutants.json');
+/* 🔴 --mutants EXISTS SO THE MAIN PATH IS REACHABLE FROM A TEST. The properties that matter here are
+   about ORDER — the baseline runs BEFORE any mutation, and a red one scores NOTHING — and order
+   cannot be asserted by requiring this module, because everything below runs at load. A synthetic
+   catalogue driven through the real entry point is the only honest way to prove it, and gate-all's
+   --only exists for the same reason. Production never passes it. */
+const MUTANTS_PATH = (process.argv.find((a) => a.startsWith('--mutants=')) || '').slice('--mutants='.length)
+  || './mutation-sweep.mutants.json';
+const MUTANTS = require(MUTANTS_PATH.startsWith('.') ? MUTANTS_PATH : require('path').resolve(MUTANTS_PATH));
+const SYNTHETIC = MUTANTS_PATH !== './mutation-sweep.mutants.json';
+/* 🔴 A SYNTHETIC RUN MUST NOT READ LIKE A REAL ONE. Counts from a probe catalogue look exactly like
+   counts from the real one — same format, same vocabulary — so a synthetic run pasted into a
+   handback would be read as evidence about the real mutants. The file is named in the header AND in
+   the summary, and a non-default one says so loudly. Same rule as the sentinel that could arrive
+   from the echoed command: a number must not be mistakeable for a number about something else. */
+if (SYNTHETIC) {
+  console.log(`\n🔴 SYNTHETIC CATALOGUE — ${MUTANTS_PATH}`);
+  console.log('   These counts are about THAT file, not about the repository\'s mutants.');
+  console.log('   Never quote them as a sweep result.\n');
+} else {
+  console.log(`mutants: ${MUTANTS_PATH} (${MUTANTS.length})`);
+}
 
 // Mutations nobody can kill, with the reason. Listed rather than quietly excluded: an unkillable
 // mutant is a claim about the code's shape, and a claim belongs in writing where it can be argued
@@ -150,93 +170,50 @@ const runSuite = (command) => {
   console.log(`anchors: all ${MUTANTS.length} mutants anchor live code exactly once (pristine tree)`);
 }
 
-/* 🔴 THE ENVIRONMENT IS CHECKED ONCE, HERE, BEFORE A SINGLE MUTANT IS SCORED.
-   This harness hands every suite an INHERITED environment and never establishes an emulator. An
-   armed suite (test/_emulator-required.js) that is handed the wrong one refuses at REQUIRE time —
-   which exits nonzero, which this harness reads as "the suite noticed", which scores the mutant
-   KILLED on no recorded kills_with: DRIFTED. So an environment fault is reported as a MUTATION
-   FINDING, once per mutant, and it drifts every mutant an armed suite kills. That happened: a sweep
-   read `pah` 1/6 with pah-01..05 drifted and pah-06 clean, and the cause was one line — a port this
-   checkout needs was already bound. Five drifted mutants look exactly like a finding; the round
-   spent telling them apart is the cost this block removes.
-   A refusal exits nonzero with NOTHING scored, because a partial sweep must never read as evidence. */
+/* 🔴 EVERY SUITE RUNS UNMUTATED FIRST, AND A RED ONE STOPS THE SWEEP.
+   The whole harness rests on a premise nothing used to check: that the suite PASSES on the pristine
+   tree. If it does not — a missing or foreign emulator, a broken fixture, an unrelated regression, a
+   half-finished edit — then every mutant "dies" for a reason that has nothing to do with the
+   mutation, and the slice's number is meaningless in a way no amount of kills_with matching can
+   detect. A red baseline means nothing downstream is evidence, and that is true regardless of WHY it
+   is red.
+
+   This REPLACED a static pre-flight that tried to decide, by reading source, which suites needed
+   which emulator. Three review rounds found spellings it missed and spellings it wrongly matched —
+   the detector was an unwinnable enumeration. Running the suite answers the same question by
+   observation: if the environment cannot serve it, it fails here, loudly, with the suite's OWN
+   refusal as the diagnosis. It also catches everything the detector never could.
+
+   🔴 THE BASELINE USES THE SAME INVOCATION AS THE SCORED RUNS. Same runSuite, same env, same cwd —
+   otherwise it proves something about a different execution than the one being scored, which is the
+   failure mode it exists to prevent.
+
+   No CLOSING re-baseline: an emulator that dies mid-sweep makes the suite fail at require time, so
+   every later mutant dies on the wrong assertion and the DRIFTED check already reports it. A second
+   baseline for a case an existing check covers is machinery for its own sake. */
 {
-  const { resolvePlan, armingOf, preflightVerdict, portsToProbe } = require('./sweep-preflight.js');
-  const { planPorts, offsetFor, SERVICE_LISTENERS, HOST_ENV, ROOT: EMU_ROOT } = require('./emulator-run.js');
-  const OFFSET = offsetFor(EMU_ROOT);
-  const EXPECTED = planPorts(OFFSET);
-  const scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts || {};
-
-  const listDir = (d) => readdirSync(join(ROOT, d));
-  const plans = selected.map((m) => ({ id: m.id, plan: resolvePlan(m.command, scripts, listDir) }));
-
-  /* Reading a suite to see whether it arms itself. A file that cannot be read is reported by the
-     verdict, never skipped — see the note on ARMING_CALL. */
-  const armedCache = new Map();
-  const armedOf = (f) => {
-    if (!armedCache.has(f)) armedCache.set(f, armingOf(readFileSync(join(ROOT, f), 'utf8')));
-    return armedCache.get(f);
-  };
-
-  /* Which ports must be probed comes from the pre-flight itself, so the set judged is the set
-     measured — a caller that probed a different set is how "never probed" silently read as "free".
-     Probing is I/O and runs in a child, because this harness is synchronous top to bottom. */
-  const probeArgs = { plans, armedOf, env: process.env, hostVarOf: HOST_ENV, expectedPorts: EXPECTED, serviceListeners: SERVICE_LISTENERS };
-  const wanted = portsToProbe(probeArgs);
-  let portState = {};
-  if (wanted.bind.length || wanted.connect.length) {
-    /* 🔴 TWO PROBES, BECAUSE THERE ARE TWO QUESTIONS. A port the runner is about to BIND must be
-       free — tested by binding. An endpoint a suite is about to DIAL must accept a connection —
-       tested by connecting to that exact host:port. The first version tested only binding and read
-       EADDRINUSE as "an emulator is serving this", which any unrelated listener satisfies, and which
-       says nothing about the address family the suite will actually use. */
-    const probeSrc = `const net=require('net');
-      const bind=${JSON.stringify(wanted.bind)}, dial=${JSON.stringify(wanted.connect)};
-      const out={};
-      const bindOne=(p)=>new Promise(r=>{const s=net.createServer();
-        s.once('error',e=>r(e&&e.code==='EADDRINUSE'?'in-use':'error:'+((e&&e.code)||e)));
-        s.once('listening',()=>s.close(()=>r('free')));s.listen(p,'127.0.0.1');});
-      const dialOne=(ep)=>new Promise(r=>{const i=ep.lastIndexOf(':');
-        const host=ep.slice(0,i), port=Number(ep.slice(i+1));
-        const c=net.createConnection({host,port});
-        const done=(v)=>{try{c.destroy();}catch(_){} r(v);};
-        c.setTimeout(2000);
-        c.once('connect',()=>done('serving'));
-        c.once('timeout',()=>done('error:ETIMEDOUT'));
-        c.once('error',e=>done(e&&(e.code==='ECONNREFUSED'||e.code==='EHOSTUNREACH'||e.code==='EADDRNOTAVAIL')?'refused':'error:'+((e&&e.code)||e)));});
-      (async()=>{for(const p of bind) out[p]=await bindOne(p);
-        for(const ep of dial) out[ep]=await dialOne(ep);
-        process.stdout.write(JSON.stringify(out));})();`;
-    try {
-      portState = JSON.parse(execFileSync(process.execPath, ['-e', probeSrc], { encoding: 'utf8', timeout: 60000 }));
-    } catch (e) {
-      console.error('\n🔴 SWEEP REFUSED — the port probe did not complete, so this cannot tell whether the emulator ports are usable.');
-      console.error(`   ${(e && e.message) || e}`);
-      console.error('   Refusing rather than sweeping blind: an armed suite would drift and read as a finding.\n');
+  const distinct = new Map();
+  for (const m of selected) {
+    const cmd = m.command || ['npm', 'test'];
+    const key = JSON.stringify(cmd);
+    if (!distinct.has(key)) distinct.set(key, { cmd, first: m.id });
+  }
+  console.log(`baseline: ${distinct.size} distinct command(s) on the pristine tree…`);
+  for (const [, { cmd, first }] of distinct) {
+    const { rc, out } = runSuite(cmd);
+    if (rc !== 0) {
+      console.error(`\n🔴 SWEEP REFUSED — a suite FAILS ON THE PRISTINE TREE, so nothing this sweep measured would be evidence.\n`);
+      console.error(`   command : ${cmd.join(' ')}`);
+      console.error(`   reached from : ${first}${selected.length > 1 ? ` (and other mutants in this selection)` : ''}`);
+      console.error('\n   Its own output, which is the diagnosis:\n');
+      const tail = String(out || '').split('\n').filter(Boolean).slice(-25);
+      for (const line of tail) console.error(`   │ ${line}`);
+      console.error('\n   Every mutant run against this suite would have died for this reason rather than');
+      console.error('   for its own mutation. NOTHING WAS SCORED.\n');
       process.exit(2);
     }
   }
-
-  const v = preflightVerdict({ ...probeArgs, portState });
-  if (!v.ok) {
-    console.error(`\n🔴 SWEEP REFUSED — ${v.detail}\n`);
-    for (const l of v.lines) console.error(`   ${l}`);
-    console.error(`\n   checkout : ${EMU_ROOT}`);
-    console.error(`   offset   : ${OFFSET}${process.env.XPIZZA_EMU_PORT_OFFSET ? ' (from XPIZZA_EMU_PORT_OFFSET)' : ' (derived from the checkout path)'}`);
-    console.error(`   code     : ${v.code}`);
-    if (v.code === 'sweep_preflight_foreign_checkout') {
-      console.error('\n   Another run holds what this checkout needs. Find it, and wait for it rather than');
-      console.error(`   sweeping beside it:  lsof -nP -iTCP:${EXPECTED.database} -sTCP:LISTEN`);
-      console.error('   Or take a different block:  XPIZZA_EMU_PORT_OFFSET=<multiple of 10, 0..390>');
-    } else if (v.code === 'sweep_preflight_no_emulator') {
-      console.error('\n   Run the sweep so these suites reach an emulator this checkout owns — their scripts');
-      console.error('   route tools/emulator-run.js, which starts one on this checkout\'s band.');
-    }
-    console.error('\n   NOTHING WAS SCORED. A partial sweep is not evidence.\n');
-    process.exit(2);
-  }
-  const armedCount = plans.filter(({ plan }) => plan.routed).length;
-  console.log(`preflight: ${v.detail} (${armedCount}/${plans.length} mutants run an emulator suite; offset ${OFFSET})`);
+  console.log(`baseline: all ${distinct.size} command(s) green unmutated — the sweep's premise holds`);
 }
 
 let killed = 0, drifted = 0; let survived = 0; let missing = 0;
@@ -281,7 +258,7 @@ for (const m of selected) {
   else { survived++; console.log(`  SURVIVED ${m.id}: ${m.label}   <-- 🔴`); }
 }
 const equivalents = selected.filter((m) => EQUIVALENT.has(m.id)).length;
-console.log(`\n${killed}/${selected.length - equivalents} killed` +
+console.log(`\n${SYNTHETIC ? `[SYNTHETIC ${MUTANTS_PATH}] ` : ''}${killed}/${selected.length - equivalents} killed` +
   (equivalents ? ` (+${equivalents} documented equivalent)` : '') +
   (missing ? `  🔴 ${missing} ANCHOR MISSING — re-point before trusting this count` : '') +
   (drifted ? `  🔴 ${drifted} DRIFTED — died on the wrong assertion; the property is no longer guarded` : ''));

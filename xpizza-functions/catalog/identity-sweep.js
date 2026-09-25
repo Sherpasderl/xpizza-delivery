@@ -31,11 +31,16 @@
 //   · it was re-keyed in between           → legacy_key !== this key  → skip (no longer this object's)
 //   · a second live id appeared for the key→ the CLAIMANT SET is re-read in-tx and must still be
 //                                            exactly this one id      → conflict, reported, never arbitrated
-// A generation fence would refuse on any concurrent publish anywhere, including publishes touching
-// nothing this repair concerns.
+// A generation fence would refuse on any concurrent publish IN THIS RESTAURANT, including publishes
+// touching nothing this repair concerns. (An earlier draft of this note said "anywhere", which
+// overstated it — the pointer is per-restaurant, so another restaurant's publish could never have
+// moved this fence. The conclusion is unchanged; the sentence was sloppier than the code, and a
+// reason that overstates the cost of the alternative makes its own case look stronger than it is.)
 //
 // AND THE COST LANDS WHERE IT HURTS MOST. This pass runs hourly across every restaurant, and it
-// exists to reach objects that traffic never touches. Aborting it on a concurrent publish would make
+// exists to reach objects that traffic never touches. A fence would abort the pass for the
+// restaurant whose pointer moved — the busiest ones, which publish most often and therefore have the
+// most objects a repair might reach. Aborting it on a concurrent publish would make
 // the one repair only this job can perform happen LESS often — a fence making the thing it protects
 // worse. tools/registry-writers.js marks this writer EXEMPT rather than unfenced, and
 // identity-sweep.test.js drives all three in-transaction refusals so this exemption is defended by
