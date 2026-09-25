@@ -9435,5 +9435,101 @@
    "run",
    "test:d4p1-mint-atomic"
   ]
+ },
+ {
+  "id": "e15-01",
+  "slice": "e15",
+  "file": "tools/bootstrap-identity.js",
+  "from": "const APPLY = process.argv.includes('--apply');",
+  "to": "const APPLY = !process.argv.includes('--dry-run');",
+  "label": "🔴 --apply BECOMES THE DEFAULT AND --dry-run THE OPT-IN — a one-way door against a live menu opens for anyone who runs the tool without reading its flags",
+  "kills_with": [
+   "does not announce itself as a rehearsal",
+   "A RUN WITH NO --apply CERTIFIED THE VERSION"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:bootstrap-cli"
+  ]
+ },
+ {
+  "id": "e15-02",
+  "slice": "e15",
+  "file": "catalog/identity-bootstrap.js",
+  "from": "  if (dryRun) {\n    report.dry_run = true;",
+  "to": "  if (false) {\n    report.dry_run = true;",
+  "label": "the rehearsal stops being a rehearsal — dryRun falls through into the transaction and WRITES",
+  "kills_with": [
+   "the dry run failed",
+   "A RUN WITH NO --apply CERTIFIED THE VERSION"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:bootstrap-cli"
+  ]
+ },
+ {
+  "id": "e15-03",
+  "slice": "e15",
+  "file": "tools/bootstrap-identity.js",
+  "from": "    process.exit(1);   // 🔴 NOT 2: exit 2 is the project guard's alone",
+  "to": "    process.exit(2);",
+  "label": "a usage error exits 2, colliding with project_guard_refused — a script cannot tell \"wrong database\" from \"you forgot --rid\", which is the collision backfill-identities shipped with",
+  "kills_with": "exit 2 is reserved for the project guard",
+  "command": [
+   "npm",
+   "run",
+   "test:bootstrap-cli"
+  ]
+ },
+ {
+  "id": "e15-04",
+  "slice": "e15",
+  "file": "tools/bootstrap-identity.js",
+  "from": "  const canReconcile = APPLY || active.record.identity_certified === true;",
+  "to": "  const canReconcile = true;",
+  "label": "the dry run attempts the orphan half against an uncertified version — it refuses, and the tool exits 1 having printed a perfect stamping plan the operator cannot act on",
+  "kills_with": "the dry run failed",
+  "command": [
+   "npm",
+   "run",
+   "test:bootstrap-cli"
+  ]
+ },
+ {
+  "id": "e15-05",
+  "slice": "e15",
+  "file": "tools/bootstrap-identity.js",
+  "from": "  if (!canReconcile) {\n    console.log('\\n  orphans: NOT REHEARSED.",
+  "to": "  if (false) {\n    console.log('\\n  orphans: NOT REHEARSED.",
+  "label": "🔴 THE DRY RUN STOPS DISCLOSING THAT THE ORPHAN HALF WAS NOT REHEARSED — the operator approves a plan covering half the pass believing it covered all of it",
+  "kills_with": [
+   "the dry run failed",
+   "did not disclose that the ORPHAN half could not be rehearsed"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:bootstrap-cli"
+  ]
+ },
+ {
+  "id": "e15-06",
+  "slice": "e15",
+  "file": "catalog/identity-bootstrap.js",
+  "from": "      dish: dishes.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),",
+  "to": "      dish: dishes.map((o) => ({ key: o.key, canonical_id: `PLANNED-${o.key}` })),",
+  "label": "the rehearsal reports ids the apply will NOT write — a plan that does not match the performance is worse than no plan, because it is the artefact the operator approves",
+  "kills_with": [
+   "the stamps are not the ids the REGISTRY holds",
+   "THE DRY RUN AND THE APPLY DISAGREE"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:bootstrap-cli"
+  ]
  }
 ]

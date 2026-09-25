@@ -199,7 +199,14 @@ async function resolveKind(db, rid, kind, objects) {
   return out;
 }
 
-async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOString(), attempt = 'bootstrap' } = {}) {
+/* 🔴 `dryRun` EXISTS BECAUSE THIS IS A ONE-WAY DOOR AGAINST A LIVE MENU. It stamps every object of the
+   active version, certifies that version, and enriches the merchant's source — in place, with no
+   undo the design chose deliberately. Its neighbour `reconcileLegacyOrphans` has taken `dryRun` since
+   §3.0 and reports `would_retire`; the MORE invasive of the two was the one you could not rehearse.
+   The rehearsal is honest because it stops exactly where the writes begin: everything above the
+   transaction is the same code on both paths, so the plan reported is the plan that would be applied,
+   not a second implementation of it. */
+async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOString(), attempt = 'bootstrap', dryRun = false } = {}) {
   const active = await readActiveVersion(db, rid);
   const report = { rid, version: active.versionId, generation: active.generation, dishes: 0, extras: 0, stamped: false, already: false };
 
@@ -219,6 +226,23 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
   const dishes = await resolveKind(db, rid, 'dish', active.dishes);
   const extras = await resolveKind(db, rid, 'extra', active.extras);
   report.dishes = dishes.length; report.extras = extras.length;
+
+  /* 🔴 THE REHEARSAL STOPS HERE — THE LAST LINE BEFORE ANY WRITE. `stamped` stays false, so a caller
+     cannot mistake a dry run for a completed pass, and `would_stamp` carries the (key → id) pairs this
+     would write so an operator can compare them against their own menu before the door closes. */
+  if (dryRun) {
+    report.dry_run = true;
+    report.would_certify = active.versionId;
+    report.would_stamp = {
+      dish: dishes.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),
+      extra: extras.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),
+    };
+    try {
+      console.log('identity_bootstrap_dry_run', JSON.stringify({ rid, version: active.versionId,
+        dishes: report.dishes, extras: report.extras, generation: active.generation, action: 'would_stamp' }));
+    } catch (_) {}
+    return report;
+  }
 
   /* ── SOURCE ENRICHMENT (§3.0) — THE STAMPS MUST REACH THE DRAFT, NOT ONLY THE VERSION ───────
      🔴 WITHOUT THIS THE CUTOVER LOCKS PUBLISHING OUT ENTIRELY. Once the active version is certified A

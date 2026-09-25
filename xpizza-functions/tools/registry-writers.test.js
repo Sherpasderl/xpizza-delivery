@@ -94,6 +94,13 @@ const r = enumerate();
     'index.js::publishEdited',
     'index.js::sweepIdentityRegistry',
     'tools/backfill-identities.js::(module scope)',
+    /* 🔴 THE FIFTH TIME THIS CELL HAS NAMED A NEW WRITER OR CALLER BEFORE ANYONE SAID ANYTHING ABOUT
+       FENCING IT. tools/bootstrap-identity.js is §10's cutover step, which had no runner at all until
+       this increment — it reaches bootstrapIdentityStamps and reconcileLegacyOrphans, both of which
+       write the registry. It needs no fence of its own: it is a one-shot operator pass run before
+       renames are enabled, and both functions it calls carry their own fencing (the stamping pass is
+       transactional against the pointer it read; retireOrphanFenced is fenced by name). */
+    'tools/bootstrap-identity.js::(module scope)',
     'tools/migrate-catalog-display.js::(module scope)',
     'tools/publish-version.js::(module scope)',
     /* 🔴 ROLLBACK REACHES A REGISTRY WRITER NOW, AND THIS CELL IS WHERE THAT SURFACED — the third time
