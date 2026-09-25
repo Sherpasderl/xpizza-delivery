@@ -94,6 +94,10 @@ function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
        second branch — "not stamped by the target → retired below" — does all the work, and it holds
        ONLY IF THE RETIRE HALF IS EXHAUSTIVE OVER THE FULL LIVE SET MINUS THE TARGET'S STAMPS. It is:
        the loop below walks the WHOLE `ids` map and skips only non-live ids and ids the target stamps.
+       🔴 AND THE CASE THAT DEPENDS ON IT MOST IS RESIDUE — a pre-P1 orphan stamped by NO version, so
+       nothing restores it and this loop is the ONLY thing that releases the name it holds. The
+       classification below marks those `residue`; retiring them is load-bearing for THIS branch being
+       deletable, not an incidental sweep. Both ends of that dependency name each other on purpose.
        🔴 IF ANYONE EVER NARROWS THAT — to ids the target's own keys displaced, to ids some prior
        activation touched, to anything less than "every live id the target does not stamp" — a live
        claimant outside the narrowed set is neither restored nor retired, it KEEPS the name, and the
@@ -133,11 +137,20 @@ function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
      version stamps is RESIDUE: a pre-P1 migration orphan left live-claiming an old name by a
      pre-cutover rename, exactly what §4's destination guard exists to notice and what
      reconcileLegacyOrphans clears deliberately and logged.
-     Retiring residue is probably right — it is unreachable from any version — but AS A SIDE EFFECT OF
-     AN UNRELATED ROLLBACK it is surprising, and "a rollback quietly cleaned up migration residue" is
-     something an operator should find in a log rather than in a diff. `activeStamps` is optional: with
-     it the two are distinguishable, without it everything is reported `unknown` rather than silently
-     called a supersession. */
+     🔴 RETIRING RESIDUE IS REQUIRED, NOT DEFENSIBLE-ON-BALANCE — AND THIS IS THE OTHER END OF THE
+     DEPENDENCY NAMED ABOVE THE RESTORE LOOP. The deleted `reconcile_destination_contested` refusal is
+     unreachable because EVERY live claimant on a restored name is released: restored elsewhere by the
+     target, or retired here for being absent from it. A RESIDUE ORPHAN IS RELEASED ONLY BY THIS
+     SECOND BRANCH — nothing stamps it, so nothing restores it. Narrow this loop to `superseded` and a
+     residue orphan holding a contested name KEEPS it, the restore lands on a name someone else still
+     claims, and that refusal becomes reachable again with nothing left to catch it.
+     An earlier version of this note called the behaviour "probably right, but surprising as a side
+     effect". That reads as an apology, and an apology is an invitation to tighten the scope — which
+     would look like narrowing a surprising sweep and would in fact be removing a guarantee. It is
+     surprising AND load-bearing, and the surprise is the reason to LOG it distinctly, never a reason
+     to doubt it.
+     `activeStamps` is optional: with it the two kinds are distinguishable, without it everything is
+     reported `unknown` rather than silently called a supersession. */
   const inActive = activeStamps && typeof activeStamps === 'object'
     ? new Set(Object.values(activeStamps).filter(isStr)) : null;
   const retires = [];

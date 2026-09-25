@@ -246,4 +246,31 @@ const stampSays = ({ key, claimedId, keyRowId = null, idRow = null }) =>
   ok('a rollback DOES retire pre-P1 migration residue, reported distinctly from the ids it is undoing — and reported as unknown rather than guessed when it cannot tell');
 }
 
+// ── 10. RESIDUE RETIREMENT IS LOAD-BEARING FOR THE DELETED REFUSAL, NOT AN INCIDENTAL SWEEP ─
+{
+  /* 🔴 THE CELL THAT STOPS THE NARROWING THAT WOULD LOOK LIKE TIGHTENING. Cell 9 shows a rollback
+     sweeps up residue and reports it distinctly. Read alone, "a surprising side effect" invites a
+     future reader to narrow the retire to `superseded` — which would look like scoping a sweep and
+     would in fact re-open the contested case the `reconcile_destination_contested` refusal was
+     deleted for.
+     Here the residue orphan HOLDS the very name the target restores. It is stamped by NEITHER
+     version, so nothing restores it; this retire is the only thing that releases the name. Narrow the
+     loop to superseded and X lands on a name ORPHAN still claims — two live ids, one name, and no
+     refusal left anywhere to say so. */
+  const r = reg({
+    ids: { X: row('Margherita'), ORPHAN: row('Margherita') },
+    keys: { Margherita: { canonical_id: 'ORPHAN' } },
+  });
+  const out = reconcileOnRollback({
+    targetStamps: { Margherita: 'X' },
+    activeStamps: { Margherita: 'X' },          // ORPHAN is stamped by neither → residue
+    ids: r.ids, keys: r.keys,
+  });
+  assert.deepStrictEqual(out.retires, [{ id: 'ORPHAN', name: 'Margherita', why: 'residue' }],
+    `🔴 the RESIDUE orphan holding the restored name was not retired — X is about to land on a name ORPHAN still claims, which is the two-live-ids-one-name fork, and the refusal that used to catch it has been deleted: ${JSON.stringify(out)}`);
+  assert.deepStrictEqual(out.restores.map((s2) => `${s2.id}->${s2.name}`), ['X->Margherita'], 'and X is restored');
+  assert.deepStrictEqual(out.refusals, [], 'with no refusal, because the name really is released');
+  ok('a RESIDUE orphan holding a restored name is retired — load-bearing for the deleted contested-destination refusal, not an incidental sweep');
+}
+
 console.log(`identity-reconcile: OK (${n})`);

@@ -9209,5 +9209,21 @@
    "node",
    "catalog/identity-reconcile.test.js"
   ]
+ },
+ {
+  "id": "e13-12",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    retires.push({ id, name: row.legacy_key, why });",
+  "to": "    if (why === 'residue') continue;\n    retires.push({ id, name: row.legacy_key, why });",
+  "label": "🔴 THE RETIRE IS NARROWED TO SUPERSEDED — the tightening a 'surprising side effect' invites. A residue orphan keeps the name it holds, a restore lands on top of it, and the deleted reconcile_destination_contested refusal is reachable again with nothing left to catch it",
+  "kills_with": [
+   "cannot tell an id it is UNDOING from pre-P1 residue",
+   "the RESIDUE orphan holding the restored name was not retired"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
  }
 ]
