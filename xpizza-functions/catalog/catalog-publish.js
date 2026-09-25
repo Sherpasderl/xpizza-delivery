@@ -523,6 +523,29 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        fails loudly at some limit or degrades. Neither of us has measured it. Recorded because E-4
        leans on these reads harder than the old post-flip writer did — not asserted either way. */
     const certifiedCandidate = candidateSnap.exists && (candidateSnap.data() || {}).identity_certified === true;
+    /* 🔴 AN UNCERTIFIED TARGET YIELDS NO RECONCILIATION, AND "NONE" IS THE ANSWER — NOT A FALLBACK.
+       Said at the gate rather than only in a cell, because the next person to extend this will look
+       at §5's "Y retired if absent from the target" and see a natural generalisation to every version.
+       It is not one. An uncertified version has NO STAMPS, so every live id in the registry is absent
+       from it — and a derivation that reads "absent from the target" as "no longer owned" would derive
+       a retirement for THE ENTIRE REGISTRY, from an ordinary rollback to any pre-cutover version.
+       AN UNCERTIFIED TARGET IS NOT A TARGET WITH NO IDENTITIES. It is one whose identities are
+       UNKNOWABLE — the same distinction as "an unread registry is not an empty one" and "a partially
+       read registry is not a complete one", one level up, with a delete attached.
+       And doing nothing is the behaviour we WANT, not merely the safe one: leave the registry alone
+       and a rollback to an uncertified version followed by a certified re-publish keeps every original
+       identity across the excursion (the uncertified version resolves by name, §5). Retire on the way
+       back and the re-publish mints fresh ids for every dish — identity continuity destroyed by a
+       rollback, caused by the slice that exists to protect it.
+       Guarded by test/d4p1-mint-atomic.emulator.test.js cell 5, which was written BEFORE the
+       reconciliation it constrains. */
+    if (isRollback) {
+      try {
+        console.log('identity_rollback_path', JSON.stringify({ rid, target: versionId,
+          certified: certifiedCandidate,
+          identity: certifiedCandidate ? 'reconciled_in_activation' : 'untouched_target_uncertified' }));
+      } catch (_) {}
+    }
     if (certifiedCandidate) {
       const vref = versionsColOf(db, rid).doc(versionId);
       const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([

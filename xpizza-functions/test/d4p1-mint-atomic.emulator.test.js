@@ -28,6 +28,9 @@ const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { sourceRefOf } = require('../catalog/source-store');
 const { bootstrapIdentityStamps, readActiveVersion } = require('../catalog/identity-bootstrap');
 const { idsColOf, keysColOf, encodeKey, STATUS_LIVE } = require('../catalog/identity-registry');
+/* versionsColOf is module-private to catalog-publish; the path is stable and spelled out here rather
+   than exported for a test, which would widen a production module's surface for a fixture. */
+const versionsColOf = (d, r) => d.collection('restaurants').doc(r).collection('versions');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -233,6 +236,104 @@ async function addDishToSource(name) {
     assert.ok(row && row.canonical_id,
       `🔴 la_musa's identities WERE NOT REGISTERED. The post-flip pass is the only writer for an uncertified publish, and removing it unconditionally drops la_musa maintenance — §0: "gate P1 BEHAVIOR, don't drop la_musa maintenance". Key: ${someKey}`);
     ok('an UNCERTIFIED la_musa publish still registers its identities through the post-flip pass — the conditional removal keeps exactly one writer per publish, for both brands');
+  }
+
+  // ── 5. 🔴 A ROLLBACK TO AN UNCERTIFIED TARGET PERFORMS **ZERO** REGISTRY WRITES ─────────────
+  {
+    /* 🔴 THIS GUARD IS BUILT BEFORE THE THING IT GUARDS, DELIBERATELY. reconcileOnRollback does not
+       exist yet. When it does, §5's fourth case — "Y retired if absent from the target" — run against
+       a target with NO STAMPS would find EVERY live id absent and derive a retirement for THE ENTIRE
+       REGISTRY. Reachable from an ordinary merchant rollback to any pre-cutover version, the moment
+       retires ship. Every other build order leaves that path reachable for a window.
+
+       🔴 AN UNCERTIFIED TARGET IS NOT A TARGET WITH NO IDENTITIES — IT IS ONE WHOSE IDENTITIES ARE
+       UNKNOWABLE. Same principle this slice has now used four times, one level up: an unread registry
+       is not an empty one; a partially-read registry is not a complete one. Absence of evidence read
+       as evidence of absence, with a delete attached.
+
+       🔴 AND DOING NOTHING IS THE BEHAVIOUR WE WANT, not merely the safe one. Leave the registry
+       alone and a rollback to v3 then a certified re-publish at v6 KEEPS every original identity
+       across the excursion — the uncertified version resolves by name (§5), the rows sit unused, and
+       the next certified publish reads them. Retire on the way back and v6 mints fresh ids for every
+       dish: identity continuity destroyed by a rollback, caused by the slice that exists to protect
+       it.
+
+       THE FIXTURE MAKES THE DERIVATION WANT TO WRITE. A registry missing one reverse row — the
+       orphan the integrity sweep repairs, a state this codebase already models — means a derivation
+       allowed to run against this target WOULD mint for that key. So "zero writes" is a claim about
+       the GATE, not about there being nothing to do. */
+    /* 🔴 la_musa, BECAUSE ITS TARGETS ARE GENUINELY UNCERTIFIED AND NOTHING HAD TO BE FABRICATED.
+       My first attempt used x_pizza's pre-bootstrap seed version — and it FAILED its own premise:
+       bootstrapIdentityStamps stamps whatever version the pointer names, so it had retroactively
+       CERTIFIED that seed. A fixture that had to force `identity_certified: false` onto a version doc
+       would have been testing a state the system does not produce. la_musa is never certified because
+       nothing stamps it, which is the production case this guard is for. */
+    const MUSA = 'la_musa';
+    const musaSrc = sourceRefOf(db, MUSA);
+    const musaCandidate = async () => {
+      const src = (await musaSrc.get()).data();
+      const inputs = sourceToBuildInputs(src);
+      const built = buildCatalogV2(MUSA, { formData: inputs.formData, priceTable: inputs.priceTable });
+      return { items: built.items, structure: built.structure, extras: inputs.extras,
+        extraRecords: (src.extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })) };
+    };
+    const musaPublish = async (expectedActive, tag) => {
+      const r = await publishVersion(db, MUSA, { ...(await musaCandidate()), source_sha: tag },
+        { expected: { activeVersionId: expectedActive } });
+      return r.versionId || r.version_id || r;
+    };
+
+    const start = await getActivePointer(db, MUSA);
+    const target = start.version;                       // cell 4 published this; uncertified
+    assert.ok(target, 'premise — cell 4 left a la_musa version live to roll back TO');
+    const targetRec = await versionsColOf(db, MUSA).doc(target).get();
+    assert.notStrictEqual((targetRec.data() || {}).identity_certified, true,
+      '🔴 the rollback target is CERTIFIED — this cell is not exercising the uncertified path at all');
+
+    const moved = await musaPublish(target, `musa-roll-${STAMP}`);
+    assert.notStrictEqual(moved, target, 'premise — there is a real later version to roll back FROM');
+
+    /* 🔴 REMOVE BOTH ROWS FOR ONE DISH, AND THE "BOTH" IS WHAT ISOLATES THE GATE. Removing only the
+       reverse row made a permitted derivation try to mint la_musa's slug — which is its id — and die
+       on `flip_identity_mint_exhausted` instead of writing. That refusal is correct, but it is the
+       grandfathered-slug guard catching the mutant, not this cell's gate: the mutant would have been
+       credited to the wrong mechanism. With BOTH rows gone the slug is genuinely free, the mint
+       SUCCEEDS, and the only thing standing between this rollback and a registry write is the
+       certification gate. That state is also the honest one — a dish with neither row is simply one
+       nothing has backfilled, which is every dish before D1 ran. */
+    const musaSrcData = (await musaSrc.get()).data();
+    const victimKey = (musaSrcData.items || [])[0].key;
+    const victimKeyRef = keysColOf(db, MUSA, 'dish').doc(encodeKey(victimKey));
+    const victimKeySnap = await victimKeyRef.get();
+    assert.ok(victimKeySnap.exists, 'premise — the key row exists before we remove it');
+    const victimId = (victimKeySnap.data() || {}).canonical_id;
+    assert.ok(victimId, 'premise — and it names an id');
+    await victimKeyRef.delete();
+    await idsColOf(db, MUSA, 'dish').doc(victimId).delete();
+
+    const snapshotRegistry = async () => {
+      const out = {};
+      for (const kind of ['dish', 'extra']) {
+        for (const d of (await idsColOf(db, MUSA, kind).get()).docs) out[`ids/${kind}/${d.id}`] = JSON.stringify(d.data());
+        for (const d of (await keysColOf(db, MUSA, kind).get()).docs) out[`keys/${kind}/${d.id}`] = JSON.stringify(d.data());
+      }
+      return out;
+    };
+    const before = await snapshotRegistry();
+    assert.ok(Object.keys(before).length > 10,
+      `non-vacuity: the registry must really hold rows, or "unchanged" is trivially true (${Object.keys(before).length})`);
+
+    const { rollbackVersion } = require('../catalog/catalog-publish');
+    await rollbackVersion(db, MUSA, target, { expected: { activeVersionId: moved } });
+    assert.strictEqual((await getActivePointer(db, MUSA)).version, target,
+      'premise — the rollback actually landed on the uncertified target');
+
+    const after = await snapshotRegistry();
+    assert.deepStrictEqual(after, before,
+      `🔴 A ROLLBACK TO AN UNCERTIFIED TARGET WROTE TO THE REGISTRY. Its identities are UNKNOWABLE, not absent — and the write this grows into is a retirement of EVERY live id, derived from a target that simply has no stamps to compare against. Added: ${JSON.stringify(Object.keys(after).filter((k) => !(k in before)))}; removed: ${JSON.stringify(Object.keys(before).filter((k) => !(k in after)))}`);
+    assert.strictEqual((await victimKeyRef.get()).exists, false,
+      '🔴 the un-backfilled dish was MINTED an identity by a rollback to an uncertified target — a rollback reconciles what the target can prove, and an uncertified target proves nothing');
+    ok('a rollback to an UNCERTIFIED target performs ZERO registry writes, even with an un-backfilled dish a permitted derivation would have minted');
   }
 
   FINISHED = true;

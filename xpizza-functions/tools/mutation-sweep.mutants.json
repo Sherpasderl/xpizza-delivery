@@ -9019,5 +9019,19 @@
    "run",
    "test:d4p1-mint-atomic"
   ]
+ },
+ {
+  "id": "e11-05",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "    if (certifiedCandidate) {",
+  "to": "    if (certifiedCandidate || isRollback) {",
+  "label": "🔴 THE IDENTITY BLOCK RUNS FOR AN UNCERTIFIED ROLLBACK TARGET — its identities are UNKNOWABLE, not absent, and once §5's \"retire what is absent from the target\" lands this derives a retirement for THE ENTIRE REGISTRY from an ordinary rollback to any pre-cutover version",
+  "kills_with": "A ROLLBACK TO AN UNCERTIFIED TARGET WROTE TO THE REGISTRY",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
  }
 ]
