@@ -130,7 +130,7 @@ const withIds = (rid, ids) => {
       assert.strictEqual(live.byId.get(ids.dishId).legacyKey, ids.dishKey, `${rid}: …to its legacy key`);
 
       _resetResolveCache();
-      await retireIdentity(db, { rid, kind: 'dish', canonicalId: ids.dishId });
+      await retireIdentity(db, { rid, kind: 'dish', canonicalId: ids.dishId , captured: PRE_P1 });
       const dead = await resolveLegacyByIds(db, rid, 'dish', [ids.dishId]);
       assert.strictEqual(dead.byId.get(ids.dishId).outcome, 'unresolved', `${rid}: a RETIRED id is cleanly unresolved`);
       assert.strictEqual(dead.byId.get(ids.dishId).reason, 'retired', '…and says why');
@@ -236,7 +236,7 @@ const withIds = (rid, ids) => {
                   get: async () => {
                     const snap = await db.collection(c).doc(d).collection(c2).doc(d2).collection(c3).doc(d3).get();
                     clock += 5000;                                   // the read took 5 seconds
-                    await retireIdentity(db, { rid, kind: 'dish', canonicalId: ids.dishId });   // …and it was retired meanwhile
+                    await retireIdentity(db, { rid, kind: 'dish', canonicalId: ids.dishId , captured: PRE_P1 });   // …and it was retired meanwhile
                     return snap;                                     // but THIS read observed `live`
                   },
                 }),
@@ -341,7 +341,7 @@ const withIds = (rid, ids) => {
     // A RETIRED id is never revived — the reservation is the whole point.
     const db3 = memFirestore();
     const r3 = await ensureIdentity(db3, { rid, kind: 'dish', legacyKey: 'Pepperoni' , captured: PRE_P1 });
-    await retireIdentity(db3, { rid, kind: 'dish', canonicalId: r3.canonical_id });
+    await retireIdentity(db3, { rid, kind: 'dish', canonicalId: r3.canonical_id , captured: PRE_P1 });
     const after3 = await ensureIdentity(db3, { rid, kind: 'dish', legacyKey: 'Pepperoni' , captured: PRE_P1 });
     assert.notStrictEqual(after3.canonical_id, r3.canonical_id, '🔴 a RETIRED id was revived — it is reserved forever');
 
@@ -572,7 +572,7 @@ const withIds = (rid, ids) => {
           /* The scan has happened; the repair has not. This is the whole window, and retirement is the
              one thing that must survive it — the key row is the registry's fast path, so restoring a
              pointer to a retired id hands a permanently-reserved id back out on the very next call. */
-          if (!raced) { raced = true; await retireIdentity(db, { rid, kind: 'dish', canonicalId: a.canonical_id }); }
+          if (!raced) { raced = true; await retireIdentity(db, { rid, kind: 'dish', canonicalId: a.canonical_id , captured: PRE_P1 }); }
           return db.runTransaction(fn);
         },
       };

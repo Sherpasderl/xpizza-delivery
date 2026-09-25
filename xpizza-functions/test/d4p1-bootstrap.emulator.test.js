@@ -299,7 +299,7 @@ const asPreP1 = async (rid, versionId) => {
     const id = (keyRow.data() || {}).canonical_id;
     assert.ok(id, 'premise — the object is registered');
     // Retire the id but PUT THE KEY ROW BACK: exactly the stale-reverse-row shape.
-    await retireIdentity(db, { rid: rid3, kind: 'dish', canonicalId: id });
+    await retireIdentity(db, { rid: rid3, kind: 'dish', canonicalId: id , captured: await getActivePointer(db, rid3) });
     await db.collection('restaurants').doc(rid3).collection('identity').doc('dish')
       .collection('keys').doc(Buffer.from(String(key), 'utf8').toString('base64url')).set({ canonical_id: id, kind: 'dish' });
 
@@ -681,7 +681,7 @@ const asPreP1 = async (rid, versionId) => {
       collection: (c) => db.collection(c),
       runTransaction: async (fn, o) => {
         // Resolve has happened; the stamping transaction has not. Retire the id in that window.
-        if (!retired) { retired = true; await retireIdentity(db, { rid: rid15, kind: 'dish', canonicalId: id }); }
+        if (!retired) { retired = true; await retireIdentity(db, { rid: rid15, kind: 'dish', canonicalId: id , captured: await getActivePointer(db, rid15) }); }
         return orig(fn, o);
       },
     };

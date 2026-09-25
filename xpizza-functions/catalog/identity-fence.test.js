@@ -262,5 +262,58 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
   ok('baselineOf normalises a usable pair and refuses everything else');
 }
 
+// ── 14. 🔴 THE FENCE IS WIRED INTO retireIdentity, not merely available to it ─────────────────
+/* Every cell above drives the fence PRIMITIVE. All of them pass if no writer ever calls it — which is
+   how a guard ends up perfect and unreachable. retireIdentity is the destructive writer (status
+   RETIRED plus a DELETE of the reverse row) and Slice F's rollback has to restore the same
+   identities, so a retirement landing against a moved baseline is the tear this exists for.
+   It has no production caller today; fencing it now is the cheapest moment, and fail-closed means F
+   cannot wire it unfenced by accident. It does NOT swallow: there is no caller to decide that for. */
+{
+  const { makeDb } = require('./firestore-fake');
+  const { ensureIdentity, retireIdentity } = require('./identity-registry');
+  const { activePointerRef } = require('./catalog-firestore');
+  const RID2 = 'la_musa';
+
+  const mk = async (pointer) => {
+    const db = makeDb();
+    await activePointerRef(db, RID2).set(pointer);
+    const a = await ensureIdentity(db, { rid: RID2, kind: 'dish', legacyKey: 'dimsum_07', captured: pointer });
+    return { db, id: a.canonical_id };
+  };
+
+  // …it refuses when the pointer moved since the caller decided.
+  {
+    const { db, id } = await mk({ version: 'v-1', generation: 1 });
+    await activePointerRef(db, RID2).set({ version: 'v-2', generation: 2 });
+    await assert.rejects(() => retireIdentity(db, { rid: RID2, kind: 'dish', canonicalId: id, captured: { version: 'v-1', generation: 1 } }),
+      /identity_retire_pointer_moved: la_musa — judged against v-1@1, now "v-2"@2/,
+      '🔴 a retirement landed against a superseded baseline — Slice F could not restore what it retired');
+    const after = await db.collection('restaurants').doc(RID2).collection('identity').doc('dish').collection('ids').doc(id).get();
+    assert.strictEqual((after.data() || {}).status, 'live', 'and nothing was retired');
+  }
+
+  // …it refuses with NO captured pair at all, rather than defaulting to something.
+  {
+    const { db, id } = await mk({ version: 'v-1', generation: 1 });
+    await assert.rejects(() => retireIdentity(db, { rid: RID2, kind: 'dish', canonicalId: id }),
+      /identity_retire_pointer_moved_no_baseline/,
+      '🔴 retireIdentity ran with no baseline — the fence would pass every call and protect nothing');
+  }
+
+  // …and it still retires when the pointer has not moved, so the fence is not a blanket refusal.
+  {
+    const { db, id } = await mk({ version: 'v-1', generation: 1 });
+    const r = await retireIdentity(db, { rid: RID2, kind: 'dish', canonicalId: id, captured: { version: 'v-1', generation: 1 } });
+    assert.strictEqual(r.retired, true, '🔴 an unmoved pointer refused a legitimate retirement');
+    assert.strictEqual(r.legacy_key, 'dimsum_07', 'and it reports what it retired');
+  }
+
+  /* 🔴 THE REFUSAL CARRIES THE SHARED MARKER, so the publish-side log switch routes it as SUPERSEDED
+     rather than as something broken, without anyone remembering to add this writer to that switch. */
+  assert.match('identity_retire_pointer_moved: x — judged', /_pointer_moved:/, 'the code carries the shared fence marker');
+  ok('retireIdentity is fenced: a moved pointer refuses, a missing baseline refuses, an unmoved one still retires');
+}
+
 console.log(`\n${n} cells passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

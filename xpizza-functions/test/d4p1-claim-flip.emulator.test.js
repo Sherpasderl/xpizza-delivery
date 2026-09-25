@@ -626,7 +626,7 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
        registry no longer maps — either way it refuses, and the version never becomes live. */
     {
       const { threw, cur, after, victim, key } = await raceTheFlip(
-        async (v) => { await retireIdentity(db, { rid: RID, kind: 'dish', canonicalId: v }); }, 'retire');
+        async (v) => { await retireIdentity(db, { rid: RID, kind: 'dish', canonicalId: v , captured: await getActivePointer(db, RID) }); }, 'retire');
       assert.ok(threw && /stamp_unregistered|stamp_id_retired|stamp_registry_disagrees/.test(String(threw.message)),
         `🔴 an id retired between the writer's read and the flip was CERTIFIED AND ACTIVATED anyway: ${threw && threw.message}`);
       assert.match(String(threw.message), /AT ACTIVATION/, '…and the refusal says it came from the activation, not the pre-flight pass');

@@ -14,6 +14,33 @@
 // two live ids, and never touches a healthy row. An integrity job that can invent an identity is a
 // worse problem than the corruption it was written for.
 // ---------------------------------------------------------------------------
+//
+// 🔴 DELIBERATELY NOT GENERATION-FENCED — A RECORDED DECISION, NOT AN OVERSIGHT (E-2e, advisor-ruled).
+// Every other registry writer takes a captured {version, generation} pair and refuses if the pointer
+// moved. This one does not, and the next person walking that list will ask why.
+//
+// THE REGISTRY IS NOT VERSION-SCOPED. Ids live in the registry, not in the version payload — which is
+// exactly why an ordinary republish preserves identity by doing nothing. A new active version cannot
+// make "this legacy key maps to this id" wrong, so there is nothing for a baseline to be stale
+// against. This file reads no pointer, no version and no generation, and does not need to.
+//
+// A FENCE HERE WOULD BE A PROXY FOR CHECKS THAT ALREADY EXIST, AND A WORSE ONE. The three hazards a
+// fence would nominally cover are each established IN THE TRANSACTION, against the thing actually
+// being written rather than against a stand-in for it:
+//   · the id was retired in between        → status !== STATUS_LIVE   → skip (never revive)
+//   · it was re-keyed in between           → legacy_key !== this key  → skip (no longer this object's)
+//   · a second live id appeared for the key→ the CLAIMANT SET is re-read in-tx and must still be
+//                                            exactly this one id      → conflict, reported, never arbitrated
+// A generation fence would refuse on any concurrent publish anywhere, including publishes touching
+// nothing this repair concerns.
+//
+// AND THE COST LANDS WHERE IT HURTS MOST. This pass runs hourly across every restaurant, and it
+// exists to reach objects that traffic never touches. Aborting it on a concurrent publish would make
+// the one repair only this job can perform happen LESS often — a fence making the thing it protects
+// worse. tools/registry-writers.js marks this writer EXEMPT rather than unfenced, and
+// identity-sweep.test.js drives all three in-transaction refusals so this exemption is defended by
+// cells rather than by this comment.
+// ---------------------------------------------------------------------------
 const crypto = require('crypto');   // eslint-disable-line no-unused-vars -- parity with the registry's imports
 
 const STATUS_LIVE = 'live';

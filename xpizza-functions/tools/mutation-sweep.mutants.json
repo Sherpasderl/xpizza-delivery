@@ -8127,5 +8127,76 @@
    "node",
    "catalog/identity-mint-fence.test.js"
   ]
+ },
+ {
+  "id": "e2e-01",
+  "slice": "e2e",
+  "file": "catalog/identity-registry.js",
+  "from": "    await assertPointerUnmoved(tx, { db, rid, captured, code: 'identity_retire_pointer_moved' });",
+  "to": "    /* fence removed */",
+  "label": "a retirement commits against a baseline it was never judged under",
+  "kills_with": "a retirement landed against a superseded baseline",
+  "command": [
+   "node",
+   "catalog/identity-fence.test.js"
+  ]
+ },
+ {
+  "id": "e2e-02",
+  "slice": "e2e",
+  "file": "catalog/identity-sweep.js",
+  "from": "        if (d.status !== STATUS_LIVE) return 'skip';        // retired in between — never revive it",
+  "to": "        if (false) return 'skip';",
+  "label": "the sweep resurrects an id retired between the scan and the repair",
+  "kills_with": [
+   "a retirement is routine, not a corruption someone must come and look at",
+   "THE SWEEP RESURRECTED A RETIRED ID"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-sweep.test.js"
+  ]
+ },
+ {
+  "id": "e2e-03",
+  "slice": "e2e",
+  "file": "catalog/identity-sweep.js",
+  "from": "        if (d.legacy_key !== legacyKey) return 'skip';      // re-keyed in between — no longer this object's",
+  "to": "        if (false) return 'skip';",
+  "label": "the sweep writes a reverse row for a key the id no longer claims",
+  "kills_with": [
+   "a RE-KEYED claimant was filed as a CONFLICT",
+   "the sweep wrote a reverse row for a key the id NO LONGER CLAIMS"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-sweep.test.js"
+  ]
+ },
+ {
+  "id": "e2e-04",
+  "slice": "e2e",
+  "file": "catalog/identity-sweep.js",
+  "from": "        if (liveIds.length !== 1 || liveIds[0] !== canonicalId) return 'conflict';",
+  "to": "        if (false) return 'conflict';",
+  "label": "the sweep arbitrates a conflict that appeared after the scan",
+  "kills_with": "the sweep ARBITRATED a conflict it could not see at scan time",
+  "command": [
+   "node",
+   "catalog/identity-sweep.test.js"
+  ]
+ },
+ {
+  "id": "e2e-05",
+  "slice": "e2e",
+  "file": "tools/registry-writers.js",
+  "from": "const staleExemptionsOf = (writerNames, exempt) => Object.keys(exempt).filter((n) => !writerNames.has(n));",
+  "to": "const staleExemptionsOf = () => [];",
+  "label": "an exemption naming a writer that no longer exists is never reported",
+  "kills_with": "an exemption naming a writer that no longer exists was NOT reported",
+  "command": [
+   "node",
+   "catalog/identity-sweep.test.js"
+  ]
  }
 ]

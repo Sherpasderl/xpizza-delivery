@@ -117,7 +117,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     const db = memFirestore();
     const first = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Temporal' , captured: PRE_P1 });
-    const r = await retireIdentity(db, { rid: 'x_pizza', kind: 'dish', canonicalId: first.canonical_id });
+    const r = await retireIdentity(db, { rid: 'x_pizza', kind: 'dish', canonicalId: first.canonical_id , captured: PRE_P1 });
     assert.strictEqual(r.retired, true);
     const gone = await lookupByLegacyKeys(db, { rid: 'x_pizza', kind: 'dish', legacyKeys: ['Temporal'] });
     assert.strictEqual(gone.size, 0, 'the key no longer resolves — the object is retired');
@@ -391,7 +391,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const db = memFirestore();
     const first = await ensureIdentity(db, { rid: 'la_musa', kind: 'dish', legacyKey: 'dimsum_01' , captured: PRE_P1 });
     assert.strictEqual(first.canonical_id, 'dimsum_01', 'premise — la_musa grandfathers the slug');
-    const gone = await retireIdentity(db, { rid: 'la_musa', kind: 'dish', canonicalId: 'dimsum_01' });
+    const gone = await retireIdentity(db, { rid: 'la_musa', kind: 'dish', canonicalId: 'dimsum_01' , captured: PRE_P1 });
     assert.strictEqual(gone.retired, true, 'premise — it really was retired');
 
     let out = null, threw = null;

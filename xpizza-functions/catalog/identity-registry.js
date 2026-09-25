@@ -427,11 +427,23 @@ async function findOrphanedLiveId(tx, db, rid, kind, legacyKey) {
 /* Retire an id without freeing it. D1 never calls this from a live path — the delete/rename machinery
    is explicitly untouched here — but the reservation it writes is what makes a future D4 rename safe,
    and the registry is the only place that reservation can live. */
-async function retireIdentity(db, { rid, kind, canonicalId, now = null }) {
+async function retireIdentity(db, { rid, kind, canonicalId, now = null, captured = null }) {
   assertKind(kind);
   const idRef = idsColOf(db, rid, kind).doc(canonicalId);
   const stamp = now || new Date().toISOString();
   return db.runTransaction(async (tx) => {
+    /* 🔴 FENCED, AND FENCED NOW PRECISELY BECAUSE NOTHING CALLS IT YET. This is the destructive
+       writer: it sets status RETIRED and DELETES the reverse row. Slice F's rollback has to restore
+       the SAME identities, so a retirement landing against a baseline that has since moved is exactly
+       the tear a fence exists for — and unlike the sweep's repair, this one really is an allocation
+       decision about the world the baseline describes.
+       It has no production caller today, which makes this the cheapest possible moment to require the
+       pair: no path has to be migrated, and fail-closed means Slice F cannot wire it unfenced by
+       accident. It does NOT swallow the refusal. There is no caller to decide that for, and F should
+       meet `identity_retire_pointer_moved` directly rather than inherit a swallow chosen on its
+       behalf — the publish path swallows because its flip has already landed, which is a fact about
+       that call site and not a convention. */
+    await assertPointerUnmoved(tx, { db, rid, captured, code: 'identity_retire_pointer_moved' });
     const snap = await tx.get(idRef);
     if (!snap.exists) return { retired: false, reason: 'absent' };
     const d = snap.data() || {};

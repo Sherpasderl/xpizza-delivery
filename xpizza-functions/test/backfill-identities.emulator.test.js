@@ -50,6 +50,7 @@ const { buildPublishCandidate } = require('../tools/publish-version');
 const { liveKeys } = require('../catalog/identity-backfill');
 const { getRestaurantMenu } = require('../catalog/catalog-menu');
 const { encodeKey, retireIdentity } = require('../catalog/identity-registry');
+const { getActivePointer } = require('../catalog/catalog-firestore');
 
 const PROJECT = 'xpizza-delivery';                    // must match .firebaserc or the guard refuses
 admin.initializeApp({ projectId: PROJECT });          // FIRESTORE_EMULATOR_HOST set by emulators:exec
@@ -401,7 +402,7 @@ const clearRegistry = async (rid) => {
     const rid = 'la_musa';
     const before = await readMappings(rid, KEYS.la_musa);
     const victim = 'dimsum_01';
-    const gone = await retireIdentity(db, { rid, kind: 'dish', canonicalId: victim });
+    const gone = await retireIdentity(db, { rid, kind: 'dish', canonicalId: victim , captured: await getActivePointer(db, rid) });
     assert.strictEqual(gone.retired, true, 'premise — the slug really was retired');
     /* Counted AFTER the retirement, because retireIdentity deletes the key row itself — that is its
        job. The claim being made below is that the failed RUN deletes nothing, not that the fixture

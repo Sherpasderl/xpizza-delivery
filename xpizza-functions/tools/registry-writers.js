@@ -27,6 +27,17 @@ const BUILDERS = ['idsColOf', 'keysColOf'];
 const WRITE_VERBS = new Set(['set', 'update', 'delete', 'create']);
 const ROOTS = [ROOT, path.join(ROOT, '..', 'xpizza-dispatch'), path.join(ROOT, '..', 'xpizza-orders')];
 
+/* 🔴 WRITERS DELIBERATELY EXEMPT FROM THE GENERATION FENCE, with the reason, because "unfenced" and
+   "exempt" look identical in a list and only one of them is a decision. An entry here is a claim that
+   somebody weighed it; an absence is a claim that nobody did. The reasoning lives in the writer's own
+   file, and cells defend it — see the note each one points at. */
+const FENCE_EXEMPT = {
+  sweepIdentityIntegrity:
+    'repairs a missing reverse row only; the registry is NOT version-scoped, so no baseline can be '
+    + 'stale against it, and the three hazards a fence would cover are each established IN-TX '
+    + '(status, legacy_key, and the re-read claimant set). See catalog/identity-sweep.js header.',
+};
+
 function jsFilesUnder(dir, out = []) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
@@ -254,10 +265,19 @@ function enumerate() {
     return { file, fn, calls: v.via, depth: v.depth };
   }).sort((a, b) => (a.depth - b.depth) || a.file.localeCompare(b.file) || a.fn.localeCompare(b.fn));
 
-  return { files: files.length, scanned: prod.length, writes, indirect, parseFailures, writerNames: [...writerNames].sort() };
+  /* 🔴 AN EXEMPTION FOR A WRITER THAT NO LONGER EXISTS IS A STALE EXCUSE — the same rule KNOWN_RED
+     enforces one level up. If the named writer is gone, the entry is reported rather than ignored. */
+  const staleExemptions = staleExemptionsOf(writerNames, FENCE_EXEMPT);
+  return { files: files.length, scanned: prod.length, writes, indirect, parseFailures,
+    writerNames: [...writerNames].sort(), exempt: { ...FENCE_EXEMPT }, staleExemptions };
 }
 
-module.exports = { enumerate, scanFile, jsFilesUnder, parse, ROOTS, BUILDERS };
+/* Exported so the RULE can be driven against a synthetic stale entry rather than only against
+   today's (empty) list — an assertion that today's list is empty passes for a rule that never
+   reports anything. */
+const staleExemptionsOf = (writerNames, exempt) => Object.keys(exempt).filter((n) => !writerNames.has(n));
+
+module.exports = { enumerate, scanFile, jsFilesUnder, parse, ROOTS, BUILDERS, FENCE_EXEMPT, staleExemptionsOf };
 
 if (require.main !== module) return;
 const r = enumerate();
@@ -266,5 +286,7 @@ if (r.parseFailures.length) console.log(`🔴 ${r.parseFailures.length} file(s) 
 console.log('DIRECT REGISTRY WRITE SITES');
 for (const w of r.writes) console.log(`  ${path.relative(ROOT, w.file)}:${w.line}  ${w.fn}()  ${w.verb} [${w.shape}]${w.exported ? '  ← EXPORTED' : ''}`);
 console.log(`\n${r.writes.length} write sites in ${r.writerNames.length} functions: ${r.writerNames.join(', ')}`);
+for (const [name, why] of Object.entries(r.exempt)) console.log(`\n  EXEMPT  ${name}() — ${why}`);
+if (r.staleExemptions.length) console.log(`\n🔴 stale exemption(s) naming writers that no longer exist: ${r.staleExemptions.join(', ')}`);
 console.log('\nFUNCTIONS THAT REACH A WRITER (transitively)');
 for (const h of r.indirect) console.log(`  ${String(h.depth)}  ${path.relative(ROOT, h.file)}  ${h.fn}()  → ${h.calls}()`);

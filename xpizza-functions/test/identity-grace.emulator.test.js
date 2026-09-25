@@ -137,7 +137,7 @@ function countingFs() {
   {
     const rid = 'x_pizza', kind = 'dish', legacyKey = 'Retirada';
     const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
-    const r = await retireIdentity(db, { rid, kind, canonicalId: retiredId });
+    const r = await retireIdentity(db, { rid, kind, canonicalId: retiredId , captured: await getActivePointer(db, rid) });
     assert.strictEqual(r.retired, true, 'premise — it really was retired');
     assert.strictEqual((await keyRowOf(rid, kind, legacyKey).get()).exists, false,
       'premise — retirement removed the reverse row, leaving exactly cell 1\'s shape but retired');
@@ -214,7 +214,7 @@ function countingFs() {
   {
     const rid = 'x_pizza', kind = 'extra', legacyKey = 'Extra Retirado';
     const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey , captured: await getActivePointer(db, rid) });
-    await retireIdentity(db, { rid, kind, canonicalId: retiredId });
+    await retireIdentity(db, { rid, kind, canonicalId: retiredId , captured: await getActivePointer(db, rid) });
     const r = await sweepIdentityIntegrity(db, rid, kind);
     assert.strictEqual((await keyRowOf(rid, kind, legacyKey).get()).exists, false,
       '🔴 THE SWEEP RESURRECTED A RETIRED ID into a live reverse row');
@@ -254,7 +254,7 @@ function countingFs() {
 
     const retiredKey = 'Temporal';
     const { canonical_id: retiredId } = await ensureIdentity(db, { rid, kind, legacyKey: retiredKey , captured: await getActivePointer(db, rid) });
-    await retireIdentity(db, { rid, kind, canonicalId: retiredId });
+    await retireIdentity(db, { rid, kind, canonicalId: retiredId , captured: await getActivePointer(db, rid) });
 
     const absentId = 'ZZZZZZZZZZ';
     const { fs, reads } = countingFs();
