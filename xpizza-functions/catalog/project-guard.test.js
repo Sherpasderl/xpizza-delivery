@@ -180,8 +180,39 @@ const stripComments = require('../tools/strip-comments.js');
 // and GOOGLE_APPLICATION_CREDENTIALS is pointed at a path that does not exist, so even a
 // mis-wired guard could not reach a real project. No --apply, no publish flag, anywhere.
 {
-  const MUTATING = ['migrate-catalog-display.js', 'publish-version.js', 'rollback-version.js', 'seed-source-store.js',
-    'seed-catalog.js', 'backfill-snapshot.js', 'seed-owner.js', 'verify-catalog.js'];
+  /* 🔴 DERIVED FROM THE TREE, NOT MAINTAINED BY HAND — AND THE HAND-MAINTAINED VERSION HAD ALREADY
+     LET ONE THROUGH. This was a literal array of eight names while TEN files in tools/ open a
+     connection. tools/preflight-pointers.js was one of the two missing, and it is referenced by no
+     test anywhere in the repository: it opens a production Firestore connection (:20) and nothing
+     asserts it refuses anything. (The other, backfill-identities.js, is covered — by its own suite at
+     test/backfill-identities.emulator.test.js:349. Absence from THIS list was never absence of
+     coverage, and reading it that way is how I first mis-reported this.)
+     A parallel list is the defect: adding a connecting CLI required remembering to add it here, and
+     forgetting is silent. The census is now the SAME predicate cell 2 lints with — the files that
+     contain `admin.initializeApp(` — so a new connecting tool is spawned and must refuse from the
+     moment it exists, or this cell goes red naming it. */
+  const CONNECTS = readdirSync(TOOLS).filter((f) => f.endsWith('.js'))
+    .filter((f) => stripComments(readFileSync(join(TOOLS, f), 'utf8')).includes('admin.initializeApp('));
+  /* 🔴 NO EXEMPTIONS, AND THAT IS A MEASURED FACT RATHER THAN A CHOICE. My first version exempted
+     require-project.js as "the guard itself, a module not a CLI" — and the stale-exemption assertion
+     I wrote alongside it immediately said that file is not in the census at all: its only mention of
+     `admin.initializeApp(` is inside a COMMENT, which the shared stripper removes. The exemption was
+     protecting nothing and would have sat here reading like a considered carve-out.
+     So the census is taken whole. If a future file genuinely needs exempting, the check below is the
+     one to re-introduce with it: an exemption naming a file that no longer connects hides whatever
+     replaces it. */
+  const MUTATING = CONNECTS;
+
+  /* 🔴 THE ARMING FOR THE DERIVATION ITSELF. Reverting `MUTATING` to a hand-written array would still
+     spawn those files and they would still refuse, so every assertion in the loop below stays green —
+     the cell would pass while covering eight of ten again. This is the only line that notices. It
+     compares the set actually spawned against the set that connects, so a literal list shorter than
+     the census fails here and names the tools it dropped. */
+  assert.deepStrictEqual(MUTATING.slice().sort(), CONNECTS.slice().sort(),
+    `🔴 the spawned set is not the connecting set — ${CONNECTS.filter((f) => !MUTATING.includes(f)).join(', ') || '(none)'} open a connection and are never proven to refuse`);
+  assert.ok(CONNECTS.includes('preflight-pointers.js'),
+    'non-vacuity, named: the tool that had NO test reference anywhere must be in this census, or the derivation is not doing the thing it was written for');
+  assert.ok(CONNECTS.length >= 10, `non-vacuity: the census must really find the connecting tools (found ${CONNECTS.length})`);
   const run = (file, args, env) => {
     try {
       const out = execFileSync(process.execPath, [join(TOOLS, file), ...args], {
@@ -207,6 +238,63 @@ const stripComments = require('../tools/strip-comments.js');
     }
   }
   ok(`all ${MUTATING.length} CLIs refuse both an absent and a wrong project — spawned for real, exiting 2 before any client exists`);
+}
+
+// ── 5. EXIT 2 MEANS "WRONG DATABASE" AND NOTHING ELSE — REPRODUCED, NOT READ ────────────────────
+// The whole value of exit 2 is that a script can act on it: 2 is the guard, 1 is the tool's own
+// failure. backfill-identities.js:64 used to exit 2 for a USAGE error (missing --rid) as well, which
+// collapses that distinction for the tool most able to damage a wrong project.
+//
+// 🔴 WHY IT WAS INVISIBLE, AND WHY THIS CELL IS SHAPED THE WAY IT IS. Cell 4 points
+// GOOGLE_APPLICATION_CREDENTIALS at a nonexistent path, so applicationDefault() throws before the
+// usage branch runs — the collision is unreachable from that harness while being perfectly reachable
+// in production, where credentials resolve. A coverage hole, not a dormant bug. So this cell resolves
+// a credential: a 2048-bit key generated HERE, in-process, for a service account that has never
+// existed. It authenticates to nothing.
+//
+// Safe by construction, three ways: --rid is never passed, so the usage branch exits immediately and
+// nothing downstream of it runs; FIRESTORE_EMULATOR_HOST points at a dead port, so any Firestore call
+// that somehow happened would fail locally rather than reach a real project; and no --apply anywhere.
+{
+  const { generateKeyPairSync } = require('crypto');
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
+  const saPath = join(mkdtempSync(join(tmpdir(), 'pg-sa-')), 'sa.json');
+  writeFileSync(saPath, JSON.stringify({
+    type: 'service_account', project_id: expectedProject(), private_key_id: '0'.repeat(40), private_key: privateKey,
+    client_email: `nobody@${expectedProject()}.iam.gserviceaccount.com`, client_id: '0'.repeat(21),
+    auth_uri: 'https://accounts.google.com/o/oauth2/auth', token_uri: 'https://oauth2.googleapis.com/token',
+  }));
+
+  const spawn = (args, env) => {
+    try {
+      execFileSync(process.execPath, [join(TOOLS, 'backfill-identities.js'), ...args], {
+        cwd: ROOT, encoding: 'utf8', timeout: 20000,
+        env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: saPath, FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', GOOGLE_CLOUD_PROJECT: '', GCLOUD_PROJECT: '', ...env },
+      });
+      return { code: 0, out: '' };
+    } catch (e) { return { code: e.status === undefined ? -1 : e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; }
+  };
+
+  /* Premise: the credential really does resolve now, or this cell is cell 4 again with extra steps
+     and the usage branch is still unreached. The tool must get PAST the guard and print its usage. */
+  const usage = spawn(['--project', expectedProject()], {});
+  assert.match(usage.out, /usage: node tools\/backfill-identities\.js/,
+    `🔴 premise failed — the run never reached the usage branch, so this cell is not testing the collision:
+${usage.out.slice(0, 400)}`);
+  assert.ok(!/project_guard_refused/.test(usage.out),
+    'premise: the guard ACCEPTED this project, so whatever exit code follows belongs to the tool, not to the guard');
+
+  assert.notStrictEqual(usage.code, 2,
+    '🔴 a USAGE error exits 2, the code reserved for project_guard_refused — a script checking for "wrong database" cannot tell it from "you forgot --rid", on the tool most able to damage a wrong project');
+  assert.strictEqual(usage.code, 1, `a usage error is the tool's own failure: exit 1, got ${usage.code}`);
+
+  /* 🔴 THE OTHER HALF. "2 never means anything else" is satisfiable by never exiting 2 at all. With
+     the SAME resolvable credential, a wrong project must still exit 2 — so the code still carries its
+     meaning rather than having been vacated. */
+  const wrong = spawn(['--project', 'lamusa-social'], {});
+  assert.strictEqual(wrong.code, 2, `🔴 with a resolvable credential a WRONG project no longer exits 2 (got ${wrong.code}) — the guard's code has been vacated, not disambiguated`);
+  assert.match(wrong.out, /project_guard_refused/, 'and it is the guard that stopped it');
+  ok('exit 2 means the project guard and nothing else: a usage error on the CORRECT project exits 1, a wrong project still exits 2 — both with a credential that actually resolves');
 }
 
 // ── 4. AND THE CORRECT PROJECT GETS PAST THE GUARD ──────────────────────────────────────────────

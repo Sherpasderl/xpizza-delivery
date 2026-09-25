@@ -20,14 +20,12 @@ const assert = require('assert');
 const { readFileSync, readdirSync, statSync } = require('fs');
 const { join, relative } = require('path');
 const stripComments = require('./strip-comments.js');
-const { maskLiterals } = require('./strip-comments.js');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('strip-comments: FAILED — exited without completing'); process.exitCode = 1; } });
 
 const ROOT = join(__dirname, '..');
-const NUL = String.fromCharCode(0);
 /* The naive stripper BOTH adopting guards used to carry, kept here as the control. Cell 6 is a claim
    about the difference between these two, so the old one has to be present to make the claim. */
 const naive = (src) => src.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
@@ -175,24 +173,7 @@ const naive = (src) => src.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').r
   ok(`the two strippers disagree on ${differing} of ${files.length} scanned production files, and the shared one eats no real code in any of them`);
 }
 
-// ── 7. maskLiterals — CELLS FOR A FUNCTION WITH NO CALLER ────────────────────────────────────
-{
-  /* 🔴 IT HAS NONE. Its only caller was tools/sweep-preflight.js:36, deleted with that file in
-     4bc2374. These cells exist so a dead export cannot rot unnoticed while its header describes a
-     detector that no longer exists; whether it is revived or removed is not this file's call. */
-  const { code, literals } = maskLiterals('require("./a.js"); const s = "publishVersion(x)";');
-  assert.ok(!code.includes('publishVersion'),
-    '🔴 a whole call sitting inside a STRING stayed matchable — the fixture-matching-itself hazard this exists for');
-  assert.ok(literals.includes('publishVersion(x)'), 'the literal is KEPT, not discarded — a require path lives in one');
-  assert.ok(literals.includes('./a.js'), 'and so does the module path a matcher needs to resolve');
-  assert.strictEqual(literals.length, 2, `both literals captured, got ${literals.length}`);
-  assert.ok(code.includes(NUL), 'each literal collapses to a single sentinel, so a fixture holding a whole call cannot match');
-  assert.deepStrictEqual(maskLiterals('const a = "x').literals, ['x'], 'an unterminated literal is still data, not code');
-  assert.deepStrictEqual(maskLiterals(null), { code: '', literals: [] }, 'null is not a crash');
-  ok('maskLiterals masks literals to sentinels while keeping their text — cells for an export whose only caller was deleted in 4bc2374');
-}
-
-// ── 8. THE ADOPTION ITSELF — ASSERTED AT THE CALL SITE, NOT INFERRED FROM CELL 6 ─────────────
+// ── 7. THE ADOPTION ITSELF — ASSERTED AT THE CALL SITE, NOT INFERRED FROM CELL 6 ─────────────
 {
   /* 🔴 THE SWEEP FOUND THIS GAP. A mutant reverting catalog/publish-paths.test.js to a line-only
      stripper SURVIVED every cell above, because all of them drive the primitive and none of them

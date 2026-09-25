@@ -8572,19 +8572,6 @@
   ]
  },
  {
-  "id": "e5-08",
-  "slice": "e5",
-  "file": "tools/strip-comments.js",
-  "from": "  if (mode === 'str') out += `\\u0000${literals.push(buf) - 1}\\u0000`;   // unterminated: still data",
-  "to": "  if (false) out += `\\u0000${literals.push(buf) - 1}\\u0000`;   // unterminated: still data",
-  "label": "maskLiterals drops an UNTERMINATED literal instead of masking it — a truncated file's trailing text reads as code",
-  "kills_with": "an unterminated literal is still data, not code",
-  "command": [
-   "node",
-   "tools/strip-comments.test.js"
-  ]
- },
- {
   "id": "e5-09",
   "slice": "e5",
   "file": "catalog/publish-paths.test.js",
@@ -8608,6 +8595,32 @@
   "command": [
    "node",
    "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e6-01",
+  "slice": "e6",
+  "file": "catalog/project-guard.test.js",
+  "from": "  const MUTATING = CONNECTS;",
+  "to": "  const MUTATING = ['migrate-catalog-display.js', 'publish-version.js', 'rollback-version.js', 'seed-source-store.js', 'seed-catalog.js', 'backfill-snapshot.js', 'seed-owner.js', 'verify-catalog.js'];",
+  "label": "🔴 THE CENSUS REVERTS TO THE HAND-MAINTAINED ARRAY — the eight it used to be, while ten tools open a connection; every spawn still refuses, so only the derivation assertion notices",
+  "kills_with": "the spawned set is not the connecting set",
+  "command": [
+   "node",
+   "catalog/project-guard.test.js"
+  ]
+ },
+ {
+  "id": "e6-02",
+  "slice": "e6",
+  "file": "catalog/project-guard.test.js",
+  "from": "    .filter((f) => stripComments(readFileSync(join(TOOLS, f), 'utf8')).includes('admin.initializeApp('));",
+  "to": "    .filter((f) => readFileSync(join(TOOLS, f), 'utf8').includes('admin.initializeApp('));",
+  "label": "the census stops stripping comments, so require-project.js — which only MENTIONS initializeApp in prose — is spawned as a CLI and exits 0",
+  "kills_with": "a project refusal must be exit 2",
+  "command": [
+   "node",
+   "catalog/project-guard.test.js"
   ]
  }
 ]

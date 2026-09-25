@@ -61,7 +61,15 @@ const db = admin.firestore();
     console.error('usage: node tools/backfill-identities.js --rid=<x_pizza|la_musa> --project <id> [--apply]\n'
                 + '       omit --apply for a DRY RUN (reads only)\n'
                 + '       one brand per run, deliberately — see the 1D runbook');
-    process.exit(2);
+    /* 🔴 EXIT 1, NOT 2. Exit 2 is RESERVED for project_guard_refused, so that a script — and a person
+       — can tell "you pointed this at the wrong database" apart from "the work failed"; that is the
+       whole reason the guard does not share a code with anything else. This branch used to exit 2 as
+       well, which collapsed the distinction for the one tool most able to damage a wrong project.
+       It was invisible to the test harness for a while: the spawn cells point
+       GOOGLE_APPLICATION_CREDENTIALS at a nonexistent path, so applicationDefault() threw before this
+       line ever ran. In production credentials resolve and this branch IS reached. It is now
+       reproduced with a locally generated, never-registered key — see catalog/project-guard.test.js. */
+    process.exit(1);
   }
 
   // THE LIVE CATALOG, through the serving reader. It fails closed on an absent pointer, an incomplete
