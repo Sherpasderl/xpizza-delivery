@@ -16,7 +16,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const { enumerate, ROOTS, BUILDERS } = require('./registry-writers.js');
+const { enumerate, ROOTS, BUILDERS, READ_BEHIND } = require('./registry-writers.js');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ROOT = path.join(__dirname, '..');
@@ -238,6 +238,34 @@ const r = enumerate();
   assert.notDeepStrictEqual(r.writes, [], '🔴 the real walk found NO writers — which is what a broken walk also looks like');
   assert.ok(r.writes.length >= 8, 'and the real walk is what makes the assertions above non-vacuous');
   ok('an empty walk yields an empty set — so the assertions above are claims about the tree, not about nothing');
+}
+
+// ── RULE 17's TABLE IS EXHAUSTIVE — THE ONLY ENFORCEMENT COMPLETENESS HAS ───────────────────
+{
+  /* 🔴 WHY THIS CELL AND NOT A COMMENT. Firestore refuses a read AFTER a write in a transaction —
+     observed, with the exact wording, in test/tx-read-after-write.emulator.test.js — so rule 17's
+     ORDER half is enforced by the database. Its COMPLETENESS half is not: nothing stops a
+     transaction writing a document it never read, because the error only fires on a late READ.
+     So "every document this function writes, it first read" is carried by READ_BEHIND and by nothing
+     else. A writer with no entry is a write whose read nobody has named — which is exactly the state
+     retireIdentity sat in until this slice, deleting a key row it had never read. */
+  const named = Object.keys(READ_BEHIND).sort();
+  const writers = r.writerNames.slice().sort();
+  assert.deepStrictEqual(named, writers,
+    `🔴 rule 17's table does not account for every registry writer. Unnamed (a write whose read nobody has stated): ${JSON.stringify(writers.filter((w) => !named.includes(w)))}; named but no longer a writer: ${JSON.stringify(named.filter((n) => !writers.includes(n)))}`);
+
+  for (const w of writers) {
+    assert.ok(typeof READ_BEHIND[w] === 'string' && READ_BEHIND[w].length > 80,
+      `🔴 ${w}'s entry is too thin to be a read table — it must name WHICH documents are read before WHICH writes, not assert that they are`);
+  }
+
+  /* 🔴 AND THE ONE WRITER THAT READS NOTHING IS NAMED AS SUCH, because "no reads" is a claim that
+     needs stating rather than a gap in the table. Its documents are read by the caller before the
+     caller's first write, and having no reads of its own is what makes it impossible for it to be
+     the thing that breaks the ordering the database enforces. */
+  assert.match(READ_BEHIND.applyIdentityPlan, /PERFORMS NO READS AT ALL/,
+    '🔴 the atomic writer\'s entry no longer states that it reads nothing — if it has grown a read, the caller\'s first write now aborts the transaction');
+  ok(`rule 17's table names the read behind every write for all ${writers.length} registry writers`);
 }
 
 console.log(`\n${n} cells passed`);

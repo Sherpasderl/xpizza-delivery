@@ -313,7 +313,45 @@ function enumerate() {
    reports anything. */
 const staleExemptionsOf = (writerNames, exempt) => Object.keys(exempt).filter((n) => !writerNames.has(n));
 
-module.exports = { enumerate, scanFile, jsFilesUnder, parse, ROOTS, BUILDERS, FENCE_EXEMPT, staleExemptionsOf };
+/* ── RULE 17's TABLE: THE READ BEHIND EVERY WRITE ───────────────────────────────────────────────
+   🔴 THIS IS THE ONLY ENFORCEMENT COMPLETENESS HAS, WHICH IS WHY IT IS DATA AND NOT PROSE.
+   Firestore refuses a read AFTER a write inside a transaction — observed, with the exact wording, in
+   test/tx-read-after-write.emulator.test.js. That secures rule 17's ORDER half MECHANICALLY: a writer
+   that reads late fails in the emulator rather than in review.
+   IT SECURES NOTHING ABOUT COMPLETENESS. Nothing in Firestore stops a transaction writing a document
+   it never read; the error only fires when a read comes after a write. So "every document this
+   function writes, it first read" is enforced by this table and by nothing else — which makes the
+   table a deliverable of every increment that writes, not a courtesy.
+   Keyed by WRITER FUNCTION, because line numbers drift and a stale line is worse than none. Held
+   exhaustive by a cell: a new writer fails it until its read is named. */
+const READ_BEHIND = {
+  ensureIdentity:
+    'keys/{encodedKey} is read at the top (the SERIALIZATION POINT — two concurrent seeds contend on '
+    + 'this one row) and written on both the adopt and the mint path. ids/{candidate} is read inside '
+    + 'the mint loop and written only when that read says it does not exist. The orphan-adoption query '
+    + 'reads the live id set before the row it adopts is written.',
+  restoreIdentity:
+    'idRef and keyRef are BOTH read before either is written — added in E-3, where the first version '
+    + 'wrote ids/{id} having only read keys/{k} and could therefore overwrite a row it had never seen.',
+  retireIdentity:
+    'idRef is read, and keys/{encode(legacy_key)} is read before the delete — added in this slice. It '
+    + 'was the one violation in the table: an unconditional delete of a document the transaction had '
+    + 'never read, which strips a live id of its reverse row if the row has been re-pointed.',
+  retireOrphanFenced:
+    'idRef is read, and keyRef is read before the delete; the delete is additionally conditioned on '
+    + 'that row NAMING this candidate (identity-bootstrap.js:488).',
+  sweepIdentityIntegrity:
+    'keys/{encodedKey} is read (and the repair is skipped if it exists), ids/{candidate} is read, and '
+    + 'the live-claimant set is re-read IN-TX before the single key row is written.',
+  applyIdentityPlan:
+    '🔴 IT PERFORMS NO READS AT ALL, AND THAT IS THE POINT. Every document it writes was read by the '
+    + 'CALLER, before the caller\'s first write, inside the same transaction: the flip reads all four '
+    + 'registry collections and both candidate subcollections up front. Having no reads is what makes '
+    + 'it impossible for this function to be the thing that breaks the ordering — and the database '
+    + 'enforces that, because a read here would abort the caller\'s transaction loudly.',
+};
+
+module.exports = { enumerate, scanFile, jsFilesUnder, parse, ROOTS, BUILDERS, FENCE_EXEMPT, staleExemptionsOf, READ_BEHIND };
 
 if (require.main !== module) return;
 const r = enumerate();

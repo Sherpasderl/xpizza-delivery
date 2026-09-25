@@ -9328,5 +9328,44 @@
    "run",
    "test:d4p1-mint-atomic"
   ]
+ },
+ {
+  "id": "e14-01",
+  "slice": "e14",
+  "file": "tools/registry-writers.js",
+  "from": "  retireIdentity:\n    'idRef is read, and keys/{encode(legacy_key)} is read before the delete",
+  "to": "  retireIdentityX:\n    'idRef is read, and keys/{encode(legacy_key)} is read before the delete",
+  "label": "🔴 A WRITER DROPS OUT OF RULE 17's TABLE — its writes have no named read, which is exactly the state retireIdentity sat in while deleting a key row it had never read. Completeness has no other enforcement",
+  "kills_with": "does not account for every registry writer",
+  "command": [
+   "node",
+   "tools/registry-writers.test.js"
+  ]
+ },
+ {
+  "id": "e14-02",
+  "slice": "e14",
+  "file": "tools/registry-writers.js",
+  "from": "    '🔴 IT PERFORMS NO READS AT ALL, AND THAT IS THE POINT. Every document it writes was read by the '",
+  "to": "    'It reads what it needs. Every document it writes was read by the '",
+  "label": "the atomic writer's entry stops stating that it reads NOTHING — if it ever grows a read, the caller's first write aborts the transaction and nothing in the table would have warned",
+  "kills_with": "no longer states that it reads nothing",
+  "command": [
+   "node",
+   "tools/registry-writers.test.js"
+  ]
+ },
+ {
+  "id": "e14-03",
+  "slice": "e14",
+  "file": "tools/registry-writers.js",
+  "from": "  sweepIdentityIntegrity:\n    'keys/{encodedKey} is read (and the repair is skipped if it exists), ids/{candidate} is read, and '\n    + 'the live-claimant set is re-read IN-TX before the single key row is written.',",
+  "to": "  sweepIdentityIntegrity: 'reads first.',",
+  "label": "a table entry is reduced to an assertion that reads happen, naming no documents — a read table that does not say WHICH reads is not a table",
+  "kills_with": "too thin to be a read table",
+  "command": [
+   "node",
+   "tools/registry-writers.test.js"
+  ]
  }
 ]
