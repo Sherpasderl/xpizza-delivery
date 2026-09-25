@@ -201,32 +201,39 @@ const pickerJs = html.slice(openIdx, closeEnd);
   ok('flyoutRestoreFocus: replaced opener re-found by id / else #topbar / attached opener kept — never detached, never nowhere');
 }
 
-// FEATURE 11 — F5-fix P2#3: Esc closes only the TOP overlay. The flyout's Esc no-ops while a higher overlay is
-// open (drawer / picker / recon-note / comms thread / msg-modal), so Esc-with-drawer-over-flyout closes ONLY the
-// drawer. Non-vacuous: drop the guard from the flyout Esc condition → red.
+// FEATURE 11 — F5-fix: ONE Esc arbiter closes only the TOPMOST open overlay, DERIVED from the registry (filters
+// non-transient overlays with a close(), picks max z, calls close()). No per-overlay DOCUMENT Esc handler competes,
+// so a stacked combo (drawer-over-flyout, action-menu-over-flyout) closes only the top. Non-vacuous: a handler that
+// closed unconditionally, or an arbiter not keyed on max z, breaks these.
 {
-  const fly = html.slice(html.indexOf('function initSurfaceFlyout('), html.indexOf('// Slice D2 — nav rail'));
-  // The flyout Esc gate DERIVES from the canonical registry (overlaysAboveOpen), not a hand-list — so it can't
-  // omit a higher overlay (FEATURE 12 proves the registry set). It closes the flyout only when nothing is above it.
-  assert.match(fly, /const higherOverlayOpen = \(\) => overlaysAboveOpen\(OVERLAY_Z\.flyout\)/, 'flyout Esc gate derives from the registry (overlaysAboveOpen)');
-  assert.match(fly, /e\.key === 'Escape' && flyout && !flyout\.hidden && !higherOverlayOpen\(\)\) closeFlyout\(\)/, 'flyout Esc closes the flyout ONLY when no higher overlay is open');
-  ok('Esc top-only: the flyout yields Esc to any higher overlay (drawer/action-menu/…-over-flyout closes only the top)');
+  // The single arbiter: filter open non-transient overlays with a close, reduce to max z, close it.
+  assert.match(html, /const openOnes = OVERLAYS\.filter\(o => !o\.transient && typeof o\.close === 'function' && o\.open\(\)\);[\s\S]*?const top = openOnes\.reduce\(\(a, b\) => \(b\.z >= a\.z \? b : a\)\);[\s\S]*?top\.close\(\)/, 'single Esc arbiter closes the TOPMOST (max-z) open overlay via its registered close()');
+  // The document-level overlays no longer keep their own document Esc handler (they route through the arbiter).
+  const flySrc = html.slice(html.indexOf('function initSurfaceFlyout('), html.indexOf('// Slice D2 — nav rail'));
+  assert.doesNotMatch(flySrc, /addEventListener\('keydown'[\s\S]*?Escape[\s\S]*?closeFlyout/, 'flyout has NO independent document Esc handler (arbiter owns it)');
+  assert.match(flySrc, /_fl\.close = closeFlyout/, 'flyout registers its close() in the arbiter registry');
+  ok('single Esc arbiter (top-only): document overlays route through it — drawer/action-menu/comms/…-over-flyout closes only the top');
 }
 
-// FEATURE 12 — F5-fix (unify): ONE canonical OVERLAYS registry is the single source; the ⌘K bail (anyModalOpen)
-// and the Esc top-only gate (overlaysAboveOpen) both DERIVE from it, so no overlay can be in one guard's list and
-// missing from another (the per-round recurring bug). Non-vacuous: drop an overlay from the registry → "includes
-// 'X'" red; point a guard at a hand-list instead of OVERLAYS → its "derives from" assertion red.
+// FEATURE 12 — F5-fix (unify): ONE canonical OVERLAYS registry is the single source; the ⌘K bail (anyModalOpen) and
+// the Esc arbiter both DERIVE from it, so no overlay can be in one consumer's list and missing from another (the
+// per-round recurring bug). Element-level focus-trapped modals (picker, recon-note) self-handle Esc (close:null →
+// arbiter skips them; stopPropagation keeps the arbiter from double-firing). Non-vacuous: drop an overlay → red;
+// point ⌘K at a hand-list → red; drop a self-handled modal's element Esc → red.
 {
-  const reg = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const OVERLAY_Z ='));
+  const reg = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const anyModalOpen ='));
   assert.ok(reg && reg.length > 0, 'canonical OVERLAYS registry present');
-  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast'])
+  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast', 'account-menu'])
     assert.match(reg, new RegExp(`name: '${n}'`), `registry includes the '${n}' overlay`);
   assert.match(html, /const anyModalOpen = \(\) => OVERLAYS\.some\(o => o\.modal && o\.open\(\)\)/, 'anyModalOpen (⌘K bail) DERIVES from OVERLAYS');
-  assert.match(html, /const overlaysAboveOpen = \(z\) => OVERLAYS\.some\(o => o\.z > z && !o\.transient && o\.open\(\)\)/, 'overlaysAboveOpen (Esc gate) DERIVES from OVERLAYS (transient overlays never block Esc)');
-  // the row ⋯ menu is Esc-dismissible and stops propagation (closes only the top when open over the flyout)
-  assert.match(html, /Escape' && !\$\('action-menu'\)\.classList\.contains\('hidden'\)\) \{ e\.stopPropagation\(\); closeActionMenu/, 'action-menu is Esc-dismissible (stops propagation → only the top closes)');
-  ok('single canonical OVERLAYS registry — ⌘K bail + Esc gate both derive from it; action-menu Esc-dismissible; no per-guard list can drift');
+  // flyout + account-menu closers attach in their IIFEs; picker + recon-note are close:null (self-handled).
+  assert.match(html, /_am\.close = \(\) => setOpen\(false\)/, 'account-menu registers its close() (arbiter-driven)');
+  assert.match(reg, /name: 'picker',[^\n]*close: null/, 'picker is close:null → arbiter skips it (self-handles Esc)');
+  assert.match(reg, /name: 'recon-note',[^\n]*close: null/, 'recon-note is close:null → arbiter skips it (self-handles Esc)');
+  // the two self-handled modals DO keep their own element-level Esc (with stopPropagation, so the arbiter can't double-fire)
+  assert.match(html, /\$\('picker-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\);[\s\S]*?closePicker\(\)/, 'picker self-handles Esc element-level with stopPropagation');
+  assert.match(html, /\$\('recon-note-overlay'\)\.addEventListener\('keydown'[\s\S]*?e\.key === 'Escape'[\s\S]*?e\.stopPropagation\(\); settleReconNote\(null\)/, 'recon-note self-handles Esc element-level with stopPropagation (money dismiss = settle null)');
+  ok('single canonical OVERLAYS registry — ⌘K + arbiter derive from it; document overlays via arbiter, focus-trapped modals self-handle; no list can drift');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

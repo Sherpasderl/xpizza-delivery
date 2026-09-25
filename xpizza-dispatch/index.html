@@ -3191,12 +3191,8 @@ function initMessagesSubscription() {
   // Task 12: the read-only Comms thread sheet — click scrim closes it
   $('comms-scrim')?.addEventListener('click', closeCommsThread);
 
-  // Escape key closes modal / the Comms thread sheet
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (commsSheetTail) { closeCommsThread(); return; }
-    if ($('msg-modal')?.classList.contains('open')) closeMessagesModal();
-  });
+  // Esc for the Comms thread + messages modal is handled by the single Esc arbiter (top-only), which calls their
+  // registered close() — no separate document handler here (would double-dismiss with a lower overlay's).
 
   // Subscribe to /incoming_messages
   XPD.subscribeToIncomingMessages((messages) => {
@@ -3523,11 +3519,8 @@ function showActionMenu(triggerEl, items) {
 function closeActionMenu() {
   $('action-menu').classList.add('hidden');
 }
-// F5-fix P2#1: the row ⋯ menu is Esc-dismissible (it's the top overlay when open). Its Esc stops propagation so a
-// lower overlay's Esc handler (e.g. the flyout it opened over) doesn't ALSO fire — closes only the top.
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('action-menu').classList.contains('hidden')) { e.stopPropagation(); closeActionMenu(); }
-});
+// F5-fix: the row ⋯ menu is Esc-dismissible via the single Esc arbiter (registered close: closeActionMenu) — it
+// closes only when the menu is the topmost open overlay, so a lower overlay it opened over is not also dismissed.
 
 function isCurrentUserAlsoDriver() {
   if (!currentUser) return false;
@@ -4754,6 +4747,8 @@ $('recon-note-confirm').addEventListener('click', () => settleReconNote($('recon
 $('recon-note-overlay').addEventListener('click', (e) => { if (e.target === $('recon-note-overlay')) settleReconNote(null); });
 $('recon-note-overlay').addEventListener('keydown', (e) => {
   if (!reconNoteSettle) return;
+  // Element-level focus-trapped MONEY dialog: it owns its keyboard while focused. Esc cancels (settle null) and
+  // stopPropagation halts the bubble so the document Esc arbiter never also fires — self-contained, no double-close.
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); settleReconNote(null); return; }
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); settleReconNote($('recon-note-input').value); return; }
   if (e.key === 'Tab') {
@@ -5548,6 +5543,8 @@ $('picker-overlay').addEventListener('click', (e) => {
 // Esc handlers for the detail/message modals (:2901, :5132) — Esc here stops propagation so only the picker acts.
 $('picker-overlay').addEventListener('keydown', (e) => {
   if (!pickerOpen) return;
+  // Element-level focus-trapped modal: it owns its keyboard while focused. Esc closes it and stopPropagation halts
+  // the bubble so the document Esc arbiter never also fires — self-contained, no double-close.
   if (e.key === 'Escape') {
     e.preventDefault();
     e.stopPropagation();
@@ -5704,27 +5701,41 @@ function isCashPayment(pm) {
 $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chevronDown;
 
 // ══════════════ Canonical overlay registry (F5-fix: ONE source of truth for the overlay z-stack) ══════════════
-// A single ordered list of every overlay. Both the ⌘K bail (anyModalOpen) and the Esc top-only gate
-// (overlaysAboveOpen) DERIVE from THIS — so an overlay can never be present in one guard's list and missing from
-// another (the recurring per-round bug). `z` mirrors the authored CSS z-index (dispatch-theme.test.js binds the
-// CSS order to this list so they can't drift). `modal` = holds a focus trap → ⌘K must not steal focus from it.
-// `transient` = auto-dismissing feedback (toast) → never owns Esc / never blocks a lower overlay's Esc. Ordered
-// bottom→top by z. See the matching z-stack comment at .flyout-scrim.
+// A single ordered list of every overlay. The ⌘K bail (anyModalOpen) and the single Esc arbiter both DERIVE from
+// THIS — so an overlay can never be present in one consumer's list and missing from another (the recurring per-
+// round bug). `z` mirrors the authored CSS z-index (dispatch-theme.test.js binds the CSS order to this list so they
+// can't drift). `modal` = holds a focus trap → ⌘K must not steal focus from it. `transient` = auto-dismissing
+// feedback (toast) → the arbiter never dismisses it. Ordered bottom→top by z. See the z-stack comment at .flyout-scrim.
+// `close` = how Esc dismisses it (the single Esc arbiter below closes the topmost open, non-transient overlay).
+// Module-level closers are referenced directly; flyout + account-menu closers live in their IIFEs and attach at
+// init. `transient` layers (toast; the .dispatcher-alerts strip is DEAD CSS since D4 → #torre-list, not an overlay,
+// so it's intentionally absent). `open` = shown right now. Ordered bottom→top by z.
 const OVERLAYS = [
-  { name: 'flyout',      z: 151, modal: true,  transient: false, open: () => { const e = $('surface-flyout');     return !!(e && !e.hidden); } },
-  { name: 'action-menu', z: 170, modal: false, transient: false, open: () => { const e = $('action-menu');        return !!(e && !e.classList.contains('hidden')); } },
-  { name: 'msg-modal',   z: 200, modal: true,  transient: false, open: () => { const e = $('msg-modal');          return !!(e && e.classList.contains('open')); } },
-  { name: 'comms',       z: 206, modal: true,  transient: false, open: () => { const e = $('comms-sheet');         return !!(e && e.classList.contains('open')); } },
-  { name: 'drawer',      z: 210, modal: true,  transient: false, open: () => { const e = $('order-detail-modal');  return !!(e && e.classList.contains('open')); } },
-  { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); } },
-  { name: 'recon-note',  z: 220, modal: true,  transient: false, open: () => { const e = $('recon-note-overlay');  return !!(e && !e.classList.contains('hidden')); } },
+  { name: 'flyout',      z: 151, modal: true,  transient: false, open: () => { const e = $('surface-flyout');     return !!(e && !e.hidden); },                       close: null /* set by initSurfaceFlyout */ },
+  { name: 'action-menu', z: 170, modal: false, transient: false, open: () => { const e = $('action-menu');        return !!(e && !e.classList.contains('hidden')); },   close: () => closeActionMenu() },
+  { name: 'msg-modal',   z: 200, modal: true,  transient: false, open: () => { const e = $('msg-modal');          return !!(e && e.classList.contains('open')); },      close: () => closeMessagesModal() },
+  { name: 'comms',       z: 206, modal: true,  transient: false, open: () => { const e = $('comms-sheet');         return !!(e && e.classList.contains('open')); },      close: () => closeCommsThread() },
+  { name: 'drawer',      z: 210, modal: true,  transient: false, open: () => { const e = $('order-detail-modal');  return !!(e && e.classList.contains('open')); },      close: () => closeOrderDetailModal() },
+  { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped: self-handles Esc (stopPropagation) → arbiter skips it */ },
+  { name: 'recon-note',  z: 220, modal: true,  transient: false, open: () => { const e = $('recon-note-overlay');  return !!(e && !e.classList.contains('hidden')); },   close: null /* element-level focus-trapped MONEY dialog: self-handles Esc (stopPropagation) → arbiter skips it */ },
   { name: 'toast',       z: 240, modal: false, transient: true,  open: () => { const e = $('toast');               return !!(e && e.classList.contains('show')); } },
+  { name: 'account-menu',z: 300, modal: false, transient: false, open: () => { const e = $('rail-av-menu');        return !!(e && !e.hidden); },                          close: null /* set by initAvatarMenu */ },
 ];
-const OVERLAY_Z = Object.fromEntries(OVERLAYS.map(o => [o.name, o.z]));
-// ⌘K must not steal focus out of any trap → true if ANY modal overlay is open.
+// ⌘K must not steal focus out of any trap → true if ANY modal overlay is open (incl. picker/recon-note).
 const anyModalOpen = () => OVERLAYS.some(o => o.modal && o.open());
-// Esc closes only the TOP overlay → true if any NON-transient overlay above `z` is open (that one owns Esc).
-const overlaysAboveOpen = (z) => OVERLAYS.some(o => o.z > z && !o.transient && o.open());
+// THE single Esc arbiter (F5-fix: completion of the unify — ONE Esc code path for every DOCUMENT-level overlay).
+// Closes ONLY the topmost open, non-transient overlay that registers a close(), so no per-overlay document handler
+// competes and no stacked combo double-dismisses. Element-level focus-trapped modals (picker, recon-note) have
+// close:null — they own their keyboard while focused and self-handle Esc with stopPropagation (the event never
+// reaches this document handler), so the arbiter skips them by design.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const openOnes = OVERLAYS.filter(o => !o.transient && typeof o.close === 'function' && o.open());
+  if (!openOnes.length) return;
+  const top = openOnes.reduce((a, b) => (b.z >= a.z ? b : a));
+  e.preventDefault();
+  top.close();
+});
 
 // ── Collapse rails (Torre de Control 3-column grid) — replaces the retired drag-resize
 // sidebar. The code runs in a module, so an inline onclick can't resolve → wire via
@@ -5769,7 +5780,8 @@ $('alerts-bell')?.addEventListener('click', () => {
   };
   av.addEventListener('click', (e) => { e.stopPropagation(); setOpen(menu.hidden); });
   document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== av) setOpen(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) setOpen(false); });
+  // F5-fix: Esc closes the account menu via the single Esc arbiter (top-only) — register its close here.
+  const _am = OVERLAYS.find(o => o.name === 'account-menu'); if (_am) _am.close = () => setOpen(false);
 })();
 
 // Live-tick the aging timers each second (recompute from each row's created-time baseline in-place).
@@ -5803,10 +5815,6 @@ function flyoutRestoreFocus(opener, doc) {
   // RESTORE focus on close), reusing Slice-A focusTrapTarget like the order drawer. Restore goes through
   // flyoutRestoreFocus (P2#2 cascade) so a re-render that replaces the opener (e.g. #cash-recon-btn) still lands.
   let flyoutOpener = null;
-  // F5-fix P2#3: Esc closes only the TOP overlay. DERIVED from the canonical OVERLAYS registry — the flyout yields
-  // Esc whenever any non-transient overlay ABOVE it (action-menu / msg-modal / comms / drawer / picker / recon-note)
-  // is open, so its own Esc handler closes only that one (no flyout double-dismissal). Single list ⇒ can't miss one.
-  const higherOverlayOpen = () => overlaysAboveOpen(OVERLAY_Z.flyout);
   const showFlyout = () => {
     if (!flyout) return;
     if (flyout.hidden) flyoutOpener = document.activeElement;   // capture opener only on a genuine open
@@ -5853,11 +5861,9 @@ function flyoutRestoreFocus(opener, doc) {
     const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
     if (target) { e.preventDefault(); target.focus(); }
   });
-  // F5-fix P2#3: Esc closes only the TOP overlay — no-op here while a higher overlay (drawer / picker / recon-note /
-  // comms thread / msg-modal) is open, so its own Esc handler closes just it (no flyout double-dismissal).
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && flyout && !flyout.hidden && !higherOverlayOpen()) closeFlyout();
-  });
+  // F5-fix: Esc closes the flyout via the single Esc arbiter (top-only) — register its close here so the arbiter
+  // dismisses it only when it's the topmost open overlay (no separate document Esc handler competing).
+  const _fl = OVERLAYS.find(o => o.name === 'flyout'); if (_fl) _fl.close = closeFlyout;
 })();
 
 // Slice D2 — nav rail: each item routes to an EXISTING surface (no new backend). Reuses the rail-toggle,
@@ -5995,11 +6001,8 @@ $('order-detail-modal').addEventListener('click', (e) => {
   // Click on the dim overlay (not the card) closes the modal
   if (e.target.id === 'order-detail-modal') closeOrderDetailModal();
 });
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && $('order-detail-modal').classList.contains('open')) {
-    closeOrderDetailModal();
-  }
-});
+// F5-fix: Esc closes the drawer via the single Esc arbiter (registered close: closeOrderDetailModal) — top-only,
+// so Esc with the drawer over the flyout closes ONLY the drawer.
 // a11y: focus-trap — while the drawer is open, Tab/Shift-Tab cycle within the card so focus can't fall to the
 // board behind it. Reuses focusTrapTarget (Slice A). Read-only; no content or data touched.
 $('order-detail-modal').addEventListener('keydown', (e) => {
