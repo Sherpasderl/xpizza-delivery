@@ -96,8 +96,16 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   const noComments = html.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/[^\n]*$/gm, '');
   assert.ok(!/[✓✕]/.test(noComments), 'no ✓/✕ glyphs remain in rendered strings (comments excepted)');
   assert.match(html, /WhatsApp <svg class="ic"[^>]*><use href="#i-check"\/><\/svg>/, 'WhatsApp cue uses the i-check line icon');
-  assert.match(html, /<use href="#i-check"\/>[\s\S]*?<use href="#i-close"\/>|chk[\s\S]*?i-check[\s\S]*?ex[\s\S]*?i-close/, 'closed-orders meta uses i-check / i-close line icons');
-  ok('emoji cleanup: ✓/✕ replaced with i-check / i-close line icons; none left in rendered strings');
+  // scope to the closed-orders meta render SITE so reverting THAT swap goes red (not unrelated icons elsewhere)
+  const metaRegion = html.slice(html.indexOf('const dCount = orders.filter'), html.indexOf('meta.innerHTML = cCount') + 130)
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');   // strip comments (which document "✓/✕")
+  assert.ok(metaRegion.length > 40, 'located the closed-orders meta region');
+  assert.match(metaRegion, /const chk = '[^']*#i-check[^']*';/, 'delivered icon (i-check) declared for the meta');
+  assert.match(metaRegion, /const ex = '[^']*#i-close[^']*';/, 'cancelled icon (i-close) declared for the meta');
+  // both icons must actually be RENDERED in the count (not just declared) — removing them from the template goes red
+  assert.match(metaRegion, /meta\.innerHTML = cCount > 0 \? `\$\{dCount\} \$\{chk\}\s+\$\{cCount\} \$\{ex\}`/, 'the closed-orders count renders ${chk} and ${ex} (no ✓/✕)');
+  assert.doesNotMatch(metaRegion, /[✓✕]/, 'closed-orders meta code has no ✓/✕ glyph');
+  ok('emoji cleanup: ✓/✕ replaced with i-check / i-close line icons at their render sites; none left in rendered strings');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,9 +113,14 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
 //    assignment-logic change.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  assert.match(html, /\$\('auto-assign-toggle'\)\.addEventListener\('click', async \(\) => \{[\s\S]*?await XPD\.setAutoAssignEnabled\(!isOn\);/, 'toggle flips only the existing auto-assign setting');
-  assert.doesNotMatch(html.slice(html.indexOf("$('auto-assign-toggle').addEventListener"), html.indexOf("$('auto-assign-toggle').addEventListener") + 500), /assignOrder\(|buildActionQueue|reassign/, 'toggle handler contains no assignment logic');
-  ok('auto-asignar toggle unchanged — flips only the existing setting, no assignment-logic change');
+  // slice the exact click-handler body (start → its closing `});`) so the negative guard can't reach other code
+  const hs = html.indexOf("$('auto-assign-toggle').addEventListener('click'");
+  assert.ok(hs > -1, 'located the auto-assign click handler');
+  const toggleHandler = html.slice(hs, html.indexOf('  });', hs) + 5);
+  assert.match(toggleHandler, /await XPD\.setAutoAssignEnabled\(!isOn\);/, 'toggle flips only the existing auto-assign setting');
+  // NONE of the real assignment APIs — assignOrderToDriver is the one the old regex missed (it required `assignOrder(`)
+  assert.doesNotMatch(toggleHandler, /assignOrderToDriver|reassignOrder|assignOrder\(|openPicker\(|buildActionQueue|assignOrderRemote/, 'toggle handler calls no real assignment API (only setAutoAssignEnabled)');
+  ok('auto-asignar toggle unchanged — flips only the existing setting, no assignment API in the handler');
 }
 
 console.log(`\ndispatch-heartbeat-alerts: OK (${n} groups)`);
