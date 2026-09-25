@@ -9085,5 +9085,87 @@
    "node",
    "catalog/stamp-map.test.js"
   ]
+ },
+ {
+  "id": "e13-01",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    if (row && row.status === STATUS_LIVE && row.legacy_key === key && claimant === id) continue;",
+  "to": "    if (row) continue;",
+  "label": "🔴 A RETIRED ID IS TREATED AS ALREADY CORRECT — a rollback across a deletion restores nothing and the object stays unresolvable, which is the one case restoreIdentity exists for",
+  "kills_with": [
+   "nothing restores the missing reverse row",
+   "a rollback ACROSS A DELETION was refused",
+   "an absent id row is not restored"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-02",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "      resurrects: !!row && row.status !== STATUS_LIVE });",
+  "to": "      resurrects: false });",
+  "label": "a resurrection is reported as an ordinary re-assertion — the caller cannot tell the one write that needs saying out loud from the rest",
+  "kills_with": "does not report that it RESURRECTS a retired id",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-03",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    if (survives(id)) continue;",
+  "to": "    if (true) continue;",
+  "label": "§5's fourth case is dropped — a live id the target does not stamp stays live with no reverse row, the orphan the integrity sweep exists to repair",
+  "kills_with": "the displaced claimant was not retired",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-04",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    if (landing.has(encoded)) continue;",
+  "to": "    // re-landing is not consulted",
+  "label": "a name re-landed by this same reconciliation is still deleted — a SWAP deletes two rows it is about to re-create and survives only on write order",
+  "kills_with": "a swap derived deletions",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-06",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    if (keyOfId.has(id)) {",
+  "to": "    if (false) {",
+  "label": "a target stamping ONE id on TWO keys is accepted — no sequence of writes makes that version true, and the reconciliation proposes writes for it anyway",
+  "kills_with": "a target stamping ONE id on TWO keys was accepted",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-08",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "  if (!(ids instanceof Map) || !(keys instanceof Map)) {",
+  "to": "  if (false) {",
+  "label": "an unread registry is judged as an empty one — every stamped id reads as absent and every live id reads as retirable",
+  "kills_with": "a plain object was accepted as the registry index",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
  }
 ]
