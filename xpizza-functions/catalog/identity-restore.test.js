@@ -176,5 +176,64 @@ const rowsOf = async (db, kind, leaf) => (await db.collection('restaurants').doc
   ok('unusable ids refuse before any read; a brand-grandfathered slug is a valid id and restores');
 }
 
+// ── 12. 🔴 THE WRITE TARGET IS READ — a live id claiming ANOTHER name refuses ─────────────────
+/* Found in review: idRef was written and never read. "Every read first" passed — that is the ORDER
+   rule, and every read that happened WAS first — while COMPLETENESS went unchecked. The claimant
+   query asks who claims the NAME; it is given nothing about what the landing ID claims, so it
+   structurally cannot see this. A guard on a neighbouring document is not a read of this one.
+   Writing here would MOVE the id and leave keys/{oldName} naming an id that no longer claims it —
+   the `destination_key_row_disagrees` state the guard refuses elsewhere and the sweep declines to
+   repair, manufactured from a path that believes it is repairing. It is also a move, which P1a
+   disables. */
+{
+  const db = await world({ key: 'Pizza Napoli' });
+  await idsColOf(db, RID, 'dish').doc(ID).set({ legacy_key: 'Pizza Margarita', kind: 'dish', status: STATUS_LIVE, created_at: '2026-01-01T00:00:00Z' });
+  await keysColOf(db, RID, 'dish').doc(encodeKey('Pizza Margarita')).set({ canonical_id: ID, kind: 'dish' });
+
+  await assert.rejects(
+    () => restoreIdentity(db, { rid: RID, kind: 'dish', legacyKey: 'Pizza Napoli', canonicalId: ID, ...PAIR }),
+    /identity_restore_id_claims_other_name.*is live claiming "Pizza Margarita"/s,
+    '🔴 a restore MOVED a live id onto another name and left the old key row naming it');
+
+  const idRow = (await idsColOf(db, RID, 'dish').doc(ID).get()).data();
+  assert.strictEqual(idRow.legacy_key, 'Pizza Margarita', 'the id still claims what it claimed');
+  assert.strictEqual(idRow.created_at, '2026-01-01T00:00:00Z', 'and its creation time is intact');
+  assert.strictEqual((await keysColOf(db, RID, 'dish').doc(encodeKey('Pizza Napoli')).get()).exists, false, 'no new reverse row');
+  ok('a landing id live-claiming ANOTHER name refuses — a move belongs to the atomic writer, in one tx');
+}
+
+// ── 13. 🔴 A RETIRED LANDING ID IS NOT SILENTLY RESURRECTED ───────────────────────────────────
+/* Retirement writes a reservation deliberately, and the integrity sweep refuses to revive a retired
+   id at all. Slice F does restore retired ids on rollback — but §68 keeps that inside the flip's own
+   transaction, so refusing here blocks nothing F needs. */
+{
+  const db = await world();
+  await idsColOf(db, RID, 'dish').doc(ID).set({ legacy_key: KEY, kind: 'dish', status: STATUS_RETIRED, created_at: '2026-01-01T00:00:00Z', retired_at: '2026-02-02T00:00:00Z' });
+  await assert.rejects(() => restore(db), /identity_restore_id_retired/,
+    '🔴 a RETIRED id was silently resurrected to live by a restore');
+  const row = (await idsColOf(db, RID, 'dish').doc(ID).get()).data();
+  assert.strictEqual(row.status, STATUS_RETIRED, 'it is still retired');
+  assert.strictEqual(row.retired_at, '2026-02-02T00:00:00Z', 'and the record of when is intact');
+  ok('a retired landing id refuses — resurrection must be explicit, and this is not the writer for it');
+}
+
+// ── 14. 🔴 AN EXISTING ROW IS PRESERVED, NOT REPLACED ─────────────────────────────────────────
+/* tx.set is a full replace, so a bare object destroys created_at. This is the mechanism that once
+   dropped the generation from the pointer write; retireIdentity spreads the existing document for
+   the same reason. Past the two refusals above, an existing row can only be our own id already
+   claiming this name — the idempotent retry. */
+{
+  const db = await world();
+  await idsColOf(db, RID, 'dish').doc(ID).set({ legacy_key: KEY, kind: 'dish', status: STATUS_LIVE, created_at: '2026-01-01T00:00:00Z', minted_by: 'ensureIdentity' });
+  const r = await restore(db);
+  assert.strictEqual(r.restored, true, 'our own id re-landing on its own name proceeds');
+  assert.strictEqual(r.existed, true, 'and it reports that a row was already there');
+  const row = (await idsColOf(db, RID, 'dish').doc(ID).get()).data();
+  assert.strictEqual(row.created_at, '2026-01-01T00:00:00Z', '🔴 created_at was destroyed by a full replace');
+  assert.strictEqual(row.minted_by, 'ensureIdentity', '🔴 an unrelated field was destroyed — tx.set replaces, it does not merge');
+  assert.ok(row.restored_at, 'and the restore is recorded');
+  ok('an existing row keeps created_at and its other fields; only the restore fields are added');
+}
+
 console.log(`\n${n} cells passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

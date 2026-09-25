@@ -8169,5 +8169,60 @@
    "node",
    "catalog/identity-restore.test.js"
   ]
+ },
+ {
+  "id": "e3-08",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    if (existing && existing.legacy_key !== legacyKey) {",
+  "to": "    if (false) {",
+  "label": "a live id claiming ANOTHER name is moved silently, leaving the old key row naming it",
+  "kills_with": "a restore MOVED a live id onto another name and left the old key row naming it",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-09",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    if (existing && existing.status === STATUS_RETIRED) {",
+  "to": "    if (false) {",
+  "label": "a RETIRED landing id is silently resurrected to live",
+  "kills_with": "a RETIRED id was silently resurrected to live by a restore",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-10",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    tx.set(idRef, { ...(existing || {}), legacy_key: legacyKey, kind, status: STATUS_LIVE,",
+  "to": "    tx.set(idRef, { legacy_key: legacyKey, kind, status: STATUS_LIVE,",
+  "label": "the id row drops the spread, destroying every field the restore does not name",
+  "kills_with": [
+   "an unrelated field was destroyed — tx.set replaces, it does not merge",
+   "created_at was destroyed by a full replace"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-11",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "      tx.get(idRef),",
+  "to": "      Promise.resolve({ exists: false, data: () => undefined }),",
+  "label": "the write target is never read — the writer decides nothing about the row it overwrites",
+  "kills_with": "a restore MOVED a live id onto another name and left the old key row naming it",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
  }
 ]

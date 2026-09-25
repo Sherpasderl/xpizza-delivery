@@ -35,7 +35,7 @@
  */
 const { assertPointerUnmoved } = require('./identity-fence');
 const { destinationVerdict } = require('./identity-destination');
-const { idsColOf, keysColOf, encodeKey, STATUS_LIVE, validIdShape } = require('./identity-registry');
+const { idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED, validIdShape } = require('./identity-registry');
 
 const KIND_COLLECTION = { dish: 'menu_items', extra: 'extras' };
 
@@ -69,11 +69,18 @@ async function restoreIdentity(db, { rid, kind, legacyKey, canonicalId, version,
        anything — its objects may never have been through the identity pass — so it cannot be the
        source of a restore however current it is. */
     const vref = db.collection('restaurants').doc(rid).collection('versions').doc(version);
-    const [vSnap, objSnap, keySnap, claimantSnap] = await Promise.all([
+    /* 🔴 THE DOCUMENT THIS WRITES IS READ. It was not, and the omission was not caught by "every read
+       first" — that is the ORDER rule, and every read that happened WAS first. Completeness is a
+       different property: this writer set a document it had never looked at. The claimant query below
+       asks who claims the NAME; it is given nothing about what the landing ID currently claims, so it
+       structurally cannot see an id that is live under a different name. A guard on a neighbouring
+       document is not a read of this one. */
+    const [vSnap, objSnap, keySnap, claimantSnap, idSnap] = await Promise.all([
       tx.get(vref),
       tx.get(vref.collection(col).where('key', '==', legacyKey).limit(2)),
       tx.get(keyRef),
       tx.get(idsColOf(db, rid, kind).where('legacy_key', '==', legacyKey).where('status', '==', STATUS_LIVE).limit(CLAIMANT_CAP + 1)),
+      tx.get(idRef),
     ]);
 
     if (!vSnap.exists) {
@@ -112,12 +119,47 @@ async function restoreIdentity(db, { rid, kind, legacyKey, canonicalId, version,
       throw new Error(`identity_restore_${verdict.code}: ${rid}/${kind}/${legacyKey} — ${verdict.detail}`);
     }
 
-    /* 6. WRITE BOTH PLANES. The id row carries the mapping the overlay resolves through; the key row
-       is the reverse index the money path reads. */
+    /* 6. WHAT THE LANDING ID ITSELF SAYS. Three cases, each answered explicitly — including by
+       refusing, because a writer that cannot see the row it overwrites cannot decide anything. */
+    const existing = idSnap.exists ? (idSnap.data() || {}) : null;
+
+    if (existing && existing.status === STATUS_RETIRED) {
+      /* 🔴 RESURRECTION MUST BE EXPLICIT, AND THIS IS NOT THE WRITER FOR IT. Retirement writes a
+         reservation deliberately, and the integrity sweep refuses to revive a retired id at all
+         ("never revive it") — an integrity job that can resurrect one is worse than none. Slice F
+         does restore retired ids on rollback, but §68 keeps that inside the flip's own transaction,
+         so refusing here blocks nothing F needs. A certified version stamping a RETIRED id on a live
+         object is itself a contradiction worth surfacing rather than smoothing. */
+      throw new Error(`identity_restore_id_retired: ${rid}/${kind}/${legacyKey} — ${canonicalId} is RETIRED; a restore will not silently resurrect a reserved id, and a certified version stamping a retired id is a contradiction to look at rather than to write through`);
+    }
+
+    if (existing && existing.legacy_key !== legacyKey) {
+      /* 🔴 THIS WOULD BE A MOVE, AND IT WOULD LEAVE THE REGISTRY DISAGREEING WITH ITSELF. Writing
+         here re-points ids/{id} at the new name while keys/{oldName} still names this id — precisely
+         the `destination_key_row_disagrees` state the guard refuses elsewhere and the integrity sweep
+         declines to repair. Manufacturing it from a path that believes it is repairing is the worst
+         version of it.
+         A move is the ATOMIC WRITER's operation: it rewrites both rows and deletes the stale key in
+         ONE transaction (§68), which is the only way the two planes stay consistent. P1a also keeps
+         identity_rename_enabled OFF so that moves do not happen yet, and this would perform one
+         without consulting the flag. So: refuse, and name both names. */
+      throw new Error(`identity_restore_id_claims_other_name: ${rid}/${kind}/${legacyKey} — ${canonicalId} is live claiming ${JSON.stringify(existing.legacy_key)}; restoring it here would MOVE it and leave keys/${existing.legacy_key} naming an id that no longer claims it. A move belongs to the atomic writer, which rewrites both planes in one transaction`);
+    }
+
+    /* 7. WRITE BOTH PLANES. The id row carries the mapping the overlay resolves through; the key row
+       is the reverse index the money path reads.
+       🔴 PRESERVE, DO NOT REPLACE. tx.set is a full replace, so writing a bare object destroys an
+       existing row's created_at — the same mechanism that once dropped the generation from the
+       pointer write. retireIdentity spreads the existing document for exactly this reason; so does
+       this. Past the two refusals above, an existing row can only be OUR OWN id already claiming this
+       name, which is the idempotent retry. */
     const stamp = new Date().toISOString();
-    tx.set(idRef, { legacy_key: legacyKey, kind, status: STATUS_LIVE, created_at: stamp, restored_at: stamp });
-    tx.set(keyRef, { canonical_id: canonicalId, kind, created_at: stamp, restored_at: stamp });
-    return { restored: true, canonical_id: canonicalId, legacy_key: legacyKey, permitted: verdict.code };
+    tx.set(idRef, { ...(existing || {}), legacy_key: legacyKey, kind, status: STATUS_LIVE,
+      created_at: (existing && existing.created_at) || stamp, restored_at: stamp });
+    tx.set(keyRef, { ...(keyRow || {}), canonical_id: canonicalId, kind,
+      created_at: (keyRow && keyRow.created_at) || stamp, restored_at: stamp });
+    return { restored: true, canonical_id: canonicalId, legacy_key: legacyKey,
+      permitted: verdict.code, existed: !!existing };
   });
 }
 
