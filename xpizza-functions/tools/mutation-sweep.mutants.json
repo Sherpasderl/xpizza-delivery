@@ -8479,5 +8479,135 @@
    "run",
    "test:d4p1-claim"
   ]
+ },
+ {
+  "id": "e5-01",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "      if (c === '\\\\') { out += c + (d === undefined ? '' : d); i += 2; continue; }\n      if (c === '/' && d === '/') { mode = 'line'; i += 2; continue; }",
+  "to": "      if (c === '/' && d === '/') { mode = 'line'; i += 2; continue; }",
+  "label": "🔴 THE ESCAPE IS NOT CONSUMED IN CODE POSITION — a regex with an escaped slash pair opens a phantom line comment and the stripper EATS REAL CODE",
+  "kills_with": "opened a phantom line comment and ate the rest of the line",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-02",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "      if (c === '/' && d === '*') { mode = 'block'; i += 2; continue; }",
+  "to": "      if (false) { mode = 'block'; i += 2; continue; }",
+  "label": "BLOCK comments are no longer removed — the exact gap both adopting guards had, so commented-out calls count as live code",
+  "kills_with": "a call inside a BLOCK comment survived",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-03",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "      if (c === \"'\") mode = 'sq';",
+  "to": "      if (false) mode = 'sq';",
+  "label": "a single-quoted string is not tracked, so a `//` inside one is read as a comment",
+  "kills_with": "single-quoted",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-04",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "      else if (c === '`') mode = 'tpl';",
+  "to": "      else if (false) mode = 'tpl';",
+  "label": "a template literal is not tracked, so a `//` inside one is read as a comment",
+  "kills_with": "template",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-05",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "      if (c === '\\n') { mode = 'code'; out += c; }   // keep the newline: line numbers and ^ anchors survive",
+  "to": "      if (c === '\\n') { mode = 'code'; }",
+  "label": "a line comment SWALLOWS ITS NEWLINE — every line number a caller reports drifts, and `^` anchors stop matching",
+  "kills_with": "changed the LINE COUNT",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-06",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "      if (c === '\\n') out += c;                       // ditto",
+  "to": "      if (false) out += c;",
+  "label": "a block comment swallows its newlines — line numbers drift by the height of every block comment above them",
+  "kills_with": "changed the LINE COUNT",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-07",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "    if (c === '\\\\') { out += c + (d === undefined ? '' : d); i += 2; continue; }\n    if ((mode === 'sq' && c === \"'\")",
+  "to": "    if ((mode === 'sq' && c === \"'\")",
+  "label": "escapes inside a string are not honoured, so an escaped quote ends the string early and the rest of the line reads as a comment",
+  "kills_with": "an escaped quote ended the string early",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-08",
+  "slice": "e5",
+  "file": "tools/strip-comments.js",
+  "from": "  if (mode === 'str') out += `\\u0000${literals.push(buf) - 1}\\u0000`;   // unterminated: still data",
+  "to": "  if (false) out += `\\u0000${literals.push(buf) - 1}\\u0000`;   // unterminated: still data",
+  "label": "maskLiterals drops an UNTERMINATED literal instead of masking it — a truncated file's trailing text reads as code",
+  "kills_with": "an unterminated literal is still data, not code",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-09",
+  "slice": "e5",
+  "file": "catalog/publish-paths.test.js",
+  "from": "const stripComments = require('../tools/strip-comments.js');",
+  "to": "const stripComments = (src) => src.split('\\n').map((l) => l.replace(/^\\s*\\/\\/.*$/, '').replace(/\\s\\/\\/.*$/, '')).join('\\n');",
+  "label": "publish-paths REVERTS to the line-only stripper — block-commented publish calls count as live writers again",
+  "kills_with": "the adoption was reverted",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
+ },
+ {
+  "id": "e5-10",
+  "slice": "e5",
+  "file": "catalog/project-guard.test.js",
+  "from": "const stripComments = require('../tools/strip-comments.js');",
+  "to": "const stripComments = (src) => src.split('\\n').map((l) => l.replace(/^\\s*\\/\\/.*$/, '').replace(/\\s\\/\\/.*$/, '')).join('\\n');",
+  "label": "project-guard REVERTS to the line-only stripper — the SIBLING of e5-09, because hardening one half of a pair and leaving the other is this programme's recurring miss",
+  "kills_with": "the adoption was reverted",
+  "command": [
+   "node",
+   "tools/strip-comments.test.js"
+  ]
  }
 ]

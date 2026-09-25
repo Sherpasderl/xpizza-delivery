@@ -24,9 +24,16 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('project-g
 
 const ROOT = join(__dirname, '..');
 const TOOLS = join(ROOT, 'tools');
-const stripComments = (src) => src.split('\n')
-  .map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, ''))
-  .join('\n');
+/* 🔴 THE SHARED STRIPPER, ADOPTED — AND THIS CHANGES WHAT THIS GUARD SEES. The local copy here
+   stripped LINE comments only, so a call inside a BLOCK comment read as live code and this guard
+   reported a tool as wired when the wiring was commented out. It also cut at a SPACED `//` inside a
+   string — `"a // b"` truncated, though NOT `"https://x"`, whose marker has no whitespace before it
+   and which the old regex therefore never touched. tools/strip-comments.js tracks string and template
+   state, removes both comment forms, and keeps the newlines so line numbers and `^` anchors survive.
+   Adopting it also required fixing a defect IN it: it ate real code on a regex containing an escaped
+   slash pair. Two copies of "is this line code" were the hazard — they drift, and then two guards
+   disagree about the same file. See tools/strip-comments.test.js, cells 3 and 6. */
+const stripComments = require('../tools/strip-comments.js');
 
 // ── 1. THE GUARD ITSELF — the real arg parse, the real .firebaserc ──────────────────────────────
 {

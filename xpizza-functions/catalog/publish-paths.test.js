@@ -54,7 +54,15 @@ function productionFiles(dir = ROOT, out = []) {
   }
   return out;
 }
-const stripComments = (src) => src.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
+/* 🔴 THE SHARED STRIPPER, ADOPTED — AND IT CHANGES WHAT THIS FILE COUNTS. The local copy stripped
+   LINE comments only, so a publish call inside a BLOCK comment counted as a live writer — and this
+   file's whole point is counting writers of the pointer doc. Measured, not assumed: the two strippers
+   disagree on 5 of the 171 production files this guard scans (tools/strip-comments.test.js cell 6,
+   which goes red if either guard reverts to a line-only stripper). This suite passed both before and
+   after the adoption, so that cell is the only thing standing between "the adoption is correct" and
+   "the adoption changed nothing measurable". Both copies are now one definition of "is this line
+   code". */
+const stripComments = require('../tools/strip-comments.js');
 
 const pointerOf = async (db, rid) => {
   const s = await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').get();

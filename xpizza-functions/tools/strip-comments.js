@@ -8,9 +8,23 @@
  * definitions of "is this line code", which is how they drift apart.
  *
  * Deliberately NOT a parser. It removes line comments and block comments while respecting string
- * and template literals, which is what a regex-based code check needs and no more. The two existing
- * copies are unchanged here: adopting this changes what those guards SEE, so that belongs in its own
- * increment rather than riding along inside an unrelated one.
+ * and template literals, which is what a regex-based code check needs and no more.
+ *
+ * 🔴 WHAT IT DOES NOT MODEL, MEASURED RATHER THAN GUESSED (cells in strip-comments.test.js):
+ *   - REGEX LITERALS are not tracked as their own mode. Escapes are consumed in code position, which
+ *     is what makes the common `/https:\/\//` safe; what remains unhandled is an UNESCAPED `//`
+ *     inside a character class (`/[//]/`), which opens a phantom line comment. Redundant as JS and
+ *     absent from this tree — pinned by a cell so the limit is known rather than discovered.
+ *   - `${...}` INSIDE A TEMPLATE is treated as string content, so a comment written inside an
+ *     interpolation survives. Also pinned.
+ * Both are recorded because a caller that believes this is a parser will eventually be wrong in a way
+ * that makes a guard SEE LESS CODE, and a guard blind to a line reports a writer that is not there.
+ *
+ * 🔴 `maskLiterals` HAS NO CALLER. Its only one was `tools/sweep-preflight.js:36`, deleted with that
+ * file in `4bc2374` — so its rationale below describes a detector and a suite that no longer exist.
+ * It is kept, not deleted, because the hazard it names is real and the atomic writer's own detectors
+ * may want it; it is kept WITH CELLS so it cannot rot unnoticed, and it is flagged here so nobody
+ * reads its presence as evidence that something uses it. Delete-or-revive is an owner/advisor call.
  */
 function stripComments(src) {
   const s = String(src == null ? '' : src);
@@ -20,6 +34,16 @@ function stripComments(src) {
   while (i < s.length) {
     const c = s[i], d = s[i + 1];
     if (mode === 'code') {
+      /* 🔴 AN ESCAPE IN CODE POSITION IS COPIED WHOLE, AND THIS IS WHAT KEEPS REGEXES INTACT.
+         Without it a regex containing an escaped slash PAIR — `/https:\/\//`, the ordinary way to
+         match a URL — lexed as: copy `\`, then see `/` next to the following `/` and open a LINE
+         COMMENT. The rest of the line was deleted as a comment. That is a stripper EATING CODE, and
+         the two guards adopting this file count writers in the source it returns: a swallowed line is
+         a writer that is not there, or a second writer of the pointer doc going unseen.
+         Consuming `\` plus the next character makes the escaped slash never pair with anything.
+         Safe in every code position: a bare `\` outside a string/regex/comment is otherwise only a
+         unicode identifier escape (`\u0041`), where copying both characters is also correct. */
+      if (c === '\\') { out += c + (d === undefined ? '' : d); i += 2; continue; }
       if (c === '/' && d === '/') { mode = 'line'; i += 2; continue; }
       if (c === '/' && d === '*') { mode = 'block'; i += 2; continue; }
       if (c === "'") mode = 'sq';
