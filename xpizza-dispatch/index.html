@@ -1203,7 +1203,9 @@
   /* ==================== ACTION MENU (popover) ==================== */
   #action-menu {
     position: fixed;
-    z-index: 150;
+    /* F5-fix P1#1: the row ⋯ menu opens from rows inside the flyout's En Fila/Cerrados panes too, so it must sit
+       ABOVE the flyout (151); at z:150 (== flyout-scrim) it was obscured. See the overlay z-stack at .flyout-scrim. */
+    z-index: 170;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -1953,6 +1955,16 @@
   /* ============ F3: nav-rail secondary-surface flyout (En Fila / Comms / Caja / Cerrados) ============ */
   /* Left-anchored (next to the 54px nav rail) so it never collides with the right-side order-detail drawer.
      Hidden by default; the existing #rail-tabs handler drives open/close (see initSurfaceFlyout). */
+  /* ─── Overlay z-stack (F5-fix coherent model) ─── each overlay that can open OVER another sits above that
+     one's scrim, so no child is trapped under a parent scrim and Esc/focus follow the top of the stack:
+       30  nav rail (persistent chrome)
+       150 flyout-scrim / 151 flyout          — opens from nav rail / cashbar (lowest overlay layer)
+       170 #action-menu                        — row ⋯ menu (incl. rows inside the flyout panes)
+       200 .msg-modal                          — messages surface (nav Comms)
+       205 comms-scrim / 206 comms-sheet       — read-only thread (opens from the flyout Comms pane OR the msg-modal → above both)
+       210 order drawer                        — order detail (opens from queue rows / flyout panes / cashbar recon)
+       220 .overlay-bg (assign picker · recon-note) — modal dialogs (open from queue / drawer / flyout Caja)
+       300 tooltip / rail-av menu   ·   999 toast (always top) */
   .flyout-scrim { position: fixed; inset: 0; z-index: 150; background: rgba(0,0,0,0.42); }
   .flyout-scrim[hidden] { display: none; }
   .surface-flyout { position: fixed; left: 54px; top: 0; bottom: 0; z-index: 151; width: 420px; max-width: calc(100vw - 66px); display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); box-shadow: var(--shadow-lift); }
@@ -2105,7 +2117,10 @@
   .comms-body { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---- Task 12: read-only Comms thread sheet (floating glass over the board) ---- */
-  .comms-scrim { position: fixed; inset: 0; z-index: 39; background: rgba(0,0,0,0.30); display: none; }
+  /* F5-fix P1#1: the Comms thread opens from the flyout's Comms pane (and over the msg-modal), so its scrim +
+     sheet must sit ABOVE the flyout scrim (150) AND the msg-modal (200) — at z:39/40 the flyout scrim intercepted
+     its clicks. See the overlay z-stack model documented at .flyout-scrim. */
+  .comms-scrim { position: fixed; inset: 0; z-index: 205; background: rgba(0,0,0,0.30); display: none; }
   .comms-scrim.open { display: block; }
   .comms-sheet {
     position: fixed; top: 72px; bottom: 72px; left: 50%; transform: translateX(-50%);
@@ -2115,7 +2130,7 @@
     backdrop-filter: blur(24px) saturate(1.4);
     border-radius: 18px;
     box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--hair-top);
-    display: none; flex-direction: column; overflow: hidden; z-index: 40;
+    display: none; flex-direction: column; overflow: hidden; z-index: 206;
   }
   .comms-sheet.open { display: flex; animation: sheetin .34s cubic-bezier(.34,1.1,.64,1) both; }
   @keyframes sheetin {
@@ -5735,6 +5750,19 @@ setInterval(() => {
   });
 }, 1000);
 
+// F5-fix P2#2: resolve where flyout focus returns on close. Same stable-identity cascade as Slice-A
+// pickerReturnFocusTarget: keep the opener if it's still attached+visible; else — the opener may have been
+// REPLACED by a live re-render (renderCashBar rebuilds #cash-recon-btn via innerHTML on the ~5s cash tick) —
+// re-find the CURRENT node by its stable id; else fall back to the always-exposed #topbar. Never a detached node.
+function flyoutRestoreFocus(opener, doc) {
+  if (opener && opener.isConnected && opener.offsetParent !== null) return { el: opener, temp: false };
+  const byId = (opener && opener.id) ? doc.getElementById(opener.id) : null;
+  if (byId && byId.offsetParent !== null) return { el: byId, temp: false };
+  const tb = doc.getElementById('topbar');
+  if (tb) return { el: tb, temp: true };
+  return { el: null, temp: false };
+}
+
 // F3: the secondary surfaces (En Fila / Comms / Caja / Cerrados) live in the nav-rail flyout. #rail-tabs was MOVED
 // (not deleted) into that flyout, so every existing caller still works verbatim — activating a tab opens the flyout,
 // collapsing the active tab (or scrim/close/Esc) closes it. renderCashBar's Reconciliar + the paid-after-close alert
@@ -5742,9 +5770,17 @@ setInterval(() => {
 (function initSurfaceFlyout() {
   const flyout = $('surface-flyout'), scrim = $('surface-flyout-scrim');
   // F5-fix P2#3: the flyout is aria-modal — give it real focus management (move focus IN on open, TRAP Tab,
-  // RESTORE focus on close), reusing Slice-A focusTrapTarget like the order drawer. Its openers (nav buttons /
-  // Reconciliar / the rtabs) are persistent (no timer re-render), so a plain opener-restore is sufficient.
+  // RESTORE focus on close), reusing Slice-A focusTrapTarget like the order drawer. Restore goes through
+  // flyoutRestoreFocus (P2#2 cascade) so a re-render that replaces the opener (e.g. #cash-recon-btn) still lands.
   let flyoutOpener = null;
+  // Higher overlays that stack ABOVE the flyout (see the overlay z-stack). When one is open, the flyout must NOT
+  // consume Esc — the top overlay owns it (else Esc double-dismisses the flyout + the thing on top of it).
+  const higherOverlayOpen = () =>
+    (!!$('order-detail-modal')  && $('order-detail-modal').classList.contains('open')) ||
+    (!!$('picker-overlay')      && !$('picker-overlay').classList.contains('hidden')) ||
+    (!!$('recon-note-overlay')  && !$('recon-note-overlay').classList.contains('hidden')) ||
+    (!!$('comms-sheet')         && $('comms-sheet').classList.contains('open')) ||
+    (!!$('msg-modal')           && $('msg-modal').classList.contains('open'));
   const showFlyout = () => {
     if (!flyout) return;
     if (flyout.hidden) flyoutOpener = document.activeElement;   // capture opener only on a genuine open
@@ -5759,9 +5795,13 @@ setInterval(() => {
     document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.add('hidden'));
     if (flyout) flyout.hidden = true;
     if (scrim) scrim.hidden = true;
-    if (wasOpen) {                                              // restore focus to the (persistent) opener
+    if (wasOpen) {                                              // restore focus via the stable-identity cascade
       const o = flyoutOpener; flyoutOpener = null;
-      if (o && o.isConnected && typeof o.focus === 'function') { try { o.focus(); } catch (_) {} }
+      const { el, temp } = flyoutRestoreFocus(o, document);
+      if (el) {
+        if (temp && el.setAttribute && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+        try { el.focus(); } catch (_) {}
+      }
     }
   };
   document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
@@ -5787,7 +5827,11 @@ setInterval(() => {
     const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
     if (target) { e.preventDefault(); target.focus(); }
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && flyout && !flyout.hidden) closeFlyout(); });
+  // F5-fix P2#3: Esc closes only the TOP overlay — no-op here while a higher overlay (drawer / picker / recon-note /
+  // comms thread / msg-modal) is open, so its own Esc handler closes just it (no flyout double-dismissal).
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && flyout && !flyout.hidden && !higherOverlayOpen()) closeFlyout();
+  });
 })();
 
 // Slice D2 — nav rail: each item routes to an EXISTING surface (no new backend). Reuses the rail-toggle,

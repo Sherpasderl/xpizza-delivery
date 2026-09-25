@@ -171,10 +171,48 @@ const pickerJs = html.slice(openIdx, closeEnd);
   assert.ok(fly, 'located initSurfaceFlyout');
   assert.match(fly, /flyoutOpener = document\.activeElement/, 'captures the opener on a genuine open');
   assert.match(fly, /focusFirst\.focus\(/, 'moves focus INTO the flyout on open');
-  assert.match(fly, /o\.focus\(\)/, 'RESTORES focus to the opener on close');
+  assert.match(fly, /flyoutRestoreFocus\(o, document\)/, 'RESTORES focus via the stable-identity cascade (not a bare opener) on close');
   assert.match(fly, /focusTrapTarget\(e\.shiftKey, document\.activeElement, focusables\)/, 'Tab trap reuses Slice-A focusTrapTarget');
   assert.match(fly, /if \(e\.key !== 'Tab' \|\| flyout\.hidden\) return;/, 'trap active only while the flyout is open');
-  ok('nav flyout: focus-in on open + Tab trap (focusTrapTarget) + focus-restore on close');
+  ok('nav flyout: focus-in on open + Tab trap (focusTrapTarget) + focus-restore via cascade on close');
+}
+
+// FEATURE 10 — F5-fix P2#2 (executable): the flyout restore survives a live re-render that REPLACES the opener.
+// renderCashBar rebuilds #cash-recon-btn via innerHTML on the ~5s cash tick → the captured opener detaches. The
+// cascade must re-find the CURRENT node by its stable id, else #topbar — never the detached node, never nowhere.
+{
+  const m = html.match(/function flyoutRestoreFocus\(opener, doc\)\s*\{[\s\S]*?\n\}/);
+  assert.ok(m, 'flyoutRestoreFocus source located');
+  // eslint-disable-next-line no-new-func
+  const resolve = new Function(`${m[0]}; return flyoutRestoreFocus;`)();
+  const el = (p) => ({ isConnected: true, offsetParent: {}, focus() {}, hasAttribute: () => false, setAttribute() {}, ...p });
+  const doc = (byId) => ({ getElementById: (id) => (byId && id in byId ? byId[id] : null) });
+  // (a) opener REPLACED by re-render (detached) but a fresh node with the same id exists → re-find it.
+  const detached = el({ isConnected: false, offsetParent: null, id: 'cash-recon-btn' });
+  const fresh = el({ id: 'cash-recon-btn' });
+  const r = resolve(detached, doc({ 'cash-recon-btn': fresh }));
+  assert.strictEqual(r.el, fresh, 'detached opener → re-found the fresh node by its stable id (#cash-recon-btn)');
+  assert.notStrictEqual(r.el, detached, 'never returns the detached opener');
+  // (b) opener gone and not re-findable → #topbar last resort (never null), flagged temp for tabindex.
+  const tb = el({});
+  const r2 = resolve(el({ isConnected: false, offsetParent: null }), doc({ topbar: tb }));
+  assert.strictEqual(r2.el, tb, 'unrecoverable opener → #topbar');
+  assert.strictEqual(r2.temp, true, '#topbar flagged temp (needs tabindex to receive focus)');
+  // (c) opener still attached+visible → kept as-is.
+  const live = el({});
+  assert.strictEqual(resolve(live, doc({})).el, live, 'attached+visible opener preserved');
+  ok('flyoutRestoreFocus: replaced opener re-found by id / else #topbar / attached opener kept — never detached, never nowhere');
+}
+
+// FEATURE 11 — F5-fix P2#3: Esc closes only the TOP overlay. The flyout's Esc no-ops while a higher overlay is
+// open (drawer / picker / recon-note / comms thread / msg-modal), so Esc-with-drawer-over-flyout closes ONLY the
+// drawer. Non-vacuous: drop the guard from the flyout Esc condition → red.
+{
+  const fly = html.slice(html.indexOf('function initSurfaceFlyout('), html.indexOf('// Slice D2 — nav rail'));
+  assert.match(fly, /const higherOverlayOpen = \(\) =>/, 'flyout defines a higher-overlay check');
+  assert.match(fly, /order-detail-modal[\s\S]*?picker-overlay[\s\S]*?recon-note-overlay[\s\S]*?comms-sheet[\s\S]*?msg-modal/, 'higher-overlay check covers drawer + picker + recon-note + comms thread + msg-modal');
+  assert.match(fly, /e\.key === 'Escape' && flyout && !flyout\.hidden && !higherOverlayOpen\(\)\) closeFlyout\(\)/, 'flyout Esc closes the flyout ONLY when no higher overlay is open');
+  ok('Esc top-only: the flyout yields Esc to any higher overlay (drawer-over-flyout closes only the drawer)');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -251,17 +251,21 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// F5-fix P1#1 — the modal dialogs (assign picker + reconciliation-note, both .overlay-bg) must stack ABOVE the
-// F3 nav flyout (z 150/151). The recon-note opens from the Caja pane INSIDE the flyout; below it, the operator
-// can't complete the (money) reconciliation. Non-vacuous: drop .overlay-bg back under the flyout → red.
+// F5-fix overlay z-stack — every overlay that opens OVER the flyout must stack above its scrim (150/151), or it's
+// trapped beneath it. Covers: .overlay-bg (assign picker + recon-note; recon opens from the Caja pane INSIDE the
+// flyout → money-flow), .comms-sheet/.comms-scrim (thread opens from the Comms pane), #action-menu (row ⋯ menu on
+// flyout rows). Non-vacuous: drop any of these back under the flyout → red.
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const zOf = (sel) => { const m = html.match(new RegExp(sel.replace(/[.]/g, '\\.') + '\\s*\\{[^}]*?z-index:\\s*(\\d+)')); return m ? Number(m[1]) : null; };
+  const zOf = (sel) => { const m = html.match(new RegExp(sel.replace(/[.#]/g, '\\$&') + '\\s*\\{[^}]*?z-index:\\s*(\\d+)')); return m ? Number(m[1]) : null; };
   const zOverlay = zOf('.overlay-bg'), zFlyout = zOf('.surface-flyout'), zScrim = zOf('.flyout-scrim');
-  assert.ok(zOverlay && zFlyout && zScrim, `z-index parsed for .overlay-bg (${zOverlay}), .surface-flyout (${zFlyout}), .flyout-scrim (${zScrim})`);
-  assert.ok(zOverlay > zFlyout, `.overlay-bg z (${zOverlay}) must exceed .surface-flyout z (${zFlyout}) — recon-note/picker sit above the flyout`);
-  assert.ok(zOverlay > zScrim, `.overlay-bg z (${zOverlay}) must exceed .flyout-scrim z (${zScrim})`);
-  ok('modal overlay (recon-note / assign picker) z-index sits above the nav flyout — money reconciliation reachable');
+  const zCommsSheet = zOf('.comms-sheet'), zCommsScrim = zOf('.comms-scrim'), zActionMenu = zOf('#action-menu');
+  assert.ok(zOverlay && zFlyout && zScrim && zCommsSheet && zCommsScrim && zActionMenu,
+    `z parsed: overlay-bg=${zOverlay} flyout=${zFlyout} scrim=${zScrim} comms-sheet=${zCommsSheet} comms-scrim=${zCommsScrim} action-menu=${zActionMenu}`);
+  assert.ok(zOverlay > zFlyout && zOverlay > zScrim, `.overlay-bg z (${zOverlay}) must exceed the flyout (${zFlyout}/${zScrim}) — recon-note/picker reachable over the flyout`);
+  assert.ok(zCommsSheet > zScrim && zCommsScrim > zScrim, `comms thread (${zCommsSheet}/${zCommsScrim}) must exceed the flyout scrim (${zScrim}) — thread opens from the Comms pane`);
+  assert.ok(zActionMenu > zFlyout, `#action-menu z (${zActionMenu}) must exceed the flyout (${zFlyout}) — row ⋯ menu opens on flyout rows`);
+  ok('overlay z-stack: recon-note/picker + comms thread + action-menu all stack ABOVE the nav flyout (no child trapped under its scrim)');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
