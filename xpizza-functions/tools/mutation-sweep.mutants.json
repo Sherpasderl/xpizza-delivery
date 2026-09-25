@@ -8392,7 +8392,7 @@
   "id": "e4-10",
   "slice": "e4",
   "file": "catalog/identity-plan.js",
-  "from": "    if (!row) continue;                                   // nothing to delete",
+  "from": "    if (!row) continue;",
   "to": "    if (!row) { deletions.push({ name: r.name, encoded, id: r.id }); continue; }",
   "label": "an ABSENT key row is reported as a deletion — the writer issues a delete for a document that is not there",
   "kills_with": "an absent row was reported as a deletion",
@@ -8444,8 +8444,8 @@
   "id": "e4-14",
   "slice": "e4",
   "file": "catalog/identity-plan.js",
-  "from": "  if (!(ids instanceof Map) || !(keys instanceof Map) || typeof encode !== 'function') {",
-  "to": "  ids = ids instanceof Map ? ids : new Map(Object.entries(ids || {}));\n  keys = keys instanceof Map ? keys : new Map(Object.entries(keys || {}));\n  encode = typeof encode === 'function' ? encode : ((s) => s);\n  if (false) {",
+  "from": "  if (!(ids instanceof Map) || !(keys instanceof Map)) {",
+  "to": "  ids = ids instanceof Map ? ids : new Map(Object.entries(ids || {}));\n  keys = keys instanceof Map ? keys : new Map(Object.entries(keys || {}));\n  if (false) {",
   "label": "the registry index is COERCED instead of required — an unread registry becomes an empty one, and every refusal is vacuously satisfied",
   "kills_with": "judged a plan against an unread registry",
   "command": [
@@ -8663,6 +8663,32 @@
   "command": [
    "node",
    "catalog/identity-registry.test.js"
+  ]
+ },
+ {
+  "id": "e4-17",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "  if (complete !== true) {",
+  "to": "  if (complete === 'never') {",
+  "label": "🔴 COMPLETENESS IS NO LONGER REQUIRED — a partially-read registry is judged as the whole one, and refusal 3 reads an unreached id as proof it does not exist",
+  "kills_with": "was accepted as an assertion that the whole registry was read",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-18",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    const encoded = encodeKey(r.name);",
+  "to": "    const encoded = `x-${r.name}`;",
+  "label": "the key lookup uses an encoding the registry did not write with — every row misses, so REFUSAL 5 GOES VACUOUS and the writer is handed an empty deletion list",
+  "kills_with": "the deletion list is wrong",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
   ]
  }
 ]

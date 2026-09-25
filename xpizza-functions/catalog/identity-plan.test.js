@@ -25,10 +25,10 @@ const idRow = (legacy_key, status) => ({ legacy_key, status: status || STATUS_LI
 /* The index the transaction hands the verifier: ids keyed by document id, keys keyed ENCODED — the
    same spelling keysColOf uses, so a test that encoded them differently would be testing a registry
    that does not exist. */
-const index = ({ ids = {}, keys = {} } = {}) => ({
+const index = ({ ids = {}, keys = {}, complete = true } = {}) => ({
   ids: new Map(Object.entries(ids)),
   keys: new Map(Object.entries(keys).map(([name, v]) => [encodeKey(name), v])),
-  encode: encodeKey,
+  complete,
 });
 const PLAN = (p) => ({ moves: [], mints: [], retires: [], ...p });
 
@@ -236,18 +236,58 @@ const PLAN = (p) => ({ moves: [], mints: [], retires: [], ...p });
   ok('plan-scale forks are refused — two ids on one name, one id on two names, one id moved and retired — and the destination guard permits the first of those');
 }
 
-// ── 7. AN UNREAD REGISTRY IS NOT AN EMPTY ONE, AND AN UNREADABLE ENTRY IS NOT AN ABSENT ONE ──
+// ── 7. UNREAD, INCOMPLETE, AND UNREADABLE ARE EACH REFUSED — NONE IS TREATED AS EMPTY ───────
 {
   const plan = PLAN({ mints: [{ id: 'P', name: 'Diavola' }] });
   /* 🔴 THE SAME MISTAKE destination_key_row_unread EXISTS FOR. Defaulting the registry to empty makes
      "the caller forgot to read it" indistinguishable from "there is nothing there" — and empty is the
      state in which every refusal above is vacuously satisfied, so forgetting to read would look like
      a clean plan. */
-  for (const bad of [undefined, {}, { ids: new Map(), keys: new Map() }, { ids: {}, keys: {}, encode: encodeKey }]) {
+  /* 🔴 THE SHAPE CASES ALL ASSERT COMPLETENESS, AND THAT IS WHAT ISOLATES THIS REFUSAL. Without it
+     the completeness guard fires first, `plan_registry_unread` is never reached, and a mutant that
+     removed the shape check would die on the OTHER guard while this loop's message claimed the shape
+     check was holding. With `complete: true` supplied, the shape check is the only thing between
+     these arguments and a judged plan. */
+  for (const bad of [{ ids: {}, keys: {}, complete: true }, { ids: new Map(), complete: true },
+    { keys: new Map(), complete: true }, { ids: [], keys: new Map(), complete: true }]) {
     const v = verifyPlan(plan, bad);
     assert.strictEqual(v.ok, false, `🔴 verifyPlan judged a plan against an unread registry: ${JSON.stringify(bad)}`);
-    assert.strictEqual(v.code, 'plan_registry_unread', `expected plan_registry_unread, got ${v.code}`);
+    assert.strictEqual(v.code, 'plan_registry_unread',
+      `🔴 the registry SHAPE check is the only guard on ${JSON.stringify(bad)} and it did not fire: ${v.code}`);
   }
+
+  /* 🔴 AND SUPPLYING NOTHING AT ALL VIOLATES BOTH, SO THIS PAIR DOES NOT PIN A CODE. `undefined` and
+     `{}` have no shape AND assert no completeness; insisting on one code here would be asserting
+     which guard happens to run first, which is not a property worth defending and would break on a
+     reordering that changed nothing real. What matters is that neither is treated as an empty
+     registry — the state in which every refusal above is vacuously satisfied. */
+  for (const nothing of [undefined, {}]) {
+    const v = verifyPlan(plan, nothing);
+    assert.strictEqual(v.ok, false, `🔴 verifyPlan judged a plan against ${JSON.stringify(nothing)} — no index at all was treated as an empty one`);
+    assert.ok(['plan_registry_unread', 'plan_registry_incomplete'].includes(v.code),
+      `it must refuse as one of the two registry refusals, got ${v.code}`);
+  }
+
+  /* 🔴 AND A PARTIALLY-READ REGISTRY IS NOT A COMPLETE ONE. Refusal 3 reads an id's ABSENCE from
+     `ids` as proof it does not exist; absence from a partial read proves nothing, and the plan that
+     slips through is a MINT onto an id the read did not reach — recycling a reservation, the thing
+     the missing status filter exists to prevent. Two READ Maps are not enough: the caller has to say
+     it read all of them, and saying nothing is refused rather than assumed. */
+  for (const notAsserted of [undefined, false, 'yes', 1, null]) {
+    const v = verifyPlan(plan, { ids: new Map(), keys: new Map(), complete: notAsserted });
+    assert.strictEqual(v.code, 'plan_registry_incomplete',
+      `🔴 completeness ${JSON.stringify(notAsserted)} was accepted as an assertion that the whole registry was read: ${v.code}`);
+  }
+  assert.strictEqual(verifyPlan(plan, { ids: new Map(), keys: new Map(), complete: true }).ok, true,
+    '🔴 an explicitly COMPLETE empty registry was refused — then the signal cannot be given at all and every caller is locked out');
+
+  /* The sensitivity control for the pair above: the SAME mint that is permitted against a complete
+     empty registry must be refused against an incomplete one. Without this, `plan_registry_incomplete`
+     could be firing for some unrelated reason. */
+  const minted = PLAN({ mints: [{ id: 'NEW', name: 'Diavola' }] });
+  assert.strictEqual(verifyPlan(minted, index({ complete: true })).ok, true, 'premise: this mint is fine against a registry read in full');
+  assert.strictEqual(verifyPlan(minted, index({ complete: false })).code, 'plan_registry_incomplete',
+    '🔴 the same mint was judged against a registry nobody claimed to have read in full');
 
   for (const bad of [null, undefined, 'a plan', 7]) {
     assert.strictEqual(verifyPlan(bad, index()).code, 'plan_malformed', `🔴 ${JSON.stringify(bad)} was accepted as a plan`);
@@ -265,7 +305,7 @@ const PLAN = (p) => ({ moves: [], mints: [], retires: [], ...p });
   const partialMove = verifyPlan(PLAN({ moves: [{ id: 'X', to: 'B' }] }), index({ ids: { X: idRow('A') } }));
   assert.strictEqual(partialMove.code, 'plan_entry_malformed',
     `🔴 a move with no \`from\` was not caught as unreadable (${partialMove.code}) — a missing \`from\` is the exact claim refusal 2 exists to check`);
-  ok('an unread registry, a non-object plan, and an entry missing the fields it is judged by are each refused rather than treated as empty');
+  ok('an unread registry, one nobody asserts is COMPLETE, a non-object plan, and an entry missing the fields it is judged by are each refused rather than treated as empty');
 }
 
 // ── 8. PURE, AND IT DOES NOT MUTATE WHAT IT IS ASKED TO JUDGE ────────────────────────────────

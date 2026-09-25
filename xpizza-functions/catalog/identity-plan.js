@@ -24,7 +24,7 @@
  * PURE. It is handed an index of the registry the caller has already read, so every branch is
  * drivable without a database, and the reads stay where the transaction is.
  */
-const { STATUS_LIVE } = require('./identity-registry');
+const { STATUS_LIVE, encodeKey } = require('./identity-registry');
 
 const REFUSE = (code, detail) => ({ ok: false, code, detail });
 const PERMIT = { ok: true, code: 'plan_verified', detail: '' };
@@ -54,14 +54,34 @@ function entriesOf(plan) {
   return { lands, releases };
 }
 
-/* `ids` : Map(documentId -> {legacy_key, status})  — ALL rows, live AND retired (see the read-cost
-           note in catalog-publish.js: the absence of a status filter is load-bearing here).
-   `keys`: Map(encodedName -> {canonical_id})
-   `encode`: the same encodeKey the registry uses, injected so this stays pure. */
-function verifyPlan(plan, { ids, keys, encode } = {}) {
+/* `ids`     : Map(documentId -> {legacy_key, status}) — ALL rows, live AND retired (see the read-cost
+               note in catalog-publish.js: the absence of a status filter is load-bearing here).
+   `keys`    : Map(encodedName -> {canonical_id})
+   `complete`: the caller's explicit assertion that those two are the WHOLE registry for this kind.
+
+   🔴 `encodeKey` IS IMPORTED, NOT INJECTED, AND THAT IS A REMOVED FAILURE MODE. It used to be an
+   `encode` parameter. Refusal 5 does `keys.get(encode(name))` and then `if (!row) continue` — so an
+   encode that disagreed with the one that WROTE those rows would make every lookup miss, every
+   deletion skip its check, and REFUSAL 5 GO VACUOUS WHILE ALL ITS CELLS PASSED, because the cells
+   supply a consistent encode. There was never a layering reason for the injection: this file already
+   imports STATUS_LIVE from the module that defines encodeKey. Purity is untouched — encodeKey is
+   deterministic — and a parameter that can be silently wrong is better deleted than documented. */
+function verifyPlan(plan, { ids, keys, complete } = {}) {
   if (!plan || typeof plan !== 'object') return REFUSE('plan_malformed', `a plan must be an object; got ${JSON.stringify(plan)}`);
-  if (!(ids instanceof Map) || !(keys instanceof Map) || typeof encode !== 'function') {
+  if (!(ids instanceof Map) || !(keys instanceof Map)) {
     return REFUSE('plan_registry_unread', 'the verifier needs the registry index the transaction read; an unread registry is not an empty one');
+  }
+  /* 🔴 AND A PARTIALLY-READ REGISTRY IS NOT A COMPLETE ONE — the other half of the same sentence.
+     Refusal 3 concludes "this id does not exist" from its ABSENCE in `ids`, which is sound only if
+     `ids` is the whole registry for this kind. destinationVerdict already refuses on `truncated`
+     before concluding anything, for exactly this reason.
+     Whether a whole-collection transactional read can come back partial IS NOT ESTABLISHED (see
+     catalog-publish.js) — which is the argument FOR requiring the assertion, not against it. The
+     caller is the only party that can know, so it must say so explicitly, and the default is refusal
+     rather than assumed completeness. If that read ever does truncate, exactly one place has to
+     answer for it. */
+  if (complete !== true) {
+    return REFUSE('plan_registry_incomplete', 'the caller must assert that the registry index is COMPLETE for this kind; refusal 3 reads an id\'s ABSENCE as proof it does not exist, and absence from a partial read proves nothing');
   }
 
   /* 🔴 MALFORMED ENTRIES ARE REFUSED, NOT SKIPPED. entriesOf drops anything without the fields it
@@ -130,9 +150,19 @@ function verifyPlan(plan, { ids, keys, encode } = {}) {
      destination-side deviations. */
   const deletions = [];
   for (const r of releases) {
-    const encoded = encode(r.name);
+    const encoded = encodeKey(r.name);
     const row = keys.get(encoded);
-    if (!row) continue;                                   // nothing to delete
+    /* 🔴 NO REVERSE ROW: DELIBERATELY NOT REFUSED, AND SAID SO. Reaching here means refusal 4 already
+       confirmed ids/{id} claims this name, and yet keys/{name} has no row — the missing-reverse-row
+       orphan, which is the integrity sweep's territory and which the sweep repairs by WRITING the row
+       rather than by refusing anything. Continuing is the decision: nothing to delete is nothing to
+       delete, and refusing would lock publishing out of this restaurant until the hourly sweep ran,
+       over residue the sweep is explicitly allowed to leave. The activation does not repair it either
+       — that is not an activation's job, and a quiet repair inside a publish is the laundering this
+       programme refuses everywhere else.
+       Named because a silence that was decided and a silence that was overlooked read identically six
+       months from now, and everything else in this file argues its decisions. */
+    if (!row) continue;
     if (row.canonical_id !== r.id) {
       return REFUSE('plan_delete_row_names_other_id', `${r.name}: this plan would delete its key row while that row names ${JSON.stringify(row.canonical_id)}, not ${r.id}. Deleting it leaves that id live with no reverse row — the orphan the integrity sweep exists to repair`);
     }
