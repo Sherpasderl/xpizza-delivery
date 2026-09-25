@@ -249,7 +249,7 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
 // ─────────────────────────────────────────────────────────────────────────────
 {
   assert.match(html, /<title>X Pizza · Despacho<\/title>/, 'title renamed to Despacho');
-  assert.match(html, /<span class="tb-brand"><span class="tb-x">X<\/span> Despacho<\/span>/, 'topbar brand renamed');
+  assert.match(html, /<div class="tb-title"><b>Despacho<\/b>/, 'topbar title = Despacho (F2 rebuilt the topbar)');
   assert.match(html, /<h3>Despacho<\/h3>/, 'left-rail exceptions heading renamed');
   assert.doesNotMatch(html, />Torre de control</, 'no visible "Torre de control" text remains');
   // DOM ids / wiring intact (renaming visible text must not touch these)

@@ -202,10 +202,9 @@
   .alerts-bell-badge[hidden] { display: none; }
 
   header.topbar {
-    height: 60px;
-    background: linear-gradient(180deg, var(--card-2), var(--topbar-2));
-    border-bottom: 1px solid var(--border-soft);
-    box-shadow: 0 1px 0 var(--hair-top), 0 4px 20px rgba(0,0,0,0.25);
+    height: 53px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     padding: 0 16px;
@@ -213,6 +212,29 @@
     position: relative;
     z-index: 10;
   }
+  /* F2 topbar (mockup): title + crumb, search, account avatar in the rail */
+  .tb-kpis[hidden] { display: none; }
+  .tb-title { display: flex; flex-direction: column; line-height: 1.15; }
+  .tb-title b { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+  .tb-title .crumb { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
+  .tb-title .crumb-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success); flex: none; }
+  .search { flex: 1; max-width: 340px; display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; transition: border-color 0.15s; }
+  .search:focus-within { border-color: var(--hair-2); box-shadow: 0 0 0 3px var(--primary-soft); }
+  .search svg { color: var(--text-dim); flex: none; }
+  .search input { flex: 1; min-width: 0; background: none; border: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 12.5px; }
+  .search input::placeholder { color: var(--text-dim); }
+  .search input:focus { outline: none; }
+  .search kbd { margin-left: auto; }
+  kbd { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); background: var(--surface-3); border: 1px solid var(--hair-2); border-radius: 4px; padding: 1px 5px; min-width: 15px; text-align: center; display: inline-block; line-height: 1.4; }
+  /* account avatar in the nav rail + its menu */
+  .rail-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600; color: var(--text-soft); background: var(--avatar-1, var(--surface-3)); margin-top: 6px; border: none; cursor: pointer; }
+  .rail-av:hover { color: var(--text); filter: brightness(1.08); }
+  .rail-av-menu { position: fixed; left: 60px; bottom: 12px; z-index: 300; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lift); padding: 6px; }
+  .rail-av-menu[hidden] { display: none; }
+  .rail-av-email { font-size: 11.5px; color: var(--text-soft); padding: 6px 9px 2px; word-break: break-all; }
+  .rail-av-version { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); padding: 0 9px 6px; border-bottom: 1px solid var(--border-soft); margin-bottom: 5px; }
+  .rail-av-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--text); font-family: 'Inter', sans-serif; font-size: 12.5px; padding: 8px 9px; border-radius: 6px; cursor: pointer; }
+  .rail-av-item:hover { background: var(--hover); }
   /* ---- v6 brand (mockup .brand) ---- */
   .tb-brand {
     font-family: 'Inter', sans-serif; font-weight: 800;
@@ -2166,44 +2188,46 @@
     <button class="nav" data-nav="repartidores" data-tip="Repartidores" aria-label="Repartidores"><svg class="ic"><use href="#i-users"/></svg></button>
     <div class="nav-sp"></div>
     <button class="nav" data-nav="ajustes" data-tip="Ajustes · próximamente" aria-label="Ajustes (próximamente)" disabled><svg class="ic"><use href="#i-gear"/></svg></button>
+    <!-- F2: account avatar (was in the topbar) — click opens the account menu (Salir + version), so sign-out is preserved. -->
+    <button class="rail-av" id="topbar-avatar" title="Cuenta" aria-label="Cuenta" aria-haspopup="menu" aria-expanded="false">—</button>
   </nav>
+  <div class="rail-av-menu" id="rail-av-menu" role="menu" aria-label="Cuenta" hidden>
+    <div class="rail-av-email" id="rail-av-email"></div>
+    <div class="rail-av-version" data-version-display></div>
+    <button class="rail-av-item" id="signout-btn" role="menuitem">Salir</button>
+  </div>
 
+  <!-- F2: topbar rebuilt to the mockup — title + search + tb-right (live · toggle · alerts · theme). The
+       rail-toggle buttons stay wired (collapse still works); they're transitional — F3's fixed 3-panel board
+       retires them. KPIs + comms btn move to a hidden sink (still JS-written); avatar/sign-out → nav rail. -->
   <header class="topbar" id="topbar">
     <button class="rail-toggle" id="rail-toggle-left" title="Mostrar/ocultar panel izquierdo" aria-label="Panel izquierdo"><svg class="ic"><use href="#i-menu"/></svg><span class="rail-badge" id="left-rail-badge"></span></button>
-    <span class="tb-brand"><span class="tb-x">X</span> Despacho</span>
-    <span class="tb-restaurant" id="tb-restaurant">X. Pizza</span>
-
-    <div class="tb-kpis">
-      <div class="tb-kpi"><b id="stat-drivers">0</b><span>En turno</span></div>
-      <span class="kdiv"></span>
-      <div class="tb-kpi" id="kpi-pending"><b id="stat-pending">0</b><span>En cola</span></div>
-      <span class="kdiv"></span>
-      <div class="tb-kpi"><b id="stat-active">0</b><span>Activos</span></div>
-      <span class="kdiv"></span>
-      <div class="tb-kpi"><b id="stat-delivered">0</b><span>Entregados</span></div>
+    <div class="tb-title"><b>Despacho</b><span class="crumb"><span class="crumb-dot"></span><span id="tb-restaurant">X. Pizza</span> · Centro</span></div>
+    <div class="search" id="topbar-search-box">
+      <svg class="ic sm"><use href="#i-search"/></svg>
+      <input id="topbar-search" type="text" placeholder="Buscar pedido, cliente o repartidor…" aria-label="Buscar pedido, cliente o repartidor" autocomplete="off">
+      <kbd>⌘K</kbd>
     </div>
-
     <div class="tb-right">
-      <!-- D4: board-liveness heartbeat pip (read-only, event-freshness). -->
       <div class="live-pip" id="board-liveness" role="status" title="Frescura de datos del tablero" aria-label="Estado del tablero"><span class="d"></span>Tablero <b id="board-liveness-age">en vivo</b></div>
-      <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos">
-        <span class="aa-label">Auto-asignar</span>
-        <span class="aa-sw"></span>
-      </button>
-      <button class="iconbtn msg-btn" id="msg-btn" title="Mensajes de clientes" aria-label="Mensajes de clientes">
-        <span class="msg-icon"></span>
-        <span class="msg-badge" id="msg-badge">0</span>
-      </button>
-      <!-- D4: alerts affordance — surfaces the Torre exceptions (GPS-dark driver, payment/reconciliation, etc.). -->
+      <button class="auto-assign-toggle" id="auto-assign-toggle" title="Asignación automática de pedidos"><span class="aa-label">Auto-asignar</span><span class="aa-sw"></span></button>
       <button class="iconbtn alerts-bell" id="alerts-bell" title="Alertas" aria-label="Alertas"><svg class="ic"><use href="#i-alert"/></svg><span class="alerts-bell-badge" id="alerts-bell-badge" hidden>0</span></button>
       <button class="iconbtn" id="theme-toggle" title="Cambiar tema" aria-label="Cambiar tema"><svg class="ic"><use href="#i-moon"/></svg></button>
-      <div class="tb-avatar" id="topbar-avatar" title="Sesión">—</div>
-      <span id="topbar-user" hidden></span>
       <button class="rail-toggle" id="rail-toggle-right" title="Mostrar/ocultar panel derecho" aria-label="Panel derecho"><svg class="ic"><use href="#i-panel"/></svg></button>
-      <button class="topbar-btn" id="signout-btn">Salir</button>
-      <span class="version-tag" data-version-display></span>
     </div>
   </header>
+
+  <!-- Hidden sink: updateStats / updateMessagesBadge still write here (kept wired); the mockup topbar shows no
+       KPIs and no comms button. "En turno" lives in the roster header; Comms is on the nav rail. Activos +
+       Entregados are computed but not surfaced (flagged for the owner). -->
+  <div class="tb-kpis" id="tb-kpis-sink" hidden aria-hidden="true">
+    <div class="tb-kpi"><b id="stat-drivers">0</b><span>En turno</span></div>
+    <div class="tb-kpi" id="kpi-pending"><b id="stat-pending">0</b><span>En cola</span></div>
+    <div class="tb-kpi"><b id="stat-active">0</b><span>Activos</span></div>
+    <div class="tb-kpi"><b id="stat-delivered">0</b><span>Entregados</span></div>
+    <span id="topbar-user"></span>
+    <button class="msg-btn" id="msg-btn" tabindex="-1" aria-label="Mensajes de clientes"><span class="msg-icon"></span><span class="msg-badge" id="msg-badge">0</span></button>
+  </div>
 
   <!-- Dispatcher alerts now render into the left-rail Torre de Control (#torre-list) — see renderDispatcherAlerts. -->
 
@@ -3522,6 +3546,7 @@ function getActionQueue(nowTs) {
 }
 
 let colaFilter = 'all';   // 'all' | 'unassigned' | 'stalled' | 'atrisk'
+let colaSearchQuery = '';  // F2: topbar search — live text filter over the Cola (id / customer / items)
 
 // Slice B REVISE (P1-b): compute the action queue ONCE and drive BOTH count surfaces from it, so no caller can
 // refresh the Cola header without the topbar KPI (and both read a single timestamp). The one shared path.
@@ -3546,7 +3571,11 @@ function renderCola(precomputed) {
   setSeg('seg-all-n', counts.all); setSeg('seg-unassigned-n', counts.unassigned);
   setSeg('seg-stalled-n', counts.stalled); setSeg('seg-atrisk-n', counts.atrisk);
 
-  const shown = colaFilter === 'all' ? entries : entries.filter(e => e.primary === colaFilter);
+  let shown = colaFilter === 'all' ? entries : entries.filter(e => e.primary === colaFilter);
+  if (colaSearchQuery) {                       // F2: topbar search — filter by id / customer / items (display-only)
+    const q = colaSearchQuery.toLowerCase();
+    shown = shown.filter(e => { const o = e.order || {}; return `${o.order_id || ''} ${o.customer_name || ''} ${o.items_text || ''}`.toLowerCase().includes(q); });
+  }
   if (shown.length === 0) {
     list.innerHTML = `<div class="tree-empty">${counts.all === 0 ? 'Sin pedidos que necesiten acción' : 'Nada en este filtro'}</div>`;
   } else {
@@ -5563,6 +5592,29 @@ $('alerts-bell')?.addEventListener('click', () => {
   const list = $('torre-list');
   if (list && typeof list.scrollIntoView === 'function') list.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
+
+// F2: topbar search → live-filter the Cola via the SHARED queue path (syncActionQueueViews → renderCola reads
+// colaSearchQuery), so it adds no extra renderCola caller. ⌘/Ctrl-K focuses it. Presentation-only filter.
+(function initTopbarSearch() {
+  const input = $('topbar-search'); if (!input) return;
+  input.addEventListener('input', (e) => { colaSearchQuery = e.target.value.trim(); syncActionQueueViews(); });
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); input.focus(); input.select(); }
+  });
+})();
+
+// F2: account avatar menu in the nav rail (Salir + version). Sign-out stays wired to #signout-btn (its existing
+// handler is unchanged) — the button just lives in this menu now, so the sign-out FUNCTION is preserved.
+(function initAvatarMenu() {
+  const av = $('topbar-avatar'), menu = $('rail-av-menu'); if (!av || !menu) return;
+  const setOpen = (open) => {
+    menu.hidden = !open; av.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { const em = $('rail-av-email'), u = $('topbar-user'); if (em && u) em.textContent = u.textContent || ''; }
+  };
+  av.addEventListener('click', (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target) && e.target !== av) setOpen(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) setOpen(false); });
+})();
 
 // Live-tick the aging timers each second (recompute from each row's created-time baseline in-place).
 setInterval(() => {
