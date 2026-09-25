@@ -46,6 +46,8 @@ const { derivePlan } = require('./identity-derive');
 const { verifyPlan } = require('./identity-plan');
 const { judgePlanDestinations } = require('./identity-destination');
 const { applyIdentityPlan } = require('./identity-writer');
+const { reconcileOnRollback } = require('./identity-reconcile');
+const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
 const { renameEnabled } = require('./identity-flags');
 /* The activation's own verification budget: the same ceiling bootstrap uses, for the same reason —
    one transaction can only verify so much, and verifying a SUBSET is worse than refusing. */
@@ -593,12 +595,14 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       ]);
 
       const persisted = { dish: {}, extra: {} };
+      const docIdByKey = { dish: new Map(), extra: new Map() };   // key -> version doc id, for writing a mint back
       const candidateKeys = { dish: new Set(), extra: new Set() };
       for (const [kind, snap] of [['dish', itemsSnap], ['extra', extrasSnap]]) {
         for (const d of (snap.docs || [])) {
           const data = d.data() || {};
           if (typeof data.key !== 'string' || !data.key) continue;
           candidateKeys[kind].add(data.key);
+          docIdByKey[kind].set(data.key, d.id);
           const id = (data.display || {}).identity_id;
           if (typeof id === 'string' && id) persisted[kind][data.key] = id;
         }
@@ -635,9 +639,36 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
         candidateKeys, registry, baseline: livePair, live: livePair,
       });
       if (!judged.fence.ok) throw new Error(`${judged.fence.code}: ${rid}/${versionId} — ${judged.fence.detail}`);
-      const bad = judged.stamps.filter((e) => !e.verdict.ok);
+      /* 🔴 ON A ROLLBACK, FIVE OF THESE REFUSALS BELONG TO THE RECONCILIATION, NOT TO THE STAMP MAP.
+         A rollback TARGET is not a draft: its stamps are server-written history the stamp map already
+         validated when that version was published, and re-judging them against a registry that has
+         legitimately moved calls the disagreement forgery. After a deletion that disagreement is
+         GUARANTEED. The set is REGISTRY_AGREEMENT_REFUSALS, enumerated in identity-stampmap.js and
+         held exhaustive by a source scan there; the other six — the four fence refusals, which are
+         about WHEN rather than provenance, and the two structural ones — still apply here. */
+      const relocated = isRollback ? new Set(REGISTRY_AGREEMENT_REFUSALS) : new Set();
+      const bad = judged.stamps.filter((e) => !e.verdict.ok && !relocated.has(e.verdict.code));
       if (bad.length) {
         throw new Error(`${bad[0].verdict.code}: ${rid}/${versionId} — ${bad.length} stamp(s) refused AT ACTIVATION — ${bad.map((e) => e.verdict.detail).join(' · ')}`);
+      }
+
+      /* THE ROLLBACK'S OWN STAMPS, for classifying retires. Read here because reads close below, and
+         only on the rollback path: two bounded subcollection reads, menu-sized, and rollbacks are
+         rare. Without them the reconciliation reports every retire `unknown` rather than guessing. */
+      let activeStamps = null;
+      if (isRollback && liveActive) {
+        activeStamps = { dish: {}, extra: {} };
+        const avref = versionsColOf(db, rid).doc(liveActive);
+        const [aItems, aExtras] = await Promise.all([
+          tx.get(avref.collection('menu_items')), tx.get(avref.collection('extras')),
+        ]);
+        for (const [kind, snap] of [['dish', aItems], ['extra', aExtras]]) {
+          for (const d of (snap.docs || [])) {
+            const data = d.data() || {};
+            const sid = (data.display || {}).identity_id;
+            if (typeof data.key === 'string' && data.key && typeof sid === 'string' && sid) activeStamps[kind][data.key] = sid;
+          }
+        }
       }
 
       /* ══ THE ATOMIC WRITER (§4) — P1a: MINTS ONLY ════════════════════════════════════════════
@@ -660,6 +691,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
          transaction, and passed in — a flag that changed between the dish and extra loops would let
          one kind rename while the other refused, inside a transaction that is all-or-nothing. */
       const identityWrites = { dish: null, extra: null };
+      const mintedThisFlip = { dish: new Map(), extra: new Map() };   // key -> minted id, written back below
       for (const kind of ['dish', 'extra']) {
         const allocate = (legacyKey) => {
           /* 🔴 RETRIED AGAINST THE MAP, NOT THE DATABASE, because reads are closed by now. `fullIds`
@@ -672,6 +704,28 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           }
           throw new Error(`flip_identity_mint_exhausted: ${rid}/${kind}/${legacyKey} — every proposed id is already registered; for a grandfathered slug this means the slug is taken and needs a human decision`);
         };
+
+        /* 🔴 A ROLLBACK RECONCILES; A PUBLISH DERIVES FORWARD. Same writer, same deletion discipline,
+           different question: forward asks what the CANDIDATE needs, backward asks what the TARGET
+           needs made true again. The reconciliation is the only path that RETIRES in P1a, and it is
+           safe to because its counterpart — restore — is in the same transaction. */
+        if (isRollback) {
+          const rec = reconcileOnRollback({
+            targetStamps: persisted[kind], ids: fullIds[kind], keys: fullKeys[kind],
+            activeStamps: activeStamps ? activeStamps[kind] : undefined,
+          });
+          if (rec.refusals.length) {
+            throw new Error(`${rec.refusals[0].code}: ${rid}/${versionId}/${kind} — ${rec.refusals.length} refusal(s) reconciling the rollback target — ${rec.refusals.map((r) => r.detail).join(' · ')}`);
+          }
+          if (!rec.restores.length && !rec.retires.length) continue;   // the registry already says what the target says
+          identityWrites[kind] = applyIdentityPlan(tx, {
+            db, rid, kind, existing: fullIds[kind],
+            plan: { moves: [], mints: [], retires: rec.retires, restores: rec.restores },
+            verified: { ok: true, lands: [], releases: [], deletions: rec.deletions },
+          });
+          identityWrites[kind].residue = rec.retires.filter((r) => r.why === 'residue').length;
+          continue;
+        }
 
         const derived = derivePlan({
           candidateKeys: candidateKeys[kind], stamps: persisted[kind],
@@ -714,9 +768,64 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           throw new Error(`${verified.code}: ${rid}/${versionId}/${kind} — the activation plan was refused AT ACTIVATION — ${verified.detail}`);
         }
         identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing: fullIds[kind] });
+        for (const m of plan.mints) mintedThisFlip[kind].set(m.name, m.id);
       }
+      /* ══ A MINT MUST REACH THE VERSION **AND** THE SOURCE — BOTH, OR NEITHER ════════════════
+         🔴 WHY THE VERSION. writeVersion stamps `display.identity_id` from the DRAFT, and a brand-new
+         object has no stamp at draft time — that is what makes it a mint. So without this the version
+         that INTRODUCED an object carries no record of the identity it was given, §3.1's two-plane
+         history is incomplete for it, and a rollback to that version cannot restore it: the
+         reconciliation restores from the target's stamps and the target has none. Measured before
+         fixing — a freshly minted dish read `identity_id: null` in its own version while the registry
+         held the id.
+         🔴 NOT A MUTATION OF AN IMMUTABLE RECORD. writeVersion commits the version docs BEFORE the
+         flip, so at this instant that version IS NOT YET ACTIVE; it becomes active in this same
+         transaction. No reader ever observes it active-and-unstamped. We are completing a record
+         before it becomes immutable, not editing one after.
+         🔴 AND WHY THE SOURCE, WHICH IS THE HALF THAT MAKES THIS SAFE. `validatePartition` refuses a
+         publish when an id in A — the ACTIVE version's stamps — is neither carried nor declared
+         deleted (identity-partition.js:121). Stamp the version alone and that id joins A while the
+         source still lacks it, so THE NEXT PUBLISH REFUSES `identity_partition_unaccounted`: the
+         merchant adds a dish, publishes, and is locked out on the publish after. That is §3.1's
+         documented lockout arriving from the opposite direction. Both halves, or neither.
+         Only `display.identity_id` is added, to objects matched BY KEY — bootstrap:338/369's shape. */
+      const mintedCount = mintedThisFlip.dish.size + mintedThisFlip.extra.size;
+      if (mintedCount) {
+        const vrefMint = versionsColOf(db, rid).doc(versionId);
+        for (const [kind, col] of [['dish', 'menu_items'], ['extra', 'extras']]) {
+          for (const [key, id] of mintedThisFlip[kind]) {
+            const docId = docIdByKey[kind].get(key);
+            if (docId) tx.update(vrefMint.collection(col).doc(docId), { 'display.identity_id': id });
+          }
+        }
+        /* 🔴 THE SOURCE ENRICHMENT IS CAS-PROTECTED OR IT IS SKIPPED, NEVER BLIND. bootstrap:356 names
+           the hazard — "enriching over a newer draft would clobber their work". The flip only holds a
+           settled baseline when the caller supplied a draftRevision, so without one the enrichment is
+           refused rather than guessed at: a publish that cannot safely write the source must not
+           stamp the version either, or it creates the very lockout above. */
+        if (!wantsDraftCas || !draftSnap) {
+          throw new Error(`flip_mint_needs_draft_cas: ${rid}/${versionId} — ${mintedCount} object(s) were minted an identity, and recording it in the source requires a draftRevision to compare against; stamping the version without it would refuse the NEXT publish as identity_partition_unaccounted`);
+        }
+        const liveSrc = draftSnap.exists ? (draftSnap.data() || {}) : {};
+        const enrich = (rows, kind) => (Array.isArray(rows) ? rows : []).map((o) => {
+          const id = o && typeof o.key === 'string' ? mintedThisFlip[kind].get(o.key) : undefined;
+          return id === undefined ? o : { ...o, display: { ...(o.display || {}), identity_id: id } };
+        });
+        tx.update(sourceRefOf(db, rid), { items: enrich(liveSrc.items, 'dish'), extras: enrich(liveSrc.extras, 'extra') });
+      }
+
       if (identityWrites.dish || identityWrites.extra) {
-        try { console.log('identity_activation_writes', JSON.stringify({ rid, versionId, ...identityWrites })); } catch (_) {}
+        try { console.log('identity_activation_writes', JSON.stringify({ rid, versionId, rollback: isRollback, ...identityWrites })); } catch (_) {}
+        /* 🔴 RESIDUE RETIREMENT GETS ITS OWN LINE. It is REQUIRED — a residue orphan is released only
+           by the retire branch, which is what makes the contested-destination case unreachable — and
+           it is also surprising: a rollback sweeping up pre-P1 migration orphans it never mentioned.
+           Surprising AND necessary is exactly the thing an operator should meet in a log rather than
+           in a diff. See the paired notes in identity-reconcile.js. */
+        const residue = (identityWrites.dish ? identityWrites.dish.residue || 0 : 0)
+          + (identityWrites.extra ? identityWrites.extra.residue || 0 : 0);
+        if (residue) {
+          try { console.log('identity_rollback_residue_retired', JSON.stringify({ rid, versionId, count: residue })); } catch (_) {}
+        }
       }
     }
 

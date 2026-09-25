@@ -21,7 +21,7 @@ require('./_emulator-required')('firestore');
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { publishVersion } = require('../catalog/catalog-publish');
-const { sourceToBuildInputs } = require('../catalog/source-store');
+const { sourceToBuildInputs, encodeUpdateTime } = require('../catalog/source-store');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { getActivePointer } = require('../catalog/catalog-firestore');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
@@ -68,9 +68,16 @@ async function candidateFromSource() {
     extraRecords: (src.extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })) };
 }
 
+/* 🔴 draftRevision IS PASSED, BECAUSE THE PORTAL PASSES IT. publish-edited-handler.js sends
+   `{ activeVersionId, draftRevision: sourceUpdateTime }`, and a mint now REFUSES without one — it
+   must write the minted id back into the source, and writing the source without a CAS would clobber
+   a merchant mid-edit. A helper that omitted it would be testing a shape the portal never sends, and
+   would have hidden that refusal behind a fixture. */
 const publish = async (expectedActive, tag) => {
+  const snap = await sourceRefOf(db, RID).get();
   const input = { ...(await candidateFromSource()), source_sha: tag };
-  const r = await publishVersion(db, RID, input, { expected: { activeVersionId: expectedActive } });
+  const r = await publishVersion(db, RID, input,
+    { expected: { activeVersionId: expectedActive, draftRevision: encodeUpdateTime(snap.updateTime) } });
   return r.versionId || r.version_id || r;
 };
 
@@ -145,11 +152,18 @@ async function addDishToSource(name) {
 
     /* A stale CAS is a real abort with a real cause, rather than a fault injected into the writer:
        injecting into the writer would prove the writer rolls back its own injected failure. */
-    await assert.rejects(
-      () => publish('v-does-not-exist', `mint-doomed-${STAMP}`),
-      /flip_cas_stale|publish|expected/i,
-      'premise — the activation really was refused',
-    );
+    /* 🔴 CAPTURED RATHER THAN assert.rejects'd, SO THE REAL ERROR IS PRINTED. With a regex, a publish
+       that failed for a DIFFERENT reason reported only "premise — the activation really was refused",
+       which says nothing about what went wrong. Two mutants — stamping the version without enriching
+       the source, and the reverse — both surface here as a PARTITION refusal on this next publish,
+       and with a regex that fact was invisible. An opaque premise is a poor diagnostic in exactly the
+       way an exhaustive assertion is. */
+    let doomed = null;
+    try { await publish('v-does-not-exist', `mint-doomed-${STAMP}`); }
+    catch (e) { doomed = (e && e.message) || String(e); }
+    assert.ok(doomed, '🔴 premise — a publish against a non-existent active version was ACCEPTED');
+    assert.ok(/flip_cas_stale|expected/i.test(doomed),
+      `🔴 the publish failed, but NOT on the stale CAS this cell stages. If this is identity_partition_unaccounted the version was stamped without the source being enriched; if it is identity_partition_carried_unknown the source was enriched without the version being stamped — either way a mint reached only one plane and the NEXT publish is refused: ${doomed}`);
 
     const after = await getActivePointer(db, RID);
     assert.strictEqual(after.version, before.version, 'premise — the pointer did not move');
@@ -186,7 +200,68 @@ async function addDishToSource(name) {
     ok('a certified publish runs the in-transaction writer and NOT the post-flip pass — exactly one identity writer per publish');
   }
 
-  // ── 4. 🔴 la_musa: AN UNCERTIFIED PUBLISH STILL REGISTERS ITS IDENTITIES ────────────────────
+  // ── 4. 🔴 PUBLISH TWICE — THE LOCKOUT APPEARS ON THE **SECOND** PUBLISH, NOT THE FIRST ─────
+  {
+    /* 🔴 EVERY OTHER CELL HERE WOULD PASS WHILE THE MERCHANT IS ONE PUBLISH FROM BEING STUCK. A mint
+       now stamps `display.identity_id` into its version, which puts that id into A — the ACTIVE
+       version's certified set that validatePartition checks against (identity-partition.js:121).
+       If the SOURCE is not enriched with the same id, the next draft does not carry it, so on the
+       next publish the id is in A, absent from C, absent from D → `identity_partition_unaccounted`,
+       REFUSED. The merchant adds a dish, publishes, and is locked out on the publish AFTER.
+       That is §3.1's documented lockout — "one publish after cutover, then locked out of their own
+       menu, with no way back" — arriving from the opposite direction, out of the fix for the
+       version-stamp gap. Both halves ship together or neither does, and only a SECOND publish can
+       tell. */
+    const DISH2 = `Zz Second Publish ${STAMP}`;
+    await addDishToSource(DISH2);
+    const cur = await getActivePointer(db, RID);
+    const first = await publish(cur.version, `twice-a-${STAMP}`);
+
+    const mintedId = (await keyRowOf('dish', DISH2) || {}).canonical_id;
+    assert.ok(mintedId, 'premise — the first publish minted an identity for the new dish');
+
+    /* 🔴 BOTH PLANES CARRY IT, and each is asserted separately because they fail independently: the
+       version stamp is what closes the two-plane history hole, the source enrichment is what keeps
+       the next publish possible, and a fix that did one would look complete from the other's side. */
+    const vItems = await versionsColOf(db, RID).doc(first).collection('menu_items').get();
+    const inVersion = vItems.docs.map((d) => d.data()).find((d) => d.key === DISH2);
+    assert.strictEqual(((inVersion || {}).display || {}).identity_id, mintedId,
+      '🔴 the VERSION that introduced this object does not carry the id it was minted — §3.1 two-plane history is incomplete for it, and a rollback to this version could never restore it');
+
+    const srcAfter = (await sourceRefOf(db, RID).get()).data();
+    const inSource = (srcAfter.items || []).find((o) => o.key === DISH2);
+    assert.strictEqual(((inSource || {}).display || {}).identity_id, mintedId,
+      '🔴 the SOURCE was not enriched with the minted id — the next draft will not carry it, and the publish below is about to be refused identity_partition_unaccounted');
+
+    /* THE ASSERTION THAT ONLY A SECOND PUBLISH CAN MAKE. */
+    let refused = null;
+    try {
+      await addDishToSource(`Zz Third ${STAMP}`);
+      await publish(first, `twice-b-${STAMP}`);
+    } catch (e) { refused = (e && e.message) || String(e); }
+    assert.strictEqual(refused, null,
+      `🔴 THE PUBLISH AFTER A MINT WAS REFUSED — the merchant added a dish, published, and is now locked out of their own menu. If this says identity_partition_unaccounted, the version was stamped and the source was not: ${refused}`);
+    /* 🔴 AND A MINTING PUBLISH WITHOUT A DRAFT CAS IS REFUSED, NOT ENRICHED BLINDLY. Recording the
+       minted id means WRITING the source, and writing it without a revision to compare against would
+       clobber a merchant mid-edit — bootstrap:356 names that hazard for the same write. The portal
+       always sends a draftRevision (publish-edited-handler.js), so this is fail-closed rather than a
+       path anyone takes; it exists because "the caller always passes it" is the assumption that gets
+       broken by the next caller. */
+    await addDishToSource(`Zz NoCas ${STAMP}`);
+    const live = await getActivePointer(db, RID);
+    let noCas = null;
+    try {
+      const input = { ...(await candidateFromSource()), source_sha: `nocas-${STAMP}` };
+      await publishVersion(db, RID, input, { expected: { activeVersionId: live.version } });   // no draftRevision
+    } catch (e) { noCas = (e && e.message) || String(e); }
+    assert.ok(noCas && /flip_mint_needs_draft_cas/.test(noCas),
+      `🔴 a publish that MINTS without a draftRevision was allowed to write the source — a merchant mid-edit would have their work clobbered by a publish that only meant to record an id: ${noCas}`);
+    assert.strictEqual((await getActivePointer(db, RID)).version, live.version,
+      '🔴 the refused publish moved the pointer anyway');
+    ok('publishing TWICE after a mint succeeds — version AND source both carry the id — and a minting publish with no draft CAS is refused rather than clobbering the draft');
+  }
+
+  // ── 5. 🔴 la_musa: AN UNCERTIFIED PUBLISH STILL REGISTERS ITS IDENTITIES ────────────────────
   {
     /* THE CELL THAT WOULD HAVE CAUGHT THE DELETION WE NEARLY MADE. §4 reads as "remove the post-flip
        writer", and removing it OUTRIGHT was the plan until this was measured: la_musa is never
@@ -238,7 +313,7 @@ async function addDishToSource(name) {
     ok('an UNCERTIFIED la_musa publish still registers its identities through the post-flip pass — the conditional removal keeps exactly one writer per publish, for both brands');
   }
 
-  // ── 5. 🔴 A ROLLBACK TO AN UNCERTIFIED TARGET PERFORMS **ZERO** REGISTRY WRITES ─────────────
+  // ── 6. 🔴 A ROLLBACK TO AN UNCERTIFIED TARGET PERFORMS **ZERO** REGISTRY WRITES ─────────────
   {
     /* 🔴 THIS GUARD IS BUILT BEFORE THE THING IT GUARDS, DELIBERATELY. reconcileOnRollback does not
        exist yet. When it does, §5's fourth case — "Y retired if absent from the target" — run against
@@ -334,6 +409,76 @@ async function addDishToSource(name) {
     assert.strictEqual((await victimKeyRef.get()).exists, false,
       '🔴 the un-backfilled dish was MINTED an identity by a rollback to an uncertified target — a rollback reconciles what the target can prove, and an uncertified target proves nothing');
     ok('a rollback to an UNCERTIFIED target performs ZERO registry writes, even with an un-backfilled dish a permitted derivation would have minted');
+  }
+
+  // ── 7. 🔴 A ROLLBACK ACROSS A DELETION SUCCEEDS AND RESURRECTS — THE RELOCATION, END TO END ──
+  {
+    /* 🔴 THE CASE THAT DECIDES WHETHER MOVING FIVE REFUSALS WAS REAL. Before the relocation this
+       exact scenario FAILED — I measured it with a read-only probe: a certified rollback whose target
+       carries a stamp the registry can no longer resolve is refused `stamp_unregistered`, by the
+       stamp map, before any reconciliation could repair it. Every other suite stayed green through
+       the relocation because their registries are coherent, so "green" there is consistent with the
+       relocation doing nothing at all.
+       The post-deletion STATE is what matters, not how it was reached — so it is set up directly:
+       the id retired, its reverse row gone. That is exactly what a retirement leaves behind. */
+    const target = await getActivePointer(db, RID);
+    assert.ok(target.version, 'premise — a certified version is live to become the rollback target');
+    const targetRec = await versionsColOf(db, RID).doc(target.version).get();
+    assert.strictEqual((targetRec.data() || {}).identity_certified, true,
+      'premise — the TARGET is certified; the uncertified path is cell 5 and must not be what this exercises');
+
+    /* 🔴 THE VICTIM IS A BOOTSTRAP-STAMPED DISH, NOT THE ONE CELL 1 MINTED — and the reason is a
+       finding this cell produced. An object MINTED BY THE ATOMIC WRITER gets its identity in the
+       REGISTRY but NOT into the version: the version's `display.identity_id` comes from the DRAFT's
+       stamps, and a brand-new object has none at draft time. Measured directly — for a freshly minted
+       dish the version reads `identity_id: null` while the registry holds `CEXDCRTRQN`.
+       A rollback restores from the TARGET's stamps, so an object the target never stamped cannot be
+       restored by it — correctly, since the target genuinely does not certify that identity. Using it
+       here would have tested the gap rather than the relocation. Reported separately; this cell uses
+       a dish whose stamp the target really carries. */
+    const srcNow = (await sourceRefOf(db, RID).get()).data();
+    const victimKey = (srcNow.items || [])[0].key;
+    const keyRow = await keyRowOf('dish', victimKey);
+    assert.ok(keyRow && keyRow.canonical_id, 'premise — a bootstrap-stamped dish with an identity');
+    const victimId = keyRow.canonical_id;
+
+    const tItems = await versionsColOf(db, RID).doc(target.version).collection('menu_items').get();
+    const carried = tItems.docs.map((d) => d.data()).find((d) => d.key === victimKey);
+    assert.strictEqual(((carried || {}).display || {}).identity_id, victimId,
+      '🔴 premise — the TARGET must actually carry this stamp, or the restore has no provenance to work from and this cell is testing the mint gap instead of the relocation');
+
+    /* Move the pointer forward so there is something to roll back FROM. */
+    await addDishToSource(`Zz Forward ${STAMP}`);
+    const moved = await publish(target.version, `roll-forward-${STAMP}`);
+    assert.notStrictEqual(moved, target.version, 'premise — a later version is live');
+
+    /* THE POST-DELETION STATE: the id retired, the reverse row gone. */
+    await idsColOf(db, RID, 'dish').doc(victimId).update({ status: 'retired', retired_at: new Date().toISOString() });
+    await keysColOf(db, RID, 'dish').doc(encodeKey(victimKey)).delete();
+    assert.strictEqual(await keyRowOf('dish', victimKey), null, 'premise — the name resolves to nothing now');
+
+    const { rollbackVersion } = require('../catalog/catalog-publish');
+    let refused = null;
+    try {
+      await rollbackVersion(db, RID, target.version, { expected: { activeVersionId: moved } });
+    } catch (e) { refused = (e && e.message) || String(e); }
+    assert.strictEqual(refused, null,
+      `🔴 THE ROLLBACK WAS REFUSED. If this is stamp_unregistered / stamp_id_retired / stamp_registry_disagrees / stamp_id_row_missing / stamp_id_claims_other_name, the five refusals did NOT move: the stamp map is still judging a rollback target as if it were a draft, and the reconciliation never runs on the one input it was built for. ${refused}`);
+
+    assert.strictEqual((await getActivePointer(db, RID)).version, target.version, 'the rollback landed');
+
+    /* 🔴 AND THE IDENTITY IS BACK IN BOTH PLANES, WITH ITS HISTORY. Landing is not enough — a rollback
+       that moved the pointer and left the object unresolvable would satisfy "not refused" while
+       failing the thing restoreIdentity exists for. */
+    const after = await keyRowOf('dish', victimKey);
+    assert.ok(after, '🔴 the rollback landed but the reverse row was NOT restored — the object it brought back still resolves to nothing by name');
+    assert.strictEqual(after.canonical_id, victimId,
+      '🔴 the name was restored to a DIFFERENT id — the rollback minted a new identity instead of resurrecting the one the target certifies, which is the split identity this slice exists to prevent');
+    const idRow = await idRowOf('dish', victimId);
+    assert.strictEqual(idRow.status, STATUS_LIVE, '🔴 the id row is still retired — the reverse row points at a dead identity');
+    assert.ok(idRow.retired_at, '…and the row KEEPS its retirement history, so a reader can tell this id went round the loop');
+    assert.ok(idRow.restored_at, '…and records when it came back');
+    ok('a rollback ACROSS A DELETION succeeds and resurrects the SAME id in both planes — the five relocated refusals really did move');
   }
 
   FINISHED = true;

@@ -9280,5 +9280,53 @@
    "node",
    "catalog/identity-writer.test.js"
   ]
+ },
+ {
+  "id": "e11-06",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "        tx.update(sourceRefOf(db, rid), { items: enrich(liveSrc.items, 'dish'), extras: enrich(liveSrc.extras, 'extra') });",
+  "to": "        /* mutant: the version is stamped and the source is NOT enriched */",
+  "label": "🔴 THE VERSION IS STAMPED AND THE SOURCE IS NOT — the minted id joins A while the next draft lacks it, so THE PUBLISH AFTER A MINT is refused identity_partition_unaccounted and the merchant is locked out of their own menu. Only a SECOND publish can see this",
+  "kills_with": [
+   "a mint reached only one plane and the NEXT publish is refused",
+   "the SOURCE was not enriched with the minted id"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-07",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "            if (docId) tx.update(vrefMint.collection(col).doc(docId), { 'display.identity_id': id });",
+  "to": "            if (false) tx.update(vrefMint.collection(col).doc(docId), { 'display.identity_id': id });",
+  "label": "a minted id never reaches the VERSION — §3.1's two-plane history is incomplete for the version that introduced the object, AND the mirror lockout appears: the source carries an id the active version does not certify, so the next publish is refused identity_partition_carried_unknown",
+  "kills_with": [
+   "a mint reached only one plane and the NEXT publish is refused",
+   "does not carry the id it was minted"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-08",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "        if (!wantsDraftCas || !draftSnap) {",
+  "to": "        if (false) {",
+  "label": "the source is enriched with NO draft CAS — a merchant mid-edit has their work clobbered by a publish that only meant to record an id",
+  "kills_with": "was allowed to write the source",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
  }
 ]
