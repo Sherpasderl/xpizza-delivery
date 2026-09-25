@@ -39,14 +39,24 @@ const fnSrc = (src, name) => {
   const cur = fnSrc(html, 'renderOrderDetailModal');
   const base = fnSrc(baseHtml, 'renderOrderDetailModal');
   assert.ok(cur && base, 'located renderOrderDetailModal in both');
-  assert.strictEqual(cur, base, 'renderOrderDetailModal is BYTE-IDENTICAL to base (content generator untouched)');
-  // and the fiscal/money invariants are present in that (frozen) source — documents what byte-identity protects
+  // F6 #2: the ONLY intended change to the content generator is the Items row (run-on blob → one line per item).
+  // Prove it: strip the Pedido/Items block from BOTH and assert the REMAINDER is byte-identical — so Cliente /
+  // Entrega / Factura·RTN / Pago / Vuelto / totals / timeline / cancel-reason are provably untouched.
+  const stripItems = (s) => s.replace(/const pedidoRows = \[\];[\s\S]*?if \(order\.notes\)/, '<<PEDIDO_ITEMS_BLOCK>>\n  if (order.notes)');
+  assert.strictEqual(stripItems(cur), stripItems(base), 'renderOrderDetailModal byte-identical to base EVERYWHERE except the Items row (F6 #2)');
+  // The new Items rendering: split on '|' (else ',') → one <div> per item, EACH escapeHtml'd; value/source unchanged.
+  const itemsBlk = (cur.match(/const pedidoRows = \[\];[\s\S]*?if \(order\.notes\)/) || [''])[0];
+  assert.match(itemsBlk, /raw\.includes\('\|'\) \? '\|' : ','/, 'items split on | (prod pipe delimiter) else , (legacy)');
+  assert.match(itemsBlk, /\.map\(s => `<div>\$\{escapeHtml\(s\)\}<\/div>`\)/, 'one <div> per item, each escapeHtml\'d (no new XSS)');
+  assert.match(itemsBlk, /<div class="od-items">/, 'still rendered inside the .od-items box');
+  assert.doesNotMatch(itemsBlk, /String\(order\.items_text\)\.split\(','\)\.map\(s => `<div>\$\{escapeHtml\(s\.trim\(\)\)\}/, 'the old run-on split(",") render is gone');
+  // fiscal/money invariants still present in the (otherwise-frozen) source
   assert.match(cur, /if \(order\.rtn_cliente\) \{/, 'Factura block still gated on rtn_cliente');
   assert.match(cur, /Factura · RTN/, 'Factura · RTN label present');
   assert.match(cur, /odRow\('RTN'/, 'RTN row present');
   assert.match(cur, /odRow\('Vuelto'/, 'vuelto row present');
   assert.match(cur, /isCashPayment\(order\.payment_method\)/, 'pay method via existing isCashPayment');
-  ok('content generator byte-identical to base — Factura·RTN / vuelto / pago / timeline are a pure move');
+  ok('content generator byte-identical to base EXCEPT the Items row (per-item lines, escaped); Factura·RTN / vuelto / pago / timeline untouched');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

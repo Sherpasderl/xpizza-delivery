@@ -84,7 +84,15 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
   const empty = build([], [], [], () => 'green');
   assert.strictEqual(empty.entries.length, 0);
   assert.strictEqual(empty.counts.all, 0);
-  ok('buildActionQueue: union == distinct(unassigned ∪ stalled ∪ at-risk); dedup; exclusive partition; urgency order; counts partition total');
+
+  // F6 #4 (BUG fix): a TERMINAL order (delivered/completed/cancelled) is NEVER queued, no matter which source it
+  // arrives through (a lingering 'assigned' task → stalled, a stale dispatcher_alert → exceptions, etc.). The single
+  // choke is mark(). Non-vacuous: drop the terminal-skip in mark() → these terminal orders reappear → red.
+  const term = (id, st) => ({ order_id: id, created_at: 60, status: st });
+  const tq = build([term('t1', 'delivered')], [term('t2', 'completed')], [term('t3', 'cancelled'), o1], () => 'red');
+  assert.deepStrictEqual(new Set(tq.entries.map(e => e.orderId)), new Set(['o1']), 'terminal orders (delivered/completed/cancelled) excluded from every bucket; only the live order remains');
+  assert.strictEqual(tq.counts.all, 1, 'counts.all excludes terminal orders');
+  ok('buildActionQueue: union == distinct(unassigned ∪ stalled ∪ at-risk); dedup; exclusive partition; urgency order; counts partition total; TERMINAL orders excluded');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
