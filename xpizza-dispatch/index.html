@@ -1598,7 +1598,10 @@
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.7);
-    z-index: 100;
+    /* F5-fix P1#1: modal dialogs (assign picker + reconciliation-note) must sit ABOVE the F3 nav flyout
+       (z 150/151) AND the order drawer (z 210) — the recon-note opens from the Caja pane INSIDE the flyout,
+       so at the old z:100 it rendered behind it and the operator couldn't complete the (money) reconciliation. */
+    z-index: 220;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5696,8 +5699,18 @@ $('alerts-bell')?.addEventListener('click', () => {
 (function initTopbarSearch() {
   const input = $('topbar-search'); if (!input) return;
   input.addEventListener('input', (e) => { colaSearchQuery = e.target.value.trim(); syncActionQueueViews(); });
+  // F5-fix P1#2: don't yank focus out of an open modal (assign picker / nav flyout / order drawer / recon-note)
+  // — that would break the modal's focus trap. Only focus the background search when nothing overlays the board.
+  const anyModalOpen = () =>
+    (!!$('picker-overlay')    && !$('picker-overlay').classList.contains('hidden')) ||
+    (!!$('recon-note-overlay') && !$('recon-note-overlay').classList.contains('hidden')) ||
+    (!!$('surface-flyout')    && !$('surface-flyout').hidden) ||
+    (!!$('order-detail-modal') && !$('order-detail-modal').hasAttribute('inert'));
   document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); input.focus(); input.select(); }
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      if (anyModalOpen()) return;                 // let the open modal keep focus (trap intact)
+      e.preventDefault(); input.focus(); input.select();
+    }
   });
 })();
 
@@ -5728,12 +5741,28 @@ setInterval(() => {
 // both do `#rail-tabs .rtab[data-tab="caja"].click()`, which routes through this handler → the flyout opens on Caja.
 (function initSurfaceFlyout() {
   const flyout = $('surface-flyout'), scrim = $('surface-flyout-scrim');
-  const showFlyout = () => { if (flyout) flyout.hidden = false; if (scrim) scrim.hidden = false; };
+  // F5-fix P2#3: the flyout is aria-modal — give it real focus management (move focus IN on open, TRAP Tab,
+  // RESTORE focus on close), reusing Slice-A focusTrapTarget like the order drawer. Its openers (nav buttons /
+  // Reconciliar / the rtabs) are persistent (no timer re-render), so a plain opener-restore is sufficient.
+  let flyoutOpener = null;
+  const showFlyout = () => {
+    if (!flyout) return;
+    if (flyout.hidden) flyoutOpener = document.activeElement;   // capture opener only on a genuine open
+    flyout.hidden = false; if (scrim) scrim.hidden = false;
+    const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const focusFirst = flyout.querySelector('#rail-tabs .rtab.on') || $('surface-flyout-close') || flyout.querySelector('button');
+    if (focusFirst) { try { focusFirst.focus({ preventScroll: reduceMotion }); } catch (_) {} }
+  };
   const closeFlyout = () => {
+    const wasOpen = flyout && !flyout.hidden;
     document.querySelectorAll('#rail-tabs .rtab').forEach((b) => b.classList.remove('on'));
     document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.add('hidden'));
     if (flyout) flyout.hidden = true;
     if (scrim) scrim.hidden = true;
+    if (wasOpen) {                                              // restore focus to the (persistent) opener
+      const o = flyoutOpener; flyoutOpener = null;
+      if (o && o.isConnected && typeof o.focus === 'function') { try { o.focus(); } catch (_) {} }
+    }
   };
   document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -5749,6 +5778,15 @@ setInterval(() => {
   });
   scrim?.addEventListener('click', closeFlyout);
   $('surface-flyout-close')?.addEventListener('click', closeFlyout);
+  // Tab focus-trap within the flyout (fires while focus is inside it); Esc closes.
+  flyout?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || flyout.hidden) return;
+    const focusables = [...flyout.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter(el => el.offsetParent !== null);
+    if (!focusables.length) return;
+    const target = focusTrapTarget(e.shiftKey, document.activeElement, focusables);
+    if (target) { e.preventDefault(); target.focus(); }
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && flyout && !flyout.hidden) closeFlyout(); });
 })();
 

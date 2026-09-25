@@ -235,13 +235,33 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
       // raw rgba background applies to every comma-part → each part's TARGET element must be an allowed scrim/brand
       const bm = d.match(/(?:^|\b)(background(?:-color)?)\s*:\s*(.+)/);
       if (bm && /rgba?\(/.test(bm[2]) && !/var\(/.test(bm[2])) {
-        for (const part of parts) if (!BG_RGBA_OK.some(k => lastSeg(part).includes(k))) bgOrphans.push(`${bm[2].trim()} @ ${part}`);
+        // F5-fix P2#4: match the grant as a COMPLETE class token in the last segment (not a substring), so a
+        // legit compound like `.msg-row-rest.rest-x_pizza` still grants `.rest-x_pizza` while `.flyout-scrim-evil`
+        // (a different class that merely has `.flyout-scrim` as a prefix) can no longer launder a raw rgba bg.
+        for (const part of parts) {
+          const tokens = (lastSeg(part).match(/\.[A-Za-z0-9_-]+/g) || []);
+          if (!BG_RGBA_OK.some(k => tokens.includes(k))) bgOrphans.push(`${bm[2].trim()} @ ${part}`);
+        }
       }
     }
   }
   assert.deepStrictEqual(hexOrphans, [], `no hex literal on an un-granted selector part (found: ${hexOrphans.join(' ; ')})`);
   assert.deepStrictEqual(bgOrphans, [], `no un-tokenized rgba background off the scrim/brand target elements (found: ${bgOrphans.join(' ; ')})`);
   ok('orphan guard selector-scoped (comma-split + last-segment): brand hex tokenized, scrim/brand rgba only on their own target element; a co-selector or descendant launder fails');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F5-fix P1#1 — the modal dialogs (assign picker + reconciliation-note, both .overlay-bg) must stack ABOVE the
+// F3 nav flyout (z 150/151). The recon-note opens from the Caja pane INSIDE the flyout; below it, the operator
+// can't complete the (money) reconciliation. Non-vacuous: drop .overlay-bg back under the flyout → red.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const zOf = (sel) => { const m = html.match(new RegExp(sel.replace(/[.]/g, '\\.') + '\\s*\\{[^}]*?z-index:\\s*(\\d+)')); return m ? Number(m[1]) : null; };
+  const zOverlay = zOf('.overlay-bg'), zFlyout = zOf('.surface-flyout'), zScrim = zOf('.flyout-scrim');
+  assert.ok(zOverlay && zFlyout && zScrim, `z-index parsed for .overlay-bg (${zOverlay}), .surface-flyout (${zFlyout}), .flyout-scrim (${zScrim})`);
+  assert.ok(zOverlay > zFlyout, `.overlay-bg z (${zOverlay}) must exceed .surface-flyout z (${zFlyout}) — recon-note/picker sit above the flyout`);
+  assert.ok(zOverlay > zScrim, `.overlay-bg z (${zOverlay}) must exceed .flyout-scrim z (${zScrim})`);
+  ok('modal overlay (recon-note / assign picker) z-index sits above the nav flyout — money reconciliation reachable');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -148,6 +148,35 @@ const pickerJs = html.slice(openIdx, closeEnd);
   ok('1–9 shortcut routes through the byte-identical click (confirm+assign) path; knum only where live; roving focus intact');
 }
 
+// FEATURE 8 — F5-fix P1#2: ⌘/Ctrl-K must NOT steal focus out of an open modal (picker / flyout / drawer /
+// recon-note), or it escapes the focus trap. The topbar-search handler bails on an open-overlay check FIRST.
+// Non-vacuous: remove the guard or the picker from the check → red.
+{
+  const its = html.slice(html.indexOf('function initTopbarSearch('), html.indexOf('function initAvatarMenu('));
+  assert.ok(its, 'located initTopbarSearch');
+  assert.match(its, /const anyModalOpen = \(\) =>/, 'defines an open-modal check');
+  assert.match(its, /picker-overlay/, 'the modal check includes the assign picker');
+  assert.match(its, /surface-flyout/, 'the modal check includes the nav flyout');
+  assert.match(its, /recon-note-overlay/, 'the modal check includes the reconciliation-note dialog');
+  assert.match(its, /order-detail-modal/, 'the modal check includes the order drawer');
+  assert.match(its, /if \(anyModalOpen\(\)\) return;[\s\S]*?input\.focus\(\)/, '⌘K returns early when a modal is open, BEFORE focusing the background search');
+  ok('⌘K suppressed while a modal (picker/flyout/drawer/recon-note) is open — focus trap not escaped');
+}
+
+// FEATURE 9 — F5-fix P2#3: the nav flyout (aria-modal) gets real focus management — focus IN on open, Tab TRAP
+// (reuses Slice-A focusTrapTarget, proven executable below), focus RESTORE to the opener on close. Structural
+// wiring guards; non-vacuous (drop any of the four → red).
+{
+  const fly = html.slice(html.indexOf('function initSurfaceFlyout('), html.indexOf('// Slice D2 — nav rail'));
+  assert.ok(fly, 'located initSurfaceFlyout');
+  assert.match(fly, /flyoutOpener = document\.activeElement/, 'captures the opener on a genuine open');
+  assert.match(fly, /focusFirst\.focus\(/, 'moves focus INTO the flyout on open');
+  assert.match(fly, /o\.focus\(\)/, 'RESTORES focus to the opener on close');
+  assert.match(fly, /focusTrapTarget\(e\.shiftKey, document\.activeElement, focusables\)/, 'Tab trap reuses Slice-A focusTrapTarget');
+  assert.match(fly, /if \(e\.key !== 'Tab' \|\| flyout\.hidden\) return;/, 'trap active only while the flyout is open');
+  ok('nav flyout: focus-in on open + Tab trap (focusTrapTarget) + focus-restore on close');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NO-REGRESSION — assignment logic byte-identical to the approved base
 // ─────────────────────────────────────────────────────────────────────────────
