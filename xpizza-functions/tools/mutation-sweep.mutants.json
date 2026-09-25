@@ -8039,5 +8039,44 @@
    "node",
    "tools/sweep-baseline.test.js"
   ]
+ },
+ {
+  "id": "e2h-01",
+  "slice": "e2h",
+  "file": "tools/gate-all.js",
+  "from": "      return onRefuse(2);",
+  "to": "      break;",
+  "label": "the settle wait FALLS THROUGH on timeout instead of refusing",
+  "kills_with": "the settle wait FELL THROUGH on timeout",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2h-02",
+  "slice": "e2h",
+  "file": "tools/gate-all.js",
+  "from": "  if (waited >= SETTLE_POLL_MS) {",
+  "to": "  if (false) {",
+  "label": "the settle wait engages silently, recording nothing",
+  "kills_with": "an engagement was not recorded — a silent wait is indistinguishable from no wait",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
+  ]
+ },
+ {
+  "id": "e2h-03",
+  "slice": "e2h",
+  "file": "tools/gate-all.js",
+  "from": "    const busy = ports.filter(([, port]) => !isFree(port));",
+  "to": "    const busy = [];",
+  "label": "the settle wait never looks at the ports",
+  "kills_with": "it did not wait for the held port to clear",
+  "command": [
+   "node",
+   "tools/emulator-ports.guard.test.js"
+  ]
  }
 ]

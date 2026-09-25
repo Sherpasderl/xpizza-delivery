@@ -479,6 +479,73 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok(`driver-diag emits one mark per test (${marks}), not one summary line standing for all of them`);
   }
 
+  // ── 14e. 🔴 THE SETTLE WAIT: ENGAGES, TIMES OUT LOUDLY, AND RECORDS ITSELF ──────────────────
+  /* Ports take ~300ms to release after an emulator suite, so a following suite can start while the
+     previous emulator still holds one — an observed hazard here, which once produced a false DRIFTED
+     sweep result. The branches are driven with an injected prober rather than real sockets, because
+     the timeout path cannot otherwise be reached in a test.
+     🔴 IT WAS BUILT AS A FIX FOR THE identity-registry FLAKE AND IT IS NOT ONE — it engaged on every
+     transition and the flake occurred anyway with all ports confirmed free. These cells assert the
+     port-collision guard, which is what it actually is. */
+  {
+    const { settleAfter, SETTLE_POLL_MS } = require('./gate-all.js');
+    const band = { database: 9140, hub: 4540 };
+
+    // …engages while a port is held, and stops as soon as it clears.
+    {
+      let clock = 0; let polls = 0;
+      const stats = { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 };
+      const waited = settleAfter('prev', 'next', {
+        band, stats, timeoutMs: 30000,
+        now: () => clock,
+        sleep: () => { clock += SETTLE_POLL_MS; polls += 1; },
+        isFree: (port) => !(port === 9140 && polls < 3),
+        onRefuse: () => { throw new Error('refused when it should have waited'); },
+      });
+      assert.strictEqual(waited, 3 * SETTLE_POLL_MS, `🔴 it did not wait for the held port to clear (waited ${waited}ms)`);
+      assert.strictEqual(stats.engagements, 1, '🔴 an engagement was not recorded — a silent wait is indistinguishable from no wait');
+      assert.strictEqual(stats.maxWaitMs, 3 * SETTLE_POLL_MS, 'and the maximum is what the summary reports');
+    }
+
+    // …returns immediately when nothing is held, and records NOTHING, so "never engaged" stays true.
+    {
+      const stats = { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 };
+      let clock = 0;
+      const waited = settleAfter('prev', 'next', {
+        band, stats, timeoutMs: 30000, now: () => clock,
+        sleep: () => { clock += SETTLE_POLL_MS; }, isFree: () => true,
+        onRefuse: () => { throw new Error('refused on a clear band'); },
+      });
+      assert.strictEqual(waited, 0, 'a clear band is not waited on');
+      assert.strictEqual(stats.engagements, 0,
+        '🔴 a no-op was recorded as an engagement — the figures would suggest a guard that is doing work it is not');
+    }
+
+    /* 🔴 ON TIMEOUT IT REFUSES; IT MUST NEVER FALL THROUGH. Falling through starts the next suite into
+       exactly the condition this removes, while printing nothing — so the hazard returns looking
+       identical and the wait has hidden its own evidence. */
+    {
+      let clock = 0; let refusedWith = null;
+      const realErr = console.error; const lines = [];
+      console.error = (...a) => lines.push(String(a[0]));
+      try {
+        settleAfter('test:previous-suite', 'test:next-suite', {
+          band, stats: { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 }, timeoutMs: 500,
+          now: () => clock, sleep: () => { clock += SETTLE_POLL_MS; },
+          isFree: () => false,
+          onRefuse: (code) => { refusedWith = code; return code; },
+        });
+      } finally { console.error = realErr; }
+      assert.strictEqual(refusedWith, 2, '🔴 the settle wait FELL THROUGH on timeout — it would start the suite into the condition it exists to remove');
+      const said = lines.join('\n');
+      assert.match(said, /GATE REFUSED/, 'it refuses by name');
+      assert.match(said, /test:previous-suite/, 'names the suite that held the port');
+      assert.match(said, /test:next-suite/, 'names the suite that was about to run');
+      assert.match(said, /127\.0\.0\.1:9140/, 'and names the port');
+    }
+    ok('the settle wait engages and records it, no-ops silently on a clear band, and REFUSES by name on timeout rather than falling through');
+  }
+
   // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
   /* 🔴 MY FIRST LIST HAD FIVE HOLES — the Firestore ADDRESS alias, both Storage spellings and all
      three Data Connect spellings — and the Admin SDK honours the Storage and Data Connect aliases,

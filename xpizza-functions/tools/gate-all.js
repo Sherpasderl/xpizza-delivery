@@ -94,7 +94,87 @@ const countCells = (out) => {
   return hits.reduce((n, m) => n + Number(m[1]), 0);
 };
 
-module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells };
+/* 🔴 A GUARD AGAINST PORT COLLISION BETWEEN SEQUENTIAL SUITES. Each emulator suite starts and stops
+   its own emulator on this checkout's band; the next suite starts immediately afterwards. Ports are
+   not released instantly — MEASURED at ~300ms, on every transition — so the next suite can begin
+   while the previous emulator still holds one. That is an observed, expensive failure here: a port
+   collision between sequential runs once produced a FALSE DRIFTED sweep result that cost a full
+   diagnostic round to unpick, because a suite that cannot start its emulator fails at require time
+   and every mutant after it dies on the wrong assertion. This waits for the band to clear, or
+   refuses by name.
+
+   🔴 AND IT IS NOT A FIX FOR THE identity-registry FLAKE. It was BUILT as one and it does not work:
+   across three runs it engaged every time (293/302/333ms) and the flake occurred anyway, with every
+   port in the band confirmed free before the next suite started. PORT RELEASE IS NOT THE MECHANISM —
+   that elimination is what these engagement figures bought, and it is the reason this comment says
+   so instead of implying a fix. Do not read a green run as evidence that this prevented anything.
+
+   🔴 A RELATED CLAIM OF MINE WAS RETRACTED, recorded here because the file would otherwise carry the
+   reasoning that produced it: I reported identity-registry running ~17s in the gate "against a usual
+   ~5s" in isolation. There is no slowdown — it takes ~17s wherever it runs, measured. I had misread
+   a CELLS column as seconds. The precondition that survives is only that four failures each occurred
+   immediately after another emulator suite, and never in isolation.
+
+   Kept on its own merits rather than on the flake: a port still bound when the next suite starts is
+   worth refusing whether or not it is what ails identity-registry. */
+/* This checkout's OWN band, so the wait can never be satisfied or blocked by another checkout's
+   emulator — the same per-checkout derivation emulator-run.js uses to start them. */
+const { planPorts, offsetFor, ROOT: EMU_ROOT } = require('./emulator-run.js');
+const BAND = planPorts(offsetFor(EMU_ROOT));
+
+const SETTLE_TIMEOUT_MS = 30000;
+const SETTLE_POLL_MS = 100;
+const settleStats = { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 };
+
+const portFree = (port) => {
+  const r = spawnSync(process.execPath, ['-e', `const n=require('net');const s=n.createServer();
+    s.once('error',e=>{process.stdout.write(e&&e.code==='EADDRINUSE'?'busy':'err');process.exit(0)});
+    s.once('listening',()=>s.close(()=>{process.stdout.write('free');process.exit(0)}));
+    s.listen(${port},'127.0.0.1');`], { encoding: 'utf8', timeout: 5000 });
+  return (r.stdout || '').trim() === 'free';
+};
+
+/* 🔴 ON TIMEOUT IT REFUSES; IT NEVER FALLS THROUGH. Falling through would start the suite into
+   exactly the condition this removes, while printing nothing — so the flake would return looking
+   identical and we would have spent the work to hide our own evidence. */
+function settleAfter(previousSuite, nextSuite, deps = {}) {
+  const isFree = deps.isFree || portFree;
+  const now = deps.now || (() => Date.now());
+  const sleep = deps.sleep || ((ms) => spawnSync(process.execPath, ['-e', `setTimeout(()=>{}, ${ms})`], { timeout: 5000 }));
+  const onRefuse = deps.onRefuse || ((code) => process.exit(code));
+  const stats = deps.stats || settleStats;
+  const timeout = deps.timeoutMs === undefined ? SETTLE_TIMEOUT_MS : deps.timeoutMs;
+  const t0 = now();
+  const ports = Object.entries(deps.band || BAND);
+  for (;;) {
+    const busy = ports.filter(([, port]) => !isFree(port));
+    if (!busy.length) break;
+    if (now() - t0 > timeout) {
+      console.error(`\n🔴 GATE REFUSED — an emulator port never released after ${previousSuite}.`);
+      for (const [what, port] of busy) console.error(`   ${String(what).padEnd(20)} 127.0.0.1:${port}   still bound`);
+      console.error(`\n   about to run : ${nextSuite}`);
+      console.error(`   waited       : ${((now() - t0) / 1000).toFixed(1)}s (limit ${timeout / 1000}s)`);
+      console.error('\n   Starting it anyway is the condition this wait exists to remove, so this refuses');
+      console.error('   rather than running into it silently.\n');
+      return onRefuse(2);
+    }
+    sleep(SETTLE_POLL_MS);
+  }
+  const waited = now() - t0;
+  /* 🔴 IT RECORDS WHETHER IT ACTUALLY ENGAGED. A mitigation that never engages, for an intermittent
+     fault that happens not to recur, is indistinguishable from luck — and would close the
+     investigation while changing nothing. If this reports ~0ms and the flake returns, the ports were
+     never the mechanism, and that is a finding rather than a disappointment. */
+  if (waited >= SETTLE_POLL_MS) {
+    stats.engagements += 1;
+    stats.totalWaitMs += waited;
+    stats.maxWaitMs = Math.max(stats.maxWaitMs, waited);
+    console.log(`  settle: waited ${waited}ms for ports to release after ${previousSuite}`);
+  }
+  return waited;
+}
+
+module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, settleAfter, SETTLE_POLL_MS };
 if (require.main !== module) return;
 
 const EMULATORS_ONLY = process.argv.includes('--emulators');
@@ -105,8 +185,12 @@ const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice('--
 const SELF = new Set(['test:gate', 'test:emulators:all']);
 const isEmulator = (v) => /emulator-run\.js/.test(v);
 
+/* The script BODIES, so the settle wait can tell an emulator suite from a plain one by what it
+   runs rather than by its name. */
+const pkgScripts = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts || {};
+
 const scripts = (() => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const pkg = { scripts: pkgScripts };
   const all = Object.entries(pkg.scripts || {})
     .filter(([k, v]) => !SELF.has(k) && (k === 'test' || k.startsWith('test:')) && String(v).trim())
     .filter(([, v]) => (EMULATORS_ONLY ? isEmulator(v) : true))
@@ -115,7 +199,7 @@ const scripts = (() => {
        spawn loop therefore survived a green npm test, six green sweeps and a green guard — the gate
        itself was the only thing that ran it, and it is the thing being changed. One real script
        through the whole path is the smallest check that would have caught it. */
-    .filter(([k]) => !ONLY || k === ONLY)
+    .filter(([k]) => !ONLY || ONLY.split(',').includes(k))
     .map(([k]) => k);
   // `test` first when present: it is the fastest signal and the one most likely to be red.
   return all.sort((a, b) => (a === 'test' ? -1 : b === 'test' ? 1 : a.localeCompare(b)));
@@ -143,7 +227,9 @@ for (const name of Object.keys(KNOWN_RED)) {
 
 const started = Date.now();
 const results = [];
+let previousEmulatorSuite = null;
 for (const name of scripts) {
+  if (previousEmulatorSuite) settleAfter(previousEmulatorSuite, name);
   const t0 = Date.now();
   /* The counter loads in every node process this spawns. npm and the runner write no marks, so they
      contribute 0 and the totals SUM correctly without anyone having to know which process they are
@@ -162,6 +248,8 @@ for (const name of scripts) {
   const cells = countCells(out);
   const ok = r.status === 0;
   results.push({ name, ok, cells, secs: ((Date.now() - t0) / 1000).toFixed(1), out });
+  /* Only an EMULATOR suite leaves ports to release, so only it arms the wait for the next one. */
+  previousEmulatorSuite = isEmulator(pkgScripts[name] || '') ? name : null;
 }
 
 const verdict = classify(results, KNOWN_RED);
@@ -194,5 +282,18 @@ if (zero) {
   console.log('   convention is not recognised here. Both make its green meaningless — fix it, or add');
   console.log('   it to ZERO_CELL_OK with a reason.');
 }
+/* 🔴 THE SETTLE WAIT REPORTS WHETHER IT ACTUALLY ENGAGED. A mitigation for an intermittent fault
+   that never engages, on a run where the fault happens not to recur, is indistinguishable from luck
+   — and would close the investigation while changing nothing. If this line reads "never engaged" on
+   a run where the slow-suite signature is still present, the ports are NOT what the suite waits on,
+   which is a finding obtained for the cost of one run. */
+/* 🔴 REPORTED WHETHER OR NOT IT ENGAGED, and this is what turned "the poll did not stop the flake"
+   into an ELIMINATION rather than a shrug. Without these figures a green run would read as the guard
+   working, and a red one as the guard being useless; with them we know the ports really were free and
+   the failure happened anyway. A silent mitigation for an intermittent fault is indistinguishable
+   from luck in both directions. */
+console.log(settleStats.engagements
+  ? `settle: engaged ${settleStats.engagements}x, max ${settleStats.maxWaitMs}ms, total ${settleStats.totalWaitMs}ms`
+  : 'settle: never engaged (ports were already free at every transition)');
 console.log(`\ngate-all${EMULATORS_ONLY ? ' (emulators only)' : ''}: ${verdict.passed}/${total} passing, ${failed} failing, ${excused} excused, ${stale} stale-excuse, ${zero} zero-assertion, ${verdict.unmeasured} not-measured — ${((Date.now() - started) / 1000 / 60).toFixed(1)} min`);
 process.exit(verdict.exitCode);
