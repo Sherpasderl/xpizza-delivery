@@ -1891,7 +1891,7 @@
      drag-resize + collapse (--lw/--rw → px / 0) still work; only the DEFAULT widths + the card gap/padding change. */
   :root { --lw-size: 372px; --rw-size: 342px; --lw: var(--lw-size); --rw: var(--rw-size); }
   .app { height: calc(100vh - 53px); }   /* F4: match the 53px topbar (was 60px → ~7px bottom gap after F2) */
-  .main { display: grid; box-sizing: border-box; grid-template-columns: var(--lw) minmax(400px, 1fr) var(--rw); grid-template-rows: 100%; height: 100%; gap: 12px; padding: 12px 12px 44px; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
+  .main { display: grid; box-sizing: border-box; grid-template-columns: var(--lw) minmax(400px, 1fr) var(--rw); grid-template-rows: 100%; height: 100%; gap: 12px; padding: 12px; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
   .main.resizing { transition: none; }   /* no lag while dragging a rail edge */
   .app:not(.left-open) .main  { --lw: 0px; }
   .app:not(.right-open) .main { --rw: 0px; }
@@ -1932,6 +1932,13 @@
      fills, so the map occupies the whole area below the header. The fit control is positioned within it. */
   .col.center.panel { display: flex; flex-direction: column; }
   .mapwrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--map-bg); }
+  /* F5 #3: map legend (marker-color key) + caption — presentational overlay over the live map. */
+  .legend { position: absolute; right: 10px; top: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; z-index: 4; box-shadow: var(--shadow-lift); }
+  .legend .lr { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-soft); margin-top: 5px; white-space: nowrap; }
+  .legend .lr:first-child { margin-top: 0; }
+  .legend .lr i { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .maptip { flex: none; padding: 9px 12px 12px; font-size: 11.5px; color: var(--text-dim); text-align: center; }
+  .maptip b { color: var(--text-soft); font-weight: 500; }
 
   /* ============ F3: nav-rail secondary-surface flyout (En Fila / Comms / Caja / Cerrados) ============ */
   /* Left-anchored (next to the 54px nav rail) so it never collides with the right-side order-detail drawer.
@@ -1994,6 +2001,21 @@
   .ord .meta .m.slip { color: var(--accent); }
   .ord .meta .m.stall { color: var(--accent); }
   .ord .actions { display: flex; align-items: center; gap: 7px; margin-top: 0; }
+  /* F5 #1: stall / at-risk = mockup .tag pills (own row above the actions). */
+  .ord .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500; padding: 2px 8px; border-radius: 99px; }
+  .tag svg { width: 13px; height: 13px; }
+  .tag.stall { color: var(--accent); background: var(--accent-soft); }
+  .tag.risk  { color: var(--warn); background: var(--warn-soft); }
+  .tag.sched { color: var(--text-soft); background: var(--surface-3); }
+  /* F5 #2: "Ver detalle" = mockup .btn.ghost.sm (opens the drawer). */
+  .unassigned-card .detail-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-soft);
+    padding: 5px 10px; border-radius: 7px; font-family: 'Inter', sans-serif; font-weight: 500;
+    font-size: 11.5px; letter-spacing: -0.006em; cursor: pointer; white-space: nowrap;
+    transition: background .14s, color .14s, border-color .14s;
+  }
+  .unassigned-card .detail-btn:hover { background: var(--surface-3); color: var(--text); border-color: var(--hair-2); }
 
   /* ==================== COLA DE ACCIÓN — segmented filter (Slice B) ==================== */
   /* F4: segmented filter = mockup .seg (surface-2 track, 8px radius, inset to the phead gutter). */
@@ -2114,17 +2136,7 @@
   .comms-open { width: 100%; margin-top: 4px; padding: 8px; border: none; border-radius: 9px; background: var(--info-soft); color: var(--info); font-weight: 600; font-size: 12px; cursor: pointer; }
   .comms-open:hover { background: var(--info-soft); }
 
-  /* ============ Cobertura drawer + ☰ exceptions badge (Task 11) ============ */
-  .cobertura { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); box-shadow: 0 -1px 0 var(--border-soft); }
-  .cob-toggle { display: block; margin-left: auto; background: none; border: none; color: var(--text-soft); font-size: 11.5px; font-weight: 600; padding: 8px 16px; cursor: pointer; }
-  .cob-toggle:hover { color: var(--text); }
-  .cob-drawer { max-height: 0; overflow: hidden; transition: max-height .26s ease; }
-  .cobertura.open .cob-drawer { max-height: 160px; }
-  .cob-inner { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 14px; }
-  .cv { font-size: 11px; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--bg); color: var(--text-soft); }
-  .cv.new { color: var(--gold); }
-  /* F3: the board now reserves bottom space (.main padding-bottom) so the panel cards clear the fixed Cobertura
-     bar; the scrolling .pbody keeps its own bottom padding. (Old rule padded .rail-inner, which is now a flex column.) */
+  /* F5 #4: Cobertura strip removed — its CSS (.cobertura/.cob-*/.cv) deleted. The ☰ exceptions badge below is kept. */
   .rail-toggle { position: relative; }
   .rail-badge { display: none; position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--accent-solid); color: #fff; font-size: 11px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; }
   .app:not(.left-open) #rail-toggle-left .rail-badge.has { display: block; }
@@ -2271,7 +2283,16 @@
           </svg>
         </button>
         <div id="map"></div>
+        <!-- F5 #3: mockup map legend (presentational, read-only) — the marker-color vocabulary. -->
+        <div class="legend" aria-hidden="true">
+          <div class="lr"><i style="background:var(--success)"></i> Libre · GPS vivo</div>
+          <div class="lr"><i style="background:var(--info)"></i> En camino</div>
+          <div class="lr"><i style="background:var(--warn)"></i> GPS inactivo · alcanzable</div>
+          <div class="lr"><i style="background:var(--accent)"></i> Sin señal — reasignar</div>
+          <div class="lr"><i style="background:var(--text-dim)"></i> Sin notificaciones</div>
+        </div>
       </div>
+      <div class="maptip">Lo sano vive en el mapa. <b>Una tarjeta en la cola aparece solo cuando un pedido necesita a una persona.</b></div>
     </div>
 
     <!-- F3: left panel "Cola de acción" (mockup). The group header is promoted to the panel .phead (its count
@@ -2385,21 +2406,8 @@
   </div>
 </aside>
 
-<!-- Cobertura de capacidades — full-visibility proof (Task 11); fixed, collapsed by default. -->
-<div class="cobertura" id="cobertura">
-  <button class="cob-toggle" id="cob-toggle">Cobertura de capacidades ▴</button>
-  <div class="cob-drawer">
-    <div class="cob-inner">
-      <span class="cv">Mapa en vivo</span><span class="cv">Glide pins</span><span class="cv">Drivers + estado</span>
-      <span class="cv">GPS liveness</span><span class="cv">Llamar driver</span><span class="cv">Sin asignar</span>
-      <span class="cv">Auto-asignar</span><span class="cv">ETA entrega</span><span class="cv">Cancelar/refund</span>
-      <span class="cv">Programados</span><span class="cv">#N</span><span class="cv">Entregados + búsqueda</span>
-      <span class="cv">WhatsApp entrante</span><span class="cv">Reconciliación</span>
-      <span class="cv new">Despacho</span><span class="cv new">Delivery-risk</span><span class="cv new">Timer envejecimiento</span>
-      <span class="cv new">Cash / cuadre</span><span class="cv new">Paneles colapsables</span><span class="cv new">Tabs del panel</span>
-    </div>
-  </div>
-</div>
+<!-- F5 #4: the "Cobertura de capacidades" coverage-proof strip was removed (owner) — it was static display only,
+     not in the mockup and not wired to any data/subscription. -->
 
 <!-- Driver picker overlay -->
 <div class="overlay-bg hidden" id="picker-overlay" role="dialog" aria-modal="true" aria-labelledby="picker-title">
@@ -3652,17 +3660,19 @@ function colaCard(e, showSelfBtn) {
   const dt = allTasks[`${o.order_id}_delivery`];
   // Detenidos cue: a genuine offer-timer stall names the driver ("sin aceptar · expiró"); an exception-sourced
   // entry (strand / rollback) reads "asignación incompleta · revisar" instead of an inaccurate stall message.
+  // F5 #1: stall / at-risk render as mockup .tag PILLS (stall/risk), in a tags row above the actions —
+  // .meta keeps only the pay/WhatsApp dots (mockup .qmeta). Same conditions + text, pill presentation.
   let stallChip = '';
   if (e.buckets.has('stalled')) {
     const timerStalled = !!(dt && dt.assigned_driver_id && isStalledAssignment(dt, Date.now(), allTasks[`${o.order_id}_pickup`]));
     if (timerStalled) {
       const nm = allDrivers[dt.assigned_driver_id]?.name || 'repartidor';
-      stallChip = `<span class="m stall"><span class="d"></span>${escapeHtml(nm)} · sin aceptar · expiró</span>`;
+      stallChip = `<span class="tag stall"><svg class="ic sm"><use href="#i-alert"/></svg>${escapeHtml(nm)} · sin aceptar · expiró</span>`;
     } else {
-      stallChip = '<span class="m stall"><span class="d"></span>Asignación incompleta · revisar</span>';
+      stallChip = '<span class="tag stall"><svg class="ic sm"><use href="#i-alert"/></svg>Asignación incompleta · revisar</span>';
     }
   }
-  const slipChip = (!e.buckets.has('stalled') && risk.level === 'slipping') ? '<span class="m slip"><span class="d"></span>retrasándose</span>' : '';
+  const slipChip = (!e.buckets.has('stalled') && risk.level === 'slipping') ? '<span class="tag risk">retrasándose</span>' : '';
   const expanded = expandedOrderIds.has(o.order_id);
   let actions;
   if (e.primary === 'unassigned') {
@@ -3671,6 +3681,9 @@ function colaCard(e, showSelfBtn) {
   } else {
     actions = `<button class="reassign-btn" data-reassign-order="${escapeHtml(o.order_id)}">Reasignar</button>`;
   }
+  // F5 #2: explicit "Ver detalle" ghost button (mockup .btn.ghost.sm) → opens the order drawer. The card body
+  // click still opens it too (wireColaHandlers); this is an added affordance, no behavior removed.
+  const tags = `${stallChip}${slipChip}`;
   return `
     <div class="ord unassigned-card${edge}" data-order-id="${escapeHtml(o.order_id)}">
       <div class="r1">
@@ -3679,11 +3692,13 @@ function colaCard(e, showSelfBtn) {
         <span class="ord-age band-${risk.band}" data-aging="${escapeHtml(String(o.created_at ?? ''))}">${formatAging(secs)}</span>
       </div>
       <div class="items">${escapeHtml(o.items_text || o.address_detected || '—')}</div>
-      <div class="meta">${payChip}${waChip}${stallChip}${slipChip}</div>
+      <div class="meta">${payChip}${waChip}</div>
+      ${tags ? `<div class="tags">${tags}</div>` : ''}
       ${scheduledBadge(o)}
       ${expanded ? renderOrderExpanded(o) : ''}
       <div class="actions">
         ${actions}
+        <button class="detail-btn" data-detail-order="${escapeHtml(o.order_id)}">Ver detalle</button>
         <button class="more-btn" data-more-cola="${escapeHtml(o.order_id)}" title="Más opciones"><svg class="ic sm"><use href="#i-more"/></svg></button>
       </div>
     </div>
@@ -3697,6 +3712,10 @@ function wireColaHandlers(list) {
       if (e.target.closest('button')) return;
       openOrderDetailModal(card.dataset.orderId);
     });
+  });
+  // F5 #2: "Ver detalle" → the order drawer (same path as the card-body click).
+  list.querySelectorAll('[data-detail-order]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openOrderDetailModal(btn.dataset.detailOrder); });
   });
   list.querySelectorAll('[data-assign-order]').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.assignOrder); });
@@ -5737,8 +5756,7 @@ setInterval(() => {
   });
 })();
 
-// Cobertura drawer toggle (Task 11).
-$('cob-toggle')?.addEventListener('click', () => $('cobertura')?.classList.toggle('open'));
+// F5 #4: Cobertura strip removed (owner) — toggle handler retired.
 
 $('delivered-toggle').addEventListener('click', () => {
   $('delivered-group').classList.toggle('collapsed');
