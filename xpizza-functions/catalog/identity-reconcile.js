@@ -41,7 +41,7 @@ const refuse = (code, detail) => ({ code, detail });
      deletions — key rows to remove because the id that owns them is being moved off or retired, each
                  conditioned on the row NAMING that id (identity-bootstrap.js:488's pattern).
      refusals  — states the whole-target view still cannot make coherent. Non-empty means refuse. */
-function reconcileOnRollback({ targetStamps, ids, keys } = {}) {
+function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
   if (!(ids instanceof Map) || !(keys instanceof Map)) {
     throw new Error('identity_reconcile_registry_unread: reconciliation needs the registry index the transaction read; an unread registry is not an empty one');
   }
@@ -88,7 +88,17 @@ function reconcileOnRollback({ targetStamps, ids, keys } = {}) {
        maps K to exactly one id, and we are iterating the pair where that id is X. So a refusal branch
        here is unreachable by construction, and a branch no fixture can distinguish is a branch that
        should not exist. THE WHOLE-TARGET VIEW DOES NOT MERELY HELP TELL THEFT FROM A SWAP — IT
-       DISSOLVES THE CONFLICT, which is the sharper form of why these five refusals moved. */
+       DISSOLVES THE CONFLICT, which is the sharper form of why these five refusals moved.
+
+       🔴 THE PREMISE THAT ARGUMENT RESTS ON, WRITTEN HERE BECAUSE IT LIVES IN ANOTHER LOOP. The
+       second branch — "not stamped by the target → retired below" — does all the work, and it holds
+       ONLY IF THE RETIRE HALF IS EXHAUSTIVE OVER THE FULL LIVE SET MINUS THE TARGET'S STAMPS. It is:
+       the loop below walks the WHOLE `ids` map and skips only non-live ids and ids the target stamps.
+       🔴 IF ANYONE EVER NARROWS THAT — to ids the target's own keys displaced, to ids some prior
+       activation touched, to anything less than "every live id the target does not stamp" — a live
+       claimant outside the narrowed set is neither restored nor retired, it KEEPS the name, and the
+       contested case this refusal used to catch becomes reachable again with nothing left to catch
+       it. Narrowing the retire half means restoring a refusal here. */
 
     /* Nothing to do: the registry already says exactly what the target says. The commonest case by
        far, and it must write NOTHING — an ordinary rollback of an unchanged menu is not a registry
@@ -117,11 +127,25 @@ function reconcileOnRollback({ targetStamps, ids, keys } = {}) {
      be "absent" and this would retire the entire registry — see the gate in catalog-publish.js and
      its cell. This function is never called for one; that is the caller's contract, and it is the
      reason this loop can be this simple. */
+  /* 🔴 AND THE RETIRES ARE CLASSIFIED, BECAUSE TWO VERY DIFFERENT THINGS LAND IN THIS LOOP. An id the
+     version being rolled back FROM stamped, but the target does not, is a SUPERSESSION — the rollback
+     is undoing the publish that created it, which is §5's case and entirely expected. An id neither
+     version stamps is RESIDUE: a pre-P1 migration orphan left live-claiming an old name by a
+     pre-cutover rename, exactly what §4's destination guard exists to notice and what
+     reconcileLegacyOrphans clears deliberately and logged.
+     Retiring residue is probably right — it is unreachable from any version — but AS A SIDE EFFECT OF
+     AN UNRELATED ROLLBACK it is surprising, and "a rollback quietly cleaned up migration residue" is
+     something an operator should find in a log rather than in a diff. `activeStamps` is optional: with
+     it the two are distinguishable, without it everything is reported `unknown` rather than silently
+     called a supersession. */
+  const inActive = activeStamps && typeof activeStamps === 'object'
+    ? new Set(Object.values(activeStamps).filter(isStr)) : null;
   const retires = [];
   for (const [id, row] of ids) {
     if (!row || row.status !== STATUS_LIVE) continue;
     if (survives(id)) continue;
-    retires.push({ id, name: row.legacy_key });
+    const why = inActive === null ? 'unknown' : (inActive.has(id) ? 'superseded' : 'residue');
+    retires.push({ id, name: row.legacy_key, why });
     if (isStr(row.legacy_key)) released.push({ id, name: row.legacy_key });
   }
 
@@ -141,7 +165,13 @@ function reconcileOnRollback({ targetStamps, ids, keys } = {}) {
        decides: a released name whose row belongs to another id is either skipped by the re-landing
        check above, or that id is itself releasing the name and the deletion is queued as its own.
        Stated rather than armed — an assertion invented to justify a branch is worse than an honest
-       note, and this is the third such branch this slice has found. */
+       note, and this is the third such branch this slice has found.
+       🔴 WHAT WOULD MAKE IT REACHABLE, so the next reader does not meet an unarmed guard and delete
+       it as dead code: a caller that RELEASES A NAME WITHOUT either restoring its claimant elsewhere
+       or retiring it. Nothing does that today — the two release paths above are exactly restore and
+       retire — but P1b's plan-level move is where such a path would arrive. If this branch ever
+       becomes reachable it needs a cell, and the mutant that was not worth writing today becomes
+       worth writing then. */
     if (keyRow.canonical_id !== r.id) continue;
     deletions.push({ name: r.name, encoded, id: r.id });
   }

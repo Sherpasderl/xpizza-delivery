@@ -185,4 +185,65 @@ const stampSays = ({ key, claimedId, keyRowId = null, idRow = null }) =>
   ok('an unread registry throws, an incoherent target is refused before the registry is consulted, and the empty-target hazard is pinned');
 }
 
+// ── 8. THE RETIRE HALF IS EXHAUSTIVE — THE PREMISE A DELETED REFUSAL RESTS ON ───────────────
+{
+  /* 🔴 THIS CELL EXISTS BECAUSE A REFUSAL WAS REMOVED. `reconcile_destination_contested` was deleted
+     as unreachable, and the argument for that has two branches: a displaced claimant is either
+     restored elsewhere by the target, or RETIRED FOR BEING ABSENT FROM IT. The second branch does all
+     the work, and it holds only if the retire half covers THE FULL LIVE SET MINUS THE TARGET'S
+     STAMPS. Narrow it — to ids the target's keys displaced, to ids some activation touched, to
+     anything less — and a live claimant outside the narrowed set is neither restored nor retired, it
+     keeps the name, and the contested case comes back with nothing left to catch it.
+     So the premise is asserted, not assumed: an id that touches NOTHING in the target, shares no key
+     with it, and was displaced by nobody, is still retired. */
+  const r = reg({
+    ids: {
+      X: row('Margherita'),
+      UNRELATED: row('Something Else Entirely'),      // touches no key the target mentions
+      DEAD: row('Old', STATUS_RETIRED),               // already retired — must NOT be retired again
+    },
+    keys: { Margherita: { canonical_id: 'X' }, 'Something Else Entirely': { canonical_id: 'UNRELATED' } },
+  });
+  const out = run({ Margherita: 'X' }, r);
+  assert.deepStrictEqual(out.retires.map((x) => x.id), ['UNRELATED'],
+    `🔴 the retire half is NOT the full live set minus the target's stamps. An id the target never mentions was left live — which is exactly the claimant the deleted reconcile_destination_contested refusal used to catch: ${JSON.stringify(out.retires)}`);
+  assert.deepStrictEqual(out.restores, [], 'and the coherent object is untouched');
+  ok('the retire half covers EVERY live id the target does not stamp, including one it never mentions — the premise the deleted contested-destination refusal rests on');
+}
+
+// ── 9. A ROLLBACK RETIRES MIGRATION RESIDUE, AND SAYS SO SEPARATELY ─────────────────────────
+{
+  /* 🔴 ESTABLISHED, NOT ASSUMED, BECAUSE IT IS A SURPRISING SIDE EFFECT. Because the retire half is
+     exhaustive (cell 8), a rollback also retires a PRE-P1 MIGRATION ORPHAN — the old id left
+     live-claiming an old name by a pre-cutover rename, which §4's destination guard exists to notice
+     and which reconcileLegacyOrphans is supposed to clear deliberately and logged. Retiring it is
+     defensible: no version can reach it. Doing so as a side effect of an UNRELATED ROLLBACK is
+     surprising, and "a rollback quietly cleaned up migration residue" belongs in a log rather than in
+     a diff — so the two kinds are reported distinctly. */
+  const r = reg({
+    ids: {
+      X: row('Margherita'),
+      NEWER: row('Diavola'),                 // created by the version being rolled back FROM
+      ORPHAN: row('Margherita Old'),         // pre-P1 residue: no version stamps it
+    },
+    keys: { Margherita: { canonical_id: 'X' }, Diavola: { canonical_id: 'NEWER' },
+      'Margherita Old': { canonical_id: 'ORPHAN' } },
+  });
+  const out = reconcileOnRollback({
+    targetStamps: { Margherita: 'X' },
+    activeStamps: { Margherita: 'X', Diavola: 'NEWER' },    // what the version we are leaving stamped
+    ids: r.ids, keys: r.keys,
+  });
+  const why = Object.fromEntries(out.retires.map((x) => [x.id, x.why]));
+  assert.deepStrictEqual(why, { NEWER: 'superseded', ORPHAN: 'residue' },
+    `🔴 a rollback cannot tell an id it is UNDOING from pre-P1 residue it is sweeping up as a side effect: ${JSON.stringify(out.retires)}`);
+
+  /* Without the active version's stamps the two are genuinely indistinguishable, and the honest
+     answer is to say so rather than to call everything a supersession. */
+  const blind = run({ Margherita: 'X' }, r);
+  assert.deepStrictEqual([...new Set(blind.retires.map((x) => x.why))], ['unknown'],
+    '🔴 with no active stamps supplied the retires were classified anyway — a guess reported as a fact');
+  ok('a rollback DOES retire pre-P1 migration residue, reported distinctly from the ids it is undoing — and reported as unknown rather than guessed when it cannot tell');
+}
+
 console.log(`identity-reconcile: OK (${n})`);

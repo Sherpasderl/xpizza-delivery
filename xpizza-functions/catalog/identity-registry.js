@@ -510,7 +510,13 @@ async function retireIdentity(db, { rid, kind, canonicalId, now = null, captured
        safety property — Firestore tolerates deleting a missing doc — and it has NO MUTANT for that
        reason: removing it changes nothing any cell can witness, and arming it would mean inventing an
        assertion for a difference I cannot demonstrate. Said here so its bareness is not read as a
-       gap in the sweep. */
+       gap in the sweep.
+       🔴 WHAT WOULD MAKE IT WORTH ARMING, so the next reader does not meet an unarmed branch and
+       delete it as dead code: a transaction-size or write-count budget on this path, where a wasted
+       delete stops being free and starts consuming a quota — or any caller that needs
+       `key_row_removed` to mean "a document was actually removed" rather than "a row was there when
+       we looked". Neither exists today; either makes this branch load-bearing and gives the mutant
+       something to kill. */
     if (keySnap.exists) tx.delete(keyRef);
     return { retired: true, legacy_key: d.legacy_key, key_row_removed: keySnap.exists };
   });

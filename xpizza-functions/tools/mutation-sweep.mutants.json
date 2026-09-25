@@ -9167,5 +9167,47 @@
    "node",
    "catalog/identity-reconcile.test.js"
   ]
+ },
+ {
+  "id": "e13-09",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    if (survives(id)) continue;",
+  "to": "    if (survives(id) || !Object.prototype.hasOwnProperty.call(stamps, row.legacy_key)) continue;",
+  "label": "🔴 THE RETIRE HALF IS NARROWED TO IDS THE TARGET'S OWN KEYS DISPLACED — a live id the target never mentions keeps its name, which is exactly the claimant the DELETED reconcile_destination_contested refusal used to catch",
+  "kills_with": [
+   "premise for the upstream gate",
+   "the retire half is NOT the full live set minus the target's stamps"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-10",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "    const why = inActive === null ? 'unknown' : (inActive.has(id) ? 'superseded' : 'residue');",
+  "to": "    const why = 'superseded';",
+  "label": "pre-P1 migration residue is reported as an ordinary supersession — a rollback sweeping up orphans as a side effect becomes invisible in the logs",
+  "kills_with": "cannot tell an id it is UNDOING from pre-P1 residue",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e13-11",
+  "slice": "e13",
+  "file": "catalog/identity-reconcile.js",
+  "from": "  const inActive = activeStamps && typeof activeStamps === 'object'\n    ? new Set(Object.values(activeStamps).filter(isStr)) : null;",
+  "to": "  const inActive = new Set(Object.values(activeStamps || {}).filter(isStr));",
+  "label": "with no active stamps supplied every retire is classified as residue — a guess reported as a fact",
+  "kills_with": "a guess reported as a fact",
+  "command": [
+   "node",
+   "catalog/identity-reconcile.test.js"
+  ]
  }
 ]
