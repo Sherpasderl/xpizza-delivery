@@ -456,9 +456,36 @@ async function retireIdentity(db, { rid, kind, canonicalId, now = null, captured
     if (!snap.exists) return { retired: false, reason: 'absent' };
     const d = snap.data() || {};
     if (d.status === STATUS_RETIRED) return { retired: false, reason: 'already_retired' };
+    /* 🔴 DELETE ONLY OUR OWN REVERSE ROW — AND READ IT FIRST (rule 17). This used to be an
+       UNCONDITIONAL tx.delete of keys/{encode(d.legacy_key)}: a document this transaction writes and
+       had never read. If that row has since been re-pointed at a DIFFERENT live id Y — a rename, a
+       half-done repair, a concurrent adoption — deleting it strips Y of its reverse row as a side
+       effect of retiring an unrelated id, leaving exactly the missing-reverse-row orphan
+       identity-sweep.js exists to repair.
+       identity-bootstrap.js:481 already said so IN THIS TREE — "Unconditional deletion is inherited
+       from retireIdentity and is wrong here" — and fixed only its own copy. A defect diagnosed in
+       writing and left standing is worse than one nobody noticed, because the next reader assumes
+       somebody decided.
+       ABSENT IS FINE, and it is not the same as disagreeing: nothing to remove is nothing to remove,
+       and refusing there would make a retirement impossible to complete over residue the sweep is
+       allowed to leave. A row naming someone ELSE is the registry disagreeing with itself, which
+       assertKeyRowAgrees and the sweep's `conflict` both refuse rather than repair — so it is
+       reported, not papered over, and the retirement does not silently half-happen.
+       The read sits BEFORE both writes: Firestore refuses a read after a write in a transaction. */
+    const keyRef = keysColOf(db, rid, kind).doc(encodeKey(d.legacy_key));
+    const keySnap = await tx.get(keyRef);
+    const keyOwner = keySnap.exists ? (keySnap.data() || {}).canonical_id : null;
+    if (keySnap.exists && keyOwner !== canonicalId) {
+      throw new Error(`identity_retire_key_row_disagrees: ${rid}/${kind}/${canonicalId} claims ${JSON.stringify(d.legacy_key)}, but keys/${encodeKey(d.legacy_key)} names ${JSON.stringify(keyOwner)}; deleting it would strip a live identity of its reverse row as a side effect of retiring this one`);
+    }
     tx.set(idRef, { ...d, status: STATUS_RETIRED, retired_at: stamp });
-    tx.delete(keysColOf(db, rid, kind).doc(encodeKey(d.legacy_key)));
-    return { retired: true, legacy_key: d.legacy_key };
+    /* The `exists` check spares a delete for a document that is not there. It is an economy, NOT a
+       safety property — Firestore tolerates deleting a missing doc — and it has NO MUTANT for that
+       reason: removing it changes nothing any cell can witness, and arming it would mean inventing an
+       assertion for a difference I cannot demonstrate. Said here so its bareness is not read as a
+       gap in the sweep. */
+    if (keySnap.exists) tx.delete(keyRef);
+    return { retired: true, legacy_key: d.legacy_key, key_row_removed: keySnap.exists };
   });
 }
 

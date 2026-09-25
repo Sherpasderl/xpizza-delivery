@@ -458,5 +458,73 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok('one unkeyable record fails the backfill by name and index — a partial miss is not a silent skip');
   }
 
+  /* ── retireIdentity DELETES A ROW IT MUST FIRST READ (rule 17) ───────────────────────────────
+     🔴 WHAT WAS WRONG. It read ids/{id} and then deleted keys/{encode(legacy_key)} unconditionally —
+     a document the transaction writes and had never read. If that row has been re-pointed at a
+     DIFFERENT live id, deleting it strips THAT id of its reverse row as a side effect of retiring an
+     unrelated one: the missing-reverse-row orphan identity-sweep.js exists to repair.
+     identity-bootstrap.js:481 names this defect in the tree already and fixed only its own copy. */
+  {
+    const db = memFirestore();
+    const mine = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Margherita', captured: PRE_P1 });
+    const other = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Napoletana', captured: PRE_P1 });
+    assert.notStrictEqual(mine.canonical_id, other.canonical_id, 'premise: two distinct live ids');
+
+    /* The re-point: keys/Margherita now names the OTHER id, while ids/{mine} still claims Margherita.
+       This is reachable from a rename, a half-done repair, or a concurrent adoption. */
+    const keyRef = db.collection('restaurants').doc('x_pizza').collection('identity').doc('dish')
+      .collection('keys').doc(encodeKey('Margherita'));
+    keyRef._set({ canonical_id: other.canonical_id, kind: 'dish' });
+    assert.strictEqual((await keyRef.get()).data().canonical_id, other.canonical_id, 'premise: the row was re-pointed');
+
+    let threw = null;
+    try { await retireIdentity(db, { rid: 'x_pizza', kind: 'dish', canonicalId: mine.canonical_id, captured: PRE_P1 }); }
+    catch (e) { threw = (e && e.message) || String(e); }
+    assert.ok(threw && /identity_retire_key_row_disagrees/.test(threw),
+      `🔴 retiring an id DELETED a key row naming a different live id: ${threw}`);
+    assert.ok(threw.includes(other.canonical_id) && threw.includes(mine.canonical_id),
+      `🔴 a comparison is two claims — the refusal must name both ids: ${threw}`);
+
+    /* 🔴 AND THE ROW SURVIVED. A refusal that threw AFTER queueing the delete would read identically
+       here unless the row is checked: the transaction aborting is the thing being asserted, not the
+       throw. The other id keeps its reverse row. */
+    assert.strictEqual((await keyRef.get()).data().canonical_id, other.canonical_id,
+      '🔴 the key row was deleted anyway — the refusal did not abort the transaction');
+    const stillLive = await db.collection('restaurants').doc('x_pizza').collection('identity').doc('dish')
+      .collection('ids').doc(mine.canonical_id).get();
+    assert.strictEqual((stillLive.data() || {}).status, 'live',
+      '🔴 the id was marked retired even though the transaction refused — a half-done retirement');
+    ok('retireIdentity REFUSES rather than deleting a key row that names a different live id, and the transaction commits nothing');
+  }
+
+  /* 🔴 THE SENSITIVITY CONTROL. "never deletes" is satisfiable by never deleting, which would leave
+     every retirement half-done. The ordinary path must still remove OUR row, and an ABSENT row must
+     still retire cleanly — residue the sweep is allowed to leave must not lock retirement out. */
+  {
+    const db = memFirestore();
+    const dishRef = (col) => db.collection('restaurants').doc('x_pizza').collection('identity').doc('dish').collection(col);
+    const a = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Romana', captured: PRE_P1 });
+    const r1 = await retireIdentity(db, { rid: 'x_pizza', kind: 'dish', canonicalId: a.canonical_id, captured: PRE_P1 });
+    assert.strictEqual(r1.retired, true, 'the ordinary retirement still succeeds');
+    /* 🔴 THE STORE IS THE WITNESS, NOT THE RETURNED FLAG. `key_row_removed` is computed from the READ
+       (`keySnap.exists`), so it stays true even if the delete is removed entirely — it reports what
+       was there, not what was done. A mutant that deletes NOTHING must not be allowed to die on a
+       flag; it must die on the store.
+       🔴 AND THIS IS NOT THE FIRST WITNESS. The retire cell above (`the key no longer resolves — the
+       object is retired`, via lookupByLegacyKeys) already catches that mutant, and catches it sooner.
+       Said so nobody reads these lines as the sole guard on the deletion: they are the DIRECT reading
+       of the row, where that one is the behavioural consequence, and the mutant records both. */
+    assert.strictEqual((await dishRef('keys').doc(encodeKey('Romana')).get()).exists, false,
+      '🔴 our OWN reverse row was not removed — the retirement is half-done and the name still resolves to a retired id');
+    assert.strictEqual(r1.key_row_removed, true, '…and the return value says so, which is reporting rather than evidence');
+
+    const b = await ensureIdentity(db, { rid: 'x_pizza', kind: 'dish', legacyKey: 'Diavola', captured: PRE_P1 });
+    dishRef('keys').doc(encodeKey('Diavola'))._delete();   // the sweep residue this must tolerate
+    const r2 = await retireIdentity(db, { rid: 'x_pizza', kind: 'dish', canonicalId: b.canonical_id, captured: PRE_P1 });
+    assert.strictEqual(r2.retired, true, '🔴 an ABSENT key row blocked the retirement — nothing to delete is not a disagreement, and refusing locks retirement out over sweep residue');
+    assert.strictEqual(r2.key_row_removed, false, 'and it reports honestly that there was no row to remove');
+    ok('the ordinary retirement still deletes its own reverse row, and an ABSENT row retires cleanly rather than refusing');
+  }
+
   console.log(`\nidentity-registry: ${n} checks passed`);
 })().catch((e) => { console.error('identity-registry FAILED:', e && e.message); process.exit(1); });

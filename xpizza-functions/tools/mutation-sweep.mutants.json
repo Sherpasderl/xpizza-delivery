@@ -8622,5 +8622,47 @@
    "node",
    "catalog/project-guard.test.js"
   ]
+ },
+ {
+  "id": "e7-01",
+  "slice": "e7",
+  "file": "catalog/identity-registry.js",
+  "from": "    if (keySnap.exists && keyOwner !== canonicalId) {",
+  "to": "    if (false) {",
+  "label": "🔴 the key row is READ but not CHECKED — a row naming a different live id is deleted anyway, which is the original defect with a read bolted on",
+  "kills_with": "DELETED a key row naming a different live id",
+  "command": [
+   "node",
+   "catalog/identity-registry.test.js"
+  ]
+ },
+ {
+  "id": "e7-02",
+  "slice": "e7",
+  "file": "catalog/identity-registry.js",
+  "from": "    const keySnap = await tx.get(keyRef);\n    const keyOwner = keySnap.exists ? (keySnap.data() || {}).canonical_id : null;",
+  "to": "    const keySnap = { exists: true, data: () => ({ canonical_id: canonicalId }) };\n    const keyOwner = canonicalId;",
+  "label": "the row is never READ at all — rule 17's violation restored: the transaction deletes a document it assumed the contents of",
+  "kills_with": "DELETED a key row naming a different live id",
+  "command": [
+   "node",
+   "catalog/identity-registry.test.js"
+  ]
+ },
+ {
+  "id": "e7-03",
+  "slice": "e7",
+  "file": "catalog/identity-registry.js",
+  "from": "    if (keySnap.exists) tx.delete(keyRef);",
+  "to": "    if (false) tx.delete(keyRef);",
+  "label": "the retirement never removes its OWN reverse row — half-done: the id is retired and the name still resolves to it",
+  "kills_with": [
+   "the key no longer resolves — the object is retired",
+   "the retirement is half-done and the name still resolves to a retired id"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-registry.test.js"
+  ]
  }
 ]
