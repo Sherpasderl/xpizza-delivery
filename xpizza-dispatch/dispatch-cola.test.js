@@ -129,7 +129,9 @@ const colaJs = html.slice(colaStart, html.indexOf('\n}', colaEnd) + 2);
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const r = html.slice(html.indexOf('function renderCola('), html.indexOf('function colaCard('));
-  assert.match(r, /meta\.textContent = String\(counts\.all\)/, 'Cola header meta = counts.all');
+  // F4: Cola header meta = mockup phead wording ("N necesitan acción" / "Todo asignado"), still driven by counts.all
+  // (the ONE count). Non-vacuous: reverting to String(counts.all) or dropping the counts.all driver → red.
+  assert.match(r, /meta\.textContent = counts\.all \? `\$\{counts\.all\}[^`]*acci[oó]n` : 'Todo asignado'/, 'Cola header meta = "N necesitan acción" / "Todo asignado", driven by counts.all');
   assert.match(r, /setSeg\('seg-all-n', counts\.all\)/, 'segment Todos = counts.all');
   assert.match(r, /setSeg\('seg-unassigned-n', counts\.unassigned\)/, 'segment Sin asignar = counts.unassigned');
   assert.match(r, /setSeg\('seg-stalled-n', counts\.stalled\)/, 'segment Detenidos = counts.stalled');

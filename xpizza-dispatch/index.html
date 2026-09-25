@@ -905,11 +905,12 @@
     border-radius: 99px;
     animation: pulse-warn 1.5s infinite;
   }
+  /* F4: list empty state = mockup .empty (centered, generous padding, calm — not italic). */
   .tree-empty {
     color: var(--text-dim);
-    font-size: 11px;
-    padding: 6px 4px 12px;
-    font-style: italic;
+    font-size: 12.5px;
+    padding: 40px 18px;
+    text-align: center;
   }
 
   /* Reconciliación de pagos panel */
@@ -942,33 +943,36 @@
   .recon-btn:disabled { opacity: 0.45; cursor: default; filter: none; }
 
   /* ---- v6 driver card (mockup .drv — gradient + elevation + hover-lift) ---- */
+  /* F4: roster card = mockup .drow (flat bordered card on surface-2, round avatar, GPS pill chip). renderDriverNode
+     markup is byte-locked; this restyles its existing classes to the mockup's values. */
   .driver-row {
-    border-radius: 13px;
+    border: 1px solid var(--border-soft);
+    border-radius: 7px;
     overflow: hidden;
-    background: linear-gradient(180deg, var(--card-1), var(--card-2));
+    background: var(--surface-2);
     cursor: pointer;
-    margin-bottom: 9px;
-    box-shadow: var(--shadow);
-    transition: transform 0.16s ease, box-shadow 0.16s ease;
+    margin-bottom: 7px;
+    transition: background 0.14s ease, border-color 0.14s ease;
   }
-  .driver-row:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+  .driver-row:hover { background: var(--surface-3); border-color: var(--border); }
   /* de-emphasize a stale row by DESATURATING (luminance-preserving → functional text stays ≥AA),
-     not by opacity, which drops even --text below 4.5:1. */
+     not by opacity, which drops even --text below 4.5:1 (kept over the mockup's opacity:.5). */
   .driver-row.stale { filter: grayscale(0.65); }
+  .driver-row.gps-dark { border-color: rgba(224,85,95,0.35); }   /* mockup .drow.alarm */
   /* header row */
   .driver-row .dh { display: flex; align-items: center; gap: 10px; padding: 10px 11px; }
   .av {
-    width: 34px; height: 34px; border-radius: 11px;
+    width: 32px; height: 32px; border-radius: 50%;
     background: var(--surface-3);
     display: grid; place-items: center;
     font-family: 'Inter', sans-serif;
-    font-weight: 700; font-size: 13px;
+    font-weight: 600; font-size: 12px;
     position: relative; flex: none; color: var(--text-soft);
   }
   .av .s {
-    position: absolute; bottom: -2px; right: -2px;
-    width: 12px; height: 12px; border-radius: 50%;
-    border: 2.5px solid var(--surface);
+    position: absolute; bottom: -1px; right: -1px;
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 2px solid var(--surface-2);
     background: var(--text-dim);
   }
   .av .s.green { background: var(--success); }
@@ -982,13 +986,14 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .who .dm { font-size: 11px; color: var(--text-dim); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .gps { font-size: 11px; color: var(--text-soft); display: flex; align-items: center; gap: 5px; margin-right: 2px; flex: none; }
-  .gps .d { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success-glow); }
-  .gps.dark { color: var(--accent); }
-  .gps.dark .d { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); animation: softpulse 1.6s infinite; }
+  /* GPS = mockup pill chip (green live / red dark). */
+  .gps { font-size: 10.5px; font-weight: 500; color: var(--success); display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 99px; background: var(--success-soft); flex: none; }
+  .gps .d { width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: none; }
+  .gps.dark { color: var(--accent); background: var(--accent-soft); }
+  .gps.dark .d { background: currentColor; box-shadow: none; animation: softpulse 1.6s infinite; }
   .dacts { display: flex; align-items: center; gap: 1px; flex: none; }
   .driver-row .da {
-    width: 30px; height: 30px; border-radius: 8px;
+    width: 30px; height: 30px; border-radius: 7px;
     color: var(--da); background: none; border: none;
     display: grid; place-items: center; cursor: pointer;
     transition: 0.14s;
@@ -996,10 +1001,10 @@
   .driver-row .da.call { color: var(--da-call); }   /* soft mint */
   .driver-row .da.msg  { color: var(--da-msg); }   /* soft periwinkle */
   .driver-row .da.more { color: var(--da-more); }   /* quiet slate */
-  .driver-row .da:hover { background: var(--hair); transform: translateY(-1px); filter: brightness(1.2); }
+  .driver-row .da:hover { background: var(--hair); filter: brightness(1.2); }
   .driver-row .da svg { width: 15px; height: 15px; }
-  /* sin-señal strip (gps-dark) */
-  .dark-row { padding: 9px 11px; font-size: 11px; color: var(--accent); background: var(--accent-soft); display: flex; gap: 8px; align-items: center; }
+  /* sin-señal line = mockup .darkline (top-bordered line inside the row, no fill). */
+  .dark-row { margin: 0 11px; padding: 8px 0; border-top: 1px solid var(--border-soft); font-size: 11px; color: var(--accent); background: none; display: flex; gap: 7px; align-items: center; }
   .dark-row svg { width: 15px; height: 15px; color: var(--accent); flex: none; }
   /* inline active-task summary line (collapsed state) */
   .dt { border-top: 1px solid var(--hair-top); padding: 10px 11px; font-size: 11.5px; color: var(--text-soft); display: flex; align-items: center; gap: 9px; }
@@ -1109,49 +1114,26 @@
   .unassigned-card .total { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 16px; color: var(--text); }
   .unassigned-card .customer { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; margin-bottom: 2px; }
   .unassigned-card .addr { font-size: 11px; color: var(--text-soft); margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .unassigned-card .actions { display: flex; gap: 6px; }
-  .unassigned-card .assign-btn {
-    flex: 1;
-    background: var(--btn-pri-bg);
-    color: var(--btn-pri-fg);
-    border: none;
-    padding: 8px;
-    border-radius: 5px;
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: -0.01em;
-    cursor: pointer;
-  }
-  .unassigned-card .assign-btn:hover { filter: brightness(1.05); }
-  .unassigned-card .assign-self-btn {
-    background: var(--btn-pri-bg);
-    color: var(--btn-pri-fg);
-    border: none;
-    padding: 8px 12px;
-    border-radius: 5px;
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 12px;
-    letter-spacing: -0.01em;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .unassigned-card .assign-self-btn:hover { filter: brightness(1.05); }
-  /* Cola de acción (Slice B) — stalled / at-risk rows use Reasignar as the primary action. */
+  /* F4: queue-row actions = mockup .qact (inline .btn.pri, natural width, 7px radius, weight 500). */
+  .unassigned-card .actions { display: flex; align-items: center; gap: 7px; }
+  .unassigned-card .assign-btn,
+  .unassigned-card .assign-self-btn,
   .unassigned-card .reassign-btn {
-    flex: 1;
     background: var(--btn-pri-bg);
     color: var(--btn-pri-fg);
-    border: none;
-    padding: 8px;
-    border-radius: 5px;
+    border: 1px solid var(--btn-pri-bg);
+    padding: 7px 13px;
+    border-radius: 7px;
     font-family: 'Inter', sans-serif;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 12px;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.006em;
     cursor: pointer;
+    white-space: nowrap;
+    transition: filter .14s;
   }
+  .unassigned-card .assign-btn:hover,
+  .unassigned-card .assign-self-btn:hover,
   .unassigned-card .reassign-btn:hover { filter: brightness(1.05); }
 
   /* ==================== EXPANDED TASK DETAILS ==================== */
@@ -1200,21 +1182,23 @@
   }
 
   /* ==================== ACTION BUTTON (⋯) ==================== */
+  /* F4: the ⋯ trailing action = mockup .mini (30×30, 7px radius, hairline border), pushed to the row's right edge. */
   .more-btn {
     background: transparent;
-    border: none;
+    border: 1px solid var(--border-soft);
     color: var(--text-dim);
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
     cursor: pointer;
     display: grid;
     place-items: center;
     padding: 0;
     flex-shrink: 0;
+    margin-left: auto;
+    transition: color .14s, background .14s, border-color .14s;
   }
-  .more-btn:hover { color: var(--text-soft); }
-  .more-btn:hover { background: var(--surface-3); color: var(--text); }
+  .more-btn:hover { background: var(--surface-3); color: var(--text); border-color: var(--border); }
 
   /* ==================== ACTION MENU (popover) ==================== */
   #action-menu {
@@ -1680,9 +1664,11 @@
     color: var(--warn);
     margin-top: 3px;
   }
+  /* F4: calmer name weight/size toward the mockup .prow .pname (the full command-palette .prow — keyboard
+     number badges, status dot, stat chips — is a renderPicker markup+behavior change; flagged, not done here). */
   .picker-row .name {
-    font-family: 'Inter', sans-serif; font-weight: 800;
-    font-size: 16px;
+    font-family: 'Inter', sans-serif; font-weight: 600;
+    font-size: 13px;
     flex: 1;
   }
   .picker-row .distances {
@@ -1865,9 +1851,10 @@
   }
 /* Scheduled-order badge (cross-surface identity). Gold pill, dark text — legible on any card bg.
    Contrast: #7A5B0C on #FBF0CE ≈ 6.4:1. */
+/* F4: scheduled indicator = mockup .tag.sched (subtle full-radius pill). */
 .sched-badge {
-  display: inline-flex; align-items: center; gap: 4px; background: var(--sched-bg); color: var(--sched-fg);
-  font-weight: 700; font-size: 12px; line-height: 1.2; padding: 3px 9px; border-radius: 7px; margin: 4px 0;
+  display: inline-flex; align-items: center; gap: 5px; background: var(--sched-bg); color: var(--sched-fg);
+  font-weight: 500; font-size: 10.5px; line-height: 1.2; padding: 2px 8px; border-radius: 99px; margin: 4px 0;
 }
 
   /* ============ Torre de Control — visual-system primitives (Phase-1 redesign) ============ */
@@ -1903,7 +1890,7 @@
   /* F3: mockup default proportions (side rails ~1:0.92, center widest w/ a 400px min). The px model is kept so
      drag-resize + collapse (--lw/--rw → px / 0) still work; only the DEFAULT widths + the card gap/padding change. */
   :root { --lw-size: 372px; --rw-size: 342px; --lw: var(--lw-size); --rw: var(--rw-size); }
-  .app { height: calc(100vh - 60px); }
+  .app { height: calc(100vh - 53px); }   /* F4: match the 53px topbar (was 60px → ~7px bottom gap after F2) */
   .main { display: grid; box-sizing: border-box; grid-template-columns: var(--lw) minmax(400px, 1fr) var(--rw); grid-template-rows: 100%; height: 100%; gap: 12px; padding: 12px 12px 44px; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
   .main.resizing { transition: none; }   /* no lag while dragging a rail edge */
   .app:not(.left-open) .main  { --lw: 0px; }
@@ -1984,37 +1971,40 @@
 
   /* ============ v6 rich order row (Task 9) — .ord overrides the old .unassigned-card container ============ */
   /* base depth (gradient/shadow) from the Task-6 .ex,.ord,.drv,.cash rule */
-  .ord { border: none; border-radius: 13px; padding: 13px; margin: 0 0 9px; position: relative; overflow: hidden; cursor: pointer; }
-  .ord::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--success); }
-  .ord.aging::after { background: var(--warn); }
-  .ord.late::after  { background: var(--accent); }
-  .ord .r1 { display: flex; align-items: center; gap: 9px; min-width: 0; }
-  .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 13px; color: var(--text-soft); flex: none; }
+  /* F4: queue row = mockup .qrow (bordered card on surface-2, 7px radius, inset rounded status bar). */
+  .ord { border: 1px solid var(--border-soft); border-radius: 7px; padding: 11px 12px 11px 15px; margin: 0 0 7px; position: relative; overflow: hidden; cursor: pointer; background: var(--surface-2); transition: border-color .14s, background .14s; }
+  .ord::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2.5px; border-radius: 99px; background: var(--success); }
+  .ord.aging::before { background: var(--warn); }
+  .ord.late::before  { background: var(--accent); }
+  .ord:hover { background: var(--surface-3); border-color: var(--border); }
+  .ord .r1 { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 5px; }
+  .ord .num  { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 12px; color: var(--text-soft); flex: none; }
   .ord .cust { font-weight: 600; font-size: 13px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ord .ord-age { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-soft); flex: none; }
+  .ord .ord-age { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-dim); flex: none; }
   .ord .ord-age.band-amber { color: var(--warn); }
   .ord .ord-age.band-red   { color: var(--accent); }
-  .ord .items { color: var(--text-soft); font-size: 12px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ord .meta { display: flex; gap: 12px; margin-top: 10px; align-items: center; color: var(--text-dim); font-size: 11.5px; flex-wrap: wrap; }
-  .ord .meta .m { display: inline-flex; gap: 6px; align-items: center; }
-  .ord .meta .m .d { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
-  .ord .meta .m.pay .d  { background: var(--warn); }
-  .ord .meta .m.paid .d { background: var(--success); }
-  .ord .meta .m.wa .d   { background: var(--success); }
-  .ord .meta .m.warn { color: var(--accent); } .ord .meta .m.warn .d { background: var(--accent); }
-  .ord .meta .m.slip { color: var(--accent); } .ord .meta .m.slip .d { background: var(--accent); }
-  .ord .meta .m.stall { color: var(--accent); } .ord .meta .m.stall .d { background: var(--accent); }
-  .ord .actions { display: flex; gap: 6px; margin-top: 11px; }
+  .ord .items { color: var(--text-soft); font-size: 12px; margin-bottom: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ord .meta { display: flex; gap: 12px; margin-bottom: 10px; align-items: center; color: var(--text-dim); font-size: 11.5px; flex-wrap: wrap; }
+  .ord .meta .m { display: inline-flex; gap: 5px; align-items: center; }
+  .ord .meta .m .d { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .ord .meta .m.pay  { color: var(--warn); }
+  .ord .meta .m.paid { color: var(--success); }
+  .ord .meta .m.wa   { color: var(--info); }
+  .ord .meta .m.warn { color: var(--accent); }
+  .ord .meta .m.slip { color: var(--accent); }
+  .ord .meta .m.stall { color: var(--accent); }
+  .ord .actions { display: flex; align-items: center; gap: 7px; margin-top: 0; }
 
   /* ==================== COLA DE ACCIÓN — segmented filter (Slice B) ==================== */
+  /* F4: segmented filter = mockup .seg (surface-2 track, 8px radius, inset to the phead gutter). */
   .cola-seg {
     display: flex;
     gap: 2px;
-    margin: 10px 0 12px;
+    margin: 2px 12px 10px;
     padding: 3px;
-    background: var(--surface);
+    background: var(--surface-2);
     border: 1px solid var(--border-soft);
-    border-radius: 9px;
+    border-radius: 8px;
   }
   .cola-seg-btn {
     flex: 1;
@@ -2028,7 +2018,7 @@
     border-radius: 6px;
     color: var(--text-dim);
     font-family: 'Inter', sans-serif;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 11.5px;
     letter-spacing: -0.01em;
     white-space: nowrap;
@@ -2036,12 +2026,12 @@
     transition: background 0.15s ease, color 0.15s ease;
   }
   .cola-seg-btn:hover { color: var(--text-soft); }
-  .cola-seg-btn.on { background: var(--surface-3); color: var(--text); }
+  .cola-seg-btn.on { background: var(--surface-3); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
   .cola-seg-n {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-dim);
-    background: var(--surface-2);
+    background: var(--surface-3);
     border-radius: 99px;
     padding: 0 5px;
   }
@@ -2052,7 +2042,7 @@
   /* F3: cash/cuadre bar is now the Repartidores panel FOOTER (mockup .cashbar) — pinned below the scrolling roster. */
   .cash-bar { flex: none; display: flex; align-items: center; gap: 10px; background: var(--surface); border-top: 1px solid var(--border-soft); padding: 11px 14px; margin: 0; }
   .cash-bar .ci { display: flex; flex-direction: column; line-height: 1.25; }
-  .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; color: var(--text); }
+  .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 13px; color: var(--text); }
   .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
   .cash-div { width: 1px; height: 26px; background: var(--border-soft); flex: none; }
   .cash-recon-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
@@ -3620,7 +3610,8 @@ function renderCola(precomputed) {
   const { entries, counts } = precomputed || getActionQueue(Date.now());
 
   // ONE count — mirrored to the Cola header meta, the segment chips, and (via updateStats) the topbar KPI.
-  meta.textContent = String(counts.all);
+  // F4: mockup phead wording ("N necesitan acción" when >0, "Todo asignado" when the queue is clear).
+  meta.textContent = counts.all ? `${counts.all} ${counts.all === 1 ? 'necesita' : 'necesitan'} acción` : 'Todo asignado';
   meta.classList.toggle('hot', counts.all > 0);
   const setSeg = (id, n) => { const el = $(id); if (el) el.textContent = String(n); };
   setSeg('seg-all-n', counts.all); setSeg('seg-unassigned-n', counts.unassigned);
