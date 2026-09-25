@@ -328,7 +328,10 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        the source is never read. Deliberately NOT read under the ignore policy: a read joins the
        transaction's conflict set, and a rollback that aborted because a merchant saved their draft
        would be an emergency path made fragile by a document it does not even consult. */
-    const draftSnap = (wantsDraftCas || claimPolicy === 'consume') ? await tx.get(sourceRefOf(db, rid)) : null;
+    /* `isRollback` joins this condition because §5's rollback REBASES the stored source, and a write
+       needs its read first: Firestore refuses a read after a write, so a rollback that read the
+       source later would abort its own transaction. Rule 17, order half, enforced by the database. */
+    const draftSnap = (wantsDraftCas || claimPolicy === 'consume' || isRollback) ? await tx.get(sourceRefOf(db, rid)) : null;
     /* Every read before any write — Firestore refuses a read after a write — and this one is the
        candidate's own version doc, so the eligibility predicate is evaluated against the record as it
        stands at the serialization point rather than as it looked when the candidate was built. */
@@ -812,6 +815,49 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           return id === undefined ? o : { ...o, display: { ...(o.display || {}), identity_id: id } };
         });
         tx.update(sourceRefOf(db, rid), { items: enrich(liveSrc.items, 'dish'), extras: enrich(liveSrc.extras, 'extra') });
+      }
+
+      /* ══ §5 — A ROLLBACK REBASES THE STORED SOURCE, IN THIS SAME TRANSACTION ════════════════
+         🔴 WHY IT IS REQUIRED AND NOT TIDINESS. `validatePartition` refuses a publish whose draft
+         carries an id the ACTIVE version does not certify (identity_partition_carried_unknown). A
+         rollback moves the pointer to an older version, and the stored source still carries the ids
+         later publishes minted — so WITHOUT THIS THE NEXT PUBLISH AFTER ANY ROLLBACK IS REFUSED and
+         the merchant cannot publish at all. §5 names this: "rebases stored SOURCE to the target's
+         objects with their restored stamps", owner-confirmed, a 4th-grill fix, and unbuilt until now
+         — `rollbackVersion` changed no source, and getEditableCatalog reloads that unchanged source.
+         🔴 SURGICAL: ONLY `display.identity_id` MOVES. Every other byte of the merchant's saved draft
+         is left exactly as it was — prices, names, hours, ordering. A stamp the target certifies is
+         written; a stamp it does not is REMOVED, which makes that object unidentified so the next
+         publish mints it a fresh id rather than carrying one no version certifies. Replacing the
+         whole source with the target's objects would also satisfy the partition law and would throw
+         away edits the rollback was never asked to undo.
+         🔴 AND A CONCURRENT DRAFT GETS A VISIBLE CAS CONFLICT, NOT A SILENT CLOBBER — §5's own
+         requirement. This write bumps the source's updateTime, so a merchant who was mid-edit is
+         refused `flip_cas_draft_stale` by name on their next publish and reloads, rather than
+         discovering at publish time that their work sat on a baseline that no longer exists. That is
+         why the rebase deliberately does NOT demand a draftRevision of its own: the emergency path is
+         not the merchant's to gate (§5), and the protection is the conflict their publish meets.
+         🔴 AND IT WRITES NOTHING WHEN NOTHING CHANGES. A rollback whose stamps already match must not
+         bump updateTime, or every rollback would invalidate an innocent draft for no reason. */
+      if (isRollback && draftSnap && draftSnap.exists) {
+        const liveSrc = draftSnap.data() || {};
+        let rebased = 0;
+        const rebase = (rows, kind) => (Array.isArray(rows) ? rows : []).map((o) => {
+          if (!o || typeof o.key !== 'string') return o;
+          const want = persisted[kind][o.key];
+          const have = (o.display || {}).identity_id;
+          if (want === have || (want === undefined && have === undefined)) return o;
+          rebased += 1;
+          const display = { ...(o.display || {}) };
+          if (want === undefined) delete display.identity_id; else display.identity_id = want;
+          return { ...o, display };
+        });
+        const items = rebase(liveSrc.items, 'dish');
+        const extras = rebase(liveSrc.extras, 'extra');
+        if (rebased) {
+          tx.update(sourceRefOf(db, rid), { items, extras });
+          try { console.log('identity_rollback_source_rebased', JSON.stringify({ rid, target: versionId, objects: rebased })); } catch (_) {}
+        }
       }
 
       if (identityWrites.dish || identityWrites.extra) {

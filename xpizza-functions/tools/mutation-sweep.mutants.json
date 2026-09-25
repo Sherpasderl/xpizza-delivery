@@ -6900,7 +6900,7 @@
   ],
   "label": "🔴 the source is only read when a draft CAS is present - a publish cannot see the claim it is about to strand",
   "kills_with": "the claim must be settled before this flip, and the source was never read",
-  "from": "    const draftSnap = (wantsDraftCas || claimPolicy === 'consume') ? await tx.get(sourceRefOf(db, rid)) : null;",
+  "from": "    const draftSnap = (wantsDraftCas || claimPolicy === 'consume' || isRollback) ? await tx.get(sourceRefOf(db, rid)) : null;",
   "to": "    const draftSnap = wantsDraftCas ? await tx.get(sourceRefOf(db, rid)) : null;",
   "why": "The pre-D reading, restored. It looks like a pure optimisation and is the reason the CAS requirement in d4p1d-08 is reachable at all: a publish that omits draftRevision never reads the source, so the standing claim is invisible and the flip proceeds. Same kill text as d4p1d-08 by construction — both make the identical publish succeed — and they are separate mutants because they are separate ways to lose the same guarantee. 🔴 RE-AIMED, and the re-aiming fixed the code rather than the record. The mutant first died on a TypeError — the consume block dereferenced a null draftSnap — which is a crash, not a decision, and a kill scored on it would have been scored on the absence of a null check. The invariant is now a named fail-closed refusal at the top of the block, so this mutant dies saying exactly what the narrowing cost. Nothing reaches that refusal under real code, by construction; this mutant is the only thing that does, which is why it is the one that proves it."
  },
@@ -9366,6 +9366,74 @@
   "command": [
    "node",
    "tools/registry-writers.test.js"
+  ]
+ },
+ {
+  "id": "e11-09",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "      if (isRollback && draftSnap && draftSnap.exists) {",
+  "to": "      if (false) {",
+  "label": "🔴 §5's ROLLBACK SOURCE REBASE IS OMITTED — the stored source keeps ids the target does not certify, so THE PUBLISH AFTER ANY ROLLBACK is refused `identity_partition_carried_unknown` (the STALE-SOURCE lockout, as distinct from `identity_partition_unaccounted`, which is a missing version stamp)",
+  "kills_with": [
+   "PUBLISHING AFTER THE PREVIOUS CELL",
+   "THE PUBLISH AFTER A ROLLBACK WAS REFUSED",
+   "the source still carries an id the rollback target does not certify"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-10",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "          if (want === undefined) delete display.identity_id; else display.identity_id = want;",
+  "to": "          if (want !== undefined) display.identity_id = want;",
+  "label": "a stamp the target does NOT certify is left in place instead of removed — the object keeps an id no version certifies and the next publish is refused carried_unknown",
+  "kills_with": [
+   "PUBLISHING AFTER THE PREVIOUS CELL",
+   "THE PUBLISH AFTER A ROLLBACK WAS REFUSED",
+   "the source still carries an id the rollback target does not certify"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-11",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "        if (rebased) {\n          tx.update(sourceRefOf(db, rid), { items, extras });",
+  "to": "        if (true) {\n          tx.update(sourceRefOf(db, rid), { items, extras });",
+  "label": "the rebase writes even when NOTHING changed — every rollback bumps the source revision and invalidates an innocent merchant draft for no reason",
+  "kills_with": "a rollback that changed NO stamps still wrote the source",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-12",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "    const draftSnap = (wantsDraftCas || claimPolicy === 'consume' || isRollback) ? await tx.get(sourceRefOf(db, rid)) : null;",
+  "to": "    const draftSnap = (wantsDraftCas || claimPolicy === 'consume') ? await tx.get(sourceRefOf(db, rid)) : null;",
+  "label": "🔴 THE ROLLBACK PATH STOPS READING THE SOURCE — rule 17's completeness half: the rebase would write a document the transaction never read, and here it simply never rebases",
+  "kills_with": [
+   "PUBLISHING AFTER THE PREVIOUS CELL",
+   "THE PUBLISH AFTER A ROLLBACK WAS REFUSED",
+   "the source still carries an id the rollback target does not certify"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
   ]
  }
 ]

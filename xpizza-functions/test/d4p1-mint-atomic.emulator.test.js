@@ -481,6 +481,104 @@ async function addDishToSource(name) {
     ok('a rollback ACROSS A DELETION succeeds and resurrects the SAME id in both planes — the five relocated refusals really did move');
   }
 
+  // ── 8. 🔴 ROLLBACK, THEN PUBLISH — §5's SOURCE REBASE, WHICH WAS UNBUILT ───────────────────
+  {
+    /* 🔴 THE PROPERTY CELL 4 WAS MOVED AWAY FROM MEASURING. A rollback moves the pointer to an older
+       version while the stored source still carries the ids later publishes minted, so
+       validatePartition refuses the NEXT publish with `identity_partition_carried_unknown` — the
+       merchant cannot publish at all after any rollback. §5 requires the rollback flip to rebase the
+       stored source in the SAME transaction; it was unbuilt, and my mint enrichment took it from
+       latent to reachable.
+       TWO LOCKOUTS, DISTINGUISHABLE BY NAME: `identity_partition_unaccounted` is a missing version
+       stamp (cell 4's mutant), `identity_partition_carried_unknown` is a stale source (this one). */
+    /* 🔴 THIS SETUP PUBLISH IS GUARDED, BECAUSE CELL 7 ALREADY ROLLED BACK. Without the rebase, cell
+       7's rollback leaves the source carrying ids its target does not certify, and THIS publish is
+       the first to meet it — as an uncaught throw in a setup line, which says nothing about the
+       property. Attributed here rather than left to surface as noise, the same repair cell 2 needed. */
+    const cur = await getActivePointer(db, RID);
+    await addDishToSource(`Zz Pre Roll ${STAMP}`);
+    let newer = null;
+    try { newer = await publish(cur.version, `pre-roll-${STAMP}`); }
+    catch (e) {
+      assert.fail(`🔴 PUBLISHING AFTER THE PREVIOUS CELL'S ROLLBACK WAS REFUSED — the stale-source lockout, before this cell even stages its own. If this says identity_partition_carried_unknown, a rollback did not rebase the stored source to its target's stamps: ${(e && e.message) || e}`);
+    }
+    const mintedId = (await keyRowOf('dish', `Zz Pre Roll ${STAMP}`) || {}).canonical_id;
+    assert.ok(mintedId, 'premise — the pre-rollback publish minted an id the target will not certify');
+
+    const { rollbackVersion } = require('../catalog/catalog-publish');
+    await rollbackVersion(db, RID, cur.version, { expected: { activeVersionId: newer } });
+    assert.strictEqual((await getActivePointer(db, RID)).version, cur.version, 'premise — the rollback landed');
+
+    /* 🔴 THE SOURCE NO LONGER CARRIES THE UNCERTIFIED STAMP, and the object keeps its other fields:
+       a rebase that replaced the source wholesale would also satisfy the partition law while
+       discarding edits the rollback was never asked to undo. */
+    const src2 = (await sourceRefOf(db, RID).get()).data();
+    const rebasedRow = (src2.items || []).find((o) => o.key === `Zz Pre Roll ${STAMP}`);
+    assert.ok(rebasedRow, '🔴 the rollback REMOVED the object from the source — only display.identity_id should move');
+    assert.strictEqual((rebasedRow.display || {}).identity_id, undefined,
+      '🔴 the source still carries an id the rollback target does not certify — the next publish is about to be refused identity_partition_carried_unknown');
+
+    /* THE ASSERTION THAT ONLY A PUBLISH-AFTER-ROLLBACK CAN MAKE. */
+    let refused = null;
+    try { await publish(cur.version, `post-roll-${STAMP}`); }
+    catch (e) { refused = (e && e.message) || String(e); }
+    assert.strictEqual(refused, null,
+      `🔴 THE PUBLISH AFTER A ROLLBACK WAS REFUSED — the merchant rolled back and can no longer publish their own menu. If this says identity_partition_carried_unknown, the source was not rebased to the target's stamps: ${refused}`);
+    ok('a rollback REBASES the stored source to the target\'s stamps, so the next publish succeeds — §5 satisfied rather than deferred');
+  }
+
+  // ── 9. 🔴 A CONCURRENT DRAFT SEES A VISIBLE CAS CONFLICT, NOT A SILENT CLOBBER ─────────────
+  {
+    /* §5, verbatim: "A concurrent draft sees a CAS conflict and must VISIBLY rebase/discard, never
+       silently clobbered or churned on the next publish." This is the only part of the rebase a
+       merchant would ever feel, and the part most likely to be built correctly-but-silently.
+       A merchant reads the source, starts editing, and an operator rolls back underneath them. Their
+       publish must be REFUSED BY NAME against the revision they reviewed — not accepted onto a
+       baseline that no longer exists, and not silently overwritten. */
+    const beforeEdit = await sourceRefOf(db, RID).get();
+    const staleRevision = encodeUpdateTime(beforeEdit.updateTime);   // what the merchant is editing against
+
+    const cur = await getActivePointer(db, RID);
+    await addDishToSource(`Zz Concurrent ${STAMP}`);
+    const newer = await publish(cur.version, `conc-${STAMP}`);
+
+    const { rollbackVersion } = require('../catalog/catalog-publish');
+    await rollbackVersion(db, RID, cur.version, { expected: { activeVersionId: newer } });
+
+    let conflict = null;
+    try {
+      const input = { ...(await candidateFromSource()), source_sha: `conc-publish-${STAMP}` };
+      await publishVersion(db, RID, input,
+        { expected: { activeVersionId: cur.version, draftRevision: staleRevision } });
+    } catch (e) { conflict = (e && e.message) || String(e); }
+    assert.ok(conflict && /flip_cas_draft_stale/.test(conflict),
+      `🔴 a draft open ACROSS the rollback was accepted, or refused for some other reason. §5 requires a VISIBLE CAS conflict so the merchant rebases or discards deliberately, rather than publishing onto a baseline that no longer exists: ${conflict}`);
+    assert.strictEqual((await getActivePointer(db, RID)).version, cur.version, 'and the refused publish moved nothing');
+    /* 🔴 AND THE MIRROR: A ROLLBACK THAT CHANGES NO STAMPS MUST NOT TOUCH THE SOURCE AT ALL. If the
+       rebase wrote unconditionally, every rollback would bump the source revision and refuse an
+       innocent merchant's draft for no reason — protection turning into churn, which is the second
+       half of §5's "never silently clobbered OR CHURNED on the next publish". */
+    const quietBase = await getActivePointer(db, RID);
+    const quietA = await publish(quietBase.version, `quiet-a-${STAMP}`);
+    const quietB = await publish(quietA, `quiet-b-${STAMP}`);
+    /* 🔴 ASSERTED ON THE WRITE, NOT ON updateTime — AND THE SWEEP IS WHY. My first version compared
+       the source revision before and after, and a mutant writing UNCONDITIONALLY survived it: the
+       emulator does not bump updateTime for a write whose content is identical, so the effect I was
+       measuring cannot distinguish "did not write" from "wrote the same bytes". The rebase announces
+       itself, so the announcement is the observable. */
+    const revBefore = encodeUpdateTime((await sourceRefOf(db, RID).get()).updateTime);
+    const seen = [];
+    const realLog = console.log;
+    console.log = (...a) => { seen.push(a.join(' ')); realLog(...a); };
+    try { await rollbackVersion(db, RID, quietA, { expected: { activeVersionId: quietB } }); }
+    finally { console.log = realLog; }
+    assert.ok(!seen.some((l) => l.includes('identity_rollback_source_rebased')),
+      '🔴 a rollback that changed NO stamps still wrote the source — every rollback would then invalidate an innocent draft, turning §5\'s protection into churn');
+    assert.strictEqual(encodeUpdateTime((await sourceRefOf(db, RID).get()).updateTime), revBefore,
+      'and the revision is untouched (weaker than the assertion above: an identical write does not move it)');
+    ok('a draft open across a rollback is refused flip_cas_draft_stale BY NAME, and a rollback that changes no stamps does not touch the source at all');
+  }
+
   FINISHED = true;
   console.log(`d4p1-mint-atomic(emulator): OK (${n})`);
 })().catch((e) => { console.error('D4P1 MINT ATOMIC (EMULATOR) FAILED:', (e && e.stack) || e); process.exit(1); });
