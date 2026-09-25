@@ -123,6 +123,31 @@ const pickerJs = html.slice(openIdx, closeEnd);
   ok('overlay keydown: pickerOpen-guarded Esc (stops propagation) + Tab focus trap');
 }
 
+// FEATURE 7 — F5 #6 command palette: the 1–9 direct-assign shortcut ROUTES THROUGH the row's own click handler
+// (the byte-identical confirm()+assign cascade, guarded verbatim below), never a direct assign — so a risky
+// driver (full / en-route / unreachable) still raises its confirm(); the digit can't bypass the gate. The knum
+// badge renders only for the first 9 rows (where the shortcut is live). Non-vacuous: a direct-assign 1–9 branch,
+// a removed .click() dispatch, or a badge shown on dead rows all turn this red. Arrow-nav / Esc / focus-trap /
+// focus-restore / roles / aria-label are proven unchanged by FEATURES 1–6 + the executable trap/restore tests
+// below staying green (that IS the a11y-preservation proof).
+{
+  const kd = pickerJs.match(/\$\('picker-overlay'\)\.addEventListener\('keydown'[\s\S]*?\n\}\);/);
+  assert.ok(kd, 'picker keydown handler present');
+  const h = kd[0];
+  assert.match(h, /\/\^\[1-9\]\$\/\.test\(e\.key\)/, '1–9 direct-assign branch present');
+  const branch = h.slice(h.indexOf('/^[1-9]$/'));
+  assert.match(branch, /rows\[n\]\.click\(\)/, '1–9 dispatches the row click (routes through the confirm()+assign listener)');
+  assert.doesNotMatch(branch, /assignOrder|assignOrderToDriver|reassignOrder/, '1–9 branch never calls the assign path directly (cannot skip the confirm() gate)');
+  assert.match(branch, /n < rows\.length/, 'out-of-range digits are ignored');
+  // arrow-nav branch still returns before the 1–9 branch (unchanged roving focus, no fall-through)
+  assert.match(h, /rows\[\(idx \+ dir \+ rows\.length\) % rows\.length\]\.focus\(\);\s*\n\s*return;/, 'arrow/j-k roving focus preserved (returns before the digit branch)');
+  // knum badge only for the first 9 rows (where the shortcut is live) — no dead numbers
+  assert.match(pickerJs, /i < 9 \?/, 'knum badge gated on i < 9 (only where the 1–9 shortcut is live)');
+  assert.match(pickerJs, /<span class="knum" aria-hidden="true">\$\{i \+ 1\}<\/span>/, 'knum shows the 1-based key number, aria-hidden (visual affordance only)');
+  assert.match(pickerJs, /\.map\(\(\{[^}]*\}, i\)\s*=>/, 'row map carries the index i the badge + shortcut rely on');
+  ok('1–9 shortcut routes through the byte-identical click (confirm+assign) path; knum only where live; roving focus intact');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NO-REGRESSION — assignment logic byte-identical to the approved base
 // ─────────────────────────────────────────────────────────────────────────────
