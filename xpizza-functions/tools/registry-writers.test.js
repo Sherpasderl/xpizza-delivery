@@ -52,9 +52,16 @@ const r = enumerate();
     'catalog/identity-bootstrap.js::retireOrphanFenced',
     'catalog/identity-registry.js::ensureIdentity',
     'catalog/identity-registry.js::retireIdentity',
+    'catalog/identity-restore.js::restoreIdentity',
     'catalog/identity-sweep.js::sweepIdentityIntegrity',
   ], '🔴 the set of functions that WRITE the identity registry changed — a fence built for the old set would leave the new writer unfenced');
-  assert.strictEqual(r.writes.length, 8, `🔴 the registry has ${r.writes.length} write sites, not 8 — each one is a place a generation fence must hold`);
+  assert.strictEqual(r.writes.length, 10, `🔴 the registry has ${r.writes.length} write sites, not 10 — each one is a place a generation fence must hold`);
+
+  /* 🔴 THE WALK EARNED ITS KEEP HERE. restoreIdentity (E-3) arrived and this assertion FAILED — the
+     map flagged a new registry writer the moment it existed, which is exactly the job it was demoted
+     to and kept for. It is fenced; the failure was the enumeration noticing, not a gap. */
+  assert.ok(got.includes('catalog/identity-restore.js::restoreIdentity'),
+    'premise — the newest writer is in the set, having been caught by this cell when it landed');
   ok(`${r.writes.length} direct write sites in ${got.length} functions, enumerated from source`);
 }
 

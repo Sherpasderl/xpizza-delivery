@@ -8078,5 +8078,96 @@
    "node",
    "tools/emulator-ports.guard.test.js"
   ]
+ },
+ {
+  "id": "e3-01",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    await assertPointerUnmoved(tx, { db, rid, captured: { version, generation }, code: 'identity_restore_pointer_moved' });",
+  "to": "    /* fence removed */",
+  "label": "the restore is not fenced — it writes against an activation it was never judged under",
+  "kills_with": "a restore landed against an activation it was never judged under",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-02",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    if ((vSnap.data() || {}).identity_certified !== true) {",
+  "to": "    if (false) {",
+  "label": "an UNCERTIFIED version is accepted as the source of an id",
+  "kills_with": "an uncertified version was accepted as the source of an id",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-03",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    if (stamped !== canonicalId) {",
+  "to": "    if (false) {",
+  "label": "the caller's id is written without checking the object's stamp",
+  "kills_with": "the caller's id was written although the version stamped a DIFFERENT id",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-04",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    if (objs.length > 1) {",
+  "to": "    if (false) {",
+  "label": "two objects at one key are resolved by picking the first",
+  "kills_with": "two objects at one key were resolved by picking one",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-05",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    if (!verdict.ok) {",
+  "to": "    if (false) {",
+  "label": "the destination-claimant guard is consulted and ignored",
+  "kills_with": "a restore landed on a key a DIFFERENT live id already claims",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-06",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    const verdict = destinationVerdict({ name: legacyKey, landingId: canonicalId, keyRow, liveClaimants, truncated });",
+  "to": "    const verdict = { ok: true, code: 'unchecked' };",
+  "label": "the destination-claimant guard is never CALLED at all",
+  "kills_with": "a restore landed on a key a DIFFERENT live id already claims",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-07",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "  if (!validIdShape(canonicalId)) {",
+  "to": "  if (false) {",
+  "label": "an id that cannot be a document path is read anyway",
+  "kills_with": "was accepted as an id — it cannot even be a document path",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
  }
 ]

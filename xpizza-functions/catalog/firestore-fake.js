@@ -78,11 +78,20 @@ function makeDb() {
        this the guard throws inside every publish's preserve-on-write and silently registers nothing,
        which is how it first showed up here. Immediate children only, as a Firestore collection query
        is: a fixture that descended would answer a question production cannot. */
-    const query = (filters) => ({
-      _isQuery: true, _base: path, _filters: filters,
+    /* 🔴 limit() IS MODELLED BECAUSE PRODUCTION BOUNDS ITS QUERIES. A caller that reads a claimant set
+       under a cap and treats an over-full result as an explicit refusal cannot be exercised by a
+       fixture whose queries are unbounded — the cap branch would be unreachable in every test while
+       being the branch that matters in production. Cutting AFTER sorting is what Firestore does, so a
+       cap of N returns the same N rows here as there. */
+    const query = (filters, cap = null) => ({
+      _isQuery: true, _base: path, _filters: filters, _limit: cap,
       where: (f, op, v) => {
         if (op !== '==') throw new Error(`firestore-fake: only '==' filters are modelled (got ${op})`);
-        return query(filters.concat([[f, v]]));
+        return query(filters.concat([[f, v]]), cap);
+      },
+      limit: (nn) => {
+        if (!Number.isInteger(nn) || nn <= 0) throw new Error(`firestore-fake: limit must be a positive integer (got ${nn})`);
+        return query(filters, nn);
       },
       get: async () => {
         const out = [];
@@ -95,7 +104,8 @@ function makeDb() {
           out.push(snap);
         }
         out.sort((a, b) => (a.id < b.id ? -1 : 1));
-        return { docs: out, empty: out.length === 0, size: out.length };
+        const capped = cap === null ? out : out.slice(0, cap);
+        return { docs: capped, empty: capped.length === 0, size: capped.length };
       },
     });
     return {
@@ -103,6 +113,7 @@ function makeDb() {
         if (op !== '==') throw new Error(`firestore-fake: only '==' filters are modelled (got ${op})`);
         return query([[f, v]]);
       },
+      limit: (nn) => query([], nn),
       doc: (id) => docRef(`${path}/${id === undefined ? `auto${++autoId}` : id}`),
       get: async () => {
         const out = [];
