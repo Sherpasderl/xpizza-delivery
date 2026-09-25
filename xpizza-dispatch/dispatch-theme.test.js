@@ -218,7 +218,7 @@ const opaqueRgb = (M, spec) => (Array.isArray(spec) ? composite(M, [val(M, spec[
   ];
   // TARGET element (last segment) allowed a raw (non-var) rgba background: full-cover scrims + brand-tinted
   // chips. Last-segment match so a descendant (`.rest-x_pizza .ex`) can't launder the brand rgba onto `.ex`.
-  const BG_RGBA_OK = ['.msg-modal', '.order-detail-modal', '.overlay-bg', '.comms-scrim', '.rest-x_pizza', '.rest-la_musa'];
+  const BG_RGBA_OK = ['.msg-modal', '.order-detail-modal', '.overlay-bg', '.comms-scrim', '.flyout-scrim', '.rest-x_pizza', '.rest-la_musa'];
   const grantsHex = (part, h) =>
     HEX_OK.some(([k, list]) => part.includes(k) && list.some(a => a.toLowerCase() === h.toLowerCase())) ||
     HEX_OK_EXACT.some(([k, list]) => part === k && list.some(a => a.toLowerCase() === h.toLowerCase()));

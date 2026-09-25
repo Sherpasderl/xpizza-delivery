@@ -1900,9 +1900,11 @@
   /* ============ Torre de Control — 3-column board grid (Task 7 grid foundation) ============ */
   /* --lw-size/--rw-size = the rail's resizable width (persisted); --lw/--rw = the grid
      column, which drops to 0 on collapse while the inner keeps --*-size so it slides/clips. */
-  :root { --lw-size: 380px; --rw-size: 344px; --lw: var(--lw-size); --rw: var(--rw-size); }
+  /* F3: mockup default proportions (side rails ~1:0.92, center widest w/ a 400px min). The px model is kept so
+     drag-resize + collapse (--lw/--rw → px / 0) still work; only the DEFAULT widths + the card gap/padding change. */
+  :root { --lw-size: 372px; --rw-size: 342px; --lw: var(--lw-size); --rw: var(--rw-size); }
   .app { height: calc(100vh - 60px); }
-  .main { display: grid; grid-template-columns: var(--lw) 1fr var(--rw); grid-template-rows: 100%; height: 100%; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
+  .main { display: grid; box-sizing: border-box; grid-template-columns: var(--lw) minmax(400px, 1fr) var(--rw); grid-template-rows: 100%; height: 100%; gap: 12px; padding: 12px 12px 44px; transition: grid-template-columns .26s cubic-bezier(0.4,0,0.2,1); }
   .main.resizing { transition: none; }   /* no lag while dragging a rail edge */
   .app:not(.left-open) .main  { --lw: 0px; }
   .app:not(.right-open) .main { --rw: 0px; }
@@ -1910,12 +1912,13 @@
      grid-column:2 but comes first in DOM, so sparse auto-flow would otherwise push the left
      rail (column 1) to a new row 2, collapsing the map's row to its (absolute-only) content. */
   .col { min-height: 0; overflow: hidden; grid-row: 1; }
-  .col.left   { grid-column: 1; position: relative; background: var(--surface); border-right: 1px solid var(--border-soft); }
+  .col.left   { grid-column: 1; position: relative; }
   .col.center { grid-column: 2; position: relative; background: var(--map-bg); min-width: 0; }
-  .col.right  { grid-column: 3; position: relative; background: var(--surface); border-left: 1px solid var(--border-soft); }
-  /* Fixed-width inner so content slides (clips) during the collapse rather than reflowing. */
-  .col.left  .rail-inner { width: var(--lw-size); height: 100%; overflow-y: auto; padding-bottom: 32px; }
-  .col.right .rail-inner { width: var(--rw-size); height: 100%; overflow-y: auto; }
+  .col.right  { grid-column: 3; position: relative; }
+  /* Fixed-width inner (flex column) so content slides (clips) during the collapse rather than reflowing;
+     the .phead pins while the .pbody scrolls. */
+  .col.left  .rail-inner { width: var(--lw-size); height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .col.right .rail-inner { width: var(--rw-size); height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   /* Drag-to-resize handles on each rail's map-facing edge. */
   .rail-resize { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 16; cursor: col-resize; }
   .rail-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .15s; }
@@ -1928,6 +1931,34 @@
   /* Topbar rail-toggle buttons (☰ / ⇥) */
   .rail-toggle { background: transparent; border: none; color: var(--text-soft); width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; cursor: pointer; }
   .rail-toggle:hover { background: var(--surface-2); color: var(--text); }
+
+  /* ============ F3: mockup 3-panel cards (flat bordered panels, phead + scrollable pbody) ============ */
+  .panel { border: 1px solid var(--border-soft); border-radius: 11px; }
+  .col.left.panel, .col.right.panel { background: var(--surface); }
+  .col.center.panel.mapcol { background: var(--surface); }        /* phead sits on surface; map paints .mapwrap */
+  .phead { flex: none; display: flex; align-items: center; gap: 10px; padding: 13px 14px 11px; }
+  .phead h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); margin: 0; }
+  .phead .n { margin-left: auto; font-size: 11.5px; font-weight: 500; color: var(--text-dim); }
+  .phead .n.hot { color: var(--accent); }
+  .pbody { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 12px 14px; }
+  /* Map panel: the phead sits above the live map; .mapwrap is the positioned box that #map (position:absolute;inset:0)
+     fills, so the map occupies the whole area below the header. The fit control is positioned within it. */
+  .col.center.panel { display: flex; flex-direction: column; }
+  .mapwrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--map-bg); }
+
+  /* ============ F3: nav-rail secondary-surface flyout (En Fila / Comms / Caja / Cerrados) ============ */
+  /* Left-anchored (next to the 54px nav rail) so it never collides with the right-side order-detail drawer.
+     Hidden by default; the existing #rail-tabs handler drives open/close (see initSurfaceFlyout). */
+  .flyout-scrim { position: fixed; inset: 0; z-index: 150; background: rgba(0,0,0,0.42); }
+  .flyout-scrim[hidden] { display: none; }
+  .surface-flyout { position: fixed; left: 54px; top: 0; bottom: 0; z-index: 151; width: 420px; max-width: calc(100vw - 66px); display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); box-shadow: var(--shadow-lift); }
+  .surface-flyout[hidden] { display: none; }
+  .flyout-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-soft); }
+  .flyout-head .rail-tabs { flex: 1; margin: 0; }
+  .flyout-close { flex: none; }
+  .flyout-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px 18px; }
+  .flyout-body .rtab-pane { padding: 0; }
+  .flyout-body .rtab-pane.hidden { display: none; }
 
   /* ============ Torre de Control — exceptions queue (Task 8) ============ */
   #torre-list:not(:empty) { padding: 14px 12px 6px; }
@@ -2018,7 +2049,8 @@
 
   /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
   /* D3: cash/cuadre bar — mockup horizontal layout (figures + divider + Reconciliar link). Display + link only. */
-  .cash-bar { display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, var(--card-1), var(--card-2)); box-shadow: var(--shadow); border-radius: 13px; padding: 12px 14px; margin: 4px 0 14px; }
+  /* F3: cash/cuadre bar is now the Repartidores panel FOOTER (mockup .cashbar) — pinned below the scrolling roster. */
+  .cash-bar { flex: none; display: flex; align-items: center; gap: 10px; background: var(--surface); border-top: 1px solid var(--border-soft); padding: 11px 14px; margin: 0; }
   .cash-bar .ci { display: flex; flex-direction: column; line-height: 1.25; }
   .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; color: var(--text); }
   .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
@@ -2101,8 +2133,8 @@
   .cob-inner { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 14px; }
   .cv { font-size: 11px; white-space: nowrap; padding: 5px 11px; border-radius: 999px; background: var(--bg); color: var(--text-soft); }
   .cv.new { color: var(--gold); }
-  /* keep the fixed Cobertura bar from covering scrolled rail content */
-  .col.left .rail-inner, .col.right .rail-inner { padding-bottom: 46px; }
+  /* F3: the board now reserves bottom space (.main padding-bottom) so the panel cards clear the fixed Cobertura
+     bar; the scrolling .pbody keeps its own bottom padding. (Old rule padded .rail-inner, which is now a flex column.) */
   .rail-toggle { position: relative; }
   .rail-badge { display: none; position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--accent-solid); color: #fff; font-size: 11px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; }
   .app:not(.left-open) #rail-toggle-left .rail-badge.has { display: block; }
@@ -2233,112 +2265,135 @@
 
   <div class="app left-open right-open" id="app">
   <div class="main" id="main-grid">
-    <div id="map-container" class="col center">
-      <button class="map-icon-btn fit" id="map-fit-btn" title="Centrar mapa" aria-label="Centrar mapa">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <circle cx="12" cy="12" r="3"/>
-          <line x1="12" y1="2" x2="12" y2="5"/>
-          <line x1="12" y1="19" x2="12" y2="22"/>
-          <line x1="2" y1="12" x2="5" y2="12"/>
-          <line x1="19" y1="12" x2="22" y2="12"/>
-        </svg>
-      </button>
-      <div id="map"></div>
+    <!-- F3: middle panel "Mapa en vivo" (mockup). phead over a .mapwrap so #map (position:absolute;inset:0)
+         fills the area below the header. The live Google map + fit control are unchanged. -->
+    <div id="map-container" class="col center panel mapcol">
+      <div class="phead"><h2>Mapa en vivo</h2><span class="n" id="map-n">0 repartidores en turno</span></div>
+      <div class="mapwrap">
+        <button class="map-icon-btn fit" id="map-fit-btn" title="Centrar mapa" aria-label="Centrar mapa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="12" y1="2" x2="12" y2="5"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="5" y2="12"/>
+            <line x1="19" y1="12" x2="22" y2="12"/>
+          </svg>
+        </button>
+        <div id="map"></div>
+      </div>
     </div>
 
-    <div class="col left" id="left-rail">
+    <!-- F3: left panel "Cola de acción" (mockup). The group header is promoted to the panel .phead (its count
+         #unassigned-meta preserved by id), segments sit directly under it, and the queue list + Torre alerts
+         (#torre-list, empty when quiet) live in the scrollable .pbody. #unassigned-group id kept (Slice-A landmark). -->
+    <div class="col left panel" id="left-rail">
       <div class="rail-resize" id="rail-resize-left" title="Ajustar ancho del panel"></div>
       <div class="rail-inner">
-      <div id="torre-list"></div>
-
-      <div class="tree-group cola-group" id="unassigned-group">
-        <div class="tree-group-header">
-          <div class="tree-group-title">Cola de acción</div>
-          <div class="tree-group-meta" id="unassigned-meta">0</div>
-        </div>
+        <div class="phead"><h2>Cola de acción</h2><span class="n" id="unassigned-meta">0</span></div>
         <div class="cola-seg" id="cola-seg">
           <button class="cola-seg-btn on" data-seg="all">Todos <span class="cola-seg-n" id="seg-all-n">0</span></button>
           <button class="cola-seg-btn" data-seg="unassigned">Sin asignar <span class="cola-seg-n" id="seg-unassigned-n">0</span></button>
           <button class="cola-seg-btn" data-seg="stalled">Detenidos <span class="cola-seg-n" id="seg-stalled-n">0</span></button>
           <button class="cola-seg-btn" data-seg="atrisk">En riesgo <span class="cola-seg-n" id="seg-atrisk-n">0</span></button>
         </div>
-        <div id="unassigned-list"><div class="tree-empty">Sin pedidos que necesiten acción</div></div>
+        <div class="pbody">
+          <div id="torre-list"></div>
+          <div class="cola-group" id="unassigned-group">
+            <div id="unassigned-list"><div class="tree-empty">Sin pedidos que necesiten acción</div></div>
+          </div>
+        </div>
       </div>
+    </div>
 
-      <!-- Repartidores roster moved to the right rail (Task 10a) -->
-
-      <!-- Reconciliación + Cerrados moved to the right-rail Caja/Cerrados tabs (Task 10b) -->
-    </div></div>
-
-    <div class="col right" id="right-rail">
+    <!-- F3: right panel "Repartidores" (mockup) = roster (En turno / Fuera de turno groups kept, renderDriverNode
+         byte-identical) in the scrollable .pbody + the cash/cuadre bar as the .cashbar footer. The En Fila / Comms /
+         Caja / Cerrados surfaces move to the nav-rail flyout below (with #rail-tabs), so this column is roster-only. -->
+    <div class="col right panel" id="right-rail">
       <div class="rail-resize" id="rail-resize-right" title="Ajustar ancho del panel"></div>
       <div class="rail-inner">
-      <div class="rail-tabs" id="rail-tabs">
-        <button class="rtab on" data-tab="pedidos" title="Pedidos en fila (entrega · recoger · programados)"><svg class="ic sm"><use href="#i-receipt"/></svg><span class="rlabel">En Fila</span><span class="rn" id="tab-pedidos-n">0</span></button>
-        <button class="rtab" data-tab="comms" title="Comms"><svg class="ic sm"><use href="#i-message"/></svg><span class="rlabel">Comms</span><span class="rn" id="tab-comms-n">0</span></button>
-        <button class="rtab" data-tab="caja" title="Caja / reconciliación"><svg class="ic sm"><use href="#i-card"/></svg><span class="rlabel">Caja</span><span class="rn" id="tab-caja-n">0</span></button>
-        <button class="rtab" data-tab="cerrados" title="Cerrados hoy"><svg class="ic sm"><use href="#i-check"/></svg><span class="rlabel">Cerrados</span></button>
-      </div>
-
-      <div class="rtab-pane" data-pane="pedidos"><div id="pedidos-list"><div class="tree-empty">Sin pedidos en fila</div></div></div>
-
-      <div class="rtab-pane hidden" data-pane="comms"><div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div></div>
-
-      <div class="rtab-pane hidden" data-pane="caja">
-        <div class="tree-group hidden" id="reconciliation-group">
-          <div class="tree-group-header">
-            <div class="tree-group-title">Reconciliación de pagos</div>
-            <div class="tree-group-meta hot" id="reconciliation-meta">0</div>
-          </div>
-          <div class="group-body">
-            <div id="reconciliation-list"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="rtab-pane hidden" data-pane="cerrados">
-        <div class="tree-group" id="delivered-group">
-          <div class="tree-group-header toggleable" id="delivered-toggle">
-            <div class="tree-group-title"><span class="tree-group-toggle"></span>Cerrados hoy</div>
-            <div class="tree-group-meta" id="delivered-meta">0</div>
-          </div>
-          <div class="group-body">
-            <div class="closed-orders-search-wrap">
-              <input
-                type="text"
-                id="closed-search"
-                class="closed-orders-search"
-                placeholder="Buscar pedido por ID, teléfono o nombre..."
-                autocomplete="off"
-              />
-              <button class="closed-search-clear hidden" id="closed-search-clear" title="Limpiar búsqueda">×</button>
+        <div class="phead"><h2>Repartidores</h2><span class="n" id="roster-drv-n">0 en turno</span></div>
+        <div class="pbody">
+          <div class="tree-group" id="drivers-live-group">
+            <div class="tree-group-header toggleable" id="drivers-live-toggle">
+              <div class="tree-group-title"><span class="tree-group-toggle"></span>En turno</div>
+              <div class="tree-group-meta" id="drivers-live-meta">0</div>
             </div>
-            <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
+            <div class="group-body"><div id="drivers-tree-live"><div class="tree-empty">Sin repartidores en turno</div></div></div>
+          </div>
+
+          <div class="tree-group collapsed" id="drivers-off-group">
+            <div class="tree-group-header toggleable" id="drivers-off-toggle">
+              <div class="tree-group-title"><span class="tree-group-toggle"></span>Fuera de turno</div>
+              <div class="tree-group-meta" id="drivers-off-meta">0</div>
+            </div>
+            <div class="group-body"><div id="drivers-tree-off"><div class="tree-empty">Ninguno fuera de turno</div></div></div>
           </div>
         </div>
+        <div class="cash-bar" id="cash-bar"></div>
       </div>
-
-      <div class="cash-bar" id="cash-bar"></div>
-
-      <div class="tree-group" id="drivers-live-group">
-        <div class="tree-group-header toggleable" id="drivers-live-toggle">
-          <div class="tree-group-title"><span class="tree-group-toggle"></span>En turno</div>
-          <div class="tree-group-meta" id="drivers-live-meta">0</div>
-        </div>
-        <div class="group-body"><div id="drivers-tree-live"><div class="tree-empty">Sin repartidores en turno</div></div></div>
-      </div>
-
-      <div class="tree-group collapsed" id="drivers-off-group">
-        <div class="tree-group-header toggleable" id="drivers-off-toggle">
-          <div class="tree-group-title"><span class="tree-group-toggle"></span>Fuera de turno</div>
-          <div class="tree-group-meta" id="drivers-off-meta">0</div>
-        </div>
-        <div class="group-body"><div id="drivers-tree-off"><div class="tree-empty">Ninguno fuera de turno</div></div></div>
-      </div>
-    </div></div>
+    </div>
   </div></div>
 </div>
+
+<!-- F3: secondary-surface flyout (En Fila / Comms / Caja / Cerrados). The right column is now Repartidores-only
+     (mockup), so these surfaces relocate here BYTE-FOR-BYTE — every id/subscription/handler unchanged. #rail-tabs is
+     MOVED here (not deleted) so `#rail-tabs .rtab[data-tab="caja"]` stays alive → renderCashBar's "Reconciliar" + the
+     paid-after-close alert + the cash-recon test shim all fire verbatim, zero edits to the byte-locked money fns.
+     Opens from the nav rail; the existing rtab handler drives open/close. Left-anchored (next to the nav rail) so it
+     never collides with the right-side order-detail drawer. Hidden by default → the home view stays mockup-clean. -->
+<div class="flyout-scrim" id="surface-flyout-scrim" hidden></div>
+<aside class="surface-flyout" id="surface-flyout" role="dialog" aria-modal="true" aria-label="Colas y paneles" hidden>
+  <div class="flyout-head">
+    <div class="rail-tabs" id="rail-tabs">
+      <button class="rtab" data-tab="pedidos" title="Pedidos en fila (entrega · recoger · programados)"><svg class="ic sm"><use href="#i-receipt"/></svg><span class="rlabel">En Fila</span><span class="rn" id="tab-pedidos-n">0</span></button>
+      <button class="rtab" data-tab="comms" title="Comms"><svg class="ic sm"><use href="#i-message"/></svg><span class="rlabel">Comms</span><span class="rn" id="tab-comms-n">0</span></button>
+      <button class="rtab" data-tab="caja" title="Caja / reconciliación"><svg class="ic sm"><use href="#i-card"/></svg><span class="rlabel">Caja</span><span class="rn" id="tab-caja-n">0</span></button>
+      <button class="rtab" data-tab="cerrados" title="Cerrados hoy"><svg class="ic sm"><use href="#i-check"/></svg><span class="rlabel">Cerrados</span></button>
+    </div>
+    <button class="iconbtn flyout-close" id="surface-flyout-close" title="Cerrar" aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+  </div>
+
+  <div class="flyout-body">
+    <div class="rtab-pane hidden" data-pane="pedidos"><div id="pedidos-list"><div class="tree-empty">Sin pedidos en fila</div></div></div>
+
+    <div class="rtab-pane hidden" data-pane="comms"><div id="comms-list"><div class="tree-empty">Sin mensajes sin atender</div></div></div>
+
+    <div class="rtab-pane hidden" data-pane="caja">
+      <div class="tree-group hidden" id="reconciliation-group">
+        <div class="tree-group-header">
+          <div class="tree-group-title">Reconciliación de pagos</div>
+          <div class="tree-group-meta hot" id="reconciliation-meta">0</div>
+        </div>
+        <div class="group-body">
+          <div id="reconciliation-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rtab-pane hidden" data-pane="cerrados">
+      <div class="tree-group" id="delivered-group">
+        <div class="tree-group-header toggleable" id="delivered-toggle">
+          <div class="tree-group-title"><span class="tree-group-toggle"></span>Cerrados hoy</div>
+          <div class="tree-group-meta" id="delivered-meta">0</div>
+        </div>
+        <div class="group-body">
+          <div class="closed-orders-search-wrap">
+            <input
+              type="text"
+              id="closed-search"
+              class="closed-orders-search"
+              placeholder="Buscar pedido por ID, teléfono o nombre..."
+              autocomplete="off"
+            />
+            <button class="closed-search-clear hidden" id="closed-search-clear" title="Limpiar búsqueda">×</button>
+          </div>
+          <div id="delivered-list"><div class="tree-empty">Aún no hay pedidos cerrados hoy</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</aside>
 
 <!-- Cobertura de capacidades — full-visibility proof (Task 11); fixed, collapsed by default. -->
 <div class="cobertura" id="cobertura">
@@ -4019,6 +4074,10 @@ function renderDriversSection() {
 
   const liveMeta = $('drivers-live-meta'); if (liveMeta) liveMeta.textContent = String(live.length);
   const offMeta  = $('drivers-off-meta');  if (offMeta)  offMeta.textContent  = String(off.length);
+  // F3: surface the En-turno count in the Repartidores + Mapa panel headers (mockup "6 en turno" / "6 repartidores
+  // en turno"). Additive, id-guarded — writes nothing when the elements are absent.
+  const rosterN = $('roster-drv-n'); if (rosterN) rosterN.textContent = `${live.length} en turno`;
+  const mapN    = $('map-n');        if (mapN)    mapN.textContent    = `${live.length} ${live.length === 1 ? 'repartidor' : 'repartidores'} en turno`;
 
   liveTree.innerHTML = live.length
     ? live.map(([uid, d]) => renderDriverNode(uid, d)).join('')
@@ -5624,21 +5683,35 @@ setInterval(() => {
   });
 }, 1000);
 
-// Right-rail tabs — tap a tab to open its list; tap the ACTIVE tab again to collapse it
-// (no pane shown). Wired via addEventListener (module scope).
-document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const tab = btn.dataset.tab;
-    if (btn.classList.contains('on')) {
-      // collapse: hide the list, deactivate the tab
-      btn.classList.remove('on');
-      document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.add('hidden'));
-    } else {
-      document.querySelectorAll('#rail-tabs .rtab').forEach((b) => b.classList.toggle('on', b === btn));
-      document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== tab));
-    }
+// F3: the secondary surfaces (En Fila / Comms / Caja / Cerrados) live in the nav-rail flyout. #rail-tabs was MOVED
+// (not deleted) into that flyout, so every existing caller still works verbatim — activating a tab opens the flyout,
+// collapsing the active tab (or scrim/close/Esc) closes it. renderCashBar's Reconciliar + the paid-after-close alert
+// both do `#rail-tabs .rtab[data-tab="caja"].click()`, which routes through this handler → the flyout opens on Caja.
+(function initSurfaceFlyout() {
+  const flyout = $('surface-flyout'), scrim = $('surface-flyout-scrim');
+  const showFlyout = () => { if (flyout) flyout.hidden = false; if (scrim) scrim.hidden = false; };
+  const closeFlyout = () => {
+    document.querySelectorAll('#rail-tabs .rtab').forEach((b) => b.classList.remove('on'));
+    document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.add('hidden'));
+    if (flyout) flyout.hidden = true;
+    if (scrim) scrim.hidden = true;
+  };
+  document.querySelectorAll('#rail-tabs .rtab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      if (btn.classList.contains('on')) {
+        closeFlyout();   // tap the active tab again → collapse + close the flyout
+      } else {
+        document.querySelectorAll('#rail-tabs .rtab').forEach((b) => b.classList.toggle('on', b === btn));
+        document.querySelectorAll('.rtab-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== tab));
+        showFlyout();
+      }
+    });
   });
-});
+  scrim?.addEventListener('click', closeFlyout);
+  $('surface-flyout-close')?.addEventListener('click', closeFlyout);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && flyout && !flyout.hidden) closeFlyout(); });
+})();
 
 // Slice D2 — nav rail: each item routes to an EXISTING surface (no new backend). Reuses the rail-toggle,
 // rtab, and messages-modal handlers already on the board; Ajustes is a disabled future-anchor (no-op).
