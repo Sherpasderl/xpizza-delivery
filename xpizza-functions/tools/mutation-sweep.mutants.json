@@ -8690,5 +8690,100 @@
    "node",
    "catalog/identity-plan.test.js"
   ]
+ },
+ {
+  "id": "e8-01",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "      if (row && row.status === STATUS_LIVE && row.legacy_key !== key) {",
+  "to": "      if (false) {",
+  "label": "🔴 A RENAME NO LONGER DERIVES A MOVE — it falls through and MINTS a second identity for an object that already has one",
+  "kills_with": "a rename did not derive a MOVE",
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e8-02",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "    if (isStr(stamped) && !ending.has(stamped)) continue;",
+  "to": "    if (false) continue;",
+  "label": "a stamped object that did not move falls through and MINTS — covers BOTH the ordinary republish and a stamp naming a retired/absent id, which are now one branch",
+  "kills_with": [
+   "an ordinary republish derived writes",
+   "was resolved by MINTING a second identity",
+   "was minted a second one"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e8-03",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "    if (keyRow && !(claimantId && ending.has(claimantId))) continue;",
+  "to": "    if (keyRow) continue;",
+  "label": "🔴 the key-row skip drops `!ending` — an object re-created under a name this same plan RETIRES gets NO identity at all, silently",
+  "kills_with": "got no identity at all",
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e8-04",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "    if (!row || row.status !== STATUS_LIVE) continue;",
+  "to": "    if (!row) continue;",
+  "label": "an ALREADY-RETIRED id is retired again — the claim is replayed against a registry that has already executed it",
+  "kills_with": "the retire list is wrong",
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e8-06",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "    if (isStr(stamped) && !ending.has(stamped)) {",
+  "to": "    if (isStr(stamped)) {",
+  "label": "an id this plan RETIRES is also considered for a move — the plan both ends and continues one identity",
+  "kills_with": "was also MOVED",
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e8-07",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "  if (typeof allocate !== 'function') {",
+  "to": "  if (false) {",
+  "label": "a missing allocator is not refused — every mint gets an id of `undefined`",
+  "kills_with": "it derived a plan with no allocator",
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e8-08",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "  if (!(ids instanceof Map) || !(keys instanceof Map)) {",
+  "to": "  if (false) {",
+  "label": "an unread registry index is accepted and read as empty, so everything mints",
+  "kills_with": "an unread registry is not an empty one",
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
  }
 ]
