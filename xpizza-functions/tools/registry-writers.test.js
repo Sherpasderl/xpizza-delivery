@@ -54,14 +54,19 @@ const r = enumerate();
     'catalog/identity-registry.js::retireIdentity',
     'catalog/identity-restore.js::restoreIdentity',
     'catalog/identity-sweep.js::sweepIdentityIntegrity',
+    'catalog/identity-writer.js::applyIdentityPlan',
   ], '🔴 the set of functions that WRITE the identity registry changed — a fence built for the old set would leave the new writer unfenced');
-  assert.strictEqual(r.writes.length, 10, `🔴 the registry has ${r.writes.length} write sites, not 10 — each one is a place a generation fence must hold`);
+  assert.strictEqual(r.writes.length, 16, `🔴 the registry has ${r.writes.length} write sites, not 16 — each one is a place a generation fence must hold`);
 
   /* 🔴 THE WALK EARNED ITS KEEP HERE. restoreIdentity (E-3) arrived and this assertion FAILED — the
      map flagged a new registry writer the moment it existed, which is exactly the job it was demoted
      to and kept for. It is fenced; the failure was the enumeration noticing, not a gap. */
   assert.ok(got.includes('catalog/identity-restore.js::restoreIdentity'),
-    'premise — the newest writer is in the set, having been caught by this cell when it landed');
+    'premise — restoreIdentity is in the set, having been caught by this cell when it landed');
+  /* 🔴 AND IT EARNED ITS KEEP A SECOND TIME. applyIdentityPlan (the atomic writer) arrived and this
+     assertion FAILED again, naming the new writer before anything had been said about fencing it. */
+  assert.ok(got.includes('catalog/identity-writer.js::applyIdentityPlan'),
+    'premise — the atomic writer is in the set, caught by this cell the moment it existed');
   ok(`${r.writes.length} direct write sites in ${got.length} functions, enumerated from source`);
 }
 

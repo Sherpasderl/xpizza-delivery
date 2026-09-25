@@ -8785,5 +8785,141 @@
    "node",
    "catalog/identity-derive.test.js"
   ]
+ },
+ {
+  "id": "e4-19",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (!validIdShape(e.id)) {",
+  "to": "    if (false) {",
+  "label": "🔴 THE PLAN COINS IDS AGAIN — a malformed id exists nowhere, so the MINT rule alone lets every one of them through; shape is what the injected allocator controls",
+  "kills_with": "it exists nowhere, so the MINT rule alone permitted it",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-20",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (!validIdShape(e.id)) {",
+  "to": "    if (!/^[0-9A-HJKMNP-TV-Z]{10}$/.test(e.id)) {",
+  "label": "🔴 SHAPE BECOMES ALPHABET — every la_musa activation is refused, because la_musa grandfathers its slug and dimsum_01 is a valid canonical id",
+  "kills_with": [
+   "a plan consistent with the registry was refused",
+   "turn the whole brand unresolvable"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e8-09",
+  "slice": "e8",
+  "file": "catalog/identity-derive.js",
+  "from": "    mints.push({ id: allocate(key), name: key });",
+  "to": "    mints.push({ id: `${allocate(key)}/x`, name: key });",
+  "label": "the allocator's output is corrupted into a malformed id — the verifier must catch what the injection cannot be trusted for",
+  "kills_with": [
+   "a new object did not mint",
+   "the DERIVED plan was refused by verifyPlan"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-derive.test.js"
+  ]
+ },
+ {
+  "id": "e9-01",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "    tx.set(ids.doc(m.id), { ...preserve(m.id), legacy_key: m.to, kind, status: STATUS_LIVE, moved_at: stamp });",
+  "to": "    tx.set(ids.doc(m.id), { legacy_key: m.to, kind, status: STATUS_LIVE, moved_at: stamp });",
+  "label": "🔴 THE MOVE STOPS SPREADING THE EXISTING ROW — tx.set is a full replace, so created_at and every other field is destroyed; the same mechanism that once dropped `generation` from the pointer write",
+  "kills_with": "the move DESTROYED created_at",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-02",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "    tx.set(keys.doc(encodeKey(m.to)), { canonical_id: m.id, kind, created_at: stamp });\n    writes += 2;\n  }\n\n  /* MINTS",
+  "to": "    writes += 2;\n  }\n\n  /* MINTS",
+  "label": "a MOVE writes the id row but not the new reverse row — the new name resolves to nothing",
+  "kills_with": "the new reverse row is missing",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-03",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "    tx.set(ids.doc(r.id), { ...preserve(r.id), legacy_key: r.name, kind, status: STATUS_RETIRED, retired_at: stamp });",
+  "to": "    tx.delete(ids.doc(r.id));",
+  "label": "🔴 RETIREMENT DELETES THE ID ROW — the id is FREED, and a freed id handed to a new object makes every old order, factura line and ticket resolve to a dish nobody meant",
+  "kills_with": "the id is freed and alias reuse is now possible",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-04",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "  for (const d of verified.deletions) {\n    tx.delete(keys.doc(d.encoded));",
+  "to": "  for (const d of []) {\n    tx.delete(keys.doc(d.encoded));",
+  "label": "no reverse row is ever deleted — a renamed object keeps its old name resolving, and a retired one stays reachable by name",
+  "kills_with": "the OLD reverse row survived",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-05",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "  if (!verified || verified.ok !== true || !Array.isArray(verified.deletions)) {",
+  "to": "  if (false) {",
+  "label": "🔴 THE WRITER RUNS WITHOUT THE VERIFIER'S VERDICT — every refusal in identity-plan.js becomes bypassable by one caller",
+  "kills_with": "verification is bypassable",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-06",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "    if (landed.has(d.encoded)) {",
+  "to": "    if (false) {",
+  "label": "a name both landed and deleted by one plan is written anyway — the outcome depends on which loop runs last",
+  "kills_with": "the result depends on write order",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-07",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "  if (!tx || typeof tx.set !== 'function' || typeof tx.delete !== 'function') {",
+  "to": "  if (false) {",
+  "label": "the writer accepts something that is not a transaction — the activation's writes stop being atomic with the pointer move",
+  "kills_with": "it wrote outside a transaction",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
  }
 ]

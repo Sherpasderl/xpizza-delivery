@@ -65,6 +65,13 @@ const FENCE_EXEMPT = {
     + 'stale against it, and the three hazards a fence would cover are each established IN-TX '
     + '(status, legacy_key, and the re-read claimant set). A fence would instead abort the hourly '
     + 'pass on any publish IN THAT RESTAURANT. See catalog/identity-sweep.js header.',
+  applyIdentityPlan:
+    'has NO TRANSACTION OF ITS OWN and performs NO READS — it writes inside the activation transaction '
+    + 'that already captured and re-verified the {version, generation} pair before calling it. A fence '
+    + 'here would re-read the pointer the caller has already fenced against, in the same transaction, '
+    + 'which cannot disagree with itself. The exemption is about WHERE it runs, not about the writes '
+    + 'being safe: reached from anywhere else it would be unfenced, which is why it refuses without '
+    + "verifyPlan's permitting verdict and refuses outside a transaction. See catalog/identity-writer.js.",
 };
 
 function jsFilesUnder(dir, out = []) {

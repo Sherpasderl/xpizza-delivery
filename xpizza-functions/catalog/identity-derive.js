@@ -9,6 +9,17 @@
  * unfed: the plan stops being a claim about the world and becomes a reading of it. That removes a
  * class of verification rather than adding checks to it.
  *
+ * 🔴 AND IT CARRIES MORE WEIGHT THAN THE REASON IT WAS CHOSEN FOR — SAID SO NOBODY RE-LITIGATES IT
+ * ON THE ORIGINAL GROUNDS ALONE. We derived in-tx to avoid a parameter only publishVersion would
+ * supply. It turns out to be what makes verifyPlan's MINT rule sound at all: that rule asks whether an
+ * id already EXISTS, and the answer is only meaningful against a registry read in THIS transaction.
+ * Had the plan been built earlier and passed in, "already exists" would be evaluated against a stale
+ * reading, and §4's "never recycle an id referenced by an activatable version" would be checked at the
+ * wrong moment. With derive-in-tx, an earlier activation's mints are already in the registry by the
+ * time this transaction reads it, and two pending versions minting the same id are serialized by the
+ * fence — whichever activates second derives against a registry containing the first one's rows and is
+ * refused by `plan_mint_id_exists`. Refusing is the correct outcome, not a missed case.
+ *
  * 🔴 AND verifyPlan IS STILL RUN ON THE RESULT. Nobody should argue it is now redundant. Deriving the
  * plan makes the INPUT trustworthy; verifying it makes the OUTPUT checkable independently of the code
  * that produced it, which is the whole point of a predicate a reviewer can read on its own. A bug in

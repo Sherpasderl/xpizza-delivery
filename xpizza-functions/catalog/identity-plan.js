@@ -24,11 +24,13 @@
  * PURE. It is handed an index of the registry the caller has already read, so every branch is
  * drivable without a database, and the reads stay where the transaction is.
  */
-const { STATUS_LIVE, encodeKey } = require('./identity-registry');
+const { STATUS_LIVE, encodeKey, validIdShape } = require('./identity-registry');
 
 const REFUSE = (code, detail) => ({ ok: false, code, detail });
 const PERMIT = { ok: true, code: 'plan_verified', detail: '' };
 
+/* READABILITY, not validity: whether entriesOf can see an id at all. Shape is judged separately and
+   with its own refusal, so "the field is missing" and "the field is malformed" stay distinguishable. */
 const isId = (v) => typeof v === 'string' && v.length > 0;
 const isName = (v) => typeof v === 'string' && v.length > 0;
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -92,6 +94,41 @@ function verifyPlan(plan, { ids, keys, complete } = {}) {
   const recognised = arr(plan.moves).length * 2 + arr(plan.mints).length + arr(plan.retires).length;
   if (lands.length + releases.length !== recognised) {
     return REFUSE('plan_entry_malformed', `${declared} declared operations, ${lands.length + releases.length} of ${recognised} parts readable; an entry this cannot read is one it cannot judge`);
+  }
+
+  /* ── EVERY ID THE PLAN NAMES MUST BE A SERVER-ISSUED SHAPE ──────────────────────────────────
+     🔴 THIS IS THE ONE PROPERTY THE ALLOCATOR MUST NOT BE TRUSTED FOR. `allocate` is injected into
+     derivePlan, which is defensible because a wrong allocator is CAUGHT — but the MINT rule only asks
+     whether an id already EXISTS, and a malformed id exists nowhere, so every malformed id minted
+     cleanly. Shape is precisely what the allocator controls, which makes it exactly the half the
+     "it is caught" argument has to cover and did not.
+     restoreIdentity has refused this since E-3 (`identity-restore.js:54`, "a restore never coins
+     one") using the SAME `validIdShape` from the SAME module this file already imports STATUS_LIVE
+     from. Two paths disagreeing about what an id is, with the stricter one being the path that cannot
+     mint, is the wrong way round.
+     🔴 SHAPE, NOT ALPHABET — and that distinction is load-bearing. x_pizza mints from a fixed
+     alphabet but la_musa GRANDFATHERS its slug: `dimsum_01` is a valid canonical id. An alphabet
+     check here would refuse every la_musa activation. validIdShape is written for exactly that and is
+     used unchanged rather than re-implemented.
+     🔴 PROTECTIVE ON MINTS; REDUNDANT-BUT-HARMLESS ON MOVES AND RETIRES — and the first version of
+     this note got that wrong, so it is stated precisely. On a MINT the id is about to become a
+     document path and has never been one, so validating the allocator's output is the entire point.
+     On a MOVE or a RETIRE, `ids.get(id)` has already returned a row — so that id IS a key in the
+     registry map and therefore IS a legal document path, and shape is true by construction. Where it
+     is genuinely absent, `plan_move_id_absent` / `plan_retire_id_absent` already answer. The check is
+     kept there as cheap defence in depth, NOT because it is load-bearing, so nobody reasons from it
+     as though it were.
+     🔴 THE ONE BEHAVIOURAL DIFFERENCE, AND ITS RISK, RECORDED. validIdShape caps length at 200
+     (identity-registry.js:250) while Firestore permits longer document ids. So an EXISTING id longer
+     than 200 characters would be unmovable and unretireable — a narrow lockout on data already in the
+     registry, which is the failure class §3.1 names (writeVersion's unfed `stamps`). Judged
+     unreachable in this system: minted tokens are ten characters and a grandfathered slug is a dish
+     name. Recorded rather than resolved, because "unreachable" is what the last several refusals were
+     each about. */
+  for (const e of [...lands, ...releases]) {
+    if (!validIdShape(e.id)) {
+      return REFUSE('plan_id_shape_invalid', `${JSON.stringify(e.id)} (${e.via}, ${e.name}) is not a server-issued id shape; a plan never coins one, and a malformed id exists nowhere so the MINT rule alone would let it through`);
+    }
   }
 
   /* ── REFUSAL 6: THE PLAN MUST BE INTERNALLY CONSISTENT, JUDGED BEFORE ANY DESTINATION ────────── */

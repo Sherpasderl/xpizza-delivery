@@ -308,7 +308,48 @@ const PLAN = (p) => ({ moves: [], mints: [], retires: [], ...p });
   ok('an unread registry, one nobody asserts is COMPLETE, a non-object plan, and an entry missing the fields it is judged by are each refused rather than treated as empty');
 }
 
-// ── 8. PURE, AND IT DOES NOT MUTATE WHAT IT IS ASKED TO JUDGE ────────────────────────────────
+// ── 8. A PLAN NEVER COINS AN ID — THE ONE PROPERTY THE ALLOCATOR CONTROLS ───────────────────
+{
+  /* 🔴 THE HOLE IN "A WRONG ALLOCATOR IS CAUGHT". derivePlan takes `allocate` from its caller, which
+     is defensible only because a bad allocator is refused — and the MINT rule asks solely whether an
+     id already EXISTS. A malformed id exists NOWHERE, so before this check every malformed id minted
+     cleanly. Shape is exactly what the allocator decides, so it is exactly the half that argument had
+     to cover.
+     restoreIdentity has refused this since E-3 with the same validIdShape; the stricter path was the
+     one that cannot mint. */
+  const empty = index();
+  for (const bad of ['a/b', '.', '..', '__proto__', 'x'.repeat(201)]) {
+    const v = verifyPlan(PLAN({ mints: [{ id: bad, name: 'Diavola' }] }), empty);
+    assert.strictEqual(v.ok, false, `🔴 a plan MINTED a malformed id ${JSON.stringify(bad)} — it exists nowhere, so the MINT rule alone permitted it`);
+    assert.strictEqual(v.code, 'plan_id_shape_invalid', `expected plan_id_shape_invalid for ${JSON.stringify(bad)}, got ${v.code}`);
+  }
+
+  /* 🔴 MOVES AND RETIRES TOO. A plan naming a malformed id anywhere describes a registry that cannot
+     exist; catching it only at the mint would leave the other two paths coining rows nothing resolves. */
+  const reg = index({ ids: { 'a/b': idRow('Romana') }, keys: { Romana: { canonical_id: 'a/b' } } });
+  assert.strictEqual(verifyPlan(PLAN({ moves: [{ id: 'a/b', from: 'Romana', to: 'Marinara' }] }), reg).code,
+    'plan_id_shape_invalid', '🔴 a MOVE naming a malformed id was judged on its merits');
+  assert.strictEqual(verifyPlan(PLAN({ retires: [{ id: 'a/b', name: 'Romana' }] }), reg).code,
+    'plan_id_shape_invalid', '🔴 a RETIRE naming a malformed id was judged on its merits');
+
+  /* 🔴 SHAPE, NOT ALPHABET — AND THIS CELL IS THE GUARD ON THAT. An alphabet check would refuse every
+     la_musa activation, because la_musa GRANDFATHERS its slug and `dimsum_01` is a valid canonical id.
+     I have written that cell wrongly once before, asserting a short slug must be refused. It must not.
+     🔴 AND THIS IS NOT THE FIRST WITNESS — said so it is not read as the sole guard. Nearly every
+     fixture in this file uses short ids ('X', 'Y', 'Z'), so an alphabet check breaks cell 1 before it
+     reaches here, and the mutant records that assertion too. These lines are the DELIBERATE statement
+     of the property; cell 1 is the accident that also catches it. */
+  const musa = index();
+  assert.strictEqual(verifyPlan(PLAN({ mints: [{ id: 'dimsum_01', name: 'Dim Sum' }] }), musa).ok, true,
+    '🔴 a GRANDFATHERED la_musa slug was refused as an id shape — this would turn the whole brand unresolvable');
+  for (const fine of ['x', 'A1B2C3D4E5', 'dimsum_01', 'lap-cheong.2']) {
+    assert.strictEqual(verifyPlan(PLAN({ mints: [{ id: fine, name: 'N' }] }), musa).ok, true,
+      `🔴 ${JSON.stringify(fine)} is a legitimate id shape and was refused`);
+  }
+  ok('a plan never coins an id: a malformed one is refused wherever it appears, while a grandfathered la_musa slug is not');
+}
+
+// ── 9. PURE, AND IT DOES NOT MUTATE WHAT IT IS ASKED TO JUDGE ────────────────────────────────
 {
   const plan = PLAN({
     moves: [{ id: 'X', from: 'A', to: 'B' }],
