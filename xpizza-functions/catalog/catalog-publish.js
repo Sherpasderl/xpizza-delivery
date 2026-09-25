@@ -52,6 +52,11 @@ const { renameEnabled } = require('./identity-flags');
 const BOOTSTRAP_MAX_OBJECTS = 400;
 const { getActivePointer, readPointerSnap } = require('./catalog-firestore');
 
+/* 🔴 THIS AND `publishEdited`'s timeoutSeconds MUST MOVE TOGETHER. They are both 120s today, and
+   index.js carries the same note. Raising the function timeout WITHOUT raising this one lets a long
+   publish outlive its own lease and be refused at the flip's lease re-read (`lease_lost`, :335) — correct behaviour,
+   confusing failure, and the operator would be reading Firestore docs instead of looking at a
+   constant they changed. Benign today only because they are equal. */
 const LEASE_MS = 120000;                          // 2-minute bounded lease (publish is seconds; generous headroom)
 const RETENTION_MIN_COUNT = 10;                   // keep ≥10 versions ...
 const RETENTION_MIN_AGE_MS = 30 * 24 * 3600 * 1000;   // ... OR ≥30 days, whichever is LARGER
@@ -531,18 +536,30 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        the half verifyPlan's MINT rule depends on. What grows is LATENCY, inside the transaction that
        holds the publish lease, and the flip performs SIX such reads.
 
-       🔴 AND THE SHARPER FINDING IS ABOUT OUR TESTS, NOT ABOUT FIRESTORE. No ceiling appeared at
-       200 000 rows. Production Firestore documents transaction size limits that the emulator does not
-       appear to enforce — production's exact ceiling is NOT verified here and none is asserted. Either
-       way the consequence holds: if production has a limit, NO TEST WE CAN WRITE WILL CATCH IT,
-       because the emulator keeps answering COMPLETE past the point where production would refuse.
-       This class of failure is invisible to this estate by construction, so registry growth is an
-       operational risk to watch rather than something a gate can certify.
+       🔴 AND OUR OWN TIMEOUT IS THE BINDING CONSTRAINT, WHICH IS WHAT MAKES THIS WATCHABLE RATHER
+       THAN BLOCKING. `publishEdited` is `timeoutSeconds: 120` (index.js) and LEASE_MS is 120000, so
+       the flip is bounded by 120s of OURS long before it is bounded by anything of Firestore's. From
+       the table above, four registry reads at 200 000 rows are on the order of 20s; reaching 120s
+       needs something like a million rows per kind — and whatever the true figure, IT IS A NUMBER WE
+       CAN MEASURE, because it is our limit and not the platform's.
+       🔴 AND THE FAILURE IT PRODUCES IS AN AVAILABILITY EVENT, NOT AN INTEGRITY ONE. If our timeout
+       trips first the publish fails loudly, the transaction aborts atomically, and NOTHING IS
+       WRITTEN — recoverable by retry. That is the property that decides how worried to be.
+       (An earlier version of this note concluded that this failure class is "invisible to this estate
+       by construction". That was too broad and is corrected rather than deleted: what is invisible is
+       a FIRESTORE ceiling BELOW ours, and that matters less than it sounds precisely because ours
+       trips first and trips safely. Before concluding an estate cannot see a failure class, ask what
+       breaks that is OURS.)
 
-       🔴 WHEN IT WOULD MATTER: tens of thousands of rows per kind. x_pizza's registry is in the
-       dozens — three orders of magnitude of headroom — so this is recorded to watch, not to fix. If
-       it ever does need fixing the shape is a bounded read with an explicit ABORT, never a status
-       filter, which would silently delete refusal 3's protection (see the block above). */
+       🔴 THE WATCH, WITH A NUMBER, or it is not a watch. Metric: rows in `ids` per kind, per
+       restaurant. Today: dozens. REVISIT AT 5 000 PER KIND — where the table puts a single read at
+       ~216ms, so the flip's registry reads add roughly a second and the trend is worth thinking about
+       rather than noise. Two orders of magnitude of warning before it is uncomfortable, three before
+       it matters.
+       🔴 AND THE FIX, WHEN IT COMES, IS A BOUNDED READ WITH AN EXPLICIT ABORT — NEVER A STATUS
+       FILTER. The obvious optimisation is the dangerous one, and whoever reaches for it will be under
+       load: `.where('status','==',STATUS_LIVE)` silently deletes refusal 3's protection against
+       minting over a retired reservation (see the load-bearing block above). */
     const certifiedCandidate = candidateSnap.exists && (candidateSnap.data() || {}).identity_certified === true;
     /* 🔴 AN UNCERTIFIED TARGET YIELDS NO RECONCILIATION, AND "NONE" IS THE ANSWER — NOT A FALLBACK.
        Said at the gate rather than only in a cell, because the next person to extend this will look

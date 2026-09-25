@@ -6285,6 +6285,13 @@ function decodeUpdateTimeForEdit(v) {
 }
 
 exports.publishEdited = onRequest(
+  /* 🔴 timeoutSeconds AND catalog-publish.js's LEASE_MS MUST MOVE TOGETHER. Both are 120s. Raise this
+     one alone and a long publish outlives its own lease, then gets refused at the flip's re-read —
+     correct behaviour, confusing failure, and the operator would be reading Firestore docs rather than
+     looking at the constant they changed. This 120s is also what BOUNDS the flip's whole-collection
+     registry reads: it trips long before any Firestore limit, loudly and atomically, which is why
+     registry growth is a watch item rather than a blocker (see the read-cost note in
+     catalog/catalog-publish.js). */
   { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 120, memory: '512MiB', maxInstances: 2 },
   async (req, res) => {
     try {
