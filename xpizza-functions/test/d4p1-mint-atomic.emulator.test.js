@@ -574,8 +574,15 @@ async function addDishToSource(name) {
     finally { console.log = realLog; }
     assert.ok(!seen.some((l) => l.includes('identity_rollback_source_rebased')),
       '🔴 a rollback that changed NO stamps still wrote the source — every rollback would then invalidate an innocent draft, turning §5\'s protection into churn');
+    /* 🔴 KEPT, BUT MARKED AS THE WEAKER CHECK, AND THE LIMIT IS WHAT I ACTUALLY MEASURED. In THIS
+       EMULATOR a byte-identical write does not move updateTime, which is what let the unconditional-
+       write mutant survive this comparison. Whether PRODUCTION Firestore behaves the same way is NOT
+       ESTABLISHED and is not worth chasing: the guard's correctness does not depend on it, only the
+       assertion did. Do not "strengthen" this back into the sole check — if production does bump on
+       an identical write, this would pass for a reason unrelated to the property, and the log-line
+       assertion above is the one that measures the write rather than its effect. */
     assert.strictEqual(encodeUpdateTime((await sourceRefOf(db, RID).get()).updateTime), revBefore,
-      'and the revision is untouched (weaker than the assertion above: an identical write does not move it)');
+      'and the revision is untouched — the weaker of the two checks; see the note above');
     ok('a draft open across a rollback is refused flip_cas_draft_stale BY NAME, and a rollback that changes no stamps does not touch the source at all');
   }
 
