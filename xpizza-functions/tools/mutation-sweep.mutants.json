@@ -8267,5 +8267,217 @@
    "node",
    "catalog/identity-restore.test.js"
   ]
+ },
+ {
+  "id": "e4-01",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (row.legacy_key !== m.from) {",
+  "to": "    if (false) {",
+  "label": "a MOVE's `from` is trusted — the id is re-pointed while its real key row survives, and a live sibling's row is deleted",
+  "kills_with": "refusal 2 is the only guard on this plan and it did not fire",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-02",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    const row = ids.get(m.id);\n    if (!row) return REFUSE('plan_move_id_absent'",
+  "to": "    const row = ids.get(m.id) || { legacy_key: m.from, status: STATUS_LIVE };\n    if (!row) return REFUSE('plan_move_id_absent'",
+  "label": "an id the registry does not have is DEFAULTED to whatever the plan claims about it — the plan becomes its own authority",
+  "kills_with": "a move of an id the registry has never heard of was not refused as absent",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-03",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (row.status !== STATUS_LIVE) return REFUSE('plan_move_id_not_live'",
+  "to": "    if (false) return REFUSE('plan_move_id_not_live'",
+  "label": "a MOVE relocates a RETIRED id, reviving a reservation as a side effect of a rename",
+  "kills_with": "a move relocated a RETIRED id, reviving a reservation",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-04",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (row) {\n      return REFUSE('plan_mint_id_exists'",
+  "to": "    if (row && row.status === STATUS_LIVE) {\n      return REFUSE('plan_mint_id_exists'",
+  "label": "🔴 THE LIVE FILTER, AT THE CONSUMER — a retired id reads as absent and the MINT recycles a reservation",
+  "kills_with": "the reservation was recycled",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-05",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    const row = ids.get(m.id);\n    if (row) {",
+  "to": "    const row = ids.get(m.id);\n    if (false) {",
+  "label": "a MINT onto an id that already exists is permitted at all",
+  "kills_with": [
+   "the reservation was recycled",
+   "a mint onto a LIVE id was permitted"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-06",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (row.legacy_key !== r.name) {",
+  "to": "    if (false) {",
+  "label": "a RETIRE is trusted about which name it is retiring from — it deletes a key row it does not own",
+  "kills_with": "refusal 4 is the only guard on this plan and it did not fire",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-07",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    const row = ids.get(r.id);\n    if (!row) return REFUSE('plan_retire_id_absent'",
+  "to": "    const row = ids.get(r.id) || { legacy_key: r.name, status: STATUS_LIVE };\n    if (!row) return REFUSE('plan_retire_id_absent'",
+  "label": "a RETIRE of an absent id is defaulted to agreeing with the plan",
+  "kills_with": "expected plan_retire_id_absent",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-08",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (row.canonical_id !== r.id) {",
+  "to": "    if (false) {",
+  "label": "a deletion is issued against a key row naming a DIFFERENT id — the orphan the sweep exists to repair, manufactured",
+  "kills_with": "would have deleted a key row naming a DIFFERENT id",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-09",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (byName.has(r.name)) continue;                     // re-landed by this same plan; not a deletion",
+  "to": "    // re-landing is not consulted",
+  "label": "a name re-landed by this same plan is still reported as a deletion — a swap deletes both rows and survives only if the writer happens to order its writes well",
+  "kills_with": "a swap reported deletions",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-10",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (!row) continue;                                   // nothing to delete",
+  "to": "    if (!row) { deletions.push({ name: r.name, encoded, id: r.id }); continue; }",
+  "label": "an ABSENT key row is reported as a deletion — the writer issues a delete for a document that is not there",
+  "kills_with": "an absent row was reported as a deletion",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-11",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (byName.has(l.name)) {",
+  "to": "    if (false) {",
+  "label": "TWO IDS LAND ON ONE NAME — the fork the destination guard cannot see, because neither id is in the registry yet",
+  "kills_with": "two ids landing on ONE name were permitted",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-12",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (byId.has(l.id)) {",
+  "to": "    if (false) {",
+  "label": "ONE ID LANDS ON TWO NAMES — one key row is left naming an id that does not claim it",
+  "kills_with": "expected plan_one_id_two_names",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-13",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "    if (r.via === 'retire' && byId.has(r.id)) {",
+  "to": "    if (false) {",
+  "label": "one plan both ENDS and CONTINUES a single identity",
+  "kills_with": "expected plan_id_moved_and_retired",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-14",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "  if (!(ids instanceof Map) || !(keys instanceof Map) || typeof encode !== 'function') {",
+  "to": "  ids = ids instanceof Map ? ids : new Map(Object.entries(ids || {}));\n  keys = keys instanceof Map ? keys : new Map(Object.entries(keys || {}));\n  encode = typeof encode === 'function' ? encode : ((s) => s);\n  if (false) {",
+  "label": "the registry index is COERCED instead of required — an unread registry becomes an empty one, and every refusal is vacuously satisfied",
+  "kills_with": "judged a plan against an unread registry",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-15",
+  "slice": "e4",
+  "file": "catalog/identity-plan.js",
+  "from": "  if (lands.length + releases.length !== recognised) {",
+  "to": "  if (false) {",
+  "label": "an entry the verifier cannot read is SKIPPED — the plan reports verified while an unjudged operation rides along",
+  "kills_with": "an entry the verifier could not read was PERMITTED",
+  "command": [
+   "node",
+   "catalog/identity-plan.test.js"
+  ]
+ },
+ {
+  "id": "e4-16",
+  "slice": "e4",
+  "file": "catalog/catalog-publish.js",
+  "from": "        tx.get(idsColOf(db, rid, 'dish')), tx.get(idsColOf(db, rid, 'extra')),",
+  "to": "        tx.get(idsColOf(db, rid, 'dish').where('status', '==', 'live')), tx.get(idsColOf(db, rid, 'extra').where('status', '==', 'live')),",
+  "label": "🔴 THE LIVE FILTER, AT THE QUERY — the tidy-up the read-cost note warns about: a retired id reads as ABSENT to everything downstream of this read",
+  "kills_with": "a RETIRED id behind a surviving key row was certified at activation",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-claim"
+  ]
  }
 ]

@@ -494,8 +494,25 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        🔴 READ COST, STATED. The flip already reads 4 documents (lock, pointer, source, candidate
        record). Verifying per stamp would be 2N more; instead this uses §4's own shape — ONE query per
        KIND — so it is 6 more reads regardless of menu size: the candidate's items and extras, the key
-       rows per kind, and the live id rows per kind. Bounded, and the object count is budgeted below
-       rather than left to scale with whatever the menu becomes. */
+       rows per kind, and ALL id rows per kind. Bounded in QUERY COUNT — six, regardless of menu size
+       — but NOT in result size, which grows with every retired id ever created. Two different axes,
+       and the old wording said "bounded" of one while a reader would take it for both.
+
+       🔴 THE ABSENCE OF A STATUS FILTER IS LOAD-BEARING. READ THIS BEFORE "FIXING" THE QUERY.
+       These read ALL id rows, live AND retired. An earlier version of this very comment said "the
+       live id rows per kind", which is what the code does NOT do — and that divergence is a trap: the
+       obvious tidy-up is to add `.where('status','==',STATUS_LIVE)` to match, the shape used at
+       identity-sweep.js:83 and by the destination guard, so it would read as consistency rather than
+       as a change. It would silently delete a safety check. The plan verifier's MINT refusal requires
+       that a minted id does not already exist LIVE OR RETIRED; with a live-only filter a retired id
+       reads as absent and the mint recycles a reservation, which §4 forbids by name ("never recycle
+       an id referenced by an activatable version").
+       This is defended mechanically rather than by this paragraph: a mutant that adds the live filter
+       kills a cell. If you are here because that mutant failed, the filter is the thing to remove.
+
+       🔴 WHAT IS NOT ESTABLISHED: whether a whole-collection read inside a Firestore transaction
+       fails loudly at some limit or degrades. Neither of us has measured it. Recorded because E-4
+       leans on these reads harder than the old post-flip writer did — not asserted either way. */
     const certifiedCandidate = candidateSnap.exists && (candidateSnap.data() || {}).identity_certified === true;
     if (certifiedCandidate) {
       const vref = versionsColOf(db, rid).doc(versionId);
