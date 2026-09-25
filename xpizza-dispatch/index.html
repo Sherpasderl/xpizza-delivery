@@ -1752,7 +1752,10 @@
     border-radius: 10px;
     padding: 12px 18px;
     font-size: 13px;
-    z-index: 200;
+    /* F5-fix P2#3: toast feedback must sit ABOVE the modal layer (overlay-bg 220) — a failed-assign error toast
+       fires while the picker stays open, so at z:200 it rendered UNDER the picker and the dispatcher never saw why.
+       240 = top of the modal stack (below only .dispatcher-alerts 999). See the overlay z-stack at .flyout-scrim. */
+    z-index: 240;
     transition: transform 0.3s cubic-bezier(0.18, 1.18, 0.32, 1);
     pointer-events: none;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
@@ -1955,16 +1958,19 @@
   /* ============ F3: nav-rail secondary-surface flyout (En Fila / Comms / Caja / Cerrados) ============ */
   /* Left-anchored (next to the 54px nav rail) so it never collides with the right-side order-detail drawer.
      Hidden by default; the existing #rail-tabs handler drives open/close (see initSurfaceFlyout). */
-  /* ─── Overlay z-stack (F5-fix coherent model) ─── each overlay that can open OVER another sits above that
-     one's scrim, so no child is trapped under a parent scrim and Esc/focus follow the top of the stack:
-       30  nav rail (persistent chrome)
+  /* ─── Overlay z-stack (F5-fix coherent model) ─── the SINGLE SOURCE is the JS OVERLAYS registry (search
+     "Canonical overlay registry"); the ⌘K bail + Esc top-only gate derive from it, and dispatch-theme.test.js
+     binds this CSS order to it. Each overlay that can open OVER another sits above its scrim, so no child is
+     trapped and Esc/focus follow the top:
+       30  nav rail (persistent chrome; its hover tooltip is capped inside this fixed context — P3, accepted)
        150 flyout-scrim / 151 flyout          — opens from nav rail / cashbar (lowest overlay layer)
        170 #action-menu                        — row ⋯ menu (incl. rows inside the flyout panes)
        200 .msg-modal                          — messages surface (nav Comms)
        205 comms-scrim / 206 comms-sheet       — read-only thread (opens from the flyout Comms pane OR the msg-modal → above both)
        210 order drawer                        — order detail (opens from queue rows / flyout panes / cashbar recon)
        220 .overlay-bg (assign picker · recon-note) — modal dialogs (open from queue / drawer / flyout Caja)
-       300 tooltip / rail-av menu   ·   999 toast (always top) */
+       240 .toast                              — transient feedback (a failed-assign toast must show OVER the picker)
+       300 tooltip / rail-av menu   ·   999 .dispatcher-alerts (always top) */
   .flyout-scrim { position: fixed; inset: 0; z-index: 150; background: rgba(0,0,0,0.42); }
   .flyout-scrim[hidden] { display: none; }
   .surface-flyout { position: fixed; left: 54px; top: 0; bottom: 0; z-index: 151; width: 420px; max-width: calc(100vw - 66px); display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border); box-shadow: var(--shadow-lift); }
@@ -3517,6 +3523,11 @@ function showActionMenu(triggerEl, items) {
 function closeActionMenu() {
   $('action-menu').classList.add('hidden');
 }
+// F5-fix P2#1: the row ⋯ menu is Esc-dismissible (it's the top overlay when open). Its Esc stops propagation so a
+// lower overlay's Esc handler (e.g. the flyout it opened over) doesn't ALSO fire — closes only the top.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('action-menu').classList.contains('hidden')) { e.stopPropagation(); closeActionMenu(); }
+});
 
 function isCurrentUserAlsoDriver() {
   if (!currentUser) return false;
@@ -5692,6 +5703,29 @@ function isCashPayment(pm) {
 // collapse-rails wiring is below.)
 $('delivered-toggle').querySelector('.tree-group-toggle').innerHTML = ICONS.chevronDown;
 
+// ══════════════ Canonical overlay registry (F5-fix: ONE source of truth for the overlay z-stack) ══════════════
+// A single ordered list of every overlay. Both the ⌘K bail (anyModalOpen) and the Esc top-only gate
+// (overlaysAboveOpen) DERIVE from THIS — so an overlay can never be present in one guard's list and missing from
+// another (the recurring per-round bug). `z` mirrors the authored CSS z-index (dispatch-theme.test.js binds the
+// CSS order to this list so they can't drift). `modal` = holds a focus trap → ⌘K must not steal focus from it.
+// `transient` = auto-dismissing feedback (toast) → never owns Esc / never blocks a lower overlay's Esc. Ordered
+// bottom→top by z. See the matching z-stack comment at .flyout-scrim.
+const OVERLAYS = [
+  { name: 'flyout',      z: 151, modal: true,  transient: false, open: () => { const e = $('surface-flyout');     return !!(e && !e.hidden); } },
+  { name: 'action-menu', z: 170, modal: false, transient: false, open: () => { const e = $('action-menu');        return !!(e && !e.classList.contains('hidden')); } },
+  { name: 'msg-modal',   z: 200, modal: true,  transient: false, open: () => { const e = $('msg-modal');          return !!(e && e.classList.contains('open')); } },
+  { name: 'comms',       z: 206, modal: true,  transient: false, open: () => { const e = $('comms-sheet');         return !!(e && e.classList.contains('open')); } },
+  { name: 'drawer',      z: 210, modal: true,  transient: false, open: () => { const e = $('order-detail-modal');  return !!(e && e.classList.contains('open')); } },
+  { name: 'picker',      z: 220, modal: true,  transient: false, open: () => { const e = $('picker-overlay');      return !!(e && !e.classList.contains('hidden')); } },
+  { name: 'recon-note',  z: 220, modal: true,  transient: false, open: () => { const e = $('recon-note-overlay');  return !!(e && !e.classList.contains('hidden')); } },
+  { name: 'toast',       z: 240, modal: false, transient: true,  open: () => { const e = $('toast');               return !!(e && e.classList.contains('show')); } },
+];
+const OVERLAY_Z = Object.fromEntries(OVERLAYS.map(o => [o.name, o.z]));
+// ⌘K must not steal focus out of any trap → true if ANY modal overlay is open.
+const anyModalOpen = () => OVERLAYS.some(o => o.modal && o.open());
+// Esc closes only the TOP overlay → true if any NON-transient overlay above `z` is open (that one owns Esc).
+const overlaysAboveOpen = (z) => OVERLAYS.some(o => o.z > z && !o.transient && o.open());
+
 // ── Collapse rails (Torre de Control 3-column grid) — replaces the retired drag-resize
 // sidebar. The code runs in a module, so an inline onclick can't resolve → wire via
 // addEventListener.
@@ -5714,13 +5748,9 @@ $('alerts-bell')?.addEventListener('click', () => {
 (function initTopbarSearch() {
   const input = $('topbar-search'); if (!input) return;
   input.addEventListener('input', (e) => { colaSearchQuery = e.target.value.trim(); syncActionQueueViews(); });
-  // F5-fix P1#2: don't yank focus out of an open modal (assign picker / nav flyout / order drawer / recon-note)
-  // — that would break the modal's focus trap. Only focus the background search when nothing overlays the board.
-  const anyModalOpen = () =>
-    (!!$('picker-overlay')    && !$('picker-overlay').classList.contains('hidden')) ||
-    (!!$('recon-note-overlay') && !$('recon-note-overlay').classList.contains('hidden')) ||
-    (!!$('surface-flyout')    && !$('surface-flyout').hidden) ||
-    (!!$('order-detail-modal') && !$('order-detail-modal').hasAttribute('inert'));
+  // F5-fix P1#2: don't yank focus out of an open modal — that breaks its focus trap. anyModalOpen() is DERIVED
+  // from the canonical OVERLAYS registry (flyout / action-menu / msg-modal / comms / drawer / picker / recon-note),
+  // so it can't omit an overlay the Esc gate knows about. Only focus the search when no modal overlays the board.
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
       if (anyModalOpen()) return;                 // let the open modal keep focus (trap intact)
@@ -5773,14 +5803,10 @@ function flyoutRestoreFocus(opener, doc) {
   // RESTORE focus on close), reusing Slice-A focusTrapTarget like the order drawer. Restore goes through
   // flyoutRestoreFocus (P2#2 cascade) so a re-render that replaces the opener (e.g. #cash-recon-btn) still lands.
   let flyoutOpener = null;
-  // Higher overlays that stack ABOVE the flyout (see the overlay z-stack). When one is open, the flyout must NOT
-  // consume Esc — the top overlay owns it (else Esc double-dismisses the flyout + the thing on top of it).
-  const higherOverlayOpen = () =>
-    (!!$('order-detail-modal')  && $('order-detail-modal').classList.contains('open')) ||
-    (!!$('picker-overlay')      && !$('picker-overlay').classList.contains('hidden')) ||
-    (!!$('recon-note-overlay')  && !$('recon-note-overlay').classList.contains('hidden')) ||
-    (!!$('comms-sheet')         && $('comms-sheet').classList.contains('open')) ||
-    (!!$('msg-modal')           && $('msg-modal').classList.contains('open'));
+  // F5-fix P2#3: Esc closes only the TOP overlay. DERIVED from the canonical OVERLAYS registry — the flyout yields
+  // Esc whenever any non-transient overlay ABOVE it (action-menu / msg-modal / comms / drawer / picker / recon-note)
+  // is open, so its own Esc handler closes only that one (no flyout double-dismissal). Single list ⇒ can't miss one.
+  const higherOverlayOpen = () => overlaysAboveOpen(OVERLAY_Z.flyout);
   const showFlyout = () => {
     if (!flyout) return;
     if (flyout.hidden) flyoutOpener = document.activeElement;   // capture opener only on a genuine open

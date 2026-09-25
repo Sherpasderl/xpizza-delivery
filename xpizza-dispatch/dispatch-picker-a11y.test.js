@@ -154,13 +154,10 @@ const pickerJs = html.slice(openIdx, closeEnd);
 {
   const its = html.slice(html.indexOf('function initTopbarSearch('), html.indexOf('function initAvatarMenu('));
   assert.ok(its, 'located initTopbarSearch');
-  assert.match(its, /const anyModalOpen = \(\) =>/, 'defines an open-modal check');
-  assert.match(its, /picker-overlay/, 'the modal check includes the assign picker');
-  assert.match(its, /surface-flyout/, 'the modal check includes the nav flyout');
-  assert.match(its, /recon-note-overlay/, 'the modal check includes the reconciliation-note dialog');
-  assert.match(its, /order-detail-modal/, 'the modal check includes the order drawer');
+  // ⌘K bails through the registry-derived anyModalOpen() (FEATURE 12 proves the registry covers every modal),
+  // BEFORE focusing the background search — so no open modal loses its focus trap.
   assert.match(its, /if \(anyModalOpen\(\)\) return;[\s\S]*?input\.focus\(\)/, '⌘K returns early when a modal is open, BEFORE focusing the background search');
-  ok('⌘K suppressed while a modal (picker/flyout/drawer/recon-note) is open — focus trap not escaped');
+  ok('⌘K suppressed while any modal is open (via the canonical registry) — focus trap not escaped');
 }
 
 // FEATURE 9 — F5-fix P2#3: the nav flyout (aria-modal) gets real focus management — focus IN on open, Tab TRAP
@@ -209,10 +206,27 @@ const pickerJs = html.slice(openIdx, closeEnd);
 // drawer. Non-vacuous: drop the guard from the flyout Esc condition → red.
 {
   const fly = html.slice(html.indexOf('function initSurfaceFlyout('), html.indexOf('// Slice D2 — nav rail'));
-  assert.match(fly, /const higherOverlayOpen = \(\) =>/, 'flyout defines a higher-overlay check');
-  assert.match(fly, /order-detail-modal[\s\S]*?picker-overlay[\s\S]*?recon-note-overlay[\s\S]*?comms-sheet[\s\S]*?msg-modal/, 'higher-overlay check covers drawer + picker + recon-note + comms thread + msg-modal');
+  // The flyout Esc gate DERIVES from the canonical registry (overlaysAboveOpen), not a hand-list — so it can't
+  // omit a higher overlay (FEATURE 12 proves the registry set). It closes the flyout only when nothing is above it.
+  assert.match(fly, /const higherOverlayOpen = \(\) => overlaysAboveOpen\(OVERLAY_Z\.flyout\)/, 'flyout Esc gate derives from the registry (overlaysAboveOpen)');
   assert.match(fly, /e\.key === 'Escape' && flyout && !flyout\.hidden && !higherOverlayOpen\(\)\) closeFlyout\(\)/, 'flyout Esc closes the flyout ONLY when no higher overlay is open');
-  ok('Esc top-only: the flyout yields Esc to any higher overlay (drawer-over-flyout closes only the drawer)');
+  ok('Esc top-only: the flyout yields Esc to any higher overlay (drawer/action-menu/…-over-flyout closes only the top)');
+}
+
+// FEATURE 12 — F5-fix (unify): ONE canonical OVERLAYS registry is the single source; the ⌘K bail (anyModalOpen)
+// and the Esc top-only gate (overlaysAboveOpen) both DERIVE from it, so no overlay can be in one guard's list and
+// missing from another (the per-round recurring bug). Non-vacuous: drop an overlay from the registry → "includes
+// 'X'" red; point a guard at a hand-list instead of OVERLAYS → its "derives from" assertion red.
+{
+  const reg = html.slice(html.indexOf('const OVERLAYS = ['), html.indexOf('const OVERLAY_Z ='));
+  assert.ok(reg && reg.length > 0, 'canonical OVERLAYS registry present');
+  for (const n of ['flyout', 'action-menu', 'msg-modal', 'comms', 'drawer', 'picker', 'recon-note', 'toast'])
+    assert.match(reg, new RegExp(`name: '${n}'`), `registry includes the '${n}' overlay`);
+  assert.match(html, /const anyModalOpen = \(\) => OVERLAYS\.some\(o => o\.modal && o\.open\(\)\)/, 'anyModalOpen (⌘K bail) DERIVES from OVERLAYS');
+  assert.match(html, /const overlaysAboveOpen = \(z\) => OVERLAYS\.some\(o => o\.z > z && !o\.transient && o\.open\(\)\)/, 'overlaysAboveOpen (Esc gate) DERIVES from OVERLAYS (transient overlays never block Esc)');
+  // the row ⋯ menu is Esc-dismissible and stops propagation (closes only the top when open over the flyout)
+  assert.match(html, /Escape' && !\$\('action-menu'\)\.classList\.contains\('hidden'\)\) \{ e\.stopPropagation\(\); closeActionMenu/, 'action-menu is Esc-dismissible (stops propagation → only the top closes)');
+  ok('single canonical OVERLAYS registry — ⌘K bail + Esc gate both derive from it; action-menu Esc-dismissible; no per-guard list can drift');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
