@@ -3811,7 +3811,11 @@ function renderOrderExpanded(order) {
     lines.push(`<div class="row"><span class="label">Pago</span><span class="value">${escapeHtml(order.payment_method)}</span></div>`);
   }
   if (order.items_text) {
-    lines.push(`<div class="row"><span class="label">Pedido</span><span class="value items">${order.items_text.split(',').map(s => `<div>${escapeHtml(s.trim())}</div>`).join('')}</span></div>`);
+    // F6 #2 (generalized): same '|'-else-',' split as the drawer — prevents the run-on blob recreating here if the
+    // inline-expand path is ever re-enabled (currently dead: expandedOrderIds stays empty). Each item escapeHtml'd.
+    const raw = String(order.items_text);
+    const itemRows = raw.split(raw.includes('|') ? '|' : ',').map(s => s.trim()).filter(Boolean).map(s => `<div>${escapeHtml(s)}</div>`).join('');
+    lines.push(`<div class="row"><span class="label">Pedido</span><span class="value items">${itemRows}</span></div>`);
   }
   if (order.address_details) {
     lines.push(`<div class="note">"${escapeHtml(order.address_details)}"</div>`);
