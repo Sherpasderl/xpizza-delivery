@@ -67,7 +67,13 @@ const GATE = 'assertStoreCodeParity';
   for (const [needle, why] of [
     ['await readVersionDocs(db, rid, versionId)', 'verify-before-flip: the version is re-read before the pointer moves'],
     ['await verifyVersionStructure(db, rid, versionId)', 'the persisted candidate is re-read AND re-validated before the flip'],
-    ['await flipPointer(db, rid, token, versionId, snapshot, expected)', 'the flip is still the last step, under a lease, and under a CAS'],
+    /* 🔴 THE OPTIONS ARGUMENT IS PART OF THE NEEDLE NOW, and deliberately so. Slice E gave flipPointer
+       a `renameOn` option whose DEFAULT is off, so a call site that drops it silently reverts that
+       restaurant to P1a. Matching the call WITHOUT the options bag would let exactly that edit pass —
+       the guard would still see "the flip is the last step" while the staging flag stopped being
+       passed at all. The trailing `, {` is what pins it. */
+    ['await flipPointer(db, rid, token, versionId, snapshot, expected, {', 'the flip is still the last step, under a lease, under a CAS, and still handed its options'],
+    ['{ renameOn }', 'the staging flag is still passed to the flip — a dropped option silently reverts this restaurant to P1a'],
     // 1A Task 7: the validator runs BEFORE anything is written, so an invalid candidate never becomes
     // an immutable version at all. Pinned inside publishVersion's own body for the reason the comment
     // above gives — a file-wide search finds the identical call in rollbackVersion.

@@ -25,6 +25,33 @@
 // The second is not a cache of the first. It is the SERIALIZATION POINT: first-assignment transacts on
 // the key document, so two concurrent seeds of the same dish contend on one row and exactly one id is
 // minted. Reserving only the random id would let both win — they would be reserving different rows.
+//
+// 🔴 STANDING PRODUCTION DIVERGENCE (observed 2026-09-25, D4-P1 Slice E) — A CONSUMED DELETION CLAIM
+// RETIRES NOTHING HERE. When a merchant deletes a dish, the publish that carries it out records
+// `identity_activation.consumed_deleted_ids` on the immutable version, clears `deleted_ids` on the
+// source, and drops the object from the menu. THE REGISTRY IS NOT TOUCHED: the id row stays `live`
+// and its keys/{encoded_key} reverse row stays, pointing at an object no version serves any more.
+//
+// So a reader of this registry must NOT treat `status: live` as "some active version serves this".
+// It means "nothing has ever retired it", and today nothing ever has — retireIdentity has no
+// production caller (see its own header) and retireOrphanFenced runs only from reconciliation. The
+// version record and this registry therefore disagree, and the version is the one telling the truth
+// about what the merchant did.
+//
+// 🔴 HOW IT WAS FOUND, because it is invisible from the tests. test/d4p1-claim-flip.emulator.test.js
+// cell 1 is LABELLED "…and the ids are really gone" and asserts only that no dish in the ACTIVE
+// VERSION carries the id — it never reads status and never reads a key row. The label claimed more
+// than the assertion for several slices. It surfaced by printing the plans a proposed atomic writer
+// would derive against a GREEN run: a publish re-derived a retirement for an id whose claim an
+// earlier publish had already consumed, which is only possible if that consumption retired nothing.
+//
+// 🔴 CONSEQUENCE FOR WHOEVER WIRES THE ATOMIC WRITER (catalog/identity-writer.js, unwired as of this
+// note): it would be the FIRST thing in this system ever to retire anything, and retiring deletes the
+// reverse row for real. A rollback to a version published BEFORE that deletion then fails
+// stamp_unregistered, because the mapping is genuinely gone. That is §4's stated Slice F case —
+// restoreIdentity (catalog/identity-restore.js) exists and NOTHING CALLS IT. Retirement and its
+// rollback counterpart are one capability seen from two ends; shipping the first without the second
+// makes deletion irreversible. That is why P1a ships MINTS ONLY.
 // ---------------------------------------------------------------------------
 const crypto = require('crypto');
 const { assertPointerUnmoved } = require('./identity-fence');

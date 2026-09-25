@@ -79,7 +79,13 @@ const r = enumerate();
 {
   const got = [...new Set(r.indirect.map((h) => `${rel(h.file)}::${h.fn}`))].sort();
   assert.deepStrictEqual(got, [
+    /* 🔴 THE FLIP ITSELF IS NOW A REGISTRY CALLER, which is the whole of Slice E in one line: identity
+       writes moved INSIDE the activation transaction. It needs no fence of its own — it IS the
+       fenced transaction, having captured and re-verified {version, generation} before calling the
+       writer. rollbackVersion appears for the same reason, through flipPointer. */
+    'catalog/catalog-publish.js::flipPointer',
     'catalog/catalog-publish.js::publishVersion',
+    'catalog/catalog-publish.js::rollbackVersion',
     'catalog/identity-backfill.js::backfillIdentities',
     'catalog/identity-backfill.js::ensureIdentitiesForKeys',
     'catalog/identity-bootstrap.js::reconcileLegacyOrphans',
@@ -90,6 +96,14 @@ const r = enumerate();
     'tools/backfill-identities.js::(module scope)',
     'tools/migrate-catalog-display.js::(module scope)',
     'tools/publish-version.js::(module scope)',
+    /* 🔴 ROLLBACK REACHES A REGISTRY WRITER NOW, AND THIS CELL IS WHERE THAT SURFACED — the third time
+       the walk has named a new writer or caller before anyone said anything about fencing it.
+       rollbackVersion goes through flipPointer, and the flip now hosts the atomic writer, so a
+       rollback to a version carrying a key the registry has never seen MINTS it. That is correct: a
+       rollback is an activation, and an activated version whose objects have no identity is the
+       unresolvable-overlay state this slice exists to remove. Named here so it is a decision rather
+       than a diff. */
+    'tools/rollback-version.js::(module scope)',
   ], '🔴 the set of functions that reach a registry writer changed — a fence built for the old set leaves the new caller unfenced');
   ok(`${got.length} functions reach a writer transitively, from immediate callers out to the merchant-facing endpoint`);
 }

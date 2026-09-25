@@ -41,7 +41,12 @@ const { candidateSource, assertCandidateValid } = require('./candidate-validate'
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 const { validateDeletionClaim, validatePartition } = require('./identity-partition');
 const { walkDraftIdentities, judgeStampMap } = require('./identity-stampmap');
-const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey } = require('./identity-registry');
+const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, proposeId, STATUS_LIVE } = require('./identity-registry');
+const { derivePlan } = require('./identity-derive');
+const { verifyPlan } = require('./identity-plan');
+const { judgePlanDestinations } = require('./identity-destination');
+const { applyIdentityPlan } = require('./identity-writer');
+const { renameEnabled } = require('./identity-flags');
 /* The activation's own verification budget: the same ceiling bootstrap uses, for the same reason —
    one transaction can only verify so much, and verifying a SUBSET is worse than refusing. */
 const BOOTSTRAP_MAX_OBJECTS = 400;
@@ -242,7 +247,11 @@ async function acquireLease(db, rid) {
    objects, which is not a thing to build in an emulator every run. A guard whose only branch needs a
    400-object fixture is a guard nobody exercises, and this programme's recurring defect is exactly
    that. Stated here rather than left to look like a caller knob. */
-async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false, stampBudget = BOOTSTRAP_MAX_OBJECTS } = {}) {
+/* 🔴 `renameOn` DEFAULTS TO FALSE, AND THAT DEFAULT IS THE FAIL-SAFE. flipPointer is EXPORTED; a
+   caller that forgets the option gets P1a, not P1b. The flag is read ONCE by the caller, outside this
+   transaction, and passed in — never read here, because a per-kind read inside the transaction could
+   return different answers for dish and extra within one all-or-nothing activation. */
+async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false, stampBudget = BOOTSTRAP_MAX_OBJECTS, renameOn = false } = {}) {
   const isRollback = !!rollback;
   // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
   // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
@@ -542,9 +551,17 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       }
 
       const registry = { dish: new Map(), extra: new Map() };
+      /* 🔴 THE WHOLE REGISTRY PER KIND, KEPT — not only the candidate's slice. `registry` is indexed BY
+         CANDIDATE KEY because judgeStampMap asks about the objects this version serves. The plan needs
+         the other question: does THIS ID exist anywhere, live or retired. Same snapshots, read once,
+         above, before any write. */
+      const fullIds = { dish: new Map(), extra: new Map() };
+      const fullKeys = { dish: new Map(), extra: new Map() };
       for (const [kind, keysSnap, idsSnap] of [['dish', dishKeys, dishIds], ['extra', extraKeys, extraIds]]) {
         const byEncoded = new Map((keysSnap.docs || []).map((d) => [d.id, (d.data() || {}).canonical_id]));
         const rows = new Map((idsSnap.docs || []).map((d) => [d.id, d.data() || {}]));
+        fullIds[kind] = rows;
+        fullKeys[kind] = new Map((keysSnap.docs || []).map((d) => [d.id, d.data() || {}]));
         for (const key of candidateKeys[kind]) {
           const keyRowId = byEncoded.get(encodeKey(key)) || null;
           registry[kind].set(key, { keyRowId, idRow: keyRowId ? rows.get(keyRowId) || null : null });
@@ -560,6 +577,85 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       const bad = judged.stamps.filter((e) => !e.verdict.ok);
       if (bad.length) {
         throw new Error(`${bad[0].verdict.code}: ${rid}/${versionId} — ${bad.length} stamp(s) refused AT ACTIVATION — ${bad.map((e) => e.verdict.detail).join(' · ')}`);
+      }
+
+      /* ══ THE ATOMIC WRITER (§4) — P1a: MINTS ONLY ════════════════════════════════════════════
+         🔴 EVERY READ IT NEEDS ALREADY HAPPENED ABOVE, BEFORE ANY WRITE. Firestore refuses a read
+         after a write in a transaction — OBSERVED, not assumed (test/tx-read-after-write.emulator.
+         test.js records the exact refusal). So a future edit that reads from here on fails loudly in
+         the emulator rather than passing review. Nothing below reads.
+
+         🔴 MINTS ONLY, AND NO RETIRES, WHICH IS A DELIBERATE DEPARTURE FROM §7's "P1a = add + delete".
+         §7 assumed the rollback restore would exist by the time retirement did. It does not:
+         restoreIdentity was built in E-3 and NOTHING CALLS IT. This writer would be the first thing in
+         the system ever to retire anything (see the standing-divergence note at the top of
+         identity-registry.js — a consumed deletion claim retires nothing today), and a real retirement
+         deletes the reverse row, after which a rollback to a version published BEFORE the deletion
+         fails `stamp_unregistered` because the mapping is genuinely gone. Retirement and its rollback
+         counterpart are one capability seen from two ends; they ship together in the Slice F
+         increment. Recorded as spec v7.6.
+
+         🔴 MOVES ARE GATED ON THE FLAG, WHICH IS P1a/P1b. `renameEnabled` is read ONCE, outside this
+         transaction, and passed in — a flag that changed between the dish and extra loops would let
+         one kind rename while the other refused, inside a transaction that is all-or-nothing. */
+      const identityWrites = { dish: null, extra: null };
+      for (const kind of ['dish', 'extra']) {
+        const allocate = (legacyKey) => {
+          /* 🔴 RETRIED AGAINST THE MAP, NOT THE DATABASE, because reads are closed by now. `fullIds`
+             is the whole registry for this kind and is already in memory, so the check is free.
+             Exhausting the attempts REFUSES rather than minting a colliding id: for la_musa every
+             attempt returns the same slug, and a taken slug is a human decision, not a retry. */
+          for (let i = 0; i < 5; i += 1) {
+            const candidate = proposeId(rid, kind, legacyKey);
+            if (!fullIds[kind].has(candidate)) return candidate;
+          }
+          throw new Error(`flip_identity_mint_exhausted: ${rid}/${kind}/${legacyKey} — every proposed id is already registered; for a grandfathered slug this means the slug is taken and needs a human decision`);
+        };
+
+        const derived = derivePlan({
+          candidateKeys: candidateKeys[kind], stamps: persisted[kind],
+          ids: fullIds[kind], keys: fullKeys[kind],
+          retireIds: [],                      // P1a: no retires — see the note above
+          allocate,
+        });
+        /* 🔴 MOVES DROPPED WHEN THE FLAG IS OFF, AND THE DROP IS NOT SILENT. With renames disabled the
+           stamp map above has already refused any rename with its own typed error, so reaching here
+           with moves would mean that refusal did not fire — worth saying loudly rather than skipping. */
+        const plan = renameOn ? derived : { moves: [], mints: derived.mints, retires: derived.retires };
+        if (!renameOn && derived.moves.length) {
+          throw new Error(`flip_rename_disabled: ${rid}/${versionId}/${kind} — ${derived.moves.length} move(s) derived while identity_flags.rename_enabled is OFF; the stamp map should have refused this activation first`);
+        }
+        if (!plan.moves.length && !plan.mints.length && !plan.retires.length) continue;   // ordinary republish: nothing to write
+
+        /* THE DESTINATION-CLAIMANT GUARD (§4, inv #2/#4) — who holds each destination name RIGHT NOW,
+           including claimants no version has heard of, built from the SAME whole-registry read. */
+        const claimants = {};
+        const keyRows = {};
+        for (const name of plan.moves.map((m) => m.to).concat(plan.mints.map((m) => m.name))) {
+          keyRows[name] = fullKeys[kind].get(encodeKey(name)) || null;
+          claimants[name] = [];
+        }
+        for (const [id, row] of fullIds[kind]) {
+          if (row.status !== STATUS_LIVE) continue;
+          if (Object.prototype.hasOwnProperty.call(claimants, row.legacy_key)) claimants[row.legacy_key].push({ ...row, id });
+        }
+        const blocked = judgePlanDestinations(plan, { claimants, keyRows, truncated: false }).filter((d) => !d.verdict.ok);
+        if (blocked.length) {
+          throw new Error(`${blocked[0].verdict.code}: ${rid}/${versionId} — ${blocked.length} destination(s) refused AT ACTIVATION — ${blocked.map((d) => d.verdict.detail).join(' · ')}`);
+        }
+
+        /* 🔴 `complete: true` IS A CLAIM THIS CALLER MAKES, and it is the caller's to make: the reads
+           above are whole collections with no status filter and no limit. If a whole-collection
+           transactional read can ever come back partial — NOT ESTABLISHED, see the read-cost note —
+           this is the one line that has to answer for it. */
+        const verified = verifyPlan(plan, { ids: fullIds[kind], keys: fullKeys[kind], complete: true });
+        if (!verified.ok) {
+          throw new Error(`${verified.code}: ${rid}/${versionId}/${kind} — the activation plan was refused AT ACTIVATION — ${verified.detail}`);
+        }
+        identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing: fullIds[kind] });
+      }
+      if (identityWrites.dish || identityWrites.extra) {
+        try { console.log('identity_activation_writes', JSON.stringify({ rid, versionId, ...identityWrites })); } catch (_) {}
       }
     }
 
@@ -624,7 +720,11 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     tx.set(snapshotRefOf(db, rid), snapshot);
     /* Returned from INSIDE the transaction, so the pair handed back is the pair this transaction
        committed — not one reconstructed by the caller from arguments that were merely intended. */
-    return { version: versionId, generation: priorGeneration + 1 };
+    /* 🔴 `certified` IS RETURNED SO THE CALLER CANNOT RE-DERIVE IT AND GET A DIFFERENT ANSWER. It
+       decides which identity writer owned this publish, and the post-flip pass is conditioned on it.
+       A caller computing it independently — from the same candidate doc, read outside this
+       transaction — is exactly how two writers both come to believe they own one property. */
+    return { version: versionId, generation: priorGeneration + 1, certified: certifiedCandidate };
   });
 }
 
@@ -956,7 +1056,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
-  let identityKeys = null, identityVersionId = null, identityPair = null;
+  let identityKeys = null, identityVersionId = null, identityPair = null, certifiedActivation = false;
   try {
     const nowServer = await serverNow(db, rid);
     /* 🔴 THE PAIR IS READ HERE, TOGETHER, AND TRAVELS WITH THE CANDIDATE. {version, generation} must
@@ -971,7 +1071,11 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     await readVersionDocs(db, rid, versionId);        // throws on completeness fail (counts + both hashes)
     await verifyVersionStructure(db, rid, versionId); // throws on a broken menu_structure bijection
     const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
-    identityPair = await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST
+    /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
+    const renameOn = await renameEnabled(db, rid);
+    const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn });   // ← the atomic cutover (pointer + snapshot + identity), LAST
+    identityPair = { version: flipped.version, generation: flipped.generation };
+    certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: versionId, seq, rid, menu: menuTable, extras: extraTable });
     await pruneRetention(db, rid, { protect: [versionId] }).catch(() => {});   // never let prune fail the publish
@@ -1006,7 +1110,28 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
        a copy and at worst stale or swapped. menuTable/extraTable are keyed by the legacy key the money
        path itself uses, computed from what was actually written — the one description of this publish
        that cannot have been round-tripped through a browser. */
-    if (identityKeys) {
+    /* ── 1D D4-P1 E — THE POST-FLIP PASS NOW RUNS ONLY FOR PUBLISHES THE IN-TX WRITER DOES NOT OWN ──
+       🔴 CONDITIONED ON THE SAME PREDICATE THAT ENABLES THE REPLACEMENT, so ownership is total and
+       disjoint BY CONSTRUCTION rather than by argument: a CERTIFIED candidate is written by the atomic
+       writer inside the flip, and an UNCERTIFIED one is written here exactly as it is today. Every
+       publish has exactly one identity writer, chosen by one flag that already existed in the code,
+       with no overlap and no gap.
+       🔴 WHY NOT DELETE IT OUTRIGHT, WHICH §4 APPEARS TO ASK FOR. Measured, not assumed: la_musa is
+       NEVER certified (`certifiedCandidate:false` on every la_musa publish), so the in-tx block is
+       never entered for it and this pass is the ONLY thing registering its 44 dishes and 14 extras.
+       Deleting it is dropping la_musa maintenance, which §0 forbids by name — "gate P1 BEHAVIOR,
+       don't drop la_musa maintenance".
+       🔴 AND BRAND IS THE WRONG AXIS ANYWAY, which is why the condition is certification and not rid:
+       x_pizza is NOT uniformly certified either — both values occur within a single suite — so a
+       brand-gated removal would have left a gap inside x_pizza while looking handled. */
+    if (identityKeys && !certifiedActivation) {
+      /* 🔴 WHICH WRITER OWNED THIS PUBLISH, SAID OUT LOUD. Operationally this is the question you ask
+         during the P1 cutover, and there was no way to answer it: this pass logged only on FAILURE, so
+         a successful run was indistinguishable from not running. That also made "exactly one identity
+         writer per publish" unassertable — a cell watching the error logs cannot see the success case,
+         and a mutant that ran BOTH writers survived because of it. The in-transaction writer emits
+         `identity_activation_writes`; this emits its counterpart. Exactly one appears per publish. */
+      try { console.log('identity_postflip_pass', JSON.stringify({ rid, versionId: identityVersionId, dish: identityKeys.dish.length, extra: identityKeys.extra.length })); } catch (_) {}
       let expired = false;
       let timer = null;
       try {

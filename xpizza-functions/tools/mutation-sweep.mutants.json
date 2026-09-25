@@ -246,8 +246,8 @@
   "slice": "task7",
   "label": "publishVersion stops passing its expectation to the flip",
   "file": "catalog/catalog-publish.js",
-  "from": "    identityPair = await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover",
-  "to": "    identityPair = await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) });   // ← the atomic cutover"
+  "from": "    const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn });   // ← the atomic cutover (pointer + snapshot + identity), LAST",
+  "to": "    const flipped = await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) }, { renameOn });   // ← the atomic cutover (pointer + snapshot + identity), LAST"
  },
  {
   "id": "task7-08",
@@ -7918,8 +7918,8 @@
   "id": "e2d-05",
   "slice": "e2d",
   "file": "catalog/catalog-publish.js",
-  "from": "    identityPair = await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST",
-  "to": "    identityPair = null; await flipPointer(db, rid, token, versionId, snapshot, expected);   // ← the atomic cutover (pointer + snapshot), LAST",
+  "from": "    identityPair = { version: flipped.version, generation: flipped.generation };",
+  "to": "    identityPair = null;",
   "label": "the publish discards the pair the flip returned, so its writer fences against nothing",
   "kills_with": "its writer was handed no baseline and refused every one, SILENTLY",
   "command": [
@@ -8920,6 +8920,104 @@
   "command": [
    "node",
    "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e10-01",
+  "slice": "e10",
+  "file": "catalog/identity-flags.js",
+  "from": "    return false;\n  }\n}",
+  "to": "    return true;\n  }\n}",
+  "label": "🔴 THE FLAG FAILS **OPEN** ON A READ ERROR — a config-read outage becomes a rename, at the moment nobody is watching the thing that broke",
+  "kills_with": "A FAILED READ TURNED RENAMES ON",
+  "command": [
+   "node",
+   "catalog/identity-flags.test.js"
+  ]
+ },
+ {
+  "id": "e10-02",
+  "slice": "e10",
+  "file": "catalog/identity-flags.js",
+  "from": "    return snap.exists && (snap.data() || {})[FLAG_FIELD] === true;",
+  "to": "    return snap.exists && !!(snap.data() || {})[FLAG_FIELD];",
+  "label": "truthiness instead of `=== true` — the string \"true\" from a console edit, or a 1 from a spreadsheet round-trip, flips the staging switch",
+  "kills_with": "turned renames ON — only an explicit boolean true may",
+  "command": [
+   "node",
+   "catalog/identity-flags.test.js"
+  ]
+ },
+ {
+  "id": "e10-03",
+  "slice": "e10",
+  "file": "catalog/identity-flags.js",
+  "from": "function flagRefOf(db, rid) {\n  return db.collection('restaurants').doc(rid).collection('meta').doc(FLAG_DOC);",
+  "to": "function flagRefOf(db, rid) {\n  return db.collection('restaurants').doc('x_pizza').collection('meta').doc(FLAG_DOC);",
+  "label": "the flag stops being per-restaurant — every restaurant reads one document, so §10's staged rollout cannot be scoped or observed",
+  "kills_with": "the flag is global and §10 cannot be staged",
+  "command": [
+   "node",
+   "catalog/identity-flags.test.js"
+  ]
+ },
+ {
+  "id": "e11-01",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "        identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing: fullIds[kind] });",
+  "to": "        identityWrites[kind] = { writes: 0, moved: 0, minted: 0, retired: 0, deleted: 0 };",
+  "label": "🔴 THE IN-TX MINT IS DISABLED — a published object gets no identity, which the overlay cannot distinguish from \"not backfilled yet\"",
+  "kills_with": "THE NEW OBJECT HAS NO IDENTITY",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-02",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "    if (identityKeys && !certifiedActivation) {",
+  "to": "    if (identityKeys) {",
+  "label": "🔴 THE POST-FLIP PASS RUNS FOR CERTIFIED PUBLISHES TOO — two identity writers own one publish, the duplicate-owner defect arriving through a condition",
+  "kills_with": "two identity writers owned one publish",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-03",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "    if (identityKeys && !certifiedActivation) {",
+  "to": "    if (false) {",
+  "label": "🔴 THE POST-FLIP PASS IS REMOVED OUTRIGHT, as §4 reads — and it breaks x_pizza's OWN bootstrap path before it ever reaches la_musa: the uncertified seed publish registers nothing, so bootstrap refuses identity_bootstrap_unregistered",
+  "kills_with": [
+   "identity_bootstrap_unregistered",
+   "la_musa's identities WERE NOT REGISTERED"
+  ],
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
+  ]
+ },
+ {
+  "id": "e11-04",
+  "slice": "e11",
+  "file": "catalog/catalog-publish.js",
+  "from": "    return { version: versionId, generation: priorGeneration + 1, certified: certifiedCandidate };",
+  "to": "    return { version: versionId, generation: priorGeneration + 1, certified: false };",
+  "label": "the flip under-reports certification — the post-flip pass then also runs for a publish the in-tx writer already owned",
+  "kills_with": "two identity writers owned one publish",
+  "command": [
+   "npm",
+   "run",
+   "test:d4p1-mint-atomic"
   ]
  }
 ]

@@ -158,7 +158,14 @@ async function publishOnce({ withDraftCas = true, mutateBeforeFlip = null } = {}
     const stillLive = after.dishes.some((d) => d.data.display.identity_id === REAL_ID);
     assert.strictEqual(stillLive, false,
       '🔴 the claim was consumed by a version that still carries the id — the declaration is gone and the object is not');
-    ok('the activation that retires the ids CONSUMES the claim, records what it retired, and the ids are really gone');
+    /* 🔴 THE LABEL USED TO SAY "…and the ids are really gone". IT DOES NOT CHECK THAT. The assertion
+       above reads the ACTIVE VERSION and nothing else: no dish it serves carries that id. It never
+       reads ids/{id}.status and never reads a key row — and in fact the registry is UNTOUCHED, because
+       a consumed deletion claim retires nothing (see the standing-divergence note at the top of
+       catalog/identity-registry.js). The label was true of the menu and false of the registry, and a
+       label is read far more often than the assertion under it: I quoted this one to the advisor as
+       evidence about the registry and we both nearly built on it. Renamed to what it measures. */
+    ok('the activation CONSUMES the claim and records what it retired, and the id is gone FROM THE ACTIVE VERSION — this says nothing about the registry, which a consumed claim does not touch');
   }
 
   // ── 2. 🔴 A DRAFT THAT MOVED UNDER THE PUBLISH ABORTS EVERYTHING ──────────────────────────
