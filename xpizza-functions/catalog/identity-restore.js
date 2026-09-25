@@ -112,7 +112,19 @@ async function restoreIdentity(db, { rid, kind, legacyKey, canonicalId, version,
        half-written restore retryable). */
     const claimantDocs = claimantSnap.docs || [];
     const truncated = claimantDocs.length > CLAIMANT_CAP;
-    const liveClaimants = claimantDocs.slice(0, CLAIMANT_CAP).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    /* 🔴 THE DOCUMENT ID COMES AFTER THE SPREAD, AND THE ORDER IS THE WHOLE POINT. Written
+       `{ id: d.id, ...data }`, a STORED `id` field inside the row overrides the authoritative
+       document id — and identity-destination.js reads `c.id` and trusts it, as it should be able to.
+       A row `ids/FOREIGN = { id: 'OWN', legacy_key: K, status: live }` then presents to the guard as
+       claimant OWN, the guard sees only our own id re-landing (the permitted retry), and the write
+       lands while FOREIGN is still live claiming K: TWO LIVE IDS FOR ONE NAME — the fork inv #2/#4
+       says no path may produce, manufactured by the guard that exists to prevent it.
+       This file's header says at length that a supplied ID is a CLAIM and never evidence. That
+       principle was held on the parameter and dropped three lines away in the plumbing, where a
+       supplied FIELD shadowed the document id. A principle held at the front door and dropped in the
+       plumbing is not held: every server-authoritative key goes AFTER every spread of stored,
+       request or caller data. */
+    const liveClaimants = claimantDocs.slice(0, CLAIMANT_CAP).map((d) => ({ ...(d.data() || {}), id: d.id }));
     const keyRow = keySnap.exists ? (keySnap.data() || {}) : null;
     const verdict = destinationVerdict({ name: legacyKey, landingId: canonicalId, keyRow, liveClaimants, truncated });
     if (!verdict.ok) {

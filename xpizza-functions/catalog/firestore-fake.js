@@ -17,6 +17,14 @@
 // ---------------------------------------------------------------------------
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 
+/* 🔴 WHAT THIS DOUBLE DOES NOT MODEL, so its green is not read as evidence about those things.
+   Writes APPLY IMMEDIATELY: there is no snapshot isolation, no conflict retry, and no rejection of a
+   read issued after a write inside a transaction. So "all reads precede all writes" — the ordering
+   Firestore actually enforces, and the property rule 17 is about — is NOT checked by any cell using
+   this fake. Only the emulator suites would catch a violation.
+   A fixture that cannot express a production constraint makes that constraint untestable; this one is
+   written down rather than assumed away, because the alternative is a green run standing in for a
+   guarantee nobody checked. */
 function makeDb() {
   const docs = new Map();            // path -> { data, updateTime }
   let clock = 1757000000000;

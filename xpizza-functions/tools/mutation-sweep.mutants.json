@@ -8224,5 +8224,48 @@
    "node",
    "catalog/identity-restore.test.js"
   ]
+ },
+ {
+  "id": "e3-12",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    const liveClaimants = claimantDocs.slice(0, CLAIMANT_CAP).map((d) => ({ ...(d.data() || {}), id: d.id }));",
+  "to": "    const liveClaimants = claimantDocs.slice(0, CLAIMANT_CAP).map((d) => ({ id: d.id, ...(d.data() || {}) }));",
+  "label": "a STORED id field shadows the authoritative document id — the guard manufactures a fork",
+  "kills_with": [
+   "a stored `id` field made a FOREIGN claimant present as our own",
+   "FORK: ",
+   "a restore landed on a key a DIFFERENT live id already claims"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-13",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "      tx.get(idsColOf(db, rid, kind).where('legacy_key', '==', legacyKey).where('status', '==', STATUS_LIVE).limit(CLAIMANT_CAP + 1)),",
+  "to": "      tx.get(idsColOf(db, rid, kind).where('legacy_key', '==', legacyKey).where('status', '==', STATUS_LIVE).limit(CLAIMANT_CAP)),",
+  "label": "the claimant query reads exactly the cap, so overflow can never be detected",
+  "kills_with": "the claimant query overflowed its cap and the restore proceeded on a PARTIAL set",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
+ },
+ {
+  "id": "e3-14",
+  "slice": "e3",
+  "file": "catalog/identity-restore.js",
+  "from": "    const truncated = claimantDocs.length > CLAIMANT_CAP;",
+  "to": "    const truncated = false;",
+  "label": "overflow is never reported, so a partial claimant set judges the name",
+  "kills_with": "the claimant query overflowed its cap and the restore proceeded on a PARTIAL set",
+  "command": [
+   "node",
+   "catalog/identity-restore.test.js"
+  ]
  }
 ]

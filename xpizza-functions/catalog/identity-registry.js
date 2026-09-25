@@ -56,6 +56,14 @@ function assertKind(kind) {
    merchant can type — including '/', which would silently change the document path, and '.', which
    Firestore rejects in a document id. Encoded rather than sanitised: sanitising is lossy, and two keys
    that sanitise to the same string would collapse into one identity. */
+/* 🔴 NOT INJECTIVE FOR ARBITRARY JS STRINGS — recorded, not chased (found at review, 2026-09-25).
+   A lone surrogate and U+FFFD encode identically, because the UTF-8 conversion replaces an unpaired
+   surrogate with the replacement character. Two distinct "keys" would then share one reverse row,
+   which is a fork vector on paper.
+   Left alone deliberately: a menu key is merchant text from a form, and no realistic key contains a
+   lone surrogate. 🔴 IF THAT EVER STOPS BEING TRUE — a key path that accepts raw bytes, an import, an
+   API that does not validate — this becomes reachable and is a real fork vector, so it is written
+   here rather than in a note nobody opens. */
 function encodeKey(legacyKey) {
   if (typeof legacyKey !== 'string' || !legacyKey) throw new Error('identity_bad_legacy_key');
   return Buffer.from(legacyKey, 'utf8').toString('base64url');

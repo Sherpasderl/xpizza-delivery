@@ -10,7 +10,7 @@
 const assert = require('assert');
 const { makeDb } = require('./firestore-fake');
 const { activePointerRef } = require('./catalog-firestore');
-const { restoreIdentity } = require('./identity-restore');
+const { restoreIdentity, CLAIMANT_CAP } = require('./identity-restore');
 const { idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -233,6 +233,71 @@ const rowsOf = async (db, kind, leaf) => (await db.collection('restaurants').doc
   assert.strictEqual(row.minted_by, 'ensureIdentity', '🔴 an unrelated field was destroyed — tx.set replaces, it does not merge');
   assert.ok(row.restored_at, 'and the restore is recorded');
   ok('an existing row keeps created_at and its other fields; only the restore fields are added');
+}
+
+// ── 15. 🔴 THE CLAIMANT CAP REFUSES RATHER THAN TRUNCATING ────────────────────────────────────
+/* 🔴 THIS CELL SHOULD HAVE EXISTED WHEN THE CAP DID. I modelled limit() in the in-memory Firestore
+   specifically so this bound would be testable — and then shipped without asserting it, which is my
+   own sentence turned around: a fixture that cannot express a production constraint makes it
+   untestable, and removing that excuse does not write the assertion.
+   The property: the claimant set decides whether a name is free. Discovering it only PARTLY and
+   treating the remainder as absent is how an orphan goes unseen, so overflow is an explicit refusal —
+   the same reasoning the flip's stamp budget gives for aborting rather than verifying a subset. */
+{
+  const db = await world();
+  for (let i = 0; i <= CLAIMANT_CAP; i += 1) {                       // CAP + 1 claimants
+    await idsColOf(db, RID, 'dish').doc(`CLAIMANT${String(i).padStart(4, '0')}`)
+      .set({ legacy_key: KEY, kind: 'dish', status: STATUS_LIVE, created_at: 'x' });
+  }
+  await assert.rejects(() => restore(db), /identity_restore_destination_claimants_truncated/,
+    '🔴 the claimant query overflowed its cap and the restore proceeded on a PARTIAL set — a name judged free on claimants nobody read');
+  assert.deepStrictEqual(await rowsOf(db, 'dish', 'keys'), [], 'and nothing was written');
+
+  /* …and exactly AT the cap is not truncation. Without this, "refuses when there are many claimants"
+     would be satisfied by a cap that fires one short, or by refusing for the wrong reason entirely. */
+  const atCap = await world();
+  for (let i = 0; i < CLAIMANT_CAP; i += 1) {
+    await idsColOf(atCap, RID, 'dish').doc(`CLAIMANT${String(i).padStart(4, '0')}`)
+      .set({ legacy_key: KEY, kind: 'dish', status: STATUS_LIVE, created_at: 'x' });
+  }
+  await assert.rejects(() => restore(atCap), (e) => {
+    assert.ok(!/truncated/.test(e.message),
+      `🔴 exactly ${CLAIMANT_CAP} claimants reported as TRUNCATED — the boundary is off by one and a readable set is being called unreadable`);
+    assert.match(e.message, /identity_restore_destination_/, 'it still refuses, on the claimants it CAN see');
+    return true;
+  });
+  ok(`${CLAIMANT_CAP} claimants refuse on what was read; ${CLAIMANT_CAP + 1} refuses as TRUNCATED rather than judging a partial set`);
+}
+
+// ── 16. 🔴 A STORED `id` FIELD MUST NOT SHADOW THE DOCUMENT ID — this one manufactured a FORK ──
+/* Found at review, and it is the sharpest defect in this slice. The claimant set was built as
+   `{ id: d.id, ...data }`, so a row carrying its OWN `id` field overrode the authoritative document
+   id. identity-destination reads `c.id` and trusts it, as it should be able to. So a row
+   `ids/FOREIGN = { id: OWN, legacy_key: K, status: live }` presented to the guard as claimant OWN,
+   the guard saw only our own id re-landing — the permitted retry — and the write landed while
+   FOREIGN was still live claiming K. TWO LIVE IDS FOR ONE NAME, produced by the guard whose entire
+   job is preventing that.
+   🔴 THE FILE'S HEADER SAYS A SUPPLIED ID IS A CLAIM AND NEVER EVIDENCE. That was enforced on the
+   PARAMETER and dropped three lines away in the plumbing, where a supplied FIELD shadowed the
+   document id. A principle held at the front door and dropped in the plumbing is not held. */
+{
+  const db = await world();
+  await idsColOf(db, RID, 'dish').doc('FOREIGNIDXX')
+    .set({ id: ID, legacy_key: KEY, kind: 'dish', status: STATUS_LIVE, created_at: 'x' });   // stored id shadows the doc id
+
+  await assert.rejects(() => restore(db), /identity_restore_destination_/,
+    '🔴 a stored `id` field made a FOREIGN claimant present as our own, and the restore wrote — two live ids now claim one name');
+
+  /* The fork, asserted directly rather than inferred from the refusal: only one live id may claim
+     this name, and it must be the one that was already there. */
+  const live = [];
+  for (const d of await rowsOf(db, 'dish', 'ids')) {
+    const x = d.data();
+    if (x.status === STATUS_LIVE && x.legacy_key === KEY) live.push(d.id);
+  }
+  assert.deepStrictEqual(live, ['FOREIGNIDXX'],
+    `🔴 FORK: ${JSON.stringify(live)} are all live claiming ${KEY} — inv #2/#4 says no path may produce this`);
+  ok('a stored `id` field cannot shadow the document id — the authoritative id wins and the fork is refused');
 }
 
 console.log(`\n${n} cells passed`);
