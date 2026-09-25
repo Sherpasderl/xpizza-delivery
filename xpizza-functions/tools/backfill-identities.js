@@ -82,9 +82,20 @@ const db = admin.firestore();
        would still allow: capture A, publish B, read menu B, backfill B against baseline A — refused
        by the fence, but with a confusing message about a pointer move rather than the truth, which is
        that this run read a menu its baseline does not describe. */
-    if (captured.version !== null && menu.identity && menu.identity.version_id !== captured.version) {
-      console.error(`\nREFUSED — the menu read is version ${JSON.stringify(menu.identity.version_id)} but the baseline captured ${JSON.stringify(captured.version)}@${captured.generation}.`);
-      console.error('A publish landed while this tool was starting. Nothing was written; run it again.\n');
+    /* 🔴 COMPARED IN BOTH DIRECTIONS, INCLUDING FROM null. Skipping the check when the captured
+       version was null let the one case it most needed through: nothing published when we looked,
+       a FIRST publish landing before the menu read, and the tool then registering keys for a menu
+       whose baseline says no version was active. The transactional fence still refuses the writes,
+       so this was a DIAGNOSIS gap rather than a correctness one — but it is the same one-step-short
+       shape as capturing after the read, and an operator would have got a confusing pointer-move
+       instead of "a publish landed while this tool was starting". */
+    const menuVersion = (menu.identity && typeof menu.identity.version_id === 'string') ? menu.identity.version_id : null;
+    if (menuVersion !== captured.version) {
+      console.error(`\nREFUSED — the menu read is version ${JSON.stringify(menuVersion)} but the baseline captured ${JSON.stringify(captured.version)}@${captured.generation}.`);
+      console.error(captured.version === null
+        ? 'Nothing was published when this tool captured its baseline, and something was published before it read the menu.'
+        : 'A publish landed while this tool was starting.');
+      console.error('Nothing was written; run it again.\n');
       process.exit(3);
     }
   } catch (e) {

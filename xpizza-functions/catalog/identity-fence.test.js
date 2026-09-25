@@ -236,20 +236,41 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
 
   /* The relationship, asserted as a DIRECTION rather than as equality: everything the fence accepts,
      writeVersion accepts too. The converse does not hold, deliberately. */
+  /* 🔴 THE DIRECTION HOLDS OVER THE NORMALISED PAIR, NOT OVER THE RAW INPUT, and my first version of
+     this claim was overbroad. The fence accepts BOTH spellings of the pair — `versionId` (what
+     identity-bootstrap's `active` carries) and `version` (what readPointerSnap returns) — while
+     writeVersion tests hasOwnProperty('version') and therefore REJECTS {versionId:'v-1',generation:1}.
+     So "everything the fence accepts, writeVersion accepts" is false over raw inputs, and asserting it
+     would have forced the fence to reject a spelling the tree actually uses.
+     What IS true, and is the property worth having: the fence never PRODUCES a baseline writeVersion
+     would reject. baselineOf normalises to {version, generation}, and that normalised pair is what any
+     caller would hand on. */
   const shapes = [
     { version: null, generation: 0 }, { version: 'v-1', generation: 0 }, { version: 'v-1', generation: 7 },
+    { versionId: 'v-1', generation: 1 }, { versionId: null, generation: 0 },
     { version: 42, generation: 1 }, { version: undefined, generation: 0 }, { version: null, generation: 3 },
     { generation: 0 }, { version: 'v-1' }, { version: 'v-1', generation: -1 }, undefined, null, 'v-1',
   ];
   const stricter = [];
   for (const shape of shapes) {
-    const f = fenceAccepts(shape);
-    const w = await writeVersionAccepts(shape);
-    assert.ok(!(f && !w), `🔴 the fence accepts a baseline writeVersion REFUSES (${JSON.stringify(shape)}) — the fence would write against something the version record would not carry`);
-    if (!f && w) stricter.push(JSON.stringify(shape));
+    let normalised = null;
+    try { normalised = baselineOf(shape, RID, CODE); } catch { normalised = null; }
+    if (normalised) {
+      assert.ok(await writeVersionAccepts(normalised),
+        `🔴 the fence PRODUCED a baseline writeVersion refuses (${JSON.stringify(shape)} → ${JSON.stringify(normalised)}) — a caller handing it on would be refused by the version writer`);
+    } else if (await writeVersionAccepts(shape)) {
+      stricter.push(JSON.stringify(shape));
+    }
   }
   assert.deepStrictEqual(stricter.sort(), ['{"generation":0}', '{"version":42,"generation":1}', '{"version":null,"generation":3}'].sort(),
-    '🔴 the set of shapes where the fence is STRICTER changed — state the difference rather than claiming parity');
+    '🔴 the set of shapes where the fence is STRICTER changed — state the difference rather than claiming a parity that is not true');
+
+  /* …and the spelling that disproved the naive claim, asserted explicitly so it cannot come back. */
+  assert.ok(fenceAccepts({ versionId: 'v-1', generation: 1 }), 'the fence accepts the `versionId` spelling the tree uses');
+  assert.strictEqual(await writeVersionAccepts({ versionId: 'v-1', generation: 1 }), false,
+    'premise — writeVersion rejects that RAW spelling, which is why the direction is over the NORMALISED pair');
+  assert.ok(await writeVersionAccepts(baselineOf({ versionId: 'v-1', generation: 1 }, RID, CODE)),
+    '🔴 normalising does not make it acceptable — the direction claim has no true form');
 
   ok(`the pre-P1 pair is a baseline and still fences; absent is not; and the fence is a strict SUBSET of writeVersion's rule (stricter on ${stricter.length} shapes, executed not grepped)`);
 }
