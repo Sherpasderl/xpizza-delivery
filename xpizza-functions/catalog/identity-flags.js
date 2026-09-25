@@ -44,20 +44,32 @@
  * flips it will not be whoever wrote it, and a staging flag nobody can find is one that gets left in
  * the wrong position. It is flipped once, deliberately, per §10 — never during an incident.
  *
- * 🔴 PER-RESTAURANT, NOT GLOBAL — A DEVIATION FROM §7's "SINGLE FLAG", AND AGAIN NOT FOR THE REASON I
- * FIRST GAVE. I justified rid-scoping by saying a global switch would enable renames for la_musa.
- * IT WOULD NOT. la_musa is already excluded by CERTIFICATION: it is never certified (observed —
- * `certifiedCandidate:false` on every la_musa publish), the in-transaction block is never entered for
- * it, and no move is derived for it whatever this flag says. Claiming the flag protects la_musa puts a
- * guarantee on the wrong mechanism, which is how the destination guard came to be believed-wired for
- * four slices.
- * THE REASON THAT HOLDS, and it is §10's own: "later, flip identity_rename_enabled ON (P1b) AFTER THE
- * COVERAGE WATCH IS CLEAN." A watch you cannot scope is a watch you cannot act on. A global flag makes
- * the first rename in production every restaurant's first rename, simultaneously, with no way to
- * enable one, observe it, and widen. Rid-scoping is what makes §10's staging instruction EXECUTABLE —
- * a deviation from §7's literal wording in service of §10, not against it.
+ * 🔴 PER-RESTAURANT, NOT GLOBAL — A DEVIATION FROM §7's "SINGLE FLAG", WITH TWO REASONS, AND THE ORDER
+ * MATTERS BECAUSE ONE IS CONTINGENT AND THE OTHER IS NOT.
  *
- * So, precisely: la_musa is protected by certification. This flag exists for incremental rollout.
+ * (1) TODAY, la_musa is excluded by CERTIFICATION, not by this flag. It is never certified — observed,
+ *     `certifiedCandidate:false` on every la_musa publish — so the in-transaction block is never
+ *     entered for it and no move is derived whatever this flag says.
+ *
+ * (2) 🔴 BUT CERTIFICATION IS A CURRENT-STATE PROPERTY, NOT A BRAND-ENFORCED INVARIANT, AND THAT IS
+ *     WHY THE rid SCOPING IS LOAD-BEARING RATHER THAN COSMETIC. Verified at catalog-publish.js:897:
+ *         const certified = !!stamps && (Object.keys(stamps.dish||{}).length + …) > 0;
+ *     It depends ONLY on whether stamps were supplied and non-empty. NOTHING brand-gates it. la_musa
+ *     is uncertified because nothing stamps it, not because anything prevents it — so the day
+ *     something does, (1) evaporates and this flag is the only thing still holding moves off. §9
+ *     grandfathers la_musa with its SLUG AS ITS ID, so a move there is not a rename, it is an
+ *     identity change.
+ *
+ * (3) And §10's own staging instruction: "flip identity_rename_enabled ON (P1b) AFTER THE COVERAGE
+ *     WATCH IS CLEAN." A watch you cannot scope is a watch you cannot act on — a global flag makes the
+ *     first rename in production every restaurant's first rename, simultaneously, with no way to
+ *     enable one, observe it, and widen.
+ *
+ * 🔴 THE HISTORY IS KEPT BECAUSE THE MISTAKE IS INSTRUCTIVE. An earlier version of this note asserted
+ * ONLY (1) — "la_musa is protected by certification, not by this flag" — replacing a durable reason
+ * with a contingent one. That is the same failure as attributing a guarantee to the wrong mechanism,
+ * which is how the destination guard sat believed-wired for four slices. A reason that is true only of
+ * the current cohort must never be the sole reason recorded for a safety property.
  */
 const FLAG_DOC = 'identity_flags';
 const FLAG_FIELD = 'rename_enabled';
