@@ -17,6 +17,7 @@ const { memFirestore } = require('./identity-fixture');
 const { derivePlan } = require('./identity-derive');
 const { verifyPlan } = require('./identity-plan');
 const { applyIdentityPlan } = require('./identity-writer');
+const { reconcileOnRollback } = require('./identity-reconcile');
 const { encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -112,7 +113,7 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     ids: { X: idRow('Margherita') }, keys: { Margherita: { canonical_id: 'X' } },
     candidateKeys: ['Margherita'], stamps: { Margherita: 'X' },
   });
-  assert.deepStrictEqual(rp.report, { writes: 0, moved: 0, minted: 0, retired: 0, deleted: 0 },
+  assert.deepStrictEqual(rp.report, { writes: 0, moved: 0, minted: 0, retired: 0, restored: 0, deleted: 0 },
     `🔴 an ordinary republish wrote to the registry: ${JSON.stringify(rp.report)} — identity is preserved by doing NOTHING, and rewriting every row on every publish is a cost nobody asked for`);
   assert.strictEqual(rp.id('X').created_at, 't0', 'and the row is untouched');
   ok('republishing the same objects performs ZERO registry writes');
@@ -159,7 +160,96 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     } catch (e) { threw = (e && e.message) || String(e); }
     assert.ok(threw && /identity_writer_delete_lands/.test(threw),
       `🔴 a name both landed and deleted by one plan was written; the result depends on write order: ${threw}`);
-    ok('a name that is both landed and deleted by one plan is refused at the writer, not settled by which loop runs last');
+
+    /* 🔴 AND THE SAME FOR A RESTORE, WHICH THE SWEEP SHOWED WAS UNCOVERED. reconcileOnRollback already
+       excludes a re-landed name from its deletions, so a reconciliation-driven plan never exercises
+       the writer's own check — a mutant removing `restores` from the landed set SURVIVED cell 8. The
+       writer must not depend on its callers being careful: this forges the verdict the careful caller
+       would never produce, which is the only way to reach the branch. */
+    const restorePlan = { moves: [], mints: [], retires: [], restores: [{ id: 'R', name: 'N' }] };
+    const forgedRestore = { ok: true, lands: [], releases: [],
+      deletions: [{ name: 'N', encoded: encodeKey('N'), id: 'R' }] };
+    let threwRestore = null;
+    try {
+      await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', plan: restorePlan, verified: forgedRestore, existing: new Map() }));
+    } catch (e) { threwRestore = (e && e.message) || String(e); }
+    assert.ok(threwRestore && /identity_writer_delete_lands/.test(threwRestore),
+      `🔴 a name both RESTORED and deleted by one plan was written; whether the reverse row survives depends on which loop runs last: ${threwRestore}`);
+    ok('a name both landed and deleted by one plan is refused at the writer — for mints AND for restores, not settled by which loop runs last');
+  }
+
+  // ── 7. THE ROLLBACK PATH: RESURRECT A RETIRED ID, BOTH PLANES, IN ONE TRANSACTION ──────────
+  {
+    /* 🔴 DRIVEN THROUGH reconcileOnRollback, NOT A HAND-BUILT PLAN. A restore plan written by hand
+       would test the writer against a shape nothing produces; the composition is what ships. This is
+       the headline case of the whole slice: a rollback to a version published BEFORE a deletion. */
+    const db = memFirestore();
+    const P2 = `restaurants/${RID}/identity/dish`;
+    db._docs.set(`${P2}/ids/X`, { legacy_key: 'Margherita', status: STATUS_RETIRED, created_at: 't0', kind: 'dish', retired_at: 't0' });
+
+    const idMap = new Map([['X', { legacy_key: 'Margherita', status: STATUS_RETIRED, created_at: 't0', kind: 'dish', retired_at: 't0' }]]);
+    const keyMap = new Map();
+    const plan = reconcileOnRollback({ targetStamps: { Margherita: 'X' }, activeStamps: {}, ids: idMap, keys: keyMap });
+    assert.deepStrictEqual(plan.refusals, [], 'premise — the reconciliation permits this');
+    assert.strictEqual(plan.restores[0].resurrects, true, 'premise — and knows it is a resurrection');
+
+    let report = null;
+    await db.runTransaction(async (tx) => {
+      report = applyIdentityPlan(tx, {
+        db, rid: RID, kind: 'dish', now: 't1', existing: idMap,
+        plan: { moves: [], mints: [], retires: plan.retires, restores: plan.restores },
+        verified: { ok: true, lands: [], releases: [], deletions: plan.deletions },
+      });
+    });
+
+    const id = db._docs.get(`${P2}/ids/X`);
+    assert.strictEqual(id.status, STATUS_LIVE, '🔴 the resurrected id is not LIVE — the object the rollback restores still cannot be resolved');
+    assert.strictEqual(id.legacy_key, 'Margherita', 'and it claims the target\'s name');
+    assert.strictEqual(id.created_at, 't0', '🔴 the restore DESTROYED created_at — tx.set is a full replace and the row was not spread');
+    /* 🔴 THE RETIREMENT IS NOT ERASED. `retired_at` stays alongside `restored_at`: the row keeps the
+       history of having been round the loop, which is what tells a later reader this id was deleted
+       and brought back rather than never touched. */
+    assert.strictEqual(id.retired_at, 't0', '🔴 the row forgot it had ever been retired');
+    assert.strictEqual(id.restored_at, 't1', 'and it records when it came back');
+
+    const key = db._docs.get(`${P2}/keys/${encodeKey('Margherita')}`);
+    assert.ok(key && key.canonical_id === 'X', '🔴 the reverse row was not restored — the name still resolves to nothing');
+    assert.strictEqual(report.restored, 1, 'the report counts the restore');
+    assert.strictEqual(report.deleted, 0, 'and deletes nothing: the only name involved is the one being landed');
+    ok('a rollback across a deletion RESURRECTS the id in both planes, preserves created_at, and keeps the retirement in its history');
+  }
+
+  // ── 8. A RESTORED NAME IS NEVER ALSO DELETED ───────────────────────────────────────────────
+  {
+    /* The swap rule, on the rollback path. X comes back to Margherita while a residue orphan holding
+       that same name is retired — so the name is released AND landed by one plan. If the writer took
+       the release at face value, whether the key row survives would depend on which loop runs last. */
+    const db = memFirestore();
+    const P2 = `restaurants/${RID}/identity/dish`;
+    const ids = {
+      X: { legacy_key: 'Margherita', status: STATUS_RETIRED, created_at: 't0', kind: 'dish' },
+      ORPHAN: { legacy_key: 'Margherita', status: STATUS_LIVE, created_at: 't0', kind: 'dish' },
+    };
+    for (const [k, v] of Object.entries(ids)) db._docs.set(`${P2}/ids/${k}`, { ...v });
+    db._docs.set(`${P2}/keys/${encodeKey('Margherita')}`, { canonical_id: 'ORPHAN', kind: 'dish' });
+
+    const idMap = new Map(Object.entries(ids));
+    const keyMap = new Map([[encodeKey('Margherita'), { canonical_id: 'ORPHAN', kind: 'dish' }]]);
+    const plan = reconcileOnRollback({ targetStamps: { Margherita: 'X' }, activeStamps: {}, ids: idMap, keys: keyMap });
+    assert.deepStrictEqual(plan.retires.map((r) => r.id), ['ORPHAN'], 'premise — the residue orphan is retired, releasing the name');
+    assert.deepStrictEqual(plan.deletions, [], 'premise — and the reconciliation already knows not to delete a name it re-lands');
+
+    await db.runTransaction(async (tx) => applyIdentityPlan(tx, {
+      db, rid: RID, kind: 'dish', now: 't1', existing: idMap,
+      plan: { moves: [], mints: [], retires: plan.retires, restores: plan.restores },
+      verified: { ok: true, lands: [], releases: [], deletions: plan.deletions },
+    }));
+
+    const key = db._docs.get(`${P2}/keys/${encodeKey('Margherita')}`);
+    assert.ok(key, '🔴 the restored name has NO reverse row — it was deleted by the retirement that released it, and the restore that landed it lost the race');
+    assert.strictEqual(key.canonical_id, 'X', '🔴 the reverse row names the RETIRED orphan rather than the restored id');
+    assert.strictEqual(db._docs.get(`${P2}/ids/ORPHAN`).status, STATUS_RETIRED, 'and the orphan really is retired, not merely unlinked');
+    ok('a name released by a retirement and landed by a restore in ONE plan is written, not deleted — the outcome does not depend on loop order');
   }
 
   FINISHED = true;

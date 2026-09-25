@@ -46,7 +46,11 @@ function applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing, now } 
      transaction's writes in order and the last one wins, so the outcome would depend on the order of
      the loops below: a key row silently missing, or silently present, according to nothing anyone
      chose. Cheap to check, and a wrong answer here is unrecoverable. */
-  const landed = new Set(verified.lands.map((l) => encodeKey(l.name)));
+  /* 🔴 RESTORED NAMES COUNT AS LANDED. A reconciliation that restores X to K and releases K from a
+     retired claimant would otherwise queue K for deletion AND write it, and which survives depends on
+     loop order. Same rule as the swap: a name this plan lands is never a name this plan deletes. */
+  const landed = new Set(verified.lands.map((l) => encodeKey(l.name))
+    .concat((plan.restores || []).map((r) => encodeKey(r.name))));
   for (const d of verified.deletions) {
     if (landed.has(d.encoded)) {
       throw new Error(`identity_writer_delete_lands: ${rid}/${kind}/${d.name} is both deleted and landed by one plan; the result would depend on write order`);
@@ -62,6 +66,22 @@ function applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing, now } 
   for (const m of plan.moves) {
     tx.set(ids.doc(m.id), { ...preserve(m.id), legacy_key: m.to, kind, status: STATUS_LIVE, moved_at: stamp });
     tx.set(keys.doc(encodeKey(m.to)), { canonical_id: m.id, kind, created_at: stamp });
+    writes += 2;
+  }
+
+  /* RESTORES — the ROLLBACK operation, and structurally a move and a mint at once: assert (id, name)
+     in BOTH planes, preserving whatever the id row already had.
+     🔴 IT RESURRECTS A RETIRED ID, WHICH IS THE OPPOSITE OF WHAT retireIdentity AND restoreIdentity
+     ALLOW — see the policy note in identity-reconcile.js. The standalone primitive has no plan and no
+     fence over a rollback target, so a certified-active version stamping a retired id is a
+     contradiction it must surface; this path has the plan and resurrection is the declared intent.
+     `restored_at` is added rather than `retired_at` removed: the row keeps the history of having been
+     retired, which is what tells a later reader this id has been round the loop. */
+  for (const r of plan.restores || []) {
+    const prior = preserve(r.id);
+    tx.set(ids.doc(r.id), { ...prior, legacy_key: r.name, kind, status: STATUS_LIVE,
+      created_at: prior.created_at || stamp, restored_at: stamp });
+    tx.set(keys.doc(encodeKey(r.name)), { canonical_id: r.id, kind, created_at: stamp });
     writes += 2;
   }
 
@@ -87,7 +107,8 @@ function applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing, now } 
     writes += 1;
   }
 
-  return { writes, moved: plan.moves.length, minted: plan.mints.length, retired: plan.retires.length, deleted: verified.deletions.length };
+  return { writes, moved: plan.moves.length, minted: plan.mints.length, retired: plan.retires.length,
+    restored: (plan.restores || []).length, deleted: verified.deletions.length };
 }
 
 module.exports = { applyIdentityPlan };

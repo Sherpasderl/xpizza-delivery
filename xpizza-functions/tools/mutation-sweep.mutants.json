@@ -8848,8 +8848,8 @@
   "id": "e9-02",
   "slice": "e9",
   "file": "catalog/identity-writer.js",
-  "from": "    tx.set(keys.doc(encodeKey(m.to)), { canonical_id: m.id, kind, created_at: stamp });\n    writes += 2;\n  }\n\n  /* MINTS",
-  "to": "    writes += 2;\n  }\n\n  /* MINTS",
+  "from": "    tx.set(keys.doc(encodeKey(m.to)), { canonical_id: m.id, kind, created_at: stamp });\n    writes += 2;\n  }\n\n  /* RESTORES",
+  "to": "    writes += 2;\n  }\n\n  /* RESTORES",
   "label": "a MOVE writes the id row but not the new reverse row — the new name resolves to nothing",
   "kills_with": "the new reverse row is missing",
   "command": [
@@ -9224,6 +9224,61 @@
   "command": [
    "node",
    "catalog/identity-reconcile.test.js"
+  ]
+ },
+ {
+  "id": "e9-08",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "    tx.set(ids.doc(r.id), { ...prior, legacy_key: r.name, kind, status: STATUS_LIVE,\n      created_at: prior.created_at || stamp, restored_at: stamp });",
+  "to": "    tx.set(ids.doc(r.id), { legacy_key: r.name, kind, status: STATUS_LIVE,\n      created_at: stamp, restored_at: stamp });",
+  "label": "🔴 THE RESTORE STOPS SPREADING THE EXISTING ROW — created_at is destroyed and the row forgets it was ever retired, so nothing distinguishes an id that went round the loop from one never touched",
+  "kills_with": [
+   "the restore DESTROYED created_at",
+   "the row forgot it had ever been retired"
+  ],
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-09",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "    tx.set(keys.doc(encodeKey(r.name)), { canonical_id: r.id, kind, created_at: stamp });\n    writes += 2;\n  }\n\n  /* MINTS",
+  "to": "    writes += 2;\n  }\n\n  /* MINTS",
+  "label": "a restore writes the id row but not the reverse row — the object the rollback restores still resolves to nothing by name",
+  "kills_with": "the reverse row was not restored",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-10",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "  const landed = new Set(verified.lands.map((l) => encodeKey(l.name))\n    .concat((plan.restores || []).map((r) => encodeKey(r.name))));",
+  "to": "  const landed = new Set(verified.lands.map((l) => encodeKey(l.name)));",
+  "label": "🔴 RESTORED NAMES STOP COUNTING AS LANDED — a name released by a retirement and landed by a restore in one plan is deleted, and whether it survives depends on which loop runs last",
+  "kills_with": "a name both RESTORED and deleted by one plan was written",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
+  ]
+ },
+ {
+  "id": "e9-11",
+  "slice": "e9",
+  "file": "catalog/identity-writer.js",
+  "from": "  for (const r of plan.restores || []) {",
+  "to": "  for (const r of []) {",
+  "label": "the restore operation is dropped entirely — a rollback across a deletion leaves the object unresolvable, which is the case this whole slice pairs retirement with",
+  "kills_with": "the resurrected id is not LIVE",
+  "command": [
+   "node",
+   "catalog/identity-writer.test.js"
   ]
  }
 ]
