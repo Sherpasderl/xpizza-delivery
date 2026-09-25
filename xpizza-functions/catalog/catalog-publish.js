@@ -519,9 +519,30 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        This is defended mechanically rather than by this paragraph: a mutant that adds the live filter
        kills a cell. If you are here because that mutant failed, the filter is the thing to remove.
 
-       🔴 WHAT IS NOT ESTABLISHED: whether a whole-collection read inside a Firestore transaction
-       fails loudly at some limit or degrades. Neither of us has measured it. Recorded because E-4
-       leans on these reads harder than the old post-flip writer did — not asserted either way. */
+       🔴 MEASURED 2026-09-25 — IT DEGRADES. IT DOES NOT FAIL. This said "not established"; here is
+       the number. A whole-collection read of `ids` inside a transaction, against the EMULATOR:
+
+           rows     100    1 000    5 000   10 000   20 000   50 000  100 000  200 000
+           ms        47       93      216      260      412    1 734    3 604    4 941
+           read   COMPLETE at every size — no truncation and no refusal, at any size tried.
+
+       Of the three possible answers — loud refusal, silent truncation, timeout — the emulator gives
+       the THIRD in slow motion. `complete: true` is not a lie at any scale reachable here, which is
+       the half verifyPlan's MINT rule depends on. What grows is LATENCY, inside the transaction that
+       holds the publish lease, and the flip performs SIX such reads.
+
+       🔴 AND THE SHARPER FINDING IS ABOUT OUR TESTS, NOT ABOUT FIRESTORE. No ceiling appeared at
+       200 000 rows. Production Firestore documents transaction size limits that the emulator does not
+       appear to enforce — production's exact ceiling is NOT verified here and none is asserted. Either
+       way the consequence holds: if production has a limit, NO TEST WE CAN WRITE WILL CATCH IT,
+       because the emulator keeps answering COMPLETE past the point where production would refuse.
+       This class of failure is invisible to this estate by construction, so registry growth is an
+       operational risk to watch rather than something a gate can certify.
+
+       🔴 WHEN IT WOULD MATTER: tens of thousands of rows per kind. x_pizza's registry is in the
+       dozens — three orders of magnitude of headroom — so this is recorded to watch, not to fix. If
+       it ever does need fixing the shape is a bounded read with an explicit ABORT, never a status
+       filter, which would silently delete refusal 3's protection (see the block above). */
     const certifiedCandidate = candidateSnap.exists && (candidateSnap.data() || {}).identity_certified === true;
     /* 🔴 AN UNCERTIFIED TARGET YIELDS NO RECONCILIATION, AND "NONE" IS THE ANSWER — NOT A FALLBACK.
        Said at the gate rather than only in a cell, because the next person to extend this will look
