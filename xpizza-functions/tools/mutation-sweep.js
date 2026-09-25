@@ -184,16 +184,33 @@ const runSuite = (command) => {
   const probeArgs = { plans, armedOf, env: process.env, hostVarOf: HOST_ENV, expectedPorts: EXPECTED, serviceListeners: SERVICE_LISTENERS };
   const wanted = portsToProbe(probeArgs);
   let portState = {};
-  if (wanted.length) {
-    const probeSrc = `const net=require('net');const ports=${JSON.stringify(wanted)};const out={};
-      (async()=>{for(const p of ports){out[p]=await new Promise(r=>{const s=net.createServer();
-      s.once('error',e=>r(e&&e.code==='EADDRINUSE'?'in-use':'error:'+((e&&e.code)||e)));
-      s.once('listening',()=>s.close(()=>r('free')));s.listen(p,'127.0.0.1');});}
-      process.stdout.write(JSON.stringify(out));})();`;
+  if (wanted.bind.length || wanted.connect.length) {
+    /* 🔴 TWO PROBES, BECAUSE THERE ARE TWO QUESTIONS. A port the runner is about to BIND must be
+       free — tested by binding. An endpoint a suite is about to DIAL must accept a connection —
+       tested by connecting to that exact host:port. The first version tested only binding and read
+       EADDRINUSE as "an emulator is serving this", which any unrelated listener satisfies, and which
+       says nothing about the address family the suite will actually use. */
+    const probeSrc = `const net=require('net');
+      const bind=${JSON.stringify(wanted.bind)}, dial=${JSON.stringify(wanted.connect)};
+      const out={};
+      const bindOne=(p)=>new Promise(r=>{const s=net.createServer();
+        s.once('error',e=>r(e&&e.code==='EADDRINUSE'?'in-use':'error:'+((e&&e.code)||e)));
+        s.once('listening',()=>s.close(()=>r('free')));s.listen(p,'127.0.0.1');});
+      const dialOne=(ep)=>new Promise(r=>{const i=ep.lastIndexOf(':');
+        const host=ep.slice(0,i), port=Number(ep.slice(i+1));
+        const c=net.createConnection({host,port});
+        const done=(v)=>{try{c.destroy();}catch(_){} r(v);};
+        c.setTimeout(2000);
+        c.once('connect',()=>done('serving'));
+        c.once('timeout',()=>done('error:ETIMEDOUT'));
+        c.once('error',e=>done(e&&(e.code==='ECONNREFUSED'||e.code==='EHOSTUNREACH'||e.code==='EADDRNOTAVAIL')?'refused':'error:'+((e&&e.code)||e)));});
+      (async()=>{for(const p of bind) out[p]=await bindOne(p);
+        for(const ep of dial) out[ep]=await dialOne(ep);
+        process.stdout.write(JSON.stringify(out));})();`;
     try {
-      portState = JSON.parse(execFileSync(process.execPath, ['-e', probeSrc], { encoding: 'utf8', timeout: 30000 }));
+      portState = JSON.parse(execFileSync(process.execPath, ['-e', probeSrc], { encoding: 'utf8', timeout: 60000 }));
     } catch (e) {
-      console.error('\n🔴 SWEEP REFUSED — the port probe did not complete, so this cannot tell whether the emulator ports are free.');
+      console.error('\n🔴 SWEEP REFUSED — the port probe did not complete, so this cannot tell whether the emulator ports are usable.');
       console.error(`   ${(e && e.message) || e}`);
       console.error('   Refusing rather than sweeping blind: an armed suite would drift and read as a finding.\n');
       process.exit(2);

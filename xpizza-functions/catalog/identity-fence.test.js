@@ -189,26 +189,22 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
   const still = await fence({ version: null, generation: 0 }, { exists: false, data: () => ({}) });
   assert.strictEqual(still.version, null, 'nothing published, nothing moved → passes');
 
-  /* 🔴 THE TWO VALIDATORS MUST AGREE. They are not merged here — unifying them touches the publish
-     path and belongs in its own increment — so this pins them to each other instead, which is what
-     stops the drift recurring silently. */
-  const pub = require('fs').readFileSync(require('path').join(__dirname, 'catalog-publish.js'), 'utf8');
-  const writeVersionRule = /!Object\.prototype\.hasOwnProperty\.call\(baseline, 'version'\)[\s\S]{0,120}?!Number\.isInteger\(baseline\.generation\) \|\| baseline\.generation < 0/;
-  assert.ok(writeVersionRule.test(pub),
-    '🔴 writeVersion\'s baseline rule changed shape — the fence was aligned to it and the two would now disagree');
-  for (const pair of [{ version: null, generation: 0 }, { version: 'v-1', generation: 2 }]) {
-    assert.doesNotThrow(() => baselineOf(pair, RID, CODE), `both validators accept ${JSON.stringify(pair)}`);
-  }
-  for (const pair of [{ generation: 0 }, { version: 'v-1' }, { version: 'v-1', generation: -1 }]) {
-    assert.throws(() => baselineOf(pair, RID, CODE), /_no_baseline/, `both validators reject ${JSON.stringify(pair)}`);
-  }
-
-  /* 🔴 THE THREE REFUSALS SAY DIFFERENT THINGS, because they send an operator to different places.
-     "Nobody captured a pair" is a CALLER bug — a call site that never took a baseline. "What you
-     captured is not a version" is CORRUPTION in what was read. "No version but generation 3" is a
-     TORN pair. A later check happens to catch all three inputs, so without this the earlier checks
-     can be deleted and every case still refuses — with the wrong sentence. That is precisely the
-     mutant that survived here: refusal preserved, diagnosis lost. */
+  /* 🔴 THE PIN IS EXECUTED, NOT GREPPED — AND THE CLAIM IT MAKES IS NOW TRUE. The first version
+     matched a source REGEX and exercised only baselineOf, so a reviewer mutated writeVersion's guard
+     to reject EVERY baseline and all thirteen cells still passed. A pin that cannot fail is the exact
+     shape this project keeps finding, and this one existed to prevent drift while being unable to
+     detect it.
+     🔴 AND "THEY AGREE ON EVERY SHAPE" WAS FALSE. Executed side by side, the fence is STRICTER:
+     writeVersion ACCEPTS {version: 42}, {version: undefined} and {version: null, generation: 3};
+     the fence refuses all three as corruption or a torn pair. That is the right direction for a
+     fence — it is deciding whether to WRITE against a baseline, not merely recording one — but the
+     claim of parity was wrong, so the assertion is now about the DIRECTION, which is checkable. */
+  /* 🔴 THE THREE REFUSALS SAY DIFFERENT THINGS, because they send an operator to different places:
+     "nobody captured a pair" is a CALLER bug, "what you captured is not a version" is CORRUPTION in
+     what was read, "no version but generation 3" is a TORN pair. A later check happens to catch all
+     three inputs, so without this the earlier ones can be deleted and every case still refuses — with
+     the wrong sentence. e2c-04 is exactly that mutant, and it SURVIVED twice: once before these
+     assertions existed, and again when rewriting the cell above silently removed them. */
   const msgOf = (pair) => { try { baselineOf(pair, RID, CODE); return '(accepted)'; } catch (e) { return e.message; } };
   assert.match(msgOf({ generation: 0 }), /no version key at all/,
     '🔴 an absent baseline is diagnosed as corruption instead of as a caller that never captured one');
@@ -216,7 +212,46 @@ const fence = (captured, snap, code = CODE) => assertPointerUnmoved(txOf(snap), 
     '🔴 a corrupt version is diagnosed as a missing key instead of as corruption');
   assert.match(msgOf({ version: null, generation: 3 }), /claims generation 3/,
     '🔴 a torn pair is not diagnosed as a torn pair');
-  ok('the pre-P1 pair is a baseline and still fences; absent is not; and the fence agrees with writeVersion\'s rule');
+
+  const { writeVersion } = require('./catalog-publish');
+  const { makeDb } = require('./firestore-fake');
+  const writeVersionAccepts = async (baseline) => {
+    try {
+      await writeVersion(makeDb(), 'la_musa', { items: [], extras: {}, baseline }, new Date().toISOString());
+      return true;                                   // got past the baseline guard (it fails later, on content)
+    } catch (e) {
+      if (/write_version_no_baseline/.test(String(e && e.message))) return false;
+      return true;                                   // refused for some OTHER reason — the baseline passed
+    }
+  };
+  const fenceAccepts = (b) => { try { baselineOf(b, RID, CODE); return true; } catch { return false; } };
+
+  /* Executing writeVersion's REAL guard: mutate it and this cell fails, which is what a pin means. */
+  assert.strictEqual(await writeVersionAccepts({ version: null, generation: 0 }), true,
+    '🔴 writeVersion no longer accepts the pre-P1 pair — the rule the fence was aligned to has changed');
+  assert.strictEqual(await writeVersionAccepts({ generation: 0 }), false,
+    '🔴 writeVersion no longer refuses an ABSENT version key — the rule the fence was aligned to has changed');
+  assert.strictEqual(await writeVersionAccepts(undefined), false,
+    '🔴 writeVersion no longer refuses a missing baseline entirely');
+
+  /* The relationship, asserted as a DIRECTION rather than as equality: everything the fence accepts,
+     writeVersion accepts too. The converse does not hold, deliberately. */
+  const shapes = [
+    { version: null, generation: 0 }, { version: 'v-1', generation: 0 }, { version: 'v-1', generation: 7 },
+    { version: 42, generation: 1 }, { version: undefined, generation: 0 }, { version: null, generation: 3 },
+    { generation: 0 }, { version: 'v-1' }, { version: 'v-1', generation: -1 }, undefined, null, 'v-1',
+  ];
+  const stricter = [];
+  for (const shape of shapes) {
+    const f = fenceAccepts(shape);
+    const w = await writeVersionAccepts(shape);
+    assert.ok(!(f && !w), `🔴 the fence accepts a baseline writeVersion REFUSES (${JSON.stringify(shape)}) — the fence would write against something the version record would not carry`);
+    if (!f && w) stricter.push(JSON.stringify(shape));
+  }
+  assert.deepStrictEqual(stricter.sort(), ['{"generation":0}', '{"version":42,"generation":1}', '{"version":null,"generation":3}'].sort(),
+    '🔴 the set of shapes where the fence is STRICTER changed — state the difference rather than claiming parity');
+
+  ok(`the pre-P1 pair is a baseline and still fences; absent is not; and the fence is a strict SUBSET of writeVersion's rule (stricter on ${stricter.length} shapes, executed not grepped)`);
 }
 
 // ── 12. baselineOf IS PURE AND TOTAL ──────────────────────────────────────────────────────────

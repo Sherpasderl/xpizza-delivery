@@ -22,7 +22,10 @@ const { getActivePointer } = require('./catalog-firestore');
    were written against — the same honest cost writeVersion's baseline charged when it was made
    required, and for the same reason: a parameter nothing supplies is a parameter that protects
    nothing. `{version: null, generation: 0}` is the pre-P1 pair — nothing published — which is what
-   every one of these restaurants actually has. */
+   every one of these restaurants actually has. (An earlier note here claimed the in-memory store
+   CANNOT hold a pointer. That is wrong: identity-fixture.js exposes `_set` on a doc ref, so a test
+   could seed one. The pair is pre-P1 because these fixtures never publish, not because the fixture
+   is incapable — a reason that is almost right is still a reason a reader will rely on.) */
 const PRE_P1 = Object.freeze({ version: null, generation: 0 });
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);

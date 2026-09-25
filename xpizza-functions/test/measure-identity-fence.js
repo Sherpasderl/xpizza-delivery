@@ -19,13 +19,15 @@ const { getActivePointer, activePointerRef } = require('../catalog/catalog-fires
 
 const SIZES = (() => {
   const arg = process.argv.find((a) => a.startsWith('--sizes='));
-  if (arg) return arg.slice('--sizes='.length).split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
-  let x = 24, l = 44;
+  if (arg) return arg.slice('--sizes='.length).split(',').map((pair) => pair.split('x').map(Number));
+  /* Real brand sizes, dishes from menus/*.json and extras from the seeded catalog — the two halves
+     the publish actually registers together. */
+  let x = [24, 8], l = [44, 14];
   try {
-    x = require(path.join(__dirname, '..', '..', 'menus', 'x_pizza.json')).length;
-    l = require(path.join(__dirname, '..', '..', 'menus', 'la_musa.json')).length;
+    x = [require(path.join(__dirname, '..', '..', 'menus', 'x_pizza.json')).length, x[1]];
+    l = [require(path.join(__dirname, '..', '..', 'menus', 'la_musa.json')).length, l[1]];
   } catch (_) { /* fall back to the counts recorded above */ }
-  return [x, l, 100];          // both real brands, plus a headroom probe
+  return [x, l, [100, 30]];    // both real brands as (dish, extra), plus a headroom probe
 })();
 
 /* 🔴 REPORT THE SPREAD, NOT A MEDIAN. Two runs of the SAME code gave 561 ms and 720 ms at 44 keys —
@@ -45,13 +47,21 @@ const REPEATS = 5;
 admin.initializeApp({ projectId: 'demo-xpizza' });
 const db = admin.firestore();
 
-const keysFor = (n, tag) => ({ dish: Array.from({ length: n }, (_, i) => `${tag}_dish_${i}`), extra: [] });
+/* 🔴 A BATCH IS DISHES *AND* EXTRAS. Supplying only dishes measured 44 keys for la_musa when the
+   real publish registers 44 + 14 = 58 — so the headroom figures described a batch smaller than any
+   real one. The split is kept because the two kinds are separate collections and a per-kind cost
+   difference would otherwise hide inside one total. */
+const keysFor = (dish, extra, tag) => ({
+  dish: Array.from({ length: dish }, (_, i) => `${tag}_dish_${i}`),
+  extra: Array.from({ length: extra }, (_, i) => `${tag}_extra_${i}`),
+});
 
 (async () => {
   console.log(`measuring ensureIdentitiesForKeys — ${REPEATS} runs per size, median reported`);
-  console.log(`sizes: ${SIZES.join(', ')} keys   (x_pizza and la_musa are the real menus)\n`);
+  console.log(`sizes: ${SIZES.map(([d, e]) => `${d + e} (${d}d+${e}e)`).join(', ')} keys   (x_pizza and la_musa are the real menus)\n`);
   const rows = [];
-  for (const n of SIZES) {
+  for (const [dishN, extraN] of SIZES) {
+    const n = dishN + extraN;
     const times = [];
     for (let r = 0; r < REPEATS; r += 1) {
       /* A FRESH restaurant PER run: a second pass over the same keys takes the "preserved" branch, which
@@ -67,7 +77,7 @@ const keysFor = (n, tag) => ({ dish: Array.from({ length: n }, (_, i) => `${tag}
       await activePointerRef(db, rid).set({ version: 'v-measure', generation: 1 });   // the REAL ref builder, not a hand-written path
       const captured = await getActivePointer(db, rid);
       const t0 = process.hrtime.bigint();
-      await ensureIdentitiesForKeys(db, rid, keysFor(n, rid), { shouldStop: () => false, captured });
+      await ensureIdentitiesForKeys(db, rid, keysFor(dishN, extraN, rid), { shouldStop: () => false, captured });
       const t1 = process.hrtime.bigint();
       times.push(Number(t1 - t0) / 1e6);
     }
@@ -75,7 +85,7 @@ const keysFor = (n, tag) => ({ dish: Array.from({ length: n }, (_, i) => `${tag}
     const median = times[Math.floor(times.length / 2)];
     const min = times[0], max = times[times.length - 1];
     rows.push({ n, median, min, max, perKey: median / n, all: times });
-    console.log(`  ${String(n).padStart(4)} keys   min ${min.toFixed(0).padStart(5)}  median ${median.toFixed(0).padStart(5)}  max ${max.toFixed(0).padStart(5)} ms   ${(median / n).toFixed(1).padStart(5)} ms/key`);
+    console.log(`  ${String(n).padStart(4)} keys (${dishN}d+${extraN}e)   min ${min.toFixed(0).padStart(5)}  median ${median.toFixed(0).padStart(5)}  max ${max.toFixed(0).padStart(5)} ms   ${(median / n).toFixed(1).padStart(5)} ms/key`);
   }
   const DEADLINE = 5000;
   console.log(`\n  deadline (IDENTITY_PRESERVE_TIMEOUT_MS) = ${DEADLINE} ms`);

@@ -212,7 +212,7 @@ const judge = (over = {}) => preflightVerdict({
   const plans = [{ id: 'x-14', plan: { routed: false, services: [], files: ['test/db.emulator.test.js'], via: 'node test/db.emulator.test.js' } }];
   const v = judge({ plans, armedOf: armedDb,
     env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120', FIREBASE_EMULATOR_HUB: '127.0.0.1:4710' },
-    portState: { 9120: 'in-use', 4710: 'in-use' } });
+    portState: { '127.0.0.1:9120': 'serving', '127.0.0.1:4710': 'serving' } });
   assert.strictEqual(v.ok, false, '🔴 a foreign hub points the suite at another checkout even with a correct host var');
   assert.strictEqual(v.code, 'sweep_preflight_foreign_checkout', '🔴 a foreign hub points the suite at another checkout even with a correct host var');
   assert.match(v.lines.join('\n'), /FIREBASE_EMULATOR_HUB=127\.0\.0\.1:4710 is not this checkout's hub port \(expected 4520\)/);
@@ -225,12 +225,15 @@ const judge = (over = {}) => preflightVerdict({
    connection errors and every mutant DRIFTS. */
 {
   const plans = [{ id: 'x-15', plan: { routed: false, services: [], files: ['test/db.emulator.test.js'], via: 'node test/db.emulator.test.js' } }];
-  const v = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, portState: { 9120: 'free' } });
+  /* 🔴 'refused' — a CONNECTION was refused. The old fixture said 'free', meaning a bind succeeded,
+     which is a different question: any unrelated process holding the port satisfied a bind probe while
+     nothing served the suite. */
+  const v = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, portState: { '127.0.0.1:9120': 'refused' } });
   assert.strictEqual(v.ok, false, '🔴 the variable names the right port but nothing is listening');
   assert.strictEqual(v.code, 'sweep_preflight_foreign_checkout', '🔴 the variable names the right port but nothing is listening — every armed mutant would DRIFT');
-  assert.match(v.lines.join('\n'), /nothing is listening — the variable is stale/);
+  assert.match(v.lines.join('\n'), /nothing accepted a connection — the variable is stale/);
 
-  const alive = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, portState: { 9120: 'in-use' } });
+  const alive = judge({ plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, portState: { '127.0.0.1:9120': 'serving' } });
   assert.strictEqual(alive.ok, true, 'and a port something is actually serving is accepted — the check is not a blanket refusal');
   ok('a stale host var naming an unserved port → refused; a served one → ready');
 }
@@ -278,8 +281,13 @@ const judge = (over = {}) => preflightVerdict({
   ok('a glob is expanded from disk, so globbed suites are checked like any other');
 }
 
-// ── 19. 🔴 THE PROBE SET IS DERIVED BY THE SAME LOGIC THAT JUDGES IT ───────────────────────────
-/* A caller that probed a different set is how "never probed" silently read as "free". */
+// ── 19. 🔴 TWO PROBE KINDS, BECAUSE THERE ARE TWO QUESTIONS ──────────────────────────────────
+/* A port the runner is about to BIND must be free; an endpoint a suite is about to DIAL must accept
+   a connection. The first version asked only the bind question and read EADDRINUSE as "an emulator
+   is serving this" — which ANY unrelated listener satisfies, and which says nothing about the
+   address family the suite will actually use ([::1] can be dead while 127.0.0.1 is held).
+   The set probed must also be the set judged: a caller probing a different set is how "never probed"
+   silently became "free". */
 {
   const plans = [
     { id: 'r', plan: { routed: true, services: ['database'], files: [], via: 'npm run test:r' } },
@@ -287,47 +295,63 @@ const judge = (over = {}) => preflightVerdict({
   ];
   const args = { plans, armedOf: armedDb, env: { FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9120' }, hostVarOf: HOST_VAR, expectedPorts: PORTS, serviceListeners: LISTENERS };
   const probe = portsToProbe(args);
-  assert.ok(probe.includes(9120), 'the routed band port is probed');
-  assert.ok(probe.includes(4520), 'the hub is probed');
-  const state = Object.fromEntries(probe.map((p) => [p, p === 9120 ? 'in-use' : 'free']));
+
+  assert.ok(Array.isArray(probe.bind) && Array.isArray(probe.connect), 'the probe set names both kinds');
+  assert.ok(probe.bind.includes(9120), 'the routed band port is BIND-probed — the runner is about to bind it');
+  assert.ok(probe.bind.includes(4520), 'and so is the hub');
+  assert.deepStrictEqual(probe.connect, ['127.0.0.1:9120'],
+    '🔴 the unrouted endpoint is not CONNECT-probed — a bound-but-dead port would read as serving');
+  assert.ok(probe.connect.every((e) => e.includes(':')), 'connect targets carry the HOST, not just a port number');
+
+  /* …and the verdict consults exactly what was probed. */
+  const state = {};
+  for (const p of probe.bind) state[p] = 'free';
+  for (const e of probe.connect) state[e] = 'serving';
   const v = preflightVerdict({ ...args, portState: state });
-  assert.notStrictEqual(v.code, 'sweep_preflight_unclassifiable',
-    '🔴 the verdict needed a port the probe set did not include — the set judged is not the set measured');
-  ok('portsToProbe covers every port the verdict consults, routed and unrouted alike');
+  assert.strictEqual(v.code, 'ready',
+    `🔴 the verdict needed something the probe set did not include — the set judged is not the set measured (${v.lines.join('; ')})`);
+  ok('bind and connect are probed separately, connect targets carry the host, and the verdict consults exactly the probed set');
 }
 
-// ── 20. 🔴 THE SPELLINGS THE DETECTOR MISSED, AND THE ONE IT WRONGLY MATCHED ───────────────────
-/* Found by review, not by me: a spaced `require (…)`, an aliased require invoked later, and a call
-   sitting inside a BLOCK comment. Two silent omissions and one false refusal, in one regex. */
+// ── 20. 🔴 THE SPELLINGS, ROUND THREE — and why it is a parser now ───────────────────────────
+/* Round one missed a spaced `require (…)` and an aliased require, and matched a call inside a block
+   comment. Round two fixed those by masking literals and comments — and still inspected only the
+   FIRST candidate, so an unrelated `require('./setup')()` earlier in the file hid a real arming call
+   underneath it. Every fix was another spelling somebody thought of. acorn has no spellings. */
 {
-  const armed = [
-    ['ordinary',            "require('./_emulator-required')('database');"],
-    ['spaced require',      "require ('./_emulator-required')('database');"],
-    ['space before args',   "require('./_emulator-required') ('database');"],
-    ['aliased + invoked',   "const need = require('./_emulator-required');\nneed('database');"],
-  ];
-  for (const [name, src] of armed) {
-    assert.deepStrictEqual(armingOf(src), ['database'], `🔴 a real arming call was not detected (${name}) — the suite would sweep with no emulator`);
+  const armed = {
+    'ordinary': "require('./_emulator-required')('database');",
+    'spaced require': "require ('./_emulator-required')('database');",
+    'space before args': "require('./_emulator-required') ('database');",
+    'aliased then invoked': "const need = require('./_emulator-required');\nneed('database');",
+    'an unrelated require()() FIRST': "require('./setup')();\nrequire('./_emulator-required')('firestore');",
+    'alias bound after an unrelated one': "const a = require('./x');\na();\nconst need = require('./_emulator-required');\nneed('database');",
+    'arming call nested in a block': "if (process.env.CI) { require('./_emulator-required')('database'); }",
+  };
+  for (const [name, src] of Object.entries(armed)) {
+    assert.ok(armingOf(src), `🔴 a real arming call was not detected (${name}) — the suite would sweep with no emulator and every mutant would DRIFT`);
   }
-  const notArmed = [
-    ['block comment',       "/*\n  require('./_emulator-required')('database');\n*/"],
-    ['line comment',        "// require('./_emulator-required')('database');"],
-    ['bound, never called', "const p = require('./_emulator-required');"],
-    ['prose mention',       "assert.match(src, /_emulator-required/);"],
-  ];
-  for (const [name, src] of notArmed) {
-    assert.strictEqual(armingOf(src), null, `🔴 a mention was read as an arming call (${name}) — an honest sweep would be refused`);
+  const notArmed = {
+    'block comment': "/*\n  require('./_emulator-required')('database');\n*/",
+    'line comment': "// require('./_emulator-required')('database');",
+    'inside a string': "const s = \"require('./_emulator-required')('database')\";",
+    'inside a template literal': 'const s = `require("./_emulator-required")("database")`;',
+    'bound, never called': "const p = require('./_emulator-required');",
+    'prose mention': 'assert.match(src, /_emulator-required/);',
+    'a require of a DIFFERENT module, invoked': "require('./helpers')('database');",
+  };
+  for (const [name, src] of Object.entries(notArmed)) {
+    assert.strictEqual(armingOf(src), null, `🔴 a non-call was read as an arming call (${name}) — an honest sweep would be refused`);
   }
   assert.deepStrictEqual(armingOf("require('./_emulator-required')('firestore', 'database');"), ['firestore', 'database'],
     'both services are reported, so a suite needing two emulators is checked for two');
 
-  /* 🔴 THE MODULE IS CHECKED, NOT JUST THE SHAPE. An immediately-invoked require of ANY module has
-     the same shape as an arming call; reading its arguments as service names would arm half the
-     repo on suites that never mention an emulator. */
-  for (const other of ["require('./helpers')('database');", "require('express')();", "const f = require('./fmt');\nf('database');"]) {
-    assert.strictEqual(armingOf(other), null, `🔴 a require of a DIFFERENT module was read as an emulator arming call: ${other.split('\n')[0]}`);
-  }
-  ok(`${armed.length} arming spellings detected and ${notArmed.length} non-calls rejected, block comments included`);
+  /* 🔴 AN UNPARSABLE SUITE IS NOT "UNARMED". Returning null would report it as needing no emulator —
+     the exact blind spot this exists to close — so it THROWS and the caller refuses as unclassifiable. */
+  assert.throws(() => armingOf('function f( { @@@ not javascript'), /arming_detector_unparsable/,
+    '🔴 a suite that could not be parsed was reported as needing no emulator');
+
+  ok(`${Object.keys(armed).length} arming spellings detected and ${Object.keys(notArmed).length} non-calls rejected; an unparsable suite refuses rather than reading as unarmed`);
 }
 
 // ── 20b. 🔴 A STRING CONTAINING CODE IS DATA — including this file's own fixtures ─────────────

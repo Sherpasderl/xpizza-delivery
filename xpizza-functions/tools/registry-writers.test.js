@@ -58,19 +58,28 @@ const r = enumerate();
   ok(`${r.writes.length} direct write sites in ${got.length} functions, enumerated from source`);
 }
 
-// ── 4. 🔴 ENTRY POINTS THAT REACH A WRITER WITHOUT WRITING THEMSELVES ─────────────────────────
-/* Fencing only the functions that touch the collection would leave these unfenced while they are the
-   things a caller actually invokes. reconcileLegacyOrphans is the one that matters most: its writer
-   is module-PRIVATE, so an enumeration that followed only exported writers would not have found it. */
+// ── 4. 🔴 EVERY FUNCTION THAT REACHES A WRITER, TRANSITIVELY ─────────────────────────────────
+/* Fencing only the functions that touch the collection leaves these unfenced while they are what a
+   caller actually invokes. The first version of this walk stopped after ONE call and therefore
+   reported four — missing publishVersion (the live publish path), the hourly scheduled sweep, and
+   every CLI. `reconcileLegacyOrphans` remains the one that matters most for the walk's own design:
+   its writer is module-PRIVATE, so following only exported writers would not have found it. */
 {
-  const got = [...new Set(r.indirect.map((h) => `${rel(h.file)}::${h.fn} -> ${h.calls}`))].sort();
+  const got = [...new Set(r.indirect.map((h) => `${rel(h.file)}::${h.fn}`))].sort();
   assert.deepStrictEqual(got, [
-    'catalog/identity-backfill.js::backfillIdentities -> ensureIdentity',
-    'catalog/identity-backfill.js::ensureIdentitiesForKeys -> ensureIdentity',
-    'catalog/identity-bootstrap.js::reconcileLegacyOrphans -> retireOrphanFenced',
-    'catalog/identity-sweep.js::sweepAllIdentityIntegrity -> sweepIdentityIntegrity',
-  ], '🔴 the set of entry points that reach a registry writer changed');
-  ok(`${got.length} indirect entry points, including one whose writer is module-private`);
+    'catalog/catalog-publish.js::publishVersion',
+    'catalog/identity-backfill.js::backfillIdentities',
+    'catalog/identity-backfill.js::ensureIdentitiesForKeys',
+    'catalog/identity-bootstrap.js::reconcileLegacyOrphans',
+    'catalog/identity-sweep.js::sweepAllIdentityIntegrity',
+    'catalog/publish-edited-handler.js::publishEditedCore',
+    'index.js::publishEdited',
+    'index.js::sweepIdentityRegistry',
+    'tools/backfill-identities.js::(module scope)',
+    'tools/migrate-catalog-display.js::(module scope)',
+    'tools/publish-version.js::(module scope)',
+  ], '🔴 the set of functions that reach a registry writer changed — a fence built for the old set leaves the new caller unfenced');
+  ok(`${got.length} functions reach a writer transitively, from immediate callers out to the merchant-facing endpoint`);
 }
 
 // ── 5. 🔴 THE NEGATIVE CONTROL: A READER THAT IMPORTS THE BUILDERS IS NOT A WRITER ────────────
@@ -103,25 +112,93 @@ const r = enumerate();
   ok(`identity-bootstrap.js has ${allTxWrites} transactional writes; exactly ${found} touch the registry`);
 }
 
-// ── 7. 🔴 COMMENTED-OUT AND QUOTED WRITES ARE NOT WRITES ──────────────────────────────────────
-/* The same code-versus-data trap that made the emulator-arming detector read its own fixtures. */
+// ── 7. 🔴 THE SPELLINGS A REVIEWER FOUND — five missed, one falsely counted ──────────────────
+/* The regex version of this walk was wrong in BOTH directions, and every one of these came from
+   review rather than from me. A missed spelling is a writer the fence never covers; a falsely counted
+   one puts the fence on a read path while a real writer stays uncovered. The parser makes all of them
+   structural: a string is a Literal and can never be a CallExpression, and a call is a call however
+   it is spelled. */
 {
   const { scanFile } = require('./registry-writers.js');
-  const tmp = path.join(require('os').tmpdir(), `registry-walk-probe-${process.pid}.js`);
-  fs.writeFileSync(tmp, [
-    "const { idsColOf } = require('./identity-registry');",
-    '/* tx.set(idsColOf(db, rid, kind).doc(x), {}); */',
-    "// tx.set(idsColOf(db, rid, kind).doc(x), {});",
-    'function realWriter() { const ref = idsColOf(db, rid, kind).doc(x); tx.set(ref, {}); }',
-    'module.exports = { realWriter };',
-  ].join('\n'));
+  const os = require('os');
+  const probe = (src) => {
+    const f = path.join(os.tmpdir(), `rw-probe-${process.pid}-${Math.random().toString(36).slice(2)}.js`);
+    fs.writeFileSync(f, src);
+    try { return scanFile(f); } finally { fs.unlinkSync(f); }
+  };
+  const IMPORT = "const { idsColOf, keysColOf } = require('./identity-registry');\n";
+
+  const areWrites = {
+    'argument form (the dominant spelling here)': 'function w(){ const r = idsColOf(db,rid,kind).doc(id); tx.set(r, {}); }',
+    'receiver form, chained off the builder': 'function w(){ idsColOf(db,rid,kind).doc(id).set({}); }',
+    'computed access': "function w(){ const r = idsColOf(db,rid,kind).doc(id); tx['set'](r, {}); }",
+    'a differently-named transaction': 'function w(){ const r = idsColOf(db,rid,kind).doc(id); transaction.set(r, {}); }',
+    'arguments split across lines': 'function w(){ const r = idsColOf(db,rid,kind).doc(id);\n  tx.set(\n    r,\n    { a: 1 }\n  ); }',
+    'the other builder': 'function w(){ const r = keysColOf(db,rid,kind).doc(k); tx.delete(r); }',
+    'update, not just set': 'function w(){ const r = idsColOf(db,rid,kind).doc(id); tx.update(r, { a: 1 }); }',
+  };
+  for (const [name, body] of Object.entries(areWrites)) {
+    const r = probe(`${IMPORT}${body}\nmodule.exports={w};`);
+    assert.ok(r.writes.length >= 1, `🔴 a real registry write was MISSED (${name}) — the fence would never cover it`);
+    assert.strictEqual(r.writes[0].fn, 'w', `and it is attributed to its enclosing function (${name})`);
+  }
+
+  const areNot = {
+    'the write exists only inside a STRING': 'function w(){ const s = "tx.set(idsColOf(db, rid, kind).doc(x), {})"; return s; }',
+    'a template literal holding the same text': 'function w(){ const s = `tx.set(idsColOf(db, rid, kind).doc(x), {})`; return s; }',
+    'a line comment': 'function w(){ // tx.set(idsColOf(db,rid,kind).doc(id), {});\n  return 1; }',
+    'a block comment': 'function w(){ /* tx.set(idsColOf(db,rid,kind).doc(id), {}); */ return 1; }',
+    'a READ through the same builder': 'async function w(){ const r = idsColOf(db,rid,kind).doc(id); return tx.get(r); }',
+    'a write to an unrelated collection': 'function w(){ const r = db.collection("x").doc(id); tx.set(r, {}); }',
+  };
+  for (const [name, body] of Object.entries(areNot)) {
+    const r = probe(`${IMPORT}${body}\nmodule.exports={w};`);
+    assert.strictEqual(r.writes.length, 0, `🔴 something that is NOT a registry write was counted (${name}) — the fence would be aimed at it while a real writer stayed uncovered`);
+  }
+
+  /* An ALIASED builder, which the regex version could not see at all. */
+  const aliased = probe("const { idsColOf: mk } = require('./identity-registry');\nfunction w(){ const r = mk(db,rid,kind).doc(id); tx.set(r, {}); }\nmodule.exports={w};");
+  assert.strictEqual(aliased.writes.length, 1, '🔴 a builder imported under an alias hides every write through it');
+
+  ok(`${Object.keys(areWrites).length} write spellings detected, ${Object.keys(areNot).length} non-writes rejected (strings and template literals included), and an aliased builder resolved`);
+}
+
+// ── 7b. 🔴 REACHABILITY IS TRANSITIVE — the live publish path is an entry point ────────────────
+/* The first version reported only DIRECT callers, so publishVersion — which reaches ensureIdentity
+   through ensureIdentitiesForKeys, and is the path a merchant's save actually takes — did not appear,
+   nor did the scheduled sweep. An entry-point claim that stops one frame short reads as complete and
+   is not, which is the same defect as capturing a baseline one step late. */
+{
+  const byName = new Map(r.indirect.map((h) => [`${rel(h.file)}::${h.fn}`, h]));
+  for (const [key, why] of [
+    ['catalog/catalog-publish.js::publishVersion', 'THE LIVE PUBLISH PATH reaches a registry writer'],
+    ['index.js::sweepIdentityRegistry', 'the hourly scheduled sweep reaches a registry writer'],
+    ['catalog/identity-backfill.js::ensureIdentitiesForKeys', 'the immediate caller is still found'],
+  ]) {
+    assert.ok(byName.has(key), `🔴 ${why}, and the walk does not report it (${key})`);
+  }
+  assert.ok(byName.get('catalog/catalog-publish.js::publishVersion').depth >= 2,
+    'and it is found through a CHAIN, not as a direct caller — which is what the first version could not do');
+  ok(`${r.indirect.length} functions reach a writer transitively, including the live publish path and the scheduled sweep`);
+}
+
+// ── 7c. 🔴 A FILE THAT DOES NOT PARSE IS REPORTED, NOT READ AS CLEAN ─────────────────────────
+/* The parser is what makes every claim above structural — so a file it cannot read is a hole in the
+   walk, and a hole reported as "no writes found" is indistinguishable from a clean file. That is the
+   same failure as an empty walk passing: silence read as evidence. */
+{
+  const { scanFile } = require('./registry-writers.js');
+  const os = require('os');
+  const f = path.join(os.tmpdir(), `rw-unparsable-${process.pid}.js`);
+  fs.writeFileSync(f, 'function w( { this is not javascript @@@ ');
   try {
-    const probe = scanFile(tmp);
-    assert.strictEqual(probe.writes.length, 1,
-      `🔴 the walk counted a commented-out write: found ${probe.writes.length} in a file with one real write and two commented ones`);
-    assert.strictEqual(probe.writes[0].fn, 'realWriter', 'and it attributed the real one to its enclosing function');
-  } finally { fs.unlinkSync(tmp); }
-  ok('commented-out writes are not counted, and a real one is attributed to its function');
+    const bad = scanFile(f);
+    assert.strictEqual(bad.parseFailed, true, '🔴 a file that could not be parsed was reported as clean');
+    assert.deepStrictEqual(bad.writes, [], 'and it reports no writes — but flagged, not silently');
+  } finally { fs.unlinkSync(f); }
+  assert.deepStrictEqual(r.parseFailures, [],
+    `🔴 ${r.parseFailures.length} production file(s) did not parse, so the walk did not see them: ${r.parseFailures.join(', ')}`);
+  ok(`an unparsable file is flagged rather than read as clean, and all ${r.scanned} production files parsed`);
 }
 
 // ── 8. 🔴 THE SENSITIVITY PARTNER: A BLIND WALK FAILS ─────────────────────────────────────────

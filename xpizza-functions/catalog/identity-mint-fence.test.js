@@ -29,9 +29,11 @@ function dbThatMovesPointerAfter(moveAfter, to) {
   const realRunTransaction = db.runTransaction.bind(db);
   db.runTransaction = async (fn) => {
     started += 1;
+    db._txCount = started;          // how many key transactions were ATTEMPTED, which the registry cannot show
     if (started === moveAfter + 1) await activePointerRef(db, RID).set(to);
     return realRunTransaction(fn);
   };
+  db._txCount = 0;
   return db;
 }
 
@@ -69,12 +71,23 @@ function dbThatMovesPointerAfter(moveAfter, to) {
     /identity_mint_pointer_moved: la_musa — judged against v-1@1, now "v-2"@2/,
     '🔴 a mint landed against a version that was superseded mid-batch');
 
-  /* What already landed STAYS. Those keys belong to the version that was live when they were
-     written, and unwinding them would retire identities the overlay is already serving. */
+  /* 🔴 WHICH KEYS, NOT HOW MANY. Asserting only the aggregate count cannot tell "stopped at 3" from
+     "attempted all 8 and threw at the end" — a reviewer's mutant that CONTINUED past refusals and
+     threw afterwards passed the count-only version of this cell. The identity of the survivors is
+     what proves the batch STOPPED, and the absence of the rest proves they were never attempted. */
   const found = await lookupByLegacyKeys(db, { rid: RID, kind: 'dish', legacyKeys: keys });
-  const registered = [...found.values()].filter(Boolean).length;
-  assert.strictEqual(registered, 3, `🔴 the keys written BEFORE the pointer moved were lost (${registered} of the first 3 survive)`);
-  ok('keys written before the move survive; the key that raced refuses; the rest are never attempted');
+  const survived = keys.filter((k) => found.get(k));
+  const after = keys.filter((k) => !found.get(k));
+  assert.deepStrictEqual(survived, keys.slice(0, 3),
+    `🔴 the surviving keys are not the first three — the batch did not stop where the pointer moved (survived: ${JSON.stringify(survived)})`);
+  assert.deepStrictEqual(after, keys.slice(3),
+    `🔴 a key AFTER the refusal was registered — the batch continued past the move instead of stopping (registered: ${JSON.stringify(keys.slice(3).filter((k) => found.get(k)))})`);
+
+  /* …and nothing was attempted after the refusal, which the registry alone cannot show: a key that
+     was attempted and refused looks identical to one never tried. The transaction COUNT does show it. */
+  assert.strictEqual(db._txCount, 4,
+    `🔴 ${db._txCount} transactions ran for a batch that should have stopped at the 4th — the later keys were attempted, not skipped`);
+  ok('the first three survive BY NAME, the fourth refuses, and exactly four transactions ran — the batch stopped rather than continuing');
 }
 
 // ── 3. 🔴 IT PROPAGATES RATHER THAN RETURNING A REPORT ────────────────────────────────────────

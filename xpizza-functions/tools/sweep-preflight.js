@@ -33,33 +33,70 @@
    itself — it SPAWNS each suite against a hostile host var and requires a refusal. This is the cheap
    static half, used only to decide which suites a sweep must establish an emulator for, and anything
    it cannot prove is reported rather than assumed. */
-const { stripComments, maskLiterals } = require('./strip-comments.js');
-const SENT = '\\u0000(\\d+)\\u0000';
+const acorn = require('acorn');
+
+/* 🔴 PARSED, NOT MATCHED — after two rounds of the spelling game. This detector decides which suites a
+   sweep must establish an emulator for, and it was wrong in both directions twice: first it read a
+   call inside a comment and missed a spaced `require (…)`, then — masking literals and comments — it
+   still inspected only the FIRST candidate match, so an unrelated `require('./setup')()` appearing
+   earlier in a file hid a real arming call underneath it.
+   Every one of those is a spelling. `acorn` is already a declared devDependency and has none: a
+   string is a Literal, a comment is not in the tree at all, and a call is a call wherever it sits.
+   The same move as the registry walk, for the same reason. */
+const MODULE_RE = /_emulator-required/;
 
 function armingOf(source) {
-  /* Comments out, then literals MASKED — a fixture holding the TEXT of an arming call collapses to a
-     single sentinel and cannot match, while a genuine call keeps its structure with its module path
-     and service names recoverable. Matching raw source confuses code with data in both directions. */
-  const { code, literals } = maskLiterals(stripComments(source));
-  const isModule = (n) => /_emulator-required/.test(literals[Number(n)] || '');
-  const servicesFrom = (argText) => {
-    const out = [];
-    for (const m of String(argText || '').matchAll(new RegExp(SENT, 'g'))) {
-      const v = literals[Number(m[1])];
-      if (v) out.push(v);
+  let ast;
+  for (const sourceType of ['script', 'module']) {
+    try { ast = acorn.parse(String(source || ''), { ecmaVersion: 'latest', sourceType, allowReturnOutsideFunction: true }); break; }
+    catch (_) { ast = null; }
+  }
+  /* 🔴 A SUITE THIS CANNOT PARSE IS NOT "UNARMED". Returning null would report it as needing no
+     emulator, which is the blind spot the whole pre-flight exists to close; the caller treats a
+     thrown error as unclassifiable and refuses. */
+  if (!ast) throw new Error('arming_detector_unparsable: the suite could not be parsed, so whether it needs an emulator is unknown');
+
+  const nodes = [];
+  (function walk(n) {
+    if (!n || typeof n.type !== 'string') return;
+    nodes.push(n);
+    for (const k of Object.keys(n)) {
+      if (k === 'start' || k === 'end' || k === 'loc') continue;
+      const v = n[k];
+      if (Array.isArray(v)) { for (const c of v) if (c && typeof c.type === 'string') walk(c); }
+      else if (v && typeof v.type === 'string') walk(v);
     }
+  })(ast);
+
+  const isRequireOfModule = (n) => n && n.type === 'CallExpression'
+    && n.callee.type === 'Identifier' && n.callee.name === 'require'
+    && n.arguments.length === 1 && n.arguments[0].type === 'Literal'
+    && MODULE_RE.test(String(n.arguments[0].value));
+
+  const servicesOf = (call) => {
+    const out = call.arguments.filter((a) => a.type === 'Literal' && typeof a.value === 'string' && a.value).map((a) => a.value);
     return out.length ? out : null;
   };
 
-  const direct = new RegExp(`require\\s*\\(\\s*${SENT}\\s*\\)\\s*\\(([^)]*)\\)`).exec(code);
-  if (direct && isModule(direct[1])) return servicesFrom(direct[2]);
-
-  /* const need = require('…');  …later…  need('database')
-     The alias must be BOUND to this module and then INVOKED; binding alone is not arming. */
-  const bind = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*require\\s*\\(\\s*${SENT}\\s*\\)`).exec(code);
-  if (bind && isModule(bind[2])) {
-    const call = new RegExp(`(?:^|[^\\w$.])${bind[1]}\\s*\\(([^)]*)\\)`, 'm').exec(code);
-    if (call) return servicesFrom(call[1]);
+  /* Direct: require('…')(…) — ALL of them, not the first candidate. */
+  for (const n of nodes) {
+    if (n.type === 'CallExpression' && isRequireOfModule(n.callee)) {
+      const svc = servicesOf(n);
+      if (svc) return svc;
+    }
+  }
+  /* Aliased: const need = require('…');  …later…  need('database') */
+  const aliases = new Set();
+  for (const n of nodes) {
+    if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && isRequireOfModule(n.init)) aliases.add(n.id.name);
+  }
+  if (aliases.size) {
+    for (const n of nodes) {
+      if (n.type === 'CallExpression' && n.callee.type === 'Identifier' && aliases.has(n.callee.name)) {
+        const svc = servicesOf(n);
+        if (svc) return svc;
+      }
+    }
   }
   return null;
 }
@@ -238,7 +275,10 @@ function preflightVerdict({ plans, armedOf, env, hostVarOf, expectedPorts, portS
            that has since exited names exactly the right port with nothing behind it; the suite then
            fails on connection errors and every mutant DRIFTS. The number being right was treated as
            the emulator being there. */
-        if (!needServed.has(Number(portText))) needServed.set(Number(portText), `${what} (${varName})`);
+        /* Keyed by the EXACT endpoint the suite will dial — host included — because the probe must
+           test that address, not "some socket on this port number". */
+        const endpoint = `${host}:${portText}`;
+        if (!needServed.has(endpoint)) needServed.set(endpoint, `${what} (${varName})`);
       }
     }
   }
@@ -262,13 +302,21 @@ function preflightVerdict({ plans, armedOf, env, hostVarOf, expectedPorts, portS
     else if (st === 'in-use') bound.push(`${String(what).padEnd(20)} 127.0.0.1:${port}   in-use`);
     else unknown.push(`port ${port} (${what}) probed as "${st}", which is neither free nor bound — this cannot tell whether the runner could start`);
   }
+  /* 🔴 "BOUND" IS NOT "SERVED", AND THE COMMENT HERE USED TO CLAIM OTHERWISE. This read `in-use` —
+     i.e. a bind() that failed with EADDRINUSE — as "something is answering". It is not: ANY unrelated
+     process holding the port satisfies it, and the suite then fails on a connection or protocol error
+     with every mutant drifting. Worse, binding 127.0.0.1 says nothing about [::1], so an address the
+     suite will actually dial could be dead while the probe reports it live.
+     The two questions are genuinely different and are now probed differently: a ROUTED plan needs the
+     port FREE (the runner is about to bind it), an UNROUTED one needs the exact host:port the suite
+     will DIAL to accept a connection. */
   const dead = [];
-  for (const [port, what] of needServed) {
-    const st = portState[port];
-    if (st === undefined) unknown.push(`port ${port} (${what}) was never probed, so this cannot tell whether an emulator is actually serving it`);
-    else if (st === 'in-use') continue;                 // something is answering — what we want here
-    else if (st === 'free') dead.push(`${String(what).padEnd(20)} 127.0.0.1:${port}   nothing is listening — the variable is stale`);
-    else unknown.push(`port ${port} (${what}) probed as "${st}", which is neither free nor bound`);
+  for (const [key, what] of needServed) {
+    const st = portState[key];
+    if (st === undefined) unknown.push(`${key} (${what}) was never probed, so this cannot tell whether an emulator is actually serving it`);
+    else if (st === 'serving') continue;
+    else if (st === 'refused' || st === 'free') dead.push(`${String(what).padEnd(20)} ${key}   nothing accepted a connection — the variable is stale`);
+    else unknown.push(`${key} (${what}) probed as "${st}", which is neither serving nor refused`);
   }
   if (unknown.length) {
     return { ok: false, code: 'sweep_preflight_unclassifiable', lines: unknown,
@@ -294,8 +342,11 @@ function preflightVerdict({ plans, armedOf, env, hostVarOf, expectedPorts, portS
 /* Which ports the caller must probe, and what each must look like. Exported so probing (I/O) stays
    in the caller while the SET is derived by the same logic that will judge it — a caller that probed
    a different set is how "never probed" silently became "free". */
+/* Two probe kinds, because two different questions: `bind` ports must be FREE for the runner to
+   start on them, `connect` endpoints must ACCEPT a connection because a suite is about to dial them. */
 function portsToProbe({ plans, armedOf, env, hostVarOf, expectedPorts, serviceListeners }) {
   const ports = new Set();
+  const connects = new Set();
   for (const { plan } of plans) {
     if (!plan || plan.unclassifiable) continue;
     if (plan.routed) {
@@ -315,11 +366,12 @@ function portsToProbe({ plans, armedOf, env, hostVarOf, expectedPorts, serviceLi
         if (!raw) continue;
         const i = String(raw).lastIndexOf(':');
         const portText = i > 0 ? String(raw).slice(i + 1) : '';
-        if (/^\d+$/.test(portText)) ports.add(Number(portText));
+        const host = (i > 0 ? String(raw).slice(0, i) : String(raw)).replace(/^\[|\]$/g, '');
+        if (/^\d+$/.test(portText)) connects.add(`${host}:${portText}`);
       }
     }
   }
-  return [...ports];
+  return { bind: [...ports], connect: [...connects] };
 }
 
 module.exports = { armingOf, resolvePlan, planFromScript, preflightVerdict, portsToProbe };

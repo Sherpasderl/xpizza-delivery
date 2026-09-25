@@ -7672,10 +7672,10 @@
   "id": "e2a-04",
   "slice": "e2a",
   "file": "tools/sweep-preflight.js",
-  "from": "  const { code, literals } = maskLiterals(stripComments(source));",
-  "to": "  const { code, literals } = maskLiterals(String(source));",
-  "label": "the arming detector reads commented-out code as a call",
-  "kills_with": "a mention was read as an arming call",
+  "from": "  if (!ast) throw new Error('arming_detector_unparsable: the suite could not be parsed, so whether it needs an emulator is unknown');",
+  "to": "  if (!ast) return null;",
+  "label": "a suite that cannot be parsed is reported as needing no emulator",
+  "kills_with": "a suite that could not be parsed was reported as needing no emulator",
   "command": [
    "node",
    "tools/sweep-preflight.test.js"
@@ -7795,10 +7795,10 @@
   "id": "e2a-13",
   "slice": "e2a",
   "file": "tools/sweep-preflight.js",
-  "from": "    else if (st === 'free') dead.push(",
+  "from": "    else if (st === 'refused' || st === 'free') dead.push(",
   "to": "    else if (false) dead.push(",
-  "label": "a stale host variable naming a port nothing serves is accepted",
-  "kills_with": "the variable names the right port but nothing is listening — every armed mutant would DRIFT",
+  "label": "an endpoint that REFUSES a connection is accepted as a serving emulator",
+  "kills_with": "the variable names the right port but nothing is listening",
   "command": [
    "node",
    "tools/sweep-preflight.test.js"
@@ -7834,8 +7834,8 @@
   "id": "e2a-16",
   "slice": "e2a",
   "file": "tools/sweep-preflight.js",
-  "from": "  const isModule = (n) => /_emulator-required/.test(literals[Number(n)] || '');",
-  "to": "  const isModule = () => true;",
+  "from": "    && MODULE_RE.test(String(n.arguments[0].value));",
+  "to": "    && true;",
   "label": "any require's arguments are read as emulator services",
   "kills_with": "a require of a DIFFERENT module was read as an emulator arming call",
   "command": [
@@ -7990,10 +7990,13 @@
   "id": "e2c-08",
   "slice": "e2c",
   "file": "tools/registry-writers.js",
-  "from": "  const directNames = [...new Set(writes.map((w) => w.fn))];",
-  "to": "  const directNames = [...new Set(writes.filter((w) => w.exported).map((w) => w.fn))];",
-  "label": "the walk follows only EXPORTED writers (the gap the enumeration found in itself)",
-  "kills_with": "the set of entry points that reach a registry writer changed",
+  "from": "  for (let depth = 1; depth <= 8 && frontier.size; depth += 1) {",
+  "to": "  for (let depth = 1; depth <= 1 && frontier.size; depth += 1) {",
+  "label": "reachability stops after ONE call — the live publish path stops being an entry point",
+  "kills_with": [
+   "THE LIVE PUBLISH PATH reaches a registry writer, and the walk does not report it",
+   "the set of functions that reach a registry writer changed"
+  ],
   "command": [
    "node",
    "tools/registry-writers.test.js"
@@ -8003,10 +8006,10 @@
   "id": "e2c-09",
   "slice": "e2c",
   "file": "tools/registry-writers.js",
-  "from": "  const code = stripComments(raw);",
-  "to": "  const code = raw;",
-  "label": "commented-out writes are counted as writes",
-  "kills_with": "the walk counted a commented-out write",
+  "from": "  if (!ast) return { file, writes: [], calls: [], exported: new Set(), parseFailed: true };",
+  "to": "  if (!ast) return { file, writes: [], calls: [], exported: new Set(), parseFailed: false };",
+  "label": "a file that does not PARSE is reported as having no writes",
+  "kills_with": "a file that could not be parsed was reported as clean",
   "command": [
    "node",
    "tools/registry-writers.test.js"
@@ -8016,13 +8019,12 @@
   "id": "e2c-10",
   "slice": "e2c",
   "file": "tools/registry-writers.js",
-  "from": "      if (isRegistryExpr(m[2])) writes.push({ file, line: i + 1, fn: owner[i], verb: m[1], shape: 'arg', exported: exported.has(owner[i]) });",
-  "to": "      writes.push({ file, line: i + 1, fn: owner[i], verb: m[1], shape: 'arg', exported: exported.has(owner[i]) });",
+  "from": "    if (n.arguments.length && isRegistry(n.arguments[0])) {",
+  "to": "    if (n.arguments.length) {",
   "label": "every transactional write counts, not only registry writes",
   "kills_with": [
-   "the set of functions that WRITE the identity registry changed",
-   "it is counting writes to other collections",
-   "a read-only user of the path builders was enumerated as a writer"
+   "something that is NOT a registry write was counted",
+   "the set of functions that WRITE the identity registry changed"
   ],
   "command": [
    "node",

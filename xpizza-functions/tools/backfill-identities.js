@@ -67,9 +67,26 @@ const db = admin.firestore();
   // THE LIVE CATALOG, through the serving reader. It fails closed on an absent pointer, an incomplete
   // read, a torn version or a content-hash mismatch — all of which must stop a backfill rather than
   // let it register a partial view of the menu.
+  /* 🔴 CAPTURED FIRST, BEFORE THE MENU IS READ. A fence detects a move between the DECISION and the
+     WRITE; if the baseline is taken after the thing it is supposed to describe, it describes the
+     world as it is AFTER the race rather than before it. */
+  const captured = await getActivePointer(db, RID);
+  console.log(`  fencing against ${captured.version}@${captured.generation}`);
+
   let menu;
   try {
     menu = await getRestaurantMenu(db, RID);
+    /* 🔴 THE MENU MUST BE THE ONE THE BASELINE NAMES. The capture above happened first, so a publish
+       landing between them shows up HERE as a disagreement rather than silently making the baseline
+       describe a different menu than the one about to be registered. Without this the ordering alone
+       would still allow: capture A, publish B, read menu B, backfill B against baseline A — refused
+       by the fence, but with a confusing message about a pointer move rather than the truth, which is
+       that this run read a menu its baseline does not describe. */
+    if (captured.version !== null && menu.identity && menu.identity.version_id !== captured.version) {
+      console.error(`\nREFUSED — the menu read is version ${JSON.stringify(menu.identity.version_id)} but the baseline captured ${JSON.stringify(captured.version)}@${captured.generation}.`);
+      console.error('A publish landed while this tool was starting. Nothing was written; run it again.\n');
+      process.exit(3);
+    }
   } catch (e) {
     console.error(`\nREFUSED — cannot read ${RID}'s live catalog: ${(e && e.message) || e}`);
     console.error('Nothing was written. Fix the catalog read first; a backfill over a partial menu is worse than none.\n');
@@ -103,15 +120,12 @@ const db = admin.firestore();
     process.exit(0);
   }
 
-  /* 🔴 THE PAIR IS CAPTURED HERE, BEFORE ANY WRITE, BECAUSE THIS IS WHERE THE DECISION IS MADE. The
-     menu read above carries `version_id` and `seq` but NO generation, so it cannot form a pair — a
-     fence needs both halves and half a pair is not a baseline. This is a new read on a path that had
-     none, which is the honest cost of fencing an operator tool: if the pointer moves between here and
-     the writes below, the backfill refuses rather than registering keys against a menu that is no
-     longer live. */
-  const captured = await getActivePointer(db, RID);
-  console.log(`  fencing against ${captured.version}@${captured.generation}`);
-
+  /* 🔴 THE BASELINE WAS CAPTURED BEFORE THE MENU WAS READ — see above. Capturing it HERE, after the
+     read, was capture-AFTER-decision and defeated the fence completely: read menu A, someone
+     publishes B, capture B, backfill A, and every write passes the fence while registering keys for a
+     menu that is no longer live. That is the same tautology the caller-captures rule exists to
+     prevent, one level down. The capture is the first thing this tool does, and the menu is then
+     checked AGAINST it. */
   const report = await backfillIdentities(db, RID, menu, { captured });
   console.log(`\napplied to ${RID}:`);
   for (const kind of ['dish', 'extra']) {
