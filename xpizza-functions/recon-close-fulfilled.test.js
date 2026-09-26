@@ -1,11 +1,13 @@
 'use strict';
 /**
- * SPLIT 1 money-path guards for "Cerrar como entregado" (resolve-manual close_fulfilled). Run:
+ * Money-path guards for "Cerrar como entregado" (resolve-manual close_fulfilled). Run:
  *   node recon-close-fulfilled.test.js
  * The KEEP-PAYMENT terminal close: keep the capture, close terminal, NO void/refund and NO materialize/task/
- * tracking, NO customer message; refuse platform-factura brands (X.Pizza) in SPLIT 1. Behavior is exercised in
- * the emulator; this locks the load-bearing preconditions in source, red-when-reverted (the pure claim/outcome
- * discipline is golden-tested in manual-resolve.test.js).
+ * tracking, NO customer message. SPLIT 2: a platform-factura brand (X.Pizza) ISSUES the SAR factura via the real
+ * issuer (allocateFacturaNumber) BEFORE the close, and an issuance failure does NOT close (always-invariant); a
+ * non-platform brand (La Musa) closes directly. Behavior is exercised end-to-end in recon-close-fulfilled-fiscal.
+ * test.js (real issuer + fake db); this locks the load-bearing SOURCE preconditions red-when-reverted (the pure
+ * claim/outcome discipline is golden-tested in manual-resolve.test.js).
  */
 const fs = require('fs');
 const assert = require('assert');
@@ -22,12 +24,28 @@ assert.ok(!/voidOrRefund|client\.void|voidTransaction/.test(branch), 'close_fulf
 assert.ok(!/confirmAndMaterialize|materializeFromManualClaim|genToken|trackingToken|order_tracking|_delivery`|tasks\//.test(branch), 'close_fulfilled does NOT materialize / build a task / mint a tracking token');
 ok('close_fulfilled: zero void/refund AND zero materialize/task/tracking (keep-payment, no dispatch)');
 
-// 2. SPLIT 1 fiscal gate — a platform-factura brand (X.Pizza) is refused here (SPLIT 2 issues the factura first).
-//    FAIL CLOSED: normalize a missing/empty restaurant_id to 'x_pizza' (legacy default) BEFORE the gate, so an
-//    unbranded order can't slip through as non-fiscal and close a SAR sale with no factura.
-assert.match(branch, /usesPlatformFactura\(order\.restaurant_id \|\| 'x_pizza'\)/, 'fiscal gate NORMALIZES missing restaurant_id → x_pizza (fail closed on fiscal)');
-assert.match(branch, /await releaseClaim\(\);[\s\S]*?outcome: 'fiscal_close_not_enabled'/, 'platform-factura brand → releaseClaim + 409 fiscal_close_not_enabled (no close without a factura)');
-ok('close_fulfilled: SPLIT 1 refuses platform-factura brands, fail-closed on a missing brand (releases claim, no terminal write)');
+// 2. SPLIT 2 fiscal path — a platform-factura brand (X.Pizza) ISSUES the SAR factura (real issuer,
+//    allocateFacturaNumber) BEFORE the terminal close; the ALWAYS-INVARIANT is that issuance failure does NOT close.
+//    FAIL CLOSED on brand: normalize a missing/empty restaurant_id to 'x_pizza' (legacy default) so an unbranded
+//    order takes the FISCAL path, never slips through as non-fiscal and closes a SAR sale with no factura.
+//    (The always-invariant is EXECUTED end-to-end in recon-close-fulfilled-fiscal.test.js; this locks placement.)
+assert.match(branch, /const restaurantId = order\.restaurant_id \|\| 'x_pizza';/, 'brand NORMALIZED to x_pizza (fail closed on fiscal — an unbranded order takes the fiscal path)');
+assert.match(branch, /if \(usesPlatformFactura\(restaurantId\)\)/, 'only a platform-factura brand issues (La Musa / external POS closes directly)');
+assert.ok(!/fiscal_close_not_enabled/.test(branch), 'SPLIT 1 refusal REMOVED — a platform brand now issues the factura, it is not refused');
+// Field-presence mirrors allocateFacturaOnSale: a Sale missing priced fields is a factura FAILURE, not a close.
+assert.match(branch, /!Array\.isArray\(order\.items\)[\s\S]*?order\.total_cents == null[\s\S]*?order\.subtotal_cents == null[\s\S]*?order\.tax_cents == null/, 'field-presence check mirrors the trigger (missing priced fields → factura failure, not a close)');
+// Issuance uses the REAL issuer, and it happens BEFORE the terminal keep-payment write (no close without a factura).
+assert.match(branch, /allocateFacturaNumber\(db, \{/, 'issues via the REAL factura issuer (allocateFacturaNumber — same path materialize uses), not a hand-built record');
+const iIssue = branch.indexOf('allocateFacturaNumber(db');
+const iClose = branch.indexOf("payment_status: 'confirmed'");
+assert.ok(iIssue !== -1 && iClose !== -1 && iIssue < iClose, 'factura is ISSUED before the terminal keep-payment close (a failed issuance can never reach the close)');
+// ALWAYS-INVARIANT: issuance failure (or a throw) → releaseClaim + 409 factura_failed, and NO terminal write.
+assert.match(branch, /if \(!fr \|\| !fr\.ok\)/, 'the issuance result is checked (ok gate)');
+assert.match(branch, /if \(!fr \|\| !fr\.ok\)[\s\S]*?await releaseClaim\(\);[\s\S]*?outcome: 'factura_failed'/, 'issuance failure → releaseClaim + 409 factura_failed (do NOT close — order left parked for retry)');
+const iFail = branch.search(/if \(!fr \|\| !fr\.ok\)/);
+assert.ok(iFail !== -1 && iFail < iClose, 'the failure return sits BEFORE the terminal write (issuance-failure short-circuits the close)');
+assert.match(branch, /catch \(e\)[\s\S]*?fr = \{ ok: false, reason: 'threw' \}/, 'a THROW from the issuer is caught and treated as a failure (still no close)');
+ok('close_fulfilled: SPLIT 2 X.Pizza issues the factura (real issuer) BEFORE closing; issuance-failure/throw → no close (always-invariant, placement)');
 
 // 3. Keep-payment TERMINAL write (CAS on our claim): confirmed + completed + cleared block + audit stamps.
 assert.match(branch, /cur\.resolving_claim_id !== claimId \|\| cur\.payment_status !== MR\.resolvingStatus\('close_fulfilled'\)/, 'terminal write is a CAS on OUR claim (no clobber)');
