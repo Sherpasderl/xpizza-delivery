@@ -2610,7 +2610,7 @@ exports.resolveManualReconciliation = onRequest(
     // RECON_SECRET path may pass a free-text actor label.
     const actor = auth.actor === 'recon_secret' ? sanitizeText(body.actor || 'server', 80) : auth.actor;
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(orderId)) return badRequest(res, 'order_id invalid');
-    if (!['materialize', 'refund', 'keep', 'abandon'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep|abandon');
+    if (!['materialize', 'refund', 'keep', 'abandon', 'close_fulfilled'].includes(action)) return badRequest(res, 'action must be materialize|refund|keep|abandon|close_fulfilled');
 
     const db = getDatabase();
     const crypto = require('crypto');
@@ -2639,6 +2639,10 @@ exports.materializeOnConfirm = onValueWritten(
     if (after.payment_status !== 'confirmed') return;
     if (after.materialized_at) return;               // already materialized → nothing to do
     if (after.status === 'cancelled') return;
+    // A TERMINAL order must never (re)materialize. "Cerrar como entregado" (resolve-manual close_fulfilled) sets
+    // confirmed + status:'completed' for an order delivered off-system — re-materializing here would build the
+    // phantom live order + late customer notification this whole action exists to avoid.
+    if (after.status === 'completed' || after.status === 'delivered') return;
     // Scheduled Orders: a paid-scheduled order is confirmed + unmaterialized but must NOT auto-release
     // here — it materializes ONLY at release (scheduled→releasing→new, scheduled-release-core). Gate this
     // recovery trigger to pending_payment-origin confirms only.

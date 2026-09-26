@@ -62,4 +62,19 @@ assert.deepStrictEqual(M.recoveryDecision({ payment_status: 'resolving_refund', 
 assert.strictEqual(M.recoveryDecision({ payment_status: 'resolving_refund', resolving_phase: 'claimed', resolving_claimed_at: NOW - 1000 }, NOW, STALE).act, false); ok('in-flight (not stale) → do NOT touch');
 assert.strictEqual(M.recoveryDecision({ payment_status: 'abandoned' }, NOW, STALE).act, false); ok('non-resolving order → recovery no-op');
 
+// ── close_fulfilled ("Cerrar como entregado"): keep-payment terminal — action + outcome + claim discipline ──
+assert.ok(M.RESOLVE_ACTIONS.includes('close_fulfilled'), 'close_fulfilled is a CLAIMING resolve action'); ok('close_fulfilled ∈ RESOLVE_ACTIONS (it mutates → claims)');
+assert.ok(M.ALL_ACTIONS.includes('close_fulfilled')); ok('close_fulfilled ∈ ALL_ACTIONS');
+assert.ok(M.FINAL_SUCCESS_OUTCOMES.has('closed_fulfilled_offline') && M.httpForOutcome('closed_fulfilled_offline') === 200, 'closed_fulfilled_offline is a final 2xx success'); ok('closed_fulfilled_offline → final success (200) so the panel clears');
+// Claim discipline (idempotency + no-double-resolve + can't run over an in-flight paid-after-close refund):
+// claimDecision claims ONLY from manual_reconciliation, for close_fulfilled just like every other action.
+{
+  const claimed = M.claimDecision({ order_id: 'O7F82', payment_status: 'manual_reconciliation', restaurant_id: 'la_musa', total: 2280, blocked_reason: 'manual_refund_required_paid_after_close' }, 'close_fulfilled', 'CID', 200);
+  assert.strictEqual(claimed.payment_status, 'resolving_close_fulfilled'); ok('close_fulfilled claims from manual_reconciliation → resolving_close_fulfilled');
+  assert.strictEqual(M.claimLanded({ resolving_claim_id: 'CID', payment_status: 'resolving_close_fulfilled' }, 'close_fulfilled', 'CID'), true); ok('close_fulfilled claim lands on our claim_id');
+}
+assert.strictEqual(M.claimDecision({ payment_status: 'refunding_paid_after_close' }, 'close_fulfilled', 'CID', 200), undefined); ok('🔴 close_fulfilled CANNOT run over refunding_paid_after_close (not manual_reconciliation → abort → 409)');
+assert.strictEqual(M.claimDecision({ payment_status: 'resolving_close_fulfilled' }, 'close_fulfilled', 'CID2', 200), undefined); ok('idempotent: a 2nd close_fulfilled while resolving → abort (no double-resolve)');
+assert.strictEqual(M.claimDecision({ payment_status: 'confirmed' }, 'close_fulfilled', 'CID', 200), undefined); ok('idempotent: close_fulfilled over an already-terminal confirmed order → abort');
+
 console.log(`manual-resolve: OK (${n} cases)`);

@@ -930,7 +930,7 @@
   .recon-total { font-weight: 700; font-size: 13px; }
   .recon-sub { font-size: 12px; color: var(--text-soft, var(--text-soft)); margin-top: 3px; }
   .recon-reason { font-size: 11px; color: var(--warn, var(--warn)); margin-top: 4px; }
-  .recon-actions { display: flex; gap: 6px; margin-top: 9px; }
+  .recon-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
   .recon-btn {
     flex: 1; padding: 7px 4px; border: none; border-radius: 6px;
     font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px;
@@ -939,6 +939,10 @@
   .recon-btn.materialize { background: var(--success); color: var(--success-fg); }
   .recon-btn.refund { background: var(--warn); color: var(--warn-fg); }
   .recon-btn.abandon { background: var(--surface-3); color: var(--text-soft, var(--text-soft)); }
+  /* "Cerrar como entregado" — neutral + DISTINCT from the 3 filled buttons (outlined), on its own full-width row
+     (long label; a secondary, deliberate terminal). */
+  .recon-btn.close-fulfilled { flex-basis: 100%; background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; }
+  .recon-btn.close-fulfilled:hover { background: var(--surface-2); }
   .recon-btn:hover { filter: brightness(1.12); }
   .recon-btn:disabled { opacity: 0.45; cursor: default; filter: none; }
 
@@ -4675,6 +4679,7 @@ function renderReconciliationSection() {
           <button class="recon-btn materialize" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="materialize">Materializar</button>
           <button class="recon-btn refund" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="refund">Reembolsar</button>
           <button class="recon-btn abandon" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="abandon">Descartar</button>
+          <button class="recon-btn close-fulfilled" data-recon-oid="${escapeHtml(o.order_id)}" data-recon-action="close_fulfilled">Cerrar como entregado</button>
         </div>
       </div>`;
   }).join('');
@@ -4688,7 +4693,7 @@ function renderReconciliationSection() {
 
 // Genuine completion outcomes. The resolver can return 2xx with a NON-final outcome
 // (refund_pending / confirm_claim_failed / attempt_superseded / kept_queued) — those must NOT read as success.
-const RECON_SUCCESS_OUTCOMES = new Set(['materialized', 'confirmed', 'already_confirmed', 'refunded', 'abandoned']);
+const RECON_SUCCESS_OUTCOMES = new Set(['materialized', 'confirmed', 'already_confirmed', 'refunded', 'abandoned', 'closed_fulfilled_offline']);
 
 // C-2: styled, keyboard-operable replacement for the native prompt() that collected the reconciliation note the
 // server AUDITS. reconNotePrompt returns a Promise<string|null> — the RAW textarea value on Confirm (the caller
@@ -4726,7 +4731,8 @@ function reconNotePrompt(action, orderId) {
   const prompts = {
     materialize: ['Materializar', 'Solo si verificaste el COBRO en PixelPay. Confirma y materializa el pedido.'],
     refund:      ['Reembolsar', 'Anula/reembolsa el cargo en PixelPay y cierra el pedido.'],
-    abandon:     ['Descartar', 'Solo si NO hay cargo en PixelPay. Cierra el pedido como descartado.']
+    abandon:     ['Descartar', 'Solo si NO hay cargo en PixelPay. Cierra el pedido como descartado.'],
+    close_fulfilled: ['Cerrar como entregado', 'Solo si el pedido ya se entregó y el COBRO es correcto. Conserva el pago y cierra el pedido sin despacharlo.']
   };
   const [label, warn] = prompts[action] || ['Resolver', ''];
   const noteRequired = action === 'abandon';

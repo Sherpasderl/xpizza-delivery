@@ -17,8 +17,10 @@
  */
 
 // ── resolving_<action> status vocabulary ──────────────────────────────────────────────────────────
-const RESOLVE_ACTIONS = ['materialize', 'refund', 'abandon']; // 'keep' does NOT claim (no mutation)
-const ALL_ACTIONS = ['materialize', 'refund', 'abandon', 'keep'];
+// 'close_fulfilled' (Cerrar como entregado): a paid order that was delivered off-system — keep the payment, close
+// terminal, NO void/refund and NO materialize. It CLAIMS (mutates the order node) so it lives in RESOLVE_ACTIONS.
+const RESOLVE_ACTIONS = ['materialize', 'refund', 'abandon', 'close_fulfilled']; // 'keep' does NOT claim (no mutation)
+const ALL_ACTIONS = ['materialize', 'refund', 'abandon', 'close_fulfilled', 'keep'];
 const RESOLVING_PREFIX = 'resolving_';
 const resolvingStatus = (action) => `${RESOLVING_PREFIX}${action}`;
 const isResolving = (ps) => typeof ps === 'string' && ps.startsWith(RESOLVING_PREFIX);
@@ -90,7 +92,9 @@ function hasCapturedMoneyEvidence(order, attempt) {
 // retry (the order is now confirmed, so the manual_reconciliation claim can't re-acquire it).
 // `held_closed_at_materialize` (Codex-on-diff paid-after-close) is also a genuine SUCCESS: a paid order the
 // kitchen can't fulfill right now is safely HELD for review (not a false materialize_failed / non-retryable).
-const FINAL_SUCCESS_OUTCOMES = new Set(['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed', 'scheduled_held', 'held_closed_at_materialize']);
+// 'closed_fulfilled_offline' (Cerrar como entregado): a genuinely-final SUCCESS — the payment is KEPT (legitimate
+// revenue for goods already delivered) and the order is closed terminal without dispatch/refund. 2xx so the panel clears.
+const FINAL_SUCCESS_OUTCOMES = new Set(['abandoned', 'refunded', 'materialized', 'confirmed', 'already_confirmed', 'scheduled_held', 'held_closed_at_materialize', 'closed_fulfilled_offline']);
 function httpForOutcome(outcome) {
   return FINAL_SUCCESS_OUTCOMES.has(outcome) ? 200 : 409;
 }

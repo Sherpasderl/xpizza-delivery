@@ -22,6 +22,7 @@ const MR = require('./manual-resolve');
 const MG = require('./materialize-guard');
 const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
 const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
+const { usesPlatformFactura } = require('./factura/eligibility');   // fiscal-brand gate: X.Pizza owes a SAR factura, La Musa does not
 
 // [#7/#8] Materialize a manual-verified order WITHOUT reopening the race: CAS resolving_materialize → confirmed
 // on the claim_id (NO transient 'pending', NO materialized_at yet), then materialize atomically. A crash after
@@ -152,6 +153,47 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
       await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });   // no charge → release the hold (held_paid/reserved → released, no credit)
       await audit('abandoned', { note: sanitizeText(note || '', 200) });
       return { status: 200, body: { ok: true, outcome: 'abandoned' } };
+    }
+
+    if (action === 'close_fulfilled') {
+      // "Cerrar como entregado" — a paid order DELIVERED off-system. KEEP the payment (no void, no refund, no
+      // provider call) and close it terminal WITHOUT materializing (no live order / task / tracking token) and
+      // WITHOUT notifying the customer: status:'completed' is not a messaged transition (sendOrderStatusNotifications
+      // only fires on out_for_delivery/delivered/cancelled), and materializeOnConfirm skips terminal 'completed'.
+      // SPLIT 1 (this commit): NON-FISCAL brands only. A platform-factura brand (X.Pizza) owes a SAR factura for
+      // the sale → refuse here until the fiscal path ships (SPLIT 2 issues the factura before closing).
+      // FAIL CLOSED on fiscal: a missing/empty restaurant_id is legacy X.Pizza everywhere in this repo
+      // (index.js:2755, materialize-guard park). Normalize BEFORE the gate so an unbranded order can't slip
+      // through as non-fiscal and close a SAR sale with no factura. Only an explicit non-platform brand proceeds.
+      if (usesPlatformFactura(order.restaurant_id || 'x_pizza')) {
+        await releaseClaim();
+        return { status: 409, body: { ok: false, outcome: 'fiscal_close_not_enabled', detail: 'Cerrar como entregado aún no está disponible para pedidos con factura SAR (X. Pizza).' } };
+      }
+      // Terminal write is a CAS (mirror abandon): commit ONLY if still OUR claim. Keep payment_status 'confirmed'
+      // (legitimate captured revenue), status 'completed' (delivered terminal), clear the block, stamp the audit.
+      const closeTx = await orderRef.transaction((cur) => {
+        if (cur === null) return null;                                  // null-first-safe (R1-#1): force server round-trip, don't abort
+        if (!cur || cur.resolving_claim_id !== claimId || cur.payment_status !== MR.resolvingStatus('close_fulfilled')) return;
+        return {
+          ...cur,
+          payment_status: 'confirmed',
+          status: 'completed',
+          blocked_reason: null,
+          closed_from_blocked_reason: cur.blocked_reason || null,       // audit: the reason it was parked under
+          fulfilled_offline_at: now,
+          resolved_by: actor,
+          resolution: 'offline_fulfilled',
+          resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null,
+        };
+      });
+      if (!closeTx.committed) {
+        const cur = closeTx.snapshot.val() || {};
+        return { status: 409, body: { error: 'No se pudo cerrar (el estado cambió)', payment_status: cur.payment_status } };
+      }
+      // Delivered → the sale STANDS → consume any redemption (same disposition as a materialize-to-sale; no-op if none).
+      await reverseRedemptionForOrder(db, { orderId, order, disposition: 'sale', now });
+      await audit('closed_fulfilled_offline', { note: sanitizeText(note || '', 200), kept_payment: true, from_blocked_reason: order.blocked_reason || null });
+      return { status: 200, body: { ok: true, outcome: 'closed_fulfilled_offline' } };
     }
 
     if (action === 'materialize') {
