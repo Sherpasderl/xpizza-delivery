@@ -34,6 +34,42 @@ const KNOWN_RED = {
      went green, and this run failed as a STALE EXCUSE until the entry was removed — the mechanism
      proving itself on a real merge instead of on a test of itself. Anything added here needs a
      reason and a place to look; an entry whose suite passes fails the gate by design. */
+
+  /* 🔴 AND `test:identity-registry` MUST NOT BE ADDED HERE — which is worth saying precisely because
+     it is the suite you have most likely just been annoyed by. It fails INTERMITTENTLY at ~10% with
+     `3 INVALID_ARGUMENT: Transaction is invalid or closed`: 7 signature failures in 90 runs across
+     three commits (2026-09-26), and it PRE-DATES the E-2d fence — it reproduces at `793a67a^`, so it
+     is not a regression of the D4-P1a slice.
+
+     THE STALE-EXCUSE RULE INVERTS FOR AN INTERMITTENT FAULT, and that is the whole reason for this
+     note. An entry here fails the run when its suite PASSES (`classify`, :54; header, :17). For a
+     DETERMINISTIC known-red suite that is exactly right — it is what stopped `test:resolve-manual`
+     from outliving its fix. For this one it is exactly backwards: it would fail the gate on the nine
+     runs in ten where the suite is GREEN and excuse it on the tenth where it is not. And since the
+     allowlist keys on SUITE NAME, the entry would also excuse any genuine regression anywhere in
+     identity-registry — i.e. tolerating the fault, with paperwork.
+
+     WHAT IT IS: under the suite's deliberate 6-way contention, a server-STREAMING read is re-issued on
+     a timer onto a transaction that has already closed (retry-request → makeServerStreamRequest), and
+     INVALID_ARGUMENT is not in the retryable set, so it escapes runTransaction's contention-retry loop
+     instead of being retried as the ABORTED it stands in for. WHICH read is not established: both
+     `tx.get(query)` and `tx.get(docRef)` go out as server streams, so the frames do not separate
+     identity-registry.js:450 from :157/:200.
+
+     WHY IT IS DOCUMENTED RATHER THAN FIXED: production's worst shape is 2 contenders, not 6 — both
+     callers walk keys with a plain `for…of` + await (identity-backfill.js:84, :112), so one publish
+     never races itself — and catalog-publish.js:1469 buckets this as `identity_preserve_failed`,
+     warns, and THE PUBLISH STILL SUCCEEDS. Bounded, loud, already handled.
+
+     RE-OPEN AND INSTRUMENT WHICH READ IT IS on any one of: the signature appears in PRODUCTION logs
+     (it would arrive as `identity_preserve_failed`); the rate rises materially above ~10%; or it fires
+     in a suite that is NOT a deliberate contention test — that last would mean the precondition is
+     wrong for a second time and the fault is not about contention at all.
+
+     🔴 AND RE-RUNNING IN ISOLATION DOES NOT DODGE IT. The long-standing "only ever fails after another
+     emulator suite" precondition was FALSE: it rested on 8 clean isolation runs, which at a 10% rate
+     happen 43% of the time. Four rounds of work ran on that. A clean re-run is not evidence the tree
+     is good; it is one sample at ~90%. */
 };
 
 /* 🔴 THE VERDICT IS A PURE FUNCTION so it can be tested without a forty-minute run. The three

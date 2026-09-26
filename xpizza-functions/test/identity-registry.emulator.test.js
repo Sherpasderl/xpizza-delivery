@@ -70,10 +70,25 @@ const rowsFor = async (rid, kind, legacyKey) => ({
   ]) {
     const { db: counting, attempts } = countingDb();
 
-    /* All contenders are STARTED before any is awaited — built synchronously into the array, then
-       handed to Promise.all — so they are genuinely in flight together rather than a sequence wearing
-       concurrency's clothes. This is the seed racing itself: two deploys, or a seed and a publish,
-       reaching the same object at the same moment. */
+    /* 🔴 THE CONTENDERS OVERLAP, BUT THEY ARE NOT ALL STARTED BEFORE THE FIRST AWAIT — and the
+       correction matters more than the fact. This comment used to read "all contenders are STARTED
+       before any is awaited — built synchronously into the array"; that stopped being true when E-2d
+       (793a67a) added `captured: await getActivePointer(...)` INSIDE the loop below, because the loop
+       now suspends on a pointer round-trip at every iteration. Nothing caught it: the comment was made
+       false BY A FIX, which is the case no test covers.
+       WHAT IS STILL TRUE, and what the cell rests on: each ensureIdentity STARTS when its iteration
+       runs and keeps running across the next iteration's await, so by Promise.all they are genuinely
+       in flight together — staggered by one pointer read rather than simultaneous. This is the seed
+       racing itself: two deploys, or a seed and a publish, reaching the same object at once.
+       🔴 AND DO NOT TAKE THAT ON THIS COMMENT'S WORD. The `attempts() > contenders` assertion below is
+       what proves the engine actually contended; it is the reason a staggered start is still a race and
+       not a sequence wearing concurrency's clothes. Read that assertion, not this paragraph.
+       NOTE the sibling cell at the bottom of this file hoists its capture out of the loop
+       (`const cap = await getActivePointer(...)`), so the two cells start their contenders differently.
+       Hoisting here would restore simultaneity and make them consistent — deliberately NOT done
+       unilaterally, because tightening the start window changes how hard this cell contends, and this
+       suite already fails ~10% under contention (see tools/gate-all.js's KNOWN_RED block). That is a
+       change to make with a before/after rate, not as a tidy-up. */
     const inFlight = [];
     for (let i = 0; i < contenders; i += 1) inFlight.push(ensureIdentity(counting, { rid, kind, legacyKey , captured: await getActivePointer(counting, rid) }));
     const results = await Promise.all(inFlight);
