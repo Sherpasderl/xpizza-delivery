@@ -1,16 +1,16 @@
-# Proactive "preparing" WhatsApp — Implementation Plan (Fix A) · REV 1 (post codex plan gate)
+# Proactive "preparing" WhatsApp — Implementation Plan (Fix A) · REV 2 (post codex + advisor stale-tree catch)
 
-> **For the executor:** build task-by-task, LOCAL-ONLY. **Base (code) = `origin/main` @ `bcf5ff0`** (this branch's tip `4046eea`/REV-1 adds only docs — code == `bcf5ff0`). Each task ends green + a commit. Advisor re-gates this REV-1 plan, then gates the built diff. Spec: `docs/superpowers/specs/2026-09-26-preparing-whatsapp-notification-design.md`.
+> **For the executor:** build task-by-task, LOCAL-ONLY, **in the `bcf5ff0` build worktree `~/Downloads/xpizza-preparing`** — NOT `/Users/xavierlacayo/xpizza-lamusa` (that's the factura branch @ `0830a6a`, ~600 lines stale; verifying/building there was the REV-1 error). **Base (code) = `bcf5ff0`.** Each task ends green + a commit. Advisor re-gates REV-2, then gates the built diff. Spec: `docs/superpowers/specs/2026-09-26-preparing-whatsapp-notification-design.md`.
 
 **Goal:** one WhatsApp on the `preparing` transition ("preparando — estará listo en ~X min"), both brands, both order types — closing the silent prep window. New trigger; the money sender stays byte-unchanged.
 
 ## Global constraints
-- **`sendOrderStatusNotifications` (index.js:3404) BYTE-UNCHANGED** vs `bcf5ff0` (diff-prove).
-- **Marker `db.ref('preparing_notifications/' + orderId)`** — interpolated, top-level, NOT under `/orders` (can't re-fire the SIX order-node watchers: materialize/facturaAlloc/displayNumber/facturaVoid/staffNotify/autoAssign).
+- **`sendOrderStatusNotifications` (index.js:4090) BYTE-UNCHANGED** vs `bcf5ff0` (diff-prove).
+- **Marker `db.ref('preparing_notifications/' + orderId)`** — interpolated, top-level, NOT under `/orders` (can't re-fire the SIX order-node watchers: materialize 2634 / facturaAlloc 2673 / displayNumber 2740 / facturaVoid 2864 / staffNotify 3257 / autoAssign 5264).
 - **Never throws** — wrap init/template/config-read; only writes are marker-only.
 - **Brand-agnostic ETA:** `restaurants/<rid>/prep_eta_min`; single neutral fallback `25`; NO per-brand literal (test asserts absence). Both brands parity.
-- **Confirm on `result && result.id`** (real provider msg id), stricter than pickup's `result != null`.
-- **Stale-status guard:** suppress if the loaded order's *current* `status !== 'preparing'`.
+- **Confirm sends via `whatsapp.isSendConfirmed(result)`** (whatsapp.js:161, exported :338) — the tested helper (accepts `sent:true`/`"true"` OR a real `id`, rejects error-body/bare-`{}`). NOT `result != null` (pickup's lax bar, index.js:4468), NOT a hand-rolled `result && result.id` (false-negatives a legit `sent:true`).
+- **Stale-status guard:** suppress if the loaded order's *current* `status !== 'preparing'` (silent-terminal writers exist, e.g. `close_fulfilled`→`completed`, resolve-manual.js:159→222).
 
 ---
 
@@ -41,12 +41,12 @@
   - await `send_started_at` set; throw → return (no send).
   - **ETA (caught read):** `try { v = (await db.ref('restaurants/'+rid+'/prep_eta_min').once('value')).val(); } catch { v = null; }` → `eta = resolvePrepEtaMin(v)`.
   - `body = tplPreparing({ customerName, etaMinutes: eta, orderType: order.order_type, trackingToken: order.tracking_token, restaurantId: rid })` (wrapped).
-  - send; `result && result.id` → `sent_at`; else `send_unresolved_at`. Never rethrow. Wrap init/template/unexpected so the handler always resolves.
+  - send; `whatsapp.isSendConfirmed(result)` → `sent_at`; else `send_unresolved_at`. Never rethrow. Wrap init/template/unexpected so the handler always resolves.
 - **Step 2:** `node --check index.js`; **diff-prove `sendOrderStatusNotifications` byte-unchanged** vs `bcf5ff0`.
 - **Step 3 (real tests, codex pt 6):** `test/preparing-ready.emulator.test.js` modeled on `test/pickup-ready.emulator.test.js`:
   - two concurrent/redelivered `→preparing` events → exactly one `result.id`-confirmed send + distinct per-order markers;
   - each failure exit (missing order, no phone, unsupported rid, disabled, claim lost, `send_started_at` fail, **ETA-read rejection → fallback 25**, **stale-status → suppressed**);
-  - provider `{}` / `null` / thrown → `send_unresolved_at`, never `sent_at`;
+  - provider classification via `isSendConfirmed`: `{}` / `null` / thrown / `{error}` → `send_unresolved_at`; `{sent:true}` and `{id}` → `sent_at`;
   - **zero `/orders` writes** (only `/preparing_notifications/<id>` touched).
 - **Step 4:** commit — `feat(functions): notifyPreparing trigger (stale-status guard, id-confirmed, fail-open)`.
 
@@ -64,8 +64,8 @@
 ## Handback DoD
 - Branch@SHA off `bcf5ff0`; `sendOrderStatusNotifications` byte-unchanged (diff-proven); new trigger + template + pure resolver only.
 - Emulator handler tests green (concurrency/failure/stale-status/zero-/orders-writes); pure goldens both brands; config-driven (no per-brand literal — asserted); full suite EXIT 0.
-- Confirm on `result && result.id`; stale-status guard; fail-open/never-throws; marker isolated in `/preparing_notifications/`.
+- Confirm sends via `isSendConfirmed(result)`; stale-status guard; fail-open/never-throws; marker isolated in `/preparing_notifications/`.
 - Deploy = `firebase deploy --only functions:notifyPreparing` + seed `prep_eta_min` both brands + smoke: real `new→preparing` (Empezar) → one "preparando ~X min"; verify money sender's messages (recibido/va en camino/entregado) unchanged; verify a delayed/stale `preparing` on an already-advanced order does NOT send.
 
 ## Codex re-gate framing (advisor)
-*Re-verify REV-1: stale-status guard closes the late-event mis-send; ETA read is caught (never-throws holds incl. template/init/config); `result && result.id` confirmation (not `!= null`); marker interpolated + isolated from the SIX order-node watchers; `sendOrderStatusNotifications` byte-unchanged; emulator tests actually exercise concurrency/failure/zero-/orders-writes; brand-agnostic + both brands.*
+*Re-verify REV-2 (anchors now from `bcf5ff0`, not the stale factura tree): stale-status guard closes the late-event mis-send; ETA read is caught (never-throws holds incl. template/init/config); confirmation via `isSendConfirmed(result)` (not `!= null`, not hand-rolled id); marker interpolated + isolated from the SIX order-node watchers; `sendOrderStatusNotifications` (index.js:4090) byte-unchanged; emulator tests exercise concurrency/failure/zero-/orders-writes; brand-agnostic + both brands.*
