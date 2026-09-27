@@ -333,6 +333,36 @@ function tplPickupReady({ customerName, trackingToken, restaurantId }) {
   return lines.join('\n');
 }
 
+// Prep-time ETA (Fix A): a per-merchant CONFIG value (restaurants/<rid>/prep_eta_min) → minutes.
+// PURE + brand-blind — takes ONLY the config value: a finite positive number is used as-is, anything else
+// (absent / NaN / <=0 / non-number) falls back to a single neutral default. The per-brand numbers live in
+// config (seeded 20 / 30), NEVER in code (brand-agnostic tenet). The DB read is caught by the caller
+// (notifyPreparing) — a rejected read yields undefined here → the fallback.
+const DEFAULT_PREP_ETA_MIN = 25;
+function resolvePrepEtaMin(value) {
+  return (typeof value === 'number' && Number.isFinite(value) && value > 0) ? value : DEFAULT_PREP_ETA_MIN;
+}
+
+// Proactive "preparando" message (Fix A). Sent by notifyPreparing on the `preparing` transition (kitchen
+// "Empezar"), AT MOST ONCE per order. READINESS wording only — a prep-stage ETA cannot promise dispatch, so
+// delivery points to the later "va en camino" instead of an arrival/departure time. Tracking link included
+// when a token is present, OMITTED otherwise (never build a URL from an absent token) — like tplPickupReady.
+function tplPreparing({ customerName, etaMinutes, orderType, trackingToken, restaurantId }) {
+  const readiness = orderType === 'pickup'
+    ? `estará listo para recoger en ~${etaMinutes} min.`
+    : `estará listo en ~${etaMinutes} min. Te avisamos apenas salga en camino.`;
+  const lines = [
+    `👨‍🍳 ¡Manos a la obra!`,
+    ``,
+    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Estamos preparando tu pedido en ${brandFor(restaurantId)} — ${readiness}`
+  ];
+  if (trackingToken) {
+    lines.push(``, `Sigue tu pedido:`, trackingUrl(trackingToken, restaurantId));
+  }
+  lines.push(``, `¡Gracias por preferirnos!`);
+  return lines.join('\n');
+}
+
 module.exports = {
   sendMessage,
   isSendConfirmed,
@@ -351,5 +381,7 @@ module.exports = {
   tplDelivered,
   tplCancelled,
   tplPickupReady,
+  tplPreparing,
+  resolvePrepEtaMin,
   TRACKING_BASE
 };
