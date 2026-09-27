@@ -30,31 +30,44 @@
 /* Module-private. Not exported, not reachable, and that is the whole mechanism. */
 const ISSUED = new WeakSet();
 
-/* 🔴 FREEZE DEEPLY ENOUGH THAT THE ARRAYS CANNOT BE PUSHED TO. `Object.freeze(plan)` alone leaves
-   `plan.mints.push(...)` working, which is exactly hole 2 — the plan object was never the thing being
-   mutated, its arrays were. Entries are frozen too: a caller holding one could otherwise repoint an id
-   after the verdict was issued. */
-function deepFreezePlan(plan) {
-  for (const kind of ['moves', 'mints', 'retires', 'restores']) {
-    const rows = plan[kind];
-    if (!Array.isArray(rows)) continue;
-    for (const row of rows) if (row && typeof row === 'object') Object.freeze(row);
-    Object.freeze(rows);
+/* 🔴 ONE SURFACE, SNAPSHOTTED WHOLE — NOT A LIST OF FIELDS TO REMEMBER. The first version of this file
+   snapshotted `plan` and froze the issued object SHALLOWLY, so `verdict.deletions` came through the
+   spread BY REFERENCE and stayed mutable: a caller pushed one entry onto a genuine empty plan's verdict
+   and the writer DELETED AN UNRELATED KEY ROW — the operation with no cheap recovery, on an
+   authorisation nothing judged.
+   Adding `deletions` to the snapshot would have fixed that hole and left the shape that produced it:
+   a writer that executes fields of a verdict, an issuer that snapshots SOME of them, and a fifth field
+   one day that passes every cell. So nothing is enumerated here. The ENTIRE verdict is deep-copied and
+   deep-frozen, which removes the category "executable field outside the snapshot" instead of listing
+   its members. The cell derives what to check FROM THE WRITER'S OWN SOURCE for the same reason — a
+   hand-kept list is what let the CLI refusal census sit at 8 while 10 tools connected.
+
+   🔴 AND AN UNEXPECTED TYPE REFUSES RATHER THAN PASSING THROUGH. A Map, Set, Date, class instance or
+   function cannot be copied by this and would otherwise be shared by reference — the exact hole again,
+   wearing a type nobody thought about. A verdict is plain data; anything else is a mistake worth a
+   loud one. */
+function deepSnapshot(value, path) {
+  if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string' || typeof value === 'undefined') {
+    return value;
   }
-  return Object.freeze(plan);
+  if (Array.isArray(value)) return Object.freeze(value.map((v, i) => deepSnapshot(v, `${path}[${i}]`)));
+  if (typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)) {
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = deepSnapshot(value[k], `${path}.${k}`);
+    return Object.freeze(out);
+  }
+  throw new Error(`identity_verdict_unsnapshottable: ${path} is a ${Object.prototype.toString.call(value)}, which cannot be copied here and would be shared with the caller by reference — a verdict must be plain data`);
 }
 
-/* A FROZEN COPY, NOT THE CALLER'S OBJECT. Freezing the plan in place would make the verifier mutate
-   what it was asked to judge — identity-plan.test.js asserts it does not, and that assertion is worth
-   more than saving a shallow copy. Copying also gives the stronger property: the verdict's plan is
-   immune to anything done to the original afterwards, which is what hole 2 actually requires. */
-function snapshotPlan(plan) {
+/* The plan's kind arrays are NORMALISED before snapshotting so every issued verdict has the three the
+   writer reads, whatever the issuer passed. The freezing is deepSnapshot's job, not this one's. */
+function normalisePlan(plan) {
   const out = {};
   for (const kind of ['moves', 'mints', 'retires', 'restores']) {
-    if (Array.isArray(plan && plan[kind])) out[kind] = plan[kind].map((r) => (r && typeof r === 'object' ? { ...r } : r));
+    if (Array.isArray(plan && plan[kind])) out[kind] = plan[kind];
   }
   for (const kind of ['moves', 'mints', 'retires']) if (!out[kind]) out[kind] = [];
-  return deepFreezePlan(out);
+  return out;
 }
 
 /* `judged` — WHICH OPERATION KINDS THIS VERDICT ACTUALLY LOOKED AT. Hole 3 is not that verifyPlan is
@@ -64,11 +77,10 @@ function snapshotPlan(plan) {
 const JUDGED_BY_VERIFY_PLAN = Object.freeze(['moves', 'mints', 'retires']);
 const JUDGED_BY_RECONCILE = Object.freeze(['retires', 'restores']);
 
-/* Issue a verdict: snapshot+freeze its plan, record the object, hand it back. The caller must use the
-   RETURNED object — the one that is registered. */
+/* Issue a verdict: deep-copy and deep-freeze the WHOLE thing, record the object, hand it back. The
+   caller must use the RETURNED object — the one that is registered and detached. */
 function issueVerdict(verdict, { plan, judged }) {
-  const issued = { ...verdict, plan: snapshotPlan(plan), judged: Object.freeze([...judged]) };
-  Object.freeze(issued);
+  const issued = deepSnapshot({ ...verdict, plan: normalisePlan(plan), judged: [...judged] }, 'verdict');
   ISSUED.add(issued);
   return issued;
 }

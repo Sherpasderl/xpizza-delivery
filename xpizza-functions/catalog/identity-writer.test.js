@@ -16,6 +16,8 @@ const assert = require('assert');
 const { memFirestore } = require('./identity-fixture');
 const { derivePlan } = require('./identity-derive');
 const { verifyPlan } = require('./identity-plan');
+const { readFileSync } = require('fs');
+const { join } = require('path');
 const { applyIdentityPlan } = require('./identity-writer');
 /* 🔴 THE TEST USES THE SANCTIONED ISSUER RATHER THAN FORGING. Provenance means a hand-built object is
    refused before any other guard can be reached, so the cells that must reach a LATER guard build their
@@ -408,6 +410,99 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     assert.strictEqual(db2._docs.get(`${P2}/ids/X`).status, STATUS_LIVE,
       '🔴 the kind check refuses restores even under the verdict that judges them — the rollback path is broken');
     ok('a restore under verifyPlan\'s verdict is refused by name because that verifier never judged restores, while the same restore under the reconciliation\'s verdict is written');
+  }
+
+  // ── 13. 🔴 THE VERDICT'S EXECUTABLE SURFACE, ENUMERATED FROM THE WRITER ITSELF ───────────────
+  {
+    /* THE FOURTH HOLE AND WHY THIS CELL IS SHAPED LIKE THIS. `issueVerdict` snapshotted `plan` and froze
+       the issued object SHALLOWLY, so `verdict.deletions` came through the spread BY REFERENCE. A caller
+       took a genuine verdict for an EMPTY plan, pushed one entry onto `deletions`, and the writer DELETED
+       AN UNRELATED KEY ROW — the operation with no cheap recovery, authorised by nothing.
+       Both of us missed it the same way: the fix said "freeze the plan", so the checking looked at
+       `plan`. A surface verified from the FIX'S DESCRIPTION is not verified. So this cell does not check
+       a list of names — it PARSES THE WRITER and derives every field of the verdict the writer actually
+       consumes, which is why a fifth executable field fails here until it is snapshotted. Same reason
+       the CLI refusal census is derived rather than typed: a hand-kept list sat at 8 while 10 tools
+       connected. Structure, not text: acorn, not a regex. */
+    const acorn = require('acorn');
+    const src = readFileSync(join(__dirname, 'identity-writer.js'), 'utf8');
+    const ast = acorn.parse(src, { ecmaVersion: 2022, sourceType: 'script' });
+
+    /* Every `verified.X`, and every `plan.Y` — `plan` is the local alias the writer assigns from
+       `verified.plan`, so its members are part of the same surface. */
+    const onVerified = new Set();
+    const onPlan = new Set();
+    (function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      /* 🔴 `computed === false` MATTERS, and leaving it out gave me a phantom field. `plan[kind]` is a
+         computed MemberExpression whose property is ALSO an Identifier, so without this check the loop
+         VARIABLE's name was recorded as if it were a field — the set came back containing `plan.kind`,
+         which does not exist. Harmless there because the value is undefined and skipped, but an
+         enumeration that invents members is one that can also miss them, and this cell's whole purpose
+         is that the list is not guesswork. The dynamic `plan[kind]` access is covered because the write
+         loops read plan.moves/mints/retires/restores literally as well. */
+      if (node.type === 'MemberExpression' && node.computed === false && node.object && node.object.type === 'Identifier'
+          && node.property && node.property.type === 'Identifier') {
+        if (node.object.name === 'verified') onVerified.add(node.property.name);
+        if (node.object.name === 'plan') onPlan.add(node.property.name);
+      }
+      for (const k of Object.keys(node)) {
+        const v = node[k];
+        if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object' && v.type) walk(v);
+      }
+    }(ast));
+
+    /* 🔴 NON-VACUITY FIRST. A parse that found nothing would make every assertion below pass while
+       measuring nothing — the exact shape this programme keeps catching. */
+    assert.ok(onVerified.size >= 3, `🔴 the parse found only ${onVerified.size} field(s) on \`verified\` — it is not reading the writer`);
+    assert.ok(onVerified.has('deletions'), '🔴 the parse missed `verified.deletions`, which is the field the fourth hole was in');
+    assert.ok(onPlan.size >= 3, `🔴 the parse found only ${onPlan.size} field(s) on \`plan\``);
+    for (const kind of ['moves', 'mints', 'retires', 'restores']) {
+      assert.ok(onPlan.has(kind), `🔴 the parse missed \`plan.${kind}\` — the writer executes it, so the surface is under-enumerated`);
+    }
+
+    /* A genuine verdict whose every array is NON-EMPTY, so freezing is tested on populated arrays —
+       `Object.isFrozen([])` is true of an empty literal for reasons that prove nothing. */
+    const source = {
+      ok: true, code: 'plan_verified', detail: '',
+      lands: [{ id: 'A', name: 'N', via: 'mint' }], releases: [{ id: 'B', name: 'M' }],
+      deletions: [{ name: 'M', encoded: encodeKey('M'), id: 'B' }],
+    };
+    const srcPlan = { moves: [{ id: 'A', from: 'N0', to: 'N' }], mints: [{ id: 'C', name: 'P' }],
+      retires: [{ id: 'D', name: 'Q' }], restores: [{ id: 'E', name: 'R' }] };
+    const v = issueVerdict(source, { plan: srcPlan, judged: ['moves', 'mints', 'retires', 'restores'] });
+
+    for (const field of onVerified) {
+      const val = v[field];
+      if (val === null || typeof val !== 'object') continue;         // ok / code are primitives
+      assert.ok(Object.isFrozen(val),
+        `🔴 \`verified.${field}\` IS NOT FROZEN — the writer consumes it, so a caller can still change what gets executed after the verdict was issued`);
+      if (Array.isArray(val)) {
+        assert.throws(() => val.push({}), /not extensible|read only|frozen/i,
+          `🔴 \`verified.${field}\` can still be PUSHED TO — this is exactly how an unjudged key deletion reached the writer`);
+      }
+    }
+    for (const field of onPlan) {
+      const val = v.plan[field];
+      if (val === null || typeof val !== 'object') continue;
+      assert.ok(Object.isFrozen(val), `🔴 \`verified.plan.${field}\` is not frozen`);
+      if (Array.isArray(val)) assert.throws(() => val.push({}), /not extensible|read only|frozen/i, `🔴 \`verified.plan.${field}\` can still be pushed to`);
+    }
+
+    /* 🔴 AND DETACHED, NOT MERELY FROZEN. A frozen view of the caller's array would still change under
+       them; the issued verdict must be immune to anything done to what it was built from. */
+    source.deletions.push({ name: 'Z', encoded: encodeKey('Z'), id: 'ZZ' });
+    srcPlan.mints.push({ id: 'ZZZ', name: 'Later' });
+    assert.strictEqual(v.deletions.length, 1, '🔴 pushing onto the SOURCE deletions changed the issued verdict — it holds the caller\'s array, not a copy');
+    assert.strictEqual(v.plan.mints.length, 1, '🔴 pushing onto the SOURCE plan changed the issued verdict');
+    source.deletions.pop(); srcPlan.mints.pop();
+
+    /* 🔴 AND AN UNSNAPSHOTTABLE TYPE REFUSES rather than being shared by reference — a Map or a class
+       instance on a verdict would reintroduce the hole wearing a type nobody enumerated. */
+    assert.throws(() => issueVerdict({ ok: true, deletions: [], weird: new Map() }, { plan: srcPlan, judged: ['mints'] }),
+      /identity_verdict_unsnapshottable/, '🔴 a non-plain value was accepted onto a verdict and would be shared with the caller');
+
+    ok(`every field of the verdict the writer consumes (${[...onVerified].sort().join(', ')} · plan.{${[...onPlan].sort().join(', ')}}) is frozen and detached — derived from the writer's own source, so a new executable field fails here until it is snapshotted`);
   }
 
   FINISHED = true;

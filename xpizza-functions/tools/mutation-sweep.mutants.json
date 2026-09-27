@@ -9350,10 +9350,10 @@
     "id": "e16-01",
     "slice": "e16",
     "file": "catalog/identity-verdict.js",
-    "from": "  return deepFreezePlan(out);",
-    "to": "  return plan;",
-    "label": "the verdict carries the CALLER'S plan object again, so mutating it after verification changes what gets written",
-    "kills_with": "A PLAN MUTATED AFTER VERIFICATION WAS WRITTEN",
+    "from": "  const issued = deepSnapshot({ ...verdict, plan: normalisePlan(plan), judged: [...judged] }, 'verdict');",
+    "to": "  const issued = Object.freeze({ ...verdict, plan: deepSnapshot(normalisePlan(plan), 'plan'), judged: Object.freeze([...judged]) });",
+    "label": "🔴 THE FOURTH HOLE RESTORED: only the plan is snapshotted and the issued object is frozen SHALLOWLY, so verdict.deletions comes through by reference and a pushed entry deletes an unrelated key row",
+    "kills_with": "`verified.deletions` IS NOT FROZEN",
     "command": [
       "node",
       "catalog/identity-writer.test.js"
@@ -9363,10 +9363,13 @@
     "id": "e16-02",
     "slice": "e16",
     "file": "catalog/identity-verdict.js",
-    "from": "    Object.freeze(rows);",
-    "to": "    void rows;",
-    "label": "the plan object is frozen but its ARRAYS are not — plan.mints.push still works, which is the same hole one level in",
-    "kills_with": "not frozen",
+    "from": "  if (Array.isArray(value)) return Object.freeze(value.map((v, i) => deepSnapshot(v, `${path}[${i}]`)));",
+    "to": "  if (Array.isArray(value)) return value.map((v, i) => deepSnapshot(v, `${path}[${i}]`));",
+    "label": "arrays are copied but NOT frozen — detached from the caller yet still mutable in place, so the verdict can be edited after it is issued",
+    "kills_with": [
+      "are not frozen",
+      "can still be PUSHED TO"
+    ],
     "command": [
       "node",
       "catalog/identity-writer.test.js"
@@ -9380,6 +9383,19 @@
     "to": "  return !!verdict && typeof verdict === 'object';",
     "label": "any object-shaped verdict counts as issued — the WeakSet becomes decoration and provenance is back to a shape check",
     "kills_with": "THE OLD ROLLBACK LITERAL WAS ACCEPTED",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e16-04",
+    "slice": "e16",
+    "file": "catalog/identity-verdict.js",
+    "from": "  throw new Error(`identity_verdict_unsnapshottable: ${path} is a ${Object.prototype.toString.call(value)}, which cannot be copied here and would be shared with the caller by reference — a verdict must be plain data`);",
+    "to": "  return value;",
+    "label": "a Map, class instance or function on a verdict passes through BY REFERENCE instead of refusing — the immutability hole wearing a type nobody enumerated",
+    "kills_with": "a non-plain value was accepted onto a verdict",
     "command": [
       "node",
       "catalog/identity-writer.test.js"

@@ -57,13 +57,18 @@ function applyIdentityPlan(tx, { db, rid, kind, verified, existing, now } = {}) 
     throw new Error('identity_writer_verdict_not_issued: this verdict was not issued by verifyPlan or reconcileOnRollback — a correctly-shaped object is not a verification');
   }
   /* 🔴 KEPT, AND UNREACHABLE FROM OUTSIDE TODAY — the premise written down rather than the branch left
-     to look guarded. `issueVerdict` is the only way into the WeakSet above, and `snapshotPlan` ALWAYS
+     to look guarded. `issueVerdict` is the only way into the WeakSet above, and `normalisePlan` ALWAYS
      yields moves/mints/retires arrays, so no issued verdict can lack them and an unissued one is refused
      one line up. A mutation-sweep mutant for this branch therefore SURVIVES by construction, and the
      mutant was REMOVED rather than left failing or given a cell that cannot exist.
-     It stays because it is the second line if a future third issuer builds verdicts differently, and
-     because the arming run showed it catching the no-plan literal the moment provenance was taken out.
-     If `snapshotPlan`'s guarantee ever changes, this is the branch that needs a cell again. */
+     It stays because it is the second line if a future issuer builds verdicts differently, and because
+     the arming run showed it catching the no-plan literal the moment provenance was taken out.
+     🔴 THE EXPIRY CONDITION, sharpened by the gate and worth stating precisely: A THIRD CALLER ALONE
+     CANNOT INVALIDATE THE PREMISE. Every caller must go through `issueVerdict` to be accepted at all, so
+     adding one changes nothing here. What would is a change to THE ISSUER OR TO `normalisePlan`'s
+     guarantee that the three kind arrays always exist. That is the edit which should bring a cell back —
+     not the arrival of another call site, which is what I first wrote and which would have expired this
+     branch for the wrong reason. */
   const plan = verified.plan;
   if (!plan || typeof plan !== 'object' || !Array.isArray(plan.moves) || !Array.isArray(plan.mints) || !Array.isArray(plan.retires)) {
     throw new Error('identity_writer_verdict_carries_no_plan: the verdict must carry the plan it judged — a verdict without one cannot be bound to what is about to be written');
