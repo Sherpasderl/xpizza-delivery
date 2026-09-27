@@ -4728,11 +4728,21 @@ function settleReconNote(value) {
   done(value);
 }
 function reconNotePrompt(action, orderId) {
+  // close_fulfilled is the only FISCAL-facing recon action: closing a delivered platform-factura order (X. Pizza)
+  // EMITS a real SAR factura for the sale (server-side, decided by usesPlatformFactura — the authority). Warn the
+  // dispatcher so the fiscal effect is never a surprise. Brand-aware so a La Musa (external POS) dispatcher is NOT
+  // told a factura will be emitted when none is: mirrors the panel's existing x_pizza-vs-la_musa split
+  // ((restaurant_id || 'x_pizza') !== 'la_musa'); fail-open display only — the server enforces the real behavior.
+  // Revisit this client-side split when a 3rd brand lands (see the brand-agnostic/config-ize initiative).
+  const reconOrder = reconciliationOrders[orderId] || Object.values(reconciliationOrders || {}).find(o => o && o.order_id === orderId);
+  const emitsFactura = (((reconOrder && reconOrder.restaurant_id) || 'x_pizza') !== 'la_musa');
+  const closeWarn = 'Solo si el pedido ya se entregó y el COBRO es correcto. Conserva el pago y cierra el pedido sin despacharlo.'
+    + (emitsFactura ? ' Se emitirá la factura SAR de este pedido.' : '');
   const prompts = {
     materialize: ['Materializar', 'Solo si verificaste el COBRO en PixelPay. Confirma y materializa el pedido.'],
     refund:      ['Reembolsar', 'Anula/reembolsa el cargo en PixelPay y cierra el pedido.'],
     abandon:     ['Descartar', 'Solo si NO hay cargo en PixelPay. Cierra el pedido como descartado.'],
-    close_fulfilled: ['Cerrar como entregado', 'Solo si el pedido ya se entregó y el COBRO es correcto. Conserva el pago y cierra el pedido sin despacharlo.']
+    close_fulfilled: ['Cerrar como entregado', closeWarn]
   };
   const [label, warn] = prompts[action] || ['Resolver', ''];
   const noteRequired = action === 'abandon';

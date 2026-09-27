@@ -21,8 +21,15 @@ assert.match(html, /const RECON_SUCCESS_OUTCOMES = new Set\(\[[^\]]*'closed_fulf
 ok('closed_fulfilled_offline ∈ RECON_SUCCESS_OUTCOMES (panel clears on success)');
 
 // The confirm dialog has keep-payment copy for this action (dispatcher must know it KEEPS the money).
-assert.match(html, /close_fulfilled: \['Cerrar como entregado', 'Solo si el pedido ya se entregó[^']*Conserva el pago[^']*'\]/, 'reconNotePrompt has close_fulfilled confirm copy ("ya se entregó" + "Conserva el pago")');
+assert.match(html, /const closeWarn = 'Solo si el pedido ya se entregó[^']*Conserva el pago[^']*'/, 'reconNotePrompt keep-payment copy ("ya se entregó" + "Conserva el pago")');
+assert.match(html, /close_fulfilled: \['Cerrar como entregado', closeWarn\]/, 'close_fulfilled uses the computed (brand-aware) warn');
 ok('confirm dialog copy: "solo si ya se entregó y el cobro es correcto — conserva el pago"');
+
+// SPLIT 2 fiscal warning: a platform-factura (X. Pizza) close EMITS a real SAR factura → the dialog must SAY so,
+// and it must be brand-conditional so a La Musa (external POS) dispatcher is NOT told a factura will be emitted.
+assert.match(html, /const emitsFactura = \(\(\(reconOrder && reconOrder\.restaurant_id\) \|\| 'x_pizza'\) !== 'la_musa'\)/, 'emitsFactura mirrors the server split (missing/x_pizza → factura; la_musa → none)');
+assert.match(html, /emitsFactura \? ' Se emitirá la factura SAR de este pedido\.' : ''/, 'the SAR-factura warning is appended ONLY for a platform-factura (non-la_musa) order');
+ok('SPLIT 2: brand-aware SAR-factura warning (X. Pizza says "se emitirá la factura SAR"; La Musa does not)');
 
 // The resolve dispatch is the SAME audited path the other actions use (no bespoke money call in the panel).
 assert.match(html, /resolveReconciliationAction\(btn\.dataset\.reconOid, btn\.dataset\.reconAction\)/, 'close_fulfilled routes through the shared resolveReconciliationAction (XPD.resolveReconciliation)');
