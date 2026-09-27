@@ -129,6 +129,13 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
      the same reason: `['X','X']` is not a set, and a claim whose length disagrees with its content makes
      every count downstream a guess.
      Refused as 400 rather than coerced or dropped: a merchant's deletion list is not something to guess at. */
+  /* 🔴 `deleted_ids: {}` IS MALFORMED, NOT ABSENT. An OBJECT that carries no `ids` is a claim the server
+     cannot read; only an omitted key or an explicit null means "I am not talking about deletions". It used
+     to fall through as `undefined` ids and CLEAR the merchant's standing claim with a 200. */
+  if (declared && declaredIds === undefined) {
+    return reply(400, { error: 'deleted_ids_malformed',
+      detail: 'deleted_ids was sent as an object with no `ids` — omit the key entirely to say nothing about deletions; an object that carries no ids is unreadable, not empty' });
+  }
   if (declaredIds !== undefined && declaredIds !== null && !Array.isArray(declaredIds)) {
     return reply(400, { error: 'deleted_ids_malformed', detail: 'deleted_ids.ids must be an array' });
   }
@@ -195,6 +202,15 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
        SAFE: if live moves after the read, the stamp is the older pair the merchant genuinely reviewed
        against, and publish refuses it as stale. The unsafe direction — stamping something NEWER than
        the merchant saw — is what the guard closes. */
+    /* 🔴 WITHDRAWING IS DELIBERATELY NOT "A CHANGE" HERE, AND I ALMOST BROKE THAT. The gate says F2:
+       `{ids: []}` clears a standing claim with no loaded base and a 200. I changed this to "does the
+       declared set DIFFER from the stored one" — and a cell named WITHDRAWING EVERY DELETION IS ALWAYS
+       ALLOWED refused, because withdrawal is the merchant's ESCAPE from a stale claim. Demanding the
+       loaded base to withdraw would trap anyone whose baseline had moved: the same "the optimisation had
+       closed the one door out" failure the echo note above describes, in the other direction.
+       So the test stays "are there ids to bind". What WAS a real defect in the same finding is
+       `deleted_ids: {}` — an object carrying no ids, which is unreadable rather than empty — and that is
+       refused above. Two cases, one finding, and only one of them was a defect. */
     const changesClaim = Array.isArray(declaredIds) ? declaredIds.length > 0 : !!declaredIds;
     if (changesClaim) {
       const loaded = body && body.deleted_ids_loaded_base;

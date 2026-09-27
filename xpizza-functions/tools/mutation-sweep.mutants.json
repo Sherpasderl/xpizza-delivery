@@ -6569,9 +6569,13 @@
       "catalog/edit-catalog.test.js"
     ],
     "label": "🔴 ABSENT is read as EMPTY - an unrelated edit silently withdraws the merchant's deletions",
-    "kills_with": "an ordinary content edit WIPED the standing deletion claim",
+    "kills_with": [
+      "deleted_ids_malformed",
+      "an ordinary content edit WIPED the standing deletion claim"
+    ],
     "from": "  const declared = Object.prototype.hasOwnProperty.call(next, 'deleted_ids') && next.deleted_ids !== null;",
-    "to": "  const declared = true;"
+    "to": "  const declared = true;",
+    "why": "the kill moved EARLIER and LOUDER when C/F2 refused `deleted_ids: {}`: with `declared` forced true, an ordinary edit has undefined ids and is now REFUSED 400 (deleted_ids_malformed) instead of silently wiping the claim. The first cell to notice asserts a bare 'expected 200, got 400', so the id of the kill is the error CODE in the body rather than a sentence — recorded after measuring the mutant by hand, having guessed the message wrong twice."
   },
   {
     "id": "d4p1c-16",
@@ -6693,6 +6697,45 @@
     "to": "    if (false) {",
     "label": "a deletion claim with DUPLICATE ids is accepted, so its length disagrees with its content and every count derived from it downstream is a guess",
     "kills_with": "duplicates was ACCEPTED",
+    "command": [
+      "node",
+      "catalog/edit-catalog.test.js"
+    ]
+  },
+  {
+    "id": "d4p1c-p1",
+    "slice": "d4p1c",
+    "file": "catalog/identity-partition.js",
+    "from": "  const badAt = ids.findIndex((id) => typeof id !== 'string' || !id);",
+    "to": "  const badAt = -1;",
+    "label": "🔴 the deletion claim's MEMBERS are not validated — {ids:[12]} and a NESTED ARRAY both pass, so any direct flip caller relying on this validator gets neither check",
+    "kills_with": "a numeric id: no refusal at all",
+    "command": [
+      "node",
+      "catalog/identity-partition.test.js"
+    ]
+  },
+  {
+    "id": "d4p1c-p2",
+    "slice": "d4p1c",
+    "file": "catalog/identity-partition.js",
+    "from": "  if (new Set(ids).size !== ids.length) {",
+    "to": "  if (false) {",
+    "label": "a deletion claim may name the same id twice, so its length disagrees with its content and every count derived from it is a guess",
+    "kills_with": "a duplicated id: no refusal at all",
+    "command": [
+      "node",
+      "catalog/identity-partition.test.js"
+    ]
+  },
+  {
+    "id": "d4p1c-28",
+    "slice": "d4p1c",
+    "file": "catalog/edit-catalog-handler.js",
+    "from": "  if (declared && declaredIds === undefined) {",
+    "to": "  if (false) {",
+    "label": "🔴 `deleted_ids: {}` CLEARS THE MERCHANT'S STANDING CLAIM with a 200 and no loaded base — an object carrying no ids is unreadable intent, not 'no deletions'",
+    "kills_with": "deleted_ids:{} was ACCEPTED",
     "command": [
       "node",
       "catalog/edit-catalog.test.js"

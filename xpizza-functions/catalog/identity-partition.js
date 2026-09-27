@@ -181,8 +181,32 @@ function validateDeletionClaim(claim, { activeVersionId, activeGeneration } = {}
   if (claim.ids !== undefined && !Array.isArray(claim.ids)) {
     throw new PartitionRefusal('deleted_ids_malformed', 'the deletion claim\'s ids must be an array');
   }
+  /* 🔴 `{ids: undefined}` STAYS "NO DELETION DECLARED", DELIBERATELY — I tried to make it malformed and a
+     cell refused me by name: "a claim with no ids at all is 'no deletion declared', not malformed". That is
+     this validator's contract and it is right for what it answers: given a STORED claim, what does it
+     declare? A stored object with no ids declares nothing.
+     The gate's F2 reported `{}` clearing a merchant's claim through editCatalog, and that IS real — but the
+     defect is at the HANDLER, where a CLIENT sending `deleted_ids: {}` had its `undefined` ids written over
+     a standing claim. Different layer, different question: "what did the client send" is unreadable intent;
+     "what does this stored claim declare" is nothing. The refusal belongs at the handler and is there. */
   const ids = asArray(claim.ids);
   if (!ids.length) return { ids: [], declared: false };
+
+  /* 🔴 MEMBERS AND UNIQUENESS, WHICH THIS VALIDATOR NEVER CHECKED. `{ids:[12]}` and `{ids:['X','X']}` both
+     passed it. The publish preflight happens to catch them downstream through other guards, but ANY DIRECT
+     FLIP CALLER relying on this validator does not — and the validator's own contract is what the slice
+     claimed. Ids are `encodeKey`'d registry ids, so a non-string is malformed; and a list whose length
+     disagrees with its content makes every count derived from it a guess, which is why duplicates refuse
+     rather than being silently coalesced. */
+  const badAt = ids.findIndex((id) => typeof id !== 'string' || !id);
+  if (badAt !== -1) {
+    throw new PartitionRefusal('deleted_ids_malformed',
+      `the deletion claim's ids[${badAt}] is ${JSON.stringify(ids[badAt])}; every id must be a non-empty string`);
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new PartitionRefusal('deleted_ids_malformed',
+      'the deletion claim names the same id more than once; a list whose length disagrees with its content makes every count derived from it a guess');
+  }
 
   /* An unbound claim is refused rather than trusted. A bare list of ids cannot say which menu it was
      decided about, and "delete these" without "as of this version" is exactly the replayable intent
@@ -226,6 +250,20 @@ function validateDeletionClaim(claim, { activeVersionId, activeGeneration } = {}
    Ordinary editing stays frictionless: a fresh claim, or an existing one whose base is still live,
    needs no acknowledgment. And CLEARING the list is always allowed — withdrawing a deletion destroys
    nothing, so there is nothing to re-review. */
+/* 🔴 A CLIENT-SUPPLIED BASE ON A *FRESH* CLAIM IS DISCARDED AND THE LIVE PAIR IS STAMPED, AND THAT IS
+   NOT THE SILENT REBIND. An independent gate read it as one — a fresh claim carrying
+   `base_version:'never-seen', base_generation:99` returns 200 and is stored with the live pair — and
+   reported that "the server will not rebind it silently" was the claim while re-pointing is what happens.
+   The distinction the code makes, and which is worth stating because it was misread:
+     · a FRESH claim has NO BASE TO REBIND. The merchant is declaring WHICH ids; the binding is being
+       CREATED, and it must be created from the live pointer precisely so a client cannot choose it. A
+       client value here is not honoured, it is unread — which is the property that matters, and the one
+       the existing cell asserts by name rather than pinning a divergence.
+     · an EXISTING claim is CARRIED FORWARD VERBATIM, base included. Re-stamping THAT would be the silent
+       rebind, and it is what the `reviewed` gate below exists to prevent: only an explicit re-review
+       moves an existing base.
+   So "will not rebind silently" is about the second case and holds. What would be a real defect is the
+   server READING the client's base — it never does; the handler deletes the field before this is called. */
 function persistDeletionClaim({ existing = null, ids, live, reviewed = false } = {}) {
   if (!live || !isId(live.version) || !Number.isInteger(live.generation) || live.generation < 0) {
     throw new PartitionRefusal('deleted_ids_no_baseline',

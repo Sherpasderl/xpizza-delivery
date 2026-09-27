@@ -141,6 +141,31 @@ const refuses = (fn, code, label) => {
   refuses(() => validateDeletionClaim({ ids: 'X', base_version: 'v-2', base_generation: 5 }, { activeVersionId: 'v-2', activeGeneration: 5 }),
     'deleted_ids_malformed', 'a claim whose ids is a string');
 
+  /* 🔴 MEMBERS AND UNIQUENESS, WHICH THIS VALIDATOR NEVER CHECKED. `{ids:[12]}` and `{ids:['X','X']}` both
+     passed it. The publish preflight catches them downstream through other guards — but THIS VALIDATOR'S
+     OWN CONTRACT is what the slice claimed, and any direct flip caller relying on it got neither check.
+     Ids are `encodeKey`'d registry ids: a non-string is malformed, and a list whose length disagrees with
+     its content makes every count derived from it a guess. */
+  const liveNow = { activeVersionId: 'v-2', activeGeneration: 5 };
+  for (const [ids, why] of [
+    [[12], 'a numeric id'],
+    [['X', 12], 'a numeric id beside a good one'],
+    [[''], 'an empty-string id'],
+    [[null], 'a null id'],
+    [[['X']], 'a NESTED ARRAY, which merely stringifies to an id'],
+    [[{ id: 'X' }], 'an object id'],
+  ]) {
+    refuses(() => validateDeletionClaim({ ids, base_version: 'v-2', base_generation: 5 }, liveNow),
+      'deleted_ids_malformed', why);
+  }
+  refuses(() => validateDeletionClaim({ ids: ['X', 'X'], base_version: 'v-2', base_generation: 5 }, liveNow),
+    'deleted_ids_malformed', 'a duplicated id');
+  /* AND THE PERMITTING CONTROL: a well-formed multi-id claim must still pass, or this has broken the
+     validator instead of tightening it. */
+  assert.deepStrictEqual(
+    validateDeletionClaim({ ids: ['X', 'Y'], base_version: 'v-2', base_generation: 5 }, liveNow).ids,
+    ['X', 'Y'], 'a well-formed claim with two distinct string ids still passes');
+
   /* SENSITIVITY: genuinely ABSENT input is a legitimate state and must still pass, or this guard has
      simply broken the empty case instead of tightening it. */
   const empty = validatePartition({ activeCertified: [], carried: undefined, deletedIds: undefined });
@@ -162,29 +187,40 @@ const refuses = (fn, code, label) => {
   ok('a present-but-non-array carried, deleted_ids or claim.ids REFUSES — while genuinely absent input stays lawful');
 }
 
-// ── 8. 🔴 A FAILED PUBLISH MUST NOT COST THE MERCHANT A RE-REVIEW ────────────────────────────
-/* The binding is a safety property only as long as it is frictionless for honest retries. It depends
-   on a contract Slice D owns: the generation bumps on a successful activation and on a rollback, and
-   NOT on a failed or abandoned one. If a failed publish bumped it, every retry after a transient
-   error would refuse a deletion the merchant had already confirmed — and a safety binding that makes
-   ordinary retries painful is one that gets removed. Pinned here so D cannot quietly define it the
-   other way: this cell fails the moment "failed publish" starts moving the generation. */
+// ── 8. THE BINDING IS INERT WHILE THE PAIR IS UNCHANGED, AND STALE THE MOMENT IT MOVES ───────
+/* 🔴 WHAT THIS CELL USED TO CLAIM, AND WHY THAT WAS FALSE. Its heading was "A FAILED PUBLISH MUST NOT
+   COST THE MERCHANT A RE-REVIEW" and its comment said "this cell fails the moment 'failed publish'
+   starts moving the generation". IT EXECUTES NO PUBLISH AND NO FAILURE. `afterFailure` was a LITERAL
+   identical to the declared pair, so the assertion validated an unchanged literal against itself — it
+   could not have failed for the reason it named, and it pinned nothing about Slice D's contract. An
+   independent gate found it; ninth instance in this programme of a cell constructing away its own
+   condition.
+   🔴 THE CONTRACT IS REAL AND IT IS COVERED — SOMEWHERE THIS SUITE CANNOT REACH. "The generation bumps
+   on a successful activation and on a rollback, NOT on a failed one" needs a publish that actually
+   fails, which needs a database: test/d4p1-activation.emulator.test.js does it, asserting "a FAILED
+   activation advanced the generation". That is the pin; this is not.
+   SO THIS CELL NOW CLAIMS ONLY WHAT IT PROVES, which is worth having on its own: the validator is inert
+   while the pair is unchanged, and refuses the moment either half moves — by version, and by generation
+   alone, which is the rollback case. */
 {
-  const declaredAt = { activeVersionId: 'v-7', activeGeneration: 3 };
   const claim = { ids: ['DOOMED1'], base_version: 'v-7', base_generation: 3 };
 
-  // The publish fails. Nothing activated, so neither the pointer nor the generation moved.
-  const afterFailure = { activeVersionId: 'v-7', activeGeneration: 3 };
-  assert.deepStrictEqual(validateDeletionClaim(claim, afterFailure), { ids: ['DOOMED1'], declared: true },
-    '🔴 a retry after a FAILED publish was refused — the merchant would be re-reviewing a deletion they already confirmed');
+  /* The pair as it stands when a retry arrives with nothing having activated. Named for what it IS — an
+     unchanged pair — not for a failure this suite never performs. */
+  const unchangedPair = { activeVersionId: 'v-7', activeGeneration: 3 };
+  assert.deepStrictEqual(validateDeletionClaim(claim, unchangedPair), { ids: ['DOOMED1'], declared: true },
+    '🔴 a claim was refused against the SAME pair it was declared at — a retry that changed nothing would cost the merchant a re-review');
 
   // …and the same claim after a REAL activation is stale, which is the whole point of the binding.
   refuses(() => validateDeletionClaim(claim, { activeVersionId: 'v-8', activeGeneration: 4 }),
     'deleted_ids_stale_baseline', 'the same claim after a real activation');
   refuses(() => validateDeletionClaim(claim, { activeVersionId: 'v-7', activeGeneration: 4 }),
     'deleted_ids_stale_baseline', 'the same claim after a ROLLBACK that kept the version id');
-  assert.deepStrictEqual(declaredAt, { activeVersionId: 'v-7', activeGeneration: 3 }, 'the claim is not mutated by validation');
-  ok('a retry after a failed publish is accepted unchanged, while a real activation OR a rollback makes the same claim stale');
+  /* 🔴 AND THIS WATCHED THE WRONG OBJECT. It asserted `declaredAt` was unmutated — a literal the
+     validator is never handed. The thing that must survive validation is the CLAIM. */
+  assert.deepStrictEqual(claim, { ids: ['DOOMED1'], base_version: 'v-7', base_generation: 3 },
+    '🔴 the CLAIM was mutated by validation — the caller\'s object must come back as it went in');
+  ok('the binding is inert while the pair is unchanged and stale the moment the version OR the generation alone moves — the failed-publish contract itself is pinned in d4p1-activation, which can actually fail a publish');
 }
 
 // ── 9. 🔴 THE BASE IS NEVER REBOUND AS A SIDE EFFECT OF AN UNRELATED EDIT ────────────────────

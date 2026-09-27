@@ -518,6 +518,39 @@ const withPrice = (delta) => {
         `🔴 ${label} was refused but the stored claim CHANGED`);
     }
 
+    /* 🔴 AND `deleted_ids: {}` — AN OBJECT CARRYING NO ids — CLEARED THE STANDING CLAIM WITH A 200. It is
+       not an `ids` VALUE at all, so it needs its own case: the handler derived `undefined` ids and wrote
+       them straight over the merchant's claim. Unreadable intent is not "no deletions".
+       🔴 NOTE THE LAYER: the VALIDATOR deliberately reads a stored `{ids: undefined}` as "no deletion
+       declared" — identity-partition.test.js asserts that by name — because "what does this stored claim
+       declare" is a different question from "what did the client just send". The refusal belongs here. */
+    {
+      const dbEmptyObj = stubFirestore(baseSource());
+      dbEmptyObj.state.source.data.deleted_ids = { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 };
+      const srcEmptyObj = withPrice(43);
+      srcEmptyObj.deleted_ids = {};
+      const rEmptyObj = await editCatalogCore({ db: dbEmptyObj, authorize: allow, readActiveBuilt: dbEmptyObj.readActiveBuilt },
+        { restaurantId: RID, source: srcEmptyObj, baseSourceUpdateTime: T0 }, {});
+      assert.strictEqual(rEmptyObj.status, 400,
+        `🔴 deleted_ids:{} was ACCEPTED (${rEmptyObj.status}) — it clears the standing claim with no loaded base: ${JSON.stringify(rEmptyObj.body).slice(0, 160)}`);
+      assert.strictEqual(rEmptyObj.body.error, 'deleted_ids_malformed', 'and it says so by name');
+      assert.deepStrictEqual(dbEmptyObj.state.source.data.deleted_ids, { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 },
+        '🔴 the standing claim was cleared by an unreadable declaration');
+    }
+
+    /* 🔴 AND WITHDRAWAL IS STILL ALWAYS ALLOWED — the deliberate escape hatch from a stale claim, which a
+       sibling cell names. `{ids: []}` must keep working with no loaded base, or tightening the malformed
+       cases would have trapped every merchant whose baseline had moved. */
+    {
+      const dbW = stubFirestore(baseSource());
+      dbW.state.source.data.deleted_ids = { ids: ['OLD9'], base_version: 'v-superseded', base_generation: 0 };
+      const srcW = withPrice(44);
+      srcW.deleted_ids = { ids: [] };
+      const rW = await editCatalogCore({ db: dbW, authorize: allow, readActiveBuilt: dbW.readActiveBuilt },
+        { restaurantId: RID, source: srcW, baseSourceUpdateTime: T0 }, {});
+      assert.strictEqual(rW.status, 200, `🔴 withdrawal was refused — the escape from a stale claim is closed: ${JSON.stringify(rW.body).slice(0, 160)}`);
+    }
+
     /* 🔴 THE PERMITTING CONTROL, because a handler that refused every declaration would satisfy all of
        the above and break ordinary editing: the genuine echo must still be an echo, and must still not
        demand a loaded base. */
