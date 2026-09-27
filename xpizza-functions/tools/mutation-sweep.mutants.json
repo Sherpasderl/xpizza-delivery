@@ -9950,5 +9950,19 @@
       "run",
       "test:d4p1-mint-atomic"
     ]
+  },
+  {
+    "id": "task8-24",
+    "slice": "task8",
+    "file": "tools/migrate-catalog-display.js",
+    "from": "  if (before === after) return { upgraded: false, reason: 'already_current', revision, provenance };\n",
+    "to": "  /* mutant: the already_current short-circuit is gone */\n",
+    "label": "🔴 THE DRAFT HALF STOPS BEING IDEMPOTENT — a retry during the cutover rewrites the draft instead of short-circuiting, so the operator note's retry guarantee silently becomes false.",
+    "kills_with": "already_current",
+    "why": "This tool's header tells an operator the DRAFT half is safe to retry because it compares before/after and returns `already_current`, and the owner WILL retry these tools during a one-way cutover. Before E-1 that claim was pinned by NO cell and named by NO mutant — prose sitting in the same file as the code it described. Scored against migration-parity 6b-bis, whose `reason` assertion is deliberately FIRST so removing the short-circuit dies on the line that NAMES the mechanism rather than on a later byte-comparison that does not say what broke. 🔴 The anchor is the WHOLE statement including its `return`, for the reason d4p1sf-04 records: replacing part of a statement leaves the file unparseable and the resulting SyntaxError scores as a FALSE KILL.",
+    "command": [
+      "node",
+      "catalog/migration-parity.test.js"
+    ]
   }
 ]

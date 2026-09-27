@@ -388,6 +388,49 @@ const tablesOf = (rid, menu) => {
     ok('the draft upgrade writes under a revision precondition — a save landing mid-upgrade is refused, not overwritten');
   }
 
+  // ══ 6b-bis. AND RE-RUNNING THE DRAFT HALF IS SAFE — THE CLAIM THE OPERATOR NOTE MAKES ═════════
+  {
+    /* 🔴 THIS CELL EXISTS BECAUSE THE CLAIM WAS ONLY EVER IN A COMMENT. The header of
+       tools/migrate-catalog-display.js tells an operator that a failed cutover's DRAFT half is safe to
+       retry — "it compares before/after and returns `already_current`" — and the owner WILL retry these
+       tools during a one-way cutover. Nothing measured it: `already_current` was pinned by no cell and
+       named by no mutant, so a retry guarantee rested on prose sitting in the same file as the code it
+       described, which is the artefact class this slice has spent its findings deleting.
+       The PUBLISH half is NOT idempotent and deliberately stays that way (recorded, E-1): re-running
+       --apply publishes again and advances the generation fence. This cell is the draft half only.
+
+       🔴 ASSERT THE DOCUMENT AND THE TWO NAMED FIELDS — NOT THE WHOLE RETURN VALUE. The provenance map
+       is NOT stable across runs: `structure.exposure` reads "artifact" on the first run and "captured"
+       on the second, because after the upgrade the exposure lives in the stored draft instead of being
+       taken from the artifact. Both are correct. A cell that deep-compared the two results would fail on
+       that difference and be read as a broken idempotency guarantee — a red for a reason unrelated to
+       the property. */
+    const rid = 'x_pizza';
+    const db = makeDb();
+    const draft = JSON.parse(JSON.stringify(buildSourceFromCode(rid)));
+    delete draft.structure.exposure;              // premise: leave the upgrade real work to do
+    await sourceRefOf(db, rid).set(canonicalize(draft));
+
+    /* THE PREMISE, ASSERTED: if the first run had nothing to do, the second run's `already_current`
+       would be true for free and this cell would prove nothing about retrying. */
+    const first = await upgradeDraftInPlace(db, rid, ART[rid], { apply: true });
+    assert.ok(first.upgraded && first.applied,
+      'premise: the first run must actually upgrade AND write, or already_current proves nothing');
+    const afterFirst = JSON.stringify((await sourceRefOf(db, rid).get()).data());
+
+    /* `reason` FIRST, DELIBERATELY: it is the assertion that NAMES the mechanism, so removing the
+       short-circuit dies here rather than on a later line that does not say what broke. Assertion
+       order decides which cell a mutant reports against. */
+    const second = await upgradeDraftInPlace(db, rid, ART[rid], { apply: true });
+    assert.strictEqual(second.reason, 'already_current',
+      `🔴 the retry did not short-circuit on already_current — it returned ${JSON.stringify({ upgraded: second.upgraded, reason: second.reason })}, and the operator note promises a retry of the draft half changes nothing`);
+    assert.strictEqual(second.upgraded, false, '🔴 the second run upgraded again — retrying the draft half is not idempotent');
+    assert.strictEqual(JSON.stringify((await sourceRefOf(db, rid).get()).data()), afterFirst,
+      '🔴 the retry rewrote the draft — byte-identical is the promise, not "writes something equivalent"');
+    assert.doesNotThrow(() => validateSource(JSON.parse(afterFirst), rid), 'and the twice-run draft still validates');
+    ok('the draft half is safe to retry: a second --apply short-circuits on already_current and leaves the document byte-identical');
+  }
+
   // ══ 6c. THE EXPOSURE AUTHORITY REFUSES WHAT IT CANNOT KNOW ════════════════════════════════════
   {
     const { deriveExposure, assertExposureMatchesToday } = require('./exposure-source');
