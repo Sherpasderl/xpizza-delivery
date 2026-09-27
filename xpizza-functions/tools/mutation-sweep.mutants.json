@@ -7524,6 +7524,20 @@
     "slice": "d4p1dc"
   },
   {
+    "id": "d4p1dc-16",
+    "slice": "d4p1dc",
+    "file": "catalog/identity-destination.js",
+    "from": "function destinationVerdict({ name, landingId, keyRow = null, liveClaimants, truncated = false, plan = null } = {}) {",
+    "to": "function destinationVerdict({ name, landingId, keyRow = null, liveClaimants = [], truncated = false, plan = null } = {}) {",
+    "label": "🔴 THE DEFAULT DISARMS ITS OWN GUARD — `liveClaimants = []` turns an OMITTED claimant set into an array before the array check can see it, so a caller that never read the registry gets `unclaimed` (a PERMIT) byte-identical to one that read it and found nothing",
+    "kills_with": "an OMITTED claimant set was permitted",
+    "why": "the refusal whose message reads 'an absent one is not an empty one' existed all along and could never fire for an absent one. Same family as verifyPlan's `complete === true`: the caller must ASSERT it read the set, and a default parameter makes that assertion on the caller's behalf without them knowing.",
+    "command": [
+      "node",
+      "catalog/destination-claimant.test.js"
+    ]
+  },
+  {
     "id": "d4p1sf-01",
     "file": "catalog/catalog-publish.js",
     "command": [

@@ -136,9 +136,17 @@ const versionsColOf = (db, rid) => db.collection('restaurants').doc(rid).collect
    `abandoned` once F can produce it. Two mutants have already been deleted in this programme on false
    unreachability claims — this comment is cheap insurance against a third.
 
-   Rollback is currently EXEMPT, deliberately unchanged by the extraction: a rollback re-activates a
-   version whose record already says `activated`, which is its history. F tightens this to refuse a
-   `pending` or `abandoned` target; that is a behaviour change and belongs with F, not here. */
+   🔴 AND THIS PARAGRAPH USED TO SAY ROLLBACK WAS EXEMPT AND THAT THE TIGHTENING "BELONGS WITH F, NOT
+   HERE". THAT IS NO LONGER TRUE AND THE STALE SENTENCE COST A GATE FINDING. The tightening landed: the
+   rollback branch below refuses any target whose status is not `activated`
+   (`flip_activation_rollback_not_activated`), and an emulator cell drives the REAL rollbackVersion
+   against a genuinely `pending` staged version and asserts the pointer does not move. An independent
+   gate read this comment, believed the code still deferred, and reported a REACHABLE defect that had
+   already been fixed — so a comment DENYING a guarantee the code HAS cost as much as one claiming a
+   guarantee it lacks. Same class, opposite sign, and the rarer direction: it produces false alarms.
+   WHAT REMAINS DEFERRED TO F is not eligibility but RESTORATION — restoreIdentity reading
+   `consumed_deleted_ids` so a rollback past a deletion restores the same ids rather than minting new
+   ones. That is a different thing and it is named where it is written, below. */
 function activationVerdict(record, { currentGeneration, intent }) {
   /* 🔴 NO RECORD IS NO LONGER A PERMIT — IT IS THE LEGACY REFUSAL (§3.0, fail-closed eligibility).
      This returned ok, on the reasoning that a version written before the record existed should not be

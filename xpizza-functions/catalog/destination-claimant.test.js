@@ -212,9 +212,25 @@ const NO_PLAN = { moves: [], mints: [], retires: [] };
 // ── 9. MALFORMED INPUT FAILS CLOSED — an absent set is not an empty one ──────────────────────
 {
   for (const [label, args] of [
-    ['no name', { name: '', landingId: 'Y' }],
-    ['a non-string name', { name: 42, landingId: 'Y' }],
-    ['no landing id', { name: 'Margherita', landingId: '' }],
+    /* 🔴 THESE THREE SUPPLY A VALID CLAIMANT SET ON PURPOSE, so only the property under test can refuse.
+       They used to omit it — and once an OMITTED set became a refusal (the default that disarmed its own
+       guard, fixed above), the ARRAY check caught these cases with the SAME `destination_input_malformed`
+       code, so a mutant that removed the NAME check SURVIVED: the cell still passed for the wrong reason.
+       Caught by sweeping d4p1dc before handing back — baseline 15/15, mine 14/15. Each refusal is
+       isolated so its own mutant stays killable, which is the same discipline as running an isolating
+       case first. */
+    ['no name', { name: '', landingId: 'Y', liveClaimants: [] }],
+    ['a non-string name', { name: 42, landingId: 'Y', liveClaimants: [] }],
+    ['no landing id', { name: 'Margherita', landingId: '', liveClaimants: [] }],
+    /* 🔴 THE CASE THIS CELL'S OWN LABEL CLAIMED AND THE TABLE DID NOT CONTAIN. The label says "an absent
+       claimant set is never read as an empty one"; every case below tests a MALFORMED set, and none tested
+       an OMITTED one. It was PERMITTED — `destinationVerdict({name:'A', landingId:'XXXXXXXXXX'})` returned
+       ok with code `unclaimed` — because the parameter defaulted to `[]` and the array check saw an array.
+       The guard was written correctly and its DEFAULT disarmed it; the cell claimed the property anyway.
+       Found by an independent gate. Tenth instance in this programme of a cell whose green did not cover
+       what its label said. */
+    ['an OMITTED claimant set', { name: 'Margherita', landingId: 'Y' }],
+    ['an explicitly undefined claimant set', { name: 'Margherita', landingId: 'Y', liveClaimants: undefined }],
     ['a claimant set that is not an array', { name: 'Margherita', landingId: 'Y', liveClaimants: null }],
     ['a claimant set that is an object', { name: 'Margherita', landingId: 'Y', liveClaimants: { 0: live('X', 'Margherita') } }],
   ]) {
@@ -222,9 +238,19 @@ const NO_PLAN = { moves: [], mints: [], retires: [] };
     assert.strictEqual(v.ok, false, `🔴 ${label} was permitted`);
     assert.strictEqual(v.code, 'destination_input_malformed', `${label}: expected destination_input_malformed, got ${v.code}`);
   }
-  // …and called with nothing at all, rather than throwing a TypeError a caller would read as a crash.
+  /* …and called with nothing at all, rather than throwing a TypeError a caller would read as a crash.
+     🔴 THIS ONE PROVES LESS THAN IT LOOKS: with no arguments the MISSING NAME refuses first, so it says
+     nothing about the claimant set. It is kept as a no-crash check and no longer counted as evidence
+     about absence — the OMITTED case above is what carries that. */
   assert.strictEqual(destinationVerdict().ok, false, '🔴 a call with no arguments did not fail closed');
-  ok('five malformed shapes and a bare call all fail CLOSED — an absent claimant set is never read as an empty one');
+
+  /* 🔴 AND THE PERMITTING CONTROL, because a predicate that refused every claimant set would satisfy all
+     of the above: a set the caller genuinely READ and found empty must still permit. That distinction —
+     read-and-empty versus never-read — is the entire property. */
+  const readAndEmpty = destinationVerdict({ name: 'Margherita', landingId: 'YYYYYYYYYY', liveClaimants: [], plan: NO_PLAN });
+  assert.strictEqual(readAndEmpty.ok, true,
+    `🔴 a claimant set that was READ and found EMPTY was refused (${readAndEmpty.code}) — then the guard refuses every first mint rather than distinguishing unread from empty`);
+  ok('seven malformed shapes — including an OMITTED and an explicitly-undefined claimant set — fail CLOSED, while a set genuinely read and found empty still permits');
 }
 
 // ── 10. THE READ LIST IS DERIVED FROM THE PLAN — destinations only, releases are not destinations ──

@@ -94,7 +94,15 @@ function releasedFrom(plan, name) {
                       per name (v7.1) — `judgePlanDestinations` owns it; this parameter exists so the
                       per-destination predicate cannot be driven with a set it does not know is
                       short. */
-function destinationVerdict({ name, landingId, keyRow = null, liveClaimants = [], truncated = false, plan = null } = {}) {
+/* 🔴 `liveClaimants` HAS NO DEFAULT, AND THAT IS THE WHOLE POINT. It used to default to `[]`, which
+   turned an OMITTED set into an array before the guard below could see it — so the refusal whose own
+   message reads "an absent one is not an empty one, and reading it as empty is how an orphan goes unseen"
+   could never fire for an absent one. The check was right; the DEFAULT disarmed it, and a caller that
+   forgot the set got `unclaimed` — a permit — byte-identical to a caller that had genuinely read an empty
+   registry. Reproduced before fixing: destinationVerdict({name:'A', landingId:'XXXXXXXXXX'}) permitted.
+   Same family as verifyPlan's `complete === true`: the caller must ASSERT it read the set, and a default
+   is how that assertion gets made on the caller's behalf without them knowing. */
+function destinationVerdict({ name, landingId, keyRow = null, liveClaimants, truncated = false, plan = null } = {}) {
   if (!isName(name) || !isId(landingId)) {
     return refuse('destination_input_malformed',
       `a destination needs a name and the id landing on it; got ${JSON.stringify(name)} / ${JSON.stringify(landingId)}`);
