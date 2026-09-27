@@ -94,6 +94,22 @@ function releasedFrom(plan, name) {
                       per name (v7.1) — `judgePlanDestinations` owns it; this parameter exists so the
                       per-destination predicate cannot be driven with a set it does not know is
                       short. */
+/* 🔴 RECORDED, NOT FIXED (owner ruling, E-1) — THE SAME DEFAULT-AS-ASSERTION SHAPE SURVIVES IN THREE MORE
+   PLACES IN THIS FILE, and the fix below was narrower than the failure mode it belongs to:
+     · an omitted claimant MAP (judgePlanDestinations' `claimantsOf`) — an unread map reads as "no claimants
+       anywhere", so every destination looks free;
+     · an omitted SCAN (the truncation/coverage inputs further down) — an unread scan reads as complete;
+     · a FALSY key row coerced to null at the call site — `keyRows:{A:false}` probed as `unclaimed`, so a
+       row the caller could not read becomes a row that does not exist.
+   ALL THREE ARE THE SAME SENTENCE AS THE ONE BELOW: a default supplies the caller's assertion that it
+   LOOKED, without the caller knowing it made one. No production caller reaches any of them — the
+   publishing adapter and restoreIdentity both build real values — which is why they are recorded rather
+   than fixed while the slice closes.
+   🔴 TO FIX THE CLASS RATHER THAN THE INSTANCES: give every "did you read it" input NO default and refuse
+   its absence, exactly as `liveClaimants` now does. Fixing them one at a time is what produced this note:
+   the ARRAY was fixed and the MAP, the SCAN and the ROW were left, because the finding named the array.
+   Recorded here, beside the fix that closed one of four, because this is where the next reader looks. */
+
 /* 🔴 `liveClaimants` HAS NO DEFAULT, AND THAT IS THE WHOLE POINT. It used to default to `[]`, which
    turned an OMITTED set into an array before the guard below could see it — so the refusal whose own
    message reads "an absent one is not an empty one, and reading it as empty is how an orphan goes unseen"

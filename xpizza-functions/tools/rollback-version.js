@@ -57,8 +57,8 @@ const db = admin.firestore();
      pointer to a version that was never live. A malformed pointer read raw here becomes the
      `expected.activeVersionId` a rollback CASes against, so the tool would be deciding what to
      overwrite from a value nothing checked. */
-  let active;
-  try { active = readPointerSnap(pointer, RID).version; }
+  let active, activeGeneration;
+  try { ({ version: active, generation: activeGeneration } = readPointerSnap(pointer, RID)); }
   catch (e) {
     console.error(`\nREFUSED — ${RID}'s active_version pointer is unusable: ${(e && e.message) || e}`);
     console.error('Nothing was read or written. A rollback decides what to overwrite from this pointer, so a malformed one must stop it.\n');
@@ -90,7 +90,13 @@ const db = admin.firestore();
   // rollback would silently bury it, and the operator would have rolled back past something they
   // never saw. No draftRevision: a rollback is not derived from the draft, and claiming it was would
   // be a check that means nothing.
-  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()), expected: { activeVersionId: active } });
+  /* 🔴 THE GENERATION TRAVELS WITH THE VERSION, because the version alone cannot see a ROUND TRIP: two
+     activations can take the pointer away from A and back to A, and a rollback expecting A would then
+     succeed while burying both. The operator chose from a list they read a moment ago; the fence is what
+     says that moment is still current. Reproduced before fixing — expecting A@2 succeeded at generation 5.
+     No new ARGUMENT for the operator: the tool reads both halves from the pointer it already read. */
+  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),
+    expected: { activeVersionId: active, activeGeneration } });
   console.log(`  done — active_version=${res.versionId}, mirrored=${res.mirrored}`);
   console.log('now run: node tools/verify-catalog.js');
   process.exit(0);

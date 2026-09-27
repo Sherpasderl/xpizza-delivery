@@ -44,7 +44,7 @@ function createCatalogReader({ getRestaurantDocs, getActiveVersionId = null, poi
     // { restaurantId, menu, extras }, so these fields never reach a caller.
     // Normalised to null (never undefined) so the shape is predictable for every caller, including a
     // DI'd test double whose doc source predates the version/seq surfacing.
-    const tables = { ...buildTablesFromDocs(itemDocs, extraDocs), versionId: versionId === undefined ? null : versionId, seq: Number.isInteger(seq) ? seq : null };
+    const tables = { ...buildTablesFromDocs(itemDocs, extraDocs), versionId: versionId === undefined ? null : versionId, seq: Number.isSafeInteger(seq) ? seq : null   /* a counted ordinal — see catalog-publish.js's isSafeInteger note */ };
     if (versionId == null) flatCache.set(rid, { at: now(), tables });          // flat → short-TTL entry
     else lruSet(vkey(rid, versionId), tables);                                 // version → immutable LRU
     return tables;

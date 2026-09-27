@@ -64,6 +64,8 @@ const refuses = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza
     '🔴 a live pre-cutover pointer — a real version, no generation field — must read as generation 0, or the cutover refuses every restaurant it is for');
   const explicit = preP1({ version: 'v1', generation: 0 }, 'an explicit generation 0');
   assert.strictEqual(explicit.generation, 0, 'and an explicitly written 0 is the same state');
+
+
   ok('an ABSENT document is the only "nothing published yet"; a pre-cutover pointer (version, no generation) still reads as generation 0');
 }
 
@@ -91,6 +93,36 @@ const refuses = (data, why) => assert.throws(() => pointerStateOf(data, 'x_pizza
   refuses({ version: 'v1', generation: NaN }, '🔴 NaN read as 0');
   refuses({ version: 'v1', generation: Infinity }, '🔴 Infinity read as 0');
   refuses({ version: 'v1', generation: {} }, '🔴 an object generation read as 0');
+
+  /* 🔴 THESE TWO COME *AFTER* THE TABLE ABOVE, DELIBERATELY, AND I HAD THEM BEFORE IT. Placed earlier, they
+     fired first for a mutant that removes the WHOLE generation check — so that mutant died on "an unsafe
+     integer was accepted" instead of on the negative-generation case it was written for, and the sweep
+     reported DRIFT. An assertion added ahead of an existing one can make the older property unreachable for
+     a given mutant: the same shadowing as a guard added ahead of a guard, one level down. Ordered so each
+     mutant dies on its own property. */
+  /* 🔴 BUT AN EXPLICITLY NULL GENERATION IS NOT THE BASELINE — IT IS ERASED HISTORY. `present()` treats
+     null as absent, so `{version:'v1', generation:null}` READ AS 0, and reading it as 0 means the next
+     publish restarts the fence at 1 while every claim bound to the real generation compares stale for
+     ever. Operator-reachable. ABSENT stays 0 because that is the genuine shape of an un-migrated
+     restaurant (asserted immediately above, and the cutover depends on it); NULL can only come from an
+     operator or corruption, because flipPointer always writes an integer.
+     Absent is history we never had; null is history someone erased — and that is the same
+     absent-versus-explicit-null distinction this file already draws for `version`. */
+  assert.throws(() => readPointerSnap({ exists: true, data: () => ({ version: 'v1', generation: null }) }, 'x_pizza'),
+    /active_pointer_malformed/,
+    '🔴 an explicitly NULL generation read as the pre-cutover baseline — the fence would restart at 1 and every generation-bound claim would compare stale');
+
+  /* 🔴 AND AN UNSAFE INTEGER IS REFUSED, BECAUSE ABOVE 2^53 THE FENCE STOPS ADVANCING. `Number.isInteger`
+     accepts 9007199254740992 and `n + 1 === n` there, so an operator-written value that passed the old
+     check would make every subsequent publish "advance" the generation to the SAME number — and every
+     staleness comparison in the system compares equal for ever. A fence that stops advancing is worse
+     than no fence, because everything downstream keeps trusting it. */
+  assert.throws(() => readPointerSnap({ exists: true, data: () => ({ version: 'v1', generation: 9007199254740992 }) }, 'x_pizza'),
+    /active_pointer_malformed/,
+    '🔴 an UNSAFE integer generation was accepted — n+1 === n above 2^53, so the fence would stop advancing while every check kept trusting it');
+  /* …and the largest SAFE value still reads, so this refuses unsafe rather than large. */
+  assert.strictEqual(readPointerSnap({ exists: true, data: () => ({ version: 'v1', generation: 9007199254740991 }) }, 'x_pizza').generation,
+    9007199254740991, 'the largest SAFE integer still reads — the refusal is about arithmetic, not size');
   refuses({ version: 'v1', generation: true }, '🔴 a boolean generation read as 0');
   ok('seven present-but-unusable generations REFUSE instead of reading as 0, the value every pre-cutover claim matches');
 }

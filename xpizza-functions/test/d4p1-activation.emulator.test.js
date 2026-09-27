@@ -582,6 +582,50 @@ const publish = async (expectedActive, tag) => {
     ok('a draft that moves between the pre-flight CAS and the flip is refused IN THE TRANSACTION, for a truthy revision AND for a present-and-null claim — the guard the pre-flight cannot stand in for, and the gate keyed by presence rather than value');
   }
 
+  // ── 🔴 A STALE ROLLBACK REFUSES EVEN WHEN THE VERSION ID HAS COME BACK ─────────────────────────
+  {
+    /* THE DEFECT: the rollback CAS compared the VERSION ALONE, and the version alone cannot see a ROUND
+       TRIP. An operator reads the list and picks a target while the pointer is at A. Two activations take
+       the pointer to B and back to A. The operator's rollback still expects A — and it MATCHED, so the
+       flip proceeded and buried two activations they never saw.
+       🔴 IT NEEDS A RACE DURING AN INCIDENT, WHICH IS WHEN ROLLBACK IS USED, and the lease does not help:
+       the lease serializes the flips, it does not make the operator's earlier READ current. That is why
+       this is fixed rather than recorded — the emergency path's preconditions must hold when everything
+       else is already wrong.
+       Staged with real publishes so the round trip is genuine rather than a written pointer. */
+    const start = await getActivePointer(db, RID);
+    const decidedAt = { version: start.version, generation: start.generation };
+
+    const away = await publish(start.version, 'roundtrip-away');       // pointer leaves A
+    await rollbackVersion(db, RID, decidedAt.version, { expected: { activeVersionId: away } });  // …and comes back
+    const back = await getActivePointer(db, RID);
+    assert.strictEqual(back.version, decidedAt.version, 'premise — the pointer has RETURNED to the version the operator chose');
+    assert.ok(back.generation > decidedAt.generation,
+      `premise — and the fence advanced while it was away (${decidedAt.generation} → ${back.generation})`);
+
+    /* The operator's stale decision, replayed. Version matches; the fence does not. */
+    let threw = null;
+    try {
+      await rollbackVersion(db, RID, decidedAt.version,
+        { expected: { activeVersionId: decidedAt.version, activeGeneration: decidedAt.generation } });
+    } catch (e) { threw = e; }
+    assert.ok(threw && /flip_cas_generation_stale/.test(String(threw.message)),
+      `🔴 A ROLLBACK DECIDED AGAINST ${decidedAt.version}@${decidedAt.generation} SUCCEEDED AT FENCE ${back.generation} — the version id came back, the CAS compared equal, and activations the operator never saw were buried: ${threw && threw.message}`);
+    const after = await getActivePointer(db, RID);
+    assert.strictEqual(after.generation, back.generation, '…and the refusal moved nothing');
+
+    /* 🔴 THE PERMITTING CONTROL: the same rollback with the CURRENT fence must still work, or this refuses
+       every rollback rather than the stale ones — and rollback is the emergency path. */
+    const fresh = await getActivePointer(db, RID);
+    const other = (await db.collection('restaurants').doc(RID).collection('versions').get())
+      .docs.map((d) => d.id).find((id) => id !== fresh.version);
+    assert.ok(other, 'premise — another version exists to roll back to');
+    await rollbackVersion(db, RID, other, { expected: { activeVersionId: fresh.version, activeGeneration: fresh.generation } });
+    const done = await getActivePointer(db, RID);
+    assert.strictEqual(done.version, other, '🔴 a rollback carrying the CURRENT fence was refused — the emergency path is closed');
+    ok('a rollback decided against a stale fence refuses even though the version id came back, while one carrying the current fence still lands');
+  }
+
   FINISHED = true;
   console.log(`d4p1-activation(emulator): OK (${n})`);
   process.exit(0);

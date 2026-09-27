@@ -310,10 +310,10 @@
   {
     "id": "task7-13",
     "slice": "task7",
-    "label": "the rollback CLI stops stating what it rolled back from",
+    "label": "🔴 the rollback CLI stops stating what it rolled back FROM — an unconditional flip buries whatever landed between the operator reading the list and choosing. Re-pointed for E-1's F3, which added the FENCE beside the version.",
     "file": "tools/rollback-version.js",
-    "from": "{ mirror: makeRtdbMirror(admin.database()), expected: { activeVersionId: active } }",
-    "to": "{ mirror: makeRtdbMirror(admin.database()) }"
+    "from": "  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),\n    expected: { activeVersionId: active, activeGeneration } });",
+    "to": "  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()) });"
   },
   {
     "id": "task7-14",
@@ -439,10 +439,18 @@
   {
     "id": "task8-12",
     "slice": "task8",
-    "label": "the draft upgrade writes unconditionally",
+    "label": "🔴 THE DRAFT UPGRADE WRITES UNCONDITIONALLY — a merchant saving between the upgrade's read and its write has it REPLACED. Re-pointed: the guard used to be a `set(..., {lastUpdateTime})` precondition that FIRESTORE SILENTLY IGNORES, so the mutant was measuring an option the real API drops; it is now the in-transaction revision comparison that actually refuses.",
     "file": "tools/migrate-catalog-display.js",
-    "from": "await sourceRefOf(db, restaurantId).set(canonicalize(source), { lastUpdateTime: snap.updateTime });",
-    "to": "await sourceRefOf(db, restaurantId).set(canonicalize(source));"
+    "from": "      if (nowRevision !== revision) {",
+    "to": "      if (false) {",
+    "kills_with": [
+      "migrate_draft_moved",
+      "the upgrade overwrote a draft saved since it read"
+    ],
+    "command": [
+      "node",
+      "catalog/migration-parity.test.js"
+    ]
   },
   {
     "id": "task8-13",
@@ -7412,7 +7420,7 @@
       "a negative generation read as 0",
       "was accepted and read as"
     ],
-    "from": "  if (present(d.generation) && !(Number.isInteger(d.generation) && d.generation >= 0)) {",
+    "from": "  if (present(d.generation) && !(Number.isSafeInteger(d.generation) && d.generation >= 0)) {",
     "to": "  if (false) {",
     "why": "The defect this slice exists to fix, restored. 0 is not a neutral default: it is the pre-cutover baseline that every claim bound before the cutover compares equal to, so a fence handed 0 for garbage opens itself. Killed by the census cell, which asserts there is NO input for which the reader returns 0 from a present-but-unusable generation. kills_with is an ARRAY: cell 3 enumerates the malformed generations by name and runs BEFORE cell 4's census, so the first assertion to fire is cell 3's. Both are the same property.",
     "slice": "d4p1e1"
@@ -7590,9 +7598,9 @@
     ],
     "label": "🔴 writeVersion accepts a missing baseline again - a recordless version becomes creatable",
     "kills_with": "a version was written with no record of the baseline it was built against",
-    "from": "  if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)\n      || !Object.prototype.hasOwnProperty.call(baseline, 'version')\n      || !Number.isInteger(baseline.generation) || baseline.generation < 0) {\n    throw new Error(`write_version_no_baseline: ${rid} — a version must record the {version, generation} pair it was built against; got ${JSON.stringify(baseline)}. A version with no activation record cannot be proven to have been live, and retention is not proof.`);\n  }",
-    "to": "  if (false) { throw new Error('write_version_no_baseline: unreachable'); }",
-    "why": "With the requirement gone, `recordless` is a creatable state again — which is the state the predicate above must then refuse, and the pair of them is how D-2.2 and D-3.1 both arose. Scored end to end because the cells that stage a never-activated candidate depend on writeVersion writing the record. 🔴 The anchor is the WHOLE condition and its throw: my first attempt inserted `false &&` before a multi-line condition, which left unbalanced parentheses — the suite then died on a SyntaxError rather than on the property, which is a kill scored on a broken file. 🔴 It first SURVIVED against the activation suite: every caller there now supplies a baseline, so the guard never fires and the mutant changed nothing observable. The cell that actually drives a baseline-less call is in d4p1-stamp-write, which is where the requirement is asserted — the command is the difference between measuring the guard and measuring a suite that happens not to touch it.",
+    "from": "  if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)\n      || !Object.prototype.hasOwnProperty.call(baseline, 'version')\n      || !Number.isSafeInteger(baseline.generation) || baseline.generation < 0) {\n    throw new Error(`write_version_no_baseline: ${rid} — a version must record the {version, generation} pair it was built against; got ${JSON.stringify(baseline)}. A version with no activation record cannot be proven to have been live, and retention is not proof.`);\n  }\n",
+    "to": "  /* mutant: the baseline requirement is gone */\n",
+    "why": "With the requirement gone, `recordless` is a creatable state again — which is the state the predicate above must then refuse, and the pair of them is how D-2.2 and D-3.1 both arose. Scored end to end because the cells that stage a never-activated candidate depend on writeVersion writing the record. 🔴 The anchor is the WHOLE condition and its throw: my first attempt inserted `false &&` before a multi-line condition, which left unbalanced parentheses — the suite then died on a SyntaxError rather than on the property, which is a kill scored on a broken file. 🔴 It first SURVIVED against the activation suite: every caller there now supplies a baseline, so the guard never fires and the mutant changed nothing observable. The cell that actually drives a baseline-less call is in d4p1-stamp-write, which is where the requirement is asserted — the command is the difference between measuring the guard and measuring a suite that happens not to touch it. 🔴 AND IT DRIFTED A SECOND TIME, THE SAME WAY, WHEN F2 RE-POINTED THE ANCHOR (isInteger→isSafeInteger): the re-point kept a `to` that replaced only the CONDITION and left the `{ throw … }` block dangling, so the file stopped parsing and the suite died on `await is only valid in async functions` — a kill scored on a broken file, which the sweep correctly reported as DRIFTED rather than KILLED. The anchor is now the WHOLE STATEMENT through its closing brace and the `to` is a balanced comment, so removing the guard leaves valid code. Re-pointing an anchor re-opens this trap every time: after any edit to this condition, re-measure that the mutant PARSES and dies on the named assertion, not on a SyntaxError.",
     "slice": "d4p1sf"
   },
   {
@@ -7610,6 +7618,20 @@
     "why": "🔴 DECLARED EQUIVALENT — NO INPUT REACHES IT, and that is the point rather than an excuse. D-3.1 was real: consumption and the audit were independent, so a candidate with no activation record carried a deletion out and recorded nothing, losing the durable evidence Slice F's restoreIdentity reads. The fix closed the door UPSTREAM — writeVersion now requires a baseline so no recordless version is creatable, and the eligibility predicate refuses a recordless candidate BEFORE the flip reaches any write. Trace what would have to be true to reach this guard: consumption requires the consume policy (so not a rollback) and a declared claim, while an absent record now refuses earlier in the same transaction. There is no ordering of inputs that arrives here. It stays as defence in depth because the door that closes it is two checks in two functions, and the last four gate refusals were each about a guarantee that rested on something being unreachable. Recorded as equivalent rather than deleted, and rather than left in the count as a survivor that reads like weak coverage.",
     "slice": "d4p1sf",
     "equivalent": true
+  },
+  {
+    "id": "d4p1sf-06",
+    "slice": "d4p1sf",
+    "file": "catalog/catalog-publish.js",
+    "from": "    if (Object.prototype.hasOwnProperty.call(expected, 'activeGeneration')",
+    "to": "    if (false",
+    "label": "🔴 THE ROLLBACK CAS STOPS COMPARING THE FENCE — the version alone cannot see the pointer leaving a version and coming back, so a rollback decided against A@2 succeeds at A@4 and buries two activations the operator never saw. Needs a race during an incident, which is when rollback is used.",
+    "kills_with": "A ROLLBACK DECIDED AGAINST",
+    "command": [
+      "npm",
+      "run",
+      "test:d4p1-activation"
+    ]
   },
   {
     "id": "d4p1s-11",
@@ -7683,6 +7705,32 @@
     "from": "  if (!snap || typeof snap.exists !== 'boolean' || typeof snap.data !== 'function') {",
     "to": "  if (false) {",
     "why": "The guard had the defect it exists to prevent: `!snap.exists` is falsy for ANY plain object, so raw data read as absent — and not only empty shapes. A fully populated {version:'v1',generation:9} came back as an ABSENT pointer, which is the one answer a first publish's CAS is allowed to overwrite. The populated case is asserted FIRST in the cell because an empty object reading as absent is nearly harmless while a live pointer's data reading as absent is how a menu gets overwritten."
+  },
+  {
+    "id": "d4p1e1-12",
+    "slice": "d4p1e1",
+    "file": "catalog/catalog-firestore.js",
+    "from": "  if (present(d.generation) && !(Number.isSafeInteger(d.generation) && d.generation >= 0)) {",
+    "to": "  if (present(d.generation) && !(Number.isInteger(d.generation) && d.generation >= 0)) {",
+    "label": "🔴 THE FENCE CAN STOP ADVANCING — isInteger accepts 2^53, where n+1 === n, so every subsequent publish advances the generation to the SAME value and every staleness comparison compares equal for ever",
+    "kills_with": "an UNSAFE integer generation was accepted",
+    "command": [
+      "node",
+      "catalog/pointer-state.test.js"
+    ]
+  },
+  {
+    "id": "d4p1e1-13",
+    "slice": "d4p1e1",
+    "file": "catalog/catalog-firestore.js",
+    "from": "  if (present(d.version) && Object.prototype.hasOwnProperty.call(d, 'generation') && d.generation === null) {",
+    "to": "  if (false) {",
+    "label": "🔴 an EXPLICITLY NULL generation reads as the pre-cutover baseline again — the fence restarts at 1 and every generation-bound claim compares stale for ever. Absent is history we never had; null is history someone erased.",
+    "kills_with": "an explicitly NULL generation read as the pre-cutover baseline",
+    "command": [
+      "node",
+      "catalog/pointer-state.test.js"
+    ]
   },
   {
     "id": "pah-01",

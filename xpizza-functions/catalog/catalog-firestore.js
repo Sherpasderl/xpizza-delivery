@@ -86,8 +86,28 @@ function pointerStateOf(data, where = '') {
   if (present(d.version) && !(typeof d.version === 'string' && d.version)) {
     throw new Error(`active_version_malformed: ${at}version is ${JSON.stringify(d.version)}; a pointer that HAS a version but not a usable one is corrupt, and reading it as "unpublished" would let a first publish overwrite a live menu`);
   }
-  if (present(d.generation) && !(Number.isInteger(d.generation) && d.generation >= 0)) {
+  /* 🔴 SAFE INTEGER, NOT MERELY INTEGER — AND THIS IS THE FENCE EVERYTHING ELSE TRUSTS.
+     `Number.isInteger(9007199254740992)` is TRUE and `9007199254740992 + 1 === 9007199254740992`, so an
+     operator-written unsafe generation would make every subsequent publish "advance" the fence to the
+     same value — and the staleness checks that compare generations would all compare equal for ever.
+     Reproduced with two real publishVersion calls: both activated, generation unchanged. A fence that
+     stops advancing is worse than no fence, because everything downstream keeps trusting it.
+     No legitimate value is refused: generations increment once per activation. */
+  if (present(d.generation) && !(Number.isSafeInteger(d.generation) && d.generation >= 0)) {
     throw new Error(`active_pointer_malformed: ${at}generation is ${JSON.stringify(d.generation)}; a fence value that is present but unusable must not read as 0, which is the value every pre-cutover claim compares equal to`);
+  }
+  /* 🔴 AN EXPLICITLY NULL GENERATION ON A POINTER THAT NAMES A VERSION IS CORRUPTION, NOT A BASELINE.
+     `present()` treats null as absent, so `{version:'v1', generation:null}` read as generation 0 — which
+     SILENTLY DISCARDS FENCE HISTORY: the next publish makes it 1, and every claim bound to the real
+     generation compares stale for ever after. Operator-reachable, and the same absent-versus-explicit-null
+     distinction this file already draws for `version`.
+     🔴 ABSENT STAYS 0, DELIBERATELY. A pre-cutover pointer names a version and carries NO generation
+     field — that is the real shape of every un-migrated restaurant, and pointer-state.test.js pins it by
+     name ("or the cutover refuses every restaurant it is for"). Only flipPointer writes this field and it
+     always writes an integer, so a NULL can only come from an operator or corruption. Absent is history
+     we never had; null is history someone erased. */
+  if (present(d.version) && Object.prototype.hasOwnProperty.call(d, 'generation') && d.generation === null) {
+    throw new Error(`active_pointer_malformed: ${at}generation is explicitly null on a pointer that names ${JSON.stringify(d.version)}; an ABSENT generation is the pre-cutover baseline and reads as 0, but a null one erases fence history — the next publish would restart the fence at 1 and every generation-bound claim would compare stale`);
   }
   return { version: present(d.version) ? d.version : null, generation: present(d.generation) ? d.generation : 0 };
 }

@@ -5,6 +5,24 @@
 // contracted). This writes a NEW version and moves the pointer — run it CONTROLLED (owner, post-gate).
 //
 // Run (owner, post functions-deploy):  node tools/publish-version.js
+//
+// 🔴 RE-RUNNING THIS IS NOT A NO-OP — RECORDED, NOT FIXED (owner ruling, E-1). Each run PUBLISHES A NEW
+// VERSION and advances the generation fence, even when nothing about the menu changed: 5 → 6 → 7 was
+// reproduced by running it three times. An operator retrying after a transient failure is the NORMAL case,
+// and this is a side effect they would not predict from a tool whose name says "publish the current menu".
+//
+// WHAT IT COSTS: every artefact bound to the old generation becomes stale. A merchant's standing deletion
+// claim, declared against generation N, refuses after a bare rerun takes the fence to N+1 and they must
+// re-review a deletion they already confirmed. Nothing is corrupted; work is invalidated.
+//
+// 🔴 SO BEFORE RETRYING: check whether the previous run ACTUALLY FLIPPED — `node tools/verify-catalog.js`,
+// or read `restaurants/{rid}/meta/active_version`. If the pointer already names a version carrying this
+// menu, DO NOT RERUN; there is nothing to publish and the rerun's only effect is to advance the fence.
+// Retry only when the pointer shows the publish did not land.
+//
+// TO FIX IT PROPERLY: compare the candidate against the live version and exit `already_current` when they
+// match, the way migrate-catalog-display.js does for the draft. Not done because the slice is closing and
+// the failure is recoverable by re-review rather than destructive.
 // Then ALWAYS verify via the pointer:  node tools/verify-catalog.js
 //
 // 🔒 Value-identity: version 1 == the flat catalog == code (the emulator money-proof gates this). The

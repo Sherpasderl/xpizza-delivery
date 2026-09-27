@@ -176,11 +176,21 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
      the serving path uses. What this cell asserts is unchanged — the CLI reads the LIVE pointer and
      rolls back FROM that exact value — so the regex follows the code rather than the code being kept
      ugly to satisfy the regex. */
-  assert.ok(/active = readPointerSnap\(pointer, RID\)\.version;/.test(RB),
+  /* 🔴 THE REGEX FOLLOWED THE CODE AGAIN, per this note's own rule. E-1's F3 made the CLI bind BOTH halves
+     of the pointer — `({ version: active, generation: activeGeneration } = readPointerSnap(...))` — because
+     the version alone cannot see a round trip, so the old pattern pinning `.version` broke on a change that
+     STRENGTHENED the property. Two assertions now: it still reads through the shared reader, and it carries
+     the FENCE to the flip, which is the F3 property and the one worth pinning. */
+  assert.ok(/readPointerSnap\(pointer, RID\)/.test(RB),
     'the rollback CLI must read the live pointer, through the shared reader');
+  assert.ok(/generation: activeGeneration/.test(RB) && /activeGeneration\s*\}/.test(RB),
+    '🔴 the rollback CLI must bind the pointer GENERATION and pass it to the flip — the version alone cannot see the pointer leaving a version and coming back, and a stale rollback would then bury activations the operator never saw');
   assert.ok(/readPointerSnap/.test(RB),
     'and it must not parse the pointer document for itself — three CLI tools doing that is what the E-1 gate found');
-  assert.ok(/expected: \{ activeVersionId: active \}/.test(RB),
+  /* 🔴 NOT AN EXACT-BRACE MATCH ANY MORE. This pinned `{ activeVersionId: active }` closed, which broke
+     when F3 added the FENCE beside it — a pattern that refuses any additional field forbids strengthening
+     the very guard it exists to protect. It now pins the field's presence and leaves room for more. */
+  assert.ok(/expected: \{ activeVersionId: active\b/.test(RB),
     'and must roll back FROM that exact pointer — an unconditional flip buries whatever landed in between');
   assert.ok(RB.indexOf('active = readPointerSnap(') < RB.indexOf('await rollbackVersion('),
     'and it must read it BEFORE the rollback, not after');

@@ -201,7 +201,12 @@ function activationVerdict(record, { currentGeneration, intent }) {
     return { ok: false, code: 'flip_activation_not_pending',
       detail: `status ${JSON.stringify(status)} is not activatable (an already-activated version is eligible only for rollback)` };
   }
-  const boundTo = Number.isInteger(record.base_generation) ? record.base_generation : 0;
+  /* 🔴 isSafeInteger, NOT isInteger — HERE AND AT EVERY OTHER COUNTED OR COMPARED INTEGER IN THIS FILE.
+     Above 2^53 integer arithmetic silently STOPS ADVANCING (`n + 1 === n`), so a value that passes
+     `isInteger` can be compared, incremented and stored for ever without changing. Every one of these is
+     counted or compared, which is exactly the use `isInteger` does not protect; catalog-firestore.js's
+     pointer note carries the reproduction. The gate named three sites in this file and a grep found five. */
+  const boundTo = Number.isSafeInteger(record.base_generation) ? record.base_generation : 0;
   if (boundTo !== currentGeneration) {
     return { ok: false, code: 'flip_activation_stale_baseline',
       detail: `built against generation ${boundTo} but ${currentGeneration} is live; something was activated since this candidate was prepared` };
@@ -282,7 +287,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
   // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
   // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
   // fail-closes on an absent ordinal), i.e. a fallback that exists but can never be used.
-  if (!snapshot || snapshot.version !== versionId || !Number.isInteger(snapshot.seq)) {
+  if (!snapshot || snapshot.version !== versionId || !Number.isSafeInteger(snapshot.seq)) {
     throw new Error(`flip_requires_snapshot: ${rid}/${versionId} — the pointer needs a snapshot carrying its version AND an integer seq`);
   }
   if (!expected || typeof expected !== 'object' || Array.isArray(expected)
@@ -383,6 +388,20 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        value. Two parses of the same snapshot cannot tear, but they CAN disagree about what is valid —
        which is exactly what this defect was. */
     const priorGeneration = livePointer.generation;
+    /* 🔴 AND THE GENERATION, WHEN THE CALLER SUPPLIES ONE — because THE VERSION ALONE CANNOT SEE A ROUND
+       TRIP. Reproduced: an operator reads A@2, two activations take the pointer away and back so it is
+       A@4, and a rollback expecting A SUCCEEDS at fence 5 — burying two activations they never saw, while
+       the CAS compared equal because the version id had returned to where it started. The lease does not
+       help: it serializes the flips, it does not make the operator's earlier READ current.
+       🔴 IT NEEDS A RACE DURING AN INCIDENT, WHICH IS WHEN ROLLBACK IS USED — the emergency path's
+       preconditions must hold when everything else is already wrong.
+       Keyed on the KEY's PRESENCE, like the draft CAS, so a caller that supplies no generation is
+       unaffected: publishVersion binds its candidate through the activation record's base_generation
+       instead, and requiring it here would refuse every ordinary publish. */
+    if (Object.prototype.hasOwnProperty.call(expected, 'activeGeneration')
+        && priorGeneration !== expected.activeGeneration) {
+      throw new Error(`flip_cas_generation_stale: ${rid} — decided against ${JSON.stringify(expected.activeVersionId)}@${JSON.stringify(expected.activeGeneration)} but the live fence is ${JSON.stringify(priorGeneration)}; the pointer may have left this version and come back, so a rollback would bury activations nobody saw. Re-read and re-choose.`);
+    }
 
     /* ══ 🔴 THE PARTITION LAW, RE-RUN HERE, AGAINST A CERTIFIED SET RE-READ IN THIS TRANSACTION ══════
        THE RACE THIS CLOSES, reproduced in the emulator before it was fixed: `assertDraftPartition` runs
@@ -1174,7 +1193,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
      Absent is not. */
   if (!baseline || typeof baseline !== 'object' || Array.isArray(baseline)
       || !Object.prototype.hasOwnProperty.call(baseline, 'version')
-      || !Number.isInteger(baseline.generation) || baseline.generation < 0) {
+      || !Number.isSafeInteger(baseline.generation) || baseline.generation < 0) {
     throw new Error(`write_version_no_baseline: ${rid} — a version must record the {version, generation} pair it was built against; got ${JSON.stringify(baseline)}. A version with no activation record cannot be proven to have been live, and retention is not proof.`);
   }
   const { menuTable, extraTable, v2ByKey, v2ExtrasByKey } = normalizeInputs({ items, extras, extraRecords });
@@ -1190,7 +1209,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
   }
   // next seq (informational ordering) — read under the lease, so serial per restaurant
   const existing = await versionsColOf(db, rid).get();
-  let maxSeq = 0; existing.forEach((d) => { const s = (d.data() || {}).seq; if (Number.isInteger(s) && s > maxSeq) maxSeq = s; });
+  let maxSeq = 0; existing.forEach((d) => { const s = (d.data() || {}).seq; if (Number.isSafeInteger(s) && s > maxSeq) maxSeq = s; });
   const seq = maxSeq + 1;   // 2b-pre: named once — written into the record AND returned for the snapshot/mirror
   const versionId = newVersionId(nowServer);
   const vref = versionsColOf(db, rid).doc(versionId);
@@ -1332,7 +1351,7 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
       identity_activation: {
         status: 'pending',
         base_version: baseline.version || null,
-        base_generation: Number.isInteger(baseline.generation) ? baseline.generation : 0,
+        base_generation: Number.isSafeInteger(baseline.generation) ? baseline.generation : 0,
         attempt: versionId,
         at: FieldValue.serverTimestamp(),
       },

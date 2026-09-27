@@ -273,6 +273,17 @@ function buildMigrationCandidate(restaurantId, captured, artifact, { source_sha 
 // read THROUGH it, so the id the candidate binds its CAS to is the id it actually captured.
 async function captureActiveVersion(db, restaurantId) {
   const pointer = await db.collection('restaurants').doc(restaurantId).collection('meta').doc('active_version').get();
+  /* 🔴 RECORDED, NOT FIXED (owner ruling, E-1): THIS BRANCHES ON RAW `pointer.exists` BEFORE THE SHARED
+     READER, so "every caller goes through readPointerSnap" — the property E-1 exists for — is not true of
+     this line. It refuses SAFELY: a missing pointer stops the tool with a typed sentence, which is the
+     same outcome the shared reader would reach. So it is ARCHITECTURAL DRIFT, not a hazard: what it costs
+     is the guarantee that one function decides what a pointer means, and the way that guarantee fails is
+     by erosion at lines like this one rather than by a wrong answer here.
+     TO FIX IT: read through readPointerSnap and map its `active_version_malformed` / `active_pointer_
+     malformed` refusals onto this tool's own typed `refuse()`, keeping the operator-facing sentence.
+     WHY IT IS NOT FIXED NOW: the slice is closing to a deploy and this changes no outcome. It is recorded
+     HERE, at the branch, because that is where the next reader meets it — a notes file nobody opens is
+     how this kind of drift becomes permanent. */
   if (!pointer.exists) refuse('no_active_version', `${restaurantId} — nothing is published; there is no live catalog to migrate`);
   /* 🔴 THROUGH THE SHARED READER. This validated the version itself and IGNORED the generation
      entirely, so a pointer whose fence value was garbage migrated happily here while the serving path
@@ -312,9 +323,34 @@ async function upgradeDraftInPlace(db, restaurantId, artifact, { apply = false }
   const after = JSON.stringify(canonicalize(source));
   if (before === after) return { upgraded: false, reason: 'already_current', revision, provenance };
   if (apply) {
-    // CONDITIONAL on the revision it was read at: a merchant saving an edit between the read and the
-    // write must not have it overwritten by an upgrade of the version they replaced.
-    await sourceRefOf(db, restaurantId).set(canonicalize(source), { lastUpdateTime: snap.updateTime });
+    /* 🔴 THE PRECONDITION THAT WAS NEVER THERE. This read
+         sourceRefOf(db, restaurantId).set(canonicalize(source), { lastUpdateTime: snap.updateTime })
+       and it looked exactly like a guarded write. FIRESTORE'S set() DOES NOT TAKE A PRECONDITION —
+       preconditions belong to update() and delete() — so the option was accepted and SILENTLY DROPPED.
+       MEASURED against the emulator rather than taken from the docs: with a stale lastUpdateTime,
+       `set()` COMMITTED (the value changed) while `update()` refused with code 9. So an operator running
+       --apply would REPLACE a merchant's newer draft, by a tool that read as if it were protected.
+
+       🔴 AND THE UNIT SUITE CERTIFIED THE GUARD THAT DID NOT EXIST, which is the part worth remembering:
+       catalog/firestore-fake.js enforced `lastUpdateTime` ON set(), so the fake was STRICTER THAN
+       FIRESTORE in exactly the direction that hides this. The cell drove the real function, the mutation
+       sweep confirmed removing the option broke it, and all of it was measuring a capability the real API
+       does not have. The fake no longer honours it on set() — see the note there.
+
+       WHY A TRANSACTION WITH AN EXPLICIT COMPARISON, and not simply update(): update() MERGES, and this
+       write must REPLACE — a canonicalized source that drops a field must not leave the old one behind.
+       And the comparison is explicit rather than leaning on Firestore's implicit abort, for two reasons:
+       it produces a NAMED refusal an operator can act on instead of an opaque ABORTED, and the fake's
+       transactions model no conflict detection, so an implicit guard would be untestable — which is how
+       this defect survived in the first place. */
+    await db.runTransaction(async (tx) => {
+      const now = await tx.get(sourceRefOf(db, restaurantId));
+      const nowRevision = now.exists ? encodeUpdateTime(now.updateTime) : null;
+      if (nowRevision !== revision) {
+        throw new Error(`migrate_draft_moved: ${restaurantId} — the draft was at ${JSON.stringify(revision)} when this upgrade was computed and is at ${JSON.stringify(nowRevision)} now; a merchant saved in between and their edit must not be replaced by an upgrade of the draft they superseded. Re-run the migration.`);
+      }
+      tx.set(sourceRefOf(db, restaurantId), canonicalize(source));
+    });
   }
   return { upgraded: true, revision, source, provenance, applied: !!apply };
 }
@@ -327,6 +363,15 @@ module.exports = {
 //
 //   node tools/migrate-catalog-display.js              # DRY RUN — reports, writes nothing
 //   node tools/migrate-catalog-display.js --apply      # publish the candidate + upgrade the drafts
+//
+// 🔴 RE-RUNNING --apply PUBLISHES AGAIN AND ADVANCES THE GENERATION FENCE — recorded, not fixed (owner
+// ruling, E-1). The DRAFT half is idempotent: it compares before/after and returns `already_current`. The
+// PUBLISH half is not, so a rerun after a partial failure produces a second version and takes the fence
+// from N to N+1, invalidating anything bound to N — a merchant's standing deletion claim most of all.
+// BEFORE RETRYING: check whether the publish landed (`node tools/verify-catalog.js`, or read
+// `meta/active_version`). If it did, the drafts can be upgraded without republishing; if it did not,
+// rerun. The draft write itself is safe to retry — it refuses `migrate_draft_moved` rather than
+// overwriting a merchant who saved in between.
 //
 // 🔴 THE CANDIDATE IS PUBLISHED HERE, NOT VIA `publish-version --from-store`. The plan's runbook
 // sketch routed it that way, and it cannot go that way: --from-store publishes the DRAFT, and a draft

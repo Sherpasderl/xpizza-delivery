@@ -371,8 +371,17 @@ const tablesOf = (rid, menu) => {
     const wrapCol = (col) => new Proxy(col, { get(t, k) { return k === 'doc' ? (id) => wrap(t.doc(id)) : (typeof t[k] === 'function' ? t[k].bind(t) : t[k]); } });
     const spied = { ...db, collection: (c) => wrapCol(db.collection(c)) };
 
+    /* 🔴 THE EXPECTED REFUSAL CHANGED, AND THE OLD ONE WAS THE TELL. This asserted
+       /FAILED_PRECONDITION/ — a string ONLY THE FAKE COULD EVER PRODUCE, because Firestore's `set()`
+       does not take a precondition and never refused this write at all (measured on the emulator: with a
+       stale lastUpdateTime, set() COMMITS and update() refuses with code 9). So this cell's own
+       expectation was evidence that the double was stricter than the real API, and the guard it
+       certified did not exist in production.
+       The upgrade now writes inside a transaction and compares the revision EXPLICITLY, so the refusal
+       is ours and named — which an operator can act on, and which the fake can model because the
+       comparison lives in the code rather than in the database. */
     await assert.rejects(() => upgradeDraftInPlace(spied, rid, ART[rid], { apply: true }),
-      /FAILED_PRECONDITION/, '🔴 the upgrade overwrote a draft saved since it read');
+      /migrate_draft_moved/, '🔴 the upgrade overwrote a draft saved since it read');
     assert.ok(raced, 'premise: the competing save really landed mid-upgrade');
     const still = (await sourceRefOf(db, rid).get()).data();
     assert.strictEqual(still.items[0].price, edited.items[0].price, 'the merchant\'s newer save stands');

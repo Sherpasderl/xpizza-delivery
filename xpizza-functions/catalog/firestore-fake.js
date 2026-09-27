@@ -57,20 +57,23 @@ function makeDb() {
       id: path.split('/').pop(),
       collection: (sub) => colRef(`${path}/${sub}`),
       get: async () => snapOf(path),
-      // `lastUpdateTime` is a real Firestore PRECONDITION and is modelled, not ignored: the draft
-      // upgrade writes under one so a merchant saving between the read and the write is refused
-      // rather than overwritten. A fake that accepted every write would make that guard untestable,
-      // which is the same as not having it.
+      /* 🔴 set() IGNORES `lastUpdateTime`, BECAUSE FIRESTORE DOES — and this fake used to ENFORCE it,
+         which made it STRICTER THAN THE REAL API in the one direction that hides a missing guard.
+         The draft upgrade passed `set(data, { lastUpdateTime })`, Firestore accepted and dropped the
+         option (preconditions belong to update() and delete()), and this fake refused the stale write —
+         so a cell driving the real function, and a mutant confirming the option mattered, both certified
+         a guard THAT DID NOT EXIST IN PRODUCTION. Measured against the emulator: real `set()` with a
+         stale precondition COMMITS; real `update()` refuses with code 9.
+         🔴 A DOUBLE THAT IS STRICTER THAN REALITY IS WORSE THAN ONE THAT IS LAXER. A laxer double lets a
+         defect through and something downstream notices; a stricter one PRODUCES EVIDENCE FOR A
+         GUARANTEE THE SYSTEM DOES NOT HAVE, and nothing downstream can contradict it. If this fake is
+         ever wrong again, let it be in the lax direction.
+         A refusal is now DELIBERATELY NOT thrown here: the option is accepted and ignored, exactly as
+         Firestore does, so any production code relying on it fails in tests the same way it fails in
+         production. The draft upgrade now uses a transaction with an EXPLICIT revision comparison,
+         which this fake can model because the comparison is in the code rather than in the database. */
       set: async (data, opts) => {
-        if (opts && opts.lastUpdateTime) {
-          const held = docs.get(path);
-          const at = held ? held.updateTime : undefined;
-          if (!at || at.toMillis() !== opts.lastUpdateTime.toMillis()) {
-            const e = new Error(`FAILED_PRECONDITION: the document was modified (${path})`);
-            e.code = 9;
-            throw e;
-          }
-        }
+        void opts;                 // accepted and ignored — see the note above; do not "fix" this
         put(path, data);
       },
       create: async (data) => {
