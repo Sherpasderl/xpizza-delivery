@@ -70,8 +70,12 @@ const FENCE_EXEMPT = {
     + 'that already captured and re-verified the {version, generation} pair before calling it. A fence '
     + 'here would re-read the pointer the caller has already fenced against, in the same transaction, '
     + 'which cannot disagree with itself. The exemption is about WHERE it runs, not about the writes '
-    + 'being safe: reached from anywhere else it would be unfenced, which is why it refuses without '
-    + "verifyPlan's permitting verdict and refuses outside a transaction. See catalog/identity-writer.js.",
+    + 'being safe: reached from anywhere else it would be unfenced, which is why it refuses without a '
+    + 'PERMITTING VERDICT THAT CARRIES THE PLAN IT JUDGED, and refuses outside a transaction. The verdict '
+    + "comes from verifyPlan for an activation or from reconcileOnRollback's own `.verdict` for a "
+    + 'rollback; it used to say "verifyPlan\'s verdict" alone, which was already untrue of the rollback '
+    + 'path and became the defect codex found — the plan arrived as a SEPARATE argument and nothing tied '
+    + 'the two together. See catalog/identity-writer.js.',
 };
 
 function jsFilesUnder(dir, out = []) {

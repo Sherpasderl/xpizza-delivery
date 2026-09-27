@@ -273,4 +273,42 @@ const stampSays = ({ key, claimedId, keyRowId = null, idRow = null }) =>
   ok('a RESIDUE orphan holding a restored name is retired — load-bearing for the deleted contested-destination refusal, not an incidental sweep');
 }
 
+// ── 🔴 THE RECONCILIATION ISSUES A VERDICT BOUND TO ITS OWN PLAN ─────────────────────────────
+/* WHY THIS EXISTS. catalog-publish.js's rollback path used to hand the atomic writer a verdict it had
+   ASSEMBLED ITSELF — `{ ok: true, lands: [], releases: [], deletions: rec.deletions }` — a permitting
+   verdict no verifier produced, beside a plan built from `rec.retires`/`rec.restores` in the same object
+   literal. The writer's guard checked the verdict's SHAPE only, so that pair could not be wrong about
+   itself but nothing stopped it being wrong about anything else. It was the live instance of the door the
+   writer's comment claimed did not exist.
+   It cannot route through verifyPlan: verifyPlan has NO notion of `restores`, so a restores-only plan
+   reads as EMPTY to it and would be permitted while doing nothing. So the reconciliation issues the
+   verdict for the plan it just derived — weaker than an independent verifier (it vouches for itself) but
+   BOUND, which is the property the writer needs. */
+{
+  const r = reg({
+    ids: { X: row('Margherita', STATUS_RETIRED), ORPHAN: row('Margherita') },
+    keys: { Margherita: { canonical_id: 'ORPHAN' } },
+  });
+  const out = reconcileOnRollback({ targetStamps: { Margherita: 'X' }, activeStamps: {}, ids: r.ids, keys: r.keys });
+  assert.deepStrictEqual(out.refusals, [], 'premise — this reconciliation permits');
+  assert.ok(out.restores.length || out.retires.length, 'premise — and it has work to do');
+
+  assert.ok(out.verdict, '🔴 no verdict — the caller would have to assemble one, which is the defect this closes');
+  assert.strictEqual(out.verdict.ok, true, 'it permits');
+  assert.strictEqual(out.verdict.plan.retires, out.retires,
+    '🔴 the verdict names a DIFFERENT retires array than the reconciliation produced — bound means the same operations, not merely equal-looking ones');
+  assert.strictEqual(out.verdict.plan.restores, out.restores,
+    '🔴 the verdict names a different restores array than the reconciliation produced');
+  assert.strictEqual(out.verdict.deletions, out.deletions, '🔴 and the deletions must be the ones it computed');
+  assert.deepStrictEqual(out.verdict.plan.moves, [], 'a rollback plan moves nothing');
+  assert.deepStrictEqual(out.verdict.plan.mints, [], '…and mints nothing — a rollback restores, it does not coin');
+
+  /* 🔴 AND A REFUSING RECONCILIATION MUST CARRY NO VERDICT, or a caller that forgot to check
+     `refusals` would find a permitting-looking one sitting next to them. */
+  const refused = reconcileOnRollback({ targetStamps: { A: 'BAD', B: 'BAD' }, activeStamps: {}, ids: reg().ids, keys: reg().keys });
+  assert.ok(refused.refusals.length, 'premise — one id stamped on two names is refused');
+  assert.strictEqual(refused.verdict, null, '🔴 a REFUSING reconciliation still handed back a verdict');
+  ok('the reconciliation issues a verdict bound to the very arrays it derived, and a refusal carries none — so the rollback call site has no verdict left to assemble');
+}
+
 console.log(`identity-reconcile: OK (${n})`);

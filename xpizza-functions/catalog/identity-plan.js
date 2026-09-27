@@ -207,7 +207,17 @@ function verifyPlan(plan, { ids, keys, complete } = {}) {
     deletions.push({ name: r.name, encoded, id: r.id });
   }
 
-  return { ...PERMIT, lands, releases, deletions };
+  /* 🔴 THE VERDICT CARRIES THE PLAN IT JUDGED, and that is a safety property rather than a
+     convenience. The writer used to take `plan` and `verified` as SEPARATE arguments and check only the
+     verdict's SHAPE, so a permitting verdict for one plan authorised the writing of a DIFFERENT one —
+     a genuinely verified EMPTY plan's verdict passed alongside an unverified retirement and the row was
+     written. Codex found it; the comment above the writer's guard claimed "there is no 'write it anyway'
+     door" while that door was open, which is worse than silence because a reader checks the comment and
+     stops looking.
+     Returning the plan lets the writer take it FROM HERE, so a mismatch cannot be EXPRESSED rather than
+     being detected. A fingerprint compared at the writer was the alternative and it is weaker: it finds
+     the mistake instead of making it impossible. */
+  return { ...PERMIT, plan, lands, releases, deletions };
 }
 
 module.exports = { verifyPlan, entriesOf };

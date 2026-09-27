@@ -8816,6 +8816,19 @@
     ]
   },
   {
+    "id": "e4-21",
+    "slice": "e4",
+    "file": "catalog/identity-plan.js",
+    "from": "  return { ...PERMIT, plan, lands, releases, deletions };",
+    "to": "  return { ...PERMIT, lands, releases, deletions };",
+    "label": "the permitting verdict stops carrying the plan it judged, so the writer has nothing to bind to",
+    "kills_with": "carries no plan",
+    "command": [
+      "node",
+      "catalog/identity-plan.test.js"
+    ]
+  },
+  {
     "id": "e8-09",
     "slice": "e8",
     "file": "catalog/identity-derive.js",
@@ -8965,8 +8978,8 @@
     "id": "e11-01",
     "slice": "e11",
     "file": "catalog/catalog-publish.js",
-    "from": "        identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing: fullIds[kind] });",
-    "to": "        identityWrites[kind] = { writes: 0, moved: 0, minted: 0, retired: 0, deleted: 0 };",
+    "from": "        identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, verified, existing: fullIds[kind] });",
+    "to": "        identityWrites[kind] = { writes: 0, moved: 0, minted: 0, retired: 0, restored: 0, deleted: 0 };",
     "label": "🔴 THE IN-TX MINT IS DISABLED — a published object gets no identity, which the overlay cannot distinguish from \"not backfilled yet\"",
     "kills_with": "THE NEW OBJECT HAS NO IDENTITY",
     "command": [
@@ -9227,6 +9240,19 @@
     ]
   },
   {
+    "id": "e13-13",
+    "slice": "e13",
+    "file": "catalog/identity-reconcile.js",
+    "from": "    plan: { moves: [], mints: [], retires, restores },",
+    "to": "    plan: { moves: [], mints: [], retires: [], restores: [] },",
+    "label": "the reconciliation's verdict carries an EMPTY plan instead of the one it derived — permitting, correctly shaped, and authorising nothing it actually decided",
+    "kills_with": "a DIFFERENT retires array",
+    "command": [
+      "node",
+      "catalog/identity-reconcile.test.js"
+    ]
+  },
+  {
     "id": "e9-08",
     "slice": "e9",
     "file": "catalog/identity-writer.js",
@@ -9276,6 +9302,35 @@
     "to": "  for (const r of []) {",
     "label": "the restore operation is dropped entirely — a rollback across a deletion leaves the object unresolvable, which is the case this whole slice pairs retirement with",
     "kills_with": "the resurrected id is not LIVE",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e9-12",
+    "slice": "e9",
+    "file": "catalog/identity-writer.js",
+    "from": "  const plan = verified.plan;",
+    "to": "  const plan = (arguments[1] || {}).plan || verified.plan;",
+    "label": "🔴 THE BINDING DEFECT RESTORED: a plan passed alongside the verdict takes precedence again, so a verified EMPTY plan's verdict authorises an unjudged retirement",
+    "kills_with": "RODE IN ON A VERIFIED EMPTY PLAN",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e9-13",
+    "slice": "e9",
+    "file": "catalog/identity-writer.js",
+    "from": "  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.moves) || !Array.isArray(plan.mints) || !Array.isArray(plan.retires)) {",
+    "to": "  if (false) {",
+    "label": "the writer stops requiring the verdict to carry a plan, so the old hand-assembled rollback literal reaches the writes again",
+    "kills_with": [
+      "ACCEPTED and reached the writes",
+      "NOT BY NAME"
+    ],
     "command": [
       "node",
       "catalog/identity-writer.test.js"

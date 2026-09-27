@@ -20,19 +20,30 @@
  */
 const { STATUS_LIVE, STATUS_RETIRED, encodeKey, idsColOf, keysColOf } = require('./identity-registry');
 
-/* `plan`     : {moves, mints, retires} as derivePlan produced and verifyPlan permitted.
-   `verified` : verifyPlan's PERMITTING verdict for that plan — its `deletions` are what get deleted.
+/* `verified` : a PERMITTING verdict that CARRIES THE PLAN IT JUDGED — `verifyPlan`'s for an activation,
+                `reconcileOnRollback`'s `.verdict` for a rollback. The plan is read from it; there is no
+                separate `plan` argument, by design (see the guard below).
    `existing` : Map(id -> row) the caller already read, so a move/retire PRESERVES the row's other
                 fields instead of replacing the document. */
-function applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing, now } = {}) {
+function applyIdentityPlan(tx, { db, rid, kind, verified, existing, now } = {}) {
   if (!tx || typeof tx.set !== 'function' || typeof tx.delete !== 'function') {
     throw new Error('identity_writer_no_transaction: the atomic writer only writes inside the activation transaction');
   }
-  /* 🔴 THE VERDICT IS REQUIRED, NOT THE PLAN ALONE. Accepting a bare plan would let a caller skip
-     verification and still reach the writes — the shape where a guard exists, passes its cells, and
-     protects nothing because one path does not go through it. There is no "write it anyway" door. */
+  /* 🔴 THE PLAN COMES OUT OF THE VERDICT. IT IS NOT A SEPARATE ARGUMENT, AND THAT IS THE FIX.
+     This used to take `plan` and `verified` side by side and check only that the verdict was SHAPED like
+     a permitting one. Nothing tied the two together, so a permitting verdict for one plan authorised the
+     writing of ANOTHER: codex passed a genuinely verified EMPTY plan's verdict alongside an unverified
+     retirement and this writer created the retired row. The comment that stood here claimed "there is no
+     'write it anyway' door" — and named the exact failure class it did not close, which is worse than
+     saying nothing, because a reader checks the comment, sees the concern was considered, and stops.
+     Taking the plan from the verdict makes the mismatch INEXPRESSIBLE rather than checked. A fingerprint
+     compared here was the weaker alternative: it detects a mistake instead of preventing it. */
   if (!verified || verified.ok !== true || !Array.isArray(verified.deletions)) {
-    throw new Error(`identity_writer_unverified: the plan must carry verifyPlan's PERMITTING verdict; got ${JSON.stringify(verified && verified.code)}`);
+    throw new Error(`identity_writer_unverified: the plan must carry a PERMITTING verdict; got ${JSON.stringify(verified && verified.code)}`);
+  }
+  const plan = verified.plan;
+  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.moves) || !Array.isArray(plan.mints) || !Array.isArray(plan.retires)) {
+    throw new Error('identity_writer_verdict_carries_no_plan: the verdict must carry the plan it judged — a verdict without one cannot be bound to what is about to be written');
   }
   const rows = existing instanceof Map ? existing : new Map();
   const stamp = now || new Date().toISOString();

@@ -64,7 +64,7 @@ function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
     }
     keyOfId.set(id, key);
   }
-  if (refusals.length) return { restores: [], retires: [], deletions: [], refusals };
+  if (refusals.length) return { restores: [], retires: [], deletions: [], refusals, verdict: null };
 
   /* SURVIVES = the target stamps this id somewhere. It is the whole-target fact a per-stamp check
      cannot see, and it is what separates theft from a swap. */
@@ -124,7 +124,7 @@ function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
       was: row ? row.status : 'absent',
       resurrects: !!row && row.status !== STATUS_LIVE });
   }
-  if (refusals.length) return { restores: [], retires: [], deletions: [], refusals };
+  if (refusals.length) return { restores: [], retires: [], deletions: [], refusals, verdict: null };
 
   /* §5: "Y retired if absent from the target." 🔴 ONLY MEANINGFUL BECAUSE THE CALLER HAS ALREADY
      ESTABLISHED THE TARGET IS CERTIFIED. An UNCERTIFIED target has no stamps, so every live id would
@@ -189,7 +189,24 @@ function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
     deletions.push({ name: r.name, encoded, id: r.id });
   }
 
-  return { restores, retires, deletions, refusals: [] };
+  /* 🔴 THIS FUNCTION ISSUES THE VERDICT FOR ITS OWN PLAN, because the alternative was the caller
+     FABRICATING ONE. catalog-publish.js used to write `verified: { ok: true, lands: [], releases: [],
+     deletions: rec.deletions }` as an object literal — a permitting verdict verifyPlan never produced,
+     handed to a writer whose comment says there is no "write it anyway" door. That WAS the door, in
+     production, on the rollback path.
+     It cannot route through verifyPlan instead: verifyPlan models moves/mints/retires and has NO notion
+     of `restores`, so a restores-only plan reads as EMPTY to it (`declared`/`recognised` never count
+     them) and would be permitted while doing nothing — a verifier that cannot see the operation is not
+     a verifier for it. Teaching verifyPlan restores is the larger, spec-level change; it is NOT done
+     here and is recorded as the follow-up.
+     🔴 SO BE HONEST ABOUT THE STRENGTH: this is a plan VOUCHING FOR ITSELF, which is weaker than an
+     independent verifier. What it buys is BINDING — the verdict is built from the same `restores` and
+     `retires` this call derived, in the same call, so plan and verdict CANNOT disagree and no caller can
+     assemble a mismatched pair. The refusals above are the actual judgement; this only carries it. */
+  const verdict = { ok: true, code: 'reconcile_verified', detail: '',
+    plan: { moves: [], mints: [], retires, restores },
+    lands: [], releases: [], deletions };
+  return { restores, retires, deletions, refusals: [], verdict };
 }
 
 module.exports = { reconcileOnRollback };

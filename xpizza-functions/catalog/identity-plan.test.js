@@ -368,4 +368,33 @@ const PLAN = (p) => ({ moves: [], mints: [], retires: [], ...p });
   ok('the verdict is a pure function of its arguments, and it mutates none of them');
 }
 
+// ── 10. 🔴 A PERMITTING VERDICT CARRIES THE PLAN IT JUDGED ───────────────────────────────────
+/* This is what BINDS the verdict to the plan at the writer. applyIdentityPlan used to take `plan` and
+   `verified` as separate arguments and check only the verdict's SHAPE, so a genuinely verified plan's
+   verdict authorised writing a DIFFERENT, unverified one — codex passed an EMPTY plan's real verdict
+   beside an unjudged retirement and the row was written. The writer now reads the plan FROM the verdict,
+   which makes the mismatch inexpressible — and that only holds if the verdict actually carries it. */
+{
+  const plan = PLAN({
+    moves: [{ id: 'X', from: 'A', to: 'B' }],
+    mints: [{ id: 'P', name: 'C' }],
+    retires: [{ id: 'Y', name: 'D' }],
+  });
+  const ids = { X: idRow('A'), Y: idRow('D') };
+  const keys = { A: { canonical_id: 'X' }, D: { canonical_id: 'Y' } };
+  const v = verifyPlan(plan, index({ ids, keys }));
+  assert.strictEqual(v.ok, true, `${v.code} — ${v.detail}`);
+  assert.ok(v.plan, '🔴 the PERMITTING verdict carries no plan — the writer would have nothing to bind to and must refuse every call');
+  assert.deepStrictEqual(v.plan, plan, '🔴 the verdict carries a plan that is not the one it judged — binding to it would authorise the wrong operations');
+  assert.strictEqual(v.plan, plan, '…and it is the same object, not a copy that could drift from what was judged');
+
+  /* 🔴 AND A REFUSAL MUST NOT CARRY ONE. A refusing verdict that still carried a plan would be one
+     `verified.ok !== true` check away from authorising it; the writer checks ok first, but a refusal
+     shipping the plan it rejected is an invitation nobody needs. */
+  const bad = verifyPlan(PLAN({ mints: [{ id: 'X', name: 'E' }] }), index({ ids, keys }));
+  assert.strictEqual(bad.ok, false, `premise — a mint of an id that already exists live must refuse; got ${bad.code}`);
+  assert.ok(!bad.plan, '🔴 a REFUSING verdict carries the plan it rejected');
+  ok('a permitting verdict carries the exact plan it judged, and a refusing one carries none — the binding the writer relies on');
+}
+
 console.log(`identity-plan: OK (${n})`);

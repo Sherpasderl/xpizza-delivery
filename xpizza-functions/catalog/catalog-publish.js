@@ -730,10 +730,15 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
             throw new Error(`${rec.refusals[0].code}: ${rid}/${versionId}/${kind} — ${rec.refusals.length} refusal(s) reconciling the rollback target — ${rec.refusals.map((r) => r.detail).join(' · ')}`);
           }
           if (!rec.restores.length && !rec.retires.length) continue;   // the registry already says what the target says
+          /* 🔴 THE VERDICT COMES FROM THE RECONCILIATION, NOT FROM HERE. This used to assemble both
+             halves by hand — `plan: {…rec.retires, …rec.restores}` beside
+             `verified: { ok: true, lands: [], releases: [], deletions: rec.deletions }` — a permitting
+             verdict no verifier ever produced, handed to a writer whose comment said there was no
+             "write it anyway" door. This was the door, on the live rollback path. `reconcileOnRollback`
+             now issues a verdict built from the same plan it derived, so the two cannot disagree and
+             this call site has nothing left to get wrong. */
           identityWrites[kind] = applyIdentityPlan(tx, {
-            db, rid, kind, existing: fullIds[kind],
-            plan: { moves: [], mints: [], retires: rec.retires, restores: rec.restores },
-            verified: { ok: true, lands: [], releases: [], deletions: rec.deletions },
+            db, rid, kind, existing: fullIds[kind], verified: rec.verdict,
           });
           identityWrites[kind].residue = rec.retires.filter((r) => r.why === 'residue').length;
           continue;
@@ -779,7 +784,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
         if (!verified.ok) {
           throw new Error(`${verified.code}: ${rid}/${versionId}/${kind} — the activation plan was refused AT ACTIVATION — ${verified.detail}`);
         }
-        identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, plan, verified, existing: fullIds[kind] });
+        identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, verified, existing: fullIds[kind] });
         for (const m of plan.mints) mintedThisFlip[kind].set(m.name, m.id);
       }
       /* ══ A MINT MUST REACH THE VERSION **AND** THE SOURCE — BOTH, OR NEITHER ════════════════

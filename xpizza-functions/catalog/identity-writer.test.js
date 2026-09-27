@@ -45,7 +45,7 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
 
   let report = null;
   await db.runTransaction(async (tx) => {
-    report = applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', plan, verified, existing: idMap, now: 't1' });
+    report = applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', verified, existing: idMap, now: 't1' });
   });
   const id = (x) => db._docs.get(`${P}/ids/${x}`);
   const key = (nm) => db._docs.get(`${P}/keys/${encodeKey(nm)}`);
@@ -129,7 +129,7 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     for (const bad of [undefined, null, { ok: false, code: 'plan_mint_id_exists' }, { ok: true }, { ok: true, deletions: 'no' }]) {
       let threw = null;
       try {
-        await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', plan, verified: bad, existing: new Map() }));
+        await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', verified: bad, existing: new Map() }));
       } catch (e) { threw = (e && e.message) || String(e); }
       assert.ok(threw && /identity_writer_unverified/.test(threw),
         `🔴 the writer ran on verdict ${JSON.stringify(bad)} — verification is bypassable: ${threw}`);
@@ -137,7 +137,7 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     assert.strictEqual(db._docs.get(`${P}/ids/Z`), undefined, '🔴 a refused call wrote anyway');
 
     let noTx = null;
-    try { applyIdentityPlan({}, { db, rid: RID, kind: 'dish', plan, verified: { ok: true, deletions: [], lands: [] } }); }
+    try { applyIdentityPlan({}, { db, rid: RID, kind: 'dish', verified: { ok: true, plan, deletions: [], lands: [] } }); }
     catch (e) { noTx = (e && e.message) || String(e); }
     assert.ok(noTx && /identity_writer_no_transaction/.test(noTx), '🔴 it wrote outside a transaction');
     ok('the writer refuses a missing, refusing or malformed verdict and refuses to write outside a transaction — verification cannot be skipped');
@@ -152,11 +152,11 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
        absent according to nothing anyone chose. */
     const db = memFirestore();
     const plan = { moves: [], mints: [{ id: 'Z', name: 'N' }], retires: [] };
-    const forged = { ok: true, lands: [{ id: 'Z', name: 'N', via: 'mint' }], releases: [],
+    const forged = { ok: true, plan, lands: [{ id: 'Z', name: 'N', via: 'mint' }], releases: [],
       deletions: [{ name: 'N', encoded: encodeKey('N'), id: 'Z' }] };
     let threw = null;
     try {
-      await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', plan, verified: forged, existing: new Map() }));
+      await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', verified: forged, existing: new Map() }));
     } catch (e) { threw = (e && e.message) || String(e); }
     assert.ok(threw && /identity_writer_delete_lands/.test(threw),
       `🔴 a name both landed and deleted by one plan was written; the result depends on write order: ${threw}`);
@@ -167,11 +167,11 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
        writer must not depend on its callers being careful: this forges the verdict the careful caller
        would never produce, which is the only way to reach the branch. */
     const restorePlan = { moves: [], mints: [], retires: [], restores: [{ id: 'R', name: 'N' }] };
-    const forgedRestore = { ok: true, lands: [], releases: [],
+    const forgedRestore = { ok: true, plan: restorePlan, lands: [], releases: [],
       deletions: [{ name: 'N', encoded: encodeKey('N'), id: 'R' }] };
     let threwRestore = null;
     try {
-      await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', plan: restorePlan, verified: forgedRestore, existing: new Map() }));
+      await db.runTransaction(async (tx) => applyIdentityPlan(tx, { db, rid: RID, kind: 'dish', verified: forgedRestore, existing: new Map() }));
     } catch (e) { threwRestore = (e && e.message) || String(e); }
     assert.ok(threwRestore && /identity_writer_delete_lands/.test(threwRestore),
       `🔴 a name both RESTORED and deleted by one plan was written; whether the reverse row survives depends on which loop runs last: ${threwRestore}`);
@@ -195,10 +195,9 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
 
     let report = null;
     await db.runTransaction(async (tx) => {
+      /* reconcileOnRollback's OWN verdict, as production passes it — not a pair assembled here. */
       report = applyIdentityPlan(tx, {
-        db, rid: RID, kind: 'dish', now: 't1', existing: idMap,
-        plan: { moves: [], mints: [], retires: plan.retires, restores: plan.restores },
-        verified: { ok: true, lands: [], releases: [], deletions: plan.deletions },
+        db, rid: RID, kind: 'dish', now: 't1', existing: idMap, verified: plan.verdict,
       });
     });
 
@@ -239,10 +238,12 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     assert.deepStrictEqual(plan.retires.map((r) => r.id), ['ORPHAN'], 'premise — the residue orphan is retired, releasing the name');
     assert.deepStrictEqual(plan.deletions, [], 'premise — and the reconciliation already knows not to delete a name it re-lands');
 
+    /* 🔴 THE VERDICT IS THE RECONCILIATION'S OWN, exactly as the production rollback path now passes
+       it. This cell used to assemble `plan:` and `verified:` by hand here, mirroring a call site that
+       was itself fabricating a verdict — so the cell reproduced the defect's shape instead of catching
+       it. Driving `plan.verdict` means the cell exercises what catalog-publish.js actually does. */
     await db.runTransaction(async (tx) => applyIdentityPlan(tx, {
-      db, rid: RID, kind: 'dish', now: 't1', existing: idMap,
-      plan: { moves: [], mints: [], retires: plan.retires, restores: plan.restores },
-      verified: { ok: true, lands: [], releases: [], deletions: plan.deletions },
+      db, rid: RID, kind: 'dish', now: 't1', existing: idMap, verified: plan.verdict,
     }));
 
     const key = db._docs.get(`${P2}/keys/${encodeKey('Margherita')}`);
@@ -250,6 +251,71 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
     assert.strictEqual(key.canonical_id, 'X', '🔴 the reverse row names the RETIRED orphan rather than the restored id');
     assert.strictEqual(db._docs.get(`${P2}/ids/ORPHAN`).status, STATUS_RETIRED, 'and the orphan really is retired, not merely unlinked');
     ok('a name released by a retirement and landed by a restore in ONE plan is written, not deleted — the outcome does not depend on loop order');
+  }
+
+  // ── 🔴 THE BINDING: A VERDICT AUTHORISES ONLY THE PLAN IT CARRIES ──────────────────────────
+  {
+    /* THE DEFECT CODEX FOUND, AS A CELL. The writer took `plan` and `verified` as SEPARATE arguments and
+       checked only the verdict's shape, so a GENUINELY VERIFIED plan's verdict authorised writing a
+       DIFFERENT, unverified plan. Codex's reproduction: an empty plan's real verdict, passed beside a
+       retirement nobody judged, and the writer created the retired row.
+       It is now inexpressible — the plan is READ FROM the verdict. This cell keeps it that way by
+       passing BOTH: a real verdict for an EMPTY plan, and a stray `plan` naming a retirement. If anyone
+       reintroduces a `plan` parameter, or lets a passed plan take precedence, this goes red. */
+    const db = memFirestore();
+    db._docs.set(`${P}/ids/OTHER`, { legacy_key: 'Other', status: STATUS_LIVE, created_at: 't0', kind: 'dish' });
+    const idMap = new Map([['OTHER', { legacy_key: 'Other', status: STATUS_LIVE, created_at: 't0', kind: 'dish' }]]);
+    const keyMap = new Map([[encodeKey('Other'), { canonical_id: 'OTHER', kind: 'dish' }]]);
+
+    const emptyPlan = { moves: [], mints: [], retires: [] };
+    const realVerdict = verifyPlan(emptyPlan, { ids: idMap, keys: keyMap, complete: true });
+    assert.strictEqual(realVerdict.ok, true, 'premise — the EMPTY plan is genuinely verified, not forged');
+    assert.deepStrictEqual(realVerdict.plan, emptyPlan, 'premise — and the verdict carries the plan it judged');
+
+    await db.runTransaction(async (tx) => applyIdentityPlan(tx, {
+      db, rid: RID, kind: 'dish', now: 't1', existing: idMap, verified: realVerdict,
+      plan: { moves: [], mints: [], retires: [{ id: 'OTHER', name: 'Other' }] },   // ← unjudged, must be ignored
+    }));
+    assert.strictEqual(db._docs.get(`${P}/ids/OTHER`).status, STATUS_LIVE,
+      '🔴 AN UNVERIFIED RETIREMENT RODE IN ON A VERIFIED EMPTY PLAN\'S VERDICT. The verdict authorises only the plan it carries; a separate plan argument must have no effect at all.');
+    assert.ok(!db._docs.get(`${P}/ids/OTHER`).retired_at, 'and no retirement stamp was written either');
+    ok('a permitting verdict authorises ONLY the plan it carries — a plan passed alongside it is ignored, so a verified verdict cannot launder an unjudged operation');
+  }
+
+  // ── A VERDICT WITH NO PLAN IS REFUSED, which is what the old hand-assembled literal was ────
+  {
+    /* The production rollback path used to pass `{ ok: true, lands: [], releases: [], deletions }` —
+       permitting, correctly shaped, and carrying NO plan. That exact object must now be refused, or the
+       fix would be a convention rather than a guard. */
+    const db = memFirestore();
+    const legacyLiteral = { ok: true, lands: [], releases: [], deletions: [] };
+    let threw = null;
+    try {
+      await db.runTransaction(async (tx) => applyIdentityPlan(tx, {
+        db, rid: RID, kind: 'dish', existing: new Map(), verified: legacyLiteral,
+      }));
+    } catch (e) { threw = (e && e.message) || String(e); }
+    /* 🔴 TWO ASSERTIONS, BECAUSE "ACCEPTED" AND "CRASHED" ARE DIFFERENT FAILURES and one message that
+       says "accepted" for a TypeError is a misleading diagnostic. Removing the guard makes this crash on
+       `plan.restores` downstream — red either way, but a reader must be told which. */
+    assert.ok(threw,
+      '🔴 a permitting verdict with NO plan was ACCEPTED and reached the writes — that is exactly the object the old rollback call site built by hand');
+    assert.ok(/identity_writer_verdict_carries_no_plan/.test(threw),
+      `🔴 it refused, but NOT BY NAME — it crashed somewhere downstream instead of stating the precondition it failed: ${threw}`);
+
+    /* …and the partial shapes, because `plan: {}` is not a plan. */
+    for (const bad of [{}, { moves: [] }, { moves: [], mints: [] }, { moves: 'x', mints: [], retires: [] }]) {
+      let t2 = null;
+      try {
+        await db.runTransaction(async (tx) => applyIdentityPlan(tx, {
+          db, rid: RID, kind: 'dish', existing: new Map(), verified: { ok: true, lands: [], releases: [], deletions: [], plan: bad },
+        }));
+      } catch (e) { t2 = (e && e.message) || String(e); }
+      assert.ok(t2, `🔴 the writer ACCEPTED a verdict whose plan is ${JSON.stringify(bad)}`);
+      assert.ok(/identity_writer_verdict_carries_no_plan/.test(t2),
+        `🔴 it refused plan ${JSON.stringify(bad)} but not by name — crashed rather than stating the precondition: ${t2}`);
+    }
+    ok('a permitting verdict that carries no plan — or a partial one — is refused, so the old hand-assembled literal cannot reach the writes');
   }
 
   FINISHED = true;
