@@ -349,7 +349,8 @@ const publish = async (expectedActive, tag) => {
 
       const orig = db.runTransaction.bind(db);
       let calls = 0, fired = false;
-      const racing = new Proxy(db, {
+      let racingTx;
+    const racing = new Proxy(db, {
         get(t, prop) {
           if (prop === 'runTransaction') {
             return async (fn, o) => {
@@ -383,6 +384,71 @@ const publish = async (expectedActive, tag) => {
     assert.strictEqual(healed.version, v, '🔴 SENSITIVITY: an ordinary publish against a well-formed pointer was refused too');
     assert.strictEqual(healed.generation, live.generation + 1, '…and the fence advanced exactly once');
     ok('a malformed pointer is refused AT THE FLIP — a null-expecting rollback cannot overwrite it, nor can a first publish that meets it mid-flight; an ordinary publish still works');
+  }
+
+  // ── 🔴 BOOTSTRAP CERTIFIES BETWEEN THE PARTITION CHECK AND THE LEASE ──────────────────────────
+  {
+    /* THE RACE, AND IT IS LIVE EXACTLY DURING THE CUTOVER. `assertDraftPartition` runs at
+       catalog-publish.js:1375 and `acquireLease` at :1377 — VALIDATION FIRST, LEASE SECOND. So a publish
+       can validate its draft against an EMPTY active certified set, bootstrap can certify that same
+       version while the publish is still in flight, and the publish then flips a version carrying ids
+       that are neither CARRIED nor DECLARED DELETED — identities dropped silently by absence, which is
+       the one outcome the partition law exists to prevent.
+       🔴 THE FLIP'S CAS CANNOT SEE IT: certification changes neither the version id nor the generation,
+       so the pointer the flip compares against is unchanged. And the operator CLI's code-derived path
+       supplies no draft revision, so that guard is absent too.
+       🔴 BOOTSTRAP ONLY RUNS DURING THE CUTOVER, so this is reachable precisely while the owner is
+       running it — which is why the deploy note's "nothing may publish between a rehearsal and its apply"
+       is insufficient: nothing may publish DURING THE CUTOVER AT ALL, including during an apply.
+       Certification is staged DIRECTLY here (stamps on the active version's objects + identity_certified)
+       rather than by calling bootstrap: what the partition law reads is the active certified version's
+       stamps, and writing them is the state, not a claim about how bootstrap produces it.
+       Interception point: `acquireLease` is the first runTransaction after the partition check. */
+    const priorPtr = await getActivePointer(db, RID);
+    const base = await publish(priorPtr.version, 'race-base');
+    const vrefOfId = (id) => db.collection('restaurants').doc(RID).collection('versions').doc(id);
+
+    const beforeCertified = (await vrefOfId(base).get()).data() || {};
+    assert.notStrictEqual(beforeCertified.identity_certified, true,
+      'premise — the active version is UNCERTIFIED when the publish validates, so A is empty and any draft passes the partition');
+
+    const orig = db.runTransaction.bind(db);
+    let certifiedMidFlight = false;
+    /* 🔴 A PROXY, NOT A HAND-LISTED FACADE. My first wrapper forwarded only `collection` and
+       `runTransaction` — copying cell 6's shape, which is enough for bootstrapIdentityStamps — and
+       publishVersion died on `db.batch is not a function`. The cell then "refused", and a refusal caused
+       by my own incomplete stub would have read as the guard working. Forward everything; intercept one. */
+    const racing = new Proxy(db, {
+      get: (t, prop, recv) => (prop === 'runTransaction' ? racingTx : Reflect.get(t, prop, recv)),
+    });
+    racingTx = async (fn, o) => {
+      if (!certifiedMidFlight) {
+        certifiedMidFlight = true;
+        // stamp every object of the ACTIVE version, then certify it — the cutover, mid-publish
+        for (const col of ['menu_items', 'extras']) {
+          const docs = (await vrefOfId(base).collection(col).get()).docs;
+          for (const [i, d] of docs.entries()) {
+            await d.ref.update({ 'display.identity_id': `RACE-ID-${col}-${i}` });
+          }
+        }
+        await vrefOfId(base).update({ identity_certified: true });
+      }
+      return orig(fn, o);
+    };
+
+    const { input: raceInput } = buildPublishCandidate(RID, { activeVersionId: base }, { source_sha: 'race-publish' });
+    let outcome = null;
+    try {
+      await publishVersion(racing, RID, raceInput, { expected: { activeVersionId: base } });
+      outcome = 'FLIPPED';
+    } catch (e) { outcome = (e && e.message) || String(e); }
+    assert.ok(certifiedMidFlight, 'premise — certification really landed between the partition check and the flip');
+
+    assert.notStrictEqual(outcome, 'FLIPPED',
+      '🔴 A PUBLISH THAT VALIDATED AGAINST AN EMPTY CERTIFIED SET FLIPPED AFTER THAT SET BECAME NON-EMPTY. Every id the newly-certified version carries is now neither carried nor declared deleted by the live version — identities dropped silently by absence, during the cutover, with the flip\'s CAS blind to it because certification moves neither the version id nor the generation.');
+    assert.match(String(outcome), /identity_partition_unaccounted|carried_unknown|publish_lease|identity_partition/,
+      `🔴 it refused, but not for the partition reason — the refusal must name what went wrong: ${outcome}`);
+    ok(`a certification landing between the partition check and the flip is REFUSED (${String(outcome).split(':')[0]}) — the cutover window cannot drop identities by absence`);
   }
 
   FINISHED = true;

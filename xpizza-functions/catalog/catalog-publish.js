@@ -258,7 +258,7 @@ async function acquireLease(db, rid) {
    caller that forgets the option gets P1a, not P1b. The flag is read ONCE by the caller, outside this
    transaction, and passed in — never read here, because a per-kind read inside the transaction could
    return different answers for dish and extra within one all-or-nothing activation. */
-async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false, stampBudget = BOOTSTRAP_MAX_OBJECTS, renameOn = false } = {}) {
+async function flipPointer(db, rid, token, versionId, snapshot, expected, { rollback = false, stampBudget = BOOTSTRAP_MAX_OBJECTS, renameOn = false, partition = null } = {}) {
   const isRollback = !!rollback;
   // 2b S3 fold: the ordinal is as load-bearing as the version witness — a snapshot with a version but
   // no `seq` would satisfy the coherence check and then be refused by the read-side ladder (which
@@ -364,6 +364,65 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        value. Two parses of the same snapshot cannot tear, but they CAN disagree about what is valid —
        which is exactly what this defect was. */
     const priorGeneration = livePointer.generation;
+
+    /* ══ 🔴 THE PARTITION LAW, RE-RUN HERE, AGAINST A CERTIFIED SET RE-READ IN THIS TRANSACTION ══════
+       THE RACE THIS CLOSES, reproduced in the emulator before it was fixed: `assertDraftPartition` runs
+       BEFORE `acquireLease`, so a publish could validate its draft against an EMPTY active certified set,
+       BOOTSTRAP COULD CERTIFY THAT SAME VERSION WHILE THE PUBLISH WAS STILL IN FLIGHT, and the publish
+       would then flip a version carrying ids that are neither CARRIED nor DECLARED DELETED — identities
+       dropped silently by absence, which is the single outcome the partition law exists to prevent.
+       🔴 NEITHER EXISTING GUARD COULD SEE IT. Certification changes neither the version id nor the
+       generation, so the pointer CAS above compares equal; and the operator CLI's code-derived path
+       supplies no draft revision, so the draft CAS is absent there too.
+       🔴 AND REORDERING WOULD NOT HAVE FIXED IT. Reading the certified set under the lease was the other
+       candidate; bootstrap ACQUIRES NO LEASE (verified in identity-bootstrap.js), so it can certify
+       whatever the lease says. Only a re-read inside the transaction that flips is airtight: any
+       certification committed before this read is seen here, and one committed after it contends with
+       this transaction on the very documents it wrote.
+       THE WINDOW IS EXACTLY THE CUTOVER — bootstrap runs only then — so this is reachable precisely while
+       the owner is running the one-way pass. "Nothing may publish between a rehearsal and its apply" was
+       insufficient; nothing may publish DURING the cutover at all.
+       Reads only, and before every write below — rule 17's order half, which the database enforces. */
+    if (partition) {
+      const A = { dish: new Set(), extra: new Set() };
+      if (liveActive) {
+        const priorRef = versionsColOf(db, rid).doc(liveActive);
+        const priorRec = await tx.get(priorRef);
+        if (priorRec.exists && (priorRec.data() || {}).identity_certified === true) {
+          const [pItems, pExtras] = await Promise.all([
+            tx.get(priorRef.collection('menu_items')), tx.get(priorRef.collection('extras')),
+          ]);
+          for (const d of (pItems.docs || [])) { const id = ((d.data() || {}).display || {}).identity_id; if (id) A.dish.add(id); }
+          for (const d of (pExtras.docs || [])) { const id = ((d.data() || {}).display || {}).identity_id; if (id) A.extra.add(id); }
+        }
+      }
+      /* The deletion claim is re-partitioned against the SET AS IT IS NOW, not as it was: an id that has
+         only just become certified belongs to a kind the earlier pass could not have assigned it to. */
+      const deletedNow = { dish: [], extra: [] };
+      for (const id of (partition.claimIds || [])) {
+        if (A.dish.has(id)) deletedNow.dish.push(id);
+        else if (A.extra.has(id)) deletedNow.extra.push(id);
+        else {
+          const e = new Error(`identity_partition_deleted_unknown: ${rid} — at the flip, deleted_ids names ${id}, which no certified object of either kind has`);
+          e.code = 'identity_partition_deleted_unknown';
+          throw e;
+        }
+      }
+      for (const kind of ['dish', 'extra']) {
+        try {
+          validatePartition({ activeCertified: A[kind], carried: partition.carried[kind],
+            deletedIds: deletedNow[kind], unidentified: partition.unidentified[kind] });
+        } catch (e) {
+          /* Re-thrown with the flip named, so an operator can tell "the draft was never lawful" from
+             "the certified set moved underneath a lawful draft" — the second is the cutover race and the
+             answer to it is to stop publishing, not to edit the menu. */
+          const err = new Error(`${e.message} [AT THE FLIP: the active certified set changed after this publish validated — if the cutover is running, nothing may publish until it finishes]`);
+          err.code = e.code || 'identity_partition_unaccounted';
+          throw err;
+        }
+      }
+    }
+
     if (wantsDraftCas) {
       const liveRevision = draftSnap.exists ? encodeUpdateTime(draftSnap.updateTime) : null;
       if (liveRevision !== expected.draftRevision) {
@@ -1305,8 +1364,10 @@ async function assertDraftPartition(db, rid, input) {
   try { claim = ((await sourceRefOf(db, rid).get()).data() || {}).deleted_ids; } catch (e) {
     throw new Error(`publish_source_unreadable: ${rid} — the deletion claim could not be read, so the draft cannot be accounted for`);
   }
+  let claimIds = null;
   if (claim !== undefined && claim !== null) {
     const { ids } = validateDeletionClaim(claim, { activeVersionId: p.version, activeGeneration: p.generation });
+    claimIds = ids;
     for (const id of ids) {
       if (A.dish.has(id)) deleted.dish.push(id);
       else if (A.extra.has(id)) deleted.extra.push(id);
@@ -1330,7 +1391,12 @@ async function assertDraftPartition(db, rid, input) {
      It is still only a CLAIM. The law proves each id is in the active certified SET; it cannot prove
      this id belongs to THIS object, because moving one live object's id onto another satisfies
      C ⊆ A perfectly. The registry re-verification is what answers that, per object and by name. */
-  return { stamps, baseline: p };
+  /* 🔴 `carried`, `unidentified` AND THE CLAIM'S IDS TRAVEL OUT, because this validation is NOT the one
+     that decides. It runs BEFORE the lease (see the call site), so the certified set it reads can change
+     under it — and the flip re-runs the whole law against a set re-read INSIDE its own transaction. These
+     are the inputs to that re-run, handed over rather than recomputed, so the law the flip enforces is
+     the law this function checked. */
+  return { stamps, baseline: p, carried, unidentified, claimIds };
 }
 
 async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {
@@ -1372,7 +1438,13 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     }
   }
 
-  const { stamps: draftStamps, baseline: partitionBaseline } = await assertDraftPartition(db, rid, input);
+  /* 🔴 THIS RUNS BEFORE THE LEASE, AND THAT IS NOT A BUG TO BE FIXED BY REORDERING. Moving it under the
+     lease would NOT close the window: bootstrap takes no lease (verified — identity-bootstrap.js acquires
+     none), so it can certify the active version at any moment regardless of who holds it. The only
+     airtight place is inside the flip's own transaction, which is where the law is now re-run; this pass
+     stays as the early, cheap refusal that keeps a doomed publish from taking the lease at all. */
+  const { stamps: draftStamps, baseline: partitionBaseline, carried: partitionCarried,
+    unidentified: partitionUnidentified, claimIds: partitionClaimIds } = await assertDraftPartition(db, rid, input);
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
@@ -1393,7 +1465,8 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
     const snapshot = snapshotOf(rid, versionId, seq, menuTable, extraTable);
     /* READ ONCE, OUTSIDE THE TRANSACTION (identity-flags.js explains why once). */
     const renameOn = await renameEnabled(db, rid);
-    const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn });   // ← the atomic cutover (pointer + snapshot + identity), LAST
+    const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn,
+      partition: { carried: partitionCarried, unidentified: partitionUnidentified, claimIds: partitionClaimIds } });   // ← the atomic cutover (pointer + snapshot + identity), LAST
     identityPair = { version: flipped.version, generation: flipped.generation };
     certifiedActivation = flipped.certified === true;
     // Mirror AFTER the flip and BEFORE releasing the lease — see writeMirror for why both matter.
