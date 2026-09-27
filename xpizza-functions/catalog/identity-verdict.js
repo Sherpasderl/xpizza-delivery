@@ -27,6 +27,39 @@
  * WeakSet, not Set: a verdict must not be kept alive by having been issued.
  */
 
+/* ═══ 🔴 THE THREAT MODEL, STATED, BECAUSE THE DEFENCE CANNOT BE COMPLETED AND SHOULD NOT BE ═══
+ *
+ * WHO IS THE ADVERSARY. `issueVerdict` has exactly two callers, both functions in this directory, both
+ * building their verdict from data the transaction read out of Firestore. There is NO UNTRUSTED INPUT
+ * anywhere on this path — no merchant, no request body, no third-party module.
+ *
+ * WHAT THIS DEFENDS AGAINST, and these are the mistakes that actually happened, twice each:
+ *   · a caller that HAND-BUILDS a correctly-shaped verdict — the rollback path did exactly this, in
+ *     production, and the writer executed it. Closed by the WeakSet: shape is not provenance.
+ *   · a caller that keeps a reference to the plan and MUTATES IT after the verdict was issued, or pushes
+ *     onto a field of the verdict itself. Closed by the deep snapshot: a reference is not a snapshot.
+ * Both are careless-caller errors — the kind a person makes while wiring a second call site.
+ *
+ * 🔴 WHAT THIS DOES NOT DEFEND AGAINST, AND DELIBERATELY: a caller that overrides a built-in
+ * (`deletions.map = () => [row]`), hides operations behind Symbol or non-enumerable keys, or manipulates
+ * prototypes. Those are not mistakes; they are this module attacking itself. A caller willing to do any
+ * of them DOES NOT NEED THE VERDICT AT ALL — it holds `tx` and can call `tx.delete` directly, which no
+ * amount of freezing here would prevent.
+ *
+ * AND NOTHING ELSE IN THIS CODEBASE IS HARDENED AGAINST THAT, which is the consistency argument:
+ * `verifyPlan` trusts the registry Map it is handed, `applyIdentityPlan` trusts `tx`, the partition law
+ * trusts the stamps it reads. If a hostile module inside our own functions directory is the threat, the
+ * identity registry is the least of the problems.
+ *
+ * 🔴 WHY THE BOUNDARY IS WRITTEN INSTEAD OF THE NEXT LAYER BUILT. Four rounds of hardening produced four
+ * progressively more exotic bypasses. That is the signature of an UNBOUNDED problem, not of a list of
+ * bugs — and a comment claiming "the verdict cannot be tampered with" would be exactly the
+ * claim-stronger-than-the-code failure this slice has corrected a dozen times. A boundary stated is worth
+ * more than a defence that cannot be finished. If the threat model ever changes — an untrusted caller, a
+ * plugin, a verdict crossing a process boundary — THIS PARAGRAPH is what has to be revisited first, and
+ * the answer then is probably a different mechanism than freezing, not more of it.
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
 /* Module-private. Not exported, not reachable, and that is the whole mechanism. */
 const ISSUED = new WeakSet();
 

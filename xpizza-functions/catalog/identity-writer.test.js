@@ -415,36 +415,57 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
   // ── 13. 🔴 THE VERDICT'S EXECUTABLE SURFACE, ENUMERATED FROM THE WRITER ITSELF ───────────────
   {
     /* THE FOURTH HOLE AND WHY THIS CELL IS SHAPED LIKE THIS. `issueVerdict` snapshotted `plan` and froze
-       the issued object SHALLOWLY, so `verdict.deletions` came through the spread BY REFERENCE. A caller
-       took a genuine verdict for an EMPTY plan, pushed one entry onto `deletions`, and the writer DELETED
-       AN UNRELATED KEY ROW — the operation with no cheap recovery, authorised by nothing.
-       Both of us missed it the same way: the fix said "freeze the plan", so the checking looked at
-       `plan`. A surface verified from the FIX'S DESCRIPTION is not verified. So this cell does not check
-       a list of names — it PARSES THE WRITER and derives every field of the verdict the writer actually
-       consumes, which is why a fifth executable field fails here until it is snapshotted. Same reason
-       the CLI refusal census is derived rather than typed: a hand-kept list sat at 8 while 10 tools
-       connected. Structure, not text: acorn, not a regex. */
+       the issued object SHALLOWLY, so `verdict.deletions` came through by reference: a caller pushed one
+       entry onto a genuine EMPTY plan's verdict and the writer DELETED AN UNRELATED KEY ROW — the
+       operation with no cheap recovery, authorised by nothing. Both sessions missed it the same way,
+       because the fix said "freeze the plan" and the checking looked at `plan`. A surface verified from
+       the FIX'S DESCRIPTION is not verified.
+       🔴 AND THE FIRST VERSION OF THIS CELL DID NOT DELIVER THAT. It skipped any derived field the
+       FIXTURE did not happen to contain (`typeof val !== 'object'` → continue), so a NEW executable field
+       would have been `undefined` and silently passed — a hand-maintained list wearing an AST costume.
+       Presence is now asserted BEFORE immutability: a field the writer reads and this fixture lacks FAILS
+       and names itself. Structure, not text: acorn, not a regex. */
     const acorn = require('acorn');
     const src = readFileSync(join(__dirname, 'identity-writer.js'), 'utf8');
     const ast = acorn.parse(src, { ecmaVersion: 2022, sourceType: 'script' });
 
-    /* Every `verified.X`, and every `plan.Y` — `plan` is the local alias the writer assigns from
-       `verified.plan`, so its members are part of the same surface. */
     const onVerified = new Set();
     const onPlan = new Set();
+    const unseeable = [];
     (function walk(node) {
       if (!node || typeof node !== 'object') return;
-      /* 🔴 `computed === false` MATTERS, and leaving it out gave me a phantom field. `plan[kind]` is a
-         computed MemberExpression whose property is ALSO an Identifier, so without this check the loop
-         VARIABLE's name was recorded as if it were a field — the set came back containing `plan.kind`,
-         which does not exist. Harmless there because the value is undefined and skipped, but an
-         enumeration that invents members is one that can also miss them, and this cell's whole purpose
-         is that the list is not guesswork. The dynamic `plan[kind]` access is covered because the write
-         loops read plan.moves/mints/retires/restores literally as well. */
-      if (node.type === 'MemberExpression' && node.computed === false && node.object && node.object.type === 'Identifier'
+      /* 🔴 `computed === false` MATTERS. `plan[kind]` is a computed MemberExpression whose property is
+         ALSO an Identifier, so without this the LOOP VARIABLE's name was recorded as a field and the set
+         came back containing `plan.kind`, which does not exist. Harmless in effect, but an enumeration
+         that invents members is one that can also miss them. */
+      if (node.type === 'MemberExpression' && node.object && node.object.type === 'Identifier'
           && node.property && node.property.type === 'Identifier') {
-        if (node.object.name === 'verified') onVerified.add(node.property.name);
-        if (node.object.name === 'plan') onPlan.add(node.property.name);
+        if (node.computed === false) {
+          if (node.object.name === 'verified') onVerified.add(node.property.name);
+          if (node.object.name === 'plan') onPlan.add(node.property.name);
+        } else if (node.object.name === 'verified') {
+          /* A computed read off the verdict cannot be enumerated statically. */
+          unseeable.push('a computed access on `verified`');
+        }
+      }
+      /* …nor can a destructure, nor a second alias. These are forms the derivation CANNOT see, so rather
+         than leaving "would need extending if the writer's style changes" as a comment, the cell refuses
+         when such a form appears — the same move as `judged`: a limitation enforced, not described. */
+      if (node.type === 'VariableDeclarator' && node.init && node.init.type === 'Identifier'
+          && node.init.name === 'verified' && node.id.type === 'Identifier') {
+        unseeable.push(`\`const ${node.id.name} = verified\` — a second alias the derivation does not follow`);
+      }
+      if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'ObjectPattern' && node.init
+          && ((node.init.type === 'Identifier' && (node.init.name === 'verified' || node.init.name === 'plan'))
+            || (node.init.type === 'MemberExpression' && !node.init.computed && node.init.object
+                && node.init.object.name === 'verified'))) {
+        unseeable.push('a destructure of `verified` or `plan`');
+      }
+      if (node.type === 'VariableDeclarator' && node.init && node.init.type === 'MemberExpression'
+          && !node.init.computed && node.init.object && node.init.object.name === 'verified'
+          && node.init.property && node.init.property.name === 'plan'
+          && node.id.type === 'Identifier' && node.id.name !== 'plan') {
+        unseeable.push(`\`verified.plan\` aliased as \`${node.id.name}\`, which this cell does not follow`);
       }
       for (const k of Object.keys(node)) {
         const v = node[k];
@@ -452,17 +473,15 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
       }
     }(ast));
 
-    /* 🔴 NON-VACUITY FIRST. A parse that found nothing would make every assertion below pass while
-       measuring nothing — the exact shape this programme keeps catching. */
+    assert.deepStrictEqual(unseeable, [],
+      `🔴 THE WRITER USES A FORM THIS DERIVATION CANNOT SEE, so the surface below is under-enumerated: ${unseeable.join(' · ')}. Extend the walk before trusting this cell.`);
     assert.ok(onVerified.size >= 3, `🔴 the parse found only ${onVerified.size} field(s) on \`verified\` — it is not reading the writer`);
     assert.ok(onVerified.has('deletions'), '🔴 the parse missed `verified.deletions`, which is the field the fourth hole was in');
-    assert.ok(onPlan.size >= 3, `🔴 the parse found only ${onPlan.size} field(s) on \`plan\``);
     for (const kind of ['moves', 'mints', 'retires', 'restores']) {
       assert.ok(onPlan.has(kind), `🔴 the parse missed \`plan.${kind}\` — the writer executes it, so the surface is under-enumerated`);
     }
 
-    /* A genuine verdict whose every array is NON-EMPTY, so freezing is tested on populated arrays —
-       `Object.isFrozen([])` is true of an empty literal for reasons that prove nothing. */
+    /* Every array NON-EMPTY, because `Object.isFrozen([])` is true of an empty literal and proves nothing. */
     const source = {
       ok: true, code: 'plan_verified', detail: '',
       lands: [{ id: 'A', name: 'N', via: 'mint' }], releases: [{ id: 'B', name: 'M' }],
@@ -472,37 +491,50 @@ async function run({ ids = {}, keys = {}, candidateKeys = [], stamps = {}, retir
       retires: [{ id: 'D', name: 'Q' }], restores: [{ id: 'E', name: 'R' }] };
     const v = issueVerdict(source, { plan: srcPlan, judged: ['moves', 'mints', 'retires', 'restores'] });
 
-    for (const field of onVerified) {
-      const val = v[field];
-      if (val === null || typeof val !== 'object') continue;         // ok / code are primitives
-      assert.ok(Object.isFrozen(val),
-        `🔴 \`verified.${field}\` IS NOT FROZEN — the writer consumes it, so a caller can still change what gets executed after the verdict was issued`);
+    /* 🔴 PRESENCE FIRST, FOR EVERY DERIVED FIELD. This is the assertion the first version lacked: a field
+       the writer reads which this fixture does not supply must FAIL here, not be skipped as undefined. */
+    const checkImmutable = (val, label) => {
+      if (val === null || typeof val !== 'object') return;                  // primitives are copied by value
+      assert.ok(Object.isFrozen(val), `🔴 \`${label}\` IS NOT FROZEN — the writer consumes it, so a caller can still change what gets executed after the verdict was issued`);
       if (Array.isArray(val)) {
         assert.throws(() => val.push({}), /not extensible|read only|frozen/i,
-          `🔴 \`verified.${field}\` can still be PUSHED TO — this is exactly how an unjudged key deletion reached the writer`);
+          `🔴 \`${label}\` can still be PUSHED TO — this is exactly how an unjudged key deletion reached the writer`);
+        /* …and RECURSE INTO THE ENTRIES. A frozen array of mutable rows lets a caller repoint an id
+           after the verdict was issued, which is the same hole one level deeper. */
+        val.forEach((entry, i) => checkImmutable(entry, `${label}[${i}]`));
+      } else {
+        for (const k of Object.keys(val)) checkImmutable(val[k], `${label}.${k}`);
       }
+    };
+
+    for (const field of onVerified) {
+      assert.ok(Object.prototype.hasOwnProperty.call(v, field),
+        `🔴 THE WRITER READS \`verified.${field}\` AND THIS CELL'S FIXTURE DOES NOT SUPPLY IT. That is not a pass — it is the field going unchecked. Add it to \`source\` (or to the plan) so its immutability is actually asserted.`);
+      checkImmutable(v[field], `verified.${field}`);
     }
     for (const field of onPlan) {
-      const val = v.plan[field];
-      if (val === null || typeof val !== 'object') continue;
-      assert.ok(Object.isFrozen(val), `🔴 \`verified.plan.${field}\` is not frozen`);
-      if (Array.isArray(val)) assert.throws(() => val.push({}), /not extensible|read only|frozen/i, `🔴 \`verified.plan.${field}\` can still be pushed to`);
+      assert.ok(Object.prototype.hasOwnProperty.call(v.plan, field),
+        `🔴 THE WRITER READS \`plan.${field}\` AND THE FIXTURE'S PLAN DOES NOT SUPPLY IT — add it to \`srcPlan\` so it is checked rather than skipped.`);
+      checkImmutable(v.plan[field], `verified.plan.${field}`);
     }
 
-    /* 🔴 AND DETACHED, NOT MERELY FROZEN. A frozen view of the caller's array would still change under
-       them; the issued verdict must be immune to anything done to what it was built from. */
-    source.deletions.push({ name: 'Z', encoded: encodeKey('Z'), id: 'ZZ' });
-    srcPlan.mints.push({ id: 'ZZZ', name: 'Later' });
-    assert.strictEqual(v.deletions.length, 1, '🔴 pushing onto the SOURCE deletions changed the issued verdict — it holds the caller\'s array, not a copy');
-    assert.strictEqual(v.plan.mints.length, 1, '🔴 pushing onto the SOURCE plan changed the issued verdict');
-    source.deletions.pop(); srcPlan.mints.pop();
+    /* 🔴 AND DETACHED, FOR EVERY DERIVED FIELD rather than the two I happened to test. A frozen view of
+       the caller's array would still change under them. Mutating the SOURCE must change nothing. */
+    const before = JSON.stringify(v);
+    for (const field of onVerified) {
+      const sv = source[field];
+      if (Array.isArray(sv)) sv.push({ id: 'PUSHED', name: 'PUSHED' });
+      else if (sv && typeof sv === 'object') sv.pushedKey = 'PUSHED';
+    }
+    for (const field of onPlan) if (Array.isArray(srcPlan[field])) srcPlan[field].push({ id: 'PUSHED', name: 'PUSHED' });
+    assert.strictEqual(JSON.stringify(v), before,
+      '🔴 MUTATING THE SOURCE CHANGED THE ISSUED VERDICT — it holds the caller\'s objects, not copies, for at least one derived field');
 
-    /* 🔴 AND AN UNSNAPSHOTTABLE TYPE REFUSES rather than being shared by reference — a Map or a class
-       instance on a verdict would reintroduce the hole wearing a type nobody enumerated. */
+    /* 🔴 AND AN UNSNAPSHOTTABLE TYPE REFUSES rather than being shared by reference. */
     assert.throws(() => issueVerdict({ ok: true, deletions: [], weird: new Map() }, { plan: srcPlan, judged: ['mints'] }),
       /identity_verdict_unsnapshottable/, '🔴 a non-plain value was accepted onto a verdict and would be shared with the caller');
 
-    ok(`every field of the verdict the writer consumes (${[...onVerified].sort().join(', ')} · plan.{${[...onPlan].sort().join(', ')}}) is frozen and detached — derived from the writer's own source, so a new executable field fails here until it is snapshotted`);
+    ok(`every field of the verdict the writer consumes (${[...onVerified].sort().join(', ')} · plan.{${[...onPlan].sort().join(', ')}}) is PRESENT in the fixture, frozen to its entries, and detached — derived from the writer's own source, and the cell refuses a writer form the derivation cannot see`);
   }
 
   FINISHED = true;
