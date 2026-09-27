@@ -167,25 +167,46 @@ const publish = async (expectedActive, tag) => {
           publishVersion and rollbackVersion acquire the same per-restaurant LEASE, and the candidate
           holds it from before its baseline capture until after its flip. The detour dies with
           `publish_locked`, which is the system working correctly.
-     So while the lease serializes activations and writeVersion always writes `pending`, the
-     predicate's refusal branches are unreachable: nothing can move the generation under a held lease,
-     and no candidate arrives non-pending. They are DEFENCE IN DEPTH — a lease is a time-based
-     assertion, not a proof, and a future caller could flip without one — and they have NO MUTANT,
-     because a mutant that cannot be killed by any reachable state would only look like coverage.
-     What IS proven, by cell 4: the predicate runs on every activation and permits a valid candidate.
-     Reported to the advisor rather than papered over with a seeded cell. */
+     So while the lease serializes activations and writeVersion always writes `pending`, THE
+     GENERATION-STALENESS branches are unreachable: nothing can move the generation under a held lease,
+     and no candidate arrives non-pending. Those are DEFENCE IN DEPTH — a lease is a time-based
+     assertion, not a proof, and a future caller could flip without one — and they have no mutant,
+     because a mutant no reachable state can kill would only look like coverage.
 
-  // ── 6. ROLLBACK IS EXEMPT, AND THE EXEMPTION IS NOT A LOOPHOLE ──────────────────────────────
-  /* A rollback re-activates a version whose record already says `activated` — that is its history and
-     precisely what a rollback is for. The exemption is passed explicitly by the caller rather than
-     inferred from version ordering, so it cannot widen into "any flip onto an activated version". */
+     🔴 THIS NOTE SAID "THE PREDICATE'S REFUSAL BRANCHES" AND THAT WAS TOO BROAD — IT DENIED COVERAGE
+     THAT EXISTS TWENTY LINES BELOW. The ROLLBACK refusal
+     (`flip_activation_rollback_not_activated`) and the RECORDLESS refusal
+     (`flip_activation_no_record`) are both reachable and both covered: a cell further down drives the
+     REAL rollbackVersion against a genuinely `pending` staged version and asserts neither the pointer
+     nor the generation moves, and the sweep carries mutants for both — d4p1sf-01, d4p1sf-02 and
+     d4p1sf-03, all KILLED (measured, not assumed: slice d4p1sf 4/4). Only the generation-staleness
+     branches are unreachable from here.
+
+     🔴 AND "WHAT IS PROVEN, BY CELL 4: THE PREDICATE RUNS ON EVERY ACTIVATION" WAS THE SAME CLAIM CELL 4
+     WAS CORRECTED FOR MAKING. It does not prove that: delete the eligibility call and cell 4's assertions
+     all still pass, because the record transitions either way. What cell 4 proves is the TRANSITION.
+     That the predicate RUNS is shown by the rollback cell below and by activation-eligibility.test.js.
+     Third instance today of a claim fixed in ONE place and left standing in another — grep the claim, not
+     the line you were shown. Reported rather than papered over with a seeded cell. */
+
+  // ── 6. ROLLBACK HAS ITS OWN REQUIREMENT — IT IS NOT EXEMPT FROM HAVING ONE ───────────────────
+  /* 🔴 THIS HEADING SAID "ROLLBACK IS EXEMPT", WHICH IS THE SENTENCE THAT COST A GATE FINDING when a
+     reader took it as "rollback skips eligibility". It does not: a rollback REQUIRES its target's record
+     to say `activated`, and refuses `pending`, `abandoned`, an unmodelled status and no record at all.
+     What it is exempt from is the PENDING requirement — history is not a candidate — and the intent is
+     passed explicitly by the caller rather than inferred from version ordering, so it cannot widen into
+     "any flip onto an activated version".
+     THE PREMISE BELOW WAS ALSO STALE: it accepted `!targetRec` — a RECORDLESS target — which now refuses
+     as `flip_activation_no_record`. A premise that permits a state the code refuses is a cell one edit
+     away from passing for the wrong reason. */
   {
     const current = await getActivePointer(db, RID);
     const history = await db.collection('restaurants').doc(RID).collection('versions').orderBy('__name__').get();
     const target = history.docs.map((d) => d.id).find((id) => id !== current.version);
     assert.ok(target, 'premise — there is an earlier version to roll back to');
     const targetRec = ((history.docs.find((d) => d.id === target).data()) || {}).identity_activation;
-    assert.ok(!targetRec || targetRec.status === 'activated', 'premise — the rollback target is an already-activated version');
+    assert.strictEqual(targetRec && targetRec.status, 'activated',
+      '🔴 premise — the rollback target must be an ALREADY-ACTIVATED version; a recordless one now refuses as flip_activation_no_record, so accepting it here would let this cell pass against a state the code rejects');
 
     await rollbackVersion(db, RID, target, { expected: { activeVersionId: current.version } });
     const after = await getActivePointer(db, RID);

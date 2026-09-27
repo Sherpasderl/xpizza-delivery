@@ -561,11 +561,19 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        The record answers a question the version's CONTENT cannot: a rename-only or price-only
        candidate mints nothing, owns no reservations, and therefore looks activatable forever. Only a
        `pending` candidate bound to the CURRENT generation may activate.
-       ROLLBACK is exempt: it re-activates a version whose record is already `activated`, which is that
-       version's history and precisely what a rollback is for. The claim-policy split that D owes
-       rollback lands with the consumption work; here rollback simply is not required to be pending. */
-    /* 🔴 THE REFUSAL BRANCHES BELOW ARE DEFENCE IN DEPTH AND HAVE NO MUTANT — said here so nobody
-       reads their absence as an oversight. While the per-restaurant LEASE serializes activations,
+       🔴 ROLLBACK IS EXEMPT FROM THE *PENDING* REQUIREMENT ONLY — IT IS NOT EXEMPT FROM HAVING ONE, and
+       the distinction is worth the words because the shorter sentence ("rollback is exempt") was read by a
+       reviewer as "rollback skips eligibility" and produced a reported defect that did not exist. A
+       rollback REQUIRES its target's record to say `activated`, and refuses `pending`, `abandoned`, an
+       unmodelled status, and no record at all. History is not a candidate, which is why it is not
+       required to be pending; that is the whole of the exemption.
+       The claim-policy split that D owes rollback lands with the consumption work. */
+    /* 🔴 THE GENERATION-STALENESS BRANCHES ARE DEFENCE IN DEPTH AND HAVE NO MUTANT — said here so nobody
+       reads their absence as an oversight. NOT "the refusal branches", which is what this said and which
+       denied coverage that exists: the ROLLBACK refusal and the RECORDLESS refusal are both reachable and
+       both carry KILLED mutants (d4p1sf-01/02/03, measured — slice d4p1sf 4/4), with an emulator cell
+       driving the real rollbackVersion against a genuinely pending target. Only the staleness branches
+       below are unreachable. While the per-restaurant LEASE serializes activations,
        they cannot be reached: publishVersion and rollbackVersion both hold it, a candidate holds it
        from before its baseline capture until after this flip, so nothing can move the generation
        underneath one — and writeVersion always writes `pending`, so no candidate arrives in another
