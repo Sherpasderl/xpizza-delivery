@@ -73,7 +73,14 @@ const GATE = 'assertStoreCodeParity';
        the guard would still see "the flip is the last step" while the staging flag stopped being
        passed at all. The trailing `, {` is what pins it. */
     ['await flipPointer(db, rid, token, versionId, snapshot, expected, {', 'the flip is still the last step, under a lease, under a CAS, and still handed its options'],
-    ['{ renameOn }', 'the staging flag is still passed to the flip — a dropped option silently reverts this restaurant to P1a'],
+    /* 🔴 THE NEEDLE IS `renameOn,` AND NOT `{ renameOn }`, and the change is deliberate rather than a
+       loosening. C/F1 added a second option to this call (`partition`, the inputs the flip re-validates
+       the law against), so the options object stopped being `{ renameOn }` alone and this pin broke — on
+       a change that still passes the flag. The needle above already pins the CALL SHAPE up to its opening
+       brace, so together they still prove what this line is for: the flip is called with that signature
+       and the staging flag is among the options it is handed. What is deliberately NOT pinned any more is
+       that renameOn is the ONLY option, which was never the property worth having. */
+    ['renameOn,', 'the staging flag is still passed to the flip — a dropped option silently reverts this restaurant to P1a'],
     // 1A Task 7: the validator runs BEFORE anything is written, so an invalid candidate never becomes
     // an immutable version at all. Pinned inside publishVersion's own body for the reason the comment
     // above gives — a file-wide search finds the identical call in rollbackVersion.

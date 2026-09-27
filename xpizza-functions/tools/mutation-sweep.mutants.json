@@ -246,8 +246,8 @@
     "slice": "task7",
     "label": "publishVersion stops passing its expectation to the flip",
     "file": "catalog/catalog-publish.js",
-    "from": "    const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn });   // ← the atomic cutover (pointer + snapshot + identity), LAST",
-    "to": "    const flipped = await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) }, { renameOn });   // ← the atomic cutover (pointer + snapshot + identity), LAST"
+    "from": "    const flipped = await flipPointer(db, rid, token, versionId, snapshot, expected, { renameOn,\n      partition: { carried: partitionCarried, unidentified: partitionUnidentified, claimIds: partitionClaimIds } });",
+    "to": "    const flipped = await flipPointer(db, rid, token, versionId, snapshot, { activeVersionId: await pointerRefOf(db, rid).get().then((s) => (s.exists ? (s.data() || {}).version : null)) }, { renameOn,\n      partition: { carried: partitionCarried, unidentified: partitionUnidentified, claimIds: partitionClaimIds } });"
   },
   {
     "id": "task7-08",
