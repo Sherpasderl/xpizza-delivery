@@ -255,7 +255,16 @@ const srcRef = () => db.collection('restaurants').doc(RID).collection('meta').do
        SUCCEEDED and printed a stamping plan while --apply threw `identity_bootstrap_no_source`. The dry
        run IS the artefact the owner approves, and an approval that does not predict the outcome is not
        an approval. Not dangerous — the apply refused rather than corrupting — but it undermined the one
-       thing the rehearsal is for. */
+       thing the rehearsal is for.
+
+       🔴 THE POSITIONAL PROPERTY IS DEFENDED BY THIS CELL AND BY NO MUTANT, AND THAT IS A CHOICE. What
+       these two cells hold is an ORDERING — the preflight runs above the dry-run return — and the
+       mutant that would express it is a from/to pair swapping a large block for its reordered
+       equivalent. Awkward, but possible: it was NOT ruled out by the harness, so do not read its
+       absence as "cannot be done". It was judged not worth the brittleness of pinning a dozen lines
+       verbatim, when cells 6 and 7 fail the moment the ordering breaks and were each verified to do so.
+       If a later change makes this ordering load-bearing in a way a cell cannot see, the block-swap
+       mutant is available. e15-08 pins the activation preflight's EXISTENCE, not its position. */
     const { ref: r3 } = await freshVersion(3);
     await srcRef().delete();
 
