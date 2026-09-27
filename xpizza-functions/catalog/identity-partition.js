@@ -132,9 +132,15 @@ function validatePartition({ activeCertified, carried, deletedIds, unidentified 
      of the four clauses is itself wrong. That makes it a self-check on THIS FUNCTION, which is exactly
      why it stays: the thing it guards against is a future edit to the clauses above, and a self-check
      that costs two Set lookups is the cheapest possible witness that they still mean what they say.
-     🔴 SO IT HAS NO MUTANT AND CANNOT HAVE ONE — no cell can stage the state that reaches it without
-     first breaking a clause, at which point that clause's own mutant dies instead. Do not read the
-     absence of a mutant here as an oversight.
+     🔴 SO IT HAS NO MUTANT: no cell can stage the state that reaches it without first breaking a clause,
+     at which point that clause's own mutant dies instead. Do not read the absence as an oversight — and
+     this claim was CHECKED for this guard, unlike the one I made about `identity_partition_misclassified`
+     below, which I asserted and which turned out to be reachable in one line.
+     🔴 THE RULE AND ITS QUALIFIER, because I applied it too broadly: "a guard enforced twice is a guard
+     whose mutants cannot die" is true of DOUBLE ENFORCEMENT — the SAME check in two places, where either
+     covers for the other. It is NOT a licence to record any hard-to-reach guard as unmutatable. BEFORE
+     WRITING THAT SENTENCE ABOUT A GUARD, TRY THE MUTANT. Three guards today genuinely could not be killed
+     because of double enforcement; one could, and I had already written the sentence.
      EXPIRY — restore a mutant and a cell if any of these becomes true: a clause above is removed or
      weakened; a fifth clause is added that does not preserve the partition; or `A`, `C` or `D` stop
      being Sets of the same id space (a multiset, or ids compared by value rather than identity, would
@@ -144,21 +150,23 @@ function validatePartition({ activeCertified, carried, deletedIds, unidentified 
       `carried ${C.size} + deleted ${D.size} != active ${A.size} despite the partition clauses passing`);
   }
 
-  /* 🔴 DEFENSIVE, AND RECORDED AS SUCH — the second [CONTRACT] code. It cannot fire through the publish
-     adapter, because `walkDraftIdentities` builds `carried` and `unidentified` from the SAME iteration
-     over the same rows and puts a row in exactly one of them by testing the very field this re-tests. So
-     for that caller the check is asking a question whose answer the caller has already decided.
-     WHY IT STAYS ANYWAY: `validatePartition` is EXPORTED and is a pure predicate, so "the publish adapter
-     cannot reach it" is a statement about one caller, not about the function. A direct caller that builds
-     its own two lists — a repair tool, a migration, a future rollback variant — can absolutely hand over
-     an object it classified as unidentified while it carries an id, and the cost of that mistake is an
-     identity minted a second time for an object that already has one. Cheap check, unrecoverable fault.
-     🔴 NO MUTANT, AND THE REASON IS THE SAME SHAPE AS THE ARITHMETIC ONE ABOVE: the only cells that drive
-     this function go through the publish adapter's own walk, so nothing they can construct reaches this
-     branch. A mutant here would survive by construction.
-     EXPIRY — restore a mutant and a cell the moment a SECOND producer of (carried, unidentified) exists:
-     any caller that does not derive both from one walk over one row set. That is the edit which makes
-     this reachable, and it is the edit most likely to arrive without anyone thinking about this line. */
+  /* 🔴 REACHABLE ON THE EXPORTED CONTRACT, AND MY OWN NOTE HERE SAID IT WAS NOT. I recorded this as
+     unreachable-and-therefore-unmutatable; an independent gate reached it in ONE LINE against the exported
+     function — `validatePartition({ activeCertified: [], carried: [], deletedIds: [], unidentified:
+     [{ identity_id: 'X' }] })` refuses, and with the guard removed the same call SUCCEEDS with
+     `minting: 1`. So the guard is testable, a guard-removal mutant dies, and both are now in place.
+     That was a claim stronger than the code, written inside a comment documenting claims stronger than
+     the code. What produced it: `walkDraftIdentities` fills `carried` and `unidentified` from ONE walk and
+     decides membership by the very field this re-tests, so no PUBLISH-ADAPTER cell can reach here — and I
+     generalised "the adapter cannot reach it" into "nothing can", without trying the mutant.
+     🔴 WHY IT MATTERS THAT THIS IS TESTED RATHER THAN EXPIRED: `validatePartition` is EXPORTED and PURE.
+     For a function like that you do not wait for a second caller to make the contract testable — you test
+     the contract. I had written an expiry saying "restore a mutant when a second producer of (carried,
+     unidentified) exists"; that is the wrong instrument here, because reachability is this function's own
+     signature, not a property of who calls it. Expiries belong on guards whose reachability genuinely
+     depends on a caller.
+     WHAT IT GUARDS, unchanged: a caller that classifies an object as unidentified while it carries an id
+     gets a SECOND identity minted for an object that already has one. Cheap check, unrecoverable fault. */
   for (const o of asArray(unidentified)) {
     if (o && isId(o.identity_id)) {
       throw new PartitionRefusal('identity_partition_misclassified',

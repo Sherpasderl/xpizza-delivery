@@ -166,6 +166,28 @@ const refuses = (fn, code, label) => {
     validateDeletionClaim({ ids: ['X', 'Y'], base_version: 'v-2', base_generation: 5 }, liveNow).ids,
     ['X', 'Y'], 'a well-formed claim with two distinct string ids still passes');
 
+  /* 🔴 AN OBJECT COUNTED AS UNIDENTIFIED WHILE IT CARRIES AN ID — REFUSED, AND THIS CELL EXISTS BECAUSE
+     I RECORDED THE GUARD AS UNTESTABLE. The note in identity-partition.js said this branch could not be
+     reached and therefore could not carry a mutant; an independent gate reached it in ONE LINE on the
+     exported function, and with the guard removed the same call succeeds with `minting: 1`.
+     WHY I GOT IT WRONG: `walkDraftIdentities` fills `carried` and `unidentified` from one walk and decides
+     membership by the very field this re-tests, so no publish-adapter cell can reach it — and I turned
+     "the adapter cannot reach it" into "nothing can" WITHOUT TRYING THE MUTANT. validatePartition is
+     exported and pure; for a function like that you test the contract rather than waiting for a caller.
+     WHAT IT GUARDS: a caller that hands over an object it classified as unidentified while it carries an
+     id gets a SECOND identity minted for an object that already has one. */
+  refuses(() => validatePartition({ activeCertified: [], carried: [], deletedIds: [], unidentified: [{ identity_id: 'X' }] }),
+    'identity_partition_misclassified', 'an object counted as unidentified while carrying an id');
+  /* …and with a NON-EMPTY active set too, so the refusal is not an artefact of the empty case. */
+  refuses(() => validatePartition({ activeCertified: ['A'], carried: ['A'], deletedIds: [], unidentified: [{ identity_id: 'B' }] }),
+    'identity_partition_misclassified', 'the same, against a populated partition');
+  /* 🔴 THE PERMITTING CONTROL: a genuinely unidentified object — no id — must still mint, or this has
+     broken minting instead of guarding it. */
+  {
+    const minted = validatePartition({ activeCertified: ['A'], carried: ['A'], deletedIds: [], unidentified: [{ name: 'New Dish' }] });
+    assert.strictEqual(minted.minting, 1, '🔴 an object with NO id was refused — the guard must catch a MISCLASSIFIED one, not every new object');
+  }
+
   /* SENSITIVITY: genuinely ABSENT input is a legitimate state and must still pass, or this guard has
      simply broken the empty case instead of tightening it. */
   const empty = validatePartition({ activeCertified: [], carried: undefined, deletedIds: undefined });

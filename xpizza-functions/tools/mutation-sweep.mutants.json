@@ -6742,6 +6742,20 @@
     ]
   },
   {
+    "id": "d4p1c-p3",
+    "slice": "d4p1c",
+    "file": "catalog/identity-partition.js",
+    "from": "    if (o && isId(o.identity_id)) {",
+    "to": "    if (false) {",
+    "label": "🔴 an object counted as UNIDENTIFIED while carrying an id is accepted — a SECOND identity is minted for an object that already has one. Reachable in one line on the exported contract, which I had recorded as untestable.",
+    "kills_with": "an object counted as unidentified while carrying an id",
+    "why": "added after a gate reached this branch directly on the exported pure function. My note had claimed it could not carry a mutant, generalising 'the publish adapter cannot reach it' into 'nothing can' without trying it. The lesson is recorded at both guards: the double-enforcement rule applies to the SAME check in two places, and before writing 'this cannot have a mutant', try the mutant.",
+    "command": [
+      "node",
+      "catalog/identity-partition.test.js"
+    ]
+  },
+  {
     "id": "d4p1b-22",
     "slice": "d4p1b",
     "file": "catalog/identity-bootstrap.js",
