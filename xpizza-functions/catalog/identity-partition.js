@@ -125,13 +125,40 @@ function validatePartition({ activeCertified, carried, deletedIds, unidentified 
       { ids: unaccounted.slice().sort() });
   }
 
-  /* The count identity is implied by the four clauses above, so it can only fail if one of them is
-     wrong — which makes it a cheap self-check on this function rather than a rule of its own. */
+  /* 🔴 DEFENSIVE, AND RECORDED AS SUCH RATHER THAN DELETED — one of two codes an independent gate
+     classified [CONTRACT] because neither can be reached from any live caller.
+     WHY IT CANNOT FIRE: the four clauses above establish C ⊆ A, D ⊆ A, C ∩ D = ∅ and C ∪ D = A. Given
+     those, |C| + |D| = |A| is arithmetic, not a further rule — so this branch can only be entered if one
+     of the four clauses is itself wrong. That makes it a self-check on THIS FUNCTION, which is exactly
+     why it stays: the thing it guards against is a future edit to the clauses above, and a self-check
+     that costs two Set lookups is the cheapest possible witness that they still mean what they say.
+     🔴 SO IT HAS NO MUTANT AND CANNOT HAVE ONE — no cell can stage the state that reaches it without
+     first breaking a clause, at which point that clause's own mutant dies instead. Do not read the
+     absence of a mutant here as an oversight.
+     EXPIRY — restore a mutant and a cell if any of these becomes true: a clause above is removed or
+     weakened; a fifth clause is added that does not preserve the partition; or `A`, `C` or `D` stop
+     being Sets of the same id space (a multiset, or ids compared by value rather than identity, would
+     make the counts diverge while every clause still passed). */
   if (C.size + D.size !== A.size) {
     throw new PartitionRefusal('identity_partition_arithmetic',
       `carried ${C.size} + deleted ${D.size} != active ${A.size} despite the partition clauses passing`);
   }
 
+  /* 🔴 DEFENSIVE, AND RECORDED AS SUCH — the second [CONTRACT] code. It cannot fire through the publish
+     adapter, because `walkDraftIdentities` builds `carried` and `unidentified` from the SAME iteration
+     over the same rows and puts a row in exactly one of them by testing the very field this re-tests. So
+     for that caller the check is asking a question whose answer the caller has already decided.
+     WHY IT STAYS ANYWAY: `validatePartition` is EXPORTED and is a pure predicate, so "the publish adapter
+     cannot reach it" is a statement about one caller, not about the function. A direct caller that builds
+     its own two lists — a repair tool, a migration, a future rollback variant — can absolutely hand over
+     an object it classified as unidentified while it carries an id, and the cost of that mistake is an
+     identity minted a second time for an object that already has one. Cheap check, unrecoverable fault.
+     🔴 NO MUTANT, AND THE REASON IS THE SAME SHAPE AS THE ARITHMETIC ONE ABOVE: the only cells that drive
+     this function go through the publish adapter's own walk, so nothing they can construct reaches this
+     branch. A mutant here would survive by construction.
+     EXPIRY — restore a mutant and a cell the moment a SECOND producer of (carried, unidentified) exists:
+     any caller that does not derive both from one walk over one row set. That is the edit which makes
+     this reachable, and it is the edit most likely to arrive without anyone thinking about this line. */
   for (const o of asArray(unidentified)) {
     if (o && isId(o.identity_id)) {
       throw new PartitionRefusal('identity_partition_misclassified',
@@ -263,7 +290,20 @@ function validateDeletionClaim(claim, { activeVersionId, activeGeneration } = {}
        rebind, and it is what the `reviewed` gate below exists to prevent: only an explicit re-review
        moves an existing base.
    So "will not rebind silently" is about the second case and holds. What would be a real defect is the
-   server READING the client's base — it never does; the handler deletes the field before this is called. */
+   server READING the client's base — it never does; the handler deletes the field before this is called.
+
+   🔴 AND THE RESIDUAL RISK IS CLOSED BY THE REPLY, WHICH IS A STRONGER REASON THAN "WE JUDGED IT
+   ACCEPTABLE". The only real hazard left is a client BELIEVING its base was honoured. It cannot: the
+   handler returns `baseActiveVersionId` in its 200 (edit-catalog-handler.js:303), so a client that sent
+   `never-seen` gets the real active version back and can detect the divergence. "Ignored" is therefore
+   VISIBLE, not silent — a fact about the response rather than a preference about the design.
+   HONEST LIMIT: the generation is NOT returned, so the assignment is only partly visible. Not worth a
+   change — a client sending a base at all is already anomalous, and the version alone reveals it — but
+   stated so nobody later reads "visible" as "fully visible".
+   🔴 AND REFUSING ON PRESENCE WOULD BE THE WRONG FIX, for a reason this programme has now paid for twice:
+   it would break any client that round-trips the claim object back, which is exactly the class of failure
+   F2's withdrawal case showed — demanding a base to withdraw traps the merchant whose baseline moved.
+   Refusing here buys nothing and risks the same door. */
 function persistDeletionClaim({ existing = null, ids, live, reviewed = false } = {}) {
   if (!live || !isId(live.version) || !Number.isInteger(live.generation) || live.generation < 0) {
     throw new PartitionRefusal('deleted_ids_no_baseline',
