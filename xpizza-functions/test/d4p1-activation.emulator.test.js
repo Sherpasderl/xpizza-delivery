@@ -448,7 +448,102 @@ const publish = async (expectedActive, tag) => {
       '🔴 A PUBLISH THAT VALIDATED AGAINST AN EMPTY CERTIFIED SET FLIPPED AFTER THAT SET BECAME NON-EMPTY. Every id the newly-certified version carries is now neither carried nor declared deleted by the live version — identities dropped silently by absence, during the cutover, with the flip\'s CAS blind to it because certification moves neither the version id nor the generation.');
     assert.match(String(outcome), /identity_partition_unaccounted|carried_unknown|publish_lease|identity_partition/,
       `🔴 it refused, but not for the partition reason — the refusal must name what went wrong: ${outcome}`);
+    /* 🔴 UNDO THE DOCTORED STATE, or every cell below inherits a CERTIFIED active version carrying
+       RACE-ID stamps and refuses as unaccounted — which is what happened when I first wrote this, and it
+       failed the NEXT cell rather than this one. A cell that stages a corrupt state owns putting it back. */
+    for (const col of ['menu_items', 'extras']) {
+      const docs = (await vrefOfId(base).collection(col).get()).docs;
+      for (const d of docs) await d.ref.update({ 'display.identity_id': admin.firestore.FieldValue.delete() });
+    }
+    await vrefOfId(base).update({ identity_certified: admin.firestore.FieldValue.delete() });
+    const cleaned = (await vrefOfId(base).get()).data() || {};
+    assert.strictEqual(cleaned.identity_certified, undefined, '🔴 the cleanup left the version certified — the cells below would all refuse as unaccounted');
     ok(`a certification landing between the partition check and the flip is REFUSED (${String(outcome).split(':')[0]}) — the cutover window cannot drop identities by absence`);
+  }
+
+  // ── 🔴 THE DRAFT MOVES BETWEEN THE PRE-FLIGHT CAS AND THE FLIP'S ──────────────────────────────
+  {
+    /* WHY THIS CELL EXISTS, AND IT IS THE SAME REMEDY AS THE ACTIVATION PAIR. Two mutation survivors —
+       task7-04 ("the flip stops comparing the draft revision") and task7-06 ("the draft CAS is keyed by
+       VALUE, so an absent revision skips it") — survive because the draft CAS is enforced TWICE: a
+       PRE-FLIGHT check before the lease, with its own independent `hasOwnProperty` gate, and the flip's
+       own check inside the transaction. Mutating the flip's half leaves the pre-flight refusing, so the
+       cells in publish-paths.test.js still pass and the mutants live.
+       🔴 THE PRE-FLIGHT IS MINE, from the staleness-before-membership round, and it shadowed a guard that
+       was armed before I added it. That is the third time an EARLIER check of mine has made a LATER one
+       unkillable, and the pattern is now the thing to watch rather than any single instance.
+       THE FLIP'S HALF IS NOT REDUNDANT: the pre-flight reads the source OUTSIDE any transaction, so a
+       draft that moves AFTER it and BEFORE the flip is caught only in the transaction. That is the window
+       this cell stages — and it is a real one, because a merchant saving while a publish is in flight is
+       the ordinary case, not a contrivance. */
+    const priorPtr2 = await getActivePointer(db, RID);
+    const baseV = await publish(priorPtr2.version, 'draft-cas-base');
+    const { encodeUpdateTime } = require('../catalog/source-store');
+    const revAtReview = encodeUpdateTime((await sourceRefOf(db, RID).get()).updateTime);
+
+    let movedDraft = false;
+    let racingTx2;
+    const racing2 = new Proxy(db, {
+      get: (t, prop, recv) => (prop === 'runTransaction' ? racingTx2 : Reflect.get(t, prop, recv)),
+    });
+    racingTx2 = async (fn, o) => {
+      if (!movedDraft) {
+        movedDraft = true;
+        // the merchant saves — AFTER the pre-flight CAS has already compared and passed
+        const cur = (await sourceRefOf(db, RID).get()).data() || {};
+        await sourceRefOf(db, RID).set({ ...cur, moved_between_preflight_and_flip: Date.now() });
+      }
+      return orig2(fn, o);
+    };
+    const orig2 = db.runTransaction.bind(db);
+
+    const { input: dcInput } = buildPublishCandidate(RID, { activeVersionId: baseV }, { source_sha: 'draft-cas-race' });
+    let dcOutcome = null;
+    try {
+      await publishVersion(racing2, RID, dcInput, { expected: { activeVersionId: baseV, draftRevision: revAtReview } });
+      dcOutcome = 'FLIPPED';
+    } catch (e) { dcOutcome = (e && e.message) || String(e); }
+    assert.ok(movedDraft, 'premise — the draft really moved between the pre-flight comparison and the flip');
+
+    assert.notStrictEqual(dcOutcome, 'FLIPPED',
+      '🔴 A DRAFT THAT MOVED AFTER THE PRE-FLIGHT CAS WAS PUBLISHED ANYWAY. The pre-flight reads outside any transaction, so only the flip\'s own comparison can see a save that lands after it — without that comparison a merchant\'s edit is silently overwritten by a publish that never looked at it.');
+    assert.match(String(dcOutcome), /flip_cas_draft_stale/,
+      `🔴 it refused, but not as a stale draft — the refusal has to name what the merchant needs to hear: ${dcOutcome}`);
+    const stillBase = await getActivePointer(db, RID);
+    assert.strictEqual(stillBase.version, baseV, '🔴 …and the pointer moved anyway');
+    /* 🔴 AND THE OTHER HALF, WHICH THE CASE ABOVE CANNOT REACH: `draftRevision` PRESENT AND NULL. The
+       flip's gate is keyed on the KEY's PRESENCE (`hasOwnProperty`), not on the value's truthiness — so
+       "there was no draft when I built this" is a CLAIM that must be falsified by a draft that exists.
+       A truthy revision (the case above) leaves a value-keyed gate switched ON, so it cannot tell the two
+       spellings apart; this one can. Staged as: NO source at the pre-flight (so the null claim is true
+       and the pre-flight passes), and a draft APPEARING before the flip. */
+    await sourceRefOf(db, RID).delete();
+    let createdDraft = false;
+    let racingTx3;
+    const racing3 = new Proxy(db, {
+      get: (t, prop, recv) => (prop === 'runTransaction' ? racingTx3 : Reflect.get(t, prop, recv)),
+    });
+    const orig3 = db.runTransaction.bind(db);
+    racingTx3 = async (fn, o) => {
+      if (!createdDraft) {
+        createdDraft = true;
+        await sourceRefOf(db, RID).set(buildSourceFromCode(RID));   // a draft appears after the pre-flight
+      }
+      return orig3(fn, o);
+    };
+    const nowPtr = await getActivePointer(db, RID);
+    const { input: nullInput } = buildPublishCandidate(RID, { activeVersionId: nowPtr.version }, { source_sha: 'null-claim-race' });
+    let nullOutcome = null;
+    try {
+      await publishVersion(racing3, RID, nullInput, { expected: { activeVersionId: nowPtr.version, draftRevision: null } });
+      nullOutcome = 'FLIPPED';
+    } catch (e) { nullOutcome = (e && e.message) || String(e); }
+    assert.ok(createdDraft, 'premise — a draft really appeared between the pre-flight and the flip');
+    assert.notStrictEqual(nullOutcome, 'FLIPPED',
+      '🔴 A PUBLISH CLAIMING "THERE WAS NO DRAFT" LANDED ON A RESTAURANT THAT HAD ONE BY THE TIME IT FLIPPED. A value-keyed gate reads null as "no opinion" and skips the comparison — the presence-by-value trap, in the one place where skipping it means publishing over a draft nobody looked at.');
+    assert.match(String(nullOutcome), /flip_cas_draft_stale/, `🔴 it refused, but not as a stale draft: ${nullOutcome}`);
+    await sourceRefOf(db, RID).set(buildSourceFromCode(RID));   // leave a draft for any cell below
+    ok('a draft that moves between the pre-flight CAS and the flip is refused IN THE TRANSACTION, for a truthy revision AND for a present-and-null claim — the guard the pre-flight cannot stand in for, and the gate keyed by presence rather than value');
   }
 
   FINISHED = true;

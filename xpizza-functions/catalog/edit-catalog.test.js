@@ -486,6 +486,53 @@ const withPrice = (delta) => {
     ok('the documented stale-claim recovery rebinds at the live pair; without the ack it stays an echo, and a stale loaded base still refuses');
   }
 
+  // ── 🔴 A MALFORMED DECLARATION IS NOT AN ECHO — `map(String)` OPENED A VALIDATION GATE ────────
+  {
+    /* THE DEFECT, reproduced through the merchant path before it was fixed: the echo test compared
+       `[...a].map(String)`, so a NESTED ARRAY stringified into a match. With stored ids `['X']`, a request
+       carrying `{ids:[['X']]}` returned 200, was classified an ECHO, preserved the claim verbatim, and
+       REQUIRED NO LOADED BASE — skipping the guard whose whole purpose is that a merchant's deletion is
+       judged against what they actually saw. Less dangerous than creating a claim, because it preserves
+       one that was validated when made; but a validation gate opened by a string coercion.
+       🔴 REFUSED AT THE SOURCE OF THE IDS, NOT BY A BETTER COMPARISON. A structure-aware `sameSet` would
+       have stopped this stringification and left the shape that produced it — ids of unknown type flowing
+       into a comparison, into storage, and into the loaded-base decision. */
+    for (const [label, ids, why] of [
+      ['a nested array', [['KEEPME1']], 'it stringifies to the stored id and would read as an echo'],
+      ['a number', [12], 'ids are encodeKey\'d strings; 12 is not one'],
+      ['an empty string', [''], 'an empty id names nothing'],
+      ['an object', [{ id: 'KEEPME1' }], 'it stringifies to [object Object] and would never match, but it is still not an id'],
+      ['duplicates', ['KEEPME1', 'KEEPME1'], 'a claim whose length disagrees with its content makes every count downstream a guess'],
+    ]) {
+      const db = stubFirestore(baseSource());
+      db.state.source.data.deleted_ids = { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 };
+      const src = withPrice(41);
+      src.deleted_ids = { ids };
+      const r = await editCatalogCore({ db, authorize: allow, readActiveBuilt: db.readActiveBuilt },
+        { restaurantId: RID, source: src, baseSourceUpdateTime: T0 }, {});
+      assert.strictEqual(r.status, 400,
+        `🔴 ${label} was ACCEPTED (${r.status}) — ${why}: ${JSON.stringify(r.body).slice(0, 160)}`);
+      assert.strictEqual(r.body.error, 'deleted_ids_malformed', `…and it must say so by name: ${JSON.stringify(r.body)}`);
+      /* AND THE STANDING CLAIM IS UNTOUCHED: a refusal must not be a way to edit the claim either. */
+      assert.deepStrictEqual(db.state.source.data.deleted_ids, { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 },
+        `🔴 ${label} was refused but the stored claim CHANGED`);
+    }
+
+    /* 🔴 THE PERMITTING CONTROL, because a handler that refused every declaration would satisfy all of
+       the above and break ordinary editing: the genuine echo must still be an echo, and must still not
+       demand a loaded base. */
+    const okDb = stubFirestore(baseSource());
+    okDb.state.source.data.deleted_ids = { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 };
+    const okSrc = withPrice(42);
+    okSrc.deleted_ids = { ids: ['KEEPME1'] };
+    const okR = await editCatalogCore({ db: okDb, authorize: allow, readActiveBuilt: okDb.readActiveBuilt },
+      { restaurantId: RID, source: okSrc, baseSourceUpdateTime: T0 }, {});
+    assert.strictEqual(okR.status, 200, `🔴 a genuine echo of well-formed ids was refused: ${JSON.stringify(okR.body).slice(0, 160)}`);
+    assert.deepStrictEqual(okDb.state.source.data.deleted_ids, { ids: ['KEEPME1'], base_version: ACTIVE, base_generation: 0 },
+      '…and it is preserved verbatim, base included');
+    ok('a malformed declaration is REFUSED by name — nested array, number, empty string, object, duplicates — while a genuine echo of well-formed ids still passes with no loaded base');
+  }
+
   console.log(`edit-catalog: OK (${n})`);
   FINISHED = true;
 })().catch((e) => { console.error(e); process.exit(1); });

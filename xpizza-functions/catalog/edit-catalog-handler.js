@@ -115,6 +115,35 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     : next.deleted_ids;
   delete next.deleted_ids;                    // whatever the client sent is not what gets stored
 
+  /* ── 🔴 EVERY DECLARED ID MUST BE A NON-EMPTY STRING, CHECKED BEFORE ANYTHING COMPARES THEM ──────
+     THE DEFECT: the echo test below used `[...a].map(String)`, so a NESTED ARRAY stringified into a
+     match. With stored ids `['X']`, a merchant request carrying `{ids:[['X']]}` returned 200 through the
+     authenticated API, was classified an ECHO, preserved the claim verbatim, and REQUIRED NO LOADED BASE
+     — skipping the guard whose entire purpose is that a merchant's deletion is judged against what they
+     actually saw. A validation gate opened by a string coercion.
+     🔴 AND THE FIX IS NOT A BETTER COMPARISON. Making `sameSet` structure-aware would stop THIS
+     stringification and leave the shape that produced it: ids of unknown type flowing into a comparison,
+     into storage, and into the loaded-base decision. The ids are strings — `encodeKey`'d registry ids —
+     so anything else is malformed and must REFUSE here, once, before any of those three uses. That also
+     answers half of the validator's own gap (members were never checked), and it refuses UNIQUENESS for
+     the same reason: `['X','X']` is not a set, and a claim whose length disagrees with its content makes
+     every count downstream a guess.
+     Refused as 400 rather than coerced or dropped: a merchant's deletion list is not something to guess at. */
+  if (declaredIds !== undefined && declaredIds !== null && !Array.isArray(declaredIds)) {
+    return reply(400, { error: 'deleted_ids_malformed', detail: 'deleted_ids.ids must be an array' });
+  }
+  if (Array.isArray(declaredIds)) {
+    const bad = declaredIds.findIndex((id) => typeof id !== 'string' || !id);
+    if (bad !== -1) {
+      return reply(400, { error: 'deleted_ids_malformed',
+        detail: `deleted_ids.ids[${bad}] is ${JSON.stringify(declaredIds[bad])}; every id must be a non-empty string — a value that merely STRINGIFIES to one would be read as an echo and skip the loaded-base guard` });
+    }
+    if (new Set(declaredIds).size !== declaredIds.length) {
+      return reply(400, { error: 'deleted_ids_malformed',
+        detail: 'deleted_ids.ids contains duplicates; a claim whose length disagrees with its content makes every count downstream a guess' });
+    }
+  }
+
   /* 🔴 AN ECHO IS NOT A CHANGE, AND THE REAL EDITOR ALWAYS ECHOES. The portal loads the whole source
      and clones it (editor.js createDraft), so a save sends BACK the server-owned claim it was handed —
      which means "the client did not mention deleted_ids" is very nearly unreachable in practice, and

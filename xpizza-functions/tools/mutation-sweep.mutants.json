@@ -223,7 +223,17 @@
     "label": "the flip stops comparing the draft revision",
     "file": "catalog/catalog-publish.js",
     "from": "      if (liveRevision !== expected.draftRevision) {",
-    "to": "      if (false) {"
+    "to": "      if (false) {",
+    "command": [
+      "npm",
+      "run",
+      "test:d4p1-activation"
+    ],
+    "kills_with": [
+      "WAS PUBLISHED ANYWAY",
+      "LANDED ON A RESTAURANT THAT HAD ONE"
+    ],
+    "why": "SURVIVED under the default `npm test` because the draft CAS is enforced TWICE — a PRE-FLIGHT check with its own hasOwnProperty gate, and the flip's own check in the transaction. publish-paths.test.js's cells are satisfied by the pre-flight, so mutating the flip's half changed nothing they could see. Now pointed at the interleaving cell that stages a draft moving AFTER the pre-flight, which only the flip's comparison can catch."
   },
   {
     "id": "task7-05",
@@ -239,7 +249,14 @@
     "label": "the draft CAS is keyed by VALUE, so an absent revision skips it",
     "file": "catalog/catalog-publish.js",
     "from": "  const wantsDraftCas = Object.prototype.hasOwnProperty.call(expected, 'draftRevision');",
-    "to": "  const wantsDraftCas = !!(expected && expected.draftRevision);"
+    "to": "  const wantsDraftCas = !!(expected && expected.draftRevision);",
+    "command": [
+      "npm",
+      "run",
+      "test:d4p1-activation"
+    ],
+    "kills_with": "LANDED ON A RESTAURANT THAT HAD ONE",
+    "why": "same shadowing as task7-04, plus this mutation only bites when draftRevision is FALSY: keying the gate on truthiness instead of key-presence makes `draftRevision: null` skip the comparison. Killable only by a cell where the claim is present-and-null AND a draft appears between the pre-flight and the flip — which is what the interleaving cell's second half stages."
   },
   {
     "id": "task7-07",
@@ -6654,6 +6671,32 @@
     "from": "  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds) && !acked;",
     "to": "  const isEcho = declared && storedIds && sameSet(declaredIds, storedIds);",
     "why": "guarded at two points of the same cell, and which fires first is ordering rather than meaning — the documented array form. Treating an acked resend as an echo skips the loaded-base guard (checked first) AND leaves the stale base in place (checked after), and both are the same defect seen from either end."
+  },
+  {
+    "id": "d4p1c-26",
+    "slice": "d4p1c",
+    "file": "catalog/edit-catalog-handler.js",
+    "from": "    const bad = declaredIds.findIndex((id) => typeof id !== 'string' || !id);",
+    "to": "    const bad = -1;",
+    "label": "🔴 A MALFORMED DECLARED ID IS ACCEPTED — a NESTED ARRAY stringifies to the stored id, is classified an ECHO, and skips the loaded-base guard: a validation gate opened by a string coercion, reachable through the authenticated merchant API with a 200",
+    "kills_with": "a nested array was ACCEPTED",
+    "command": [
+      "node",
+      "catalog/edit-catalog.test.js"
+    ]
+  },
+  {
+    "id": "d4p1c-27",
+    "slice": "d4p1c",
+    "file": "catalog/edit-catalog-handler.js",
+    "from": "    if (new Set(declaredIds).size !== declaredIds.length) {",
+    "to": "    if (false) {",
+    "label": "a deletion claim with DUPLICATE ids is accepted, so its length disagrees with its content and every count derived from it downstream is a guess",
+    "kills_with": "duplicates was ACCEPTED",
+    "command": [
+      "node",
+      "catalog/edit-catalog.test.js"
+    ]
   },
   {
     "id": "d4p1b-22",
