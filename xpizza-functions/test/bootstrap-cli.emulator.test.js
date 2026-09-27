@@ -95,6 +95,21 @@ const srcRef = () => db.collection('restaurants').doc(RID).collection('meta').do
   }
 
   const certified = async () => ((await vref.get()).data() || {}).identity_certified === true;
+  const certifiedOf = async (r) => ((await r.get()).data() || {}).identity_certified === true;
+
+  /* A FRESH, UNCERTIFIED ACTIVE VERSION over the same three objects. Cell 2 certifies the first one,
+     and certification is a one-way door, so every later cell that needs the PRE-cutover state needs a
+     new version rather than a reset flag — there is no un-certify. */
+  const freshVersion = async (gen) => {
+    const id = `v-boot-${gen}-${Date.now()}`;
+    const r = versionsCol().doc(id);
+    await r.set({ created_at: new Date().toISOString(), identity_activation: { status: 'activated' } });
+    for (const [i, it] of items.entries()) await r.collection('menu_items').doc(`i${i}`).set({ key: it.key, price: it.price, display: { id: i + 1, name: it.key, price: it.price } });
+    for (const [i, ex] of extras.entries()) await r.collection('extras').doc(`e${i}`).set({ key: ex.key, price: ex.price, display: { id: 90 + i, name: ex.key, price: ex.price } });
+    await db.collection('restaurants').doc(RID).collection('meta').doc('active_version').set({ version: id, generation: gen });
+    await srcRef().set({ items, extras, structure: { schema_version: 2, item_order: ['Alpha', 'Beta'] } });
+    return { id, ref: r };
+  };
   const sourceIds = async () => {
     const s = (await srcRef().get()).data() || {};
     const out = {};
@@ -188,6 +203,122 @@ const srcRef = () => db.collection('restaurants').doc(RID).collection('meta').do
     assert.ok(!/Firestore|active version/i.test(wrongProject.out),
       `🔴 the wrong-project run reached the SDK or read data before refusing:\n${wrongProject.out.slice(0, 300)}`);
     ok('a usage error exits 1 and a wrong project exits 2 before any client exists — the two are distinguishable by a script');
+  }
+
+  // ── 5. 🔴 THE FIRST --apply STAMPS ONLY — IT MUST NOT PERFORM THE HALF IT COULD NOT REHEARSE ──
+  {
+    /* 🔴 WHY THIS CELL EXISTS, AND WHY CELLS 1-3 COULD NOT CATCH WHAT IT CATCHES. `canReconcile` was
+       `APPLY || certified`, so the FIRST --apply ran reconcileLegacyOrphans with dryRun:false and
+       RETIRED — the same --apply that the dry run's own message told the operator to run "then run a
+       DRY RUN again to see the orphan plan BEFORE ANYTHING IS RETIRED". The tool routed the operator
+       into the unrehearsed path while assuring them of the opposite.
+       Cells 1-3 passed before AND after that fix, and the reason is the fixture: the registry holds
+       exactly the keys the version serves, so THERE ARE NO ORPHANS, and "retired nothing" is
+       indistinguishable from "skipped the pass". A cell that constructs away its own condition.
+       So this cell seeds one: a LIVE id the active version does not serve. */
+    const { ref: r2 } = await freshVersion(2);
+    const dishIds = db.collection('restaurants').doc(RID).collection('identity').doc('dish').collection('ids');
+    await dishIds.doc('ID-GHOST-001').set({ legacy_key: 'Ghost', status: 'live', kind: 'dish', created_at: new Date().toISOString() });
+    const ghost = async () => ((await dishIds.doc('ID-GHOST-001').get()).data() || {}).status;
+    assert.strictEqual(await ghost(), 'live', 'premise — the orphan starts live');
+    assert.strictEqual(await certifiedOf(r2), false, 'premise — the new version starts uncertified');
+
+    // STEP 2 of the sequence: stamps and certifies, and must retire NOTHING.
+    const step2 = run(['--rid=' + RID, '--project', PROJECT, '--apply']);
+    assert.strictEqual(step2.code, 0, `🔴 step 2 failed: ${step2.out.slice(0, 700)}`);
+    assert.strictEqual(await certifiedOf(r2), true, 'premise — step 2 really did stamp and certify');
+    assert.strictEqual(await ghost(), 'live',
+      '🔴 THE FIRST --apply RETIRED AN ORPHAN IT NEVER SHOWED THE OPERATOR. On a one-way door against a live menu this is the door opening on a plan nobody approved — and the tool had just promised the plan would come first.');
+    assert.match(step2.out, /orphans: NOT PERFORMED/, '🔴 step 2 does not say the orphan half was skipped');
+    assert.match(step2.out, /THE CUTOVER IS NOT FINISHED/,
+      '🔴 step 2 reported the cutover DONE while half of it had not run — an operator who reads "DONE" stops, and the retirements §3.0 asks for never happen');
+
+    // STEP 3: now the orphan half CAN be rehearsed, and rehearsing must not retire.
+    const step3 = run(['--rid=' + RID, '--project', PROJECT]);
+    assert.strictEqual(step3.code, 0, `🔴 step 3 (the orphan rehearsal) failed: ${step3.out.slice(0, 700)}`);
+    assert.match(step3.out, /orphans: 1 found/, `🔴 the rehearsal does not name the orphan it would retire:\n${step3.out.slice(0, 900)}`);
+    assert.match(step3.out, /would be retired/, 'and it says it WOULD retire rather than that it did');
+    assert.strictEqual(await ghost(), 'live', '🔴 the orphan REHEARSAL retired it — a dry run wrote');
+
+    // STEP 4: the rehearsed retirement, performed.
+    const step4 = run(['--rid=' + RID, '--project', PROJECT, '--apply']);
+    assert.strictEqual(step4.code, 0, `🔴 step 4 failed: ${step4.out.slice(0, 700)}`);
+    assert.strictEqual(await ghost(), 'retired', '🔴 step 4 did not retire the orphan the operator had just approved');
+    assert.match(step4.out, /ALREADY certified/,
+      '🔴 step 4 re-stamped instead of reporting the early return — the four-step sequence rests on bootstrapIdentityStamps returning early on a certified version');
+    ok('the first --apply stamps ONLY and retires nothing; the orphan plan is rehearsed next, and only then does --apply retire — every one-way action shown before it happens');
+  }
+
+  // ── 6. 🔴 THE DRY RUN REFUSES EVERYTHING THE APPLY WOULD REFUSE ─────────────────────────────
+  {
+    /* The eligibility checks used to sit AFTER the dry-run return, so with no stored source the dry run
+       SUCCEEDED and printed a stamping plan while --apply threw `identity_bootstrap_no_source`. The dry
+       run IS the artefact the owner approves, and an approval that does not predict the outcome is not
+       an approval. Not dangerous — the apply refused rather than corrupting — but it undermined the one
+       thing the rehearsal is for. */
+    const { ref: r3 } = await freshVersion(3);
+    await srcRef().delete();
+
+    const dry = run(['--rid=' + RID, '--project', PROJECT]);
+    assert.strictEqual(dry.code, 1,
+      `🔴 THE DRY RUN SUCCEEDED WITH NO STORED SOURCE — it would hand the operator a plan the apply then refuses.\n${dry.out.slice(0, 900)}`);
+    assert.match(dry.out, /identity_bootstrap_no_source/, '🔴 and it does not name the refusal --apply would raise');
+    assert.ok(!/WOULD certify/.test(dry.out), '🔴 it printed a certification plan it cannot honour');
+
+    const applied = run(['--rid=' + RID, '--project', PROJECT, '--apply']);
+    assert.strictEqual(applied.code, 1, '🔴 the apply did not refuse — then the dry run was right and this premise is wrong');
+    assert.match(applied.out, /identity_bootstrap_no_source/, '…and with the SAME refusal, which is the whole property');
+    assert.strictEqual(await certifiedOf(r3), false, 'and nothing was certified by either run');
+    ok('with no stored source the DRY RUN refuses with the same error as --apply — the rehearsal predicts the outcome rather than promising one it cannot honour');
+  }
+
+  // ── 7. …AND THE SAME FOR A DIVERGENT DRAFT, WHICH IS THE ONE THE OWNER WILL ACTUALLY HIT ────
+  {
+    /* An unpublished RENAME is the realistic version of this: the owner edits the menu, does not
+       publish, then runs the cutover. The active version serves `Beta`, the draft no longer has it, so
+       that id would be neither carried nor declared deleted and every later publish would refuse as
+       unaccounted. The pass refuses WHOLE — and the rehearsal has to say so, because "publish or
+       discard the pending edit, then re-run" is an instruction the operator needs BEFORE the door. */
+    const { ref: r4 } = await freshVersion(4);
+    await srcRef().set({ items: [{ key: 'Alpha', price: 100 }, { key: 'Beta Renamed', price: 200 }], extras,
+      structure: { schema_version: 2, item_order: ['Alpha', 'Beta Renamed'] } });
+
+    const dry = run(['--rid=' + RID, '--project', PROJECT]);
+    assert.strictEqual(dry.code, 1,
+      `🔴 the DRY RUN did not refuse a divergent draft, so the operator learns about it only from the apply:\n${dry.out.slice(0, 900)}`);
+    assert.match(dry.out, /identity_bootstrap_draft_divergent/, '🔴 and it does not name the divergence');
+    assert.match(dry.out, /Beta/, '…nor which object diverged');
+    assert.strictEqual(await certifiedOf(r4), false, 'and nothing was certified');
+    ok('a divergent draft is refused by the DRY RUN too, naming the object — the rehearsal and the performance agree on refusals, not only on plans');
+  }
+
+  // ── 8. …AND FOR AN ACTIVATION RECORD BOOTSTRAP MAY NOT UPGRADE ──────────────────────────────
+  {
+    /* The third preflight, and it needs its own cell rather than riding on the other two: the in-tx
+       check at identity-bootstrap.js refuses a `pending`, `abandoned` or unrecognised activation record
+       because bootstrap must never manufacture activation authority. That refusal was reachable ONLY
+       from inside the transaction, so a dry run over such a version printed a clean stamping plan for a
+       pass that could never run. This asserts the rehearsal refuses it too — and it is checked against
+       `pending` specifically, since `activated` must still be ACCEPTED (refusing it once blocked the
+       cutover, which is why the rule is narrow). */
+    const { ref: r5 } = await freshVersion(5);
+    await r5.set({ identity_activation: { status: 'pending' } }, { merge: true });
+
+    const dry = run(['--rid=' + RID, '--project', PROJECT]);
+    assert.strictEqual(dry.code, 1,
+      `🔴 the DRY RUN printed a plan for a version carrying a PENDING activation record — a pass that cannot run:\n${dry.out.slice(0, 900)}`);
+    assert.match(dry.out, /identity_bootstrap_activation_present/, '🔴 and it does not name the refusal');
+    assert.ok(!/WOULD certify/.test(dry.out), '🔴 it printed a certification plan it cannot honour');
+    assert.strictEqual(await certifiedOf(r5), false, 'and nothing was certified');
+
+    /* 🔴 THE CONTROL, because a preflight that refuses everything would pass the assertion above. An
+       `activated` record must still be accepted — that narrowing is what made the cutover possible. */
+    const { ref: r6 } = await freshVersion(6);
+    const okDry = run(['--rid=' + RID, '--project', PROJECT]);
+    assert.strictEqual(okDry.code, 0, `🔴 the preflight refuses an ACTIVATED record too — it is over-broad: ${okDry.out.slice(0, 700)}`);
+    assert.match(okDry.out, /WOULD certify/, 'and an eligible version still gets a plan');
+    assert.strictEqual(await certifiedOf(r6), false, 'while still writing nothing');
+    ok('a pending activation record is refused by the DRY RUN, and an activated one is still accepted — the preflight is narrow, not blanket');
   }
 
   FINISHED = true;

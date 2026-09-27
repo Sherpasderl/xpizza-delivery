@@ -30,9 +30,19 @@
  *      distinguishable from "the work failed". backfill-identities.js:64 used to exit 2 for a usage
  *      error and that collision is why this one is stated here.
  *
- * USAGE
- *   node tools/bootstrap-identity.js --rid=x_pizza --project xpizza-delivery            (DRY RUN)
- *   node tools/bootstrap-identity.js --rid=x_pizza --project xpizza-delivery --apply    (WRITES)
+ * 🔴 THE CUTOVER IS FOUR STEPS, NOT TWO, AND THAT IS THE POINT. The orphan half cannot be rehearsed
+ * until the stamps exist (see the §3.0 block below), so it is SKIPPED by the first apply rather than
+ * performed unrehearsed. Every one-way action is therefore preceded by a run that shows it:
+ *
+ * USAGE — run them in this order, one brand per run
+ *   1. node tools/bootstrap-identity.js --rid=x_pizza --project xpizza-delivery            DRY RUN: stamping plan
+ *   2. node tools/bootstrap-identity.js --rid=x_pizza --project xpizza-delivery --apply    WRITES: stamps + certifies ONLY
+ *   3. node tools/bootstrap-identity.js --rid=x_pizza --project xpizza-delivery            DRY RUN: orphan plan
+ *   4. node tools/bootstrap-identity.js --rid=x_pizza --project xpizza-delivery --apply    WRITES: retires the orphans
+ *
+ * Step 4 does not re-stamp — the stamping pass returns early on an already-certified version. Step 2
+ * prints "STAMPING DONE — THE CUTOVER IS NOT FINISHED" rather than "DONE", because an operator who
+ * reads "DONE" stops, and the retirements §3.0 asks for would never happen.
  */
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject({ requireFlag: true });
@@ -113,14 +123,47 @@ const db = admin.firestore();
      Discovered by RUNNING the tool: the first dry run printed a perfect stamping plan and then exited
      1 on this refusal. The wrong fixes were to swallow it or to fake a plan; the right one is to say
      which half was rehearsed and which could not be, so the operator knows what they have approved.
-     A dry run that silently covered one of two halves would be the worst artefact here. */
-  const canReconcile = APPLY || active.record.identity_certified === true;
+     A dry run that silently covered one of two halves would be the worst artefact here.
+
+     🔴 AND SAYING IT WAS NOT ENOUGH — THE FIRST VERSION OF THIS TOOL SAID ALL OF THE ABOVE AND THEN DID
+     THE UNREHEARSED THING ANYWAY. `canReconcile` was `APPLY || certified`, so the apply this very
+     paragraph told the operator to run performed the retirement it promised they would see first. The
+     observation was right and the remedy attached to it was false, which is the harder error to catch:
+     an honest, detailed disclosure reads as though the problem has been handled. The remedy is
+     STRUCTURAL, not textual — skip the half that cannot be rehearsed, and make the operator run a
+     rehearsal for it — and it is directly below. */
+  /* 🔴 CERTIFICATION ALONE. `APPLY ||` USED TO BE HERE, AND IT BROKE THE PROMISE THE LINE BELOW MAKES.
+     With `APPLY ||`, canReconcile was true on the FIRST apply whatever the certification state, and
+     `dryRun: !APPLY` was then false — so the very apply this tool told the operator to run was the one
+     that RETIRED, unrehearsed, while the message assured them they would see the plan first. On a
+     one-way door against a live menu that is worse than an undisclosed limitation: an operator who
+     reads only this output ends with retirements they never approved, believing the opposite.
+     `active` is read BEFORE the stamping pass, so on a first apply this is false and the orphan half is
+     SKIPPED, not silently performed. That makes the sequence four steps, every one-way action rehearsed
+     before it happens:
+        1. dry run   → the stamping plan (orphan half cannot be rehearsed; it says so)
+        2. --apply   → stamps and certifies ONLY
+        3. dry run   → now the orphan plan, against a certified version
+        4. --apply   → retires
+     Step 4 does not re-stamp: bootstrapIdentityStamps returns early on an already-certified version
+     (identity-bootstrap.js:216) with `already: true`, which this tool reports as a no-op. VERIFIED in
+     that function rather than assumed, because the whole sequence rests on it. */
+  const canReconcile = active.record.identity_certified === true;
   let orphanReport = null;
   if (!canReconcile) {
-    console.log('\n  orphans: NOT REHEARSED. The orphan pass compares the registry against the CERTIFIED');
-    console.log('           set, which does not exist until the stamps land — it refuses an uncertified');
-    console.log('           version rather than treating every live id as orphaned. Run --apply, then');
-    console.log('           run a DRY RUN again to see the orphan plan before anything is retired.');
+    if (APPLY) {
+      console.log('\n  orphans: NOT PERFORMED — and deliberately so. This apply STAMPED ONLY.');
+      console.log('           The orphan pass compares the registry against the CERTIFIED set, which did');
+      console.log('           not exist when this run started, so there was nothing to rehearse and');
+      console.log('           nothing has been retired.');
+      console.log('           🔴 NEXT: run a DRY RUN to see the orphan plan, then --apply again to retire.');
+    } else {
+      console.log('\n  orphans: NOT REHEARSED. The orphan pass compares the registry against the CERTIFIED');
+      console.log('           set, which does not exist until the stamps land — it refuses an uncertified');
+      console.log('           version rather than treating every live id as orphaned.');
+      console.log('           --apply will therefore STAMP ONLY and retire nothing. To see the orphan plan:');
+      console.log('           --apply (stamps), then a DRY RUN (shows the plan), then --apply again (retires).');
+    }
   } else {
     try {
       orphanReport = await reconcileLegacyOrphans(db, RID, { dryRun: !APPLY });
@@ -138,9 +181,19 @@ const db = admin.firestore();
       ? 'Read the plan above against the live menu, then re-run with --apply.\n'
       : 'Read the stamping plan above against the live menu, then re-run with --apply.\n'
         + 'The ORPHAN half was not rehearsed — see above — so run a dry run again afterwards.\n');
-  } else {
-    console.log('\nDONE. The version is certified and the source carries the ids.');
+  } else if (stampReport.already && canReconcile) {
+    console.log('\nDONE. The orphan reconciliation ran; the version was already certified, so nothing was re-stamped.');
     console.log('This is a one-way door: re-running is a no-op, not a revert.\n');
+  } else if (canReconcile) {
+    console.log('\nDONE. The version is certified, the source carries the ids, and the orphan pass ran.');
+    console.log('This is a one-way door: re-running is a no-op, not a revert.\n');
+  } else {
+    /* 🔴 DO NOT SAY "DONE" FOR A HALF-FINISHED CUTOVER. The stamps landed and the orphan half has not
+       run at all; an operator told "DONE" here stops, and the retirements §3.0 asks for never happen. */
+    console.log('\nSTAMPING DONE — THE CUTOVER IS NOT FINISHED.');
+    console.log('The version is certified and the source carries the ids. NO ORPHAN WAS RETIRED.');
+    console.log('🔴 NEXT: run this again WITHOUT --apply to see the orphan plan, then with --apply to retire.');
+    console.log('The stamping half is a one-way door: re-running is a no-op, not a revert.\n');
   }
   process.exit(0);
 })().catch((e) => {

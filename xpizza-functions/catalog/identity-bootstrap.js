@@ -227,23 +227,20 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
   const extras = await resolveKind(db, rid, 'extra', active.extras);
   report.dishes = dishes.length; report.extras = extras.length;
 
-  /* 🔴 THE REHEARSAL STOPS HERE — THE LAST LINE BEFORE ANY WRITE. `stamped` stays false, so a caller
-     cannot mistake a dry run for a completed pass, and `would_stamp` carries the (key → id) pairs this
-     would write so an operator can compare them against their own menu before the door closes. */
-  if (dryRun) {
-    report.dry_run = true;
-    report.would_certify = active.versionId;
-    report.would_stamp = {
-      dish: dishes.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),
-      extra: extras.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),
-    };
-    try {
-      console.log('identity_bootstrap_dry_run', JSON.stringify({ rid, version: active.versionId,
-        dishes: report.dishes, extras: report.extras, generation: active.generation, action: 'would_stamp' }));
-    } catch (_) {}
-    return report;
+  /* ── PREFLIGHT, AND IT RUNS IN BOTH MODES (§3.0) ────────────────────────────────────────────
+     🔴 THESE CHECKS USED TO SIT AFTER THE DRY-RUN RETURN, WHICH MADE THE REHEARSAL A WORSE PREDICTOR
+     THAN IT LOOKED. With no stored source the dry run SUCCEEDED and printed a stamping plan, and the
+     apply then threw `identity_bootstrap_no_source` — so the artefact the owner approves did not
+     predict the outcome, and an approval that does not predict the outcome is not an approval. Same
+     for a divergent draft and for an existing non-`activated` activation record.
+     They are all READ-ONLY, so running them in dry-run mode costs one extra document read and nothing
+     else. The in-transaction revalidation below is UNCHANGED and still authoritative: everything here
+     can move between this read and the write, which is why it is re-checked there rather than trusted
+     from here. This is about what the rehearsal PREDICTS, not about what guarantees the write. */
+  const activationPre = active.record.identity_activation;
+  if (activationPre !== undefined && activationPre !== null && activationPre.status !== 'activated') {
+    throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(activationPre.status)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);
   }
-
   /* ── SOURCE ENRICHMENT (§3.0) — THE STAMPS MUST REACH THE DRAFT, NOT ONLY THE VERSION ───────
      🔴 WITHOUT THIS THE CUTOVER LOCKS PUBLISHING OUT ENTIRELY. Once the active version is certified A
      is non-empty, and the partition law requires every active id to be carried or declared deleted.
@@ -251,8 +248,10 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
      every draft is short of every id and every publish refuses as unaccounted, with no escape (a
      merchant cannot even declare a delete before the portal deploy). Stamping one without the other is
      the half that breaks the system, which is why §3.0 asks for both in the same breath.
-     It rides the SAME transaction as the version stamping, so "version certified" and "source stamped"
-     are one event and there is no window where A is non-empty and the source is bare. */
+     The WRITE rides the SAME transaction as the version stamping, so "version certified" and "source
+     stamped" are one event and there is no window where A is non-empty and the source is bare. Only the
+     READ and the two refusals below are hoisted above the dry-run return, so the rehearsal predicts them;
+     the enrichment itself still happens in that one transaction. */
   const srcRef = sourceRefOf(db, rid);
   const srcSnap = await srcRef.get();
   if (!srcSnap.exists) throw new Error(`identity_bootstrap_no_source: ${rid} — there is no stored source to enrich`);
@@ -276,6 +275,25 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
   }
   if (divergent.length) {
     throw new Error(`identity_bootstrap_draft_divergent: ${rid} — the stored draft does not contain ${divergent.length} object(s) the active version serves (${divergent.slice(0, 5).join(', ')}${divergent.length > 5 ? '…' : ''}); publish or discard the pending edit, then re-run`);
+  }
+
+  /* 🔴 THE REHEARSAL STOPS HERE — STILL THE LAST LINE BEFORE ANY WRITE, but now with the whole
+     read-only preflight ABOVE it rather than below, so a dry run refuses everything the apply would
+     refuse. `stamped` stays false, so a caller
+     cannot mistake a dry run for a completed pass, and `would_stamp` carries the (key → id) pairs this
+     would write so an operator can compare them against their own menu before the door closes. */
+  if (dryRun) {
+    report.dry_run = true;
+    report.would_certify = active.versionId;
+    report.would_stamp = {
+      dish: dishes.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),
+      extra: extras.map((o) => ({ key: o.key, canonical_id: o.canonical_id })),
+    };
+    try {
+      console.log('identity_bootstrap_dry_run', JSON.stringify({ rid, version: active.versionId,
+        dishes: report.dishes, extras: report.extras, generation: active.generation, action: 'would_stamp' }));
+    } catch (_) {}
+    return report;
   }
 
   const vref = versionRefOf(db, rid, active.versionId);
