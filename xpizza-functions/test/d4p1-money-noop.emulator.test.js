@@ -130,6 +130,30 @@ const strip = (o, volatile) => {
     assert.ok(stored2.total_cents > stored.total_cents,
       `🔴 ${rid}: …and it must cost more (${stored2.total_cents} vs ${stored.total_cents})`);
     ok(`${rid}: non-vacuity — one more unit moves the stored order and raises total_cents ${stored.total_cents} → ${stored2.total_cents}`);
+
+    /* ── 🔴 THE SERVER MUST NOT TRUST THE CLIENT ABOUT MONEY, ON THE REAL HANDLER PATH ──────────────
+       THE HOLE, found by an independent gate and reproduced before fixing: `cartFor` builds its lines
+       with `price: rec.price` — THE CATALOG'S OWN PRICE — so the client's claim and the server's table
+       agree, and a `computeServerTotal` mutated to read `it.price` stored the same total and passed
+       every check above. The worst regression this system can have was invisible to the control named
+       for money.
+       This posts the SAME cart with every client price forged to 1 and requires the stored order to be
+       byte-identical. Path exercised: client → createOrder → validateOrderPayload → computeServerTotal.
+       🔴 Asserted as INDEPENDENCE rather than by making `cartFor` lie: a control whose sensitivity comes
+       from fixture VALUES stops being sensitive the moment someone rebuilds the cart from a real order,
+       where the client price legitimately DOES equal the menu's. This cannot rot that way. */
+    const forged = cartFor(rid).map((it) => ({ ...it, price: 1,
+      extras: (it.extras || []).map((e) => ({ ...e, price: 1 })) }));
+    assert.ok(cartFor(rid).some((it) => it.price !== 1), `premise — ${rid}'s control cart carries real catalog prices to forge away from`);
+    const id3 = `P1-${rid}-FORGED`;
+    const res3 = await post(app.createOrder, bodyFor(rid, id3, forged));
+    assert.strictEqual(res3.status, 200, `${rid}: the forged-price order was rejected outright (${res3.status}) — acceptable in itself, but then this control cannot compare stored orders: ${res3.text}`);
+    const stored3 = (await db.ref(`orders/${id3}`).once('value')).val();
+    assert.strictEqual(stored3.total_cents, stored.total_cents,
+      `🔴 ${rid}: THE STORED TOTAL FOLLOWED THE CLIENT'S CLAIMED PRICE (${stored3.total_cents} vs ${stored.total_cents}) — the server is charging what the customer says it costs`);
+    assert.deepStrictEqual(strip(stored3, g.volatile_fields), strip(stored, g.volatile_fields),
+      `🔴 ${rid}: a forged client price changed the stored order beyond the total — something downstream is reading it`);
+    ok(`${rid}: a cart claiming price=1 stores the IDENTICAL order and total_cents ${stored3.total_cents} — the handler prices from the catalog, not from the customer`);
   }
 
   FINISHED = true;

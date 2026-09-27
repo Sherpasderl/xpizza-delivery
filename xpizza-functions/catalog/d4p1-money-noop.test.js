@@ -25,6 +25,7 @@ const { computeServerTotal } = require('../menu-pricing');
 const { computeServerNet } = require('../compute-server-net');
 const { pricedLineItems } = require('../factura/pricing');
 const { applyRedemptionToPricing } = require('../rewards-redeem-pricing');
+const { computeRedemption } = require('../rewards-redeem');
 const GOLDEN = require('./d4p1-money-precontrol.golden.json');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -75,6 +76,90 @@ for (const rid of ['x_pizza', 'la_musa']) {
         '🔴 x_pizza: the comped line is not in the frozen factura — the discount is not observable');
     }
     ok(`${rid}: the golden is not a constant — quantity moves the total to the frozen dearer value, and the discount is observable`);
+  }
+
+  /* ── 🔴 THE SERVER MUST NOT TRUST THE CLIENT ABOUT MONEY, AND THIS CONTROL COULD NOT SEE IT ──────
+     THE HOLE, found by an independent gate on 2026-09-26 and reproduced before fixing: every check
+     above passes with `computeServerTotal` MUTATED TO READ `it.price` — the client's own claim —
+     because THE GOLDEN'S CART CARRIES PRICES EQUAL TO THE SERVER TABLES. 385 and 385. So the single
+     worst regression this system can have, the server starting to believe the client about money, was
+     invisible to the control built to prove money did not move. Both brands, and the emulator control
+     had the same blind spot.
+
+     🔴 WHY THIS IS A FORGED-INPUT ASSERTION AND NOT A CHANGE TO THE FIXTURE'S PRICES. Making the
+     golden's cart carry differing prices would make the five checks above sensitive today — and would
+     silently stop being sensitive the moment anyone REGENERATES the golden from a real order, because a
+     real cart's client prices DO equal the menu's. The sensitivity would be an accident of fixture
+     values again, one regeneration away from gone. Asserting independence directly cannot rot that way:
+     it says what must be true rather than arranging for it to show.
+     Verified before writing it: forging every client price to 1 leaves all five outputs byte-identical,
+     so this asserts a property the code already has rather than pinning a behaviour it lacks. */
+  {
+    const forged = json(cart).map((it) => ({ ...it, price: 1, extras: (it.extras || []).map((e) => ({ ...e, price: 1 })) }));
+    /* premise: the forgery is real — the cart really did carry the server's prices before it. */
+    assert.ok(json(cart).some((it) => it.price !== 1), `premise — ${rid}'s golden cart carries real prices to forge away from`);
+
+    assert.deepStrictEqual(json(computeServerTotal(json(forged), rid, tables)), g.total,
+      `🔴 ${rid}: THE CHARGED TOTAL CHANGED WHEN THE CLIENT CLAIMED price=1 — the server is trusting the client about money, which is the worst regression in this system`);
+    assert.deepStrictEqual(json(computeServerNet({ items: json(forged), reward: null, rid, tables })), g.net_plain,
+      `🔴 ${rid}: the 1C NET moved on a forged client price`);
+    assert.deepStrictEqual(json(computeServerNet({ items: json(forged), reward, rid, tables })), g.net_reward,
+      `🔴 ${rid}: the 1C NET under a reward moved on a forged client price`);
+    assert.deepStrictEqual(json(applyRedemptionToPricing({ items: json(forged), restaurantId: rid, redemption: reward, totalLempiras: g.total.total, tables })), g.redemption,
+      `🔴 ${rid}: the REDEMPTION pricing moved on a forged client price — a discount computed from a client-supplied price is a discount the client chooses`);
+    if (rid === 'x_pizza') {
+      assert.deepStrictEqual(json(pricedLineItems(json(forged), tables.menu, tables.extras)), g.factura,
+        '🔴 x_pizza: THE FISCAL LINES moved on a forged client price — the SAR line would carry a number the client picked');
+    }
+    ok(`${rid}: every priced output is IDENTICAL when the cart claims price=1 — the server prices from its own tables, and a regression that trusted the client would fail here`);
+  }
+
+  /* ── 🔴 THE REWARD MUST BE RESOLVED BY THE REAL PRODUCER, NOT SUPPLIED ALREADY-RESOLVED ──────────
+     THE HOLE: `g.input.reward` is an already-resolved redemption, so every reward assertion above
+     drives only the DOWNSTREAM pricing. Reward SELECTION and its own pricing — `computeRedemption`,
+     the thing that decides which item is free and what it is worth — were outside the control
+     entirely. A control that proves "no money moved" while never redeeming anything is proving
+     something narrower than its name.
+     🔴 WHAT IS FROZEN HERE IS THE REQUEST, NOT A NEW EXPECTED VALUE. The golden is a pre-P1 capture;
+     adding an expected output captured from TODAY's code would freeze P1's behaviour while claiming
+     pre-P1 provenance, which is the one thing the control exists to refuse. So the `redeem` request is
+     derived from the golden's own frozen reward, `computeRedemption` is driven with it, and the
+     comparison is still against the PRE-P1 values: if P1 had moved reward selection or reward pricing,
+     the derived reward would price differently downstream and these would fail.
+     Verified before writing: the real producer returns a SUPERSET of the golden's reward
+     (`cost`, `discount_cents`, `canonical`), and the extra fields change no downstream output — so the
+     golden's trimmed literal was harmless, and this asserts the same numbers through the real path. */
+  {
+    const redeem = rid === 'x_pizza'
+      ? { type: 'free_pizza_choice', item_id: reward.freeItems[0].item_id }
+      : { type: 'points_ala_carte', items: reward.freeItems.map((f) => ({ id: f.item_id, qty: f.qty })) };
+    const resolved = computeRedemption({ redeem, items: json(cart), restaurantId: rid });
+
+    assert.strictEqual(resolved.ok, true, `🔴 ${rid}: the REAL reward producer refused the golden's own redemption — ${JSON.stringify(resolved).slice(0, 200)}`);
+    assert.strictEqual(resolved.model, reward.model, `🔴 ${rid}: the resolved reward MODEL moved against pre-P1`);
+    /* 🔴 EVERY FIELD THE GOLDEN FROZE, NOT EVERY FIELD THE PRODUCER EMITS. The pre-P1 capture was
+       hand-trimmed: la_musa's real freeItems carry `cost_pts` and x_pizza's do not appear in the golden
+       with `cost`/`discount_cents` either. A deepStrictEqual here fails on the TRIMMING rather than on
+       money moving — I wrote it that way first and la_musa refused, which is the assertion being wrong
+       about the golden rather than the code being wrong about the reward. So: the real output must agree
+       on every field the control actually froze, and may carry more. Extra fields were verified not to
+       change any downstream output, which is why they were safe to trim and are safe to ignore. */
+    assert.strictEqual(resolved.freeItems.length, reward.freeItems.length,
+      `🔴 ${rid}: the real producer chose a DIFFERENT NUMBER of free items than the pre-P1 control`);
+    reward.freeItems.forEach((frozen, i) => {
+      for (const k of Object.keys(frozen)) {
+        assert.deepStrictEqual(json(resolved.freeItems[i][k]), json(frozen[k]),
+          `🔴 ${rid}: REWARD SELECTION OR ITS PRICING MOVED — freeItems[${i}].${k} is ${JSON.stringify(resolved.freeItems[i][k])}, pre-P1 froze ${JSON.stringify(frozen[k])}`);
+      }
+    });
+
+    /* …and the downstream legs re-run on the DERIVED reward rather than the stored literal, so the
+       whole chain selection → pricing → net/factura is inside the control. */
+    assert.deepStrictEqual(json(computeServerNet({ items: json(cart), reward: resolved, rid, tables })), g.net_reward,
+      `🔴 ${rid}: the 1C NET moved when the reward came from the REAL producer instead of the stored literal`);
+    assert.deepStrictEqual(json(applyRedemptionToPricing({ items: json(cart), restaurantId: rid, redemption: resolved, totalLempiras: g.total.total, tables })), g.redemption,
+      `🔴 ${rid}: the REDEMPTION pricing moved when the reward came from the REAL producer`);
+    ok(`${rid}: the reward is RESOLVED by computeRedemption from a frozen request — selection, reward pricing and the downstream net/redemption all match pre-P1`);
   }
 }
 

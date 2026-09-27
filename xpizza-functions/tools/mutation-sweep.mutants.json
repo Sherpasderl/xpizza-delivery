@@ -5945,6 +5945,46 @@
     "to": "        if (false) return 'conflict';"
   },
   {
+    "id": "d4p1m-01",
+    "slice": "d4p1m",
+    "file": "menu-pricing.js",
+    "from": "    const price = menu[key];",
+    "to": "    const price = (it && Number.isInteger(it.price)) ? it.price : menu[key];",
+    "label": "🔴 THE SERVER TRUSTS THE CLIENT ABOUT MONEY — computeServerTotal prices from the cart's own `price` field. The worst regression in this system, and until 2026-09-26 the money control could not see it because its fixture carried client prices EQUAL to the server tables.",
+    "kills_with": "THE CHARGED TOTAL CHANGED WHEN THE CLIENT CLAIMED price=1",
+    "command": [
+      "node",
+      "catalog/d4p1-money-noop.test.js"
+    ]
+  },
+  {
+    "id": "d4p1m-02",
+    "slice": "d4p1m",
+    "file": "menu-pricing.js",
+    "from": "    const price = menu[key];",
+    "to": "    const price = (it && Number.isInteger(it.price)) ? it.price : menu[key];",
+    "label": "the same client-trusting regression, measured END TO END through createOrder rather than at the pricing function — the stored order's total_cents must not follow the cart's claim",
+    "kills_with": "FOLLOWED THE CLIENT'S CLAIMED PRICE",
+    "command": [
+      "npm",
+      "run",
+      "test:d4p1-money"
+    ]
+  },
+  {
+    "id": "d4p1m-03",
+    "slice": "d4p1m",
+    "file": "rewards-redeem.js",
+    "from": "  const price_cents = toCents(unit);",
+    "to": "  const price_cents = Math.round(toCents(unit) / 2);",
+    "label": "🔴 REWARD PRICING HALVED — and until 2026-09-26 the money control could not see it, because the control supplied an ALREADY-RESOLVED reward and never ran the producer that prices it",
+    "kills_with": "REWARD SELECTION OR ITS PRICING MOVED",
+    "command": [
+      "node",
+      "catalog/d4p1-money-noop.test.js"
+    ]
+  },
+  {
     "id": "d3-16",
     "slice": "d3",
     "file": "index.js",
