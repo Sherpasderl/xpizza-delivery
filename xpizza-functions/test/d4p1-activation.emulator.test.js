@@ -123,10 +123,25 @@ const publish = async (expectedActive, tag) => {
   }
 
   // ── 4. THE RECORD TRANSITIONS pending → activated IN THE FLIP'S OWN TRANSACTION ─────────────
-  /* Reservation ownership cannot reject an abandoned rename-only or price-only candidate: it mints
-     nothing, owns no reservations, and therefore looks activatable forever. The record is what makes
-     eligibility a fact about THIS attempt. It must also move in the same transaction as the pointer,
-     so "activated" cannot be true of a version the pointer never reached. */
+  /* WHAT THIS CELL PROVES, STATED NARROWLY: the record MOVES from pending to activated inside the same
+     transaction as the pointer, stamped with the generation it activated at — so "activated" cannot be
+     true of a version the pointer never reached, and the two cannot disagree about when.
+     🔴 WHAT IT DOES NOT PROVE, AND USED TO IMPLY. The comment here said "the record is what makes
+     eligibility a fact about THIS attempt", which a reader takes as "this cell proves eligibility is
+     ENFORCED". It does not: delete the flip's `activationVerdict` check and EVERY ASSERTION BELOW STILL
+     PASSES, because the transition happens either way. An independent gate measured exactly that, and
+     separately I measured that deleting the check DOES fail this suite and d4p1-claim — both true, and not
+     a disagreement: THE PROPERTY IS COVERED, AND THIS CELL IS NOT WHAT COVERS IT. Same shape as the unit
+     cell that claimed credit for a contract d4p1-activation actually held.
+     WHERE THE ENFORCEMENT IS COVERED: the rollback refusal cell below drives the REAL rollbackVersion
+     against a genuinely `pending` version and asserts the pointer does not move, and the predicate's own
+     branches are exercised in catalog/activation-eligibility.test.js. Note 5 immediately below explains
+     why the remaining refusal branches cannot be reached from HERE at all — under a held lease nothing can
+     move the generation beneath a candidate — which is the honest account of the gap rather than a cell
+     that pretends to close it.
+     Reservation ownership is still the reason the record exists: it cannot reject an abandoned
+     rename-only or price-only candidate, which mints nothing, owns no reservations, and would otherwise
+     look activatable for ever. */
   {
     const live = await getActivePointer(db, RID);
     const v = await publish(live.version, 'rec-1');

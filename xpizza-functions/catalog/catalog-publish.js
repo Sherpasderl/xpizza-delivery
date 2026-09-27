@@ -178,7 +178,18 @@ function activationVerdict(record, { currentGeneration, intent }) {
      REFUSES that live version for carrying no `activated` record. A cutover breaker, and it disproved
      the claim that every live P1 version has transitioned.
      So rollback requires the target to be `activated` — its OWN history, which is exactly what a
-     rollback is for — rather than being exempt from having any. */
+     rollback is for — rather than being exempt from having any.
+
+     🔴 AND WHY THIS IS SAFE RATHER THAN MERELY STRICT, which is the question to ask of any new refusal on
+     an EMERGENCY path: does it refuse anything an operator legitimately needs? No, and the reason is
+     structural. LIVE IMPLIES `activated`, because the transition rides the SAME transaction that moves
+     the pointer (see the flip below) — so a version the pointer ever reached carries the record, and one
+     that carries `pending` is staged-and-never-flipped: a crash, a lost lease, a failed CAS. That is
+     precisely the target a rollback must refuse. The only other state is RECORDLESS, which is the
+     pre-cutover cohort and already refuses above — §3.0's documented weakened-guarantee window, unchanged
+     by this branch.
+     So the three statuses partition exactly: `activated` = was live = rollbackable · `pending`/`abandoned`
+     = never live = refused · absent = unprovable = refused. Nothing an operator needs falls outside it. */
   if (intent === 'rollback') {
     if (status !== 'activated') {
       return { ok: false, code: 'flip_activation_rollback_not_activated',
