@@ -8819,10 +8819,10 @@
     "id": "e4-21",
     "slice": "e4",
     "file": "catalog/identity-plan.js",
-    "from": "  return { ...PERMIT, plan, lands, releases, deletions };",
-    "to": "  return { ...PERMIT, lands, releases, deletions };",
-    "label": "the permitting verdict stops carrying the plan it judged, so the writer has nothing to bind to",
-    "kills_with": "carries no plan",
+    "from": "  return issueVerdict({ ...PERMIT, lands, releases, deletions }, { plan, judged: JUDGED_BY_VERIFY_PLAN });",
+    "to": "  return issueVerdict({ ...PERMIT, lands, releases, deletions }, { plan: { moves: [], mints: [], retires: [] }, judged: JUDGED_BY_VERIFY_PLAN });",
+    "label": "the verdict carries an EMPTY plan instead of the one it judged — permitting, correctly issued, and authorising none of the work the caller derived",
+    "kills_with": "carries a plan that is not the one it judged",
     "command": [
       "node",
       "catalog/identity-plan.test.js"
@@ -9243,10 +9243,10 @@
     "id": "e13-13",
     "slice": "e13",
     "file": "catalog/identity-reconcile.js",
-    "from": "    plan: { moves: [], mints: [], retires, restores },",
-    "to": "    plan: { moves: [], mints: [], retires: [], restores: [] },",
+    "from": "    { plan: { moves: [], mints: [], retires, restores }, judged: JUDGED_BY_RECONCILE });",
+    "to": "    { plan: { moves: [], mints: [], retires: [], restores: [] }, judged: JUDGED_BY_RECONCILE });",
     "label": "the reconciliation's verdict carries an EMPTY plan instead of the one it derived — permitting, correctly shaped, and authorising nothing it actually decided",
-    "kills_with": "a DIFFERENT retires array",
+    "kills_with": "describes different retires",
     "command": [
       "node",
       "catalog/identity-reconcile.test.js"
@@ -9321,16 +9321,65 @@
     ]
   },
   {
-    "id": "e9-13",
+    "id": "e9-14",
     "slice": "e9",
     "file": "catalog/identity-writer.js",
-    "from": "  if (!plan || typeof plan !== 'object' || !Array.isArray(plan.moves) || !Array.isArray(plan.mints) || !Array.isArray(plan.retires)) {",
+    "from": "  if (!wasIssued(verified)) {",
     "to": "  if (false) {",
-    "label": "the writer stops requiring the verdict to carry a plan, so the old hand-assembled rollback literal reaches the writes again",
-    "kills_with": [
-      "ACCEPTED and reached the writes",
-      "NOT BY NAME"
-    ],
+    "label": "🔴 PROVENANCE DROPPED — a hand-built verdict carrying a plan is accepted again, which is how the first binding fix was defeated: shape mistaken for verification",
+    "kills_with": "THE OLD ROLLBACK LITERAL WAS ACCEPTED",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e9-15",
+    "slice": "e9",
+    "file": "catalog/identity-writer.js",
+    "from": "    if (Array.isArray(rows) && rows.length && !judged.includes(kind)) {",
+    "to": "    if (false) {",
+    "label": "🔴 THE WRITER EXECUTES A KIND ITS VERDICT NEVER JUDGED — a restores-only plan under verifyPlan's verdict is written, and no forgery is needed because that verifier honestly cannot see restores",
+    "kills_with": "A RESTORE WAS EXECUTED UNDER A VERDICT THAT NEVER LOOKED AT RESTORES",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e16-01",
+    "slice": "e16",
+    "file": "catalog/identity-verdict.js",
+    "from": "  return deepFreezePlan(out);",
+    "to": "  return plan;",
+    "label": "the verdict carries the CALLER'S plan object again, so mutating it after verification changes what gets written",
+    "kills_with": "A PLAN MUTATED AFTER VERIFICATION WAS WRITTEN",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e16-02",
+    "slice": "e16",
+    "file": "catalog/identity-verdict.js",
+    "from": "    Object.freeze(rows);",
+    "to": "    void rows;",
+    "label": "the plan object is frozen but its ARRAYS are not — plan.mints.push still works, which is the same hole one level in",
+    "kills_with": "not frozen",
+    "command": [
+      "node",
+      "catalog/identity-writer.test.js"
+    ]
+  },
+  {
+    "id": "e16-03",
+    "slice": "e16",
+    "file": "catalog/identity-verdict.js",
+    "from": "  return !!verdict && typeof verdict === 'object' && ISSUED.has(verdict);",
+    "to": "  return !!verdict && typeof verdict === 'object';",
+    "label": "any object-shaped verdict counts as issued — the WeakSet becomes decoration and provenance is back to a shape check",
+    "kills_with": "THE OLD ROLLBACK LITERAL WAS ACCEPTED",
     "command": [
       "node",
       "catalog/identity-writer.test.js"

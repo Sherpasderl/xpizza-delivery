@@ -26,6 +26,7 @@
  * PURE. Every input is data the caller read inside the transaction.
  */
 const { STATUS_LIVE, encodeKey } = require('./identity-registry');
+const { issueVerdict, JUDGED_BY_RECONCILE } = require('./identity-verdict');
 
 const isStr = (v) => typeof v === 'string' && v.length > 0;
 const refuse = (code, detail) => ({ code, detail });
@@ -203,9 +204,12 @@ function reconcileOnRollback({ targetStamps, ids, keys, activeStamps } = {}) {
      independent verifier. What it buys is BINDING — the verdict is built from the same `restores` and
      `retires` this call derived, in the same call, so plan and verdict CANNOT disagree and no caller can
      assemble a mismatched pair. The refusals above are the actual judgement; this only carries it. */
-  const verdict = { ok: true, code: 'reconcile_verified', detail: '',
-    plan: { moves: [], mints: [], retires, restores },
-    lands: [], releases: [], deletions };
+  /* ISSUED THROUGH THE SAME REGISTRY AS verifyPlan'S, and declaring `retires`+`restores` as the kinds
+     it judged — the writer refuses any other kind under this verdict, so a rollback verdict cannot
+     authorise a mint. The plan is snapshotted and frozen at issue, so what it carries cannot be edited
+     after the fact. */
+  const verdict = issueVerdict({ ok: true, code: 'reconcile_verified', detail: '', lands: [], releases: [], deletions },
+    { plan: { moves: [], mints: [], retires, restores }, judged: JUDGED_BY_RECONCILE });
   return { restores, retires, deletions, refusals: [], verdict };
 }
 

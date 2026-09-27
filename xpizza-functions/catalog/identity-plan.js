@@ -25,6 +25,7 @@
  * drivable without a database, and the reads stay where the transaction is.
  */
 const { STATUS_LIVE, encodeKey, validIdShape } = require('./identity-registry');
+const { issueVerdict, JUDGED_BY_VERIFY_PLAN } = require('./identity-verdict');
 
 const REFUSE = (code, detail) => ({ ok: false, code, detail });
 const PERMIT = { ok: true, code: 'plan_verified', detail: '' };
@@ -217,7 +218,15 @@ function verifyPlan(plan, { ids, keys, complete } = {}) {
      Returning the plan lets the writer take it FROM HERE, so a mismatch cannot be EXPRESSED rather than
      being detected. A fingerprint compared at the writer was the alternative and it is weaker: it finds
      the mistake instead of making it impossible. */
-  return { ...PERMIT, plan, lands, releases, deletions };
+  /* 🔴 ISSUED, NOT ASSEMBLED — and it declares WHICH KINDS IT JUDGED. Returning a plain object with
+     the plan attached was not enough: a hand-built literal with a `plan` field was accepted by the
+     writer (provenance), the plan could be mutated after the verdict was handed out (a reference is not
+     a snapshot), and a restores-only plan came back PERMITTED because this function does not model
+     restores — an honest answer about what it can see, read as authorisation for what it cannot.
+     `issueVerdict` records the object in a module-private WeakSet, freezes a SNAPSHOT of the plan, and
+     stamps `judged` so the writer can refuse a kind this verifier never looked at. See
+     identity-verdict.js for what that does and does not buy. */
+  return issueVerdict({ ...PERMIT, lands, releases, deletions }, { plan, judged: JUDGED_BY_VERIFY_PLAN });
 }
 
 module.exports = { verifyPlan, entriesOf };

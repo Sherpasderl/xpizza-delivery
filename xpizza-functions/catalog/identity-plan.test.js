@@ -386,7 +386,22 @@ const PLAN = (p) => ({ moves: [], mints: [], retires: [], ...p });
   assert.strictEqual(v.ok, true, `${v.code} — ${v.detail}`);
   assert.ok(v.plan, '🔴 the PERMITTING verdict carries no plan — the writer would have nothing to bind to and must refuse every call');
   assert.deepStrictEqual(v.plan, plan, '🔴 the verdict carries a plan that is not the one it judged — binding to it would authorise the wrong operations');
-  assert.strictEqual(v.plan, plan, '…and it is the same object, not a copy that could drift from what was judged');
+
+  /* 🔴 A SNAPSHOT, NOT THE CALLER'S OBJECT — and this replaces an assertion I wrote that was WRONG about
+     the property worth having. I first asserted `strictEqual(v.plan, plan)`: "the same object, not a copy
+     that could drift." Carrying the same object is precisely what let a caller verify an empty plan and
+     then push a mint onto it before handing the verdict over — the mint was written. Sharing the
+     reference is the hole, not the protection. */
+  assert.notStrictEqual(v.plan, plan, 'the verdict carries a COPY — sharing the caller\'s object is what let a plan be mutated after it was judged');
+  assert.ok(Object.isFrozen(v.plan) && Object.isFrozen(v.plan.mints), '🔴 the carried plan is not frozen — its arrays could still be pushed to');
+  plan.mints.push({ id: 'AFTER', name: 'Later' });
+  assert.deepStrictEqual(v.plan.mints, [{ id: 'P', name: 'C' }],
+    '🔴 MUTATING THE ORIGINAL PLAN CHANGED WHAT THE VERDICT CARRIES — the verdict must describe what was judged, not what the caller made of it afterwards');
+  plan.mints.pop();
+
+  assert.deepStrictEqual(v.judged, ['moves', 'mints', 'retires'],
+    '🔴 the verdict does not declare which kinds it judged — the writer cannot then refuse a kind this verifier never looked at, which is how a restores-only plan got written under a permitting verdict');
+  assert.ok(!v.judged.includes('restores'), '…and it must NOT claim restores, which this verifier does not model at all');
 
   /* 🔴 AND A REFUSAL MUST NOT CARRY ONE. A refusing verdict that still carried a plan would be one
      `verified.ok !== true` check away from authorising it; the writer checks ok first, but a refusal

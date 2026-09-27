@@ -12,13 +12,20 @@
  * after a write inside a transaction — observed, not assumed: test/tx-read-after-write.emulator.test.js
  * records the exact refusal ("Firestore transactions require all reads to be executed before all
  * writes"). A writer that took a read would therefore break the caller's first write, loudly, in the
- * emulator. By having no reads at all, this cannot be the thing that breaks the ordering, and every
- * document it writes was read by the caller BEFORE it was called — rule 17, enforced by the database
- * rather than by review.
+ * emulator. By having no reads at all, this cannot be the thing that breaks the ordering.
  *
- * It is handed the plan AND the verifier's verdict, and writes only what the verdict resolved.
+ * 🔴 BUT THE DATABASE ENFORCES ORDER, NOT COMPLETENESS, and this header used to claim the stronger
+ * thing ("every document it writes was read by the caller BEFORE it was called — rule 17, enforced by
+ * the database rather than by review"). Firestore refuses a read AFTER a write; nothing in it checks
+ * that the caller read everything this writes. That comes from the CALLER'S QUERIES — the flip reads all
+ * four registry collections whole — and it is reviewed, not enforced. Rule 17's table
+ * (tools/registry-writers.js) is where that read is named per writer, and the table is the enforcement.
+ *
+ * It is handed a verdict that CARRIES the plan it judged — there is no separate plan argument — and it
+ * writes only operations of a kind that verdict claims to have judged.
  */
 const { STATUS_LIVE, STATUS_RETIRED, encodeKey, idsColOf, keysColOf } = require('./identity-registry');
+const { wasIssued } = require('./identity-verdict');
 
 /* `verified` : a PERMITTING verdict that CARRIES THE PLAN IT JUDGED — `verifyPlan`'s for an activation,
                 `reconcileOnRollback`'s `.verdict` for a rollback. The plan is read from it; there is no
@@ -41,9 +48,37 @@ function applyIdentityPlan(tx, { db, rid, kind, verified, existing, now } = {}) 
   if (!verified || verified.ok !== true || !Array.isArray(verified.deletions)) {
     throw new Error(`identity_writer_unverified: the plan must carry a PERMITTING verdict; got ${JSON.stringify(verified && verified.code)}`);
   }
+  /* 🔴 PROVENANCE, NOT SHAPE. The previous version refused the exact literal the rollback call site used
+     to build — and ADDING A `plan` FIELD TO IT REOPENED THE DOOR: `{ok:true, lands:[], deletions:[],
+     plan:{retires:[…]}}` was accepted and wrote a retired row. A shape check can always be satisfied by
+     supplying the next field. So the verdict must have been ISSUED by verifyPlan or reconcileOnRollback,
+     recorded in a WeakSet neither a call site nor a test fixture can reach. */
+  if (!wasIssued(verified)) {
+    throw new Error('identity_writer_verdict_not_issued: this verdict was not issued by verifyPlan or reconcileOnRollback — a correctly-shaped object is not a verification');
+  }
+  /* 🔴 KEPT, AND UNREACHABLE FROM OUTSIDE TODAY — the premise written down rather than the branch left
+     to look guarded. `issueVerdict` is the only way into the WeakSet above, and `snapshotPlan` ALWAYS
+     yields moves/mints/retires arrays, so no issued verdict can lack them and an unissued one is refused
+     one line up. A mutation-sweep mutant for this branch therefore SURVIVES by construction, and the
+     mutant was REMOVED rather than left failing or given a cell that cannot exist.
+     It stays because it is the second line if a future third issuer builds verdicts differently, and
+     because the arming run showed it catching the no-plan literal the moment provenance was taken out.
+     If `snapshotPlan`'s guarantee ever changes, this is the branch that needs a cell again. */
   const plan = verified.plan;
   if (!plan || typeof plan !== 'object' || !Array.isArray(plan.moves) || !Array.isArray(plan.mints) || !Array.isArray(plan.retires)) {
     throw new Error('identity_writer_verdict_carries_no_plan: the verdict must carry the plan it judged — a verdict without one cannot be bound to what is about to be written');
+  }
+  /* 🔴 AND ONLY THE KINDS THE VERDICT CLAIMS TO HAVE JUDGED. This is the hole that needed no forgery at
+     all: verifyPlan does not model `restores`, so a restores-only plan came back PERMITTED — a truthful
+     answer about the operations it can see — and this writer executed the restore anyway. A verifier's
+     SILENCE about an operation is not permission for it. `judged` makes the limitation a refusal instead
+     of a comment: verifyPlan judges moves/mints/retires, reconcileOnRollback judges retires/restores. */
+  const judged = Array.isArray(verified.judged) ? verified.judged : [];
+  for (const kind of ['moves', 'mints', 'retires', 'restores']) {
+    const rows = plan[kind];
+    if (Array.isArray(rows) && rows.length && !judged.includes(kind)) {
+      throw new Error(`identity_writer_kind_unjudged: the plan carries ${rows.length} ${kind} but its verdict judged only [${judged.join(', ')}] — the verifier never looked at this operation, and silence is not permission`);
+    }
   }
   const rows = existing instanceof Map ? existing : new Map();
   const stamp = now || new Date().toISOString();

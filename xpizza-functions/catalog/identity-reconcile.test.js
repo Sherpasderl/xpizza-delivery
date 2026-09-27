@@ -295,11 +295,25 @@ const stampSays = ({ key, claimedId, keyRowId = null, idRow = null }) =>
 
   assert.ok(out.verdict, '🔴 no verdict — the caller would have to assemble one, which is the defect this closes');
   assert.strictEqual(out.verdict.ok, true, 'it permits');
-  assert.strictEqual(out.verdict.plan.retires, out.retires,
-    '🔴 the verdict names a DIFFERENT retires array than the reconciliation produced — bound means the same operations, not merely equal-looking ones');
-  assert.strictEqual(out.verdict.plan.restores, out.restores,
-    '🔴 the verdict names a different restores array than the reconciliation produced');
-  assert.strictEqual(out.verdict.deletions, out.deletions, '🔴 and the deletions must be the ones it computed');
+  /* CONTENT, NOT IDENTITY — and the change of assertion is the point. The verdict carries a FROZEN
+     SNAPSHOT rather than the arrays themselves, because sharing the array is what allowed a plan to be
+     edited after it was judged. So "bound" means the verdict describes what was derived and cannot be
+     re-pointed afterwards, not that it holds the same object. */
+  assert.deepStrictEqual(out.verdict.plan.retires, out.retires,
+    '🔴 the verdict describes different retires than the reconciliation produced');
+  assert.deepStrictEqual(out.verdict.plan.restores, out.restores,
+    '🔴 the verdict describes different restores than the reconciliation produced');
+  assert.deepStrictEqual(out.verdict.deletions, out.deletions, '🔴 and the deletions must be the ones it computed');
+  assert.ok(Object.isFrozen(out.verdict.plan) && Object.isFrozen(out.verdict.plan.restores),
+    '🔴 the carried plan is not frozen — a caller could push a mint onto a rollback plan after it was judged');
+  out.retires.push({ id: 'AFTER', name: 'Later', why: 'residue' });
+  assert.ok(!out.verdict.plan.retires.some((r) => r.id === 'AFTER'),
+    '🔴 pushing onto the returned retires changed what the verdict authorises');
+  out.retires.pop();
+
+  assert.deepStrictEqual(out.verdict.judged, ['retires', 'restores'],
+    '🔴 the rollback verdict does not declare its kinds — the writer could then execute a MINT under it');
+  assert.ok(!out.verdict.judged.includes('mints'), '…and it must not claim mints: a rollback restores, it does not coin');
   assert.deepStrictEqual(out.verdict.plan.moves, [], 'a rollback plan moves nothing');
   assert.deepStrictEqual(out.verdict.plan.mints, [], '…and mints nothing — a rollback restores, it does not coin');
 
