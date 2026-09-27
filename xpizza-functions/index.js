@@ -4609,8 +4609,10 @@ exports.notifyPreparing = onValueWritten(
         console.error(`notifyPreparing: outcome write failed for ${orderId}`, e.message);
       }
     } catch (e) {
-      // Belt-and-suspenders: any unexpected throw (init/template/etc.) is CONTAINED — the trigger has no
-      // retry config, so a rethrow would only mark the invocation failed with no benefit. Marker-only writes.
+      // Belt-and-suspenders: any unexpected throw in the CALLBACK (template build, ETA/enablement calls,
+      // outcome write, etc.) is CONTAINED — the trigger has no retry config, so a rethrow would only mark the
+      // invocation failed with no benefit. Marker-only writes. (Module init — require('./whatsapp'),
+      // initializeApp — runs at LOAD, outside this catch; it is unchanged and adds only const + fn decls.)
       console.error('notifyPreparing: unexpected error (contained, no rethrow)', e && e.message);
     }
   }
