@@ -29,6 +29,18 @@ const { tmpdir } = require('os');
 const { generateKeyPairSync } = require('crypto');
 const { expectedProject } = require('../tools/require-project');
 const { encodeKey } = require('../catalog/identity-registry');
+const { integrityDescriptor } = require('../catalog/catalog-integrity');
+
+/* 🔴 A REALISTIC VERSION RECORD, WHICH THIS FIXTURE USED TO SKIP. It wrote only `created_at` and an
+   activation record — no item_count, extra_count or hashes — and nothing noticed, because bootstrap read
+   the raw collections and certified whatever came back. Once readActiveVersion runs `assertComplete` (the
+   money PIN every ordinary read goes through) that record is refused: `read 2 != record undefined`.
+   The fixture was the unrealistic half. `catalog-publish.js` has written these fields since versioned
+   publish was INTRODUCED (540e5a5, and that commit is on origin/main), so no version has ever existed
+   without them — a hand-built record lacking them describes a state production cannot be in. */
+const completenessFor = (items, extras) => integrityDescriptor(
+  Object.fromEntries(items.map((o) => [o.key, o.price])),
+  Object.fromEntries(extras.map((o) => [o.key, o.price])));
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -73,7 +85,8 @@ const srcRef = () => db.collection('restaurants').doc(RID).collection('meta').do
   const items = [{ key: 'Alpha', price: 100 }, { key: 'Beta', price: 200 }];
   const extras = [{ key: 'Cheese', price: 50 }];
   const vref = versionsCol().doc(V);
-  await vref.set({ created_at: new Date().toISOString(), identity_activation: { status: 'activated' } });
+  await vref.set({ created_at: new Date().toISOString(), identity_activation: { status: 'activated' },
+    ...completenessFor(items, extras) });
   for (const [i, it] of items.entries()) await vref.collection('menu_items').doc(`i${i}`).set({ key: it.key, price: it.price, display: { id: i + 1, name: it.key, price: it.price } });
   for (const [i, ex] of extras.entries()) await vref.collection('extras').doc(`e${i}`).set({ key: ex.key, price: ex.price, display: { id: 90 + i, name: ex.key, price: ex.price } });
   await db.collection('restaurants').doc(RID).collection('meta').doc('active_version').set({ version: V, generation: 1 });
@@ -103,7 +116,8 @@ const srcRef = () => db.collection('restaurants').doc(RID).collection('meta').do
   const freshVersion = async (gen) => {
     const id = `v-boot-${gen}-${Date.now()}`;
     const r = versionsCol().doc(id);
-    await r.set({ created_at: new Date().toISOString(), identity_activation: { status: 'activated' } });
+    await r.set({ created_at: new Date().toISOString(), identity_activation: { status: 'activated' },
+      ...completenessFor(items, extras) });
     for (const [i, it] of items.entries()) await r.collection('menu_items').doc(`i${i}`).set({ key: it.key, price: it.price, display: { id: i + 1, name: it.key, price: it.price } });
     for (const [i, ex] of extras.entries()) await r.collection('extras').doc(`e${i}`).set({ key: ex.key, price: ex.price, display: { id: 90 + i, name: ex.key, price: ex.price } });
     await db.collection('restaurants').doc(RID).collection('meta').doc('active_version').set({ version: id, generation: gen });

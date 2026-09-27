@@ -6218,10 +6218,10 @@
       "run",
       "test:d4p1-bootstrap"
     ],
-    "label": "🔴 an EMPTY served set is accepted - every live id reads as an orphan and the registry is retired wholesale",
-    "kills_with": "an empty served set for one kind was accepted",
-    "from": "    if (!served[kind].size) {\n      throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — the active version yielded no servable names; refusing to treat every live id as an orphan`);\n    }",
-    "to": "    if (false) { throw new Error('unreachable'); }"
+    "label": "🔴 an EMPTY served set is accepted FOR ANY KIND — including dishes, which the publisher never permits — so every live id reads as an orphan and the registry is retired wholesale",
+    "kills_with": "A ZERO-DISH VERSION WAS ACCEPTED",
+    "from": "      const legitimatelyEmpty = kind === 'extra' && declared === 0;",
+    "to": "      const legitimatelyEmpty = true;"
   },
   {
     "id": "d4p1b-09",
@@ -6268,21 +6268,6 @@
     "kills_with": "the reverse row outranked the registry",
     "from": "  if (claimants[0] !== expectedId) {\n    throw new Error(`identity_bootstrap_key_disagrees: ${rid}/${kind}/${key} — the reverse row names ${expectedId} but the live claimant is ${claimants[0]}`);\n  }",
     "to": "  if (false) { throw new Error('unreachable'); }"
-  },
-  {
-    "id": "d4p1b-12",
-    "slice": "d4p1b",
-    "file": "catalog/identity-bootstrap.js",
-    "command": [
-      "npm",
-      "run",
-      "test:d4p1-bootstrap"
-    ],
-    "label": "🔴 an EXISTING activation record is upgraded to activated - legacy migration manufactures activation authority",
-    "kills_with": "bootstrap upgraded an existing",
-    "from": "      if (st !== 'activated') {\n        throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(st)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);\n      }",
-    "to": "      if (false) { throw new Error('unreachable'); }",
-    "why": " 🔴 RE-ANCHORED WHEN SLICE D NARROWED BOOTSTRAP'S REFUSAL. The line this targeted was rewritten so that an EXISTING activation record is left alone and only a version without one gets a fresh record — the cutover fix. The property this mutant proves is unchanged; only the text it anchors moved."
   },
   {
     "id": "d4p1b-13",
@@ -6373,20 +6358,6 @@
     "kills_with": "reconcile ran against an uncertified version",
     "from": "  if (active.record.identity_certified !== true) {\n    throw new Error(`identity_reconcile_uncertified: ${rid}/${active.versionId} is not certified; stamp it before reconciling, or the certified half of the predicate is empty`);\n  }",
     "to": "  if (false) { throw new Error('unreachable'); }"
-  },
-  {
-    "id": "d4p1b-20",
-    "slice": "d4p1b",
-    "file": "catalog/identity-bootstrap.js",
-    "command": [
-      "npm",
-      "run",
-      "test:d4p1-bootstrap"
-    ],
-    "label": "🔴 an UNKEYABLE served object is silently dropped - the id behind it reads as an orphan and is retired",
-    "kills_with": "an unkeyable served object was silently dropped",
-    "from": "      if (!key) throw new Error(`identity_reconcile_unkeyable: ${rid}/${kind}/${o.id} — a served object yielded no legacy key; its id would read as an orphan`);\n      return key;",
-    "to": "      return key;"
   },
   {
     "id": "d4p1c-01",
@@ -6804,22 +6775,35 @@
     "why": "a record stuck at `pending` is a version that can be activated again — and since the transition rides the SAME transaction as the pointer move and the generation bump, dropping it also lets the record disagree with the pointer about what happened. Killed on the record's own state after a real publish. 🔴 kills_with is an ARRAY because the D-2 rollback fix gave this mutant a SECOND consequence: with no transition, no version ever reaches `activated`, so nothing can be rolled back to either. It first DRIFTED — and diagnosing it found a real weakness in the new rollback cell, which took whatever was live at cell start as its target and so PASSED on a warm database where an earlier run had already activated it. The cell now asserts the target carries an `activated` record written by this run, which is what makes the second kill deterministic rather than a function of what ran before. The kill now lands on cell 3's premise: since the D-2 fix a rollback REQUIRES its target to be activated, so a missing transition makes that rollback throw — and it threw UNCAUGHT until the premise was added, which is a kill scored on the absence of a try/catch rather than on the property."
   },
   {
-    "id": "d4p1b-27",
+    "id": "d4p1b-28",
     "slice": "d4p1b",
     "file": "catalog/identity-bootstrap.js",
+    "from": "      const legitimatelyEmpty = kind === 'extra' && declared === 0;",
+    "to": "      const legitimatelyEmpty = false;",
+    "label": "🔴 THE CUTOVER LOCKOUT RESTORED: an empty extras set refuses even when the record DECLARES extra_count=0, so any merchant without extras can never finish the one-way cutover and no retry helps",
+    "kills_with": [
+      "A LEGITIMATE NO-EXTRAS MENU STILL REFUSES",
+      "identity_reconcile_no_served_set"
+    ],
     "command": [
       "npm",
       "run",
       "test:d4p1-bootstrap"
-    ],
-    "label": "🔴 a pending or abandoned record is accepted - bootstrap promotes a candidate that never committed",
-    "kills_with": [
-      "bootstrap upgraded an existing pending record to activated",
-      "bootstrap accepted a"
-    ],
-    "from": "      if (st !== 'activated') {\n        throw new Error(`identity_bootstrap_activation_present:",
-    "to": "      if (st === 'never_matches_anything') {\n        throw new Error(`identity_bootstrap_activation_present:",
-    "why": "the property the narrowing must NOT have widened: promoting a `pending` candidate that never committed, or reviving an `abandoned` one, is bootstrap manufacturing activation authority — exactly what the original blanket rule existed to prevent. The cell drives pending, abandoned AND an unmodelled status, because a status we do not recognise is not one we may overwrite either. kills_with is an ARRAY because Slice B ALREADY had a cell for this property ('bootstrap upgraded an existing pending record to activated'), and it fires before the new one. That is the right outcome — the narrowing was supposed to leave that guarantee untouched, and the pre-existing cell proving it still bites is better evidence of that than my new cell alone."
+    ]
+  },
+  {
+    "id": "d4p1b-29",
+    "slice": "d4p1b",
+    "file": "catalog/identity-bootstrap.js",
+    "from": "  assertComplete(record, menuTable, extraTable, where);",
+    "to": "  void assertComplete; void menuTable; void extraTable; void where;",
+    "label": "bootstrap certifies a version it has not proved complete — a record declaring two dishes with one present is stamped and certified, and the verifier that already exists is skipped",
+    "kills_with": "the read is torn and nothing may be retired from it",
+    "command": [
+      "npm",
+      "run",
+      "test:d4p1-bootstrap"
+    ]
   },
   {
     "id": "d4p1d-03",

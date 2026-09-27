@@ -29,6 +29,7 @@ const { publishVersion, writeVersion } = require('../catalog/catalog-publish');
 const { backfillIdentities } = require('../catalog/identity-backfill');
 const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { bootstrapIdentityStamps, reconcileLegacyOrphans, readActiveVersion } = require('../catalog/identity-bootstrap');
+const { integrityDescriptor } = require('../catalog/catalog-integrity');
 const { ensureIdentity, retireIdentity, idsColOf, STATUS_LIVE } = require('../catalog/identity-registry');
 const { readActiveVersion: _ravUnused } = require('../catalog/identity-bootstrap');
 /* 🔴 EVERY VERSION STATES THE BASELINE IT WAS BUILT AGAINST (D-2 gate fix). writeVersion no longer
@@ -352,9 +353,28 @@ const asPreP1 = async (rid, versionId) => {
       const all = await db.collection('restaurants').doc(rid5).collection('versions').get();
       return all.docs.filter((d) => (d.data() || {}).identity_activation !== undefined).map((d) => d.id).sort();
     };
+    /* 🔴 THE SCENARIO THE RULE EXISTS FOR, STAGED **BEFORE** THE STAMPING RUN — and the ordering is the
+       whole proof. writeVersion creates the version record BEFORE the flip, so a crash or a failed CAS
+       leaves a COMPLETE, RETAINED, never-activated version; v7's example is a pre-P1 price-only
+       candidate whose flip failed. It must come out of bootstrap with no activation record and therefore
+       no rollback eligibility, or a rollback could activate prices that were never live.
+       🔴 IT USED TO BE CREATED AFTER the version was certified, and the run that followed returned
+       `already: true` — so THE STAMPING IMPLEMENTATION NEVER RAN WITH THE CANDIDATE PRESENT. A pass that
+       wrongly recorded every retained version would have passed this cell, because the pass it was
+       judged on short-circuited before doing anything. Found by an independent gate; eighth instance in
+       this programme of a cell constructing away its own condition, and the second in the cutover path.
+       Created by calling writeVersion and NOT flipping, which is what the failure actually looks like. */
+    const neverLive = await writeVersion(db, rid5, { ...(await candidateFromSource(rid5)), source_sha: 'never-activated', baseline: await baselineOf(db, rid5) }, admin.firestore.Timestamp.now());
+    const neverLiveId = neverLive.versionId || neverLive.version || neverLive;
+    const ptrPre = await pointerOf(rid5).get();
+    assert.notStrictEqual((ptrPre.data() || {}).version, neverLiveId, 'premise — the pointer never named it');
+
     const recordsBefore = await withRecord();
     assert.ok(!recordsBefore.includes(cur.versionId), 'premise — the live version has no record yet (its bootstrap was refused by the fence above)');
+    assert.ok(recordsBefore.includes(neverLiveId),
+      'premise — the staged version DOES carry a record (writeVersion writes one before the flip); the question is whether bootstrap leaves it as `pending`');
 
+    /* 🔴 THIS is the run under test, and it now runs WITH the retained candidate already present. */
     const r7 = await bootstrapIdentityStamps(db, rid5);
     assert.strictEqual(r7.stamped, true, `the pointer-named version is stamped: ${JSON.stringify(r7)}`);
 
@@ -363,20 +383,6 @@ const asPreP1 = async (rid, versionId) => {
     assert.deepStrictEqual(added, [cur.versionId],
       `🔴 bootstrap materialized an activation record onto ${JSON.stringify(added)} — only the pointer-named version may get one, or retention becomes proof of activation`);
 
-    /* 🔴 AND THE SCENARIO THE RULE EXISTS FOR, STAGED EXACTLY. writeVersion creates the version
-       record BEFORE the flip (:310), so a crash or a failed CAS leaves a COMPLETE, RETAINED, never
-       activated version — v7's example is a pre-P1 price-only candidate whose flip failed. Retention
-       enumerates it like any other. It must come out of bootstrap with no record and therefore no
-       rollback eligibility; a run that gave it one would let a rollback activate prices that were
-       never live. Created here by calling writeVersion and NOT flipping, which is what the failure
-       actually looks like. */
-    const neverLive = await writeVersion(db, rid5, { ...(await candidateFromSource(rid5)), source_sha: 'never-activated', baseline: await baselineOf(db, rid5) }, admin.firestore.Timestamp.now());
-    const neverLiveId = neverLive.versionId || neverLive.version || neverLive;
-    const ptr = await pointerOf(rid5).get();
-    assert.notStrictEqual((ptr.data() || {}).version, neverLiveId, 'premise — the pointer never named it');
-
-    const r7b = await bootstrapIdentityStamps(db, rid5);
-    assert.strictEqual(r7b.already, true, 'the live version is already certified, so this run is a no-op');
     const orphanRec = await vrefOf(rid5, neverLiveId).get();
     /* 🔴 THE ASSERTION MOVED FROM "no record" TO "a PENDING record", and that is a strengthening. It
        used to be absent because writeVersion omitted the record when no baseline was supplied — which
@@ -493,13 +499,59 @@ const asPreP1 = async (rid, versionId) => {
     assert.strictEqual((eligible.data() || {}).status, STATUS_LIVE, 'premise — the staged dish orphan is live and unserved');
 
     for (const d of saved) await extrasCol.doc(d.id).delete();       // the version now serves NO extras
-    await assert.rejects(() => reconcileLegacyOrphans(db, rid8d), /identity_reconcile_no_served_set/,
-      '🔴 an empty served set for one kind was accepted');
+
+    /* ── CASE 1: THE RECORD STILL DECLARES EXTRAS, so an empty read is TORN, not legitimate ─────────
+       🔴 AND THE REFUSAL MOVED TO A SHARPER GUARD. This used to expect `identity_reconcile_no_served_set`.
+       readActiveVersion now runs `assertComplete` — the same money PIN every ordinary read goes through —
+       so a version serving 0 extras while its record declares N is refused by COUNT, naming the field
+       that disagrees, before the served-set heuristic is reached. Both refusals protect the same thing;
+       asserting the precise one keeps this cell honest about which guard is doing the work. */
+    await assert.rejects(() => reconcileLegacyOrphans(db, rid8d), /catalog_incomplete_extra_count/,
+      '🔴 a version serving NO extras while its record declares some was accepted — the read is torn and nothing may be retired from it');
     const after8d = await idsColOf(db, rid8d, 'dish').doc(doomed8d.canonical_id).get();
     assert.strictEqual((after8d.data() || {}).status, STATUS_LIVE,
       '🔴 DISH retirements committed before the EXTRAS set was found empty — a half-done reconciliation, and this orphan is the evidence');
-    for (const d of saved) await extrasCol.doc(d.id).set(d.data);     // restore
-    ok(`${rid8d}: an empty set for ANY kind refuses before a single retirement commits — a staged, eligible dish orphan survives`);
+
+    /* ── CASE 2: 🔴 A MENU WITH NO EXTRAS IS LEGITIMATE, AND USED TO LOCK THE CUTOVER OUT FOR EVER ──
+       `publishVersion` permits `extra_count === 0` (it gates the extra_order requirement on `> 0`) while
+       refusing a zero-ITEM version outright. So a merchant could publish a no-extras menu, the operator
+       could stamp it, and then EVERY reconciliation attempt would throw identically and the second half
+       of the one-way cutover could never complete. Found by an independent gate; x_pizza has extras so
+       the imminent cutover would not have hit it, but the cutover is per brand.
+       Staged as the publisher would leave it: the record DECLARES zero extras, and the hash agrees. */
+       const { extras_hash: emptyExtrasHash } = integrityDescriptor({}, {});
+    await vrefOf(rid8d, v.versionId).update({ extra_count: 0, extras_hash: emptyExtrasHash });
+
+    const legit = await reconcileLegacyOrphans(db, rid8d, { dryRun: true });
+    assert.ok(legit && Number.isInteger(legit.scanned),
+      '🔴 A LEGITIMATE NO-EXTRAS MENU STILL REFUSES — the cutover cannot complete for any merchant without extras');
+    /* …and the dish orphan is still FOUND (a rehearsal reports it), so permitting the empty kind did not
+       also blind the pass to the work it exists to do. */
+    assert.ok(legit.orphans >= 1, `🔴 the rehearsal found ${legit.orphans} orphans — the staged dish orphan must still be reported`);
+    const afterLegit = await idsColOf(db, rid8d, 'dish').doc(doomed8d.canonical_id).get();
+    assert.strictEqual((afterLegit.data() || {}).status, STATUS_LIVE, '…and a DRY RUN still wrote nothing');
+
+    /* ── CASE 3: A ZERO-DISH VERSION IS NEVER LEGITIMATE, so that refusal must NOT have been relaxed ──
+       The publisher refuses `item_count === 0` outright, so an empty dish set is always a failed read.
+       Relaxing both kinds together would have turned a lockout into a mass retirement. */
+    const dishCol = vrefOf(rid8d, v.versionId).collection('menu_items');
+    const savedDishes = (await dishCol.get()).docs.map((d) => ({ id: d.id, data: d.data() }));
+    for (const d of savedDishes) await dishCol.doc(d.id).delete();
+    const { item_count: _ic, menu_hash: emptyMenuHash } = integrityDescriptor({}, {});
+    await vrefOf(rid8d, v.versionId).update({ item_count: 0, menu_hash: emptyMenuHash });
+    await assert.rejects(() => reconcileLegacyOrphans(db, rid8d), /identity_reconcile_no_served_set/,
+      '🔴 A ZERO-DISH VERSION WAS ACCEPTED — the publisher never permits one, so an empty dish set is a failed read and retiring against it would empty the registry');
+    for (const d of savedDishes) await dishCol.doc(d.id).set(d.data);
+
+    // restore the version to exactly what it was, or every cell below inherits a doctored record
+    const restored = integrityDescriptor(
+      Object.fromEntries(savedDishes.map((d) => [d.data.key, d.data.price])),
+      Object.fromEntries(saved.map((d) => [d.data.key, d.data.price])));
+    for (const d of saved) await extrasCol.doc(d.id).set(d.data);
+    await vrefOf(rid8d, v.versionId).update({ item_count: restored.item_count, menu_hash: restored.menu_hash,
+      extra_count: restored.extra_count, extras_hash: restored.extras_hash });
+    await assert.doesNotReject(() => readActiveVersion(db, rid8d), '🔴 the restore left the version incomplete — every cell below would inherit it');
+    ok(`${rid8d}: a TORN extras read refuses by count, a LEGITIMATE no-extras menu reconciles (the cutover lockout), a zero-DISH version still refuses, and no retirement commits before every set is validated`);
   }
 
   // ── 9. THE GENERATION FENCE BITES INDEPENDENTLY OF THE POINTER ─────────────────────────────
@@ -796,8 +848,16 @@ const asPreP1 = async (rid, versionId) => {
     const { key: _dropped, ...noKey } = saved;
     await docRef.set(noKey);
 
-    await assert.rejects(() => reconcileLegacyOrphans(db, rid19), /identity_reconcile_unkeyable/,
-      '🔴 an unkeyable served object was silently dropped from the served set — the id behind it would read as an orphan');
+    /* 🔴 THE REFUSAL MOVED EARLIER, AND THE GUARD IT NAMES IS NOW SHADOWED FOR THIS STAGING. Since
+       readActiveVersion runs `assertComplete`, and its prerequisite `mapDocs` requires every version doc
+       to carry a string `key`, a doc with the field REMOVED is refused as `catalog_bad_doc` before
+       reconcile's own served-set loop is reached. Strictly safer — earlier and it names the document —
+       but it means `identity_reconcile_unkeyable` can no longer be reached by deleting `key`, which is
+       the only way to reach it on x_pizza (legacyKeyOf returns `record.key` whenever it is present).
+       Asserting the refusal that ACTUALLY FIRES rather than the one this cell was named for; the guard's
+       own premise is recorded where it lives. */
+    await assert.rejects(() => reconcileLegacyOrphans(db, rid19), /catalog_bad_doc/,
+      '🔴 a served object with no key was accepted — the id behind it would read as an orphan and be retired');
     const row = await idsColOf(db, rid19, 'dish').doc(canary.canonical_id).get();
     assert.strictEqual((row.data() || {}).status, STATUS_LIVE, '🔴 …and it retired before refusing');
     await docRef.set(saved);

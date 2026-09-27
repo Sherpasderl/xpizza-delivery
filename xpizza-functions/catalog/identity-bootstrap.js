@@ -63,6 +63,9 @@
 // fault state today. Run it again before the cutover rather than trusting that.
 // ---------------------------------------------------------------------------
 const { lookupByLegacyKeys, idsColOf, keysColOf, encodeKey, STATUS_LIVE, STATUS_RETIRED } = require('./identity-registry');
+const { mapDocs } = require('./catalog-firestore');
+const { buildTablesFromDocs } = require('./catalog-transform');
+const { assertComplete } = require('./catalog-integrity');
 const { assertPointerUnmoved } = require('./identity-fence');
 const { legacyKeyOf } = require('./identity-backfill');
 const { activePointerRef, getActivePointer, readPointerSnap } = require('./catalog-firestore');
@@ -94,10 +97,32 @@ async function readActiveVersion(db, rid) {
     vref.get(), vref.collection('menu_items').get(), vref.collection('extras').get(),
   ]);
   if (!recSnap.exists) throw new Error(`identity_bootstrap_version_missing: ${rid}/${p.version}`);
+
+  /* 🔴 CERTIFICATION MUST NOT OUTRUN COMPLETENESS, AND THE VERIFIER ALREADY EXISTED. This pass read the
+     raw collections and certified whatever came back — no counts, no hashes, no structure — so a version
+     record declaring two dishes with one dish present would be stamped and certified. Reproduced by an
+     independent gate.
+     `assertComplete` is the money PIN every ordinary read goes through (catalog-firestore.js's
+     readVersionDocs): the read set must match the record's item_count, extra_count AND both full hashes,
+     or the read was torn or tampered. Bootstrap bypassed it.
+     🔴 WHY THIS IS FIXED RATHER THAN RECORDED, even though the gate classified it CONTRACT. No ordinary
+     publisher path creates a torn version, because publication verifies completeness before flipping —
+     but THIS IS A MIGRATION PASS. It runs once, by hand, against whatever state production is actually
+     in, including a state some earlier incident left behind. "No ordinary path creates this" is the
+     weakest possible reassurance for the one tool whose whole job is meeting the world as it is; and a
+     verifier existing and not being called is a gap, not a judgement.
+     It sits in readActiveVersion so BOTH halves inherit it — the stamping pass and the orphan
+     reconciliation read the active version through here. Zero extras still passes: an empty table's count
+     is 0 and its hash is the hash of nothing, which is exactly what the publisher recorded. */
+  const record = recSnap.data() || {};
+  const where = `${rid}/versions/${p.version}`;
+  const { menu: menuTable, extras: extraTable } = buildTablesFromDocs(mapDocs(items, where), mapDocs(extras, where));
+  assertComplete(record, menuTable, extraTable, where);
+
   return {
     versionId: p.version,
     generation: p.generation,
-    record: recSnap.data() || {},
+    record,
     dishes: items.docs.map((d) => ({ id: d.id, data: d.data() || {} })),
     extras: extras.docs.map((d) => ({ id: d.id, data: d.data() || {} })),
   };
@@ -237,6 +262,17 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
      else. The in-transaction revalidation below is UNCHANGED and still authoritative: everything here
      can move between this read and the write, which is why it is re-checked there rather than trusted
      from here. This is about what the rehearsal PREDICTS, not about what guarantees the write. */
+  /* 🔴 NO MUTANT GUARDS THIS LINE ALONE, AND THE REASON IS WORTH READING BEFORE ADDING ONE BACK. The
+     same condition is enforced TWICE — here, before any write, and again inside the transaction (:389,
+     which re-reads the record). So mutating either guard on its own leaves the other refusing, the suite
+     still passes, and the mutant SURVIVES — which is a fact about the redundancy, not about the property
+     being unguarded. d4p1b-12 and d4p1b-27 were exactly those two mutants; they were KILLED until I added
+     this preflight (acbb6fa) and began surviving the moment it shadowed the in-tx check. Removing them
+     rather than leaving must-survive entries that rot the sweep.
+     🔴 VERIFIED, NOT ASSUMED: with BOTH guards removed, d4p1-bootstrap's pending/abandoned cell fails
+     ("bootstrap upgraded an existing pending record to activated"). The property is cell-guarded; only
+     the single-line mutants cannot die. If the redundancy is ever removed, restore a mutant on whichever
+     guard survives. */
   const activationPre = active.record.identity_activation;
   if (activationPre !== undefined && activationPre !== null && activationPre.status !== 'activated') {
     throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(activationPre.status)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);
@@ -360,6 +396,10 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
     const existingActivation = rec.identity_activation;
     if (existingActivation !== undefined && existingActivation !== null) {
       const st = existingActivation.status;
+      /* AND THE IN-TX HALF IS NOT MERELY REDUNDANT: the preflight reads the record OUTSIDE the
+         transaction, so this re-check is what closes the window between that read and this write — a
+         record that turns `pending` in between is caught only here. That is why the duplication stays;
+         see the note at the preflight for why neither line carries a mutant. */
       if (st !== 'activated') {
         throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(st)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);
       }
@@ -459,15 +499,61 @@ async function reconcileLegacyOrphans(db, rid, { dryRun = false, now = () => new
        it reads as an orphan and is retired. Same fault, same fail-closed answer. */
     served[kind] = new Set(objs.map((o) => {
       const key = legacyKeyOf(rid, { ...o.data, key: o.data.key });
+      /* 🔴 SHADOWED BUT KEPT, premise recorded. readActiveVersion now runs `assertComplete`, whose
+         `mapDocs` prerequisite already refuses any version doc without a string `key`
+         (`catalog_bad_doc`) — so on x_pizza this cannot fire, because `legacyKeyOf` returns `record.key`
+         whenever it is present. It stays because it guards a DIFFERENT condition: a doc that HAS a key
+         yet yields no LEGACY key for its brand, which is a keying-rule question rather than a document
+         one. If the brand keying ever grows a case that returns nothing from a well-formed doc, this is
+         the line that catches it — and that is the change which should bring a cell back, not the
+         arrival of another caller. */
       if (!key) throw new Error(`identity_reconcile_unkeyable: ${rid}/${kind}/${o.id} — a served object yielded no legacy key; its id would read as an orphan`);
       return key;
     }));
     certified[kind] = new Set(objs.map((o) => o.data.display && o.data.display.identity_id).filter(Boolean));
     /* A live version with no servable names is not "everything is an orphan" — it is a read that went
        wrong, and acting on it would retire the registry. Checked for EVERY kind before anything is
-       written, not as each kind's turn comes round. */
+       written, not as each kind's turn comes round.
+
+       🔴 BUT THE TWO KINDS ARE NOT SYMMETRIC, AND TREATING THEM AS ONE WAS A CUTOVER LOCKOUT. This
+       refused for EVERY kind, and a menu with NO EXTRAS is legitimate — `publishVersion` explicitly
+       permits `extra_count === 0` (catalog-publish.js:1102 gates the extra_order requirement on
+       `> 0`) while refusing a zero-ITEM version outright (`publish_refused_empty`, :1096). So a
+       merchant could publish a no-extras menu, the operator could stamp it successfully, and then
+       every reconciliation attempt would throw here IDENTICALLY, for ever: the second half of the
+       one-way cutover could never complete and no retry would change that. x_pizza has extras so the
+       imminent cutover would not have hit it; la_musa or any third merchant could, and the cutover is
+       per brand.
+
+       🔴 THE CLASS, INVERTED. Four times this slice we have found ABSENT-IS-NOT-EMPTY — a missing read
+       treated as an empty one, which deletes. This is its MIRROR: a legitimately empty set treated as a
+       failed read, which LOCKS OUT. Same inability to tell the two apart, opposite blast radius, and
+       the fix for both is the same — find the evidence that distinguishes them instead of guessing.
+
+       THE EVIDENCE IS THE VERSION'S OWN DECLARED COUNT (`catalog-publish.js:1254` writes item_count and
+       extra_count onto the record). So:
+         · dish  — an empty served set is ALWAYS a failed read, because the publisher refuses a version
+                   with zero items. The refusal stands, and now it has a reason rather than an assumption.
+         · extra — empty is legitimate IFF the record declares `extra_count === 0`.
+         · anything else, including a record that declares NOTHING — REFUSE. Without the evidence the two
+           cannot be told apart, and fail-closed is the only safe stance for a one-way pass.
+
+       🔴 AND THE CONSEQUENCE IS STATED, because it is a real one: with a legitimately empty extras set
+       every live extra id is, by §3.0's definition, an orphan — not served, not certified — and WILL be
+       retired. That is correct and it is also large, which is why it is not silent: it goes through the
+       four-step cutover's own rehearsal, so the operator sees `orphans: N found … would be retired`
+       and approves it before anything is written. The log line below makes the legitimately-empty case
+       distinguishable from an ordinary run in the operator's output. */
     if (!served[kind].size) {
-      throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — the active version yielded no servable names; refusing to treat every live id as an orphan`);
+      const declared = kind === 'dish' ? active.record.item_count : active.record.extra_count;
+      const legitimatelyEmpty = kind === 'extra' && declared === 0;
+      if (!legitimatelyEmpty) {
+        throw new Error(`identity_reconcile_no_served_set: ${rid}/${kind} — the active version yielded no servable names and its record declares ${kind === 'dish' ? 'item_count' : 'extra_count'}=${JSON.stringify(declared)}; refusing to treat every live id as an orphan`);
+      }
+      try {
+        console.warn('identity_reconcile_kind_empty', JSON.stringify({ rid, kind, declared,
+          note: 'the version legitimately serves no objects of this kind, so every live id of this kind is an orphan and will be retired' }));
+      } catch (_) { /* logging must not break a migration */ }
     }
   }
 
