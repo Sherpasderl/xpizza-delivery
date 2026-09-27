@@ -104,6 +104,7 @@
     "ready_time_graduation": { ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()", ".write": false },
 
     "pickup_ready_notifications": { ".read": false, ".write": false },
+    "preparing_notifications": { ".read": false, ".write": false },
 
     "incoming_messages": {
       ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",

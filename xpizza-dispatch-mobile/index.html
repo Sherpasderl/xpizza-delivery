@@ -33,6 +33,7 @@
     --lilac-bg:#EEE6FD; --lilac-ink:#7E45E1;
     --sky-bg:#E2EFFE; --sky-ink:#1F6BC1;
     --mint-bg:#DFF6EC; --mint-ink:#147B5C;
+    --cash-bg:#FBEFDD; --cash-ink:#8A5A12;
     --xp:#D13B6D; --lm:#9558CA;
     --shadow-s:0 1px 2px rgba(40,25,80,.07);
     --shadow-m:0 10px 22px -12px rgba(40,25,80,.34), 0 1px 2px rgba(40,25,80,.06);
@@ -53,6 +54,7 @@
       --lilac-bg:#221A38; --lilac-ink:#B79BF5;
       --sky-bg:#152238; --sky-ink:#79B4F2;
       --mint-bg:#11281F; --mint-ink:#5FD3A8;
+      --cash-bg:#2E2413; --cash-ink:#E7BD86;
       --xp:#F07CA5; --lm:#B79BF5;
       --shadow-s:0 1px 2px rgba(0,0,0,.5);
       --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
@@ -72,6 +74,7 @@
     --lilac-bg:#221A38; --lilac-ink:#B79BF5;
     --sky-bg:#152238; --sky-ink:#79B4F2;
     --mint-bg:#11281F; --mint-ink:#5FD3A8;
+    --cash-bg:#2E2413; --cash-ink:#E7BD86;
     --xp:#F07CA5; --lm:#B79BF5;
     --shadow-s:0 1px 2px rgba(0,0,0,.5);
     --shadow-m:0 12px 26px -14px rgba(0,0,0,.9), 0 1px 2px rgba(0,0,0,.4);
@@ -216,6 +219,12 @@
   .av-fill{ animation:av-fill .5s var(--ease) both }
   .pbody{ padding:2px 16px 16px }
   .pbody .ln{ font-size:14.5px; color:var(--ink2); letter-spacing:-.15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  /* F6: payment line on the collapsed card. Cash = a subtle warm chip (bring change on delivery); online = plain
+     quiet text (already paid). Visibility from contrast (the chip's warm wash), not saturation. No glow, no emoji. */
+  .pbody .ln.pay{ margin-top:6px; font-size:13.5px }
+  .pbody .ln.pay.online{ color:var(--ink2) }
+  .pbody .ln.pay.cash{ width:fit-content; max-width:100%; padding:3px 10px; border-radius:999px;
+    background:var(--cash-bg); color:var(--cash-ink); font-weight:600; letter-spacing:-.1px }
   .pacts{ display:flex; gap:9px; margin-top:12px }
   .pact{ flex:1 1 0; height:44px; border-radius:14px; border:none; font-size:15px; font-weight:700; letter-spacing:-.25px;
     display:inline-flex; align-items:center; justify-content:center; gap:7px; cursor:pointer; text-decoration:none;
@@ -764,6 +773,24 @@ function stateParts(id, order){
 }
 function oneLineItems(order){ return (order && order.items_text) ? String(order.items_text) : '—'; }
 
+// Payment line for the collapsed card (glanceable while tracking): cash needs the driver to bring change; online
+// is already paid. Data all exists on the order. Cambio = the EXACT expression from factura/build-record.js:109.
+// cents→L via the codebase-canonical 'L ' + (cents/100).toFixed(2) (there is no cents helper in this file; the
+// card's own total at :~1207 uses the same 2-decimal L). Cash = a subtle warm chip (tokens, theme-aware); online
+// = plain quiet text. Display-only.
+function paymentLine(order){
+  if (!order) return '';
+  const L = (cents) => 'L ' + ((Number(cents) || 0) / 100).toFixed(2);
+  if (order.payment_method === 'cash') {
+    const change = Math.max(0, (order.cash_tendered_cents || 0) - order.total_cents);   // factura/build-record.js:109
+    const txt = change > 0
+      ? `Efectivo · cambio ${L(change)} · paga con ${L(order.cash_tendered_cents)}`
+      : 'Efectivo · paga exacto';
+    return `<div class="ln pay cash">${escapeHtml(txt)}</div>`;
+  }
+  return `<div class="ln pay online">Tarjeta · pagado</div>`;
+}
+
 // Itemized order summary — parses the same ' | '-joined items_text the KDS parses, so the phone reads
 // identically to the kitchen screen.
 function renderOrderItems(order){
@@ -866,6 +893,7 @@ function passHTML(id, order){
   const body = `<div class="pbody">
     <div class="ln">${escapeHtml(order.address_detected || order.address_details || '—')}</div>
     <div class="ln" style="margin-top:3px">${escapeHtml(oneLineItems(order))}</div>
+    ${paymentLine(order)}
     ${byLine}
     <div class="pacts">${callBtn}<button class="pact" type="button" data-detail="${escapeHtml(id)}">Ver pedido</button>${assignBtn}</div>
   </div>`;

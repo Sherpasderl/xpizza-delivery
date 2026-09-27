@@ -226,6 +226,27 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
     'xpizza-dispatch/dispatch-stalled.test.js',
     'xpizza-dispatch/driver-eta.test.js',
     'xpizza-dispatch/driver-glide.test.js',
+    /* 🔴 NINE MORE ARRIVED FROM main AT d86d254, IN THIS MERGE. Same cause as the ten above —
+       `xpizza-dispatch/` has no package.json at all, so no npm script in any manifest can reach them —
+       and this census is our guard catching main's new work, not main breaking us.
+       🔴 AND UNLIKE dispatch-paid-after-close ABOVE, THESE ARE REACHED BY NOTHING AT ALL. I checked the
+       mutation corpus for each of the nine: zero references, so there is no sweep covering them the way
+       pah-06 covers the park fix. So the honest word for these really is UNCOVERED, not merely
+       "no npm script" — that distinction is the one the note above insists on, and it falls the other
+       way here. Recorded with the accurate word rather than the reassuring one.
+       🔴 SEPARATE ITEM, NOT OURS TO CLOSE: nine test files in main run in no automated gate. That is a
+       real coverage gap in main, surfaced by this merge, and it belongs to whoever owns dispatch.
+       The shrink-never-grow rule below still applies: each becomes a failure the moment a script
+       reaches it. */
+    'xpizza-dispatch/dispatch-cash-recon.test.js',
+    'xpizza-dispatch/dispatch-cola.test.js',
+    'xpizza-dispatch/dispatch-drawer.test.js',
+    'xpizza-dispatch/dispatch-heartbeat-alerts.test.js',
+    'xpizza-dispatch/dispatch-nav-rail.test.js',
+    'xpizza-dispatch/dispatch-picker-a11y.test.js',
+    'xpizza-dispatch/dispatch-recon-close-fulfilled.test.js',
+    'xpizza-dispatch/dispatch-recon-note.test.js',
+    'xpizza-dispatch/dispatch-theme.test.js',
     'xpizza-driver/cash-helpers.test.js',
     'xpizza-driver/order-helpers.test.js',
     'xpizza-driver/stacking-helpers.test.js',

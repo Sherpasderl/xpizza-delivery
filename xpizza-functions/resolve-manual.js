@@ -22,6 +22,8 @@ const MR = require('./manual-resolve');
 const MG = require('./materialize-guard');
 const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
 const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
+const { usesPlatformFactura } = require('./factura/eligibility');   // fiscal-brand gate: X.Pizza owes a SAR factura, La Musa does not
+const { allocateFacturaNumber } = require('./factura/factura-helpers');   // SPLIT 2: issue the SAR factura for a delivered X.Pizza sale on the SAME doc/CAI/PEDIDO:#N path materialize uses
 
 // [#7/#8] Materialize a manual-verified order WITHOUT reopening the race: CAS resolving_materialize → confirmed
 // on the claim_id (NO transient 'pending', NO materialized_at yet), then materialize atomically. A crash after
@@ -152,6 +154,88 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
       await reverseRedemptionForOrder(db, { orderId, order, disposition: 'refund', now });   // no charge → release the hold (held_paid/reserved → released, no credit)
       await audit('abandoned', { note: sanitizeText(note || '', 200) });
       return { status: 200, body: { ok: true, outcome: 'abandoned' } };
+    }
+
+    if (action === 'close_fulfilled') {
+      // "Cerrar como entregado" — a paid order DELIVERED off-system. KEEP the payment (no void, no refund, no
+      // provider call) and close it terminal WITHOUT materializing (no live order / task / tracking token) and
+      // WITHOUT notifying the customer: status:'completed' is not a messaged transition (sendOrderStatusNotifications
+      // only fires on out_for_delivery/delivered/cancelled), and materializeOnConfirm skips terminal 'completed'.
+      // FISCAL (SPLIT 2): a platform-factura brand (X.Pizza) owes a SAR factura for the delivered sale — issue it on
+      // the SAME doc/CAI/PEDIDO:#N path a materialize-to-Sale would have used (allocateFacturaNumber, the exact call
+      // the allocateFacturaOnSale trigger makes), BEFORE the terminal close. ALWAYS-INVARIANT: no factura ⇒ do NOT
+      // close. If issuance fails (config/range/expiry/throw), surface it (allocateFacturaNumber stamps
+      // factura_status; we mirror the trigger's dispatcher alert on the actionable reasons) and releaseClaim so the
+      // order returns to manual_reconciliation for retry — never a closed SAR sale with no fiscal document.
+      // Idempotency makes retry safe: allocateFacturaNumber returns the already-issued number with no new one, so a
+      // crash BETWEEN issue and the close CAS converges on re-resolve (which is why we do NOT stamp
+      // side_effect_started here — unlike refund's non-idempotent void, re-running issuance is a no-op, so the safe
+      // recovery for a stale claim is revert-to-manual_reconciliation, not manual_review).
+      // Non-platform brands (La Musa → external POS) issue no platform factura and close directly (SPLIT 1 behavior).
+      // FAIL CLOSED on brand: a missing/empty restaurant_id is legacy X.Pizza everywhere in this repo
+      // (index.js:2680/2755, materialize-guard park). Normalize BEFORE the gate so an unbranded order takes the
+      // FISCAL path (issue), never slips through as non-fiscal and closes a SAR sale with no factura.
+      const restaurantId = order.restaurant_id || 'x_pizza';
+      if (usesPlatformFactura(restaurantId)) {
+        // Field-presence mirrors allocateFacturaOnSale (index.js): a Sale missing priced fields is a factura FAILURE
+        // (surface + alert), never a silent skip and never a close-without-factura.
+        if (!Array.isArray(order.items) || order.items.length === 0 ||
+            order.total_cents == null || order.subtotal_cents == null || order.tax_cents == null) {
+          await db.ref(`orders/${orderId}/factura_status`).set('failed').catch(() => {});
+          if (alert) { try { await alert('factura_missing_fields', { orderId, order_id: orderId, restaurant_id: restaurantId }); } catch (_) { /* alert best-effort */ } }
+          await releaseClaim();
+          return { status: 409, body: { ok: false, outcome: 'factura_failed', detail: 'No se pudo emitir la factura (faltan datos del pedido) — el pedido queda pendiente para revisar.' } };
+        }
+        // Issue on the real factura path. allocateFacturaNumber sets orders/<id>/factura_status itself
+        // (issued/failed/cancelled), is idempotent (already-issued wins) and cancel-race-safe. The order shape
+        // mirrors the trigger's call (orderId + razon_social/rtn_cliente defaulted).
+        let fr;
+        try {
+          fr = await allocateFacturaNumber(db, {
+            restaurantId, orderId,
+            order: { ...order, orderId, razon_social: order.razon_social || '', rtn_cliente: order.rtn_cliente || '' },
+            now,
+          });
+        } catch (e) {
+          console.error(`close_fulfilled: factura allocate ${orderId} threw`, e && e.message);
+          fr = { ok: false, reason: 'threw' };
+        }
+        if (!fr || !fr.ok) {
+          // ALWAYS-INVARIANT: no factura ⇒ do NOT close. Mirror allocateFacturaOnSale's alert on the actionable
+          // reasons; releaseClaim so the order returns to manual_reconciliation (retryable; re-issue is idempotent).
+          if (fr && (fr.reason === 'range_exhausted' || fr.reason === 'expired' || fr.reason === 'config_missing') && alert) {
+            try { await alert(`factura_${fr.reason}`, { orderId, order_id: orderId, restaurant_id: restaurantId }); } catch (_) { /* alert best-effort */ }
+          }
+          await releaseClaim();
+          return { status: 409, body: { ok: false, outcome: 'factura_failed', detail: 'No se pudo emitir la factura — el pedido queda pendiente para revisar.' } };
+        }
+        // fr.ok (freshly issued OR idempotent already-issued) → factura exists → fall through to the terminal close.
+      }
+      // Terminal write is a CAS (mirror abandon): commit ONLY if still OUR claim. Keep payment_status 'confirmed'
+      // (legitimate captured revenue), status 'completed' (delivered terminal), clear the block, stamp the audit.
+      const closeTx = await orderRef.transaction((cur) => {
+        if (cur === null) return null;                                  // null-first-safe (R1-#1): force server round-trip, don't abort
+        if (!cur || cur.resolving_claim_id !== claimId || cur.payment_status !== MR.resolvingStatus('close_fulfilled')) return;
+        return {
+          ...cur,
+          payment_status: 'confirmed',
+          status: 'completed',
+          blocked_reason: null,
+          closed_from_blocked_reason: cur.blocked_reason || null,       // audit: the reason it was parked under
+          fulfilled_offline_at: now,
+          resolved_by: actor,
+          resolution: 'offline_fulfilled',
+          resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null,
+        };
+      });
+      if (!closeTx.committed) {
+        const cur = closeTx.snapshot.val() || {};
+        return { status: 409, body: { error: 'No se pudo cerrar (el estado cambió)', payment_status: cur.payment_status } };
+      }
+      // Delivered → the sale STANDS → consume any redemption (same disposition as a materialize-to-sale; no-op if none).
+      await reverseRedemptionForOrder(db, { orderId, order, disposition: 'sale', now });
+      await audit('closed_fulfilled_offline', { note: sanitizeText(note || '', 200), kept_payment: true, from_blocked_reason: order.blocked_reason || null });
+      return { status: 200, body: { ok: true, outcome: 'closed_fulfilled_offline' } };
     }
 
     if (action === 'materialize') {
