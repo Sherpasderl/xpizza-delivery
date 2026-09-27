@@ -4479,6 +4479,144 @@ exports.notifyPickupReady = onValueWritten(
 );
 
 // ============================================================
+// notifyPreparing — Fix A: proactive "estamos preparando · listo en ~X min" customer WhatsApp.
+//
+// Watches /orders/{orderId}/status. On a transition INTO 'preparing' (kitchen taps "Empezar"), sends the
+// customer ONE readiness WhatsApp via the ORDER's restaurant UltraMsg instance, AT MOST ONCE EVER, for BOTH
+// order types (the template varies the copy). Closes the silent prep window that drives status-check
+// WhatsApps. SEPARATE from sendOrderStatusNotifications (byte-for-byte unchanged) so the money-adjacent
+// delivery/cancel/received sender is untouched.
+//
+// State in a SEPARATE top-level tree /preparing_notifications/{orderId}, NEVER under /orders: SIX triggers
+// watch the whole order node (materializeOnConfirm, allocateFacturaOnSale, allocateDisplayNumberOnSale,
+// voidFacturaOnCancel, notifyStaffOnNewOrder, autoAssignOnOrderCreate), so a mark under the order would
+// re-fire all six. Nothing watches /preparing_notifications, and this trigger watches /orders/{id}/status,
+// so it cannot self-trigger.
+//
+// At-most-once: transaction() claim on claimed_at is the SOLE redelivery/concurrency authority.
+// Mark-before-send: send_started_at is awaited BEFORE sendMessage (claimed_at-only ⇒ provably unsent).
+// STALE-STATUS GUARD: a delayed/redelivered 'preparing' event can land on an order whose CURRENT status has
+// moved on (ready/out_for_delivery/delivered/completed[close_fulfilled]/cancelled) — we re-check the loaded
+// order's live status and skip if it is no longer 'preparing' (never "estamos preparando" on an advanced
+// order; residual read→send race accepted, same class as notifyPickupReady). Honest states: sent_at ONLY on
+// whatsapp.isSendConfirmed(result) (accepts UltraMsg sent:true OR a real id, rejects error/bare-{} — NOT
+// result!=null); otherwise send_unresolved_at. Never throws (whole handler contained); no auto-reclaim.
+exports.notifyPreparing = onValueWritten(
+  {
+    ref: '/orders/{orderId}/status',
+    region: 'us-central1'
+  },
+  async (event) => {
+    try {
+      const before = event.data.before.val();
+      const after = event.data.after.val();
+      if (after !== 'preparing' || before === after) return;   // early return FIRST (no-op rewrite → nothing)
+
+      const orderId = event.params.orderId;
+      const db = getDatabase();
+      const notifRef = db.ref(`preparing_notifications/${orderId}`);   // interpolated (never the literal {orderId})
+
+      // Guarded diagnostic write — aborts if the node already carries claimed_at/sent_at (a redelivery can
+      // never stamp a diagnostic onto an already-claimed/sent node).
+      const stamp = async (fields) => {
+        try {
+          await notifRef.transaction((cur) => {
+            if (cur && (cur.claimed_at || cur.sent_at)) return;   // abort — already claimed/sent
+            return Object.assign(cur || {}, fields);
+          });
+        } catch (e) {
+          console.warn(`notifyPreparing: diagnostic stamp failed for ${orderId}`, e.message);
+        }
+      };
+      const skip = (reason) => stamp({ skipped_at: ServerValue.TIMESTAMP, skipped_reason: reason });
+
+      // Load the order once; a transient read error is NOT a durable ineligibility → do not claim/send, leave
+      // a recoverable read_error_at trace, and never rethrow.
+      let order = null;
+      try {
+        order = (await db.ref(`orders/${orderId}`).once('value')).val();
+      } catch (e) {
+        console.warn(`notifyPreparing: couldn't read order ${orderId}, stamping read_error_at`, e.message);
+        await stamp({ read_error_at: ServerValue.TIMESTAMP, read_error_reason: String((e && e.message) || 'read_failed').slice(0, 200) });
+        return;
+      }
+
+      // Eligibility (restaurant identification FAILS CLOSED). NOT gated on order_type — both types get it.
+      if (!order) return skip('order_missing');
+      if (!order.restaurant_id) return skip('no_restaurant_id');
+      if (!SUPPORTED_WHATSAPP_RESTAURANTS.has(order.restaurant_id)) return skip('unsupported_restaurant');
+      if (!order.customer_phone) return skip('no_phone');
+      // STALE-STATUS GUARD: the event's `after` is not proof of the live value — a delayed/redelivered
+      // 'preparing' event must not send on an order that has already advanced. Check the CURRENT status.
+      if (order.status !== 'preparing') return skip('stale_status');
+      if (!(await whatsapp.isEnabledForRestaurant(db, order.restaurant_id))) return skip('whatsapp_disabled');
+
+      // ---- Claim → start → ETA → send → record (mark-before-send) ----
+      let claim;
+      try {
+        claim = await notifRef.child('claimed_at').transaction((cur) => (cur ? undefined : ServerValue.TIMESTAMP));
+      } catch (e) {
+        console.warn(`notifyPreparing: claim transaction failed for ${orderId}`, e.message);
+        return;   // couldn't claim — no send
+      }
+      if (!claim.committed) return;   // lost the claim (already claimed) — no second send; no auto-reclaim
+
+      try {
+        await notifRef.child('send_started_at').set(ServerValue.TIMESTAMP);
+      } catch (e) {
+        console.error(`notifyPreparing: send_started_at write failed for ${orderId} — NOT sending`, e.message);
+        return;
+      }
+
+      // ETA: config-driven per-merchant value; the DB read is CAUGHT here (a pure resolver can't catch a
+      // rejected read) → resolvePrepEtaMin maps a missing/invalid value to the single neutral fallback.
+      let etaValue;
+      try {
+        etaValue = (await db.ref(`restaurants/${order.restaurant_id}/prep_eta_min`).once('value')).val();
+      } catch (e) {
+        console.warn(`notifyPreparing: prep_eta_min read failed for ${order.restaurant_id}, using fallback`, e.message);
+        etaValue = undefined;
+      }
+      const etaMinutes = whatsapp.resolvePrepEtaMin(etaValue);
+
+      const body = whatsapp.tplPreparing({
+        customerName: order.customer_name,
+        etaMinutes,
+        orderType: order.order_type,
+        trackingToken: order.tracking_token,
+        restaurantId: order.restaurant_id
+      });
+
+      // Send — a null return AND a throw are both "unconfirmed".
+      let result = null;
+      try {
+        result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);
+      } catch (e) {
+        console.error(`notifyPreparing: sendMessage threw for ${orderId}`, e.message);
+        result = null;
+      }
+
+      // Honest record: sent_at ONLY when isSendConfirmed (never on {} / null / thrown / error-body).
+      try {
+        if (whatsapp.isSendConfirmed(result)) {
+          await notifRef.child('sent_at').set(ServerValue.TIMESTAMP);
+          console.log(`notifyPreparing: ${orderId} → preparing WhatsApp sent to ${order.customer_phone}`);
+        } else {
+          await notifRef.child('send_unresolved_at').set(ServerValue.TIMESTAMP);
+          console.warn(`notifyPreparing: ${orderId} → send UNRESOLVED (no confirmed provider success)`);
+        }
+      } catch (e) {
+        console.error(`notifyPreparing: outcome write failed for ${orderId}`, e.message);
+      }
+    } catch (e) {
+      // Belt-and-suspenders: any unexpected throw (init/template/etc.) is CONTAINED — the trigger has no
+      // retry config, so a rethrow would only mark the invocation failed with no benefit. Marker-only writes.
+      console.error('notifyPreparing: unexpected error (contained, no rethrow)', e && e.message);
+    }
+  }
+);
+
+// ============================================================
 // Ready-Time Phase 1 · Step 3 — shadow ready-time predictor + prediction-logging (PURE SHADOW).
 // Two onValueCreated triggers, thin adapters over the deps-injected core (ready-time-predict-core.js).
 // They write ONLY order_predictions / prediction_logs / ready_time_model — NEVER /orders, /order_tracking,
