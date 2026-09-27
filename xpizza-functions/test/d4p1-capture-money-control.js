@@ -33,8 +33,9 @@
 // snapshot is built from the repo's own seeds. So reproducibility can be audited from a checkout alone,
 // which is the property finding 3 was actually asking for. The cost is that it does NOT exercise the
 // handler path — that is the emulator control's job (test/d4p1-money-noop.emulator.test.js), and the
-// reward path beyond `computeRedemption` remains uncovered by BOTH; see the coverage note in the
-// unit control.
+// reward path beyond `computeRedemption` remains uncovered by BOTH — see the COVERAGE NOTE at the foot of
+// catalog/d4p1-money-noop.test.js, which enumerates all four exclusions with their reasons. (That pointer
+// dangled when this file was written: the note did not exist. It does now.)
 const { execSync } = require('child_process');
 const { writeFileSync } = require('fs');
 

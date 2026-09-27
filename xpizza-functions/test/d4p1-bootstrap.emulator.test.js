@@ -1249,6 +1249,53 @@ const asPreP1 = async (rid, versionId) => {
     ok('pending, abandoned and an unrecognised status each still REFUSE — the narrowing bought the cutover without buying that');
   }
 
+  // ── 🔴 THE ACTIVATION RECORD TURNS `pending` BETWEEN THE PREFLIGHT AND THE WRITE ──────────────
+  {
+    /* WHY THIS CELL EXISTS, AND IT IS A GATE SUGGESTION TAKEN. The same activation condition is enforced
+       TWICE — a preflight before any write, and again inside the transaction that writes. Either guard
+       alone refuses, so a mutant on either one survives while the other covers, and I removed both
+       mutants (d4p1b-12, d4p1b-27) with the premise recorded in a comment. The gate's answer was better:
+       a COMBINED-REMOVAL mutant plus an interleaving test preserves stronger evidence than a recorded
+       premise. This is the interleaving half, and it ARMS the in-transaction guard by staging the only
+       state in which it is the ONLY guard that can act.
+       🔴 THE PREFLIGHT CANNOT SEE THIS, BY CONSTRUCTION: it reads the version record OUTSIDE the
+       transaction. Here the record carries no activation when it reads — so the preflight permits — and a
+       `pending` record appears before the transaction runs. That is a real shape, not a contrivance: the
+       pass is a hand-run migration and a publish can land while it is working. Only the in-tx re-read
+       stands between that and bootstrap stamping a candidate that never committed.
+       Staged with the same `racing` wrapper cell 6 uses to move the pointer under the pass. */
+    const ridR = 'x_pizza';
+    const vR = await freshUncertifiedVersion(ridR);
+    const vRid = vR.versionId;
+    const recBefore = (await vrefOf(ridR, vRid).get()).data() || {};
+    assert.strictEqual(recBefore.identity_activation, undefined,
+      'premise — no activation record at preflight time, so the PREFLIGHT permits and only the in-tx check can refuse');
+    assert.notStrictEqual(recBefore.identity_certified, true, 'premise — uncertified, so the pass actually runs');
+
+    const orig = db.runTransaction.bind(db);
+    let flipped = false;
+    const racing = {
+      collection: (c) => db.collection(c),
+      runTransaction: async (fn, o) => {
+        if (!flipped) {
+          flipped = true;
+          await vrefOf(ridR, vRid).update({ identity_activation: { status: 'pending' } });
+        }
+        return orig(fn, o);
+      },
+    };
+
+    await assert.rejects(() => bootstrapIdentityStamps(racing, ridR), /identity_bootstrap_activation_present/,
+      '🔴 A `pending` ACTIVATION RECORD THAT APPEARED AFTER THE PREFLIGHT WAS STAMPED ANYWAY — bootstrap manufactured activation authority for a candidate that never committed, and the preflight cannot see this by construction');
+    assert.ok(flipped, 'premise — the record really changed between the preflight and the transaction');
+
+    const recAfter = (await vrefOf(ridR, vRid).get()).data() || {};
+    assert.notStrictEqual(recAfter.identity_certified, true, '🔴 …and it certified the version on the way out');
+    assert.strictEqual(recAfter.identity_activation.status, 'pending',
+      '🔴 the staged record was overwritten — the refusal must leave the record exactly as it found it');
+    ok(`${ridR}: an activation record that turns 'pending' AFTER the preflight is refused by the in-transaction re-read — the guard the preflight cannot stand in for`);
+  }
+
   FINISHED = true;
   console.log(`d4p1-bootstrap(emulator): OK (${n})`);
   process.exit(0);

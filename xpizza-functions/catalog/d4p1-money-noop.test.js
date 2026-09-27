@@ -25,7 +25,8 @@ const { computeServerTotal } = require('../menu-pricing');
 const { computeServerNet } = require('../compute-server-net');
 const { pricedLineItems } = require('../factura/pricing');
 const { applyRedemptionToPricing } = require('../rewards-redeem-pricing');
-const { computeRedemption } = require('../rewards-redeem');
+const { computeRedemption, redemptionFingerprint } = require('../rewards-redeem');
+const { REDEMPTION_CONFIG, REDEEM_POINTS_PER_LEMPIRA } = require('../rewards-redeem-config');
 const GOLDEN = require('./d4p1-money-precontrol.golden.json');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -159,9 +160,98 @@ for (const rid of ['x_pizza', 'la_musa']) {
       `🔴 ${rid}: the 1C NET moved when the reward came from the REAL producer instead of the stored literal`);
     assert.deepStrictEqual(json(applyRedemptionToPricing({ items: json(cart), restaurantId: rid, redemption: resolved, totalLempiras: g.total.total, tables })), g.redemption,
       `🔴 ${rid}: the REDEMPTION pricing moved when the reward came from the REAL producer`);
-    ok(`${rid}: the reward is RESOLVED by computeRedemption from a frozen request — selection, reward pricing and the downstream net/redemption all match pre-P1`);
+    /* ── 🔴 POINTS ARE CUSTOMER CURRENCY, AND THE CONTROL COULD NOT SEE THEM MOVE ──────────────────
+       THE HOLE: the loop above compares only the fields the GOLDEN froze, and the pre-P1 capture froze
+       `price_cents` but never the COST — not `cost`, not `cost_pts`, not the canonical debit. So
+       `costPtsFor()` returning 1 passed all nine checks. A change to what a redemption costs someone's
+       balance is a money change in everything but denomination, and this control's entire claim is that
+       no money output moved.
+       🔴 THE EXPECTATION CANNOT COME FROM THE GOLDEN — IT HAS NONE — AND MUST NOT COME FROM TODAY'S CODE.
+       Freezing a cost captured now would put P1's behaviour behind a pre-P1 provenance claim, which is
+       what this file exists to refuse. So the cost is computed INDEPENDENTLY here from the FROZEN
+       price_cents and the customer-currency constants, PINNED as literals: two implementations that must
+       agree, and a pinned rate so a change to the rate itself fails rather than moving both sides. */
+    const PINNED_PUNCH_COST = 8;          // x_pizza punch card_size — a full card buys one pizza
+    const PINNED_POINTS_RATE = 10 / 3;    // la_musa points per lempira → ~10% value back
+    assert.strictEqual(REDEMPTION_CONFIG.x_pizza.cost, PINNED_PUNCH_COST,
+      '🔴 THE PUNCH COST CHANGED — how many punches a free pizza costs a customer is currency; this must be a deliberate, reviewed change, not a passing test');
+    assert.strictEqual(REDEEM_POINTS_PER_LEMPIRA, PINNED_POINTS_RATE,
+      '🔴 THE POINTS RATE CHANGED — every la_musa redemption now costs a different number of points; deliberate or not, it cannot pass silently');
+
+    if (rid === 'x_pizza') {
+      assert.strictEqual(resolved.cost, PINNED_PUNCH_COST,
+        `🔴 x_pizza: a free pizza costs ${resolved.cost} punches, not ${PINNED_PUNCH_COST}`);
+      assert.strictEqual(resolved.canonical.cost, resolved.cost,
+        '🔴 x_pizza: the CANONICAL debit disagrees with the cost returned — the wallet is debited from canonical, so these differing means the customer is charged something the caller never saw');
+    } else {
+      let expectedTotal = 0;
+      resolved.freeItems.forEach((fi, i) => {
+        const frozenCents = reward.freeItems[i].price_cents;
+        const expectPts = Math.round((frozenCents / 100) * PINNED_POINTS_RATE);
+        assert.strictEqual(fi.cost_pts, expectPts,
+          `🔴 la_musa: freeItems[${i}].cost_pts is ${fi.cost_pts}; the pinned rate over the FROZEN price ${frozenCents} gives ${expectPts} — the points a customer pays moved`);
+        expectedTotal += expectPts * fi.qty;
+      });
+      assert.strictEqual(resolved.cost, expectedTotal,
+        `🔴 la_musa: the total debit is ${resolved.cost}, the per-item costs sum to ${expectedTotal}`);
+      assert.strictEqual(resolved.canonical.total_cost, resolved.cost,
+        '🔴 la_musa: the CANONICAL total_cost disagrees with the cost returned — the wallet is debited from canonical');
+      resolved.canonical.items.forEach((ci, i) => {
+        assert.strictEqual(ci.cost, resolved.freeItems[i].cost_pts,
+          `🔴 la_musa: canonical.items[${i}].cost (${ci.cost}) disagrees with freeItems[${i}].cost_pts (${resolved.freeItems[i].cost_pts})`);
+      });
+    }
+
+    /* 🔴 AND THE FINGERPRINT MUST COVER THE DEBIT, asserted by SENSITIVITY rather than by freezing a
+       hash — a frozen hash would be a value captured from today's code, and it would also break on any
+       harmless field addition. The fingerprint is the idempotency key for the wallet debit: if the cost
+       were outside it, two redemptions differing only in what they charge would collide and the second
+       would be treated as a replay of the first. */
+    const fpBase = redemptionFingerprint(resolved.canonical);
+    assert.ok(fpBase, 'premise — the canonical fingerprints');
+    const costlier = rid === 'x_pizza'
+      ? { ...resolved.canonical, cost: resolved.canonical.cost + 1 }
+      : { ...resolved.canonical, total_cost: resolved.canonical.total_cost + 1 };
+    assert.notStrictEqual(redemptionFingerprint(costlier), fpBase,
+      '🔴 THE DEBIT IS OUTSIDE THE FINGERPRINT — two redemptions charging different amounts share an idempotency key, so the second reads as a replay of the first and the customer is charged once for two');
+
+    ok(`${rid}: the reward is RESOLVED by computeRedemption from a frozen request — selection, reward pricing, the POINTS/PUNCH COST against pinned constants, the canonical debit, and the downstream net/redemption all match pre-P1`);
   }
 }
+
+/* ═══ 🔴 WHAT THIS CONTROL DOES NOT COVER — the coverage note, and it is referenced elsewhere ═════════
+ * test/d4p1-capture-money-control.js points at "the coverage note in the unit control". It did not exist
+ * when that pointer was written, and a pointer to a note nobody wrote is worse than no pointer: it tells
+ * a reader the gap was documented and sends them looking. This is the note.
+ *
+ * COVERED HERE: the charged total, both 1C nets, redemption pricing, x_pizza's fiscal lines, and the
+ * sensitivity that proves the golden is not a constant — each against a pre-P1 capture; independence from
+ * the CLIENT's claimed prices; reward SELECTION and reward pricing through the real `computeRedemption`;
+ * and the POINTS/PUNCH cost against pinned customer-currency constants plus the canonical debit and the
+ * fingerprint that covers it.
+ *
+ * NOT COVERED, each with its reason:
+ *
+ * 1. 🔴 `computeRedemption` IS CALLED WITHOUT `tables` OR `eligible`, so it resolves through FALLBACK
+ *    pricing and FALLBACK eligibility — not the production injection. Production passes both
+ *    (resolvePricingTables' tagged tables, and the catalog-authored eligible set), so what this control
+ *    exercises is the same arithmetic over a different source of truth for prices and for what may be
+ *    redeemed. RECORDED RATHER THAN FIXED, deliberately: constructing production's injected tables here
+ *    is closer to rebuilding the caller than to extending an assertion, and the fallback path shares the
+ *    cost rules that the assertions above pin. The risk it leaves is a divergence between the fallback
+ *    and injected tables, which `catalog/no-code-authority.guard.test.js` and the pricing-cutover suites
+ *    are the ones that speak to.
+ * 2. THE REWARD PATH BEYOND `computeRedemption` — `resolveRedemptionForOrder`, `prepareRedemption`, the
+ *    reserve/debit against a real balance, and the stored `rebaja`/factura fields on the order. Those
+ *    need a database and an authenticated customer; the emulator control drives createOrder but sends no
+ *    `redeem` at all.
+ * 3. THE CARD AND HOSTED ORDER PATHS. The emulator control posts a cash pickup order only.
+ * 4. DELIVERY FEES AND ANY NON-ZERO `delivery_cents`. Every frozen net has `delivery_cents: 0`, so the
+ *    delivery component of the net is pinned at zero and nothing here would notice it moving.
+ *
+ * 🔴 ITEMS 2 AND 3 ARE WHY "no money moved" IS NARROWER THAN IT SOUNDS. Read the claim as: no money
+ * output of the PRICING functions moved, for a cash pickup order, with the reward resolved but not
+ * reserved. That is a real and useful claim; it is not the whole money surface. */
 
 FINISHED = true;
 console.log(`\nd4p1-money-noop: ${n} checks passed`);

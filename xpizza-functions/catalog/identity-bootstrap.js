@@ -262,17 +262,20 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
      else. The in-transaction revalidation below is UNCHANGED and still authoritative: everything here
      can move between this read and the write, which is why it is re-checked there rather than trusted
      from here. This is about what the rehearsal PREDICTS, not about what guarantees the write. */
-  /* 🔴 NO MUTANT GUARDS THIS LINE ALONE, AND THE REASON IS WORTH READING BEFORE ADDING ONE BACK. The
-     same condition is enforced TWICE — here, before any write, and again inside the transaction (:389,
-     which re-reads the record). So mutating either guard on its own leaves the other refusing, the suite
-     still passes, and the mutant SURVIVES — which is a fact about the redundancy, not about the property
-     being unguarded. d4p1b-12 and d4p1b-27 were exactly those two mutants; they were KILLED until I added
-     this preflight (acbb6fa) and began surviving the moment it shadowed the in-tx check. Removing them
-     rather than leaving must-survive entries that rot the sweep.
-     🔴 VERIFIED, NOT ASSUMED: with BOTH guards removed, d4p1-bootstrap's pending/abandoned cell fails
-     ("bootstrap upgraded an existing pending record to activated"). The property is cell-guarded; only
-     the single-line mutants cannot die. If the redundancy is ever removed, restore a mutant on whichever
-     guard survives. */
+  /* 🔴 THE SAME CONDITION IS ENFORCED TWICE, AND EACH HALF NOW HAS A CASE ONLY IT CAN CATCH — which is
+     what makes both individually armed rather than mutually shadowing.
+     · THIS PREFLIGHT is the only guard that can act on a DRY RUN, because a dry run returns before the
+       transaction. Armed by e15-08 via the bootstrap CLI's dry-run cell.
+     · THE IN-TX RE-READ (:below) is the only guard that can act when the record turns `pending` AFTER
+       this read — it reads outside the transaction, so it cannot see that. Armed by the interleaving cell
+       in d4p1-bootstrap, which stages exactly that window with the `racing` wrapper.
+     🔴 HOW THIS WAS GOT WRONG FIRST, because the correction is the useful part. Adding this preflight
+     (acbb6fa) shadowed the in-tx check, two mutants that had been KILLED began surviving, and I did not
+     notice because I swept only the slices I was working in. I then removed both mutants and recorded a
+     premise here instead — defensible, and weaker than the answer the gate gave: a combined-removal
+     mutant plus an INTERLEAVING TEST preserves stronger evidence than a comment. The interleaving test
+     exists now and the in-tx mutant is restored (d4p1b-30).
+     Measured either way: with BOTH guards removed, the pending/abandoned cell fails. */
   const activationPre = active.record.identity_activation;
   if (activationPre !== undefined && activationPre !== null && activationPre.status !== 'activated') {
     throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(activationPre.status)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);
@@ -398,8 +401,8 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
       const st = existingActivation.status;
       /* AND THE IN-TX HALF IS NOT MERELY REDUNDANT: the preflight reads the record OUTSIDE the
          transaction, so this re-check is what closes the window between that read and this write — a
-         record that turns `pending` in between is caught only here. That is why the duplication stays;
-         see the note at the preflight for why neither line carries a mutant. */
+         record that turns `pending` in between is caught ONLY here. Armed by the interleaving cell in
+         d4p1-bootstrap (mutant d4p1b-30), which stages that window rather than asserting it exists. */
       if (st !== 'activated') {
         throw new Error(`identity_bootstrap_activation_present: ${rid}/${active.versionId} carries a ${JSON.stringify(st)} activation record; bootstrap never upgrades a pending, abandoned or unrecognised one`);
       }

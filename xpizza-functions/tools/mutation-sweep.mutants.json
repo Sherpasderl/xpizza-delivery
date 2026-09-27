@@ -6806,6 +6806,21 @@
     ]
   },
   {
+    "id": "d4p1b-30",
+    "slice": "d4p1b",
+    "file": "catalog/identity-bootstrap.js",
+    "from": "      if (st !== 'activated') {",
+    "to": "      if (false) {",
+    "label": "🔴 THE IN-TRANSACTION ACTIVATION RE-READ IS DROPPED — a `pending` record that appears AFTER the preflight is stamped, so bootstrap manufactures activation authority for a candidate that never committed. Killable again only because an interleaving cell now stages the window the preflight cannot see.",
+    "kills_with": "WAS STAMPED ANYWAY",
+    "why": "restored after being removed as unkillable. Both halves of this condition are now individually armed: the PREFLIGHT by e15-08 (the dry run must refuse, and a dry run returns before the transaction, so only the preflight can act there), and this in-tx re-read by the interleaving cell in d4p1-bootstrap. Neither is redundant once each has a case only it can catch.",
+    "command": [
+      "npm",
+      "run",
+      "test:d4p1-bootstrap"
+    ]
+  },
+  {
     "id": "d4p1d-03",
     "slice": "d4p1d",
     "file": "catalog/catalog-publish.js",
