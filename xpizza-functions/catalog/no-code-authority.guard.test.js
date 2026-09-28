@@ -258,7 +258,6 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
        they are reached. Only the dashboard one has no manifest that could reach it.
        🔴 SEPARATE ITEM FOR WHOEVER OWNS THE DASHBOARD, as with dispatch: this file runs in no automated
        gate. That is a coverage gap in main surfaced by the merge, and it is not ours to close. */
-    'xpizza-dashboard/get-driver-for-order.test.js',
     'xpizza-driver/cash-helpers.test.js',
     'xpizza-driver/order-helpers.test.js',
     'xpizza-driver/stacking-helpers.test.js',
