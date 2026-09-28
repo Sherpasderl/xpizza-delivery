@@ -132,7 +132,9 @@ const {
 } = require('./driver-ingest');
 const { activeDropOrderId, shouldMirror } = require('./tracking-mirror');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
-const { REALTIME_TERMINAL_STATUSES, tasksToDelete, entersTerminalEdge, confirmTaskDelete } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention
+const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention (tasksToDelete/confirmTaskDelete now used by retention-sweep.js)
+const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');   // shared driver-name cascade + durable delivered_by_* attribution at the terminal edge (real-time trigger)
+const { runRetentionSweep } = require('./retention-sweep');   // extracted retentionSweepTasks execute body (delete + attribution backstop) — testable
 const { claimDelivery, healStrandedOrder, releaseDeliveryFromDriver } = require('./claim-delivery');
 const { countKitchenLoadAhead, countDriverSupply, buildLifecycleEvent, timelineStampKey } = require('./order-lifecycle');
 const { computeFreshnessAlerts } = require('./driver-freshness');   // Driver Tracking C1: freshness-alarm reconcile core
@@ -3961,8 +3963,13 @@ exports.deleteTasksOnOrderTerminal = onValueWritten(
     if (!entersTerminalEdge(before, after, REALTIME_TERMINAL_STATUSES)) return;
     const orderId = event.params.orderId;
     const db = getDatabase();
-    // Idempotent multi-path null-update (both legs); safe to retry. No try/catch — a transient error throws → retry.
-    await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });
+    // Capture a durable driver→order attribution (CAS, first-writer-wins) and delete both task legs. These are two
+    // SEPARATE writes (the attribution CAS can't live in a multi-path update); the delete is unconditional and
+    // load-bearing — the whole attribution step is wrapped so ANY failure skips attribution but STILL deletes.
+    // This trigger is the only deleter on the delivered/completed edge, but the attribution is the task's driver AT
+    // HANDLER-READ TIME, not an atomic snapshot of the terminal instant (see driver-attribution.js header — a
+    // dispatch reassignment racing this async handler can mis-attribute; rare, non-money). Idempotent + retry-safe.
+    await captureDeliveryAttributionAndDelete(db, orderId);
   }
 );
 
@@ -3976,34 +3983,16 @@ exports.deleteTasksOnOrderTerminal = onValueWritten(
 exports.retentionSweepTasks = onSchedule(
   { schedule: 'every 6 hours', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
   async () => {
+    // Thin wrapper: the execute body (delete + per-candidate attribution backstop, both fresh-re-read + isolated)
+    // lives in retention-sweep.js so it is executably testable. HEAL_TERMINAL_STATUSES (ALL terminal incl.
+    // cancelled) is injected for the DELETE; the attribution backstop itself is delivered/completed-only.
     const db = getDatabase();
-    // Read /tasks BEFORE /orders (sequential, NOT Promise.all) as defense-in-depth: a task is written
-    // atomically WITH its order, so any task in this snapshot has its order committed before this read → the
-    // LATER /orders read includes it. (The per-candidate fresh re-read below is the primary, obviously-correct
-    // guard.) A complete /orders read is still required so a live order is never misread as an orphan.
-    const tasks = (await db.ref('tasks').once('value')).val() || {};
-    const orders = (await db.ref('orders').once('value')).val() || {};
-    const mode = (await db.ref('config/retention/tasks_mode').once('value')).val();
-    const toDelete = tasksToDelete(orders, tasks, HEAL_TERMINAL_STATUSES);   // batch CANDIDATES
-    if (mode !== 'execute') {
-      console.log(`retentionSweepTasks: DRY-RUN — would delete ${toDelete.length}/${Object.keys(tasks).length} tasks. sample=${JSON.stringify(toDelete.slice(0, 10))}. Set config/retention/tasks_mode='execute' to delete.`);
-      return;
+    const r = await runRetentionSweep(db, { healTerminalStatuses: HEAL_TERMINAL_STATUSES });
+    if (r.mode === 'dry_run') {
+      console.log(`retentionSweepTasks: DRY-RUN — would delete ${r.candidates.length}/${r.total} tasks. sample=${JSON.stringify(r.candidates.slice(0, 10))}. Set config/retention/tasks_mode='execute' to delete.`);
+    } else {
+      console.log(`retentionSweepTasks: execute — deleted ${r.confirmed}, skipped ${r.skipped} (raced-live) of ${r.candidates.length} candidates (${r.total} tasks)`);
     }
-    if (!toDelete.length) { console.log('retentionSweepTasks: execute — nothing to delete'); return; }
-    // REVISE (codex cross-snapshot orphan race): the batch /orders+/tasks reads are NOT a consistent snapshot.
-    // Before deleting each candidate, re-read its order FRESH and delete ONLY if still a target (absent → orphan;
-    // terminal → done); a fresh non-terminal order = a live/just-created order raced by the batch → SKIP. Never
-    // delete a live order's task (the impossible regression). N small single-key reads (candidate count).
-    const updates = {};
-    let confirmed = 0, skipped = 0;
-    for (const taskId of toDelete) {
-      const orderId = (tasks[taskId] && tasks[taskId].order_id) || String(taskId).replace(/_(pickup|delivery)$/, '');
-      const fresh = (await db.ref(`orders/${orderId}`).once('value')).val();
-      if (confirmTaskDelete(fresh, HEAL_TERMINAL_STATUSES)) { updates[`tasks/${taskId}`] = null; confirmed++; }
-      else skipped++;   // fresh live/just-created order (cross-snapshot race) → keep its task
-    }
-    if (confirmed) await db.ref().update(updates);   // batched multi-path null-update of the CONFIRMED deletes
-    console.log(`retentionSweepTasks: execute — deleted ${confirmed}, skipped ${skipped} (raced-live) of ${toDelete.length} candidates (${Object.keys(tasks).length} tasks)`);
   }
 );
 
@@ -4202,45 +4191,17 @@ exports.sendOrderStatusNotifications = onValueWritten(
       let body = null;
 
       if (after === 'out_for_delivery') {
-        // Look up driver name for the message. Read the delivery task to get
-        // assigned_driver_id, then read the driver's display_name (preferred)
-        // or fall back to a hardcoded mapping for known drivers.
-        //
-        // Why a hardcoded map: the `name` field in /drivers is a username
-        // like "hermeztalavera" (no clean way to split first/last). For
-        // customer-facing messages we want a friendly first name. The map
-        // below is the source of truth; new drivers should be added here.
-        const DRIVER_DISPLAY_NAMES = {
-          'HUQ4nOdvNvQcbxoqyYinp8wAC7f2': 'Xavier',
-          'xaHcwaRND1V63w8tpXi5VZ7n9P72': 'Hermez'
-        };
-
+        // Look up the driver's friendly name for the message via the shared resolveDriverName cascade
+        // (hardcoded map → drivers/<id>/display_name → drivers/<id>/name capitalized → null). Read the delivery
+        // task first to get assigned_driver_id, then resolve. Behavior-identical to the old inline cascade;
+        // the SAME helper now also stamps delivered_by_name at the terminal edge (driver-attribution.js).
         let driverName = null;
         try {
           const deliveryTaskId = order.delivery_task_id || `${orderId}_delivery`;
           const deliverySnap = await db.ref(`tasks/${deliveryTaskId}`).once('value');
           const delivery = deliverySnap.val();
           const driverId = delivery && delivery.assigned_driver_id;
-          if (driverId) {
-            // Priority 1: hardcoded map (canonical first names)
-            if (DRIVER_DISPLAY_NAMES[driverId]) {
-              driverName = DRIVER_DISPLAY_NAMES[driverId];
-            } else {
-              // Priority 2: display_name field on driver record (if dispatcher set it)
-              const dnSnap = await db.ref(`drivers/${driverId}/display_name`).once('value');
-              const dn = dnSnap.val();
-              if (dn && typeof dn === 'string') {
-                driverName = dn;
-              } else {
-                // Fallback: use the raw name field, capitalized
-                const nameSnap = await db.ref(`drivers/${driverId}/name`).once('value');
-                const raw = nameSnap.val();
-                if (raw && typeof raw === 'string') {
-                  driverName = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-                }
-              }
-            }
-          }
+          driverName = await resolveDriverName(db, driverId);
         } catch (e) {
           console.warn(`sendOrderStatusNotifications: couldn't read driver name`, e.message);
         }

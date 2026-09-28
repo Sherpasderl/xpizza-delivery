@@ -108,21 +108,31 @@ ok('IMPOSSIBLE-REGRESSION: no live status is an entering-terminal edge → a liv
   // Part A — trigger uses the RACE-SAFE set via entersTerminalEdge, on the /status leaf, retry, nulls BOTH legs
   has(/exports\.deleteTasksOnOrderTerminal = onValueWritten\(/, 'Part A: deleteTasksOnOrderTerminal trigger present');
   has(/entersTerminalEdge\(before, after, REALTIME_TERMINAL_STATUSES\)/, 'Part A: uses entersTerminalEdge + REALTIME set (cancelled excluded)');
-  has(/\[`tasks\/\$\{orderId\}_pickup`\]: null, \[`tasks\/\$\{orderId\}_delivery`\]: null/, 'Part A: nulls both task legs (idempotent)');
+  // The delete (+ durable driver-attribution) moved into driver-attribution.js:captureDeliveryAttributionAndDelete,
+  // which the trigger delegates to. The load-bearing null-BOTH-legs literal now lives THERE (executably guarded,
+  // red-when-reverted, in driver-attribution.test.js). Assert the trigger still delegates + the literal at its home.
+  has(/await captureDeliveryAttributionAndDelete\(db, orderId\)/, 'Part A: trigger delegates the delete to captureDeliveryAttributionAndDelete');
+  const DA = fs.readFileSync(require.resolve('./driver-attribution.js'), 'utf8');
+  // The DELETE is UNCONDITIONAL (both legs) and SEPARATE from attribution (attribution is a CAS that cannot live in
+  // a multi-path update). Executably guarded red-when-reverted in driver-attribution.test.js.
+  assert.ok(/await db\.ref\(\)\.update\(\{ \[`tasks\/\$\{orderId\}_pickup`\]: null, \[`tasks\/\$\{orderId\}_delivery`\]: null \}\)/.test(DA), 'Part A: real-time delete nulls BOTH task legs UNCONDITIONALLY');
+  assert.ok(/delivered_by_uid`\)\.transaction\(\(cur\) => \(cur === null \? driverId : undefined\)\)/.test(DA), 'Part A: attribution is a COMMIT-TIME CAS on delivered_by_uid (first-writer-wins, no clobber)');
   has(/exports\.deleteTasksOnOrderTerminal[\s\S]*?ref: '\/orders\/\{orderId\}\/status'[\s\S]*?retry: true/, 'Part A: /status leaf + retry:true');
-  // retention sweep — dry-run gated, HEAL set (incl cancelled), reads FULL orders+tasks
-  has(/exports\.retentionSweepTasks = onSchedule\(/, 'backstop: retentionSweepTasks present');
-  has(/config\/retention\/tasks_mode/, 'backstop: gated on config/retention/tasks_mode');
-  has(/if \(mode !== 'execute'\)/, 'backstop: DRY-RUN unless mode==="execute"');
-  has(/tasksToDelete\(orders, tasks, HEAL_TERMINAL_STATUSES\)/, 'backstop: uses tasksToDelete + HEAL set (incl cancelled)');
-  // REVISE — execute path re-reads each candidate's order FRESH and gates on confirmTaskDelete (no cross-snapshot orphan delete)
-  has(/const fresh = \(await db\.ref\(`orders\/\$\{orderId\}`\)\.once\('value'\)\)\.val\(\);/, 'REVISE: fresh per-candidate order re-read before delete');
-  has(/if \(confirmTaskDelete\(fresh, HEAL_TERMINAL_STATUSES\)\)/, 'REVISE: delete gated on confirmTaskDelete (fresh), not the batch');
-  // scope to the retentionSweepTasks body: its batch reads must be sequential (tasks then orders), NOT Promise.all
-  const rsA = SRC.indexOf('exports.retentionSweepTasks'); const rsB = SRC.indexOf('exports.', rsA + 20);
-  const rsBody = SRC.slice(rsA, rsB === -1 ? undefined : rsB);
-  assert.ok(!/Promise\.all\(/.test(rsBody), 'REVISE: retentionSweepTasks batch reads are sequential, no Promise.all() call');
-  assert.ok(rsBody.indexOf("db.ref('tasks').once") < rsBody.indexOf("db.ref('orders').once"), 'REVISE: reads /tasks BEFORE /orders (defense-in-depth)');
+  // Retention sweep — the execute body is EXTRACTED to retention-sweep.js (executably tested in retention-sweep.test.js);
+  // index.js's trigger is a thin wrapper.
+  has(/exports\.retentionSweepTasks = onSchedule\(/, 'sweep: retentionSweepTasks present');
+  has(/await runRetentionSweep\(db, \{ healTerminalStatuses: HEAL_TERMINAL_STATUSES \}\)/, 'sweep: trigger delegates to runRetentionSweep (HEAL set injected)');
+  const RS = fs.readFileSync(require.resolve('./retention-sweep.js'), 'utf8');
+  assert.ok(/mode !== 'execute'/.test(RS), 'sweep: DRY-RUN unless mode==="execute"');
+  assert.ok(/tasksToDelete\(orders, tasks, healTerminalStatuses\)/.test(RS), 'sweep: tasksToDelete + injected HEAL set (incl cancelled)');
+  assert.ok(/const fresh = \(await db\.ref\(`orders\/\$\{orderId\}`\)\.once\('value'\)\)\.val\(\);/.test(RS), 'sweep: fresh per-candidate order re-read');
+  assert.ok(/if \(!confirmTaskDelete\(fresh, healTerminalStatuses\)\)/.test(RS), 'sweep: delete gated on confirmTaskDelete(fresh), not the batch');
+  // Attribution backstop (in retention-sweep.js): 2nd deleter captures before nuking the driver's only home.
+  assert.ok(/if \(shouldBackstopAttribution\(fresh, taskId\)\)/.test(RS), 'backstop: gated on shouldBackstopAttribution (delivered/completed, unstamped, _delivery)');
+  assert.ok(/const freshTask = \(await db\.ref\(`tasks\/\$\{taskId\}`\)\.once\('value'\)\)\.val\(\);/.test(RS), 'backstop: FRESH per-candidate task read (not the stale batch snapshot)');
+  assert.ok(/try \{[\s\S]*?await writeDeliveryAttribution\(db, orderId, freshTask && freshTask\.assigned_driver_id\)[\s\S]*?\} catch \(e\)/.test(RS), 'backstop: CAS via writeDeliveryAttribution, wrapped in try/catch so a read/CAS failure NEVER aborts the batch delete');
+  assert.ok(!/Promise\.all\(/.test(RS), 'sweep: batch reads are sequential, no Promise.all()');
+  assert.ok(RS.indexOf("db.ref('tasks').once") < RS.indexOf("db.ref('orders').once"), 'sweep: reads /tasks BEFORE /orders (defense-in-depth)');
   // Part C — sweepStuckOrders 2→5 min; sweepPendingOrders UNCHANGED (heal pass wants 1-min frequency)
   has(/exports\.sweepStuckOrders = onSchedule\(\s*[\s\S]*?schedule: 'every 5 minutes'/, 'Part C: sweepStuckOrders → every 5 minutes');
   assert.ok(!/exports\.sweepStuckOrders[\s\S]{0,200}every 2 minutes/.test(SRC), 'Part C: no lingering 2-min on sweepStuckOrders');

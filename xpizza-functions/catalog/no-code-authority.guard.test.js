@@ -247,6 +247,18 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
     'xpizza-dispatch/dispatch-recon-close-fulfilled.test.js',
     'xpizza-dispatch/dispatch-recon-note.test.js',
     'xpizza-dispatch/dispatch-theme.test.js',
+    /* 🔴 ARRIVED FROM main AT b55513e, in the second merge — the dashboard read half of the durable
+       driver→order attribution work. `xpizza-dashboard/` has NO package.json, exactly like xpizza-dispatch,
+       so no npm script in any manifest can reach it.
+       And like the nine dispatch tests above it, the mutation corpus has ZERO references to this file
+       (checked, not assumed), so the accurate word is UNCOVERED rather than merely "no npm script" — the
+       distinction the note at the head of this list insists on, falling the same way again.
+       Main's three NEW xpizza-functions tests from the same commits (driver-attribution, retention-sweep,
+       attribution-refire) are NOT here: they are in main's own `test` chain and came through the union, so
+       they are reached. Only the dashboard one has no manifest that could reach it.
+       🔴 SEPARATE ITEM FOR WHOEVER OWNS THE DASHBOARD, as with dispatch: this file runs in no automated
+       gate. That is a coverage gap in main surfaced by the merge, and it is not ours to close. */
+    'xpizza-dashboard/get-driver-for-order.test.js',
     'xpizza-driver/cash-helpers.test.js',
     'xpizza-driver/order-helpers.test.js',
     'xpizza-driver/stacking-helpers.test.js',

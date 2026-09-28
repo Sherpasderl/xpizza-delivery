@@ -812,14 +812,16 @@ function getCleanOrders() {
   return Object.values(allOrders).filter(o => o && !isTestOrder(o));
 }
 
-// Look up the driver who delivered an order. Driver assignment lives on the
-// delivery TASK (assigned_driver_id), not on the order itself — so we
-// dereference via order.delivery_task_id. Returns null if the task is missing
-// or has no driver (e.g. cancelled before assignment).
+// Look up the driver who delivered an order. Prefer the DURABLE attribution stamped on the order at the
+// terminal edge (orders/<id>/delivered_by_uid — survives task pruning; see functions/driver-attribution.js).
+// A completed order's delivery TASK is deleted, so the task read below returns null for it → everything used to
+// attribute "unknown". The durable field fixes that; the task's assigned_driver_id is the live/in-flight fallback
+// for orders that are out_for_delivery but not yet closed (no delivered_by_uid stamped yet).
 function getDriverIdForOrder(o) {
-  if (!o || !o.delivery_task_id) return null;
-  const t = allTasks[o.delivery_task_id];
-  return t?.assigned_driver_id || null;
+  if (!o) return null;
+  if (o.delivered_by_uid) return o.delivered_by_uid;                 // durable (post-capture, survives task delete)
+  if (!o.delivery_task_id) return null;
+  return allTasks[o.delivery_task_id]?.assigned_driver_id || null;   // live/in-flight fallback (task still present)
 }
 
 function startSubscriptions() {
@@ -1376,8 +1378,10 @@ function renderLeaderboard(periodOrders) {
     // which always fell through to 'unknown' (orders never have those fields).
     // getDriverIdForOrder() looks up tasks/{order.delivery_task_id}.assigned_driver_id.
     const driverId = getDriverIdForOrder(o) || 'unknown';
-    if (!byDriver[driverId]) byDriver[driverId] = { driverId, count: 0, deliveryDurations: [] };
+    if (!byDriver[driverId]) byDriver[driverId] = { driverId, count: 0, deliveryDurations: [], snapshotName: null };
     byDriver[driverId].count++;
+    // Keep a durable name snapshot for the row (survives driver rename/delete; first non-empty wins).
+    if (!byDriver[driverId].snapshotName && o.delivered_by_name) byDriver[driverId].snapshotName = o.delivered_by_name;
     // Apply the plausibility floor here too — a 4-second delivery would
     // pull a driver's avg way down.
     if (isPlausibleDelivery(o)) {
@@ -1388,7 +1392,7 @@ function renderLeaderboard(periodOrders) {
   const totalCount = delivered.length;
   const rows = Object.values(byDriver).map(d => ({
     driverId: d.driverId,
-    name: allDrivers[d.driverId]?.name || (d.driverId === 'unknown' ? 'Sin asignar' : d.driverId.slice(0, 8)),
+    name: d.snapshotName || allDrivers[d.driverId]?.name || (d.driverId === 'unknown' ? 'Sin asignar' : d.driverId.slice(0, 8)),
     dotClass: allDrivers[d.driverId] ? driverDotClass(allDrivers[d.driverId]) : 'gray',
     count: d.count,
     sharePct: Math.round((d.count / totalCount) * 100),
@@ -1596,10 +1600,11 @@ function openOrderDetail(orderId) {
   const closeMs = o.delivered_at || o.cancelled_at || 0;
   const closeLabel = o.status === 'cancelled' ? 'Cancelado' : (o.status === 'delivered' ? 'Entregado' : (o.status === 'completed' ? 'Recogido' : null));
 
-  // Driver (delivery only) lives on the _delivery task.
-  const dtask = allTasks[`${o.order_id}_delivery`];
-  const driverName = (dtask && dtask.assigned_driver_id)
-    ? (allDrivers[dtask.assigned_driver_id]?.name || dtask.assigned_driver_id) : null;
+  // Driver (delivery only): the durable delivered_by_name snapshot wins (survives task pruning + driver rename/
+  // delete); else resolve the uid via getDriverIdForOrder (durable → live task, SAME as the leaderboard) and show
+  // the driver record's name, falling back to a short uid — consistent with the leaderboard row's fallback.
+  const driverUid = getDriverIdForOrder(o);
+  const driverName = o.delivered_by_name || (driverUid ? (allDrivers[driverUid]?.name || driverUid.slice(0, 8)) : null);
 
   const groups = [];
 
