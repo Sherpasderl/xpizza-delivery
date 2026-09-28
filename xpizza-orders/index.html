@@ -2014,6 +2014,11 @@ function liveMenuPrepare(body){
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
     // 1D D2 — un-stripped, both collections: the served ids reach MENU/EXTRAS and ride into the cart.
+    // identity_id CONTRACT (post-D4-P1a): the served dish/extra records may carry an ADDITIVE `identity_id`
+    // (the stable identity key; today == the display `id`). This form ACCEPTS-AND-IGNORES it — it NEVER keys
+    // pricing, cart, quote, redemption or factura off identity_id (those key off `id`/name); it merely rides
+    // along on the MENU/EXTRAS record, unread. Do NOT read it here without updating the contract:
+    // docs/contracts/public-menu-identity_id.md.
     MENU: dishes,
     EXTRAS: extras,
     // Absent structure keeps what is already in force rather than becoming empty: an omitted
