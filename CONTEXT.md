@@ -184,3 +184,50 @@ WebView JavaScript: a native HTTP uploader → the `ingestDriverLocation` Cloud 
 a write to `/drivers/{uid}`. Replaces the PWA's direct client RTDB write, which freezes
 when the app is backgrounded. The ingest function is also where the geofence state machine
 runs server-side for [[Native driver app]] drivers.
+
+**Catalog version**:
+One immutable, published snapshot of a [[Restaurant]]'s Catalog: its dishes and extras as
+they were at publish. A Restaurant has many; exactly one is live at a time, the one the
+[[Active pointer]] names.
+_Avoid_: menu version, release.
+
+**Active pointer**:
+The single per-Restaurant record naming which [[Catalog version]] is live. Moving it is what
+makes a publish (or a rollback) take effect for customers.
+
+**Publish**:
+Making a Restaurant's edited draft of its Catalog live: a new [[Catalog version]] is written
+and the [[Active pointer]] moves to it. Always per-Restaurant; it never touches another
+Restaurant's Catalog.
+_Note_: the one publishing is the Restaurant (its staff), not the Merchant.
+
+**Canonical id**:
+The permanent identity of one dish or one extra within a Restaurant, minted by the platform
+once and never reused. It survives edits to price and other details. Surviving a RENAME is
+what identity-preserving publishing is for, and holds only where renames are enabled.
+_Avoid_: dish id when you mean the name-derived legacy key; sku; item key.
+
+**Identity registry**:
+The per-Restaurant record of every [[Canonical id]] ever minted, whether each is live or
+retired, and which legacy key currently claims it.
+
+**Certified version**:
+A [[Catalog version]] whose every dish and extra carries its [[Canonical id]].
+_Note_: the accounting obligation attaches to the ACTIVE certified version — while it is
+live, every later publish must account for each id it carries: kept, or explicitly declared
+deleted, never silently dropped. It is a property of a version, not of a Restaurant, because
+the [[Active pointer]] can be rolled back to an uncertified version.
+
+**Identity cutover**:
+The one-time, per-Restaurant operation that certifies an already-live, pre-identity
+[[Catalog version]] in place, making it a [[Certified version]] without republishing it.
+
+**Orphan (identity)**:
+A live [[Canonical id]] that the active version neither serves nor carries: residue of a
+rename made before canonical ids existed. It constrains nothing until renames are enabled.
+
+**`identity_id` (public menu)**:
+The additive field through which a [[Canonical id]] appears on the public menu for a
+[[Certified version]]. Its contract — what consumers may rely on, and what they must not —
+is `docs/contracts/public-menu-identity_id.md`, which is also where its rollout state lives.
+_Avoid_: treating it as the display id, or as a pricing key; read that contract first.

@@ -41,6 +41,31 @@ const ALLOWED = {
 // tools/ is the seed + publish + verify CLIs: bootstrapping the store FROM code is their entire job,
 // and none of them runs in a request. Tests read the constants to compare against.
 const SKIP_DIRS = new Set(['node_modules', 'tools', '.git', 'public', 'coverage']);
+
+/* 🔴 SKIP_WALK AND THE REPO WALK ARE MODULE-SCOPE SO A CELL CAN DRIVE THE REAL ONE. They were closures
+   inside the census cell, which meant any cell proving "this directory is skipped" would have had to
+   RE-IMPLEMENT the walk — and a cell that re-implements what it checks proves only that the copy works.
+   Same reason the ports guard's refusal predicate was extracted.
+
+   '.claude' is skipped because `.claude/worktrees/<name>/` holds FULL CHECKOUTS of this repo. Without it the
+   census walks every test file of every worktree, attributes them here, and reports them as unreachable —
+   the count balloons and the real finding (a test nothing runs) drowns in copies of itself. A worktree's
+   tests are covered where its branch is checked out, not from here. */
+const SKIP_WALK = new Set(['node_modules', '.git', 'coverage', 'public', '.firebase', '.claude']);
+
+function walkTestFiles(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const name of readdirSync(d)) {
+      if (SKIP_WALK.has(name)) continue;
+      const full = join(d, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.test\.(js|mjs)$/.test(name)) out.push(full);
+    }
+  };
+  walk(dir);
+  return out;
+}
 const isTest = (f) => f.endsWith('.test.js') || f.endsWith('.guard.test.js');
 
 function productionFiles(dir = ROOT, out = []) {
@@ -152,7 +177,6 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
      whole repo, and every package.json in it, both discovered from disk rather than declared, so a
      new app or directory cannot appear outside the check. */
   const REPO = join(ROOT, '..');
-  const SKIP_WALK = new Set(['node_modules', '.git', 'coverage', 'public', '.firebase']);
 
   const manifests = [];
   const collectManifests = (dir) => {
@@ -271,16 +295,7 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
     'xpizza-kitchen/scheduled-view.test.mjs',
     'xpizza-track/driver-eta.test.js',
   ];
-  const everyTest = [];
-  const walkTests = (dir) => {
-    for (const name of readdirSync(dir)) {
-      if (SKIP_WALK.has(name)) continue;
-      const full = join(dir, name);
-      if (statSync(full).isDirectory()) walkTests(full);
-      else if (/\.test\.(js|mjs)$/.test(name)) everyTest.push(full);
-    }
-  };
-  walkTests(REPO);
+  const everyTest = walkTestFiles(REPO);
 
   const missing = everyTest.filter((f) => !isReachable(f))
     .map((f) => relative(REPO, f))
@@ -296,6 +311,37 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
     console.log(`    🔴 ${KNOWN_UNWIRED.length} test files are reached by NO script in any manifest — recorded, not running:`);
     console.log(`       ${[...new Set(KNOWN_UNWIRED.map((r) => (r.includes('/') ? r.split('/')[0] : '(repo root)')))].join(', ')}`);
   }
+  /* ── .claude IS SKIPPED, PROVEN ON A FIXTURE TREE, WITH ITS NON-VACUITY PARTNER ──────────────
+     `.claude/worktrees/<name>/` holds full checkouts of this repo, so walking it would attribute every
+     worktree's test files here and report them all as unreachable — the real finding drowns in copies.
+     🔴 THIS DRIVES walkTestFiles ITSELF, not a re-implementation of it: that is why the walk is hoisted to
+     module scope. A cell that re-implemented the skip would prove its own copy skipped, which is the
+     mistake this codebase has paid for more than once.
+     🔴 AND THE PARTNER IS THE POINT. "The file was not walked" also holds if the walk finds NOTHING — a
+     broken fixture, a wrong path, a walk that throws. So the SAME walk over the SAME file under a normal
+     directory must FIND it. One cell without the other is decoration. */
+  {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('fs');
+    const { tmpdir } = require('os');
+    const fixture = mkdtempSync(join(tmpdir(), 'census-skip-'));
+    try {
+      const hidden = join(fixture, '.claude', 'worktrees', 'some-branch', 'xpizza-functions');
+      mkdirSync(hidden, { recursive: true });
+      writeFileSync(join(hidden, 'copied.test.js'), '// a worktree copy of a real suite\n');
+      const normal = join(fixture, 'xpizza-functions');
+      mkdirSync(normal, { recursive: true });
+      writeFileSync(join(normal, 'copied.test.js'), '// the same file, in a directory that is walked\n');
+
+      const found = walkTestFiles(fixture).map((f) => relative(fixture, f)).sort();
+      assert.deepStrictEqual(found, ['xpizza-functions/copied.test.js'],
+        `🔴 the walk did not behave as the census needs: a test file under .claude/worktrees/<name>/ must be SKIPPED and the same file outside it must be FOUND (got ${JSON.stringify(found)})`);
+      assert.ok(SKIP_WALK.has('.claude'), 'premise — .claude is in SKIP_WALK, which is what the fixture above demonstrates');
+      ok('a test file under .claude/worktrees/<name>/ is not walked, while the same file in a normal directory is — driven through walkTestFiles itself, so the skip is proven of the real walk rather than of a copy');
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  }
+
   ok(`all ${everyTest.length} test files across the repo are accounted for (walked from disk, ${manifests.length} manifests, globs expanded; ${KNOWN_UNWIRED.length} reached by nothing and recorded)`);
 }
 // ── THE RUNBOOK MUST STAY TRUE ─────────────────────────────────────────────────────────────────
