@@ -24,6 +24,17 @@
 // objects EXACTLY equal the served prices. Historical context for historical prices (a warm cache of A,
 // last_good A) attaches; this module never consults the active pointer.
 //
+// 🔴 LIVENESS, STATED EXACTLY (PLAN-D4a-ERRATA E4, owner-approved option A). The background reads here
+// are detached from the response, and on Cloud Functions a detached task gets NO CPU after its invocation
+// ends — it resumes during a later one. So these caches progress DURING invocations: under continuous
+// traffic within one TTL; after idle, within the first invocations once traffic resumes. NO wall-clock
+// liveness is claimed for them. (The RTDB context node is written by the trigger and the reconciler in
+// their OWN awaited invocations and keeps its bound: one interval + bounded execution when healthy.)
+// 🔴 SAFETY UNDER SUSPENSION — holds whenever CPU resumes: every freshness stamp is the read's INITIATION
+// time (conservative), never its completion; a completion whose now() − initiatedAt exceeds its deadline
+// is DISCARDED as a timeout by an EXPLICIT comparison, even if its timer has not fired (a suspended timer
+// fires late, so the timer alone cannot be trusted); nothing stale is reported fresh.
+//
 // Routes: live → built context; flat → `unavailable`; last_good → the in-memory built context for its
 // version; mirror / mirror_cold → the persisted node at catalog_snapshot_ctx/{rid}, REBUILT from its raw
 // payload and re-checked in the background loader, memoized in memory per exact node (plan step 7: no
@@ -38,6 +49,7 @@ const CONTEXT_RECORD_TTL_MS = 45000;      // == the pricing pointer TTL (catalog
 const CONTEXT_READ_DEADLINE_MS = 3000;    // each background context read
 const CONTEXT_MAX_VERSIONS = 32;          // bounded built-context LRU
 const DIAG_MS = 60000;                    // shadow diagnostics: at most one per (kind, rid, version) per minute
+const ATTACH_STATS_MS = 10 * 60 * 1000;   // context_attach_stats: at most one emission per instance per 10 min (E4)
 
 const vkey = (rid, versionId) => `${rid}::${versionId}`;
 const bkey = (rid, versionId, ck) => `${rid}::${versionId}::${ckString(ck)}`;
@@ -91,15 +103,23 @@ function createContextSource({
   const persisted = new Map();     // rid -> { node, at, key, ctx } — the RTDB node + its memoized rebuild (mirror routes)
   const persistFlights = new Map();
   const lastDiag = new Map();
-  const stats = { discoveryReads: 0, discoveryDiscarded: 0, builds: 0, evictions: 0, persistedReads: 0, mirrorRebuilds: 0 };
+  const stats = { discoveryReads: 0, discoveryDiscarded: 0, builds: 0, evictions: 0, persistedReads: 0, mirrorRebuilds: 0, lateDiscards: 0 };
+  // E4 observability: counts by availability|reason|route since the last emission. Diagnostic only.
+  let attachCounts = new Map();
+  let attachSince = now();
+  // A completion is admissible only if it landed within its deadline of its INITIATION (E4). Checked
+  // explicitly: under suspension a completion can arrive long after the deadline with its timer unfired.
+  const lateBy = (initiatedAt) => now() - initiatedAt > readDeadlineMs;
 
   // ── Discovery: the served version's record, on its own TTL ──────────────────────────────────────
-  function applyDiscovery(rid, versionId, ck) {
+  // `initiatedAt` is when the read that produced `ck` STARTED (E4): the freshness stamp never claims a
+  // moment later than the one the data is known to be from.
+  function applyDiscovery(rid, versionId, ck, initiatedAt) {
     const k = vkey(rid, versionId);
     const cur = discovered.get(k);
     if (cur && compareCK(ck, cur.ck) < 0) { stats.discoveryDiscarded += 1; return false; }   // older → discarded
-    if (cur && compareCK(ck, cur.ck) === 0) { cur.at = now(); return false; }                   // same → refresh time only
-    discovered.set(k, { ck, at: now() });
+    if (cur && compareCK(ck, cur.ck) === 0) { cur.at = Math.max(cur.at, initiatedAt); return false; }   // same → refresh, never backwards
+    discovered.set(k, { ck, at: initiatedAt });
     if (cur) {                                                                                  // advanced → evict older CK entries
       const prefix = `${k}::`;
       for (const key of [...built.keys()]) {
@@ -113,20 +133,21 @@ function createContextSource({
     const k = vkey(rid, versionId);
     if (discFlights.has(k)) return discFlights.get(k);
     stats.discoveryReads += 1;
-    let settled = false;
+    const initiatedAt = now();
     return singleFlight(discFlights, k, async () => {
       try {
         const read = db.collection('restaurants').doc(rid).collection('versions').doc(versionId).get();
         read.catch(() => {});
         const snap = await withDeadline(read, readDeadlineMs, 'context_record_read');
+        if (lateBy(initiatedAt)) { stats.lateDiscards += 1; return null; }   // a late completion is a timeout (E4)
         if (!snap.exists) return null;
         const ck = makeCK({ record: snap.data() || {}, updateTime: snap.updateTime });
-        if (ck && !settled) applyDiscovery(rid, versionId, ck);
+        if (ck) applyDiscovery(rid, versionId, ck, initiatedAt);
         return ck;
       } catch (e) {
         log('context_discovery_failed', { rid, versionId, error: String((e && e.message) || e).slice(0, 160) });
         return null;
-      } finally { settled = true; }
+      }
     });
   }
 
@@ -150,13 +171,14 @@ function createContextSource({
         }, { readOnly: true });
         read.catch(() => {});
         const r = await withDeadline(read, readDeadlineMs, 'context_payload_read');
+        if (lateBy(observedAt)) { stats.lateDiscards += 1; return null; }   // a late completion is a timeout (E4)
         if (!r) return null;
         const ck = makeCK({ record: r.record, updateTime: r.updateTime });
         if (!ck) return null;
         const ctx = buildCtx({ rid, versionId, record: r.record, items: r.items, extras: r.extras, structure: r.structure });
         const stored = deepFreeze({ ...ctx, ck, observedAt });      // deep-frozen BEFORE it is cached (F1)
         // The payload IS a record observation too: discovery advances (monotonically) from it.
-        applyDiscovery(rid, versionId, ck);
+        applyDiscovery(rid, versionId, ck, observedAt);
         const cur = discovered.get(k);
         if (cur && compareCK(cur.ck, ck) === 0) {
           built.set(bkey(rid, versionId, ck), stored);
@@ -180,13 +202,14 @@ function createContextSource({
   function loadPersisted(rid) {
     if (persistFlights.has(rid)) return persistFlights.get(rid);
     stats.persistedReads += 1;
+    const at = now();                                 // the INITIATION stamp (E4), never the completion
     return singleFlight(persistFlights, rid, async () => {
       try {
         const read = contextRefOf(rtdb, rid).get();
         read.catch(() => {});
         const snap = await withDeadline(read, readDeadlineMs, 'context_node_read');
+        if (lateBy(at)) { stats.lateDiscards += 1; return null; }          // a late completion is a timeout (E4)
         const node = snap && typeof snap.val === 'function' ? snap.val() : null;
-        const at = now();
         let key = null, ctx = null;
         if (node && node.head) {
           key = `${fkString(node.head.fk)}#${crypto.createHash('sha256').update(contentOf(node)).digest('hex')}`;
@@ -271,8 +294,26 @@ function createContextSource({
     });
   }
 
+  // E4 observability: count every projection; emit at most once per ATTACH_STATS_MS per instance. The
+  // emission is a single synchronous log line — no I/O, nothing reads it.
+  function countAttach(c) {
+    try {
+      const key = `${c.availability}|${c.reason || '-'}|${c.route || '-'}`;
+      attachCounts.set(key, (attachCounts.get(key) || 0) + 1);
+      const t = now();
+      if (t - attachSince >= ATTACH_STATS_MS) {
+        const counts = {};
+        for (const [k, v] of attachCounts) counts[k] = v;
+        log('context_attach_stats', { since: attachSince, until: t, counts });
+        attachCounts = new Map(); attachSince = t;
+      }
+    } catch (_) { /* diagnostics must never break anything */ }
+    return c;
+  }
+
   // resolve(served) — SYNCHRONOUS, NEVER THROWS. served = { rid, versionId, seq, source, prices }.
-  function resolve(served) {
+  function resolve(served) { return countAttach(resolveInner(served)); }
+  function resolveInner(served) {
     try {
       const { rid, versionId, source } = served || {};
       if (!rid) return unavailable('no_restaurant');

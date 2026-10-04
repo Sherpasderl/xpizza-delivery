@@ -555,7 +555,8 @@ const contextWriterRun = (rid, after) => app.writeCatalogContextOnMirror.run({ p
 
   {
     // Same generation, LOWER revision → superseded — staged with the REAL in-place bootstrap of la_musa, while a
-    // warm instance (revision 0) proves revision DISCOVERY within one CONTEXT_RECORD_TTL_MS, pricing caches untouched,
+    // warm instance (revision 0) proves revision DISCOVERY within one CONTEXT_RECORD_TTL_MS UNDER CONTINUOUS TRAFFIC (E4: no
+    // wall-clock liveness is claimed for request-side caches — see catalog/context-suspension.test.js), pricing caches untouched,
     // and a late revision-0 build result is discarded.
     let t = Date.now();
     let releaseBuild; const buildGate = new Promise((r) => { releaseBuild = r; });
@@ -582,7 +583,7 @@ const contextWriterRun = (rid, after) => app.writeCatalogContextOnMirror.run({ p
     g.open();
     assert.strictEqual(await outcomeOf(p1), 'superseded', 'same generation, lower revision → superseded');
     assert.strictEqual((await head('la_musa')).fk.revision, 1);
-    // DISCOVERY within one TTL: before the TTL the warm instance still holds revision 0's record observation…
+    // DISCOVERY within one TTL under continuous traffic (requests keep arriving): before the TTL the warm instance still holds revision 0's record observation…
     t += CONTEXT_RECORD_TTL_MS - 2;
     const pre = await st.resolver.getPricingTables('la_musa');
     assert.strictEqual(pre.menu, before.menu, 'the PRICING cache is untouched (the same immutable table object, a warm hit)');
@@ -608,7 +609,7 @@ const contextWriterRun = (rid, after) => app.writeCatalogContextOnMirror.run({ p
     assert.deepStrictEqual({ menu: p.menu, extras: p.extras }, tablesOf('la_musa'));
     assert.strictEqual(oc2.contentIntegrity.state, 'intact'); assert.strictEqual(oc2.registryEligibility.state, 'unknown'); assert.strictEqual(oc.usableAsIdentity, false);
   }
-  ok('in-place bootstrap of la_musa (no pointer change): a write captured at revision 0 → superseded; the warm instance discovers revision 1 within one CONTEXT_RECORD_TTL_MS, pricing cache untouched, the late revision-0 build discarded; then a registry outage → intact + unknown, prices unchanged');
+  ok('in-place bootstrap of la_musa (no pointer change): a write captured at revision 0 → superseded; the warm instance discovers revision 1 within one CONTEXT_RECORD_TTL_MS under continuous traffic, pricing cache untouched, the late revision-0 build discarded; then a registry outage → intact + unknown, prices unchanged');
 
   {
     // Equal FK + identical content → idempotent; equal FK + DIFFERENT content → refused (nothing overwritten).

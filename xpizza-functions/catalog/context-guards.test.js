@@ -72,7 +72,7 @@ try {
     await reader.getTables('r'); t = CONTEXT_RECORD_TTL_MS - 1; await reader.getTables('r');
     const within = probes; t = CONTEXT_RECORD_TTL_MS; await reader.getTables('r');
     assert.deepStrictEqual([within, probes], [1, 2], `the pricing pointer is re-read at exactly ${CONTEXT_RECORD_TTL_MS}ms — the same number as CONTEXT_RECORD_TTL_MS`);
-    ok(`CONTEXT_RECORD_TTL_MS (${CONTEXT_RECORD_TTL_MS}) equals the pricing pointer TTL, measured on the real reader ("within one TTL" is one number)`);
+    ok(`CONTEXT_RECORD_TTL_MS (${CONTEXT_RECORD_TTL_MS}) equals the pricing pointer TTL, measured on the real reader ("within one TTL", under continuous traffic per E4, is one number)`);
 
     // Bounds: writer deadline < trigger timeout; reconciler function timeout < its interval; trigger capped.
     const W = require('./context-writer');

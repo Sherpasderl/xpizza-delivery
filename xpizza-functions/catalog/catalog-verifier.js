@@ -132,6 +132,14 @@ function createCatalogVerifier({
           read.then(() => { stats.discardedLate += 1; }, () => {});
           return null;
         }
+        /* 🔴 THE EXPLICIT LATENESS CHECK (PLAN-D4a-ERRATA E4). On Cloud Functions a detached read gets no
+           CPU after its invocation ends; it can complete in a LATER invocation with its timer not yet run.
+           Such a completion is a timeout whatever the timer says, so it is discarded — never cached, never
+           the basis of a `confirmed`. observedAt stays the read's START either way. */
+        if (now() - startedAt > timeoutMs) {
+          settled = true; stats.timeouts += 1; stats.discardedLate += 1;
+          return null;
+        }
         const rows = {};
         snaps.forEach((s, i) => { rows[paths[i]] = s && s.exists ? (s.data() || {}) : null; });
         const obs = { rows, observedAt: startedAt };

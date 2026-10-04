@@ -100,10 +100,11 @@ const reg2 = () => ({ ...live('dish', 'ID1', 'Margherita'), ...live('dish', 'ID2
     const rows = reg2();
     let release; const gate = () => new Promise((r) => { release = r; });
     const db = fakeDb(rows, { gate });
-    const v = V.createCatalogVerifier({ db, now: () => t, ttlMs: 60000, timeoutMs: 1000, log: () => {} });
+    // a deadline the read MEETS (E4: a completion past its deadline is discarded — see context-hardening)
+    const v = V.createCatalogVerifier({ db, now: () => t, ttlMs: 60000, timeoutMs: 30000, log: () => {} });
     const pending = v.verify(RID, pairs2);
     await wait(5);
-    t = 20000;                         // the read takes 20s of fake time…
+    t = 20000;                         // the read takes 20s of fake time (within its 30s deadline)…
     release();
     const r = await pending;
     assert.strictEqual(r.observedAt, 0, 'observedAt is the read START, not its completion');
