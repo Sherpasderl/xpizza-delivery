@@ -509,6 +509,7 @@ function cartAdapterOf(rid) {
     'catalog/catalog-publish.js': 'the writer that stamps display.identity_id from the draft',
     'catalog/catalog-edit.js': 'the merchant diff, which must EXCLUDE identity from content',
     'catalog/content-hash.js': 'excludes identity from the content fingerprint',
+    'catalog/catalog-context.js': "D4-a resolved context: the single gateway mapping a certified version's own stamp to canonicalId; reported only; keys no price/cart/quote/redemption/factura; not in the public payload",
   };
 
   /* \u{1f534} TWO OWNERS ARE DELIBERATELY NOT LISTED, AND THAT IS ITSELF PINNED BELOW.

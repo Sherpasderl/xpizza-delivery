@@ -247,4 +247,4 @@ async function getRestaurantMenu(db, restaurantId) {
   return readVersionMenu(db, restaurantId, versionId);
 }
 
-module.exports = { getRestaurantMenu, readVersionMenu, readFlatMenu, versionIdentity, SCHEMA_VERSION };
+module.exports = { getRestaurantMenu, readVersionMenu, readFlatMenu, versionIdentity, buildMenu, SCHEMA_VERSION };   // buildMenu: D4-a context builder reuses the ONE payload builder

@@ -130,7 +130,36 @@ function heartbeat(restaurantId, now) {
 //     refusing the order.
 //   • the parity alarm's observability is replaced by a sampled serve fingerprint (below), because a
 //     wrong-but-VALID price would otherwise now serve silently.
-function createPricingResolver({ reader, alarm, deadlineMs = CATALOG_READ_DEADLINE_MS, now = Date.now, ladder = null }) {
+// ═══ Portal 1D · D4-a — THE RESOLVED ENVELOPE (plan rev 9 step 2) ═══════════════════════════════
+// ONE internal envelope per resolution: { rid, versionId, seq, source, prices:{menu,extras}, context }.
+// What a caller RECEIVES is unchanged — the same { restaurantId, menu, extras } object, same values,
+// same keys, built by the same lines below. The envelope is reachable only through envelopeOf(tables) /
+// contextOf(tables), a WeakMap keyed by that exact returned object, so it adds no field a caller could
+// see, serialise or hash.
+// 🔴 THE CONTEXT CANNOT TOUCH THE PRICE. `context.resolve` is SYNCHRONOUS (it answers only from what the
+// context source already holds and starts its own reads in the background, never awaited here), it is
+// called only AFTER the prices are final, and any throw is caught into `unavailable`. Its absence (the
+// default) leaves every existing caller and test byte-identical.
+const _envelopes = new WeakMap();
+const UNAVAILABLE_NO_SOURCE = Object.freeze({ availability: 'unavailable', reason: 'no_context_source', attached: false, usableAsIdentity: false });
+function finalize(contextSource, restaurantId, served, tables) {
+  try {
+    let context = UNAVAILABLE_NO_SOURCE;
+    if (contextSource && typeof contextSource.resolve === 'function') {
+      try { context = contextSource.resolve({ rid: restaurantId, ...served, prices: { menu: tables.menu, extras: tables.extras } }) || UNAVAILABLE_NO_SOURCE; }
+      catch (e) { context = Object.freeze({ availability: 'unavailable', reason: 'context_exception', attached: false, usableAsIdentity: false }); }
+    }
+    _envelopes.set(tables, Object.freeze({
+      rid: restaurantId, versionId: served.versionId, seq: served.seq, source: served.source,
+      prices: Object.freeze({ menu: tables.menu, extras: tables.extras }), context,
+    }));
+  } catch (_) { /* the envelope is a projection; it must never break pricing */ }
+  return tables;
+}
+const envelopeOf = (tables) => (tables && typeof tables === 'object' ? _envelopes.get(tables) : undefined);
+const contextOf = (tables) => { const e = envelopeOf(tables); return e ? e.context : undefined; };
+
+function createPricingResolver({ reader, alarm, deadlineMs = CATALOG_READ_DEADLINE_MS, now = Date.now, ladder = null, context = null }) {
   const fire = (kind, detail) => {                       // an alarm must never break pricing
     try { const r = alarm && alarm(kind, detail); if (r && typeof r.catch === 'function') r.catch(() => {}); }
     catch (_) { /* swallowed: alarming is best-effort, pricing is not */ }
@@ -152,13 +181,15 @@ function createPricingResolver({ reader, alarm, deadlineMs = CATALOG_READ_DEADLI
       // that propagates on purpose and the caller turns it into a clean order reject.
       if (!ladder) throw new Error(`pricing_unavailable: ${restaurantId} — no catalog and no fallback ladder`);
       const snap = await ladder.snapshotFor(restaurantId);
-      return { restaurantId, menu: snap.menu, extras: snap.extras };
+      return finalize(context, restaurantId, { versionId: snap.versionId === undefined ? null : snap.versionId, seq: snap.seq === undefined ? null : snap.seq, source: snap.source },
+        { restaurantId, menu: snap.menu, extras: snap.extras });
     }
     // 2c: the catalog serves UNCONDITIONALLY. No parity gate — a portal edit MUST take effect.
     heartbeat(restaurantId, now());
     serveFingerprint(restaurantId, cat, now(), fire);     // replaces catalog_parity_mismatch's visibility
     try { if (ladder) ladder.recordGood(restaurantId, { versionId: cat.versionId, seq: cat.seq, menu: cat.menu, extras: cat.extras }); } catch (_) {}
-    return { restaurantId, menu: cat.menu, extras: cat.extras };
+    return finalize(context, restaurantId, { versionId: cat.versionId == null ? null : cat.versionId, seq: cat.seq == null ? null : cat.seq, source: cat.versionId == null ? 'flat' : 'live' },
+      { restaurantId, menu: cat.menu, extras: cat.extras });
   }
   return { getPricingTables };
 }
@@ -173,4 +204,4 @@ function requireTables(seam, restaurantId, tables) {
   }
   return tables;
 }
-module.exports = { createPricingResolver, tablesEqual, requireTables, menuHash };   // tablesEqual retained: still used by tests/tools, no longer a serve gate
+module.exports = { createPricingResolver, tablesEqual, requireTables, menuHash, envelopeOf, contextOf };   // tablesEqual retained: still used by tests/tools, no longer a serve gate

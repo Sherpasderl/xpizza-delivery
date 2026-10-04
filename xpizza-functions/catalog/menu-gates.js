@@ -19,6 +19,7 @@
 // every order on that version and a new version re-reads by construction.
 // ---------------------------------------------------------------------------
 const { X_PIZZA_WEEKEND_ONLY } = require('../menu-pricing');   // FALLBACK ONLY — never the live authority
+const { weekendRule, pickupRule, redeemRule, untypedUnion } = require('./policy-primitive');
 
 const GATE_READ_DEADLINE_MS = 1500;
 const MAX_CACHED_VERSIONS = 8;
@@ -34,25 +35,15 @@ function gateAuthored(built, field) {
   return Array.isArray(built && built.structure && built.structure[field]);
 }
 
+// D4-a: the derivation lives in the shared TYPED primitive (policy-primitive.js); this is its legacy
+// UNTYPED projection, byte-identical in members and insertion order to the body it replaced.
 function weekendOnlyKeysFrom(restaurantId, built) {
-  const cats = new Set((built && built.structure && built.structure.weekend_only_cats) || []);
-  const keys = new Set();
-  if (cats.size === 0) return keys;
-  for (const it of (built && built.items) || []) {
-    if (it && it.display && cats.has(it.display.cat)) keys.add(it.key);
-  }
-  return keys;
+  return untypedUnion(weekendRule(built));
 }
 
 // The same derivation for the pickup-only gate — same shape, same editability.
 function pickupOnlyKeysFrom(restaurantId, built) {
-  const cats = new Set((built && built.structure && built.structure.pickup_only_cats) || []);
-  const keys = new Set();
-  if (cats.size === 0) return keys;
-  for (const it of (built && built.items) || []) {
-    if (it && it.display && cats.has(it.display.cat)) keys.add(it.key);
-  }
-  return keys;
+  return untypedUnion(pickupRule(built));
 }
 
 // ── Portal 2a Task 6 — REDEMPTION ELIGIBILITY, derived from the same built catalog ─────────────
@@ -62,8 +53,6 @@ function pickupOnlyKeysFrom(restaurantId, built) {
 // code constants do today: for x_pizza it is the complete answer; for la_musa it is the acompanamiento
 // allowlist, with the non-alcohol MENU half still coming from the guarded pricing tables.
 function redeemEligibleFrom(restaurantId, built) {
-  const st = (built && built.structure) || {};
-  const allow = new Set();
   // Three authored sources, unioned into ONE complete answer — the same shape for every brand:
   //   • whole CATEGORIES        — the unit a merchant thinks in, and how x_pizza expresses all of it
   //   • individual ITEMS        — for categories that are MIXED (la_musa's `bebidas`: 8 beers + 4 softs)
@@ -71,13 +60,9 @@ function redeemEligibleFrom(restaurantId, built) {
   // Union, never subtraction. There is deliberately no exclude rule: a denylist cannot know about a
   // namespace invented after it was written, which is exactly how a new `wine_*` dish would have become
   // silently redeemable. Anything unauthored is simply not in the set.
-  const cats = new Set(st.redeem_eligible_cats || []);
-  if (cats.size > 0) for (const it of (built && built.items) || []) {
-    if (it && it.display && cats.has(it.display.cat)) allow.add(it.key);
-  }
-  for (const k of st.redeem_eligible_items || []) allow.add(k);
-  for (const k of st.redeem_eligible_extras || []) allow.add(k);
-  return { restaurantId, allow };
+  // D4-a: derived by the typed primitive (dish and extra kept apart there) and flattened here, in the
+  // same order the three sources were always unioned.
+  return { restaurantId, allow: untypedUnion(redeemRule(built)) };
 }
 
 // Which structure field carries this brand's authored eligibility. Absent ⇒ UNAUTHORED ⇒ static.
@@ -186,6 +171,9 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
       }
     },
     getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup,
+    // 1D D4-a: a result ALREADY cached for (rid, versionId), or null. NEVER reads — the context's policy
+    // shadow diagnostic compares against this only when it is already there (plan rev 9 step 10).
+    peek: (restaurantId, versionId) => cache.get(`${restaurantId}::${versionId == null ? 'flat' : versionId}`) || null,
     _cache: cache,
   };
 }

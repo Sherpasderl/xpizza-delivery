@@ -106,3 +106,12 @@ is to finalize the public contract (the open items above) and decide deliberatel
 on. Widening the allowlist without that conversation converts a reserved field into a load-bearing one by
 accident, which is exactly what "document, do not strip" was chosen to avoid.
 
+## Internal owners (recorded 2026-10-03, PLAN-D4a errata E3)
+`xpizza-functions/catalog/catalog-context.js` (Portal 1D · D4-a, the resolved catalog context) reads
+`display.identity_id` and is listed among the identity owners in `identity-public-contract.test.js`. It is the
+single gateway that maps a **certified** version's own stamp to `canonicalId`. In D4-a that `canonicalId` is
+**reported only**: it keys no price, cart, quote, redemption or factura, and it is not added to the public
+`getPublicMenu` payload, so the interim contract above is unchanged. The money path first depends on
+`canonicalId` only at **D4-c activation**, and that is a deliberate, gated decision. Because later consumers
+read `canonicalId` from the context rather than the `identity_id` token, this test will not fire at that
+point, so D4-c planning must treat activation as that event explicitly.

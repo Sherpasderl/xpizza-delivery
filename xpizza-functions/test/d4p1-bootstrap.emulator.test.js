@@ -177,6 +177,12 @@ const asPreP1 = async (rid, versionId) => {
     for (const docId of Object.keys(before.extras)) expected.add(`extras.${docId}.display.identity_id`);
     expected.add('record.identity_certified');
     expected.add('record.identity_activation');
+    /* 1D D4-a (plan rev 9 step 6 / 9c): the revision bump rides the SAME transaction as the stamps, so it
+       is the one further additive field this write may make. Pinned by value as well as by path: a pre-P1
+       version has no revision, so the first stamping must make it exactly 1. */
+    expected.add('record.identity_revision');
+    assert.strictEqual(before.record.identity_revision, undefined, 'premise — a pre-P1 version carries no identity_revision');
+    assert.strictEqual(after.record.identity_revision, 1, '🔴 the stamping transaction must bump identity_revision 0 → 1');
     const actual = diffPaths(before, after).sort();
     assert.deepStrictEqual(actual, [...expected].sort(),
       `🔴 bootstrap changed something outside the identity set — this is the one write that may touch an immutable version, and it must be provably narrow`);

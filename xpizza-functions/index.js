@@ -316,6 +316,9 @@ function pricingResolver() {
       // lastGood/lastKnownActive throughout 2b, so 2c's flip is a one-line swap onto a ladder that has
       // been fed real state — rather than one that is cold at the exact moment an outage needs it.
       ladder: snapshotLadder(),
+      // 1D D4-a: the second projection. Resolved lazily and wrapped by the resolver, so a context
+      // construction failure is a context `unavailable`, never a pricing failure.
+      context: { resolve: (served) => contextSource().resolve(served) },
     });
   }
   return _pricingResolver;
@@ -357,6 +360,34 @@ function gateReader() {
     });
   }
   return _gateReader;
+}
+
+// ── Portal 1D · D4-a — THE RESOLVED CATALOG CONTEXT (reported only; nothing consumes it yet) ─────────
+// The pricing resolver hands each resolution's SERVED provenance to the context source, which answers
+// SYNCHRONOUSLY from what it already holds (a miss is `unavailable` and starts a background build). It
+// can never alter a price, an acceptance, a fallback choice, a deadline or an alarm. Its caches are NEW
+// and separate from the pricing caches. Singletons for the same reason as the resolver: per-instance
+// memory survives across requests on a warm instance.
+const { createCatalogVerifier } = require('./catalog/catalog-verifier');
+const { createContextSource } = require('./catalog/context-source');
+const { createContextWriter, CONTEXT_RECONCILE_INTERVAL, CONTEXT_RECONCILE_TIMEOUT_S } = require('./catalog/context-writer');
+let _contextSource = null;
+function contextSource() {
+  if (!_contextSource) {
+    const firestore = getFirestore();
+    _contextSource = createContextSource({
+      db: firestore,
+      rtdb: getDatabase(),
+      verifier: createCatalogVerifier({ db: firestore }),
+      peekGates: (rid, versionId) => gateReader().peek(rid, versionId),   // an ALREADY-cached gate result only
+    });
+  }
+  return _contextSource;
+}
+let _contextWriter = null;
+function contextWriter() {
+  if (!_contextWriter) _contextWriter = createContextWriter({ db: getFirestore(), rtdb: getDatabase() });
+  return _contextWriter;
 }
 
 // Never throws AND never returns null — always a restaurant-TAGGED { restaurantId, menu, extras }.
@@ -2267,6 +2298,41 @@ exports.sweepIdentityRegistry = onSchedule(
       // A failed sweep is retryable by its own schedule and must never page: it repairs an
       // inconsistency nothing on the order path reads.
       console.error('identity_sweep_failed', (e && e.message) || String(e));
+    }
+  },
+);
+
+/* ── Portal 1D · D4-a — THE CONTEXT WRITER'S TWO INVOKERS (plan rev 9 step 8, owner option B) ────────
+   Neither is in the publish path: catalog-publish.js is untouched, so publish/rollback outcomes, the
+   lease, response timing and alarms are today's by construction. Both run the SAME bounded, fenced,
+   idempotent writer, which reads the authoritative pointer itself.
+   🔴 PROMPTNESS — a wake-up on every legacy mirror write. The event's payload is never trusted: an
+   out-of-order, duplicated or stale event just makes the writer write the CURRENT activation's context
+   (fenced). It writes a different path, so it cannot re-trigger itself. No platform retry, like every
+   other trigger here: the reconciler IS the retry. maxInstances caps a burst of mirror writes.
+   🔴 COMPLETENESS — a scheduled reconciler over EVERY restaurant, enumerated by the brand-agnostic
+   registry reader, never a list: a third restaurant is covered with no code change. Overlapping
+   invocations are PERMITTED (maxInstances is not mutual exclusion); the fence + idempotence make
+   overlap harmless, and every invocation is bounded (parallelism cap, writer deadline, a function
+   timeout below the interval). A failure raises no existing alarm. */
+exports.writeCatalogContextOnMirror = onValueWritten(
+  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: 60, memory: '256MiB', maxInstances: 3 },
+  async (event) => {
+    try {
+      await contextWriter().writeActiveContext(event.params.rid);
+    } catch (e) {
+      console.error('context_write_trigger_failed', (e && e.message) || String(e));
+    }
+  },
+);
+
+exports.reconcileCatalogContexts = onSchedule(
+  { schedule: CONTEXT_RECONCILE_INTERVAL, region: 'us-central1', timeoutSeconds: CONTEXT_RECONCILE_TIMEOUT_S, memory: '256MiB', maxInstances: 1 },
+  async () => {
+    try {
+      await contextWriter().reconcile({ listIds: makeFirestoreRegistryReader(getFirestore()) });
+    } catch (e) {
+      console.error('context_reconcile_failed', (e && e.message) || String(e));
     }
   },
 );

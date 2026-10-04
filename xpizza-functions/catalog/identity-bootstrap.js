@@ -70,6 +70,7 @@ const { assertPointerUnmoved } = require('./identity-fence');
 const { legacyKeyOf } = require('./identity-backfill');
 const { activePointerRef, getActivePointer, readPointerSnap } = require('./catalog-firestore');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
+const { revisionOf } = require('./context-fk');   // 1D D4-a: the ONE reading of identity_revision (absent/malformed → 0)
 
 /* Bounded because it writes every object of a version in ONE transaction: Firestore's hard ceiling is
    500 writes, and the write set here is (dishes + extras + the version record). The cap leaves room
@@ -427,6 +428,13 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
        record proves this version was LIVE, which is the only rollback eligibility P1 honours. */
     tx.update(vref, {
       identity_certified: true,
+      /* 🔴 1D D4-a — THE IDENTITY REVISION, BUMPED IN THE SAME TRANSACTION THAT STAMPS (plan rev 9 step
+         6). Stamping changes no content_hash byte (stamps are excluded by design), so without this a
+         context cache keyed on the version could not tell a stamped version from the unstamped one it
+         was a moment ago. Read from THIS transaction's record; absent/malformed reads as 0. The record's
+         Firestore updateTime also advances, which is what lets the context discover a certification by
+         an OLDER executable that never writes this field. */
+      identity_revision: revisionOf(rec) + 1,
       /* 🔴 LEAVE AN EXISTING RECORD EXACTLY AS IT IS. When D already activated this version, its
          record is the truthful account of that activation — its own base_generation and attempt, not
          bootstrap's. Rewriting it would replace a real activation's history with this pass's
