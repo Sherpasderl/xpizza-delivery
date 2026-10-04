@@ -342,7 +342,7 @@ const contextWriterRun = (rid, after) => app.writeCatalogContextOnMirror.run({ p
     assert.strictEqual(sw.usableAsIdentity, false);
     await rtdb.ref(`${CONTEXT_PATH}/x_pizza/payload`).set(save);
   }
-  ok('mirror_cold: the persisted raw payload is rebuilt + re-checked per serve → intact/confirmed/usable; a tampered raw name → mismatch; a persisted stamp swap → intact but REJECTED naming both');
+  ok('mirror_cold: the persisted raw payload is rebuilt from raw + re-checked when loaded (memoized per node, never on the request path) → intact/confirmed/usable; a tampered raw name → mismatch; a persisted stamp swap → intact but REJECTED naming both');
 
   // ═══ WARM + COLD STAMP SWAP IN FIRESTORE, AGAINST THE REAL REGISTRY ═══════════════════════════════
   {

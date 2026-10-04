@@ -113,7 +113,11 @@ function createCatalogVerifier({
     const startedAt = now();                                         // observedAt = the read's START
     let settled = false;
     let timer = null;
+    // 🔴 REGISTERED BEFORE ANY SDK CALL (codex build r1 F3): the body starts on a later microtask, after
+    // inflight.set below, so a synchronous SDK throw can no longer settle-and-clean-up BEFORE the entry is
+    // inserted — which left a dead promise in the map for good, and four of them exhausted maxInflight.
     const p = (async () => {
+      await null;
       try {
         const refs = paths.map((path) => db.doc(path));
         stats.reads += 1;
@@ -140,7 +144,7 @@ function createCatalogVerifier({
       } finally {
         settled = true;
         if (timer) clearTimeout(timer);
-        inflight.delete(key);
+        if (inflight.get(key) === p) inflight.delete(key);   // only OUR entry
       }
     })();
     inflight.set(key, p);

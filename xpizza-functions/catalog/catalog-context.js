@@ -26,6 +26,20 @@ const { contentHash } = require('./content-hash');
 const { validIdShape } = require('./identity-registry');
 const { policyOf, membershipsFor, ruleSummary } = require('./policy-primitive');
 
+// 🔴 DEEP-FROZEN, BEFORE IT IS CACHED OR EXPOSED (codex build r1 F1). A context is shared across
+// requests from an instance cache; a shallow freeze let a caller mutate a nested object's price or label
+// and every later request then reported `intact` / `attached` / `usableAsIdentity` for data that was no
+// longer the version's. The graph holds only plain objects and arrays (Sets/Maps are flattened by the
+// builder), so a recursive Object.freeze makes every level immutable. A Set or Map reaching here is a
+// bug — freezing does not stop Set.add — so it is refused loudly rather than half-frozen.
+function deepFreeze(value, seen = new WeakSet()) {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return value;
+  if (value instanceof Set || value instanceof Map) throw new Error('context_graph_has_collection: a Set/Map cannot be frozen; expose a plain array/object');
+  seen.add(value);
+  for (const k of Object.keys(value)) deepFreeze(value[k], seen);
+  return Object.freeze(value);
+}
+
 // ── The raw payload ────────────────────────────────────────────────────────────────────────────
 // { rid, versionId, record, items: [{id, data}], extras: [{id, data}], structure: object|null }
 // `record` is the version record's data. Doc ids are kept so a snapshot can be rebuilt exactly.
@@ -57,13 +71,13 @@ function pricesFromObjects(objects) {
 }
 
 function failedContext(raw, reason, detail) {
-  return {
+  return deepFreeze({
     rid: raw && raw.rid, versionId: (raw && raw.versionId) || null,
     seq: raw && raw.record && Number.isInteger(raw.record.seq) ? raw.record.seq : null,
     built: false,
     contentIntegrity: { state: 'mismatch', reason, detail: String(detail || '').slice(0, 200) },
     objects: null, prices: null,
-  };
+  });
 }
 
 // buildContext(raw) → the context's version-bound projection. Never throws.
@@ -148,11 +162,11 @@ function buildContext(raw) {
     const complete = certified && coverage.dish.state === 'full' && coverage.extra.state === 'full'
       && ids.wellFormed && ids.unique && labels.state === 'complete';
 
-    return {
+    return deepFreeze({
       rid, versionId, seq: Number.isInteger(record.seq) ? record.seq : null,
       built: true, certified, contentIntegrity, objects, prices: pricesFromObjects(objects),
       coverage, rawStampCoverage, ids, labels, complete, policyRules: ruleSummary(policy),
-    };
+    });
   } catch (e) {
     return failedContext(raw, 'builder_exception', e && e.message);
   }
@@ -166,4 +180,4 @@ function identityPairs(context) {
     .map((o) => ({ kind: o.kind, canonicalId: o.canonicalId, legacyKey: o.legacyKey }));
 }
 
-module.exports = { buildContext, identityPairs, pricesFromObjects, snapOf };
+module.exports = { buildContext, identityPairs, pricesFromObjects, snapOf, deepFreeze };

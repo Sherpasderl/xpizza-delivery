@@ -180,7 +180,10 @@ function createContextWriter({
     let expired = false;
     const stop = () => { if (expired) throw new Abandoned(); };
     stop.stopped = () => expired;
+    // Started on a later microtask so the single-flight entry below is registered before any SDK call
+    // (codex build r1 F3 — the same register-first discipline as the context source and the verifier).
     const work = (async () => {
+      await null;
       try {
         const pre = await precheck(rid, stop);
         if (pre.skip) { stats.precheckSkips += 1; return report(rid, 'idempotent', { precheck: true, versionId: pre.versionId, fk: fkString(pre.fk) }); }
@@ -194,7 +197,7 @@ function createContextWriter({
     const bounded = Promise.race([
       work,
       new Promise((resolve) => { timer = setTimeout(() => { expired = true; resolve(report(rid, 'timeout', { deadlineMs })); }, deadlineMs); }),
-    ]).finally(() => { if (timer) clearTimeout(timer); flights.delete(rid); });
+    ]).finally(() => { if (timer) clearTimeout(timer); if (flights.get(rid) === bounded) flights.delete(rid); });
     flights.set(rid, bounded);
     return bounded;
   }

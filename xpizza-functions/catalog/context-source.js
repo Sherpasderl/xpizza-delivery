@@ -26,11 +26,13 @@
 //
 // Routes: live → built context; flat → `unavailable`; last_good → the in-memory built context for its
 // version; mirror / mirror_cold → the persisted node at catalog_snapshot_ctx/{rid}, REBUILT from its raw
-// payload and re-checked on every serve (plan step 7).
+// payload and re-checked in the background loader, memoized in memory per exact node (plan step 7: no
+// derived object is ever PERSISTED; codex build r1 F4: no rebuild on the request path).
 // ---------------------------------------------------------------------------
-const { buildContext, identityPairs } = require('./catalog-context');
-const { makeCK, compareCK, ckString, ckOfFK } = require('./context-fk');
-const { rawFromNode, contextRefOf } = require('./context-writer');
+const crypto = require('crypto');
+const { buildContext, identityPairs, deepFreeze } = require('./catalog-context');
+const { makeCK, compareCK, ckString, ckOfFK, fkString } = require('./context-fk');
+const { rawFromNode, contextRefOf, contentOf } = require('./context-writer');
 
 const CONTEXT_RECORD_TTL_MS = 45000;      // == the pricing pointer TTL (catalog.js createCatalogReader default)
 const CONTEXT_READ_DEADLINE_MS = 3000;    // each background context read
@@ -58,21 +60,38 @@ function withDeadline(promise, ms, label) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-const unavailable = (reason, extra = {}) => Object.freeze({ availability: 'unavailable', reason, attached: false, usableAsIdentity: false, ...extra });
+const unavailable = (reason, extra = {}) => deepFreeze({ availability: 'unavailable', reason, attached: false, usableAsIdentity: false, ...extra });
+
+// 🔴 SINGLE-FLIGHT, REGISTERED BEFORE ANY SDK CALL (codex build r1 F3). The work used to start inside an
+// async IIFE whose promise was put in the map only AFTER the IIFE returned — so an SDK call that threw
+// SYNCHRONOUSLY ran the catch and the cleanup `finally` first, and the already-settled promise was then
+// inserted and never removed: that key was poisoned for the life of the instance. Here the entry is set
+// first and the body starts on a later microtask, and cleanup removes the entry only if the map still
+// holds THIS promise, so a stale cleanup can never delete a newer flight.
+function singleFlight(map, key, body) {
+  if (map.has(key)) return map.get(key);
+  const p = (async () => {
+    await null;                                   // the body (and every SDK call in it) runs after map.set
+    try { return await body(); }
+    finally { if (map.get(key) === p) map.delete(key); }
+  })();
+  map.set(key, p);
+  return p;
+}
 
 function createContextSource({
   db, rtdb, verifier, now = Date.now, recordTtlMs = CONTEXT_RECORD_TTL_MS, readDeadlineMs = CONTEXT_READ_DEADLINE_MS,
-  maxVersions = CONTEXT_MAX_VERSIONS, peekGates = null,
+  maxVersions = CONTEXT_MAX_VERSIONS, peekGates = null, buildContext: buildCtx = buildContext,
   log = (k, d) => { try { console.log(k, JSON.stringify(d)); } catch (_) {} },
 } = {}) {
   const discovered = new Map();    // vkey -> { ck, at }            — discovery state, monotonic on CK
   const discFlights = new Map();   // vkey -> Promise
   const built = new Map();         // bkey -> context               — LRU, bounded
   const buildFlights = new Map();  // bkey -> Promise
-  const persisted = new Map();     // rid -> { node, at }           — the RTDB context node, for mirror routes
+  const persisted = new Map();     // rid -> { node, at, key, ctx } — the RTDB node + its memoized rebuild (mirror routes)
   const persistFlights = new Map();
   const lastDiag = new Map();
-  const stats = { discoveryReads: 0, discoveryDiscarded: 0, builds: 0, evictions: 0, persistedReads: 0 };
+  const stats = { discoveryReads: 0, discoveryDiscarded: 0, builds: 0, evictions: 0, persistedReads: 0, mirrorRebuilds: 0 };
 
   // ── Discovery: the served version's record, on its own TTL ──────────────────────────────────────
   function applyDiscovery(rid, versionId, ck) {
@@ -95,7 +114,7 @@ function createContextSource({
     if (discFlights.has(k)) return discFlights.get(k);
     stats.discoveryReads += 1;
     let settled = false;
-    const p = (async () => {
+    return singleFlight(discFlights, k, async () => {
       try {
         const read = db.collection('restaurants').doc(rid).collection('versions').doc(versionId).get();
         read.catch(() => {});
@@ -107,10 +126,8 @@ function createContextSource({
       } catch (e) {
         log('context_discovery_failed', { rid, versionId, error: String((e && e.message) || e).slice(0, 160) });
         return null;
-      } finally { settled = true; discFlights.delete(k); }
-    })();
-    discFlights.set(k, p);
-    return p;
+      } finally { settled = true; }
+    });
   }
 
   // ── Build: one consistent read of the version (read-only transaction) → the pure builder ────────
@@ -119,7 +136,7 @@ function createContextSource({
     if (buildFlights.has(k)) return buildFlights.get(k);
     stats.builds += 1;
     const observedAt = now();
-    const p = (async () => {
+    return singleFlight(buildFlights, k, async () => {
       try {
         const vref = db.collection('restaurants').doc(rid).collection('versions').doc(versionId);
         const read = db.runTransaction(async (tx) => {
@@ -136,8 +153,8 @@ function createContextSource({
         if (!r) return null;
         const ck = makeCK({ record: r.record, updateTime: r.updateTime });
         if (!ck) return null;
-        const ctx = buildContext({ rid, versionId, record: r.record, items: r.items, extras: r.extras, structure: r.structure });
-        const stored = Object.freeze({ ...ctx, ck, observedAt });
+        const ctx = buildCtx({ rid, versionId, record: r.record, items: r.items, extras: r.extras, structure: r.structure });
+        const stored = deepFreeze({ ...ctx, ck, observedAt });      // deep-frozen BEFORE it is cached (F1)
         // The payload IS a record observation too: discovery advances (monotonically) from it.
         applyDiscovery(rid, versionId, ck);
         const cur = discovered.get(k);
@@ -149,31 +166,44 @@ function createContextSource({
       } catch (e) {
         log('context_build_failed', { rid, versionId, error: String((e && e.message) || e).slice(0, 160) });
         return null;
-      } finally { buildFlights.delete(k); }
-    })();
-    buildFlights.set(k, p);
-    return p;
+      }
+    });
   }
 
   // ── The persisted node, for the mirror routes ───────────────────────────────────────────────────
+  // 🔴 REBUILT HERE, IN THE BACKGROUND, NEVER IN resolve() (codex build r1 F4). Rebuilding — JSON parse,
+  // buildMenu, content_hash, policy — on every mirror-route request put unbounded synchronous work on the
+  // pricing response. The rebuild is still FROM RAW and still re-checks the pinned hash (plan step 7: no
+  // DERIVED object is ever PERSISTED); it is memoized IN MEMORY per exact persisted node (its FK plus a
+  // digest of its full canonical content), so an unchanged node is rebuilt once and a node whose payload
+  // changed under the same FK is rebuilt and re-judged. resolve() then does lookups + attachment only.
   function loadPersisted(rid) {
     if (persistFlights.has(rid)) return persistFlights.get(rid);
     stats.persistedReads += 1;
-    const p = (async () => {
+    return singleFlight(persistFlights, rid, async () => {
       try {
         const read = contextRefOf(rtdb, rid).get();
         read.catch(() => {});
         const snap = await withDeadline(read, readDeadlineMs, 'context_node_read');
         const node = snap && typeof snap.val === 'function' ? snap.val() : null;
-        persisted.set(rid, { node, at: now() });
+        const at = now();
+        let key = null, ctx = null;
+        if (node && node.head) {
+          key = `${fkString(node.head.fk)}#${crypto.createHash('sha256').update(contentOf(node)).digest('hex')}`;
+          const prev = persisted.get(rid);
+          if (prev && prev.key === key && prev.ctx) ctx = prev.ctx;
+          else {
+            stats.mirrorRebuilds += 1;
+            ctx = deepFreeze({ ...buildCtx(rawFromNode(node)), ck: ckOfFK(node.head.fk), observedAt: at });
+          }
+        }
+        persisted.set(rid, { node, at, key, ctx });
         return node;
       } catch (e) {
         log('context_node_read_failed', { rid, error: String((e && e.message) || e).slice(0, 160) });
         return null;
-      } finally { persistFlights.delete(rid); }
-    })();
-    persistFlights.set(rid, p);
-    return p;
+      }
+    });
   }
 
   // ── Shadow diagnostics (plan step 10): bounded, rate-limited, nothing else ──────────────────────
@@ -230,11 +260,11 @@ function createContextSource({
     try { shadow(served.rid, served.versionId, ctx, eligibility); } catch (_) {}
     const unexpired = eligibility.state === 'confirmed' && now() <= eligibility.expiresAt;
     const usableAsIdentity = ctx.contentIntegrity.state === 'intact' && unexpired && ctx.complete === true;
-    return Object.freeze({
+    return deepFreeze({                          // deep-frozen: nothing a caller holds can be mutated (F1)
       availability: 'available', attached: true, route,
       rid: ctx.rid, versionId: ctx.versionId, seq: ctx.seq, ck: ctx.ck || null,
-      contentIntegrity: Object.freeze({ ...ctx.contentIntegrity, observedAt: ctx.observedAt }),
-      registryEligibility: Object.freeze(eligibility),
+      contentIntegrity: { ...ctx.contentIntegrity, observedAt: ctx.observedAt },
+      registryEligibility: eligibility,
       certified: ctx.certified, complete: ctx.complete, coverage: ctx.coverage, rawStampCoverage: ctx.rawStampCoverage,
       labels: ctx.labels, ids: ctx.ids, policyRules: ctx.policyRules, objects: ctx.objects,
       usableAsIdentity,
@@ -249,9 +279,8 @@ function createContextSource({
       if (source === 'mirror' || source === 'mirror_cold') {
         const p = persisted.get(rid);
         if (!p || now() - p.at >= recordTtlMs) void loadPersisted(rid);
-        if (!p || !p.node) return unavailable('context_not_persisted', { route: source });
-        const ctx = buildContext(rawFromNode(p.node));          // REBUILT from raw, re-checked, every serve
-        return project({ ...ctx, ck: ckOfFK(p.node.head && p.node.head.fk), observedAt: p.at }, served, source);
+        if (!p || !p.ctx) return unavailable('context_not_persisted', { route: source });
+        return project(p.ctx, served, source);   // the memoized raw rebuild (F4): no parse/hash/build here
       }
       if (versionId == null) return unavailable('flat', { route: source || 'live' });
       const k = vkey(rid, versionId);

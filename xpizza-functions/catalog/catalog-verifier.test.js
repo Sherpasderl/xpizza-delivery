@@ -145,7 +145,7 @@ const reg2 = () => ({ ...live('dish', 'ID1', 'Margherita'), ...live('dish', 'ID2
     assert.ok(!(r instanceof Promise) && r.state === 'unknown' && r.reason === 'not_observed', 'synchronous, unknown on a miss');
     v.eligibilityFor(RID, [pairs2[0]]);   // a different read set while the cap (1) is full
     assert.strictEqual(v.stats.capped, 1, 'the global concurrency cap refuses a second concurrent read');
-    release(); await wait(5);
+    await wait(5); release(); await wait(5);   // the read starts on a later microtask (F3), then reaches the gate
     assert.strictEqual(v.eligibilityFor(RID, pairs2).state, 'confirmed', 'the background read lands for the NEXT request');
     assert.deepStrictEqual(v.eligibilityFor(RID, []), { state: 'unknown', reason: 'no_identity_pairs' });
     assert.deepStrictEqual(v.eligibilityFor(RID, [{ kind: 'dish', canonicalId: '..', legacyKey: 'x' }]), { state: 'unknown', reason: 'malformed_pair' });
