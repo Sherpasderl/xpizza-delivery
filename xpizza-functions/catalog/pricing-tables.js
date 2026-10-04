@@ -142,16 +142,32 @@ function heartbeat(restaurantId, now) {
 // default) leaves every existing caller and test byte-identical.
 const _envelopes = new WeakMap();
 const UNAVAILABLE_NO_SOURCE = Object.freeze({ availability: 'unavailable', reason: 'no_context_source', attached: false, usableAsIdentity: false });
+// 🔴 THE ENVELOPE RECORDS ITS OWN COPY OF THE PRICES (codex build r2, F1 residual). It used to hold the
+// caller's menu/extras by reference — and those ARE the pricing reader's cached tables — so a write through
+// envelopeOf(tables).prices reached the cache and the NEXT request's price, while the context still claimed
+// to be attached to the old one. The copies are taken HERE, after the prices are final, deep-frozen, and the
+// SAME copies are what the context source judges attachment against, so "attached" is a statement about
+// exactly the prices this envelope records. The legacy returned `tables` (and its menu/extras) are NOT
+// frozen or altered in any way: legacy behaviour is byte-identical, including a caller that mutates them.
+// Cost: one flat copy of each {key: price} table per resolution — 38 + 58 integer entries today (x_pizza,
+// la_musa), O(entries), measured in context-hardening.test.js.
+function frozenCopy(table) {
+  if (table === null || typeof table !== 'object') return table;
+  const out = Array.isArray(table) ? [] : {};
+  for (const k of Object.keys(table)) out[k] = frozenCopy(table[k]);   // prices are integers; recursion only guards a malformed value
+  return Object.freeze(out);
+}
 function finalize(contextSource, restaurantId, served, tables) {
   try {
+    const prices = Object.freeze({ menu: frozenCopy(tables.menu), extras: frozenCopy(tables.extras) });
     let context = UNAVAILABLE_NO_SOURCE;
     if (contextSource && typeof contextSource.resolve === 'function') {
-      try { context = contextSource.resolve({ rid: restaurantId, ...served, prices: { menu: tables.menu, extras: tables.extras } }) || UNAVAILABLE_NO_SOURCE; }
+      try { context = contextSource.resolve({ rid: restaurantId, ...served, prices }) || UNAVAILABLE_NO_SOURCE; }
       catch (e) { context = Object.freeze({ availability: 'unavailable', reason: 'context_exception', attached: false, usableAsIdentity: false }); }
     }
     _envelopes.set(tables, Object.freeze({
       rid: restaurantId, versionId: served.versionId, seq: served.seq, source: served.source,
-      prices: Object.freeze({ menu: tables.menu, extras: tables.extras }), context,
+      prices, context,
     }));
   } catch (_) { /* the envelope is a projection; it must never break pricing */ }
   return tables;

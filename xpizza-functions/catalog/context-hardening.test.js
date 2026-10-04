@@ -10,6 +10,8 @@ const { createContextSource } = require('./context-source');
 const { createCatalogVerifier } = require('./catalog-verifier');
 const { createContextWriter, persistedNode } = require('./context-writer');
 const { buildContext } = require('./catalog-context');
+const { createCatalogReader } = require('./catalog');
+const { createPricingResolver, envelopeOf, contextOf } = require('./pricing-tables');
 const { contentHash } = require('./content-hash');
 const { catalogSnapshot } = require('./generate-form-bundle');
 
@@ -185,6 +187,55 @@ function walk(v, path = '$', out = []) {
     assert.strictEqual(builds, 2, 'a changed payload under the same FK is rebuilt');
     assert.strictEqual(src.resolve(mirrorServed).contentIntegrity.state, 'mismatch', '…and re-judged: mismatch');
     ok(`F4: the mirror route rebuilds once per persisted node in the background; ${N} cached resolve() calls made 0 builder calls (${perCallUs.toFixed(1)}µs each vs ${perBuildUs.toFixed(1)}µs per rebuild); an unchanged reload reuses the memo, a payload changed under the same FK is rebuilt → mismatch`);
+  }
+
+  // ═══ F1 RESIDUAL (codex build r2) — the ENVELOPE records independent, deep-frozen copies of the prices ═══
+  {
+    // The REAL reader + resolver: a warm hit hands back the SAME cached table objects, which is exactly
+    // the alias the envelope used to hold.
+    const reader = createCatalogReader({
+      getRestaurantDocs: async () => ({ versionId: V, seq: 4, itemDocs: snap.items.map((i) => ({ key: i.key, price: i.price })), extraDocs: snap.extras.map((e) => ({ key: e.key, price: e.price })) }),
+      getActiveVersionId: async () => V,
+    });
+    const src = createContextSource({ db: fakeFs(), rtdb: fakeRtdb(null), verifier: null, log: silent });
+    const seen = [];
+    const res = createPricingResolver({ reader, alarm: silent, context: { resolve: (x) => { seen.push(x.prices); return src.resolve(x); } } });
+    await res.getPricingTables(RID);
+    await until(() => src._state.built.size > 0, 'built');
+    const t1 = await res.getPricingTables(RID);
+    const env = envelopeOf(t1);
+    assert.strictEqual(contextOf(t1).attached, true, 'premise — attached');
+    const key = snap.items[0].key, price = snap.items[0].price;
+    // (a) every object reachable from the envelope is frozen
+    const envNodes = walk(env);
+    for (const [p, v] of envNodes) assert.ok(Object.isFrozen(v), `🔴 envelope ${p} is not frozen`);
+    assert.notStrictEqual(env.prices.menu, t1.menu, '🔴 the envelope must not ALIAS the returned (cached) menu');
+    assert.notStrictEqual(env.prices.extras, t1.extras, '🔴 …nor the extras');
+    assert.strictEqual(seen[seen.length - 1], env.prices, 'the context judged attachment against EXACTLY the prices the envelope records');
+    // (c) the legacy returned tables are NOT frozen — legacy behaviour pinned
+    assert.strictEqual(Object.isFrozen(t1), false); assert.strictEqual(Object.isFrozen(t1.menu), false); assert.strictEqual(Object.isFrozen(t1.extras), false);
+    // (b1) a write THROUGH THE ENVELOPE throws and changes nothing: not the returned tables, not the cache, not the next request
+    assert.throws(() => { env.prices.menu[key] = 1; }, TypeError, '🔴 the envelope accepted a write');
+    assert.throws(() => { env.prices.extras[snap.extras[0].key] = 1; }, TypeError);
+    assert.strictEqual(t1.menu[key], price, 'the returned table is untouched');
+    const t2 = await res.getPricingTables(RID);
+    assert.strictEqual(t2.menu[key], price, '🔴 the next request\'s price is untouched');
+    assert.strictEqual(contextOf(t2).attached, true);
+    // (b2) a write through the LEGACY returned tables (today's behaviour, still allowed) does NOT reach the
+    // envelope or the context recorded for that resolution
+    t2.menu[key] = 999;
+    assert.strictEqual(t2.menu[key], 999, 'premise — the legacy table is still writable, exactly as before');
+    const env2 = envelopeOf(t2);
+    assert.strictEqual(env2.prices.menu[key], price, '🔴 the envelope recorded the FINAL prices, not a live view');
+    assert.strictEqual(contextOf(t2).objects.find((o) => o.legacyKey === key).price, price, 'the attached context is unchanged');
+    assert.strictEqual(seen[seen.length - 1].menu[key], price, 'and so is what attachment was judged against');
+    t2.menu[key] = price;                     // restore the (shared) cache for anything after this cell
+    // cost: one flat copy of each table per resolution
+    const N = 2000, big = { menu: Object.fromEntries(Array.from({ length: 58 }, (_, i) => [`k${i}`, 100 + i])), extras: {} };
+    const r2 = createPricingResolver({ reader: { getTables: async () => ({ ...big, versionId: 'v', seq: 1 }) }, alarm: silent, context: { resolve: () => null } });
+    const c0 = process.hrtime.bigint(); for (let i = 0; i < N; i += 1) await r2.getPricingTables('r'); const perUs = Number(process.hrtime.bigint() - c0) / 1000 / N;
+    assert.ok(perUs < 200, `a whole resolution incl. the 58-entry copy stays cheap: ${perUs.toFixed(1)}µs`);
+    ok(`F1 residual: all ${envNodes.length} objects reachable from envelopeOf() are frozen copies (not the cached tables); an envelope write throws and leaves the returned table, the cache and the next request at ${price}; a legacy write (still allowed, tables not frozen) does not reach the envelope or the context; a full 58-entry resolution costs ${perUs.toFixed(1)}µs`);
   }
 
   console.log(`context-hardening: OK (${n})`);
