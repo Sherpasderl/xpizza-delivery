@@ -51,12 +51,12 @@ const IDENTITIES = {
     delivery_radius_km: 9.66,
     hours: {
       mon: { open: false },
-      tue: { open: false },
+      tue: { open: true, start: '17:00', end: '20:45' },
       wed: { open: true, start: '17:00', end: '20:45' },
       thu: { open: true, start: '17:00', end: '20:45' },
       fri: { open: true, start: '17:00', end: '21:45' },
       sat: { open: true, start: '17:00', end: '21:45' },
-      sun: { open: true, start: '17:00', end: '20:45' },
+      sun: { open: true, start: '12:00', end: '19:45' },
     },
     active: false, // dark — no traffic until full integration validation
     version: 1,

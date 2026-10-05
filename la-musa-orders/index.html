@@ -1277,7 +1277,8 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div class="closed-msg" id="closed-msg">Abrimos mañana a las 12:00 pm</div>
     <div class="closed-thanks">¡Gracias por preferirnos!</div>
     <div class="closed-hours">
-      <div class="closed-hours-row"><span>Mar – Jue, Dom</span><span>5:00 pm – 8:45 pm</span></div>
+      <div class="closed-hours-row"><span>Mar – Jue</span><span>5:00 pm – 8:45 pm</span></div>
+      <div class="closed-hours-row"><span>Dom</span><span>12:00 pm – 7:45 pm</span></div>
       <div class="closed-hours-row"><span>Vie – Sáb</span><span>5:00 pm – 9:45 pm</span></div>
       <div class="closed-hours-row"><span>Lunes</span><span>Cerrado</span></div>
     </div>
@@ -1821,7 +1822,7 @@ const MIN_ORDER = 250;
 // LA_MUSA_HOURS — Honduras local time, UTC-6, no DST.
 // null = closed for the day. open/close are minutes from midnight.
 const HOURS = {
-  0: { open: 12*60,    close: 20*60+45 }, // Sunday
+  0: { open: 12*60,    close: 19*60+45 }, // Sunday
   1: null,                                // Monday   — CLOSED (only closed day)
   2: { open: 17*60,    close: 20*60+45 }, // Tuesday
   3: { open: 17*60,    close: 20*60+45 }, // Wednesday

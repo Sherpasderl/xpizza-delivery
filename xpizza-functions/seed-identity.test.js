@@ -21,6 +21,16 @@ for (const [rid, id] of Object.entries(IDENTITIES)) assertIdentityShape(rid, id)
 assert.strictEqual(IDENTITIES.la_musa.active, false, 'la_musa must ship dark (active:false)');
 assert.strictEqual(IDENTITIES.la_musa.whatsapp_enabled, false, 'la_musa must ship dark (whatsapp_enabled:false)');
 assert.deepStrictEqual(IDENTITIES.la_musa.hours.mon, { open: false }, 'closed day must be {open:false}, not null');
+// the seed mirrors the LIVE la_musa hours (owner-approved 2026-10-05: Sunday closes 19:45) so a re-seed can't revert them
+assert.deepStrictEqual(IDENTITIES.la_musa.hours, {
+  mon: { open: false },
+  tue: { open: true, start: '17:00', end: '20:45' },
+  wed: { open: true, start: '17:00', end: '20:45' },
+  thu: { open: true, start: '17:00', end: '20:45' },
+  fri: { open: true, start: '17:00', end: '21:45' },
+  sat: { open: true, start: '17:00', end: '21:45' },
+  sun: { open: true, start: '12:00', end: '19:45' },
+}, 'la_musa seed hours = the live hours');
 
 // 3) Malformed payloads are rejected (proves the strict self-validation).
 const base = IDENTITIES.la_musa;
