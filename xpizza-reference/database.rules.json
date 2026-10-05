@@ -176,7 +176,7 @@
         "item_availability": {
           ".read": true,
           "$key": {
-            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists() && (!root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').exists() || (newData.child('compat').isNumber() && newData.child('compat').val() >= root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').val() && newData.child('updated_at').val() == now))",
             ".validate": "newData.hasChildren(['available','updated_at'])",
             "available":  { ".validate": "newData.isBoolean()" },
             "updated_at": { ".validate": "newData.isNumber()" },
@@ -188,8 +188,13 @@
         "availability_audit": {
           ".read": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
           "$key": {
-            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()"
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists() && (!root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').exists() || (newData.child('compat').isNumber() && newData.child('compat').val() >= root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').val() && newData.child('updated_at').val() == now))"
           }
+        },
+
+        "client_floor": {
+          ".read": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+          ".write": false
         },
 
         "availability_reset_marker": {

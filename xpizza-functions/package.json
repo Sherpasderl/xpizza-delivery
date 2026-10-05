@@ -58,6 +58,7 @@
     "test:d4p1-roundtrip": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-save-publish.emulator.test.js\"",
     "test:catalog-versioned": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-versioned.emulator.test.js\"",
     "test:kitchen-staff-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
+    "test:client-floor-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/client-floor-rules.emulator.test.mjs\"",
     "test:quality-runner": "node tools/emulator-run.js --only functions,database --project demo-xpizza \"node test/ready-time-quality-run.emulator.test.js\"",
     "test:predictor": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/ready-time-predict.emulator.test.js\"",
     "test:scheduled-release": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/scheduled-release.emulator.test.js\"",
