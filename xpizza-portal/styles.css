@@ -455,6 +455,8 @@
   .pdelta.dn{color:var(--green-text);background:var(--green-soft);border:1px solid var(--green-line)}
   /* a >50% swing gets the amber warning frame — the one row that must not look ordinary */
   .prow.big{border-color:var(--amber-line);background:var(--amber-soft)}
+  /* inside a flagged (amber) row the secondary text darkens to --mute: --mute2 on --amber-soft is 4.50:1 rounded but 4.4966:1 exact (codex r2 S2) */
+  .prow.big .psub,.prow.big .arr{color:var(--mute)}
   .prow .pflag{flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--amber);padding-top:2px;border-top:1px solid var(--amber-line);margin-top:2px}
   .prow .pflag svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;flex:none}
   .brow{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;background:var(--board-2);font-size:13.5px}

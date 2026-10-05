@@ -73,19 +73,113 @@ for (const [sel, label] of AA_PAIRS) {
     assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
   });
 }
-// SWEEP — no rule may put the FILL green/red (--green / --red, < 4.5:1 on white-ish soft fills in light mode) as TEXT on
-// a -soft background. Text on a soft fill uses --green-text / --red-text. Catches a future rule re-introducing the defect.
-test('SWEEP: no rule sets text color var(--green) or var(--red) on a -soft background', () => {
-  const offenders = [];
-  let rules = 0;
-  for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const c = body.match(/(?:^|;)\s*color\s*:\s*var\(--(green|red)\)/);
-    const b = body.match(/(?:^|;)\s*background(?:-color)?\s*:\s*var\(--([a-z0-9-]+-soft)\)/);
-    if (b) rules += 1;
-    if (c && b) offenders.push(`${sel.trim()} {color:var(--${c[1]}); background:var(--${b[1]})}`);
+// DISCOVERING SWEEP (codex r2 S1) — every LIGHT-mode text-on-soft pairing in styles.css, found by parsing, not listed:
+//   (a) a rule that sets BOTH a text color and a -soft background;
+//   (b) a DESCENDANT rule (`A … B`) whose text sits on a -soft background INHERITED from an ancestor rule R whose last
+//       compound contains A's classes (e.g. `.prow .arr` inside `.prow.big`) — using the most specific color override that
+//       applies inside R (e.g. `.prow.big .arr`), and skipping a descendant that paints its own background;
+//   (c) a -soft background rule with no color of its own (its text inherits the body ink).
+// Both colors resolve through the light :root tokens; contrast is asserted UNROUNDED ≥ 4.5. Dark-scheme blocks are excluded.
+function parseRules(src) {
+  const text = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  const walk = (str) => {
+    let i = 0;
+    while (i < str.length) {
+      const open = str.indexOf('{', i);
+      if (open < 0) break;
+      const prelude = str.slice(i, open).trim();
+      let depth = 1, k = open + 1;
+      while (k < str.length && depth) { if (str[k] === '{') depth += 1; else if (str[k] === '}') depth -= 1; k += 1; }
+      const body = str.slice(open + 1, k - 1);
+      if (prelude.startsWith('@media')) { if (!/prefers-color-scheme\s*:\s*dark/.test(prelude)) walk(body); }
+      else if (!prelude.startsWith('@')) out.push({ prelude, body });
+      i = k;
+    }
+  };
+  walk(text);
+  return out;
+}
+const splitSelectors = (p) => { const r = []; let d = 0, cur = ''; for (const ch of p) { if (ch === '(') d += 1; if (ch === ')') d -= 1; if (ch === ',' && !d) { r.push(cur.trim()); cur = ''; } else cur += ch; } if (cur.trim()) r.push(cur.trim()); return r; };
+const compounds = (sel) => sel.replace(/\s*[>+~]\s*/g, ' ').split(/\s+/).filter(Boolean);
+const classesOf = (c) => new Set((c.replace(/::?[a-z-]+(\([^)]*\))?/g, '').match(/\.[A-Za-z0-9_-]+/g) || []).map((x) => x.slice(1)));
+const subset = (a, b) => [...a].every((x) => b.has(x));
+const pseudosOf = (c) => new Set(c.match(/::?[a-z-]+(\([^)]*\))?/g) || []);
+const decl = (body, prop) => { const m = body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(--([a-z0-9-]+)\\)`)); return m ? m[1] : null; };
+const hasBg = (body) => /(?:^|;)\s*background(?:-color)?\s*:/.test(body);
+
+function discoverSoftPairs(cssText) {
+  // the CASCADE within one selector: rules with the same selector merge, a later declaration wins per property
+  const bySel = new Map();
+  parseRules(cssText).forEach(({ prelude, body }, order) => {
+    for (const sel of splitSelectors(prelude)) {
+      if (/data-theme="dark"|:not\(\[data-theme="light"\]\)|^:root/.test(sel)) continue;
+      const key = sel.replace(/\s+/g, ' ');
+      const cs = compounds(key);
+      const prev = bySel.get(key) || { sel: key, cs, last: classesOf(cs[cs.length - 1]), lastPseudo: pseudosOf(cs[cs.length - 1]), anc: cs.slice(0, -1).map(classesOf), color: null, bg: null, paintsBg: false, order };
+      const c = decl(body, 'color'), b = decl(body, 'background(?:-color)?');
+      bySel.set(key, { ...prev, color: c || prev.color, bg: hasBg(body) ? b : prev.bg, paintsBg: prev.paintsBg || hasBg(body), order });
+    }
+  });
+  const entries = [...bySel.values()];
+  const sameAnc = (x, y) => x.length === y.length && x.every((a, i) => a.size === y[i].size && subset(a, y[i]));
+  const pairs = [];
+  const soft = entries.filter((e) => e.bg && /-soft$/.test(e.bg));
+  for (const R of soft) {
+    if (R.color) pairs.push({ where: R.sel, fg: R.color, bg: R.bg, kind: 'same-rule' });                       // (a)
+    else pairs.push({ where: `${R.sel} (inherited body text)`, fg: 'ink', bg: R.bg, kind: 'inherited-ink' });      // (c)
+    // (a') SAME-ELEMENT refinements: a more specific selector on the same element (same ancestors, last compound ⊇ R's)
+    //      that sets a color but not its own background renders that color on R's soft ground (e.g. `.tag.x{color}`)
+    for (const D of entries) {
+      // D must be AT LEAST as specific as R on that element — classes AND pseudo-classes (`.del` does not refine `.del:hover`)
+      if (D === R || !D.color || D.paintsBg || !sameAnc(D.anc, R.anc) || !subset(R.last, D.last) || !subset(R.lastPseudo, D.lastPseudo)) continue;
+      if (D.last.size === R.last.size && D.lastPseudo.size === R.lastPseudo.size && D.order < R.order) continue;   // equal specificity: the later rule wins
+      pairs.push({ where: `${R.sel} refined by ${D.sel}`, fg: D.color, bg: R.bg, kind: 'refinement' });
+    }
+    const RC = R.last;
+    // (b) descendants: group candidate rules by their target (last compound), keep those whose ancestor classes ⊆ R's
+    const targets = new Map();
+    for (const D of entries) {
+      if (!D.anc.length || !D.last.size) continue;
+      const a = D.anc[D.anc.length - 1];
+      if (!a.size || !subset(a, RC)) continue;
+      const key = [...D.last].sort().join('.');
+      if (!targets.has(key)) targets.set(key, []);
+      targets.get(key).push({ D, spec: a.size });
+    }
+    for (const [key, list] of targets) {
+      if (list.some(({ D }) => D.paintsBg)) continue;                                // the descendant paints its own ground
+      const withColor = list.filter(({ D }) => D.color).sort((x, y) => (x.spec - y.spec) || (x.D.order - y.D.order));
+      if (!withColor.length) continue;
+      const eff = withColor[withColor.length - 1].D;                                 // the most specific (then latest) override
+      pairs.push({ where: `${R.sel} → .${key} (via ${eff.sel})`, fg: eff.color, bg: R.bg, kind: 'descendant' });
+    }
   }
-  assert.ok(rules > 10, `non-vacuity: the sweep saw the -soft background rules (${rules})`);
-  assert.deepEqual(offenders, [], `🔴 text-on-soft must use --green-text / --red-text:\n  ${offenders.join('\n  ')}`);
+  return pairs;
+}
+const allTokens = Object.fromEntries([...lightBlock.matchAll(/--([a-z0-9-]+):\s*(#[0-9A-Fa-f]{6})/g)].map((m) => [m[1], m[2]]));
+
+test('DISCOVERING SWEEP: every light-mode text-on-soft pairing (incl. inherited soft backgrounds) clears 4.5:1, unrounded', () => {
+  const pairs = discoverSoftPairs(css);
+  assert.ok(pairs.length >= 20, `non-vacuity: the sweep discovered the soft pairings (${pairs.length})`);
+  assert.ok(pairs.some((p) => p.kind === 'descendant' && /\.prow\.big → \.arr/.test(p.where)), 'non-vacuity: an INHERITED pairing (.prow.big → .arr) is discovered');
+  const bad = [];
+  for (const p of pairs) {
+    const fg = allTokens[p.fg], bg = allTokens[p.bg];
+    assert.ok(fg && bg, `${p.where}: both colors resolve through the light tokens (--${p.fg} / --${p.bg})`);
+    const r = contrast(fg, bg);
+    if (!(r >= 4.5)) bad.push(`${p.where}: --${p.fg} ${fg} on --${p.bg} ${bg} = ${r.toFixed(4)}:1`);
+  }
+  assert.deepEqual(bad, [], `🔴 light-mode text on a soft background below 4.5:1:\n  ${bad.join('\n  ')}`);
+});
+
+test('the discovering sweep catches the defects it exists for (fixtures)', () => {
+  const failing = (extra) => discoverSoftPairs(css + '\n' + extra).filter((p) => !(contrast(allTokens[p.fg], allTokens[p.bg]) >= 4.5));
+  assert.equal(failing('').length, 0, 'the shipped stylesheet is clean');
+  assert.ok(failing('.newpair{color:var(--green);background:var(--green-soft)}').length > 0, 'a new same-rule sub-4.5 pair fails');
+  assert.ok(failing('.tagx{background:var(--amber-soft)} .tagx .sub{color:var(--mute2)}').length > 0, 'a descendant on an INHERITED soft ground fails');
+  assert.ok(failing('.prow.big .arr{color:var(--mute2)}').length > 0, 'reverting the .prow.big override fails (the most specific rule wins)');
+  assert.ok(failing('.tag{color:var(--board)}').length > 0, 'an existing pill turned unreadable fails');
 });
 
 test('the dark theme keeps its green/red text values (dark unchanged)', () => {
