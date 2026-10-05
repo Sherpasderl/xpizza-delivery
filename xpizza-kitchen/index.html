@@ -1464,6 +1464,8 @@ function shortStatus(s) {
      script BY DESIGN: avail-key.js is UMD-lite and publishes window.availKey / window.decodeAvailKey as
      globals the ESM module below reads (the same bytes the server require()s). Loads before the module. -->
 <script src="avail-key.js?v=1"></script>
+<!-- 1D D4-b · availabilityReducer — the ONE 86 decision rule; byte-identical to xpizza-functions/availability-reducer.js -->
+<script src="availability-reducer.js?v=1"></script>
 <script type="module">
 // X Pizza Kitchen Display
 // version: 2.2.1
@@ -2721,7 +2723,7 @@ function prettyCat(c) {
   return String(c || 'Otros').replace(/[_-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
 }
 function availKeyOf(rawKey) { return typeof window.availKey === 'function' ? window.availKey(rawKey) : rawKey; }
-function isItemOff(rawKey) { return availFlags[availKeyOf(rawKey)]?.available === false; }   // absent/true ⇒ available
+function isItemOff(rawKey) { return window.availabilityReducer.decide([availFlags[availKeyOf(rawKey)]], 'any_false'); }   // absent/true ⇒ available (1D D4-b: the shared reducer, any_false)
 
 function renderAvailPanel() {
   renderAvailSummary();          // keep the sidebar sold-out summary in sync on every panel render

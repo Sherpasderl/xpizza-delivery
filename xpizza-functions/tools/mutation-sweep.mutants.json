@@ -2504,12 +2504,13 @@
     "slice": "b7",
     "label": "availability is resolved against the CURRENT key only — a rename un-86s the item",
     "file": "../xpizza-orders/index.html",
-    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
-    "to": "    const node = itemAvail[window.availKey(availIdentityOf(item))];\n    return !!(node && node.available === false);",
+    "from": "    return window.availabilityReducer.decide(keys.map(function(k){ return itemAvail[k]; }), 'any_false');",
+    "to": "    return window.availabilityReducer.decide([itemAvail[window.availKey(availIdentityOf(item))]], 'any_false');",
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ]
+    ],
+    "repointed": "1D D4-b: isSoldOut now hands its whole key history to the shared reducer; the mutant still consults the CURRENT key only"
   },
   {
     "id": "b7-2",
@@ -2527,13 +2528,14 @@
     "id": "b7-3",
     "slice": "b7",
     "label": "an explicit available:true BLOCKS — fail-open inverted",
-    "file": "../xpizza-orders/index.html",
-    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
-    "to": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node) return node.available === false || node.available === true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "file": "../xpizza-orders/availability-reducer.js",
+    "from": "function availabilityEntryOff(e) { return !!e && typeof e === 'object' && e.available === false; }",
+    "to": "function availabilityEntryOff(e) { return !!e && typeof e === 'object' && (e.available === false || e.available === true); }",
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ]
+    ],
+    "repointed": "1D D4-b: the any_false rule moved into the shared reducer this form loads; the mutant still makes an explicit available:true BLOCK"
   },
   {
     "id": "b7-4",
@@ -2552,14 +2554,15 @@
     "slice": "b7",
     "label": "la_musa: availability is resolved against the CURRENT key only — a rename un-86s the item",
     "file": "../la-musa-orders/index.html",
-    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
-    "to": "    const node = itemAvail[window.availKey(availIdentityOf(item))];\n    return !!(node && node.available === false);",
+    "from": "    return window.availabilityReducer.decide(keys.map(function(k){ return itemAvail[k]; }), 'any_false');",
+    "to": "    return window.availabilityReducer.decide([itemAvail[window.availKey(availIdentityOf(item))]], 'any_false');",
     "command": [
       "node",
       "../live-apply.test.mjs"
     ],
     "equivalent": true,
-    "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed."
+    "why": "ONE EQUIVALENCE CLASS (b7-10/b7-11): la_musa is 86'd BY ID, and a catalog rename does not change an id — so the key history for that brand can only ever hold one entry, and consulting 'every key this dish has had' is identical to consulting the current one. No input distinguishes them. The code is shared-shaped anyway because the hazard is real on the other brand: b7-1/b7-2 are the same mutations on x_pizza, which IS 86'd by name, and both die. b7-12 (fail-open inverted) dies here too, so la_musa's own availability rule is pinned — it is only the RENAME-awareness that is vacuous for it, and it stops being vacuous the moment la_musa's key strategy changes, which is exactly when it would be needed.",
+    "repointed": "1D D4-b: isSoldOut now hands its whole key history to the shared reducer; the mutant still consults the CURRENT key only"
   },
   {
     "id": "b7-11",
@@ -2579,13 +2582,14 @@
     "id": "b7-12",
     "slice": "b7",
     "label": "la_musa: an explicit available:true BLOCKS — fail-open inverted",
-    "file": "../la-musa-orders/index.html",
-    "from": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
-    "to": "    const keys = availKeysFor(item);\n    for(let i=0;i<keys.length;i++){\n      const node = itemAvail[keys[i]];\n      if(node) return node.available === false || node.available === true;     // ONLY an explicit false blocks — under ANY key it has had\n    }\n    return false;",
+    "file": "../la-musa-orders/availability-reducer.js",
+    "from": "function availabilityEntryOff(e) { return !!e && typeof e === 'object' && e.available === false; }",
+    "to": "function availabilityEntryOff(e) { return !!e && typeof e === 'object' && (e.available === false || e.available === true); }",
     "command": [
       "node",
       "../live-apply.test.mjs"
-    ]
+    ],
+    "repointed": "1D D4-b: the any_false rule moved into the shared reducer this form loads; the mutant still makes an explicit available:true BLOCK"
   },
   {
     "id": "b7-13",

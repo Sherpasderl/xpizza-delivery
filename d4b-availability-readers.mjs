@@ -110,11 +110,11 @@ function kdsDecisions() {
     if (!m) throw new Error(`KDS: could not find the one-line function ${name}`);
     return m[0];
   };
-  const reducerTag = /<script src="availability-reducer\.js"><\/script>/.test(html)
+  const reducerTag = /<script src="availability-reducer\.js(\?v=\d+)?"><\/script>/.test(html)
     ? readFileSync(new URL('./xpizza-kitchen/availability-reducer.js', import.meta.url), 'utf8') : '';
   const out = {};
   for (const [c, v] of Object.entries(ENTRY_CASES)) {
-    const ctx = { window: {} }; vm.createContext(ctx);
+    const ctx = {}; vm.createContext(ctx); vm.runInContext('var window = this;', ctx);   // in a browser the UMD globals ARE window's
     vm.runInContext(readFileSync(new URL('./xpizza-kitchen/avail-key.js', import.meta.url), 'utf8'), ctx);
     if (reducerTag) vm.runInContext(reducerTag, ctx);
     vm.runInContext(`var availFlags = ${JSON.stringify(mapWith([['Carnivora', v]]))};\n${fnSrc('availKeyOf')}\n${fnSrc('isItemOff')}`, ctx);

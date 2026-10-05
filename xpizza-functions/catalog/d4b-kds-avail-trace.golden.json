@@ -1,0 +1,64 @@
+{
+  "_provenance": {
+    "captured_from": "717f97e911774aa03fa285b54ee5af576067ba1a:xpizza-kitchen/index.html",
+    "by": "d4b-kds-avail-trace.mjs (base KDS text, no reducer)"
+  },
+  "steps": [
+    {
+      "label": "initial: Carnivora available",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill on\">Disponible</span><span class=\"sw\"></span></span></div><div class=\"avrow\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill on\">Disponible</span><span class=\"sw\"></span></span></div>",
+      "summary": "",
+      "pending": "{}",
+      "nextIsAvailable_Carnivora": false,
+      "note": ""
+    },
+    {
+      "label": "tablet A pending (optimistic off)",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow off pending\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div><div class=\"avrow\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill on\">Disponible</span><span class=\"sw\"></span></span></div>",
+      "summary": "<div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Carnívora</span></div>",
+      "pending": "{\"Carnivora\":true}",
+      "nextIsAvailable_Carnivora": true,
+      "note": ""
+    },
+    {
+      "label": "tablet A tap while pending (ignored)",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow off pending\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div><div class=\"avrow\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill on\">Disponible</span><span class=\"sw\"></span></span></div>",
+      "summary": "<div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Carnívora</span></div>",
+      "pending": "{\"Carnivora\":true}",
+      "nextIsAvailable_Carnivora": true,
+      "note": ""
+    },
+    {
+      "label": "tablet B write arrives via subscription",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow off pending\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div><div class=\"avrow off\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div>",
+      "summary": "<div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Carnívora</span></div><div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Margherita</span></div>",
+      "pending": "{\"Carnivora\":true}",
+      "nextIsAvailable_Carnivora": true,
+      "note": ""
+    },
+    {
+      "label": "tablet A rejected → revert",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill on\">Disponible</span><span class=\"sw\"></span></span></div><div class=\"avrow off\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div>",
+      "summary": "<div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Margherita</span></div>",
+      "pending": "{}",
+      "nextIsAvailable_Carnivora": false,
+      "note": "Sin permiso / no se pudo guardar"
+    },
+    {
+      "label": "next toggle",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow off pending\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div><div class=\"avrow off\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div>",
+      "summary": "<div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Carnívora</span></div><div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Margherita</span></div>",
+      "pending": "{\"Carnivora\":true}",
+      "nextIsAvailable_Carnivora": true,
+      "note": "Sin permiso / no se pudo guardar"
+    },
+    {
+      "label": "next toggle acknowledged",
+      "panel": "<div class=\"cat\">Individual</div><div class=\"avrow off\" data-key=\"Carnivora\"><span class=\"nm\">Carnívora</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div><div class=\"avrow off\" data-key=\"Margherita\"><span class=\"nm\">Margherita</span><span class=\"avmeta\"><span class=\"pill off\">Agotado</span><span class=\"sw off\"></span></span></div>",
+      "summary": "<div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Carnívora</span></div><div class=\"sb-avail-out\"><span class=\"dot\"></span><span class=\"nm\">Margherita</span></div>",
+      "pending": "{}",
+      "nextIsAvailable_Carnivora": true,
+      "note": "Sin permiso / no se pudo guardar"
+    }
+  ]
+}

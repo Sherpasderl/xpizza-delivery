@@ -1413,6 +1413,8 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A&libraries=places&callback=googleMapsReady" async defer></script>
 <!-- KDS Phase 2b · availKey — canonical availability-key encoder (window.availKey); shared byte-identical across KDS/forms/server -->
 <script src="avail-key.js"></script>
+<!-- 1D D4-b · availabilityReducer — the ONE 86 decision rule (window.availabilityReducer); shared byte-identical across KDS/forms/server -->
+<script src="availability-reducer.js"></script>
 <script src="form-safe-render.js"></script>
 <script src="form-confirm-quote.js"></script>
 <script src="form-identity-strip.js"></script>
@@ -2432,11 +2434,9 @@ function isSoldOut(item){
   try {
     if(!item || typeof window.availKey !== 'function') return false;
     const keys = availKeysFor(item);
-    for(let i=0;i<keys.length;i++){
-      const node = itemAvail[keys[i]];
-      if(node && node.available === false) return true;     // ONLY an explicit false blocks — under ANY key it has had
-    }
-    return false;
+    // 1D D4-b: the shared reducer, 'any_false' — ONLY an explicit false blocks, under ANY key it has had.
+    // Today's exact rule over this page's own key history (pinned by d4b-availability-parity.golden.json).
+    return window.availabilityReducer.decide(keys.map(function(k){ return itemAvail[k]; }), 'any_false');
   } catch(_){ return false; }                               // any doubt ⇒ available
 }
 function soldOutById(id){ return isSoldOut(MENU.find(p => p.id === id)); }
