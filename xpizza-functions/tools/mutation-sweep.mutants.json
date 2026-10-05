@@ -10327,8 +10327,8 @@
     "slice": "stats",
     "label": "🔴 B2: no single-flight — every request starts its own /orders scan",
     "file": "stats/stats-api.js",
-    "from": "  if (!e || e.failedAt != null || nowMs - e.at >= LIVE_TTL_MS) {",
-    "to": "  if (true) {",
+    "from": "  const reusable = e && (e.state === 'pending' || (e.state === 'ok' && t - e.doneAt < LIVE_TTL_MS));",
+    "to": "  const reusable = false;",
     "command": [
       "node",
       "stats/stats-api.test.js"
@@ -10351,7 +10351,7 @@
     "slice": "stats",
     "label": "B2: a failed live scan is retried immediately (no backoff)",
     "file": "stats/stats-api.js",
-    "from": "  if (e && e.failedAt != null && nowMs - e.failedAt < LIVE_BACKOFF_MS) {",
+    "from": "  if (e && e.state === 'failed' && t - e.doneAt < LIVE_BACKOFF_MS) {",
     "to": "  if (false) {",
     "command": [
       "node",
@@ -10437,7 +10437,7 @@
     "slice": "stats",
     "label": "S7: cursor not bound to restaurant + range",
     "file": "stats/stats-api.js",
-    "from": "    if (tag !== cursorTag(rid, p, vs, k)) return bad(",
+    "from": "    if (!tagEq(tag, cursorTag(keyer, rid, p, vs, k))) return bad(",
     "to": "    if (false) return bad(",
     "command": [
       "node",
@@ -10490,6 +10490,90 @@
     "command": [
       "node",
       "stats/stats-job.test.js"
+    ]
+  },
+  {
+    "id": "s1-44",
+    "slice": "stats",
+    "label": "🔴 B2': a pending scan expires at the TTL (a slow scan is restarted)",
+    "file": "stats/stats-api.js",
+    "from": "e && (e.state === 'pending' ||",
+    "to": "e && ((e.state === 'pending' && t - e.startedAt < LIVE_TTL_MS) ||",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-45",
+    "slice": "stats",
+    "label": "🔴 B2': failure backoff measured from the REQUEST, not the failure",
+    "file": "stats/stats-api.js",
+    "from": "(err) => { entry.state = 'failed'; entry.doneAt = c.clock(); throw err; }",
+    "to": "(err) => { entry.state = 'failed'; entry.doneAt = t; throw err; }",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-46",
+    "slice": "stats",
+    "label": "B2': success TTL measured from the REQUEST, not completion",
+    "file": "stats/stats-api.js",
+    "from": "(r) => { entry.state = 'ok'; entry.doneAt = c.clock(); return r.orders; }",
+    "to": "(r) => { entry.state = 'ok'; entry.doneAt = t; return r.orders; }",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-47",
+    "slice": "stats",
+    "label": "🔴 S7': cursor tag is a public sha256 checksum (recomputable by a client)",
+    "file": "stats/stats-api.js",
+    "from": "const cursorTag = (keyer, rid, p, v, k) => keyer.cursorTag(`${rid}|${p.from}|${p.to}|${v}|${k}`);",
+    "to": "const cursorTag = (keyer, rid, p, v, k) => require('crypto').createHash('sha256').update(`${rid}|${p.from}|${p.to}|${v}|${k}`).digest('hex').slice(0, 32);",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-48",
+    "slice": "stats",
+    "label": "🔴 B4': the index preflight refuses nothing (a deploy would delete remote-only indexes)",
+    "file": "tools/firestore-indexes-preflight.js",
+    "from": "  return { ok: !remoteOnlyIndexes.length && !remoteOnlyOverrides.length && !changedOverrides.length,",
+    "to": "  return { ok: true,",
+    "command": [
+      "node",
+      "tools/firestore-indexes-preflight.test.js"
+    ]
+  },
+  {
+    "id": "s1-49",
+    "slice": "stats",
+    "label": "B4': the index preflight ignores a changed shared override",
+    "file": "tools/firestore-indexes-preflight.js",
+    "from": "    if (r.indexes !== null && canon(rc) !== canon(lc)) changedOverrides.push(",
+    "to": "    if (false) changedOverrides.push(",
+    "command": [
+      "node",
+      "tools/firestore-indexes-preflight.test.js"
+    ]
+  },
+  {
+    "id": "s1-50",
+    "slice": "stats",
+    "label": "B4': the index preflight ignores remote-only field overrides (a console TTL policy would be reset)",
+    "file": "tools/firestore-indexes-preflight.js",
+    "from": "    if (!l) { remoteOnlyOverrides.push(r); continue; }",
+    "to": "    if (!l) { continue; }",
+    "command": [
+      "node",
+      "tools/firestore-indexes-preflight.test.js"
     ]
   }
 ]

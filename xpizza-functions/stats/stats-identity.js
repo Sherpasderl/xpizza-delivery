@@ -65,12 +65,19 @@ function makeCustomerKeyer(secret) {
     if (!k) { k = crypto.createHmac('sha256', secret).update(`sherpa-stats-customer/v1/${rid}`).digest(); perRid.set(rid, k); }
     return k;
   };
-  return function customerKey(rid, phone) {
+  function customerKey(rid, phone) {
     const p = normalizePhoneSilent(phone);
     if (!p) return null;
     const h = crypto.createHmac('sha256', keyFor(rid)).update(p).digest('hex').slice(0, HMAC_HEX_CHARS);
     return `${KEY_VERSION}:${h}`;
-  };
+  }
+  // CSV continuation-cursor authentication (codex build r2, S7'). A DOMAIN-SEPARATED key derived from
+  // the same server secret — never the customer key — so a cursor tag can neither be recomputed by a
+  // client nor be confused with any other use of the secret. Loaded exactly as lazily (and fails closed
+  // exactly as) the keyer it rides on.
+  const cursorKey = crypto.createHmac('sha256', secret).update('sherpa-stats-csv-cursor/v1').digest();
+  customerKey.cursorTag = (payload) => crypto.createHmac('sha256', cursorKey).update(`csv-cursor-v1|${payload}`).digest('hex').slice(0, 32);
+  return customerKey;
 }
 
 const CUSTOMER_KEY_RE = /^h1:[0-9a-f]{32}$/;

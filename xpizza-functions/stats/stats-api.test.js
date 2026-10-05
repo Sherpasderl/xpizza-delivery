@@ -12,6 +12,10 @@ const { makeRtdb } = require('./stats-rtdb-fake');
 const { makeDb } = require('../catalog/firestore-fake');
 const { makeCustomerKeyer } = require('./stats-identity');
 const { authorizeCatalogEdit } = require('../catalog/catalog-edit-auth');
+// 🔴 A SUITE THAT STOPS EARLY MUST NOT EXIT 0. If an awaited promise never settles, Node drains the event
+// loop and exits 0 mid-cell — a silent pass. The suite must reach its last line to succeed.
+let __finished = false;
+process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 suite exited before finishing (an awaited promise never settled)'); process.exit(1); } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const SECRET = 's'.repeat(40);
 const keyer = makeCustomerKeyer(SECRET);
@@ -340,13 +344,16 @@ const Q = (o) => ({ restaurantId: 'r_a', from: '2026-10-14', to: '2026-10-16', .
     let reads = 0;
     const broken = { ref: () => ({ orderByChild: () => broken.q, }), q: null };
     broken.q = { startAt: () => broken.q, startAfter: () => broken.q, endBefore: () => broken.q, limitToFirst: () => broken.q, once: async () => { reads++; throw new Error('rtdb down'); } };
-    const bc = A.makeLiveCache();
-    const callB = (nowMs) => A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: broken, getKeyer: () => keyer, nowMs, liveCache: bc }, req({ restaurantId: 'r_a', from: TODAY, to: TODAY }, 'x'));
+    let clockNow = 1000000;
+    const bc = A.makeLiveCache({ clock: () => clockNow });
+    const callB = () => A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: broken, getKeyer: () => keyer, nowMs: NOW, liveCache: bc }, req({ restaurantId: 'r_a', from: TODAY, to: TODAY }, 'x'));
     const keepWarn = console.warn; console.warn = () => {};
     try {
-      assert.strictEqual((await callB(NOW)).status, 503); assert.strictEqual(reads, 1);
-      assert.strictEqual((await callB(NOW + 1000)).status, 503); assert.strictEqual(reads, 1, 'inside the backoff: no new read');
-      assert.strictEqual((await callB(NOW + A.LIVE_BACKOFF_MS + 1)).status, 503); assert.strictEqual(reads, 2, 'after the backoff: one retry');
+      assert.strictEqual((await callB()).status, 503); assert.strictEqual(reads, 1);
+      clockNow += 1000;
+      assert.strictEqual((await callB()).status, 503); assert.strictEqual(reads, 1, 'inside the backoff: no new read');
+      clockNow += A.LIVE_BACKOFF_MS;
+      assert.strictEqual((await callB()).status, 503); assert.strictEqual(reads, 2, 'after the backoff: one retry');
     } finally { console.warn = keepWarn; }
     ok('B2: single-flight shared scan (10 concurrent → 1 read), no scan for historical requests, failure backoff');
   }
@@ -357,15 +364,79 @@ const Q = (o) => ({ restaurantId: 'r_a', from: '2026-10-14', to: '2026-10-16', .
     const q = { restaurantId: 'r_a', from: '2026-10-15', to: '2026-10-15', format: 'csv', kind: 'orders' };
     assert.strictEqual((await c({ ...q, cursor: '1:O0' }, 'ownerA')).status, 400, 'the codex repro (an untagged epoch cursor)');
     const p = { from: '2026-10-15', to: '2026-10-15' };
-    const epoch = A.makeCursor('r_a', p, 1, 'O0');                       // correctly tagged but at the epoch
+    const epoch = A.makeCursor(keyer, 'r_a', p, 1, 'O0');                       // correctly tagged but at the epoch
     const r1 = await c({ ...q, cursor: epoch }, 'ownerA');
     assert.strictEqual(r1.status, 400); assert.match(r1.body.detail, /outside the export range/);
-    const inRange = A.makeCursor('r_a', p, at('2026-10-15', 1), 'O0');
+    const inRange = A.makeCursor(keyer, 'r_a', p, at('2026-10-15', 1), 'O0');
     assert.strictEqual((await c({ ...q, cursor: inRange }, 'ownerA')).status, 200);
     assert.strictEqual((await c({ ...q, restaurantId: 'r_b', cursor: inRange }, 'ownerB')).status, 400, 'another restaurant');
     assert.strictEqual((await c({ ...q, to: '2026-10-16', cursor: inRange }, 'ownerA')).status, 400, 'another range');
-    ok('S7: cursors are tagged to restaurant + range and must lie inside the padded read window');
+    // S7' (codex build r2): the tag is an HMAC — tampering + recomputing the PUBLIC sha256 checksum fails
+    const crypto = require('crypto');
+    const moved = at('2026-10-15', 2);
+    const sha = crypto.createHash('sha256').update(`r_a|${p.from}|${p.to}|${moved}|O0`).digest('hex');
+    for (const forged of [`${moved}:O0:${sha.slice(0, 16)}`, `${moved}:O0:${sha.slice(0, 32)}`]) {
+      assert.strictEqual((await c({ ...q, cursor: forged }, 'ownerA')).status, 400, `forged ${forged}`);
+    }
+    const otherSecret = makeCustomerKeyer('z'.repeat(40));
+    assert.strictEqual((await c({ ...q, cursor: A.makeCursor(otherSecret, 'r_a', p, moved, 'O0') }, 'ownerA')).status, 400, 'a cursor signed with another secret');
+    assert.strictEqual((await c({ ...q, cursor: A.makeCursor(keyer, 'r_a', p, moved, 'O0') }, 'ownerA')).status, 200, 'non-vacuity: the genuine HMAC cursor at the same position passes');
+    ok("S7/S7': cursors are HMAC-authenticated (public-checksum forgery and foreign secrets → 400), bound to restaurant + range, inside the padded window");
+  }
+
+  // 17. 🔴 B2' (codex build r2): with an INJECTED CLOCK — a slow scan that crosses the TTL is still ONE
+  //     scan; TTL and failure backoff are measured from COMPLETION. Every scan gets its OWN gate, and every
+  //     "no new scan" assertion first lets the event loop SETTLE (a request does several async reads before
+  //     it reaches the cache, so checking after a tick or two would be vacuous).
+  {
+    let clockNow = 5000000;
+    const gates = [];
+    const slow = { ref: () => ({ orderByChild: () => slow.q }), q: null };
+    slow.q = { startAt: () => slow.q, startAfter: () => slow.q, endBefore: () => slow.q, limitToFirst: () => slow.q,
+      once: () => { let res, rej; const p = new Promise((a, b2) => { res = a; rej = b2; }); gates.push({ res, rej }); return p; } };
+    const empty = { forEach: () => {} };
+    const settle = async () => { for (let i = 0; i < 300; i++) await new Promise((r) => setImmediate(r)); };
+    // A response that should come from the cache must arrive within a settle window — otherwise it is
+    // waiting on a scan that should never have started (named failure, not a hang).
+    const within = (p, what) => Promise.race([p, settle().then(() => { throw new Error(`🔴 ${what}: response still waiting on an unexpected scan`); })]);
+    const scansStartedOrQueued = (c) => gates.length + c.waiters.length;
+    const mkCall = (cache) => () => A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: slow, getKeyer: () => keyer, nowMs: NOW, liveCache: cache }, req({ restaurantId: 'r_a', from: TODAY, to: TODAY }, 'x'));
+    const cache = A.makeLiveCache({ clock: () => clockNow });
+    const call = mkCall(cache);
+    // (a) slow scan: started, the clock runs 40 s (past the 30 s TTL) while it is still PENDING
+    const r1 = call(); await settle();
+    assert.strictEqual(gates.length, 1, 'premise: one scan in flight');
+    clockNow += 40000;
+    const r2 = call(); await settle();
+    assert.strictEqual(scansStartedOrQueued(cache), 1, 'a pending scan past the TTL is SHARED — not restarted, not queued');
+    clockNow += 1000; gates[0].res(empty);                         // completes at +41 s
+    assert.strictEqual((await within(r1, 'slow scan, first request')).status, 200);
+    assert.strictEqual((await within(r2, 'slow scan, request past the TTL')).status, 200);
+    // (b) TTL from COMPLETION: +29 s after it finished → still fresh (no scan); +31 s → a new scan
+    clockNow += 29000; assert.strictEqual((await within(call(), 'TTL measured from completion')).status, 200); await settle();
+    assert.strictEqual(scansStartedOrQueued(cache), 1, 'fresh for the TTL measured from completion (a request-time TTL would have expired)');
+    clockNow += 2000; const r3 = call(); await settle();
+    assert.strictEqual(gates.length, 2, 'non-vacuity: after the TTL from completion, a new scan'); gates[1].res(empty); await r3;
+    // (c) a scan that FAILS 20 s after the request backs off for the full window measured from the FAILURE
+    const fc = A.makeLiveCache({ clock: () => clockNow });
+    const callF = mkCall(fc);
+    const keepWarn = console.warn; console.warn = () => {};
+    try {
+      const f1 = callF(); await settle();
+      assert.strictEqual(gates.length, 3);
+      clockNow += 20000; gates[2].rej(new Error('slow failure'));
+      assert.strictEqual((await f1).status, 503);
+      clockNow += 5000;                                            // 25 s after the request, 5 s after the failure
+      assert.strictEqual((await within(callF(), 'backoff measured from the failure')).status, 503); await settle();
+      assert.strictEqual(scansStartedOrQueued(fc), 3, '5 s after a 20 s failure: still backing off — no scan');
+      clockNow += A.LIVE_BACKOFF_MS;
+      const f3 = callF(); await settle();
+      assert.strictEqual(gates.length, 4, 'after the full backoff from completion: one retry');
+      gates[3].res(empty); assert.strictEqual((await f3).status, 200);
+    } finally { console.warn = keepWarn; }
+    ok("B2': pending scans shared past the TTL; TTL and failure backoff measured from completion (injected clock)");
   }
 
   console.log(`\nstats-api: ${n} cells passed`);
+  __finished = true;
 })().catch((e) => { console.error(e); process.exit(1); });

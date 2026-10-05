@@ -12,6 +12,10 @@ const F = require('./stats-fixtures');
 const { makeRtdb } = require('./stats-rtdb-fake');
 const { makeDb } = require('../catalog/firestore-fake');
 const { makeCustomerKeyer } = require('./stats-identity');
+// 🔴 A SUITE THAT STOPS EARLY MUST NOT EXIT 0. If an awaited promise never settles, Node drains the event
+// loop and exits 0 mid-cell — a silent pass. The suite must reach its last line to succeed.
+let __finished = false;
+process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 suite exited before finishing (an awaited promise never settled)'); process.exit(1); } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const keyer = makeCustomerKeyer('j'.repeat(40));
 const NOW = T.dayStartMs('2026-10-20') + 9 * 3600000 + 10 * 60000;   // 2026-10-20 03:10 local
@@ -261,4 +265,5 @@ const dailyDoc = async (fs, rid, d) => { const s = await S.dailyRef(fs, rid, d).
   }
 
   console.log(`\nstats-job: ${n} cells passed`);
+  __finished = true;
 })().catch((e) => { console.error(e); process.exit(1); });

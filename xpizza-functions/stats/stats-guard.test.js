@@ -13,6 +13,10 @@ const fs = require('fs');
 const path = require('path');
 const { parse } = require('acorn');
 const { runtimeImportGraph } = require('../catalog/guard-ast');
+// 🔴 A SUITE THAT STOPS EARLY MUST NOT EXIT 0. If an awaited promise never settles, Node drains the event
+// loop and exits 0 mid-cell — a silent pass. The suite must reach its last line to succeed.
+let __finished = false;
+process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 suite exited before finishing (an awaited promise never settled)'); process.exit(1); } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ROOT = path.join(__dirname, '..');
 const rel = (f) => path.relative(ROOT, f);
@@ -134,11 +138,22 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
 {
   const { fieldOverrides, exemptFor } = require('./stats-indexing');
   const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firestore.indexes.json'), 'utf8'));
-  assert.deepStrictEqual(cfg.fieldOverrides, fieldOverrides(), 'firestore.indexes.json fieldOverrides must equal stats-indexing.js EXEMPT');
-  assert.deepStrictEqual(cfg.indexes, [], 'stats needs no composite index');
+  /* 🔴 firestore.indexes.json IS THE WHOLE-DATABASE INVENTORY (codex build r2 B4'), not a stats file: the
+     CLI deletes/resets whatever it omits. So this asserts only what stats OWNS — every stats exemption is
+     present, as a full exemption — and NOT that the file is otherwise empty: other features' composite
+     indexes and overrides belong in it too. Completeness against the REMOTE is the job of the mandatory
+     pre-deploy check, tools/firestore-indexes-preflight.js (its own suite). */
+  assert(Array.isArray(cfg.indexes) && Array.isArray(cfg.fieldOverrides), 'a valid inventory file');
+  for (const want of fieldOverrides()) {
+    const got = cfg.fieldOverrides.filter((o) => o.collectionGroup === want.collectionGroup && o.fieldPath === want.fieldPath);
+    assert.strictEqual(got.length, 1, `stats exemption ${want.collectionGroup}.${want.fieldPath} present exactly once`);
+    assert.deepStrictEqual(got[0].indexes, [], `${want.collectionGroup}.${want.fieldPath} must be a full exemption`);
+  }
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
   assert.strictEqual(fb.firestore.indexes, 'firestore.indexes.json', 'firebase.json deploys the index config');
-  for (const o of cfg.fieldOverrides) assert.deepStrictEqual(o.indexes, [], `${o.collectionGroup}.${o.fieldPath} must be a full exemption`);
+  // the preflight compares exactly the file firebase.json deploys
+  const pf = fs.readFileSync(path.join(ROOT, 'tools', 'firestore-indexes-preflight.js'), 'utf8');
+  assert(/fb\.firestore\.indexes/.test(pf), 'the preflight reads the deployed inventory path from firebase.json');
   const S = require('./stats-store'); const B = require('./stats-build');
   const day = B.emptySummary();
   for (let i = 0; i < 5000; i++) day.customers[`h1:${String(i).padStart(32, '0')}`] = { orders: 1, cents: 100 };
@@ -149,7 +164,7 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
   assert(dailyExempt < 200, `daily doc under exemptions needs ${dailyExempt} entries`);
   assert(shardExempt < 20, `shard under exemptions needs ${shardExempt} entries`);
   assert(S.indexEntries(shard) > 40000, 'non-vacuity: the same shard under DEFAULT indexing exceeds Firestore\'s 40,000 limit');
-  ok(`index exemptions synced + deployed via firebase.json; daily ${dailyExempt} / shard ${shardExempt} entries (default indexing: ${S.indexEntries(shard)})`);
+  ok(`stats exemptions present in the whole-DB inventory (no emptiness assumed), preflight reads the deployed file; daily ${dailyExempt} / shard ${shardExempt} entries (default indexing: ${S.indexEntries(shard)})`);
 }
 
 // 5. 🔴 END TO END: run a REAL job + API over phone-bearing orders with EVERY output channel captured;
@@ -189,4 +204,5 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
   assert(!/h1:[0-9a-f]{8}/.test(hay), 'no customer hmac in any output');
   ok(`end-to-end log capture (${seen.length} lines + ${bodies.length} responses): no phone, no hmac`);
   console.log(`\nstats-guard: ${n} cells passed`);
+  __finished = true;
 })().catch((e) => { console.error(e); process.exit(1); });

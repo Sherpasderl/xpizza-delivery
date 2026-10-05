@@ -47,7 +47,15 @@ const bad = (error, detail) => reply(400, { error, ...(detail ? { detail } : {})
    maxInstances × LIVE_MAX_CONCURRENT scans per LIVE_TTL_MS. */
 const LIVE_BACKOFF_MS = 10000;
 const LIVE_MAX_CONCURRENT = 1;
-function makeLiveCache() { return { entries: new Map(), running: 0, waiters: [], scans: 0 }; }
+/* 🔴 TIMES ARE MEASURED AT COMPLETION, ON THE CACHE'S CLOCK (codex build r2, B2'). An entry is one of:
+     pending — a scan in flight: ALWAYS shared, however long it runs (a slow scan crossing the TTL must not
+               start a second one);
+     ok      — fresh for LIVE_TTL_MS counted from when the scan FINISHED;
+     failed  — refused (503, retryable) for LIVE_BACKOFF_MS counted from when the scan FAILED (a 20 s
+               failure must still back off for the full window).
+   The clock is the cache's (Date.now in production; injected in tests), never the request's nowMs,
+   which only decides business dates. */
+function makeLiveCache({ clock = Date.now } = {}) { return { entries: new Map(), running: 0, waiters: [], scans: 0, clock }; }
 
 async function withScanSlot(cache, fn) {
   if (cache.running >= LIVE_MAX_CONCURRENT) await new Promise((r) => cache.waiters.push(r));
@@ -56,20 +64,26 @@ async function withScanSlot(cache, fn) {
 }
 
 async function liveSummaries({ rtdb, keyer, cache }, rid, liveDates, nowMs) {
+  void nowMs;
   const c = cache || makeLiveCache();
   const key = liveDates.join(',');
+  const t = c.clock();
   let e = c.entries.get(key);
-  if (e && e.failedAt != null && nowMs - e.failedAt < LIVE_BACKOFF_MS) {
+  if (e && e.state === 'failed' && t - e.doneAt < LIVE_BACKOFF_MS) {
     throw Object.assign(new Error('stats_live_backoff'), { code: 'stats_live_backoff' });
   }
-  if (!e || e.failedAt != null || nowMs - e.at >= LIVE_TTL_MS) {
+  const reusable = e && (e.state === 'pending' || (e.state === 'ok' && t - e.doneAt < LIVE_TTL_MS));
+  if (!reusable) {
     const fromMs = T.dayStartMs(liveDates[0]) - T.READ_PAD_MS;
     const toMs = T.dayEndMs(liveDates[liveDates.length - 1]);
-    e = { at: nowMs, failedAt: null, built: new Map() };
-    e.orders = withScanSlot(c, () => { c.scans += 1; return readOrdersBounded(rtdb, fromMs, toMs, LIVE_BUDGET); }).then((r) => r.orders);
-    e.orders.catch(() => { e.failedAt = nowMs; });
+    const entry = { state: 'pending', startedAt: t, doneAt: null, built: new Map() };
+    entry.orders = withScanSlot(c, () => { c.scans += 1; return readOrdersBounded(rtdb, fromMs, toMs, LIVE_BUDGET); })
+      .then((r) => { entry.state = 'ok'; entry.doneAt = c.clock(); return r.orders; },
+        (err) => { entry.state = 'failed'; entry.doneAt = c.clock(); throw err; });
+    entry.orders.catch(() => {});
+    e = entry;
     c.entries.set(key, e);
-    for (const k of c.entries.keys()) if (k !== key && nowMs - c.entries.get(k).at >= LIVE_TTL_MS) c.entries.delete(k);   // bounded
+    for (const [k, x] of c.entries) if (k !== key && x.state !== 'pending' && t - x.doneAt >= Math.max(LIVE_TTL_MS, LIVE_BACKOFF_MS)) c.entries.delete(k);   // bounded
   }
   const orders = await e.orders;
   if (!e.built.has(rid)) e.built.set(rid, buildFor(orders, rid, liveDates, keyer));
@@ -210,7 +224,7 @@ async function getSalesStatsCore(deps, req) {
   let keyer;
   try { keyer = getKeyer(); } catch (e) { return reply(503, { error: 'stats_unavailable', retryable: false }); }   // secret fails CLOSED
 
-  if (p.format === 'csv' && p.kind === 'orders') return ordersCsv({ rtdb }, rid, p);
+  if (p.format === 'csv' && p.kind === 'orders') return ordersCsv({ rtdb, keyer }, rid, p);
 
   const cmp = compareRange(p);
   const yesterday = T.addDays(p.today, -1);
@@ -302,22 +316,24 @@ async function getSalesStatsCore(deps, req) {
 
 function isoOf(ts) { try { return ts && typeof ts.toDate === 'function' ? ts.toDate().toISOString() : (ts ? String(ts) : null); } catch (_) { return null; } }
 
-/* 🔴 CONTINUATION CURSORS ARE BOUND AND RANGE-CHECKED (codex build r1 #7). A cursor is
-   `<created_at>:<key>:<tag>` where tag = sha256(rid|from|to|created_at|key)[:16]. It is accepted only for
-   the SAME restaurant and export range it was issued for, and only if its created_at lies inside that
-   range's padded read window — so no cursor can move the bounded read outside [from − pad, to end). */
-const CURSOR_RE = /^(\d{1,16}):([A-Za-z0-9_-]{1,80}):([0-9a-f]{16})$/;
-const cursorTag = (rid, p, v, k) => require('crypto').createHash('sha256').update(`${rid}|${p.from}|${p.to}|${v}|${k}`).digest('hex').slice(0, 16);
-const makeCursor = (rid, p, v, k) => `${v}:${k}:${cursorTag(rid, p, v, k)}`;
+/* 🔴 CONTINUATION CURSORS ARE AUTHENTICATED, BOUND AND RANGE-CHECKED (codex build r1 #7, r2 S7').
+   A cursor is `<created_at>:<key>:<tag>`, tag = HMAC(server-secret-derived cursor key,
+   "csv-cursor-v1|rid|from|to|created_at|key") — a client cannot recompute it, so it cannot move a
+   cursor, or re-target it at another restaurant or range. It is accepted only for the SAME restaurant
+   and range, and only if created_at lies inside that range's padded read window. */
+const CURSOR_RE = /^(\d{1,16}):([A-Za-z0-9_-]{1,80}):([0-9a-f]{32})$/;
+const cursorTag = (keyer, rid, p, v, k) => keyer.cursorTag(`${rid}|${p.from}|${p.to}|${v}|${k}`);
+const makeCursor = (keyer, rid, p, v, k) => `${v}:${k}:${cursorTag(keyer, rid, p, v, k)}`;
+const tagEq = (a, b) => a.length === b.length && require('crypto').timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-async function ordersCsv({ rtdb }, rid, p) {
+async function ordersCsv({ rtdb, keyer }, rid, p) {
   if (T.daysBetween(p.from, p.to) + 1 > ORDERS_CSV_MAX_DAYS) return bad('range_too_long', `orders CSV: max ${ORDERS_CSV_MAX_DAYS} days per export`);
   const fromMs = T.dayStartMs(p.from) - T.READ_PAD_MS, toMs = T.dayEndMs(p.to);
   let q = rtdb.ref('orders').orderByChild('created_at');
   if (p.cursor) {
     const [, vs, k, tag] = CURSOR_RE.exec(p.cursor);
     const v = Number(vs);
-    if (tag !== cursorTag(rid, p, vs, k)) return bad('bad_cursor', 'cursor was issued for another restaurant or range');
+    if (!tagEq(tag, cursorTag(keyer, rid, p, vs, k))) return bad('bad_cursor', 'cursor was issued for another restaurant or range');
     if (!(v >= fromMs && v < toMs)) return bad('bad_cursor', 'cursor outside the export range');
     q = q.startAfter(v, k);
   } else q = q.startAt(fromMs);
@@ -329,7 +345,7 @@ async function ordersCsv({ rtdb }, rid, p) {
   snap.forEach((child) => {
     got += 1;
     const o = child.val();
-    last = (o && Number.isFinite(o.created_at)) ? makeCursor(rid, p, o.created_at, child.key) : last;
+    last = (o && Number.isFinite(o.created_at)) ? makeCursor(keyer, rid, p, o.created_at, child.key) : last;
     if (!o || B.ridOf(o) !== rid) return;
     const ms = T.serviceMs(o); if (ms === null) return;
     const d = T.dateOf(ms); if (d < p.from || d > p.to) return;
