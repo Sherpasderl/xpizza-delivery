@@ -108,8 +108,10 @@ const subset = (a, b) => [...a].every((x) => b.has(x));
 const pseudosOf = (c) => new Set(c.match(/::?[a-z-]+(\([^)]*\))?/g) || []);
 const tagOf = (c) => { const m = c.match(/^[A-Za-z][A-Za-z0-9-]*|^\*/); return m ? m[0].toLowerCase() : ''; };
 // LAST declaration wins within a rule (the CSS cascade inside one block)
-const decl = (body, prop) => { const all = [...body.matchAll(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(--([a-z0-9-]+)\\)`, 'g'))]; return all.length ? all[all.length - 1][1] : null; };
+const decl = (body, prop) => { const all = [...body.matchAll(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(\\s*--([a-z0-9-]+)\\s*\\)`, 'g'))]; return all.length ? all[all.length - 1][1] : null; };
 const hasBg = (body) => /(?:^|;)\s*background(?:-color)?\s*:/.test(body);
+// a background that PAINTS its own ground; transparent / none / inherit RETAIN the ancestor's (codex r4 #5, ruling A1)
+const paintsOwnBg = (body) => { const all = [...body.matchAll(/(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/g)]; if (!all.length) return false; const v = all[all.length - 1][1].trim().toLowerCase(); return !['transparent', 'none', 'inherit'].includes(v); };
 
 function discoverSoftPairs(cssText) {
   // the CASCADE within one selector: rules with the same selector merge, a later declaration wins per property
@@ -121,7 +123,7 @@ function discoverSoftPairs(cssText) {
       const cs = compounds(key);
       const prev = bySel.get(key) || { sel: key, cs, last: classesOf(cs[cs.length - 1]), lastPseudo: pseudosOf(cs[cs.length - 1]), lastTag: tagOf(cs[cs.length - 1]), anc: cs.slice(0, -1).map(classesOf), color: null, bg: null, paintsBg: false, order };
       const c = decl(body, 'color'), b = decl(body, 'background(?:-color)?');
-      bySel.set(key, { ...prev, color: c || prev.color, bg: hasBg(body) ? b : prev.bg, paintsBg: prev.paintsBg || hasBg(body), order });
+      bySel.set(key, { ...prev, color: c || prev.color, bg: hasBg(body) ? b : prev.bg, paintsBg: hasBg(body) ? paintsOwnBg(body) : prev.paintsBg, order });
     }
   });
   const entries = [...bySel.values()];
@@ -212,6 +214,130 @@ function cssRefusals(cssText) {
   walk(text);
   return [...new Set(out)];
 }
+
+// ALLOWLIST GRAMMAR (advisor ruling, codex r4 — a denylist always leaks). In light-mode-applicable CSS every declaration
+// that can affect a text-on-soft decision must take the ONE modelled form, else the test fails naming the rule:
+//   R1 color / background / background-color = exactly var(--token) (whitespace-normalised; the token defined in the light
+//      :root block) or transparent / inherit / currentColor (+ background:none ≡ transparent, ruling A1) — or a PINNED literal;
+//   R2 custom properties (--x:) only inside the exact theme-token blocks;
+//   R3 inside @media(prefers-color-scheme:dark) only the guarded theme block (+ the PINNED display-only icon rules);
+//   R4 a selector beginning with :root only as an exact theme block (+ the PINNED icon rules).
+// PINS (rulings B2, C2) — today's working declarations, each pinned EXACTLY; a new literal or a changed pin fails.
+const PINNED_LITERALS = [
+  ['.thumb .cam', 'background', 'rgba(0,0,0,.5)'], ['.thumb .cam', 'color', '#fff'],
+  ['.uphoto .uprm', 'background', 'rgba(0,0,0,.6)'], ['.uphoto .uprm', 'color', '#fff'],
+  ['.oav', 'color', '#fff'], ['.sealbadge', 'color', '#1c1608'],
+  ['.tog i', 'background', '#fff'], ['.motog i', 'background', '#fff'],
+  ['.scrim', 'background', 'rgba(8,7,6,.6)'], ['.dscrim', 'background', 'rgba(8,7,6,.5)'],
+];
+const PINNED_ICON_RULES = {
+  top: [':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon', ':root[data-theme="dark"] .tbtn .sun,:root[data-theme="dark"] .miconbtn .sun'],
+  darkMedia: [':root:not([data-theme="light"]) .tbtn .moon,:root:not([data-theme="light"]) .miconbtn .moon', ':root:not([data-theme="light"]) .tbtn .sun,:root:not([data-theme="light"]) .miconbtn .sun'],
+};
+const THEME_LIGHT = ':root,:root[data-theme="light"]', THEME_DARK = ':root[data-theme="dark"]', THEME_DARK_MEDIA = ':root:not([data-theme="light"])';
+const normSel = (p) => p.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').trim();
+const normVal = (v) => v.trim().replace(/\s+/g, ' ').replace(/var\(\s*(--[A-Za-z0-9-]+)\s*\)/g, 'var($1)');
+const LIGHT_TOKENS = new Set([...lightBlock.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+function grammarViolations(cssText) {
+  const text = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  const pinSeen = new Set();
+  const declsOf = (body) => body.split(';').map((d) => d.trim()).filter(Boolean).map((d) => { const i = d.indexOf(':'); return i < 0 ? null : { prop: d.slice(0, i).trim().toLowerCase(), value: d.slice(i + 1).trim() }; }).filter(Boolean);
+  const checkLight = (sel, body) => {
+    for (const d of declsOf(body)) {
+      if (d.prop.startsWith('--')) { out.push(`${sel} — R2 custom property ${d.prop} outside the theme-token blocks`); continue; }
+      if (!TEXT_GROUND.has(d.prop)) continue;
+      const v = normVal(d.value);
+      const m = v.match(/^var\((--[a-z0-9-]+)\)$/);
+      if (m && LIGHT_TOKENS.has(m[1].slice(2))) continue;
+      if (['transparent', 'inherit', 'currentColor', 'currentcolor'].includes(v) || (d.prop === 'background' && v === 'none')) continue;
+      const pin = PINNED_LITERALS.find(([ps, pp, pv]) => ps === sel && pp === d.prop && pv === v);
+      if (pin) { pinSeen.add(pin.join('|')); continue; }
+      out.push(`${sel} — R1 ${d.prop}:${v} is not the modelled form (var(--light-token) | transparent | inherit | currentColor${d.prop === 'background' ? ' | none' : ''}) nor a pinned literal`);
+    }
+  };
+  const walk = (str, ctx) => {
+    let i = 0;
+    while (i < str.length) {
+      const open = str.indexOf('{', i);
+      if (open < 0) break;
+      const prelude = str.slice(i, open).trim();
+      let depth = 1, k = open + 1;
+      while (k < str.length && depth) { if (str[k] === '{') depth += 1; else if (str[k] === '}') depth -= 1; k += 1; }
+      const body = str.slice(open + 1, k - 1);
+      const sel = normSel(prelude);
+      if (prelude.startsWith('@media')) {
+        if (/prefers-color-scheme\s*:\s*dark/.test(prelude)) { if (ctx === 'dark') out.push(`${prelude} — nested dark-scheme @media`); else walk(body, 'dark'); }
+        else walk(body, ctx === 'dark' ? 'dark' : 'light');
+      } else if (prelude.startsWith('@')) { if (ctx === 'dark') out.push(`${prelude} — R3 an at-rule inside the dark-scheme @media`); /* light at-rules: cssRefusals */ }
+      else if (ctx === 'dark') {
+        if (sel === THEME_DARK_MEDIA) { /* the guarded theme-token block */ }
+        else if (PINNED_ICON_RULES.darkMedia.includes(sel)) { if (declsOf(body).some((d) => d.prop !== 'display')) out.push(`${sel} — a pinned icon rule may declare ONLY display`); }
+        else out.push(`${sel} — R3 a non-theme rule inside @media(prefers-color-scheme:dark) applies on OS-dark devices in light mode`);
+      } else if (sel === THEME_LIGHT || sel === THEME_DARK) { /* the theme-token blocks */ }
+      else if (PINNED_ICON_RULES.top.includes(sel)) { if (declsOf(body).some((d) => d.prop !== 'display')) out.push(`${sel} — a pinned icon rule may declare ONLY display`); }
+      else if (splitSelectors(prelude).some((x) => /^:root\b/.test(x.trim()))) out.push(`${sel} — R4 a :root selector that is not an exact theme block`);
+      else for (const one of splitSelectors(prelude)) checkLight(normSel(one), body);
+      i = k;
+    }
+  };
+  walk(text, 'light');
+  return { violations: [...new Set(out)], pinSeen };
+}
+
+test('ALLOWLIST GRAMMAR: every light-applicable color/background declaration takes the modelled form; today\'s sheet passes', () => {
+  const g = grammarViolations(css);
+  assert.deepEqual(g.violations, [], `🔴 not in the modelled grammar:\n  ${g.violations.join('\n  ')}`);
+  for (const pin of PINNED_LITERALS) assert.ok(g.pinSeen.has(pin.join('|')), `pinned literal still present EXACTLY (a change or removal fails): ${pin.join(' ')}`);
+});
+
+test('PINNED literals never sit on a soft ground (out of AA-on-soft scope by construction)', () => {
+  // each pinned literal COLOR becomes a sentinel token the real sweep can see; no discovered pair may carry it
+  let probe = css;
+  for (const [sel, prop, val] of PINNED_LITERALS.filter(([, p]) => p === 'color')) {
+    const re = new RegExp(`(${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{[^}]*?)color:${val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+    assert.ok(re.test(probe), `the pinned color is where it is pinned: ${sel}`);
+    probe = probe.replace(re, '$1color:var(--zz-pinned)');
+  }
+  const onSoft = discoverSoftPairs(probe).filter((p) => p.fg === 'zz-pinned');
+  assert.deepEqual(onSoft, [], `🔴 a pinned literal color sits on a soft ground: ${onSoft.map((p) => p.where).join(', ')}`);
+  const softPinnedGround = PINNED_LITERALS.filter(([, p, v]) => p !== 'color' && /-soft/.test(v));
+  assert.deepEqual(softPinnedGround, [], 'no pinned background is a soft ground');
+});
+
+test('ALLOWLIST GRAMMAR refuses codex r4\'s 5 evasions and a raw literal; allows the modelled forms', () => {
+  const g = (frag) => grammarViolations(css + '\n' + frag).violations;
+  const pairsFail = (frag) => discoverSoftPairs(css + '\n' + frag).filter((p) => !(contrast(allTokens[p.fg], allTokens[p.bg]) >= 4.5));
+  const REFUSED = {
+    'E1 a :root-prefixed rule': ':root .tag{color:var(--amber-soft)}',
+    'E2 a plain rule inside the dark-scheme @media': '@media(prefers-color-scheme:dark){.tag{color:var(--amber-soft)}}',
+    'E3 an indirect token swap': '.tag{--amber:var(--amber-soft)}',
+    'E4a a hex color': '.tag{color:#FBF0DC}',
+    'raw rgb()': '.tag{color:rgb(1,2,3)}',
+    'a named color': '.tag{color:white}',
+    'a gradient ground': '.tag{background:linear-gradient(#fff,#000)}',
+    'a token not in the light :root': '.tag{color:var(--nope)}',
+    'a pinned literal CHANGED': '.oav{color:#ffe}',
+    'a pinned icon rule given a color': ':root[data-theme="dark"] .tbtn .moon,:root[data-theme="dark"] .miconbtn .moon{color:var(--ink)}',
+  };
+  for (const [label, frag] of Object.entries(REFUSED)) assert.ok(g(frag).length > 0, `🔴 the grammar must refuse: ${label}`);
+  // E4b — a spaced var() is MODELLED (allowed by the grammar) AND resolved by the sweep, so the 1:1 pair fails there
+  assert.deepEqual(g('.tag{color:var( --amber-soft )}'), [], 'a whitespace-varied var() is the modelled form');
+  assert.ok(pairsFail('.tag{color:var( --amber-soft )}').length > 0, '🔴 E4b: the spaced var() is RESOLVED by the sweep (amber-soft on amber-soft fails), not assumed ink');
+  // E5 — background:transparent / none on a descendant RETAINS the inherited soft ground
+  assert.ok(pairsFail('.prow.big .psub{background:transparent;color:var(--mute2)}').length > 0, '🔴 E5: background:transparent on a descendant keeps the soft ground (checked)');
+  assert.ok(pairsFail('.prow.big .psub{background:none;color:var(--mute2)}').length > 0, '🔴 A1: background:none ≡ transparent, the soft ground is kept');
+  assert.equal(pairsFail('.prow.big .psub{background:var(--board);color:var(--mute2)}').length, 0, 'an OPAQUE descendant ground replaces the soft one (mute2 on white passes)');
+  const ALLOWED = {
+    'var(--light-token)': '.okx{color:var(--ink);background:var(--board)}',
+    'spaced var()': '.okx{color:var(  --ink  )}',
+    'transparent / inherit / currentColor': '.okx{background:transparent;color:inherit}.oky{color:currentColor}',
+    'background:none': '.okx{background:none}',
+    'a non-text property literal': '.okx{border-color:#ccc;box-shadow:0 0 0 1px #000}',
+    'a light @media rule': '@media(max-width:920px){.okx{color:var(--ink)}}',
+  };
+  for (const [label, frag] of Object.entries(ALLOWED)) assert.deepEqual(g(frag), [], `the grammar must ALLOW: ${label}`);
+});
 
 test('FAIL-CLOSED GUARD: today\'s styles.css uses NO construct the sweep does not model (scoped to text-on-soft)', () => {
   assert.deepEqual(cssRefusals(css), [], `🔴 unmodelled constructs in light-mode rules:\n  ${cssRefusals(css).join('\n  ')}`);
