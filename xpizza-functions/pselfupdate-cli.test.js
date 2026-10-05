@@ -7,6 +7,9 @@ const R = require('./tools/client-version-report-core');
 const { hourKey } = require('./client-version');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let FINISHED = false;
+// a drained event loop (e.g. a never-settling promise) must FAIL, never pass as a silent exit 0
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pselfupdate-cli FAILED: exited without completing'); process.exitCode = 1; } });
 const rids = ['la_musa', 'synthetic_3', 'x_pizza'];
 const kp = F.kitchenPath;
 
@@ -47,8 +50,18 @@ const kp = F.kitchenPath;
   const rt = { ref: () => ({ once: async () => ({ val: () => ({ x_pizza: { identity: {} }, ghost_9: { client_floor: { kitchen: 2 } }, la_musa: { item_availability: {} } }) }) }) };
   let d = await F.discoverRestaurants(rt, async () => { throw new Error('firestore down'); });
   assert.deepStrictEqual({ ok: d.registryOk, rids: d.rids, floors: d.floorKeys }, { ok: false, rids: ['ghost_9', 'la_musa', 'x_pizza'], floors: ['ghost_9'] });
-  d = await F.discoverRestaurants(rt, () => new Promise(() => {}), { timeoutMs: 50 });
-  assert.strictEqual(d.registryOk, false, 'a HUNG registry read is a failure (bounded), not an empty registry');
+  { let dl; const DEADLINE = Symbol('deadline');
+    d = await Promise.race([F.discoverRestaurants(rt, () => new Promise(() => {}), { timeoutMs: 50 }), new Promise((r) => { dl = setTimeout(() => r(DEADLINE), 2000); })]);
+    clearTimeout(dl);
+    assert.notStrictEqual(d, DEADLINE, '🔴 a HUNG registry read must be BOUNDED by discovery\'s own timeout');
+    assert.strictEqual(d.registryOk, false, 'a HUNG registry read is a failure, not an empty registry'); }
+  // WIRING: the CLI hands the registry reader to discoverRestaurants UNWRAPPED. (The real Firestore client presents its
+  // failures as hangs on the emulator — bounded above — so a swallowed REJECTION cannot be produced end-to-end; this pins
+  // that the CLI cannot turn one into an empty registry.)
+  const cliSrc = require('fs').readFileSync(require('path').join(__dirname, 'tools', 'client-floor.js'), 'utf8');
+  const call = cliSrc.match(/discoverRestaurants\(rtdb,([^;]*)\);/);
+  assert.ok(call, 'the CLI calls discoverRestaurants');
+  assert.ok(!/\.catch\s*\(/.test(call[1]) && !/\|\|\s*\[\]/.test(call[1]), '🔴 the CLI must not swallow a registry failure (no .catch / || [] around the reader)');
   d = await F.discoverRestaurants(rt, async () => ['synthetic_3']);
   assert.deepStrictEqual({ ok: d.registryOk, rids: d.rids }, { ok: true, rids: ['ghost_9', 'la_musa', 'synthetic_3', 'x_pizza'] }, 'registry ∪ every RTDB restaurant key (identity or not) ∪ floor keys');
   ok('codex B1: set/raise REFUSE on a failed or hung registry read; delete needs no registry and covers every floor node (identity-less, malformed); discovery = registry ∪ RTDB keys ∪ floor keys');
@@ -100,5 +113,6 @@ const kp = F.kitchenPath;
   assert.ok(R.headerlessLogFilter().includes('client_version') && R.headerlessLogFilter().includes('headerless'));
   ok('report: header-less identity requests are counted per endpoint × hour from the client_version log lines; other and broken lines ignored');
 
+  FINISHED = true;
   console.log(`pselfupdate-cli: OK (${n})`);
 })().catch((e) => { console.error('pselfupdate-cli FAILED:', e); process.exit(1); });
