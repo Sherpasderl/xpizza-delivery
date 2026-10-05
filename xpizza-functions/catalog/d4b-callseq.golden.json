@@ -1,0 +1,445 @@
+{
+  "_provenance": {
+    "captured_from": "717f97e911774aa03fa285b54ee5af576067ba1a",
+    "modules": [
+      "pixelpay-hosted-charge.js",
+      "pixelpay-charge.js",
+      "rewards-reserve.js"
+    ],
+    "by": "test/d4b-callseq.js (base SOURCE compiled from git show)"
+  },
+  "scenarios": {
+    "hosted.acquire.create": {
+      "result": {
+        "outcome": "claimed",
+        "attempt_id": "att_0001",
+        "hosted_order_id": "o1-att_0001",
+        "poll_token": "tok",
+        "expires_at": 1767202700000
+      },
+      "calls": [
+        "once orders/o1",
+        "transaction orders/o1",
+        "update payment_attempts/att_0001"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "active_attempt_id": "att_0001",
+            "payment_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        "payment_attempts": {
+          "att_0001": {
+            "order_id": "o1",
+            "hosted_state": "creating",
+            "hosted_order_id": "o1-att_0001",
+            "hosted_created_at": 1767200000000,
+            "hosted_expires_at": 1767202700000,
+            "poll_token": "tok",
+            "total_cents": 1000
+          }
+        }
+      }
+    },
+    "hosted.acquire.reuse": {
+      "result": {
+        "outcome": "reuse",
+        "attempt_id": "att_live",
+        "checkout_url": "https://pay/x",
+        "poll_token": "pt"
+      },
+      "calls": [
+        "once orders/o1",
+        "once payment_attempts/att_live"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "payment_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "active_attempt_id": "att_live"
+          }
+        },
+        "payment_attempts": {
+          "att_live": {
+            "hosted_state": "created",
+            "hosted_expires_at": 1767200060000,
+            "hosted_checkout_url": "https://pay/x",
+            "poll_token": "pt"
+          }
+        }
+      }
+    },
+    "hosted.acquire.conflict": {
+      "result": {
+        "outcome": "conflict"
+      },
+      "calls": [
+        "once orders/o1"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "payment_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "active_attempt_id": "att_live"
+          }
+        },
+        "payment_attempts": {
+          "att_live": {
+            "hosted_state": "created",
+            "hosted_expires_at": 1767200060000,
+            "hosted_checkout_url": "https://pay/x",
+            "poll_token": "pt"
+          }
+        }
+      }
+    },
+    "hosted.acquire.no_fp_install": {
+      "result": {
+        "outcome": "claimed",
+        "attempt_id": "att_0001",
+        "hosted_order_id": "o1-att_0001",
+        "poll_token": "tok",
+        "expires_at": 1767202700000
+      },
+      "calls": [
+        "once orders/o1",
+        "transaction orders/o1",
+        "update payment_attempts/att_0001"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "active_attempt_id": "att_0001",
+            "payment_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        "payment_attempts": {
+          "att_0001": {
+            "order_id": "o1",
+            "hosted_state": "creating",
+            "hosted_order_id": "o1-att_0001",
+            "hosted_created_at": 1767200000000,
+            "hosted_expires_at": 1767202700000,
+            "poll_token": "tok",
+            "total_cents": 1000
+          }
+        }
+      }
+    },
+    "hosted.classify.create": {
+      "result": {
+        "willIssueFreshUrl": true
+      },
+      "calls": [
+        "once orders/o1"
+      ],
+      "data": {}
+    },
+    "hosted.classify.reuse": {
+      "result": {
+        "willIssueFreshUrl": false,
+        "outcome": "reuse"
+      },
+      "calls": [
+        "once orders/o1",
+        "once payment_attempts/att_live"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "payment_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "active_attempt_id": "att_live"
+          }
+        },
+        "payment_attempts": {
+          "att_live": {
+            "hosted_state": "created",
+            "hosted_expires_at": 1767200060000,
+            "hosted_checkout_url": "https://pay/x",
+            "poll_token": "pt"
+          }
+        }
+      }
+    },
+    "hosted.classify.conflict": {
+      "result": {
+        "willIssueFreshUrl": false,
+        "outcome": "conflict"
+      },
+      "calls": [
+        "once orders/o1"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "payment_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "active_attempt_id": "att_live"
+          }
+        },
+        "payment_attempts": {
+          "att_live": {
+            "hosted_state": "created",
+            "hosted_expires_at": 1767200060000,
+            "hosted_checkout_url": "https://pay/x",
+            "poll_token": "pt"
+          }
+        }
+      }
+    },
+    "direct.acquire.create": {
+      "result": {
+        "outcome": "acquired",
+        "attempt_id": "att_0001"
+      },
+      "calls": [
+        "once orders/o1",
+        "transaction orders/o1"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "active_attempt_id": "att_0001",
+            "payment_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    "direct.acquire.conflict": {
+      "result": {
+        "outcome": "conflict"
+      },
+      "calls": [
+        "once orders/o1"
+      ],
+      "data": {
+        "orders": {
+          "o1": {
+            "restaurant_id": "x_pizza",
+            "total_cents": 1000,
+            "status": "pending_payment",
+            "payment_method": "online",
+            "payment_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        }
+      }
+    },
+    "reserve.fresh": {
+      "result": {
+        "ok": true,
+        "action": "created",
+        "state": "reserved"
+      },
+      "calls": [
+        "get deleted_uids/u1",
+        "transaction user_rewards/u1/x_pizza",
+        "get deleted_uids/u1"
+      ],
+      "data": {
+        "user_rewards": {
+          "u1": {
+            "x_pizza": {
+              "balance": 100,
+              "reserved": 8,
+              "reservations": {
+                "o1": {
+                  "state": "reserved",
+                  "cost": 8,
+                  "fp": "396724a1ab276a020235c35ccc6aa033b23e91bb21badf2432209ccab44a3204",
+                  "canonical": {
+                    "restaurant_id": "x_pizza",
+                    "model": "add_free",
+                    "type": "free_pizza_choice",
+                    "config_version": 2,
+                    "cost": 8,
+                    "discount_cents": 0,
+                    "free_item_key": "Margherita"
+                  },
+                  "order_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "config_version": 2,
+                  "created_at": 1767200000000,
+                  "updated_at": 1767200000000,
+                  "seq": 1
+                }
+              },
+              "ledger": {
+                "rsv_o1_1": {
+                  "type": "reserve",
+                  "delta": 0,
+                  "cost": 8,
+                  "order_id": "o1",
+                  "state": "reserved",
+                  "ts": 1767200000000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "reserve.reused": {
+      "result": {
+        "ok": true,
+        "action": "reused",
+        "state": "reserved"
+      },
+      "calls": [
+        "get deleted_uids/u1",
+        "transaction user_rewards/u1/x_pizza"
+      ],
+      "data": {
+        "user_rewards": {
+          "u1": {
+            "x_pizza": {
+              "balance": 100,
+              "reserved": 8,
+              "reservations": {
+                "o1": {
+                  "state": "reserved",
+                  "cost": 8,
+                  "fp": "396724a1ab276a020235c35ccc6aa033b23e91bb21badf2432209ccab44a3204",
+                  "canonical": {
+                    "restaurant_id": "x_pizza",
+                    "model": "add_free",
+                    "type": "free_pizza_choice",
+                    "config_version": 2,
+                    "cost": 8,
+                    "discount_cents": 0,
+                    "free_item_key": "Margherita"
+                  },
+                  "order_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "config_version": 2,
+                  "created_at": 1767200000000,
+                  "updated_at": 1767200000000,
+                  "seq": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "reserve.released_re_reserve": {
+      "result": {
+        "ok": true,
+        "action": "re_reserved",
+        "state": "reserved"
+      },
+      "calls": [
+        "get deleted_uids/u1",
+        "transaction user_rewards/u1/x_pizza",
+        "get deleted_uids/u1"
+      ],
+      "data": {
+        "user_rewards": {
+          "u1": {
+            "x_pizza": {
+              "balance": 100,
+              "reserved": 16,
+              "reservations": {
+                "o1": {
+                  "state": "reserved",
+                  "cost": 8,
+                  "fp": "396724a1ab276a020235c35ccc6aa033b23e91bb21badf2432209ccab44a3204",
+                  "canonical": {
+                    "restaurant_id": "x_pizza",
+                    "model": "add_free",
+                    "type": "free_pizza_choice",
+                    "config_version": 2,
+                    "cost": 8,
+                    "discount_cents": 0,
+                    "free_item_key": "Margherita"
+                  },
+                  "order_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "config_version": 2,
+                  "created_at": 1767200000000,
+                  "updated_at": 1767200000005,
+                  "seq": 2
+                }
+              },
+              "ledger": {
+                "rsv_o1_2": {
+                  "type": "reserve",
+                  "delta": 0,
+                  "cost": 8,
+                  "order_id": "o1",
+                  "state": "reserved",
+                  "ts": 1767200000005
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "reserve.conflict": {
+      "result": {
+        "ok": false,
+        "reason": "reservation_conflict"
+      },
+      "calls": [
+        "get deleted_uids/u1",
+        "transaction user_rewards/u1/x_pizza"
+      ],
+      "data": {
+        "user_rewards": {
+          "u1": {
+            "x_pizza": {
+              "balance": 100,
+              "reserved": 8,
+              "reservations": {
+                "o1": {
+                  "state": "reserved",
+                  "cost": 8,
+                  "fp": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "canonical": {
+                    "restaurant_id": "x_pizza",
+                    "model": "add_free",
+                    "type": "free_pizza_choice",
+                    "config_version": 2,
+                    "cost": 8,
+                    "discount_cents": 0,
+                    "free_item_key": "Margherita"
+                  },
+                  "order_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "config_version": 2,
+                  "created_at": 1767200000000,
+                  "updated_at": 1767200000000,
+                  "seq": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

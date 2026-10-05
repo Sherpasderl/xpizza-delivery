@@ -88,13 +88,18 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
 }
 
 // Combined intake for the CASH path (createOrder): prepare + reserve (bound to the order fingerprint + set hash).
-async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now, tables, eligible = null }) {
+async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now, tables, eligible = null, context = null }) {
   requireTables('resolveRedemptionForOrder', restaurantId, tables);   // GRILL-FIX #2
   const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid, tables, eligible });
   if (!prep.ok) return prep;
   const fp = orderFingerprint(orderId, prep.priced.total_cents, prep.itemsText, fingerprintExtra(schedExtra, prep.redemptionFp));   // bind hold to THIS order + redeemed set
   const rr = await reserveRedemption(db, { uid: customerUid, rid: restaurantId, orderId, cost: prep.redemption.cost,
-    canonical: prep.canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now });   // atomic Σ-cost debit, idempotent
+    canonical: prep.canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now,   // atomic Σ-cost debit, idempotent
+    /* 1D D4-b §A.6: consulted only for a canonical-tagged reservation record. This path is reached only for a NEW
+       order (an existing order_id returns at createOrder's idempotency check), so the order binding selected for
+       this request is the legacy `fp` — a canonical record therefore conflicts, exactly as §A.6 specifies. */
+    canonicalBinding: () => require('./catalog/canonical-binding').canonicalReservationBindingFp({
+      redemption: prep.redemption, context, selectedOrderBinding: fp, configVersion: REDEMPTION_CONFIG_VERSION }) });
   if (!rr.ok) return { ok: false, status: 409, body: { error: 'redemption_reserve_failed', reason: rr.reason } };
 
   /* `redemption` and `redemptionFp` are surfaced for 1C's charge gate: the token was issued over the

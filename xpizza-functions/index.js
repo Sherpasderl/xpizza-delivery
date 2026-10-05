@@ -78,7 +78,7 @@ const { claimOrderCore } = require('./claim-order');       // claimOrder — ret
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
-const { classifyExistingOrder, computeIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
+const { classifyExistingOrder, computeIncomingFingerprint, computeCanonicalIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
 const { redemptionFingerprint } = require('./rewards-redeem');   // F1 residual: recompute a redemption order's fp from the RESOLVED reserve (guaranteed present) if the top-level compute blipped
 const { duplicateSiblingDecision } = require('./materialize-guard');   // F3 create-side: shared pure sibling-collision decision
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
@@ -282,7 +282,8 @@ const { checkItemAvailability } = require('./availability-gate');   // KDS 2b �
 // or misprices an order: the resolver's fail-safe returns the code table and alarms.
 const { createCatalogReader } = require('./catalog/catalog');
 const { getRestaurantDocs, getActiveVersionId } = require('./catalog/catalog-firestore');
-const { createPricingResolver } = require('./catalog/pricing-tables');
+const { createPricingResolver, contextOf: contextOfTables } = require('./catalog/pricing-tables');
+const CB = require('./catalog/canonical-binding');   // 1D D4-b §A/§B — canonical branches (dormant: no writer produces a tag)   // 1D D4-b: the request's D4-a context, for canonical branches only
 const { createSnapshotFallback, makeRtdbMirrorReader } = require('./catalog/snapshot-fallback');   // 1d 2b
 // The ladder is its own singleton so its per-instance memory (lastGood / lastKnownActive) survives
 // across requests on a warm instance — that memory IS rung 1.
@@ -433,15 +434,20 @@ function pricingUnavailable(res) {
 // summary_lines (itemized rows that FOOT to the discounted total). Display-only, writes nothing to balances.
 // The redemption line (plan-gate (a)) makes summary_lines foot when redeemed: X. Pizza discount → the freed
 // pizza name at −discount; La Musa add_free → the added item as GRATIS.
-function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName, freeItems, tables = null) {
+/* 1D D4-b (F "reward display", advisor Q5): `format` is the format of the artifact the reward came from. Every caller
+   today passes nothing (legacy → the code below, unchanged). The canonical branch renders the LABEL from the
+   request's own usable context and never a ck / canonical id; an unlabeled item is dropped, not shown raw. */
+function buildRewardStamp(items, restaurantId, subtotalCents, redemptionCanonical, freeName, freeItems, tables = null, format = CB.FORMAT_LEGACY) {
   // `items` is the PAID cart (the free reward item is NEVER here) → earnPreview earns the correct amount with
   // no adjustment. v2 is add_free for both brands: the summary emits one 0-cents line per redeemed item (qty-aware).
   const earn_preview = earnPreview({ items, subtotalCents, restaurantId });
   let redArg = null;
   if (redemptionCanonical) {
-    const arr = (Array.isArray(freeItems) && freeItems.length)
-      ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1 }))
-      : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));
+    const arr = format === CB.FORMAT_CANONICAL
+      ? CB.canonicalRewardRows(freeItems, redemptionCanonical.free_item_key, contextOfTables(tables))
+      : (Array.isArray(freeItems) && freeItems.length)
+        ? freeItems.map((fi) => ({ name: fi.name || fi.item_id, qty: Number(fi.qty) || 1 }))
+        : (freeName ? [{ name: freeName, qty: 1 }] : (redemptionCanonical.free_item_key ? [{ name: redemptionCanonical.free_item_key, qty: 1 }] : []));
     redArg = { model: 'add_free', items: arr };
   }
   const summary_lines = summaryLines(items, restaurantId, redArg, tables);   // 1b-1: guarded catalog tables (null → code default)
@@ -750,9 +756,17 @@ createOrderApp.all('*', async (req, res) => {
     const existing = await db.ref(`orders/${orderId}`).once('value');
     if (existing.exists()) {
       const ev = existing.val();
+      // 1D D4-b: ONLY a record tagged canonical costs a canonical recompute (from the same snapshot `ev`);
+      // an untagged record takes today's path with no extra work (call-sequence golden).
+      const canonicalIncoming = (ev && ev.fp_format !== undefined && ev.fp_format === 'canonical')
+        ? await computeCanonicalIncomingFingerprint(
+          { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
+            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+          { orderBreakdownCents, prepareRedemption, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible, context: contextOfTables(pricingTables) })
+        : null;
       const cls = classifyExistingOrder(ev,
         { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },
-        incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation });
+        incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation, canonicalIncoming });
       if (cls.action === '409') {
         console.warn(`createOrder: ${orderId} exists — 409 order_conflict (${cls.reason})`);
         return res.status(409).json({ error: 'order_conflict', reason: cls.reason, order_id: orderId });
@@ -913,6 +927,7 @@ createOrderApp.all('*', async (req, res) => {
       customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
       tables: pricingTables,                                                            // 1b-1b: same guarded tables as the order total
       eligible: redeemEligible,                                                         // 2a: same catalog-authored allowlist as the fingerprint above
+      context: contextOfTables(pricingTables),   // 1D D4-b
     });
     if (!rd.ok) return res.status(rd.status).json({ ...rd.body, order_id: orderId });   // ALL-OR-NOTHING: non-payable, no order
     fields.items_text = rd.itemsText;                                                   // La Musa free-item display line appended
@@ -1391,6 +1406,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // computation below) purely to classify already_paid/conflict — the CAS remains the source of truth.
   const nowTs = Date.now();
   let cartBlocked = [];
+  let orderBindingFormat = CB.FORMAT_LEGACY;   // 1D D4-b §A.6: the format of the order record this request binds to
   {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
@@ -1398,7 +1414,11 @@ chargeOnlineApp.all('*', async (req, res) => {
     const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
     let clsG;
     try {
-      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs);
+      // 1D D4-b: the canonical recompute is a LAZY thunk, evaluated only if the pre-read record is tagged canonical.
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, () => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
+        items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
+        schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
+      if (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) orderBindingFormat = CB.FORMAT_CANONICAL;
     } catch (e) {
       console.error(`chargeOnlineOrder: availability classify failed for ${orderId} (failing open, reading availability + deferring to the CAS)`, e && e.message);
       clsG = null;   // unknown → treat as non-terminal → read availability; acquireHostedAttempt stays authoritative
@@ -1498,6 +1518,11 @@ chargeOnlineApp.all('*', async (req, res) => {
   // redeemed, total_cents (discounted) + items_text (free line appended) make this fingerprint carry the reward
   // — the SAME fingerprint the reservation binds to (below), so hold ↔ order ↔ charge are one identity.
   const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
+  // 1D D4-b §B.3: the CANONICAL counterpart of `fingerprint` — same inputs, items_text → the canonical digest. A lazy,
+  // memoized thunk: only a canonical-tagged order or reservation record ever evaluates it.
+  const canonicalChargeFp = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: total_cents, items: body.items,
+    redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
+    schedExtra: isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '' }));
 
   // Factura inputs (FACTURA_PLAN §2) — structured priced items for the factura trigger.
   // factura_status starts 'not_due': a pending_payment order is NOT yet a Sale, so it's
@@ -1636,7 +1661,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
     // to the exact attempt expiry (same value). Closes the crash/attach-fail orphan by construction.
     const rr = await reserveRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, cost: redemptionCost,
-      canonical: redemptionCanonical, orderFingerprint: fingerprint, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs, hostedExpiresAt: nowTs + HOSTED_TTL_MS });
+      canonical: redemptionCanonical, orderFingerprint: fingerprint, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs, hostedExpiresAt: nowTs + HOSTED_TTL_MS,
+      // 1D D4-b §A.6/§B.4: consulted only for a canonical-tagged reservation record; binds the order value AS SELECTED
+      // for this request (legacy → the bare fingerprint; canonical → "c1:<canonical fp>"), never reformatted.
+      canonicalBinding: () => {
+        let selected = fingerprint;
+        if (orderBindingFormat === CB.FORMAT_CANONICAL) {
+          const c = canonicalChargeFp();
+          if (!c || !c.ok) return { ok: false, reason: 'cart_unverifiable' };
+          selected = CB.selectedOrderBinding(CB.FORMAT_CANONICAL, c.fp);
+        }
+        return CB.canonicalReservationBindingFp({ redemption: redemptionResolved, context: contextOfTables(pricingTables), selectedOrderBinding: selected, configVersion: REDEMPTION_CONFIG_VERSION });
+      } });
     if (!rr.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: rr.reason, order_id: orderId });
     redemptionOwnsHold = (rr.action === 'created' || rr.action === 're_reserved');
   }
@@ -1650,7 +1686,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked);
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp);
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
@@ -2175,8 +2211,19 @@ exports.paymentStatus = onRequest(
     // This gives it the SERVER-CONFIRMED total_cents + a minimal redemption summary (discount + freed/added
     // item name + model) so the success Total + reward display come from the server, not stale client values.
     // Poll-token-gated (only the customer who started THIS payment) → their own order money/reward, no PII.
+    /* 1D D4-b (advisor Q5): the order's binding FORMAT decides how its reward is shown. Legacy (every order today):
+       the stored key, unchanged. Canonical: the CURRENT pricing context's label for that identity — resolved only in
+       this branch — or null; a malformed tag shows null. A canonical id never reaches the customer. */
+    const fmtR = CB.formatOf(order, 'fp_format');
+    let freeItemShown = order.redemption ? (order.redemption.free_item_key || null) : null;
+    if (order.redemption && !(fmtR.ok && fmtR.format === CB.FORMAT_LEGACY)) {
+      freeItemShown = null;
+      if (fmtR.ok && order.redemption.free_item_key) {
+        try { freeItemShown = CB.displayLabel(order.redemption.free_item_key, contextOfTables(await resolvePricingTables(order.restaurant_id))); } catch (_) { freeItemShown = null; }
+      }
+    }
     const redeemSummary = order.redemption
-      ? { discount_cents: Number(order.redemption.discount_cents) || 0, free_item: order.redemption.free_item_key || null, model: order.redemption.model || null,
+      ? { discount_cents: Number(order.redemption.discount_cents) || 0, free_item: freeItemShown, model: order.redemption.model || null,
           // v2: La Musa is a multiset (no single free_item_key) → carry the redeemed unit count so the success screen shows "N premios".
           free_count: Array.isArray(order.redemption.items) ? order.redemption.items.reduce((s, it) => s + (Number(it && it.qty) || 0), 0) : (order.redemption.free_item_key ? 1 : 0) }
       : null;

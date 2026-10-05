@@ -1,5 +1,6 @@
 'use strict';
 const { requireTables } = require('./catalog/pricing-tables');   // 1b-1b GRILL-FIX #1/#2
+const { formatOf, FORMAT_LEGACY, canonicalOrderFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b
 
 // createorder-classify.js — hardens createOrder's idempotency branch so a re-submit of an EXISTING order_id
 // returns idempotent-200 ONLY when it is genuinely the SAME LIVE cash order; every other existing-order state
@@ -25,7 +26,13 @@ const LIVE_TERMINAL_STATUSES = new Set(['cancelled', 'pending_payment', 'deliver
 // (always cash/card_delivery — online is rejected upstream). `incomingFp` may be null (legacy order with no
 // payment_fingerprint, OR a fail-open recompute) → the content check (case 4) is skipped, method+terminal still
 // apply. `isPaymentStatusClosed(paymentStatus)` is injected (= manual-resolve.isStatusChangeClosedToAutomation).
-function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, incomingFp, { isPaymentStatusClosed } = {}) {
+/* 1D D4-b (§A.3–§A.5) — case 4 compares in the format TAGGED ON THE STORED ORDER (same snapshot as its
+   payment_fingerprint), never the request's. Legacy (absent tag) is today's code path exactly, INCLUDING its
+   fail-open: a null incomingFp skips case 4. Canonical: `canonicalIncoming` = { ok, fp } computed by the
+   caller only because this record is tagged; `ok:false` REFUSES (`cart_unverifiable`), never null, never the
+   legacy path. A malformed tag refuses (`binding_format_invalid`). An ABSENT payment_fingerprint skips case 4
+   in every format (§A.4: absent fingerprint ≠ absent tag). */
+function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, incomingFp, { isPaymentStatusClosed, canonicalIncoming = null } = {}) {
   if (!existing) return { action: '200' };                                             // caller only enters this on exists()
   if (!restaurantMatches) return { action: '409', reason: 'restaurant' };              // case 1 — order_id owned by another brand
   if (existing.payment_method !== paymentMethod) return { action: '409', reason: 'method' }; // case 2 — Miguel (online → cash)
@@ -34,8 +41,15 @@ function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, i
     && typeof isPaymentStatusClosed === 'function'
     && isPaymentStatusClosed(existing.payment_status);
   if (closedByStatus || closedByPayment) return { action: '409', reason: 'closed' };   // case 3 — dead/paid/awaiting order
-  if (existing.payment_fingerprint && incomingFp && existing.payment_fingerprint !== incomingFp) {
-    return { action: '409', reason: 'cart' };                                          // case 4 — same id, different cart
+  const fmt = formatOf(existing, 'fp_format');
+  if (!fmt.ok) return { action: '409', reason: 'binding_format_invalid' };
+  if (fmt.format === FORMAT_LEGACY) {
+    if (existing.payment_fingerprint && incomingFp && existing.payment_fingerprint !== incomingFp) {
+      return { action: '409', reason: 'cart' };                                        // case 4 — same id, different cart
+    }
+  } else if (existing.payment_fingerprint) {
+    if (!canonicalIncoming || !canonicalIncoming.ok) return { action: '409', reason: 'cart_unverifiable' };
+    if (existing.payment_fingerprint !== canonicalIncoming.fp) return { action: '409', reason: 'cart' };
   }
   return { action: '200' };                                                            // case 5 — genuine live same-order retry
 }
@@ -73,4 +87,26 @@ async function computeIncomingFingerprint(ctx, deps) {
   }
 }
 
-module.exports = { classifyExistingOrder, computeIncomingFingerprint, LIVE_TERMINAL_STATUSES };
+/* 1D D4-b — the CANONICAL incoming fingerprint (§B.3, advisor Q1), computed ONLY when the stored order is tagged
+   canonical. Same inputs as computeIncomingFingerprint — same total, same schedule extra, the same read-only
+   prepareRedemption — with items_text replaced by the canonical cart+reward digest and `rf:` by the canonical
+   redemption fp. NEVER returns null: any failure is { ok:false } and the caller REFUSES (§A.5). */
+async function computeCanonicalIncomingFingerprint(ctx, deps) {
+  const { orderId, restaurantId, total, items, redeem, customerUid, scheduledForRaw, orderType, itemsText } = ctx;
+  const { orderBreakdownCents, prepareRedemption, schedFingerprintExtra, db, tables, eligible = null, context } = deps;
+  try {
+    const isScheduled = Number.isFinite(scheduledForRaw);
+    const schedExtra = isScheduled ? schedFingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
+    if (redeem == null) {
+      const totalCents = orderBreakdownCents(total, restaurantId).total_cents;
+      return canonicalOrderFingerprint({ orderId, totalCents, items, redemption: null, rid: restaurantId, context, schedExtra });
+    }
+    const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras: total, customerUid, tables, eligible });
+    if (!prep || !prep.ok) return { ok: false, reason: 'cart_unverifiable', detail: 'redemption_unpreparable' };
+    return canonicalOrderFingerprint({ orderId, totalCents: prep.priced.total_cents, items, redemption: prep.redemption, rid: restaurantId, context, schedExtra });
+  } catch (e) {
+    return { ok: false, reason: 'cart_unverifiable', detail: String((e && e.message) || e).slice(0, 120) };
+  }
+}
+
+module.exports = { classifyExistingOrder, computeIncomingFingerprint, computeCanonicalIncomingFingerprint, LIVE_TERMINAL_STATUSES };

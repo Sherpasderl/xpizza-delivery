@@ -97,6 +97,8 @@ async function claimOrderCore(db, { uid, orderId, token, now }) {
       restaurant: committed.restaurant_id || 'x_pizza',
       status: committed.status || null,
       items: Array.isArray(committed.reorder_items) ? committed.reorder_items : [],
+      // 1D D4-b §B.5/§D (advisor Q3): carried ONLY IF PRESENT (never in D4-b → byte-identical to today).
+      ...(committed.recipe_format !== undefined ? { recipe_format: committed.recipe_format } : {}),
     });
   } catch (_) { /* history is best-effort — never block the credit */ }
 

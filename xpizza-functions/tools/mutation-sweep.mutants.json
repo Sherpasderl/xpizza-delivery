@@ -3298,12 +3298,13 @@
     "slice": "c2",
     "label": "the fingerprint ignores the reward — a reward-active cart passes as its no-reward twin",
     "file": "quote-token.js",
-    "from": "  return crypto.createHash('sha256').update(JSON.stringify({ i: items, r })).digest('hex');",
-    "to": "  return crypto.createHash('sha256').update(JSON.stringify({ i: items })).digest('hex');",
+    "from": "  const hashed = (opts && opts.v) ? { v: String(opts.v), i: items, r } : { i: items, r };",
+    "to": "  const hashed = (opts && opts.v) ? { v: String(opts.v), i: items, r } : { i: items };",
     "command": [
       "node",
       "quote-token.test.js"
-    ]
+    ],
+    "repointed": "1D D4-b: the hashed object is now built on one line (legacy {i, r} / canonical {v, i, r}); the mutant still drops the reward from the LEGACY hash"
   },
   {
     "id": "c2-02",
@@ -5233,13 +5234,14 @@
     "slice": "d2",
     "label": "🔴 cartFingerprint returns a CONSTANT - every byte-identical-fingerprint assertion would still pass",
     "file": "quote-token.js",
-    "from": "function cartFingerprint(normItems, reward) {\n  const keyOf =",
-    "to": "function cartFingerprint(normItems, reward) {\n  if (true) return 'CONSTANT';\n  const keyOf =",
+    "from": "function cartFingerprint(normItems, reward, opts) {\n  const keyOf =",
+    "to": "function cartFingerprint(normItems, reward, opts) {\n  if (true) return 'CONSTANT';\n  const keyOf =",
     "command": [
       "node",
       "../cart-identity-order.test.mjs"
     ],
-    "kills_with": "cartFingerprint does NOT discriminate an equal-priced option swap"
+    "kills_with": "cartFingerprint does NOT discriminate an equal-priced option swap",
+    "repointed": "1D D4-b: cartFingerprint gained an opt-in third parameter (canonical v:\"c1\"); same mutation at the new signature"
   },
   {
     "id": "d2-13",

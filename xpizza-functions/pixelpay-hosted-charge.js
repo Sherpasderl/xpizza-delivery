@@ -12,6 +12,7 @@
  */
 const crypto = require('crypto');
 const { genAttemptId, orderFingerprint, centsToLempiras } = require('./pixelpay-charge');
+const { paymentBindingConflict, conflictOutcome, once, formatOf, FORMAT_CANONICAL, installFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b §A.3
 
 // Hosted checkout validity window (the `expired_at` we send PixelPay). After this, the
 // old checkout is no longer payable → a fresh attempt may be created.
@@ -40,7 +41,12 @@ function genPollToken() {
 //        cartBlocked check — so a paid/closed/live-checkout order is NEVER re-rejected. `cartBlocked` is the
 //        caller's checkItemAvailability().blocked labels (fail-open: [] ⇒ the CAS proceeds unchanged).
 //   { outcome:'error' }                      → could not converge.
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken) {
+/* 1D D4-b (§A.3): `canonicalFp` — an optional LAZY thunk → { ok, fp } — is consulted ONLY when the order record a
+   site is looking at is tagged canonical. Each existing site keeps its kind: the pre-read and the post-txn check
+   stay ADVISORY, the transaction stays the authoritative CAS and re-checks the (format, fingerprint) PAIR on the
+   record it holds. No new read, write, transaction or reordering on any path; nothing here writes a tag. */
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null) {
+  const canon = once(canonicalFp);
   const orderRef = db.ref(`orders/${orderId}`);
 
   for (let i = 0; i < 6; i++) {
@@ -49,7 +55,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     // Order-level terminal reads.
     if (order) {
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
-      if (order.payment_fingerprint && order.payment_fingerprint !== fingerprint) return { outcome: 'conflict' };
+      { const d = paymentBindingConflict(order, fingerprint, canon); if (d) return conflictOutcome(d); }   // advisory
       if (['refunded', 'refund_pending'].includes(order.payment_status) || order.status === 'cancelled') {
         return { outcome: 'closed', reason: order.payment_status || order.status };
       }
@@ -108,10 +114,12 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
       const c = cur || order;
       if (!c) return;
       if (c.payment_status === 'confirmed') return c;
-      if (c.payment_fingerprint && c.payment_fingerprint !== fingerprint) return c;
+      if (paymentBindingConflict(c, fingerprint, canon)) return c;     // the CAS: (format, fingerprint) on the record held
       if (decided.kind === 'install') {
         if (c.active_attempt_id) return c;
-        return { ...c, active_attempt_id: decided.newAaid, payment_fingerprint: c.payment_fingerprint || fingerprint };
+        const fill = c.payment_fingerprint || installFingerprint(c, fingerprint, canon);   // 1D D4-b: legacy record → `fingerprint`, unchanged
+        if (!fill) return c;                                                              // canonical, uncomputable → no install (the re-read refuses)
+        return { ...c, active_attempt_id: decided.newAaid, payment_fingerprint: fill };
       }
       if (decided.kind === 'recover') {
         if (c.active_attempt_id !== decided.reuseAaid) return c;
@@ -127,7 +135,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     if (!tx.committed) continue;
     const committed = tx.snapshot.val();
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
-    if (committed.payment_fingerprint && committed.payment_fingerprint !== fingerprint) return { outcome: 'conflict' };
+    { const d = paymentBindingConflict(committed, fingerprint, canon); if (d) return conflictOutcome(d); }   // advisory post-txn
     const winner = committed.active_attempt_id;
 
     const wonFresh = (decided.kind === 'create' || decided.kind === 'install' || decided.kind === 'rotate') && winner === decided.newAaid;
@@ -171,13 +179,21 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
 //
 // Returns { willIssueFreshUrl: boolean, outcome? }. Read errors propagate to the caller, which fails
 // OPEN (treats as "do not gate") — a DB hiccup must never block a sale.
-async function classifyHostedAttempt(db, orderId, fingerprint, now) {
+async function classifyHostedAttempt(db, orderId, fingerprint, now, canonicalFp = null) {
   const order = (await db.ref(`orders/${orderId}`).once('value')).val();
+  const r = await classifyFromOrder(db, order, fingerprint, now, canonicalFp);
+  /* 1D D4-b §A.6: the order binding FORMAT this request is bound to, from the SAME snapshot. Reported ONLY when the
+     record is tagged canonical, so every untagged result object is byte-identical to today's. */
+  const f = formatOf(order, 'fp_format');
+  return (order && f.ok && f.format === FORMAT_CANONICAL) ? { ...r, bindingFormat: FORMAT_CANONICAL } : r;
+}
+async function classifyFromOrder(db, order, fingerprint, now, canonicalFp) {
+  const canon = once(canonicalFp);
 
   // Order-level terminal reads (mirror acquireHostedAttempt L44-49).
   if (order) {
     if (order.payment_status === 'confirmed') return { willIssueFreshUrl: false, outcome: 'already_paid' };
-    if (order.payment_fingerprint && order.payment_fingerprint !== fingerprint) return { willIssueFreshUrl: false, outcome: 'conflict' };
+    { const d = paymentBindingConflict(order, fingerprint, canon); if (d) return conflictOutcome(d, { willIssueFreshUrl: false }); }   // advisory classify
     if (['refunded', 'refund_pending'].includes(order.payment_status) || order.status === 'cancelled') {
       return { willIssueFreshUrl: false, outcome: 'closed' };
     }

@@ -176,8 +176,13 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
        is precisely the split-brain this census exists to prevent. Enumerated, not relaxed. */
     assert.strictEqual((SRC.match(/applyConfirmedNetGate\(\{[\s\S]{0,700}?tables: pricingTables/g) || []).length, 2,
       'BOTH confirmed-net gates (cash + card) must receive tables: pricingTables (1C T4/T5)');
-    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 7,
-      'the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates share the ONE resolved pricingTables');
+    /* 1D D4-b added an EIGHTH legitimate consumer: createOrder's CANONICAL incoming fingerprint (computed only when
+       the stored order is tagged canonical). It must price exactly as the legacy recompute does — from the same
+       resolved tables — so it is enumerated and pinned to its own call, not absorbed by relaxing the count. */
+    assert.strictEqual((SRC.match(/computeCanonicalIncomingFingerprint\([\s\S]{0,700}?tables: pricingTables/g) || []).length, 1,
+      'the canonical createOrder recompute (1D D4-b) prices from the SAME resolved pricingTables');
+    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 8,
+      'the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates + the 1 canonical createOrder recompute share the ONE resolved pricingTables');
     assert.strictEqual((SRC.match(/attachCustomerAttribution\([^;]*?tables: pricingTables[^;]*?\);/g) || []).length, 2,
       'and 2 of the 5 are the attribution sites (reorder recipe), not extra redemption seams');
     // THE invariant: each order handler resolves the tables exactly once. Two resolves in one handler
@@ -193,7 +198,10 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     assert.ok(/db, tables: pricingTables, eligible: redeemEligible \}/.test(SRC), 'the classifier deps must receive the SAME resolved eligible');
     assert.ok(/resolveRedemptionForOrder\(db, \{[\s\S]{0,500}?eligible: redeemEligible/.test(SRC), 'the cash reserve must receive eligible: redeemEligible');
     assert.ok(/prepareRedemption\(db, \{ redeem: body\.redeem[\s\S]{0,400}?eligible: redeemEligible/.test(SRC), 'the online prepare must receive eligible: redeemEligible');
-    assert.strictEqual((SRC.match(/eligible: redeemEligible/g) || []).length, 3, 'exactly 3 seams share the ONE resolved redeemEligible');
+    /* 1D D4-b: a FOURTH consumer — the canonical createOrder recompute must see the SAME allowlist as the legacy one
+       (a different allowlist flips prep.ok and the fingerprint, the exact hazard above). Enumerated and pinned. */
+    assert.ok(/computeCanonicalIncomingFingerprint\([\s\S]{0,700}?eligible: redeemEligible/.test(SRC), 'the canonical createOrder recompute (1D D4-b) receives the SAME redeemEligible');
+    assert.strictEqual((SRC.match(/eligible: redeemEligible/g) || []).length, 4, 'exactly 3 seams + the canonical createOrder recompute share the ONE resolved redeemEligible');
     // and it must be resolved exactly twice in the file: once per order handler. A third resolve inside
     // a handler would be a second read that could disagree with the first.
     assert.strictEqual((SRC.match(/const redeemEligible = await gateReader\(\)\.redeemEligibleFor\(restaurantId\);/g) || []).length, 2,

@@ -63,4 +63,12 @@ function normalizeReorderItems(bodyItems, restaurantId, tables = null) {
   return out;
 }
 
-module.exports = { normalizeReorderItems };
+/* 1D D4-b §D — the CANONICAL counterpart, DORMANT (no caller in D4-b): the same allowlisted lines, re-derived with
+   ONLY their keys substituted by ck(kind, cid) through the request's usable D4-a context (§B.5). Returns
+   { ok, lines } or { ok:false } — a recipe is never worth failing an order over, so a D4-c caller would drop to
+   no recipe, never to a legacy recipe mislabelled canonical. */
+function normalizeReorderItemsCanonical(bodyItems, restaurantId, tables, context) {
+  return require('./catalog/canonical-binding').canonicalRecipeLines(normalizeReorderItems(bodyItems, restaurantId, tables), context);
+}
+
+module.exports = { normalizeReorderItems, normalizeReorderItemsCanonical };

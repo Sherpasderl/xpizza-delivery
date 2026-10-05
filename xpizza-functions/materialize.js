@@ -55,6 +55,9 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
       restaurant: order.restaurant_id || 'x_pizza',                   // P3 — client filters to its own brand
       status: 'new',                                                  // P3 — materialized status (this write only runs at confirm); kept fresh by the status trigger
       items: Array.isArray(order.reorder_items) ? order.reorder_items : [],   // P3 — recipe plumbed onto the pending order at chargeOnlineOrder; copied here at confirm (NEVER order.items/factura lines)
+      // 1D D4-b §B.5/§D (advisor Q3): the recipe's format travels with its lines, ONLY IF PRESENT — never written in
+      // D4-b, so this entry is byte-identical to today's (pinned); a D4-c canonical recipe keeps its tag through the copy.
+      ...(order.recipe_format !== undefined ? { recipe_format: order.recipe_format } : {}),
     };
   }
 

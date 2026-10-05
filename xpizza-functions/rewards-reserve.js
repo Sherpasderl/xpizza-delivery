@@ -34,6 +34,10 @@ async function isDeleted(db, uid) {
 }
 
 // Deterministic binding hash: same order_id may be reused ONLY for the exact same {order, reward, version}.
+const lazyCB = () => require('./catalog/canonical-binding');   // lazy: canonical-binding requires bindingFp from here
+const formatOf = (...a) => lazyCB().formatOf(...a);
+const once = (...a) => lazyCB().once(...a);
+const FORMAT_CANONICAL = 'canonical';
 function bindingFp({ canonical, orderFingerprint, configVersion }) {
   const stable = JSON.stringify({
     c: canonical ? Object.keys(canonical).sort().reduce((o, k) => (o[k] = canonical[k], o), {}) : null,
@@ -63,12 +67,21 @@ async function alertIfUndercollateralized(db, { uid, rid, orderId, now }) {
 // Debit-first (into `reserved`) + idempotent by order_id + bound to the canonical/fingerprint. Returns
 // explicit `action` so the online handler knows if IT owns the hold: created/re_reserved = this call took the
 // debit (release on abandon); reused = a pre-existing hold (NEVER release on failure).
-async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null }) {
+/* 1D D4-b (§A.3, §A.6, §B.4; advisor Q2) — `canonicalBinding` is an optional LAZY thunk → { ok, fp } computing the
+   CANONICAL bindingFp over the canonical reward and the order binding value AS SELECTED for this request. It is
+   consulted ONLY when the reservation record read INSIDE the transaction is tagged canonical, so an untagged
+   record (every record in production in D4-b) is compared and re-reserved exactly as today. A malformed tag
+   refuses (`binding_format_invalid`); an uncomputable canonical binding refuses (`cart_unverifiable`); a
+   different-format record can never match (v:"c1" / the "c1:" order prefix) → today's `reservation_conflict`.
+   Re-reserving a RELEASED canonical record CARRIES its fp_format and writes the canonical fp (Q2); nothing ever
+   writes a tag onto a record that did not already carry one. */
+async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null, canonicalBinding = null }) {
   try {
     if (!uid || !rid || !orderId || !(Number.isInteger(cost) && cost > 0)) return { ok: false, reason: 'bad_request' };
     if (!Number.isInteger(configVersion) || configVersion !== REDEMPTION_CONFIG_VERSION) return { ok: false, reason: 'config_version_mismatch' };
     if (await isDeleted(db, uid)) return { ok: false, reason: 'deleted' };
     const fp = bindingFp({ canonical, orderFingerprint, configVersion });
+    const canon = once(canonicalBinding);
 
     let outcome = null;
     const ref = db.ref(`user_rewards/${uid}/${rid}`);
@@ -84,7 +97,15 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
       const reserved = Number(cur.reserved) || 0;
 
       if (rec) {
-        if (rec.fp !== fp) { outcome = { ok: false, reason: 'reservation_conflict' }; return; }   // different order/reward → conflict, NO debit
+        const fmt = formatOf(rec, 'fp_format');                    // the format of THIS record, read in THIS transaction
+        if (!fmt.ok) { outcome = { ok: false, reason: 'binding_format_invalid' }; return; }
+        let recFp = fp;
+        if (fmt.format === FORMAT_CANONICAL) {
+          const c = canon();
+          if (!c || !c.ok) { outcome = { ok: false, reason: 'cart_unverifiable' }; return; }
+          recFp = c.fp;
+        }
+        if (rec.fp !== recFp) { outcome = { ok: false, reason: 'reservation_conflict' }; return; }   // different order/reward → conflict, NO debit
         if (rec.state === 'reserved' || rec.state === 'held_paid' || rec.state === 'consumed') {   // active/progressing/terminal → idempotent, NO re-debit
           outcome = { ok: true, action: 'reused', state: rec.state }; return;
         }
@@ -93,6 +114,11 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
         if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
         const seq = (Number(rec.seq) || 0) + 1;
         outcome = { ok: true, action: 're_reserved', state: 'reserved' };
+        if (fmt.format === FORMAT_CANONICAL) {
+          // Q2: the canonical record keeps its format and its canonical binding — its stored canonical reward and
+          // selected order binding are the ones the comparison above just matched.
+          return writeReserve(cur, orderId, rec, recFp, rec.canonical, rec.order_fingerprint, configVersion, cost, seq, now, hostedExpiresAt, rec.fp_format);
+        }
         return writeReserve(cur, orderId, rec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt);
       }
       // fresh reserve
@@ -111,8 +137,10 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
   } catch (e) { console.error(`reserveRedemption: failed ${orderId}`, e && e.message); return { ok: false, reason: 'error' }; }
 }
 
-function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt = null) {
+function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt = null, carriedFormat = undefined) {
   const rec = {
+    // 1D D4-b: present ONLY when re-reserving a record that already carried it (Q2); a legacy write is unchanged.
+    ...(carriedFormat !== undefined ? { fp_format: carriedFormat } : {}),
     state: 'reserved', cost, fp, canonical: canonical || null, order_fingerprint: orderFingerprint || null,
     // Online binds hosted_expires_at AT RESERVE (a deterministic nowTs + HOSTED_TTL bound) so an unattached
     // hold is sweep-visible as an ONLINE hold immediately — the online-expiry sweep reclaims it whether or not
@@ -437,7 +465,8 @@ async function sweepConsumeRecovery(db, { now, staleMs = CASH_STALE_MS }) {
 }
 
 module.exports = {
-  reserveRedemption, attachAttempt, consumeRedemption, markHeldPaid, releaseRedemption,
+  // bindingFp: 1D D4-b — the canonical projection reuses the SAME function (PLAN-D4b §B.4)
+  reserveRedemption, attachAttempt, consumeRedemption, bindingFp, markHeldPaid, releaseRedemption,
   reverseRedemptionForRefund, reverseRedemptionForOrder, sweepStaleReservations, settleRedemptionAtConfirm,
   holdRedemptionForManual, redemptionHoldSecured, sweepConsumeRecovery, consumeEligible, CASH_STALE_MS,
 };

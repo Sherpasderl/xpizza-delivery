@@ -117,7 +117,10 @@ function normalizeCartForFingerprint(items, rid) {
   }
 }
 
-function cartFingerprint(normItems, reward) {
+/* 1D D4-b: `opts.v` (canonical only) adds a VERSION to the hashed object — `{v:"c1", i, r}` — so a canonical
+   fingerprint can never equal a legacy one by construction (PLAN-D4b §B). Legacy callers pass no opts and
+   hash exactly `{i, r}`, byte-identical to before (pinned by catalog/d4b-legacy-hashes.golden.json). */
+function cartFingerprint(normItems, reward, opts) {
   const keyOf = (o) => (o && o.id !== undefined && o.id !== null ? String(o.id) : String(o && o.name));
 
   /* 🔴 SORTED ON THE COMPLETE NORMALISED ENTRY, not on a chosen prefix of it. The first version
@@ -156,7 +159,8 @@ function cartFingerprint(normItems, reward) {
       .sort(bySerial),
   } : null;
 
-  return crypto.createHash('sha256').update(JSON.stringify({ i: items, r })).digest('hex');
+  const hashed = (opts && opts.v) ? { v: String(opts.v), i: items, r } : { i: items, r };
+  return crypto.createHash('sha256').update(JSON.stringify(hashed)).digest('hex');
 }
 
 /* SIGN — base64url(json).base64url(HMAC-SHA256(json, secret)).

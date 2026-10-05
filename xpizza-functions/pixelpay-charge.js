@@ -43,7 +43,11 @@ function centsToLempiras(cents) {
 // read-then-CAS in a bounded loop: pre-read order (+attempt) to DECIDE, then a
 // CAS transaction ENACTS it only if the order state we keyed on is unchanged; if
 // it moved under us we re-read and re-decide. `genId` is injectable for tests.
-async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId) {
+/* 1D D4-b (§A.3): the same contract as the hosted path. NOTE: no production caller today; dormant code is kept
+   correct anyway. `canonicalFp` is a lazy thunk, consulted only for a canonical-tagged record. */
+async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null) {
+  const { paymentBindingConflict, conflictOutcome, once, installFingerprint } = require('./catalog/canonical-binding');   // lazy: canonical-binding requires this module
+  const canon = once(canonicalFp);
   const orderRef = db.ref(`orders/${orderId}`);
 
   for (let i = 0; i < 6; i++) {
@@ -52,9 +56,7 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
     // Terminal reads that need no write.
     if (order) {
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
-      if (order.payment_fingerprint && order.payment_fingerprint !== fingerprint) {
-        return { outcome: 'conflict' };
-      }
+      { const d = paymentBindingConflict(order, fingerprint, canon); if (d) return conflictOutcome(d); }   // advisory
     }
 
     // Decide intent from the pre-read.
@@ -95,10 +97,12 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
       const c = cur || order;                           // non-create: avoid first-call-null abort
       if (!c) return;                                   // genuinely absent
       if (c.payment_status === 'confirmed') return c;
-      if (c.payment_fingerprint && c.payment_fingerprint !== fingerprint) return c;
+      if (paymentBindingConflict(c, fingerprint, canon)) return c;     // the CAS: (format, fingerprint) on the record held
       if (decided.kind === 'install') {
         if (c.active_attempt_id) return c;              // someone installed first → re-evaluate post-tx
-        return { ...c, active_attempt_id: decided.newAaid, payment_fingerprint: c.payment_fingerprint || fingerprint };
+        const fill = c.payment_fingerprint || installFingerprint(c, fingerprint, canon);   // 1D D4-b: legacy record → `fingerprint`, unchanged
+        if (!fill) return c;                                                              // canonical, uncomputable → no install (the re-read refuses)
+        return { ...c, active_attempt_id: decided.newAaid, payment_fingerprint: fill };
       }
       if (decided.kind === 'reuse' || decided.kind === 'recover') {
         if (c.active_attempt_id !== decided.reuseAaid) return c; // pointer moved → re-evaluate
@@ -115,9 +119,7 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     const committed = tx.snapshot.val();
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
-    if (committed.payment_fingerprint && committed.payment_fingerprint !== fingerprint) {
-      return { outcome: 'conflict' };
-    }
+    { const d = paymentBindingConflict(committed, fingerprint, canon); if (d) return conflictOutcome(d); }   // advisory post-txn
     const winner = committed.active_attempt_id;
 
     if (decided.kind === 'create' || decided.kind === 'install' || decided.kind === 'rotate') {

@@ -1,0 +1,282 @@
+{
+  "_provenance": {
+    "captured_from": "717f97e911774aa03fa285b54ee5af576067ba1a:{xpizza-orders,la-musa-orders}/account.js",
+    "by": "d4b-reorder-reader.mjs legacyScenarios()"
+  },
+  "results": {
+    "xpizza-orders/x_pizza.plain": {
+      "qty": {
+        "2": 2,
+        "3": 1
+      },
+      "pizzaExtras": {},
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/x_pizza.options_capped": {
+      "qty": {
+        "2": 2
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e1": 1,
+            "e2": 1
+          },
+          "1": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/x_pizza.merge_add_offsets": {
+      "qty": {
+        "2": 3
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e2": 1
+          },
+          "1": {
+            "e1": 1
+          },
+          "2": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/x_pizza.merge_replace": {
+      "qty": {
+        "2": 1,
+        "3": 0
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/x_pizza.drops": {
+      "qty": {
+        "3": 1
+      },
+      "pizzaExtras": {
+        "3": {}
+      },
+      "toasts": [
+        "5 productos ya no están disponibles"
+      ],
+      "warns": []
+    },
+    "xpizza-orders/x_pizza.all_dropped": {
+      "qty": {},
+      "pizzaExtras": {},
+      "toasts": [
+        "Esos productos ya no están disponibles."
+      ],
+      "warns": []
+    },
+    "xpizza-orders/x_pizza.unknown_fields": {
+      "qty": {
+        "2": 1
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/la_musa.plain": {
+      "qty": {
+        "dimsum_01": 2
+      },
+      "pizzaExtras": {
+        "dimsum_01": {
+          "rice_white": 2,
+          "rice_chinese": 1
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/la_musa.merge_add": {
+      "qty": {
+        "dimsum_01": 2
+      },
+      "pizzaExtras": {
+        "dimsum_01": {
+          "rice_white": 4
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "xpizza-orders/la_musa.drops": {
+      "qty": {},
+      "pizzaExtras": {},
+      "toasts": [
+        "Esos productos ya no están disponibles."
+      ],
+      "warns": []
+    },
+    "xpizza-orders/la_musa.all_dropped": {
+      "qty": {},
+      "pizzaExtras": {},
+      "toasts": [
+        "Esos productos ya no están disponibles."
+      ],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.plain": {
+      "qty": {
+        "2": 2,
+        "3": 1
+      },
+      "pizzaExtras": {},
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.options_capped": {
+      "qty": {
+        "2": 2
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e1": 1,
+            "e2": 1
+          },
+          "1": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.merge_add_offsets": {
+      "qty": {
+        "2": 3
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e2": 1
+          },
+          "1": {
+            "e1": 1
+          },
+          "2": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.merge_replace": {
+      "qty": {
+        "2": 1,
+        "3": 0
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.drops": {
+      "qty": {
+        "3": 1
+      },
+      "pizzaExtras": {
+        "3": {}
+      },
+      "toasts": [
+        "5 productos ya no están disponibles"
+      ],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.all_dropped": {
+      "qty": {},
+      "pizzaExtras": {},
+      "toasts": [
+        "Esos productos ya no están disponibles."
+      ],
+      "warns": []
+    },
+    "la-musa-orders/x_pizza.unknown_fields": {
+      "qty": {
+        "2": 1
+      },
+      "pizzaExtras": {
+        "2": {
+          "0": {
+            "e1": 1
+          }
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/la_musa.plain": {
+      "qty": {
+        "dimsum_01": 2
+      },
+      "pizzaExtras": {
+        "dimsum_01": {
+          "rice_white": 2,
+          "rice_chinese": 1
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/la_musa.merge_add": {
+      "qty": {
+        "dimsum_01": 2
+      },
+      "pizzaExtras": {
+        "dimsum_01": {
+          "rice_white": 4
+        }
+      },
+      "toasts": [],
+      "warns": []
+    },
+    "la-musa-orders/la_musa.drops": {
+      "qty": {},
+      "pizzaExtras": {},
+      "toasts": [
+        "Esos productos ya no están disponibles."
+      ],
+      "warns": []
+    },
+    "la-musa-orders/la_musa.all_dropped": {
+      "qty": {},
+      "pizzaExtras": {},
+      "toasts": [
+        "Esos productos ya no están disponibles."
+      ],
+      "warns": []
+    }
+  }
+}

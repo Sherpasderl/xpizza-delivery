@@ -22,6 +22,8 @@
 // ---------------------------------------------------------------------------
 const { computeServerNet } = require('./compute-server-net');
 const { verifyQuoteToken, cartFingerprint, normalizeCartForFingerprint } = require('./quote-token');
+const { formatOf, FORMAT_LEGACY, canonicalQuoteFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b §A/§B
+const { contextOf } = require('./catalog/pricing-tables');
 
 /* 🔴 THE REQUEST→GATE MAPPING, IN ONE PLACE. This is nothing but field names, which is exactly why it
    needed extracting: the closing gate demonstrated that renaming body.expected_net_cents at the two
@@ -151,8 +153,27 @@ function gateConfirmedNet({ token, expectedNetCents = null, submittedCart, rewar
   if (!norm) {
     return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'unfingerprintable_cart', quoteId: payload.quote_id || null, degraded: false };
   }
-  if (cartFingerprint(norm, reward) !== payload.cart_fingerprint) {
-    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'cart_mismatch', quoteId: payload.quote_id || null, degraded: false };
+  /* 🔴 1D D4-b — THE FORMAT IS READ FROM THE SIGNED PAYLOAD, NEVER FROM THE REQUEST (§A.3). Absent →
+     legacy, exactly today's comparison; "canonical" → the canonical projection of THIS cart and reward
+     through the request's usable D4-a context (§B.1), refusing `cart_unverifiable` when it cannot be
+     computed (§A.5) — never a fall-through to the legacy comparison; anything else → refused. No issuer
+     in D4-b writes the tag, so production always takes the legacy branch. */
+  const fmt = formatOf(payload, 'fp_format');
+  if (!fmt.ok) {
+    return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'binding_format_invalid', quoteId: payload.quote_id || null, degraded: false };
+  }
+  if (fmt.format === FORMAT_LEGACY) {
+    if (cartFingerprint(norm, reward) !== payload.cart_fingerprint) {
+      return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'cart_mismatch', quoteId: payload.quote_id || null, degraded: false };
+    }
+  } else {
+    const canon = canonicalQuoteFingerprint(submittedCart, reward, rid, contextOf(tables));
+    if (!canon.ok) {
+      return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'cart_unverifiable', quoteId: payload.quote_id || null, degraded: false };
+    }
+    if (canon.fp !== payload.cart_fingerprint) {
+      return { action: 'refuse_invalid', chargeNet: null, confirmedNet: null, reason: 'cart_mismatch', quoteId: payload.quote_id || null, degraded: false };
+    }
   }
 
   // The restaurant is part of what was confirmed: a token issued for one brand must not authorise a

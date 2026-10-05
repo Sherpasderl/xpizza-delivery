@@ -1690,9 +1690,23 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       if (!entry || !Array.isArray(entry.items) || !entry.items.length) return;
       if (typeof MENU === 'undefined' || typeof qty === 'undefined' || typeof pizzaExtras === 'undefined') { toast('No se pudo reordenar.'); return; }
       const laMusa = CONFIG.restaurant_id === 'la_musa';
+      /* 1D D4-b §D — the recipe's FORMAT (a sibling of its lines, written only from D4-c). Absent → today's matching,
+         EXACTLY (the loop below, untouched). "canonical" → each line is first translated back to today's line shape by
+         the SERVED canonical id per kind (MENU dish_id / EXTRAS extra_id), then runs through the same loop — so drops,
+         86 checks and the cart merge are today's. Any other value → every line dropped, with a diagnostic (today's
+         unmatched behaviour). */
+      let lines = entry.items;
+      if (entry.recipe_format !== undefined) {
+        if (entry.recipe_format !== 'canonical') {
+          try { console.warn('reorder_recipe_format_invalid', JSON.stringify({ recipe_format: String(entry.recipe_format) })); } catch (_) {}
+          lines = entry.items.map(() => null);
+        } else {
+          lines = canonicalRecipeToLegacy(entry.items, laMusa);
+        }
+      }
       const resolved = [];
       let dropped = 0;
-      for (const rl of entry.items) {
+      for (const rl of lines) {
         if (!rl || rl.key == null) { dropped++; continue; }
         const item = laMusa ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
         if (!item) { dropped++; continue; }                                   // not on today's menu → drop
@@ -1715,6 +1729,30 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       if (cartHasItems) reorderCartPrompt(() => seed(false), () => seed(true));   // non-empty → Agregar / Empezar de nuevo
       else seed(false);
     } catch (_) { try { toast('No se pudo reordenar.'); } catch (__) {} }
+  }
+
+  /* 1D D4-b §B.5/§D — canonical recipe line → today's line shape. A ck is JSON ["c1", kind, cid]; the cid is matched
+     against the SERVED identity (dish_id / extra_id). An unresolvable line becomes key-less (dropped by the loop, as an
+     off-menu line is today); an unresolvable option is skipped (as an unknown option name is today). */
+  function canonicalRecipeToLegacy(items, laMusa) {
+    const parse = (s) => { try { const a = JSON.parse(s); return (Array.isArray(a) && a.length === 3 && a[0] === 'c1' && typeof a[2] === 'string') ? { kind: a[1], cid: a[2] } : null; } catch (_) { return null; } };
+    return items.map((rl) => {
+      if (!rl) return rl;
+      const k = parse(rl.key);
+      const dish = (k && k.kind === 'dish' && typeof MENU !== 'undefined') ? MENU.find((p) => p.dish_id === k.cid) : null;
+      if (!dish) return { ...rl, key: null };
+      const out = { ...rl, key: laMusa ? dish.id : dish.name };
+      if (Array.isArray(rl.options)) {
+        out.options = [];
+        for (const o of rl.options) {
+          const ek = parse(o && (o.id !== undefined ? o.id : o.name));
+          const ex = (ek && ek.kind === 'extra' && typeof EXTRAS !== 'undefined') ? EXTRAS.find((e) => e.extra_id === ek.cid) : null;
+          if (!ex) continue;
+          out.options.push(o.id !== undefined ? { ...o, id: ex.id } : { ...o, name: ex.name });
+        }
+      }
+      return out;
+    });
   }
 
   function applyReorderToCart(resolved, laMusa) {
