@@ -30,17 +30,24 @@ const rtdb = admin.database();
 (async () => {
   const now = Date.now();
   const live = R.aggregateLive((await rtdb.ref('client_versions').once('value')).val() || {}, now);
-  const hours = R.windowHours(now, HOURS);
+  // ONE explicit [start, end) of complete UTC hours, applied to the counters AND the log query (codex CP1 B2)
+  const win = R.reportWindow(now, HOURS);
+  const hours = win.hours;
   const stats = (await rtdb.ref('client_version_stats').orderByKey().startAt(hours[0]).endAt(hours[hours.length - 1]).once('value')).val() || {};
   const hist = R.aggregateHistory(stats, PLATFORM.sites.deployments, hours, REQUIRED);
-  const filter = R.headerlessLogFilter();
-  const cmd = ['logging', 'read', filter, `--project=${PROJECT_ID}`, `--freshness=${HOURS}h`, '--format=json', '--limit=100000'];
+  const filter = R.headerlessLogFilter(win);
+  const LIMIT = 100000;
+  const cmd = ['logging', 'read', filter, `--project=${PROJECT_ID}`, '--format=json', `--limit=${LIMIT}`];
   let headerless = 'UNKNOWN (run with --logs, or: gcloud ' + cmd.map((c) => (/\s/.test(c) ? `'${c}'` : c)).join(' ') + ')';
   if (argv.includes('--logs')) {
-    try { headerless = R.countHeaderless(JSON.parse(execFileSync('gcloud', cmd, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }))); }
-    catch (e) { headerless = `UNKNOWN (gcloud failed: ${e.message.slice(0, 120)})`; }
+    try {
+      const r = R.countHeaderless(JSON.parse(execFileSync('gcloud', cmd, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })), { startMs: win.startMs, endMs: win.endMs, limit: LIMIT });
+      // a capped read is a LOWER BOUND — reported as TRUNCATED, never as a complete count
+      headerless = r.truncated ? { status: `TRUNCATED — the read hit --limit=${LIMIT}; counts below are a LOWER BOUND, not complete`, lower_bound: r.counts }
+        : { status: 'complete', counts: r.counts, entries: r.entries };
+    } catch (e) { headerless = `UNKNOWN (gcloud failed: ${e.message.slice(0, 120)})`; }
   }
-  console.log(JSON.stringify({ project: PROJECT_ID, window: { hours: HOURS, from: hours[0], to: hours[hours.length - 1] }, required: REQUIRED,
+  console.log(JSON.stringify({ project: PROJECT_ID, window: { hours: HOURS, from: hours[0], to: hours[hours.length - 1], start: win.startIso, end_exclusive: win.endIso }, required: REQUIRED,
     live, coverage: hist.coverage, totals: hist.totals, below_required: hist.below, headerless }, null, 2));
   process.exit(0);
 })().catch((e) => { console.error('client-version-report FAILED:', e && e.message); process.exit(1); });

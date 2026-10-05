@@ -31,6 +31,15 @@ function windowHours(now, hours) {
   return out;
 }
 
+// ONE explicit observation window [startMs, endMs) — complete UTC hours — applied to BOTH sources (codex CP1 B2): the
+// hourly heartbeat counters AND the Cloud Logging header-less query. A rolling `--freshness` would start mid-hour and
+// silently miss the first partial hour of the window.
+function reportWindow(now, hours) {
+  const endMs = Math.floor(now / 3600000) * 3600000;           // the start of the current (incomplete) hour, exclusive
+  const startMs = endMs - hours * 3600000;
+  return { startMs, endMs, startIso: new Date(startMs).toISOString(), endIso: new Date(endMs).toISOString(), hours: windowHours(now, hours) };
+}
+
 // stats: the client_version_stats subtree; deployments: the manifest's; required: { app: generation }
 function aggregateHistory(stats, deployments, hours, required = {}) {
   const coverage = []; const below = []; const totals = [];
@@ -52,25 +61,31 @@ function aggregateHistory(stats, deployments, hours, required = {}) {
   return { totals, coverage, below };
 }
 
-// Cloud Logging filter for the header-less identity requests (the log line is `client_version {json}`)
-function headerlessLogFilter() {
-  return 'textPayload:"client_version" AND textPayload:"\\"headerless\\":true"';
+// Cloud Logging filter for the header-less identity requests (the log line is `client_version {json}`), bounded to the
+// SAME [start, end) as the counters — explicit timestamp terms, no rolling freshness.
+function headerlessLogFilter(win) {
+  if (!win || !win.startIso || !win.endIso) throw new Error('headerlessLogFilter needs the explicit report window');
+  return `textPayload:"client_version" AND textPayload:"\\"headerless\\":true" AND timestamp>="${win.startIso}" AND timestamp<"${win.endIso}"`;
 }
-// entries: gcloud logging read --format=json output → per endpoint × UTC hour counts
-function countHeaderless(entries) {
+// entries: gcloud logging read --format=json output → { counts: per endpoint × UTC hour, truncated, entries }.
+// Only entries INSIDE [startMs, endMs) count. `truncated` when the read returned `limit` entries: the counts are then a
+// LOWER BOUND and must never be presented as complete.
+function countHeaderless(entries, { startMs = -Infinity, endMs = Infinity, limit = Infinity } = {}) {
   const out = {};
-  for (const e of entries || []) {
+  const list = entries || [];
+  for (const e of list) {
     const t = (e && e.textPayload) || '';
     const i = t.indexOf('{');
     if (!t.startsWith('client_version') || i < 0) continue;
     let j; try { j = JSON.parse(t.slice(i)); } catch (_) { continue; }
     if (j.headerless !== true || typeof j.endpoint !== 'string') continue;
     const ts = Date.parse(e.timestamp || '');
-    const h = Number.isFinite(ts) ? hourKey(ts) : 'unknown';
+    if (!Number.isFinite(ts) || ts < startMs || ts >= endMs) continue;   // outside the window (or untimed) — not counted
+    const h = hourKey(ts);
     out[j.endpoint] = out[j.endpoint] || {};
     out[j.endpoint][h] = (out[j.endpoint][h] || 0) + 1;
   }
-  return out;
+  return { counts: out, entries: list.length, truncated: list.length >= limit };
 }
 
-module.exports = { aggregateLive, windowHours, aggregateHistory, headerlessLogFilter, countHeaderless };
+module.exports = { aggregateLive, windowHours, reportWindow, aggregateHistory, headerlessLogFilter, countHeaderless };

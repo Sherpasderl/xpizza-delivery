@@ -92,6 +92,44 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
   assert.ok(/^UNKNOWN \(run with --logs/.test(rep.headerless), 'without --logs the header-less count is UNKNOWN and the gcloud command is printed');
   ok('version report: read-only; live instances grouped; report-less hours UNKNOWN; header-less UNKNOWN without --logs (command printed)');
 
+  // ── codex CP1 B2 — the REAL report CLI with --logs against a FAKE `gcloud` on PATH (records its argv, returns fixtures) ──
+  {
+    const os = require('os'); const fsys = require('fs');
+    const dir = fsys.mkdtempSync(path.join(os.tmpdir(), 'fake-gcloud-'));
+    const argvFile = path.join(dir, 'argv.json'), outFile = path.join(dir, 'out.json');
+    fsys.writeFileSync(path.join(dir, 'gcloud'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)));\nprocess.stdout.write(require('fs').readFileSync(${JSON.stringify(outFile)}, 'utf8'));\n`, { mode: 0o755 });
+    const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
+    const endMs = Math.floor(Date.now() / 3600000) * 3600000, startMs = endMs - 3 * 3600000;
+    const line = (ep) => `client_version {"endpoint":"${ep}","app":null,"deployment":null,"build":null,"compat":null,"headerless":true}`;
+    const iso = (ms) => new Date(ms).toISOString();
+    fsys.writeFileSync(outFile, JSON.stringify([
+      { timestamp: iso(startMs + 10 * 60000), textPayload: line('createOrder') },   // first partial hour (a rolling window misses it)
+      { timestamp: iso(startMs - 60000), textPayload: line('createOrder') },        // before the window
+      { timestamp: iso(endMs - 60000), textPayload: line('quoteOrder') },
+    ]));
+    r = runCli(env, 'client-version-report.js', '--hours', '3', '--logs');
+    assert.strictEqual(r.code, 0, r.out);
+    const args = JSON.parse(fsys.readFileSync(argvFile, 'utf8'));
+    const filter = args[2];
+    assert.ok(filter.includes(`timestamp>="${iso(startMs)}"`) && filter.includes(`timestamp<"${iso(endMs)}"`), `🔴 the log query carries the report's own [start, end): ${filter}`);
+    assert.ok(!args.some((a) => /freshness/.test(a)), '🔴 no rolling --freshness');
+    assert.ok(args.includes('--limit=100000'), 'the limit is explicit');
+    let rep2 = JSON.parse(r.out.slice(r.out.indexOf('{')));
+    assert.strictEqual(rep2.window.start, iso(startMs)); assert.strictEqual(rep2.window.end_exclusive, iso(endMs));
+    assert.strictEqual(rep2.headerless.status, 'complete');
+    const total = (c) => Object.values(c).reduce((a, byH) => a + Object.values(byH).reduce((x, y) => x + y, 0), 0);
+    assert.strictEqual(total(rep2.headerless.counts), 2, '🔴 the first-partial-hour request IS counted, the out-of-window one is not');
+    // TRUNCATED: the read returns exactly --limit entries → a lower bound, never presented as complete
+    const many = []; for (let i = 0; i < 100000; i += 1) many.push({ timestamp: iso(startMs + 1000 + i), textPayload: line('createOrder') });
+    fsys.writeFileSync(outFile, JSON.stringify(many));
+    r = runCli(env, 'client-version-report.js', '--hours', '3', '--logs');
+    assert.strictEqual(r.code, 0, r.out);
+    rep2 = JSON.parse(r.out.slice(r.out.indexOf('{')));
+    assert.ok(/^TRUNCATED/.test(rep2.headerless.status), `🔴 a capped read is reported TRUNCATED (${rep2.headerless.status})`);
+    assert.ok(!('counts' in rep2.headerless) && rep2.headerless.lower_bound, 'the capped numbers are labelled a LOWER BOUND, never `counts`');
+    ok('codex B2: the real report CLI queries logs for EXACTLY its [start, end) (no --freshness, explicit limit); a header-less request in the first partial hour is counted, one before the window is not; a capped read is reported TRUNCATED with a lower bound');
+  }
+
   console.log(`client-floor-cli(emulator): OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('client-floor-cli(emulator) FAILED:', e); process.exit(1); });

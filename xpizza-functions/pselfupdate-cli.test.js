@@ -101,17 +101,30 @@ const kp = F.kitchenPath;
   assert.strictEqual(h.totals.find((t) => t.deployment === 'orders-xpizza').reports, 15);
   ok('report: live = last 30 min grouped by app × deployment × build × compat; history = complete UTC hours, a report-less hour is UNKNOWN (never zero), below-required counted per deployment');
 
-  // ── report: header-less from Cloud Logging lines (ruling R3.1) ──
+  // ── report: ONE explicit [start, end) for both sources (codex CP1 B2) + header-less counted from the log lines ──
+  const W = R.reportWindow(now, 24);                                           // now = 2026-10-05 18:30Z
+  assert.strictEqual(W.endIso, '2026-10-05T18:00:00.000Z', 'end = the start of the current (incomplete) hour, exclusive');
+  assert.strictEqual(W.startIso, '2026-10-04T18:00:00.000Z', 'start = end − 24 h — NOT now − 24 h (18:30), which would skip 18:00–18:30');
+  assert.deepStrictEqual([W.hours[0], W.hours[23]], [hourKey(Date.UTC(2026, 9, 4, 18)), hourKey(Date.UTC(2026, 9, 5, 17))], 'the counters\' hours are exactly the window\'s');
+  const f = R.headerlessLogFilter(W);
+  assert.ok(f.includes('timestamp>="2026-10-04T18:00:00.000Z"') && f.includes('timestamp<"2026-10-05T18:00:00.000Z"'), 'the log query is bounded by the SAME [start, end)');
+  assert.throws(() => R.headerlessLogFilter(), /explicit report window/, 'no window → no query (never an unbounded/rolling one)');
+  const line = (ep, hl) => `client_version {"endpoint":"${ep}","app":null,"deployment":null,"build":null,"compat":null,"headerless":${hl}}`;
   const entries = [
-    { timestamp: '2026-10-05T17:10:00Z', textPayload: 'client_version {"endpoint":"createOrder","app":null,"deployment":null,"build":null,"compat":null,"headerless":true}' },
-    { timestamp: '2026-10-05T17:20:00Z', textPayload: 'client_version {"endpoint":"createOrder","app":null,"deployment":null,"build":null,"compat":null,"headerless":true}' },
-    { timestamp: '2026-10-05T17:20:00Z', textPayload: 'client_version {"endpoint":"quoteOrder","app":"orders","deployment":"orders-xpizza","build":"b","compat":1,"headerless":false}' },
+    { timestamp: '2026-10-04T18:10:00Z', textPayload: line('createOrder', true) },       // the FIRST PARTIAL hour a rolling 24h would miss
+    { timestamp: '2026-10-04T17:59:59Z', textPayload: line('createOrder', true) },       // before the window — not counted
+    { timestamp: '2026-10-05T18:00:00Z', textPayload: line('createOrder', true) },       // at end (exclusive) — not counted
+    { timestamp: '2026-10-05T17:20:00Z', textPayload: line('createOrder', true) },
+    { timestamp: '2026-10-05T17:20:00Z', textPayload: line('quoteOrder', false) },
     { timestamp: '2026-10-05T17:25:00Z', textPayload: 'something else entirely' },
     { timestamp: '2026-10-05T17:26:00Z', textPayload: 'client_version {broken' },
   ];
-  assert.deepStrictEqual(R.countHeaderless(entries), { createOrder: { [hourKey(Date.UTC(2026, 9, 5, 17))]: 2 } });
-  assert.ok(R.headerlessLogFilter().includes('client_version') && R.headerlessLogFilter().includes('headerless'));
-  ok('report: header-less identity requests are counted per endpoint × hour from the client_version log lines; other and broken lines ignored');
+  let hc = R.countHeaderless(entries, { startMs: W.startMs, endMs: W.endMs, limit: 1000 });
+  assert.deepStrictEqual(hc.counts, { createOrder: { [hourKey(Date.UTC(2026, 9, 4, 18))]: 1, [hourKey(Date.UTC(2026, 9, 5, 17))]: 1 } }, '🔴 the first partial hour IS counted; outside-window, non-header-less and broken lines are not');
+  assert.strictEqual(hc.truncated, false);
+  hc = R.countHeaderless(entries, { startMs: W.startMs, endMs: W.endMs, limit: entries.length });
+  assert.strictEqual(hc.truncated, true, '🔴 a read that hit the limit is TRUNCATED (a lower bound, never complete)');
+  ok('report window (codex B2): one explicit [start, end) of complete UTC hours for the counters AND the log query; a header-less request in the first partial hour is counted; outside-window entries are not; a capped read is TRUNCATED');
 
   FINISHED = true;
   console.log(`pselfupdate-cli: OK (${n})`);
