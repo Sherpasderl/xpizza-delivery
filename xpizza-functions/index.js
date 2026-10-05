@@ -6082,10 +6082,10 @@ exports.releaseScheduledOrder = onRequest(
 // required LAZILY so a missing/weak OTP_SALT fails ONLY these endpoints closed (500, H7) — it does
 // NOT couple the rest of the functions module (createOrder, payments) to the OTP secret.
 // ─────────────────────────────────────────────────────────────────────────────
-const ACCOUNT_ORIGINS = [
-  'https://orders.xpizza.hn',
-  'https://orders.lamusa.hn',
-];
+// P-SELFUPDATE (advisor ruling, origins option A): DERIVED from the bundled site manifest (platform/sites.json → the
+// `orders` deployments' exact origins, in manifest order). Still a static array handed to the v2 `cors` option.
+// platform-sync.guard.test.js pins it BYTE-IDENTICAL to the pre-manifest literal list for today's merchants.
+const { ACCOUNT_ORIGINS } = require('./platform-manifest').PLATFORM;
 
 // Portal 2b-2a — the merchant portal is a DIFFERENT origin from the two customer order sites, so it
 // needs its own CORS list. Deliberately NOT added to ACCOUNT_ORIGINS: that constant guards the OTP and
@@ -6120,11 +6120,8 @@ const PORTAL_ORIGINS = [
 // other surface in this file requires a verified token, and ACCOUNT_ORIGINS/PORTAL_ORIGINS guard the
 // OTP, account and portal endpoints. Reusing either would hand this endpoint's audience to those
 // surfaces for no reason beyond saving a constant.
-const PUBLIC_MENU_ORIGINS = [
-  /^http:\/\/localhost(:\d+)?$/,          // local development against production data
-  'https://orders.xpizza.hn',
-  'https://orders.lamusa.hn',
-];
+// P-SELFUPDATE: DERIVED like ACCOUNT_ORIGINS — [the localhost development pattern, ...the order sites' origins].
+const { PUBLIC_MENU_ORIGINS } = require('./platform-manifest').PLATFORM;
 
 const { buildPublicMenu, defaultIsActive, publicMenuErrorResponse } = require('./catalog/public-menu');
 
