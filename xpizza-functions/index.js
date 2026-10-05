@@ -2508,8 +2508,9 @@ exports.sweepStalePending = onSchedule(
 // ============================================================
 //
 // Every 30 min (Tegucigalpa clock), returns each restaurant's sold-out ("86'd") items to available WHILE
-// CLOSED, once per business day (Square's default). Logic lives in ./availability-reset.js (unit-tested with
-// an injected clock). ISOLATION: reads/writes ONLY item_availability + availability_reset_marker under
+// CLOSED, once per America/Tegucigalpa calendar date (Square's default; see availability-reset.js
+// "CALENDAR-DAY SEMANTICS"). Logic lives in ./availability-reset.js (unit-tested with an injected clock, and
+// against the real RTDB emulator — test/availability-reset.emulator.test.js). ISOLATION: reads/writes ONLY item_availability + availability_reset_marker under
 // /restaurants/{rid}; only WIDENS (sold-out → available); a crashed partial run self-heals on the next tick.
 // R4: the cutoff is the RTDB server-time started_at (ServerValue.TIMESTAMP, read back), never Date.now().
 exports.resetItemAvailability = onSchedule(
@@ -2528,7 +2529,11 @@ exports.resetItemAvailability = onSchedule(
       restaurants = undefined;
     }
     // now = wall clock (closed-gate + marker date); the server-time cutoff comes from ServerValue.TIMESTAMP.
-    await runAvailabilityReset({ db: getDatabase(), ServerValue, now: Date.now(), restaurants });
+    const results = await runAvailabilityReset({ db: getDatabase(), ServerValue, now: Date.now(), restaurants });
+    // Per-restaurant outcome on EVERY tick (incl. already_done / newer_marker / skipped:<reason>) — the
+    // result used to be discarded, so prod could not tell "nothing stale" from "never ran".
+    const { outcomeLogLines } = require('./availability-reset');
+    for (const line of outcomeLogLines(results)) console.log(line);
   }
 );
 

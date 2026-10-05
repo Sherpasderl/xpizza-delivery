@@ -87,6 +87,7 @@
     "test:paid-after-close-notify": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/paid-after-close-notify.emulator.test.js\"",
     "test:catalog-context": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/catalog-context.emulator.test.js\"",
     "test:d4b-readers": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/d4b-readers.emulator.test.js\"",
-    "test:d4b-charge-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/d4b-charge-trace.emulator.test.js\""
+    "test:d4b-charge-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/d4b-charge-trace.emulator.test.js\"",
+    "test:availability-reset": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/availability-reset.emulator.test.js\""
   }
 }
