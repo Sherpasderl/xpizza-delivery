@@ -40,8 +40,9 @@ function hourKey(ms) {
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}`;
 }
 
+// STRUCTURE + MANIFEST only — pure, no registry, no database (codex CP1 S3: a malformed report must cost nothing).
 // → { ok: true, report } | { ok: false, error }
-function validateReport(body, platform, knownContexts) {
+function validateStructure(body, platform) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { ok: false, error: 'body' };
   const allowed = new Set(['app', 'deployment', 'context', 'build', 'compat', 'instance', 'diag']);
   for (const k of Object.keys(body)) if (!allowed.has(k)) return { ok: false, error: `unknown_field` };
@@ -50,12 +51,19 @@ function validateReport(body, platform, knownContexts) {
   if (typeof deployment !== 'string' || !ID_RE.test(deployment)) return { ok: false, error: 'deployment' };
   if (typeof context !== 'string') return { ok: false, error: 'context' };
   if (!platform.isValidCombination(app, deployment, context)) return { ok: false, error: 'combination' };
-  if (context !== PLATFORM_CONTEXT && !(knownContexts && knownContexts.has(context))) return { ok: false, error: 'context' };
   if (typeof build !== 'string' || !BUILD_RE.test(build)) return { ok: false, error: 'build' };
   if (!Number.isInteger(compat) || compat < 1 || compat > platform.maxCompat(app)) return { ok: false, error: 'compat' };
   if (typeof instance !== 'string' || !INSTANCE_RE.test(instance)) return { ok: false, error: 'instance' };
   if (diag !== undefined && !DIAG.has(diag)) return { ok: false, error: 'diag' };
   return { ok: true, report: { app, deployment, context, build, compat, instance, ...(diag ? { diag } : {}) } };
+}
+
+// The full check, for callers that already hold the registry's known set: structure FIRST, then membership.
+function validateReport(body, platform, knownContexts) {
+  const v = validateStructure(body, platform);
+  if (!v.ok) return v;
+  if (v.report.context !== PLATFORM_CONTEXT && !(knownContexts && knownContexts.has(v.report.context))) return { ok: false, error: 'context' };
+  return v;
 }
 
 // The heartbeat's OWN limiter entry point. Same fixed-window transaction as checkRateLimit, but a database error is
@@ -91,14 +99,16 @@ async function recordReport(db, ServerValue, r, now = Date.now()) {
 // The HTTP handler body. deps: { db, ServerValue, platform, registry, now }
 async function handleReport(req, res, deps) {
   if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).json({ error: 'method_not_allowed' }); }
-  let known = null;
-  const body = req.body;
-  // the registry is consulted only when the context names a restaurant (warmed once per instance, bounded)
-  if (body && typeof body.context === 'string' && body.context !== PLATFORM_CONTEXT && deps.registry) {
-    try { await deps.registry.ready(); known = deps.registry.known(); } catch (_) { known = null; }
-  }
-  const v = validateReport(body, deps.platform, known);
+  // 1. STRUCTURE + MANIFEST combination — pure: a malformed report never reaches the registry or the database
+  const v = validateStructure(req.body, deps.platform);
   if (!v.ok) return res.status(400).json({ error: 'invalid_report', field: v.error });
+  // 2. registry MEMBERSHIP — only for a structurally valid report whose context names a restaurant (warmed once per
+  //    instance, bounded); a registry that cannot answer leaves the context unverified → refused
+  if (v.report.context !== PLATFORM_CONTEXT) {
+    let known = null;
+    if (deps.registry) { try { await deps.registry.ready(); known = deps.registry.known(); } catch (_) { known = null; } }
+    if (!(known && known.has(v.report.context))) return res.status(400).json({ error: 'invalid_report', field: 'context' });
+  }
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
   const lim = await checkHeartbeatLimit(deps.db, ip, HEARTBEAT_LIMIT, deps.now ? deps.now() : Date.now());
   if (lim.failed) return res.status(503).json({ error: 'telemetry_unavailable', dropped: true });
@@ -157,6 +167,6 @@ async function sweepClientVersions(deps) {
 }
 
 module.exports = {
-  handleReport, validateReport, checkHeartbeatLimit, recordReport, sweepClientVersions, hourKey,
+  handleReport, validateReport, validateStructure, checkHeartbeatLimit, recordReport, sweepClientVersions, hourKey,
   HEARTBEAT_LIMIT, LIVE_WINDOW_MS, INSTANCE_TTL_MS, STATS_RETENTION_MS, SWEEP_BATCH, SWEEP_MAX_BATCHES,
 };
