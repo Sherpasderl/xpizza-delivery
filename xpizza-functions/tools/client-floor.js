@@ -8,14 +8,15 @@
 //   node tools/client-floor.js --project <id> orders  delete [--apply]        ← the HTTP floor OFF (instances re-read within one TTL)
 //   node tools/client-floor.js --project <id> status                          ← every floor, read-only
 //
-// Kitchen: ONE multi-path update covering every restaurant (RTDB restaurants with an identity ∪ the registry). Read back
-// after writing. Rollback ordering (PLAN §6): to undo D4-c, FIRST restore server/data behaviour compatible with older
-// pages, THEN lower or delete floors; the kitchen kill switch may be used at any time if the rule itself misbehaves.
+// Kitchen: ONE multi-path update covering every restaurant (the registry ∪ every RTDB restaurant ∪ every existing floor
+// node). set/raise REFUSE if the registry cannot be read; delete needs RTDB only. Verified by a full RTDB re-scan.
+// Rollback ordering (PLAN §6): to undo D4-c, FIRST restore server/data behaviour compatible with older pages, THEN lower
+// or delete floors; the kitchen kill switch may be used at any time if the rule itself misbehaves.
 const admin = require('firebase-admin');
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject();      // FIRST: states the project, before any client is constructed
 const { RTDB_URL } = require('../catalog/mirror-rtdb');
-const { planFloor, listRestaurants, readCurrent, applyPlan, ORDERS_PATH } = require('./client-floor-admin');
+const { planFloor, discoverRestaurants, readCurrent, applyPlan, ORDERS_PATH } = require('./client-floor-admin');
 const { PLATFORM } = require('../platform-manifest');
 const { makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
 
@@ -29,24 +30,26 @@ admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 const rtdb = admin.database();
 
 (async () => {
-  const registryIds = await makeFirestoreRegistryReader(admin.firestore())().catch(() => []);
-  const rids = await listRestaurants(rtdb, registryIds);
+  // discovery: registry ∪ every RTDB restaurant key ∪ every existing floor node; a registry failure is REPORTED (codex B1)
+  const disc = await discoverRestaurants(rtdb, () => makeFirestoreRegistryReader(admin.firestore())());
+  const { rids, floorKeys, registryOk } = disc;
+  if (!registryOk) console.error(`client-floor: WARNING — restaurant registry discovery failed (${disc.registryError}); set/raise will be refused, delete covers every floor node found in RTDB`);
   if (pos[0] === 'status') {
-    const k = await readCurrent(rtdb, 'kitchen', rids);
+    const k = await readCurrent(rtdb, 'kitchen', rids, floorKeys);
     const o = await readCurrent(rtdb, 'orders', rids);
-    console.log(JSON.stringify({ project: PROJECT_ID, kitchen: k, orders: o[ORDERS_PATH], compat: PLATFORM.compat.generations }, null, 2));
+    console.log(JSON.stringify({ project: PROJECT_ID, registry: registryOk ? 'ok' : `FAILED: ${disc.registryError}`, kitchen: k, orders: o[ORDERS_PATH], compat: PLATFORM.compat.generations }, null, 2));
     process.exit(0);
   }
   const [kind, op, raw] = pos;
   if (!kind || !op || (op !== 'delete' && raw === undefined)) usage();
   const value = op === 'delete' ? null : Number(raw);
-  const current = await readCurrent(rtdb, kind, rids);
-  const plan = planFloor({ kind, op, value, current, rids, maxCompat: PLATFORM.maxCompat(kind), force: FORCE });
+  const current = await readCurrent(rtdb, kind, rids, floorKeys);
+  const plan = planFloor({ kind, op, value, current, rids, floorKeys, registryOk, maxCompat: PLATFORM.maxCompat(kind), force: FORCE });
   if (!plan.ok) { console.error(`client-floor: REFUSED — ${plan.error}`); process.exit(1); }
   console.log(`client-floor ${APPLY ? 'APPLY' : 'DRY RUN'} — project ${PROJECT_ID}, ${kind} ${op}${value === null ? '' : ` ${value}`}`);
   for (const r of plan.rows) console.log(`  ${r.path}: ${JSON.stringify(r.from)} → ${JSON.stringify(r.to)}`);
   if (!APPLY) { console.log('(dry run — nothing written; add --apply)'); process.exit(0); }
-  const res = await applyPlan(rtdb, plan);
+  const res = await applyPlan(rtdb, plan, { kind, target: value });
   if (!res.ok) { console.error(`client-floor: READ-BACK MISMATCH — ${res.mismatched.join('; ')}`); process.exit(1); }
   console.log(`client-floor: applied in ONE update and read back (${plan.rows.length} path(s))`);
   process.exit(0);

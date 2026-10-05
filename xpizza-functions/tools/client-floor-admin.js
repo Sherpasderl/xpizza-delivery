@@ -11,8 +11,11 @@
 //   • `raise` never lowers anything (refused if any current value is higher);
 //   • a floor ABOVE the app's current compatibility generation (platform/compat.json) would refuse EVERY page, including
 //     the newest build — refused unless `force`;
-//   • the restaurant set is the union of the RTDB restaurants that carry an identity and the registry ids — a restaurant
-//     missing from the update would silently stay OFF.
+//   • DISCOVERY (codex CP1 B1): the restaurant set is the registry ∪ EVERY restaurant key in RTDB ∪ EVERY key that already
+//     holds a kitchen floor. A registry failure is reported, never turned into "no restaurants": set / raise REFUSE when
+//     the registry could not be read (a restaurant could otherwise be skipped and silently stay OFF); the emergency
+//     DELETE needs no Firestore at all — it covers every floor node found in RTDB plus every discovered restaurant;
+//   • after an apply, a FULL RTDB re-scan (not only the plan's own rows) must show the intended state everywhere.
 const KINDS = new Set(['kitchen', 'orders']);
 const OPS = new Set(['set', 'raise', 'delete']);
 const ORDERS_PATH = 'platform_config/client_floor/orders';
@@ -20,7 +23,9 @@ const kitchenPath = (rid) => `restaurants/${rid}/client_floor/kitchen`;
 const RID_RE = /^[a-z0-9][a-z0-9_-]{1,39}$/;
 
 // → { ok, error? , updates, rows: [{ path, from, to }] }
-function planFloor({ kind, op, value, current, rids, maxCompat, force = false }) {
+// rids: the discovered restaurants; floorKeys: every /restaurants key holding a kitchen floor (RTDB); registryOk: did the
+// registry read succeed.
+function planFloor({ kind, op, value, current, rids, floorKeys = [], registryOk = true, maxCompat, force = false }) {
   if (!KINDS.has(kind)) return { ok: false, error: `unknown floor kind ${kind}` };
   if (!OPS.has(op)) return { ok: false, error: `unknown op ${op}` };
   if (op !== 'delete') {
@@ -29,11 +34,19 @@ function planFloor({ kind, op, value, current, rids, maxCompat, force = false })
       return { ok: false, error: `floor ${value} is above ${kind}'s current compatibility generation ${maxCompat} — it would refuse EVERY page; pass --force only if a build at that generation is deployed` };
     }
   }
-  const paths = kind === 'orders' ? [ORDERS_PATH] : rids.map(kitchenPath);
-  if (kind === 'kitchen') {
-    if (!rids.length) return { ok: false, error: 'no restaurants found — refusing to write a kitchen floor for nobody' };
-    const bad = rids.filter((r) => !RID_RE.test(r));
-    if (bad.length) return { ok: false, error: `malformed restaurant ids: ${bad.join(', ')}` };
+  let paths;
+  if (kind === 'orders') paths = [ORDERS_PATH];
+  else if (op === 'delete') {
+    // the KILL SWITCH: every existing floor node (whatever its key) ∪ every discovered restaurant — no registry needed
+    paths = [...new Set([...floorKeys, ...rids])].sort().map(kitchenPath);
+    if (!paths.length) return { ok: false, error: 'no restaurants and no floor nodes found — nothing to delete' };
+  } else {
+    if (!registryOk) return { ok: false, error: 'restaurant registry discovery FAILED — refusing set/raise (a restaurant could be omitted and silently stay OFF); `kitchen delete` still works without the registry' };
+    const all = [...new Set([...rids, ...floorKeys])].sort();
+    if (!all.length) return { ok: false, error: 'no restaurants found — refusing to write a kitchen floor for nobody' };
+    const bad = all.filter((r) => !RID_RE.test(r));
+    if (bad.length) return { ok: false, error: `malformed restaurant ids: ${bad.join(', ')} — refusing set/raise (delete still covers them)` };
+    paths = all.map(kitchenPath);
   }
   if (op === 'raise') {
     const higher = paths.filter((p) => Number.isInteger(current[p]) && current[p] > value);
@@ -45,29 +58,54 @@ function planFloor({ kind, op, value, current, rids, maxCompat, force = false })
   return { ok: true, updates, rows };
 }
 
-// The restaurants a kitchen floor must cover: RTDB restaurants with an identity ∪ the registry ids.
-async function listRestaurants(rtdb, registryIds = []) {
+// RTDB side of discovery, independent of Firestore: every restaurant key, and every key holding a kitchen floor.
+async function rtdbRestaurants(rtdb) {
   const snap = (await rtdb.ref('restaurants').once('value')).val() || {};
-  const fromRtdb = Object.keys(snap).filter((rid) => snap[rid] && snap[rid].identity);
-  return [...new Set([...fromRtdb, ...registryIds])].filter((r) => RID_RE.test(r)).sort();
+  const keys = Object.keys(snap);
+  const floorKeys = keys.filter((k) => snap[k] && snap[k].client_floor && snap[k].client_floor.kitchen !== undefined && snap[k].client_floor.kitchen !== null);
+  return { keys, floorKeys };
 }
 
-async function readCurrent(rtdb, kind, rids) {
-  const paths = kind === 'orders' ? [ORDERS_PATH] : rids.map(kitchenPath);
+// Full discovery. readRegistry: () => Promise<string[]>; a failure or a timeout is REPORTED (registryOk false).
+async function discoverRestaurants(rtdb, readRegistry, { timeoutMs = 10000 } = {}) {
+  let registryIds = [], registryOk = true, registryError = null;
+  let timer;
+  try {
+    registryIds = await Promise.race([Promise.resolve().then(readRegistry),
+      new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('registry_timeout')), timeoutMs); })]);
+    if (!Array.isArray(registryIds)) throw new Error('registry returned a non-list');
+  } catch (e) { registryOk = false; registryError = String((e && e.message) || e); registryIds = []; }
+  finally { clearTimeout(timer); }
+  const { keys, floorKeys } = await rtdbRestaurants(rtdb);
+  const rids = [...new Set([...registryIds.filter((r) => typeof r === 'string'), ...keys])].sort();
+  return { rids, floorKeys: floorKeys.sort(), registryOk, registryError };
+}
+
+async function readCurrent(rtdb, kind, rids, floorKeys = []) {
+  const paths = kind === 'orders' ? [ORDERS_PATH] : [...new Set([...rids, ...floorKeys])].map(kitchenPath);
   const out = {};
   for (const p of paths) out[p] = (await rtdb.ref(p).once('value')).val();
   return out;
 }
 
-// ONE multi-path update, then a read-back that must equal the plan.
-async function applyPlan(rtdb, plan) {
+// ONE multi-path update, then a read-back of the plan's rows AND (kitchen) a FULL re-scan of every restaurant: after a
+// delete NO floor node may remain anywhere; after a set/raise every restaurant key must carry the target value.
+async function applyPlan(rtdb, plan, { kind = null, target = undefined } = {}) {
   await rtdb.ref().update(plan.updates);
   const mismatched = [];
   for (const r of plan.rows) {
     const v = (await rtdb.ref(r.path).once('value')).val();
     if (v !== r.to) mismatched.push(`${r.path}: ${JSON.stringify(v)} ≠ ${JSON.stringify(r.to)}`);
   }
+  if (kind === 'kitchen') {
+    const snap = (await rtdb.ref('restaurants').once('value')).val() || {};
+    for (const k of Object.keys(snap)) {
+      const v = snap[k] && snap[k].client_floor ? snap[k].client_floor.kitchen : undefined;
+      const have = v === undefined ? null : v;
+      if (have !== target) mismatched.push(`re-scan ${kitchenPath(k)}: ${JSON.stringify(have)} ≠ ${JSON.stringify(target)}`);
+    }
+  }
   return { ok: mismatched.length === 0, mismatched };
 }
 
-module.exports = { planFloor, listRestaurants, readCurrent, applyPlan, ORDERS_PATH, kitchenPath };
+module.exports = { planFloor, discoverRestaurants, rtdbRestaurants, readCurrent, applyPlan, ORDERS_PATH, kitchenPath };

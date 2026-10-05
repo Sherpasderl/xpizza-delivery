@@ -32,14 +32,41 @@ const kp = F.kitchenPath;
   assert.deepStrictEqual(p.updates, { 'platform_config/client_floor/orders': 1 });
   ok('floor plans: kitchen set/raise/delete cover EVERY restaurant; raise never lowers; above-generation refused unless forced; bad values, unknown kinds, empty/malformed restaurant sets refused; orders targets platform_config/client_floor/orders');
 
+  // ── codex CP1 B1: discovery can never silently omit a restaurant ──
+  p = F.planFloor({ kind: 'kitchen', op: 'set', value: 1, current: {}, rids, registryOk: false, maxCompat: 1 });
+  assert.ok(!p.ok && /registry discovery FAILED/.test(p.error), '🔴 set REFUSED when the registry could not be read');
+  p = F.planFloor({ kind: 'kitchen', op: 'raise', value: 1, current: {}, rids, registryOk: false, maxCompat: 1 });
+  assert.ok(!p.ok && /registry discovery FAILED/.test(p.error), '🔴 raise REFUSED when the registry could not be read');
+  p = F.planFloor({ kind: 'kitchen', op: 'delete', current: {}, rids: ['x_pizza'], floorKeys: ['ghost_9', 'Bad Key'], registryOk: false, maxCompat: 1 });
+  assert.ok(p.ok, 'delete needs no registry');
+  assert.deepStrictEqual(Object.keys(p.updates).sort(), [kp('Bad Key'), kp('ghost_9'), kp('x_pizza')].sort(), '🔴 delete covers EVERY existing floor node (even an identity-less or malformed key) ∪ the discovered restaurants');
+  p = F.planFloor({ kind: 'kitchen', op: 'set', value: 1, current: {}, rids: ['x_pizza'], floorKeys: ['ghost_9'], maxCompat: 1 });
+  assert.deepStrictEqual(Object.keys(p.updates).sort(), [kp('ghost_9'), kp('x_pizza')].sort(), 'set also covers a restaurant known only by its existing floor');
+  assert.ok(!F.planFloor({ kind: 'kitchen', op: 'set', value: 1, current: {}, rids: ['x_pizza'], floorKeys: ['Bad Key'], maxCompat: 1 }).ok, 'set refuses a malformed key it would have to cover');
+  // discoverRestaurants: registry failure and registry TIMEOUT are reported, RTDB keys + floor keys still found
+  const rt = { ref: () => ({ once: async () => ({ val: () => ({ x_pizza: { identity: {} }, ghost_9: { client_floor: { kitchen: 2 } }, la_musa: { item_availability: {} } }) }) }) };
+  let d = await F.discoverRestaurants(rt, async () => { throw new Error('firestore down'); });
+  assert.deepStrictEqual({ ok: d.registryOk, rids: d.rids, floors: d.floorKeys }, { ok: false, rids: ['ghost_9', 'la_musa', 'x_pizza'], floors: ['ghost_9'] });
+  d = await F.discoverRestaurants(rt, () => new Promise(() => {}), { timeoutMs: 50 });
+  assert.strictEqual(d.registryOk, false, 'a HUNG registry read is a failure (bounded), not an empty registry');
+  d = await F.discoverRestaurants(rt, async () => ['synthetic_3']);
+  assert.deepStrictEqual({ ok: d.registryOk, rids: d.rids }, { ok: true, rids: ['ghost_9', 'la_musa', 'synthetic_3', 'x_pizza'] }, 'registry ∪ every RTDB restaurant key (identity or not) ∪ floor keys');
+  ok('codex B1: set/raise REFUSE on a failed or hung registry read; delete needs no registry and covers every floor node (identity-less, malformed); discovery = registry ∪ RTDB keys ∪ floor keys');
+
   // ── apply = ONE multi-path update + read-back ──
   const store = {}; let updates = 0;
   const fake = { ref: (path) => ({
     update: async (u) => { updates += 1; for (const [k, v] of Object.entries(u)) { if (v === null) delete store[k]; else store[k] = v; } },
-    once: async () => ({ val: () => (path in store ? store[path] : null) }) }) };
+    once: async () => ({ val: () => {
+      if (path === 'restaurants') { const out = {}; for (const [k, v] of Object.entries(store)) { const m = k.match(/^restaurants\/([^/]+)\/client_floor\/kitchen$/); if (m) out[m[1]] = { client_floor: { kitchen: v } }; } return out; }
+      return path in store ? store[path] : null; } }) }) };
   const plan = F.planFloor({ kind: 'kitchen', op: 'set', value: 1, current: {}, rids, maxCompat: 1 });
-  assert.deepStrictEqual(await F.applyPlan(fake, plan), { ok: true, mismatched: [] });
+  assert.deepStrictEqual(await F.applyPlan(fake, plan, { kind: 'kitchen', target: 1 }), { ok: true, mismatched: [] });
   assert.strictEqual(updates, 1, '🔴 ONE multi-path update — never one write per restaurant');
+  store['restaurants/stray_7/client_floor/kitchen'] = 4;   // a floor the plan did not cover (e.g. added concurrently)
+  const scan = await F.applyPlan(fake, plan, { kind: 'kitchen', target: 1 });
+  assert.ok(!scan.ok && scan.mismatched.some((m) => /re-scan restaurants\/stray_7/.test(m)), '🔴 the FULL re-scan catches a floor outside the plan — success is never reported on an incomplete plan');
+  delete store['restaurants/stray_7/client_floor/kitchen'];
   const lying = { ref: (path) => ({ update: async () => {}, once: async () => ({ val: () => null }) }) };
   assert.strictEqual((await F.applyPlan(lying, plan)).ok, false, 'a read-back mismatch is reported');
   ok('apply: exactly ONE multi-path update for all restaurants, then a read-back that reports any mismatch');

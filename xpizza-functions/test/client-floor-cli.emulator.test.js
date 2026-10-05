@@ -17,10 +17,13 @@ const rtdb = admin.database();
 const fs = admin.firestore();
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const cli = (tool, ...args) => {
-  try { return { code: 0, out: execFileSync('node', [path.join(__dirname, '..', 'tools', tool), '--project', PROJECT, ...args], { encoding: 'utf8', env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }) }; }
+const runCli = (env, tool, ...args) => {
+  try { return { code: 0, out: execFileSync('node', [path.join(__dirname, '..', 'tools', tool), '--project', PROJECT, ...args], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }) }; }
   catch (e) { return { code: e.status, out: String(e.stdout || '') + String(e.stderr || '') }; }
 };
+const cli = (tool, ...args) => runCli(process.env, tool, ...args);
+// the registry (Firestore) UNREACHABLE: a dead emulator port — RTDB stays on the real emulator
+const cliNoRegistry = (tool, ...args) => runCli({ ...process.env, FIRESTORE_EMULATOR_HOST: '127.0.0.1:1' }, tool, ...args);
 const tree = async () => JSON.stringify((await rtdb.ref().get()).val());
 const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitchen`).get()).val();
 
@@ -54,6 +57,23 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
   assert.strictEqual(r.code, 0, r.out);
   for (const rid of ['x_pizza', 'la_musa', 'synthetic_3']) assert.strictEqual(await kf(rid), null, `${rid} kitchen floor cleared`);
   ok('kitchen delete --apply (THE KILL SWITCH): every restaurant\'s floor cleared in one update');
+
+  // ── codex CP1 B1 — discovery can never silently omit a restaurant ──
+  await rtdb.ref('restaurants/ghost_9/client_floor/kitchen').set(3);          // a floor on a restaurant with NO identity
+  before = await tree();
+  r = cliNoRegistry('client-floor.js', 'kitchen', 'set', '1', '--apply');
+  assert.notStrictEqual(r.code, 0, r.out); assert.ok(/registry discovery FAILED/.test(r.out), r.out);
+  assert.strictEqual(await tree(), before, '🔴 set with the registry unreachable is REFUSED and writes nothing');
+  r = cliNoRegistry('client-floor.js', 'kitchen', 'raise', '1', '--apply');
+  assert.notStrictEqual(r.code, 0); assert.strictEqual(await tree(), before, '🔴 raise with the registry unreachable is REFUSED');
+  r = cli('client-floor.js', 'kitchen', 'set', '1', '--apply');
+  assert.strictEqual(r.code, 0, r.out);
+  for (const rid of ['x_pizza', 'la_musa', 'synthetic_3', 'ghost_9']) assert.strictEqual(await kf(rid), 1, `${rid}: set covers it (ghost_9 known only by its floor)`);
+  r = cliNoRegistry('client-floor.js', 'kitchen', 'delete', '--apply');
+  assert.strictEqual(r.code, 0, `delete must work WITHOUT the registry: ${r.out}`);
+  const left = Object.entries((await rtdb.ref('restaurants').get()).val() || {}).filter(([, v]) => v && v.client_floor && v.client_floor.kitchen != null).map(([k]) => k);
+  assert.deepStrictEqual(left, [], '🔴 the emergency delete leaves NO kitchen floor anywhere — incl. the identity-less ghost_9 and the registry-only synthetic_3');
+  ok('codex B1: with the registry unreachable set/raise are REFUSED (nothing written) and delete still removes EVERY floor (registry-only and identity-less restaurants included); set covers a restaurant known only by its floor');
 
   r = cli('client-floor.js', 'orders', 'set', '1', '--apply');
   assert.strictEqual(r.code, 0, r.out); assert.strictEqual((await rtdb.ref('platform_config/client_floor/orders').get()).val(), 1);
