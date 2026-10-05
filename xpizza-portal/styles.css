@@ -16,6 +16,8 @@
     --gold:#8A6A12; --gold-line:#E3D2A0; --gold-soft:#FBF4E1;
     --green:#0E9F5B; --green-soft:#E7F5EC; --green-line:#BEE6CE;
     --red:#D23425; --red-soft:#FCEBE9; --red-line:#EFC9C2;
+    /* TEXT on the -soft fills (WCAG AA ≥ 4.5:1): darker than the fill/stroke greens and reds above */
+    --green-text:#0B7C47; --red-text:#C73123;
     --amber:#8A5200; --amber-soft:#FBF0DC; --amber-line:#EBD6A6;
     --tint:rgba(14,159,91,.07); --tint2:rgba(14,159,91,.13); --rbar-bg:#FFFFFF;
     --shadow:0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26); --shadow-lg:0 44px 96px -40px rgba(10,10,11,.34);
@@ -31,6 +33,7 @@
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
+    --green-text:#3FD98A; --red-text:#F0685A;
     --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
     --tint:rgba(63,217,138,.10); --tint2:rgba(63,217,138,.16); --rbar-bg:#0E0E10;
     --shadow:0 8px 24px -18px rgba(0,0,0,.85); --shadow-lg:0 40px 90px -34px rgba(0,0,0,.9);
@@ -42,6 +45,7 @@
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
+    --green-text:#3FD98A; --red-text:#F0685A;
     --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
     --tint:rgba(63,217,138,.10); --tint2:rgba(63,217,138,.16); --rbar-bg:#0E0E10;
     --shadow:0 8px 24px -18px rgba(0,0,0,.85); --shadow-lg:0 40px 90px -34px rgba(0,0,0,.9);
@@ -448,7 +452,7 @@
   .prow .now{color:var(--ink);font-weight:750;font-size:15px}
   .pdelta{align-self:flex-start;display:inline-flex;align-items:center;font-size:11px;font-weight:750;font-variant-numeric:tabular-nums;padding:2px 7px;border-radius:6px}
   .pdelta.up{color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line)}
-  .pdelta.dn{color:var(--green);background:var(--green-soft);border:1px solid var(--green-line)}
+  .pdelta.dn{color:var(--green-text);background:var(--green-soft);border:1px solid var(--green-line)}
   /* a >50% swing gets the amber warning frame — the one row that must not look ordinary */
   .prow.big{border-color:var(--amber-line);background:var(--amber-soft)}
   .prow .pflag{flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--amber);padding-top:2px;border-top:1px solid var(--amber-line);margin-top:2px}
@@ -591,7 +595,7 @@
   .field input{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;color:var(--ink);transition:border-color .15s}
   .field input:focus{outline:none;border-color:var(--accent)}
   .gatecard .btn.accent{width:100%;justify-content:center;padding:12px}
-  .err{display:none;margin-top:13px;padding:10px 12px;border-radius:9px;background:var(--red-soft);border:1px solid var(--red-line);color:var(--red);font-size:12.5px}
+  .err{display:none;margin-top:13px;padding:10px 12px;border-radius:9px;background:var(--red-soft);border:1px solid var(--red-line);color:var(--red-text);font-size:12.5px}
   .err.on{display:block}
   .hidden{display:none !important}
   .irow{display:flex;align-items:center;gap:14px;padding:13px 20px;border-bottom:1px solid var(--line2)}

@@ -38,9 +38,40 @@ test('fonts: exactly one Google Fonts stylesheet — Archivo, weight range 600..
   assert.ok(/<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin>/.test(html), 'preconnect to the font host kept');
   assert.ok(!/Hanken/i.test(html) && !/Hanken/i.test(css), 'Hanken Grotesk is gone (nothing referenced it)');
   assert.match(css, /--disp:'Archivo'/, 'the display stack leads with Archivo — the face now loaded');
-  const used = [...css.matchAll(/font-weight\s*:\s*(\d{3})/g)].map((m) => Number(m[1]));
-  const disp = used.filter((w) => w >= 600);
-  assert.ok(disp.every((w) => w >= 600 && w <= 800), `every heavy weight in use is inside the loaded 600..800 range (${[...new Set(disp)].join(', ')})`);
+});
+
+test('every rule that sets the Archivo display face (font-family:var(--disp)) declares a weight inside the loaded 600..800 range', () => {
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*font-family\s*:\s*var\(--disp\)[^{}]*)\}/g)];
+  assert.ok(rules.length > 0, 'non-vacuity: --disp rules were found');
+  for (const [, sel, body] of rules) {
+    const w = [...body.matchAll(/font-weight\s*:\s*(\d+)/g)].map((m) => Number(m[1]));
+    assert.equal(w.length, 1, `${sel.trim()}: declares exactly one font-weight (an inherited weight could fall outside the loaded range)`);
+    assert.ok(w[0] >= 600 && w[0] <= 800, `${sel.trim()}: weight ${w[0]} is inside the loaded 600..800 range`);
+  }
+});
+
+// ── WCAG AA (4.5:1) for the two text-on-soft pairs light mode exposed (codex REVISE on 0ae145f) ──
+const lightBlock = css.match(/:root,\s*:root\[data-theme="light"\]\s*\{([^}]*)\}/)[1];
+const token = (name) => { const m = lightBlock.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`)); assert.ok(m, `light token --${name}`); return m[1]; };
+const lum = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const ruleBody = (sel) => { const m = css.match(new RegExp(`${sel.replace(/\./g, '\\.')}\\{([^}]*)\\}`)); assert.ok(m, `rule ${sel}`); return m[1]; };
+const varOf = (body, prop) => { const m = body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(--([a-z0-9-]+)\\)`)); assert.ok(m, `${prop} is a token`); return m[1]; };
+
+for (const [sel, label] of [['.pdelta.dn', 'the price-decrease %'], ['.err', 'the login error']]) {
+  test(`AA: ${label} (${sel}) text clears 4.5:1 on its soft background in the light theme`, () => {
+    const body = ruleBody(sel);
+    const fg = token(varOf(body, 'color'));
+    const bg = token(varOf(body, 'background'));
+    const r = contrast(fg, bg);
+    assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
+  });
+}
+test('the dark theme keeps its green/red text values (dark unchanged)', () => {
+  for (const blk of [css.match(/:root\[data-theme="dark"\]\s*\{([^}]*)\}/)[1], css.match(/:root:not\(\[data-theme="light"\]\)\s*\{([^}]*)\}/)[1]]) {
+    assert.match(blk, /--green-text:#3FD98A;/); assert.match(blk, /--red-text:#F0685A;/);
+    assert.match(blk, /--green:#3FD98A;/); assert.match(blk, /--red:#F0685A;/);
+  }
 });
 
 test('the CSP already admits the two Google font hosts (unchanged)', () => {
