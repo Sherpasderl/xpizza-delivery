@@ -286,7 +286,12 @@ const is426 = (r, label) => {
     assert.deepStrictEqual(await R.floorFor('orders'), { floor: 3, source: 'read' });
     assert.deepStrictEqual(await R.floorFor('orders'), { floor: 3, source: 'cache' }); assert.strictEqual(reads, 1, 'cached within the TTL');
     t += 1001; mode = 'hang'; const t0 = Date.now();
-    assert.strictEqual((await R.floorFor('orders')).floor, 3, 'timeout → last known valid'); assert.ok(Date.now() - t0 < 1000, 'the read is BOUNDED by the timeout');
+    // the test's OWN deadline: an unbounded read must FAIL this assertion, not hang the suite
+    let dl; const DEADLINE = Symbol('deadline');
+    const hung = await Promise.race([R.floorFor('orders'), new Promise((r) => { dl = setTimeout(() => r(DEADLINE), 2000); })]);
+    clearTimeout(dl);
+    assert.notStrictEqual(hung, DEADLINE, '🔴 the floor read is NOT bounded — a hung read blocked the request past 2 s');
+    assert.strictEqual(hung.floor, 3, 'timeout → last known valid'); assert.ok(Date.now() - t0 < 1000, 'the read is BOUNDED by the timeout');
     t += 1001; mode = 'error'; assert.strictEqual((await R.floorFor('orders')).floor, 3, 'read error → last known valid');
     t += 1001; mode = 'value'; val = 'abc'; assert.strictEqual((await R.floorFor('orders')).floor, 3, 'malformed → last known valid');
     t += 1001; val = -1; assert.strictEqual((await R.floorFor('orders')).floor, 3, 'negative → last known valid');

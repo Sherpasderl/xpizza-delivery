@@ -225,6 +225,18 @@ async function traced(rid, oid, uid, phone) {
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
+    // NON-VACUOUS ALLOWLIST: one more fresh request after the floor cache has EXPIRED (one TTL since any earlier read) MUST
+    // carry exactly ONE floor GET, and with it removed its sequence must equal the golden's a_normal_retry (a retry: no other cache — e.g. the catalog verifier's 45 s TTL — enters its sequence).
+    {
+      const { FLOOR_TTL_MS } = require('../client-floor');
+      await wait(FLOOR_TTL_MS + 1500);
+      const t = await traced('x_pizza', 'trace_x_pizza_normal', 'u_trace_x_pizza', '99331001');
+      assert.strictEqual(t.status, 200, 'post-TTL request premise');
+      const fl = t.trace.filter(isFloorRead);
+      assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
+      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
+      console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET; the rest identical to the golden`);
+    }
     console.log('d4b-charge-trace(emulator): OK');
   }
   FINISHED = true;
