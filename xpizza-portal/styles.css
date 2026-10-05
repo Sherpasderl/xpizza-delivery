@@ -126,7 +126,7 @@
   .rtext b{font-family:var(--disp);font-size:15px;font-weight:750;display:block;letter-spacing:-.02em}
   .rtext span{font-size:12px;color:var(--mute2)}
   .rcount{font-size:11px;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);min-width:22px;height:22px;padding:0 7px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:650;font-variant-numeric:tabular-nums}
-  .railitem.on .rcount{color:var(--accent);border-color:var(--accent-line,transparent);background:var(--tint2)}
+  .railitem.on .rcount{color:var(--accent);border-color:var(--accent-line);background:var(--tint2)}
   .railadd{margin-top:6px;display:flex;align-items:center;gap:9px;justify-content:center;padding:11px;border:1.5px dashed var(--line);border-radius:11px;color:var(--mute);font-weight:650;font-size:12.5px;cursor:pointer;background:none;width:100%;transition:border-color .16s,color .16s}
   .railadd:hover{border-color:var(--accent);color:var(--accent)}
   .railadd svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2}
@@ -221,7 +221,7 @@
   .ack{display:flex;align-items:flex-start;gap:11px;padding:14px;background:var(--amber-soft);border:1px solid var(--amber-line);border-radius:12px;margin-top:14px;cursor:pointer}
   .ack input{margin-top:2px;width:17px;height:17px;accent-color:var(--amber);flex:none}
   .ackt{font-size:12.5px;color:var(--on-dark)}.ackt b{color:var(--amber)}
-  .fiscal{margin-top:14px;padding:16px;background:var(--gold-soft,transparent);border:1px solid var(--gold-line);border-radius:13px}
+  .fiscal{margin-top:14px;padding:16px;background:var(--gold-soft);border:1px solid var(--gold-line);border-radius:13px}
   .fh{display:flex;align-items:center;gap:9px;font-weight:750;font-size:13px;color:var(--gold)}
   .fh svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
   .fiscal p{font-size:12.5px;color:var(--mute);margin:8px 0 12px;line-height:1.5}
@@ -325,7 +325,7 @@
   .fiscnote svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
   .dwf{padding:15px 22px;border-top:1px solid var(--line2);display:flex;gap:10px;align-items:center}
   .dwf .delx{color:var(--red);border-color:transparent;background:transparent;margin-right:auto;padding-left:2px}
-  .dwf .delx:hover{background:var(--red-soft)}
+  .dwf .delx:hover{color:var(--red-text);background:var(--red-soft)}
   .dwf .btn.accent{flex:none}
 
   /* ── orders view ── */
