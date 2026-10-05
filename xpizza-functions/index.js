@@ -1660,19 +1660,19 @@ chargeOnlineApp.all('*', async (req, res) => {
     // hosted_expires_at bound AT RESERVE = nowTs + HOSTED_TTL_MS — IDENTICAL to acquireHostedAttempt's
     // expires_at (same nowTs, same TTL) — so an unattached hold is sweep-visible immediately; attach refines
     // to the exact attempt expiry (same value). Closes the crash/attach-fail orphan by construction.
+    /* 1D D4-b §A.6/§B.4 (codex r1 B1; advisor B1-a/B1-b): the reservation binds the order value AS SELECTED for this
+       request — ALWAYS. A legacy order passes the bare `fingerprint` (today's bytes); a canonical order passes
+       "c1:<canonical fp>", and an uncomputable canonical fp REFUSES here, before any reserve or write (B1-b). */
+    let selectedOrder = fingerprint;
+    if (orderBindingFormat === CB.FORMAT_CANONICAL) {
+      const c = canonicalChargeFp();
+      if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
+      selectedOrder = CB.selectedOrderBinding(CB.FORMAT_CANONICAL, c.fp);
+    }
     const rr = await reserveRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, cost: redemptionCost,
-      canonical: redemptionCanonical, orderFingerprint: fingerprint, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs, hostedExpiresAt: nowTs + HOSTED_TTL_MS,
-      // 1D D4-b §A.6/§B.4: consulted only for a canonical-tagged reservation record; binds the order value AS SELECTED
-      // for this request (legacy → the bare fingerprint; canonical → "c1:<canonical fp>"), never reformatted.
-      canonicalBinding: () => {
-        let selected = fingerprint;
-        if (orderBindingFormat === CB.FORMAT_CANONICAL) {
-          const c = canonicalChargeFp();
-          if (!c || !c.ok) return { ok: false, reason: 'cart_unverifiable' };
-          selected = CB.selectedOrderBinding(CB.FORMAT_CANONICAL, c.fp);
-        }
-        return CB.canonicalReservationBindingFp({ redemption: redemptionResolved, context: contextOfTables(pricingTables), selectedOrderBinding: selected, configVersion: REDEMPTION_CONFIG_VERSION });
-      } });
+      canonical: redemptionCanonical, orderFingerprint: selectedOrder, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs, hostedExpiresAt: nowTs + HOSTED_TTL_MS,
+      selectedFormat: orderBindingFormat,
+      canonicalBinding: () => CB.canonicalReservationFields({ redemption: redemptionResolved, context: contextOfTables(pricingTables), selectedOrderBinding: selectedOrder, configVersion: REDEMPTION_CONFIG_VERSION }) });
     if (!rr.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: rr.reason, order_id: orderId });
     redemptionOwnsHold = (rr.action === 'created' || rr.action === 're_reserved');
   }

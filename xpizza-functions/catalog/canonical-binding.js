@@ -54,7 +54,13 @@ function identityMap(context) {
   }
   return m;
 }
-const claimOf = (rec, field) => (rec && typeof rec[field] === 'string' && rec[field] !== '' ? rec[field] : null);
+/* §B.6 / Q4 (codex D4-b r1 S2): a claim is ABSENT only when the property is missing or undefined — that is not a
+   refusal. A PRESENT claim must be a non-empty string EQUAL to the derived cid; any other present value (a number,
+   boolean, object, null, "") is not "no claim", it is an invalid one → unverifiable. Canonical branch only. */
+function claimAgrees(rec, field, cid) {
+  if (!rec || typeof rec !== 'object' || !Object.prototype.hasOwnProperty.call(rec, field) || rec[field] === undefined) return true;
+  return typeof rec[field] === 'string' && rec[field] !== '' && rec[field] === cid;
+}
 
 // ── §B.1 — the cart: normalizeCartForFingerprint's output with ONLY the ids substituted ───────────────
 function canonicalCartNorm(items, rid, context) {
@@ -67,16 +73,14 @@ function canonicalCartNorm(items, rid, context) {
     const line = norm[i], raw = items[i];
     const cid = map.dish.get(line.id);
     if (!cid) return unverifiable(`unresolved_dish:${line.id}`);
-    const claimed = claimOf(raw, 'dish_id');
-    if (claimed !== null && claimed !== cid) return unverifiable(`dish_claim_disagrees:${line.id}`);
+    if (!claimAgrees(raw, 'dish_id', cid)) return unverifiable(`dish_claim_invalid:${line.id}`);
     const rawExtras = (raw && Array.isArray(raw.extras)) ? raw.extras : [];
     const extras = [];
     for (let j = 0; j < line.extras.length; j += 1) {
       const e = line.extras[j];
       const ecid = map.extra.get(e.id);
       if (!ecid) return unverifiable(`unresolved_extra:${e.id}`);
-      const eclaim = claimOf(rawExtras[j], 'extra_id');
-      if (eclaim !== null && eclaim !== ecid) return unverifiable(`extra_claim_disagrees:${e.id}`);
+      if (!claimAgrees(rawExtras[j], 'extra_id', ecid)) return unverifiable(`extra_claim_invalid:${e.id}`);
       extras.push({ id: ck('extra', ecid), qty: e.qty });
     }
     out.push({ id: ck('dish', cid), qty: line.qty, extras });
@@ -159,11 +163,25 @@ function canonicalOrderFingerprint({ orderId, totalCents, items, redemption, rid
 
 // ── §B.4 — the reservation binding: the same bindingFp, over the canonical reward object and the order
 // binding value EXACTLY as selected for this request (fmt-prefixed), never recomputed here.
-function canonicalReservationBindingFp({ redemption, context, selectedOrderBinding, configVersion }) {
+/* 🔴 THE ONE CANONICAL RESERVATION SHAPE (advisor ruling B1-a). Every canonical reservation record — a fresh one
+   for an order whose SELECTED binding is canonical, and the comparison against a stored canonical record — is
+   produced by THIS function, and the D4-c writers are REQUIRED to reuse it, so the shape cannot drift between the
+   release that reads it (D4-b) and the release that first writes it in production (D4-c). Pinned by a frozen shape
+   golden (catalog/d4b-canonical-reservation.golden.json).
+     fp_format:          "canonical"
+     canonical:          the ck-substituted reward canonical (§B.2), carrying v:"c1"
+     order_fingerprint:  the order binding AS SELECTED for this request ("c1:<canonical order fp>")
+     fp:                 bindingFp({ canonical, orderFingerprint: order_fingerprint, configVersion })   (§B.4)
+   A legacy order's record is never produced here: the reservation takes the format of its order. */
+function canonicalReservationFields({ redemption, context, selectedOrderBinding, configVersion }) {
   const rw = canonicalReward(redemption, context);
   if (!rw.ok) return rw;
-  return { ok: true, fp: bindingFp({ canonical: rw.reward.canonical, orderFingerprint: selectedOrderBinding, configVersion }), reward: rw.reward };
+  const canonical = rw.reward.canonical;
+  return { ok: true, fp_format: FORMAT_CANONICAL, canonical, order_fingerprint: selectedOrderBinding,
+    fp: bindingFp({ canonical, orderFingerprint: selectedOrderBinding, configVersion }), reward: rw.reward };
 }
+// The comparison form: the same fields, read for their fp (kept for the existing callers).
+function canonicalReservationBindingFp(args) { return canonicalReservationFields(args); }
 // The order binding value selected for a request: legacy → the bare fp (today); canonical → "c1:<fp>".
 const selectedOrderBinding = (format, fp) => (format === FORMAT_CANONICAL ? `${ORDER_BINDING_PREFIX}${fp}` : fp);
 
@@ -263,6 +281,6 @@ module.exports = {
   paymentBindingConflict, conflictOutcome, once,
   FORMAT_LEGACY, FORMAT_CANONICAL, CANONICAL_VERSION, ORDER_BINDING_PREFIX,
   formatOf, ck, parseCk, identityMap, canonicalCartNorm, canonicalReward, canonicalCartDigest, canonicalQuoteFingerprint,
-  canonicalRedemptionFp, canonicalOrderFingerprint, canonicalReservationBindingFp, selectedOrderBinding,
+  canonicalRedemptionFp, canonicalOrderFingerprint, canonicalReservationBindingFp, canonicalReservationFields, selectedOrderBinding,
   canonicalRecipeLines, labelFor,
 };

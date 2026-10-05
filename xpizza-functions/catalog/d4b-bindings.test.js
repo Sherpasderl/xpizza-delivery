@@ -154,6 +154,33 @@ const canonicalToken = (payload) => signQuoteToken({ rid: payload.rid, customer_
   // the three reward fields are each in the hash: canonical.free_item_key (x_pizza) / canonical.items[] (la_musa) via rf:, freeItems[].item_id (both) via the quote
   ok('identity sensitivity through the REAL verifier (both brands): dish-cid / extra-cid / kind-only changes, reward-identity swaps with equal qty·price·cost (rf: and quote), cost/config changes all move the fingerprint; the collision pair stays distinct; line order and labels do not; a disagreeing dish_id claim or an unusable context → cart_unverifiable');
 
+  // ── 2b. (codex D4-b r1 S2) a PRESENT claim must be a valid, agreeing string; only an ABSENT one is not a refusal ──
+  {
+    let checked = 0;
+    for (const rid of F.RIDS) {
+      const tables = await tablesWithContext(rid), ctx = contextFor(rid), carts = F.cartsFor(rid);
+      const norm = normalizeCartForFingerprint(carts.plain, rid), map = CB.identityMap(ctx);
+      const dishCid = map.dish.get(norm[0].id), extraCid = map.extra.get(norm[0].extras[0].id);
+      const tok = canonicalToken({ rid, cart_fingerprint: CB.canonicalCartDigest(carts.plain, null, rid, ctx).fp, net_total_cents: 10000000, fp_format: 'canonical' });
+      const legacyTok = issueQuote({ items: carts.plain, reward: null, rid, tables, nowMs: NOW }).quote_token;
+      const gate = (t, cart) => gateConfirmedNet({ token: t, submittedCart: cart, reward: null, rid, tables, secret: SECRET, enforce: true, nowMs: NOW + 1 }).reason;
+      const withDish = (v) => carts.plain.map((l, i) => (i === 0 ? { ...l, dish_id: v } : l));
+      const withExtra = (v) => carts.plain.map((l, i) => (i === 0 ? { ...l, extras: l.extras.map((e, j) => (j === 0 ? { ...e, extra_id: v } : e)) } : l));
+      for (const bad of [42, true, {}, null, '', 'CID-WRONG']) {
+        for (const [kind, cart] of [['dish', withDish(bad)], ['extra', withExtra(bad)]]) {
+          assert.strictEqual(CB.canonicalCartNorm(cart, rid, ctx).ok, false, `${rid} ${kind}_id=${JSON.stringify(bad)}: a present invalid claim is not "absent"`);
+          assert.strictEqual(gate(tok, cart), 'cart_unverifiable', `🔴 ${rid} ${kind}_id=${JSON.stringify(bad)} → the REAL verifier refuses`);
+          assert.strictEqual(gate(legacyTok, cart), 'confirmed', `${rid} ${kind}_id=${JSON.stringify(bad)}: the LEGACY branch is unchanged (today's acceptance)`);
+          checked += 1;
+        }
+      }
+      for (const [label, cart] of [['absent', carts.plain], ['undefined dish', withDish(undefined)], ['undefined extra', withExtra(undefined)], ['agreeing dish', withDish(dishCid)], ['agreeing extra', withExtra(extraCid)]]) {
+        assert.strictEqual(gate(tok, cart), 'confirmed', `${rid}: ${label} claim → accepted`);
+      }
+    }
+    ok(`claims (S2): ${checked} present-invalid claims (42, true, {}, null, "", a mismatch × dish/extra × both brands) → cart_unverifiable through the REAL verifier, while the legacy branch accepts each exactly as today; absent/undefined/agreeing claims → accepted`);
+  }
+
   // ── 3. LEGACY SHADOW IDS + the writer × reader matrix ──────────────────────────────────────────────────
   for (const rid of F.RIDS) {
     const tables = await tablesWithContext(rid), carts = F.cartsFor(rid);
@@ -290,6 +317,34 @@ const canonicalToken = (payload) => signQuoteToken({ rid: payload.rid, customer_
     assert.strictEqual(after.seq, 2);
   }
   ok('reservation (both brands): canonical record + canonical-selected order → reused; mixed formats in BOTH directions → reservation_conflict; uncomputable → cart_unverifiable; malformed tag → binding_format_invalid; Q2: re-reserving a released canonical record carries fp_format and the canonical fp/binding');
+
+  // ── 7b. (advisor B1-a) THE ONE canonical reservation shape — frozen; a fresh canonical-order reservation reproduces it ──
+  {
+    const SHAPE = require('./d4b-canonical-reservation.golden.json');
+    for (const rid of F.RIDS) {
+      const red = computeRedemption({ redeem: F.redeemFor(rid), items: F.cartsFor(rid).plain, restaurantId: rid, tables: F.tablesFor(rid) });
+      const sel = `c1:${'9'.repeat(64)}`;
+      const db = createFakeRtdb({ user_rewards: { [F.UID]: { [rid]: { balance: 100000, reserved: 0 } } } });
+      const r = await reserve.reserveRedemption(db, { uid: F.UID, rid, orderId: F.ORDER_ID, cost: red.cost, canonical: red.canonical, orderFingerprint: sel, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW,
+        selectedFormat: 'canonical', canonicalBinding: () => CB.canonicalReservationFields({ redemption: red, context: contextFor(rid), selectedOrderBinding: sel, configVersion: REDEMPTION_CONFIG_VERSION }) });
+      const rec = db.dump().user_rewards[F.UID][rid].reservations[F.ORDER_ID];
+      assert.deepStrictEqual({ result: r, record: rec }, SHAPE.records[rid], `🔴 ${rid}: the canonical reservation shape drifted from the frozen golden`);
+      assert.strictEqual(rec.fp_format, 'canonical'); assert.strictEqual(rec.order_fingerprint, sel); assert.strictEqual(rec.canonical.v, 'c1');
+      // a canonical order with an uncomputable binding writes NOTHING
+      const db2 = createFakeRtdb({ user_rewards: { [F.UID]: { [rid]: { balance: 100000, reserved: 0 } } } });
+      assert.deepStrictEqual(await reserve.reserveRedemption(db2, { uid: F.UID, rid, orderId: F.ORDER_ID, cost: red.cost, canonical: red.canonical, orderFingerprint: sel, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW,
+        selectedFormat: 'canonical', canonicalBinding: () => ({ ok: false }) }), { ok: false, reason: 'cart_unverifiable' });
+      assert.strictEqual(db2.dump().user_rewards[F.UID][rid].reservations, undefined, 'nothing written');
+      // a LEGACY record against a canonical-SELECTED order value → conflict (the handler now always passes the selected value)
+      const fresh = createFakeRtdb({ user_rewards: { [F.UID]: { [rid]: { balance: 100000, reserved: 0 } } } });
+      await reserve.reserveRedemption(fresh, { uid: F.UID, rid, orderId: F.ORDER_ID, cost: red.cost, canonical: red.canonical, orderFingerprint: GOLDEN.values[rid].order_fp_redemption, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW });
+      const legacyRec = fresh.dump().user_rewards[F.UID][rid];
+      const mixed = createFakeRtdb({ user_rewards: { [F.UID]: { [rid]: legacyRec } } });
+      assert.deepStrictEqual(await reserve.reserveRedemption(mixed, { uid: F.UID, rid, orderId: F.ORDER_ID, cost: red.cost, canonical: red.canonical, orderFingerprint: sel, configVersion: REDEMPTION_CONFIG_VERSION, now: NOW,
+        selectedFormat: 'canonical', canonicalBinding: () => CB.canonicalReservationFields({ redemption: red, context: contextFor(rid), selectedOrderBinding: sel, configVersion: REDEMPTION_CONFIG_VERSION }) }), { ok: false, reason: 'reservation_conflict' });
+    }
+  }
+  ok('B1-a: a fresh reservation for a canonical-selected order reproduces the FROZEN canonical shape byte-for-byte (both brands); an uncomputable binding writes nothing; a legacy record vs a canonical-selected order → reservation_conflict');
 
   // ── 8. CALL-SEQUENCE GOLDEN: every legacy payment/reservation path reads, transacts and writes exactly as 717f97e ──
   const cur = Object.fromEntries(await callseqScenarios({ hosted, direct, reserve, REDEMPTION_CONFIG_VERSION }));

@@ -16,6 +16,8 @@ const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url
 process.env.OTP_SALT = process.env.OTP_SALT || 'd4b-test-salt-0123456789abcdef0123456789';   // otp-lib fails closed below 32 chars
 const { canonicalRecipeLines, ck } = require('./catalog/canonical-binding');
 const { buildMaterializeUpdates } = require('./materialize');
+const { normalizeReorderItems, normalizeReorderItemsCanonical } = require('./reorder-normalize');
+const { catalogSnapshot } = require('./catalog/generate-form-bundle');
 const { claimOrderCore } = require('./claim-order');
 const { phoneHash } = require('./otp-lib');
 const { createFakeRtdb } = require('./test/d4b-fake-rtdb');
@@ -105,6 +107,32 @@ try {
   const c1 = await claimRun({ recipe_format: 'canonical' });
   assert.strictEqual(c1.entry.recipe_format, 'canonical', 'guest claim carries the tag when present');
   ok('copy-through: materialization and guest claim write today\'s exact history entry when untagged (lines opaque, unknown fields kept) and carry recipe_format unchanged when present');
+
+  // ── 5. (codex D4-b r1 S3) the cash path's DORMANT canonical normalizer: allowlist → ONLY the keys substituted ──
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const s = catalogSnapshot(rid);
+    const tables = { restaurantId: rid, menu: Object.fromEntries(s.items.map((i) => [i.key, i.price])), extras: Object.fromEntries(s.extras.map((e) => [e.key, e.price])) };
+    const ctx = { usableAsIdentity: true, objects: [...s.items.map((i, k) => ({ kind: 'dish', legacyKey: i.key, canonicalId: `CC-D-${rid}-${k}` })), ...s.extras.map((e, k) => ({ kind: 'extra', legacyKey: e.key, canonicalId: `CC-E-${rid}-${k}` }))] };
+    const [d0, d1] = s.items, [e0, e1] = s.extras;
+    const body = rid === 'x_pizza'
+      ? [{ name: d0.display.name, qty: 2, extras: [{ name: e0.display.name }, { name: e0.display.name }, { name: e0.display.name }, { name: e1.display.name }, { name: 'Not An Extra' }] }, { name: 'Not On The Menu', qty: 1 }, { name: d1.display.name, qty: 1 }]
+      : [{ id: d0.key, qty: 2, extras: [{ id: e0.key, qty: 3 }, { id: 'nope', qty: 1 }, { id: e0.key, qty: 9 }] }, { id: 'not_on_menu', qty: 1 }, { id: d1.key, qty: 1, extras: [{ id: e1.key, qty: 1 }] }];
+    const legacy = normalizeReorderItems(body, rid, tables);
+    const canon = normalizeReorderItemsCanonical(body, rid, tables, ctx);
+    assert.ok(canon.ok, `${rid}: projected`);
+    assert.strictEqual(legacy.length, 2, 'premise — the allowlist drops the off-menu line');
+    // INDEPENDENT expectation: the legacy lines with ONLY their keys mapped through the context
+    const dishCid = new Map(ctx.objects.filter((o) => o.kind === 'dish').map((o) => [o.legacyKey, o.canonicalId]));
+    const extraCid = new Map(ctx.objects.filter((o) => o.kind === 'extra').map((o) => [o.legacyKey, o.canonicalId]));
+    const expected = legacy.map((l) => ({ ...l, key: JSON.stringify(['c1', 'dish', dishCid.get(l.key)]),
+      ...(l.options ? { options: l.options.map((o) => (o.id !== undefined ? { ...o, id: JSON.stringify(['c1', 'extra', extraCid.get(o.id)]) } : { ...o, name: JSON.stringify(['c1', 'extra', extraCid.get(o.name)]) })) } : {}) }));
+    assert.deepStrictEqual(canon.lines, expected, `${rid}: canonical recipe = the allowlisted legacy recipe with ONLY keys substituted (counts/qty kept)`);
+    if (rid === 'x_pizza') assert.deepStrictEqual(legacy[0].options.map((o) => o.count), [2, 1], 'premise — extras counts capped to the line qty');
+    else assert.deepStrictEqual(legacy[0].options, [{ id: e0.key, qty: 3 }], 'premise — la_musa dedups by id, keeps the first qty, drops unknown ids');
+    assert.strictEqual(normalizeReorderItemsCanonical(body, rid, tables, { ...ctx, usableAsIdentity: false }).ok, false, `${rid}: an unusable context → { ok:false } (never a legacy recipe mislabelled canonical)`);
+    assert.strictEqual(normalizeReorderItemsCanonical(body, rid, tables, { usableAsIdentity: true, objects: ctx.objects.filter((o) => o.legacyKey !== d1.key) }).ok, false, `${rid}: an unresolvable dish → { ok:false }`);
+  }
+  ok('cash path (S3): normalizeReorderItemsCanonical = the allowlisted legacy recipe (off-menu drops, x_pizza counts capped, la_musa id dedup) with ONLY its keys substituted, for both brands; an unusable context or an unresolvable dish → { ok:false }');
 
   console.log(`d4b-reorder: OK (${n})`);
   process.exit(0);

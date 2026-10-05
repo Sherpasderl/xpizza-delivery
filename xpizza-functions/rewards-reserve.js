@@ -75,7 +75,12 @@ async function alertIfUndercollateralized(db, { uid, rid, orderId, now }) {
    different-format record can never match (v:"c1" / the "c1:" order prefix) → today's `reservation_conflict`.
    Re-reserving a RELEASED canonical record CARRIES its fp_format and writes the canonical fp (Q2); nothing ever
    writes a tag onto a record that did not already carry one. */
-async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null, canonicalBinding = null }) {
+/* 1D D4-b (codex r1 B1; advisor B1-a): `orderFingerprint` is the order binding AS SELECTED for this request — the bare
+   legacy fp for a legacy order (today's bytes), "c1:<canonical fp>" for a canonical one — so a legacy record can never
+   be reused by a canonical order, nor a canonical record by a legacy one. `selectedFormat` is that order's format; a
+   FRESH reservation for a canonical order is written by canonicalBinding() (catalog/canonical-binding.js
+   canonicalReservationFields — the ONE canonical reservation shape). A legacy order's record is never tagged. */
+async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null, canonicalBinding = null, selectedFormat = 'legacy' }) {
   try {
     if (!uid || !rid || !orderId || !(Number.isInteger(cost) && cost > 0)) return { ok: false, reason: 'bad_request' };
     if (!Number.isInteger(configVersion) || configVersion !== REDEMPTION_CONFIG_VERSION) return { ok: false, reason: 'config_version_mismatch' };
@@ -123,6 +128,13 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
       }
       // fresh reserve
       if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
+      if (selectedFormat === FORMAT_CANONICAL) {
+        // B1-a: the reservation takes the format of its order — a canonical order gets a canonical record, in the ONE shape
+        const c = canon();
+        if (!c || !c.ok) { outcome = { ok: false, reason: 'cart_unverifiable' }; return; }
+        outcome = { ok: true, action: 'created', state: 'reserved' };
+        return writeReserve(cur, orderId, null, c.fp, c.canonical, c.order_fingerprint, configVersion, cost, 1, now, hostedExpiresAt, c.fp_format);
+      }
       outcome = { ok: true, action: 'created', state: 'reserved' };
       return writeReserve(cur, orderId, null, fp, canonical, orderFingerprint, configVersion, cost, 1, now, hostedExpiresAt);
     });

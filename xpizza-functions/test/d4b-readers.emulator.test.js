@@ -17,9 +17,18 @@ const http = require('http');
 const express = require('express');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'd4b-secret';
+process.env.PIXELPAY_RETURN_URL_LA_MUSA = process.env.PIXELPAY_RETURN_URL_LA_MUSA || 'https://lamusa.test';   // la_musa fails CLOSED without it (pixelpay-return-url.js)
 const realWhatsapp = require('../whatsapp');
 const wr = require.resolve('../whatsapp');
 require.cache[wr] = { id: wr, filename: wr, loaded: true, children: [], paths: [], exports: { ...realWhatsapp, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) } };
+// The charge handler's two EXTERNAL edges, stubbed exactly like WhatsApp above: PixelPay's hosted-checkout HTTP call and
+// the Firebase Auth token verifier. Everything between them — pricing, classify, the reservation, the CAS — is real.
+const ph = require.resolve('../pixelpay-hosted');
+const realHosted = require('../pixelpay-hosted');
+require.cache[ph] = { id: ph, filename: ph, loaded: true, children: [], paths: [], exports: { ...realHosted, createHostedCharge: async (r) => ({ ok: true, url: `https://pay.test/${r.pixelpayOrderId}` }) } };
+const fa = require.resolve('firebase-admin/auth');
+const realAuth = require('firebase-admin/auth');
+require.cache[fa] = { id: fa, filename: fa, loaded: true, children: [], paths: [], exports: { ...realAuth, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) } };
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
@@ -67,12 +76,12 @@ async function seedPreP1(rid, { dataFrom = rid } = {}) {
   await asPreP1(rid, res.versionId);
   return res.versionId;
 }
-function post(handler, body, method = 'POST', query = '') {
+function post(handler, body, method = 'POST', query = '', headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:${s.address().port}/${query}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}` }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+        const res = await fetch(`http://127.0.0.1:${s.address().port}/${query}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
         const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
         s.close(() => resolve({ status: res.status, json: j, text: t }));
       } catch (e) { s.close(() => reject(e)); }
@@ -252,6 +261,85 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
     assert.ok(unknown.includes('"free_item":null') && !unknown.includes('NO-SUCH-ID'), 'an unknown identity renders null');
   }
   ok('the REAL paymentStatus handler: legacy → the stored key as today; canonical → the current context\'s LABEL; an unknown identity → null; no ck string or canonical id in any response');
+
+  // ═══ B1 (codex D4-b r1; advisor B1-a / B1-b) — the reservation binds the order AS SELECTED, through the REAL charge handler ═══
+  {
+    await rtdb.ref('config/redemption_enabled').set(true);
+    const resv = async (uid, rid, oid) => (await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/${oid}`).get()).val();
+    const wallet = async (uid, rid) => (await rtdb.ref(`user_rewards/${uid}/${rid}`).get()).val();
+    const bodyFor = (rid, oid, phone) => {
+      const s = catalogSnapshot(rid);
+      const it = s.items.find((i) => (rid === 'x_pizza' ? i.key === 'Carnivora' : i.key === 'dimsum_01'));
+      const items = rid === 'x_pizza' ? [{ name: it.display.name, qty: 1, price: it.price, extras: [] }] : [{ id: it.key, name: it.display.name, cat: it.display.cat, qty: 1, price: it.price, extras: [] }];
+      const redeem = rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz' }] };
+      return { restaurant_id: rid, order_id: oid, customer_name: 'B1 Test', customer_phone: phone, customer_email: 'b1@example.com', items_text: `1x ${it.display.name}`, order_type: 'pickup', payment_method: 'online', items, redeem };
+    };
+    let phoneSeq = 0;
+    // every test request comes from 127.0.0.1, so the per-IP intake limit is reset between charges (test environment only)
+    const charge = async (rid, oid, uid) => (await rtdb.ref('rate_limits').remove(), post(app.chargeOnlineOrder, bodyFor(rid, oid, `9988${String(phoneSeq += 1).padStart(4, '0')}`), 'POST', '', { 'x-firebase-id-token': uid }));
+    // a canonical order needs this instance's context USABLE: until it is, the request is REFUSED before any write (B1-b).
+    // After a certification the request side rediscovers the new revision within one CONTEXT_RECORD_TTL_MS (45 s) UNDER
+    // CONTINUOUS TRAFFIC (ERRATA E4) — so this keeps traffic flowing for up to one TTL + margin.
+    const chargeCanonical = async (rid, oid, uid) => {
+      let r; const t0 = Date.now();
+      while (Date.now() - t0 < 60000) { r = await charge(rid, oid, uid); if (!(r.status === 409 && r.json && r.json.reason === 'cart_unverifiable')) return r; await wait(500); }
+      return r;
+    };
+    const canonOrder = (rid) => ({ restaurant_id: rid, status: 'pending_payment', payment_method: 'online', fp_format: 'canonical' });
+
+    // B1-b FIRST, while la_musa is UNCERTIFIED (never usable): a canonical order → 409 cart_unverifiable BEFORE reserve, nothing written
+    await rtdb.ref('user_rewards/u_lm/la_musa').set({ balance: 100000, reserved: 0 });
+    await rtdb.ref('orders/b1_lm_unv').set(canonOrder('la_musa'));
+    const unv = await charge('la_musa', 'b1_lm_unv', 'u_lm');
+    assert.strictEqual(unv.status, 409, `B1-b: ${unv.text.slice(0, 160)}`); assert.strictEqual(unv.json.reason, 'cart_unverifiable');
+    assert.strictEqual(await resv('u_lm', 'la_musa', 'b1_lm_unv'), null, '🔴 B1-b: no reservation written');
+    assert.strictEqual((await wallet('u_lm', 'la_musa')).reserved, 0, 'no debit');
+    assert.strictEqual((await rtdb.ref('orders/b1_lm_unv').get()).val().payment_fingerprint, undefined, 'no fingerprint written');
+    assert.strictEqual((await bootstrapIdentityStamps(fs, 'la_musa')).stamped, true, 'now certify la_musa, so BOTH restaurants run the canonical matrix');
+
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const uid = `u_b1_${rid}`;
+      await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
+      // legacy order / legacy reservation: today's path — untagged record, a retry REUSES it (no second debit)
+      const L1 = await charge(rid, `b1_${rid}_leg`, uid);
+      assert.strictEqual(L1.status, 200, `${rid} legacy charge: ${L1.text.slice(0, 160)}`);
+      const lr = await resv(uid, rid, `b1_${rid}_leg`);
+      assert.strictEqual(lr.fp_format, undefined, `${rid}: a legacy order's reservation is NEVER tagged`);
+      assert.ok(/^[0-9a-f]{64}$/.test(lr.order_fingerprint), 'bound to the bare legacy fingerprint (today)');
+      const reservedAfterLegacy = (await wallet(uid, rid)).reserved;
+      assert.strictEqual((await charge(rid, `b1_${rid}_leg`, uid)).status, 200, `${rid}: legacy retry`);
+      assert.strictEqual((await wallet(uid, rid)).reserved, reservedAfterLegacy, 'reused — no second debit');
+      // canonical order / FRESH reservation → a CANONICAL record in the ONE shape (B1-a); a retry REUSES it
+      await rtdb.ref(`orders/b1_${rid}_can`).set(canonOrder(rid));
+      const C1 = await chargeCanonical(rid, `b1_${rid}_can`, uid);
+      assert.strictEqual(C1.status, 200, `${rid} canonical charge: ${C1.text.slice(0, 200)}`);
+      const cr = await resv(uid, rid, `b1_${rid}_can`);
+      assert.strictEqual(cr.fp_format, 'canonical', `🔴 ${rid}: a canonical order's fresh reservation is a CANONICAL record`);
+      assert.ok(cr.order_fingerprint.startsWith('c1:'), 'bound to the SELECTED canonical order value');
+      assert.strictEqual(cr.canonical.v, 'c1'); assert.ok(CB.parseCk(cr.canonical.free_item_key || cr.canonical.items[0].free_item_key), 'the ck-substituted reward');
+      const SHAPE = require('../catalog/d4b-canonical-reservation.golden.json').records[rid].record;
+      assert.deepStrictEqual(Object.keys(cr).sort(), [...Object.keys(SHAPE), 'hosted_expires_at', 'attempt_id'].sort(),
+        'the frozen canonical shape (catalog/d4b-canonical-reservation.golden.json) + the two ONLINE lifecycle fields (reserve-time hold expiry, attachAttempt)');
+      const ord = (await rtdb.ref(`orders/b1_${rid}_can`).get()).val();
+      assert.strictEqual(cr.order_fingerprint, `c1:${ord.payment_fingerprint}`, 'the order\'s installed canonical fp is exactly the value the reservation bound');
+      const reservedAfterCanon = (await wallet(uid, rid)).reserved;
+      assert.strictEqual((await chargeCanonical(rid, `b1_${rid}_can`, uid)).status, 200, `${rid}: canonical retry`);
+      assert.strictEqual((await wallet(uid, rid)).reserved, reservedAfterCanon, 'reused — no second debit');
+      assert.strictEqual((await resv(uid, rid, `b1_${rid}_can`)).fp, cr.fp);
+      // MIXED (a): a CANONICAL order against an existing LEGACY reservation → conflict (codex's reproduction)
+      await rtdb.ref(`orders/b1_${rid}_mixA`).set(canonOrder(rid));
+      await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/b1_${rid}_mixA`).set({ ...lr, order_fingerprint: lr.order_fingerprint });
+      const mA = await chargeCanonical(rid, `b1_${rid}_mixA`, uid);
+      assert.strictEqual(mA.status, 409, `🔴 ${rid}: canonical order vs legacy reservation must NOT be reused (${mA.text.slice(0, 160)})`);
+      assert.strictEqual(mA.json.reason, 'reservation_conflict');
+      // MIXED (b): a LEGACY order against an existing CANONICAL reservation → conflict
+      await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/b1_${rid}_mixB`).set(cr);
+      const mB = await charge(rid, `b1_${rid}_mixB`, uid);
+      assert.strictEqual(mB.status, 409, `🔴 ${rid}: legacy order vs canonical reservation must NOT be reused (${mB.text.slice(0, 160)})`);
+      assert.strictEqual(mB.json.reason, 'reservation_conflict');
+    }
+  }
+  ok('B1 through the REAL charge handler (both restaurants): legacy/legacy → untagged record, retry reused; a canonical order\'s FRESH reservation is a CANONICAL record (one shape, bound to "c1:<the order\'s installed fp>"), retry reused, no second debit; canonical order vs legacy reservation and legacy order vs canonical reservation → 409 reservation_conflict; B1-b: an uncomputable canonical fp → 409 cart_unverifiable BEFORE reserve, nothing written');
 
   FINISHED = true;
   console.log(`d4b-readers(emulator): OK (${n})`);

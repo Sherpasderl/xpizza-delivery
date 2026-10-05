@@ -1,0 +1,77 @@
+{
+  "_provenance": {
+    "by": "reserveRedemption (fresh, selectedFormat canonical) via canonicalReservationFields — advisor ruling B1-a; the shape D4-c must reuse",
+    "inputs": "test/d4b-legacy-fixtures + CID-<rid>-D/E### contexts, selected c1:9…9"
+  },
+  "records": {
+    "x_pizza": {
+      "result": {
+        "ok": true,
+        "action": "created",
+        "state": "reserved"
+      },
+      "record": {
+        "fp_format": "canonical",
+        "state": "reserved",
+        "cost": 8,
+        "fp": "4cc5b73f5d0e5c18f39652d2d1e71d4ecf833cc7e8d9a33f5c3b6b30b53269f5",
+        "canonical": {
+          "restaurant_id": "x_pizza",
+          "model": "add_free",
+          "type": "free_pizza_choice",
+          "config_version": 2,
+          "cost": 8,
+          "discount_cents": 0,
+          "free_item_key": "[\"c1\",\"dish\",\"CID-x_pizza-D006\"]",
+          "v": "c1"
+        },
+        "order_fingerprint": "c1:9999999999999999999999999999999999999999999999999999999999999999",
+        "config_version": 2,
+        "created_at": 1767200000000,
+        "updated_at": 1767200000000,
+        "seq": 1
+      }
+    },
+    "la_musa": {
+      "result": {
+        "ok": true,
+        "action": "created",
+        "state": "reserved"
+      },
+      "record": {
+        "fp_format": "canonical",
+        "state": "reserved",
+        "cost": 1161,
+        "fp": "104a630d436dbccf8677a7149abc7012e5ad19b29529b34baf664a47424fa8d9",
+        "canonical": {
+          "restaurant_id": "la_musa",
+          "model": "add_free",
+          "type": "points_ala_carte",
+          "config_version": 2,
+          "discount_cents": 0,
+          "total_cost": 1161,
+          "items": [
+            {
+              "free_item_key": "[\"c1\",\"dish\",\"CID-la_musa-D001\"]",
+              "cost": 827,
+              "qty": 1,
+              "price_cents": 24800
+            },
+            {
+              "free_item_key": "[\"c1\",\"extra\",\"CID-la_musa-E000\"]",
+              "cost": 167,
+              "qty": 2,
+              "price_cents": 5000
+            }
+          ],
+          "v": "c1"
+        },
+        "order_fingerprint": "c1:9999999999999999999999999999999999999999999999999999999999999999",
+        "config_version": 2,
+        "created_at": 1767200000000,
+        "updated_at": 1767200000000,
+        "seq": 1
+      }
+    }
+  }
+}
