@@ -34,8 +34,11 @@ require.cache[fa] = { id: fa, filename: fa, loaded: true, children: [], paths: [
 const hc = require.resolve('../pixelpay-hosted-charge');
 const realHC = require('../pixelpay-hosted-charge');
 let FAIL_CLASSIFY = false;
+// codex r3 S1: a RACE seam just before the CAS — a concurrent writer retagging the order between classify and acquire.
+let BEFORE_ACQUIRE = null;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
-  classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
+  classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); },
+  acquireHostedAttempt: async (...a) => { if (BEFORE_ACQUIRE) await BEFORE_ACQUIRE(); return realHC.acquireHostedAttempt(...a); } } };
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
@@ -481,6 +484,33 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
     }
   }
   ok('S2 request-specific matrix (both restaurants): an unverifiable canonical order on the NORMAL path — with and without a legacy hold on the same order id — and a MALFORMED tag (409 binding_format_invalid, typed) write NO dedup stamp, phone or ip quota for that request; on the DEGRADED path (classify throws) the request\'s own stamp + quota are written as today, and in EVERY case the reservation, wallet and order are preserved byte-for-byte');
+
+  // ═══ codex r3 S1 — the CAS's TYPED conflict reaches the client: a concurrent writer tags the order with a malformed
+  //     format AFTER classify passed it as legacy; the acquire transaction refuses it → 409 with reason
+  //     binding_format_invalid (not an untyped "different cart"), the fresh hold released, the order never bound. ═══
+  {
+    const get = async (p) => (await rtdb.ref(p).get()).val();
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const uid = `u_s1race_${rid}`, oid = `s1race_${rid}`;
+      await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
+      await rtdb.ref('rate_limits').remove();
+      const s = catalogSnapshot(rid);
+      const it = s.items.find((i) => (rid === 'x_pizza' ? i.key === 'Carnivora' : i.key === 'dimsum_01'));
+      const line = rid === 'x_pizza' ? { name: it.display.name, qty: 1, price: it.price, extras: [] } : { id: it.key, name: it.display.name, cat: it.display.cat, qty: 1, price: it.price, extras: [] };
+      const redeem = rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz' }] };
+      const body = { restaurant_id: rid, order_id: oid, customer_name: 'S1 Race', customer_phone: `99550${rid === 'x_pizza' ? 1 : 2}00`, customer_email: 's1@example.com', items_text: `1x ${it.display.name}`, order_type: 'pickup', payment_method: 'online', items: [line], redeem };
+      BEFORE_ACQUIRE = async () => { await rtdb.ref(`orders/${oid}`).update({ fp_format: 'bogus' }); };
+      let r; try { r = await post(app.chargeOnlineOrder, body, 'POST', '', { 'x-firebase-id-token': uid }); } finally { BEFORE_ACQUIRE = null; }
+      assert.strictEqual(r.status, 409, `${rid} race: ${r.text.slice(0, 160)}`);
+      assert.strictEqual(r.json.reason, 'binding_format_invalid', `🔴 ${rid}: the CAS's TYPED reason is kept on the acquire conflict`);
+      const o = await get(`orders/${oid}`);
+      assert.ok(!o.payment_fingerprint && !o.active_attempt_id, `${rid}: the order was never bound`);
+      const resv = await get(`user_rewards/${uid}/${rid}/reservations/${oid}`);
+      assert.ok(!resv || resv.state === 'released', `${rid}: the fresh hold is released (${JSON.stringify(resv)})`);
+      assert.strictEqual((await get(`user_rewards/${uid}/${rid}`)).reserved || 0, 0, `${rid}: no net debit`);
+    }
+  }
+  ok('S1 race through the REAL charge handler (both restaurants): an order retagged with a malformed format between classify and the CAS → the acquire transaction refuses it and the 409 keeps the TYPED reason binding_format_invalid; the order is never bound, the fresh hold is released, no net debit');
 
   FINISHED = true;
   console.log(`d4b-readers(emulator): OK (${n})`);
