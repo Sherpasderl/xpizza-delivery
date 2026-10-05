@@ -61,6 +61,7 @@
     "test:kitchen-staff-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
     "test:client-version": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-version.emulator.test.js\"",
     "test:pselfupdate-createorder-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pselfupdate-createorder-trace.emulator.test.js\"",
+    "test:client-floor-http": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-floor-http.emulator.test.js\"",
     "test:client-floor-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/client-floor-rules.emulator.test.mjs\"",
     "test:quality-runner": "node tools/emulator-run.js --only functions,database --project demo-xpizza \"node test/ready-time-quality-run.emulator.test.js\"",
     "test:predictor": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/ready-time-predict.emulator.test.js\"",
