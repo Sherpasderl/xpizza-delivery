@@ -96,18 +96,31 @@ const Q = (o) => ({ restaurantId: 'r_a', from: '2026-10-14', to: '2026-10-16', .
     ok('authorize FIRST: 401/403/400/503 denials perform zero reads (spy proven non-vacuous)');
   }
 
-  // 2. OWNER ISOLATION both ways + the complete existing policy.
+  // 2. OWNER-ONLY (owner ruling 2026-10-05, supersedes the plan's "complete existing policy") + OWNER
+  //    ISOLATION both ways — in EVERY form (JSON, daily CSV, orders CSV), with zero reads on refusal.
   {
     const c = core(w);
-    assert.strictEqual((await c(Q(), 'ownerA')).status, 200);
-    assert.strictEqual((await c(Q({ restaurantId: 'r_b' }), 'ownerA')).status, 403, 'A cannot read B');
-    assert.strictEqual((await c(Q({ restaurantId: 'r_b' }), 'ownerB')).status, 200);
-    assert.strictEqual((await c(Q(), 'ownerB')).status, 403, 'B cannot read A');
-    assert.strictEqual((await c(Q(), 'staffA')).status, 200, 'own-restaurant kitchen staff');
-    assert.strictEqual((await c(Q({ restaurantId: 'r_b' }), 'staffA')).status, 403);
-    assert.strictEqual((await c(Q({ restaurantId: 'r_b' }), 'disp')).status, 200, 'dispatchers are global');
-    assert.strictEqual((await c(Q(), 'cust')).status, 403, 'customers rejected');
-    ok('owner isolation (A↛B, B↛A), staff scoped, dispatcher global, customer rejected');
+    const forms = [{}, { format: 'csv' }, { format: 'csv', kind: 'orders' }];
+    for (const f of forms) {
+      const tag = JSON.stringify(f);
+      assert.strictEqual((await c(Q(f), 'ownerA')).status, 200, `owner A reads A ${tag}`);
+      assert.strictEqual((await c(Q({ restaurantId: 'r_b', ...f }), 'ownerA')).status, 403, `A cannot read B ${tag}`);
+      assert.strictEqual((await c(Q({ restaurantId: 'r_b', ...f }), 'ownerB')).status, 200);
+      assert.strictEqual((await c(Q(f), 'ownerB')).status, 403, `B cannot read A ${tag}`);
+      for (const tok of ['staffA', 'disp']) {
+        const log = [];
+        const r = await core(w, { log })(Q(f), tok);
+        assert.strictEqual(r.status, 403, `${tok} ${tag}`);
+        assert.deepStrictEqual(r.body, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });
+        assert.deepStrictEqual(log, [], `${tok}: no read before the owner check`);
+      }
+      const cust = await c(Q(f), 'cust');
+      assert.strictEqual(cust.status, 403); assert.strictEqual(cust.body.error, 'not_authorized', 'customers rejected as before');
+      const keepWarn = console.warn; console.warn = () => {};
+      try { assert.strictEqual((await core(w, { memberDb: members(MEMBERS, { throwAll: true }) })(Q(f), 'ownerA')).status, 503, 'an authorization outage stays 503'); }
+      finally { console.warn = keepWarn; }
+    }
+    ok('OWNER-ONLY in JSON / daily CSV / orders CSV: A↛B, B↛A, staff + dispatcher 403 not_owner (no reads), customer rejected, outage 503');
   }
 
   // 3. Parameter validation + 2-year cap.
@@ -283,5 +296,76 @@ const Q = (o) => ({ restaurantId: 'r_a', from: '2026-10-14', to: '2026-10-16', .
     assert.strictEqual(b.fulfilled.orders, 1);
     ok('items, times (avg / median bucket / coverage), fulfilled');
   }
+  // 14. 🔴 B1 EXACT REPRO (codex build r1 #1): first Sale YESTERDAY (not yet settled), second TODAY;
+  //     a today-only request with compare=none must count them RETURNING, not new.
+  {
+    const orders = {};
+    const add = (o) => { orders[o.order_id] = o; return o; };
+    add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-10-19', 20), phone: '88881111', totalCents: 1000 }));
+    add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at(TODAY, 10), phone: '88881111', totalCents: 2000 }));
+    const w2 = { fs: makeDb(), rtdb: makeRtdb(orders) };   // NOTHING settled: yesterday is unsettled
+    const b = (await core(w2)({ restaurantId: 'r_a', from: TODAY, to: TODAY, compare: 'none' }, 'ownerA')).body;
+    assert.deepStrictEqual(b.customers.returning, { customers: 1, orders: 1, cents: 2000 }, 'bought yesterday → returning today');
+    assert.deepStrictEqual(b.customers.new, { customers: 0, orders: 0, cents: 0 });
+    assert.strictEqual(b.kpis.sales_cents, 2000, "yesterday's numbers are NOT added to a today-only period");
+    // and once yesterday IS settled, it comes from storage, not from the live scan
+    await J.runStatsRollup({ rtdb: w2.rtdb, fsdb: w2.fs, keyer, listRestaurants: async () => ['r_a'], log: () => {} }, { nowMs: NOW, mode: 'range', from: '2026-10-19', to: '2026-10-19', commit: true });
+    const b2 = (await core(w2)({ restaurantId: 'r_a', from: TODAY, to: TODAY, compare: 'none' }, 'ownerA')).body;
+    assert.deepStrictEqual(b2.customers.returning, { customers: 1, orders: 1, cents: 2000 });
+    ok('B1: an unsettled yesterday feeds the overlay even when the request is today-only (returning, not new)');
+  }
+
+  // 15. 🔴 B2 (codex build r1 #2): ten concurrent COLD requests — across restaurants — share ONE scan;
+  //     a historical-only request scans nothing; a failed scan backs off instead of re-hammering /orders.
+  {
+    const counting = (rt) => { const qs = []; return { qs, ref: (path) => { const r = rt.ref(path); const wrap = (q) => new Proxy(q, { get(t, k) { const v = t[k]; if (typeof v !== 'function') return v; if (k === 'once') return (...a) => { qs.push(path); return new Promise((res) => setTimeout(res, 20)).then(() => v.apply(t, a)); }; return (...a) => wrap(v.apply(t, a)); } }); return wrap(r); } }; };
+    const rt = counting(w.rtdb);
+    const cache = A.makeLiveCache();
+    const call = (rid, q, token) => { const r = req({ restaurantId: rid, ...q }, token); return A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: rt, getKeyer: () => keyer, nowMs: NOW, liveCache: cache }, r); };
+    const res = await Promise.all(Array.from({ length: 10 }, (_, i) => call(['r_a', 'r_b', 'zz_third_merchant'][i % 3], { from: TODAY, to: TODAY, compare: 'none' })));
+    assert(res.every((x) => x.status === 200));
+    assert.strictEqual(rt.qs.length, 1, `10 concurrent cold requests made ${rt.qs.length} /orders reads`);
+    assert.strictEqual(cache.scans, 1);
+    assert.strictEqual(res[0].body.kpis.sales_cents, 4000, 'the shared scan still answers per restaurant');
+    // historical-only (yesterday settled by the world's rollup): no live scan at all
+    // (a FRESH cache, so a scan cannot hide behind the warm entry the concurrent requests just made)
+    const rtH = counting(w.rtdb), cacheH = A.makeLiveCache();
+    const hist = await A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: rtH, getKeyer: () => keyer, nowMs: NOW, liveCache: cacheH }, req({ restaurantId: 'r_a', from: '2026-10-14', to: '2026-10-16', compare: 'previous' }, 'x'));
+    assert.strictEqual(hist.status, 200);
+    assert.strictEqual(rtH.qs.length, 0, 'historical request performed a live scan'); assert.strictEqual(cacheH.scans, 0);
+    // non-vacuity: the same fresh setup DOES scan for a request that includes today
+    await A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: rtH, getKeyer: () => keyer, nowMs: NOW, liveCache: cacheH }, req({ restaurantId: 'r_a', from: TODAY, to: TODAY }, 'x'));
+    assert.strictEqual(rtH.qs.length, 1);
+    // failure → 503, then BACKOFF (no new read) until LIVE_BACKOFF_MS elapses
+    let reads = 0;
+    const broken = { ref: () => ({ orderByChild: () => broken.q, }), q: null };
+    broken.q = { startAt: () => broken.q, startAfter: () => broken.q, endBefore: () => broken.q, limitToFirst: () => broken.q, once: async () => { reads++; throw new Error('rtdb down'); } };
+    const bc = A.makeLiveCache();
+    const callB = (nowMs) => A.getSalesStatsCore({ authorize: async () => ({ ok: true, role: 'owner' }), fsdb: w.fs, rtdb: broken, getKeyer: () => keyer, nowMs, liveCache: bc }, req({ restaurantId: 'r_a', from: TODAY, to: TODAY }, 'x'));
+    const keepWarn = console.warn; console.warn = () => {};
+    try {
+      assert.strictEqual((await callB(NOW)).status, 503); assert.strictEqual(reads, 1);
+      assert.strictEqual((await callB(NOW + 1000)).status, 503); assert.strictEqual(reads, 1, 'inside the backoff: no new read');
+      assert.strictEqual((await callB(NOW + A.LIVE_BACKOFF_MS + 1)).status, 503); assert.strictEqual(reads, 2, 'after the backoff: one retry');
+    } finally { console.warn = keepWarn; }
+    ok('B2: single-flight shared scan (10 concurrent → 1 read), no scan for historical requests, failure backoff');
+  }
+
+  // 16. 🔴 S7 (codex build r1 #7): a cursor cannot leave the export range or cross restaurant/range.
+  {
+    const c = core(w);
+    const q = { restaurantId: 'r_a', from: '2026-10-15', to: '2026-10-15', format: 'csv', kind: 'orders' };
+    assert.strictEqual((await c({ ...q, cursor: '1:O0' }, 'ownerA')).status, 400, 'the codex repro (an untagged epoch cursor)');
+    const p = { from: '2026-10-15', to: '2026-10-15' };
+    const epoch = A.makeCursor('r_a', p, 1, 'O0');                       // correctly tagged but at the epoch
+    const r1 = await c({ ...q, cursor: epoch }, 'ownerA');
+    assert.strictEqual(r1.status, 400); assert.match(r1.body.detail, /outside the export range/);
+    const inRange = A.makeCursor('r_a', p, at('2026-10-15', 1), 'O0');
+    assert.strictEqual((await c({ ...q, cursor: inRange }, 'ownerA')).status, 200);
+    assert.strictEqual((await c({ ...q, restaurantId: 'r_b', cursor: inRange }, 'ownerB')).status, 400, 'another restaurant');
+    assert.strictEqual((await c({ ...q, to: '2026-10-16', cursor: inRange }, 'ownerA')).status, 400, 'another range');
+    ok('S7: cursors are tagged to restaurant + range and must lie inside the padded read window');
+  }
+
   console.log(`\nstats-api: ${n} cells passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

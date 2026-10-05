@@ -18,7 +18,7 @@ const ROOT = path.join(__dirname, '..');
 const rel = (f) => path.relative(ROOT, f);
 
 const RUNTIME_ENTRIES = ['stats/stats-api.js', 'stats/stats-job.js', 'stats/stats-store.js', 'stats/stats-build.js', 'stats/stats-classify.js',
-  'stats/stats-index.js', 'stats/stats-identity.js', 'stats/stats-time.js', 'tools/stats-rollup.js'];
+  'stats/stats-index.js', 'stats/stats-identity.js', 'stats/stats-time.js', 'stats/stats-indexing.js', 'tools/stats-rollup.js'];
 const ALLOWED_GRAPH = new Set([...RUNTIME_ENTRIES,
   'scheduled-orders.js',           // TZ_OFFSET_MS + DEFAULT_CFG.maxHorizonHours (pure constants/helpers)
   'restaurant-id.js',              // DEFAULT_RESTAURANT_ID for rid-less legacy orders (advisor C2)
@@ -126,6 +126,30 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
   assert(!/match \/\{[^}]*=\*\*\}[\s\S]*allow read: if true/.test(restaurantsBlock.split('match /{document=**}')[0]), 'no public recursive wildcard under restaurants');
   assert(/match \/\{document=\*\*\} \{ allow read, write: if false; \}/.test(rules), 'global default-deny present');
   ok('stats_daily / stats_customers / stats_meta are deny-by-default to clients');
+}
+
+// 4b. INDEX EXEMPTIONS (codex build r1 #4): firestore.indexes.json is exactly stats-indexing.js's list,
+//     firebase.json deploys it, and under the exemptions a realistic daily doc / a full shard need only a
+//     handful of index entries (they would need thousands under default indexing).
+{
+  const { fieldOverrides, exemptFor } = require('./stats-indexing');
+  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'firestore.indexes.json'), 'utf8'));
+  assert.deepStrictEqual(cfg.fieldOverrides, fieldOverrides(), 'firestore.indexes.json fieldOverrides must equal stats-indexing.js EXEMPT');
+  assert.deepStrictEqual(cfg.indexes, [], 'stats needs no composite index');
+  const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
+  assert.strictEqual(fb.firestore.indexes, 'firestore.indexes.json', 'firebase.json deploys the index config');
+  for (const o of cfg.fieldOverrides) assert.deepStrictEqual(o.indexes, [], `${o.collectionGroup}.${o.fieldPath} must be a full exemption`);
+  const S = require('./stats-store'); const B = require('./stats-build');
+  const day = B.emptySummary();
+  for (let i = 0; i < 5000; i++) day.customers[`h1:${String(i).padStart(32, '0')}`] = { orders: 1, cents: 100 };
+  for (let i = 0; i < 300; i++) day.items[`item ${i}`] = { qty: 1, cents: 100 };
+  const shard = { v: 1, shard: '0', c: Object.fromEntries(Array.from({ length: 5000 }, (_, i) => [`h1:${i}`, Array.from({ length: 20 }, (_, j) => `2026-01-${String(j + 1).padStart(2, '0')}`)])) };
+  const dailyExempt = S.indexEntries({ ...day, date: 'd', gen: 1 }, exemptFor('stats_daily'));
+  const shardExempt = S.indexEntries(shard, exemptFor('stats_customers'));
+  assert(dailyExempt < 200, `daily doc under exemptions needs ${dailyExempt} entries`);
+  assert(shardExempt < 20, `shard under exemptions needs ${shardExempt} entries`);
+  assert(S.indexEntries(shard) > 40000, 'non-vacuity: the same shard under DEFAULT indexing exceeds Firestore\'s 40,000 limit');
+  ok(`index exemptions synced + deployed via firebase.json; daily ${dailyExempt} / shard ${shardExempt} entries (default indexing: ${S.indexEntries(shard)})`);
 }
 
 // 5. 🔴 END TO END: run a REAL job + API over phone-bearing orders with EVERY output channel captured;

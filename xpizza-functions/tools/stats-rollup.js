@@ -60,10 +60,22 @@ async function earliestOrderDate(rtdb) {
   return Number.isFinite(ms) ? T.dateOf(ms) : null;
 }
 
+// The job's own wall-clock bound (index.js rollupDailyStats timeoutSeconds: 540), applied per window, so
+// a CLI run can never outlive the lease it holds (LEASE_MS 600 s) — the same invariant the function has.
+const WINDOW_TIMEOUT_MS = 540000;
+const withTimeout = (p, ms, what) => {
+  let t;
+  return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error(`stats_cli_timeout: ${what} exceeded ${ms / 1000}s — its lease will lapse and any later publish is refused; re-run (pending_repair resumes)`), { code: 'stats_cli_timeout' })), ms); })]).finally(() => clearTimeout(t));
+};
+
 async function main(argv = process.argv.slice(2)) {
-  const args = parseArgs(argv);
+  // 🔴 THE PROJECT GUARD FIRST — before usage parsing, exactly as every other prod CLI: a missing or
+  // wrong project is refused with tools/require-project.js's own message and EXIT 2 (catalog/
+  // project-guard.test.js spawns this file and requires it). Usage errors come after and exit 1, so the
+  // two stay distinguishable.
   const { requireProject } = require('./require-project');
   const PROJECT_ID = requireProject({ requireFlag: true });   // before ANY client exists
+  const args = parseArgs(argv);
   try { require('dotenv').config(); } catch (_) { /* devDependency */ }
   const { loadStatsSecret, makeCustomerKeyer } = require('../stats/stats-identity');
   const keyer = makeCustomerKeyer(loadStatsSecret());       // fails CLOSED before any read
@@ -86,7 +98,7 @@ async function main(argv = process.argv.slice(2)) {
   const deps = { rtdb, fsdb, listRestaurants: makeFirestoreRegistryReader(fsdb), keyer, log: () => {} };
   const windows = args.cmd === 'repair' ? [{ from, to }] : batches(from, to, args.batchDays);
   for (const w of windows) {
-    const rep = await runStatsRollup(deps, { nowMs, mode: 'range', from: w.from, to: w.to, restaurants: args.restaurants.length ? args.restaurants : undefined, commit: args.commit, strictLease: true });
+    const rep = await withTimeout(runStatsRollup(deps, { nowMs, mode: 'range', from: w.from, to: w.to, restaurants: args.restaurants.length ? args.restaurants : undefined, commit: args.commit, strictLease: true }), WINDOW_TIMEOUT_MS, `window ${w.from}..${w.to}`);
     for (const [rid, r] of Object.entries(rep.restaurants)) {
       const m = (r.measures || []).reduce((a, x) => ({ writes: Math.max(a.writes, x.writes), bytes: Math.max(a.bytes, x.commit_bytes), doc: Math.max(a.doc, x.max_doc_bytes) }), { writes: 0, bytes: 0, doc: 0 });
       console.log(`  ${w.from}..${w.to} ${rid}: ${r.sale_orders} sales, L ${(r.sale_cents / 100).toFixed(2)}; max tx ${m.writes} writes / ${m.bytes} B; max doc ${m.doc} B${r.epochs && r.epochs.length ? `; published epochs ${r.epochs.join(',')}` : ''}`);
@@ -101,4 +113,4 @@ if (require.main === module) {
   main().then((c) => process.exit(c), (e) => { console.error('stats-rollup failed:', (e && e.message) || e); process.exit(1); });
 }
 
-module.exports = { parseArgs, batches, earliestOrderDate, main };
+module.exports = { parseArgs, batches, earliestOrderDate, main, withTimeout, WINDOW_TIMEOUT_MS };

@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { SHARD_COUNT, SHARD_IDS, rederive } = require('./stats-index');
 const { SUMMARY_VERSION } = require('./stats-build');
+const { exemptFor } = require('./stats-indexing');
 
 const LEASE_MS = 600000;   // 10 min; MUST exceed the job's timeoutSeconds (540) — see index.js wiring
 
@@ -34,7 +35,11 @@ const LIMITS = Object.freeze({
   maxDocBytes: 900 * 1024,
   maxWrites: 450,
   maxCommitBytes: 9 * 1024 * 1024,
+  maxIndexEntries: 36000,           // Firestore refuses a document needing > 40,000 index entries
 });
+// A publication refuses unless its lease has at least this long to run at the moment of the decision,
+// so the commit that follows a fresh time read cannot land after expiry (codex build r1 #6).
+const LEASE_MARGIN_MS = 30000;
 // Daily docs per transaction. 400 + 16 shards + 1 meta = 417 ≤ maxWrites.
 const CHUNK_DATES = 400;
 
@@ -60,22 +65,74 @@ function valueBytes(v) {
 }
 const docBytes = (path, data) => Buffer.byteLength(path, 'utf8') + 16 + valueBytes(data) + 32;
 
+/* 🔴 THE COMMIT LIMIT IS ON THE *REQUEST*, NOT ON STORAGE SIZE (codex build r1 #4, re-measured). The
+   10 MiB cap applies to the serialized CommitRequest, which runs ~1.29–1.36× the storage-size model above
+   (map/array nesting costs a tag + length per level). So commit bytes are counted on the protobuf WIRE
+   FORMAT of google.firestore.v1.CommitRequest — Value / MapValue / ArrayValue / Document / Write — exactly
+   as the Admin SDK encodes them (JS integers → integer_value, other numbers → double_value).
+   stats-volume.test.js asserts this equals the SDK's own encoding byte for byte. */
+const varintLen = (n) => { if (n < 0) return 10; let l = 1; while (n >= 128) { n = Math.floor(n / 128); l++; } return l; };
+const lenField = (tagBytes, bodyLen) => tagBytes + varintLen(bodyLen) + bodyLen;
+function protoValue(v) {
+  if (v === null || v === undefined) return 2;                                       // null_value (11): tag + enum
+  if (typeof v === 'boolean') return 2;                                              // boolean_value (1)
+  if (typeof v === 'number') return Number.isInteger(v) ? 1 + varintLen(v) : 9;      // integer_value (2) | double_value (3)
+  if (typeof v === 'string') return lenField(2, Buffer.byteLength(v, 'utf8'));       // string_value (17): 2-byte tag
+  if (v instanceof Timestamp || v instanceof Date) return lenField(1, 12);           // timestamp_value (10): seconds + nanos
+  if (v instanceof FieldValue) return lenField(1, 12);                               // serverTimestamp → a transform (≈ same size)
+  if (Array.isArray(v)) return lenField(1, v.reduce((a, x) => a + lenField(1, protoValue(x)), 0));          // array_value (9)
+  return lenField(1, protoFields(v));                                                // map_value (6)
+}
+// map<string, Value> fields: each entry = tag + len + { key (1): tag+len+bytes, value (2): tag+len+Value }
+function protoFields(obj) {
+  let n = 0;
+  for (const [k, v] of Object.entries(obj || {})) n += lenField(1, lenField(1, Buffer.byteLength(k, 'utf8')) + lenField(1, protoValue(v)));
+  return n;
+}
+const NAME_PREFIX_BYTES = Buffer.byteLength('projects/xpizza-delivery/databases/(default)/documents/', 'utf8') + 32;   // + headroom for another project id
+// One Write { update (1): Document { name (1), fields (2) } } inside CommitRequest.writes (2).
+const protoWriteBytes = (path, data) => lenField(1, lenField(1, lenField(1, NAME_PREFIX_BYTES + Buffer.byteLength(path, 'utf8')) + protoFields(data)));
+const COMMIT_OVERHEAD_BYTES = 128;   // database name (1) + transaction id (3)
+
+/* Single-field INDEX ENTRIES a write needs (codex build r1 #4), counted CONSERVATIVELY: every
+   non-exempt scalar field = 2 (ascending + descending); a map = 2 + its subfields; an array = 2 + one
+   array-contains entry per element. An exempt field path (stats-indexing.js, deployed via
+   firestore.indexes.json) and everything under it = 0. `exempt` = Set of top-level field paths. */
+function indexEntries(data, exempt = new Set()) {
+  const count = (v) => {
+    if (Array.isArray(v)) return 2 + v.length;
+    if (v && typeof v === 'object' && !(v instanceof Timestamp) && !(v instanceof FieldValue) && !(v instanceof Date)) {
+      return 2 + Object.values(v).reduce((a, x) => a + count(x), 0);
+    }
+    return 2;
+  };
+  let n = 0;
+  for (const [k, v] of Object.entries(data || {})) if (!exempt.has(k)) n += count(v);
+  return n;
+}
+const collectionOf = (path) => { const parts = String(path).split('/'); return parts[parts.length - 2]; };
+
 /**
  * preflight(writes) — writes: [{ path, data }]. Throws `stats_size_preflight_failed` with the measured
  * numbers if any limit would be exceeded; otherwise returns the measurement (reported by the job).
  */
 function preflight(writes, limits = LIMITS) {
-  let total = 0, maxDoc = 0, maxPath = null;
+  let total = 0, maxDoc = 0, maxPath = null, maxIdx = 0, maxIdxPath = null, maxIdxDefault = 0;
+  total = COMMIT_OVERHEAD_BYTES;
   for (const w of writes) {
-    const b = docBytes(w.path, w.data);
-    total += b;
+    const b = docBytes(w.path, w.data);          // the 1 MiB document limit is on STORAGE size
+    total += protoWriteBytes(w.path, w.data);    // the 10 MiB commit limit is on the REQUEST (wire) size
     if (b > maxDoc) { maxDoc = b; maxPath = w.path; }
+    const ie = indexEntries(w.data, exemptFor(collectionOf(w.path)));
+    if (ie > maxIdx) { maxIdx = ie; maxIdxPath = w.path; }
+    maxIdxDefault = Math.max(maxIdxDefault, indexEntries(w.data));   // reported: what an UNDEPLOYED exemption would need
   }
-  const m = { writes: writes.length, commit_bytes: total, max_doc_bytes: maxDoc, max_doc_path: maxPath, shard_count: SHARD_COUNT };
+  const m = { writes: writes.length, commit_bytes: total, max_doc_bytes: maxDoc, max_doc_path: maxPath, max_index_entries: maxIdx, max_index_path: maxIdxPath, max_index_entries_default_indexing: maxIdxDefault, shard_count: SHARD_COUNT };
   const over = [];
   if (writes.length > limits.maxWrites) over.push(`writes ${writes.length} > ${limits.maxWrites}`);
   if (maxDoc > limits.maxDocBytes) over.push(`doc ${maxPath} ${maxDoc} B > ${limits.maxDocBytes} B`);
   if (total > limits.maxCommitBytes) over.push(`commit ${total} B > ${limits.maxCommitBytes} B`);
+  if (maxIdx > (limits.maxIndexEntries == null ? LIMITS.maxIndexEntries : limits.maxIndexEntries)) over.push(`index entries ${maxIdxPath} ${maxIdx} > ${limits.maxIndexEntries == null ? LIMITS.maxIndexEntries : limits.maxIndexEntries}`);
   if (over.length) {
     const e = new Error(`stats_size_preflight_failed: ${over.join('; ')} — over the SUPPORTED VOLUME; nothing published (${JSON.stringify(m)})`);
     e.code = 'stats_size_preflight_failed'; e.measure = m;
@@ -94,8 +151,8 @@ async function serverNow(db, rid) {
 // Acquire (or reclaim an EXPIRED) lease, by server time. Returns the owner token; throws `stats_locked`.
 async function acquireLease(db, rid, leaseMs = LEASE_MS) {
   const token = crypto.randomUUID();
-  const now = await serverNow(db, rid);
   await db.runTransaction(async (tx) => {
+    const now = await serverNow(db, rid);   // fresh on every attempt
     const snap = await tx.get(leaseRef(db, rid));
     if (snap.exists) {
       const l = snap.data() || {};
@@ -166,7 +223,8 @@ function planChunks(dates, dailyBytesOf, indexBytes, limits = LIMITS) {
   if (cur.length) out.push(cur);
   return out;
 }
-const shardsBytes = (db, rid, shards) => Object.keys(shards).reduce((a, id) => a + docBytes(shardRef(db, rid, id).path, { v: 1, shard: id, c: shards[id] }), 0);
+// WIRE bytes of a full index rewrite (the commit-size term planChunks budgets for).
+const shardsBytes = (db, rid, shards) => Object.keys(shards).reduce((a, id) => a + protoWriteBytes(shardRef(db, rid, id).path, { v: 1, shard: id, c: shards[id] }), 0);
 
 const contributionsOf = (summaries, dates) => new Map(dates.map((d) => [d, Object.keys((summaries.get(d) || {}).customers || {})]));
 
@@ -177,7 +235,7 @@ const contributionsOf = (summaries, dates) => new Map(dates.map((d) => [d, Objec
  *   pendingAfter:   dates still to publish after this chunk (persisted as pending_repair), or []
  * Returns { epoch, measure }. Throws (nothing written) on lease / freshness / size / shard refusal.
  */
-async function publishChunk(db, rid, { summaries, dates, token, readStartedAt, pendingAfter = [], limits = LIMITS, _beforeCommit = null }) {
+async function publishChunk(db, rid, { summaries, dates, token, readStartedAt, pendingAfter = [], limits = LIMITS, leaseMarginMs = LEASE_MARGIN_MS, _beforeCommit = null, _beforeTransaction = null }) {
   if (!dates.length) throw new Error('stats_publish_no_dates');
   if (dates.length > CHUNK_DATES) throw new Error(`stats_publish_chunk_too_large: ${dates.length}`);
   if (!Number.isFinite(readStartedAt)) throw new Error('stats_publish_needs_read_start');
@@ -191,9 +249,14 @@ async function publishChunk(db, rid, { summaries, dates, token, readStartedAt, p
     preflight(publicationWrites(db, rid, { summaries, dates, shards: shards0, metaData: { ...meta0, epoch: (meta0.epoch || 0) + 1, pending_repair: pendingAfter } }), limits);
   }
 
-  const now = await serverNow(db, rid);
+  if (_beforeTransaction) await _beforeTransaction();   // test hook: a stall between decision and transaction
   let result;
   await db.runTransaction(async (tx) => {
+    /* 🔴 FRESH AUTHORITATIVE TIME ON EVERY ATTEMPT (codex build r1 #6). A `now` taken once outside the
+       transaction is frozen through stalls and contention retries, so an attempt that starts after the
+       lease expired would still see it as live. The probe is re-taken inside the callback, which
+       Firestore re-runs on every retry, and the lease must outlive it by leaseMarginMs. */
+    const now = await serverNow(db, rid);
     // Every read first — Firestore refuses a read after a write.
     const leaseSnap = await tx.get(leaseRef(db, rid));
     const metaSnap = await tx.get(metaRef(db, rid));
@@ -201,7 +264,7 @@ async function publishChunk(db, rid, { summaries, dates, token, readStartedAt, p
 
     const l = leaseSnap.exists ? (leaseSnap.data() || {}) : {};
     if (l.owner_token !== token) throw Object.assign(new Error(`stats_lease_lost: ${rid}`), { code: 'stats_lease_lost' });
-    if (!(l.expires_at && l.expires_at.toMillis() > now)) throw Object.assign(new Error(`stats_lease_expired: ${rid}`), { code: 'stats_lease_expired' });
+    if (!(l.expires_at && l.expires_at.toMillis() > now + leaseMarginMs)) throw Object.assign(new Error(`stats_lease_expired: ${rid}`), { code: 'stats_lease_expired' });
     const meta = metaSnap.exists ? (metaSnap.data() || {}) : {};
     if (Number.isFinite(meta.source_read_started_at) && meta.source_read_started_at > readStartedAt) {
       throw Object.assign(new Error(`stats_stale_read: ${rid} — published data was read at ${meta.source_read_started_at}, this run read at ${readStartedAt}`), { code: 'stats_stale_read' });
@@ -211,11 +274,18 @@ async function publishChunk(db, rid, { summaries, dates, token, readStartedAt, p
     }
 
     const shards = rederive(current, dates, contributions);
+    /* 🔴 pending_repair IS A UNION, NEVER A REPLACEMENT (codex build r1 #3, defence in depth beside the
+       job reading it UNDER the lease): whatever is outstanding in the stored meta stays outstanding
+       unless THIS chunk publishes it. A run that somehow decided its targets from stale metadata can
+       therefore never erase another run's remainder. */
+    const D = new Set(dates);
+    const stored = Array.isArray(meta.pending_repair) ? meta.pending_repair : [];
+    const pendingNext = [...new Set([...stored.filter((d) => !D.has(d)), ...pendingAfter.filter((d) => !D.has(d))])].sort();
     const epoch = (Number.isInteger(meta.epoch) ? meta.epoch : 0) + 1;
     const metaData = {
       v: SUMMARY_VERSION, epoch, shard_count: SHARD_COUNT,
       source_read_started_at: readStartedAt,
-      pending_repair: pendingAfter.length ? pendingAfter : null,
+      pending_repair: pendingNext.length ? pendingNext : null,
       published_at: FieldValue.serverTimestamp(),
       last_dates: { from: dates[0], to: dates[dates.length - 1], count: dates.length },
     };
@@ -237,6 +307,6 @@ async function readDailies(db, rid, dates) {
 }
 
 module.exports = {
-  LEASE_MS, LIMITS, CHUNK_DATES, planChunks, shardsBytes, contributionsOf, valueBytes, docBytes, preflight, serverNow, acquireLease, releaseLease,
+  LEASE_MS, LEASE_MARGIN_MS, LIMITS, CHUNK_DATES, indexEntries, protoWriteBytes, COMMIT_OVERHEAD_BYTES, planChunks, shardsBytes, contributionsOf, valueBytes, docBytes, preflight, serverNow, acquireLease, releaseLease,
   readMeta, readShards, readDailies, publishChunk, publicationWrites, dailyRef, shardRef, metaRef, leaseRef,
 };

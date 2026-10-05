@@ -10073,7 +10073,7 @@
     "slice": "stats",
     "label": "🔴 LEASE EXPIRY no longer checked at publish",
     "file": "stats/stats-store.js",
-    "from": "    if (!(l.expires_at && l.expires_at.toMillis() > now)) throw Object.assign(new Error(`stats_lease_expired: ${rid}`), { code: 'stats_lease_expired' });",
+    "from": "    if (!(l.expires_at && l.expires_at.toMillis() > now + leaseMarginMs)) throw Object.assign(new Error(`stats_lease_expired: ${rid}`), { code: 'stats_lease_expired' });",
     "to": "",
     "command": [
       "npm",
@@ -10279,8 +10279,8 @@
     "slice": "stats",
     "label": "dry-run takes a lease (writes)",
     "file": "stats/stats-job.js",
-    "from": "      if (commit) {\n        try { leases.set(rid, await S.acquireLease(fsdb, rid)); }",
-    "to": "      if (true) {\n        try { leases.set(rid, await S.acquireLease(fsdb, rid)); }",
+    "from": "      if (commit) {\n        try { leases.set(rid, await (deps._acquireLease || S.acquireLease)(fsdb, rid)); }",
+    "to": "      if (true) {\n        try { leases.set(rid, await (deps._acquireLease || S.acquireLease)(fsdb, rid)); }",
     "command": [
       "node",
       "stats/stats-job.test.js"
@@ -10296,6 +10296,200 @@
     "command": [
       "node",
       "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-28",
+    "slice": "stats",
+    "label": "🔴 OWNER-ONLY role check dropped: staff / dispatchers read sales stats (owner ruling 2026-10-05)",
+    "file": "stats/stats-api.js",
+    "from": "  if (auth.role !== 'owner') return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });",
+    "to": "",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-29",
+    "slice": "stats",
+    "label": "🔴 B1: an unsettled yesterday is left out of the live overlay",
+    "file": "stats/stats-api.js",
+    "from": "  if (!r.byDateStored.has(yesterday)) liveDates.push(yesterday);",
+    "to": "  if (false) liveDates.push(yesterday);",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-30",
+    "slice": "stats",
+    "label": "🔴 B2: no single-flight — every request starts its own /orders scan",
+    "file": "stats/stats-api.js",
+    "from": "  if (!e || e.failedAt != null || nowMs - e.at >= LIVE_TTL_MS) {",
+    "to": "  if (true) {",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-31",
+    "slice": "stats",
+    "label": "🔴 B2: historical-only requests still force a live scan",
+    "file": "stats/stats-api.js",
+    "from": "  const needLive = liveDates.some((d) => requested.has(d));",
+    "to": "  const needLive = true;",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-32",
+    "slice": "stats",
+    "label": "B2: a failed live scan is retried immediately (no backoff)",
+    "file": "stats/stats-api.js",
+    "from": "  if (e && e.failedAt != null && nowMs - e.failedAt < LIVE_BACKOFF_MS) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-33",
+    "slice": "stats",
+    "label": "🔴 B3: pending_repair REPLACED instead of unioned (a stale decision erases a remainder)",
+    "file": "stats/stats-store.js",
+    "from": "    const stored = Array.isArray(meta.pending_repair) ? meta.pending_repair : [];",
+    "to": "    const stored = [];",
+    "command": [
+      "node",
+      "stats/stats-job.test.js"
+    ]
+  },
+  {
+    "id": "s1-34",
+    "slice": "stats",
+    "label": "S5: the chunk bound keeps only the final date list (object-spread bug)",
+    "file": "stats/stats-job.js",
+    "from": "    for (const src of [a[id] || {}, b[id] || {}]) for (const [k, list] of Object.entries(src)) m[k] = [...new Set([...(m[k] || []), ...list])].sort();",
+    "to": "    for (const src of [a[id] || {}, b[id] || {}]) for (const [k, list] of Object.entries(src)) m[k] = [...list];",
+    "command": [
+      "node",
+      "stats/stats-job.test.js"
+    ]
+  },
+  {
+    "id": "s1-35",
+    "slice": "stats",
+    "label": "S5: the dry-run measures every chunk against the ORIGINAL index",
+    "file": "stats/stats-job.js",
+    "from": "          sim = rederive(sim, p, S.contributionsOf(summaries, p));",
+    "to": "          sim = rederive(current, p, S.contributionsOf(summaries, p));",
+    "command": [
+      "node",
+      "stats/stats-job.test.js"
+    ]
+  },
+  {
+    "id": "s1-36",
+    "slice": "stats",
+    "label": "🔴 S6: lease expiry judged on a FROZEN time (the read start) instead of fresh in-transaction time",
+    "file": "stats/stats-store.js",
+    "from": "    const now = await serverNow(db, rid);\n    // Every read first",
+    "to": "    const now = readStartedAt;\n    // Every read first",
+    "command": [
+      "npm",
+      "run",
+      "test:stats-emulator"
+    ]
+  },
+  {
+    "id": "s1-37",
+    "slice": "stats",
+    "label": "S6: no lease safety margin (a commit can land after expiry)",
+    "file": "stats/stats-store.js",
+    "from": "l.expires_at.toMillis() > now + leaseMarginMs)",
+    "to": "l.expires_at.toMillis() > now)",
+    "command": [
+      "npm",
+      "run",
+      "test:stats-emulator"
+    ]
+  },
+  {
+    "id": "s1-38",
+    "slice": "stats",
+    "label": "🔴 S7: cursor timestamp not range-checked (a read can start at the epoch)",
+    "file": "stats/stats-api.js",
+    "from": "    if (!(v >= fromMs && v < toMs)) return bad(",
+    "to": "    if (false) return bad(",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-39",
+    "slice": "stats",
+    "label": "S7: cursor not bound to restaurant + range",
+    "file": "stats/stats-api.js",
+    "from": "    if (tag !== cursorTag(rid, p, vs, k)) return bad(",
+    "to": "    if (false) return bad(",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-40",
+    "slice": "stats",
+    "label": "🔴 B4: preflight ignores index entries",
+    "file": "stats/stats-store.js",
+    "from": "  if (maxIdx > (limits.maxIndexEntries == null ? LIMITS.maxIndexEntries : limits.maxIndexEntries)) over.push(",
+    "to": "  if (false) over.push(",
+    "command": [
+      "node",
+      "stats/stats-volume.test.js"
+    ]
+  },
+  {
+    "id": "s1-41",
+    "slice": "stats",
+    "label": "🔴 B4: commit size measured on the storage model instead of the REAL request (wire) size",
+    "file": "stats/stats-store.js",
+    "from": "    total += protoWriteBytes(w.path, w.data);",
+    "to": "    total += docBytes(w.path, w.data);",
+    "command": [
+      "node",
+      "stats/stats-volume.test.js"
+    ]
+  },
+  {
+    "id": "s1-42",
+    "slice": "stats",
+    "label": "🔴 G1: the CLI parses usage BEFORE the project guard (no-project exits 1, not 2)",
+    "file": "tools/stats-rollup.js",
+    "from": "  const PROJECT_ID = requireProject({ requireFlag: true });   // before ANY client exists\n  const args = parseArgs(argv);",
+    "to": "  const args = parseArgs(argv);\n  const PROJECT_ID = requireProject({ requireFlag: true });   // before ANY client exists",
+    "command": [
+      "node",
+      "catalog/project-guard.test.js"
+    ]
+  },
+  {
+    "id": "s1-43",
+    "slice": "stats",
+    "label": "B3: the job reads pending_repair BEFORE taking the lease",
+    "file": "stats/stats-job.js",
+    "from": "      if (commit) {\n        try { leases.set(rid, await (deps._acquireLease || S.acquireLease)(fsdb, rid)); }\n        catch (e) {\n          if (strictLease || e.code !== 'stats_locked') throw e;\n          log('stats_rollup_skipped_locked', { rid });          // another run holds it; tomorrow re-settles\n          report.restaurants[rid] = { skipped: 'locked' };\n          continue;\n        }\n      }\n      /* 🔴 THE REPAIR METADATA IS READ *UNDER* THE LEASE (codex build r1 #3). Read before it, another run\n         could publish a chunk (recording its remainder in pending_repair) and release between this read\n         and our acquisition — and this run would decide its targets without that remainder. Under the\n         lease, no other run can publish for this restaurant until we release, so what we read is what\n         we publish against. (publishChunk also UNIONS pending_repair, so even a stale decision cannot\n         erase a remainder.) */\n      const set = new Set(baseDates);\n      const meta = await S.readMeta(fsdb, rid);\n",
+    "to": "      const meta = await S.readMeta(fsdb, rid);   // MUTANT: read BEFORE the lease\n      if (commit) {\n        try { leases.set(rid, await (deps._acquireLease || S.acquireLease)(fsdb, rid)); }\n        catch (e) {\n          if (strictLease || e.code !== 'stats_locked') throw e;\n          log('stats_rollup_skipped_locked', { rid });          // another run holds it; tomorrow re-settles\n          report.restaurants[rid] = { skipped: 'locked' };\n          continue;\n        }\n      }\n      const set = new Set(baseDates);\n",
+    "command": [
+      "node",
+      "stats/stats-job.test.js"
     ]
   }
 ]

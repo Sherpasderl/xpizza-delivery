@@ -26,6 +26,17 @@ const DEFAULT_BUDGET = Object.freeze({ maxRecords: 60000, maxBytes: 96 * 1024 * 
 const NIGHTLY_DAYS = 7;
 
 // The last N COMPLETE business dates before `nowMs`'s date (today is live, never stored by the nightly).
+// Per-customer union of two index states (shard id → hmac → sorted dates).
+function unionShards(a, b) {
+  const out = {};
+  for (const id of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    const m = {};
+    for (const src of [a[id] || {}, b[id] || {}]) for (const [k, list] of Object.entries(src)) m[k] = [...new Set([...(m[k] || []), ...list])].sort();
+    out[id] = m;
+  }
+  return out;
+}
+
 function nightlyDates(nowMs, n = NIGHTLY_DAYS) {
   const today = dateOf(nowMs);
   const out = [];
@@ -98,11 +109,8 @@ async function runStatsRollup(deps, opts) {
   const leases = new Map();
   try {
     for (const rid of wanted) {
-      const set = new Set(baseDates);
-      const meta = await S.readMeta(fsdb, rid);
-      if (meta && Array.isArray(meta.pending_repair)) for (const d of meta.pending_repair) if (d < dateOf(nowMs)) set.add(d);   // RESUME
       if (commit) {
-        try { leases.set(rid, await S.acquireLease(fsdb, rid)); }
+        try { leases.set(rid, await (deps._acquireLease || S.acquireLease)(fsdb, rid)); }
         catch (e) {
           if (strictLease || e.code !== 'stats_locked') throw e;
           log('stats_rollup_skipped_locked', { rid });          // another run holds it; tomorrow re-settles
@@ -110,6 +118,15 @@ async function runStatsRollup(deps, opts) {
           continue;
         }
       }
+      /* 🔴 THE REPAIR METADATA IS READ *UNDER* THE LEASE (codex build r1 #3). Read before it, another run
+         could publish a chunk (recording its remainder in pending_repair) and release between this read
+         and our acquisition — and this run would decide its targets without that remainder. Under the
+         lease, no other run can publish for this restaurant until we release, so what we read is what
+         we publish against. (publishChunk also UNIONS pending_repair, so even a stale decision cannot
+         erase a remainder.) */
+      const set = new Set(baseDates);
+      const meta = await S.readMeta(fsdb, rid);
+      if (meta && Array.isArray(meta.pending_repair)) for (const d of meta.pending_repair) if (d < dateOf(nowMs)) set.add(d);   // RESUME
       targets.set(rid, [...set].sort());
     }
     if (!targets.size) return report;
@@ -135,17 +152,21 @@ async function runStatsRollup(deps, opts) {
       // current and the final index (every intermediate state lies within it).
       const current = await S.readShards(fsdb, rid);
       const finalIdx = rederive(current, dates, S.contributionsOf(summaries, dates));
-      const unionIdx = {};
-      for (const id of Object.keys(finalIdx)) unionIdx[id] = { ...(current[id] || {}), ...finalIdx[id] };
-      const dailyBytesOf = (d) => S.docBytes(S.dailyRef(fsdb, rid, d).path, { ...summaries.get(d), date: d, gen: 0, computed_at: null });
+      // 🔴 A PER-CUSTOMER DATE UNION (codex build r1 #5). An intermediate publication can hold a
+      // customer's NEW dates (from chunks already published) beside OLD dates still awaiting removal, so
+      // the bound is the union of each customer's current and final lists — not an object spread, which
+      // kept only the final list and under-counted exactly that customer.
+      const unionIdx = unionShards(current, finalIdx);
+      const dailyBytesOf = (d) => S.protoWriteBytes(S.dailyRef(fsdb, rid, d).path, { ...summaries.get(d), date: d, gen: 0, computed_at: null });
       const parts = S.planChunks(dates, dailyBytesOf, S.shardsBytes(fsdb, rid, unionIdx), limits);
       rr.chunks = parts.length;
       if (!commit) {
-        // Dry-run still MEASURES (against the current index, read-only), so the operator sees the
-        // supported-volume headroom before committing.
+        // Dry-run MEASURES each publication against the index AS IT WILL BE when that chunk lands: the
+        // simulated index advances chunk by chunk, exactly as successive commits would advance it.
+        let sim = current;
         for (const p of parts) {
-          const shards = rederive(current, p, new Map(p.map((d) => [d, Object.keys(summaries.get(d).customers)])));
-          rr.measures.push(S.preflight(S.publicationWrites(fsdb, rid, { summaries, dates: p, shards, metaData: { epoch: 0 } }), limits));
+          sim = rederive(sim, p, S.contributionsOf(summaries, p));
+          rr.measures.push(S.preflight(S.publicationWrites(fsdb, rid, { summaries, dates: p, shards: sim, metaData: { epoch: 0, pending_repair: dates.slice(dates.indexOf(p[p.length - 1]) + 1) } }), limits));
         }
       } else {
         for (let i = 0; i < parts.length; i++) {
@@ -155,7 +176,7 @@ async function runStatsRollup(deps, opts) {
         }
       }
       report.restaurants[rid] = rr;
-      log('stats_rollup_restaurant', { rid, ...rr, measures: rr.measures.map((m) => ({ writes: m.writes, commit_bytes: m.commit_bytes, max_doc_bytes: m.max_doc_bytes })) });
+      log('stats_rollup_restaurant', { rid, ...rr, measures: rr.measures.map((m) => ({ writes: m.writes, commit_bytes: m.commit_bytes, max_doc_bytes: m.max_doc_bytes, max_index_entries: m.max_index_entries })) });
      } catch (e) {
       // One restaurant's refusal (stale read, lost lease, over-volume) must not starve the others —
       // but it is never swallowed: the run FAILS at the end, naming every restaurant that did not publish.
@@ -175,4 +196,4 @@ async function runStatsRollup(deps, opts) {
   }
 }
 
-module.exports = { runStatsRollup, readOrdersBounded, nightlyDates, DEFAULT_BUDGET, NIGHTLY_DAYS };
+module.exports = { runStatsRollup, readOrdersBounded, nightlyDates, unionShards, DEFAULT_BUDGET, NIGHTLY_DAYS };

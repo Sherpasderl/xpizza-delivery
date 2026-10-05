@@ -190,5 +190,75 @@ const dailyDoc = async (fs, rid, d) => { const s = await S.dailyRef(fs, rid, d).
     assert(src.indexOf('requireProject({ requireFlag: true })') < src.indexOf("admin.initializeApp("), 'project guard runs before any client');
     ok('CLI: dry-run default, --project flag mandatory + matched, args validated, guard before init');
   }
+  // 12. 🔴 B3 (codex build r1 #3): the repair metadata is read UNDER the lease. Interleaving: while run A
+  //     waits to acquire, run B publishes chunk 1 of a repair (remainder X → pending_repair) and dies.
+  //     A must then see X, publish it, and leave nothing outstanding.
+  {
+    const w = world(['r_a']); w.deps.rtdb = w.rtdb;
+    const X = '2026-09-20';
+    w.add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at(X, 12), phone: '88880042', totalCents: 4200 }));
+    w.add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-10-15', 12), phone: '1', totalCents: 100 }));
+    let interleaved = false;
+    const depsA = { ...w.deps, _acquireLease: async (db, rid) => {
+      if (!interleaved) {
+        interleaved = true;
+        const tB = await S.acquireLease(db, rid);
+        const { orders } = await J.readOrdersBounded(w.rtdb, T.dayStartMs('2026-09-19') - T.READ_PAD_MS, T.dayEndMs(X));
+        const B = require('./stats-build');
+        const sums = B.buildDailies(orders, { keyer, restaurants: new Set([rid]), dates: new Set(['2026-09-19', X]) }).get(rid);
+        await S.publishChunk(db, rid, { summaries: sums, dates: ['2026-09-19'], token: tB, readStartedAt: await S.serverNow(db, rid), pendingAfter: [X] });
+        await S.releaseLease(db, rid, tB);   // B dies after chunk 1, remainder recorded
+      }
+      return S.acquireLease(db, rid);
+    } };
+    await J.runStatsRollup(depsA, { nowMs: NOW, mode: 'nightly', commit: true });
+    assert.strictEqual((await dailyDoc(w.fs, 'r_a', X)).sale.cents, 4200, "B's remainder was published by A");
+    assert.strictEqual((await S.readMeta(w.fs, 'r_a')).pending_repair, null);
+    ok('B3: pending_repair read under the lease — a concurrent run\'s remainder is resumed, not erased');
+  }
+
+  // 13. B3 defence in depth: publishChunk UNIONS pending_repair — a publication that does not cover a
+  //     stored outstanding date keeps it outstanding, whatever its own pendingAfter says.
+  {
+    const w = world(['r_a']); w.deps.rtdb = w.rtdb;
+    const tok = await S.acquireLease(w.fs, 'r_a');
+    const B = require('./stats-build');
+    const sums = B.buildDailies([], { keyer, restaurants: new Set(['r_a']), dates: new Set(['2026-10-01', '2026-10-02', '2026-10-03']) }).get('r_a');
+    await S.publishChunk(w.fs, 'r_a', { summaries: sums, dates: ['2026-10-01'], token: tok, readStartedAt: 1, pendingAfter: ['2026-10-02', '2026-10-03'] });
+    await S.publishChunk(w.fs, 'r_a', { summaries: sums, dates: ['2026-10-02'], token: tok, readStartedAt: 1, pendingAfter: [] });   // a stale decision
+    assert.deepStrictEqual((await S.readMeta(w.fs, 'r_a')).pending_repair, ['2026-10-03'], '10-03 stays outstanding');
+    await S.publishChunk(w.fs, 'r_a', { summaries: sums, dates: ['2026-10-03'], token: tok, readStartedAt: 1, pendingAfter: [] });
+    assert.strictEqual((await S.readMeta(w.fs, 'r_a')).pending_repair, null);
+    await S.releaseLease(w.fs, 'r_a', tok);
+    ok('B3 defence: pending_repair is a union — only publishing a date clears it');
+  }
+
+  // 14. 🔴 S5 (codex build r1 #5): the chunk bound is a per-customer DATE UNION, and the dry-run measures
+  //     each chunk against the index AS ADVANCED by the previous chunks — so its numbers match a commit.
+  {
+    assert.deepStrictEqual(J.unionShards({ 0: { k: ['2026-01-01', '2026-01-03'] } }, { 0: { k: ['2026-01-02'] }, 1: { j: ['2026-01-05'] } }),
+      { 0: { k: ['2026-01-01', '2026-01-02', '2026-01-03'] }, 1: { j: ['2026-01-05'] } });
+    const mk = () => {
+      const w = world(['r_a']); w.deps.rtdb = w.rtdb;
+      // firestore-fake's clock advances 1 s PER WRITE, so a 400-doc chunk "takes" 400 s and would eat a
+      // real 600 s lease; a real commit of 400 docs takes about a second. A long lease here removes that
+      // fixture artifact (expiry itself is proven in the emulator suite, against real time).
+      w.deps._acquireLease = (db, rid) => S.acquireLease(db, rid, 3600000);
+      // 600 customers in the FIRST chunk's days, few later: chunk 2's index must include chunk 1's customers
+      for (let i = 0; i < 600; i++) w.add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2025-09-05', 10) + i * 1000, phone: String(88000000 + i), totalCents: 100 }));
+      w.add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-10-10', 10), phone: '1', totalCents: 100 }));
+      return w;
+    };
+    const range = { nowMs: NOW, mode: 'range', from: '2025-09-01', to: '2026-10-12' };   // 407 dates → 2 chunks by count
+    const dry = await J.runStatsRollup(mk().deps, { ...range, commit: false });
+    const wet = await J.runStatsRollup(mk().deps, { ...range, commit: true });
+    assert.strictEqual(dry.restaurants.r_a.chunks, 2);
+    for (let i = 0; i < 2; i++) {
+      const d = dry.restaurants.r_a.measures[i].commit_bytes, c = wet.restaurants.r_a.measures[i].commit_bytes;
+      assert(Math.abs(d - c) < 400, `chunk ${i + 1}: dry-run ${d} B vs commit ${c} B`);
+    }
+    ok('S5: union bound; dry-run measures each successive chunk against the advanced index (matches the commit)');
+  }
+
   console.log(`\nstats-job: ${n} cells passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

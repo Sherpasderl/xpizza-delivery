@@ -213,6 +213,22 @@ const deps = (over = {}) => ({ rtdb, fsdb, keyer, listRestaurants: async () => [
     ok('API over real storage: stored days + live today + overlay; aggregates only');
   }
 
+  // 9. 🔴 S6 (codex build r1 #6): expiry is judged on FRESH server time inside the transaction attempt.
+  //    A run that decided while its lease was live, then stalled past expiry, is refused; and a lease
+  //    with less than the safety margin left is refused before it can commit late.
+  {
+    const dates = ['2026-10-15'];
+    const sums = await summariesFor('r_a', dates);
+    const t1 = await S.acquireLease(fsdb, 'r_a', 2500);
+    const rs = await S.serverNow(fsdb, 'r_a');
+    await assert.rejects(() => S.publishChunk(fsdb, 'r_a', { summaries: sums, dates, token: t1, readStartedAt: rs, leaseMarginMs: 0, _beforeTransaction: () => sleep(3000) }), (e) => e.code === 'stats_lease_expired');
+    const t2 = await S.acquireLease(fsdb, 'r_a', 10000);   // live, but inside the default 30 s margin
+    const rs2 = await S.serverNow(fsdb, 'r_a');
+    await assert.rejects(() => S.publishChunk(fsdb, 'r_a', { summaries: sums, dates, token: t2, readStartedAt: rs2 }), (e) => e.code === 'stats_lease_expired');
+    await S.releaseLease(fsdb, 'r_a', t2);
+    ok('S6: a stall past expiry is refused on fresh in-transaction time; a lease inside the margin is refused');
+  }
+
   console.log(`\nstats.emulator: ${n} cells passed`);
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

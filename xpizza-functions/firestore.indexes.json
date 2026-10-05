@@ -1,0 +1,50 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "stats_customers",
+      "fieldPath": "c",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "customers",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "items",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "by_hour",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "by_type",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "by_payment",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "prep",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_daily",
+      "fieldPath": "delivery",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "stats_meta",
+      "fieldPath": "pending_repair",
+      "indexes": []
+    }
+  ]
+}

@@ -4,9 +4,9 @@
 // wrapper (PORTAL_ORIGINS, export wiring); every decision is here, testable without Firebase init.
 //
 // AUTHORIZATION BEFORE ANY READ: the injected `authorize(rid)` is catalog-edit-auth.js
-// authorizeCatalogEdit — the COMPLETE existing policy (owners and kitchen staff restaurant-scoped,
-// dispatchers global, customers rejected; RID_RE validation; a throwing lookup → 503). Its statuses pass
-// through verbatim. Nothing — not the meta doc, not the clock — is read before it answers ok.
+// authorizeCatalogEdit (RID_RE validation; customers rejected; a throwing lookup → 503), its statuses
+// passed through verbatim; then OWNER-ONLY (owner ruling 2026-10-05): a staff or dispatcher grant is 403
+// not_owner. Nothing — not the meta doc, not the clock — is read before both answer.
 //
 // AGGREGATES ONLY: no response field carries a phone, a name, an address or a customer hmac. The
 // per-customer maps are consumed here (distinct / new / returning) and never serialized.
@@ -36,19 +36,44 @@ const reply = (status, body) => ({ status, body });
 const bad = (error, detail) => reply(400, { error, ...(detail ? { detail } : {}) });
 
 // ── live view ─────────────────────────────────────────────────────────────────────────────────────
-// Per-process cache: the throttle. Keyed by rid + live dates, so a day rollover never serves stale.
-function makeLiveCache() { return new Map(); }
+/* 🔴 ONE SCAN SERVES EVERY RESTAURANT, AND CONCURRENT REQUESTS SHARE IT (codex build r1 #2).
+   The live read is a created_at range over ALL restaurants' orders — RTDB cannot filter by restaurant
+   and time at once — so the cache is keyed by the LIVE DATES alone, never by rid: ten merchants opening
+   the dashboard at once cost ONE read, not ten. The cache holds the in-flight PROMISE, so a request that
+   arrives while a scan is running waits for it (single-flight) instead of starting another. A failed
+   scan is remembered for LIVE_BACKOFF_MS: requests inside that window fail fast (503, retryable) rather
+   than re-hammering /orders. At most LIVE_MAX_CONCURRENT scans run per process. Per-restaurant builds
+   are memoized on the shared entry. Per-process, by design: across instances the bound is
+   maxInstances × LIVE_MAX_CONCURRENT scans per LIVE_TTL_MS. */
+const LIVE_BACKOFF_MS = 10000;
+const LIVE_MAX_CONCURRENT = 1;
+function makeLiveCache() { return { entries: new Map(), running: 0, waiters: [], scans: 0 }; }
+
+async function withScanSlot(cache, fn) {
+  if (cache.running >= LIVE_MAX_CONCURRENT) await new Promise((r) => cache.waiters.push(r));
+  cache.running += 1;
+  try { return await fn(); } finally { cache.running -= 1; const next = cache.waiters.shift(); if (next) next(); }
+}
 
 async function liveSummaries({ rtdb, keyer, cache }, rid, liveDates, nowMs) {
-  const key = `${rid}|${liveDates.join(',')}`;
-  const hit = cache && cache.get(key);
-  if (hit && nowMs - hit.at < LIVE_TTL_MS) return hit.value;
-  const fromMs = T.dayStartMs(liveDates[0]) - T.READ_PAD_MS;
-  const toMs = T.dayEndMs(liveDates[liveDates.length - 1]);
-  const { orders } = await readOrdersBounded(rtdb, fromMs, toMs, LIVE_BUDGET);
-  const built = buildFor(orders, rid, liveDates, keyer);
-  if (cache) cache.set(key, { at: nowMs, value: built });
-  return built;
+  const c = cache || makeLiveCache();
+  const key = liveDates.join(',');
+  let e = c.entries.get(key);
+  if (e && e.failedAt != null && nowMs - e.failedAt < LIVE_BACKOFF_MS) {
+    throw Object.assign(new Error('stats_live_backoff'), { code: 'stats_live_backoff' });
+  }
+  if (!e || e.failedAt != null || nowMs - e.at >= LIVE_TTL_MS) {
+    const fromMs = T.dayStartMs(liveDates[0]) - T.READ_PAD_MS;
+    const toMs = T.dayEndMs(liveDates[liveDates.length - 1]);
+    e = { at: nowMs, failedAt: null, built: new Map() };
+    e.orders = withScanSlot(c, () => { c.scans += 1; return readOrdersBounded(rtdb, fromMs, toMs, LIVE_BUDGET); }).then((r) => r.orders);
+    e.orders.catch(() => { e.failedAt = nowMs; });
+    c.entries.set(key, e);
+    for (const k of c.entries.keys()) if (k !== key && nowMs - c.entries.get(k).at >= LIVE_TTL_MS) c.entries.delete(k);   // bounded
+  }
+  const orders = await e.orders;
+  if (!e.built.has(rid)) e.built.set(rid, buildFor(orders, rid, liveDates, keyer));
+  return e.built.get(rid);
 }
 function buildFor(orders, rid, dates, keyer) {
   const m = B.buildDailies(orders, { keyer, restaurants: new Set([rid]), dates: new Set(dates) });
@@ -154,7 +179,7 @@ function parseParams(q, nowMs) {
   if (!COMPARES.has(p.compare)) return { error: bad('bad_compare') };
   if (!['json', 'csv'].includes(p.format)) return { error: bad('bad_format') };
   if (!['daily', 'orders'].includes(p.kind)) return { error: bad('bad_kind') };
-  if (p.cursor != null && !/^\d{1,16}:[A-Za-z0-9_-]{1,80}$/.test(p.cursor)) return { error: bad('bad_cursor') };
+  if (p.cursor != null && !CURSOR_RE.test(p.cursor)) return { error: bad('bad_cursor') };
   p.today = today;
   return { p };
 }
@@ -174,6 +199,10 @@ async function getSalesStatsCore(deps, req) {
 
   const auth = await authorize(rid, req);   // 🔴 FIRST. Nothing is read before this answers.
   if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });
+  // OWNER RULING 2026-10-05 (supersedes the plan's "complete existing policy"): sales stats are
+  // OWNER-ONLY — kitchen staff and dispatchers are refused, in every form (JSON, daily CSV, orders CSV).
+  // Same shape as catalog/portal-reads.js getEditableCatalogCore.
+  if (auth.role !== 'owner') return reply(403, { error: 'not_owner', detail: 'sales stats are visible to restaurant owners' });
 
   const { p, error } = parseParams(q, nowMs);
   if (error) return error;
@@ -184,11 +213,14 @@ async function getSalesStatsCore(deps, req) {
   if (p.format === 'csv' && p.kind === 'orders') return ordersCsv({ rtdb }, rid, p);
 
   const cmp = compareRange(p);
+  const yesterday = T.addDays(p.today, -1);
   const read = async () => {
     const meta1 = await S.readMeta(fsdb, rid);
     const periodDates = T.datesBetween(p.from, p.to);
     const cmpDates = cmp ? T.datesBetween(cmp.from, cmp.to) : [];
-    const stored = [...new Set([...periodDates, ...cmpDates])].filter((d) => d < p.today);
+    // YESTERDAY IS ALWAYS READ (codex build r1 #1): whether it is settled decides the live overlay even
+    // when the request does not include it (a customer who bought yesterday and again today is RETURNING).
+    const stored = [...new Set([...periodDates, ...cmpDates, yesterday])].filter((d) => d < p.today);
     const [byDateStored, shards] = await Promise.all([S.readDailies(fsdb, rid, stored), S.readShards(fsdb, rid)]);
     const meta2 = await S.readMeta(fsdb, rid);
     return { meta1, meta2, periodDates, cmpDates, byDateStored, shards };
@@ -205,25 +237,32 @@ async function getSalesStatsCore(deps, req) {
     return reply(503, { error: 'stats_unavailable', retryable: true });
   }
 
-  // LIVE: today, plus yesterday while it is not yet settled (00:00 → the nightly run).
-  const yesterday = T.addDays(p.today, -1);
-  const wantsLive = (d) => r.periodDates.includes(d) || r.cmpDates.includes(d);
+  // LIVE: today, plus yesterday while it is NOT yet settled (00:00 → the nightly run) — decided from the
+  // stored doc, independently of the requested period.
   const liveDates = [];
-  if (wantsLive(yesterday) && !r.byDateStored.has(yesterday)) liveDates.push(yesterday);
+  if (!r.byDateStored.has(yesterday)) liveDates.push(yesterday);
   liveDates.push(p.today);
+  // The scan runs ONLY when it can change the answer: when the period or comparison includes a live
+  // date. A purely historical request is fully determined by stored days — a customer buying inside it
+  // has a stored Sale there, so a later live date can never be their first.
+  const requested = new Set([...r.periodDates, ...r.cmpDates]);
+  const needLive = liveDates.some((d) => requested.has(d));
   let live = new Map();
-  try { live = await liveSummaries({ rtdb, keyer, cache: liveCache }, rid, liveDates, nowMs); }
-  catch (e) {
-    console.warn('stats_live_unavailable', JSON.stringify({ rid, code: e.code || null }));
-    return reply(503, { error: 'stats_live_unavailable', retryable: true });
+  if (needLive) {
+    try { live = await liveSummaries({ rtdb, keyer, cache: liveCache }, rid, liveDates, nowMs); }
+    catch (e) {
+      console.warn('stats_live_unavailable', JSON.stringify({ rid, code: e.code || null }));
+      return reply(503, { error: 'stats_live_unavailable', retryable: true });
+    }
   }
   const byDate = new Map(r.byDateStored);
-  for (const d of liveDates) byDate.set(d, live.get(d) || B.emptySummary());
+  if (!requested.has(yesterday) && r.byDateStored.has(yesterday)) byDate.delete(yesterday);   // read only for the settlement check
+  if (needLive) for (const d of liveDates) byDate.set(d, live.get(d) || B.emptySummary());
 
   // Index with the live overlay (in memory): every live date's stored membership is replaced.
-  const firsts = firstDatesWithOverlay(r.shards, new Map(liveDates.map((d) => [d, Object.keys((byDate.get(d) || {}).customers || {})])));
+  const firsts = firstDatesWithOverlay(r.shards, needLive ? new Map(liveDates.map((d) => [d, Object.keys((byDate.get(d) || {}).customers || {})])) : new Map());
 
-  const dayInfo = (d) => (liveDates.includes(d) ? 'live' : byDate.has(d) ? isoOf(byDate.get(d).computed_at) : null);
+  const dayInfo = (d) => (needLive && liveDates.includes(d) ? 'live' : byDate.has(d) ? isoOf(byDate.get(d).computed_at) : null);
   const periodMerged = B.mergeSummaries(r.periodDates.map((d) => byDate.get(d)));
   const period = shapePeriod(periodMerged, r.periodDates, byDate, firsts, p.from, p.granularity);
   let comparison = null;
@@ -263,11 +302,25 @@ async function getSalesStatsCore(deps, req) {
 
 function isoOf(ts) { try { return ts && typeof ts.toDate === 'function' ? ts.toDate().toISOString() : (ts ? String(ts) : null); } catch (_) { return null; } }
 
+/* 🔴 CONTINUATION CURSORS ARE BOUND AND RANGE-CHECKED (codex build r1 #7). A cursor is
+   `<created_at>:<key>:<tag>` where tag = sha256(rid|from|to|created_at|key)[:16]. It is accepted only for
+   the SAME restaurant and export range it was issued for, and only if its created_at lies inside that
+   range's padded read window — so no cursor can move the bounded read outside [from − pad, to end). */
+const CURSOR_RE = /^(\d{1,16}):([A-Za-z0-9_-]{1,80}):([0-9a-f]{16})$/;
+const cursorTag = (rid, p, v, k) => require('crypto').createHash('sha256').update(`${rid}|${p.from}|${p.to}|${v}|${k}`).digest('hex').slice(0, 16);
+const makeCursor = (rid, p, v, k) => `${v}:${k}:${cursorTag(rid, p, v, k)}`;
+
 async function ordersCsv({ rtdb }, rid, p) {
   if (T.daysBetween(p.from, p.to) + 1 > ORDERS_CSV_MAX_DAYS) return bad('range_too_long', `orders CSV: max ${ORDERS_CSV_MAX_DAYS} days per export`);
   const fromMs = T.dayStartMs(p.from) - T.READ_PAD_MS, toMs = T.dayEndMs(p.to);
   let q = rtdb.ref('orders').orderByChild('created_at');
-  if (p.cursor) { const [v, k] = p.cursor.split(':'); q = q.startAfter(Number(v), k); } else q = q.startAt(fromMs);
+  if (p.cursor) {
+    const [, vs, k, tag] = CURSOR_RE.exec(p.cursor);
+    const v = Number(vs);
+    if (tag !== cursorTag(rid, p, vs, k)) return bad('bad_cursor', 'cursor was issued for another restaurant or range');
+    if (!(v >= fromMs && v < toMs)) return bad('bad_cursor', 'cursor outside the export range');
+    q = q.startAfter(v, k);
+  } else q = q.startAt(fromMs);
   let snap;
   try { snap = await q.endBefore(toMs).limitToFirst(ORDERS_CSV_PAGE).once('value'); }
   catch (e) { return reply(503, { error: 'stats_unavailable', retryable: true }); }
@@ -276,7 +329,7 @@ async function ordersCsv({ rtdb }, rid, p) {
   snap.forEach((child) => {
     got += 1;
     const o = child.val();
-    last = `${o && o.created_at}:${child.key}`;
+    last = (o && Number.isFinite(o.created_at)) ? makeCursor(rid, p, o.created_at, child.key) : last;
     if (!o || B.ridOf(o) !== rid) return;
     const ms = T.serviceMs(o); if (ms === null) return;
     const d = T.dateOf(ms); if (d < p.from || d > p.to) return;
@@ -286,4 +339,4 @@ async function ordersCsv({ rtdb }, rid, p) {
   return { status: 200, contentType: 'text/csv; charset=utf-8', body: csv(rows), filename: `pedidos_${rid}_${p.from}_${p.to}.csv`, headers: next ? { 'X-Next-Cursor': next } : {} };
 }
 
-module.exports = { getSalesStatsCore, makeLiveCache, parseParams, compareRange, csvCell, orderRow, ORDER_COLUMNS, MAX_RANGE_DAYS, ORDERS_CSV_MAX_DAYS, ORDERS_CSV_PAGE, LIVE_TTL_MS };
+module.exports = { getSalesStatsCore, makeLiveCache, liveSummaries, makeCursor, LIVE_BACKOFF_MS, LIVE_MAX_CONCURRENT, parseParams, compareRange, csvCell, orderRow, ORDER_COLUMNS, MAX_RANGE_DAYS, ORDERS_CSV_MAX_DAYS, ORDERS_CSV_PAGE, LIVE_TTL_MS };
