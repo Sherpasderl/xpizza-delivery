@@ -89,6 +89,30 @@ function rawFromNode(node) {
   return { rid: node.head.rid, versionId: node.head.versionId, record: p.record, items: p.items, extras: p.extras, structure: p.structure };
 }
 
+// The ONE consistent read of a restaurant's live activation: the pointer, the pointed version's record and its
+// items/extras/structure, in ONE read-only Firestore transaction with the pointer read INSIDE it. Shared by the context
+// writer and (1D D4-b §E.2) the identity-manifest generator, so both read the live version exactly the same way.
+// `stop` is checked between reads (the writer's abandonment hook); callers without a deadline pass nothing.
+async function readActiveSnapshot(db, rid, stop = () => {}) {
+  return db.runTransaction(async (tx) => {
+    const ptr = readPointerSnap(await tx.get(activePointerRef(db, rid)), rid);   // INSIDE the transaction
+    stop();
+    if (ptr.version === null) return { ptr };
+    const vref = versionRefOf(db, rid, ptr.version);
+    const recSnap = await tx.get(vref);
+    stop();
+    if (!recSnap.exists) return { ptr, missing: true };
+    const [items, extras, structureSnap] = await Promise.all([
+      tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')), tx.get(vref.collection('meta').doc('menu_structure')),
+    ]);
+    stop();
+    return {
+      ptr, record: recSnap.data() || {}, updateTime: recSnap.updateTime,
+      items: rowsOf(items), extras: rowsOf(extras), structure: structureSnap.exists ? (structureSnap.data() || null) : null,
+    };
+  }, { readOnly: true });
+}
+
 function createContextWriter({
   db, rtdb, now = Date.now, deadlineMs = CONTEXT_WRITER_DEADLINE_MS,
   log = (k, d) => { try { console.log(k, JSON.stringify(d)); } catch (_) {} },
@@ -123,23 +147,7 @@ function createContextWriter({
   // ── The full write: one read-only Firestore transaction, then the fenced RTDB transaction. ─────
   async function fullWrite(rid, stop) {
     stats.fullReads += 1;
-    const snap = await db.runTransaction(async (tx) => {
-      const ptr = readPointerSnap(await tx.get(activePointerRef(db, rid)), rid);   // INSIDE the transaction
-      stop();
-      if (ptr.version === null) return { ptr };
-      const vref = versionRefOf(db, rid, ptr.version);
-      const recSnap = await tx.get(vref);
-      stop();
-      if (!recSnap.exists) return { ptr, missing: true };
-      const [items, extras, structureSnap] = await Promise.all([
-        tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')), tx.get(vref.collection('meta').doc('menu_structure')),
-      ]);
-      stop();
-      return {
-        ptr, record: recSnap.data() || {}, updateTime: recSnap.updateTime,
-        items: rowsOf(items), extras: rowsOf(extras), structure: structureSnap.exists ? (structureSnap.data() || null) : null,
-      };
-    }, { readOnly: true });
+    const snap = await readActiveSnapshot(db, rid, stop);
 
     if (snap.ptr.version === null) return report(rid, 'refused', { reason: 'no_active_version' });
     if (snap.missing) return report(rid, 'refused', { reason: 'active_version_missing', versionId: snap.ptr.version });
@@ -235,7 +243,7 @@ function createContextWriter({
 }
 
 module.exports = {
-  createContextWriter, persistedNode, rawFromNode, contentOf, recordSubset, contextRefOf,
+  createContextWriter, readActiveSnapshot, persistedNode, rawFromNode, contentOf, recordSubset, contextRefOf,
   CONTEXT_PATH, CONTEXT_WRITER_DEADLINE_MS, CONTEXT_RECONCILE_CONCURRENCY, CONTEXT_RECONCILE_INTERVAL,
   CONTEXT_RECONCILE_INTERVAL_MS, CONTEXT_RECONCILE_TIMEOUT_S, OUTCOMES,
 };

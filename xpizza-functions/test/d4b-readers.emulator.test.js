@@ -1,0 +1,259 @@
+'use strict';
+// Portal 1D · D4-b — readers on the Firestore + RTDB EMULATORS (PLAN-D4b §A races, §E manifest, F display).
+// Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:d4b-readers
+//
+// Fixtures through the REAL writers (the D4-a recipe: publish → strip to pre-P1 → real bootstrap), then:
+//   §E  menus_identity: generation from the live version, validate-all-then-write, conditional publish against a
+//       CONCURRENT publisher, idempotent repeat, normalized read-back, /menus/{rid} untouched (golden), a 3rd synthetic
+//       restaurant enumerated with no code change, and the READ-ONLY divergence report on a forced proxy drift.
+//   §A  a different-format record appearing between an ADVISORY read and the CAS is decided by the CAS (payment and
+//       reservation), on the real RTDB.
+//   F   the real createOrder handler REFUSES a canonical-tagged retry it cannot verify; the real paymentStatus handler
+//       renders a canonical reward as its LABEL (never a ck / canonical id).
+require('./_emulator-required')('database', 'firestore');
+
+const assert = require('assert');
+const http = require('http');
+const express = require('express');
+process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+process.env.MAKE_SECRET = process.env.MAKE_SECRET || 'd4b-secret';
+const realWhatsapp = require('../whatsapp');
+const wr = require.resolve('../whatsapp');
+require.cache[wr] = { id: wr, filename: wr, loaded: true, children: [], paths: [], exports: { ...realWhatsapp, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) } };
+const app = require('../index.js');
+const admin = require('firebase-admin');
+const fs = admin.firestore();
+const rtdb = admin.database();
+
+const { buildPublishCandidate } = require('../tools/publish-version');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
+const { sourceRefOf, canonicalize } = require('../catalog/source-store');
+const { publishVersion } = require('../catalog/catalog-publish');
+const { backfillIdentities } = require('../catalog/identity-backfill');
+const { bootstrapIdentityStamps } = require('../catalog/identity-bootstrap');
+const { catalogSnapshot } = require('../catalog/generate-form-bundle');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+const { createCatalogVerifier } = require('../catalog/catalog-verifier');
+const { buildIdentityManifest, publishIdentityManifests, divergenceReport, MANIFEST_PATH } = require('../catalog/identity-manifest');
+const { readOnlyRtdb } = require('../tools/menus-divergence-report');
+const { makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
+const CB = require('../catalog/canonical-binding');
+const hosted = require('../pixelpay-hosted-charge');
+const reserve = require('../rewards-reserve');
+const { computeRedemption } = require('../rewards-redeem');
+const { REDEMPTION_CONFIG_VERSION } = require('../rewards-redeem-config');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4b-readers(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
+const vrefOf = (rid, v) => fs.collection('restaurants').doc(rid).collection('versions').doc(v);
+
+// ── D4-a's real-writer fixture recipe (kept in step with test/catalog-context.emulator.test.js) ───────────────
+async function asPreP1(rid, versionId) {
+  const vref = vrefOf(rid, versionId);
+  for (const col of ['menu_items', 'extras']) {
+    const snap = await vref.collection(col).get();
+    await Promise.all(snap.docs.map((d) => { const display = (d.data() || {}).display; if (!display || display.identity_id === undefined) return null; const { identity_id, ...rest } = display; return d.ref.update({ display: rest }); }).filter(Boolean));   // eslint-disable-line no-unused-vars
+  }
+  await vref.update({ identity_activation: admin.firestore.FieldValue.delete(), identity_certified: admin.firestore.FieldValue.delete() });
+}
+async function seedPreP1(rid, { dataFrom = rid } = {}) {
+  await sourceRefOf(fs, rid).set(canonicalize(buildSourceFromCode(dataFrom)));
+  const { input } = buildPublishCandidate(dataFrom, { activeVersionId: null }, { source_sha: `d4b-${rid}` });
+  const res = await publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
+  await vrefOf(rid, res.versionId).update({ identity_activation: admin.firestore.FieldValue.delete() });
+  await backfillIdentities(fs, rid, catalogSnapshot(dataFrom), { captured: await getActivePointer(fs, rid) });
+  await asPreP1(rid, res.versionId);
+  return res.versionId;
+}
+function post(handler, body, method = 'POST', query = '') {
+  return new Promise((resolve, reject) => {
+    const w = express(); w.use(express.json()); w.use(handler);
+    const s = http.createServer(w).listen(0, async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${s.address().port}/${query}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}` }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
+        const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
+        s.close(() => resolve({ status: res.status, json: j, text: t }));
+      } catch (e) { s.close(() => reject(e)); }
+    });
+  });
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const OPEN = { open: true, start: '00:00', end: '24:00' };
+const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1,
+  hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } });
+
+(async () => {
+  // ═══ SETUP ═══
+  const xV = await seedPreP1('x_pizza');
+  await seedPreP1('la_musa');
+  await seedPreP1('synthetic_3', { dataFrom: 'x_pizza' });
+  assert.strictEqual((await bootstrapIdentityStamps(fs, 'x_pizza')).stamped, true);
+  // today's KDS manifest, published exactly as publish-menus.mjs does (extractManifest → set)
+  const { extractManifest } = await import('../menu-extract.mjs');
+  for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`menus/${rid}`).set(extractManifest(rid));
+  const menusBefore = (await rtdb.ref('menus').get()).val();
+  ok('fixtures: x_pizza certified, la_musa uncertified, synthetic_3 (a 3rd brand); /menus/{rid} published exactly as publish-menus.mjs does');
+
+  // ═══ §E.2 GENERATION ═══
+  const verifier = createCatalogVerifier({ db: fs });
+  const gx = await buildIdentityManifest({ db: fs, rid: 'x_pizza', verifier });
+  const gl = await buildIdentityManifest({ db: fs, rid: 'la_musa', verifier });
+  assert.ok(gx.ok && gl.ok);
+  const snapX = catalogSnapshot('x_pizza'), snapL = catalogSnapshot('la_musa');
+  assert.strictEqual(gx.node.versionId, xV);
+  assert.strictEqual(gx.node.rows.filter((r) => r.kind === 'dish').length, snapX.items.length, 'every dish');
+  assert.strictEqual(gx.node.rows.filter((r) => r.kind === 'extra').length, snapX.extras.length, 'AND every extra');
+  assert.strictEqual(gx.usableAsIdentity, true); assert.ok(gx.node.rows.every((r) => typeof r.cid === 'string' && r.cid), 'certified + confirmed → every row carries its cid');
+  assert.strictEqual(gl.usableAsIdentity, false); assert.ok(gl.node.rows.every((r) => r.cid === null), 'uncertified → cid null on every row');
+  const dishRow = gx.node.rows.find((r) => r.kind === 'dish');
+  const src = snapX.items.find((i) => i.key === dishRow.key);
+  assert.deepStrictEqual({ label: dishRow.label, category: dishRow.category }, { label: src.display.name, category: src.display.cat }, 'label + category from the LIVE version');
+  ok('generation from the LIVE version (one consistent read): dishes AND extras with label/category; cid only when usable-as-identity (x_pizza yes, la_musa null)');
+
+  // ═══ §E.3 VALIDATE-ALL-THEN-WRITE ═══
+  const listAll = makeFirestoreRegistryReader(fs);
+  const tampered = (await vrefOf('synthetic_3', (await getActivePointer(fs, 'synthetic_3')).version).collection('menu_items').get()).docs[0];
+  const keepName = tampered.data().display.name;
+  await tampered.ref.update({ 'display.name': 'edited in place' });             // synthetic_3 now fails its pinned hash
+  const r0 = await publishIdentityManifests({ db: fs, rtdb, listIds: listAll, verifier });
+  assert.strictEqual(r0.ok, false); assert.deepStrictEqual(r0.invalid.map((i) => i.rid), ['synthetic_3']);
+  assert.strictEqual((await rtdb.ref(MANIFEST_PATH).get()).val(), null, '🔴 one invalid restaurant → NOTHING written for ANY');
+  await tampered.ref.update({ 'display.name': keepName });
+  ok('validate-all-then-write: one restaurant failing its pinned content hash → nothing written for any restaurant');
+
+  // ═══ §E.3 CONDITIONAL PUBLISH vs a CONCURRENT PUBLISHER; idempotent repeat; normalized read-back ═══
+  const rival = { versionId: 'rival', seq: 0, rows: [{ kind: 'dish', key: 'R', label: 'Rival', category: 'x' }] };
+  const r1 = await publishIdentityManifests({ db: fs, rtdb, listIds: listAll, verifier, onBeforeWrite: async (rid) => { if (rid === 'la_musa') await rtdb.ref(`${MANIFEST_PATH}/la_musa`).set(rival); } });
+  const byRid = Object.fromEntries(r1.results.map((r) => [r.rid, r.outcome]));
+  assert.strictEqual(byRid.la_musa, 'conflict', 'a concurrent publisher between observe and write → our write aborts');
+  assert.deepStrictEqual((await rtdb.ref(`${MANIFEST_PATH}/la_musa`).get()).val(), rival, '🔴 the other publisher\'s write survives — no lost update');
+  assert.strictEqual(byRid.x_pizza, 'committed'); assert.strictEqual(byRid.synthetic_3, 'committed', 'a 3rd restaurant is enumerated and published with no code change');
+  await rtdb.ref(`${MANIFEST_PATH}/la_musa`).remove();
+  const r2 = await publishIdentityManifests({ db: fs, rtdb, listIds: listAll, verifier });
+  assert.strictEqual(r2.ok, true); assert.strictEqual(Object.fromEntries(r2.results.map((r) => [r.rid, r.outcome])).la_musa, 'committed');
+  const r3 = await publishIdentityManifests({ db: fs, rtdb, listIds: listAll, verifier });
+  assert.ok(r3.results.every((r) => r.outcome === 'idempotent'), 'a repeat run writes nothing');
+  const stored = (await rtdb.ref(`${MANIFEST_PATH}/la_musa`).get()).val();
+  assert.ok(stored.rows.every((r) => !('cid' in r)), 'read-back is compared AFTER RTDB normalisation (a null cid is absent once stored) — and still judged equal');
+  ok('conditional publish: a concurrent publisher\'s write survives (our write aborts — lost update impossible); a 3rd restaurant published with no code change; a repeat run is idempotent; read-back verified after RTDB normalisation');
+
+  // ═══ /menus/{rid} UNTOUCHED; today's KDS never reads menus_identity ═══
+  assert.deepStrictEqual((await rtdb.ref('menus').get()).val(), menusBefore, '🔴 /menus/{rid} byte-identical');
+  const kdsSrc = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'xpizza-kitchen', 'xpizza-delivery.js'), 'utf8')
+    + require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'xpizza-kitchen', 'index.html'), 'utf8');
+  assert.ok(!kdsSrc.includes(MANIFEST_PATH), 'today\'s KDS never references menus_identity');
+  assert.ok(/ref\(db, `menus\/\$\{rid\}`\)/.test(kdsSrc), 'premise — the KDS subscribes to /menus/{rid}');
+  ok('/menus/{rid} is byte-identical across every publication; today\'s KDS subscribes only to /menus/{rid} and never references menus_identity');
+
+  // ═══ §E.4 the READ-ONLY divergence report ═══
+  const ro = readOnlyRtdb(rtdb);
+  assert.throws(() => ro.ref('menus/x_pizza').set({}), /read-only/, 'the report\'s RTDB handle refuses writes');
+  const rep0 = await divergenceReport({ db: fs, rtdb: ro, listIds: listAll });
+  const rep0x = rep0.find((r) => r.rid === 'x_pizza');
+  assert.ok(['identical', 'diverged'].includes(rep0x.status), 'x_pizza compared');
+  assert.strictEqual(rep0.find((r) => r.rid === 'synthetic_3').status, 'proxy_unpublished', 'a restaurant with no /menus node is reported, not invented');
+  // force a proxy drift: one label and one missing row in the published proxy
+  const drift = menusBefore.x_pizza.map((r, i) => (i === 0 ? { ...r, label: 'STALE LABEL' } : r)).slice(0, -1);
+  await rtdb.ref('menus/x_pizza').set(drift);
+  const dataBefore = JSON.stringify((await rtdb.ref('/').get()).val());
+  const rep1 = (await divergenceReport({ db: fs, rtdb: ro, listIds: listAll })).find((r) => r.rid === 'x_pizza');
+  assert.strictEqual(rep1.status, 'diverged');
+  assert.ok(rep1.changed.some((c) => c.key === drift[0].key && c.proxy.label === 'STALE LABEL'), 'names the drifted label');
+  assert.ok(rep1.onlyLive.includes(menusBefore.x_pizza[menusBefore.x_pizza.length - 1].key), 'names the row missing from the proxy');
+  assert.strictEqual(JSON.stringify((await rtdb.ref('/').get()).val()), dataBefore, '🔴 the report wrote NOTHING');
+  await rtdb.ref('menus/x_pizza').set(menusBefore.x_pizza);
+  ok('divergence report (read-only handle that throws on any write): a forced proxy drift (stale label + missing row) is reported by key; the whole RTDB tree is byte-identical afterwards');
+
+  // ═══ §A RACES on the real RTDB: decided by the CAS ═══
+  {
+    const ORDER = { restaurant_id: 'x_pizza', total_cents: 1000, status: 'pending_payment' };
+    const LEG = 'a'.repeat(64);
+    // a CANONICAL record with a different fingerprint lands BETWEEN the advisory pre-read (order absent) and the CAS
+    let raced = false;
+    const racy = { ref: (p) => { const r = rtdb.ref(p); return { ...r, once: async (...a) => { const s = await r.once(...a); if (!raced && p === 'orders/race1') { raced = true; await rtdb.ref('orders/race1').set({ ...ORDER, payment_fingerprint: 'c'.repeat(64), fp_format: 'canonical', active_attempt_id: 'att_other' }); } return s; }, transaction: (...a) => r.transaction(...a), update: (...a) => r.update(...a) }; } };
+    const res = await hosted.acquireHostedAttempt(racy, 'race1', ORDER, LEG, Date.now(), [], () => 'att_mine', () => 'tok', () => ({ ok: true, fp: 'd'.repeat(64) }));
+    assert.ok(res.outcome === 'conflict', `the CAS (not the stale advisory read) decided: ${JSON.stringify(res)}`);
+    const after = (await rtdb.ref('orders/race1').get()).val();
+    assert.strictEqual(after.active_attempt_id, 'att_other'); assert.strictEqual(after.payment_fingerprint, 'c'.repeat(64), '🔴 the other-format record was not overwritten');
+    // a reservation created CONCURRENTLY in the other format, between our fp computation and the transaction
+    const rid = 'x_pizza', uid = 'u_race';
+    const red = computeRedemption({ redeem: { type: 'free_pizza_choice', item_id: 'Margherita' }, items: [{ name: 'Carnivora', qty: 1, extras: [] }], restaurantId: rid, tables: { restaurantId: rid, menu: Object.fromEntries(catalogSnapshot(rid).items.map((i) => [i.key, i.price])), extras: {} } });
+    await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 1000, reserved: 0 });
+    const canonRec = { state: 'reserved', cost: red.cost, fp: 'e'.repeat(64), fp_format: 'canonical', canonical: { v: 'c1' }, order_fingerprint: 'c1:zz', config_version: REDEMPTION_CONFIG_VERSION, created_at: 1, updated_at: 1, seq: 1 };
+    let injected = false;
+    const racyR = { ref: (p) => { const r = rtdb.ref(p); return { ...r, get: (...a) => r.get(...a), transaction: async (...a) => { if (!injected && p === `user_rewards/${uid}/${rid}`) { injected = true; await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/o_race`).set(canonRec); await rtdb.ref(`user_rewards/${uid}/${rid}/reserved`).set(red.cost); } return r.transaction(...a); } }; } };
+    const rr = await reserve.reserveRedemption(racyR, { uid, rid, orderId: 'o_race', cost: red.cost, canonical: red.canonical, orderFingerprint: LEG, configVersion: REDEMPTION_CONFIG_VERSION, now: 5,
+      canonicalBinding: () => ({ ok: true, fp: 'f'.repeat(64) }) });
+    assert.deepStrictEqual(rr, { ok: false, reason: 'reservation_conflict' }, 'the concurrently-created other-format reservation is judged IN the transaction → conflict');
+    const w = (await rtdb.ref(`user_rewards/${uid}/${rid}`).get()).val();
+    assert.strictEqual(w.reserved, red.cost, 'no second debit'); assert.strictEqual(w.reservations.o_race.fp_format, 'canonical', 'the record is untouched');
+  }
+  ok('races on the real RTDB: an other-format payment record landing between the advisory read and the CAS is decided by the CAS (no overwrite); a reservation created concurrently in the other format → reservation_conflict inside the transaction, no second debit');
+
+  // ═══ F — the REAL createOrder handler refuses a canonical retry it cannot verify ═══
+  {
+    for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`restaurants/${rid}/identity`).set(identityFor(rid));
+    const s = catalogSnapshot('x_pizza');
+    const items = [{ name: s.items[0].display.name, qty: 1, price: s.items[0].price, extras: [] }];
+    const body = { restaurant_id: 'x_pizza', order_id: 'ord_canon_1', customer_name: 'T', customer_phone: '99990001', items_text: '1x X', order_type: 'pickup', payment_method: 'cash', items };
+    const first = await post(app.createOrder, body);
+    assert.strictEqual(first.status, 200, `premise — a fresh legacy cash order is accepted (${first.text.slice(0, 120)})`);
+    const stored = (await rtdb.ref('orders/ord_canon_1').get()).val();
+    assert.strictEqual(stored.fp_format, undefined, 'the D4-b writer never tags');
+    const again = await post(app.createOrder, body);
+    assert.strictEqual(again.status, 200, 'a legacy idempotent retry → 200 (today)');
+    // the same order tagged canonical (as a D4-c writer would have left it): x_pizza's context is USABLE on this warm
+    // instance, so the canonical recompute runs — and a legacy fingerprint under a canonical tag can never equal it → 409 cart
+    await rtdb.ref('orders/ord_canon_1/fp_format').set('canonical');
+    const canonRetry = await post(app.createOrder, body);
+    assert.strictEqual(canonRetry.status, 409, `🔴 canonical tag → judged in the canonical format, never the legacy 200 (${canonRetry.text.slice(0, 160)})`);
+    assert.strictEqual(canonRetry.json.reason, 'cart');
+    // la_musa is UNCERTIFIED: its context is never usable-as-identity → the canonical recompute is UNVERIFIABLE → refused
+    const ls = catalogSnapshot('la_musa');
+    const lbody = { restaurant_id: 'la_musa', order_id: 'ord_canon_2', customer_name: 'T', customer_phone: '99990002', items_text: '1x Y', order_type: 'pickup', payment_method: 'cash',
+      items: [{ id: ls.items[0].key, name: ls.items[0].display.name, cat: ls.items[0].display.cat, qty: 1, price: ls.items[0].price, extras: [] }] };
+    assert.strictEqual((await post(app.createOrder, lbody)).status, 200, 'premise — a fresh la_musa cash order');
+    assert.strictEqual((await post(app.createOrder, lbody)).status, 200, 'its legacy retry → 200');
+    await rtdb.ref('orders/ord_canon_2/fp_format').set('canonical');
+    const unv = await post(app.createOrder, lbody);
+    assert.strictEqual(unv.status, 409, `🔴 canonical + unverifiable → REFUSED, never the fail-open 200 (${unv.text.slice(0, 160)})`);
+    assert.strictEqual(unv.json.reason, 'cart_unverifiable');
+    await rtdb.ref('orders/ord_canon_1/fp_format').set('bogus');
+    const bogus = await post(app.createOrder, body);
+    assert.strictEqual(bogus.status, 409); assert.strictEqual(bogus.json.reason, 'binding_format_invalid');
+  }
+  ok('the REAL createOrder handler: legacy retries → 200 as today; the same order tagged canonical → judged canonically (x_pizza usable → 409 cart; la_musa unusable → 409 cart_unverifiable, never the fail-open); a malformed tag → 409 binding_format_invalid');
+
+  // ═══ F — the REAL paymentStatus handler: a canonical reward renders its LABEL, never an id ═══
+  {
+    const s = catalogSnapshot('x_pizza');
+    const marg = s.items.find((i) => i.key === 'Margherita');
+    const ver = (await getActivePointer(fs, 'x_pizza')).version;
+    const stamped = (await vrefOf('x_pizza', ver).collection('menu_items').get()).docs.find((d) => d.data().key === 'Margherita').data().display.identity_id;
+    assert.ok(stamped, 'premise — the certified version stamps Margherita');
+    await rtdb.ref('payment_attempts/att_ps').set({ poll_token: 'ptok', hosted_state: 'paid' });
+    const order = (tag) => ({ restaurant_id: 'x_pizza', status: 'new', payment_status: 'confirmed', total_cents: 1000, active_attempt_id: 'att_ps', ...(tag ? { fp_format: tag } : {}),
+      redemption: { model: 'add_free', discount_cents: 0, free_item_key: tag ? CB.ck('dish', stamped) : 'Margherita' } });
+    const status = async () => (await post(app.paymentStatus, null, 'GET', '?order_id=ord_ps&t=ptok')).json;
+    await rtdb.ref('orders/ord_ps').set(order(null));
+    const legacy = await status();
+    const legacyItem = JSON.stringify(legacy).includes('"free_item":"Margherita"');
+    assert.ok(legacyItem, `legacy: the stored key is shown exactly as today (${JSON.stringify(legacy).slice(0, 200)})`);
+    await rtdb.ref('orders/ord_ps').set(order('canonical'));
+    let canon = await status();
+    for (let i = 0; i < 40 && !JSON.stringify(canon).includes(`"free_item":"${marg.display.name}"`); i += 1) { await wait(100); canon = await status(); }
+    const txt = JSON.stringify(canon);
+    assert.ok(txt.includes(`"free_item":"${marg.display.name}"`), `canonical: the CONTEXT LABEL is rendered (${txt.slice(0, 220)})`);
+    assert.ok(!txt.includes('["c1"') && !txt.includes(stamped), '🔴 no ck string and no canonical id ever reaches the response');
+    await rtdb.ref('orders/ord_ps/redemption/free_item_key').set(CB.ck('dish', 'NO-SUCH-ID'));
+    const unknown = JSON.stringify(await status());
+    assert.ok(unknown.includes('"free_item":null') && !unknown.includes('NO-SUCH-ID'), 'an unknown identity renders null');
+  }
+  ok('the REAL paymentStatus handler: legacy → the stored key as today; canonical → the current context\'s LABEL; an unknown identity → null; no ck string or canonical id in any response');
+
+  FINISHED = true;
+  console.log(`d4b-readers(emulator): OK (${n})`);
+  process.exit(0);
+})().catch((e) => { console.error('d4b-readers(emulator) FAILED:', e); process.exit(1); });
