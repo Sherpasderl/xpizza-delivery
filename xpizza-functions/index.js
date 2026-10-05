@@ -1406,22 +1406,35 @@ chargeOnlineApp.all('*', async (req, res) => {
   // computation below) purely to classify already_paid/conflict — the CAS remains the source of truth.
   const nowTs = Date.now();
   let cartBlocked = [];
-  let orderBindingFormat = CB.FORMAT_LEGACY;   // 1D D4-b §A.6: the format of the order record this request binds to
+  /* 1D D4-b §A.6 (codex r2 N1; advisor B1-c): the format of the order record this request binds to is ALWAYS taken from
+     an order SNAPSHOT, never defaulted. classify's snapshot decides it when classify succeeds; when classify THROWS it is
+     `null` (unknown) until the authoritative order probe below decides it. */
+  let orderBindingFormat = null;
+  let classifyFailed = false;
+  let canonicalFpG = null;   // the canonical recompute of THIS request — one memoized thunk shared by classify and every later check
   {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
     const totalCentsG = effBreakdown.total_cents;   // discounted when redeemed → the read-only classify fingerprint matches the authoritative one
     const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
     let clsG;
+    // 1D D4-b: the canonical recompute is a LAZY, memoized thunk — evaluated only for a canonical-tagged order.
+    canonicalFpG = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
+      items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
+      schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
     try {
-      // 1D D4-b: the canonical recompute is a LAZY thunk, evaluated only if the pre-read record is tagged canonical.
-      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, () => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
-        items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
-        schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
-      if (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) orderBindingFormat = CB.FORMAT_CANONICAL;
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG);
+      orderBindingFormat = (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) ? CB.FORMAT_CANONICAL : CB.FORMAT_LEGACY;   // classify's snapshot
     } catch (e) {
       console.error(`chargeOnlineOrder: availability classify failed for ${orderId} (failing open, reading availability + deferring to the CAS)`, e && e.message);
       clsG = null;   // unknown → treat as non-terminal → read availability; acquireHostedAttempt stays authoritative
+      classifyFailed = true;   // B1-c(1): the order probe below decides the binding format
+    }
+    /* B1-c(2): on the NORMAL path a canonical order whose canonical fingerprint cannot be computed is refused HERE —
+       before the dedup stamp and the rate-limit writes — so the refusal writes NOTHING (the 86 placement precedent). */
+    if (orderBindingFormat === CB.FORMAT_CANONICAL) {
+      const c = canonicalFpG();
+      if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
     }
     // Skip the read ONLY for a MONOTONIC-terminal order — one that provably can't drift into a fresh-URL
     // path within this request. in_progress / reuse are DELIBERATELY excluded (they can rotate → fresh),
@@ -1610,6 +1623,19 @@ chargeOnlineApp.all('*', async (req, res) => {
     console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);
     return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different restaurant', order_id: orderId });
   }
+  /* 1D D4-b B1-c(1)/(3) — the DEGRADED path: classify threw, so THIS snapshot decides the order's binding format. A legacy
+     (or absent) order continues exactly as today's fail-open. A malformed tag refuses. A canonical order is checked here,
+     before any reserve: an uncomputable canonical fingerprint refuses (the earlier bookkeeping writes already happened —
+     today's behaviour for any post-probe refusal — but never a reservation, wallet or order write). */
+  if (classifyFailed) {
+    const f = CB.formatOf(probeOrder, 'fp_format');
+    if (!f.ok) return res.status(409).json({ error: 'Order conflict', reason: 'binding_format_invalid', order_id: orderId });
+    orderBindingFormat = f.format;
+    if (orderBindingFormat === CB.FORMAT_CANONICAL) {
+      const c = canonicalFpG();
+      if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
+    }
+  }
   if (!probeOrder) {
     // Fresh pending-order creation → gate + zone + immutable charge-time snapshot BEFORE persistence.
     let id;
@@ -1664,6 +1690,9 @@ chargeOnlineApp.all('*', async (req, res) => {
        request — ALWAYS. A legacy order passes the bare `fingerprint` (today's bytes); a canonical order passes
        "c1:<canonical fp>", and an uncomputable canonical fp REFUSES here, before any reserve or write (B1-b). */
     let selectedOrder = fingerprint;
+    if (orderBindingFormat !== CB.FORMAT_LEGACY && orderBindingFormat !== CB.FORMAT_CANONICAL) {
+      return res.status(500).json({ error: 'internal', detail: 'order binding format undetermined', order_id: orderId });   // unreachable: always set from a snapshot above
+    }
     if (orderBindingFormat === CB.FORMAT_CANONICAL) {
       const c = canonicalChargeFp();
       if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });

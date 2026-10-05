@@ -29,6 +29,13 @@ require.cache[ph] = { id: ph, filename: ph, loaded: true, children: [], paths: [
 const fa = require.resolve('firebase-admin/auth');
 const realAuth = require('firebase-admin/auth');
 require.cache[fa] = { id: fa, filename: fa, loaded: true, children: [], paths: [], exports: { ...realAuth, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) } };
+// B1-c(4): a FAILURE-INJECTION seam on the charge handler's advisory classify — the REAL classifyHostedAttempt runs
+// unless the test raises the flag, in which case it throws exactly as an RTDB read failure would.
+const hc = require.resolve('../pixelpay-hosted-charge');
+const realHC = require('../pixelpay-hosted-charge');
+let FAIL_CLASSIFY = false;
+require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
+  classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
@@ -290,11 +297,27 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
     // B1-b FIRST, while la_musa is UNCERTIFIED (never usable): a canonical order → 409 cart_unverifiable BEFORE reserve, nothing written
     await rtdb.ref('user_rewards/u_lm/la_musa').set({ balance: 100000, reserved: 0 });
     await rtdb.ref('orders/b1_lm_unv').set(canonOrder('la_musa'));
-    const unv = await charge('la_musa', 'b1_lm_unv', 'u_lm');
+    const bookkeeping = async () => JSON.stringify({ c: (await rtdb.ref('recent_order_content').get()).val(), r: (await rtdb.ref('rate_limits').get()).val() });
+    await rtdb.ref('rate_limits').remove();
+    const before0 = await bookkeeping();
+    const unv = await post(app.chargeOnlineOrder, bodyFor('la_musa', 'b1_lm_unv', '99887001'), 'POST', '', { 'x-firebase-id-token': 'u_lm' });
+    assert.strictEqual(await bookkeeping(), before0, '🔴 B1-c(2): the NORMAL-path refusal writes NOTHING — no dedup stamp, no rate-limit token');
     assert.strictEqual(unv.status, 409, `B1-b: ${unv.text.slice(0, 160)}`); assert.strictEqual(unv.json.reason, 'cart_unverifiable');
     assert.strictEqual(await resv('u_lm', 'la_musa', 'b1_lm_unv'), null, '🔴 B1-b: no reservation written');
     assert.strictEqual((await wallet('u_lm', 'la_musa')).reserved, 0, 'no debit');
     assert.strictEqual((await rtdb.ref('orders/b1_lm_unv').get()).val().payment_fingerprint, undefined, 'no fingerprint written');
+    // the DEGRADED path (classify throws): the probe decides the format; a canonical order is refused before reserve.
+    // The earlier bookkeeping writes happened (today's behaviour for any post-probe refusal) — never a reservation/wallet/order write.
+    await rtdb.ref('rate_limits').remove();
+    const beforeD = await bookkeeping();
+    FAIL_CLASSIFY = true;
+    const unvD = await post(app.chargeOnlineOrder, bodyFor('la_musa', 'b1_lm_unv', '99887002'), 'POST', '', { 'x-firebase-id-token': 'u_lm' });
+    FAIL_CLASSIFY = false;
+    assert.strictEqual(unvD.status, 409, `B1-c(3) degraded: ${unvD.text.slice(0, 160)}`); assert.strictEqual(unvD.json.reason, 'cart_unverifiable');
+    assert.notStrictEqual(await bookkeeping(), beforeD, 'premise — the degraded path did reach the bookkeeping writes (today\'s order)');
+    assert.strictEqual(await resv('u_lm', 'la_musa', 'b1_lm_unv'), null, 'no reservation');
+    assert.strictEqual((await wallet('u_lm', 'la_musa')).reserved, 0, 'no debit');
+    assert.deepStrictEqual((await rtdb.ref('orders/b1_lm_unv').get()).val(), canonOrder('la_musa'), 'the order is untouched');
     // B1-b with a LEGACY reservation for the SAME order already present (the order was charged legacy, then left as a D4-c
     // writer would leave it: tagged canonical, no fingerprint, no attempt). The refusal must come BEFORE the reservation —
     // a fallback to the legacy fp would silently REUSE that legacy hold.
@@ -347,14 +370,56 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
       assert.strictEqual(mA.status, 409, `🔴 ${rid}: canonical order vs legacy reservation must NOT be reused (${mA.text.slice(0, 160)})`);
       assert.strictEqual(mA.json.reason, 'reservation_conflict');
       assert.deepStrictEqual(await resv(uid, rid, `b1_${rid}_mixA`), heldA, 'the legacy hold is untouched');
-      // MIXED (b): a LEGACY order against an existing CANONICAL reservation → conflict
-      await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/b1_${rid}_mixB`).set(cr);
+      // MIXED (b) — codex r2 N3, on the SAME order id: the order is charged CANONICAL through the handler (its own canonical
+      // hold), then left as a legacy order would be (tag, fingerprint and attempt removed). A legacy request must NOT reuse it.
+      await rtdb.ref(`orders/b1_${rid}_mixB`).set(canonOrder(rid));
+      assert.strictEqual((await chargeCanonical(rid, `b1_${rid}_mixB`, uid)).status, 200, `premise — ${rid}: a canonical charge of the SAME order id`);
+      const heldB = await resv(uid, rid, `b1_${rid}_mixB`);
+      assert.strictEqual(heldB.fp_format, 'canonical', 'premise — its hold is canonical');
+      await rtdb.ref(`orders/b1_${rid}_mixB`).update({ fp_format: null, payment_fingerprint: null, active_attempt_id: null });
+      const walletB = await wallet(uid, rid);
       const mB = await charge(rid, `b1_${rid}_mixB`, uid);
       assert.strictEqual(mB.status, 409, `🔴 ${rid}: legacy order vs canonical reservation must NOT be reused (${mB.text.slice(0, 160)})`);
       assert.strictEqual(mB.json.reason, 'reservation_conflict');
+      assert.deepStrictEqual(await resv(uid, rid, `b1_${rid}_mixB`), heldB, 'the canonical hold is untouched');
+      assert.deepStrictEqual(await wallet(uid, rid), walletB, 'no wallet change');
+
+      // ── B1-c(4): classify FAILURE × {no hold, legacy hold on the SAME order id} × {legacy order, canonical order} ──
+      const failing = async (oid, canonical) => { FAIL_CLASSIFY = true; try { return canonical ? await chargeCanonical(rid, oid, uid) : await charge(rid, oid, uid); } finally { FAIL_CLASSIFY = false; } };
+      // (i) legacy order, no hold → today's fail-open: 200, an UNTAGGED hold, one debit, bookkeeping written
+      const w0 = await wallet(uid, rid);
+      const i = await failing(`b1c_${rid}_leg_nohold`, false);
+      assert.strictEqual(i.status, 200, `${rid} (i): ${i.text.slice(0, 160)}`);
+      const hi = await resv(uid, rid, `b1c_${rid}_leg_nohold`);
+      assert.strictEqual(hi.fp_format, undefined, 'untagged');
+      assert.strictEqual((await wallet(uid, rid)).reserved, w0.reserved + hi.cost, 'one debit');
+      assert.ok((await rtdb.ref('recent_order_content').get()).val(), 'the dedup stamp was written (today)');
+      // (ii) legacy order, legacy hold on the same id → reused, no second debit
+      const w1 = await wallet(uid, rid);
+      assert.strictEqual((await failing(`b1c_${rid}_leg_nohold`, false)).status, 200, `${rid} (ii)`);
+      assert.deepStrictEqual(await wallet(uid, rid), w1, 'no second debit');
+      // (iii) canonical order, no hold → the PROBE decides canonical: a CANONICAL hold
+      await rtdb.ref(`orders/b1c_${rid}_can_nohold`).set(canonOrder(rid));
+      const iii = await failing(`b1c_${rid}_can_nohold`, true);
+      assert.strictEqual(iii.status, 200, `${rid} (iii): ${iii.text.slice(0, 160)}`);
+      assert.strictEqual((await resv(uid, rid, `b1c_${rid}_can_nohold`)).fp_format, 'canonical', '🔴 B1-c(1): classify failed, yet the canonical order got a CANONICAL hold (the probe decided)');
+      // (iv) canonical order, a LEGACY hold on the same id → conflict, hold and wallet untouched
+      assert.strictEqual((await charge(rid, `b1c_${rid}_can_leghold`, uid)).status, 200, 'premise — a legacy hold for this order id');
+      const hiv = await resv(uid, rid, `b1c_${rid}_can_leghold`);
+      await rtdb.ref(`orders/b1c_${rid}_can_leghold`).update({ fp_format: 'canonical', payment_fingerprint: null, active_attempt_id: null });
+      const w4 = await wallet(uid, rid);
+      const iv = await failing(`b1c_${rid}_can_leghold`, true);
+      assert.strictEqual(iv.status, 409, `🔴 ${rid} (iv): classify failed + canonical order must NOT reuse a legacy hold (${iv.text.slice(0, 160)})`);
+      assert.strictEqual(iv.json.reason, 'reservation_conflict');
+      assert.deepStrictEqual(await resv(uid, rid, `b1c_${rid}_can_leghold`), hiv); assert.deepStrictEqual(await wallet(uid, rid), w4);
+      // a malformed tag under classify failure → refused by the probe
+      await rtdb.ref(`orders/b1c_${rid}_bad`).set({ ...canonOrder(rid), fp_format: 'bogus' });
+      const bad = await failing(`b1c_${rid}_bad`, false);
+      assert.strictEqual(bad.status, 409); assert.strictEqual(bad.json.reason, 'binding_format_invalid');
+      assert.strictEqual(await resv(uid, rid, `b1c_${rid}_bad`), null);
     }
   }
-  ok('B1 through the REAL charge handler (both restaurants): legacy/legacy → untagged record, retry reused; a canonical order\'s FRESH reservation is a CANONICAL record (one shape, bound to "c1:<the order\'s installed fp>"), retry reused, no second debit; canonical order vs legacy reservation and legacy order vs canonical reservation → 409 reservation_conflict; B1-b: an uncomputable canonical fp → 409 cart_unverifiable BEFORE reserve, nothing written');
+  ok('B1 through the REAL charge handler (both restaurants): legacy/legacy → untagged record, retry reused; a canonical order\'s FRESH reservation is a CANONICAL record (one shape, bound to "c1:<the order\'s installed fp>"), retry reused, no second debit; canonical order vs legacy reservation and legacy order vs canonical reservation → 409 reservation_conflict; B1-b: an uncomputable canonical fp → 409 cart_unverifiable BEFORE reserve, nothing written. B1-c: the normal-path refusal writes NO bookkeeping; with classify FAILING the order probe decides the format — legacy no-hold/legacy-hold as today, canonical no-hold → canonical hold, canonical vs legacy hold → conflict, malformed → binding_format_invalid, uncomputable → refused before reserve; mixed (b) rebuilt on the SAME order id');
 
   FINISHED = true;
   console.log(`d4b-readers(emulator): OK (${n})`);
