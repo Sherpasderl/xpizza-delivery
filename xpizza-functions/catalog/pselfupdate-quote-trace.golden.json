@@ -1,0 +1,64 @@
+{
+ "x_pizza": {
+  "a_quote_order": [
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/quote_ip/3e48ef9d22e096da6838540fb8469998"
+   }
+  ],
+  "b_quote_redemption": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "user_rewards/<uid>/x_pizza"
+   }
+  ]
+ },
+ "la_musa": {
+  "a_quote_order": [
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/quote_ip/3e48ef9d22e096da6838540fb8469998"
+   }
+  ],
+  "b_quote_redemption": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "user_rewards/<uid>/la_musa"
+   }
+  ]
+ }
+}

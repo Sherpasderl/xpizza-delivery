@@ -64,6 +64,7 @@
     "test:client-floor-http": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-floor-http.emulator.test.js\"",
     "test:client-floor-cli": "node tools/emulator-run.js --only firestore,database --project xpizza-delivery \"node test/client-floor-cli.emulator.test.js\"",
     "test:kitchen-floor-ops": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/kitchen-floor-ops.emulator.test.js\"",
+    "test:pselfupdate-quote-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pselfupdate-quote-trace.emulator.test.js\"",
     "test:client-floor-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/client-floor-rules.emulator.test.mjs\"",
     "test:quality-runner": "node tools/emulator-run.js --only functions,database --project demo-xpizza \"node test/ready-time-quality-run.emulator.test.js\"",
     "test:predictor": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/ready-time-predict.emulator.test.js\"",
