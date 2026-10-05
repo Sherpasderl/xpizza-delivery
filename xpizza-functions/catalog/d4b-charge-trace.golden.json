@@ -1,0 +1,684 @@
+{
+ "x_pizza": {
+  "a_normal_fresh": [
+   {
+    "db": "fs",
+    "op": "runTransaction",
+    "path": ""
+   },
+   {
+    "db": "fs",
+    "op": "tx.getAll",
+    "path": "restaurants/x_pizza/identity/dish/ids/<identity_id>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/7dcb0a6a71b1947f75b31b97c469c440"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/7dcb0a6a71b1947f75b31b97c469c440"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_created_at",
+     "hosted_expires_at",
+     "hosted_order_id",
+     "hosted_state",
+     "order_id",
+     "poll_token",
+     "total_cents"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_checkout_url",
+     "hosted_state",
+     "updated_at"
+    ]
+   }
+  ],
+  "a_normal_retry": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "payment_attempts/<active_attempt_id>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/7dcb0a6a71b1947f75b31b97c469c440"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/7dcb0a6a71b1947f75b31b97c469c440"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "payment_attempts/<active_attempt_id>"
+   }
+  ],
+  "b_classify_failure_fresh": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/2fb5bac1b74e9fb2d3aeeb5dc6f0805d"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/2fb5bac1b74e9fb2d3aeeb5dc6f0805d"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_created_at",
+     "hosted_expires_at",
+     "hosted_order_id",
+     "hosted_state",
+     "order_id",
+     "poll_token",
+     "total_cents"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_checkout_url",
+     "hosted_state",
+     "updated_at"
+    ]
+   }
+  ]
+ },
+ "la_musa": {
+  "a_normal_fresh": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/2818938450be827943069ec45cebd968"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/2818938450be827943069ec45cebd968"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_created_at",
+     "hosted_expires_at",
+     "hosted_order_id",
+     "hosted_state",
+     "order_id",
+     "poll_token",
+     "total_cents"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_checkout_url",
+     "hosted_state",
+     "updated_at"
+    ]
+   }
+  ],
+  "a_normal_retry": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "payment_attempts/<active_attempt_id>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/2818938450be827943069ec45cebd968"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/2818938450be827943069ec45cebd968"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "payment_attempts/<active_attempt_id>"
+   }
+  ],
+  "b_classify_failure_fresh": [
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/redemption_enabled"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/7d079c7abc50aca1beb6241989ee9289"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/7d079c7abc50aca1beb6241989ee9289"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_created_at",
+     "hosted_expires_at",
+     "hosted_order_id",
+     "hosted_state",
+     "order_id",
+     "poll_token",
+     "total_cents"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "user_rewards/<uid>/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "payment_attempts/<active_attempt_id>",
+    "keys": [
+     "hosted_checkout_url",
+     "hosted_state",
+     "updated_at"
+    ]
+   }
+  ]
+ }
+}
