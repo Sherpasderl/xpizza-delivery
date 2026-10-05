@@ -58,7 +58,13 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - 
 const ruleBody = (sel) => { const m = css.match(new RegExp(`${sel.replace(/\./g, '\\.')}\\{([^}]*)\\}`)); assert.ok(m, `rule ${sel}`); return m[1]; };
 const varOf = (body, prop) => { const m = body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(--([a-z0-9-]+)\\)`)); assert.ok(m, `${prop} is a token`); return m[1]; };
 
-for (const [sel, label] of [['.pdelta.dn', 'the price-decrease %'], ['.err', 'the login error']]) {
+const AA_PAIRS = [
+  ['.pdelta.dn', 'the price-decrease %'], ['.err', 'the login error'],
+  ['.tag.new', 'the NEW tag'], ['.dchip.add', 'the added diff chip'], ['.opill.ok', 'the paid order pill'], ['.bchip.add', 'the added bundle chip'],
+  ['.del:hover', 'the delete hover'], ['.dchip.rem', 'the removed diff chip'], ['.model:hover', 'the modifier delete hover'],
+  ['.opill.refund', 'the refund order pill'], ['.premove:hover', 'the remove hover'], ['.bchip.rem', 'the removed bundle chip'],
+];
+for (const [sel, label] of AA_PAIRS) {
   test(`AA: ${label} (${sel}) text clears 4.5:1 on its soft background in the light theme`, () => {
     const body = ruleBody(sel);
     const fg = token(varOf(body, 'color'));
@@ -67,6 +73,21 @@ for (const [sel, label] of [['.pdelta.dn', 'the price-decrease %'], ['.err', 'th
     assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
   });
 }
+// SWEEP — no rule may put the FILL green/red (--green / --red, < 4.5:1 on white-ish soft fills in light mode) as TEXT on
+// a -soft background. Text on a soft fill uses --green-text / --red-text. Catches a future rule re-introducing the defect.
+test('SWEEP: no rule sets text color var(--green) or var(--red) on a -soft background', () => {
+  const offenders = [];
+  let rules = 0;
+  for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const c = body.match(/(?:^|;)\s*color\s*:\s*var\(--(green|red)\)/);
+    const b = body.match(/(?:^|;)\s*background(?:-color)?\s*:\s*var\(--([a-z0-9-]+-soft)\)/);
+    if (b) rules += 1;
+    if (c && b) offenders.push(`${sel.trim()} {color:var(--${c[1]}); background:var(--${b[1]})}`);
+  }
+  assert.ok(rules > 10, `non-vacuity: the sweep saw the -soft background rules (${rules})`);
+  assert.deepEqual(offenders, [], `🔴 text-on-soft must use --green-text / --red-text:\n  ${offenders.join('\n  ')}`);
+});
+
 test('the dark theme keeps its green/red text values (dark unchanged)', () => {
   for (const blk of [css.match(/:root\[data-theme="dark"\]\s*\{([^}]*)\}/)[1], css.match(/:root:not\(\[data-theme="light"\]\)\s*\{([^}]*)\}/)[1]]) {
     assert.match(blk, /--green-text:#3FD98A;/); assert.match(blk, /--red-text:#F0685A;/);
