@@ -1,0 +1,115 @@
+{
+  "_provenance": {
+    "captured_at_commit": "717f97e911774aa03fa285b54ee5af576067ba1a",
+    "readers_byte_identical_to_base": [
+      "xpizza-functions/availability-gate.js",
+      "xpizza-functions/avail-key.js",
+      "xpizza-orders/index.html",
+      "xpizza-orders/avail-key.js",
+      "la-musa-orders/index.html",
+      "la-musa-orders/avail-key.js",
+      "xpizza-kitchen/index.html",
+      "xpizza-kitchen/avail-key.js",
+      "form-harness.mjs"
+    ],
+    "captured_by": "d4b-capture-availability-goldens.mjs",
+    "captured_on": "2026-10-05"
+  },
+  "decisions": {
+    "server": {
+      "x_pizza.absent": [],
+      "x_pizza.true_": [],
+      "x_pizza.false_": [
+        "Carnivora"
+      ],
+      "x_pizza.false_no_ts": [
+        "Carnivora"
+      ],
+      "x_pizza.true_no_ts": [],
+      "x_pizza.null_": [],
+      "x_pizza.number_": [],
+      "x_pizza.string_": [],
+      "x_pizza.array_": [],
+      "x_pizza.string_false": [],
+      "x_pizza.zero": [],
+      "x_pizza.empty_obj": [],
+      "x_pizza.node_null": [],
+      "x_pizza.node_string": [],
+      "x_pizza.node_array": [],
+      "x_pizza.read_failure": [],
+      "la_musa.absent": [],
+      "la_musa.true_": [],
+      "la_musa.false_": [
+        "Wonton"
+      ],
+      "la_musa.false_no_ts": [
+        "Wonton"
+      ],
+      "la_musa.true_no_ts": [],
+      "la_musa.null_": [],
+      "la_musa.number_": [],
+      "la_musa.string_": [],
+      "la_musa.array_": [],
+      "la_musa.string_false": [],
+      "la_musa.zero": [],
+      "la_musa.empty_obj": [],
+      "la_musa.node_null": [],
+      "la_musa.node_string": [],
+      "la_musa.node_array": [],
+      "la_musa.read_failure": []
+    },
+    "x_pizza_form": {
+      "absent": false,
+      "true_": false,
+      "false_": true,
+      "false_no_ts": true,
+      "true_no_ts": false,
+      "null_": false,
+      "number_": false,
+      "string_": false,
+      "array_": false,
+      "string_false": false,
+      "zero": false,
+      "empty_obj": false,
+      "history.old_false_new_true": true,
+      "history.old_true_new_false": true,
+      "history.old_false_new_absent": true,
+      "history.old_absent_new_false": true,
+      "history.both_true": false,
+      "history.both_false": true,
+      "history.old_false_new_malformed": true,
+      "read_failure_after_false": false,
+      "read_failure_cold": false
+    },
+    "la_musa_form": {
+      "absent": false,
+      "true_": false,
+      "false_": true,
+      "false_no_ts": true,
+      "true_no_ts": false,
+      "null_": false,
+      "number_": false,
+      "string_": false,
+      "array_": false,
+      "string_false": false,
+      "zero": false,
+      "empty_obj": false,
+      "read_failure_after_false": false,
+      "read_failure_cold": false
+    },
+    "kds": {
+      "absent": false,
+      "true_": false,
+      "false_": true,
+      "false_no_ts": true,
+      "true_no_ts": false,
+      "null_": false,
+      "number_": false,
+      "string_": false,
+      "array_": false,
+      "string_false": false,
+      "zero": false,
+      "empty_obj": false
+    }
+  }
+}
