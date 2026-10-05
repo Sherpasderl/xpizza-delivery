@@ -7,9 +7,9 @@
 // customer shard holds thousands of hmac → [dates] entries; a daily doc holds per-customer and per-item
 // maps). Stats documents are only ever read BY ID, so none of these fields needs an index.
 //
-// THIS LIST IS THE SOURCE; firestore.indexes.json `fieldOverrides` MUST EQUAL IT (stats-guard asserts
-// the two are identical). Deploying it — `firebase deploy --only firestore:indexes --project
-// xpizza-delivery` — is an OWNER STEP THAT MUST PRECEDE THE BACKFILL. The size preflight counts index
+// THIS LIST IS THE SOURCE; every entry MUST be present in firestore.indexes.json `fieldOverrides`
+// (stats-guard asserts it). Deploying it — ONLY via `npm run deploy:indexes` (tools/deploy-indexes.js:
+// non-interactive, never --force) — is an OWNER STEP THAT MUST PRECEDE THE BACKFILL. The size preflight counts index
 // entries UNDER these exemptions, and ALSO reports the count under default indexing, so an undeployed
 // exemption shows up as a refused commit (atomic, nothing partial) rather than as a silent certification.
 // ---------------------------------------------------------------------------

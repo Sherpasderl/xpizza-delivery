@@ -10635,5 +10635,77 @@
       "node",
       "tools/firestore-indexes-report.test.js"
     ]
+  },
+  {
+    "id": "s1-56",
+    "slice": "stats",
+    "label": "🔴 r4: the behavioural probe ignores deletions by a non-interactive deploy",
+    "file": "tools/firebase-cli-nodelete.js",
+    "from": "  if (safe.deleteIndex || safe.deleteField) fails.push(",
+    "to": "  if (false) fails.push(",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-57",
+    "slice": "stats",
+    "label": "🔴 r4: the probe ignores confirm() returning true",
+    "file": "tools/firebase-cli-nodelete.js",
+    "from": "  if (c !== false) fails.push(",
+    "to": "  if (false) fails.push(",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-58",
+    "slice": "stats",
+    "label": "r4: the source check no longer verifies confirm() RETURNS guard()'s value",
+    "file": "tools/firebase-cli-nodelete.js",
+    "from": "  else if (!confirmBody.includes(",
+    "to": "  else if (false && !confirmBody.includes(",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-59",
+    "slice": "stats",
+    "label": "🔴 r4: the wrapper deploys despite a failed behavioural probe",
+    "file": "tools/deploy-indexes.js",
+    "from": "  r.fails = [...b.fails, ...r.fails];",
+    "to": "  r.fails = [...r.fails];",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-60",
+    "slice": "stats",
+    "label": "r4: stats-indexing.js instructs a raw index deploy again (bypasses the wrapper)",
+    "file": "stats/stats-indexing.js",
+    "from": "ONLY via `npm run deploy:indexes` (tools/deploy-indexes.js:",
+    "to": "via `firebase deploy --only firestore:indexes --project xpizza-delivery` (tools/deploy-indexes.js:",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-61",
+    "slice": "stats",
+    "label": "r4: the phase-1a plan offers a bare `firebase deploy --only firestore` again",
+    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
+    "from": "so `firebase deploy --only firestore:rules` re-runs",
+    "to": "so `firebase deploy --only firestore` re-runs",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
   }
 ]

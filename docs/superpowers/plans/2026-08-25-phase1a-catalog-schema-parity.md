@@ -434,7 +434,7 @@ Ensure `firebase.json` has `"firestore": { "rules": "firestore.rules" }` (from T
 ```
  && node catalog/catalog-transform.test.js && node catalog/catalog.test.js && node catalog/seed-catalog-core.test.js
 ```
-- [ ] **Step 2:** Confirm the emulator tests are BOTH bound into `firestore.predeploy` (Task 5) — `test:catalog-rules` AND `test:catalog-parity` — so `firebase deploy --only firestore` re-runs the rules + the money proof before shipping. (They stay separate `test:*` scripts, matching the existing `--only database` emulator scripts which are also not in the plain `npm test`.)
+- [ ] **Step 2:** Confirm the emulator tests are BOTH bound into `firestore.predeploy` (Task 5) — `test:catalog-rules` AND `test:catalog-parity` — so `firebase deploy --only firestore:rules` re-runs the rules + the money proof before shipping. (Scoped to `firestore:rules` on purpose: a bare `firestore` target also deploys `firestore.indexes.json`, and index deploys go ONLY through `npm run deploy:indexes` — non-interactive, never `--force` — see xpizza-functions/tools/deploy-indexes.js.) (They stay separate `test:*` scripts, matching the existing `--only database` emulator scripts which are also not in the plain `npm test`.)
 - [ ] **Step 3: Run** `npm test` → the three new pure tests run + pass with the existing suite. Commit — `git commit -m "test(catalog): wire pure catalog tests into npm test; bind emulator proof into firestore.predeploy (no-CI gate)"`
 
 ---

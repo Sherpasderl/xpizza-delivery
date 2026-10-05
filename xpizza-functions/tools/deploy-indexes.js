@@ -19,15 +19,18 @@ const path = require('path');
 
 const buildArgs = (projectId) => ['deploy', '--only', 'firestore:indexes', '--non-interactive', '--project', projectId];
 
-function main(argv = process.argv.slice(2), { spawn = spawnSync, check } = {}) {
+async function main(argv = process.argv.slice(2), { spawn = spawnSync, check, probe } = {}) {
   const { requireProject } = require('./require-project');
   const projectId = requireProject({ requireFlag: true });   // exit 2 on a missing / wrong project
   if (argv.some((a) => a === '--force' || a.startsWith('--force='))) {
     console.error('🔴 REFUSED — --force deletes remote indexes/overrides missing from the file. This wrapper never passes it.');
     return 1;
   }
-  const { checkInstalled } = require('./firebase-cli-nodelete');
+  const { checkInstalled, probeInstalled } = require('./firebase-cli-nodelete');
   const r = (check || checkInstalled)();
+  // PRIMARY proof: run the installed CLI's own confirm() and deploy() with stubbed reads + deletion spies.
+  const b = await (probe || (() => probeInstalled({ root: r.root })))();
+  r.fails = [...b.fails, ...r.fails];
   if (r.fails.length) {
     console.error(`🔴 REFUSED — the installed firebase-tools ${r.version} (${r.root}) no longer matches the no-delete contract:`);
     for (const f of r.fails) console.error(`  ${f}`);
@@ -35,11 +38,11 @@ function main(argv = process.argv.slice(2), { spawn = spawnSync, check } = {}) {
     return 1;
   }
   const args = buildArgs(projectId);
-  console.log(`firebase-tools ${r.version}: no-delete contract verified. Running: firebase ${args.join(' ')}`);
+  console.log(`firebase-tools ${r.version}: no-delete contract verified (behavioural probe + source). Running: firebase ${args.join(' ')}`);
   const res = spawn('firebase', args, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
   return res.status == null ? 1 : res.status;
 }
 
-if (require.main === module) process.exit(main());
+if (require.main === module) main().then((c) => process.exit(c), (e) => { console.error('deploy-indexes failed:', (e && e.message) || e); process.exit(1); });
 
 module.exports = { buildArgs, main };
