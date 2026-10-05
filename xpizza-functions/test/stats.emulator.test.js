@@ -21,6 +21,9 @@ const NS = 'demo-xpizza';
 admin.initializeApp({ projectId: NS, databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=${NS}` });
 const fsdb = admin.firestore();
 const rtdb = admin.database();
+// 🔴 A SUITE THAT STOPS EARLY MUST NOT EXIT 0 (an unsettled await drains the loop mid-cell).
+let __finished = false;
+process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 suite exited before finishing (an awaited promise never settled)'); process.exit(1); } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const keyer = makeCustomerKeyer('e'.repeat(40));
 const NOW = T.dayStartMs('2026-10-20') + 9 * 3600000 + 600000;
@@ -230,5 +233,6 @@ const deps = (over = {}) => ({ rtdb, fsdb, keyer, listRestaurants: async () => [
   }
 
   console.log(`\nstats.emulator: ${n} cells passed`);
+  __finished = true;
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

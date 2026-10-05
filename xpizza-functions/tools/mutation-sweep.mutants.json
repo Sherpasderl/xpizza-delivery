@@ -10543,37 +10543,97 @@
   {
     "id": "s1-48",
     "slice": "stats",
-    "label": "🔴 B4': the index preflight refuses nothing (a deploy would delete remote-only indexes)",
-    "file": "tools/firestore-indexes-preflight.js",
-    "from": "  return { ok: !remoteOnlyIndexes.length && !remoteOnlyOverrides.length && !changedOverrides.length,",
-    "to": "  return { ok: true,",
+    "label": "🔴 B4'': the sanctioned index deploy passes --force (would DELETE remote-only definitions)",
+    "file": "tools/deploy-indexes.js",
+    "from": "'--non-interactive', '--project', projectId]",
+    "to": "'--non-interactive', '--force', '--project', projectId]",
     "command": [
       "node",
-      "tools/firestore-indexes-preflight.test.js"
+      "tools/deploy-indexes.test.js"
     ]
   },
   {
     "id": "s1-49",
     "slice": "stats",
-    "label": "B4': the index preflight ignores a changed shared override",
-    "file": "tools/firestore-indexes-preflight.js",
-    "from": "    if (r.indexes !== null && canon(rc) !== canon(lc)) changedOverrides.push(",
-    "to": "    if (false) changedOverrides.push(",
+    "label": "🔴 B4'': the sanctioned index deploy drops --non-interactive (the delete prompt becomes answerable)",
+    "file": "tools/deploy-indexes.js",
+    "from": "'firestore:indexes', '--non-interactive', '--project'",
+    "to": "'firestore:indexes', '--project'",
     "command": [
       "node",
-      "tools/firestore-indexes-preflight.test.js"
+      "tools/deploy-indexes.test.js"
     ]
   },
   {
     "id": "s1-50",
     "slice": "stats",
-    "label": "B4': the index preflight ignores remote-only field overrides (a console TTL policy would be reset)",
-    "file": "tools/firestore-indexes-preflight.js",
-    "from": "    if (!l) { remoteOnlyOverrides.push(r); continue; }",
-    "to": "    if (!l) { continue; }",
+    "label": "B4'': the wrapper accepts a user-supplied --force",
+    "file": "tools/deploy-indexes.js",
+    "from": "  if (argv.some((a) => a === '--force' || a.startsWith('--force='))) {",
+    "to": "  if (false) {",
     "command": [
       "node",
-      "tools/firestore-indexes-preflight.test.js"
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-51",
+    "slice": "stats",
+    "label": "🔴 B4'': the wrapper deploys even when the installed CLI broke the no-delete contract",
+    "file": "tools/deploy-indexes.js",
+    "from": "  if (r.fails.length) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-52",
+    "slice": "stats",
+    "label": "B4'': the CLI-contract check reports nothing for api.js",
+    "file": "tools/firebase-cli-nodelete.js",
+    "from": "    for (const [needle, msg] of need) if (!A.includes(ws(needle))) fails.push(",
+    "to": "    for (const [needle, msg] of need) if (false) fails.push(",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-53",
+    "slice": "stats",
+    "label": "B4'': the CLI-contract check ignores lib/prompt.js",
+    "file": "tools/firebase-cli-nodelete.js",
+    "from": "  for (const [needle, msg] of promptNeed) if (!P.includes(ws(needle))) fails.push(",
+    "to": "  for (const [needle, msg] of promptNeed) if (false) fails.push(",
+    "command": [
+      "node",
+      "tools/deploy-indexes.test.js"
+    ]
+  },
+  {
+    "id": "s1-54",
+    "slice": "stats",
+    "label": "B4'': the advisory report stops listing remote indexes the deploy will skip",
+    "file": "tools/firestore-indexes-report.js",
+    "from": "  const indexesSkipped = remote.indexes.filter((ix) => !spec.indexes.some(",
+    "to": "  const indexesSkipped = remote.indexes.filter((ix) => false && !spec.indexes.some(",
+    "command": [
+      "node",
+      "tools/firestore-indexes-report.test.js"
+    ]
+  },
+  {
+    "id": "s1-55",
+    "slice": "stats",
+    "label": "B4'': the advisory report stops listing declared overrides the deploy will update",
+    "file": "tools/firestore-indexes-report.js",
+    "from": "  const overridesUpdated = spec.fieldOverrides.filter((s) => !remote.fields.some(",
+    "to": "  const overridesUpdated = spec.fieldOverrides.filter((s) => false && !remote.fields.some(",
+    "command": [
+      "node",
+      "tools/firestore-indexes-report.test.js"
     ]
   }
 ]
