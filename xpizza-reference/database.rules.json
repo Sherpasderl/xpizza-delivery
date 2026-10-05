@@ -138,6 +138,11 @@
     "driver_push_tokens": { ".read": false, ".write": false },
     "driver_tokens":      { ".read": false, ".write": false },
 
+    "client_versions":       { ".read": false, ".write": false, "$app": { ".indexOn": ["last_seen"] } },
+    "client_version_limits": { ".read": false, ".write": false, ".indexOn": ["window_start"] },
+    "client_version_stats":  { ".read": false, ".write": false },
+    "platform_config":       { ".read": false, ".write": false },
+
     "payment_attempts": { ".read": false, ".write": false },
     "webhook_events":   { ".read": false, ".write": false },
     "outbox":           { ".read": false, ".write": false },
@@ -175,6 +180,7 @@
             ".validate": "newData.hasChildren(['available','updated_at'])",
             "available":  { ".validate": "newData.isBoolean()" },
             "updated_at": { ".validate": "newData.isNumber()" },
+            "compat":     { ".validate": "newData.isNumber()" },
             "$other":     { ".validate": false }
           }
         },
