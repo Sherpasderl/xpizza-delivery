@@ -6612,3 +6612,58 @@ exports.getEditableCatalog = onRequest(
     }
   },
 );
+
+// ── Merchant STATS S1 — sales history for the portal (PLAN-stats rev 4) ────────────────────────────
+// EXPORT WIRING ONLY. Every decision lives in stats/ (tested); stats-guard.test.js proves those modules
+// never write /orders, never import a payment/materialize module and register no trigger, and that
+// THIS block is the only index.js surface they touch. Read-only over RTDB /orders.
+// 🔴 timeoutSeconds (540) MUST stay below stats-store.js LEASE_MS (600 s), so a run that is still
+// alive can never have its lease reclaimed underneath it.
+// 🔴 STATS_HMAC_SECRET (≥ 32 chars) must be in the functions .env; without it both functions FAIL
+// CLOSED (the job aborts, the API answers 503) — customers are never hashed with no key.
+const { runStatsRollup } = require('./stats/stats-job');
+const { getSalesStatsCore, makeLiveCache } = require('./stats/stats-api');
+const { loadStatsSecret, makeCustomerKeyer } = require('./stats/stats-identity');
+let _statsKeyer = null;
+const statsKeyer = () => (_statsKeyer || (_statsKeyer = makeCustomerKeyer(loadStatsSecret())));
+const _statsLiveCache = makeLiveCache();
+
+exports.rollupDailyStats = onSchedule(
+  { schedule: '10 3 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 540, memory: '1GiB', maxInstances: 1 },
+  async () => {
+    const report = await runStatsRollup({
+      rtdb: getDatabase(),
+      fsdb: getFirestore(),
+      listRestaurants: makeFirestoreRegistryReader(getFirestore()),
+      keyer: statsKeyer(),   // throws stats_secret_unavailable → the run fails loudly, writes nothing
+    }, { nowMs: Date.now(), mode: 'nightly', commit: true });
+    console.log('stats_rollup_done', JSON.stringify({ read: report.read, restaurants: Object.keys(report.restaurants).length }));
+  },
+);
+
+exports.getSalesStats = onRequest(
+  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 60, memory: '512MiB', maxInstances: 10 },
+  async (req, res) => {
+    try {
+      const out = await getSalesStatsCore({
+        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
+        fsdb: getFirestore(),
+        rtdb: getDatabase(),
+        getKeyer: statsKeyer,
+        nowMs: Date.now(),
+        liveCache: _statsLiveCache,
+      }, req);
+      if (out.contentType) {
+        res.set('Content-Type', out.contentType);
+        if (out.filename) res.set('Content-Disposition', `attachment; filename="${out.filename}"`);
+        for (const [k, v] of Object.entries(out.headers || {})) res.set(k, v);
+        res.set('Access-Control-Expose-Headers', 'X-Next-Cursor, Content-Disposition');   // the portal reads both cross-origin
+        return res.status(out.status).send(out.body);
+      }
+      return res.status(out.status).json(out.body);
+    } catch (e) {
+      console.error('getSalesStats', e && e.message);
+      return res.status(500).json({ error: 'error' });
+    }
+  },
+);

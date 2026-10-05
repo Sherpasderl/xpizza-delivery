@@ -37,12 +37,21 @@ const KIND_BY_STATUS = {
   503: 'Unavailable',
 };
 
-export function buildRequest(fnName, { rid, body, tokenStr } = {}) {
+export function buildRequest(fnName, { rid, body, tokenStr, params } = {}) {
   if (typeof fnName !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(fnName)) throw new Error('bad_function_name');
   if (typeof tokenStr !== 'string' || !tokenStr) throw new Error('missing_token');
   // encodeURIComponent, not interpolation: the rid comes from a server response today, but a URL built
   // by concatenation is one refactor away from carrying whatever a caller puts in it.
-  const qs = rid ? `?restaurantId=${encodeURIComponent(rid)}` : '';
+  // Stats S1: optional extra query `params` (strings, encoded the same way). The rid has exactly ONE
+  // spelling — a params entry may not restate it, and nothing token-like may ride in the URL.
+  const extra = [];
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v == null || v === '') continue;
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(k) || /^(restaurantId|token|authorization)$/i.test(k)) throw new Error('bad_param');
+    extra.push(`${k}=${encodeURIComponent(String(v))}`);
+  }
+  const parts = [...(rid ? [`restaurantId=${encodeURIComponent(rid)}`] : []), ...extra];
+  const qs = parts.length ? `?${parts.join('&')}` : '';
   const options = {
     method: body ? 'POST' : 'GET',
     headers: {
@@ -63,12 +72,12 @@ export async function readResponse(res) {
   return body;
 }
 
-export async function apiFetch(fnName, { rid, body, token } = {}) {
+export async function apiFetch(fnName, { rid, body, token, params } = {}) {
   const tokenStr = await token();
   // Not signed in is its own case, and it must not become an unauthenticated request that the server
   // rejects: the round trip tells the caller nothing they did not already know.
   if (!tokenStr) throw new ApiError('NotSignedIn', 401, null);
-  const { url, options } = buildRequest(fnName, { rid, body, tokenStr });
+  const { url, options } = buildRequest(fnName, { rid, body, tokenStr, params });
   let res;
   try {
     res = await fetch(url, options);
@@ -120,4 +129,36 @@ export async function publishEdited({ rid, editToken, acknowledgedChanges, fisca
       fiscalAck: fiscalAck === true,       // the server checks `!== true`, so a truthy value is not enough
     },
   });
+}
+
+// ── Stats S1 — sales history (getSalesStats) ─────────────────────────────────────────────────────
+// JSON: KPIs, series, breakdowns, customers, times — aggregates only (the server never returns a
+// phone, name or customer key).
+export async function getSalesStats({ rid, from, to, granularity, compare, token }) {
+  return apiFetch('getSalesStats', { rid, token, params: { from, to, granularity, compare } });
+}
+
+// THE TEXT/BLOB PATH. readResponse parses JSON only; a CSV export is text, so it gets its own reader
+// with the SAME failure typing (a non-2xx still becomes an ApiError from its JSON error body).
+export async function readTextResponse(res) {
+  if (!res.ok) {
+    let body = null;
+    try { body = await res.json(); } catch (_) { /* non-JSON error body */ }
+    throw new ApiError(KIND_BY_STATUS[res.status] || 'Failed', res.status, body);
+  }
+  const text = await res.text();
+  const h = (n) => (res.headers && typeof res.headers.get === 'function' ? res.headers.get(n) : null);
+  const disp = h('Content-Disposition') || '';
+  const m = /filename="([^"]+)"/.exec(disp);
+  return { text, filename: m ? m[1] : null, nextCursor: h('X-Next-Cursor') || null };
+}
+
+// kind: 'daily' (one row per day) | 'orders' (per-order rows, ≤ 31 days, paginated by nextCursor).
+export async function fetchSalesCsv({ rid, from, to, kind = 'daily', cursor, token }) {
+  const tokenStr = await token();
+  if (!tokenStr) throw new ApiError('NotSignedIn', 401, null);
+  const { url, options } = buildRequest('getSalesStats', { rid, tokenStr, params: { from, to, format: 'csv', kind, cursor } });
+  let res;
+  try { res = await fetch(url, options); } catch (e) { throw new ApiError('Unavailable', 0, null); }
+  return readTextResponse(res);
 }

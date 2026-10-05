@@ -1,7 +1,7 @@
 // Portal 2b-2a Task 5 — the API client. Run: node --test xpizza-portal/api.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { buildRequest, readResponse, apiFetch, ApiError, editCatalog, publishEdited } from './api.js';
+import { buildRequest, readResponse, apiFetch, ApiError, editCatalog, publishEdited, getSalesStats, fetchSalesCsv, readTextResponse } from './api.js';
 
 test('the bearer goes in a HEADER and never in the URL', () => {
   // A token in a query string is written to server access logs, kept in browser history, and sent
@@ -244,4 +244,38 @@ test('ONLY a literal true becomes a fiscal attestation — nothing truthy is coe
     await publishEdited({ rid: 'x_pizza', editToken: 'E', acknowledgedChanges: [], token: async () => 'T' });
     assert.strictEqual(g.calls[0].body.fiscalAck, false, 'omitting fiscalAck is not attesting');
   } finally { g.restore(); }
+});
+
+// ── Stats S1 ────────────────────────────────────────────────────────────────────────────────────
+test('stats: buildRequest params are encoded, cannot restate the rid or carry a token, and empty ones drop', () => {
+  const { url, options } = buildRequest('getSalesStats', { rid: 'r a', tokenStr: 'T', params: { from: '2026-10-01', to: '2026-10-05', compare: '', cursor: '1:a&b' } });
+  assert.strictEqual(url.split('cloudfunctions.net')[1], '/getSalesStats?restaurantId=r%20a&from=2026-10-01&to=2026-10-05&cursor=1%3Aa%26b');
+  assert.strictEqual(options.method, 'GET');
+  assert.strictEqual(options.headers.Authorization, 'Bearer T');
+  assert(!url.includes('T&') && !url.includes('Bearer'));
+  for (const bad of [{ restaurantId: 'x' }, { token: 'x' }, { 'a b': 'x' }]) assert.throws(() => buildRequest('getSalesStats', { rid: 'r', tokenStr: 'T', params: bad }), /bad_param/);
+  // existing calls unchanged
+  assert.strictEqual(buildRequest('getMyRestaurants', { tokenStr: 'T' }).url.endsWith('/getMyRestaurants'), true);
+});
+
+test('stats: getSalesStats JSON and fetchSalesCsv text path (filename, cursor, typed errors)', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    let seen;
+    globalThis.fetch = async (url) => { seen = url; return { ok: true, status: 200, json: async () => ({ kpis: { orders: 3 } }) }; };
+    const j = await getSalesStats({ rid: 'r1', from: '2026-10-01', to: '2026-10-05', granularity: 'week', token: async () => 'T' });
+    assert.deepStrictEqual(j, { kpis: { orders: 3 } });
+    assert.match(seen, /getSalesStats\?restaurantId=r1&from=2026-10-01&to=2026-10-05&granularity=week$/);
+    const hdr = { 'Content-Disposition': 'attachment; filename="pedidos_r1_2026-10-01_2026-10-05.csv"', 'X-Next-Cursor': '17:abc' };
+    globalThis.fetch = async (url) => { seen = url; return { ok: true, status: 200, text: async () => 'fecha\r\n', headers: { get: (n) => hdr[n] || null } }; };
+    const c = await fetchSalesCsv({ rid: 'r1', from: '2026-10-01', to: '2026-10-05', kind: 'orders', token: async () => 'T' });
+    assert.deepStrictEqual(c, { text: 'fecha\r\n', filename: 'pedidos_r1_2026-10-01_2026-10-05.csv', nextCursor: '17:abc' });
+    assert.match(seen, /format=csv&kind=orders$/);
+    globalThis.fetch = async () => ({ ok: false, status: 403, json: async () => ({ error: 'not_authorized' }) });
+    await assert.rejects(() => fetchSalesCsv({ rid: 'r1', from: 'a', to: 'b', token: async () => 'T' }), (e) => e instanceof ApiError && e.kind === 'NotAuthorized' && e.code === 'not_authorized');
+    globalThis.fetch = async () => { throw new Error('net'); };
+    await assert.rejects(() => fetchSalesCsv({ rid: 'r1', from: 'a', to: 'b', token: async () => 'T' }), (e) => e.kind === 'Unavailable');
+    await assert.rejects(() => fetchSalesCsv({ rid: 'r1', from: 'a', to: 'b', token: async () => null }), (e) => e.kind === 'NotSignedIn');
+    await assert.rejects(() => readTextResponse({ ok: false, status: 503, json: async () => { throw new Error('x'); } }), (e) => e.kind === 'Unavailable');
+  } finally { globalThis.fetch = realFetch; }
 });

@@ -9970,5 +9970,332 @@
       "node",
       "catalog/migration-parity.test.js"
     ]
+  },
+  {
+    "id": "s1-01",
+    "slice": "stats",
+    "label": "classify row 1 (refunded) removed",
+    "file": "stats/stats-classify.js",
+    "from": "['1 refunded', (o) => (o.payment_status === 'refunded' ? CLASS.REFUNDED : null)],",
+    "to": "['1 refunded', (o) => (o.payment_status === 'refunded' ? null : null)],",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-02",
+    "slice": "stats",
+    "label": "classify row 2 forgets refunding_paid_after_close (advisor Q-C)",
+    "file": "stats/stats-classify.js",
+    "from": "new Set(['refund_pending', 'refunding_paid_after_close'])",
+    "to": "new Set(['refund_pending'])",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-03",
+    "slice": "stats",
+    "label": "classify row 3 forgets the resolving_* prefix",
+    "file": "stats/stats-classify.js",
+    "from": "(UNRESOLVED_PAYMENT.has(o.payment_status) || isResolving(o.payment_status))",
+    "to": "(UNRESOLVED_PAYMENT.has(o.payment_status))",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-04",
+    "slice": "stats",
+    "label": "classify row 4: the transient confirmed + pending_payment window is no longer EXCLUDED",
+    "file": "stats/stats-classify.js",
+    "from": "NEVER_PAID_ONLINE.has(o.payment_status) || o.payment_status === 'confirmed')) {",
+    "to": "NEVER_PAID_ONLINE.has(o.payment_status))) {",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-05",
+    "slice": "stats",
+    "label": "classify row 4b (cancelled never-paid online → EXCLUDED, advisor Q-B) removed",
+    "file": "stats/stats-classify.js",
+    "from": "((o.status === 'cancelled' && isOnline(o) && NEVER_PAID_ONLINE.has(o.payment_status)) ? CLASS.EXCLUDED : null)",
+    "to": "(false ? CLASS.EXCLUDED : null)",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-06",
+    "slice": "stats",
+    "label": "isSale: an online order is a Sale without a confirmed capture",
+    "file": "stats/stats-classify.js",
+    "from": "return order.payment_status === 'confirmed' && SALE_LIFE_STATUSES.has(st);",
+    "to": "return SALE_LIFE_STATUSES.has(st);",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-07",
+    "slice": "stats",
+    "label": "isSale: a non-online order carrying a payment_status still counts",
+    "file": "stats/stats-classify.js",
+    "from": "  if (hasPs(order)) return false;",
+    "to": "",
+    "command": [
+      "node",
+      "stats/stats-classify.test.js"
+    ]
+  },
+  {
+    "id": "s1-08",
+    "slice": "stats",
+    "label": "🔴 FRESHNESS REFUSAL removed: an older read may overwrite a newer publication",
+    "file": "stats/stats-store.js",
+    "from": "if (Number.isFinite(meta.source_read_started_at) && meta.source_read_started_at > readStartedAt) {",
+    "to": "if (false) {",
+    "command": [
+      "npm",
+      "run",
+      "test:stats-emulator"
+    ]
+  },
+  {
+    "id": "s1-09",
+    "slice": "stats",
+    "label": "🔴 LEASE EXPIRY no longer checked at publish",
+    "file": "stats/stats-store.js",
+    "from": "    if (!(l.expires_at && l.expires_at.toMillis() > now)) throw Object.assign(new Error(`stats_lease_expired: ${rid}`), { code: 'stats_lease_expired' });",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "test:stats-emulator"
+    ]
+  },
+  {
+    "id": "s1-10",
+    "slice": "stats",
+    "label": "🔴 LEASE OWNERSHIP no longer checked at publish",
+    "file": "stats/stats-store.js",
+    "from": "    if (l.owner_token !== token) throw Object.assign(new Error(`stats_lease_lost: ${rid}`), { code: 'stats_lease_lost' });",
+    "to": "",
+    "command": [
+      "npm",
+      "run",
+      "test:stats-emulator"
+    ]
+  },
+  {
+    "id": "s1-11",
+    "slice": "stats",
+    "label": "🔴 SIZE PREFLIGHT never aborts",
+    "file": "stats/stats-store.js",
+    "from": "  if (over.length) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "stats/stats-volume.test.js"
+    ]
+  },
+  {
+    "id": "s1-12",
+    "slice": "stats",
+    "label": "planChunks accepts a date that cannot fit beside the index",
+    "file": "stats/stats-store.js",
+    "from": "    if (fixedBytes + b > limits.maxCommitBytes || b > limits.maxDocBytes) {",
+    "to": "    if (false) {",
+    "command": [
+      "node",
+      "stats/stats-volume.test.js"
+    ]
+  },
+  {
+    "id": "s1-13",
+    "slice": "stats",
+    "label": "🔴 AUTHORIZATION result ignored: a denied caller reads stats",
+    "file": "stats/stats-api.js",
+    "from": "  if (!auth || !auth.ok) return reply((auth && auth.status) || 403, { error: (auth && auth.error) || 'not_authorized' });",
+    "to": "",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-14",
+    "slice": "stats",
+    "label": "🔴 the phone normalizer LOGS the raw phone on bad input (the whatsapp.js:98 defect)",
+    "file": "stats/stats-identity.js",
+    "from": "  if (!/^\\d+$/.test(s)) return null;",
+    "to": "  if (!/^\\d+$/.test(s)) { console.warn('stats: bad phone', raw); return null; }",
+    "command": [
+      "node",
+      "stats/stats-identity.test.js"
+    ]
+  },
+  {
+    "id": "s1-15",
+    "slice": "stats",
+    "label": "🔴 the job logs customer phones",
+    "file": "stats/stats-job.js",
+    "from": "      log('stats_rollup_restaurant', { rid, ...rr,",
+    "to": "      log('stats_rollup_restaurant', { rid, sample: orders.slice(0, 5).map((o) => o.customer_phone), ...rr,",
+    "command": [
+      "node",
+      "stats/stats-guard.test.js"
+    ]
+  },
+  {
+    "id": "s1-16",
+    "slice": "stats",
+    "label": "🔴 the API returns customer hmacs",
+    "file": "stats/stats-api.js",
+    "from": "    customers: { ...newVsReturning(m.customers, firsts, from), anonymous_orders: m.sale.anonymous_orders },",
+    "to": "    customers: { ...newVsReturning(m.customers, firsts, from), keys: Object.keys(m.customers), anonymous_orders: m.sale.anonymous_orders },",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-17",
+    "slice": "stats",
+    "label": "🔴 the HMAC secret no longer fails closed",
+    "file": "stats/stats-identity.js",
+    "from": "  if (typeof v !== 'string' || v.trim().length < MIN_SECRET_LEN) {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "stats/stats-identity.test.js"
+    ]
+  },
+  {
+    "id": "s1-18",
+    "slice": "stats",
+    "label": "read padding shorter than the scheduling horizon",
+    "file": "stats/stats-time.js",
+    "from": "const READ_PAD_DAYS = Math.ceil(DEFAULT_CFG.maxHorizonHours / 24) + 1;",
+    "to": "const READ_PAD_DAYS = Math.ceil(DEFAULT_CFG.maxHorizonHours / 24) - 1;",
+    "command": [
+      "node",
+      "stats/stats-time.test.js"
+    ]
+  },
+  {
+    "id": "s1-19",
+    "slice": "stats",
+    "label": "index re-derivation stops REMOVING re-settled dates (a refunded first Sale lingers)",
+    "file": "stats/stats-index.js",
+    "from": "    const kept = list.filter((d) => !R.has(d));",
+    "to": "    const kept = list;",
+    "command": [
+      "node",
+      "stats/stats-additivity.test.js"
+    ]
+  },
+  {
+    "id": "s1-20",
+    "slice": "stats",
+    "label": "item revenue re-multiplied by qty",
+    "file": "stats/stats-build.js",
+    "from": "    it.qty += qty; it.cents += lc;",
+    "to": "    it.qty += qty; it.cents += lc * qty;",
+    "command": [
+      "node",
+      "stats/stats-build.test.js"
+    ]
+  },
+  {
+    "id": "s1-21",
+    "slice": "stats",
+    "label": "average_paid_ticket divides by ALL orders incl. zero-value",
+    "file": "stats/stats-build.js",
+    "from": "const avgPaidTicket = (m) => { const d = (m.orders || 0) - (m.zero_value_orders || 0);",
+    "to": "const avgPaidTicket = (m) => { const d = (m.orders || 0);",
+    "command": [
+      "node",
+      "stats/stats-build.test.js"
+    ]
+  },
+  {
+    "id": "s1-22",
+    "slice": "stats",
+    "label": "service time ignores scheduled_for (attributed to creation day)",
+    "file": "stats/stats-time.js",
+    "from": "  if (sf != null && sf !== '') {",
+    "to": "  if (false) {",
+    "command": [
+      "node",
+      "stats/stats-build.test.js"
+    ]
+  },
+  {
+    "id": "s1-23",
+    "slice": "stats",
+    "label": "the live overlay UNIONS instead of replacing a live date's stored membership",
+    "file": "stats/stats-index.js",
+    "from": "      const kept = list.filter((x) => x !== d);",
+    "to": "      const kept = list;",
+    "command": [
+      "node",
+      "stats/stats-additivity.test.js"
+    ]
+  },
+  {
+    "id": "s1-24",
+    "slice": "stats",
+    "label": "the API epoch check never retries/refuses a torn read",
+    "file": "stats/stats-api.js",
+    "from": "    if (((r.meta1 || {}).epoch || 0) !== ((r.meta2 || {}).epoch || 0)) {\n      r = await read();",
+    "to": "    if (false) {\n      r = await read();",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
+  },
+  {
+    "id": "s1-25",
+    "slice": "stats",
+    "label": "the read budget never aborts",
+    "file": "stats/stats-job.js",
+    "from": "    if (orders.length > budget.maxRecords || bytes > budget.maxBytes) {",
+    "to": "    if (false) {",
+    "command": [
+      "node",
+      "stats/stats-job.test.js"
+    ]
+  },
+  {
+    "id": "s1-26",
+    "slice": "stats",
+    "label": "dry-run takes a lease (writes)",
+    "file": "stats/stats-job.js",
+    "from": "      if (commit) {\n        try { leases.set(rid, await S.acquireLease(fsdb, rid)); }",
+    "to": "      if (true) {\n        try { leases.set(rid, await S.acquireLease(fsdb, rid)); }",
+    "command": [
+      "node",
+      "stats/stats-job.test.js"
+    ]
+  },
+  {
+    "id": "s1-27",
+    "slice": "stats",
+    "label": "orders CSV loses the restaurant filter (cross-tenant rows)",
+    "file": "stats/stats-api.js",
+    "from": "    if (!o || B.ridOf(o) !== rid) return;",
+    "to": "    if (!o) return;",
+    "command": [
+      "node",
+      "stats/stats-api.test.js"
+    ]
   }
 ]
