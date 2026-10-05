@@ -35,7 +35,7 @@ function preflight(handler, origin) {
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ORDER_SITE_LISTED = ['quoteOrder', 'quoteRedemption', 'requestOtp', 'verifyOtp', 'deleteAccount', 'getPublicMenu'];
-const ORDER_SITE_OPEN = ['createOrder', 'chargeOnlineOrder'];
+const ORDER_SITE_OPEN = ['createOrder', 'chargeOnlineOrder', 'reportClientVersion'];   // reportClientVersion: every deployment's pages report → cors: true
 const EXTRA = (process.env.CORS_EXTRA_ENDPOINTS || '').split(',').filter(Boolean);   // later sub-commits add endpoints here
 
 (async () => {

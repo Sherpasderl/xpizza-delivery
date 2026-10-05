@@ -382,7 +382,10 @@ const TWO = {
     assert.ok(/cors: ACCOUNT_ORIGINS/.test(blockOf('requestOtp')), 'the account endpoints still use ACCOUNT_ORIGINS');
     assert.ok(!/PORTAL_ORIGINS/.test(blockOf('requestOtp')), 'and did not inherit the portal list');
     // the two lists must be genuinely separate constants, not aliases
-    assert.ok(/const PORTAL_ORIGINS = \[/.test(CODE) && /const ACCOUNT_ORIGINS = \[/.test(CODE), 'two distinct lists');
+    // P-SELFUPDATE (advisor ruling, origins option A): ACCOUNT_ORIGINS is now DERIVED from the bundled site manifest
+    // (the order sites' origins); PORTAL_ORIGINS stays its own literal list — still two distinct constants.
+    assert.ok(/const PORTAL_ORIGINS = \[/.test(CODE) && /const \{ ACCOUNT_ORIGINS \} = require\('\.\/platform-manifest'\)\.PLATFORM;/.test(CODE), 'two distinct lists');
+    assert.ok(!/PORTAL_ORIGINS[^\n]*platform-manifest/.test(CODE), 'the portal list is NOT taken from the order-site manifest');
     assert.ok(!/PORTAL_ORIGINS = ACCOUNT_ORIGINS|ACCOUNT_ORIGINS\.concat/.test(CODE), 'neither derived from the other');
     ok('the portal reads use their own narrow CORS list; the account endpoints keep theirs, unwidened');
   }
@@ -506,7 +509,10 @@ const TWO = {
     }
     // and the account list is not widened to compensate — the point is that the two stay separate
     assert.ok(!/PORTAL_ORIGINS/.test(blockOf2('requestOtp')), 'the account endpoints did not inherit the portal list');
-    assert.ok(/const ACCOUNT_ORIGINS = \[\s*'https:\/\/orders\.xpizza\.hn',\s*'https:\/\/orders\.lamusa\.hn',\s*\];/.test(CODE),
+    // P-SELFUPDATE: ACCOUNT_ORIGINS is DERIVED from the bundled site manifest (the order sites only); the pin is on the
+    // derived VALUE — exactly the two customer order sites — and on index.js taking it from there.
+    assert.ok(/const \{ ACCOUNT_ORIGINS \} = require\('\.\/platform-manifest'\)\.PLATFORM;/.test(CODE), 'index.js takes ACCOUNT_ORIGINS from the manifest');
+    assert.deepStrictEqual(require('../platform-manifest').PLATFORM.ACCOUNT_ORIGINS, ['https://orders.xpizza.hn', 'https://orders.lamusa.hn'],
       'ACCOUNT_ORIGINS is unchanged — exactly the two customer order sites, never widened to reach the portal');
     ok('the two write endpoints accept the portal origin and only it; ACCOUNT_ORIGINS is untouched');
   }

@@ -163,6 +163,12 @@ function runtimeImportGraph(entryFiles, resolveDir) {
     files.add(file);
     let code;
     try { code = readFileSync(file, 'utf8'); } catch (e) { unresolved.push(`${file}: unreadable`); return; }
+    // A required .json file is DATA: Node loads it with JSON.parse and it cannot require anything, so it is a LEAF —
+    // followed (it is in `files`) and validated, never parsed as JavaScript. Malformed JSON stays an unfollowable edge.
+    if (/\.json$/.test(file)) {
+      try { JSON.parse(code); } catch (e) { unresolved.push(`${file}: invalid JSON (${e.message})`); }
+      return;
+    }
     for (const spec of requiresIn(code, file)) {
       if (!spec.startsWith('.')) { externals.add(spec.split('/')[0]); continue; }
       let target;

@@ -6609,3 +6609,33 @@ exports.getEditableCatalog = onRequest(
     }
   },
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P-SELFUPDATE §4 — the VERSION HEARTBEAT. Public (every deployment's pages call it, so `cors: true`; the request is
+// untrusted telemetry under a strict schema). Never an authority: nothing reads these records to gate anything.
+// Bounded: few instances, a dedicated per-IP limiter (client_version_limits — never the order buckets), and a report
+// is DROPPED when that limiter cannot answer. Core + tests: client-version.js / client-version.emulator.test.js.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.reportClientVersion = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5, concurrency: 40 },
+  async (req, res) => {
+    const { handleReport } = require('./client-version');
+    try {
+      return await handleReport(req, res, { db: getDatabase(), ServerValue, platform: require('./platform-manifest').PLATFORM, registry: restaurantRegistry() });
+    } catch (e) {
+      console.error('reportClientVersion', e && e.message);
+      return res.status(503).json({ error: 'telemetry_unavailable', dropped: true });
+    }
+  },
+);
+
+// The heartbeat sweep: stale instance records (24 h silent) and expired limiter windows are CONDITIONALLY deleted in
+// bounded, indexed batches; hourly counters past the 30-day retention are removed by key.
+exports.sweepClientVersions = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const { sweepClientVersions } = require('./client-version');
+    const out = await sweepClientVersions({ db: getDatabase(), platform: require('./platform-manifest').PLATFORM });
+    if (out.instances || out.limits || out.stats) console.log(`sweepClientVersions: ${JSON.stringify(out)}`);
+  },
+);

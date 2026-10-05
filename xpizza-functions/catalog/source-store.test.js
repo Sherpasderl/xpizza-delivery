@@ -1024,6 +1024,15 @@ const GOOD = () => ({
     const { mkdtempSync, writeFileSync, mkdirSync } = require('fs');
     const { tmpdir } = require('os');
     const dir = mkdtempSync(join(tmpdir(), 'graph-'));
+    // 0. a required .json file is a validated LEAF (P-SELFUPDATE: the bundled platform manifest) — valid JSON is
+    //    followed and ends there; malformed JSON is still an unfollowable edge.
+    writeFileSync(join(dir, 'data-ok.json'), '{"a": 1}');
+    writeFileSync(join(dir, 'data-bad.json'), '{"a": ');
+    writeFileSync(join(dir, 'uses-json.js'), "const a = require('./data-ok.json');\nconst b = require('./data-bad.json');\nmodule.exports = [a, b];\n");
+    const js = runtimeImportGraph(['uses-json.js'], dir);
+    assert.ok(js.files.some((f) => f.endsWith('data-ok.json')), 'a .json require is followed (in files)');
+    assert.strictEqual(js.unresolved.length, 1, `exactly the malformed file is unfollowable: ${js.unresolved.join(' | ')}`);
+    assert.ok(/data-bad\.json: invalid JSON/.test(js.unresolved[0]), '🔴 malformed required JSON is reported, valid JSON is not');
     // 1. `require ('acorn')` — a space before the paren. The old regex demanded `require(` and so
     //    could not see this at all; imports are read from the syntax tree now.
     writeFileSync(join(dir, 'spaced.js'), "const a = require ('acorn');\nmodule.exports = a;\n");

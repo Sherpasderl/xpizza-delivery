@@ -359,6 +359,9 @@ function cartAdapterOf(rid) {
 
   const dependenciesOf = (absFile) => {
     const src = fs.readFileSync(absFile, 'utf8');
+    // a required .json file is DATA (Node JSON.parses it; it cannot load anything) → a validated LEAF with no edges.
+    // Malformed JSON throws here, failing the walk by name (P-SELFUPDATE: the bundled platform manifest).
+    if (/\.json$/.test(absFile)) { JSON.parse(src); return []; }
     let ast;
     try { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true }); }
     catch (_) { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true }); }
