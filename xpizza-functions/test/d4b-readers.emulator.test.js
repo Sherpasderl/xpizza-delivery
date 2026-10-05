@@ -295,6 +295,17 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
     assert.strictEqual(await resv('u_lm', 'la_musa', 'b1_lm_unv'), null, '🔴 B1-b: no reservation written');
     assert.strictEqual((await wallet('u_lm', 'la_musa')).reserved, 0, 'no debit');
     assert.strictEqual((await rtdb.ref('orders/b1_lm_unv').get()).val().payment_fingerprint, undefined, 'no fingerprint written');
+    // B1-b with a LEGACY reservation for the SAME order already present (the order was charged legacy, then left as a D4-c
+    // writer would leave it: tagged canonical, no fingerprint, no attempt). The refusal must come BEFORE the reservation —
+    // a fallback to the legacy fp would silently REUSE that legacy hold.
+    assert.strictEqual((await charge('la_musa', 'b1_lm_unv2', 'u_lm')).status, 200, 'premise — a legacy charge for this order id');
+    const heldBefore = await resv('u_lm', 'la_musa', 'b1_lm_unv2'), walletBefore = await wallet('u_lm', 'la_musa');
+    await rtdb.ref('orders/b1_lm_unv2').update({ fp_format: 'canonical', payment_fingerprint: null, active_attempt_id: null });
+    const unv2 = await charge('la_musa', 'b1_lm_unv2', 'u_lm');
+    assert.strictEqual(unv2.status, 409, `B1-b (existing legacy hold): ${unv2.text.slice(0, 160)}`); assert.strictEqual(unv2.json.reason, 'cart_unverifiable');
+    assert.deepStrictEqual(await resv('u_lm', 'la_musa', 'b1_lm_unv2'), heldBefore, '🔴 the legacy hold is untouched — never reused by a canonical order');
+    assert.deepStrictEqual(await wallet('u_lm', 'la_musa'), walletBefore);
+    assert.strictEqual((await rtdb.ref('orders/b1_lm_unv2').get()).val().payment_fingerprint, undefined, 'and no fingerprint was installed');
     assert.strictEqual((await bootstrapIdentityStamps(fs, 'la_musa')).stamped, true, 'now certify la_musa, so BOTH restaurants run the canonical matrix');
 
     for (const rid of ['x_pizza', 'la_musa']) {
@@ -326,12 +337,16 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
       assert.strictEqual((await chargeCanonical(rid, `b1_${rid}_can`, uid)).status, 200, `${rid}: canonical retry`);
       assert.strictEqual((await wallet(uid, rid)).reserved, reservedAfterCanon, 'reused — no second debit');
       assert.strictEqual((await resv(uid, rid, `b1_${rid}_can`)).fp, cr.fp);
-      // MIXED (a): a CANONICAL order against an existing LEGACY reservation → conflict (codex's reproduction)
-      await rtdb.ref(`orders/b1_${rid}_mixA`).set(canonOrder(rid));
-      await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/b1_${rid}_mixA`).set({ ...lr, order_fingerprint: lr.order_fingerprint });
+      // MIXED (a) — codex's reproduction: the order was charged LEGACY (its own legacy hold), then left as a D4-c writer would
+      // leave it (tagged canonical, no fingerprint, no attempt). A canonical request must NOT reuse that legacy hold.
+      assert.strictEqual((await charge(rid, `b1_${rid}_mixA`, uid)).status, 200, `premise — ${rid}: a legacy charge of the SAME order id`);
+      const heldA = await resv(uid, rid, `b1_${rid}_mixA`);
+      assert.strictEqual(heldA.fp_format, undefined, 'premise — a legacy hold that WOULD match a legacy recomputation');
+      await rtdb.ref(`orders/b1_${rid}_mixA`).update({ fp_format: 'canonical', payment_fingerprint: null, active_attempt_id: null });
       const mA = await chargeCanonical(rid, `b1_${rid}_mixA`, uid);
       assert.strictEqual(mA.status, 409, `🔴 ${rid}: canonical order vs legacy reservation must NOT be reused (${mA.text.slice(0, 160)})`);
       assert.strictEqual(mA.json.reason, 'reservation_conflict');
+      assert.deepStrictEqual(await resv(uid, rid, `b1_${rid}_mixA`), heldA, 'the legacy hold is untouched');
       // MIXED (b): a LEGACY order against an existing CANONICAL reservation → conflict
       await rtdb.ref(`user_rewards/${uid}/${rid}/reservations/b1_${rid}_mixB`).set(cr);
       const mB = await charge(rid, `b1_${rid}_mixB`, uid);
