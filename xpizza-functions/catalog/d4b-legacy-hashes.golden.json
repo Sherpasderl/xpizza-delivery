@@ -1,0 +1,34 @@
+{
+  "_provenance": {
+    "captured_at_commit": "717f97e911774aa03fa285b54ee5af576067ba1a",
+    "captured_by": "test/d4b-capture-legacy-goldens.js",
+    "captured_on": "2026-10-05",
+    "writers": "issueQuote token cart_fingerprint · redemptionFingerprint(computeRedemption) · computeIncomingFingerprint (createOrder) · reserveRedemption stored fp"
+  },
+  "values": {
+    "x_pizza": {
+      "quote_plain": "fcbdf6a9becebad62a0489631e152f4502f7900a1d892f5f088fbf1a0094ad18",
+      "quote_reward": "4a9d4fbf68f06aef16187833d8bc358ed487f750673117bf7196e1f9e7c021f7",
+      "quote_collision_two_lines": "2ad1262efb60f0b5147bcf1b9360b4fa192dd87cf14e404d2ac760b8a0d033dc",
+      "quote_collision_one_line": "fdd01985999b04168e026fe70767dd077ffb8c61845ddcc93910d1658e099b89",
+      "redemption_fp": "76a1a7cfed686cc7330ad58b",
+      "order_fp_plain": "8f61330fb0db8bfeddabf8232d0675a2c55f5c32cfd27bb618b86efda4a421f8",
+      "order_fp_scheduled": "cd7347d5d18046bd9ab95d75237cb25f6cfe08ee42c8f7a019f944e384f2f0e1",
+      "order_fp_redemption": "eff5c82657f12802b92aa4e28ac74b31087761f189297fb1d1ef38238622f563",
+      "order_fp_redemption_scheduled": "14a2364d1d6a2c6ad9b634ae366f02d16bc3b1393b225a5548d3fce20dc5004e",
+      "reservation_binding_fp": "844a6406d0523a1541dde50049ffe6fcc1d50fefd616b481fe402727af471507"
+    },
+    "la_musa": {
+      "quote_plain": "b22e544dc270e52547abc449e834828bf1bcd3131ae3520c6219c5a23f74aefd",
+      "quote_reward": "0f673fb9aecfa4d23f7b00fd0af23decc623516715276bfdf04d1f5ba8c56db7",
+      "quote_collision_two_lines": "ab96392b795a44cfb8184af7d46dbc4eeb8acb6e61f91f788cbbcc0446411a4d",
+      "quote_collision_one_line": "f1136d7335dd8a21f5c114e7ec64f7299cc4dfa14194e98011a51ab491230728",
+      "redemption_fp": "fa6fac06aefa2509a907d525",
+      "order_fp_plain": "0ef047ccd1d89c0f0ba3e4b9f1c4d42b3189bf1755a04ecf60d4e26afab9e25f",
+      "order_fp_scheduled": "4d39804a1e5ad16fcf4ef1a3e51ca419aa157c94ec29ef64a16a769719204b2a",
+      "order_fp_redemption": "97342d22f9ee251cbfb78b04445d10f8e8b643722cdd884aa31e2f08f6c77ff1",
+      "order_fp_redemption_scheduled": "1212ed19cfd734ab73e38d4f3c03b9813f52222b3cd9e0c3f68185a22931c39c",
+      "reservation_binding_fp": "c35d64a8e6dbac969dda970d8d89a20d787e83097e454558f7a8aa3f43ae8aa6"
+    }
+  }
+}
