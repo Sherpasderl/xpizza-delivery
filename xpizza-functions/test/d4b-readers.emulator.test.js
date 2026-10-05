@@ -421,6 +421,67 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
   }
   ok('B1 through the REAL charge handler (both restaurants): legacy/legacy → untagged record, retry reused; a canonical order\'s FRESH reservation is a CANONICAL record (one shape, bound to "c1:<the order\'s installed fp>"), retry reused, no second debit; canonical order vs legacy reservation and legacy order vs canonical reservation → 409 reservation_conflict; B1-b: an uncomputable canonical fp → 409 cart_unverifiable BEFORE reserve, nothing written. B1-c: the normal-path refusal writes NO bookkeeping; with classify FAILING the order probe decides the format — legacy no-hold/legacy-hold as today, canonical no-hold → canonical hold, canonical vs legacy hold → conflict, malformed → binding_format_invalid, uncomputable → refused before reserve; mixed (b) rebuilt on the SAME order id');
 
+  // ═══ codex r3 S2 — REQUEST-SPECIFIC no-write matrix: both restaurants × {normal, degraded classify} × {no hold, legacy hold on the
+  //     SAME order id}, for an UNVERIFIABLE canonical order (a disagreeing dish_id claim makes the canonical recompute
+  //     uncomputable on any context) and for a MALFORMED tag on the normal path. ═══
+  {
+    const { rateLimitKey } = require('../order-dedup');
+    const get = async (p) => (await rtdb.ref(p).get()).val();
+    const canonOrder = (rid) => ({ restaurant_id: rid, status: 'pending_payment', payment_method: 'online', fp_format: 'canonical' });
+    let n4 = 0;
+    const bodyX = (rid, oid, phone, claim) => {
+      const s = catalogSnapshot(rid);
+      const it = s.items.find((i) => (rid === 'x_pizza' ? i.key === 'Carnivora' : i.key === 'dimsum_01'));
+      const line = rid === 'x_pizza' ? { name: it.display.name, qty: 1, price: it.price, extras: [] } : { id: it.key, name: it.display.name, cat: it.display.cat, qty: 1, price: it.price, extras: [] };
+      const redeem = rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz' }] };
+      return { restaurant_id: rid, order_id: oid, customer_name: 'S2', customer_phone: phone, customer_email: 's2@example.com', items_text: `1x ${it.display.name}`, order_type: 'pickup', payment_method: 'online',
+        items: [claim ? { ...line, dish_id: 'CID-DISAGREES' } : line], redeem };
+    };
+    const send = async (rid, oid, uid, phone, claim) => post(app.chargeOnlineOrder, bodyX(rid, oid, phone, claim), 'POST', '', { 'x-firebase-id-token': uid });
+    const state = async (uid, rid, oid, phone) => ({
+      content: await get(`recent_order_content/${rateLimitKey(phone)}`), phoneQuota: await get(`rate_limits/phone/${rateLimitKey(phone)}`),
+      ipQuotas: await get('rate_limits/ip'), resv: await get(`user_rewards/${uid}/${rid}/reservations/${oid}`), wallet: await get(`user_rewards/${uid}/${rid}`), order: await get(`orders/${oid}`) });
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const uid = `u_s2_${rid}`;
+      await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
+      for (const degraded of [false, true]) {
+        for (const hold of [false, true]) {
+          for (const kind of ['unverifiable', 'malformed']) {
+            if (kind === 'malformed' && degraded) continue;   // the degraded malformed case is the probe's, covered in cell 10
+            const oid = `s2_${rid}_${degraded ? 'deg' : 'norm'}_${hold ? 'hold' : 'nohold'}_${kind}`;
+            const phone = `9977${String(n4 += 1).padStart(4, '0')}`;
+            await rtdb.ref('rate_limits').remove();
+            if (hold) {
+              const pre = await send(rid, oid, uid, `9966${String(n4).padStart(4, '0')}`, false);   // a LEGACY hold on the SAME order id
+              assert.strictEqual(pre.status, 200, `premise ${oid}: ${pre.text.slice(0, 140)}`);
+              await rtdb.ref(`orders/${oid}`).update({ fp_format: kind === 'malformed' ? 'bogus' : 'canonical', payment_fingerprint: null, active_attempt_id: null });
+            } else {
+              await rtdb.ref(`orders/${oid}`).set({ ...canonOrder(rid), ...(kind === 'malformed' ? { fp_format: 'bogus' } : {}) });
+            }
+            await rtdb.ref('rate_limits').remove();
+            const before = await state(uid, rid, oid, phone);
+            FAIL_CLASSIFY = degraded;
+            let r; try { r = await send(rid, oid, uid, phone, kind === 'unverifiable'); } finally { FAIL_CLASSIFY = false; }
+            const after = await state(uid, rid, oid, phone);
+            const want = kind === 'malformed' ? 'binding_format_invalid' : 'cart_unverifiable';
+            assert.strictEqual(r.status, 409, `${oid}: ${r.text.slice(0, 160)}`); assert.strictEqual(r.json.reason, want, `${oid}: the TYPED reason is kept`);
+            assert.deepStrictEqual(after.resv, before.resv, `🔴 ${oid}: the reservation is preserved`);
+            assert.deepStrictEqual(after.wallet, before.wallet, `🔴 ${oid}: the wallet is preserved`);
+            assert.deepStrictEqual(after.order, before.order, `🔴 ${oid}: the order is preserved`);
+            if (!degraded) {
+              assert.deepStrictEqual({ c: after.content, p: after.phoneQuota, i: after.ipQuotas }, { c: before.content, p: before.phoneQuota, i: before.ipQuotas },
+                `🔴 ${oid}: the NORMAL-path refusal writes NO bookkeeping for THIS request (dedup stamp, phone quota, ip quota)`);
+            } else {
+              assert.ok(after.content && Object.values(after.content).some((v) => v && v.order_id === oid), `${oid}: degraded — THIS request's dedup stamp was written (today's order)`);
+              assert.strictEqual(after.phoneQuota && after.phoneQuota.count, 1, `${oid}: degraded — THIS request's phone quota was taken (today's order)`);
+            }
+          }
+        }
+      }
+    }
+  }
+  ok('S2 request-specific matrix (both restaurants): an unverifiable canonical order on the NORMAL path — with and without a legacy hold on the same order id — and a MALFORMED tag (409 binding_format_invalid, typed) write NO dedup stamp, phone or ip quota for that request; on the DEGRADED path (classify throws) the request\'s own stamp + quota are written as today, and in EVERY case the reservation, wallet and order are preserved byte-for-byte');
+
   FINISHED = true;
   console.log(`d4b-readers(emulator): OK (${n})`);
   process.exit(0);

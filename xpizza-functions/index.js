@@ -1411,14 +1411,15 @@ chargeOnlineApp.all('*', async (req, res) => {
      `null` (unknown) until the authoritative order probe below decides it. */
   let orderBindingFormat = null;
   let classifyFailed = false;
-  let canonicalFpG = null;   // the canonical recompute of THIS request — one memoized thunk shared by classify and every later check
+  let canonicalFpG = null;   // the canonical recompute for the classify + probe checks — a request-local memoizer (the reserve/acquire
+                             // site has its own request-local memoizer, canonicalChargeFp, over the same inputs)
   {
     const schedForRawG = SCHED.normalizeScheduledFor(body.scheduled_for);
     const isScheduledG = Number.isFinite(schedForRawG);
     const totalCentsG = effBreakdown.total_cents;   // discounted when redeemed → the read-only classify fingerprint matches the authoritative one
     const fingerprintG = orderFingerprint(orderId, totalCentsG, fields.items_text, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: bind the redeemed SET into payment_fingerprint (design-gate #2)
     let clsG;
-    // 1D D4-b: the canonical recompute is a LAZY, memoized thunk — evaluated only for a canonical-tagged order.
+    // 1D D4-b: a LAZY, request-local memoized thunk — evaluated only for a canonical-tagged order.
     canonicalFpG = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
       items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
       schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
@@ -1430,8 +1431,13 @@ chargeOnlineApp.all('*', async (req, res) => {
       clsG = null;   // unknown → treat as non-terminal → read availability; acquireHostedAttempt stays authoritative
       classifyFailed = true;   // B1-c(1): the order probe below decides the binding format
     }
-    /* B1-c(2): on the NORMAL path a canonical order whose canonical fingerprint cannot be computed is refused HERE —
-       before the dedup stamp and the rate-limit writes — so the refusal writes NOTHING (the 86 placement precedent). */
+    /* B1-c(2): on the NORMAL path a refusal decided by classify's snapshot is returned HERE — before the dedup stamp and
+       the rate-limit writes, and before any reserve — so it writes NOTHING (the 86 placement precedent):
+         · a malformed binding tag (codex r3 S1) → 409 binding_format_invalid;
+         · a canonical order whose canonical fingerprint cannot be computed → 409 cart_unverifiable. */
+    if (clsG && clsG.outcome === 'conflict' && clsG.reason === 'binding_format_invalid') {
+      return res.status(409).json({ error: 'Order conflict', reason: 'binding_format_invalid', order_id: orderId });
+    }
     if (orderBindingFormat === CB.FORMAT_CANONICAL) {
       const c = canonicalFpG();
       if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
@@ -1735,7 +1741,8 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
   if (acq.outcome === 'conflict') {
     await releaseHoldIfOwned();   // abandoned: order_id used for a different cart/total
-    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId });
+    // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch has none → today's exact body
+    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId, ...(acq.reason ? { reason: acq.reason } : {}) });
   }
   if (acq.outcome === 'closed') {
     await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
