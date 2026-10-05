@@ -74,7 +74,34 @@ const canonicalToken = (payload) => signQuoteToken({ rid: payload.rid, customer_
       assert.deepStrictEqual(keys, [...keys].sort(), 'la_musa items re-sorted by ck with the legacy comparator');
     } else assert.ok(CB.parseCk(cr.reward.canonical.free_item_key), 'x_pizza free_item_key substituted');
   }
-  ok('structural golden: every canonical projection is the legacy normalized structure with ONLY the identity keys substituted (lines, qty, extras multiplicity, reward fields retained + v:"c1"; la_musa items re-sorted by ck)');
+  // v:"c1" IS in every canonical hash (independent expectation: the same hasher WITHOUT it gives a different digest)
+  {
+    const rid = 'x_pizza', ctx = contextFor(rid), carts = F.cartsFor(rid);
+    const c = CB.canonicalCartNorm(carts.plain, rid, ctx);
+    assert.strictEqual(CB.canonicalCartDigest(carts.plain, null, rid, ctx).fp, cartFingerprint(c.norm, null, { v: 'c1' }));
+    assert.notStrictEqual(CB.canonicalCartDigest(carts.plain, null, rid, ctx).fp, cartFingerprint(c.norm, null), '🔴 the canonical cart hash must carry v:"c1"');
+    const red = computeRedemption({ redeem: F.redeemFor(rid), items: carts.plain, restaurantId: rid, tables: F.tablesFor(rid) });
+    assert.strictEqual(CB.canonicalReward(red, ctx).reward.canonical.v, 'c1', 'and the canonical reward object carries v:"c1" (so redemptionFingerprint hashes it)');
+  }
+  // RE-SORT by ck: canonical ids assigned so that ck order is the REVERSE of legacy-key order (la_musa)
+  {
+    const rid = 'la_musa', carts = F.cartsFor(rid);
+    const red = computeRedemption({ redeem: F.redeemFor(rid), items: carts.plain, restaurantId: rid, tables: F.tablesFor(rid) });
+    const legacyOrder = red.canonical.items.map((x) => x.free_item_key);
+    assert.ok(legacyOrder.length >= 2, 'premise — a multi-item la_musa reward');
+    const rev = contextFor(rid);
+    legacyOrder.forEach((k, i) => { rev.objects.filter((o) => o.legacyKey === k).forEach((o) => { o.canonicalId = `Z${String(legacyOrder.length - i).padStart(3, '0')}`; o.kind = 'dish'; }); });
+    const out = CB.canonicalReward(red, rev).reward;
+    const keys = out.canonical.items.map((x) => x.free_item_key);
+    assert.deepStrictEqual(keys, [...keys].sort(), 'items are in ck order…');
+    assert.notDeepStrictEqual(keys.map((k) => CB.parseCk(k).cid), legacyOrder.map((k) => rev.objects.find((o) => o.legacyKey === k).canonicalId), '…which here is NOT the legacy order — the re-sort is exercised');
+    const fiKeys = out.freeItems.map((x) => x.item_id);
+    assert.deepStrictEqual(fiKeys, [...fiKeys].sort(), 'freeItems[] likewise');
+  }
+  // the selected canonical order binding is LITERALLY "c1:" + fp (an independent expectation, not the same function twice)
+  assert.strictEqual(CB.selectedOrderBinding('canonical', 'abc'), 'c1:abc');
+  assert.strictEqual(CB.selectedOrderBinding('legacy', 'abc'), 'abc', 'legacy: the bare fp, exactly today');
+  ok('structural golden: every canonical projection is the legacy normalized structure with ONLY the identity keys substituted (lines, qty, extras multiplicity, reward fields retained + v:"c1" — proven present in both hashes); la_musa items and freeItems re-sorted by ck (exercised with an order-reversing id assignment); the selected canonical order binding is literally "c1:<fp>"');
 
   // ── 2. IDENTITY SENSITIVITY through the REAL verifier ─────────────────────────────────────────────────
   for (const rid of F.RIDS) {
