@@ -485,9 +485,13 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
   }
   ok('S2 request-specific matrix (both restaurants): an unverifiable canonical order on the NORMAL path — with and without a legacy hold on the same order id — and a MALFORMED tag (409 binding_format_invalid, typed) write NO dedup stamp, phone or ip quota for that request; on the DEGRADED path (classify throws) the request\'s own stamp + quota are written as today, and in EVERY case the reservation, wallet and order are preserved byte-for-byte');
 
-  // ═══ codex r3 S1 — the CAS's TYPED conflict reaches the client: a concurrent writer tags the order with a malformed
-  //     format AFTER classify passed it as legacy; the acquire transaction refuses it → 409 with reason
-  //     binding_format_invalid (not an untyped "different cart"), the fresh hold released, the order never bound. ═══
+  // ═══ codex r3 S1 — typed-conflict PROPAGATION from acquireHostedAttempt to the client: a concurrent writer tags the order
+  //     with a malformed format AFTER classify passed it as legacy and BEFORE acquire runs. acquire's ADVISORY pre-read
+  //     (pixelpay-hosted-charge.js, before its transaction) is what refuses it here — so this proves the handler
+  //     keeps acquire's typed reason (409 binding_format_invalid, not an untyped "different cart") and releases the
+  //     fresh hold. It does NOT prove a conflict originating INSIDE acquire's transaction: cell 7 pins that only at the
+  //     module level (acquireHostedAttempt called directly, outcome 'conflict' asserted, the typed reason NOT asserted),
+  //     and no test drives a transaction-originated TYPED conflict through the handler. The order is never bound. ═══
   {
     const get = async (p) => (await rtdb.ref(p).get()).val();
     for (const rid of ['x_pizza', 'la_musa']) {
@@ -502,7 +506,7 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
       BEFORE_ACQUIRE = async () => { await rtdb.ref(`orders/${oid}`).update({ fp_format: 'bogus' }); };
       let r; try { r = await post(app.chargeOnlineOrder, body, 'POST', '', { 'x-firebase-id-token': uid }); } finally { BEFORE_ACQUIRE = null; }
       assert.strictEqual(r.status, 409, `${rid} race: ${r.text.slice(0, 160)}`);
-      assert.strictEqual(r.json.reason, 'binding_format_invalid', `🔴 ${rid}: the CAS's TYPED reason is kept on the acquire conflict`);
+      assert.strictEqual(r.json.reason, 'binding_format_invalid', `🔴 ${rid}: acquire's TYPED reason is kept on the 409 (propagation)`);
       const o = await get(`orders/${oid}`);
       assert.ok(!o.payment_fingerprint && !o.active_attempt_id, `${rid}: the order was never bound`);
       const resv = await get(`user_rewards/${uid}/${rid}/reservations/${oid}`);
@@ -510,7 +514,7 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
       assert.strictEqual((await get(`user_rewards/${uid}/${rid}`)).reserved || 0, 0, `${rid}: no net debit`);
     }
   }
-  ok('S1 race through the REAL charge handler (both restaurants): an order retagged with a malformed format between classify and the CAS → the acquire transaction refuses it and the 409 keeps the TYPED reason binding_format_invalid; the order is never bound, the fresh hold is released, no net debit');
+  ok('S1 typed-conflict PROPAGATION through the REAL charge handler (both restaurants): an order retagged with a malformed format between classify and acquire → acquire (its advisory pre-read) refuses it and the 409 keeps the TYPED reason binding_format_invalid; the order is never bound, the fresh hold is released, no net debit');
 
   FINISHED = true;
   console.log(`d4b-readers(emulator): OK (${n})`);

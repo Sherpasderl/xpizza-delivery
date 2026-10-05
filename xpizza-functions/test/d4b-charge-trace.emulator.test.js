@@ -6,8 +6,8 @@
 // Both restaurants × (a) the NORMAL legacy path (a fresh charge with a reward redemption, then a retry that reuses the
 // attempt) and (b) the CLASSIFY-FAILURE legacy path (classifyHostedAttempt throws as an RTDB read failure would; the
 // order probe decides). Every RTDB read/write/transaction and every Firestore read/write the handler issues is
-// recorded in order (op + normalised path; a multi-path update records its sorted child keys; values are NOT recorded —
-// they carry timestamps). Request-local ids (order id, uid, phone key, attempt id, poll token) are normalised.
+// recorded in order (op + normalised path; EVERY document of a getAll, in order; a write's sorted top-level keys; values
+// are NOT recorded — they carry timestamps; see the recorder note below for what cannot be distinguished). Request-local ids (order id, uid, phone key, attempt id, poll token) are normalised.
 //
 // CAPTURE (base only): D4B_TRACE_CAPTURE=<file> writes the trace instead of comparing. The golden
 // catalog/d4b-charge-trace.golden.json was captured by running THIS file inside a 717f97e checkout (see HANDBACK-D4b.md
@@ -75,20 +75,30 @@ function patchChain(obj, names, describe) {
 }
 const rtdbPath = (r) => (r && typeof r.toString === 'function' ? rel(r.toString()) : '?');
 const keysOf = (v) => (v && typeof v === 'object' ? Object.keys(v).sort() : undefined);
+// What an entry carries (codex r4 S3): op + path; a write ALSO carries the sorted top-level keys of its value
+// (set/update/push on RTDB, set/update/create on Firestore) or, for a non-object value, its type. NOT
+// distinguishable: two writes of the same path + same key set + different VALUES (values carry timestamps and are not
+// recorded), and what an RTDB transaction's update function computes (opaque — only the transaction's path is recorded).
+const writeShape = (v) => (v && typeof v === 'object' ? { keys: Object.keys(v).sort() } : { type: v === null ? 'null' : typeof v });
 patchChain(rtdb.ref('x'), ['get', 'once', 'set', 'update', 'remove', 'transaction', 'push'], (self, nm, a) => {
   const e = { db: 'rtdb', op: nm, path: rtdbPath(self.ref || self) };
-  if (nm === 'update') e.keys = keysOf(a[0]);
+  if (nm === 'update' || nm === 'set' || (nm === 'push' && a.length)) Object.assign(e, writeShape(a[0]));
   return e;
 });
-const fsDescribe = (self, nm) => ({ db: 'fs', op: nm, path: self.path !== undefined ? self.path : (self._queryOptions ? `${self._queryOptions.parentPath.relativeName}/${self._queryOptions.collectionId}?query` : '?') });
+const fsDescribe = (self, nm, a) => ({ db: 'fs', op: nm, path: self.path !== undefined ? self.path : (self._queryOptions ? `${self._queryOptions.parentPath.relativeName}/${self._queryOptions.collectionId}?query` : '?'),
+  ...((nm === 'set' || nm === 'update' || nm === 'create' || nm === 'add') ? writeShape(a[0]) : {}) });
+// EVERY document argument of a getAll, in order, with multiplicity (a trailing ReadOptions object is not a document)
+const docPaths = (a) => a.filter((d) => d && typeof d === 'object' && typeof d.path === 'string' && typeof d.get === 'function').map((d) => d.path);
 patchChain(fs.doc('a/b'), ['get', 'set', 'update', 'create', 'delete', 'listCollections'], fsDescribe);
 patchChain(fs.collection('a').where('x', '==', 1), ['get'], fsDescribe);
 patchChain(fs.collection('a'), ['get', 'add'], fsDescribe);
-patchChain(fs, ['getAll', 'runTransaction'], (self, nm, a) => ({ db: 'fs', op: nm, path: nm === 'getAll' ? a.filter((d) => d && d.path).map((d) => d.path).join(',') : '' }));
+patchChain(fs, ['getAll', 'runTransaction'], (self, nm, a) => (nm === 'getAll' ? { db: 'fs', op: nm, paths: docPaths(a) } : { db: 'fs', op: nm, path: '' }));
 let txProtoPatched = false;
 const origRunTx = fs.runTransaction.bind(fs);
 fs.runTransaction = (fn, opts) => origRunTx(async (tx) => {
-  if (!txProtoPatched) { txProtoPatched = true; patchChain(tx, ['get', 'getAll', 'set', 'update', 'create', 'delete'], (self, nm, a) => ({ db: 'fs', op: `tx.${nm}`, path: a[0] && a[0].path !== undefined ? a[0].path : '?' })); }
+  if (!txProtoPatched) { txProtoPatched = true; patchChain(tx, ['get', 'getAll', 'set', 'update', 'create', 'delete'], (self, nm, a) => (nm === 'getAll'
+    ? { db: 'fs', op: 'tx.getAll', paths: docPaths(a) }
+    : { db: 'fs', op: `tx.${nm}`, path: a[0] && a[0].path !== undefined ? a[0].path : '?', ...((nm === 'set' || nm === 'update' || nm === 'create') ? writeShape(a[1]) : {}) })); }
   return fn(tx);
 }, opts);
 
@@ -145,9 +155,31 @@ async function traced(rid, oid, uid, phone) {
   const subs = [];
   for (const [k, v] of Object.entries(o)) if (/attempt_id$|poll_token$/.test(k) && typeof v === 'string' && v.length >= 8) subs.push([v, `<${k}>`]);
   subs.push([oid, '<oid>'], [rateLimitKey(phone), '<phoneKey>'], [uid, '<uid>']);
-  // the fixture mints identity ids at random per run → the id segment of an identity registry path is normalised
-  const norm = (s) => subs.reduce((acc, [from, to]) => acc.split(from).join(to), String(s)).replace(/(\/identity\/[^/]+\/ids\/)[^/]+/, '$1<identity_id>');
-  const trace = calls.map((c) => ({ ...c, path: norm(c.path), ...(c.keys ? { keys: c.keys.map(norm) } : {}) }));
+  // the fixture mints identity ids at random per run → each id in an identity-registry path is replaced by the row
+  // that OWNS it, in whichever kind (<id:dish/Margherita>), read AFTER the call with the recorder off — so a dish id
+  // probed under extra/ids still gets its stable name. An id with no owning row → <id:UNOWNED>.
+  const ID_RE = /restaurants\/([^/]+)\/identity\/([^/]+)\/ids\/([^/]+)/g;
+  const idName = new Map();
+  for (const c of calls) for (const p of [c.path, ...(c.paths || [])]) {
+    if (typeof p !== 'string') continue;
+    for (const m of p.matchAll(ID_RE)) {
+      const [, rid, , id] = m;
+      if (idName.has(`${rid}/${id}`)) continue;
+      let name = '<id:UNOWNED>';
+      for (const kind of ['dish', 'extra']) {
+        const d = await fs.doc(`restaurants/${rid}/identity/${kind}/ids/${id}`).get();
+        if (d.exists && typeof d.data().legacy_key === 'string') { name = `<id:${kind}/${d.data().legacy_key}>`; break; }
+      }
+      idName.set(`${rid}/${id}`, name);
+    }
+  }
+  const norm = (s) => subs.reduce((acc, [from, to]) => acc.split(from).join(to), String(s))
+    .replace(ID_RE, (m, rid, kind, id) => `restaurants/${rid}/identity/${kind}/ids/${idName.get(`${rid}/${id}`)}`);
+  // a getAll's ORDER follows the raw (random) ids, so it is recorded as: the normalised document MULTISET (sorted,
+  // multiplicity kept) + whether the RAW order was ascending. Ascending + the multiset pins the exact raw sequence; any
+  // other order flips the flag; an added, dropped or repeated document changes the multiset.
+  const batch = (raw) => ({ paths: raw.map(norm).sort(), raw_order: raw.every((x, i) => i === 0 || raw[i - 1] <= x) ? 'ascending' : 'other', count: raw.length });
+  const trace = calls.map((c) => ({ ...c, ...(c.path !== undefined ? { path: norm(c.path) } : {}), ...(c.paths ? batch(c.paths) : {}), ...(c.keys ? { keys: c.keys.map(norm) } : {}) }));
   return { status: r.status, trace };
 }
 
