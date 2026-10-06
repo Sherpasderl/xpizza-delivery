@@ -1,20 +1,24 @@
 'use strict';
-// Portal 1D · D4-b codex r3 S3 — the REAL chargeOnlineOrder's ordered DB call sequence on the LEGACY paths, frozen
-// from the 717f97e handler source and compared against the current handler.
-// Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:d4b-charge-trace
+// P-SELFUPDATE (advisor ruling R3.3; codex CP1 S4) — the REAL quoteOrder's and quoteRedemption's ordered DB call
+// sequences with the floor OFF, frozen from the ba29282 handler source and compared against the current handlers.
+// Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:pselfupdate-quote-trace
 //
-// Both restaurants × (a) the NORMAL legacy path (a fresh charge with a reward redemption, then a retry that reuses the
-// attempt) and (b) the CLASSIFY-FAILURE legacy path (classifyHostedAttempt throws as an RTDB read failure would; the
-// order probe decides). Every RTDB read/write/transaction and every Firestore read/write the handler issues is
-// recorded in order (op + normalised path; EVERY document of a getAll, in order; a write's sorted top-level keys; values
-// are NOT recorded — they carry timestamps; see the recorder note below for what cannot be distinguished). Request-local ids (order id, uid, phone key, attempt id, poll token) are normalised.
+// Both restaurants × (a) quoteOrder (a plain cart), (b) quoteRedemption (a verified customer + a reward). Recorder,
+// normalisation and fixtures are the d4b-charge-trace / createOrder-trace recipe.
 //
-// CAPTURE (base only): D4B_TRACE_CAPTURE=<file> writes the trace instead of comparing. The golden
-// catalog/d4b-charge-trace.golden.json was captured by running THIS file inside a 717f97e checkout (see HANDBACK-D4b.md
-// r3) and is FROZEN — never regenerate it from the current handler.
+// ALLOWLIST (advisor ruling R3.2): the comparison EXCLUDES exactly one call family — a GET of
+// `platform_config/client_floor/orders` (the HTTP floor's cached read). It is asserted separately: only gets, at most one
+// per request. Every other call must equal the frozen golden byte-for-byte. A header-less request writes NOTHING for
+// telemetry (ruling R3.1: header-less counting is a log line, not a database write).
 //
-// Uses only modules that exist at 717f97e, and the same external stubs as test/d4b-readers.emulator.test.js.
+// CAPTURE (base only): PSU_TRACE_CAPTURE=<file>. The golden catalog/pselfupdate-quote-trace.golden.json was captured
+// by running THIS file inside a ba29282 checkout and is FROZEN. (The golden file name: pselfupdate-quote-trace.golden.json.)
 require('./_emulator-required')('database', 'firestore');
+// A CONTROLLED CLOCK (codex CP1 r2 S4), installed BEFORE index.js loads so every per-instance cache captures it — incl.
+// the catalog verifier's 60 s observation. Advancing it makes the REFRESH path deterministic instead of time-of-day luck.
+const REAL_NOW = Date.now.bind(Date);
+let CLOCK_OFFSET = 0;
+Date.now = () => REAL_NOW() + CLOCK_OFFSET;
 
 const assert = require('assert');
 const http = require('http');
@@ -54,10 +58,10 @@ const { getActivePointer } = require('../catalog/catalog-firestore');
 const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { rateLimitKey } = require('../order-dedup');
 
-const GOLDEN = path.join(__dirname, '..', 'catalog', 'd4b-charge-trace.golden.json');
-const CAPTURE = process.env.D4B_TRACE_CAPTURE || '';
+const GOLDEN = path.join(__dirname, '..', 'catalog', 'pselfupdate-quote-trace.golden.json');
+const CAPTURE = process.env.PSU_TRACE_CAPTURE || '';
 let FINISHED = false;
-process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4b-charge-trace(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pselfupdate-quote-trace(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
 
 // ── the recorder: patch the RTDB Reference/Query and Firestore reference/query/transaction prototypes ─────────────
 let REC = null;
@@ -136,24 +140,28 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const OPEN = { open: true, start: '00:00', end: '24:00' };
 const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1,
   hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } });
-function bodyFor(rid, oid, phone) {
+function bodyFor(rid, oid, phone, { redeem: withRedeem = false, qty = 1 } = {}) {
   const s = catalogSnapshot(rid);
   const it = s.items.find((i) => (rid === 'x_pizza' ? i.key === 'Carnivora' : i.key === 'dimsum_01'));
-  const items = rid === 'x_pizza' ? [{ name: it.display.name, qty: 1, price: it.price, extras: [] }] : [{ id: it.key, name: it.display.name, cat: it.display.cat, qty: 1, price: it.price, extras: [] }];
+  const items = rid === 'x_pizza' ? [{ name: it.display.name, qty, price: it.price, extras: [] }] : [{ id: it.key, name: it.display.name, cat: it.display.cat, qty, price: it.price, extras: [] }];
   const redeem = rid === 'x_pizza' ? { type: 'free_pizza_choice', item_id: 'Margherita', name: 'Margherita' } : { type: 'points_ala_carte', items: [{ id: 'rice_white', qty: 1, name: 'Arroz' }] };
-  return { restaurant_id: rid, order_id: oid, customer_name: 'Trace Test', customer_phone: phone, customer_email: 'trace@example.com', items_text: `1x ${it.display.name}`, order_type: 'pickup', payment_method: 'online', items, redeem };
+  return { restaurant_id: rid, order_id: oid, customer_name: 'Trace Test', customer_phone: phone, customer_email: 'trace@example.com', items_text: `${qty}x ${it.display.name}`, order_type: 'pickup', payment_method: 'cash', items, ...(withRedeem ? { redeem } : {}) };
 }
 
 // one handler call, recorded; request-local ids normalised AFTER the call (the attempt id / poll token are read back)
-async function traced(rid, oid, uid, phone) {
+async function traced(rid, oid, uid, phone, opts = {}) {
+  const kind = opts.kind || 'quote';
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
   REC = [];
-  const r = await post(app.chargeOnlineOrder, bodyFor(rid, oid, phone), { 'x-firebase-id-token': uid });
+  const b = bodyFor(rid, oid, phone, { redeem: kind === 'redeem' });
+  const r = kind === 'redeem'
+    ? await post(app.quoteRedemption, { restaurant_id: rid, items: b.items, redeem: b.redeem }, { 'x-firebase-id-token': uid })
+    : await post(app.quoteOrder, { restaurant_id: rid, items: b.items }, {});
   await wait(300);   // let any fire-and-forget write the handler issued land inside the recording
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   const subs = [];
-  for (const [k, v] of Object.entries(o)) if (/attempt_id$|poll_token$/.test(k) && typeof v === 'string' && v.length >= 8) subs.push([v, `<${k}>`]);
+  for (const [k, v] of Object.entries(o)) if (/attempt_id$|poll_token$|tracking_token$/.test(k) && typeof v === 'string' && v.length >= 8) subs.push([v, `<${k}>`]);
   subs.push([oid, '<oid>'], [rateLimitKey(phone), '<phoneKey>'], [uid, '<uid>']);
   // the fixture mints identity ids at random per run → each id in an identity-registry path is replaced by the row
   // that OWNS it, in whichever kind (<id:dish/Margherita>), read AFTER the call with the recorder off — so a dish id
@@ -174,7 +182,9 @@ async function traced(rid, oid, uid, phone) {
     }
   }
   const norm = (s) => subs.reduce((acc, [from, to]) => acc.split(from).join(to), String(s))
-    .replace(ID_RE, (m, rid, kind, id) => `restaurants/${rid}/identity/${kind}/ids/${idName.get(`${rid}/${id}`)}`);
+    .replace(ID_RE, (m, rid, kind, id) => `restaurants/${rid}/identity/${kind}/ids/${idName.get(`${rid}/${id}`)}`)
+    // the fixture publishes a fresh catalog version per run (time + random id) — normalised like the other run-local ids
+    .replace(/(restaurants\/[^/]+\/versions\/)v-\d+-[0-9a-f]+/g, '$1<version>');
   // a getAll's ORDER follows the raw (random) ids, so it is recorded as: the normalised document MULTISET (sorted,
   // multiplicity kept) + whether the RAW order was ascending. Ascending + the multiset pins the exact raw sequence; any
   // other order flips the flag; an added, dropped or repeated document changes the multiset.
@@ -193,52 +203,74 @@ async function traced(rid, oid, uid, phone) {
   for (const rid of ['x_pizza', 'la_musa']) {
     const uid = `u_trace_${rid}`;
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
-    // warm-up (NOT recorded): the instance's cached reads (context, config) settle, so the recorded calls are the
-    // per-request sequence rather than a cold-cache artefact.
     await rtdb.ref('rate_limits').remove();
-    assert.strictEqual((await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm`, '99330000'), { 'x-firebase-id-token': uid })).status, 200, `${rid}: warm-up`);
-    const a1 = await traced(rid, `trace_${rid}_normal`, uid, '99331001');
-    const a2 = await traced(rid, `trace_${rid}_normal`, uid, '99331001');
-    FAIL_CLASSIFY = true;
-    let b1; try { b1 = await traced(rid, `trace_${rid}_degraded`, uid, '99332001'); } finally { FAIL_CLASSIFY = false; }
-    for (const [k, v] of [['a_normal_fresh', a1], ['a_normal_retry', a2], ['b_classify_failure_fresh', b1]]) {
-      assert.strictEqual(v.status, 200, `${rid} ${k}: premise — the legacy path charges (${v.status})`);
-      assert.ok(v.trace.length > 5, `${rid} ${k}: premise — the recorder saw the handler's calls`);
+    // warm-up (NOT recorded): one of each, so per-instance caches settle
+    assert.strictEqual((await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {})).status, 200, `${rid}: warm-up quote`);
+    const wb = bodyFor(rid, 'w', '1', { redeem: true });
+    assert.strictEqual((await post(app.quoteRedemption, { restaurant_id: rid, items: wb.items, redeem: wb.redeem }, { 'x-firebase-id-token': uid })).status, 200, `${rid}: warm-up redemption quote`);
+    // SETTLE (not recorded, not filtered): the catalog verifier re-reads Firestore when its 60 s observation expires, which
+    // lands in whichever request crosses that moment. Probe quotes run until one makes NO Firestore call, so the recorded
+    // requests that follow (well inside 60 s) see a settled instance. Base and current run the same settle step.
+    for (let i = 0; i < 10; i += 1) {
+      REC = [];
+      await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {});
+      await wait(300);
+      const fsCalls = REC.filter((e) => e.db === 'fs').length; REC = null;
+      if (!fsCalls) break;
+      assert.ok(i < 9, `${rid}: the instance never settled`);
     }
-    out[rid] = { a_normal_fresh: a1.trace, a_normal_retry: a2.trace, b_classify_failure_fresh: b1.trace };
+    await rtdb.ref('rate_limits').remove();
+    const a = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'quote' });
+    const b = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'redeem' });
+    for (const [k, v] of [['a_quote_order', a], ['b_quote_redemption', b]]) {
+      assert.strictEqual(v.status, 200, `${rid} ${k}: premise — status 200 (${v.status})`);
+      assert.ok(v.trace.length > 0, `${rid} ${k}: premise — the recorder saw the handler's calls`);
+    }
+    // c — the REFRESH request: advance the controlled clock past every per-instance TTL (verifier 60 s, catalog context
+    // 45 s, floor 30 s), so this quote re-reads exactly what an init/refresh reads. Reproducible: same state, same clock.
+    CLOCK_OFFSET += 61000;
+    await rtdb.ref('rate_limits').remove();
+    const c = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'quote' });
+    assert.strictEqual(c.status, 200, `${rid} c_quote_order_refresh: premise — status 200 (${c.status})`);
+    assert.ok(c.trace.some((e) => e.db === 'fs') || rid !== 'x_pizza', `${rid} c_quote_order_refresh: premise — the refresh really re-read (x_pizza's certified context reads Firestore)`);
+    out[rid] = { a_quote_order: a.trace, b_quote_redemption: b.trace, c_quote_order_refresh: c.trace };
   }
 
   if (CAPTURE) {
     fsys.writeFileSync(CAPTURE, `${JSON.stringify(out, null, 1)}\n`);
-    console.log(`d4b-charge-trace(emulator): CAPTURED → ${CAPTURE}`);
+    console.log(`pselfupdate-quote-trace(emulator): CAPTURED → ${CAPTURE}`);
   } else {
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
-    // P-SELFUPDATE ALLOWLIST (advisor ruling R3.2): the comparison EXCLUDES exactly one call family — a GET of
-    // `platform_config/client_floor/orders` (the HTTP floor's cached read) — asserted on its own: only gets, at most one
-    // per request. Every other call must equal the frozen 717f97e golden (NOT recaptured) byte-for-byte.
+    // ALLOWLIST (ruling R3.2): exactly the HTTP floor's GET is excluded from the comparison, and asserted on its own
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
-      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
-      console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
+      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
+      console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
     // NON-VACUOUS ALLOWLIST: one more fresh request after the floor cache has EXPIRED (one TTL since any earlier read) MUST
-    // carry exactly ONE floor GET, and with it removed its sequence must equal the golden's a_normal_retry (a retry: no other cache — e.g. the catalog verifier's 45 s TTL — enters its sequence).
+    // carry exactly ONE floor GET, and with it removed its sequence must equal the golden's b_quote_redemption (it never involves the catalog verifier, whose 60 s TTL a 31 s wait could cross).
     {
       const { FLOOR_TTL_MS } = require('../client-floor');
-      await wait(FLOOR_TTL_MS + 1500);
-      const t = await traced('x_pizza', 'trace_x_pizza_normal', 'u_trace_x_pizza', '99331001');
+      // with the CONTROLLED clock: refresh every cache now (an unrecorded quoteRedemption), then advance exactly one floor TTL — past
+      // the floor's 30 s, inside the catalog context's 45 s and the verifier's 60 s — so ONLY the floor cache has expired
+      await rtdb.ref('rate_limits').remove();
+      { const wb2 = bodyFor('x_pizza', 'w', '1', { redeem: true });   // the SAME path as the checked request, so ITS caches refresh too
+        await post(app.quoteRedemption, { restaurant_id: 'x_pizza', items: wb2.items, redeem: wb2.redeem }, { 'x-firebase-id-token': 'u_trace_x_pizza' }); }
+      await wait(300);
+      CLOCK_OFFSET += FLOOR_TTL_MS + 1500;   // 31.5 s: past the floor's 30 s; inside the 45 s context / gate-pointer TTLs and the 60 s verifier
+      const t = await traced('x_pizza', 'qtrace_unused_oid', 'u_trace_x_pizza', '99000001', { kind: 'redeem' });
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
-      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
-      console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET; the rest identical to the golden`);
+      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.b_quote_redemption, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
+      console.log(`  ✓ x_pizza post-TTL b_quote_redemption: exactly 1 allowlisted floor GET; the rest identical to the golden`);
     }
-    console.log('d4b-charge-trace(emulator): OK');
+    console.log('pselfupdate-quote-trace(emulator): OK');
   }
   FINISHED = true;
   process.exit(0);
-})().catch((e) => { console.error('d4b-charge-trace(emulator) FAILED:', e); process.exit(1); });
+})().catch((e) => { console.error('pselfupdate-quote-trace(emulator) FAILED:', e); process.exit(1); });

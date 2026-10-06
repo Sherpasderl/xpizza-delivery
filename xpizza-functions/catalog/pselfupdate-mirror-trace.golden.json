@@ -1,0 +1,990 @@
+{
+ "x_pizza": {
+  "a_quote_mirror": [
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/quote_ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "fs",
+    "op": "runTransaction",
+    "path": ""
+   },
+   {
+    "db": "fs",
+    "op": "tx.getAll",
+    "paths": [
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Anchovies>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Cacio e Pepe NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Cacio e Pepe>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Carnivora NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Carnivora>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Crispy Bacon NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Crispy Bacon>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Ham>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Jamon NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Margherita NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Margherita>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Mushroom NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Mushroom>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Nutella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pancetta Vodka Sauce>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pepperoni NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pepperoni>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pistaccio Mortadella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Potato & Dill Sausage>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Prosciutto>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Shrimp Scampi>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Sopressatta Chili Honey>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Spinach>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Sweet Corn & Calabrian Chili>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Basil Pesto>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Espinaca>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Hongos>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Jamón>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Maíz>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Mortadella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Mozzarella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Pepperoni>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Prosciutto>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salchicha Italiana>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salsa Blanca>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salsa Calabrian Chili>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salsa Roja>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Whipped Ricotta>",
+     "restaurants/x_pizza/identity/dish/keys/Q2FjaW8gZSBQZXBl",
+     "restaurants/x_pizza/identity/dish/keys/Q2FjaW8gZSBQZXBlIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/Q2Fybml2b3Jh",
+     "restaurants/x_pizza/identity/dish/keys/Q2Fybml2b3JhIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/Q3Jpc3B5IEJhY29u",
+     "restaurants/x_pizza/identity/dish/keys/Q3Jpc3B5IEJhY29uIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/QW5jaG92aWVz",
+     "restaurants/x_pizza/identity/dish/keys/SGFt",
+     "restaurants/x_pizza/identity/dish/keys/SmFtb24gTlk",
+     "restaurants/x_pizza/identity/dish/keys/TWFyZ2hlcml0YQ",
+     "restaurants/x_pizza/identity/dish/keys/TWFyZ2hlcml0YSBOWQ",
+     "restaurants/x_pizza/identity/dish/keys/TXVzaHJvb20",
+     "restaurants/x_pizza/identity/dish/keys/TXVzaHJvb20gTlk",
+     "restaurants/x_pizza/identity/dish/keys/TnV0ZWxsYQ",
+     "restaurants/x_pizza/identity/dish/keys/U29wcmVzc2F0dGEgQ2hpbGkgSG9uZXk",
+     "restaurants/x_pizza/identity/dish/keys/U2hyaW1wIFNjYW1waQ",
+     "restaurants/x_pizza/identity/dish/keys/U3BpbmFjaA",
+     "restaurants/x_pizza/identity/dish/keys/U3dlZXQgQ29ybiAmIENhbGFicmlhbiBDaGlsaQ",
+     "restaurants/x_pizza/identity/dish/keys/UG90YXRvICYgRGlsbCBTYXVzYWdl",
+     "restaurants/x_pizza/identity/dish/keys/UGFuY2V0dGEgVm9ka2EgU2F1Y2U",
+     "restaurants/x_pizza/identity/dish/keys/UGVwcGVyb25p",
+     "restaurants/x_pizza/identity/dish/keys/UGVwcGVyb25pIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/UGlzdGFjY2lvIE1vcnRhZGVsbGE",
+     "restaurants/x_pizza/identity/dish/keys/UHJvc2NpdXR0bw",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Anchovies>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Cacio e Pepe NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Cacio e Pepe>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Carnivora NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Carnivora>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Crispy Bacon NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Crispy Bacon>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Ham>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Jamon NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Margherita NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Margherita>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Mushroom NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Mushroom>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Nutella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pancetta Vodka Sauce>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pepperoni NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pepperoni>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pistaccio Mortadella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Potato & Dill Sausage>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Prosciutto>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Shrimp Scampi>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Sopressatta Chili Honey>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Spinach>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Sweet Corn & Calabrian Chili>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Basil Pesto>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Espinaca>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Hongos>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Jamón>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Maíz>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Mortadella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Mozzarella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Pepperoni>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Prosciutto>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salchicha Italiana>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salsa Blanca>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salsa Calabrian Chili>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salsa Roja>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Whipped Ricotta>",
+     "restaurants/x_pizza/identity/extra/keys/QmFzaWwgUGVzdG8",
+     "restaurants/x_pizza/identity/extra/keys/RXNwaW5hY2E",
+     "restaurants/x_pizza/identity/extra/keys/SG9uZ29z",
+     "restaurants/x_pizza/identity/extra/keys/SmFtw7Nu",
+     "restaurants/x_pizza/identity/extra/keys/TW96emFyZWxsYQ",
+     "restaurants/x_pizza/identity/extra/keys/TW9ydGFkZWxsYQ",
+     "restaurants/x_pizza/identity/extra/keys/TWHDrXo",
+     "restaurants/x_pizza/identity/extra/keys/U2FsY2hpY2hhIEl0YWxpYW5h",
+     "restaurants/x_pizza/identity/extra/keys/U2Fsc2EgQ2FsYWJyaWFuIENoaWxp",
+     "restaurants/x_pizza/identity/extra/keys/U2Fsc2EgQmxhbmNh",
+     "restaurants/x_pizza/identity/extra/keys/U2Fsc2EgUm9qYQ",
+     "restaurants/x_pizza/identity/extra/keys/UGVwcGVyb25p",
+     "restaurants/x_pizza/identity/extra/keys/UHJvc2NpdXR0bw",
+     "restaurants/x_pizza/identity/extra/keys/V2hpcHBlZCBSaWNvdHRh"
+    ],
+    "raw_order": "ascending",
+    "count": 114
+   }
+  ],
+  "b_cash_mirror": [
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/2be7882876b056bedadbf90a77cba50d"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/2be7882876b056bedadbf90a77cba50d",
+    "keys": [
+     "at",
+     "order_id",
+     "payment_method"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "",
+    "keys": [
+     "order_tracking/<tracking_token>",
+     "orders/<oid>",
+     "user_orders/<uid>/<oid>"
+    ]
+   }
+  ],
+  "c_quote_mirror_refresh": [
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/quote_ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot_ctx/x_pizza"
+   },
+   {
+    "db": "fs",
+    "op": "runTransaction",
+    "path": ""
+   },
+   {
+    "db": "fs",
+    "op": "tx.getAll",
+    "paths": [
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Anchovies>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Cacio e Pepe NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Cacio e Pepe>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Carnivora NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Carnivora>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Crispy Bacon NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Crispy Bacon>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Ham>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Jamon NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Margherita NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Margherita>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Mushroom NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Mushroom>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Nutella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pancetta Vodka Sauce>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pepperoni NY>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pepperoni>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Pistaccio Mortadella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Potato & Dill Sausage>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Prosciutto>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Shrimp Scampi>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Sopressatta Chili Honey>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Spinach>",
+     "restaurants/x_pizza/identity/dish/ids/<id:dish/Sweet Corn & Calabrian Chili>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Basil Pesto>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Espinaca>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Hongos>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Jamón>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Maíz>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Mortadella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Mozzarella>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Pepperoni>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Prosciutto>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salchicha Italiana>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salsa Blanca>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salsa Calabrian Chili>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Salsa Roja>",
+     "restaurants/x_pizza/identity/dish/ids/<id:extra/Whipped Ricotta>",
+     "restaurants/x_pizza/identity/dish/keys/Q2FjaW8gZSBQZXBl",
+     "restaurants/x_pizza/identity/dish/keys/Q2FjaW8gZSBQZXBlIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/Q2Fybml2b3Jh",
+     "restaurants/x_pizza/identity/dish/keys/Q2Fybml2b3JhIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/Q3Jpc3B5IEJhY29u",
+     "restaurants/x_pizza/identity/dish/keys/Q3Jpc3B5IEJhY29uIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/QW5jaG92aWVz",
+     "restaurants/x_pizza/identity/dish/keys/SGFt",
+     "restaurants/x_pizza/identity/dish/keys/SmFtb24gTlk",
+     "restaurants/x_pizza/identity/dish/keys/TWFyZ2hlcml0YQ",
+     "restaurants/x_pizza/identity/dish/keys/TWFyZ2hlcml0YSBOWQ",
+     "restaurants/x_pizza/identity/dish/keys/TXVzaHJvb20",
+     "restaurants/x_pizza/identity/dish/keys/TXVzaHJvb20gTlk",
+     "restaurants/x_pizza/identity/dish/keys/TnV0ZWxsYQ",
+     "restaurants/x_pizza/identity/dish/keys/U29wcmVzc2F0dGEgQ2hpbGkgSG9uZXk",
+     "restaurants/x_pizza/identity/dish/keys/U2hyaW1wIFNjYW1waQ",
+     "restaurants/x_pizza/identity/dish/keys/U3BpbmFjaA",
+     "restaurants/x_pizza/identity/dish/keys/U3dlZXQgQ29ybiAmIENhbGFicmlhbiBDaGlsaQ",
+     "restaurants/x_pizza/identity/dish/keys/UG90YXRvICYgRGlsbCBTYXVzYWdl",
+     "restaurants/x_pizza/identity/dish/keys/UGFuY2V0dGEgVm9ka2EgU2F1Y2U",
+     "restaurants/x_pizza/identity/dish/keys/UGVwcGVyb25p",
+     "restaurants/x_pizza/identity/dish/keys/UGVwcGVyb25pIE5Z",
+     "restaurants/x_pizza/identity/dish/keys/UGlzdGFjY2lvIE1vcnRhZGVsbGE",
+     "restaurants/x_pizza/identity/dish/keys/UHJvc2NpdXR0bw",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Anchovies>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Cacio e Pepe NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Cacio e Pepe>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Carnivora NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Carnivora>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Crispy Bacon NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Crispy Bacon>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Ham>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Jamon NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Margherita NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Margherita>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Mushroom NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Mushroom>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Nutella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pancetta Vodka Sauce>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pepperoni NY>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pepperoni>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Pistaccio Mortadella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Potato & Dill Sausage>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Prosciutto>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Shrimp Scampi>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Sopressatta Chili Honey>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Spinach>",
+     "restaurants/x_pizza/identity/extra/ids/<id:dish/Sweet Corn & Calabrian Chili>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Basil Pesto>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Espinaca>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Hongos>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Jamón>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Maíz>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Mortadella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Mozzarella>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Pepperoni>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Prosciutto>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salchicha Italiana>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salsa Blanca>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salsa Calabrian Chili>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Salsa Roja>",
+     "restaurants/x_pizza/identity/extra/ids/<id:extra/Whipped Ricotta>",
+     "restaurants/x_pizza/identity/extra/keys/QmFzaWwgUGVzdG8",
+     "restaurants/x_pizza/identity/extra/keys/RXNwaW5hY2E",
+     "restaurants/x_pizza/identity/extra/keys/SG9uZ29z",
+     "restaurants/x_pizza/identity/extra/keys/SmFtw7Nu",
+     "restaurants/x_pizza/identity/extra/keys/TW96emFyZWxsYQ",
+     "restaurants/x_pizza/identity/extra/keys/TW9ydGFkZWxsYQ",
+     "restaurants/x_pizza/identity/extra/keys/TWHDrXo",
+     "restaurants/x_pizza/identity/extra/keys/U2FsY2hpY2hhIEl0YWxpYW5h",
+     "restaurants/x_pizza/identity/extra/keys/U2Fsc2EgQ2FsYWJyaWFuIENoaWxp",
+     "restaurants/x_pizza/identity/extra/keys/U2Fsc2EgQmxhbmNh",
+     "restaurants/x_pizza/identity/extra/keys/U2Fsc2EgUm9qYQ",
+     "restaurants/x_pizza/identity/extra/keys/UGVwcGVyb25p",
+     "restaurants/x_pizza/identity/extra/keys/UHJvc2NpdXR0bw",
+     "restaurants/x_pizza/identity/extra/keys/V2hpcHBlZCBSaWNvdHRh"
+    ],
+    "raw_order": "ascending",
+    "count": 114
+   }
+  ],
+  "d_cash_mirror_refresh": [
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/x_pizza"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/x_pizza/item_availability"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/x_pizza/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/x_pizza/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/58d2a58d5edbdacd204693e587321b4b"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/58d2a58d5edbdacd204693e587321b4b",
+    "keys": [
+     "at",
+     "order_id",
+     "payment_method"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "",
+    "keys": [
+     "order_tracking/<tracking_token>",
+     "orders/<oid>",
+     "user_orders/<uid>/<oid>"
+    ]
+   }
+  ]
+ },
+ "la_musa": {
+  "a_quote_mirror": [
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/quote_ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   }
+  ],
+  "b_cash_mirror": [
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/7abe97a7ae00c862d98ca9ca7e88126e"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/7abe97a7ae00c862d98ca9ca7e88126e",
+    "keys": [
+     "at",
+     "order_id",
+     "payment_method"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "",
+    "keys": [
+     "order_tracking/<tracking_token>",
+     "orders/<oid>",
+     "user_orders/<uid>/<oid>"
+    ]
+   }
+  ],
+  "c_quote_mirror_refresh": [
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/quote_ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot_ctx/la_musa"
+   }
+  ],
+  "d_cash_mirror_refresh": [
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "catalog_snapshot/la_musa"
+   },
+   {
+    "db": "rtdb",
+    "op": "push",
+    "path": "dispatcher_alerts",
+    "keys": [
+     "created_at",
+     "detail",
+     "type"
+    ]
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "config/token_enforce"
+   },
+   {
+    "db": "rtdb",
+    "op": "get",
+    "path": "deleted_uids/<uid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "orders/<oid>"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/identity"
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "restaurants/la_musa/item_availability"
+   },
+   {
+    "db": "fs",
+    "op": "get",
+    "path": "restaurants/la_musa/meta/active_version"
+   },
+   {
+    "db": "fs",
+    "op": "getAll",
+    "paths": [
+     "restaurants/la_musa/meta/active_version"
+    ],
+    "raw_order": "ascending",
+    "count": 1
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>/1404c987a5a5a6ce145da7dc633d8710"
+   },
+   {
+    "db": "rtdb",
+    "op": "set",
+    "path": "recent_order_content/<phoneKey>/1404c987a5a5a6ce145da7dc633d8710",
+    "keys": [
+     "at",
+     "order_id",
+     "payment_method"
+    ]
+   },
+   {
+    "db": "rtdb",
+    "op": "once",
+    "path": "recent_order_content/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/ip/3e48ef9d22e096da6838540fb8469998"
+   },
+   {
+    "db": "rtdb",
+    "op": "transaction",
+    "path": "rate_limits/phone/<phoneKey>"
+   },
+   {
+    "db": "rtdb",
+    "op": "update",
+    "path": "",
+    "keys": [
+     "order_tracking/<tracking_token>",
+     "orders/<oid>",
+     "user_orders/<uid>/<oid>"
+    ]
+   }
+  ]
+ }
+}

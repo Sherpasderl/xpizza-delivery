@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "generations": {
+    "orders": 1,
+    "kitchen": 1,
+    "dispatch": 1,
+    "dispatch-mobile": 1,
+    "portal": 1,
+    "track": 1,
+    "dashboard": 1,
+    "catering": 1,
+    "legal": 1
+  }
+}

@@ -1,0 +1,64 @@
+{
+ "x_pizza": {
+  "a_quote_mirror": {
+   "net_total_cents": 34000,
+   "subtotal_cents": 29565,
+   "tax_cents": 4435,
+   "total_cents": 34000
+  },
+  "b_cash_mirror": {
+   "cash_tendered_cents": 34000,
+   "items.0.line_gross_cents": 34000,
+   "subtotal_cents": 29565,
+   "summary_lines.0.cents": 34000,
+   "tax_cents": 4435,
+   "total": 340,
+   "total_cents": 34000
+  },
+  "c_quote_mirror_refresh": {
+   "net_total_cents": 34000,
+   "subtotal_cents": 29565,
+   "tax_cents": 4435,
+   "total_cents": 34000
+  },
+  "d_cash_mirror_refresh": {
+   "cash_tendered_cents": 34000,
+   "items.0.line_gross_cents": 34000,
+   "subtotal_cents": 29565,
+   "summary_lines.0.cents": 34000,
+   "tax_cents": 4435,
+   "total": 340,
+   "total_cents": 34000
+  }
+ },
+ "la_musa": {
+  "a_quote_mirror": {
+   "net_total_cents": 22300,
+   "subtotal_cents": 22300,
+   "tax_cents": 0,
+   "total_cents": 22300
+  },
+  "b_cash_mirror": {
+   "cash_tendered_cents": 22300,
+   "subtotal_cents": 22300,
+   "summary_lines.0.cents": 22300,
+   "tax_cents": 0,
+   "total": 223,
+   "total_cents": 22300
+  },
+  "c_quote_mirror_refresh": {
+   "net_total_cents": 22300,
+   "subtotal_cents": 22300,
+   "tax_cents": 0,
+   "total_cents": 22300
+  },
+  "d_cash_mirror_refresh": {
+   "cash_tendered_cents": 22300,
+   "subtotal_cents": 22300,
+   "summary_lines.0.cents": 22300,
+   "tax_cents": 0,
+   "total": 223,
+   "total_cents": 22300
+  }
+ }
+}

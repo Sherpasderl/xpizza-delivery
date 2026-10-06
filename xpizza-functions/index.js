@@ -338,6 +338,15 @@ function restaurantRegistry() {
   return _restaurantRegistry;
 }
 
+// ── P-SELFUPDATE §5/§6 — the HTTP compatibility floor (client-floor.js). One cached reader per instance; the floor
+// path platform_config/client_floor/{app} is read at most once per TTL, each read bounded by a timeout.
+const CF = require('./client-floor');
+let _clientFloorReader = null;
+function clientFloorReader() {
+  if (!_clientFloorReader) _clientFloorReader = CF.createFloorReader({ getDb: getDatabase });
+  return _clientFloorReader;
+}
+
 // ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
 // The weekend gate needs CATEGORIES, but the serving path deliberately carries only { menu, extras }
 // and the resolver above is money-path-frozen. Rather than widen the money path to carry structure,
@@ -652,6 +661,19 @@ createOrderApp.all('*', async (req, res) => {
     return unauthorized(res, 'invalid bearer token');
   }
 
+  /* P-SELFUPDATE §5 — client identity log line + the EARLY, side-effect-free floor admission (before pricing, the rate
+     limiter, the reserve and any write). Floor OFF (absent) → nothing below changes. A below-floor request is admitted
+     ONLY when the order already exists (the idempotency branch below answers it before any write); otherwise it is NEW
+     payable work → 426 with ZERO mutation. */
+  const clientHdr = CF.readClientHeaders(req);
+  CF.logClientVersion('createOrder', clientHdr);
+  const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
+  let floorAdmittedBelow = false;
+  if (CF.isBelowFloor(clientHdr, 'orders', ordersFloor)) {
+    if (!(await CF.existingOrderProbe(getDatabase(), (req.body || {}).order_id)).admit) return CF.updateRequired(res, 'orders', ordersFloor);
+    floorAdmittedBelow = true;
+  }
+
   // Best-effort client IP for rate limiting. X-Forwarded-For's left-most entry
   // is client-supplied (spoofable), so IP limiting is a soft control only — the
   // per-phone limit below is the stronger signal. Good enough as a flood guard.
@@ -777,6 +799,13 @@ createOrderApp.all('*', async (req, res) => {
   } catch (e) {
     console.error('createOrder: existence check failed', e);
     return res.status(500).json({ error: 'Database read failed', detail: e.message });
+  }
+  // P-SELFUPDATE §5 (2) — the AUTHORITATIVE create decision: the order does not exist, so this request would CREATE
+  // payable work. A below-floor request admitted on the probe's existence read (a race: the order vanished in between)
+  // is refused with a NON-426 typed conflict — never presented as a safe-to-reload 426. Nothing has been written.
+  if (floorAdmittedBelow) {
+    console.warn(`createOrder: ${orderId} below the client floor reached the create decision — client_update_race`);
+    return res.status(409).json({ error: 'order_conflict', reason: 'client_update_race', order_id: orderId });
   }
 
   // Config-plane identity (ADR-0002): fail-closed read, gate intake on active, zone-check from
@@ -1261,6 +1290,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     return unauthorized(res, 'invalid bearer token');
   }
 
+  /* P-SELFUPDATE §5 — client identity log line + the EARLY floor admission. Floor OFF → nothing below changes. A
+     below-floor request continues ONLY if a read-only probe finds a still-LIVE checkout for this order (a genuine
+     reuse); it must then also be classified `reuse` below, and acquire refuses any fresh issuance for it (refuseFresh).
+     Everything else is NEW payable work → 426 here, before pricing, bookkeeping, the reserve or any write. */
+  const clientHdr = CF.readClientHeaders(req);
+  CF.logClientVersion('chargeOnlineOrder', clientHdr);
+  const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
+  const floorBelow = CF.isBelowFloor(clientHdr, 'orders', ordersFloor);
+  if (floorBelow && !(await CF.liveCheckoutProbe(getDatabase(), (req.body || {}).order_id, Date.now())).admit) {
+    return CF.updateRequired(res, 'orders', ordersFloor);
+  }
+
   const body = req.body || {};
   // 2a: warm the registry before resolving. A no-op once this instance has read it — the cost is one
   // metadata call per cold start, not one per order.
@@ -1442,6 +1483,9 @@ chargeOnlineApp.all('*', async (req, res) => {
       const c = canonicalFpG();
       if (!c || !c.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: 'cart_unverifiable', order_id: orderId });
     }
+    // P-SELFUPDATE §5 (1) — a below-floor request proceeds ONLY as a classified genuine reuse of a live checkout. A
+    // classify failure, or any other outcome, is NEW (or unprovable) work → 426, still before any write.
+    if (floorBelow && !(clsG && clsG.outcome === 'reuse')) return CF.updateRequired(res, 'orders', ordersFloor);
     // Skip the read ONLY for a MONOTONIC-terminal order — one that provably can't drift into a fresh-URL
     // path within this request. in_progress / reuse are DELIBERATELY excluded (they can rotate → fresh),
     // so we read + let the CAS decide. acquire returns in_progress/reuse before the cartBlocked check.
@@ -1721,7 +1765,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp);
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow);   // P-SELFUPDATE §5 (2): refuseFresh
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
@@ -6087,10 +6131,10 @@ exports.releaseScheduledOrder = onRequest(
 // required LAZILY so a missing/weak OTP_SALT fails ONLY these endpoints closed (500, H7) — it does
 // NOT couple the rest of the functions module (createOrder, payments) to the OTP secret.
 // ─────────────────────────────────────────────────────────────────────────────
-const ACCOUNT_ORIGINS = [
-  'https://orders.xpizza.hn',
-  'https://orders.lamusa.hn',
-];
+// P-SELFUPDATE (advisor ruling, origins option A): DERIVED from the bundled site manifest (platform/sites.json → the
+// `orders` deployments' exact origins, in manifest order). Still a static array handed to the v2 `cors` option.
+// platform-sync.guard.test.js pins it BYTE-IDENTICAL to the pre-manifest literal list for today's merchants.
+const { ACCOUNT_ORIGINS } = require('./platform-manifest').PLATFORM;
 
 // Portal 2b-2a — the merchant portal is a DIFFERENT origin from the two customer order sites, so it
 // needs its own CORS list. Deliberately NOT added to ACCOUNT_ORIGINS: that constant guards the OTP and
@@ -6125,11 +6169,8 @@ const PORTAL_ORIGINS = [
 // other surface in this file requires a verified token, and ACCOUNT_ORIGINS/PORTAL_ORIGINS guard the
 // OTP, account and portal endpoints. Reusing either would hand this endpoint's audience to those
 // surfaces for no reason beyond saving a constant.
-const PUBLIC_MENU_ORIGINS = [
-  /^http:\/\/localhost(:\d+)?$/,          // local development against production data
-  'https://orders.xpizza.hn',
-  'https://orders.lamusa.hn',
-];
+// P-SELFUPDATE: DERIVED like ACCOUNT_ORIGINS — [the localhost development pattern, ...the order sites' origins].
+const { PUBLIC_MENU_ORIGINS } = require('./platform-manifest').PLATFORM;
 
 const { buildPublicMenu, defaultIsActive, publicMenuErrorResponse } = require('./catalog/public-menu');
 
@@ -6336,6 +6377,11 @@ exports.quoteOrder = onRequest(
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+      // P-SELFUPDATE §5 — log line + floor: a below-floor quote is refused 426 before the limiter or any pricing.
+      const clientHdr = CF.readClientHeaders(req);
+      CF.logClientVersion('quoteOrder', clientHdr);
+      const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
+      if (CF.isBelowFloor(clientHdr, 'orders', ordersFloor)) return CF.updateRequired(res, 'orders', ordersFloor);
       const body = req.body || {};
       const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
       if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
@@ -6385,6 +6431,11 @@ exports.quoteRedemption = onRequest(
   async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+      // P-SELFUPDATE §5 — log line + floor: a below-floor quote is refused 426 before any read or pricing.
+      const clientHdr = CF.readClientHeaders(req);
+      CF.logClientVersion('quoteRedemption', clientHdr);
+      const ordersFloor = (await clientFloorReader().floorFor('orders')).floor;
+      if (CF.isBelowFloor(clientHdr, 'orders', ordersFloor)) return CF.updateRequired(res, 'orders', ordersFloor);
       const body = req.body || {};
       const { restaurantId, error: ridError } = resolveRestaurantId(body.restaurant_id, restaurantRegistry().known());
       if (ridError) return res.status(400).json({ ok: false, error: 'bad_request', detail: ridError });
@@ -6615,5 +6666,35 @@ exports.getEditableCatalog = onRequest(
       console.error('getEditableCatalog', e && e.message);
       return res.status(500).json({ error: 'error' });
     }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P-SELFUPDATE §4 — the VERSION HEARTBEAT. Public (every deployment's pages call it, so `cors: true`; the request is
+// untrusted telemetry under a strict schema). Never an authority: nothing reads these records to gate anything.
+// Bounded: few instances, a dedicated per-IP limiter (client_version_limits — never the order buckets), and a report
+// is DROPPED when that limiter cannot answer. Core + tests: client-version.js / client-version.emulator.test.js.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.reportClientVersion = onRequest(
+  { region: 'us-central1', cors: true, timeoutSeconds: 10, memory: '256MiB', maxInstances: 5, concurrency: 40 },
+  async (req, res) => {
+    const { handleReport } = require('./client-version');
+    try {
+      return await handleReport(req, res, { db: getDatabase(), ServerValue, platform: require('./platform-manifest').PLATFORM, registry: restaurantRegistry() });
+    } catch (e) {
+      console.error('reportClientVersion', e && e.message);
+      return res.status(503).json({ error: 'telemetry_unavailable', dropped: true });
+    }
+  },
+);
+
+// The heartbeat sweep: stale instance records (24 h silent) and expired limiter windows are CONDITIONALLY deleted in
+// bounded, indexed batches; hourly counters past the 30-day retention are removed by key.
+exports.sweepClientVersions = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => {
+    const { sweepClientVersions } = require('./client-version');
+    const out = await sweepClientVersions({ db: getDatabase(), platform: require('./platform-manifest').PLATFORM });
+    if (out.instances || out.limits || out.stats) console.log(`sweepClientVersions: ${JSON.stringify(out)}`);
   },
 );
