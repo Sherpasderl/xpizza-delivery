@@ -5,14 +5,17 @@
 //   2. exactly ONE Google Fonts stylesheet, Archivo as the 600..800 weight range (covers the 750/800 in use), no Hanken;
 //   3. the CSP already admits fonts.googleapis.com (style-src) and fonts.gstatic.com (font-src).
 //
-// Guarantee: no CSS input (stylesheet inventory or bytes) changes without failing this test.
-// OUT OF SCOPE by nature: runtime JS style mutation and class/DOM placement (e.g. review.js:277); those are reviewed with
-// the JS change.
-// The sweep is an aid with no completeness claim. (So are the allowlist grammar and the computed-pair checks.)
+// Guarantee: no static portal input changes without failing this test: the file set of xpizza-portal and the bytes of
+// every non-JS file (HTML, CSS, Netlify config).
+// Out of scope: JS behaviour at runtime (CSSStyleSheet/insertRule, dynamically created links, style mutation, class/DOM
+// placement, e.g. review.js:277), reviewed with the JS change; the Google Fonts stylesheet RESPONSE (its URL is pinned, its
+// bytes are external); font files (none shipped today).
+// The sweep, grammar and computed pairs are aids with no completeness claim.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const read = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
 const html = read('./index.html');
@@ -79,36 +82,41 @@ for (const [sel, label] of AA_PAIRS) {
     assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
   });
 }
-// ═══ CSS FREEZE (advisor FINAL ruling after codex r7) — ordered, whole-stylesheet, complete by construction ══════════
-// portal-css-freeze.golden.json pins (1) the stylesheet INVENTORY — the exact ordered list of <link rel=stylesheet> hrefs in
-// index.html plus every @import inside the CSS — and refuses any <style> element or style= attribute in index.html; and
-// (2) the exact BYTES of styles.css (SHA-256 + length). ANY byte change fails — a whitespace edit included, by design.
-// The per-declaration colour list (colourFreezeOf / freezeDiff) is kept ONLY as a human-readable diff aid on failure.
-// Regenerate ONLY together with the AA review: PORTAL_FREEZE_WRITE=1 node --test portal-look.test.mjs
+// ═══ SITE FREEZE (advisor FINAL ruling after codex r8) — freeze the hazard's WHOLE surface; parse nothing ════════════
+// portal-site-freeze.golden.json pins (a) the exact SET of tracked files under xpizza-portal/ (`git ls-files`), so a new or
+// removed file of ANY kind fails (_redirects, _headers, a second HTML entrypoint, extra.css, a new .js); and (b) SHA-256 +
+// length of EVERY tracked non-JS file (anything not *.js / *.mjs: HTML, CSS, netlify.toml, *.json, *.md, …), excluding
+// only the golden itself by exact path. JS file CONTENTS are excluded by design (reviewed with each JS change); their file
+// SET is still frozen by (a). The colour-declaration list of styles.css is kept as a human-readable diff aid only.
+// Write path: BOTH PORTAL_FREEZE_WRITE=1 AND the argv flag --write-golden (an inherited env var alone cannot write):
+//   PORTAL_FREEZE_WRITE=1 node portal-look.test.mjs --write-golden
 const FREEZE_PROPS = new Set(['color', 'background', 'background-color', 'border-color']);
-const FREEZE_FILE = new URL('./portal-css-freeze.golden.json', import.meta.url);
-const CSS_FILE = new URL('./styles.css', import.meta.url);
-const CSS_MSG = 'CSS change: re-run the AA review (advisor + codex) and update the golden in the same commit (PORTAL_FREEZE_WRITE=1)';
-// the ordered stylesheet inventory of a page + its CSS
-function stylesheetInventory(htmlText, cssText) {
-  const links = [...htmlText.matchAll(/<link\b[^>]*>/gi)].map((m) => m[0]).filter((t) => /\brel\s*=\s*["']?stylesheet\b/i.test(t))
-    .map((t) => { const h = t.match(/\bhref\s*=\s*["']([^"']+)["']/i); return `link:${h ? h[1] : '?'}`; });
-  const imports = [...cssText.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/@import\s+([^;]+);/gi)].map((m) => `import:${m[1].trim()}`);
-  return [...links, ...imports];
+const FREEZE_FILE = new URL('./portal-site-freeze.golden.json', import.meta.url);
+const GOLDEN_NAME = 'portal-site-freeze.golden.json';
+const SITE_MSG = 'static-site change: re-run the AA review (advisor + codex) and update the golden in the same commit';
+const PORTAL_DIR = new URL('./', import.meta.url);
+const isJs = (f) => /\.(js|mjs)$/.test(f);
+const trackedFiles = () => execFileSync('git', ['ls-files', '-z', '--', '.'], { cwd: PORTAL_DIR, encoding: 'utf8' }).split('\0').filter(Boolean).sort();
+const bytesInfo = (buf) => ({ sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length });
+function siteSnapshot(files, read) {
+  const frozen = {};
+  for (const f of files) if (!isJs(f) && f !== GOLDEN_NAME) frozen[f] = bytesInfo(read(f));
+  return { files: [...files].sort(), bytes: frozen };
 }
-const inlineStyleOf = (htmlText) => ({ styleElements: (htmlText.match(/<style\b/gi) || []).length, styleAttributes: (htmlText.match(/\sstyle\s*=/gi) || []).length });
-const cssBytesOf = (buf) => ({ sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length });
-// → [] when html + css bytes match the golden, else the reasons
-function cssFreezeViolations(htmlText, cssBuf, golden) {
+// → [] when the file set + non-JS bytes equal the golden, else the reasons
+function siteFreezeViolations(files, read, golden) {
   const out = [];
-  const inv = stylesheetInventory(htmlText, cssBuf.toString('utf8'));
-  if (JSON.stringify(inv) !== JSON.stringify(golden.inventory)) out.push(`stylesheet inventory changed: ${JSON.stringify(golden.inventory)} → ${JSON.stringify(inv)}`);
-  const inl = inlineStyleOf(htmlText);
-  if (inl.styleElements || inl.styleAttributes) out.push(`inline CSS in index.html: ${inl.styleElements} <style> element(s), ${inl.styleAttributes} style= attribute(s)`);
-  const b = cssBytesOf(cssBuf);
-  if (b.sha256 !== golden.styles_css.sha256 || b.bytes !== golden.styles_css.bytes) out.push(`styles.css bytes changed: sha256 ${golden.styles_css.sha256.slice(0, 12)}…/${golden.styles_css.bytes} B → ${b.sha256.slice(0, 12)}…/${b.bytes} B`);
+  const cur = siteSnapshot(files, read);
+  const added = cur.files.filter((f) => !golden.files.includes(f)), removed = golden.files.filter((f) => !cur.files.includes(f));
+  if (added.length || removed.length) out.push(`file set changed: +[${added.join(', ')}] -[${removed.join(', ')}]`);
+  for (const f of new Set([...Object.keys(cur.bytes), ...Object.keys(golden.bytes)])) {
+    const a = cur.bytes[f], b = golden.bytes[f];
+    if (!a || !b) continue;   // a set change, reported above
+    if (a.sha256 !== b.sha256 || a.bytes !== b.bytes) out.push(`${f} bytes changed: ${b.sha256.slice(0, 12)}…/${b.bytes} B → ${a.sha256.slice(0, 12)}…/${a.bytes} B`);
+  }
   return out;
 }
+const readPortal = (f) => readFileSync(new URL(f, PORTAL_DIR));
 function colourFreezeOf(cssText) {
   const text = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
   const decls = [];
@@ -475,37 +483,45 @@ function grammarViolations(cssText) {
   return { violations: [...new Set(out)], pinSeen };
 }
 
-test('CSS FREEZE: the stylesheet inventory and the exact bytes of styles.css equal the frozen golden', () => {
-  const cssBuf = readFileSync(CSS_FILE);
-  if (process.env.PORTAL_FREEZE_WRITE === '1') {
-    writeFileSync(FREEZE_FILE, `${JSON.stringify({ inventory: stylesheetInventory(html, css), styles_css: cssBytesOf(cssBuf), diff_aid: colourFreezeOf(css) }, null, 1)}\n`);
+test('SITE FREEZE: the tracked file set of xpizza-portal and the bytes of every non-JS file equal the frozen golden', () => {
+  const files = trackedFiles();
+  if (process.env.PORTAL_FREEZE_WRITE === '1' && process.argv.includes('--write-golden')) {
+    writeFileSync(FREEZE_FILE, `${JSON.stringify({ ...siteSnapshot(files, readPortal), diff_aid: colourFreezeOf(css) }, null, 1)}\n`);
     return;
   }
   const golden = JSON.parse(readFileSync(FREEZE_FILE, 'utf8'));
-  assert.deepEqual(golden.inventory, ['link:https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap', 'link:./styles.css'], 'non-vacuity: the golden inventory is today\'s two stylesheets, in order');
-  const v = cssFreezeViolations(html, cssBuf, golden);
+  assert.ok(golden.files.includes('index.html') && golden.files.includes('styles.css') && golden.files.includes('netlify.toml') && Object.keys(golden.bytes).length >= 5, 'non-vacuity: the golden freezes the real site');
+  const v = siteFreezeViolations(files, readPortal, golden);
   if (v.length) {
-    const d = freezeDiff(css, golden.diff_aid);   // a human-readable aid ONLY — the guarantee is the inventory + the bytes
-    assert.fail(`🔴 ${CSS_MSG}\n  ${v.join('\n  ')}\n  (diff aid — colour declarations added: ${d.added.length}, removed: ${d.removed.length}, token changes: ${d.tokenChanges.join(', ') || 'none'})\n  ${[...d.added.map((x) => `+ ${x}`), ...d.removed.map((x) => `- ${x}`)].slice(0, 20).join('\n  ')}`);
+    const d = freezeDiff(css, golden.diff_aid);   // a human-readable aid ONLY
+    assert.fail(`🔴 ${SITE_MSG}\n  ${v.join('\n  ')}\n  (diff aid — styles.css colour declarations added: ${d.added.length}, removed: ${d.removed.length}, token changes: ${d.tokenChanges.join(', ') || 'none'})\n  ${[...d.added.map((x) => `+ ${x}`), ...d.removed.map((x) => `- ${x}`)].slice(0, 20).join('\n  ')}`);
   }
 });
 
-test('CSS FREEZE fails on every codex r7 evasion and on any byte change (whitespace included, by design)', () => {
+test('SITE FREEZE fails on every codex r8 evasion and any static change; a JS-only content edit is out of scope', () => {
   const golden = JSON.parse(readFileSync(FREEZE_FILE, 'utf8'));
-  const cssBuf = readFileSync(CSS_FILE);
-  const fails = (h, c) => cssFreezeViolations(h, Buffer.from(c, 'utf8'), golden).length > 0;
-  assert.deepEqual(cssFreezeViolations(html, cssBuf, golden), [], 'today\'s page + sheet pass');
-  const one = (a) => { assert.equal(css.split(a).length - 1, 1, `fixture anchor is unique: ${a}`); return a; };
-  assert.ok(fails(html, css + '\n.err{-webkit-text-fill-color:#fff}'), '🔴 an appended -webkit-text-fill-color fails');
-  const hover = one('  .nav:hover{color:var(--ink);background:var(--card)}\n'), on = one('  .nav.on{background:var(--tint2);color:var(--accent)}\n');
-  assert.ok(fails(html, css.replace(hover, '').replace(on, on + hover)), '🔴 REORDERING .nav:hover after .nav.on fails (order is part of the bytes)');
-  assert.ok(fails(html, css.replace(/(:root,\s*:root\[data-theme="light"\]\s*\{)/, '$1--zz:#000000;')), '🔴 a declaration added inside the light :root block fails');
-  assert.ok(fails(html.replace('<link rel="stylesheet" href="./styles.css">', '<link rel="stylesheet" href="./styles.css">\n<link rel="stylesheet" href="./extra.css">'), css), '🔴 a NEW same-origin <link rel=stylesheet> fails');
-  assert.ok(fails(html.replace('</head>', '<style>.err{color:#fff}</head>'), css), '🔴 an inline <style> element in index.html fails');
-  assert.ok(fails(html.replace('<body>', '<body style="color:#fff">'), css), '🔴 a style= attribute in index.html fails');
-  assert.ok(fails(html, css + '\n@import url("x.css");'), '🔴 an @import fails (inventory)');
-  assert.ok(fails(html, css.replace('.err.on{display:block}', '.err.on{ display:block}')), '🔴 a whitespace-only edit fails — bytes are bytes, by design');
-  assert.ok(fails(html.replace(/<link href="https:\/\/fonts\.googleapis\.com[^>]*>\n/, '').replace('<link rel="stylesheet" href="./styles.css">', '<link rel="stylesheet" href="./styles.css">\n<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap" rel="stylesheet">'), css), '🔴 REORDERING the two stylesheets fails');
+  const files = trackedFiles();
+  const over = (patch) => (f) => (f in patch ? Buffer.from(patch[f], 'utf8') : readPortal(f));
+  const fails = (fs2, patch = {}) => siteFreezeViolations(fs2, over(patch), golden).length > 0;
+  assert.deepEqual(siteFreezeViolations(files, readPortal, golden), [], 'today\'s site passes');
+  const link = '<link rel="stylesheet" href="./styles.css">';
+  assert.equal(html.split(link).length - 1, 1, 'fixture anchor');
+  assert.ok(fails(files, { 'index.html': html.replace(link, `${link}\n<link rel=" stylesheet" href="./x.css">`) }), '🔴 codex: rel=" stylesheet" (leading space) fails — index.html bytes are frozen');
+  assert.ok(fails(files, { 'index.html': html.replace(link, `${link}\n<link rel="preload stylesheet" href="./x.css">`) }), '🔴 codex: rel="preload stylesheet" fails');
+  assert.ok(fails([...files, '_redirects'], { _redirects: '/styles.css /other.css 200!\n' }), '🔴 a new _redirects (a forced rewrite swapping the CSS) fails — file set');
+  assert.ok(fails([...files, '_headers'], { _headers: '/*\n  X: y\n' }), '🔴 a new _headers fails — file set');
+  assert.ok(fails([...files, 'index2.html'], { 'index2.html': '<!doctype html>' }), '🔴 a second HTML entrypoint fails');
+  assert.ok(fails(files, { 'netlify.toml': readPortal('netlify.toml').toString('utf8').replace('X-Frame-Options = "DENY"', 'X-Frame-Options = "SAMEORIGIN"') }), '🔴 a netlify.toml header edit fails');
+  assert.ok(fails(files, { 'styles.css': css.replace('.err.on{display:block}', '.err.on{ display:block}') }), '🔴 a styles.css byte edit fails (whitespace included)');
+  assert.ok(fails([...files, 'extra.js'], { 'extra.js': 'export {}' }), '🔴 a NEW .js file fails — the JS file SET is frozen');
+  assert.ok(fails(files.filter((f) => f !== 'review.js')), '🔴 a REMOVED file fails');
+  // OUT OF SCOPE (stated): a JS-only CONTENT edit of an existing .js file passes this test
+  assert.ok(!fails(files, { 'review.js': `${readPortal('review.js').toString('utf8')}\n// a JS-only change\n` }), 'a JS-only content edit of an existing .js file is out of scope here (reviewed with the JS change)');
+});
+
+test('aid: index.html carries no inline <style> element and no style= attribute (the CSP forbids them too)', () => {
+  assert.equal((html.match(/<style\b/gi) || []).length, 0);
+  assert.equal((html.match(/\sstyle\s*=/gi) || []).length, 0);
 });
 
 test('ALLOWLIST GRAMMAR: every light-applicable color/background declaration takes the modelled form; today\'s sheet passes', () => {

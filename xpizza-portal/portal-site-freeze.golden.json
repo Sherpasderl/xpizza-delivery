@@ -1,11 +1,63 @@
 {
- "inventory": [
-  "link:https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap",
-  "link:./styles.css"
+ "files": [
+  "DESIGN.md",
+  "PRODUCT.md",
+  "api.js",
+  "api.test.mjs",
+  "app-loads.test.mjs",
+  "app.js",
+  "app.test.mjs",
+  "auth-errors.js",
+  "auth-errors.test.mjs",
+  "auth.js",
+  "boot.js",
+  "editor.js",
+  "editor.test.mjs",
+  "firebase.js",
+  "index.html",
+  "netlify.toml",
+  "package-lock.json",
+  "package.json",
+  "portal-logic.js",
+  "portal-look.test.mjs",
+  "portal-site-freeze.golden.json",
+  "portal-wiring.test.mjs",
+  "render.js",
+  "render.test.mjs",
+  "review.js",
+  "review.test.mjs",
+  "styles.css",
+  "wiring-ast.mjs"
  ],
- "styles_css": {
-  "sha256": "49641343100580b9a5c514b50e038e8a4e1f5499fe7d4bcbf024a152c3f7461e",
-  "bytes": 54492
+ "bytes": {
+  "DESIGN.md": {
+   "sha256": "b261adbfc6f0ecc3cfbb346e57de77072edebca9a2c9dd750a7fb039eecaf25b",
+   "bytes": 13194
+  },
+  "PRODUCT.md": {
+   "sha256": "dc6ccdb8222184bc3c596970e9e52476111e5f5fbb92893c5390d58655162b2a",
+   "bytes": 4287
+  },
+  "index.html": {
+   "sha256": "2cde0ad51c403e95632c056d24ecb58d81d4d27c167b4f04158232b323a6e7a3",
+   "bytes": 5111
+  },
+  "netlify.toml": {
+   "sha256": "13d167adc5f3fb58d56f59c072a369d7e2e8c8da94106670508d087cbb153bf9",
+   "bytes": 2424
+  },
+  "package-lock.json": {
+   "sha256": "2a0d35b67d76dd7ddc912326272387f6e960371c9a490ad009e7c8d091de7a7f",
+   "bytes": 1072
+  },
+  "package.json": {
+   "sha256": "ca999494e69e1dafcc4bc513a34c82bdb08d819401688ead7af94aeff865c3ef",
+   "bytes": 443
+  },
+  "styles.css": {
+   "sha256": "49641343100580b9a5c514b50e038e8a4e1f5499fe7d4bcbf024a152c3f7461e",
+   "bytes": 54492
+  }
  },
  "diff_aid": {
   "tokens": {
