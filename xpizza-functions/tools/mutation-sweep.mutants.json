@@ -10545,8 +10545,8 @@
     "slice": "stats",
     "label": "🔴 B4'': the sanctioned index deploy passes --force (would DELETE remote-only definitions)",
     "file": "tools/deploy-indexes.js",
-    "from": "'--non-interactive', '--project', projectId]",
-    "to": "'--non-interactive', '--force', '--project', projectId]",
+    "from": "'--non-interactive', '--config', INDEX_CONFIG, '--project', projectId]",
+    "to": "'--non-interactive', '--force', '--config', INDEX_CONFIG, '--project', projectId]",
     "command": [
       "node",
       "tools/deploy-indexes.test.js"
@@ -10557,8 +10557,8 @@
     "slice": "stats",
     "label": "🔴 B4'': the sanctioned index deploy drops --non-interactive (the delete prompt becomes answerable)",
     "file": "tools/deploy-indexes.js",
-    "from": "'firestore:indexes', '--non-interactive', '--project'",
-    "to": "'firestore:indexes', '--project'",
+    "from": "'firestore:indexes', '--non-interactive', '--config'",
+    "to": "'firestore:indexes', '--config'",
     "command": [
       "node",
       "tools/deploy-indexes.test.js"
@@ -10685,207 +10685,51 @@
     ]
   },
   {
-    "id": "s1-60",
+    "id": "s1-77",
     "slice": "stats",
-    "label": "r4: stats-indexing.js instructs a raw index deploy again (bypasses the wrapper)",
-    "file": "stats/stats-indexing.js",
-    "from": "ONLY via `npm run deploy:indexes` (tools/deploy-indexes.js:",
-    "to": "via `firebase deploy --only firestore:indexes --project xpizza-delivery` (tools/deploy-indexes.js:",
+    "label": "🔴 r7: `indexes` re-added to firebase.json (every firestore deploy could touch indexes again)",
+    "file": "firebase.json",
+    "from": "      \"npm --prefix \\\"$RESOURCE_DIR\\\" run test:pricing-cutover\"\n    ]\n  },",
+    "to": "      \"npm --prefix \\\"$RESOURCE_DIR\\\" run test:pricing-cutover\"\n    ],\n    \"indexes\": \"firestore.indexes.json\"\n  },",
     "command": [
       "node",
-      "tools/deploy-instruction-scan.test.js"
+      "tools/firestore-config-isolation.test.js"
     ]
   },
   {
-    "id": "s1-61",
+    "id": "s1-78",
     "slice": "stats",
-    "label": "r4: the phase-1a plan offers a bare `firebase deploy --only firestore` again",
-    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
-    "from": "so `firebase deploy --only firestore:rules` re-runs",
-    "to": "so `firebase deploy --only firestore` re-runs",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-62",
-    "slice": "stats",
-    "label": "🔴 r5 evasion: a shell `\\` continuation between `firebase deploy` and `--only firestore:indexes`",
-    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
-    "from": "so `firebase deploy --only firestore:rules` re-runs",
-    "to": "so `firebase deploy \\\n  --only firestore:indexes` re-runs",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-63",
-    "slice": "stats",
-    "label": "🔴 r5 evasion: a comment-wrapped index deploy command",
-    "file": "stats/stats-indexing.js",
-    "from": "// (stats-guard asserts it). Deploying it — ONLY via `npm run deploy:indexes` (tools/deploy-indexes.js:",
-    "to": "// (stats-guard asserts it). Deploying it — firebase deploy\n// --only firestore:indexes --project xpizza-delivery — (tools/deploy-indexes.js:",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-64",
-    "slice": "stats",
-    "label": "🔴 r5 evasion: a continued target list (firestore:rules,⏎firestore:indexes)",
-    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
-    "from": "so `firebase deploy --only firestore:rules` re-runs",
-    "to": "so `firebase deploy --only firestore:rules,\nfirestore:indexes` re-runs",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-65",
-    "slice": "stats",
-    "label": "🔴 r5 evasion: the short -P flag before the verb",
-    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
-    "from": "so `firebase deploy --only firestore:rules` re-runs",
-    "to": "so `firebase -P xpizza-delivery deploy --only firestore:indexes` re-runs",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-66",
-    "slice": "stats",
-    "label": "🔴 r5 evasion: a bare deploy borrowing the NEXT command's --only scope",
-    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
-    "from": "so `firebase deploy --only firestore:rules` re-runs",
-    "to": "so `firebase deploy && firebase deploy --only firestore:rules` re-runs",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-67",
-    "slice": "stats",
-    "label": "🔴 r5: the wrapper's documented command gains --force",
+    "label": "🔴 r7: the wrapper drops --config (it would deploy with firebase.json, which has no indexes)",
     "file": "tools/deploy-indexes.js",
-    "from": "--non-interactive --project <pinned-and-checked>",
-    "to": "--non-interactive --force --project <pinned-and-checked>",
+    "from": "'--non-interactive', '--config', INDEX_CONFIG, '--project', projectId]",
+    "to": "'--non-interactive', '--project', projectId]",
     "command": [
       "node",
-      "tools/deploy-instruction-scan.test.js"
+      "tools/deploy-indexes.test.js"
     ]
   },
   {
-    "id": "s1-68",
+    "id": "s1-79",
     "slice": "stats",
-    "label": "r5: a PINNED command changed (README functions deploy gains a --project)",
+    "label": "r7: a NEW reference to the dedicated index config (unreviewed)",
     "file": "../README.md",
     "from": "| `firebase deploy --only functions` |",
-    "to": "| `firebase deploy --only functions --project xpizza-social` |",
+    "to": "| `firebase deploy --only functions` (indexes: `firebase deploy --config firebase.indexes.json`) |",
     "command": [
       "node",
-      "tools/deploy-instruction-scan.test.js"
+      "tools/firestore-config-isolation.test.js"
     ]
   },
   {
-    "id": "s1-69",
+    "id": "s1-80",
     "slice": "stats",
-    "label": "r5: a NEW deploy instruction line (unreviewed, even if harmless)",
-    "file": "../README.md",
-    "from": "| `firebase deploy --only functions` |",
-    "to": "| `firebase deploy --only functions` then `firebase deploy --only functions:newThing` |",
+    "label": "🔴 r7: the behavioural probe is skipped before spawning",
+    "file": "tools/deploy-indexes.js",
+    "from": "  const b = await (probe || (() => probeInstalled({ root: r.root })))();",
+    "to": "  const b = { fails: [] };",
     "command": [
       "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-70",
-    "slice": "stats",
-    "label": "🔴 r6-1a: a pinned command changed via a `,\\` continuation (functions,⏎firestore:indexes)",
-    "file": "../README.md",
-    "from": "| `firebase deploy --only functions` |",
-    "to": "| `firebase deploy --only functions,\\\nfirestore:indexes` |",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-71",
-    "slice": "stats",
-    "label": "🔴 r6-1b: a pinned command gains '--force' (fails outright: force on a deploy line)",
-    "file": "../README.md",
-    "from": "| `firebase deploy --only functions` |",
-    "to": "| `firebase deploy --only functions '--force'` |",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-72",
-    "slice": "stats",
-    "label": "🔴 r6-2: a comment-wrapped `// firebase` ⏎ `// deploy --only firestore:indexes`",
-    "file": "stats/stats-indexing.js",
-    "from": "// THIS LIST IS THE SOURCE; every entry MUST be present in firestore.indexes.json `fieldOverrides`",
-    "to": "// THIS LIST IS THE SOURCE; to ship it run firebase\n// deploy --only firestore:indexes\n// every entry MUST be present in firestore.indexes.json `fieldOverrides`",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-73",
-    "slice": "stats",
-    "label": "🔴 r6-3: `npx firebase-tools deploy` (a non-CLI spelling)",
-    "file": "../README.md",
-    "from": "| `firebase deploy --only functions` |",
-    "to": "| `npx firebase-tools deploy --only firestore` |",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-74",
-    "slice": "stats",
-    "label": "r6: an EDIT of an existing pinned deploy line (wording only)",
-    "file": "../README.md",
-    "from": "| `firebase deploy --only functions` |",
-    "to": "| `firebase deploy --only functions`  (all of them) |",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-75",
-    "slice": "stats",
-    "label": "🔴 force: a NEW force-flag line in a non-deploy file",
-    "file": "../scripts/test-order.sh",
-    "from": "  echo \"Cleanup later:\"",
-    "to": "  echo \"Cleanup later:\"\n  echo \"  firebase database:remove /payments/${ORDER_ID} --project xpizza-delivery --force\"",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
-    ]
-  },
-  {
-    "id": "s1-76",
-    "slice": "stats",
-    "label": "🔴 force: a CHANGED pinned force-line",
-    "file": "../scripts/test-order.sh",
-    "from": "  echo \"  firebase database:remove /orders/${ORDER_ID} --project xpizza-delivery --force\"",
-    "to": "  echo \"  firebase database:remove /orders/ --project xpizza-delivery --force\"",
-    "command": [
-      "node",
-      "tools/deploy-instruction-scan.test.js"
+      "tools/deploy-indexes.test.js"
     ]
   }
 ]

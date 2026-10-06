@@ -15,7 +15,7 @@ const ROOT = path.join(__dirname, '..');
 // 1. 🔴 THE EXACT FLAGS: --non-interactive present, the force flag absent, the project pinned — in the builder
 //    AND in the npm script that is the sanctioned entry point.
 {
-  assert.deepStrictEqual(D.buildArgs('xpizza-delivery'), ['deploy', '--only', 'firestore:indexes', '--non-interactive', '--project', 'xpizza-delivery']);
+  assert.deepStrictEqual(D.buildArgs('xpizza-delivery'), ['deploy', '--only', 'firestore:indexes', '--non-interactive', '--config', 'firebase.indexes.json', '--project', 'xpizza-delivery']);
   assert(!D.buildArgs('x').some((a) => /force/.test(a)), 'the force flag is never built');
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.strictEqual(pkg.scripts['deploy:indexes'], 'node tools/deploy-indexes.js --project xpizza-delivery');
@@ -24,7 +24,7 @@ const ROOT = path.join(__dirname, '..');
     // (a force flag on ANY deploy line — package.json included — is failed outright by the raw-line scan,
     //  tools/deploy-instruction-scan.test.js)
   }
-  ok('flags pinned: deploy --only firestore:indexes --non-interactive --project xpizza-delivery; no force flag; no other index-deploy script');
+  ok('flags pinned: deploy --only firestore:indexes --non-interactive --config firebase.indexes.json --project xpizza-delivery; no force flag; no other index-deploy script');
 }
 
 // 2. The wrapper spawns EXACTLY those args, and refuses — without spawning — on the force flag, a broken source

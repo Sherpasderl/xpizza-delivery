@@ -2,7 +2,7 @@
 'use strict';
 // ---------------------------------------------------------------------------
 // THE ONLY SANCTIONED FIRESTORE INDEX DEPLOY:   npm run deploy:indexes
-//   = firebase deploy --only firestore:indexes --non-interactive --project <pinned-and-checked>
+//   = firebase deploy --only firestore:indexes --non-interactive --config firebase.indexes.json --project <pinned-and-checked>
 //
 // 🔴 firestore.indexes.json is the WHOLE-DATABASE index inventory. Firebase's own CLI decides what a
 // deploy does with remote definitions the file omits, and in non-interactive mode WITHOUT the force flag it
@@ -17,7 +17,12 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const buildArgs = (projectId) => ['deploy', '--only', 'firestore:indexes', '--non-interactive', '--project', projectId];
+// 🔴 THE DEDICATED CONFIG. xpizza-functions/firebase.json has NO firestore "indexes" key (byte-identical to
+// main), so no deploy that uses it — bare, `--only firestore`, any flags — can ever prepare an index operation
+// (firebase-tools lib/deploy/firestore/prepare.js queues indexes only `if (firestoreConfig.indexes)`). Index
+// deploys exist ONLY through this wrapper, via firebase.indexes.json, which declares nothing but the indexes.
+const INDEX_CONFIG = 'firebase.indexes.json';
+const buildArgs = (projectId) => ['deploy', '--only', 'firestore:indexes', '--non-interactive', '--config', INDEX_CONFIG, '--project', projectId];
 
 async function main(argv = process.argv.slice(2), { spawn = spawnSync, check, probe } = {}) {
   const { requireProject } = require('./require-project');
@@ -45,4 +50,4 @@ async function main(argv = process.argv.slice(2), { spawn = spawnSync, check, pr
 
 if (require.main === module) main().then((c) => process.exit(c), (e) => { console.error('deploy-indexes failed:', (e && e.message) || e); process.exit(1); });
 
-module.exports = { buildArgs, main };
+module.exports = { buildArgs, main, INDEX_CONFIG };

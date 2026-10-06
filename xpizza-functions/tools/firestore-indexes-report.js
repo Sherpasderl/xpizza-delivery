@@ -22,9 +22,11 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const inventoryFile = () => {
-  const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
-  if (!fb.firestore || !fb.firestore.indexes) throw new Error('firebase.json declares no firestore.indexes file');
-  return path.join(ROOT, fb.firestore.indexes);   // the SAME file the deploy pushes
+  // The SAME file the sanctioned deploy pushes: firebase.indexes.json → firestore.indexes (firebase.json
+  // deliberately declares none).
+  const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.indexes.json'), 'utf8'));
+  if (!fb.firestore || !fb.firestore.indexes) throw new Error('firebase.indexes.json declares no firestore.indexes file');
+  return path.join(ROOT, fb.firestore.indexes);
 };
 
 function loadFirebaseApi(root) {

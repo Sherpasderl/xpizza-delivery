@@ -133,7 +133,7 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
 }
 
 // 4b. INDEX EXEMPTIONS (codex build r1 #4): firestore.indexes.json is exactly stats-indexing.js's list,
-//     firebase.json deploys it, and under the exemptions a realistic daily doc / a full shard need only a
+//     firebase.indexes.json (the dedicated index config) deploys it, and under the exemptions a realistic daily doc / a full shard need only a
 //     handful of index entries (they would need thousands under default indexing).
 {
   const { fieldOverrides, exemptFor } = require('./stats-indexing');
@@ -141,10 +141,11 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
   /* 🔴 firestore.indexes.json IS THE WHOLE-DATABASE INVENTORY (codex build r2 B4'), not a stats file: the
      CLI deletes/resets whatever it omits. So this asserts only what stats OWNS — every stats exemption is
      present, as a full exemption — and NOT that the file is otherwise empty: other features' composite
-     indexes and overrides belong in it too. Deploy safety is NOT asserted from this file: it comes from
-     the only sanctioned deploy, `npm run deploy:indexes` (--non-interactive, deletion never forced), under which
-     the Firebase CLI skips — never deletes — remote definitions the file omits (tools/deploy-indexes.test.js
-     pins that, against the installed CLI). tools/firestore-indexes-report.js is advisory only. */
+     indexes and overrides belong in it too. Deploy safety is NOT asserted from this file: firebase.json
+     declares NO indexes, so only `npm run deploy:indexes` (--config firebase.indexes.json, --non-interactive,
+     deletion never forced) can deploy them, and there the Firebase CLI skips — never deletes — remote
+     definitions the file omits (tools/deploy-indexes.test.js proves both against the installed CLI).
+     tools/firestore-indexes-report.js is advisory only. */
   assert(Array.isArray(cfg.indexes) && Array.isArray(cfg.fieldOverrides), 'a valid inventory file');
   for (const want of fieldOverrides()) {
     const got = cfg.fieldOverrides.filter((o) => o.collectionGroup === want.collectionGroup && o.fieldPath === want.fieldPath);
@@ -152,10 +153,12 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
     assert.deepStrictEqual(got[0].indexes, [], `${want.collectionGroup}.${want.fieldPath} must be a full exemption`);
   }
   const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.json'), 'utf8'));
-  assert.strictEqual(fb.firestore.indexes, 'firestore.indexes.json', 'firebase.json deploys the index config');
-  // the advisory report describes exactly the file firebase.json deploys
+  assert(!('indexes' in (fb.firestore || {})), 'firebase.json declares NO firestore indexes (only the dedicated config may)');
+  const fbi = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.indexes.json'), 'utf8'));
+  assert.deepStrictEqual(fbi, { firestore: { indexes: 'firestore.indexes.json' } }, 'firebase.indexes.json declares only the indexes');
+  // the advisory report describes exactly the file the dedicated config deploys
   const rp = fs.readFileSync(path.join(ROOT, 'tools', 'firestore-indexes-report.js'), 'utf8');
-  assert(/fb\.firestore\.indexes/.test(rp), 'the report reads the deployed inventory path from firebase.json');
+  assert(/'firebase\.indexes\.json'/.test(rp), 'the report reads the deployed inventory path from firebase.indexes.json');
   const S = require('./stats-store'); const B = require('./stats-build');
   const day = B.emptySummary();
   for (let i = 0; i < 5000; i++) day.customers[`h1:${String(i).padStart(32, '0')}`] = { orders: 1, cents: 100 };
@@ -166,7 +169,7 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
   assert(dailyExempt < 200, `daily doc under exemptions needs ${dailyExempt} entries`);
   assert(shardExempt < 20, `shard under exemptions needs ${shardExempt} entries`);
   assert(S.indexEntries(shard) > 40000, 'non-vacuity: the same shard under DEFAULT indexing exceeds Firestore\'s 40,000 limit');
-  ok(`stats exemptions present in the whole-DB inventory (no emptiness assumed), the report reads the deployed file; daily ${dailyExempt} / shard ${shardExempt} entries (default indexing: ${S.indexEntries(shard)})`);
+  ok(`stats exemptions present in the whole-DB inventory; firebase.json declares no indexes, firebase.indexes.json only them; daily ${dailyExempt} / shard ${shardExempt} entries (default indexing: ${S.indexEntries(shard)})`);
 }
 
 // 5. 🔴 END TO END: run a REAL job + API over phone-bearing orders with EVERY output channel captured;
