@@ -136,6 +136,14 @@ const kp = F.kitchenPath;
   assert.deepStrictEqual(R.parseReportArgs([]), { ok: true, hours: 24, required: {} }, 'default 24 h unchanged');
   assert.deepStrictEqual(R.parseReportArgs(['--require', 'orders=2,kitchen=3']).required, { orders: 2, kitchen: 3 });
   for (const bad of ['orders=2.5', 'orders=', 'orders', 'Orders=2', 'orders=two']) assert.ok(!R.parseReportArgs(['--require', bad]).ok, `--require ${bad} refused`);
+  // codex CP1 r3 S1
+  assert.ok(!R.parseReportArgs(['--require']).ok, '🔴 a bare --require (no value) is refused');
+  assert.ok(!R.parseReportArgs(['--require', '']).ok, '🔴 --require "" is refused');
+  assert.ok(!R.parseReportArgs(['--require', '--hours', '2']).ok, '🔴 --require followed by another flag is refused');
+  for (const bad of ['orders=2,,kitchen=3', ',orders=2', 'orders=2,']) assert.ok(!R.parseReportArgs(['--require', bad]).ok, `🔴 an empty --require entry is refused (${bad})`);
+  const huge = R.parseReportArgs(['--require', 'orders=99999999999999999999']);
+  assert.ok(!huge.ok && /safe integer/.test(huge.error), '🔴 a huge generation (→ Infinity) is refused');
+  assert.deepStrictEqual(R.parseReportArgs(['--require', `orders=${Number.MAX_SAFE_INTEGER}`]).required, { orders: Number.MAX_SAFE_INTEGER }, 'the largest safe integer is accepted');
   assert.throws(() => R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 1.5), /INTEGER/, '🔴 reportWindow itself refuses a fractional window (defence in depth)');
   const W1 = R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 2);
   assert.deepStrictEqual([W1.startIso, W1.endIso, W1.hours.length], ['2026-10-05T16:00:00.000Z', '2026-10-05T18:00:00.000Z', 2], 'an integer window: counters and logs cover the SAME whole hours');

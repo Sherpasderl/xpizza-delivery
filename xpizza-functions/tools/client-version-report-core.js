@@ -102,10 +102,19 @@ function parseReportArgs(argv) {
   }
   const required = {};
   const r = opt('--require');
-  if (r !== undefined) for (const kv of String(r).split(',').filter(Boolean)) {
-    const m = kv.match(/^([a-z0-9-]+)=([0-9]+)$/);
-    if (!m) return { ok: false, error: `--require entries are app=<integer generation> (got ${JSON.stringify(kv)})` };
-    required[m[1]] = Number(m[2]);
+  if (r !== undefined) {
+    // codex CP1 r3 S1: a bare / empty --require, a value that is really the next flag, and an EMPTY entry are refused;
+    // a generation must survive Number() as a SAFE integer (a huge digit string becomes Infinity and would silently
+    // drop every below-required result)
+    if (r === '' || r.startsWith('--')) return { ok: false, error: '--require needs app=<integer generation>[,app=<integer>…] (no value given)' };
+    for (const kv of String(r).split(',')) {
+      if (kv === '') return { ok: false, error: `--require has an empty entry (${JSON.stringify(r)})` };
+      const m = kv.match(/^([a-z0-9-]+)=([0-9]+)$/);
+      if (!m) return { ok: false, error: `--require entries are app=<integer generation> (got ${JSON.stringify(kv)})` };
+      const n = Number(m[2]);
+      if (!Number.isSafeInteger(n)) return { ok: false, error: `--require generation for ${m[1]} is not a safe integer (got ${m[2]})` };
+      required[m[1]] = n;
+    }
   }
   return { ok: true, hours, required };
 }

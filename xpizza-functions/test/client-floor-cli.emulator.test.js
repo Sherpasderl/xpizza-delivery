@@ -141,11 +141,17 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
     assert.ok(/REFUSED — --hours must be a whole number/.test(r.out), r.out);
     assert.ok(Date.now() - t0 < 15000, 'refused promptly — with every database endpoint DEAD it never waited on one');
     assert.strictEqual(await tree(), before, 'nothing written');
+    for (const req of [[], [''], ['orders=2,,kitchen=3'], ['orders=99999999999999999999']]) {
+      const t1 = Date.now();
+      const rr = runCli(deadDb, 'client-version-report.js', '--require', ...req);
+      assert.strictEqual(rr.code, 2, `--require ${JSON.stringify(req)}: exit 2 (got ${rr.code}): ${rr.out}`);
+      assert.ok(/REFUSED — --require/.test(rr.out) && Date.now() - t1 < 15000, `--require ${JSON.stringify(req)} refused promptly BEFORE any database access`);
+    }
     r = runCli(process.env, 'client-version-report.js', '--hours', '2');
     assert.strictEqual(r.code, 0, r.out);
     const rep3 = JSON.parse(r.out.slice(r.out.indexOf('{')));
     assert.strictEqual(rep3.window.hours, 2, 'an integer window still runs');
-    ok('codex r2 B2: --hours 1.5 exits 2 with a refusal BEFORE any database access (all database hosts dead, prompt exit); an integer window still runs');
+    ok('codex r2 B2 + r3 S1: --hours 1.5 and a bare / empty / empty-entry / unsafe --require each exit 2 BEFORE any database access (all database hosts dead, prompt exit); an integer window still runs');
   }
 
   console.log(`client-floor-cli(emulator): OK (${n})`);
