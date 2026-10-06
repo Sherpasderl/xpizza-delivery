@@ -192,7 +192,8 @@ test('🔴 CSV allowlist: an exact header is saved byte-for-byte; ANY other head
     dl.restore();
     if (saved) {
       assert.strictEqual(dl.saved.length, 1, `${label}: saved`);
-      assert.strictEqual(dl.saved[0].text, body, 'byte-for-byte the server body (no BOM, no rewrite)');
+      assert.deepStrictEqual([...dl.saved[0].bytes.subarray(0, 3)], [0xEF, 0xBB, 0xBF], 'a UTF-8 BOM leads the file (Excel accents)');
+      assert.ok(dl.saved[0].bytes.subarray(3).equals(Buffer.from(body, 'utf8')), 'then byte-for-byte the server body');
       assert.strictEqual(dl.saved[0].name, 'ventas_x_pizza_a_b.csv', 'the server\'s filename');
       assert.ok(dl.saved[0].clicked, 'and the download was triggered');
     } else {
@@ -220,7 +221,7 @@ test('orders CSV: pages joined into ONE file (header once, every row), cursor th
   assert.deepStrictEqual(csv.map((c) => [c.query.kind, c.query.cursor || null]), [['orders', null], ['orders', 'C1']]);
   await dl.read();
   assert.strictEqual(dl.saved.length, 1);
-  assert.strictEqual(dl.saved[0].text, `${ORDERS_HEADER}\r\n2026-10-05,12:00,1,delivery,cash,sale,100.00,86.96,13.04,1x Pizza\r\n2026-10-05,13:00,2,pickup,online,sale,50.00,43.48,6.52,1x Pan\r\n`);
+  assert.strictEqual(dl.saved[0].text, `\uFEFF${ORDERS_HEADER}\r\n2026-10-05,12:00,1,delivery,cash,sale,100.00,86.96,13.04,1x Pizza\r\n2026-10-05,13:00,2,pickup,online,sale,50.00,43.48,6.52,1x Pan\r\n`);
   assert.strictEqual(dl.saved[0].name, 'pedidos_x.csv');
 
   // a page whose header drifted mid-export poisons the whole file
@@ -334,4 +335,50 @@ test('🔴 after sign-out, NOTHING from the old session can call getSalesStats: 
   await settle();
   assert.deepStrictEqual(statsCalls(calls2), [], '🔴 no stats request of any kind after the owner left');
   assert.ok(hasClass(byId.get('viewventas'), 'hidden') && gateShut(byId));
+});
+
+test('a CSV note belongs to its period: refused orders CSV → any period change clears it', async () => {
+  const byId = installDom();
+  const calls = installFetch(routes());
+  await loadModules();
+  await signIn('owner_uid');
+  byId.get('navventas').click();
+  await settle();
+  const page = byId.get('viewventas');
+  const note = () => byClass(page, 'vcsvnote')[0];
+  const t = todayHN(Date.now());
+  const setCustom = (from, to) => { const [f, tt] = byClass(page, 'vdate'); f.value = from; for (const fn of f.listeners.change) fn(); tt.value = to; for (const fn of tt.listeners.change) fn(); };
+  for (const change of ['preset', 'custom']) {
+    byClass(page, 'vpre').find((b) => textOf(b) === 'Personalizado').click();
+    await settle();
+    setCustom(addDays(t, -39), t);
+    await settle();
+    byClass(page, 'btn')[1].click();
+    await settle();
+    assert.ok(textOf(note()).includes('hasta 31 días') && !hasClass(note(), 'hidden'), `premise (${change}): the refusal is showing`);
+    if (change === 'preset') byClass(page, 'vpre').find((b) => textOf(b) === 'Hoy').click();
+    else setCustom(addDays(t, -9), t);
+    await settle();
+    assert.ok(hasClass(note(), 'hidden') && textOf(note()) === '', `🔴 ${change} change: the stale note is gone`);
+  }
+  void calls;
+});
+
+test('403 not_owner: both CSV buttons are disabled (the server would refuse them too)', async () => {
+  const byId = installDom();
+  installFetch(routes({ getSalesStats: () => errJson(403, { error: 'not_owner' }) }));
+  await loadModules();
+  await signIn('owner_uid');
+  byId.get('navventas').click();
+  await settle();
+  const [daily, orders] = byClass(byId.get('viewventas'), 'btn');
+  assert.ok(daily.disabled && orders.disabled, 'disabled in the refused state');
+  const byId2 = installDom();
+  installFetch(routes());
+  await loadModules();
+  await signIn('owner_uid');
+  byId2.get('navventas').click();
+  await settle();
+  const [d2, o2] = byClass(byId2.get('viewventas'), 'btn');
+  assert.ok(!d2.disabled && !o2.disabled, 'non-vacuity: enabled for an owner whose stats loaded');
 });

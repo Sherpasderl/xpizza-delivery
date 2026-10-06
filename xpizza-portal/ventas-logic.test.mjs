@@ -6,7 +6,7 @@ import assert from 'node:assert';
 import {
   rangeFor, validateCustom, defaultCompare, granularityFor, todayHN, addDays, rangeLabel, vsLabel, dayLabel,
   lempiras, count, pct1, updatedLabel, missingLabel, points, viewModel, csvHeaderOk, joinCsvPages, csvFilename,
-  CSV_HEADERS, ventasMessage, PRESETS, COMPARES,
+  CSV_HEADERS, ventasMessage, PRESETS, COMPARES, heatHours, HEAT_BASE_HOURS,
 } from './ventas-logic.js';
 
 const T = '2026-10-05';   // a Monday
@@ -96,7 +96,7 @@ test('GOLDEN vs the mockup: chart points and heat alpha are the mockup\'s own fo
     assert.strictEqual(cell(w, h).alpha.toFixed(2), (v === 0 ? 0.05 : 0.12 + v * 0.088).toFixed(2), `alpha for v=${v}`);
   }
   assert.strictEqual(vm.peakNote, 'Pedidos por día y hora · hora de Honduras · pico: sábado 19:00, 10 pedidos');
-  assert.deepStrictEqual(vm.hours, [12, 13, 14, 15, 16, 17, 18, 19], 'the hours that had orders');
+  assert.deepStrictEqual(vm.hours, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22], 'always the mockup\'s 12–22');
   assert.strictEqual(cell(0, 12).label, 'Lun 12:00, 4 pedidos');
 });
 
@@ -142,4 +142,19 @@ test('single day: the hourly window spans BOTH periods, so the comparison is not
   assert.ok(Math.min(...ys(vm.chart.cur)) < 258, 'and the current line too (08:00)');
   assert.strictEqual(vm.chart.xLabels[0], '8:00');
   assert.strictEqual(vm.chart.xLabels[vm.chart.xLabels.length - 1], '19:00');
+});
+
+test('heatmap columns: ALWAYS 12–22, plus any hour outside it that had orders, in order', () => {
+  const grid = () => Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => ({ orders: 0, cents: 0 })));
+  assert.deepStrictEqual(heatHours(grid()), HEAT_BASE_HOURS, 'a period with no orders still shows the mockup\'s 11 columns');
+  assert.deepStrictEqual(HEAT_BASE_HOURS, [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
+  const quiet = grid(); quiet[1][7].orders = 2; quiet[1][8].orders = 1;   // a quiet morning-only day
+  assert.deepStrictEqual(heatHours(quiet), [7, 8, ...HEAT_BASE_HOURS], '🔴 not collapsed to 2 stretched columns');
+  const late = grid(); late[4][23].orders = 1; late[4][15].orders = 4;
+  assert.deepStrictEqual(heatHours(late), [...HEAT_BASE_HOURS, 23]);
+  const vm = viewModel({ heatmap: quiet, kpis: { orders: 3 } }, { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.strictEqual(vm.hours.length, 13);
+  assert.ok(vm.heat.every((r) => r.cells.length === 13));
+  assert.strictEqual(vm.heat[1].cells[0].label, 'Mar 7:00, 2 pedidos');
+  assert.strictEqual(vm.heat[1].cells[2].alpha.toFixed(2), '0.05', 'an empty base hour is the mockup\'s empty cell');
 });

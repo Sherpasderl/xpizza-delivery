@@ -140,13 +140,17 @@ await H.settle(30);
   assert.deepStrictEqual(csvServed.map((s) => s.query.kind), ['daily', 'orders']);
   for (const s of csvServed) assert.strictEqual(s.out.status, 200, `${s.query.kind}: served`);
   assert.strictEqual(dl.saved.length, 2, '🔴 both real CSVs passed the allowlist and were saved — the allowlist matches the server');
-  assert.strictEqual(dl.saved[0].text, csvServed[0].out.body, 'daily: byte-for-byte');
-  assert.strictEqual(dl.saved[1].text, csvServed[1].out.body, 'orders (one page): byte-for-byte');
+  // owner decision 2026-10-06: a UTF-8 BOM leads each download (Excel accents); the server is unchanged
+  const BOM = Buffer.from([0xEF, 0xBB, 0xBF]);
+  assert.ok(!csvServed[0].out.body.startsWith('\uFEFF') && !csvServed[1].out.body.startsWith('\uFEFF'), 'premise: the server sends no BOM');
+  assert.ok(dl.saved[0].bytes.equals(Buffer.concat([BOM, Buffer.from(csvServed[0].out.body, 'utf8')])), 'daily: BOM + the server bytes, exactly');
+  assert.ok(dl.saved[1].bytes.equals(Buffer.concat([BOM, Buffer.from(csvServed[1].out.body, 'utf8')])), 'orders (one page): BOM + the server bytes, exactly');
+  assert.ok(/Pepperoni 12″|Pan de ajo/.test(dl.saved[1].bytes.subarray(3).toString('utf8')), 'non-vacuity: non-ASCII item names survive in UTF-8');
   assert.strictEqual(dl.saved[0].name, csvServed[0].out.filename);
   assert.strictEqual(dl.saved[1].name, csvServed[1].out.filename);
   assert.deepStrictEqual(L.CSV_HEADERS.orders, A.ORDER_COLUMNS, 'the portal\'s orders allowlist IS the server\'s ORDER_COLUMNS');
-  assert.ok(dl.saved[1].text.split('\r\n').length - 2 >= 4, 'non-vacuity: the orders file has rows');
-  ok('CSV: the real daily + orders headers pass the portal allowlist; saved bytes == server bytes');
+  assert.ok(dl.saved[1].bytes.subarray(3).toString('utf8').split('\r\n').length - 2 >= 4, 'non-vacuity: the orders file has rows');
+  ok('CSV: the real daily + orders headers pass the portal allowlist; saved bytes == BOM + server bytes');
 }
 
 // 3. a REAL non-owner answer (the server's 403 not_owner, staff token) renders the owner-only message

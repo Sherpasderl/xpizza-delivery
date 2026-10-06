@@ -103,7 +103,8 @@ export function captureDownloads() {
     }
     append(...cs);
   };
-  const read = async () => { for (const r of saved) if (r.text === null) r.text = await r.blob.text(); return saved; };
+  // RAW bytes: Blob.text() runs a UTF-8 decode that STRIPS a leading BOM, so it could not see one.
+  const read = async () => { for (const r of saved) if (r.text === null) { r.bytes = Buffer.from(await r.blob.arrayBuffer()); r.text = r.bytes.toString('utf8'); } return saved; };
   return { saved, read, restore: () => { URL.createObjectURL = real; } };
 }
 

@@ -119,6 +119,13 @@ export function points(values, max) {
   return values.map((v, i) => `${n > 1 ? Math.round(i * 1000 / (n - 1)) : 500},${Math.round(258 - (v / max) * 250)}`).join(' ');
 }
 
+export const HEAT_BASE_HOURS = [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+export function heatHours(heatmap) {
+  const set = new Set(HEAT_BASE_HOURS);
+  for (const row of heatmap || []) (row || []).forEach((c, h) => { if (c && c.orders > 0) set.add(h); });
+  return [...set].sort((x, y) => x - y);
+}
+
 // The hours that had orders in ANY of the given heatmaps (12–22 when none did). The single-day chart
 // passes both periods: a window taken from today alone flattens a comparison whose orders fell at
 // other hours to zero.
@@ -180,9 +187,9 @@ export function viewModel(body, { range, compare, metric, nowMs }) {
     .filter(([m]) => m !== 'other' || ((bp.other && bp.other.orders) || 0) > 0)
     .map(([m, label]) => { const c = (bp[m] && bp[m].cents) || 0; const share = payTotal ? Math.round((c / payTotal) * 100) : 0; return { label, value: `${share}% · ${lempiras(c)}`, width: share }; });
 
-  // Heatmap: Mon..Sun × the hours that had orders (12–22 when there are none).
-  const [lo, hi] = hourWindow(b.heatmap);
-  const hours = []; for (let h = lo; h <= hi; h++) hours.push(h);
+  // Heatmap: Mon..Sun × ALWAYS 12–22 (the mockup's 11 columns, so a quiet period keeps 30px-scale
+  // cells instead of a few stretched ones) ∪ any hour outside it that had orders, in order.
+  const hours = heatHours(b.heatmap);
   let peak = null, peakMax = 0;
   for (let w = 0; w < 7; w++) for (const h of hours) { const o = (((b.heatmap || [])[w] || [])[h] || {}).orders || 0; if (o > peakMax) { peakMax = o; peak = { w, h }; } }
   const heat = DAYS_SHORT.map((day, w) => ({

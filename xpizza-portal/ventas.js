@@ -161,8 +161,11 @@ async function exportCsv(kind) {
   }
 }
 
+// A UTF-8 BOM (EF BB BF) leads the file so Excel reads it as UTF-8 and shows "Carnívora", not
+// "CarnÃ­vora" (owner decision 2026-10-06). The server's bytes follow unchanged.
+const BOM = '\uFEFF';
 function save(text, name) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const url = URL.createObjectURL(new Blob([BOM + text], { type: 'text/csv;charset=utf-8' }));
   const a = el('a', 'hidden');
   a.href = url; a.download = name;
   document.body.append(a);
@@ -234,8 +237,9 @@ function buildPage() {
   paintHeader();
 }
 
+// A CSV note (refusal / error) speaks about the period it was given for: any period change clears it.
 function pickPreset(key) {
-  S.preset = key; S.compare = null; S.customErr = '';
+  S.preset = key; S.compare = null; S.customErr = ''; S.note = '';
   if (key !== 'custom') S.custom = null;
   load();
 }
@@ -245,6 +249,7 @@ function applyCustom() {
   if (!from || !to) { S.customErr = ''; paintHeader(); return; }
   const v = validateCustom(from, to, today());
   S.customErr = v.ok ? '' : v.error;
+  S.note = '';
   S.custom = v.ok ? v.range : null;
   load();
 }
@@ -268,8 +273,10 @@ function paintHeader() {
     refs.cerr.textContent = S.customErr;
   }
   refs.sel.value = range ? compareFor(range) : (S.compare || 'previous');
-  refs.daily.disabled = !!S.csvBusy || !range;
-  refs.orders.disabled = !!S.csvBusy || !range;
+  // the server refused this account (403 not_owner): its exports would be refused too
+  const refused = !!(S.err && S.err.code === 'not_owner');
+  refs.daily.disabled = !!S.csvBusy || !range || refused;
+  refs.orders.disabled = !!S.csvBusy || !range || refused;
   refs.note.textContent = S.csvBusy ? 'Preparando el archivo…' : S.note;
   refs.note.classList.toggle('hidden', !(S.csvBusy || S.note));
   refs.note.classList.toggle('verr', !S.csvBusy && !!S.note);
