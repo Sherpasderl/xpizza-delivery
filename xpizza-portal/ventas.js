@@ -52,16 +52,12 @@ const S = {
                       // kept until ownership is re-established (portal:restaurant) or the person changes
 };
 
-// A token that is handed out ONLY while the request's context is still current. api.js awaits the
-// token and then fetches synchronously, so a check made right after the token resolves is the last
-// moment before a request leaves: an export or load whose session / restaurant ended sends nothing.
+// The context assertion handed to api.js: SYNCHRONOUS, and api.js runs it after its token await and immediately before
+// fetch (no await in between), so a request whose session / restaurant / generation ended is never sent. A token getter
+// that re-checks cannot close that gap: api.js resumes after `await token()` in a later microtask, where a queued auth
+// callback may already have run (codex S2 r2).
 const ABORT = 'ventas_obsolete';
-const tokenWhile = (alive) => async () => {
-  if (!alive()) throw Object.assign(new Error(ABORT), { kind: ABORT });
-  const t = await token();
-  if (!alive()) throw Object.assign(new Error(ABORT), { kind: ABORT });
-  return t;
-};
+const assertWhile = (alive) => () => { if (!alive()) throw Object.assign(new Error(ABORT), { kind: ABORT }); };
 const isRefusal = (e) => !!(e && e.kind === 'NotAuthorized');
 
 const today = () => todayHN(Date.now());
@@ -129,7 +125,7 @@ async function load() {
   S.loading = true; S.err = null; paintBody();
   let body = null, err = null;
   try {
-    body = await getSalesStats({ rid, from: range.from, to: range.to, granularity: granularityFor(range), compare, token: tokenWhile(() => gen === S.gen && rid === S.rid) });
+    body = await getSalesStats({ rid, from: range.from, to: range.to, granularity: granularityFor(range), compare, token, assertLive: assertWhile(() => gen === S.gen && rid === S.rid) });
   } catch (e2) { err = e2; }
   if (gen !== S.gen || rid !== S.rid) return;                    // a newer request or context won
   S.loading = false; S.body = body; S.err = err;
@@ -158,9 +154,8 @@ async function exportCsv(kind) {
     let cursor, name = null;
     for (let page = 0; ; page++) {
       if (page >= 200) throw Object.assign(new Error('too_many_pages'), { kind: 'Unavailable' });
-      // BEFORE every page request: tokenWhile checks the context immediately before the request leaves
-      // (and the only await before it is the token's, which it re-checks after).
-      const r = await fetchSalesCsv({ rid, from: range.from, to: range.to, kind, cursor, token: tokenWhile(alive) });
+      // BEFORE every page request: api.js runs the assertion immediately before fetch (no await in between).
+      const r = await fetchSalesCsv({ rid, from: range.from, to: range.to, kind, cursor, token, assertLive: assertWhile(alive) });
       if (!alive()) return;                                      // RIGHT AFTER the await: no header check, cursor or save for an ended context
       if (!csvHeaderOk(kind, r.text)) throw Object.assign(new Error('csv_header'), { kind: 'CsvHeader' });
       pages.push(r.text);

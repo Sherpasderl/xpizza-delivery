@@ -530,3 +530,55 @@ test('🔴 a single-page export whose session ended while it was in flight saves
   await dl.read(); dl.restore();
   assert.strictEqual(dl.saved.length, 0, '🔴 the ended session\'s file is not handed to whoever is at the screen now');
 });
+
+test('🔴 codex S2 r2 — an auth change queued as a MICROTASK between the token and fetch sends NOTHING: JSON, daily CSV, orders page 1 and page 2', async () => {
+  const signOutMicrotask = () => { globalThis.__onToken = () => document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: null } })); };
+  // JSON load
+  {
+    const byId = installDom();
+    const calls = installFetch(routes());
+    await loadModules();
+    await signIn('owner_A');
+    signOutMicrotask();
+    byId.get('navventas').click();
+    await settle();
+    assert.strictEqual(globalThis.__onToken, null, 'non-vacuity: the probe fired inside token()');
+    assert.deepStrictEqual(statsCalls(calls), [], '🔴 JSON: no getSalesStats after the queued sign-out');
+  }
+  // daily CSV and orders CSV page 1
+  for (const which of [0, 1]) {
+    const byId = installDom();
+    const calls = installFetch(routes());
+    await loadModules();
+    await signIn('owner_A');
+    byId.get('navventas').click();
+    await settle();
+    const n0 = statsCalls(calls).length;
+    signOutMicrotask();
+    byClass(byId.get('viewventas'), 'btn')[which].click();
+    await settle();
+    assert.strictEqual(globalThis.__onToken, null, 'non-vacuity: fired');
+    assert.strictEqual(statsCalls(calls).length, n0, `🔴 ${which ? 'orders' : 'daily'} CSV page 1: withheld`);
+  }
+  // orders CSV page 2: page 1 answers with a cursor; the sign-out lands inside page 2's token call
+  {
+    const byId = installDom();
+    const dl = captureDownloads();
+    const p1 = `${ORDERS_HEADER}\r\n2026-10-05,12:00,1,delivery,cash,sale,100.00,86.96,13.04,1x Pizza\r\n`;
+    let release1;
+    const calls = installFetch(routes({ getSalesStats: (q) => (q.format !== 'csv' ? STATS() : q.cursor ? okCsv(p1) : new Promise((r) => { release1 = () => r(okCsv(p1, { next: 'C1' })); })) }));
+    await loadModules();
+    await signIn('owner_A');
+    byId.get('navventas').click();
+    await settle();
+    byClass(byId.get('viewventas'), 'btn')[1].click();
+    await settle();
+    signOutMicrotask();
+    release1();
+    await settle(20);
+    await dl.read(); dl.restore();
+    assert.strictEqual(globalThis.__onToken, null, 'non-vacuity: fired on page 2\'s token');
+    assert.deepStrictEqual(statsCalls(calls).filter((c) => c.query.cursor), [], '🔴 orders page 2: withheld');
+    assert.strictEqual(dl.saved.length, 0);
+  }
+});

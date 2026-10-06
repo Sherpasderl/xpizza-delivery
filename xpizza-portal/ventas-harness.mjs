@@ -131,7 +131,9 @@ export async function loadModules(which = ['app', 'ventas'], transforms = {}) {
   const stub = join(DIR, `__ventas-auth-stub.${tag}.mjs`);
   // token() can be HELD by a test (globalThis.__tokenHold = a promise) to land a context change inside the
   // one await that precedes every request — the window the guarded token exists to close.
-  writeFileSync(stub, 'export const token = async () => { if (globalThis.__tokenHold) await globalThis.__tokenHold; return "TK-test"; };\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n');
+  // globalThis.__onToken (one-shot) is queued as a MICROTASK from inside token(): it runs after the token resolves and
+  // before the caller's continuation — the auth-change ordering codex S2 r2 probed.
+  writeFileSync(stub, 'export const token = async () => { if (globalThis.__tokenHold) await globalThis.__tokenHold; const f = globalThis.__onToken; if (f) { globalThis.__onToken = null; queueMicrotask(f); } return "TK-test"; };\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n');
   const tmps = [];
   const mods = {};
   try {

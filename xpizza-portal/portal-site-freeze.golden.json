@@ -2,6 +2,7 @@
  "files": [
   "DESIGN.md",
   "PRODUCT.md",
+  "api-assert-live.test.mjs",
   "api.js",
   "api.test.mjs",
   "app-loads.test.mjs",
