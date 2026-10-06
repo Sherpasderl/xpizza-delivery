@@ -1,6 +1,7 @@
 
 [build]
   publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build
 
 # Track A (MF1): the profile-claim token travels in the URL FRAGMENT (never sent to servers/Referer). This
 # policy is defense-in-depth — no full URL (incl. ?claim=<order_id>) leaks to cross-origin third parties.

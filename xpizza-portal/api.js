@@ -65,6 +65,10 @@ export function buildRequest(fnName, { rid, body, tokenStr, params } = {}) {
 
 // Maps a response to either its parsed body or a typed ApiError. Never throws a raw fetch/JSON error at
 // the UI, and never treats a non-2xx as success just because it happened to parse.
+// P-SELFUPDATE CP2 — the one request wrapper at every platform-function call site (advisor ruling Q6/Q7). A non-identity
+// endpoint: SherpaClient.fetch passes the SAME arguments through untouched; with no module loaded, it is fetch itself.
+function sherpaFetch(u, o) { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
+
 export async function readResponse(res) {
   let body = null;
   try { body = await res.json(); } catch (_) { /* an empty or non-JSON body is not itself a failure */ }
@@ -83,7 +87,7 @@ export async function apiFetch(fnName, { rid, body, token, params, assertLive } 
   const { url, options } = buildRequest(fnName, { rid, body, tokenStr, params });
   let res;
   try {
-    res = await fetch(url, options);
+    res = await sherpaFetch(url, options);
   } catch (e) {
     // A network failure, a CORS rejection, a DNS problem — all indistinguishable from here, and all
     // "try again" rather than "you are not allowed".
@@ -163,6 +167,6 @@ export async function fetchSalesCsv({ rid, from, to, kind = 'daily', cursor, tok
   if (assertLive) assertLive();   // synchronous, immediately before fetch (see apiFetch)
   const { url, options } = buildRequest('getSalesStats', { rid, tokenStr, params: { from, to, format: 'csv', kind, cursor } });
   let res;
-  try { res = await fetch(url, options); } catch (e) { throw new ApiError('Unavailable', 0, null); }
+  try { res = await sherpaFetch(url, options); } catch (e) { throw new ApiError('Unavailable', 0, null); }
   return readTextResponse(res);
 }

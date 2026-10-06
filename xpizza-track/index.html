@@ -401,6 +401,7 @@
 
     .hidden { display: none !important; }
   </style>
+<script src="sherpa-client.js"></script>
 </head>
 <body>
   <div class="container">
@@ -958,5 +959,11 @@
       });
     }
   </script>
+<script>
+/* P-SELFUPDATE CP2 §3 — this page's self-update adapter, registered EXPLICITLY (codex CP2 r1 B1: nothing reloads before an
+   app declares readiness). A read-only page: idle = no focused field, no open <dialog>, no request of ours in flight, no
+   tap/key in the last 30 s, online (SherpaClient.idleAdapter). Inert (unstamped) pages register nothing. */
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({})); } catch (_) {}
+</script>
 </body>
 </html>

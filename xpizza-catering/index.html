@@ -765,6 +765,7 @@
     .pizza-info .pizza-name { font-size: 12.5px; }
   }
 </style>
+<script src="sherpa-client.js"></script>
 </head>
 <body>
 
@@ -1446,6 +1447,12 @@
   }
 </script>
 
+<script>
+/* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
+   of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). Catering is a CUSTOMER form: it updates only while the form is untouched (every field at its default); a filled form or the success screen (with its WhatsApp follow-up link) is never reloaded. State reloads from the
+   database. Inert (unstamped) pages register nothing. */
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#success.show"], busy: function () { var f = document.getElementById('quote-form'); if (!f) return true; var els = f.querySelectorAll('input:not([type=hidden]), textarea, select'); for (var i = 0; i < els.length; i++) { var e = els[i]; if (e.tagName === 'SELECT') { var d = 0; for (var j = 0; j < e.options.length; j++) if (e.options[j].defaultSelected) { d = j; break; } if (e.selectedIndex !== d) return true; } else if ((e.type === 'checkbox' || e.type === 'radio') ? e.checked !== e.defaultChecked : e.value !== e.defaultValue) return true; } return false; } })); } catch (_) {}
+</script>
 </body>
 </html>
 

@@ -29,7 +29,7 @@ function showEmpty(title, detail) {
   $('rail').replaceChildren();
   $('detail').replaceChildren(e);
 }
-import { pickRid, messageFor } from './portal-logic.js';
+import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 
 function renderSwitcher() {
   const cur = state.restaurants.find((r) => r.rid === state.currentRid);
@@ -1133,3 +1133,20 @@ document.addEventListener('portal:auth', (e) => {
   // editor with everything still on screen and nothing responding.
   if (state.draft) repaintFromDraft();
 });
+
+// ── P-SELFUPDATE CP2 §3 — the portal's self-update ADAPTER (read-only over this module's state) ───────────────────
+// canReload is FALSE while the merchant has unsaved work or the platform holds an operation of theirs:
+//   • a request is outstanding (pendingWrite), a publish is in flight, or a review / its lock is open;
+//   • the draft differs from what was loaded (pendingCount — a held not-yet-valid price differs too);
+//   • a field has focus.
+// Otherwise the page reloads at the coordinator's next trigger and re-reads everything from the server. While blocked the
+// merchant is told once, plainly: "Nueva versión: guardá tus cambios para actualizar".
+function portalReloadFacts() {
+  const a = document.activeElement;
+  return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy, review: !!state.review, reviewLock: !!state.reviewLock,
+    pendingCount: state.draft ? pendingCount(state.draft) : 0, focusedTag: a ? a.tagName : null };
+}
+try {
+  const S = window.SherpaClient;
+  if (S && !S.inert) S.registerAdapter({ canReload: () => portalCanReload(portalReloadFacts()), blockedNotice: 'Nueva versión: guardá tus cambios para actualizar' });
+} catch (_) { /* the module never breaks the portal */ }

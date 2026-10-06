@@ -79,13 +79,13 @@ test('the conflict gate sits at every path to a charge — structural census, bo
        a `[\s\S]*?` here would let any future statement slip between the conflict check and the fetch,
        which is the precise thing this assertion exists to forbid. */
     const ATTACH = String.raw`(?:\s*/\*[\s\S]*?\*/\n)?(?:\s*try\{ if\(__confirmQuote\) __confirmQuote\.send\(currentOrder, __orderSigAtBuild, __orderNetAtBuild\); \}catch\(_\)\{\}\n)?`;
-    assert.ok(new RegExp(String.raw`for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n` + ATTACH + String.raw`      const res = await fetch\(CREATEORDER_URL,\{`).test(raw),
+    assert.ok(new RegExp(String.raw`for\(let attempt=1; attempt<=MAX_TRIES; attempt\+\+\)\{\n    try \{\n(?:[^\n]*\n){0,4}?      if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n` + ATTACH + String.raw`      const res = await sherpaFetch\(CREATEORDER_URL,\{`).test(raw),
       `${dir}: the createOrder send gate must sit INSIDE the retry loop, immediately before the fetch`);
-    assert.ok(new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await fetch\(CHARGEORDER_URL, \{`).test(raw),
+    assert.ok(new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await sherpaFetch\(CHARGEORDER_URL, \{`).test(raw),
       `${dir}: the chargeOnlineOrder send gate must sit immediately before the fetch`);
     // non-vacuity: the widened pattern must still REFUSE an unrelated statement wedged in between.
-    assert.ok(!new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await fetch\(CHARGEORDER_URL, \{`)
-      .test("if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('x');\n    mutateCart();\n    const res = await fetch(CHARGEORDER_URL, {"),
+    assert.ok(!new RegExp(String.raw`if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n` + ATTACH + String.raw`    const res = await sherpaFetch\(CHARGEORDER_URL, \{`)
+      .test("if(refuseConflictedSend('chargeOnlineOrder')) return paymentFallback('x');\n    mutateCart();\n    const res = await sherpaFetch(CHARGEORDER_URL, {"),
       'non-vacuity: the widened adjacency still rejects an arbitrary statement between the gate and the fetch');
 
     /* 🔴 A DOCUMENTED LINT, NOT A PROOF — and saying so is the point. The guarantee is that the two
@@ -97,7 +97,7 @@ test('the conflict gate sits at every path to a charge — structural census, bo
        still cannot see a URL assembled at runtime, and no regex can. It is a lint. If a third send is
        ever added, gate it; do not expect this to be what tells you. */
     const chargeRef = String.raw`(CREATEORDER_URL|CHARGEORDER_URL|['"\`][^'"\`]*(createOrder|chargeOnlineOrder)[^'"\`]*['"\`])`;
-    const sendRe = new RegExp(String.raw`(?:fetch|sendBeacon|\.open)\s*\(\s*(?:['"\`]?(?:POST|GET)['"\`]?\s*,\s*)?` + chargeRef, 'g');
+    const sendRe = new RegExp(String.raw`(?:sherpaFetch|fetch|sendBeacon|\.open)\s*\(\s*(?:['"\`]?(?:POST|GET)['"\`]?\s*,\s*)?` + chargeRef, 'g');
     const sends = html.match(sendRe) || [];
     assert.strictEqual(sends.length, 2,
       `${dir}: expected exactly 2 charge-send call sites, found ${sends.length} — a new one needs its own gate: ${sends.join(' | ')}`);
@@ -112,7 +112,7 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     // URL — because those exercise different alternatives of the pattern. Proving only the constant form
     // would leave the literal branch unexercised for that transport, which is the same gap this list was
     // widened to close.
-    for (const probe of ['fetch(CREATEORDER_URL,{', 'window.fetch(CHARGEORDER_URL, {',
+    for (const probe of ['fetch(CREATEORDER_URL,{', 'window.fetch(CHARGEORDER_URL, {', 'sherpaFetch(CREATEORDER_URL,{',
                          "fetch('https://x/createOrder', {", "xhr.open('POST', CHARGEORDER_URL)",
                          "navigator.sendBeacon(CREATEORDER_URL, body)",
                          "xhr.open('POST', 'https://x/chargeOnlineOrder')",
@@ -133,7 +133,7 @@ test('the conflict gate sits at every path to a charge — structural census, bo
       .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n')
       .match(/cartConflicts\(\)/g) || []).length, 1, 'non-vacuity: the strip removes both comment forms and keeps the call');
     // non-vacuity: the send-site detector really fires on the shipped expression
-    assert.strictEqual(('const res = await fetch(CREATEORDER_URL,{'.match(/await fetch\((CREATEORDER_URL|CHARGEORDER_URL)/g) || []).length, 1,
+    assert.strictEqual(('const res = await sherpaFetch(CREATEORDER_URL,{'.match(/await sherpaFetch\((CREATEORDER_URL|CHARGEORDER_URL)/g) || []).length, 1,
       'non-vacuity: the send-site census can see a charge send');
   }
 });
@@ -162,7 +162,7 @@ test('both forms load all three shared modules and boot the live feed', () => {
       `${dir}: the rid must be read at call time, not bound above its declaration`);
     // The coordinator is given a fetch rather than closing over one — a missing injection used to look
     // exactly like being offline.
-    assert.ok(/fetchImpl: function \(u, o\) \{ return window\.fetch\(u, o\); \}/.test(html),
+    assert.ok(/fetchImpl: function \(u, o\) \{ return sherpaFetch\(u, o\); \}/.test(html),   // P-SELFUPDATE CP2: through the one wrapper (a pass-through for getPublicMenu)
       `${dir}: the live feed must be given a fetch implementation`);
   }
 });

@@ -358,6 +358,7 @@
     border:none; border-radius:14px; box-shadow:inset 0 0 0 1px var(--ring) }
   #login-error{ min-height:18px; font-size:14px; font-weight:600; color:var(--rose-ink); text-align:center }
 </style>
+<script src="sherpa-client.js"></script>
 </head>
 <body>
   <form id="screen-login" class="hidden">
@@ -437,6 +438,8 @@ import { createGlideEngine } from './driver-glide.js';   // bundled verbatim fro
 // DB helpers: the ONE direct write (own push subscription) plus a READ of /.info/connected for the
 // liveness pill. Same firebase-database module the SDK imports (v10.13.2, browser-deduped).
 import { ref, set, onValue, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+// P-SELFUPDATE CP2 (codex CP2 r1 B4): this page's one direct SDK write is counted until acknowledged, like XPD's
+const sherpaTracked = (p) => { try { const S = window.SherpaClient; if (S && typeof S.trackWrite === 'function') S.trackWrite(p); } catch (_) {} return p; };
 
 // apiKey is NOT a secret — it identifies the project; real access is gated by Auth + RTDB rules.
 const firebaseConfig = {
@@ -579,7 +582,7 @@ async function enableStaffPush(){
     const uid = XPD.getAuthInstance().currentUser?.uid;
     if (!uid) { toast('Iniciá sesión', true); return; }
     // THE SECOND (and only other) WRITE — the user's OWN push subscription.
-    await set(ref(XPD.getDb(), `staff_push/${uid}`), { subscription: sub.toJSON(), updated_at: serverTimestamp() });
+    await sherpaTracked(set(ref(XPD.getDb(), `staff_push/${uid}`), { subscription: sub.toJSON(), updated_at: serverTimestamp() }));
     pushOn = true; toast('Notificaciones activadas'); openSettings();
   } catch (e) { toast('No se pudo activar', true); }
 }
@@ -1652,6 +1655,12 @@ function clearFocus(){
 $('ver-todos').addEventListener('click', () => { clearFocus(); if (mapReady) { map.setZoom(13); renderDrivers(); } });
 
 renderLive();
+</script>
+<script>
+/* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
+   of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). State reloads from the
+   database. Inert (unstamped) pages register nothing. */
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#sheet.on"] })); } catch (_) {}
 </script>
 </body>
 </html>

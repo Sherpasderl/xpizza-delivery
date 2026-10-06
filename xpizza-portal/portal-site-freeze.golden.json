@@ -27,6 +27,7 @@
   "render.test.mjs",
   "review.js",
   "review.test.mjs",
+  "sherpa-client.js",
   "styles.css",
   "ventas-harness.mjs",
   "ventas-logic.js",
@@ -45,12 +46,12 @@
    "bytes": 4451
   },
   "index.html": {
-   "sha256": "d20172913218c40c753a1380796254b0aa9d54ce5a323a4eaa9d43dc58c00e48",
-   "bytes": 6014
+   "sha256": "f8125429518f9b94afbe35bc7665d2e34aeadf5c39be7904620104f1a67ed419",
+   "bytes": 6055
   },
   "netlify.toml": {
-   "sha256": "13d167adc5f3fb58d56f59c072a369d7e2e8c8da94106670508d087cbb153bf9",
-   "bytes": 2424
+   "sha256": "fe3ef565e42ad144919fa416dd111b322958d83486746116dd07c228faed22ee",
+   "bytes": 2549
   },
   "package-lock.json": {
    "sha256": "2a0d35b67d76dd7ddc912326272387f6e960371c9a490ad009e7c8d091de7a7f",

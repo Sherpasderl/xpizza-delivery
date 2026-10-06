@@ -56,7 +56,10 @@ function aggregateHistory(stats, deployments, hours, required = {}) {
       if (Number.isInteger(req)) for (const [c, v] of Object.entries(byCompat)) if (Number(c) < req) belowN += Number(v) || 0;
     }
     totals.push({ deployment: d.id, context: d.context, app: d.app, reports });
-    coverage.push({ deployment: d.id, context: d.context, app: d.app, hours: hours.length, unknown_hours: missing });
+    // CP2 Q2: a deployment with NO report in the whole window is MISSING (an unstamped deploy can never report, nor can
+    // one with no open page) — said explicitly, never left for the reader to infer from an empty row
+    const status = reports === 0 ? 'MISSING' : (missing.length ? 'PARTIAL' : 'COMPLETE');
+    coverage.push({ deployment: d.id, context: d.context, app: d.app, hours: hours.length, status, unknown_hours: missing });
     if (Number.isInteger(required[d.app])) below.push({ deployment: d.id, context: d.context, app: d.app, required: required[d.app], below: belowN });
   }
   return { totals, coverage, below };
@@ -90,8 +93,8 @@ function countHeaderless(entries, { startMs = -Infinity, endMs = Infinity, limit
 }
 
 // STRICT CLI parsing (advisor FINAL ruling, codex CP1 r5) — Node's own util.parseArgs in STRICT mode, no positionals:
-// an unknown flag, a surplus value (`--hours 2 3`, `--require a=1 b=2`), a value on a boolean (`--logs=false`) and the `--`
-// trick are refused BY CONSTRUCTION. The supported options are exactly the CLI's own: --project (the project guard reads
+// an unknown flag, a surplus value (`--hours 2 3`, `--require a=1 b=2`), a value on a boolean (`--logs=false`) and any
+// argument following `--` are refused BY CONSTRUCTION (a bare `--` with nothing after it is accepted). The supported options are exactly the CLI's own: --project (the project guard reads
 // it), --hours, --require, --logs. Each at most ONCE (parseArgs alone would let the last one win silently). Then the value
 // validators: --hours a whole number in [1,720]; --require app=<safe integer>[,…] with no empty entry and no app twice.
 // → { ok, hours, required, logs } | { ok:false, error }. Called BEFORE any database access.

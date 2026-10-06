@@ -4,5 +4,6 @@
 
 [build]
   publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build
 
-# No build command needed — site is static HTML/CSS/JS, served as-is.
+# Static HTML/CSS/JS served as-is; the only build step is the P-SELFUPDATE stamp (adds version.json + <meta> tags).

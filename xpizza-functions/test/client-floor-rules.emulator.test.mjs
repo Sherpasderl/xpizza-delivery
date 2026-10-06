@@ -64,7 +64,7 @@ const sdkSrc = readFileSync(new URL('xpizza-delivery.js', KITCHEN), 'utf8')
   .replace(/from '\.\/order-filter\.js'/g, `from '${new URL('order-filter.js', KITCHEN).href}'`);
 const XPD = await import('data:text/javascript,' + encodeURIComponent(sdkSrc));
 XPD.initDelivery({});
-const realWrite = (db, rid, rawKey, available, uid) => { globalThis.__db = db; return XPD.setItemAvailability(rid, rawKey, available, uid); };
+const realWrite = (db, rid, rawKey, available, uid, compat) => { globalThis.__db = db; return XPD.setItemAvailability(rid, rawKey, available, uid, compat); };   // compat: CP2's stamped KDS
 const key = (raw) => globalThis.availKey(raw);
 
 // a "module KDS" whole-record two-path write: the same ONE atomic update, both leaves carrying compat
@@ -148,6 +148,12 @@ try {
   await no('B26 availability_audit ALONE: a BOOLEAN compat refused', auRef('x_pizza', 'Olive').set({ available: true, updated_at: SV, updated_by: XSTAFF, compat: true }));
   await no('B25 item_availability ALONE: non-staff with a passing compat refused (grouping)', out.ref(`restaurants/x_pizza/item_availability/${key('Olive')}`).set({ available: true, updated_at: SV, compat: 9 }));
   await ok('B16 present on x_pizza only: la_musa has NO floor → today\'s REAL writer still works there', realWrite(ls, 'la_musa', 'dimsum_01', false, LSTAFF));
+  // P-SELFUPDATE CP2 — the REAL writer, now stamped (setItemAvailability's 5th argument = the page's compat)
+  await ok('B27 present: the REAL stamped KDS writer at compat == floor passes (both records, server time, one update)', realWrite(xs, 'x_pizza', 'Pepperoni', false, XSTAFF, 3));
+  assert.deepStrictEqual(await read(`restaurants/x_pizza/item_availability/${key('Pepperoni')}`), { available: false, updated_at: (await read(`restaurants/x_pizza/item_availability/${key('Pepperoni')}`)).updated_at, compat: 3 }, 'the stamped record carries compat');
+  await no('B28 present: the REAL stamped KDS writer BELOW the floor is refused', realWrite(xs, 'x_pizza', 'Pepperoni', true, XSTAFF, 2));
+  assert.strictEqual((await read(`restaurants/x_pizza/item_availability/${key('Pepperoni')}`)).available, false, 'the refused stamped toggle left the record unchanged');
+  await ok('B29 la_musa (no floor): the REAL stamped writer passes too (compat is an additive child)', realWrite(ls, 'la_musa', 'dimsum_01', true, LSTAFF, 1));
 
   // ═══ C. the floor node ═══
   await ok('C1 own-restaurant kitchen staff can READ its floor (the KDS checks it before writing)', xs.ref('restaurants/x_pizza/client_floor/kitchen').get());

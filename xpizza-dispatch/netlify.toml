@@ -1,0 +1,6 @@
+# Netlify config for the dispatch site (P-SELFUPDATE CP2: first netlify.toml here).
+# publish = "." is the site's base directory, exactly what Netlify served before this file existed (base =
+# xpizza-dispatch, publish dir unset). No headers or redirects: none were configured before either.
+[build]
+  publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build

@@ -3,3 +3,4 @@
 
 [build]
   publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build
