@@ -141,11 +141,17 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
     assert.ok(/REFUSED — --hours must be a whole number/.test(r.out), r.out);
     assert.ok(Date.now() - t0 < 15000, 'refused promptly — with every database endpoint DEAD it never waited on one');
     assert.strictEqual(await tree(), before, 'nothing written');
-    for (const req of [[], [''], ['orders=2,,kitchen=3'], ['orders=99999999999999999999'], ['orders=2', '--require'], ['orders=2', '--require', 'orders=wat']]) {
+    for (const req of [[], [''], ['orders=2,,kitchen=3'], ['orders=99999999999999999999'], ['orders=2', '--require'], ['orders=2', '--require', 'orders=wat'], ['orders=2', 'kitchen=3'], ['orders=2,orders=0']]) {
       const t1 = Date.now();
       const rr = runCli(deadDb, 'client-version-report.js', '--require', ...req);
       assert.strictEqual(rr.code, 2, `--require ${JSON.stringify(req)}: exit 2 (got ${rr.code}): ${rr.out}`);
-      assert.ok(/REFUSED — --require/.test(rr.out) && Date.now() - t1 < 15000, `--require ${JSON.stringify(req)} refused promptly BEFORE any database access`);
+      assert.ok(/REFUSED — /.test(rr.out) && Date.now() - t1 < 15000, `--require ${JSON.stringify(req)} refused promptly BEFORE any database access`);
+    }
+    for (const args of [['--hour', '2'], ['--hours', '2', '3'], ['--logs=false'], ['--', '--hours', '2']]) {
+      const t2 = Date.now();
+      const rr = runCli(deadDb, 'client-version-report.js', ...args);
+      assert.strictEqual(rr.code, 2, `${JSON.stringify(args)}: exit 2 (got ${rr.code}): ${rr.out}`);
+      assert.ok(/REFUSED — /.test(rr.out) && Date.now() - t2 < 15000, `${JSON.stringify(args)} refused promptly BEFORE any database access`);
     }
     r = runCli(process.env, 'client-version-report.js', '--hours', '2');
     assert.strictEqual(r.code, 0, r.out);

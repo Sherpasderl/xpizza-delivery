@@ -41,7 +41,7 @@ const rtdb = admin.database();
   const LIMIT = 100000;
   const cmd = ['logging', 'read', filter, `--project=${PROJECT_ID}`, '--format=json', `--limit=${LIMIT}`];
   let headerless = 'UNKNOWN (run with --logs, or: gcloud ' + cmd.map((c) => (/\s/.test(c) ? `'${c}'` : c)).join(' ') + ')';
-  if (argv.includes('--logs')) {
+  if (parsed.logs) {
     try {
       const r = R.countHeaderless(JSON.parse(execFileSync('gcloud', cmd, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })), { startMs: win.startMs, endMs: win.endMs, limit: LIMIT });
       // a capped read is a LOWER BOUND — reported as TRUNCATED, never as a complete count

@@ -89,40 +89,46 @@ function countHeaderless(entries, { startMs = -Infinity, endMs = Infinity, limit
   return { counts: out, entries: list.length, truncated: list.length >= limit };
 }
 
-// STRICT CLI parsing (codex CP1 r2 B2) — before ANY database access. --hours: a whole number of UTC hours in [1, 720];
-// --require app=N,…: N a non-negative integer generation. → { ok, hours, required } | { ok:false, error }
+// STRICT CLI parsing (advisor FINAL ruling, codex CP1 r5) — Node's own util.parseArgs in STRICT mode, no positionals:
+// an unknown flag, a surplus value (`--hours 2 3`, `--require a=1 b=2`), a value on a boolean (`--logs=false`) and the `--`
+// trick are refused BY CONSTRUCTION. The supported options are exactly the CLI's own: --project (the project guard reads
+// it), --hours, --require, --logs. Each at most ONCE (parseArgs alone would let the last one win silently). Then the value
+// validators: --hours a whole number in [1,720]; --require app=<safe integer>[,…] with no empty entry and no app twice.
+// → { ok, hours, required, logs } | { ok:false, error }. Called BEFORE any database access.
+const { parseArgs } = require('util');
+const REPORT_OPTIONS = {
+  project: { type: 'string', multiple: true },
+  hours: { type: 'string', multiple: true },
+  require: { type: 'string', multiple: true },
+  logs: { type: 'boolean', multiple: true },
+};
 function parseReportArgs(argv) {
-  // codex CP1 r4 S1: each option at most ONCE (a repeat would leave all but the first unvalidated), and only the
-  // `--opt value` spelling (`--opt=value` would otherwise be silently ignored)
-  for (const name of ['--hours', '--require']) {
-    if (argv.filter((x) => x === name).length > 1) return { ok: false, error: `${name} given more than once — pass it exactly once` };
-    if (argv.some((x) => typeof x === 'string' && x.startsWith(`${name}=`))) return { ok: false, error: `use \`${name} <value>\`, not \`${name}=<value>\`` };
-  }
-  const opt = (name) => { const i = argv.indexOf(name); return i >= 0 ? (argv[i + 1] === undefined ? '' : argv[i + 1]) : undefined; };
-  const h = opt('--hours');
+  let values;
+  try { ({ values } = parseArgs({ args: argv, options: REPORT_OPTIONS, strict: true, allowPositionals: false })); }
+  catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  for (const k of Object.keys(REPORT_OPTIONS)) if (values[k] && values[k].length > 1) return { ok: false, error: `--${k} given more than once — pass it exactly once` };
   let hours = 24;
-  if (h !== undefined) {
+  if (values.hours) {
+    const h = values.hours[0];
     if (!/^[0-9]+$/.test(h)) return { ok: false, error: `--hours must be a whole number of hours (got ${JSON.stringify(h)}); fractional windows are refused because the counters are hourly` };
     hours = Number(h);
     if (hours < 1 || hours > 720) return { ok: false, error: `--hours must be between 1 and 720 (got ${hours})` };
   }
   const required = {};
-  const r = opt('--require');
-  if (r !== undefined) {
-    // codex CP1 r3 S1: a bare / empty --require, a value that is really the next flag, and an EMPTY entry are refused;
-    // a generation must survive Number() as a SAFE integer (a huge digit string becomes Infinity and would silently
-    // drop every below-required result)
-    if (r === '' || r.startsWith('--')) return { ok: false, error: '--require needs app=<integer generation>[,app=<integer>…] (no value given)' };
-    for (const kv of String(r).split(',')) {
+  if (values.require) {
+    const r = values.require[0];
+    if (r === '' || r.startsWith('-')) return { ok: false, error: '--require needs app=<integer generation>[,app=<integer>…] (no value given)' };
+    for (const kv of r.split(',')) {
       if (kv === '') return { ok: false, error: `--require has an empty entry (${JSON.stringify(r)})` };
       const m = kv.match(/^([a-z0-9-]+)=([0-9]+)$/);
       if (!m) return { ok: false, error: `--require entries are app=<integer generation> (got ${JSON.stringify(kv)})` };
       const n = Number(m[2]);
       if (!Number.isSafeInteger(n)) return { ok: false, error: `--require generation for ${m[1]} is not a safe integer (got ${m[2]})` };
+      if (Object.prototype.hasOwnProperty.call(required, m[1])) return { ok: false, error: `--require names ${m[1]} more than once (${JSON.stringify(r)})` };   // a TIGHTENING: was last-wins
       required[m[1]] = n;
     }
   }
-  return { ok: true, hours, required };
+  return { ok: true, hours, required, logs: !!(values.logs && values.logs[0]) };
 }
 
 module.exports = { aggregateLive, windowHours, reportWindow, parseReportArgs, aggregateHistory, headerlessLogFilter, countHeaderless };

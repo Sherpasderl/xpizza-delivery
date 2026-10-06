@@ -132,8 +132,8 @@ const kp = F.kitchenPath;
     assert.ok(!r.ok, `🔴 --hours ${JSON.stringify(bad)} must be refused`);
   }
   assert.ok(!R.parseReportArgs(['--hours']).ok, '--hours with no value is refused');
-  for (const good of ['1', '24', '720']) assert.deepStrictEqual(R.parseReportArgs(['--hours', good]), { ok: true, hours: Number(good), required: {} });
-  assert.deepStrictEqual(R.parseReportArgs([]), { ok: true, hours: 24, required: {} }, 'default 24 h unchanged');
+  for (const good of ['1', '24', '720']) assert.deepStrictEqual(R.parseReportArgs(['--hours', good]), { ok: true, hours: Number(good), required: {}, logs: false });
+  assert.deepStrictEqual(R.parseReportArgs([]), { ok: true, hours: 24, required: {}, logs: false }, 'default 24 h unchanged');
   assert.deepStrictEqual(R.parseReportArgs(['--require', 'orders=2,kitchen=3']).required, { orders: 2, kitchen: 3 });
   for (const bad of ['orders=2.5', 'orders=', 'orders', 'Orders=2', 'orders=two']) assert.ok(!R.parseReportArgs(['--require', bad]).ok, `--require ${bad} refused`);
   // codex CP1 r3 S1
@@ -148,7 +148,18 @@ const kp = F.kitchenPath;
   assert.ok(!R.parseReportArgs(['--require', 'orders=2', '--require']).ok, '🔴 --require orders=2 --require is refused');
   assert.ok(!R.parseReportArgs(['--require', 'orders=2', '--require', 'orders=wat']).ok, '🔴 --require orders=2 --require orders=wat is refused');
   assert.ok(!R.parseReportArgs(['--hours', '2', '--hours', '1.5']).ok, '🔴 a repeated --hours is refused');
-  assert.ok(!R.parseReportArgs(['--require=orders=2']).ok && !R.parseReportArgs(['--hours=1.5']).ok, '🔴 the --opt=value spelling is refused, not silently ignored');
+  // advisor FINAL ruling (codex CP1 r5): util.parseArgs strict — the `=` spelling is PARSED (and validated), not refused
+  assert.deepStrictEqual(R.parseReportArgs(['--hours=2', '--require=orders=2']), { ok: true, hours: 2, required: { orders: 2 }, logs: false }, '--opt=value is parsed by parseArgs');
+  assert.ok(!R.parseReportArgs(['--hours=1.5']).ok, '…and still validated (a fraction refused)');
+  // codex r5's unconsumed-token examples — each REFUSED by construction
+  for (const bad of [['--require', 'orders=2', 'kitchen=3'], ['--hour', '2'], ['--hours', '2', '3'], ['--logs=false'], ['--', '--hours', '2'], ['--hours', '2', 'stray']]) {
+    assert.ok(!R.parseReportArgs(bad).ok, `🔴 ${JSON.stringify(bad)} is refused (strict parseArgs)`);
+  }
+  assert.ok(!R.parseReportArgs(['--logs', '--logs']).ok && !R.parseReportArgs(['--project', 'a', '--project', 'b']).ok, '🔴 every option at most once');
+  // a TIGHTENING: a duplicate app inside --require is refused (it used to be last-wins)
+  const dup = R.parseReportArgs(['--require', 'orders=2,orders=0']);
+  assert.ok(!dup.ok && /more than once/.test(dup.error), '🔴 --require orders=2,orders=0 is refused, not last-wins');
+  assert.deepStrictEqual(R.parseReportArgs(['--project', 'xpizza-delivery', '--hours', '2', '--require', 'orders=1', '--logs']), { ok: true, hours: 2, required: { orders: 1 }, logs: true }, 'the full supported set parses');
   assert.throws(() => R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 1.5), /INTEGER/, '🔴 reportWindow itself refuses a fractional window (defence in depth)');
   const W1 = R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 2);
   assert.deepStrictEqual([W1.startIso, W1.endIso, W1.hours.length], ['2026-10-05T16:00:00.000Z', '2026-10-05T18:00:00.000Z', 2], 'an integer window: counters and logs cover the SAME whole hours');
