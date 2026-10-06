@@ -45,7 +45,10 @@
       <div class="switchmenu hidden" id="switchmenu"></div>
     </div>
     <div class="nlabel">Menú</div>
-    <div class="nav on"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</div>
+    <button class="nav on" id="navprod" type="button" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Productos</button>
+    <!-- Stats S2: OWNER-ONLY. Hidden until app.js announces an owned restaurant (ventas.js); a non-owner never sees it. -->
+    <div class="nlabel hidden" id="navbiz">Negocio</div>
+    <button class="nav hidden" id="navventas" type="button"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l4-5 3 3 5-6"/></svg>Ventas</button>
     <div class="sfoot">
       <div class="av" id="avatar">·</div>
       <div class="sinfo"><b id="whoami">—</b><span class="cv">Dueño</span></div>
@@ -55,7 +58,13 @@
     </div>
   </aside>
 
-  <main class="main">
+  <!-- mobile (≤920px, where the sidebar is hidden): the Productos/Ventas pair, shown to owners only -->
+  <nav class="mnav" id="mnav" aria-label="Secciones">
+    <button class="mn on" id="mnprod" type="button" aria-current="page">Productos</button>
+    <button class="mn" id="mnventas" type="button">Ventas</button>
+  </nav>
+
+  <main class="main" id="viewmenu">
     <div class="top">
       <div><h1>Productos</h1><p class="lede">Tu menú, como lo ven tus clientes.</p></div>
     </div>
@@ -66,6 +75,9 @@
       </div>
     </div>
   </main>
+
+  <!-- Stats S2: the Ventas page, built by ventas.js (owner-only; empty until opened) -->
+  <main class="main vmain hidden" id="viewventas" aria-labelledby="vtitle"></main>
 
   <!-- THE REVIEW BAR. Appears only when the draft differs from what is published; app.js toggles
        `.show`. No inline handlers: the CSP has no 'unsafe-inline', so an onclick here would be inert

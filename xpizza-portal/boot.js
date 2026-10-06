@@ -5,6 +5,7 @@
   // Tasks 5-6. Nothing here decides what a merchant may see — the server does, on every request.
   import { login, logout, watchAuth, authErrorMessage } from './auth.js';
   import './app.js';   // listens for portal:signed-in and resolves the restaurant list
+  import './ventas.js';   // Stats S2: the owner-only Ventas page (listens for portal:auth / portal:restaurant)
 
   const $ = (id) => document.getElementById(id);
   const gate = $('gate'), app = $('app'), err = $('loginerr'), btn = $('loginbtn');
