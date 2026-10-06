@@ -13,7 +13,8 @@
 //   (c) BEHAVIOURAL, against the INSTALLED CLI (network stubbed): prepare() over the real firebase.json
 //       queues ZERO index operations for every target; over firebase.indexes.json it queues exactly the stats
 //       field overrides and no rules.
-//   (d) the CONFIG INVENTORY: no other tracked default config can reintroduce indexes (codex build r8).
+//   (d) the CONFIG INVENTORY on disk + ancestors, parsed like the CLI: no other default config, tracked or not,
+//       can reintroduce indexes (codex build r8, r9).
 // Run: node tools/firestore-config-isolation.test.js
 // ---------------------------------------------------------------------------
 const assert = require('assert');
@@ -95,11 +96,19 @@ const SELF_COUNT = 17;   // this file's own literal mentions: the 14 pin texts +
   ok(`every tracked reference to ${CONFIG_NAME} is a reviewed pin (${REFERENCE_PINS.length} lines in ${new Set(REFERENCE_PINS.map((p) => p.file)).size} files)`);
 }
 
-// (d) THE CONFIG INVENTORY (codex build r8 S1): no OTHER default config can reintroduce indexes. Every
-//     tracked file named firebase*.json (any depth) must be exactly the two below, and no tracked JSON other
-//     than the dedicated config may hold a `firestore` object (or array of them) with an `indexes` key.
+// (d) THE CONFIG INVENTORY (codex build r8 S1, r9 S1/S2): no OTHER default config — tracked OR NOT — can
+//     reintroduce indexes. The installed CLI resolves its project root ON THE FILESYSTEM (detectProjectRoot
+//     walks UP from the cwd for `firebase.json`) and parses configs with its own comment-tolerant loadCJSON,
+//     so this checks exactly that:
+//       • every firebase*.json ON DISK under the repo root (untracked and gitignored included; only
+//         node_modules and .git skipped) must be exactly the two known files;
+//       • NO ancestor directory of the repo root, up to `/`, may hold a firebase.json;
+//       • parsed with the INSTALLED CLI's loadCJSON, no config but the dedicated one may hold a `firestore`
+//         object (or array) with an `indexes` key — across every on-disk firebase*.json and every tracked *.json;
+//       • FAIL CLOSED: an unparseable firebase*.json, or an unparseable JSON whose text mentions "firestore".
 const ALLOWED_CONFIGS = ['xpizza-functions/firebase.indexes.json', 'xpizza-functions/firebase.json'];
 const DEDICATED = 'xpizza-functions/' + CONFIG_NAME;
+const isConfigName = (p) => /^firebase[^/]*\.json$/i.test(path.posix.basename(p));
 function declaresIndexes(node) {
   let found = false;
   const walk = (o) => {
@@ -113,36 +122,132 @@ function declaresIndexes(node) {
   walk(node);
   return found;
 }
-// files: [{ path, text }] → { violations, unparseable }
-function inventoryViolations(files) {
-  const violations = [], unparseable = [];
-  const named = files.map((f) => f.path).filter((p) => /^firebase[^/]*\.json$/i.test(path.posix.basename(p))).sort();
-  if (JSON.stringify(named) !== JSON.stringify(ALLOWED_CONFIGS)) violations.push(`firebase*.json inventory is ${JSON.stringify(named)}, expected exactly ${JSON.stringify(ALLOWED_CONFIGS)}`);
-  for (const f of files) {
-    if (!/\.json$/i.test(f.path)) continue;
-    let j;
-    try { j = JSON.parse(f.text); } catch (e) { unparseable.push(`${f.path}: ${String(e.message).slice(0, 80)}`); continue; }
-    if (f.path !== DEDICATED && declaresIndexes(j)) violations.push(`${f.path} declares firestore "indexes" — only ${DEDICATED} may`);
-  }
-  return { violations, unparseable };
+// Every firebase*.json on disk under `root` (relative, posix). Symlinked FILES count (the CLI follows them);
+// symlinked DIRECTORIES are not descended (no loops).
+function diskConfigs(root) {
+  const out = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(p); continue; }
+      if ((e.isFile() || e.isSymbolicLink()) && isConfigName(e.name)) out.push(path.relative(root, p).split(path.sep).join('/'));
+    }
+  };
+  walk(root);
+  return out.sort();
 }
+// Every firebase.json in an ANCESTOR of `root`, up to `/` (what detectProjectRoot would reach from above).
+function ancestorConfigs(root) {
+  const found = [];
+  for (let d = path.dirname(path.resolve(root)); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, 'firebase.json'))) found.push(path.join(d, 'firebase.json'));
+    if (path.dirname(d) === d) break;
+  }
+  return found;
+}
+/**
+ * inventoryViolations({ root, tracked, loadCJSON }) — the whole check, over a real directory tree.
+ *   tracked: repo-relative paths tracked by git (their *.json are parsed too)
+ */
+function inventoryViolations({ root, tracked, loadCJSON }) {
+  const violations = [], skipped = [];
+  const all = diskConfigs(root);
+  // TRANSIENT emulator configs: tools/emulator-run.js writes `xpizza-functions/firebase.emulator.<pid>.json` for
+  // the life of one emulator run (a copy of firebase.json + ports) and deletes it at exit / sweeps a dead pid's.
+  // Allowed by that EXACT name only, and still parsed below — one that declares indexes fails like any other.
+  const TRANSIENT = /^xpizza-functions\/firebase\.emulator\.\d+\.json$/;
+  const onDisk = all.filter((p) => !TRANSIENT.test(p));
+  if (JSON.stringify(onDisk) !== JSON.stringify(ALLOWED_CONFIGS)) violations.push(`firebase*.json ON DISK is ${JSON.stringify(onDisk)}, expected exactly ${JSON.stringify(ALLOWED_CONFIGS)}`);
+  for (const a of ancestorConfigs(root)) violations.push(`an ANCESTOR firebase.json exists: ${a} — the CLI would honour it from any cwd above the configs`);
+  const toParse = [...new Set([...all, ...tracked.filter((p) => /\.json$/i.test(p))])];
+  let parsed = 0;
+  for (const rel of toParse) {
+    const abs = path.join(root, rel);
+    if (!fs.existsSync(abs)) continue;
+    let j;
+    try { j = loadCJSON(abs); parsed++; }
+    catch (e) {
+      const text = fs.readFileSync(abs, 'latin1');
+      if (isConfigName(rel)) violations.push(`${rel}: an UNPARSEABLE firebase config — fail closed (${String(e.message).split('\n').filter(Boolean).pop().slice(0, 80)})`);
+      else if (/firestore/i.test(text)) violations.push(`${rel}: unparseable JSON mentioning "firestore" — fail closed`);
+      else skipped.push(`${rel}: ${String(e.message).split('\n').filter(Boolean).pop().slice(0, 80)}`);
+      continue;
+    }
+    if (rel !== DEDICATED && declaresIndexes(j)) violations.push(`${rel} declares firestore "indexes" — only ${DEDICATED} may`);
+  }
+  return { violations, skipped, parsed };
+}
+const CLI_LIB = path.join(findFirebaseTools().root, 'lib');
+const { loadCJSON } = require(path.join(CLI_LIB, 'loadCJSON'));
 {
   const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
-  const files = tracked.filter((p) => /\.json$/i.test(p) || /^firebase/i.test(path.posix.basename(p)))
-    .map((p) => { try { return { path: p, text: fs.readFileSync(path.join(REPO, p), 'utf8') }; } catch (_) { return null; } }).filter(Boolean);
-  const r = inventoryViolations(files);
+  const r = inventoryViolations({ root: REPO, tracked, loadCJSON });
   assert.deepStrictEqual(r.violations, [], `🔴 config inventory:\n  ${r.violations.join('\n  ')}`);
-  const jsonCount = files.filter((f) => /\.json$/i.test(f.path)).length;
-  assert(jsonCount > 20, `premise: the tracked JSON files were read (${jsonCount})`);
-  if (r.unparseable.length) console.log(`    (skipped unparseable JSON, by reason: ${r.unparseable.join(' | ')})`);
-  // regression fixtures: codex r8's exact ROOT config, a NESTED one, and a non-firebase-named JSON
-  const base = files.slice();
-  const withExtra = (extra) => inventoryViolations([...base, extra]).violations;
-  assert(withExtra({ path: 'firebase.json', text: '{"firestore":{"indexes":"xpizza-functions/firestore.indexes.json"}}' }).length >= 1, 'codex r8: a ROOT firebase.json declaring indexes is caught');
-  assert(withExtra({ path: 'docs/firebase.json', text: '{"firestore":{"rules":"x"}}' }).some((v) => /inventory/.test(v)), 'a NESTED firebase.json (even without indexes) breaks the exact inventory');
-  assert(withExtra({ path: 'deploy/settings.json', text: '{"targets":{"firestore":[{"database":"(default)","indexes":"i.json"}]}}' }).some((v) => /declares firestore "indexes"/.test(v)), 'any tracked JSON declaring firestore indexes is caught, whatever its name');
-  assert.deepStrictEqual(withExtra({ path: 'docs/notes.json', text: '{"firestore":"mentioned as a string"}' }), [], 'a mere mention is not a declaration');
-  ok(`config inventory: firebase*.json == ${JSON.stringify(ALLOWED_CONFIGS)}; no tracked JSON but the dedicated config declares indexes (${jsonCount} parsed); root / nested / renamed fixtures caught`);
+  assert(r.parsed > 20, `premise: the JSON files were parsed with the CLI's loadCJSON (${r.parsed})`);
+  if (r.skipped.length) console.log(`    (skipped unparseable JSON without "firestore", by reason: ${r.skipped.join(' | ')})`);
+  ok(`config inventory ON DISK == ${JSON.stringify(ALLOWED_CONFIGS)}; no ancestor firebase.json up to /; ${r.parsed} JSON parsed with the CLI's loadCJSON, none but the dedicated config declares indexes; fail-closed on unparseable configs`);
+}
+
+// (d) REGRESSIONS on real temp directory trees (the same function, the CLI's own loadCJSON + Config.load).
+{
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cfginv-'));
+  const mkRepo = (base) => {
+    fs.mkdirSync(path.join(base, 'xpizza-functions'), { recursive: true });
+    for (const f of ['firebase.json', CONFIG_NAME, 'firestore.rules', 'firestore.indexes.json']) fs.copyFileSync(path.join(FN, f), path.join(base, 'xpizza-functions', f));
+    return base;
+  };
+  const check = (root, tracked = []) => inventoryViolations({ root, tracked, loadCJSON }).violations;
+  try {
+    // baseline: a faithful copy is clean (non-vacuity of every fixture below)
+    const clean = mkRepo(path.join(tmp, 'clean', 'repo'));
+    assert.deepStrictEqual(check(clean), [], 'premise: a faithful copy of the two configs passes');
+    // r9 S1a: an UNTRACKED root firebase.json (on disk only — git never sees it)
+    const r1 = mkRepo(path.join(tmp, 'r1', 'repo'));
+    fs.writeFileSync(path.join(r1, 'firebase.json'), '{"firestore":{"indexes":"xpizza-functions/firestore.indexes.json"}}');
+    assert(check(r1).some((v) => /ON DISK/.test(v)), 'an untracked root firebase.json is caught');
+    // a nested, gitignored-looking one
+    const r2 = mkRepo(path.join(tmp, 'r2', 'repo'));
+    fs.mkdirSync(path.join(r2, 'build'), { recursive: true });
+    fs.writeFileSync(path.join(r2, 'build', 'firebase.json'), '{}');
+    assert(check(r2).some((v) => /ON DISK/.test(v)), 'a nested untracked firebase.json is caught');
+    // r9 S1b: a firebase.json in a PARENT directory — and the REAL CLI honours it from a nested cwd
+    const parent = path.join(tmp, 'parent');
+    const r3 = mkRepo(path.join(parent, 'repo'));
+    fs.writeFileSync(path.join(parent, 'firebase.json'), '{"firestore":{"indexes":"repo/xpizza-functions/firestore.indexes.json"}}');
+    assert(check(r3).some((v) => /ANCESTOR firebase\.json exists/.test(v)), 'a parent-directory firebase.json is caught');
+    const { Config } = require(path.join(CLI_LIB, 'config'));
+    fs.mkdirSync(path.join(r3, 'docs'), { recursive: true });
+    const seenByCli = Config.load({ cwd: path.join(r3, 'docs') });
+    assert.strictEqual(seenByCli.projectDir, parent, 'premise: the real CLI, run from a nested cwd with no closer config, loads the PARENT\'s firebase.json');
+    assert(seenByCli.src.firestore && seenByCli.src.firestore.indexes, 'premise: …and would see its indexes');
+    // r9 S2: codex's COMMENTED deploy/settings.json (JSON.parse rejects it; the CLI's loadCJSON accepts it)
+    const r4 = mkRepo(path.join(tmp, 'r4', 'repo'));
+    fs.mkdirSync(path.join(r4, 'deploy'), { recursive: true });
+    const commented = '{\n  // deployment settings\n  "firestore": { "indexes": "xpizza-functions/firestore.indexes.json" }\n}\n';
+    fs.writeFileSync(path.join(r4, 'deploy', 'settings.json'), commented);
+    assert.throws(() => JSON.parse(commented), 'premise: plain JSON.parse rejects the commented file');
+    assert(check(r4, ['deploy/settings.json']).some((v) => /deploy\/settings\.json declares firestore "indexes"/.test(v)), 'the commented config is parsed like the CLI parses it — and caught');
+    // FAIL CLOSED: an unparseable firebase config, and unparseable JSON mentioning firestore
+    const r5 = mkRepo(path.join(tmp, 'r5', 'repo'));
+    fs.writeFileSync(path.join(r5, 'xpizza-functions', 'firebase.json'), '{ "firestore": { "rules": "firestore.rules", ');
+    assert(check(r5).some((v) => /UNPARSEABLE firebase config — fail closed/.test(v)), 'an unparseable firebase.json fails closed');
+    const r6 = mkRepo(path.join(tmp, 'r6', 'repo'));
+    fs.writeFileSync(path.join(r6, 'notes.json'), '{ "firestore": { indexes: ');
+    assert(check(r6, ['notes.json']).some((v) => /unparseable JSON mentioning "firestore" — fail closed/.test(v)), 'unparseable JSON mentioning firestore fails closed');
+    const r7 = mkRepo(path.join(tmp, 'r7', 'repo'));
+    fs.writeFileSync(path.join(r7, 'junk.json'), '{ not json');
+    assert.deepStrictEqual(check(r7, ['junk.json']), [], 'unparseable JSON with no firestore mention is skipped (reported), not failed');
+    // a live emulator run's transient config is allowed by its exact name — but still checked for indexes
+    const r8 = mkRepo(path.join(tmp, 'r8', 'repo'));
+    fs.copyFileSync(path.join(r8, 'xpizza-functions', 'firebase.json'), path.join(r8, 'xpizza-functions', 'firebase.emulator.4242.json'));
+    assert.deepStrictEqual(check(r8), [], 'a transient emulator config (exact name, no indexes) is allowed');
+    fs.writeFileSync(path.join(r8, 'xpizza-functions', 'firebase.emulator.4242.json'), '{"firestore":{"indexes":"firestore.indexes.json"}}');
+    assert(check(r8).some((v) => /firebase\.emulator\.4242\.json declares firestore "indexes"/.test(v)), '…and fails if it declares indexes');
+    fs.writeFileSync(path.join(r8, 'xpizza-functions', 'firebase.emulator.json'), '{}');
+    assert(check(r8).some((v) => /ON DISK/.test(v)), 'a look-alike without the pid is NOT the transient name');
+    ok('regressions: untracked root, nested untracked, PARENT-dir (the real CLI honours it), commented settings (CLI loadCJSON), unparseable firebase config + firestore JSON fail closed; transient emulator config allowed by exact name, still checked');
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 
 // (c) BEHAVIOURAL — the INSTALLED CLI's own Config.load + firestore prepare(), network stubbed.

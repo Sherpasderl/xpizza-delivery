@@ -10743,5 +10743,53 @@
       "node",
       "tools/firestore-config-isolation.test.js"
     ]
+  },
+  {
+    "id": "s1-82",
+    "slice": "stats",
+    "label": "🔴 r9-S1: the ANCESTOR firebase.json check is dropped",
+    "file": "tools/firestore-config-isolation.test.js",
+    "from": "  for (const a of ancestorConfigs(root)) violations.push(",
+    "to": "  for (const a of []) violations.push(",
+    "command": [
+      "node",
+      "tools/firestore-config-isolation.test.js"
+    ]
+  },
+  {
+    "id": "s1-83",
+    "slice": "stats",
+    "label": "🔴 r9-S2: configs parsed with JSON.parse instead of the CLI's comment-tolerant loadCJSON",
+    "file": "tools/firestore-config-isolation.test.js",
+    "from": "    try { j = loadCJSON(abs); parsed++; }",
+    "to": "    try { j = JSON.parse(fs.readFileSync(abs, 'utf8')); parsed++; }",
+    "command": [
+      "node",
+      "tools/firestore-config-isolation.test.js"
+    ]
+  },
+  {
+    "id": "s1-84",
+    "slice": "stats",
+    "label": "🔴 r9-S2: an unparseable firebase config is skipped (fail OPEN)",
+    "file": "tools/firestore-config-isolation.test.js",
+    "from": "      if (isConfigName(rel)) violations.push(",
+    "to": "      if (false) violations.push(",
+    "command": [
+      "node",
+      "tools/firestore-config-isolation.test.js"
+    ]
+  },
+  {
+    "id": "s1-85",
+    "slice": "stats",
+    "label": "🔴 r9-S1: the inventory reads git only (untracked configs invisible)",
+    "file": "tools/firestore-config-isolation.test.js",
+    "from": "  const all = diskConfigs(root);",
+    "to": "  const all = tracked.filter(isConfigName).sort();",
+    "command": [
+      "node",
+      "tools/firestore-config-isolation.test.js"
+    ]
   }
 ]
