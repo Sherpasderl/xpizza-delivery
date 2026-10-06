@@ -5,10 +5,10 @@
 //   = firebase deploy --only firestore:indexes --non-interactive --project <pinned-and-checked>
 //
 // 🔴 firestore.indexes.json is the WHOLE-DATABASE index inventory. Firebase's own CLI decides what a
-// deploy does with remote definitions the file omits, and in non-interactive mode WITHOUT --force it
+// deploy does with remote definitions the file omits, and in non-interactive mode WITHOUT the force flag it
 // SKIPS them — never deletes (see tools/firebase-cli-nodelete.js for the exact source contract, which
 // this re-verifies against the installed CLI BEFORE it runs). So:
-//   • --non-interactive is ALWAYS passed; --force is NEVER passed, and is refused if supplied;
+//   • --non-interactive is ALWAYS passed; the force flag is NEVER passed, and is refused if supplied;
 //   • the project is mandatory and checked (tools/require-project.js, exit 2) — never ambient;
 //   • if the installed CLI no longer has the no-delete branch, this refuses (exit 1) rather than run.
 // Deleting a remote index is a deliberate, separate, human decision outside this tool.

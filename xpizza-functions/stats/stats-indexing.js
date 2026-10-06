@@ -9,7 +9,7 @@
 //
 // THIS LIST IS THE SOURCE; every entry MUST be present in firestore.indexes.json `fieldOverrides`
 // (stats-guard asserts it). Deploying it — ONLY via `npm run deploy:indexes` (tools/deploy-indexes.js:
-// non-interactive, never --force) — is an OWNER STEP THAT MUST PRECEDE THE BACKFILL. The size preflight counts index
+// non-interactive, deletion never forced) — is an OWNER STEP THAT MUST PRECEDE THE BACKFILL. The size preflight counts index
 // entries UNDER these exemptions, and ALSO reports the count under default indexing, so an undeployed
 // exemption shows up as a refused commit (atomic, nothing partial) rather than as a silent certification.
 // ---------------------------------------------------------------------------

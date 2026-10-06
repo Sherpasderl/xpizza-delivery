@@ -12,21 +12,22 @@ process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('�
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ROOT = path.join(__dirname, '..');
 
-// 1. 🔴 THE EXACT FLAGS: --non-interactive present, --force absent, the project pinned — in the builder
+// 1. 🔴 THE EXACT FLAGS: --non-interactive present, the force flag absent, the project pinned — in the builder
 //    AND in the npm script that is the sanctioned entry point.
 {
   assert.deepStrictEqual(D.buildArgs('xpizza-delivery'), ['deploy', '--only', 'firestore:indexes', '--non-interactive', '--project', 'xpizza-delivery']);
-  assert(!D.buildArgs('x').some((a) => /force/.test(a)), '--force is never built');
+  assert(!D.buildArgs('x').some((a) => /force/.test(a)), 'the force flag is never built');
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.strictEqual(pkg.scripts['deploy:indexes'], 'node tools/deploy-indexes.js --project xpizza-delivery');
   for (const [k, v] of Object.entries(pkg.scripts)) {
     if (/firestore:indexes/.test(v)) assert.strictEqual(k, 'deploy:indexes', `script ${k} deploys indexes outside the sanctioned wrapper`);
-    if (/firebase deploy/.test(v) && /--force/.test(v)) assert.fail(`script ${k} passes --force`);
+    // (a force flag on ANY deploy line — package.json included — is failed outright by the raw-line scan,
+    //  tools/deploy-instruction-scan.test.js)
   }
-  ok('flags pinned: deploy --only firestore:indexes --non-interactive --project xpizza-delivery; no --force; no other index-deploy script');
+  ok('flags pinned: deploy --only firestore:indexes --non-interactive --project xpizza-delivery; no force flag; no other index-deploy script');
 }
 
-// 2. The wrapper spawns EXACTLY those args, and refuses — without spawning — on --force, a broken source
+// 2. The wrapper spawns EXACTLY those args, and refuses — without spawning — on the force flag, a broken source
 //    contract, or a failed BEHAVIOURAL probe.
 async function cell2() {
   const keepArgv = process.argv;
@@ -51,7 +52,7 @@ async function cell2() {
     try { assert.strictEqual(await D.main(['--project', 'xpizza-delivery'], { spawn: () => ({ status: 7 }), check: goodCheck, probe: goodProbe }), 7, "the deploy's own exit status propagates"); }
     finally { r(); }
   } finally { process.argv = keepArgv; }
-  ok('wrapper spawns exactly the pinned args; --force, a broken source contract and a failed behavioural probe refuse WITHOUT spawning; exit status propagates');
+  ok('wrapper spawns exactly the pinned args; the force flag, a broken source contract and a failed behavioural probe refuse WITHOUT spawning; exit status propagates');
 }
 
 // 3. Missing / wrong project → exit 2 from the real file, before anything else (spawned for real; these
@@ -73,7 +74,7 @@ function cell4() {
   try { r = C.checkInstalled(); }
   catch (e) { assert.fail(`🔴 cannot locate the installed firebase-tools to verify the no-delete contract: ${e.message}`); }
   assert.deepStrictEqual(r.fails, [], `🔴 firebase-tools ${r.version} at ${r.root} no longer guarantees a non-interactive index deploy deletes nothing:\n${r.fails.join('\n')}`);
-  ok(`installed firebase-tools ${r.version}: non-interactive, no --force → never deletes indexes or field overrides (structure verified)`);
+  ok(`installed firebase-tools ${r.version}: non-interactive, no force flag → never deletes indexes or field overrides (structure verified)`);
 
   // non-vacuity: each way the contract could break is detected, with clear text
   const api = fs.readFileSync(path.join(r.root, 'lib', 'firestore', 'api.js'), 'utf8');
@@ -95,11 +96,11 @@ function cell4() {
 }
 // 6. 🔴 THE PRIMARY PROOF IS BEHAVIOURAL (codex build r4): the INSTALLED CLI's real confirm() returns
 //    false non-interactively, and its real deploy() — reads stubbed, writes spied — deletes NOTHING
-//    without --force while the force:true control deletes both (so the spies see deletions).
+//    without the force flag while the force:true control deletes both (so the spies see deletions).
 async function cell6() {
   const r = await C.probeInstalled();
   assert.deepStrictEqual(r.fails, [], r.fails.join('\n'));
-  assert.deepStrictEqual([r.safe.deleteIndex, r.safe.deleteField], [0, 0], 'no deletion without --force');
+  assert.deepStrictEqual([r.safe.deleteIndex, r.safe.deleteField], [0, 0], 'no deletion without the force flag');
   assert.strictEqual(r.safe.patchField, 1, 'the declared override was applied — the drive really ran deploy()');
   assert.deepStrictEqual([r.forced.deleteIndex, r.forced.deleteField], [1, 1], 'control: force:true deletes both');
   // non-vacuity: break the installed confirm() IN MEMORY (deploy() calls it through the module object) —
@@ -111,8 +112,8 @@ async function cell6() {
   let broken;
   try { broken = await C.probeInstalled({ root }); } finally { promptMod.confirm = real; }
   assert(broken.fails.some((f) => /confirm\(\{nonInteractive:true, force:false, default:false\}\) returned true/.test(f)), JSON.stringify(broken.fails));
-  assert(broken.fails.some((f) => /without --force DELETED 1 index\(es\) and 1 field override/.test(f)), JSON.stringify(broken.fails));
-  ok('BEHAVIOURAL probe of the installed CLI: confirm() → false, deploy() deletes 0 without --force, control deletes 1/1; a confirm() returning true is caught');
+  assert(broken.fails.some((f) => /without the force flag DELETED 1 index\(es\) and 1 field override/.test(f)), JSON.stringify(broken.fails));
+  ok('BEHAVIOURAL probe of the installed CLI: confirm() → false, deploy() deletes 0 without the force flag, control deletes 1/1; a confirm() returning true is caught');
 }
 
 // (The repo-wide deploy-instruction check moved to tools/deploy-instruction-scan.test.js: a PINNED

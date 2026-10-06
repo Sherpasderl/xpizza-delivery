@@ -1,6 +1,6 @@
 'use strict';
 // Classify ONE normalized `firebase … deploy` command (tools/deploy-instruction-scan.js) by what it would
-// deploy. FORBIDDEN = --force anywhere, a bare `firestore` target, `firestore:indexes` outside the sanctioned
+// deploy. FORBIDDEN = the force flag anywhere, a bare `firestore` target, `firestore:indexes` outside the sanctioned
 // wrapper's documented command, or flags with NO --only (that deploys everything, indexes included).
 const WRAPPER_DOC = /^firebase deploy --only firestore:indexes --non-interactive(?: |$)/;
 

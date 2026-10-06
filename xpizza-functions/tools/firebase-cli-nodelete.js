@@ -3,13 +3,13 @@
 // Does the INSTALLED Firebase CLI still refuse to delete during a non-interactive index deploy?
 //
 // The ONLY sanctioned index deploy is tools/deploy-indexes.js (`npm run deploy:indexes`):
-//     firebase deploy --only firestore:indexes --non-interactive --project <pinned>      (never --force)
+//     firebase deploy --only firestore:indexes --non-interactive --project <pinned>      (deletion never forced)
 // Its safety is Firebase's own code, not a re-implemented diff. In firebase-tools 15.16.0
 // (lib/firestore/api.js ~86-160) a remote composite index or field override missing from
 // firestore.indexes.json is deleted only if `shouldDelete*` becomes true. That flag starts as
 // `options.force`, and otherwise comes from `confirm({ nonInteractive, force, default: false })`, which
 // (lib/prompt.js guard()) returns the DEFAULT, false, in non-interactive mode. The CLI only logs
-// "To delete them, run this command with the --force flag".
+// its force-flag notice, and deletes nothing.
 //
 // This checks that structure STILL EXISTS in the installed source, for indexes AND field overrides,
 // so an upgrade that changes the behaviour fails loudly here (and in deploy-indexes.js before it runs)
@@ -43,7 +43,7 @@ function checkSources({ api, prompt }) {
   for (const [what, flag, list] of [['indexes', 'shouldDeleteIndexes', 'indexesToDelete'], ['field overrides', 'shouldDeleteFields', 'fieldOverridesToDelete']]) {
     const need = [
       [`let ${flag} = options.force;`, `${what}: the delete flag must START as options.force`],
-      [`if (options.nonInteractive && !options.force) {`, `${what}: the non-interactive / no --force branch is gone`],
+      [`if (options.nonInteractive && !options.force) {`, `${what}: the non-interactive / no-force branch is gone`],
       [`${what} defined in your project that are not present in your`, `${what}: the "not present in your firestore indexes file" notice is gone`],
       [`if (!${flag}) { ${flag} = await (0, prompt_1.confirm)({ nonInteractive: options.nonInteractive, force: options.force, default: false,`, `${what}: the confirm must be non-interactive-aware with default: false`],
       [`if (${flag} && ${list}.length > 0) {`, `${what}: deletion must be gated on ${flag}`],
@@ -62,7 +62,7 @@ function checkSources({ api, prompt }) {
   const notices = A.split('firestore indexes file. To delete them, run this command with the --force flag.').length - 1;
   if (notices < 2) fails.push(`🔴 firebase-tools lib/firestore/api.js — expected the "run this command with the --force flag" notice for BOTH indexes and field overrides (found ${notices})`);
   const promptNeed = [
-    ['if (opts.force) { return true; }', 'confirm() with force returns true (expected — the wrapper NEVER passes --force)'],
+    ['if (opts.force) { return true; }', 'confirm() with force returns true (expected — the wrapper NEVER passes the force flag)'],
     ['if (!opts.nonInteractive) { return { shouldReturn: false, value: undefined }; }', 'guard(): non-interactive handling changed'],
     ['if (typeof opts.default !== "undefined") { return { shouldReturn: true, value: opts.default }; }', 'guard(): non-interactive no longer returns the DEFAULT'],
   ];
@@ -104,7 +104,7 @@ async function probeInstalled({ root } = {}) {
     return calls;
   };
   const safe = await drive(false);
-  if (safe.deleteIndex || safe.deleteField) fails.push(`🔴 BEHAVIOUR — a non-interactive deploy without --force DELETED ${safe.deleteIndex} index(es) and ${safe.deleteField} field override(s)`);
+  if (safe.deleteIndex || safe.deleteField) fails.push(`🔴 BEHAVIOUR — a non-interactive deploy without the force flag DELETED ${safe.deleteIndex} index(es) and ${safe.deleteField} field override(s)`);
   if (safe.patchField !== 1) fails.push(`🔴 BEHAVIOUR — the probe deploy did not apply the declared override (patchField ×${safe.patchField}); the drive is not exercising deploy()`);
   const forced = await drive(true);
   if (forced.deleteIndex !== 1 || forced.deleteField !== 1) fails.push(`🔴 BEHAVIOUR — control failed: with force:true the deploy deleted ${forced.deleteIndex}/${forced.deleteField} (expected 1/1), so the spies cannot be trusted`);

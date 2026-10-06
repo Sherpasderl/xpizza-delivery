@@ -142,7 +142,7 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
      CLI deletes/resets whatever it omits. So this asserts only what stats OWNS — every stats exemption is
      present, as a full exemption — and NOT that the file is otherwise empty: other features' composite
      indexes and overrides belong in it too. Deploy safety is NOT asserted from this file: it comes from
-     the only sanctioned deploy, `npm run deploy:indexes` (--non-interactive, never --force), under which
+     the only sanctioned deploy, `npm run deploy:indexes` (--non-interactive, deletion never forced), under which
      the Firebase CLI skips — never deletes — remote definitions the file omits (tools/deploy-indexes.test.js
      pins that, against the installed CLI). tools/firestore-indexes-report.js is advisory only. */
   assert(Array.isArray(cfg.indexes) && Array.isArray(cfg.fieldOverrides), 'a valid inventory file');

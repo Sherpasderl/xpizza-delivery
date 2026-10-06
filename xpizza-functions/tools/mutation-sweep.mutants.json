@@ -10803,5 +10803,89 @@
       "node",
       "tools/deploy-instruction-scan.test.js"
     ]
+  },
+  {
+    "id": "s1-70",
+    "slice": "stats",
+    "label": "🔴 r6-1a: a pinned command changed via a `,\\` continuation (functions,⏎firestore:indexes)",
+    "file": "../README.md",
+    "from": "| `firebase deploy --only functions` |",
+    "to": "| `firebase deploy --only functions,\\\nfirestore:indexes` |",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-71",
+    "slice": "stats",
+    "label": "🔴 r6-1b: a pinned command gains '--force' (fails outright: force on a deploy line)",
+    "file": "../README.md",
+    "from": "| `firebase deploy --only functions` |",
+    "to": "| `firebase deploy --only functions '--force'` |",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-72",
+    "slice": "stats",
+    "label": "🔴 r6-2: a comment-wrapped `// firebase` ⏎ `// deploy --only firestore:indexes`",
+    "file": "stats/stats-indexing.js",
+    "from": "// THIS LIST IS THE SOURCE; every entry MUST be present in firestore.indexes.json `fieldOverrides`",
+    "to": "// THIS LIST IS THE SOURCE; to ship it run firebase\n// deploy --only firestore:indexes\n// every entry MUST be present in firestore.indexes.json `fieldOverrides`",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-73",
+    "slice": "stats",
+    "label": "🔴 r6-3: `npx firebase-tools deploy` (a non-CLI spelling)",
+    "file": "../README.md",
+    "from": "| `firebase deploy --only functions` |",
+    "to": "| `npx firebase-tools deploy --only firestore` |",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-74",
+    "slice": "stats",
+    "label": "r6: an EDIT of an existing pinned deploy line (wording only)",
+    "file": "../README.md",
+    "from": "| `firebase deploy --only functions` |",
+    "to": "| `firebase deploy --only functions`  (all of them) |",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-75",
+    "slice": "stats",
+    "label": "🔴 force: a NEW force-flag line in a non-deploy file",
+    "file": "../scripts/test-order.sh",
+    "from": "  echo \"Cleanup later:\"",
+    "to": "  echo \"Cleanup later:\"\n  echo \"  firebase database:remove /payments/${ORDER_ID} --project xpizza-delivery --force\"",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-76",
+    "slice": "stats",
+    "label": "🔴 force: a CHANGED pinned force-line",
+    "file": "../scripts/test-order.sh",
+    "from": "  echo \"  firebase database:remove /orders/${ORDER_ID} --project xpizza-delivery --force\"",
+    "to": "  echo \"  firebase database:remove /orders/ --project xpizza-delivery --force\"",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
   }
 ]

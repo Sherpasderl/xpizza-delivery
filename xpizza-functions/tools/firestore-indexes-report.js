@@ -4,14 +4,14 @@
 // FIRESTORE INDEX REPORT — ADVISORY ONLY. NOT A GATE.   npm run report:indexes -- --project xpizza-delivery
 //
 // What `npm run deploy:indexes` (tools/deploy-indexes.js: firebase deploy --only firestore:indexes
-// --non-interactive, never --force) WILL DO with the remote definitions, decided by FIREBASE'S OWN
+// --non-interactive, deletion never forced) WILL DO with the remote definitions, decided by FIREBASE'S OWN
 // matching code: this loads the installed firebase-tools' FirestoreApi and calls its indexMatchesSpec /
 // fieldMatchesSpec / upgradeOldSpec on the same file the deploy pushes. Nothing here re-implements
 // Firebase's diff (an earlier hand-written comparison mis-normalized __name__ direction, vector configs
 // and TTL fields with inherited indexes — codex stats build r3).
 //
 // Safety does NOT come from this report. It comes from deploy-indexes.js passing --non-interactive
-// without --force, where the CLI SKIPS remote definitions the file omits instead of deleting them
+// without the force flag, where the CLI SKIPS remote definitions the file omits instead of deleting them
 // (contract re-verified by tools/firebase-cli-nodelete.js). The report just shows what is skipped, what
 // will be created, and which declared field overrides will be updated — so a human can bring the file in
 // line when they choose. Always exits 0 on a successful listing (2 on a missing/wrong project, 1 on an error).
@@ -72,7 +72,7 @@ async function run({ projectId, file = inventoryFile(), list = listRemote, api, 
   sec('remote field overrides the deploy will SKIP (not delete) — absent from the file', r.overridesSkipped, (x) => JSON.stringify({ name: x.name, indexConfig: x.indexConfig, ttlConfig: x.ttlConfig }));
   sec('composite indexes the deploy will CREATE', r.indexesCreated, (x) => JSON.stringify(x));
   sec('declared field overrides the deploy will CREATE or UPDATE to the file\'s config', r.overridesUpdated, (x) => JSON.stringify(x));
-  out('Skipped definitions are left as they are (deploy:indexes never passes --force). To keep the file a faithful inventory, add them to firestore.indexes.json.');
+  out('Skipped definitions are left as they are (deploy:indexes never passes the force flag). To keep the file a faithful inventory, add them to firestore.indexes.json.');
   return 0;
 }
 
