@@ -399,6 +399,20 @@ function contextWriter() {
   if (!_contextWriter) _contextWriter = createContextWriter({ db: getFirestore(), rtdb: getDatabase() });
   return _contextWriter;
 }
+// 1D D4-c1 — content-addressed identity records (catalog_ctx/{rid}/{versionId}). BACKGROUND ONLY: their own trigger,
+// reconciler and verifier below; nothing on the price, order, publish, rollback or bootstrap path calls them.
+const { createIdentityRecordWriter, IDENTITY_TRIGGER_DEADLINE_MS, IDENTITY_TRIGGER_TIMEOUT_S, IDENTITY_RECONCILE_INTERVAL, IDENTITY_RECONCILE_TIMEOUT_S } = require('./catalog/identity-record-writer');
+const { createIdentityVerifier, IDENTITY_VERIFY_INTERVAL, IDENTITY_VERIFY_TIMEOUT_S } = require('./catalog/identity-record-verifier');
+let _identityWriter = null;
+function identityWriter() {
+  if (!_identityWriter) _identityWriter = createIdentityRecordWriter({ db: getFirestore(), rtdb: getDatabase() });
+  return _identityWriter;
+}
+let _identityVerifier = null;
+function identityVerifier() {
+  if (!_identityVerifier) _identityVerifier = createIdentityVerifier({ db: getFirestore(), rtdb: getDatabase() });
+  return _identityVerifier;
+}
 
 // Never throws AND never returns null — always a restaurant-TAGGED { restaurantId, menu, extras }.
 //
@@ -2460,6 +2474,44 @@ exports.reconcileCatalogContexts = onSchedule(
       await contextWriter().reconcile({ listIds: makeFirestoreRegistryReader(getFirestore()) });
     } catch (e) {
       console.error('context_reconcile_failed', (e && e.message) || String(e));
+    }
+  },
+);
+
+// 1D D4-c1 — a NEW, separate identity-only trigger on the same mirror path: its own invocation, instances, timeout and
+// memory, NO platform retry. It establishes the record for the version NAMED in the written mirror value (45 s deadline).
+// writeCatalogContextOnMirror above is byte-unchanged.
+exports.writeIdentityRecordOnMirror = onValueWritten(
+  { ref: '/catalog_snapshot/{rid}', region: 'us-central1', timeoutSeconds: IDENTITY_TRIGGER_TIMEOUT_S, memory: '256MiB', maxInstances: 3 },
+  async (event) => {
+    try {
+      const after = event && event.data && event.data.after;
+      const value = after && typeof after.val === 'function' ? after.val() : null;
+      await identityWriter().onMirrorWritten(event.params.rid, value, { deadlineMs: IDENTITY_TRIGGER_DEADLINE_MS });
+    } catch (e) {
+      console.error('identity_record_trigger_failed', (e && e.message) || String(e));
+    }
+  },
+);
+
+exports.reconcileIdentityRecords = onSchedule(
+  { schedule: IDENTITY_RECONCILE_INTERVAL, region: 'us-central1', timeoutSeconds: IDENTITY_RECONCILE_TIMEOUT_S, memory: '256MiB', maxInstances: 1 },
+  async () => {
+    try {
+      await identityWriter().reconcile({ listIds: makeFirestoreRegistryReader(getFirestore()) });
+    } catch (e) {
+      console.error('identity_reconcile_failed', (e && e.message) || String(e));
+    }
+  },
+);
+
+exports.verifyIdentityRecords = onSchedule(
+  { schedule: IDENTITY_VERIFY_INTERVAL, region: 'us-central1', timeoutSeconds: IDENTITY_VERIFY_TIMEOUT_S, memory: '256MiB', maxInstances: 1 },
+  async () => {
+    try {
+      await identityVerifier().verify({ listIds: makeFirestoreRegistryReader(getFirestore()) });
+    } catch (e) {
+      console.error('identity_verify_failed', (e && e.message) || String(e));
     }
   },
 );

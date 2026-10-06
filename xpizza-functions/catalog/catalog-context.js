@@ -159,7 +159,12 @@ function buildContext(raw) {
     const ids = { wellFormed: !idProblems.some((p) => p.problem === 'malformed'), unique: !idProblems.some((p) => p.problem === 'duplicate'), problems: idProblems };
 
     // (c) — the completeness half of usable-as-identity.
-    const complete = certified && coverage.dish.state === 'full' && coverage.extra.state === 'full'
+    // D4-c1 §5 — a kind with ZERO objects is complete for that kind (`total === 0 || state === 'full'`): coverageOf
+    // reports 'none' for an empty kind (reporting unchanged), which made a valid, certified zero-extras catalog
+    // permanently incomplete. Certification, ids, labels, integrity and attachment are unchanged, and an empty DISH
+    // catalog never gets here (buildMenu refuses it, catalog-menu.js).
+    const kindComplete = (c) => c.total === 0 || c.state === 'full';
+    const complete = certified && kindComplete(coverage.dish) && kindComplete(coverage.extra)
       && ids.wellFormed && ids.unique && labels.state === 'complete';
 
     return deepFreeze({
