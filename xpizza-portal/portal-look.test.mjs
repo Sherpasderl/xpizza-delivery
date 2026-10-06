@@ -5,12 +5,14 @@
 //   2. exactly ONE Google Fonts stylesheet, Archivo as the 600..800 weight range (covers the 750/800 in use), no Hanken;
 //   3. the CSP already admits fonts.googleapis.com (style-src) and fonts.gstatic.com (font-src).
 //
-// COLOUR GUARANTEE (advisor ruling, codex r6 — a change of model): no colour can change without failing this test (the
-// FREEZE below). The discovering sweep and the allowlist grammar are AIDS: the sweep does not see DOM placement made by JS
-// (e.g. review.js decides which container an element is rendered in), so it makes no completeness claim.
+// Guarantee: no CSS input (stylesheet inventory or bytes) changes without failing this test.
+// OUT OF SCOPE by nature: runtime JS style mutation and class/DOM placement (e.g. review.js:277); those are reviewed with
+// the JS change.
+// The sweep is an aid with no completeness claim. (So are the allowlist grammar and the computed-pair checks.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const read = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
 const html = read('./index.html');
@@ -77,15 +79,36 @@ for (const [sel, label] of AA_PAIRS) {
     assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
   });
 }
-// ═══ COLOUR FREEZE (advisor ruling after codex r6) — complete by construction ═══════════════════════════════════════
-// Every LIGHT-applicable declaration of color / background / background-color / border-color, as (at-rule context, the
-// EXACT selector text, property, value with whitespace normalised), plus every token of the light :root block, is frozen
-// in portal-colour-freeze.golden.json. ANY difference fails: a new, changed or removed declaration, a changed selector, a
-// changed token. Order-insensitive (a multiset with counts), so reordering rules is not a change; value whitespace is
-// normalised, so a reformat is not a change. Not light-applicable (excluded): the dark-scheme @media and the
-// `:root[data-theme="dark"]` theme selectors. Regenerate ONLY with the AA review: PORTAL_FREEZE_WRITE=1 node --test …
+// ═══ CSS FREEZE (advisor FINAL ruling after codex r7) — ordered, whole-stylesheet, complete by construction ══════════
+// portal-css-freeze.golden.json pins (1) the stylesheet INVENTORY — the exact ordered list of <link rel=stylesheet> hrefs in
+// index.html plus every @import inside the CSS — and refuses any <style> element or style= attribute in index.html; and
+// (2) the exact BYTES of styles.css (SHA-256 + length). ANY byte change fails — a whitespace edit included, by design.
+// The per-declaration colour list (colourFreezeOf / freezeDiff) is kept ONLY as a human-readable diff aid on failure.
+// Regenerate ONLY together with the AA review: PORTAL_FREEZE_WRITE=1 node --test portal-look.test.mjs
 const FREEZE_PROPS = new Set(['color', 'background', 'background-color', 'border-color']);
-const FREEZE_FILE = new URL('./portal-colour-freeze.golden.json', import.meta.url);
+const FREEZE_FILE = new URL('./portal-css-freeze.golden.json', import.meta.url);
+const CSS_FILE = new URL('./styles.css', import.meta.url);
+const CSS_MSG = 'CSS change: re-run the AA review (advisor + codex) and update the golden in the same commit (PORTAL_FREEZE_WRITE=1)';
+// the ordered stylesheet inventory of a page + its CSS
+function stylesheetInventory(htmlText, cssText) {
+  const links = [...htmlText.matchAll(/<link\b[^>]*>/gi)].map((m) => m[0]).filter((t) => /\brel\s*=\s*["']?stylesheet\b/i.test(t))
+    .map((t) => { const h = t.match(/\bhref\s*=\s*["']([^"']+)["']/i); return `link:${h ? h[1] : '?'}`; });
+  const imports = [...cssText.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/@import\s+([^;]+);/gi)].map((m) => `import:${m[1].trim()}`);
+  return [...links, ...imports];
+}
+const inlineStyleOf = (htmlText) => ({ styleElements: (htmlText.match(/<style\b/gi) || []).length, styleAttributes: (htmlText.match(/\sstyle\s*=/gi) || []).length });
+const cssBytesOf = (buf) => ({ sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length });
+// → [] when html + css bytes match the golden, else the reasons
+function cssFreezeViolations(htmlText, cssBuf, golden) {
+  const out = [];
+  const inv = stylesheetInventory(htmlText, cssBuf.toString('utf8'));
+  if (JSON.stringify(inv) !== JSON.stringify(golden.inventory)) out.push(`stylesheet inventory changed: ${JSON.stringify(golden.inventory)} → ${JSON.stringify(inv)}`);
+  const inl = inlineStyleOf(htmlText);
+  if (inl.styleElements || inl.styleAttributes) out.push(`inline CSS in index.html: ${inl.styleElements} <style> element(s), ${inl.styleAttributes} style= attribute(s)`);
+  const b = cssBytesOf(cssBuf);
+  if (b.sha256 !== golden.styles_css.sha256 || b.bytes !== golden.styles_css.bytes) out.push(`styles.css bytes changed: sha256 ${golden.styles_css.sha256.slice(0, 12)}…/${golden.styles_css.bytes} B → ${b.sha256.slice(0, 12)}…/${b.bytes} B`);
+  return out;
+}
 function colourFreezeOf(cssText) {
   const text = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
   const decls = [];
@@ -452,31 +475,37 @@ function grammarViolations(cssText) {
   return { violations: [...new Set(out)], pinSeen };
 }
 
-test('COLOUR FREEZE: every light-applicable colour declaration and light token equals the frozen golden', () => {
-  if (process.env.PORTAL_FREEZE_WRITE === '1') { writeFileSync(FREEZE_FILE, `${JSON.stringify(colourFreezeOf(css), null, 1)}\n`); return; }
+test('CSS FREEZE: the stylesheet inventory and the exact bytes of styles.css equal the frozen golden', () => {
+  const cssBuf = readFileSync(CSS_FILE);
+  if (process.env.PORTAL_FREEZE_WRITE === '1') {
+    writeFileSync(FREEZE_FILE, `${JSON.stringify({ inventory: stylesheetInventory(html, css), styles_css: cssBytesOf(cssBuf), diff_aid: colourFreezeOf(css) }, null, 1)}\n`);
+    return;
+  }
   const golden = JSON.parse(readFileSync(FREEZE_FILE, 'utf8'));
-  assert.ok(golden.declarations.length > 100 && Object.keys(golden.tokens).length > 20, 'non-vacuity: the golden freezes the real sheet');
-  const d = freezeDiff(css, golden);
-  assert.deepEqual(d, { added: [], removed: [], tokenChanges: [] }, `🔴 ${FREEZE_MSG}\n  added: ${d.added.join('\n         ')}\n  removed: ${d.removed.join('\n           ')}\n  tokens: ${d.tokenChanges.join(', ')}`);
+  assert.deepEqual(golden.inventory, ['link:https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap', 'link:./styles.css'], 'non-vacuity: the golden inventory is today\'s two stylesheets, in order');
+  const v = cssFreezeViolations(html, cssBuf, golden);
+  if (v.length) {
+    const d = freezeDiff(css, golden.diff_aid);   // a human-readable aid ONLY — the guarantee is the inventory + the bytes
+    assert.fail(`🔴 ${CSS_MSG}\n  ${v.join('\n  ')}\n  (diff aid — colour declarations added: ${d.added.length}, removed: ${d.removed.length}, token changes: ${d.tokenChanges.join(', ') || 'none'})\n  ${[...d.added.map((x) => `+ ${x}`), ...d.removed.map((x) => `- ${x}`)].slice(0, 20).join('\n  ')}`);
+  }
 });
 
-test('COLOUR FREEZE catches every codex r6 example; reformatting or reordering is not a change', () => {
+test('CSS FREEZE fails on every codex r7 evasion and on any byte change (whitespace included, by design)', () => {
   const golden = JSON.parse(readFileSync(FREEZE_FILE, 'utf8'));
-  const changed = (cssText) => { const d = freezeDiff(cssText, golden); return d.added.length + d.removed.length + d.tokenChanges.length > 0; };
-  const swap = (a, b) => { assert.equal(css.split(a).length - 1, 1, `fixture anchor is unique: ${a}`); return css.replace(a, b); };
-  // codex r6's evasions — each is a COLOUR change, so the freeze fails
-  assert.ok(changed(swap('}.ackt b{color:var(--amber)}', '}.ackt b{color:var(--mute2)}')), '🔴 a .ackt b colour change (a multi-level ancestor ground) fails');
-  assert.ok(changed(css + '\n.fiscal p:hover{color:var(--mute2)}'), '🔴 a new .fiscal p:hover pair (a hover variant) fails');
-  assert.ok(changed(css + '\n#loginerr{color:var(--red)}'), '🔴 an ID selector colour fails');
-  assert.ok(changed(css.replace(/(\.seal\{[^}]*?background:)var\(--[a-z0-9-]+\)/, '$1var(--amber-soft)')), '🔴 a .seal background change (DOM placement made by review.js) fails');
-  assert.ok(changed(css.replace(/(--mute:)\s*#[0-9A-Fa-f]{6}/, '$1#777777')), '🔴 a light token value change fails');
-  assert.ok(changed(swap('.pdelta.up{color:var(--amber);', '.pdelta.up{')), '🔴 a REMOVED colour declaration fails');
-  assert.ok(changed(swap('.pdelta.up{color:var(--amber);', '.pdelta.up.x{color:var(--amber);')), '🔴 a changed selector fails');
-  assert.ok(changed(css + '\n@media(max-width:1px){.zzm{border-color:var(--line)}}'), '🔴 a new border-color inside a light @media fails');
-  // NOT changes: value whitespace and rule order
-  assert.ok(!changed(swap('.pdelta.up{color:var(--amber);', '.pdelta.up{color:  var( --amber ) ;')), 'a whitespace-only reformat of a VALUE still matches');
-  const rule = css.match(/\n\s*\.pdelta\.up\{[^}]*\}/)[0];
-  assert.ok(!changed(css.replace(rule, '') + rule), 'a REORDERED rule still matches (order-insensitive)');
+  const cssBuf = readFileSync(CSS_FILE);
+  const fails = (h, c) => cssFreezeViolations(h, Buffer.from(c, 'utf8'), golden).length > 0;
+  assert.deepEqual(cssFreezeViolations(html, cssBuf, golden), [], 'today\'s page + sheet pass');
+  const one = (a) => { assert.equal(css.split(a).length - 1, 1, `fixture anchor is unique: ${a}`); return a; };
+  assert.ok(fails(html, css + '\n.err{-webkit-text-fill-color:#fff}'), '🔴 an appended -webkit-text-fill-color fails');
+  const hover = one('  .nav:hover{color:var(--ink);background:var(--card)}\n'), on = one('  .nav.on{background:var(--tint2);color:var(--accent)}\n');
+  assert.ok(fails(html, css.replace(hover, '').replace(on, on + hover)), '🔴 REORDERING .nav:hover after .nav.on fails (order is part of the bytes)');
+  assert.ok(fails(html, css.replace(/(:root,\s*:root\[data-theme="light"\]\s*\{)/, '$1--zz:#000000;')), '🔴 a declaration added inside the light :root block fails');
+  assert.ok(fails(html.replace('<link rel="stylesheet" href="./styles.css">', '<link rel="stylesheet" href="./styles.css">\n<link rel="stylesheet" href="./extra.css">'), css), '🔴 a NEW same-origin <link rel=stylesheet> fails');
+  assert.ok(fails(html.replace('</head>', '<style>.err{color:#fff}</head>'), css), '🔴 an inline <style> element in index.html fails');
+  assert.ok(fails(html.replace('<body>', '<body style="color:#fff">'), css), '🔴 a style= attribute in index.html fails');
+  assert.ok(fails(html, css + '\n@import url("x.css");'), '🔴 an @import fails (inventory)');
+  assert.ok(fails(html, css.replace('.err.on{display:block}', '.err.on{ display:block}')), '🔴 a whitespace-only edit fails — bytes are bytes, by design');
+  assert.ok(fails(html.replace(/<link href="https:\/\/fonts\.googleapis\.com[^>]*>\n/, '').replace('<link rel="stylesheet" href="./styles.css">', '<link rel="stylesheet" href="./styles.css">\n<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600..800&display=swap" rel="stylesheet">'), css), '🔴 REORDERING the two stylesheets fails');
 });
 
 test('ALLOWLIST GRAMMAR: every light-applicable color/background declaration takes the modelled form; today\'s sheet passes', () => {
