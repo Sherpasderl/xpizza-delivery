@@ -14,6 +14,11 @@
 // CAPTURE (base only): PSU_TRACE_CAPTURE=<file>. The golden catalog/pselfupdate-quote-trace.golden.json was captured
 // by running THIS file inside a ba29282 checkout and is FROZEN. (The golden file name: pselfupdate-quote-trace.golden.json.)
 require('./_emulator-required')('database', 'firestore');
+// A CONTROLLED CLOCK (codex CP1 r2 S4), installed BEFORE index.js loads so every per-instance cache captures it — incl.
+// the catalog verifier's 60 s observation. Advancing it makes the REFRESH path deterministic instead of time-of-day luck.
+const REAL_NOW = Date.now.bind(Date);
+let CLOCK_OFFSET = 0;
+Date.now = () => REAL_NOW() + CLOCK_OFFSET;
 
 const assert = require('assert');
 const http = require('http');
@@ -177,7 +182,9 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     }
   }
   const norm = (s) => subs.reduce((acc, [from, to]) => acc.split(from).join(to), String(s))
-    .replace(ID_RE, (m, rid, kind, id) => `restaurants/${rid}/identity/${kind}/ids/${idName.get(`${rid}/${id}`)}`);
+    .replace(ID_RE, (m, rid, kind, id) => `restaurants/${rid}/identity/${kind}/ids/${idName.get(`${rid}/${id}`)}`)
+    // the fixture publishes a fresh catalog version per run (time + random id) — normalised like the other run-local ids
+    .replace(/(restaurants\/[^/]+\/versions\/)v-\d+-[0-9a-f]+/g, '$1<version>');
   // a getAll's ORDER follows the raw (random) ids, so it is recorded as: the normalised document MULTISET (sorted,
   // multiplicity kept) + whether the RAW order was ascending. Ascending + the multiset pins the exact raw sequence; any
   // other order flips the flag; an added, dropped or repeated document changes the multiset.
@@ -219,7 +226,14 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.strictEqual(v.status, 200, `${rid} ${k}: premise — status 200 (${v.status})`);
       assert.ok(v.trace.length > 0, `${rid} ${k}: premise — the recorder saw the handler's calls`);
     }
-    out[rid] = { a_quote_order: a.trace, b_quote_redemption: b.trace };
+    // c — the REFRESH request: advance the controlled clock past every per-instance TTL (verifier 60 s, catalog context
+    // 45 s, floor 30 s), so this quote re-reads exactly what an init/refresh reads. Reproducible: same state, same clock.
+    CLOCK_OFFSET += 61000;
+    await rtdb.ref('rate_limits').remove();
+    const c = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'quote' });
+    assert.strictEqual(c.status, 200, `${rid} c_quote_order_refresh: premise — status 200 (${c.status})`);
+    assert.ok(c.trace.some((e) => e.db === 'fs') || rid !== 'x_pizza', `${rid} c_quote_order_refresh: premise — the refresh really re-read (x_pizza's certified context reads Firestore)`);
+    out[rid] = { a_quote_order: a.trace, b_quote_redemption: b.trace, c_quote_order_refresh: c.trace };
   }
 
   if (CAPTURE) {
@@ -241,7 +255,13 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     // carry exactly ONE floor GET, and with it removed its sequence must equal the golden's b_quote_redemption (it never involves the catalog verifier, whose 60 s TTL a 31 s wait could cross).
     {
       const { FLOOR_TTL_MS } = require('../client-floor');
-      await wait(FLOOR_TTL_MS + 1500);
+      // with the CONTROLLED clock: refresh every cache now (an unrecorded quoteRedemption), then advance exactly one floor TTL — past
+      // the floor's 30 s, inside the catalog context's 45 s and the verifier's 60 s — so ONLY the floor cache has expired
+      await rtdb.ref('rate_limits').remove();
+      { const wb2 = bodyFor('x_pizza', 'w', '1', { redeem: true });   // the SAME path as the checked request, so ITS caches refresh too
+        await post(app.quoteRedemption, { restaurant_id: 'x_pizza', items: wb2.items, redeem: wb2.redeem }, { 'x-firebase-id-token': 'u_trace_x_pizza' }); }
+      await wait(300);
+      CLOCK_OFFSET += FLOOR_TTL_MS + 1500;   // 31.5 s: past the floor's 30 s; inside the 45 s context / gate-pointer TTLs and the 60 s verifier
       const t = await traced('x_pizza', 'qtrace_unused_oid', 'u_trace_x_pizza', '99000001', { kind: 'redeem' });
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
