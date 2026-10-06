@@ -115,73 +115,13 @@ async function cell6() {
   ok('BEHAVIOURAL probe of the installed CLI: confirm() → false, deploy() deletes 0 without --force, control deletes 1/1; a confirm() returning true is caught');
 }
 
-// 7. 🔴 NO INSTRUCTION BYPASSES THE WRAPPER (codex build r4 S1): every `firebase deploy` in the repo's
-//    docs, comments and scripts whose --only includes firestore (bare `firestore` or `firestore:indexes`),
-//    or that names no --only at all, is a violation — except the wrapper's own documented command. An
-//    explicit `firestore:rules` scope is allowed.
-function deployViolations(text) {
-  const out = [];
-  const re = /firebase\s+deploy\b/g;
-  let m;
-  while ((m = re.exec(text))) {
-    // Follow the command across a line wrap, including a wrapped comment ("// --non-interactive"), and stop
-    // at the end of the inline-code span / quote / parenthesis it lives in.
-    const win = text.slice(m.index + m[0].length, m.index + m[0].length + 240).replace(/\n\s*(\/\/+|\*|#)?\s*/g, ' ');
-    const rest = win.split(/[`'"()]/)[0];
-    if (!/^\s*--/.test(rest)) continue;                       // prose ("during `firebase deploy` source discovery")
-    const only = /--only[ =]+([^\s,]+(?:,[^\s,]+)*)/.exec(rest);
-    if (!only) { out.push(`firebase deploy ${rest.trim()} (no --only: deploys indexes too)`); continue; }
-    const targets = only[1].split(',');
-    if (targets.some((t) => t === 'firestore' || (t.startsWith('firestore:') && t !== 'firestore:rules'))) out.push(`firebase deploy ${rest.trim()}`);
-  }
-  return out;
-}
-function cell7() {
-  // the scanner itself, first (non-vacuity both ways)
-  assert.deepStrictEqual(deployViolations('run `firebase deploy --only firestore:indexes --project x`').length, 1);
-  assert.deepStrictEqual(deployViolations('then firebase deploy --only firestore').length, 1);
-  assert.deepStrictEqual(deployViolations('firebase deploy --only functions,firestore --project x').length, 1);
-  assert.deepStrictEqual(deployViolations('`firebase deploy --only\nfunctions` (wrapped)').length, 0, 'a wrapped --only functions is not firestore');
-  assert.deepStrictEqual(deployViolations('// firebase deploy --only\n// firestore:indexes --project x').length, 1, 'a comment-wrapped target is followed');
-  assert.deepStrictEqual(deployViolations('firebase deploy --project xpizza-delivery').length, 1);
-  assert.deepStrictEqual(deployViolations('firebase deploy --only firestore:rules --project x').length, 0);
-  assert.deepStrictEqual(deployViolations('firebase deploy --only functions:getSalesStats --project x').length, 0);
-  assert.deepStrictEqual(deployViolations('NOT set during `firebase deploy` source discovery').length, 0);
-  // the wrapper's own documented command is the one sanctioned spelling
-  const SANCTIONED = new Set(['xpizza-functions/tools/deploy-indexes.js', 'xpizza-functions/tools/firebase-cli-nodelete.js', 'xpizza-functions/tools/firestore-indexes-report.js']);
-  // FIXTURES, not instructions: this file's scanner probes, and the mutation catalogue (whose mutant `to`
-  // strings ARE the violations, by design — s1-60/61 put them back to prove this scan sees them).
-  const FIXTURES = new Set(['xpizza-functions/tools/deploy-indexes.test.js', 'xpizza-functions/tools/mutation-sweep.mutants.json']);
-  const REPO = path.join(ROOT, '..');
-  const SKIP = new Set(['node_modules', '.git', '.claude', '.firebase', '.impeccable']);
-  const EXT = /\.(md|js|mjs|cjs|json|sh|txt|html|yml|yaml|toml)$/;
-  const hits = [];
-  let scanned = 0;
-  const walk = (dir) => {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (SKIP.has(e.name)) continue;
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) { walk(p); continue; }
-      if (!EXT.test(e.name)) continue;
-      const rel = path.relative(REPO, p);
-      if (FIXTURES.has(rel)) continue;
-      if (SANCTIONED.has(rel)) { const t = fs.readFileSync(p, 'latin1'); for (const v of deployViolations(t)) if (!/--non-interactive/.test(v)) hits.push(`${rel}: ${v}`); scanned++; continue; }
-      const st = fs.statSync(p); if (st.size > 5 * 1024 * 1024) continue;
-      for (const v of deployViolations(fs.readFileSync(p, 'latin1'))) hits.push(`${rel}: ${v.trim()}`);   // latin1: NUL-safe, never "binary"
-      scanned++;
-    }
-  };
-  walk(REPO);
-  assert(scanned > 300, `premise: the scan covered the repo (${scanned} files)`);
-  assert.deepStrictEqual(hits, [], `🔴 index-deploy instructions that bypass \`npm run deploy:indexes\`:\n  ${hits.join('\n  ')}`);
-  ok(`no doc / comment / script in the repo (${scanned} files) deploys firestore outside the wrapper; firestore:rules scope allowed`);
-}
+// (The repo-wide deploy-instruction check moved to tools/deploy-instruction-scan.test.js: a PINNED
+//  allowlist of every occurrence, per the advisor's r5 ruling — pattern-matching bad forms always leaks.)
 
 (async () => {
   await cell2();
   cell3(); cell4();
   await cell6();
-  cell7();
   console.log(`\ndeploy-indexes: ${n} cells passed`);
   __finished = true;
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -2,7 +2,7 @@
 'use strict';
 // ---------------------------------------------------------------------------
 // THE ONLY SANCTIONED FIRESTORE INDEX DEPLOY:   npm run deploy:indexes
-//   = firebase deploy --only firestore:indexes --non-interactive --project <pinned, checked>
+//   = firebase deploy --only firestore:indexes --non-interactive --project <pinned-and-checked>
 //
 // 🔴 firestore.indexes.json is the WHOLE-DATABASE index inventory. Firebase's own CLI decides what a
 // deploy does with remote definitions the file omits, and in non-interactive mode WITHOUT --force it

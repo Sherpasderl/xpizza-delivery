@@ -10693,7 +10693,7 @@
     "to": "via `firebase deploy --only firestore:indexes --project xpizza-delivery` (tools/deploy-indexes.js:",
     "command": [
       "node",
-      "tools/deploy-indexes.test.js"
+      "tools/deploy-instruction-scan.test.js"
     ]
   },
   {
@@ -10705,7 +10705,103 @@
     "to": "so `firebase deploy --only firestore` re-runs",
     "command": [
       "node",
-      "tools/deploy-indexes.test.js"
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-62",
+    "slice": "stats",
+    "label": "🔴 r5 evasion: a shell `\\` continuation between `firebase deploy` and `--only firestore:indexes`",
+    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
+    "from": "so `firebase deploy --only firestore:rules` re-runs",
+    "to": "so `firebase deploy \\\n  --only firestore:indexes` re-runs",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-63",
+    "slice": "stats",
+    "label": "🔴 r5 evasion: a comment-wrapped index deploy command",
+    "file": "stats/stats-indexing.js",
+    "from": "// (stats-guard asserts it). Deploying it — ONLY via `npm run deploy:indexes` (tools/deploy-indexes.js:",
+    "to": "// (stats-guard asserts it). Deploying it — firebase deploy\n// --only firestore:indexes --project xpizza-delivery — (tools/deploy-indexes.js:",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-64",
+    "slice": "stats",
+    "label": "🔴 r5 evasion: a continued target list (firestore:rules,⏎firestore:indexes)",
+    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
+    "from": "so `firebase deploy --only firestore:rules` re-runs",
+    "to": "so `firebase deploy --only firestore:rules,\nfirestore:indexes` re-runs",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-65",
+    "slice": "stats",
+    "label": "🔴 r5 evasion: the short -P flag before the verb",
+    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
+    "from": "so `firebase deploy --only firestore:rules` re-runs",
+    "to": "so `firebase -P xpizza-delivery deploy --only firestore:indexes` re-runs",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-66",
+    "slice": "stats",
+    "label": "🔴 r5 evasion: a bare deploy borrowing the NEXT command's --only scope",
+    "file": "../docs/superpowers/plans/2026-08-25-phase1a-catalog-schema-parity.md",
+    "from": "so `firebase deploy --only firestore:rules` re-runs",
+    "to": "so `firebase deploy && firebase deploy --only firestore:rules` re-runs",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-67",
+    "slice": "stats",
+    "label": "🔴 r5: the wrapper's documented command gains --force",
+    "file": "tools/deploy-indexes.js",
+    "from": "--non-interactive --project <pinned-and-checked>",
+    "to": "--non-interactive --force --project <pinned-and-checked>",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-68",
+    "slice": "stats",
+    "label": "r5: a PINNED command changed (README functions deploy gains a --project)",
+    "file": "../README.md",
+    "from": "| `firebase deploy --only functions` |",
+    "to": "| `firebase deploy --only functions --project xpizza-social` |",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
+    ]
+  },
+  {
+    "id": "s1-69",
+    "slice": "stats",
+    "label": "r5: a NEW deploy instruction line (unreviewed, even if harmless)",
+    "file": "../README.md",
+    "from": "| `firebase deploy --only functions` |",
+    "to": "| `firebase deploy --only functions` then `firebase deploy --only functions:newThing` |",
+    "command": [
+      "node",
+      "tools/deploy-instruction-scan.test.js"
     ]
   }
 ]
