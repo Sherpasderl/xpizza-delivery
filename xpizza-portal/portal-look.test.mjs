@@ -107,11 +107,23 @@ const classesOf = (c) => new Set((c.replace(/::?[a-z-]+(\([^)]*\))?/g, '').match
 const subset = (a, b) => [...a].every((x) => b.has(x));
 const pseudosOf = (c) => new Set(c.match(/::?[a-z-]+(\([^)]*\))?/g) || []);
 const tagOf = (c) => { const m = c.match(/^[A-Za-z][A-Za-z0-9-]*|^\*/); return m ? m[0].toLowerCase() : ''; };
-// LAST declaration wins within a rule (the CSS cascade inside one block)
-const decl = (body, prop) => { const all = [...body.matchAll(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*var\\(\\s*--([a-z0-9-]+)\\s*\\)`, 'g'))]; return all.length ? all[all.length - 1][1] : null; };
-const hasBg = (body) => /(?:^|;)\s*background(?:-color)?\s*:/.test(body);
+// ONE declaration normaliser for BOTH the grammar and the sweep (codex r5 e): property names LOWERCASED (so `COLOR:` is
+// the same declaration everywhere), a CSS escape in a property name FLAGGED (the grammar refuses it), values
+// whitespace-normalised with `var( --x )` → `var(--x)`.
+const normDeclValue = (v) => v.trim().replace(/\s+/g, ' ').replace(/var\(\s*(--[A-Za-z0-9-]+)\s*\)/g, 'var($1)');
+function parseDecls(body) {
+  return body.split(';').map((d) => d.trim()).filter(Boolean).map((d) => {
+    const i = d.indexOf(':');
+    if (i < 0) return null;
+    const raw = d.slice(0, i).trim();
+    return { raw, prop: raw.toLowerCase(), value: normDeclValue(d.slice(i + 1)), escaped: raw.includes('\\') };
+  }).filter(Boolean);
+}
+// LAST declaration wins within a rule: the last declaration of the property decides (a non-var() value → no token)
+const decl = (body, prop) => { const re = new RegExp(`^${prop}$`); let v = null; for (const d of parseDecls(body)) if (re.test(d.prop)) { const m = d.value.match(/^var\((--[a-z0-9-]+)\)$/); v = m ? m[1].slice(2) : null; } return v; };
+const hasBg = (body) => parseDecls(body).some((d) => /^background(-color)?$/.test(d.prop));
 // a background that PAINTS its own ground; transparent / none / inherit RETAIN the ancestor's (codex r4 #5, ruling A1)
-const paintsOwnBg = (body) => { const all = [...body.matchAll(/(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/g)]; if (!all.length) return false; const v = all[all.length - 1][1].trim().toLowerCase(); return !['transparent', 'none', 'inherit'].includes(v); };
+const paintsOwnBg = (body) => { const bg = parseDecls(body).filter((d) => /^background(-color)?$/.test(d.prop)); if (!bg.length) return false; return !['transparent', 'none', 'inherit'].includes(bg[bg.length - 1].value.toLowerCase()); };
 
 function discoverSoftPairs(cssText) {
   // the CASCADE within one selector: rules with the same selector merge, a later declaration wins per property
@@ -155,10 +167,11 @@ function discoverSoftPairs(cssText) {
     // (b) descendants: group candidate rules by their target (last compound), keep those whose ancestor classes ⊆ R's
     const targets = new Map();
     for (const D of entries) {
-      if (!D.anc.length || !D.last.size) continue;
+      // a TYPE-only last compound (`.zz b`) is a descendant too (codex r5 d: the type-only exemption from crossings rests on this)
+      if (!D.anc.length || (!D.last.size && !D.lastTag)) continue;
       const a = D.anc[D.anc.length - 1];
       if (!a.size || !subset(a, RC)) continue;
-      const key = [...D.last].sort().join('.');
+      const key = D.last.size ? [...D.last].sort().join('.') : `<${D.lastTag}>`;
       if (!targets.has(key)) targets.set(key, []);
       targets.get(key).push({ D, spec: a.size });
     }
@@ -238,24 +251,67 @@ const THEME_LIGHT = ':root,:root[data-theme="light"]', THEME_DARK = ':root[data-
 const normSel = (p) => p.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').trim();
 const normVal = (v) => v.trim().replace(/\s+/g, ' ').replace(/var\(\s*(--[A-Za-z0-9-]+)\s*\)/g, 'var($1)');
 const LIGHT_TOKENS = new Set([...lightBlock.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]));
-function grammarViolations(cssText) {
+// ── codex r5 (advisor ruling): REFUSAL BY CONSTRUCTION, no new modelling ────────────────────────────────────────────
+//   (a) `color` never `transparent`; `inherit` / `currentColor` on color only as the 4 PINNED sites. `background`:
+//       transparent / inherit / none modelled; `currentColor` refused.
+//   (b) nested CSS — `&`, or a rule / at-rule INSIDE a rule body — refused.
+//   (c) exactly ONE light :root block, ONE `:root[data-theme="dark"]`, ONE guarded dark-media block; a token declared once
+//       per block.
+//   (d) a rule that sets color/background must be one the sweep fully resolves: a single compound, or a plain descendant
+//       chain with NO CROSSING. Pseudo-elements, attribute selectors and child/sibling combinators are refused, as is any
+//       crossing — except the 21 EXACT pins below (selector + its color/background declarations; a crossing pin also
+//       freezes its PARTNER set, so a new partner fails).
+//       CROSSING (C2) = two rules whose LAST compounds share a CLASS (incl. state classes like `.on`), under ancestor
+//       chains that DIFFER and are not refinements of each other (`.prow` vs `.prow.big` is the refinement the sweep
+//       resolves), and BOTH set color or background. TYPE-only overlap (`.x b` vs `.y b`) is NOT a crossing: a type-only
+//       rule on a soft ground is covered by the sweep's ANCESTOR-GROUND resolution — see the fixture
+//       'type-only descendant on a soft ancestor fails via the sweep'.
+//   (e) ONE declaration normaliser (parseDecls: lowercased property names) feeds BOTH the grammar and the sweep; a CSS
+//       escape in a property name is refused.
+const A1_INHERIT_PINS = ['.railitem', '.mgmain', '.mtop .mswitch', '.switchmenu-item'];   // color:inherit, ruling a1
+// 7 pseudo-element rules (6 selectors; ::selection appears twice) + 4 attribute/child sites — exact color/background
+const PINNED_COMPLEX = {
+  '::selection': ['background:var(--tint2)', 'background:var(--tint2);color:var(--ink)'],   // two rules (:58, :396)
+  '.tab.on::after': ['background:var(--green)'],
+  '.search input::placeholder': ['color:var(--mute2)'],
+  '::-webkit-scrollbar-thumb': ['background:var(--line)'],
+  '::-webkit-scrollbar-thumb:hover': ['background:var(--mute2)'],
+  '::-webkit-scrollbar-track': ['background:transparent'],
+  '.fld>label': ['color:var(--mute2)'],
+  '.fld input[type=text]': ['background:var(--board-2);color:var(--ink)'],
+  '.hours input[type=time]': ['background:var(--board-2);color:var(--ink)'],
+  '.btn.accent[data-busy] .spin': ['color:var(--card)'],
+};
+// the 10 C2 crossings — exact color/background declarations AND the frozen partner set
+const PINNED_CROSSINGS = {
+  '.switch .chev': { tg: 'color:var(--mute2)', partners: ['.mtop .mswitch .chev'] },
+  '.mtop .mswitch .chev': { tg: 'color:var(--mute2)', partners: ['.switch .chev'] },
+  '.railitem.on .rcount': { tg: 'color:var(--accent);background:var(--tint2)', partners: ['.rcount'] },
+  '.fiscal .ack': { tg: 'background:transparent', partners: ['.ack'] },
+  '.fiscal .ackt': { tg: 'color:var(--on-dark)', partners: ['.ackt'] },
+  '.gtype button.on': { tg: 'background:var(--accent);color:var(--accent-ink)', partners: ['.daychip.on', '.mnav .mn.on', '.nav.on', '.railitem.on', '.switchmenu-item.on', '.tab.on', '.tab.on::after', '.tslot.on'] },
+  '.mnav .mn.on': { tg: 'background:var(--tint2);color:var(--accent)', partners: ['.daychip.on', '.gtype button.on', '.nav.on', '.railitem.on', '.switchmenu-item.on', '.tab.on', '.tab.on::after', '.tslot.on'] },
+  '.modgrp.open .mgchev': { tg: 'color:var(--ink)', partners: ['.mgchev', '.mgchev:hover'] },
+  '.prow .was': { tg: 'color:var(--mute)', partners: ['.sealbody .seachg .sv .was'] },
+  '.sealbody .seachg .sv .was': { tg: 'color:var(--mute)', partners: ['.prow .was'] },
+};
+// the two crossing pins that legitimately sit INSIDE a soft-ground container: proven PRESENT (not absent) as the sweep's
+// computed pair, where-string + both tokens frozen, and ≥ 4.5 (advisor ruling)
+const SOFT_PRESENT_PINS = [
+  { where: '.fiscal → .ackt (via .fiscal .ackt)', fg: 'on-dark', bg: 'gold-soft' },
+  { where: '.prow.big → .was (via .prow .was)', fg: 'mute', bg: 'amber-soft' },
+];
+
+const tgOf = (decls) => decls.filter((d) => TEXT_GROUND.has(d.prop)).map((d) => `${d.prop}:${d.value}`).join(';');
+const isComplexSel = (sel) => /::|\[|[>+~]/.test(sel);
+const ancOf = (sel) => compounds(sel.replace(/\s*[>+~]\s*/g, ' ')).slice(0, -1).map((c) => [...classesOf(c), tagOf(c)].filter(Boolean).sort().join('.'));
+const lastClassesOf = (sel) => { const cs = compounds(sel.replace(/\s*[>+~]\s*/g, ' ')); return classesOf(cs[cs.length - 1]); };
+const refinesAnc = (x, y) => x.length === y.length && x.every((a, i) => { const A = new Set(a.split('.').filter(Boolean)), B = new Set(y[i].split('.').filter(Boolean)); return subset(A, B) || subset(B, A); });
+
+// every LIGHT-applicable non-theme rule, one record per selector
+function lightRecords(cssText) {
   const text = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
-  const out = [];
-  const pinSeen = new Set();
-  const declsOf = (body) => body.split(';').map((d) => d.trim()).filter(Boolean).map((d) => { const i = d.indexOf(':'); return i < 0 ? null : { prop: d.slice(0, i).trim().toLowerCase(), value: d.slice(i + 1).trim() }; }).filter(Boolean);
-  const checkLight = (sel, body) => {
-    for (const d of declsOf(body)) {
-      if (d.prop.startsWith('--')) { out.push(`${sel} — R2 custom property ${d.prop} outside the theme-token blocks`); continue; }
-      if (!TEXT_GROUND.has(d.prop)) continue;
-      const v = normVal(d.value);
-      const m = v.match(/^var\((--[a-z0-9-]+)\)$/);
-      if (m && LIGHT_TOKENS.has(m[1].slice(2))) continue;
-      if (['transparent', 'inherit', 'currentColor', 'currentcolor'].includes(v) || (d.prop === 'background' && v === 'none')) continue;
-      const pin = PINNED_LITERALS.find(([ps, pp, pv]) => ps === sel && pp === d.prop && pv === v);
-      if (pin) { pinSeen.add(pin.join('|')); continue; }
-      out.push(`${sel} — R1 ${d.prop}:${v} is not the modelled form (var(--light-token) | transparent | inherit | currentColor${d.prop === 'background' ? ' | none' : ''}) nor a pinned literal`);
-    }
-  };
+  const recs = [], theme = { light: [], dark: [], darkMedia: [] }, structural = [];
   const walk = (str, ctx) => {
     let i = 0;
     while (i < str.length) {
@@ -267,21 +323,80 @@ function grammarViolations(cssText) {
       const body = str.slice(open + 1, k - 1);
       const sel = normSel(prelude);
       if (prelude.startsWith('@media')) {
-        if (/prefers-color-scheme\s*:\s*dark/.test(prelude)) { if (ctx === 'dark') out.push(`${prelude} — nested dark-scheme @media`); else walk(body, 'dark'); }
+        if (/prefers-color-scheme\s*:\s*dark/.test(prelude)) { if (ctx === 'dark') structural.push(`${prelude} — nested dark-scheme @media`); else walk(body, 'dark'); }
         else walk(body, ctx === 'dark' ? 'dark' : 'light');
-      } else if (prelude.startsWith('@')) { if (ctx === 'dark') out.push(`${prelude} — R3 an at-rule inside the dark-scheme @media`); /* light at-rules: cssRefusals */ }
-      else if (ctx === 'dark') {
-        if (sel === THEME_DARK_MEDIA) { /* the guarded theme-token block */ }
-        else if (PINNED_ICON_RULES.darkMedia.includes(sel)) { if (declsOf(body).some((d) => d.prop !== 'display')) out.push(`${sel} — a pinned icon rule may declare ONLY display`); }
-        else out.push(`${sel} — R3 a non-theme rule inside @media(prefers-color-scheme:dark) applies on OS-dark devices in light mode`);
-      } else if (sel === THEME_LIGHT || sel === THEME_DARK) { /* the theme-token blocks */ }
-      else if (PINNED_ICON_RULES.top.includes(sel)) { if (declsOf(body).some((d) => d.prop !== 'display')) out.push(`${sel} — a pinned icon rule may declare ONLY display`); }
-      else if (splitSelectors(prelude).some((x) => /^:root\b/.test(x.trim()))) out.push(`${sel} — R4 a :root selector that is not an exact theme block`);
-      else for (const one of splitSelectors(prelude)) checkLight(normSel(one), body);
+      } else if (prelude.startsWith('@')) { if (ctx === 'dark') structural.push(`${prelude} — R3 an at-rule inside the dark-scheme @media`); }
+      else {
+        if (/[{}]/.test(body) || /&/.test(prelude) || /&/.test(body)) structural.push(`${sel} — (b) nested CSS (\`&\` or a rule inside a rule body)`);
+        const decls = parseDecls(body);
+        if (ctx === 'dark') {
+          if (sel === THEME_DARK_MEDIA) theme.darkMedia.push(decls);
+          else if (PINNED_ICON_RULES.darkMedia.includes(sel)) { if (decls.some((d) => d.prop !== 'display')) structural.push(`${sel} — a pinned icon rule may declare ONLY display`); }
+          else structural.push(`${sel} — R3 a non-theme rule inside @media(prefers-color-scheme:dark) applies on OS-dark devices in light mode`);
+        } else if (sel === THEME_LIGHT) theme.light.push(decls);
+        else if (sel === THEME_DARK) theme.dark.push(decls);
+        else if (PINNED_ICON_RULES.top.includes(sel)) { if (decls.some((d) => d.prop !== 'display')) structural.push(`${sel} — a pinned icon rule may declare ONLY display`); }
+        else if (splitSelectors(prelude).some((x) => /^:root\b/.test(x.trim()))) structural.push(`${sel} — R4 a :root selector that is not an exact theme block`);
+        else for (const one of splitSelectors(prelude)) { const os = normSel(one); recs.push({ sel: os, decls, tg: tgOf(decls), hasTG: decls.some((d) => TEXT_GROUND.has(d.prop)), complex: isComplexSel(os), multi: compounds(os.replace(/\s*[>+~]\s*/g, ' ')).length > 1, last: lastClassesOf(os), anc: ancOf(os) }); }
+      }
       i = k;
     }
   };
   walk(text, 'light');
+  return { recs, theme, structural };
+}
+// C2 partners of a record: other color/background-setting records whose LAST compound shares a class, under a different
+// ancestor chain that is not a refinement of this one
+function crossingPartners(r, recs) {
+  return [...new Set(recs.filter((t) => t !== r && t.hasTG && [...t.last].some((c) => r.last.has(c))
+    && t.anc.join(' ') !== r.anc.join(' ') && !refinesAnc(t.anc, r.anc)).map((t) => t.sel))].sort();
+}
+
+function grammarViolations(cssText) {
+  const { recs, theme, structural } = lightRecords(cssText);
+  const out = [...structural];
+  const pinSeen = new Set();
+  // (c) theme blocks
+  for (const [name, blocks] of [['light :root', theme.light], [':root[data-theme="dark"]', theme.dark], ['guarded dark-media :root', theme.darkMedia]]) {
+    if (blocks.length !== 1) out.push(`(c) exactly ONE ${name} theme block is allowed (found ${blocks.length})`);
+    for (const decls of blocks) { const seen = new Set(); for (const d of decls) { if (!d.prop.startsWith('--')) continue; if (seen.has(d.prop)) out.push(`(c) ${name}: token ${d.prop} declared twice`); seen.add(d.prop); } }
+  }
+  for (const r of recs) {
+    // (e) + R1/R2/(a) per declaration
+    for (const d of r.decls) {
+      if (d.escaped) { out.push(`${r.sel} — (e) a CSS escape in the property name ${d.raw}`); continue; }
+      if (d.prop.startsWith('--')) { out.push(`${r.sel} — R2 custom property ${d.prop} outside the theme-token blocks`); continue; }
+      if (!TEXT_GROUND.has(d.prop)) continue;
+      const v = d.value;
+      const m = v.match(/^var\((--[a-z0-9-]+)\)$/);
+      if (m && LIGHT_TOKENS.has(m[1].slice(2))) continue;
+      const lv = v.toLowerCase();
+      if (d.prop === 'color') {
+        if ((lv === 'inherit') && A1_INHERIT_PINS.includes(r.sel)) { pinSeen.add(`a1|${r.sel}`); continue; }
+        if (['transparent', 'inherit', 'currentcolor'].includes(lv)) { out.push(`${r.sel} — (a) color:${v} is refused (transparent never; inherit/currentColor only at the 4 pinned sites)`); continue; }
+      } else {
+        if (['transparent', 'inherit'].includes(lv) || (d.prop === 'background' && lv === 'none')) continue;
+        if (lv === 'currentcolor') { out.push(`${r.sel} — (a) ${d.prop}:currentColor is refused (unmodelled)`); continue; }
+      }
+      const pin = PINNED_LITERALS.find(([ps, pp, pv]) => ps === r.sel && pp === d.prop && pv === v);
+      if (pin) { pinSeen.add(pin.join('|')); continue; }
+      out.push(`${r.sel} — R1 ${d.prop}:${v} is not the modelled form nor a pinned literal`);
+    }
+    if (!r.hasTG) continue;
+    // (d) structure of a color/background-setting selector
+    if (r.complex) {
+      const allowed = PINNED_COMPLEX[r.sel];
+      if (allowed && allowed.includes(r.tg)) { pinSeen.add(`complex|${r.sel}|${r.tg}`); continue; }
+      out.push(`${r.sel} — (d) a pseudo-element / attribute / child-or-sibling selector that sets color/background (${r.tg}) is not a pinned site`);
+      continue;
+    }
+    if (!r.multi) continue;
+    const partners = crossingPartners(r, recs);
+    if (!partners.length) continue;
+    const pin = PINNED_CROSSINGS[r.sel];
+    if (pin && pin.tg === r.tg && JSON.stringify(pin.partners) === JSON.stringify(partners)) { pinSeen.add(`cross|${r.sel}`); continue; }
+    out.push(`${r.sel} — (d) a CROSSING (shares a last-compound class with ${partners.join(', ')} under a different ancestor chain) that is not the pinned one${pin ? ` (pinned: ${pin.tg} × ${pin.partners.join(', ')})` : ''}`);
+  }
   return { violations: [...new Set(out)], pinSeen };
 }
 
@@ -289,6 +404,9 @@ test('ALLOWLIST GRAMMAR: every light-applicable color/background declaration tak
   const g = grammarViolations(css);
   assert.deepEqual(g.violations, [], `🔴 not in the modelled grammar:\n  ${g.violations.join('\n  ')}`);
   for (const pin of PINNED_LITERALS) assert.ok(g.pinSeen.has(pin.join('|')), `pinned literal still present EXACTLY (a change or removal fails): ${pin.join(' ')}`);
+  for (const sel of A1_INHERIT_PINS) assert.ok(g.pinSeen.has(`a1|${sel}`), `pinned color:inherit still present: ${sel}`);
+  for (const [sel, tgs] of Object.entries(PINNED_COMPLEX)) for (const tg of tgs) assert.ok(g.pinSeen.has(`complex|${sel}|${tg}`), `pinned complex selector still present EXACTLY: ${sel} {${tg}}`);
+  for (const sel of Object.keys(PINNED_CROSSINGS)) assert.ok(g.pinSeen.has(`cross|${sel}`), `pinned crossing still present EXACTLY (declarations + partners): ${sel}`);
 });
 
 test('PINNED literals never sit on a soft ground (out of AA-on-soft scope by construction)', () => {
@@ -331,12 +449,71 @@ test('ALLOWLIST GRAMMAR refuses codex r4\'s 5 evasions and a raw literal; allows
   const ALLOWED = {
     'var(--light-token)': '.okx{color:var(--ink);background:var(--board)}',
     'spaced var()': '.okx{color:var(  --ink  )}',
-    'transparent / inherit / currentColor': '.okx{background:transparent;color:inherit}.oky{color:currentColor}',
+    'background transparent / inherit': '.okx{background:transparent}.oky{background:inherit}',   // (r5 a: color:inherit/currentColor are now REFUSED outside the 4 pins)
     'background:none': '.okx{background:none}',
     'a non-text property literal': '.okx{border-color:#ccc;box-shadow:0 0 0 1px #000}',
     'a light @media rule': '@media(max-width:920px){.okx{color:var(--ink)}}',
   };
   for (const [label, frag] of Object.entries(ALLOWED)) assert.deepEqual(g(frag), [], `the grammar must ALLOW: ${label}`);
+});
+
+test('r5 PINS: every other color-declaring pin sits on NO soft ground (sentinel); the 2 soft-container crossings are PRESENT as the sweep\'s pair, tokens frozen, ≥ 4.5', () => {
+  const allPins = [...A1_INHERIT_PINS, ...Object.keys(PINNED_COMPLEX), ...Object.keys(PINNED_CROSSINGS)];
+  assert.equal(new Set(allPins).size, 4 + 10 + 10, 'non-vacuity: 4 a1 + 10 complex + 10 crossing pins');
+  // the sentinel goes ONLY on pins that DECLARE a color (a background-only pin like `.fiscal .ack` has no text color to test)
+  const colorPins = [...A1_INHERIT_PINS, ...Object.entries(PINNED_COMPLEX).filter(([, tgs]) => tgs.some((t) => /(^|;)color:/.test(t))).map(([k]) => k), ...Object.entries(PINNED_CROSSINGS).filter(([, v]) => /(^|;)color:/.test(v.tg)).map(([k]) => k)];
+  // sentinel: every pinned selector's color becomes var(--zz-pinned) (a later same-selector rule wins the cascade merge)
+  const probe = css + '\n' + colorPins.map((p) => `${p}{color:var(--zz-pinned)}`).join('\n');
+  const hits = discoverSoftPairs(probe).filter((x) => x.fg === 'zz-pinned').map((x) => `${x.where}|${x.bg}`).sort();
+  const expected = SOFT_PRESENT_PINS.map((x) => `${x.where}|${x.bg}`).sort();
+  assert.deepEqual(hits, expected, '🔴 ONLY the two ruled soft-container crossings may carry text on a soft ground; every other pin sits on none');
+  const pairs = discoverSoftPairs(css);
+  for (const sp of SOFT_PRESENT_PINS) {
+    const real = pairs.find((x) => x.where === sp.where);
+    assert.ok(real, `🔴 PRESENT: the sweep computes ${sp.where}`);
+    assert.deepEqual([real.fg, real.bg], [sp.fg, sp.bg], `🔴 ${sp.where}: both tokens frozen (--${sp.fg} on --${sp.bg})`);
+    const r = contrast(allTokens[real.fg], allTokens[real.bg]);
+    assert.ok(r >= 4.5, `${sp.where}: ${r.toFixed(4)}:1 ≥ 4.5 unrounded`);
+  }
+});
+
+test('r5 GRAMMAR refuses every new construct and codex\'s examples; allows the plain forms', () => {
+  const g = (frag) => grammarViolations(css + '\n' + frag).violations;
+  const pairsFail = (frag) => discoverSoftPairs(css + '\n' + frag).filter((p) => !(contrast(allTokens[p.fg], allTokens[p.bg]) >= 4.5));
+  const REFUSED = {
+    '(a) color:transparent': '.zza{color:transparent}',
+    '(a) a NEW color:inherit': '.zza{color:inherit}',
+    '(a) color:currentColor': '.zza{color:currentColor}',
+    '(a) background:currentColor': '.zza{background:currentColor}',
+    '(b) nested & rule': '.zzb{&:hover{color:var(--ink)}}',
+    '(b) a rule inside a rule body': '.zzb{color:var(--ink); .zzc{color:var(--ink)}}',
+    '(c) a second light :root block': ':root,:root[data-theme="light"]{--ink:#000000}',
+    '(c) a token declared twice in the light block': null,   // built below
+    '(d) codex: .panel .tag{color}': '.panel .tag{color:var(--ink)}',
+    '(d) codex: .panel .oav{background}': '.panel .oav{background:var(--board)}',
+    '(d) a NEW .on-state crossing': '.zzd .zzq.on{color:var(--ink)}',
+    '(d) a NEW class crossing (.x .ack)': '.x .ack{color:var(--ink)}',
+    '(d) a NEW partner for a pinned crossing': '.was{color:var(--ink)}',
+    '(d) a NEW pseudo-element': '.zze::before{color:var(--ink)}',
+    '(d) a NEW attribute selector': '.zze[data-x]{color:var(--ink)}',
+    '(d) a NEW child combinator': '.zze>.zzf{color:var(--ink)}',
+    '(d) a pinned complex selector with CHANGED declarations': '.fld>label{color:var(--mute)}',
+    '(e) an escaped property name': '.zzg{c\\olor:var(--ink)}',
+  };
+  REFUSED['(c) a token declared twice in the light block'] = css.replace(/(:root,\s*:root\[data-theme="light"\]\s*\{)/, '$1--ink:#0A0A0B;') === css ? null : '__REPLACE__';
+  for (const [label, frag] of Object.entries(REFUSED)) {
+    if (frag === '__REPLACE__') { assert.ok(grammarViolations(css.replace(/(:root,\s*:root\[data-theme="light"\]\s*\{)/, '$1--ink:#0A0A0B;')).violations.some((v) => /declared twice/.test(v)), `🔴 the grammar must refuse: ${label}`); continue; }
+    assert.ok(g(frag).length > 0, `🔴 the grammar must refuse: ${label}`);
+  }
+  // (e) the ONE normaliser: an UPPERCASE property is the same declaration for the grammar AND the sweep
+  assert.ok(g('.zzh{COLOR:#fff}').length > 0, '(e) COLOR: is normalised and refused as a hex literal');
+  assert.ok(pairsFail('.pdelta.up{COLOR:var(--amber-soft)}').length > 0, '(e) COLOR: is normalised for the SWEEP too (amber-soft on amber-soft fails)');
+  // type-only exemption PROVEN: a type-only descendant on a soft ancestor fails via the sweep's ancestor-ground resolution
+  assert.deepEqual(g('.zzt{background:var(--amber-soft)} .zzt b{color:var(--amber-soft)}'), [], 'type-only overlap is not a crossing (grammar allows it)');
+  assert.ok(pairsFail('.zzt{background:var(--amber-soft)} .zzt b{color:var(--amber-soft)}').length > 0, '🔴 type-only descendant on a soft ancestor fails via the sweep (the claim that exempts type-only overlap from crossings)');
+  // ALLOWED: a harmless new plain chain on a unique class; background transparent/inherit/none
+  assert.deepEqual(g('.zzq1 .zzr1{color:var(--ink)}'), [], 'a harmless plain chain on a unique class is allowed (no crossing)');
+  assert.deepEqual(g('.zzs{background:inherit}.zzu{background:none}.zzv{background-color:transparent}'), [], 'background transparent / inherit / none stay modelled');
 });
 
 test('FAIL-CLOSED GUARD: today\'s styles.css uses NO construct the sweep does not model (scoped to text-on-soft)', () => {
