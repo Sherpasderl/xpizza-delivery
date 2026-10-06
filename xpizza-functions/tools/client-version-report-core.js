@@ -92,6 +92,12 @@ function countHeaderless(entries, { startMs = -Infinity, endMs = Infinity, limit
 // STRICT CLI parsing (codex CP1 r2 B2) — before ANY database access. --hours: a whole number of UTC hours in [1, 720];
 // --require app=N,…: N a non-negative integer generation. → { ok, hours, required } | { ok:false, error }
 function parseReportArgs(argv) {
+  // codex CP1 r4 S1: each option at most ONCE (a repeat would leave all but the first unvalidated), and only the
+  // `--opt value` spelling (`--opt=value` would otherwise be silently ignored)
+  for (const name of ['--hours', '--require']) {
+    if (argv.filter((x) => x === name).length > 1) return { ok: false, error: `${name} given more than once — pass it exactly once` };
+    if (argv.some((x) => typeof x === 'string' && x.startsWith(`${name}=`))) return { ok: false, error: `use \`${name} <value>\`, not \`${name}=<value>\`` };
+  }
   const opt = (name) => { const i = argv.indexOf(name); return i >= 0 ? (argv[i + 1] === undefined ? '' : argv[i + 1]) : undefined; };
   const h = opt('--hours');
   let hours = 24;

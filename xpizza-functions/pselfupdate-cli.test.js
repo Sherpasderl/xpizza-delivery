@@ -144,6 +144,11 @@ const kp = F.kitchenPath;
   const huge = R.parseReportArgs(['--require', 'orders=99999999999999999999']);
   assert.ok(!huge.ok && /safe integer/.test(huge.error), '🔴 a huge generation (→ Infinity) is refused');
   assert.deepStrictEqual(R.parseReportArgs(['--require', `orders=${Number.MAX_SAFE_INTEGER}`]).required, { orders: Number.MAX_SAFE_INTEGER }, 'the largest safe integer is accepted');
+  // codex CP1 r4 S1: a REPEATED option is refused (only the first used to be validated), as is the --opt=value spelling
+  assert.ok(!R.parseReportArgs(['--require', 'orders=2', '--require']).ok, '🔴 --require orders=2 --require is refused');
+  assert.ok(!R.parseReportArgs(['--require', 'orders=2', '--require', 'orders=wat']).ok, '🔴 --require orders=2 --require orders=wat is refused');
+  assert.ok(!R.parseReportArgs(['--hours', '2', '--hours', '1.5']).ok, '🔴 a repeated --hours is refused');
+  assert.ok(!R.parseReportArgs(['--require=orders=2']).ok && !R.parseReportArgs(['--hours=1.5']).ok, '🔴 the --opt=value spelling is refused, not silently ignored');
   assert.throws(() => R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 1.5), /INTEGER/, '🔴 reportWindow itself refuses a fractional window (defence in depth)');
   const W1 = R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 2);
   assert.deepStrictEqual([W1.startIso, W1.endIso, W1.hours.length], ['2026-10-05T16:00:00.000Z', '2026-10-05T18:00:00.000Z', 2], 'an integer window: counters and logs cover the SAME whole hours');

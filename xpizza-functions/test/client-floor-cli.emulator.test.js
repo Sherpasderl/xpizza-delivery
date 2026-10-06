@@ -141,7 +141,7 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
     assert.ok(/REFUSED — --hours must be a whole number/.test(r.out), r.out);
     assert.ok(Date.now() - t0 < 15000, 'refused promptly — with every database endpoint DEAD it never waited on one');
     assert.strictEqual(await tree(), before, 'nothing written');
-    for (const req of [[], [''], ['orders=2,,kitchen=3'], ['orders=99999999999999999999']]) {
+    for (const req of [[], [''], ['orders=2,,kitchen=3'], ['orders=99999999999999999999'], ['orders=2', '--require'], ['orders=2', '--require', 'orders=wat']]) {
       const t1 = Date.now();
       const rr = runCli(deadDb, 'client-version-report.js', '--require', ...req);
       assert.strictEqual(rr.code, 2, `--require ${JSON.stringify(req)}: exit 2 (got ${rr.code}): ${rr.out}`);
