@@ -21,8 +21,14 @@ if (process.env.PSU_MIRROR_PHASE === 'capture') {
   // rejection from a retry of a call the code had already stopped waiting for surfaces as an UNHANDLED rejection. It is
   // RECORDED and SURFACED (printed loudly by the orchestrator and reported), not allowed to crash the capture —
   // the call-sequence golden is about which calls are made, which this event does not change.
+  // codex CP1 r3 S2: record the FULL error; ONLY the documented signature is tolerated (see
+  // ~/Downloads/xpizza-pselfupdate-evidence/UNHANDLED-REJECTION.md) — a gRPC 14 UNAVAILABLE / ECONNREFUSED to the dead
+  // loopback 127.0.0.1:1. ANY other unhandled rejection is a FAILURE of this test.
   globalThis.__UNHANDLED = [];
-  process.on('unhandledRejection', (e) => { globalThis.__UNHANDLED.push(String((e && e.message) || e).slice(0, 160)); });
+  const DOCUMENTED = (e) => !!e && (e.code === 14 || /^14 UNAVAILABLE/.test(String(e.message))) && /ECONNREFUSED 127\.0\.0\.1:1\b/.test(String(e.message));
+  process.on('unhandledRejection', (e) => {
+    globalThis.__UNHANDLED.push({ documented: DOCUMENTED(e), code: e && e.code !== undefined ? e.code : null, message: String((e && e.message) || e), stack: String((e && e.stack) || '') });
+  });
 } else {
   require('./_emulator-required')('database', 'firestore');
 }
@@ -207,7 +213,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   // other order flips the flag; an added, dropped or repeated document changes the multiset.
   const batch = (raw) => ({ paths: raw.map(norm).sort(), raw_order: raw.every((x, i) => i === 0 || raw[i - 1] <= x) ? 'ascending' : 'other', count: raw.length });
   const trace = calls.map((c) => ({ ...c, ...(c.path !== undefined ? { path: norm(c.path) } : {}), ...(c.paths ? batch(c.paths) : {}), ...(c.keys ? { keys: c.keys.map(norm) } : {}) }));
-  return { status: r.status, trace };
+  return { status: r.status, trace, json: r.json };
 }
 
 async function seedAndExport(idMapFile) {
@@ -227,6 +233,7 @@ async function seedAndExport(idMapFile) {
 
 async function capturePhase() {
   const out = {};
+  const money = {};
   for (const rid of ['x_pizza', 'la_musa']) {
     const uid = `u_trace_${rid}`;
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
@@ -252,6 +259,25 @@ async function capturePhase() {
       assert.ok(v.trace.some((e) => e.db === 'rtdb' && /^catalog_snapshot/.test(e.path || '')) || k.startsWith('a_') || k.startsWith('b_'), `${rid} ${k}: premise — the refresh re-read the mirror/persisted context`);
     }
     out[rid] = { a_quote_mirror: a.trace, b_cash_mirror: b.trace, c_quote_mirror_refresh: c.trace, d_cash_mirror_refresh: d.trace };
+    // MONEY on the mirror route (owner rule): the quote's numeric fields and the WRITTEN order's money fields (every leaf
+    // whose key names money: totals, subtotals, tax, line prices, discounts), warmed AND refresh
+    const quoteMoney = (j) => Object.fromEntries(Object.entries(j || {}).filter(([k, v]) => typeof v === 'number').sort());
+    const MONEY_KEY = /(^|_)(total|subtotal|tax|price|cents|amount|discount|rebaja|isv|net)(_|$)/i;
+    const orderMoney = async (oid) => {
+      const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
+      const flat = {};
+      const walk = (v, pfx) => {
+        if (v && typeof v === 'object') { for (const [k, x] of Object.entries(v)) walk(x, pfx ? `${pfx}.${k}` : k); return; }
+        const leaf = pfx.split('.').pop();
+        if (typeof v === 'number' && MONEY_KEY.test(leaf)) flat[pfx] = v;
+      };
+      walk(o, '');
+      return Object.fromEntries(Object.entries(flat).sort());
+    };
+    money[rid] = {
+      a_quote_mirror: quoteMoney(a.json), b_cash_mirror: await orderMoney(`mcash_${rid}_a`),
+      c_quote_mirror_refresh: quoteMoney(c.json), d_cash_mirror_refresh: await orderMoney(`mcash_${rid}_b`),
+    };
   }
   let floorOn = null;
   if (process.env.PSU_MIRROR_FLOOR === '1') {
@@ -273,7 +299,7 @@ async function capturePhase() {
     }
     await rtdb.ref('platform_config/client_floor/orders').remove();
   }
-  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, unhandled: globalThis.__UNHANDLED || [] }));
+  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, money, unhandled: globalThis.__UNHANDLED || [] }));
 }
 
 (async () => {
@@ -286,10 +312,13 @@ async function capturePhase() {
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', PSU_MIRROR_FLOOR: CAPTURE ? '0' : '1' };
   try { execFileSync('node', [__filename], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 900000, killSignal: 'SIGKILL' }); }
   catch (e) { console.error(String(e.stdout || '').slice(-1500) + String(e.stderr || '').slice(-3000)); throw new Error(`capture phase failed (${e.status === null ? 'TIMEOUT' : e.status})`); }
-  const { out, floorOn, unhandled } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
-  if (unhandled && unhandled.length) console.log(`⚠ pselfupdate-mirror-trace: ${unhandled.length} UNHANDLED rejection(s) on the Firestore-outage route (pre-existing; reported): ${unhandled.join(' | ')}`);
+  const { out, floorOn, unhandled, money } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
+  const undocumented = (unhandled || []).filter((u) => !u.documented);
+  if (undocumented.length) throw new Error(`🔴 ${undocumented.length} UNDOCUMENTED unhandled rejection(s) on the mirror route — only the documented 14 UNAVAILABLE / ECONNREFUSED 127.0.0.1:1 signature is tolerated:\n${undocumented.map((u) => `${u.message}\n${u.stack}`).join('\n---\n')}`);
+  if (unhandled && unhandled.length) console.log(`⚠ pselfupdate-mirror-trace: ${unhandled.length} documented UNHANDLED rejection(s) on the Firestore-outage route (pre-existing; reported): ${unhandled.map((u) => u.message.slice(0, 120)).join(' | ')}`);
   if (CAPTURE) {
     fsys.writeFileSync(CAPTURE, `${JSON.stringify(out, null, 1)}\n`);
+    if (process.env.PSU_MONEY_CAPTURE) fsys.writeFileSync(process.env.PSU_MONEY_CAPTURE, `${JSON.stringify(money, null, 1)}\n`);
     console.log(`pselfupdate-mirror-trace(emulator): CAPTURED → ${CAPTURE}`);
   } else {
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
@@ -302,6 +331,13 @@ async function capturePhase() {
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
+    // MONEY (owner rule): the mirror route's prices equal the FROZEN literals captured at a pristine ba29282
+    const MONEY_GOLDEN = JSON.parse(fsys.readFileSync(path.join(__dirname, '..', 'catalog', 'pselfupdate-mirror-money.golden.json'), 'utf8'));
+    for (const rid of Object.keys(MONEY_GOLDEN)) for (const k of Object.keys(MONEY_GOLDEN[rid])) {
+      assert.ok(Object.keys(MONEY_GOLDEN[rid][k]).length > 0, `non-vacuity: ${rid} ${k} froze money fields`);
+      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals`);
+      console.log(`  ✓ ${rid} ${k}: money identical to ba29282 (${Object.entries(MONEY_GOLDEN[rid][k]).map(([f, v]) => `${f}=${v}`).join(', ').slice(0, 110)})`);
+    }
     const LIVE_426 = { error: 'client_update_required', app: 'orders', required_compat: 2 };   // the live route's body (client-floor-http Z)
     for (const rid of ['x_pizza', 'la_musa']) for (const kind of ['quote', 'cash']) {
       const f = floorOn[rid][kind];
