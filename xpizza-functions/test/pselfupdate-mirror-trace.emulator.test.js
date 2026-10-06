@@ -234,16 +234,19 @@ async function seedAndExport(idMapFile) {
 async function capturePhase() {
   const out = {};
   const money = {};
+  // premises are RECORDED here and asserted by the orchestrator AFTER the money comparison, so a money mutant is killed
+  // by the money assertion itself, not by a premise
+  const premises = [];
   for (const rid of ['x_pizza', 'la_musa']) {
     const uid = `u_trace_${rid}`;
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
     // warm-up (NOT recorded) on the cold, Firestore-less instance: one quote + one cash order
     await rtdb.ref('rate_limits').remove();
     const w1 = await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {});
-    assert.strictEqual(w1.status, 200, `${rid}: warm-up quote served from the MIRROR (${w1.status} ${w1.text.slice(0, 120)})`);
+    premises.push([w1.status === 200, `${rid}: warm-up quote served from the MIRROR (${w1.status} ${w1.text.slice(0, 120)})`]);
     await rtdb.ref('rate_limits').remove();
     const w2 = await post(app.createOrder, bodyFor(rid, `mwarm_${rid}`, '99550000'), { 'x-firebase-id-token': uid });
-    assert.strictEqual(w2.status, 200, `${rid}: warm-up cash order priced from the MIRROR (${w2.status} ${w2.text.slice(0, 120)})`);
+    premises.push([w2.status === 200, `${rid}: warm-up cash order priced from the MIRROR (${w2.status} ${w2.text.slice(0, 120)})`]);
     await wait(2500);
     await rtdb.ref('rate_limits').remove();
     const a = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'quote' });
@@ -255,8 +258,8 @@ async function capturePhase() {
     await rtdb.ref('rate_limits').remove();
     const d = await traced(rid, `mcash_${rid}_b`, uid, '99552001', { kind: 'cash' });
     for (const [k, v] of [['a_quote_mirror', a], ['b_cash_mirror', b], ['c_quote_mirror_refresh', c], ['d_cash_mirror_refresh', d]]) {
-      assert.strictEqual(v.status, 200, `${rid} ${k}: premise — status 200 on the mirror route (${v.status})`);
-      assert.ok(v.trace.some((e) => e.db === 'rtdb' && /^catalog_snapshot/.test(e.path || '')) || k.startsWith('a_') || k.startsWith('b_'), `${rid} ${k}: premise — the refresh re-read the mirror/persisted context`);
+      premises.push([v.status === 200, `${rid} ${k}: premise — status 200 on the mirror route (${v.status})`]);
+      premises.push([v.trace.some((e) => e.db === 'rtdb' && /^catalog_snapshot/.test(e.path || '')) || k.startsWith('a_') || k.startsWith('b_'), `${rid} ${k}: premise — the refresh re-read the mirror/persisted context`]);
     }
     out[rid] = { a_quote_mirror: a.trace, b_cash_mirror: b.trace, c_quote_mirror_refresh: c.trace, d_cash_mirror_refresh: d.trace };
     // MONEY on the mirror route (owner rule): the quote's numeric fields and the WRITTEN order's money fields (every leaf
@@ -299,7 +302,7 @@ async function capturePhase() {
     }
     await rtdb.ref('platform_config/client_floor/orders').remove();
   }
-  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, money, unhandled: globalThis.__UNHANDLED || [] }));
+  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, money, premises, unhandled: globalThis.__UNHANDLED || [] }));
 }
 
 (async () => {
@@ -312,15 +315,25 @@ async function capturePhase() {
     FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', PSU_MIRROR_FLOOR: CAPTURE ? '0' : '1' };
   try { execFileSync('node', [__filename], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 900000, killSignal: 'SIGKILL' }); }
   catch (e) { console.error(String(e.stdout || '').slice(-1500) + String(e.stderr || '').slice(-3000)); throw new Error(`capture phase failed (${e.status === null ? 'TIMEOUT' : e.status})`); }
-  const { out, floorOn, unhandled, money } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
+  const { out, floorOn, unhandled, money, premises } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
+  const assertPremises = () => { for (const [okay, msg] of premises) assert.ok(okay, msg); };
   const undocumented = (unhandled || []).filter((u) => !u.documented);
   if (undocumented.length) throw new Error(`🔴 ${undocumented.length} UNDOCUMENTED unhandled rejection(s) on the mirror route — only the documented 14 UNAVAILABLE / ECONNREFUSED 127.0.0.1:1 signature is tolerated:\n${undocumented.map((u) => `${u.message}\n${u.stack}`).join('\n---\n')}`);
   if (unhandled && unhandled.length) console.log(`⚠ pselfupdate-mirror-trace: ${unhandled.length} documented UNHANDLED rejection(s) on the Firestore-outage route (pre-existing; reported): ${unhandled.map((u) => u.message.slice(0, 120)).join(' | ')}`);
   if (CAPTURE) {
+    assertPremises();
     fsys.writeFileSync(CAPTURE, `${JSON.stringify(out, null, 1)}\n`);
     if (process.env.PSU_MONEY_CAPTURE) fsys.writeFileSync(process.env.PSU_MONEY_CAPTURE, `${JSON.stringify(money, null, 1)}\n`);
     console.log(`pselfupdate-mirror-trace(emulator): CAPTURED → ${CAPTURE}`);
   } else {
+    // MONEY (owner rule): the mirror route's prices equal the FROZEN literals captured at a pristine ba29282
+    const MONEY_GOLDEN = JSON.parse(fsys.readFileSync(path.join(__dirname, '..', 'catalog', 'pselfupdate-mirror-money.golden.json'), 'utf8'));
+    for (const rid of Object.keys(MONEY_GOLDEN)) for (const k of Object.keys(MONEY_GOLDEN[rid])) {
+      assert.ok(Object.keys(MONEY_GOLDEN[rid][k]).length > 0, `non-vacuity: ${rid} ${k} froze money fields`);
+      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals`);
+      console.log(`  ✓ ${rid} ${k}: money identical to ba29282 (${Object.entries(MONEY_GOLDEN[rid][k]).map(([f, v]) => `${f}=${v}`).join(', ').slice(0, 110)})`);
+    }
+    assertPremises();
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
@@ -331,13 +344,6 @@ async function capturePhase() {
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
-    // MONEY (owner rule): the mirror route's prices equal the FROZEN literals captured at a pristine ba29282
-    const MONEY_GOLDEN = JSON.parse(fsys.readFileSync(path.join(__dirname, '..', 'catalog', 'pselfupdate-mirror-money.golden.json'), 'utf8'));
-    for (const rid of Object.keys(MONEY_GOLDEN)) for (const k of Object.keys(MONEY_GOLDEN[rid])) {
-      assert.ok(Object.keys(MONEY_GOLDEN[rid][k]).length > 0, `non-vacuity: ${rid} ${k} froze money fields`);
-      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals`);
-      console.log(`  ✓ ${rid} ${k}: money identical to ba29282 (${Object.entries(MONEY_GOLDEN[rid][k]).map(([f, v]) => `${f}=${v}`).join(', ').slice(0, 110)})`);
-    }
     const LIVE_426 = { error: 'client_update_required', app: 'orders', required_compat: 2 };   // the live route's body (client-floor-http Z)
     for (const rid of ['x_pizza', 'la_musa']) for (const kind of ['quote', 'cash']) {
       const f = floorOn[rid][kind];
