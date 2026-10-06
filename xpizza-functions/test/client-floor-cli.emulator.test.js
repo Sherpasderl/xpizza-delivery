@@ -130,6 +130,23 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
     ok('codex B2: the real report CLI queries logs for EXACTLY its [start, end) (no --freshness, explicit limit); a header-less request in the first partial hour is counted, one before the window is not; a capped read is reported TRUNCATED with a lower bound');
   }
 
+  // ── codex CP1 r2 B2: a fractional --hours is refused BEFORE any database access ──
+  {
+    const deadDb = { ...process.env, FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1', FIRESTORE_EMULATOR_HOST: '127.0.0.1:1' };
+    before = await tree();
+    const t0 = Date.now();
+    r = runCli(deadDb, 'client-version-report.js', '--hours', '1.5', '--logs');
+    assert.strictEqual(r.code, 2, `exit 2 (got ${r.code}): ${r.out}`);
+    assert.ok(/REFUSED — --hours must be a whole number/.test(r.out), r.out);
+    assert.ok(Date.now() - t0 < 15000, 'refused promptly — with every database endpoint DEAD it never waited on one');
+    assert.strictEqual(await tree(), before, 'nothing written');
+    r = runCli(process.env, 'client-version-report.js', '--hours', '2');
+    assert.strictEqual(r.code, 0, r.out);
+    const rep3 = JSON.parse(r.out.slice(r.out.indexOf('{')));
+    assert.strictEqual(rep3.window.hours, 2, 'an integer window still runs');
+    ok('codex r2 B2: --hours 1.5 exits 2 with a refusal BEFORE any database access (all database hosts dead, prompt exit); an integer window still runs');
+  }
+
   console.log(`client-floor-cli(emulator): OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('client-floor-cli(emulator) FAILED:', e); process.exit(1); });

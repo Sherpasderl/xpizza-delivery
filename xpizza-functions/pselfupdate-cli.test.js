@@ -126,6 +126,21 @@ const kp = F.kitchenPath;
   assert.strictEqual(hc.truncated, true, '🔴 a read that hit the limit is TRUNCATED (a lower bound, never complete)');
   ok('report window (codex B2): one explicit [start, end) of complete UTC hours for the counters AND the log query; a header-less request in the first partial hour is counted; outside-window entries are not; a capped read is TRUNCATED');
 
+  // ── codex CP1 r2 B2: a fractional window is REFUSED (the counters are hourly) ──
+  for (const bad of ['1.5', '0.5', 'abc', '0', '-1', '721', '1e1', '', ' 2']) {
+    const r = R.parseReportArgs(['--hours', bad]);
+    assert.ok(!r.ok, `🔴 --hours ${JSON.stringify(bad)} must be refused`);
+  }
+  assert.ok(!R.parseReportArgs(['--hours']).ok, '--hours with no value is refused');
+  for (const good of ['1', '24', '720']) assert.deepStrictEqual(R.parseReportArgs(['--hours', good]), { ok: true, hours: Number(good), required: {} });
+  assert.deepStrictEqual(R.parseReportArgs([]), { ok: true, hours: 24, required: {} }, 'default 24 h unchanged');
+  assert.deepStrictEqual(R.parseReportArgs(['--require', 'orders=2,kitchen=3']).required, { orders: 2, kitchen: 3 });
+  for (const bad of ['orders=2.5', 'orders=', 'orders', 'Orders=2', 'orders=two']) assert.ok(!R.parseReportArgs(['--require', bad]).ok, `--require ${bad} refused`);
+  assert.throws(() => R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 1.5), /INTEGER/, '🔴 reportWindow itself refuses a fractional window (defence in depth)');
+  const W1 = R.reportWindow(Date.UTC(2026, 9, 5, 18, 30), 2);
+  assert.deepStrictEqual([W1.startIso, W1.endIso, W1.hours.length], ['2026-10-05T16:00:00.000Z', '2026-10-05T18:00:00.000Z', 2], 'an integer window: counters and logs cover the SAME whole hours');
+  ok('codex r2 B2: --hours must be a whole number in [1,720] (1.5 / 0.5 / abc / 0 / 721 / 1e1 refused); --require generations must be integers; reportWindow refuses a fractional window; integer windows unchanged');
+
   FINISHED = true;
   console.log(`pselfupdate-cli: OK (${n})`);
 })().catch((e) => { console.error('pselfupdate-cli FAILED:', e); process.exit(1); });

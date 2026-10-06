@@ -35,6 +35,7 @@ function windowHours(now, hours) {
 // hourly heartbeat counters AND the Cloud Logging header-less query. A rolling `--freshness` would start mid-hour and
 // silently miss the first partial hour of the window.
 function reportWindow(now, hours) {
+  if (!Number.isInteger(hours) || hours < 1) throw new Error('reportWindow: hours must be a positive INTEGER (whole UTC hours) — a fractional window would split an hourly counter bucket');
   const endMs = Math.floor(now / 3600000) * 3600000;           // the start of the current (incomplete) hour, exclusive
   const startMs = endMs - hours * 3600000;
   return { startMs, endMs, startIso: new Date(startMs).toISOString(), endIso: new Date(endMs).toISOString(), hours: windowHours(now, hours) };
@@ -88,4 +89,25 @@ function countHeaderless(entries, { startMs = -Infinity, endMs = Infinity, limit
   return { counts: out, entries: list.length, truncated: list.length >= limit };
 }
 
-module.exports = { aggregateLive, windowHours, reportWindow, aggregateHistory, headerlessLogFilter, countHeaderless };
+// STRICT CLI parsing (codex CP1 r2 B2) — before ANY database access. --hours: a whole number of UTC hours in [1, 720];
+// --require app=N,…: N a non-negative integer generation. → { ok, hours, required } | { ok:false, error }
+function parseReportArgs(argv) {
+  const opt = (name) => { const i = argv.indexOf(name); return i >= 0 ? (argv[i + 1] === undefined ? '' : argv[i + 1]) : undefined; };
+  const h = opt('--hours');
+  let hours = 24;
+  if (h !== undefined) {
+    if (!/^[0-9]+$/.test(h)) return { ok: false, error: `--hours must be a whole number of hours (got ${JSON.stringify(h)}); fractional windows are refused because the counters are hourly` };
+    hours = Number(h);
+    if (hours < 1 || hours > 720) return { ok: false, error: `--hours must be between 1 and 720 (got ${hours})` };
+  }
+  const required = {};
+  const r = opt('--require');
+  if (r !== undefined) for (const kv of String(r).split(',').filter(Boolean)) {
+    const m = kv.match(/^([a-z0-9-]+)=([0-9]+)$/);
+    if (!m) return { ok: false, error: `--require entries are app=<integer generation> (got ${JSON.stringify(kv)})` };
+    required[m[1]] = Number(m[2]);
+  }
+  return { ok: true, hours, required };
+}
+
+module.exports = { aggregateLive, windowHours, reportWindow, parseReportArgs, aggregateHistory, headerlessLogFilter, countHeaderless };

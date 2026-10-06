@@ -20,9 +20,11 @@ const { PLATFORM } = require('../platform-manifest');
 const R = require('./client-version-report-core');
 
 const argv = process.argv.slice(2);
-const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] ? argv[i + 1] : dflt; };
-const HOURS = Math.max(1, Math.min(24 * 30, Number(opt('--hours', '24')) || 24));
-const REQUIRED = Object.fromEntries(String(opt('--require', '')).split(',').filter(Boolean).map((kv) => { const [a, v] = kv.split('='); return [a, Number(v)]; }));
+// STRICT argument validation BEFORE any database access (codex CP1 r2 B2): a fractional --hours is REFUSED (exit 2)
+const parsed = R.parseReportArgs(argv);
+if (!parsed.ok) { console.error(`client-version-report: REFUSED — ${parsed.error}`); process.exit(2); }
+const HOURS = parsed.hours;
+const REQUIRED = parsed.required;
 
 admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 const rtdb = admin.database();
