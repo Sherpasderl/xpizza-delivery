@@ -4,9 +4,13 @@
 //      preference can apply (the prefers-color-scheme block is guarded by :not([data-theme="light"]));
 //   2. exactly ONE Google Fonts stylesheet, Archivo as the 600..800 weight range (covers the 750/800 in use), no Hanken;
 //   3. the CSP already admits fonts.googleapis.com (style-src) and fonts.gstatic.com (font-src).
+//
+// COLOUR GUARANTEE (advisor ruling, codex r6 — a change of model): no colour can change without failing this test (the
+// FREEZE below). The discovering sweep and the allowlist grammar are AIDS: the sweep does not see DOM placement made by JS
+// (e.g. review.js decides which container an element is rendered in), so it makes no completeness claim.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const read = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
 const html = read('./index.html');
@@ -73,6 +77,54 @@ for (const [sel, label] of AA_PAIRS) {
     assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
   });
 }
+// ═══ COLOUR FREEZE (advisor ruling after codex r6) — complete by construction ═══════════════════════════════════════
+// Every LIGHT-applicable declaration of color / background / background-color / border-color, as (at-rule context, the
+// EXACT selector text, property, value with whitespace normalised), plus every token of the light :root block, is frozen
+// in portal-colour-freeze.golden.json. ANY difference fails: a new, changed or removed declaration, a changed selector, a
+// changed token. Order-insensitive (a multiset with counts), so reordering rules is not a change; value whitespace is
+// normalised, so a reformat is not a change. Not light-applicable (excluded): the dark-scheme @media and the
+// `:root[data-theme="dark"]` theme selectors. Regenerate ONLY with the AA review: PORTAL_FREEZE_WRITE=1 node --test …
+const FREEZE_PROPS = new Set(['color', 'background', 'background-color', 'border-color']);
+const FREEZE_FILE = new URL('./portal-colour-freeze.golden.json', import.meta.url);
+function colourFreezeOf(cssText) {
+  const text = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
+  const decls = [];
+  let tokens = null;
+  const walk = (str, ctx) => {
+    let i = 0;
+    while (i < str.length) {
+      const open = str.indexOf('{', i);
+      if (open < 0) break;
+      const prelude = str.slice(i, open).trim();
+      let depth = 1, k = open + 1;
+      while (k < str.length && depth) { if (str[k] === '{') depth += 1; else if (str[k] === '}') depth -= 1; k += 1; }
+      const body = str.slice(open + 1, k - 1);
+      if (prelude.startsWith('@')) {
+        if (!(/^@media/.test(prelude) && /prefers-color-scheme\s*:\s*dark/.test(prelude))) walk(body, [...ctx, prelude.replace(/\s+/g, ' ')]);
+      } else if (!ctx.length && normSel(prelude) === ':root,:root[data-theme="light"]') {
+        tokens = Object.fromEntries(parseDecls(body).filter((d) => d.prop.startsWith('--')).map((d) => [d.prop, d.value]));
+      } else if (!splitSelectors(prelude).every((x) => /^:root\[data-theme="dark"\]/.test(x.trim()))) {
+        for (const d of parseDecls(body)) if (FREEZE_PROPS.has(d.prop)) decls.push([ctx.join(' '), prelude, d.prop, d.value]);
+      }
+      i = k;
+    }
+  };
+  walk(text, []);
+  return { tokens: tokens || {}, declarations: decls.map((x) => JSON.stringify(x)).sort().map((x) => JSON.parse(x)) };
+}
+function freezeDiff(cssText, golden) {
+  const cur = colourFreezeOf(cssText);
+  const count = (list) => { const m = new Map(); for (const x of list) { const k = JSON.stringify(x); m.set(k, (m.get(k) || 0) + 1); } return m; };
+  const a = count(cur.declarations), b = count(golden.declarations);
+  const added = [], removed = [];
+  for (const [k, n] of a) for (let i = 0; i < n - (b.get(k) || 0); i += 1) added.push(k);
+  for (const [k, n] of b) for (let i = 0; i < n - (a.get(k) || 0); i += 1) removed.push(k);
+  const tokenChanges = [];
+  for (const t of new Set([...Object.keys(cur.tokens), ...Object.keys(golden.tokens)])) if (cur.tokens[t] !== golden.tokens[t]) tokenChanges.push(`${t}: ${golden.tokens[t]} → ${cur.tokens[t]}`);
+  return { added, removed, tokenChanges };
+}
+const FREEZE_MSG = 'colour change: re-run the AA review (advisor + codex) and update the golden in the same commit';
+
 // DISCOVERING SWEEP (codex r2 S1) — every LIGHT-mode text-on-soft pairing in styles.css, found by parsing, not listed:
 //   (a) a rule that sets BOTH a text color and a -soft background;
 //   (b) a DESCENDANT rule (`A … B`) whose text sits on a -soft background INHERITED from an ancestor rule R whose last
@@ -400,6 +452,33 @@ function grammarViolations(cssText) {
   return { violations: [...new Set(out)], pinSeen };
 }
 
+test('COLOUR FREEZE: every light-applicable colour declaration and light token equals the frozen golden', () => {
+  if (process.env.PORTAL_FREEZE_WRITE === '1') { writeFileSync(FREEZE_FILE, `${JSON.stringify(colourFreezeOf(css), null, 1)}\n`); return; }
+  const golden = JSON.parse(readFileSync(FREEZE_FILE, 'utf8'));
+  assert.ok(golden.declarations.length > 100 && Object.keys(golden.tokens).length > 20, 'non-vacuity: the golden freezes the real sheet');
+  const d = freezeDiff(css, golden);
+  assert.deepEqual(d, { added: [], removed: [], tokenChanges: [] }, `🔴 ${FREEZE_MSG}\n  added: ${d.added.join('\n         ')}\n  removed: ${d.removed.join('\n           ')}\n  tokens: ${d.tokenChanges.join(', ')}`);
+});
+
+test('COLOUR FREEZE catches every codex r6 example; reformatting or reordering is not a change', () => {
+  const golden = JSON.parse(readFileSync(FREEZE_FILE, 'utf8'));
+  const changed = (cssText) => { const d = freezeDiff(cssText, golden); return d.added.length + d.removed.length + d.tokenChanges.length > 0; };
+  const swap = (a, b) => { assert.equal(css.split(a).length - 1, 1, `fixture anchor is unique: ${a}`); return css.replace(a, b); };
+  // codex r6's evasions — each is a COLOUR change, so the freeze fails
+  assert.ok(changed(swap('}.ackt b{color:var(--amber)}', '}.ackt b{color:var(--mute2)}')), '🔴 a .ackt b colour change (a multi-level ancestor ground) fails');
+  assert.ok(changed(css + '\n.fiscal p:hover{color:var(--mute2)}'), '🔴 a new .fiscal p:hover pair (a hover variant) fails');
+  assert.ok(changed(css + '\n#loginerr{color:var(--red)}'), '🔴 an ID selector colour fails');
+  assert.ok(changed(css.replace(/(\.seal\{[^}]*?background:)var\(--[a-z0-9-]+\)/, '$1var(--amber-soft)')), '🔴 a .seal background change (DOM placement made by review.js) fails');
+  assert.ok(changed(css.replace(/(--mute:)\s*#[0-9A-Fa-f]{6}/, '$1#777777')), '🔴 a light token value change fails');
+  assert.ok(changed(swap('.pdelta.up{color:var(--amber);', '.pdelta.up{')), '🔴 a REMOVED colour declaration fails');
+  assert.ok(changed(swap('.pdelta.up{color:var(--amber);', '.pdelta.up.x{color:var(--amber);')), '🔴 a changed selector fails');
+  assert.ok(changed(css + '\n@media(max-width:1px){.zzm{border-color:var(--line)}}'), '🔴 a new border-color inside a light @media fails');
+  // NOT changes: value whitespace and rule order
+  assert.ok(!changed(swap('.pdelta.up{color:var(--amber);', '.pdelta.up{color:  var( --amber ) ;')), 'a whitespace-only reformat of a VALUE still matches');
+  const rule = css.match(/\n\s*\.pdelta\.up\{[^}]*\}/)[0];
+  assert.ok(!changed(css.replace(rule, '') + rule), 'a REORDERED rule still matches (order-insensitive)');
+});
+
 test('ALLOWLIST GRAMMAR: every light-applicable color/background declaration takes the modelled form; today\'s sheet passes', () => {
   const g = grammarViolations(css);
   assert.deepEqual(g.violations, [], `🔴 not in the modelled grammar:\n  ${g.violations.join('\n  ')}`);
@@ -409,19 +488,6 @@ test('ALLOWLIST GRAMMAR: every light-applicable color/background declaration tak
   for (const sel of Object.keys(PINNED_CROSSINGS)) assert.ok(g.pinSeen.has(`cross|${sel}`), `pinned crossing still present EXACTLY (declarations + partners): ${sel}`);
 });
 
-test('PINNED literals never sit on a soft ground (out of AA-on-soft scope by construction)', () => {
-  // each pinned literal COLOR becomes a sentinel token the real sweep can see; no discovered pair may carry it
-  let probe = css;
-  for (const [sel, prop, val] of PINNED_LITERALS.filter(([, p]) => p === 'color')) {
-    const re = new RegExp(`(${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{[^}]*?)color:${val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
-    assert.ok(re.test(probe), `the pinned color is where it is pinned: ${sel}`);
-    probe = probe.replace(re, '$1color:var(--zz-pinned)');
-  }
-  const onSoft = discoverSoftPairs(probe).filter((p) => p.fg === 'zz-pinned');
-  assert.deepEqual(onSoft, [], `🔴 a pinned literal color sits on a soft ground: ${onSoft.map((p) => p.where).join(', ')}`);
-  const softPinnedGround = PINNED_LITERALS.filter(([, p, v]) => p !== 'color' && /-soft/.test(v));
-  assert.deepEqual(softPinnedGround, [], 'no pinned background is a soft ground');
-});
 
 test('ALLOWLIST GRAMMAR refuses codex r4\'s 5 evasions and a raw literal; allows the modelled forms', () => {
   const g = (frag) => grammarViolations(css + '\n' + frag).violations;
@@ -457,16 +523,7 @@ test('ALLOWLIST GRAMMAR refuses codex r4\'s 5 evasions and a raw literal; allows
   for (const [label, frag] of Object.entries(ALLOWED)) assert.deepEqual(g(frag), [], `the grammar must ALLOW: ${label}`);
 });
 
-test('r5 PINS: every other color-declaring pin sits on NO soft ground (sentinel); the 2 soft-container crossings are PRESENT as the sweep\'s pair, tokens frozen, ≥ 4.5', () => {
-  const allPins = [...A1_INHERIT_PINS, ...Object.keys(PINNED_COMPLEX), ...Object.keys(PINNED_CROSSINGS)];
-  assert.equal(new Set(allPins).size, 4 + 10 + 10, 'non-vacuity: 4 a1 + 10 complex + 10 crossing pins');
-  // the sentinel goes ONLY on pins that DECLARE a color (a background-only pin like `.fiscal .ack` has no text color to test)
-  const colorPins = [...A1_INHERIT_PINS, ...Object.entries(PINNED_COMPLEX).filter(([, tgs]) => tgs.some((t) => /(^|;)color:/.test(t))).map(([k]) => k), ...Object.entries(PINNED_CROSSINGS).filter(([, v]) => /(^|;)color:/.test(v.tg)).map(([k]) => k)];
-  // sentinel: every pinned selector's color becomes var(--zz-pinned) (a later same-selector rule wins the cascade merge)
-  const probe = css + '\n' + colorPins.map((p) => `${p}{color:var(--zz-pinned)}`).join('\n');
-  const hits = discoverSoftPairs(probe).filter((x) => x.fg === 'zz-pinned').map((x) => `${x.where}|${x.bg}`).sort();
-  const expected = SOFT_PRESENT_PINS.map((x) => `${x.where}|${x.bg}`).sort();
-  assert.deepEqual(hits, expected, '🔴 ONLY the two ruled soft-container crossings may carry text on a soft ground; every other pin sits on none');
+test('the 2 soft-container crossings are PRESENT as the sweep\'s computed pair, tokens frozen, ≥ 4.5 (true by computation)', () => {
   const pairs = discoverSoftPairs(css);
   for (const sp of SOFT_PRESENT_PINS) {
     const real = pairs.find((x) => x.where === sp.where);
