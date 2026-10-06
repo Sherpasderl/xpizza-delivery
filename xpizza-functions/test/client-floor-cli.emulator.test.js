@@ -18,8 +18,9 @@ const fs = admin.firestore();
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const runCli = (env, tool, ...args) => {
-  try { return { code: 0, out: execFileSync('node', [path.join(__dirname, '..', 'tools', tool), '--project', PROJECT, ...args], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] }) }; }
-  catch (e) { return { code: e.status, out: String(e.stdout || '') + String(e.stderr || '') }; }
+  // every CLI run is BOUNDED (60 s): a CLI that hangs (e.g. on a dead database) fails this suite by assertion, never hangs it
+  try { return { code: 0, out: execFileSync('node', [path.join(__dirname, '..', 'tools', tool), '--project', PROJECT, ...args], { encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000, killSignal: 'SIGKILL' }) }; }
+  catch (e) { return { code: e.status === null ? `TIMEOUT(${e.signal})` : e.status, out: String(e.stdout || '') + String(e.stderr || '') }; }
 };
 const cli = (tool, ...args) => runCli(process.env, tool, ...args);
 // the registry (Firestore) UNREACHABLE: a dead emulator port — RTDB stays on the real emulator
