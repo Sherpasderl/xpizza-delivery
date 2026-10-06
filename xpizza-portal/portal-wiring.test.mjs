@@ -39,7 +39,9 @@ test('every function a module calls is one it defines or imports', () => {
     'document', 'window', 'localStorage', 'CustomEvent', 'encodeURIComponent', 'super', 'if', 'for',
     'while', 'switch', 'catch', 'return', 'typeof', 'function', 'await', 'new',
     // keywords that precede a parenthesis and are not calls
-    'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof', 'WeakSet']);
+    'async', 'else', 'do', 'try', 'yield', 'delete', 'void', 'in', 'of', 'instanceof', 'WeakSet',
+    // Stats S2: the CSV export hands the merchant a file through a Blob URL
+    'Blob']);
   for (const f of JS) {
     const c = codeOf(f);
     const defined = new Set([

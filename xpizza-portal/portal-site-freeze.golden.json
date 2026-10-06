@@ -2,6 +2,7 @@
  "files": [
   "DESIGN.md",
   "PRODUCT.md",
+  "api-assert-live.test.mjs",
   "api.js",
   "api.test.mjs",
   "app-loads.test.mjs",
@@ -27,6 +28,11 @@
   "review.js",
   "review.test.mjs",
   "styles.css",
+  "ventas-harness.mjs",
+  "ventas-logic.js",
+  "ventas-logic.test.mjs",
+  "ventas.js",
+  "ventas.test.mjs",
   "wiring-ast.mjs"
  ],
  "bytes": {
@@ -35,12 +41,12 @@
    "bytes": 13194
   },
   "PRODUCT.md": {
-   "sha256": "dc6ccdb8222184bc3c596970e9e52476111e5f5fbb92893c5390d58655162b2a",
-   "bytes": 4287
+   "sha256": "0ed62e18511ebfce83552da61da7909334cc699f586725e3cc59a5eafe048739",
+   "bytes": 4451
   },
   "index.html": {
-   "sha256": "2cde0ad51c403e95632c056d24ecb58d81d4d27c167b4f04158232b323a6e7a3",
-   "bytes": 5111
+   "sha256": "d20172913218c40c753a1380796254b0aa9d54ce5a323a4eaa9d43dc58c00e48",
+   "bytes": 6014
   },
   "netlify.toml": {
    "sha256": "13d167adc5f3fb58d56f59c072a369d7e2e8c8da94106670508d087cbb153bf9",
@@ -55,8 +61,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "49641343100580b9a5c514b50e038e8a4e1f5499fe7d4bcbf024a152c3f7461e",
-   "bytes": 54492
+   "sha256": "3e0de68c7c837065b1c26ce31abdadcbcacd303a59e899f90a1c4a7c9fca3a83",
+   "bytes": 61891
   }
  },
  "diff_aid": {
@@ -1987,6 +1993,156 @@
    ],
    [
     "",
+    ".vcerr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".vcov",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vcsub",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vcsvnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vdate",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vdate",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vdl.vdn",
+    "background",
+    "var(--red-soft)"
+   ],
+   [
+    "",
+    ".vdl.vdn",
+    "border-color",
+    "var(--red-line)"
+   ],
+   [
+    "",
+    ".vdl.vdn",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".vdl.vflat",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vdl.vflat",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vdl.vup",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".vdl.vup",
+    "border-color",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".vdl.vup",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".verr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
+    ".vfill",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vfoot",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vhc",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vimeta strong",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vimeta",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vklabel",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vlegend",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vlgcur",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vmuted",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vnote",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".vpill b",
     "color",
     "var(--ink)"
@@ -2000,6 +2156,132 @@
    [
     "",
     ".vpill",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vplabel",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vpre",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".vpre",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vpre.vpon",
+    "background",
+    "var(--tint2)"
+   ],
+   [
+    "",
+    ".vpre.vpon",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".vpre.vpon",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".vrk",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vrl",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vs1",
+    "background",
+    "var(--green)"
+   ],
+   [
+    "",
+    ".vs2",
+    "background",
+    "var(--green-line)"
+   ],
+   [
+    "",
+    ".vs3",
+    "background",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".vsel",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vsel",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".vsplit",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vsub",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vth",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vthr",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vtrack",
+    "background",
+    "var(--board-2)"
+   ],
+   [
+    "",
+    ".vvs",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".vwarn",
+    "color",
+    "var(--amber)"
+   ],
+   [
+    "",
+    ".vxl",
     "color",
     "var(--mute)"
    ],

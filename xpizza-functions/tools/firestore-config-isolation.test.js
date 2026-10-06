@@ -100,8 +100,10 @@ const SELF_COUNT = 17;   // this file's own literal mentions: the 14 pin texts +
 //     reintroduce indexes. The installed CLI resolves its project root ON THE FILESYSTEM (detectProjectRoot
 //     walks UP from the cwd for `firebase.json`) and parses configs with its own comment-tolerant loadCJSON,
 //     so this checks exactly that:
-//       • every firebase*.json ON DISK under the repo root (untracked and gitignored included; only
-//         node_modules and .git skipped) must be exactly the two known files;
+//       • every firebase*.json the walk DISCOVERS on disk under the repo root (untracked and gitignored
+//         included) must be exactly the two known files. "Exactly" is bounded by the walk: it skips every
+//         node_modules and .git directory and does not descend symlinked directories, so a config inside
+//         those is outside this guarantee (a symlinked FILE is still discovered);
 //       • NO ancestor directory of the repo root, up to `/`, may hold a firebase.json;
 //       • parsed with the INSTALLED CLI's loadCJSON, no config but the dedicated one may hold a `firestore`
 //         object (or array) with an `indexes` key — across every on-disk firebase*.json and every tracked *.json;
