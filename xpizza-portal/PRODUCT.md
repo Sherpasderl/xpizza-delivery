@@ -35,7 +35,7 @@ Firebase-Auth login (WhatsApp/email accounts) → restaurant switcher → menu. 
 
 - Name: **Sherpa** — the metaphor works three ways: carry the load (delivery), guide the terrain (abstract the fiscal/operational complexity), know the mountain (local expertise).
 - Language: **Spanish (es-HN)**.
-- Binding identity constraints: **Hanken Grotesk**; a KDS-cued, sober visual identity; the owner's standing bar — **elegance is as important as functionality**, and **the build must match the approved mockup exactly** (not a close copy).
+- Binding identity constraints: **Bold Editorial**, LIGHT on every device — **Archivo** (600–800) for display type over the system body stack, stark white ground, oversized type, a decisive green accent (owner-approved 2026-10-05; see DESIGN.md); the owner's standing bar — **elegance is as important as functionality**, and **the build must match the approved mockup exactly** (not a close copy).
 - **Fiscal (SAR factura) is X. Pizza-only** — never a tenant/portal feature.
 
 ## Evidence on Hand

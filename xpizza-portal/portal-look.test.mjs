@@ -5,8 +5,10 @@
 //   2. exactly ONE Google Fonts stylesheet, Archivo as the 600..800 weight range (covers the 750/800 in use), no Hanken;
 //   3. the CSP already admits fonts.googleapis.com (style-src) and fonts.gstatic.com (font-src).
 //
-// Guarantee: no static portal input changes without failing this test: the file set of xpizza-portal and the bytes of
-// every non-JS file (HTML, CSS, Netlify config).
+// Guarantee: no TRACKED static portal input changes without failing this test: the git-tracked file set of xpizza-portal
+// and the bytes of every tracked non-JS file (HTML, CSS, Netlify config). Excluded: untracked deploy artifacts (anything
+// in the folder at deploy time that git does not track), Netlify settings held outside the repo (site UI / environment),
+// and external font responses.
 // Out of scope: JS behaviour at runtime (CSSStyleSheet/insertRule, dynamically created links, style mutation, class/DOM
 // placement, e.g. review.js:277), reviewed with the JS change; the Google Fonts stylesheet RESPONSE (its URL is pinned, its
 // bytes are external); font files (none shipped today).
