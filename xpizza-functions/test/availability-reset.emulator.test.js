@@ -64,14 +64,14 @@ async function freshRestaurant(hours = CLOSED) {
 }
 
 // One run on a FRESH, listener-free worker app. Returns { results, logs, trace }.
-async function run({ now = Date.now(), hooks = {}, app = null } = {}) {
+async function run({ now = Date.now(), hooks = {}, app = null, wrapDb = null } = {}) {
   const a = app || freshApp();
   const logs = [];
   const log = { info: (...x) => logs.push(['info', x.join(' ')]), error: (...x) => logs.push(['error', x.join(' ')]) };
   const trace = [];
   const userTrace = hooks.traceClear;
   try {
-    const results = await AR.runAvailabilityReset({ db: a.database(), ServerValue, now, restaurants: [RID], log, hooks: { ...hooks, traceClear: (p, cur) => { trace.push({ p, cur: cur === null ? null : JSON.parse(JSON.stringify(cur)) }); if (userTrace) userTrace(p, cur); } } });
+    const results = await AR.runAvailabilityReset({ db: wrapDb ? wrapDb(a.database()) : a.database(), ServerValue, now, restaurants: [RID], log, hooks: { ...hooks, traceClear: (p, cur) => { trace.push({ p, cur: cur === null ? null : JSON.parse(JSON.stringify(cur)) }); if (userTrace) userTrace(p, cur); } } });
     return { results, r: results[0], logs, trace };
   } finally { if (!app) await a.delete(); }
 }
@@ -141,8 +141,19 @@ caseOf('4 retry accounting: eligible then null at the updater → committed but 
   wdb.ref(`${AVAIL}/${k}`).on('value', () => {});
   await sleep(200);
   let raced = false;
+  // TEST-SIDE WRAPPER (codex reset r1 NIT): capture the item's REAL transaction result, so `committed: true`
+  // is asserted explicitly instead of inferred from the trace. Only that one ref's transaction() is wrapped;
+  // everything else is the SDK's own object.
+  const itemPath = `${AVAIL}/${k}`;
+  const txResults = [];
+  const bindAll = (t, over) => new Proxy(t, { get(o, prop) { if (prop in over) return over[prop]; const v = o[prop]; return typeof v === 'function' ? v.bind(o) : v; } });
+  const wrapDb = (db) => bindAll(db, { ref: (p) => {
+    const ref = db.ref(p);
+    if (p !== itemPath) return ref;
+    return bindAll(ref, { transaction: async (...args) => { const res = await ref.transaction(...args); txResults.push(res); return res; } });
+  } });
   try {
-    const { r, trace } = await run({ app: warm, hooks: {
+    const { r, trace } = await run({ app: warm, wrapDb, hooks: {
       afterSnapshot: async () => { wdb.goOffline(); },
       traceClear: (p, cur) => {
         if (!raced && cur && cur.available === false) {
@@ -155,6 +166,9 @@ caseOf('4 retry accounting: eligible then null at the updater → committed but 
     assert.deepStrictEqual(seq.slice(0, 2), ['eligible', 'null'], `updater saw ${JSON.stringify(seq)}`);
     assert.strictEqual(seq[seq.length - 1], 'null', 'the committing invocation saw null');
     assert.deepStrictEqual(r.cleared, [], `a key the racer deleted was COUNTED ${JSON.stringify(r.cleared)} — the per-invocation reset of \`removed\` is missing`);
+    assert.strictEqual(txResults.length, 1, 'premise: the wrapper saw the clear transaction exactly once');
+    assert.strictEqual(txResults[0].committed, true, 'the transaction COMMITTED (absent→absent) — and still was not counted');
+    assert.strictEqual(txResults[0].snapshot.val(), null, 'committed value is null (the racer\'s delete stands)');
   } finally { wdb.ref(`${AVAIL}/${k}`).off(); await warm.delete(); }
 });
 
@@ -312,7 +326,7 @@ caseOf('P2 server availability gate: cleared item sells again; a fresh 86 still 
 
 // P3. Forms' sold-out display: the forms' own reducer copy (byte-identical to the server's) reads the
 //     post-reset node exactly as before: absent → available; a surviving 86 → sold out.
-caseOf('P3 forms\' sold-out display reads the post-reset node correctly', async () => {
+caseOf('P3 forms\' reducer decisions on the post-reset node (the forms\' own byte-identical reducer copy)', async () => {
   const fs = require('fs');
   assert.strictEqual(fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-orders', 'availability-reducer.js'), 'utf8'),
     fs.readFileSync(path.join(__dirname, '..', 'availability-reducer.js'), 'utf8'), 'forms and server share the byte-identical reducer');
