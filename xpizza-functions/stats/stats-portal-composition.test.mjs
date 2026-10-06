@@ -52,6 +52,7 @@ add(F.cashOrder({ rid: 'r_a', pm: 'cash', orderType: 'pickup', now: at('2026-10-
 add(F.cancel(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-10-16', 12), phone: '88880003', totalCents: 4000 })));
 add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at('2026-10-08', 19), phone: '88880005', totalCents: 20000, items: [{ name: 'Pepperoni 12″', qty: 1, unit: 200 }] }));
 add(F.cashOrder({ rid: 'r_a', pm: 'cash', now: at(TODAY, 11), phone: '88880009', totalCents: 15000, items: [{ name: 'Margherita 12″', qty: 1, unit: 150 }] }));   // live today
+add(F.cashOrder({ rid: 'r_a', pm: 'cash', orderType: 'pickup', now: at('2026-10-16', 18), phone: '', totalCents: 25000, items: [{ name: 'Carnívora 18″', qty: 1, unit: 250 }] }));   // no phone: an anonymous Sale
 add(F.cashOrder({ rid: 'r_b', pm: 'cash', now: at('2026-10-15', 12), phone: '88880001', totalCents: 99900 }));   // another merchant: must not appear
 const fsdb = makeDb();
 const rtdb = makeRtdb(orders);
@@ -124,7 +125,16 @@ await H.settle(30);
   assert.ok(text.includes('pico:'), 'a peak is named from the real heatmap');
   const types = H.byClass(page, 'vbig').map(H.textOf);
   const dl$ = b.by_type.delivery.cents, pk$ = b.by_type.pickup.cents;
-  assert.strictEqual(types[0], `${Math.round((dl$ / (dl$ + pk$)) * 100)}% · ${L.lempiras(dl$)}`);
+  assert.strictEqual(types[0], `${Math.round((dl$ / b.kpis.sales_cents) * 100)}% · ${L.lempiras(dl$)}`, 'type shares are of ALL sales');
+  assert.strictEqual(types[1], `${Math.round((pk$ / b.kpis.sales_cents) * 100)}% · ${L.lempiras(pk$)}`);
+  // customers: shares of ALL sales, from the server's own fields (independent of the page's arithmetic)
+  assert.ok(b.customers.anonymous_orders >= 1, 'non-vacuity: the period has an anonymous Sale');
+  const cu = b.customers;
+  const shares = H.byClass(page, 'vcsub').map(H.textOf);
+  assert.deepStrictEqual(shares, [cu.new.cents, cu.returning.cents].map((c) => `${Math.round((c / b.kpis.sales_cents) * 100)}% de las ventas`), '🔴 "de las ventas" = of ALL sales');
+  const rest = b.kpis.sales_cents - cu.new.cents - cu.returning.cents;
+  assert.ok(rest >= 25000, 'the anonymous L250 is in the remainder');
+  assert.strictEqual(H.textOf(H.byClass(page, 'vcnote')[0]), `Sin clasificar: ${Math.round((rest / b.kpis.sales_cents) * 100)}% de las ventas · ${cu.anonymous_orders} ${cu.anonymous_orders === 1 ? 'pedido' : 'pedidos'} sin teléfono`);
   ok('JSON: KPIs, deltas, top products, delivery split, heatmap and "en vivo" render the REAL server answer');
 }
 

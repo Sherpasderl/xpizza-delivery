@@ -174,18 +174,19 @@ export function viewModel(body, { range, compare, metric, nowMs }) {
   const topQty = Math.max(0, ...items.map((it) => it.qty || 0));
   const topItems = items.map((it) => ({ name: it.name, qty: `${count(it.qty)} u.`, amount: lempiras(it.cents), width: topQty ? Math.round(((it.qty || 0) / topQty) * 100) : 0 }));
 
+  // Every share below is of the SERVER's total sales (kpis.sales_cents) — never of a subset — so a
+  // bucket the page does not name (by_type.other, by_payment.other) can never inflate the others.
+  const total = Number.isFinite(k.sales_cents) ? k.sales_cents : 0;
+  const shareOf = (c) => (total > 0 ? Math.round((c / total) * 100) : 0);
   const bt = b.by_type || {};
-  const typeTotal = ['delivery', 'pickup'].reduce((a, t) => a + ((bt[t] && bt[t].cents) || 0), 0);
-  const typeSplit = ['delivery', 'pickup'].map((t) => {
-    const c = (bt[t] && bt[t].cents) || 0;
-    return { label: t === 'delivery' ? 'A domicilio' : 'Para recoger', share: typeTotal ? Math.round((c / typeTotal) * 100) : 0, amount: lempiras(c) };
-  });
+  const typeSplit = [['delivery', 'A domicilio', 'vs1'], ['pickup', 'Para recoger', 'vs2'], ['other', 'Otro', 'vs3']]
+    .filter(([t]) => t !== 'other' || ((bt.other && (bt.other.orders || bt.other.cents)) || 0) > 0)
+    .map(([t, label, seg]) => { const c = (bt[t] && bt[t].cents) || 0; return { label, seg, share: shareOf(c), amount: lempiras(c) }; });
 
   const bp = b.by_payment || {};
-  const payTotal = ['cash', 'card_delivery', 'online', 'other'].reduce((a, m) => a + ((bp[m] && bp[m].cents) || 0), 0);
   const payments = [['cash', 'Efectivo'], ['card_delivery', 'Tarjeta al entregar'], ['online', 'En línea'], ['other', 'Otro']]
-    .filter(([m]) => m !== 'other' || ((bp.other && bp.other.orders) || 0) > 0)
-    .map(([m, label]) => { const c = (bp[m] && bp[m].cents) || 0; const share = payTotal ? Math.round((c / payTotal) * 100) : 0; return { label, value: `${share}% · ${lempiras(c)}`, width: share }; });
+    .filter(([m]) => m !== 'other' || ((bp.other && (bp.other.orders || bp.other.cents)) || 0) > 0)
+    .map(([m, label]) => { const c = (bp[m] && bp[m].cents) || 0; const share = shareOf(c); return { label, value: `${share}% · ${lempiras(c)}`, width: share }; });
 
   // Heatmap: Mon..Sun × ALWAYS 12–22 (the mockup's 11 columns, so a quiet period keeps 30px-scale
   // cells instead of a few stretched ones) ∪ any hour outside it that had orders, in order.
@@ -203,23 +204,31 @@ export function viewModel(body, { range, compare, metric, nowMs }) {
 
   const cu = b.customers || {};
   const nw = cu.new || {}, rt = cu.returning || {};
-  const idCents = (nw.cents || 0) + (rt.cents || 0);
+  // "de las ventas" means of ALL sales. The server's per-customer cents are the same Sale cents as
+  // kpis.sales_cents (stats-build.js: a Sale with a phone → its customer, without → anonymous), so
+  // sales = new + returning + unclassified EXACTLY; the remainder is shown, never folded into the two.
   const customers = [
-    { label: 'Nuevos', value: count(nw.customers || 0), share: `${pct0(idCents ? ((nw.cents || 0) / idCents) * 100 : 0)} de las ventas` },
-    { label: 'Recurrentes', value: count(rt.customers || 0), share: `${pct0(idCents ? ((rt.cents || 0) / idCents) * 100 : 0)} de las ventas` },
+    { label: 'Nuevos', value: count(nw.customers || 0), share: `${pct0(shareOf(nw.cents || 0))} de las ventas` },
+    { label: 'Recurrentes', value: count(rt.customers || 0), share: `${pct0(shareOf(rt.cents || 0))} de las ventas` },
   ];
+  const rest = Math.max(0, total - (nw.cents || 0) - (rt.cents || 0));
+  const anon = cu.anonymous_orders || 0;
+  const customersNote = rest > 0
+    ? `Sin clasificar: ${pct0(shareOf(rest))} de las ventas${anon > 0 ? ` · ${count(anon)} ${anon === 1 ? 'pedido' : 'pedidos'} sin teléfono` : ''}`
+    : '';
 
   const ca = b.cancellations || {};
   const cell = (x) => `${count((x && x.orders) || 0)} · ${lempiras((x && x.cents) || 0)}`;
   const cancellations = {
-    rate: Number.isFinite(ca.rate_pct) ? pct1(ca.rate_pct) : '0.0%',
+    rate: Number.isFinite(ca.rate_pct) ? pct1(ca.rate_pct) : '—',   // null = no denominator, not zero
     rows: [{ label: 'Canceladas', value: cell(ca.cancelled) }, { label: 'Reembolsadas', value: cell(ca.refunded) }, { label: 'Reembolso pendiente', value: cell(ca.refund_pending), warn: true }],
   };
 
   const tm = b.times || {};
   const timeRow = (label, t) => ({ label, value: t && minutes(t.avg_ms) !== null ? `${minutes(t.avg_ms)} min` : '—', typical: t && t.median ? `típico ${minutes(t.median.approx_ms)}` : '' });
-  const covs = [tm.prep, tm.delivery].map((t) => t && t.coverage).filter(Number.isFinite);
-  const times = { rows: [timeRow('Preparación', tm.prep), timeRow('Entrega', tm.delivery)], coverage: covs.length ? `Pedidos a domicilio con tiempos completos: ${pct0(Math.min(...covs))}` : '' };
+  // each coverage AS THE API GIVES IT — two marginal coverages cannot say how many orders have both
+  const covs = [['preparación', tm.prep], ['entrega', tm.delivery]].filter(([, t]) => t && Number.isFinite(t.coverage)).map(([l, t]) => `${l} ${pct0(t.coverage)}`);
+  const times = { rows: [timeRow('Preparación', tm.prep), timeRow('Entrega', tm.delivery)], coverage: covs.length ? `Pedidos a domicilio con tiempos completos: ${covs.join(' · ')}` : '' };
 
   const updated = updatedLabel(b.days, nowMs);
   const missing = missingLabel(b.missing_days);
@@ -227,7 +236,7 @@ export function viewModel(body, { range, compare, metric, nowMs }) {
 
   return {
     kpis, chart: { cur: points(cur, max), prev: cmp ? points(prev, max) : '', xLabels, aria: `${metric === 'orders' ? 'Pedidos' : 'Ventas'} por ${isSingleDay(range) ? 'hora' : ({ week: 'semana', month: 'mes' }[granularityFor(range)] || 'día')}, período actual${cmp ? ' y comparación' : ''}` },
-    showCompare: !!cmp, topItems, typeSplit, payments, hours, heat, peakNote, customers, cancellations, times, updated, missing, empty,
+    showCompare: !!cmp, topItems, typeSplit, payments, hours, heat, peakNote, customers, customersNote, cancellations, times, updated, missing, empty,
   };
 }
 

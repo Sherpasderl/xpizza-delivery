@@ -129,7 +129,9 @@ export const okCsv = (text, { filename = null, next = null } = {}) => ({
 export async function loadModules(which = ['app', 'ventas'], transforms = {}) {
   const tag = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
   const stub = join(DIR, `__ventas-auth-stub.${tag}.mjs`);
-  writeFileSync(stub, 'export const token = async () => "TK-test";\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n');
+  // token() can be HELD by a test (globalThis.__tokenHold = a promise) to land a context change inside the
+  // one await that precedes every request — the window the guarded token exists to close.
+  writeFileSync(stub, 'export const token = async () => { if (globalThis.__tokenHold) await globalThis.__tokenHold; return "TK-test"; };\nexport const login = async () => {};\nexport const logout = async () => {};\nexport const authErrorMessage = () => "";\n');
   const tmps = [];
   const mods = {};
   try {

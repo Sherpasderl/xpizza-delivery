@@ -382,3 +382,151 @@ test('403 not_owner: both CSV buttons are disabled (the server would refuse them
   const [d2, o2] = byClass(byId2.get('viewventas'), 'btn');
   assert.ok(!d2.disabled && !o2.disabled, 'non-vacuity: enabled for an owner whose stats loaded');
 });
+
+test('🔴 an auth change MID-EXPORT stops the export: zero further getSalesStats calls, nothing saved', async () => {
+  for (const at of ['between pages', 'during page 1']) {
+    const byId = installDom();
+    const dl = captureDownloads();
+    let releasePage1;
+    const p1 = `${ORDERS_HEADER}\r\n2026-10-05,12:00,1,delivery,cash,sale,100.00,86.96,13.04,1x Pizza\r\n`;
+    const calls = installFetch(routes({ getSalesStats: (q) => (q.format !== 'csv' ? STATS() : new Promise((r) => { releasePage1 = () => r(okCsv(p1, { next: 'C1' })); })) }));
+    await loadModules();
+    await signIn('owner_A');
+    byId.get('navventas').click();
+    await settle();
+    byClass(byId.get('viewventas'), 'btn')[1].click();
+    await settle();
+    const csvBefore = statsCalls(calls).filter((c) => c.query.format === 'csv').length;
+    assert.strictEqual(csvBefore, 1, 'non-vacuity: page 1 is in flight');
+    // owner A signs out; B (owns nothing) signs in — then page 1 answers with a cursor for page 2
+    const callsB = installFetch(routes({ getMyRestaurants: () => okJson({ restaurants: [] }) }));
+    document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: null } }));
+    if (at === 'between pages') { releasePage1(); await settle(); await signIn('person_B'); } else { await signIn('person_B'); releasePage1(); }
+    await settle(20);
+    await dl.read();
+    dl.restore();
+    assert.deepStrictEqual(statsCalls(callsB), [], `🔴 ${at}: no getSalesStats call of any kind after the switch`);
+    assert.strictEqual(dl.saved.length, 0, `${at}: nothing saved`);
+    assert.ok(gateShut(byId));
+  }
+});
+
+test('🔴 a CSV 403 refuses BOTH exports (button AND handler) until ownership is re-established', async () => {
+  const byId = installDom();
+  const calls = installFetch(routes({ getSalesStats: (q) => (q.format === 'csv' ? errJson(403, { error: 'not_owner' }) : STATS()) }));
+  await loadModules();
+  await signIn('owner_uid');
+  byId.get('navventas').click();
+  await settle();
+  const [daily, orders] = byClass(byId.get('viewventas'), 'btn');
+  assert.ok(!daily.disabled && !orders.disabled, 'premise: the JSON load succeeded and exports are enabled');
+  daily.click();
+  await settle();
+  assert.ok(daily.disabled && orders.disabled, 'the CSV refusal disables both buttons');
+  const n = statsCalls(calls).filter((c) => c.query.format === 'csv').length;
+  for (const fn of orders.listeners.click) fn();               // a click that reaches the handler anyway
+  for (const fn of daily.listeners.click) fn();
+  await settle();
+  assert.strictEqual(statsCalls(calls).filter((c) => c.query.format === 'csv').length, n, '🔴 the handler itself refuses');
+  byClass(byId.get('viewventas'), 'vpre').find((b) => textOf(b) === 'Hoy').click();
+  await settle();
+  assert.ok(daily.disabled && orders.disabled, 'a period change does not lift the refusal');
+  document.dispatchEvent(new CustomEvent('portal:restaurant', { detail: { rid: 'x_pizza' } }));   // ownership re-established
+  await settle();
+  const [d2, o2] = byClass(byId.get('viewventas'), 'btn');
+  assert.ok(!d2.disabled && !o2.disabled, '…lifted only when the owned restaurant is announced again');
+});
+
+test('🔴 clearing a custom date deactivates the old range at once: prompt, no request, exports off, late answer dropped', async () => {
+  const byId = installDom();
+  const pending = [];
+  const calls = installFetch(routes({ getSalesStats: (q) => (q.format === 'csv' ? okCsv(`${DAILY_HEADER}\r\n`) : new Promise((r) => pending.push({ q, r }))) }));
+  await loadModules();
+  await signIn('owner_uid');
+  byId.get('navventas').click();
+  await settle();
+  pending.shift().r(STATS());
+  await settle();
+  const page = byId.get('viewventas');
+  byClass(page, 'vpre').find((b) => textOf(b) === 'Personalizado').click();
+  await settle();
+  const [from, to] = byClass(page, 'vdate');
+  from.value = '2026-09-01'; for (const fn of from.listeners.change) fn();
+  to.value = '2026-09-20'; for (const fn of to.listeners.change) fn();
+  await settle();
+  const inflight = pending.shift();
+  assert.deepStrictEqual([inflight.q.from, inflight.q.to], ['2026-09-01', '2026-09-20'], 'premise: the custom range was requested');
+  to.value = ''; for (const fn of to.listeners.change) fn();     // the merchant clears the end date
+  await settle();
+  inflight.r(STATS());                                           // the old range's answer arrives late
+  await settle();
+  assert.ok(textOf(page).includes('Elegí las fechas'), 'the prompt replaces the old range');
+  assert.ok(!textOf(page).includes('L 38,146'), '🔴 the late answer for the cleared range did not paint');
+  assert.strictEqual(textOf(byClass(page, 'vrl')[0]), 'Elegir fechas…', 'the range label no longer names the old range');
+  const [daily, orders] = byClass(page, 'btn');
+  assert.ok(daily.disabled && orders.disabled, 'no range → no exports');
+  const n = statsCalls(calls).length;
+  for (const fn of daily.listeners.click) fn();
+  await settle();
+  assert.strictEqual(statsCalls(calls).length, n, 'and the handler requests nothing for the cleared range');
+});
+
+test('🔴 a context change INSIDE the token await (the last await before a request) sends nothing — export and load', async () => {
+  // page 2 of an orders export: page 1 answered while the owner was still current, then the owner signs
+  // out while page 2's token is being fetched. Only the guarded token can see this — every other check
+  // has already passed by then.
+  const byId = installDom();
+  const dl = captureDownloads();
+  const p1 = `${ORDERS_HEADER}\r\n2026-10-05,12:00,1,delivery,cash,sale,100.00,86.96,13.04,1x Pizza\r\n`;
+  let release1;
+  const calls = installFetch(routes({ getSalesStats: (q) => (q.format !== 'csv' ? STATS() : q.cursor ? okCsv(p1) : new Promise((r) => { release1 = () => r(okCsv(p1, { next: 'C1' })); })) }));
+  await loadModules();
+  await signIn('owner_A');
+  byId.get('navventas').click();
+  await settle();
+  byClass(byId.get('viewventas'), 'btn')[1].click();
+  await settle();
+  let open;
+  globalThis.__tokenHold = new Promise((r) => { open = r; });
+  release1();                                                    // page 1 arrives; page 2's token is now held
+  await settle();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: null } }));
+  open(); globalThis.__tokenHold = null;
+  await settle(20);
+  await dl.read(); dl.restore();
+  assert.deepStrictEqual(statsCalls(calls).filter((c) => c.query.cursor), [], '🔴 page 2 was never requested');
+  assert.strictEqual(dl.saved.length, 0);
+
+  // the JSON load: Ventas opened, its token held, the owner signs out → no stats request leaves
+  const byId2 = installDom();
+  const calls2 = installFetch(routes());
+  await loadModules();
+  await signIn('owner_A');
+  let open2;
+  globalThis.__tokenHold = new Promise((r) => { open2 = r; });
+  byId2.get('navventas').click();
+  await settle();
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: null } }));
+  open2(); globalThis.__tokenHold = null;
+  await settle(20);
+  assert.deepStrictEqual(statsCalls(calls2), [], '🔴 the load whose session ended never asked');
+});
+
+test('🔴 a single-page export whose session ended while it was in flight saves NOTHING', async () => {
+  const byId = installDom();
+  const dl = captureDownloads();
+  let release;
+  installFetch(routes({ getSalesStats: (q) => (q.format !== 'csv' ? STATS() : new Promise((r) => { release = () => r(okCsv(`${DAILY_HEADER}\r\n2026-10-05,1.00\r\n`)); })) }));
+  await loadModules();
+  await signIn('owner_A');
+  byId.get('navventas').click();
+  await settle();
+  byClass(byId.get('viewventas'), 'btn')[0].click();
+  await settle();
+  assert.ok(typeof release === 'function', 'non-vacuity: the daily CSV is in flight');
+  document.dispatchEvent(new CustomEvent('portal:auth', { detail: { uid: null } }));
+  release();
+  await settle(20);
+  await dl.read(); dl.restore();
+  assert.strictEqual(dl.saved.length, 0, '🔴 the ended session\'s file is not handed to whoever is at the screen now');
+});

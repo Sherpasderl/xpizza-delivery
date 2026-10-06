@@ -60,8 +60,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "13da7067d4b7e6db1bb808bdeed52f662bfed67851a9aeb3a9398fbbed3a23a8",
-   "bytes": 61832
+   "sha256": "3e0de68c7c837065b1c26ce31abdadcbcacd303a59e899f90a1c4a7c9fca3a83",
+   "bytes": 61891
   }
  },
  "diff_aid": {
@@ -2217,6 +2217,12 @@
     ".vs2",
     "background",
     "var(--green-line)"
+   ],
+   [
+    "",
+    ".vs3",
+    "background",
+    "var(--mute2)"
    ],
    [
     "",

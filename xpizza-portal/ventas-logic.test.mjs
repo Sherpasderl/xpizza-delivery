@@ -158,3 +158,39 @@ test('heatmap columns: ALWAYS 12–22, plus any hour outside it that had orders,
   assert.strictEqual(vm.heat[1].cells[0].label, 'Mar 7:00, 2 pedidos');
   assert.strictEqual(vm.heat[1].cells[2].alpha.toFixed(2), '0.05', 'an empty base hour is the mockup\'s empty cell');
 });
+
+test('🔴 customers: shares are of ALL sales; the unclassified remainder is shown, never folded in', () => {
+  // L100 total, L20 new, L30 returning, L50 with no phone (codex r1): 20% / 30% / 50% — NOT 40% / 60%
+  const body = { kpis: { sales_cents: 10000, orders: 10 }, customers: { new: { customers: 2, orders: 2, cents: 2000 }, returning: { customers: 3, orders: 3, cents: 3000 }, anonymous_orders: 5 } };
+  const vm = viewModel(body, { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.deepStrictEqual(vm.customers.map((c) => c.share), ['20% de las ventas', '30% de las ventas']);
+  assert.strictEqual(vm.customersNote, 'Sin clasificar: 50% de las ventas · 5 pedidos sin teléfono');
+  const all = viewModel({ kpis: { sales_cents: 5000, orders: 5 }, customers: { new: { customers: 2, cents: 2000 }, returning: { customers: 3, cents: 3000 }, anonymous_orders: 0 } },
+    { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.deepStrictEqual(all.customers.map((c) => c.share), ['40% de las ventas', '60% de las ventas'], 'fully identified → the two sum to 100%');
+  assert.strictEqual(all.customersNote, '', 'and no remainder line');
+});
+
+test('delivery/pickup split includes "Otro" and every share is of ALL sales', () => {
+  // L30 delivery, L20 pickup, L50 other (codex r1): 30 / 20 / 50 — NOT 60 / 40
+  const body = { kpis: { sales_cents: 10000, orders: 10 }, by_type: { delivery: { orders: 3, cents: 3000 }, pickup: { orders: 2, cents: 2000 }, other: { orders: 5, cents: 5000 } } };
+  const vm = viewModel(body, { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.deepStrictEqual(vm.typeSplit.map((t) => [t.label, t.share, t.amount, t.seg]), [['A domicilio', 30, 'L 30', 'vs1'], ['Para recoger', 20, 'L 20', 'vs2'], ['Otro', 50, 'L 50', 'vs3']]);
+  const none = viewModel({ kpis: { sales_cents: 5000, orders: 5 }, by_type: { delivery: { orders: 3, cents: 3000 }, pickup: { orders: 2, cents: 2000 }, other: { orders: 0, cents: 0 } } },
+    { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.deepStrictEqual(none.typeSplit.map((t) => [t.label, t.share]), [['A domicilio', 60], ['Para recoger', 40]], 'no "Otro" row when there is none');
+  const pay = viewModel({ kpis: { sales_cents: 10000, orders: 4 }, by_payment: { cash: { orders: 1, cents: 4000 }, card_delivery: { orders: 1, cents: 1000 }, online: { orders: 1, cents: 0 }, other: { orders: 1, cents: 5000 } } },
+    { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.deepStrictEqual(pay.payments.map((p) => p.value), ['40% · L 40', '10% · L 10', '0% · L 0', '50% · L 50']);
+});
+
+test('times: each API coverage shown separately (no invented joint metric); a null cancellation rate is "—"', () => {
+  const vm = viewModel({ kpis: { orders: 1 }, times: { prep: { coverage: 94.4, avg_ms: 1080000 }, delivery: { coverage: 81.2, avg_ms: 1440000 } }, cancellations: { rate_pct: null, refund_pending: { orders: 1, cents: 100 } } },
+    { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.strictEqual(vm.times.coverage, 'Pedidos a domicilio con tiempos completos: preparación 94% · entrega 81%');
+  assert.strictEqual(vm.cancellations.rate, '—', 'null = no denominator, not 0.0%');
+  const z = viewModel({ kpis: { orders: 1 }, cancellations: { rate_pct: 0 } }, { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.strictEqual(z.cancellations.rate, '0.0%', 'a real zero stays 0.0%');
+  const one = viewModel({ kpis: { orders: 1 }, times: { prep: { coverage: 50 }, delivery: { coverage: null } } }, { range: rangeFor('7d', T), compare: 'none', metric: 'sales', nowMs: 0 });
+  assert.strictEqual(one.times.coverage, 'Pedidos a domicilio con tiempos completos: preparación 50%');
+});

@@ -48,7 +48,21 @@ const S = {
   metric: 'sales',
   loading: false, body: null, err: null, shown: null,
   csvBusy: null, note: '',
+  refused: false,     // the server said this account may not see this restaurant's sales (JSON or CSV);
+                      // kept until ownership is re-established (portal:restaurant) or the person changes
 };
+
+// A token that is handed out ONLY while the request's context is still current. api.js awaits the
+// token and then fetches synchronously, so a check made right after the token resolves is the last
+// moment before a request leaves: an export or load whose session / restaurant ended sends nothing.
+const ABORT = 'ventas_obsolete';
+const tokenWhile = (alive) => async () => {
+  if (!alive()) throw Object.assign(new Error(ABORT), { kind: ABORT });
+  const t = await token();
+  if (!alive()) throw Object.assign(new Error(ABORT), { kind: ABORT });
+  return t;
+};
+const isRefusal = (e) => !!(e && e.kind === 'NotAuthorized');
 
 const today = () => todayHN(Date.now());
 const currentRange = () => rangeFor(S.preset, today(), S.custom);
@@ -83,7 +97,7 @@ document.addEventListener('portal:auth', (e) => {
   // getMyRestaurants → portal:restaurant); anyone else never is.
   S.uid = e && e.detail ? e.detail.uid : null;
   S.rid = null; S.epoch += 1; S.gen += 1;
-  S.body = null; S.err = null; S.shown = null; S.loading = false; S.csvBusy = null; S.note = '';
+  S.body = null; S.err = null; S.shown = null; S.loading = false; S.csvBusy = null; S.note = ''; S.refused = false;
   setGate(false);
   $('viewventas').replaceChildren();
 });
@@ -92,7 +106,7 @@ document.addEventListener('portal:restaurant', (e) => {
   const rid = e && e.detail ? e.detail.rid : null;
   if (!rid) return;
   S.rid = rid; S.epoch += 1;
-  S.body = null; S.err = null; S.shown = null; S.csvBusy = null; S.note = '';
+  S.body = null; S.err = null; S.shown = null; S.csvBusy = null; S.note = ''; S.refused = false;
   setGate(true);
   if (S.view === 'ventas') { buildPage(); load(); }
 });
@@ -115,10 +129,11 @@ async function load() {
   S.loading = true; S.err = null; paintBody();
   let body = null, err = null;
   try {
-    body = await getSalesStats({ rid, from: range.from, to: range.to, granularity: granularityFor(range), compare, token });
+    body = await getSalesStats({ rid, from: range.from, to: range.to, granularity: granularityFor(range), compare, token: tokenWhile(() => gen === S.gen && rid === S.rid) });
   } catch (e2) { err = e2; }
   if (gen !== S.gen || rid !== S.rid) return;                    // a newer request or context won
   S.loading = false; S.body = body; S.err = err;
+  if (isRefusal(err)) S.refused = true;
   S.shown = body ? { range, compare } : null;
   paintBody();
 }
@@ -128,13 +143,14 @@ async function load() {
 // saved: the server's allowlist changed, and nothing unreviewed reaches a merchant's disk.
 async function exportCsv(kind) {
   const range = currentRange();
-  if (!S.rid || !range || S.csvBusy) return;
+  if (!S.rid || !range || S.csvBusy || S.refused) return;        // the handler itself refuses, not only the button
   if (kind === 'orders' && daysBetween(range.from, range.to) + 1 > ORDERS_CSV_MAX_DAYS) {
     S.note = `El detalle de pedidos se descarga de hasta ${ORDERS_CSV_MAX_DAYS} días por vez. Elegí un período más corto.`;
     paintHeader();
     return;
   }
   const epoch = S.epoch, rid = S.rid;
+  const alive = () => epoch === S.epoch && rid === S.rid;
   S.csvBusy = kind; S.note = ''; paintHeader();
   let note = '';
   try {
@@ -142,22 +158,25 @@ async function exportCsv(kind) {
     let cursor, name = null;
     for (let page = 0; ; page++) {
       if (page >= 200) throw Object.assign(new Error('too_many_pages'), { kind: 'Unavailable' });
-      const r = await fetchSalesCsv({ rid, from: range.from, to: range.to, kind, cursor, token });
+      // BEFORE every page request: tokenWhile checks the context immediately before the request leaves
+      // (and the only await before it is the token's, which it re-checks after).
+      const r = await fetchSalesCsv({ rid, from: range.from, to: range.to, kind, cursor, token: tokenWhile(alive) });
+      if (!alive()) return;                                      // RIGHT AFTER the await: no header check, cursor or save for an ended context
       if (!csvHeaderOk(kind, r.text)) throw Object.assign(new Error('csv_header'), { kind: 'CsvHeader' });
       pages.push(r.text);
       name = name || r.filename;
       if (kind !== 'orders' || !r.nextCursor) break;
       cursor = r.nextCursor;
     }
-    if (epoch !== S.epoch) return;                               // signed out / switched restaurant mid-download
     save(kind === 'orders' ? joinCsvPages(pages) : pages[0], name || csvFilename(kind, rid, range));
   } catch (e2) {
-    if (epoch !== S.epoch) return;
+    if (!alive()) return;
+    if (isRefusal(e2)) S.refused = true;                         // a CSV 403 refuses exports exactly like a JSON 403
     note = e2 && e2.kind === 'CsvHeader'
       ? 'No pudimos preparar el archivo. Avisanos y lo revisamos.'
       : ventasMessage(e2 && e2.kind, e2 && e2.code).join('. ');
   } finally {
-    if (epoch === S.epoch) { S.csvBusy = null; S.note = note; paintHeader(); }
+    if (alive()) { S.csvBusy = null; S.note = note; paintHeader(); }
   }
 }
 
@@ -246,7 +265,9 @@ function pickPreset(key) {
 
 function applyCustom() {
   const { from, to } = S.customDraft;
-  if (!from || !to) { S.customErr = ''; paintHeader(); return; }
+  // an incomplete pair is NO range: the previously applied one stops being the page's period at once
+  // (load() bumps the generation, so a pending answer for it is dropped, and the exports disable)
+  if (!from || !to) { S.customErr = ''; S.note = ''; S.custom = null; load(); return; }
   const v = validateCustom(from, to, today());
   S.customErr = v.ok ? '' : v.error;
   S.note = '';
@@ -274,7 +295,7 @@ function paintHeader() {
   }
   refs.sel.value = range ? compareFor(range) : (S.compare || 'previous');
   // the server refused this account (403 not_owner): its exports would be refused too
-  const refused = !!(S.err && S.err.code === 'not_owner');
+  const refused = S.refused;
   refs.daily.disabled = !!S.csvBusy || !range || refused;
   refs.orders.disabled = !!S.csvBusy || !range || refused;
   refs.note.textContent = S.csvBusy ? 'Preparando el archivo…' : S.note;
@@ -410,11 +431,11 @@ function mixGrid(vm) {
   const types = section('Entrega y recogida');
   const split = el('div', 'vsplit');
   split.setAttribute('aria-hidden', 'true');
-  const [dl, pk] = vm.typeSplit;
-  const s1 = el('div', 'vs1'), s2 = el('div', 'vs2');
-  s1.style.width = `${dl.share}%`;                                // chart geometry
-  s2.style.width = `${pk.share}%`;
-  split.append(s1, s2);
+  for (const t of vm.typeSplit) {
+    const seg = el('div', t.seg);
+    seg.style.width = `${t.share}%`;                              // chart geometry
+    split.append(seg);
+  }
   const two = el('div', 'v2col');
   for (const t of vm.typeSplit) {
     const c = el('div');
@@ -482,6 +503,7 @@ function tailGrid(vm) {
     two.append(d);
   }
   cust.append(two);
+  if (vm.customersNote) cust.append(el('div', 'vcov vcnote', vm.customersNote));
 
   const canc = sectionTight('Cancelaciones');
   const rows = el('div', 'vrows');
