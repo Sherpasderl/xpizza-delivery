@@ -103,20 +103,20 @@ components:
 
 ## Colors
 
-A **dual-theme** system, both driven by the same semantic tokens; the frontmatter carries the **default night** values.
+One set of semantic tokens drives both themes; the frontmatter carries the **light default** values. **The portal ships LIGHT on every device** — `<html data-theme="light">` (owner, 2026-10-05: the light Bold Editorial look is THE portal look, no toggle). The dark tokens remain in `styles.css`, unused, for a future toggle; an OS dark-mode preference cannot override the explicit light attribute (the `prefers-color-scheme` block is guarded by `:not([data-theme="light"])`).
 
-- **Night (default, the KDS identity):** a warm near-black board (`board #0F0E0C`), cream ink (`ink #F2EEE7`), warm greys for mute (`mute #A8A197`, `mute-2 #726B60`).
-- **Day (cool, crisp):** pure-white ground (`#FFFFFF`), white cards, cool hairlines (`#E6E9EE`), near-black cool ink (`#181B20`), cool greys; accent deepens to `#2D5FD0` for contrast on white.
+- **Light (the portal):** a stark white board (`board #FFFFFF`, `board-2 #F6F6F2`), white cards, warm hairlines (`line #E7E7E1`, `line-2 #F0F0EB`), near-black ink (`ink #0A0A0B`), greys for mute (`mute #6C6C70`, `mute-2 #6E6E72`).
+- **Dark (defined, unused):** a true black base (`board #0B0B0C`), white type (`ink #F4F4F2`), and a luminous green (`#3FD98A`).
 
-**Accent — sapphire (`#5B8DEF` night / `#2D5FD0` day):** used *sparingly* and never as a status — active tab underline, selected item, links, focus, small highlights. It pairs with gold (the SAR fiscal seal) as the only two brand hues.
+**Accent — decisive green (`accent #0A6E3E`, `accent-2 #095C34`, white `accent-ink`):** the brand hue — the thick active-tab underline, primary actions, selection, focus highlights. It pairs with gold (`gold #8A6A12`, the SAR fiscal seal).
 
-**Semantic status (separate from the accent):** green `#4FA65A` (available / new), red `#CE4B3A` (delete / removed), amber `#E8A23E` (large-change warning), gold `#E3B54A` (fiscal). Each has a `-soft` fill and `-line` border variant. Status hues are reserved — never reused as the accent.
+**Semantic status:** green `#0E9F5B` (available / new), red `#D23425` (delete / removed), amber `#8A5200` (large-change warning), gold `#8A6A12` (fiscal). Each has a `-soft` fill and `-line` border variant.
 
-**Contrast is normative, not optional:** all functional text must clear **WCAG AA (4.5:1)** on its ground. `mute-2` on `panel` and white on `accent` are known to fall short today and must be corrected toward AA.
+**Contrast is normative, not optional:** all functional text must clear **WCAG AA (4.5:1)** on its ground.
 
 ## Typography
 
-**Hanken Grotesk** throughout (self-hosted/CDN with a `system-ui` fallback). A tight scale: `display` 27px/750/-0.03em, `title` 16px/750, `body` 14px/1.45, `label` 11px uppercase +0.12em. Prices and any aligned numerals use `font-variant-numeric: tabular-nums`. **No functional text below 11px** (the 10px section label is a defect to lift).
+**Archivo** for display and titles (`--disp`; loaded from Google Fonts as the weight range 600–800, which covers the 750/800 weights in use) and **Söhne** for body and labels (`--body`). Söhne is a commercial face and is **not loaded**: body text falls back through the stack to Helvetica Neue / the system UI font. Scale (frontmatter): `display` 44px/800/-0.045em, `title` 18px/800/-0.03em, `body` 14px/1.5, `label` 11px/800 uppercase +0.15em. Prices and any aligned numerals use `font-variant-numeric: tabular-nums`. **No functional text below 11px.**
 
 ## Layout
 

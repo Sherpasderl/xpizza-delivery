@@ -138,6 +138,11 @@
     "driver_push_tokens": { ".read": false, ".write": false },
     "driver_tokens":      { ".read": false, ".write": false },
 
+    "client_versions":       { ".read": false, ".write": false, "$app": { ".indexOn": ["last_seen"] } },
+    "client_version_limits": { ".read": false, ".write": false, ".indexOn": ["window_start"] },
+    "client_version_stats":  { ".read": false, ".write": false },
+    "platform_config":       { ".read": false, ".write": false },
+
     "payment_attempts": { ".read": false, ".write": false },
     "webhook_events":   { ".read": false, ".write": false },
     "outbox":           { ".read": false, ".write": false },
@@ -171,10 +176,11 @@
         "item_availability": {
           ".read": true,
           "$key": {
-            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists() && (!root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').exists() || (newData.child('compat').isNumber() && newData.child('compat').val() >= root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').val() && newData.child('updated_at').val() == now))",
             ".validate": "newData.hasChildren(['available','updated_at'])",
             "available":  { ".validate": "newData.isBoolean()" },
             "updated_at": { ".validate": "newData.isNumber()" },
+            "compat":     { ".validate": "newData.isNumber()" },
             "$other":     { ".validate": false }
           }
         },
@@ -182,8 +188,13 @@
         "availability_audit": {
           ".read": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
           "$key": {
-            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()"
+            ".write": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists() && (!root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').exists() || (newData.child('compat').isNumber() && newData.child('compat').val() >= root.child('restaurants').child($restaurant_id).child('client_floor').child('kitchen').val() && newData.child('updated_at').val() == now))"
           }
+        },
+
+        "client_floor": {
+          ".read": "auth != null && root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists()",
+          ".write": false
         },
 
         "availability_reset_marker": {

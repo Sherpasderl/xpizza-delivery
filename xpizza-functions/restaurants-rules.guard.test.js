@@ -36,7 +36,9 @@ assert(!('.read' in rid) && !('.write' in rid), 'FAIL: .read/.write key present 
 //     availability_audit as grant-bearing siblings of identity; each is its own child subtree, so the
 //     load-bearing cascade guarantee (no ancestor grant can leak factura_config) is unchanged. To add a
 //     new grant site, allow-list its subtree here on purpose — a grant anywhere else still fails CI.
-const GRANT_SUBTREES = new Set(['identity', 'kitchen_staff', 'item_availability', 'availability_audit']);
+// P-SELFUPDATE §5 added client_floor: a kitchen-member READ grant (the KDS reads the per-restaurant floor it is held to);
+// its .write is an explicit false (only the owner CLI, via the Admin SDK, writes it).
+const GRANT_SUBTREES = new Set(['identity', 'kitchen_staff', 'item_availability', 'availability_audit', 'client_floor']);
 (function walk(node, segs) {
   if (node === null || typeof node !== 'object') return;
   for (const [k, v] of Object.entries(node)) {

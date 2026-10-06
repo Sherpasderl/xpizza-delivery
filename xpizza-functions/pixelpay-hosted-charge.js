@@ -45,7 +45,11 @@ function genPollToken() {
    site is looking at is tagged canonical. Each existing site keeps its kind: the pre-read and the post-txn check
    stay ADVISORY, the transaction stays the authoritative CAS and re-checks the (format, fingerprint) PAIR on the
    record it holds. No new read, write, transaction or reordering on any path; nothing here writes a tag. */
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null) {
+/* P-SELFUPDATE §5 (2): `refuseFresh` — true ONLY for a request BELOW the client compatibility floor that was admitted as a
+   live-checkout reuse. At the authoritative fresh-issuance decision (the same point the 86 gate uses, below every terminal
+   and genuine-reuse return), such a request is refused with a NON-426 typed conflict before the CAS — it writes nothing.
+   Default false → every existing caller and path is unchanged. */
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false) {
   const canon = once(canonicalFp);
   const orderRef = db.ref(`orders/${orderId}`);
 
@@ -102,6 +106,9 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     if (Array.isArray(cartBlocked) && cartBlocked.length > 0) {
       return { outcome: 'item_unavailable', blocked: cartBlocked };
     }
+    // P-SELFUPDATE §5 (2): a below-floor request reaching ANY fresh issuance (create / install / recover / rotate) — a race
+    // after it was admitted as a reuse — is refused here, before the CAS. NOT a 426: it is not safe-to-reload proof.
+    if (refuseFresh === true) return { outcome: 'conflict', reason: 'client_update_race' };
 
     // CAS on orders/{id} (the lock). Admin SDK calls the fn with null on its first uncached
     // invocation; for non-create paths fall back to the pre-read `order` (return a value, never

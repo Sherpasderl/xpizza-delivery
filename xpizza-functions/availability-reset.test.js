@@ -31,6 +31,13 @@ const HOURS = {
 const SV = { TIMESTAMP: { '.sv': 'timestamp' } };
 
 // ── minimal in-memory RTDB fake ────────────────────────────────────────────────────────────────────────
+// 🔴 THIS FAKE CANNOT SEE THE SDK'S TRANSACTION SEMANTICS. Its transaction() calls the updater ONCE, with the
+// STORED value. The real firebase-admin client first calls it with the LOCALLY CACHED value — null on a cold
+// client, which is every production run — and only re-runs it with the server value if the first call
+// returned a value. The nightly reset passed this suite for 60 days while clearing nothing in prod, because
+// of exactly that difference (PLAN-availability-reset-fix rev 3). The cold-probe behaviour, removal
+// accounting, retries and marker ownership are proven against the REAL RTDB emulator in
+// test/availability-reset.emulator.test.js. Keep this suite for the pure logic (dates, gates, shapes) only.
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 function makeDb(initial, serverTime) {
   const data = clone(initial) || {};
@@ -223,6 +230,27 @@ assert.strictEqual(AR.localDateInTZ(L(2026, 0, 5, 19, 0)), '2026-01-05'); ok('lo
   assert.strictEqual(mk.status, 'in_progress'); ok('cross-midnight: stale invocation did NOT finalize the NEWER marker to done');
   assert.strictEqual(mk.started_at, T1); ok('cross-midnight: newer started_at intact');
   assert.strictEqual(mk.completed_at, null); ok('cross-midnight: newer marker still awaits its OWN finalize');
+}
+
+// ── outcomeLogLines — one line per restaurant per tick, every outcome visible (PLAN rev 3 §Fix 5) ────────
+{
+  const lines = AR.outcomeLogLines([
+    { rid: 'a', cleared: ['k1'], count: 1, started_at: 5 },
+    { rid: 'b', skipped: true, reason: 'already_done' },
+    { rid: 'c', skipped: true, reason: 'newer_marker' },
+    { rid: 'd', skipped: true, reason: 'skipped:marker_date' },
+    { rid: 'e', skipped: true, reason: 'open' },
+    { rid: 'f', skipped: true, reason: 'error', error: 'boom' },
+  ]);
+  assert.deepStrictEqual(lines, [
+    'resetItemAvailability_outcome {"rid":"a","outcome":"cleared","count":1,"started_at":5}',
+    'resetItemAvailability_outcome {"rid":"b","outcome":"already_done"}',
+    'resetItemAvailability_outcome {"rid":"c","outcome":"newer_marker"}',
+    'resetItemAvailability_outcome {"rid":"d","outcome":"skipped:marker_date"}',
+    'resetItemAvailability_outcome {"rid":"e","outcome":"open"}',
+    'resetItemAvailability_outcome {"rid":"f","outcome":"error","error":"boom"}',
+  ]); ok('outcomeLogLines: one structured line per restaurant, every outcome named (no item keys, no PII)');
+  assert.deepStrictEqual(AR.outcomeLogLines(undefined), []); ok('outcomeLogLines: no results → no lines');
 }
 
 console.log(`\navailability-reset: ${n} assertions passed`);

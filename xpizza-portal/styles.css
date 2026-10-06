@@ -16,6 +16,8 @@
     --gold:#8A6A12; --gold-line:#E3D2A0; --gold-soft:#FBF4E1;
     --green:#0E9F5B; --green-soft:#E7F5EC; --green-line:#BEE6CE;
     --red:#D23425; --red-soft:#FCEBE9; --red-line:#EFC9C2;
+    /* TEXT on the -soft fills (WCAG AA ≥ 4.5:1): darker than the fill/stroke greens and reds above */
+    --green-text:#0B7C47; --red-text:#C73123;
     --amber:#8A5200; --amber-soft:#FBF0DC; --amber-line:#EBD6A6;
     --tint:rgba(14,159,91,.07); --tint2:rgba(14,159,91,.13); --rbar-bg:#FFFFFF;
     --shadow:0 1px 2px rgba(10,10,11,.05),0 16px 40px -30px rgba(10,10,11,.26); --shadow-lg:0 44px 96px -40px rgba(10,10,11,.34);
@@ -31,6 +33,7 @@
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
+    --green-text:#3FD98A; --red-text:#F0685A;
     --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
     --tint:rgba(63,217,138,.10); --tint2:rgba(63,217,138,.16); --rbar-bg:#0E0E10;
     --shadow:0 8px 24px -18px rgba(0,0,0,.85); --shadow-lg:0 40px 90px -34px rgba(0,0,0,.9);
@@ -42,6 +45,7 @@
     --gold:#E3B54A; --gold-line:#4E4126; --gold-soft:#241D0E;
     --green:#3FD98A; --green-soft:#122419; --green-line:#274A34;
     --red:#F0685A; --red-soft:#2A1512; --red-line:#5A2B24;
+    --green-text:#3FD98A; --red-text:#F0685A;
     --amber:#E8A23E; --amber-soft:#251C10; --amber-line:#4E3D1E;
     --tint:rgba(63,217,138,.10); --tint2:rgba(63,217,138,.16); --rbar-bg:#0E0E10;
     --shadow:0 8px 24px -18px rgba(0,0,0,.85); --shadow-lg:0 40px 90px -34px rgba(0,0,0,.9);
@@ -122,7 +126,7 @@
   .rtext b{font-family:var(--disp);font-size:15px;font-weight:750;display:block;letter-spacing:-.02em}
   .rtext span{font-size:12px;color:var(--mute2)}
   .rcount{font-size:11px;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);min-width:22px;height:22px;padding:0 7px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:650;font-variant-numeric:tabular-nums}
-  .railitem.on .rcount{color:var(--accent);border-color:var(--accent-line,transparent);background:var(--tint2)}
+  .railitem.on .rcount{color:var(--accent);border-color:var(--accent-line);background:var(--tint2)}
   .railadd{margin-top:6px;display:flex;align-items:center;gap:9px;justify-content:center;padding:11px;border:1.5px dashed var(--line);border-radius:11px;color:var(--mute);font-weight:650;font-size:12.5px;cursor:pointer;background:none;width:100%;transition:border-color .16s,color .16s}
   .railadd:hover{border-color:var(--accent);color:var(--accent)}
   .railadd svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2}
@@ -162,7 +166,7 @@
   .nm{font-family:var(--disp);font-weight:750;font-size:16px;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}
   .nmed{outline:none;border-radius:4px}.nmed:focus{box-shadow:0 1.5px 0 var(--accent)}
   .tag{font-size:11px;font-weight:750;letter-spacing:.03em;color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line);padding:1px 6px;border-radius:5px}
-  .tag.new{color:var(--green);background:var(--green-soft);border-color:var(--green-line)}
+  .tag.new{color:var(--green-text);background:var(--green-soft);border-color:var(--green-line)}
   .desc{color:var(--mute2);font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .opts{margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .ochip{font-size:11px;font-weight:600;color:var(--mute);background:var(--board-2);border:1px solid var(--line2);padding:2px 9px;border-radius:999px;cursor:pointer;transition:border-color .15s,color .15s}
@@ -181,7 +185,7 @@
   .tog i{position:absolute;top:2px;left:19px;width:19px;height:19px;border-radius:50%;background:#fff;transition:left .2s cubic-bezier(.3,.8,.4,1);box-shadow:0 1px 3px rgba(0,0,0,.35)}
   .tog.off i{left:2px}
   .del{color:var(--mute2);cursor:pointer;display:flex;justify-content:center;padding:5px;border-radius:7px;transition:color .15s,background .15s}
-  .del:hover{color:var(--red);background:var(--red-soft)}.del svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .del:hover{color:var(--red-text);background:var(--red-soft)}.del svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9}
   .addrow{padding:13px 20px;color:var(--accent);font-weight:650;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:9px;transition:background .16s}
   .addrow:hover{background:var(--tint)}.addrow svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2}
   .empty{padding:40px 20px;text-align:center;color:var(--mute2);font-size:13px}
@@ -207,8 +211,8 @@
   .dl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute2);font-weight:750;margin:18px 0 9px}.dl:first-child{margin-top:0}
   .drow{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;font-size:13px;background:var(--board-2)}
   .dchip{font-size:11px;font-weight:800;letter-spacing:.03em;padding:2px 7px;border-radius:5px;flex:none}
-  .dchip.add{background:var(--green-soft);color:var(--green);border:1px solid var(--green-line)}
-  .dchip.rem{background:var(--red-soft);color:var(--red);border:1px solid var(--red-line)}
+  .dchip.add{background:var(--green-soft);color:var(--green-text);border:1px solid var(--green-line)}
+  .dchip.rem{background:var(--red-soft);color:var(--red-text);border:1px solid var(--red-line)}
   .dchip.chg{background:var(--card-2);color:var(--mute);border:1px solid var(--line2)}
   .dnm{font-weight:650}
   .dv{margin-left:auto;font-variant-numeric:tabular-nums;font-size:13px;color:var(--mute)}
@@ -217,7 +221,7 @@
   .ack{display:flex;align-items:flex-start;gap:11px;padding:14px;background:var(--amber-soft);border:1px solid var(--amber-line);border-radius:12px;margin-top:14px;cursor:pointer}
   .ack input{margin-top:2px;width:17px;height:17px;accent-color:var(--amber);flex:none}
   .ackt{font-size:12.5px;color:var(--on-dark)}.ackt b{color:var(--amber)}
-  .fiscal{margin-top:14px;padding:16px;background:var(--gold-soft,transparent);border:1px solid var(--gold-line);border-radius:13px}
+  .fiscal{margin-top:14px;padding:16px;background:var(--gold-soft);border:1px solid var(--gold-line);border-radius:13px}
   .fh{display:flex;align-items:center;gap:9px;font-weight:750;font-size:13px;color:var(--gold)}
   .fh svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2}
   .fiscal p{font-size:12.5px;color:var(--mute);margin:8px 0 12px;line-height:1.5}
@@ -313,7 +317,7 @@
   .motog i{position:absolute;top:2px;left:18px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .18s cubic-bezier(.3,.8,.4,1);box-shadow:0 1px 3px rgba(0,0,0,.35)}
   .motog.off i{left:2px}
   .model{width:30px;height:30px;flex:none;border:none;background:none;cursor:pointer;color:var(--mute2);border-radius:8px;display:flex;align-items:center;justify-content:center;transition:color .15s,background .15s}
-  .model:hover{color:var(--red);background:var(--red-soft)}
+  .model:hover{color:var(--red-text);background:var(--red-soft)}
   .model svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
   .mgadd{display:flex;align-items:center;gap:7px;color:var(--accent);font-size:12.5px;font-weight:650;background:none;border:none;cursor:pointer;padding:4px 0;font-family:inherit;align-self:flex-start}
   .mgadd svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2}
@@ -321,7 +325,7 @@
   .fiscnote svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;flex:none;margin-top:1px}
   .dwf{padding:15px 22px;border-top:1px solid var(--line2);display:flex;gap:10px;align-items:center}
   .dwf .delx{color:var(--red);border-color:transparent;background:transparent;margin-right:auto;padding-left:2px}
-  .dwf .delx:hover{background:var(--red-soft)}
+  .dwf .delx:hover{color:var(--red-text);background:var(--red-soft)}
   .dwf .btn.accent{flex:none}
 
   /* ── orders view ── */
@@ -336,9 +340,9 @@
   .ometa{font-size:12.5px;color:var(--mute)}.ometa b{color:var(--ink);font-weight:650}
   .oright{display:flex;align-items:center;gap:14px}
   .opill{font-size:11px;font-weight:750;padding:3px 10px;border-radius:999px;letter-spacing:.02em;white-space:nowrap}
-  .opill.ok{color:var(--green);background:var(--green-soft);border:1px solid var(--green-line)}
+  .opill.ok{color:var(--green-text);background:var(--green-soft);border:1px solid var(--green-line)}
   .opill.issue{color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line)}
-  .opill.refund{color:var(--red);background:var(--red-soft);border:1px solid var(--red-line)}
+  .opill.refund{color:var(--red-text);background:var(--red-soft);border:1px solid var(--red-line)}
   .ototal{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;min-width:78px}
   .oactions{display:flex;gap:8px}
   .btn.sm{padding:7px 12px;font-size:12px}
@@ -381,7 +385,7 @@
   .tlabel{font-size:11px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--mute2)}
   .ptimes .tlabel:not(:first-child){margin-left:8px}
   .premove{margin-left:auto;color:var(--mute2);cursor:pointer;display:flex;padding:7px;border-radius:8px}
-  .premove:hover{color:var(--red);background:var(--red-soft)}.premove svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+  .premove:hover{color:var(--red-text);background:var(--red-soft)}.premove svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
   .addperiod{padding:15px 20px;color:var(--accent);font-weight:650;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .15s}
   .addperiod:hover{background:var(--tint)}.addperiod svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2}
 
@@ -448,16 +452,18 @@
   .prow .now{color:var(--ink);font-weight:750;font-size:15px}
   .pdelta{align-self:flex-start;display:inline-flex;align-items:center;font-size:11px;font-weight:750;font-variant-numeric:tabular-nums;padding:2px 7px;border-radius:6px}
   .pdelta.up{color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line)}
-  .pdelta.dn{color:var(--green);background:var(--green-soft);border:1px solid var(--green-line)}
+  .pdelta.dn{color:var(--green-text);background:var(--green-soft);border:1px solid var(--green-line)}
   /* a >50% swing gets the amber warning frame — the one row that must not look ordinary */
   .prow.big{border-color:var(--amber-line);background:var(--amber-soft)}
+  /* inside a flagged (amber) row the secondary text darkens to --mute: --mute2 on --amber-soft is 4.50:1 rounded but 4.4966:1 exact (codex r2 S2) */
+  .prow.big .psub,.prow.big .arr{color:var(--mute)}
   .prow .pflag{flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:650;color:var(--amber);padding-top:2px;border-top:1px solid var(--amber-line);margin-top:2px}
   .prow .pflag svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;flex:none}
   .brow{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line2);border-radius:11px;margin-bottom:8px;background:var(--board-2);font-size:13.5px}
   .brow:last-child{margin-bottom:0}
   .bchip{font-size:11px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:6px;flex:none}
-  .bchip.add{background:var(--green-soft);color:var(--green);border:1px solid var(--green-line)}
-  .bchip.rem{background:var(--red-soft);color:var(--red);border:1px solid var(--red-line)}
+  .bchip.add{background:var(--green-soft);color:var(--green-text);border:1px solid var(--green-line)}
+  .bchip.rem{background:var(--red-soft);color:var(--red-text);border:1px solid var(--red-line)}
   .brow .bnm{font-weight:650}.brow .bval{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mute)}
   .brow.rem .bnm{text-decoration:line-through;color:var(--mute)}
 
@@ -591,7 +597,7 @@
   .field input{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14px;color:var(--ink);transition:border-color .15s}
   .field input:focus{outline:none;border-color:var(--accent)}
   .gatecard .btn.accent{width:100%;justify-content:center;padding:12px}
-  .err{display:none;margin-top:13px;padding:10px 12px;border-radius:9px;background:var(--red-soft);border:1px solid var(--red-line);color:var(--red);font-size:12.5px}
+  .err{display:none;margin-top:13px;padding:10px 12px;border-radius:9px;background:var(--red-soft);border:1px solid var(--red-line);color:var(--red-text);font-size:12.5px}
   .err.on{display:block}
   .hidden{display:none !important}
   .irow{display:flex;align-items:center;gap:14px;padding:13px 20px;border-bottom:1px solid var(--line2)}

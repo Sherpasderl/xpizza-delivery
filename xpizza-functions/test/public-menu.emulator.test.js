@@ -210,12 +210,45 @@ const identityFor = (rid, active) => ({
     assert.strictEqual(allowed.headers.get('access-control-allow-origin'), 'https://orders.xpizza.hn', 'a form origin may read the menu');
     const stranger = await get('/menu/x_pizza', { Origin: 'https://evil.example' });
     assert.notStrictEqual(stranger.headers.get('access-control-allow-origin'), 'https://evil.example', '🔴 an arbitrary origin was allowed to read');
-    // the portal and account lists are NOT widened by this endpoint existing
-    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
-    assert.ok(/const PUBLIC_MENU_ORIGINS = \[/.test(src), 'the endpoint has its own origin list');
-    assert.ok(/cors: PUBLIC_MENU_ORIGINS/.test(src), '...and uses it');
-    assert.ok(!/cors: ACCOUNT_ORIGINS[\s\S]{0,200}getPublicMenu/.test(src), 'it does not borrow the account list');
-    ok('CORS: a form origin may read, a stranger may not, and neither ACCOUNT_ORIGINS nor PORTAL_ORIGINS was widened');
+    // the localhost development pattern is THIS endpoint's own (the account list never had it) — a live, behavioural pin
+    const dev = await get('/menu/x_pizza', { Origin: 'http://localhost:5173' });
+    assert.strictEqual(dev.headers.get('access-control-allow-origin'), 'http://localhost:5173', 'local development may read the public menu');
+    const portal = await get('/menu/x_pizza', { Origin: 'https://sherpa-portal.netlify.app' });
+    assert.notStrictEqual(portal.headers.get('access-control-allow-origin'), 'https://sherpa-portal.netlify.app', '🔴 the portal origin must not read through this list');
+
+    // the portal and account lists are NOT widened by this endpoint existing. P-SELFUPDATE (advisor ruling R1): the
+    // order-site lists are DERIVED from the bundled site manifest, so the pins are on the RUNTIME VALUES + the wiring.
+    const fs = require('fs'), path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+    const { PLATFORM, LOCALHOST_DEV_RE } = require('../platform-manifest');
+    const { ACCOUNT_ORIGINS, PUBLIC_MENU_ORIGINS } = PLATFORM;
+    const wire = (list) => JSON.stringify(list.map((o) => (o instanceof RegExp ? { re: o.source, flags: o.flags } : o)));
+    // the order-site origins, recomputed independently from the manifest
+    const orderOrigins = PLATFORM.sites.deployments.filter((d) => d.app === 'orders').flatMap((d) => d.origins);
+    assert.ok(orderOrigins.length >= 2, 'non-vacuity: the manifest names the order sites');
+    // PORTAL_ORIGINS — still a literal in index.js; evaluated and compared with its ba29282 value
+    const pm = src.match(/const PORTAL_ORIGINS = (\[[\s\S]*?\]);/);
+    assert.ok(pm, 'PORTAL_ORIGINS is still its own literal list');
+    const PORTAL_ORIGINS = Function(`"use strict"; return (${pm[1]});`)();
+    // (1) three DISTINCT lists
+    assert.ok(PUBLIC_MENU_ORIGINS !== ACCOUNT_ORIGINS, '(1) the public-menu list is not the account list');
+    assert.ok(Array.isArray(PUBLIC_MENU_ORIGINS) && Array.isArray(ACCOUNT_ORIGINS));
+    assert.notStrictEqual(wire(PUBLIC_MENU_ORIGINS), wire(PORTAL_ORIGINS), '(1) the public-menu list is not the portal list');
+    // (2) exactly [the localhost development pattern, ...the order-site origins]
+    assert.strictEqual(wire(PUBLIC_MENU_ORIGINS), wire([/^http:\/\/localhost(:\d+)?$/, ...orderOrigins]), '(2) public menu = localhost pattern + exactly the order sites');
+    assert.strictEqual(LOCALHOST_DEV_RE.source, '^http:\\/\\/localhost(:\\d+)?$');
+    // (3) the account list has NO localhost pattern and only the order sites; the portal list is unchanged from ba29282
+    assert.ok(!ACCOUNT_ORIGINS.some((o) => o instanceof RegExp), '(3) ACCOUNT_ORIGINS carries no pattern (no localhost)');
+    assert.deepStrictEqual(ACCOUNT_ORIGINS, orderOrigins, '(3) ACCOUNT_ORIGINS = exactly the order sites');
+    assert.strictEqual(wire(PORTAL_ORIGINS), wire([/^http:\/\/localhost(:\d+)?$/, 'https://sherpa-portal.netlify.app']), '(3) PORTAL_ORIGINS is unchanged from ba29282');
+    // (4) getPublicMenu's options carry `cors: PUBLIC_MENU_ORIGINS` — structurally, inside ITS onRequest options object
+    const start = src.indexOf('exports.getPublicMenu = onRequest(');
+    assert.ok(start > -1, 'getPublicMenu is exported via onRequest');
+    const opts = src.slice(start, src.indexOf('}', start) + 1);
+    assert.match(opts, /\{[^}]*\bcors: PUBLIC_MENU_ORIGINS\b[^}]*\}/, '(4) getPublicMenu uses PUBLIC_MENU_ORIGINS');
+    assert.ok(!/cors: (ACCOUNT_ORIGINS|PORTAL_ORIGINS|true)\b/.test(opts), '(4) and borrows neither the account nor the portal list');
+    assert.ok(/const \{ PUBLIC_MENU_ORIGINS \} = require\('\.\/platform-manifest'\)\.PLATFORM;/.test(src), 'derived from the manifest (ruling R1)');
+    ok('CORS: a form origin and local development may read; a stranger and the portal may not; three distinct lists — public menu = localhost + the order sites, account = the order sites only, portal unchanged from ba29282; getPublicMenu wired to its own list');
   }
 
   server.close();
