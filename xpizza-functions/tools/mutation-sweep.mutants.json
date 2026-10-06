@@ -10731,5 +10731,17 @@
       "node",
       "tools/deploy-indexes.test.js"
     ]
+  },
+  {
+    "id": "s1-81",
+    "slice": "stats",
+    "label": "🔴 r8: an existing tracked JSON (package.json) gains a firestore \"indexes\" declaration",
+    "file": "package.json",
+    "from": "  \"private\": true,",
+    "to": "  \"private\": true,\n  \"firestore\": { \"indexes\": \"firestore.indexes.json\" },",
+    "command": [
+      "node",
+      "tools/firestore-config-isolation.test.js"
+    ]
   }
 ]

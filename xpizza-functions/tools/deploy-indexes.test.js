@@ -21,8 +21,9 @@ const ROOT = path.join(__dirname, '..');
   assert.strictEqual(pkg.scripts['deploy:indexes'], 'node tools/deploy-indexes.js --project xpizza-delivery');
   for (const [k, v] of Object.entries(pkg.scripts)) {
     if (/firestore:indexes/.test(v)) assert.strictEqual(k, 'deploy:indexes', `script ${k} deploys indexes outside the sanctioned wrapper`);
-    // (a force flag on ANY deploy line — package.json included — is failed outright by the raw-line scan,
-    //  tools/deploy-instruction-scan.test.js)
+    // (No script, doc or flag — a force flag included — can deploy indexes some other way: firebase.json
+    //  declares none and no other tracked config may, so only this wrapper's --config reaches them;
+    //  tools/firestore-config-isolation.test.js proves it against the installed CLI.)
   }
   ok('flags pinned: deploy --only firestore:indexes --non-interactive --config firebase.indexes.json --project xpizza-delivery; no force flag; no other index-deploy script');
 }
@@ -116,8 +117,9 @@ async function cell6() {
   ok('BEHAVIOURAL probe of the installed CLI: confirm() → false, deploy() deletes 0 without the force flag, control deletes 1/1; a confirm() returning true is caught');
 }
 
-// (The repo-wide deploy-instruction check moved to tools/deploy-instruction-scan.test.js: a PINNED
-//  allowlist of every occurrence, per the advisor's r5 ruling — pattern-matching bad forms always leaks.)
+// (Index isolation is by construction, not by scanning text: tools/firestore-config-isolation.test.js
+//  — firebase.json has no indexes, the config inventory is exact, and the installed CLI prepares no index
+//  operation from any default config.)
 
 (async () => {
   await cell2();

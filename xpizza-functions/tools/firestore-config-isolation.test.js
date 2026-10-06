@@ -13,6 +13,7 @@
 //   (c) BEHAVIOURAL, against the INSTALLED CLI (network stubbed): prepare() over the real firebase.json
 //       queues ZERO index operations for every target; over firebase.indexes.json it queues exactly the stats
 //       field overrides and no rules.
+//   (d) the CONFIG INVENTORY: no other tracked default config can reintroduce indexes (codex build r8).
 // Run: node tools/firestore-config-isolation.test.js
 // ---------------------------------------------------------------------------
 const assert = require('assert');
@@ -59,7 +60,7 @@ const REFERENCE_PINS = [
   { file: 'xpizza-functions/tools/firestore-indexes-report.js', text: "  const fb = JSON.parse(fs.readFileSync(path.join(ROOT, 'firebase.indexes.json'), 'utf8'));" },
   { file: 'xpizza-functions/tools/firestore-indexes-report.js', text: "  if (!fb.firestore || !fb.firestore.indexes) throw new Error('firebase.indexes.json declares no firestore.indexes file');" },
 ];
-const SELF_COUNT = 16;   // this file's own literal mentions: the 14 pin texts + 2 in its header comment
+const SELF_COUNT = 17;   // this file's own literal mentions: the 14 pin texts + 2 in its header comment + ALLOWED_CONFIGS
 
 // (a)
 {
@@ -92,6 +93,56 @@ const SELF_COUNT = 16;   // this file's own literal mentions: the 14 pin texts +
   assert.strictEqual(others.length, REFERENCE_PINS.length, 'each pinned line appears exactly once');
   assert.strictEqual(self.length, SELF_COUNT, `this file mentions ${CONFIG_NAME} literally ${self.length}× (pinned ${SELF_COUNT})`);
   ok(`every tracked reference to ${CONFIG_NAME} is a reviewed pin (${REFERENCE_PINS.length} lines in ${new Set(REFERENCE_PINS.map((p) => p.file)).size} files)`);
+}
+
+// (d) THE CONFIG INVENTORY (codex build r8 S1): no OTHER default config can reintroduce indexes. Every
+//     tracked file named firebase*.json (any depth) must be exactly the two below, and no tracked JSON other
+//     than the dedicated config may hold a `firestore` object (or array of them) with an `indexes` key.
+const ALLOWED_CONFIGS = ['xpizza-functions/firebase.indexes.json', 'xpizza-functions/firebase.json'];
+const DEDICATED = 'xpizza-functions/' + CONFIG_NAME;
+function declaresIndexes(node) {
+  let found = false;
+  const walk = (o) => {
+    if (!o || typeof o !== 'object' || found) return;
+    if (Object.prototype.hasOwnProperty.call(o, 'firestore')) {
+      const fsc = Array.isArray(o.firestore) ? o.firestore : [o.firestore];
+      if (fsc.some((x) => x && typeof x === 'object' && Object.prototype.hasOwnProperty.call(x, 'indexes'))) { found = true; return; }
+    }
+    for (const k of Object.keys(o)) walk(o[k]);
+  };
+  walk(node);
+  return found;
+}
+// files: [{ path, text }] → { violations, unparseable }
+function inventoryViolations(files) {
+  const violations = [], unparseable = [];
+  const named = files.map((f) => f.path).filter((p) => /^firebase[^/]*\.json$/i.test(path.posix.basename(p))).sort();
+  if (JSON.stringify(named) !== JSON.stringify(ALLOWED_CONFIGS)) violations.push(`firebase*.json inventory is ${JSON.stringify(named)}, expected exactly ${JSON.stringify(ALLOWED_CONFIGS)}`);
+  for (const f of files) {
+    if (!/\.json$/i.test(f.path)) continue;
+    let j;
+    try { j = JSON.parse(f.text); } catch (e) { unparseable.push(`${f.path}: ${String(e.message).slice(0, 80)}`); continue; }
+    if (f.path !== DEDICATED && declaresIndexes(j)) violations.push(`${f.path} declares firestore "indexes" — only ${DEDICATED} may`);
+  }
+  return { violations, unparseable };
+}
+{
+  const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
+  const files = tracked.filter((p) => /\.json$/i.test(p) || /^firebase/i.test(path.posix.basename(p)))
+    .map((p) => { try { return { path: p, text: fs.readFileSync(path.join(REPO, p), 'utf8') }; } catch (_) { return null; } }).filter(Boolean);
+  const r = inventoryViolations(files);
+  assert.deepStrictEqual(r.violations, [], `🔴 config inventory:\n  ${r.violations.join('\n  ')}`);
+  const jsonCount = files.filter((f) => /\.json$/i.test(f.path)).length;
+  assert(jsonCount > 20, `premise: the tracked JSON files were read (${jsonCount})`);
+  if (r.unparseable.length) console.log(`    (skipped unparseable JSON, by reason: ${r.unparseable.join(' | ')})`);
+  // regression fixtures: codex r8's exact ROOT config, a NESTED one, and a non-firebase-named JSON
+  const base = files.slice();
+  const withExtra = (extra) => inventoryViolations([...base, extra]).violations;
+  assert(withExtra({ path: 'firebase.json', text: '{"firestore":{"indexes":"xpizza-functions/firestore.indexes.json"}}' }).length >= 1, 'codex r8: a ROOT firebase.json declaring indexes is caught');
+  assert(withExtra({ path: 'docs/firebase.json', text: '{"firestore":{"rules":"x"}}' }).some((v) => /inventory/.test(v)), 'a NESTED firebase.json (even without indexes) breaks the exact inventory');
+  assert(withExtra({ path: 'deploy/settings.json', text: '{"targets":{"firestore":[{"database":"(default)","indexes":"i.json"}]}}' }).some((v) => /declares firestore "indexes"/.test(v)), 'any tracked JSON declaring firestore indexes is caught, whatever its name');
+  assert.deepStrictEqual(withExtra({ path: 'docs/notes.json', text: '{"firestore":"mentioned as a string"}' }), [], 'a mere mention is not a declaration');
+  ok(`config inventory: firebase*.json == ${JSON.stringify(ALLOWED_CONFIGS)}; no tracked JSON but the dedicated config declares indexes (${jsonCount} parsed); root / nested / renamed fixtures caught`);
 }
 
 // (c) BEHAVIOURAL — the INSTALLED CLI's own Config.load + firestore prepare(), network stubbed.
