@@ -363,7 +363,8 @@ function cartAdapterOf(rid) {
     // Malformed JSON throws here, failing the walk by name (P-SELFUPDATE: the bundled platform manifest).
     if (/\.json$/.test(absFile)) { JSON.parse(src); return []; }
     let ast;
-    try { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true }); }
+    // CommonJS: a top-level `return` is legal (index.js's isolated-portal early branch — PORTAL SPEED P1).
+    try { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true, allowReturnOutsideFunction: true }); }
     catch (_) { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true }); }
     const { nodes, parentOf } = astNodes(ast);
 

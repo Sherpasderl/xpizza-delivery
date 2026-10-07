@@ -22,7 +22,8 @@ const ROOT = path.join(__dirname, '..');
 const rel = (f) => path.relative(ROOT, f);
 
 const RUNTIME_ENTRIES = ['stats/stats-api.js', 'stats/stats-job.js', 'stats/stats-store.js', 'stats/stats-build.js', 'stats/stats-classify.js',
-  'stats/stats-index.js', 'stats/stats-identity.js', 'stats/stats-time.js', 'stats/stats-indexing.js', 'tools/stats-rollup.js'];
+  'stats/stats-index.js', 'stats/stats-identity.js', 'stats/stats-time.js', 'stats/stats-indexing.js', 'tools/stats-rollup.js',
+  'stats/keyer.js'];   // PORTAL SPEED P1: the lazy keyer + live cache, moved verbatim out of index.js — held to every stats rule here
 const ALLOWED_GRAPH = new Set([...RUNTIME_ENTRIES,
   'scheduled-orders.js',           // TZ_OFFSET_MS + DEFAULT_CFG.maxHorizonHours (pure constants/helpers)
   'restaurant-id.js',              // DEFAULT_RESTAURANT_ID for rid-less legacy orders (advisor C2)
@@ -97,8 +98,11 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
 }
 
 // 3. index.js: stats appears ONLY in its export-wiring block; the block writes nothing.
+// PORTAL SPEED P1: getSalesStats and the keyer moved verbatim to portal/functions.js and stats/keyer.js. The block is
+// checked on the FOLDED index.js (tools/portal-split.js puts every moved region back from the moved files — byte-equal
+// to the parent, asserted in identity-record-guards), and 3b below holds the two real files to the same containment.
 {
-  const src = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
+  const src = require('../tools/portal-split').foldPortalSplit();
   const start = src.indexOf('// ── Merchant STATS S1');
   assert(start > 0, 'stats block present');
   const endMarker = 'exports.getSalesStats = onRequest(';
@@ -120,6 +124,30 @@ const FORBIDDEN_IDS = new Set(['getDatabase', 'onValueWritten', 'onValueCreated'
   const t = Number((block.match(/rollupDailyStats[\s\S]*?timeoutSeconds: (\d+)/) || [])[1]);
   assert(t * 1000 < LEASE_MS, `job timeout ${t}s must be < lease ${LEASE_MS / 1000}s`);
   ok('index.js: stats referenced only in the export block (2 exports, PORTAL_ORIGINS, existing auth, timeout < lease)');
+}
+
+// 3b. PORTAL SPEED P1 — the same containment on the REAL split files: index.js references stats only inside its (now
+// shorter) stats block; portal/functions.js only in its two stats import lines and the moved getSalesStats block.
+{
+  const STATS_IDS = ['stats/', 'runStatsRollup', 'getSalesStatsCore', 'statsKeyer', 'loadStatsSecret', 'makeCustomerKeyer', '_statsLiveCache'];
+  const idx = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
+  const a = idx.indexOf('// ── Merchant STATS S1');
+  const endLine = 'exports.getSalesStats = portalFunctions.getSalesStats;\n';
+  const b = idx.indexOf(endLine, a);
+  assert(a > 0 && b > a && idx.indexOf('// ── Merchant STATS S1', a + 1) === -1, 'index.js stats block present once');
+  const idxOutside = idx.slice(0, a) + idx.slice(b + endLine.length);
+  for (const id of STATS_IDS) assert(!idxOutside.includes(id), `index.js references ${id} outside the stats block`);
+  const exportsIn = idx.slice(a, b + endLine.length).match(/exports\.(\w+)\s*=/g).map((x) => x.replace(/exports\.|\s*=/g, ''));
+  assert.deepStrictEqual(exportsIn, ['rollupDailyStats', 'getSalesStats']);
+
+  const pf = fs.readFileSync(path.join(ROOT, 'portal/functions.js'), 'utf8');
+  const imports = "const { getSalesStatsCore } = require('../stats/stats-api');\nconst { statsKeyer, _statsLiveCache } = require('../stats/keyer');\n";
+  const c0 = pf.indexOf('// ⟪moved:C '); const c1 = pf.indexOf('// ⟪/moved:C⟫');
+  assert(pf.split(imports).length === 2 && c0 > 0 && c1 > c0, 'portal/functions.js: the stats imports + block C present once');
+  const pfOutside = pf.slice(0, c0).replace(imports, '') + pf.slice(c1);
+  for (const id of STATS_IDS) assert(!pfOutside.includes(id), `portal/functions.js references ${id} outside its stats imports / getSalesStats block`);
+  assert.deepStrictEqual(rtdbWrites(parse(pf, { ecmaVersion: 'latest', sourceType: 'script', locations: true })), [], 'portal/functions.js performs no direct RTDB write');
+  ok('split files: index.js references stats only in its stats block (rollupDailyStats + the getSalesStats re-export); portal/functions.js only in its 2 stats imports + the moved getSalesStats block');
 }
 
 // 4. Firestore rules: no rule opens a stats path (deny-by-default), and no recursive wildcard does it implicitly.

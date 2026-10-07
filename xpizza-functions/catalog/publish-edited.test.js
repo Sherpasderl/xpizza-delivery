@@ -310,7 +310,7 @@ const ackFor = (diff) => diff.largeChangeSet.map((l) => ({ key: l.key, surface: 
   // ── (9) THE WRAPPER. index.js cannot be imported here, so its plumbing is asserted structurally.
   //        A handler that is never exported, or wired to a permissive stub, passes every test above.
   {
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     for (const [id, mod] of [['publishEditedCore', 'catalog\\/publish-edited-handler'], ['publishVersion: publishVersionForEdit', 'catalog\\/catalog-publish'], ['sourceRefOf: sourceRefOfForEdit', 'catalog\\/source-store']]) {
       assert.ok(new RegExp(`\\{[^}]*${id.replace(/[:\s]/g, '\\s*[:\\s]?\\s*')}[^}]*\\}\\s*=\\s*require\\('\\./${mod}'\\)`).test(CODE), `index.js must import ${id}`);

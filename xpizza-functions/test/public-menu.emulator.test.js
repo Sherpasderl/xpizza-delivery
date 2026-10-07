@@ -219,7 +219,7 @@ const identityFor = (rid, active) => ({
     // the portal and account lists are NOT widened by this endpoint existing. P-SELFUPDATE (advisor ruling R1): the
     // order-site lists are DERIVED from the bundled site manifest, so the pins are on the RUNTIME VALUES + the wiring.
     const fs = require('fs'), path = require('path');
-    const src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+    const src = require('../tools/portal-split').foldPortalSplit();   // PORTAL SPEED P1: index.js with the verbatim-moved PORTAL_ORIGINS literal (portal/origins.js) folded back in
     const { PLATFORM, LOCALHOST_DEV_RE } = require('../platform-manifest');
     const { ACCOUNT_ORIGINS, PUBLIC_MENU_ORIGINS } = PLATFORM;
     const wire = (list) => JSON.stringify(list.map((o) => (o instanceof RegExp ? { re: o.source, flags: o.flags } : o)));

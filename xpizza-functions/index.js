@@ -1,3 +1,15 @@
+// ── PORTAL SPEED P1 — ISOLATED PORTAL ENTRYPOINTS (PLAN-portal-speed rev 3 §0/§1) ────────────────────────────
+// Production gen2 sets FUNCTION_TARGET to the export name; for EXACTLY these five names the instance loads only
+// portal/functions.js (the five handlers + their dependencies) and this file stops here. Unset (deploy / emulator
+// discovery, tests), unknown, or wrong-case → the FULL load below, exactly as before. Exact, case-sensitive Set.has —
+// no lowercasing, prefixes, K_SERVICE or object-property lookup.
+const PORTAL_ISOLATED_TARGETS = Object.freeze(new Set(['getMyRestaurants', 'getEditableCatalog', 'editCatalog', 'publishEdited', 'getSalesStats']));
+if (PORTAL_ISOLATED_TARGETS.has(process.env.FUNCTION_TARGET)) {
+  console.log('portal_isolated_entry', process.env.FUNCTION_TARGET);   // §8 deploy check: the isolated branch ran
+  module.exports = require('./portal/functions');
+  return;
+}
+
 /**
  * X Pizza Delivery — Cloud Functions
  * version: 1.8.0
@@ -146,9 +158,7 @@ const { computeGraduation, buildGraduationRows } = require('./ready-time-graduat
 const { hashConfig } = require('./ready-time-quality-run');          // reuse the signed-config hash (extended to cover graduation_thresholds)
 const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active model version(s) — windows prediction_logs by `<v>/new_at`
 
-initializeApp({
-  databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com'
-});
+require('./lib/admin');   // PORTAL SPEED P1: the ONE Admin app — initializeApp moved verbatim to lib/admin.js (shared with portal/functions.js)
 
 // VAPID config for Web Push (set via .env, deployed as runtime env vars)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
@@ -1978,19 +1988,7 @@ exports.chargeOnlineOrder = onRequest(
 // `now` is Date.now() (a real number) because the capturing-claim staleness math
 // needs arithmetic; stored timestamps are function-clock ms (NTP-synced).
 
-// Write a dispatcher alert (best-effort) for money-safety events that need a human.
-async function paymentAlert(db, kind, detail) {
-  console.warn(`paymentAlert[${kind}]`, JSON.stringify(detail));
-  try {
-    await db.ref('dispatcher_alerts').push({
-      type: `payment_${kind}`,
-      detail: detail || null,
-      created_at: ServerValue.TIMESTAMP
-    });
-  } catch (e) {
-    console.error('paymentAlert: failed to write alert', e.message);
-  }
-}
+const { paymentAlert } = require('./lib/payment-alert');   // PORTAL SPEED P1: moved verbatim; the SAME function object portal/functions.js uses
 
 const confirmOnlineApp = express();
 
@@ -6203,10 +6201,7 @@ const { ACCOUNT_ORIGINS } = require('./platform-manifest').PLATFORM;
 // Netlify site (Task 7). Until it is added, a deployed portal gets a CORS failure on every call, which
 // the client reports as "Unavailable" (try again) rather than anything actionable. Adding it is a
 // required deploy step, not a nice-to-have.
-const PORTAL_ORIGINS = [
-  /^http:\/\/localhost(:\d+)?$/,
-  'https://sherpa-portal.netlify.app',   // portal 2b-2a go-live (2026-09-08)
-];
+const { PORTAL_ORIGINS } = require('./portal/origins');   // PORTAL SPEED P1: the literal moved verbatim to portal/origins.js
 
 // ── Portal 1B Task 2 — getPublicMenu: the live catalog, served to the customer forms ───────────
 //
@@ -6578,148 +6573,14 @@ module.exports.RATE_LIMIT_BUCKETS = RATE_LIMIT_BUCKETS;
 // app.refundReconciler.run() (the sweep) against the RTDB emulator + a mocked provider.
 module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;
 
-// ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
-// Thin wrappers only. The handler bodies live in catalog/edit-catalog-handler.js so they can be
-// TESTED: index.js cannot be imported without Firebase initialisation, and an untested handler on a
-// price-and-factura path is a handler nobody has actually read. Everything below is plumbing — the
-// decisions (auth, validate, CAS, diff, token) are all in the tested core.
-const { authorizeCatalogEdit } = require('./catalog/catalog-edit-auth');
-const { editCatalogCore } = require('./catalog/edit-catalog-handler');
-const { previewVersion: previewVersionForEdit } = require('./catalog/catalog-publish');
-const { sourceRefOf: sourceRefOfForEdit } = require('./catalog/source-store');
-const { encodeUpdateTime: encodeUpdateTimeForEdit } = require('./catalog/edit-catalog-handler');
-const { Timestamp: FirestoreTimestamp } = require('firebase-admin/firestore');
-const { readVersionDocs: readVersionDocsForEdit, getActiveVersionId: getActiveVersionIdForEdit } = require('./catalog/catalog-firestore');
-const { buildTablesFromDocs: buildTablesForEdit } = require('./catalog/catalog-transform');
+// PORTAL SPEED P1: the Portal 2b-1 block (editCatalog, publishEdited) moved verbatim to portal/functions.js.
+const portalFunctions = require('./portal/functions');
+exports.editCatalog = portalFunctions.editCatalog;
+exports.publishEdited = portalFunctions.publishEdited;
 
-// The LIVE published version, in the shape catalogDiff consumes: items + structure + extras. The diff
-// must be against what is actually SERVING, not against the store — otherwise a merchant reviews their
-// edit against their own previous unpublished draft and the review means nothing.
-async function readActiveBuiltForEdit(rid) {
-  const fs = getFirestore();
-  const versionId = await getActiveVersionIdForEdit(fs, rid);
-  if (versionId == null) throw new Error(`no_active_version: ${rid}`);   // fail-closed: nothing to diff against
-  const [preview, docs] = await Promise.all([previewVersionForEdit(fs, rid, versionId), readVersionDocsForEdit(fs, rid, versionId)]);
-  const { extras } = buildTablesForEdit(docs.itemDocs, docs.extraDocs);
-  return { built: { items: preview.items, structure: preview.structure, extras }, versionId };
-}
-
-exports.editCatalog = onRequest(
-  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 60, memory: '512MiB', maxInstances: 4 },
-  async (req, res) => {
-    try {
-      if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-      const out = await editCatalogCore({
-        db: getFirestore(),
-        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
-        readActiveBuilt: readActiveBuiltForEdit,
-        toPrecondition: decodeUpdateTimeForEdit,
-      }, req.body || {}, req);
-      return res.status(out.status).json(out.body);
-    } catch (e) {
-      console.error('editCatalog', e && e.message);
-      return res.status(500).json({ error: 'error' });
-    }
-  },
-);
-
-const { publishEditedCore } = require('./catalog/publish-edited-handler');
-const { publishVersion: publishVersionForEdit } = require('./catalog/catalog-publish');
-const { makeRtdbMirror: makeRtdbMirrorForEdit } = require('./catalog/mirror-rtdb');
-
-// The draft, with the updateTime the token is bound to. Read here (not inside the core) so the core
-// stays free of Firestore and therefore testable.
-async function readDraftForEdit(rid) {
-  const snap = await sourceRefOfForEdit(getFirestore(), rid).get();
-  if (!snap.exists) return { source: null, updateTime: null };
-  return { source: snap.data(), updateTime: snap.updateTime ? encodeUpdateTimeForEdit(snap.updateTime) : null };
-}
-
-// The inverse of encodeUpdateTime. Nanoseconds are preserved on both sides: an ISO round trip truncates
-// them, and a precondition built from a truncated time can never equal the stored updateTime — every
-// conditional write would fail and no edit could ever be saved. Caught by the emulator e2e, which is
-// exactly the class of bug a stub decides for itself.
-function decodeUpdateTimeForEdit(v) {
-  if (typeof v !== 'string') return v;
-  const [sec, nanos] = v.split('.');
-  if (!/^\d+$/.test(sec || '') || !/^\d+$/.test(nanos || '')) return v;
-  return new FirestoreTimestamp(Number(sec), Number(nanos));
-}
-
-exports.publishEdited = onRequest(
-  /* 🔴 timeoutSeconds AND catalog-publish.js's LEASE_MS MUST MOVE TOGETHER. Both are 120s. Raise this
-     one alone and a long publish outlives its own lease, then gets refused at the flip's re-read —
-     correct behaviour, confusing failure, and the operator would be reading Firestore docs rather than
-     looking at the constant they changed. This 120s is also what BOUNDS the flip's whole-collection
-     registry reads: it trips long before any Firestore limit, loudly and atomically, which is why
-     registry growth is a watch item rather than a blocker (see the read-cost note in
-     catalog/catalog-publish.js). */
-  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 120, memory: '512MiB', maxInstances: 2 },
-  async (req, res) => {
-    try {
-      if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-      const out = await publishEditedCore({
-        db: getFirestore(),
-        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
-        readActiveBuilt: readActiveBuiltForEdit,
-        readDraft: readDraftForEdit,
-        publishVersion: publishVersionForEdit,
-        mirror: makeRtdbMirrorForEdit(getDatabase()),
-        alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
-      }, req.body || {}, req);
-      return res.status(out.status).json(out.body);
-    } catch (e) {
-      console.error('publishEdited', e && e.message);
-      return res.status(500).json({ error: 'error' });
-    }
-  },
-);
-
-// ── Portal 2b-2a — the merchant portal's READ endpoints ────────────────────────────────────────
-// Thin wrappers; the decisions live in the tested core (index.js cannot be imported under Firebase
-// init, and an untested handler on a tenant boundary is one nobody has read carefully).
-//
-// The ownership index lives in RTDB, so `db` is getDatabase() — getFirestore() would find nothing and
-// every merchant would see an empty portal, which looks exactly like "you own no restaurants".
-const { getMyRestaurantsCore, getEditableCatalogCore } = require('./catalog/portal-reads');
-const { getActiveVersionId: getActiveVersionIdForPortal } = require('./catalog/catalog-firestore');
-
-exports.getMyRestaurants = onRequest(
-  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 20, memory: '256MiB', maxInstances: 10 },
-  async (req, res) => {
-    try {
-      const out = await getMyRestaurantsCore({
-        db: getDatabase(),
-        verifyIdToken: (t) => getAuth().verifyIdToken(t),
-      }, req);
-      return res.status(out.status).json(out.body);
-    } catch (e) {
-      console.error('getMyRestaurants', e && e.message);
-      return res.status(500).json({ error: 'error' });
-    }
-  },
-);
-
-exports.getEditableCatalog = onRequest(
-  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 30, memory: '256MiB', maxInstances: 10 },
-  async (req, res) => {
-    try {
-      const out = await getEditableCatalogCore({
-        // Owners live in RTDB and the source document lives in Firestore. Handing either the wrong
-        // client is a silent failure: an RTDB-less authorize denies every owner, a Firestore-less
-        // source read finds nothing.
-        db: getDatabase(),
-        fsdb: getFirestore(),
-        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
-        readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
-      }, req);
-      return res.status(out.status).json(out.body);
-    } catch (e) {
-      console.error('getEditableCatalog', e && e.message);
-      return res.status(500).json({ error: 'error' });
-    }
-  },
-);
+// PORTAL SPEED P1: the Portal 2b-2a block (getMyRestaurants, getEditableCatalog) moved verbatim to portal/functions.js.
+exports.getMyRestaurants = portalFunctions.getMyRestaurants;
+exports.getEditableCatalog = portalFunctions.getEditableCatalog;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P-SELFUPDATE §4 — the VERSION HEARTBEAT. Public (every deployment's pages call it, so `cors: true`; the request is
@@ -6760,11 +6621,7 @@ exports.sweepClientVersions = onSchedule(
 // 🔴 STATS_HMAC_SECRET (≥ 32 chars) must be in the functions .env; without it both functions FAIL
 // CLOSED (the job aborts, the API answers 503) — customers are never hashed with no key.
 const { runStatsRollup } = require('./stats/stats-job');
-const { getSalesStatsCore, makeLiveCache } = require('./stats/stats-api');
-const { loadStatsSecret, makeCustomerKeyer } = require('./stats/stats-identity');
-let _statsKeyer = null;
-const statsKeyer = () => (_statsKeyer || (_statsKeyer = makeCustomerKeyer(loadStatsSecret())));
-const _statsLiveCache = makeLiveCache();
+const { statsKeyer } = require('./stats/keyer');   // PORTAL SPEED P1: the lazy keyer + live cache moved verbatim to stats/keyer.js (ONE instance, shared with getSalesStats)
 
 exports.rollupDailyStats = onSchedule(
   { schedule: '10 3 * * *', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 540, memory: '1GiB', maxInstances: 1 },
@@ -6779,29 +6636,5 @@ exports.rollupDailyStats = onSchedule(
   },
 );
 
-exports.getSalesStats = onRequest(
-  { region: 'us-central1', cors: PORTAL_ORIGINS, timeoutSeconds: 60, memory: '512MiB', maxInstances: 10 },
-  async (req, res) => {
-    try {
-      const out = await getSalesStatsCore({
-        authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
-        fsdb: getFirestore(),
-        rtdb: getDatabase(),
-        getKeyer: statsKeyer,
-        nowMs: Date.now(),
-        liveCache: _statsLiveCache,
-      }, req);
-      if (out.contentType) {
-        res.set('Content-Type', out.contentType);
-        if (out.filename) res.set('Content-Disposition', `attachment; filename="${out.filename}"`);
-        for (const [k, v] of Object.entries(out.headers || {})) res.set(k, v);
-        res.set('Access-Control-Expose-Headers', 'X-Next-Cursor, Content-Disposition');   // the portal reads both cross-origin
-        return res.status(out.status).send(out.body);
-      }
-      return res.status(out.status).json(out.body);
-    } catch (e) {
-      console.error('getSalesStats', e && e.message);
-      return res.status(500).json({ error: 'error' });
-    }
-  },
-);
+// PORTAL SPEED P1: getSalesStats moved verbatim to portal/functions.js.
+exports.getSalesStats = portalFunctions.getSalesStats;
