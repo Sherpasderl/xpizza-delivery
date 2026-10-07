@@ -98,6 +98,20 @@ assert.deepEqual(Object.keys(writes[0].payload).sort(), ['restaurants/la_musa/av
 assert.strictEqual(writes[0].payload['restaurants/la_musa/item_availability/dimsum_01'].available, true, 'available:true round-trips');
 ok('setItemAvailability is host-agnostic (x_pizza AND la_musa) — rid is a parameter, nothing hardcoded');
 
+// P-SELFUPDATE CP2 §5 — a STAMPED KDS passes its compat: it goes on BOTH whole records of the ONE update; anything
+// that is not a positive integer (incl. undefined from an unstamped page) leaves today's shapes byte-for-byte
+writes.length = 0;
+await XPD.setItemAvailability('x_pizza', 'Cacio e Pepe.NY', false, 'uid-123', 2);
+assert.equal(writes.length, 1, 'still ONE atomic update');
+assert.deepEqual(writes[0].payload[availPath], { available: false, updated_at: TS, compat: 2 }, 'public record carries compat (whole record)');
+assert.deepEqual(writes[0].payload[auditPath], { available: false, updated_at: TS, updated_by: 'uid-123', compat: 2 }, 'audit record carries compat too (both branches)');
+for (const bad of [undefined, null, 0, -1, 1.5, '2', NaN]) {
+  writes.length = 0;
+  await XPD.setItemAvailability('x_pizza', 'Cacio e Pepe.NY', false, 'uid-123', bad);
+  assert.deepEqual(writes[0].payload, w.payload, `compat ${String(bad)} → EXACTLY today's two shapes`);
+}
+ok('compat (stamped KDS) stamps BOTH records of the one update; no / invalid compat → today\'s exact payload');
+
 // a missing availKey global must SURFACE (never a half-write)
 const savedKey = globalThis.availKey; delete globalThis.availKey;
 await assert.rejects(() => XPD.setItemAvailability('x_pizza', 'X', false, 'u'), /availKey unavailable/, 'no availKey global → throws (caller reverts), never a half-write');

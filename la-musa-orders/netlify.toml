@@ -1,5 +1,11 @@
 [build]
   publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build
+[build.environment]
+  # Netlify secrets scanning (it runs because of the build command above) flags these PUBLIC client keys — the Firebase web
+  # config and Google Maps keys already committed in this site's JS. Omit EXACTLY these values; scanning stays ON for
+  # everything else. Kept equal to the AIza… values in this folder by secrets-scan-omit.guard.test.js.
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyAuzSLAELV_MaK2xeXrNjS6_lhNXmD_Y0A,AIzaSyDWFYrzHvaNnRZERbN8jIuAzkY85daFJXU"
 
 # Track A (MF1): the profile-claim token travels in the URL FRAGMENT (never sent to servers/Referer). This
 # policy is defense-in-depth — no full URL (incl. ?claim=<order_id>) leaks to cross-origin third parties.

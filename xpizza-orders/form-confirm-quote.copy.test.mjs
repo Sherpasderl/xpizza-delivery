@@ -58,9 +58,9 @@ test('both forms load the store and wire it at every seam — identically', () =
        composing the order would bind a token to a cart the customer can still edit before the fetch,
        which is the one thing this module exists to prevent. Anchored on `raw` because where a call
        sits is a fact about the code as written. */
-    assert.ok(/if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n(?:[^\n]*\n){0,10}?      try\{ if\(__confirmQuote\) __confirmQuote\.send\(currentOrder, __orderSigAtBuild, __orderNetAtBuild\); \}catch\(_\)\{\}\n      const res = await fetch\(CREATEORDER_URL,\{/.test(raw),
+    assert.ok(/if\(refuseConflictedSend\('createOrder'\)\)\{ orderSubmitting=false; return; \}\n(?:[^\n]*\n){0,10}?      try\{ if\(__confirmQuote\) __confirmQuote\.send\(currentOrder, __orderSigAtBuild, __orderNetAtBuild\); \}catch\(_\)\{\}\n      const res = await sherpaFetch\(CREATEORDER_URL,\{/.test(raw),
       `${dir}: the createOrder attach must sit between the conflict gate and the fetch`);
-    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n(?:[^\n]*\n){0,10}?    try\{ if\(__confirmQuote\) __confirmQuote\.send\(currentOrder, __orderSigAtBuild, __orderNetAtBuild\); \}catch\(_\)\{\}\n    const res = await fetch\(CHARGEORDER_URL, \{/.test(raw),
+    assert.ok(/if\(refuseConflictedSend\('chargeOnlineOrder'\)\) return paymentFallback\([^\n]*\);\n(?:[^\n]*\n){0,10}?    try\{ if\(__confirmQuote\) __confirmQuote\.send\(currentOrder, __orderSigAtBuild, __orderNetAtBuild\); \}catch\(_\)\{\}\n    const res = await sherpaFetch\(CHARGEORDER_URL, \{/.test(raw),
       `${dir}: the chargeOnlineOrder attach must sit between the conflict gate and the fetch`);
 
     /* 🔴 THE SIGNATURE MUST FOLD IN THE REWARD. redeemCartItems() serializes the cart only, so without

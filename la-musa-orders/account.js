@@ -115,6 +115,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // Read-own user_rewards → header chip + Mis premios pane + cart earn line. FLAG-INDEPENDENT (ignores
   // redemption_live; the redeem affordance is Task 4). Guests never subscribe/render. All dynamic values via
   // escapeHtml / textContent. Brand differences (punch vs points/tiers) come ONLY from CONFIG.rewards.
+  // P-SELFUPDATE CP2 — the one request wrapper (see sherpaFetch in index.html); declared here, below the pinned dynamic imports (hoisted)
+  function sherpaFetch(u, o) { var S = window.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
   const RW = CONFIG.rewards;
   const GIFT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>';
   // Item 2: monochrome pizza-slice line icon for the punch-card slots (X. Pizza) — NOT the 🍕 emoji. Sized via
@@ -488,7 +490,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   async function redeemQuoteFetch(items, pending) {
     try {
       const idTok = await customerIdToken();
-      const res = await fetch(QUOTE_URL, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, idTok ? { 'X-Firebase-ID-Token': idTok } : {}),
+      const res = await sherpaFetch(QUOTE_URL, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, idTok ? { 'X-Firebase-ID-Token': idTok } : {}),
         body: JSON.stringify({ items, redeem: (pending !== undefined ? pending : _redeemPending), restaurant_id: CONFIG.restaurant_id }) });   // restaurant_id from CONFIG → brand-correct; D(revise): quote a passed pending so rkCommit can defer setting the global
       return await res.json().catch(() => ({ ok: false, error: 'error' }));
     } catch (_) { return { ok: false, error: 'error' }; }
@@ -851,7 +853,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const idTok = await customerIdToken();
       if (idTok) {
         const body = { order_id: ctx.order_id }; if (ctx.token) body.token = ctx.token;
-        const res = await fetch(CLAIMORDER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-ID-Token': idTok }, body: JSON.stringify(body) });
+        const res = await sherpaFetch(CLAIMORDER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Firebase-ID-Token': idTok }, body: JSON.stringify(body) });
         const j = await res.json().catch(() => ({}));
         if (res.ok && j && j.ok) { ok = true; credited = !!j.credited; if (j.unit) unit = j.unit; if (credited && Number.isFinite(j.delta) && j.delta > 0) n = j.delta; }
       }
@@ -1442,7 +1444,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     _loginPhone = phone;
     const otpPhoneEl = $('acct-otp-phone'); if (otpPhoneEl) otpPhoneEl.textContent = phone;   // textContent — no innerHTML sink
     try {
-      await fetch(CONFIG.OTP_URL, {
+      await sherpaFetch(CONFIG.OTP_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, restaurant_id: CONFIG.restaurant_id }),
       });
@@ -1479,7 +1481,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
 
     let data;
     try {
-      const res = await fetch(CONFIG.VERIFY_URL, {
+      const res = await sherpaFetch(CONFIG.VERIFY_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: _loginPhone, code }),
       });
@@ -1993,7 +1995,7 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     try {
       const { auth, authMod } = await ensureFirebase();
       const idTok = await auth.currentUser.getIdToken();
-      const res = await fetch(CONFIG.DELETE_URL, {
+      const res = await sherpaFetch(CONFIG.DELETE_URL, {
         method: 'POST',
         headers: { 'x-firebase-id-token': idTok },
       });
@@ -2330,6 +2332,10 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   let _acctCreateProfileActive = false;  // true ONLY while "Creá tu perfil" is on screen (payment hidden + CTA shown) — the submit-gate keys off this, never a profileComplete() inference (FIX A)
   let _acctProfileConfirmedIncomplete = false;  // codex R1 FIX 1c: the last AUTHORITATIVE (status:'ok') delivery-step read said logged-in + profile NOT complete (INCLUDING a resolved-null empty profile). Persists across a pickup↔delivery toggle (unlike _acctCreateProfileActive, which setPaymentVisible(true) clears) so refreshDeliveryUI can re-arm the hard block for a null/empty profile on return to delivery. FALSE on guest / unavailable(timeout) / complete — so a fail-open never hides payment.
   let _acctAddrOneOff = false;   // true when the order's delivery address is a USE-ONCE choice (Cambiar "Usar en este pedido" / an edit-mode-new address NOT explicitly "Guardar dirección"-saved) — onOrderConfirmed must never makeDefault/persist it (FIX B)
+  // P-SELFUPDATE CP2 (codex CP2 r2): the address that backed THIS order before a self-update reload, handed back by the
+  // update's restore (setRestoredDelivery). initDeliveryStep applies it INSTEAD of the profile default, once; null on every
+  // other load — so a guest load and a logged-in non-restore load run exactly as before.
+  let _acctRestoredSel = null;      // { addr, oneOff } | null
   let _acctRestoring = false;    // true ONLY while index.html's restoreOrderForm() rebuilds a cancelled/failed-payment retry from the xpizza_pending_pay snapshot — the snapshot's delivery data is authoritative, so every account delivery-refresh entry point must early-return (never repopulate the DOM from the DEFAULT saved address) (FIX 7 / R4)
   let _acctRestoreGen = 0;       // bumped on every restore START (setRestoring(true)). initDeliveryStep()'s snapshot read is async: restoreOrderForm() is SYNCHRONOUS and clears _acctRestoring in its finally BEFORE the suspended init can resume, so a flag-only re-check would read false and miss the race. Capturing the gen before the await and comparing after catches a restore that BOTH began and completed during the await (R5 async re-check).
   let _healUnsub = null;             // active heal-on-arrival onValue handle (user_profiles/<uid>), or null. At most one.
@@ -2457,6 +2463,16 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     })();
   }
 
+  // P-SELFUPDATE CP2 — the restored selection, resolved against the LIVE profile: a saved address by id (only if it still
+  // exists — a deleted one falls back to the default, as a fresh load would), or a one-off address object as it was.
+  function restoredDeliveryAddress(snap) {
+    const sel = _acctRestoredSel;
+    if (!sel || !sel.addr || typeof sel.addr !== 'object') return null;
+    if (sel.addr.id) return (snap && snap.addresses && snap.addresses[sel.addr.id]) ? Object.assign({ id: sel.addr.id }, snap.addresses[sel.addr.id]) : null;
+    const a = sel.addr;
+    return (typeof a.lat === 'number' && typeof a.lng === 'number') ? Object.assign({}, a) : null;
+  }
+
   async function initDeliveryStep(preSnap) {
     if (!$('acct-deliver')) return;               // host form has no mount — never touch anything
     if (_acctRestoring) return;                   // a payment-retry restore owns the DOM — the snapshot is authoritative, never repopulate from the profile (FIX 7 / R4)
@@ -2501,24 +2517,32 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     _acctData = snap;
     _acctProfileConfirmedIncomplete = !profileNamed(snap);   // nameless → true (hard-block); named (incl. address-less) → false (recognized). The flag now means "confirmed NAMELESS".
 
-    if (pageOrderType() !== 'delivery') { revertToNormalFillable(); refreshSaveToggle(); return; }   // pickup — out of scope (spec), leave raw fields
+    if (pageOrderType() !== 'delivery') {
+      // P-SELFUPDATE: a restore that lands on pickup keeps its delivery choice as the retained order address, so a later
+      // switch back to delivery re-applies IT (refreshDeliveryUI's retained pointer), not the default. Restores only.
+      if (profileComplete(snap)) { const r = restoredDeliveryAddress(snap); if (r) { _acctOrderAddr = r; _acctAddrId = r.id || _acctAddrId; _acctAddrOneOff = !!(_acctRestoredSel && _acctRestoredSel.oneOff); _acctRestoredSel = null; } }
+      revertToNormalFillable(); refreshSaveToggle(); return;   // pickup — out of scope (spec), leave raw fields
+    }
 
     if (profileComplete(snap)) {
       const addr = pickDefaultAddress(snap);
-      if (addr) {
+      const restoredAddr = restoredDeliveryAddress(snap);   // P-SELFUPDATE: a self-update restore's selection, else null
+      const useAddr = restoredAddr || addr;                 // the restored choice wins over the default, once
+      if (useAddr) {
         // Map-timing (spec R2): establish the CHECKOUT lat/lng + delivery-zone state DIRECTLY
         // from the saved address BEFORE the invariant check — gmap isn't initialized until s2
         // (goToLocation→initMap), so a bare placeAccountPin() call alone would only stash a
         // pending __restorePos, not values the invariant check below can trust as established.
-        establishCheckoutFromAddress(addr);
-        populateOrderFieldsFromAddress(snap, addr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
-        if (reducedFlowInvariantOk(snap, addr)) {
-          renderS1CompactSummary(snap, addr);
-          renderS2RichSummary(snap, addr);
+        establishCheckoutFromAddress(useAddr);
+        populateOrderFieldsFromAddress(snap, useAddr);   // fill the (soon-hidden) submit fields BEFORE the invariant reads them back
+        if (restoredAddr) { _acctAddrOneOff = !!(_acctRestoredSel && _acctRestoredSel.oneOff); _acctRestoredSel = null; }   // P-SELFUPDATE: the restored choice keeps its use-once flag; consumed once
+        if (reducedFlowInvariantOk(snap, useAddr)) {
+          renderS1CompactSummary(snap, useAddr);
+          renderS2RichSummary(snap, useAddr);
           relabelSteps(true);
           _acctReducedActive = true;
-          _acctAddrId = addr.id;
-          _acctOrderAddr = addr;   // populate the retained order-address pointer on the FIRST-load default establish too (matches refreshDeliveryUI/selectSavedAddressForOrder/confirmNewAddressForOrder) → the picker can identify the active card + toggle-survival holds from load 1 (codex F1)
+          _acctAddrId = useAddr.id || (addr && addr.id) || _acctAddrId;   // a restored one-off NEW address has no id → keep the default id (as refreshDeliveryUI does); otherwise exactly addr.id as before
+          _acctOrderAddr = useAddr;   // populate the retained order-address pointer on the FIRST-load default establish too (matches refreshDeliveryUI/selectSavedAddressForOrder/confirmNewAddressForOrder) → the picker can identify the active card + toggle-survival holds from load 1 (codex F1)
           hideRawAndAddrSection();
           setReducedDeliveryChromeVisible(true);   // hide the redundant editable s2 map/banner/locinfo + relabel the button (codex F4/F5)
           return;
@@ -3775,6 +3799,7 @@ ${footer}`;
     _acctData = null; _acctAddrId = null; _acctCardActive = false; _acctEditMode = false;
     _acctEditIsNew = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
     _acctOrderAddr = null;   // T5: signed out → no order address retained
+    _acctRestoredSel = null; // P-SELFUPDATE: a pending restored choice belongs to the signed-out customer
     _acctProfileConfirmedIncomplete = false;   // signed out → no logged-in profile to arm the hard block for (codex R1 FIX 1c)
     setReducedDeliveryChromeVisible(false);   // sign-out/delete → restore the guest-identical editable map/banner/locinfo (delivery) + button label (codex F4)
     const mount = $('acct-deliver'); if (mount) mount.innerHTML = '';
@@ -4447,6 +4472,7 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
           orig();
           _acctEditMode = false; _acctAddrUnsaved = false; _acctSaveToggleOn = true; _acctAddrOneOff = false;
           _acctOrderAddr = null;   // T5: fresh order → drop the retained address so refreshDeliveryUI re-establishes from the default
+          _acctRestoredSel = null;   // P-SELFUPDATE: likewise any pending restored choice
           try {
             // orig() reset lat/lng/address fields to blank for a fresh order — re-establish the
             // reduced-flow summary (or the fillable UI) for the NEW order, same as page load.
@@ -4531,5 +4557,22 @@ ${cards || '<p class="acct-fine" style="text-align:left;margin:0 0 10px">No ten�
   window.__ACCOUNT.startProfileClaim = startProfileClaim;   // Track A — tracker deep-link → soft-filled create flow (skips if already a profile)
   window.__ACCOUNT.deliverySubmitBlocked = deliverySubmitBlocked;
   window.__ACCOUNT.captureDeliverySaveIntent = captureDeliverySaveIntent;
+  // P-SELFUPDATE CP2 (codex CP2 r2) — the self-update's snapshot/restore of the account's delivery choice for THIS order.
+  // get: logged-in with an address backing the order → { addr (a copy), oneOff }, else null (a guest captures nothing).
+  // set: before the account's start-up ran → its initDeliveryStep applies it instead of the default; after (a late update
+  //      adapter) → applied now through refreshDeliveryUI, the same path a customer's own pick takes.
+  window.__ACCOUNT.getDeliverySelection = function () {
+    try { if (!marker() || !_acctOrderAddr) return null; return { addr: JSON.parse(JSON.stringify(_acctOrderAddr)), oneOff: !!_acctAddrOneOff }; } catch (_) { return null; }
+  };
+  window.__ACCOUNT.setRestoredDelivery = function (sel) {
+    try {
+      if (!sel || !sel.addr || !marker()) return;
+      _acctRestoredSel = sel;
+      if (_acctData && profileComplete(_acctData) && pageOrderType() === 'delivery') {   // start-up already resolved the profile
+        const a = restoredDeliveryAddress(_acctData);
+        if (a) { _acctOrderAddr = a; refreshDeliveryUI(a); _acctAddrOneOff = !!sel.oneOff; _acctRestoredSel = null; }
+      }
+    } catch (_) {}
+  };
   window.__ACCOUNT.setRestoring = function (v) { try { _acctRestoring = !!v; if (v) _acctRestoreGen++; } catch (_) {} };   // index.html's restoreOrderForm() brackets its snapshot rebuild with this so the account refresh can't overwrite the retry's address with the default (FIX 7 / R4); bumping the gen on start lets an in-flight async init detect a restore that completed during its await (R5)
 })();

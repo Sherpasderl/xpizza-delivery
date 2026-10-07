@@ -28,6 +28,7 @@
     code { background:#fff; border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size:.9em; }
     footer { margin-top:48px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:.85rem; }
   </style>
+<script src="sherpa-client.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -126,5 +127,11 @@
       (<code>hn.sherpa.driver</code>).
     </footer>
   </div>
+<script>
+/* P-SELFUPDATE CP2 §3 — this page's self-update adapter, registered EXPLICITLY (codex CP2 r1 B1: nothing reloads before an
+   app declares readiness). A read-only page: idle = no focused field, no open <dialog>, no request of ours in flight, no
+   tap/key in the last 30 s, online (SherpaClient.idleAdapter). Inert (unstamped) pages register nothing. */
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({})); } catch (_) {}
+</script>
 </body>
 </html>

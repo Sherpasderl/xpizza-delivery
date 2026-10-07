@@ -25,14 +25,23 @@ import {
   getDatabase,
   ref,
   onValue,
-  set,
-  update,
+  set as fbSet,
+  update as fbUpdate,
   get,
-  remove,
-  runTransaction,
+  remove as fbRemove,
+  runTransaction as fbRunTransaction,
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+
+// P-SELFUPDATE CP2 (codex CP2 r1 B4): EVERY SDK write is counted from issue until the server ACKNOWLEDGES it (the SDK's
+// promise settles) — a stalled connection keeps it outstanding, so the self-update never reloads over a pending write.
+// Same arguments, same returned promise / reference; with no stamped module this is exactly the SDK call.
+function sherpaTrack(p) { try { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; if (S && typeof S.trackWrite === 'function') S.trackWrite(p); } catch (_) {} return p; }
+const set = (...a) => sherpaTrack(fbSet(...a));
+const update = (...a) => sherpaTrack(fbUpdate(...a));
+const remove = (...a) => sherpaTrack(fbRemove(...a));
+const runTransaction = (...a) => sherpaTrack(fbRunTransaction(...a));
 
 // ============================================================
 // CONSTANTS

@@ -24,11 +24,11 @@ import {
   getDatabase,
   ref,
   onValue,
-  set,
-  update,
+  set as fbSet,
+  update as fbUpdate,
   get,
-  remove,
-  runTransaction,
+  remove as fbRemove,
+  runTransaction as fbRunTransaction,
   serverTimestamp,
   off,
   query,
@@ -36,9 +36,22 @@ import {
   equalTo
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
 
+// P-SELFUPDATE CP2 (codex CP2 r1 B4): EVERY SDK write is counted from issue until the server ACKNOWLEDGES it (the SDK's
+// promise settles) — a stalled connection keeps it outstanding, so the self-update never reloads over a pending write.
+// Same arguments, same returned promise / reference; with no stamped module this is exactly the SDK call.
+function sherpaTrack(p) { try { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; if (S && typeof S.trackWrite === 'function') S.trackWrite(p); } catch (_) {} return p; }
+const set = (...a) => sherpaTrack(fbSet(...a));
+const update = (...a) => sherpaTrack(fbUpdate(...a));
+const remove = (...a) => sherpaTrack(fbRemove(...a));
+const runTransaction = (...a) => sherpaTrack(fbRunTransaction(...a));
+
 // ============================================================
 // CONSTANTS
 // ============================================================
+
+// P-SELFUPDATE CP2 — the one request wrapper at every platform-function call site (advisor ruling Q6/Q7). A non-identity
+// endpoint: SherpaClient.fetch passes the SAME arguments through untouched; with no module loaded, it is fetch itself.
+function sherpaFetch(u, o) { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
 
 export const RESTAURANT = {
   lat: 15.507489753573818,
@@ -574,7 +587,7 @@ export async function resolveReconciliation(orderId, action, note = '') {
   const user = auth && auth.currentUser;
   if (!user) throw new Error('No hay sesión de dispatcher');
   const token = await user.getIdToken();
-  const res = await fetch(functionUrl('resolveManualReconciliation'), {
+  const res = await sherpaFetch(functionUrl('resolveManualReconciliation'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ order_id: orderId, action, note })
@@ -914,7 +927,7 @@ export async function cancelOrderRemote(orderId, reason = '') {
   const user = auth && auth.currentUser;
   if (!user) throw new Error('No hay sesión de dispatcher');
   const token = await user.getIdToken();
-  const res = await fetch(functionUrl('cancelPaidOrder'), {
+  const res = await sherpaFetch(functionUrl('cancelPaidOrder'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ order_id: orderId, reason })

@@ -25,3 +25,13 @@ export function messageFor(err) {
     Unavailable: ['No pudimos cargar tu menú', 'Es un problema nuestro, no tuyo. Probá de nuevo en un momento.'],
   }[kind] || ['Algo salió mal', 'Probá de nuevo en un momento.'];
 }
+
+// P-SELFUPDATE CP2 §3 — may the portal reload for a new deploy right now? FALSE while the merchant has unsaved work or an
+// operation of theirs is open: an outstanding request, a publish in flight, a review or its lock, a draft that differs
+// from what was loaded (a held not-yet-valid price differs too), or a focused field. Pure; app.js supplies the facts.
+export function portalCanReload({ pendingWrite, publishing, review, reviewLock, pendingCount, focusedTag }) {
+  if (pendingWrite || publishing || review || reviewLock) return false;
+  if (pendingCount > 0) return false;
+  if (focusedTag && /^(INPUT|TEXTAREA|SELECT)$/.test(focusedTag)) return false;
+  return true;
+}

@@ -145,6 +145,8 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   // so the thing that decides has to be the real one. (The real-writer rule, again.)
   const allocFn   = grab(html, /\nfunction orderIdForThisCart\(\)\{[\s\S]*?\n\}\n/, 'orderIdForThisCart()');
   const genIdFn   = grab(html, /\nfunction genOrderId\(\)\{[\s\S]*?\n\}\n/, 'genOrderId()');
+  // P-SELFUPDATE CP2: both charge sends go through the REAL one-line wrapper (no SherpaClient here → plain fetch)
+  const wrapFn    = grab(html, /\nfunction sherpaFetch\(u, o\)\{[^\n]*\}\n/, 'sherpaFetch()');
   const payFn     = grab(html, /\nasync function processPixelPay\(\)\{[\s\S]*?\n\}\n/, 'processPixelPay()');
   const snapFn    = grab(html, /\nfunction snapshotForm\(\)\{[\s\S]*?\n\}\n/, 'snapshotForm()');
   const restoreFn = grab(html, /\nfunction restoreOrderForm\(\)\{[\s\S]*?\n\}\n/, 'restoreOrderForm()');
@@ -226,6 +228,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     ${fallbackFn}
     ${allocFn}
     ${genIdFn}
+    ${wrapFn}
     /* 🔴 "BLOCKED" NOW MEANS "createOrder WAS NEVER CALLED", not "an extracted fragment returned
        early". The previous definition ran a lifted copy of submitOrder's guard — which is precisely
        why the cash RETRY bypass was invisible: the fragment had no retry loop in it. This runs the

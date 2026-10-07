@@ -1,0 +1,7 @@
+# Netlify config for the legal pages (site sherpa-driver-privacy — a MANUAL deploy, no git-CD).
+# P-SELFUPDATE CP2: the owner deploys from this folder with --build so the stamp runs:
+#   npx netlify-cli deploy --build --prod --dir . --site 900ee7f9-1d1c-478a-8e02-c45fce56f98c
+# No headers or redirects: none were configured before either.
+[build]
+  publish = "."
+  command = "node ../platform/stamp-version.js"   # P-SELFUPDATE §1: /version.json + identity <meta>; never fails the build

@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>X Pizza — Pedido en línea</title>
+<script src="sherpa-client.js"></script>
 <script>
 /* Track A (MF1): capture the profile-claim deep-link token from the URL FRAGMENT (#t=…) — a fragment is NEVER
    sent to servers or in Referer — and SCRUB it from the URL/history IMMEDIATELY, before any third-party
@@ -1446,6 +1447,11 @@ const QUOTEORDER_URL   = 'https://us-central1-xpizza-delivery.cloudfunctions.net
 const CHARGEORDER_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/chargeOnlineOrder';
 const PAYMENTSTATUS_URL = 'https://us-central1-xpizza-delivery.cloudfunctions.net/paymentStatus';
 const CLAIMPREFILL_URL  = 'https://us-central1-xpizza-delivery.cloudfunctions.net/claimPrefill';   // Track A
+/* P-SELFUPDATE CP2 — THE ONE REQUEST WRAPPER at every platform-function call site (advisor ruling Q6/Q7 = B). With the
+   shared module loaded and stamped, SherpaClient.fetch adds X-Client-* ONLY on the four identity endpoints and latches
+   the two money-bearing sends (an unknown outcome blocks every reload). Unstamped, or the module missing: exactly
+   fetch(u, o) — same arguments, nothing added. */
+function sherpaFetch(u, o){ var S = window.SherpaClient; return (S && typeof S.fetch === 'function') ? S.fetch(u, o) : fetch(u, o); }
 const ORDER_SECRET     = '8bf741d5f90a8d5156845d4b92eeca65130eb5459bcfa725b150b5c3ab083846';
 // PixelPay creds are NOT hardcoded here — chargeOnlineOrder returns the SDK config
 // (mode/endpoint/app_key/auth_hash) per order. The server is the source of truth.
@@ -2334,7 +2340,7 @@ function bootLiveMenu(){
     url: PUBLICMENU_URL + '/menu/' + liveMenuRid(),
     // Injected rather than closed over, matching the coordinator's own discipline: the tests drive the
     // real chain through a stub installed here, and production gets the real thing.
-    fetchImpl: function (u, o) { return window.fetch(u, o); },
+    fetchImpl: function (u, o) { return sherpaFetch(u, o); },
     adapter: LIVE_MENU_ADAPTER,
     onApply: function (snapshot) { LIVE_APPLIER.apply(snapshot); },
   });
@@ -2939,7 +2945,7 @@ function requestServerQuote(force){
     // so the `++__quoteSeq` → `inflight = token` adjacency quote-order.test.js pins stays intact.
     const sigAtRequest = confirmQuoteCartSig();
     // NOT awaited on any tap: the client total renders immediately and reconciles when this lands.
-    fetch(QUOTEORDER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
+    sherpaFetch(QUOTEORDER_URL, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ restaurant_id: (typeof RESTAURANT_ID!=='undefined' ? RESTAURANT_ID : undefined), items }) })
       .then(function(r){ return r.json(); })
       .then(function(j){
@@ -3950,7 +3956,7 @@ async function processPixelPay(){
        grace deploy. Attaching a stale-for-cart token would be worse than attaching none: the server
        would 409 on its fingerprint, turning an order that was never in doubt into a refusal. */
     try{ if(__confirmQuote) __confirmQuote.send(currentOrder, __orderSigAtBuild, __orderNetAtBuild); }catch(_){}
-    const res = await fetch(CHARGEORDER_URL, {
+    const res = await sherpaFetch(CHARGEORDER_URL, {
       method:'POST',
       headers: Object.assign(
         { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ORDER_SECRET },
@@ -3959,6 +3965,7 @@ async function processPixelPay(){
       body: JSON.stringify(currentOrder),
     });
     cfg = await res.json().catch(()=>({}));
+    if(res.status===426 && cfg && cfg.error==='client_update_required'){ clientUpdateRequired(); return; }   // P-SELFUPDATE §5: terminal, pre-mutation
     if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }
     if(res.status===202 && cfg && cfg.status==='in_progress'){
       // A checkout is already being created for this order (one-live-checkout) — brief wait + one retry.
@@ -4121,7 +4128,7 @@ async function handlePaymentReturn(){
       // SINGLE check, ~5s bounded (P1 — NOT the 90s loop: a genuine cancel stays pending_payment forever and
       // must resolve to 'cancel' instantly). The stray fetch is a harmless read-only GET.
       const r = await Promise.race([
-        fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`),
+        sherpaFetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), 5000)),
       ]);
       const j = await r.json().catch(()=>({}));
@@ -4139,7 +4146,7 @@ async function handlePaymentReturn(){
   const deadline = Date.now() + 90000;            // the webhook may land a moment after the redirect
   while(Date.now() < deadline){
     try {
-      const r = await fetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`);
+      const r = await sherpaFetch(`${PAYMENTSTATUS_URL}?order_id=${encodeURIComponent(orderId)}&t=${encodeURIComponent(token)}`);
       const j = await r.json().catch(()=>({}));
       const st = (r.ok && j.state) || 'pending';
       if(applyPollState(st, j, orderId, stashedOrder)) return true;
@@ -4252,6 +4259,22 @@ function showPayReturn(kind){
 }
 
 // Payment failed/abandoned → back to the payment step with alternatives.
+/* P-SELFUPDATE CP2 §5 — `426 client_update_required` is a DEFINITIVE refusal made BEFORE any mutation: nothing was
+   created, reserved or charged. It is TERMINAL here (never the network-retry path). The update coordinator in
+   sherpa-client.js decides whether this page may reload now — never while an earlier attempt's outcome is unknown —
+   and its restore lands back on the checkout review to confirm again on the new build. If no reload happens, the
+   customer is returned to the checkout and told plainly. */
+function clientUpdateRequired(){
+  orderSubmitting=false;
+  setSending('Actualizando para completar tu pedido…');
+  setTimeout(function(){
+    if(activeStageId()!=='s4') return;
+    showStage('s2',50);
+    const err=document.getElementById('err3');
+    if(err){ err.style.display='block'; err.textContent='Hay una actualización pendiente de esta página. Intentá de nuevo en un momento.'; }
+  }, 8000);
+}
+
 function paymentFallback(msg){
   orderSubmitting=false;
   showStage('s2',50);
@@ -4324,7 +4347,7 @@ async function submitOrder(paymentStatus){
          grace deploy. Attaching a stale-for-cart token would be worse than attaching none: the server
          would 409 on its fingerprint, turning an order that was never in doubt into a refusal. */
       try{ if(__confirmQuote) __confirmQuote.send(currentOrder, __orderSigAtBuild, __orderNetAtBuild); }catch(_){}
-      const res = await fetch(CREATEORDER_URL,{
+      const res = await sherpaFetch(CREATEORDER_URL,{
         method:'POST',
         headers: Object.assign(
           { 'Content-Type':'application/json', 'Authorization':'Bearer '+ORDER_SECRET },
@@ -4341,6 +4364,7 @@ async function submitOrder(paymentStatus){
         const err = await res.json().catch(()=>({}));
         console.error('createOrder rejected', res.status, err);
         orderSubmitting=false;
+        if(res.status===426 && err && err.error==='client_update_required'){ clientUpdateRequired(); return; }   // P-SELFUPDATE §5: terminal, pre-mutation
         // KDS 2b: server rejected because a line was 86'd between add + submit. Name the item(s)
         // + tell the customer to remove it — NOT the generic "Revisá los datos" (which triggers
         // confused retries). Handled BEFORE the generic 4xx branch. The item stays in the cart.
@@ -5368,7 +5392,7 @@ async function handleProfileClaim(){
     var prefill = { order_id: cp.order_id, token: cp.token || null, n: Number(cp.n) || 0, unit: cp.u === 'punch' ? 'punch' : 'point' };
     if(cp.token){
       try{
-        const r = await fetch(CLAIMPREFILL_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order_id: cp.order_id, token: cp.token }) });
+        const r = await sherpaFetch(CLAIMPREFILL_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order_id: cp.order_id, token: cp.token }) });
         const j = await r.json().catch(()=>({}));
         if(r.ok && j && j.ok){ prefill.phone = j.phone||''; prefill.name = j.name||''; }
       }catch(_){}
@@ -5441,5 +5465,6 @@ setInterval(loadAvailability, 60000);
   </div>
 </div>
 
+<script src="order-self-update.js"></script>
 </body>
 </html>

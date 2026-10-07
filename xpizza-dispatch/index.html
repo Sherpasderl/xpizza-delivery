@@ -2178,6 +2178,7 @@
   .rail-badge { display: none; position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--accent-solid); color: #fff; font-size: 11px; font-weight: 700; line-height: 15px; text-align: center; box-sizing: border-box; }
   .app:not(.left-open) #rail-toggle-left .rail-badge.has { display: block; }
 </style>
+<script src="sherpa-client.js"></script>
 </head>
 
 <body>
@@ -6074,6 +6075,12 @@ if ('serviceWorker' in navigator) {
 // ============================================================
   boot();
 
+</script>
+<script>
+/* P-SELFUPDATE CP2 §3 — this app's self-update adapter: idle = none of these overlays open, no focused field, no request
+   of ours in flight, no tap/key in the last 30 s, online (see SherpaClient.idleAdapter). State reloads from the
+   database. Inert (unstamped) pages register nothing. */
+try { var __S = window.SherpaClient; if (__S && !__S.inert) __S.registerAdapter(__S.idleAdapter({ overlays: ["#msg-modal.open", "#comms-sheet.open", "#order-detail-modal.open", "#picker-overlay:not(.hidden)", "#recon-note-overlay:not(.hidden)", "#surface-flyout:not([hidden])", "#action-menu:not(.hidden)"] })); } catch (_) {}
 </script>
 </body>
 </html>

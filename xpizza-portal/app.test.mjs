@@ -2,7 +2,7 @@
 // Only the pure decisions; the DOM rendering is Task 6's surface.
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { pickRid, messageFor } from './portal-logic.js';
+import { pickRid, messageFor, portalCanReload } from './portal-logic.js';
 import { ApiError } from './api.js';
 
 test('a remembered restaurant is honoured only while it is still owned', () => {
@@ -36,5 +36,13 @@ test('failures become sentences a merchant can act on, and an outage is not a pe
     assert.ok(typeof t === 'string' && t.length > 4, 'a title');
     assert.ok(typeof d === 'string' && d.length > 4, 'and a detail');
     assert.ok(!/\[object|undefined|Error:/.test(t + d), 'never a JS artefact on screen');
+  }
+});
+
+test('P-SELFUPDATE: the portal reloads for a new deploy ONLY with no unsaved work and nothing of the merchant in flight', () => {
+  const idle = { pendingWrite: false, publishing: false, review: false, reviewLock: false, pendingCount: 0, focusedTag: 'BODY' };
+  assert.strictEqual(portalCanReload(idle), true, 'nothing open → may update');
+  for (const [k, v] of [['pendingWrite', true], ['publishing', true], ['review', true], ['reviewLock', true], ['pendingCount', 1], ['focusedTag', 'INPUT'], ['focusedTag', 'TEXTAREA'], ['focusedTag', 'SELECT']]) {
+    assert.strictEqual(portalCanReload({ ...idle, [k]: v }), false, `🔴 ${k}=${v} must block the reload (unsaved / in-flight merchant work)`);
   }
 });

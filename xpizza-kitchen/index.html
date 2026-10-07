@@ -1284,6 +1284,7 @@ function shortStatus(s) {
     .tk.nudge-overdue { outline: 3px solid var(--nuevo); outline-offset: -1px; }
   }
 </style>
+<script src="sherpa-client.js"></script>
 </head>
 <body>
 
@@ -2783,6 +2784,14 @@ function toggleAvailSummary() {
 
 async function toggleAvail(rawKey) {
   if (availPending[rawKey]) return;                    // ignore taps while its write is in flight
+  // P-SELFUPDATE (codex CP2 r1 S8): the floor this screen already KNOWS is above its compat → do not send a write the rules
+  // will refuse: no optimistic change, an honest notice, and an update request (taken as soon as the screen is idle).
+  // The rules stay authoritative; a denial still reverts and re-reads the floor (kdsFloorAfterDenial).
+  if (kdsBelowFloor(kitchenFloor)) {
+    showAvailNote('Pantalla desactualizada — se actualizará al quedar libre. Volvé a intentar después.');
+    kdsRequestUpdate();
+    return;
+  }
   const nextAvailable = isItemOff(rawKey);             // OFF→available(true) · ON→unavailable(false)
   const k = availKeyOf(rawKey);
   const prev = availFlags[k];                          // snapshot for revert-on-failure
@@ -2791,7 +2800,7 @@ async function toggleAvail(rawKey) {
   hideAvailNote();
   renderAvailPanel();
   try {
-    await XPD.setItemAvailability(AVAIL_RID, rawKey, nextAvailable, availUid);
+    await XPD.setItemAvailability(AVAIL_RID, rawKey, nextAvailable, availUid, kdsCompat());
     delete availPending[rawKey];
     renderAvailPanel();                                // keep optimistic value; the flags sub reconciles canonically
   } catch (e) {
@@ -2800,8 +2809,70 @@ async function toggleAvail(rawKey) {
     delete availPending[rawKey];
     renderAvailPanel();
     showAvailNote('Sin permiso / no se pudo guardar');
+    kdsFloorAfterDenial();                             // P-SELFUPDATE §5: refresh ONLY on a confirmed compat mismatch
   }
 }
+
+/* ── P-SELFUPDATE CP2 §3/§5 — this KDS's compat generation, the kitchen floor, and the self-update adapter ─────────
+   kdsCompat(): the stamped generation (undefined on an unstamped page → today's write shape exactly).
+   The floor (restaurants/{rid}/client_floor/kitchen) is WATCHED while signed in: a floor above this page's compat asks
+   the coordinator for an update (a proactive refresh at a safe moment). On a DENIED toggle the optimistic state is
+   already reverted above (today's behaviour); then the floor is RE-READ and the page refreshes ONLY when the floor is
+   confirmed above its compat (reported through the heartbeat as a diagnostic, since RTDB denials never reach our
+   logs). Anything else keeps the existing save error — a denial is never assumed to be the floor. */
+function kdsCompat() {
+  const S = window.SherpaClient;
+  return (S && !S.inert && S.identity && Number.isInteger(S.identity.compat)) ? S.identity.compat : undefined;
+}
+let kitchenFloor = null, kitchenFloorUnsub = null;
+function kdsBelowFloor(floor) {
+  const c = kdsCompat();
+  return c !== undefined && Number.isInteger(floor) && floor > c;
+}
+function kdsRequestUpdate() {
+  try { window.SherpaClient.updateRequired('idle'); } catch (_) {}
+}
+function startKitchenFloorWatch() {
+  if (kdsCompat() === undefined || kitchenFloorUnsub) return;
+  try {
+    kitchenFloorUnsub = XPD.watchKitchenFloor(AVAIL_RID, (v) => {
+      if (v === undefined) return;                     // read error → keep the last known value
+      kitchenFloor = v;
+      if (kdsBelowFloor(v)) kdsRequestUpdate();
+    });
+  } catch (_) { kitchenFloorUnsub = null; }
+}
+function stopKitchenFloorWatch() {
+  try { kitchenFloorUnsub?.(); } catch (_) {}
+  kitchenFloorUnsub = null;
+}
+async function kdsFloorAfterDenial() {
+  if (kdsCompat() === undefined) return;               // an unstamped page keeps exactly today's behaviour
+  let floor;
+  try { floor = await XPD.readKitchenFloor(AVAIL_RID); } catch (_) { return; }   // cannot confirm → no refresh
+  kitchenFloor = floor;
+  if (!kdsBelowFloor(floor)) return;
+  try { window.SherpaClient.reportDiag('kitchen_floor_refusal'); } catch (_) {}
+  showAvailNote('Pantalla desactualizada — actualizando…');
+  kdsRequestUpdate();
+}
+// canReload: never while a status write or a sold-out toggle is in flight, a press-and-hold is armed, a completion beat
+// is running, the log modal / settings / availability screen is open, a field has focus or the screen was tapped in the last 30 s. Orders and flags reload from the database; the wake lock is
+// re-acquired by the page's own startup (requestWakeLock()).
+function kdsCanReload() {
+  if (Object.values(pendingWrites).some((w) => w && !w.error && !w.skip)) return false;
+  if (Object.keys(availPending).length) return false;
+  if (window.SherpaClient.pendingWrites() > 0) return false;   // any SDK write not yet acknowledged (codex CP2 r1 B4)
+  if (activeHold) return false;
+  if (Object.keys(completionSeq).length) return false;
+  if (document.getElementById('log-overlay')?.classList.contains('open')) return false;
+  for (const id of ['settings-screen', 'availability-screen']) { const el = document.getElementById(id); if (el && !el.hidden) return false; }
+  const a = document.activeElement;
+  if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return false;
+  if (!window.SherpaClient.quiet()) return false;      // never right after a tap
+  return true;
+}
+try { if (window.SherpaClient && !window.SherpaClient.inert) window.SherpaClient.registerAdapter({ canReload: kdsCanReload }); } catch (_) {}
 
 function showAvailNote(msg) {
   const n = document.getElementById('avail-note');
@@ -3313,6 +3384,7 @@ XPD.onAuth(async (user) => {
     if (schedUnsubscribe) { schedUnsubscribe(); schedUnsubscribe = null; }
     window.__readyNudge?.teardown?.();   // !user auth-state path
     teardownAvailPanel();
+    stopKitchenFloorWatch();
     showLogin();
     return;
   }
@@ -3328,6 +3400,7 @@ XPD.onAuth(async (user) => {
   hideLogin();
   startOrdersSubscription();
   startAvailPanel(user.uid);   // KDS Phase 2b — Disponibilidad panel (host-derived rid; the audit write uses this uid)
+  startKitchenFloorWatch();    // P-SELFUPDATE §5 — the authoritative kitchen floor (stamped pages only)
 });
 
 </script>

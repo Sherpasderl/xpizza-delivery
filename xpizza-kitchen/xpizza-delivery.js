@@ -24,14 +24,23 @@ import {
   getDatabase,
   ref,
   onValue,
-  set,
-  update,
+  set as fbSet,
+  update as fbUpdate,
   get,
-  remove,
-  runTransaction,
+  remove as fbRemove,
+  runTransaction as fbRunTransaction,
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+
+// P-SELFUPDATE CP2 (codex CP2 r1 B4): EVERY SDK write is counted from issue until the server ACKNOWLEDGES it (the SDK's
+// promise settles) — a stalled connection keeps it outstanding, so the self-update never reloads over a pending write.
+// Same arguments, same returned promise / reference; with no stamped module this is exactly the SDK call.
+function sherpaTrack(p) { try { const S = (typeof window !== 'undefined') ? window.SherpaClient : null; if (S && typeof S.trackWrite === 'function') S.trackWrite(p); } catch (_) {} return p; }
+const set = (...a) => sherpaTrack(fbSet(...a));
+const update = (...a) => sherpaTrack(fbUpdate(...a));
+const remove = (...a) => sherpaTrack(fbRemove(...a));
+const runTransaction = (...a) => sherpaTrack(fbRunTransaction(...a));
 
 // Order-status vocab + the live/restaurant order filter + the KDS host classifier live in a
 // dependency-free module so they're node-testable. import-then-export gives LOCAL bindings (the
@@ -337,16 +346,30 @@ export async function setOrderStatus(orderId, status) {
 // rid is host-derived by the caller (KDS_RESTAURANT_ID) → host-agnostic, no restaurant hardcoded here.
 // One write + unit-spyable: avail-write.test.mjs loads this real module (firebase stubbed) and asserts the
 // single update() carries EXACTLY these two paths with these exact shapes.
-export async function setItemAvailability(rid, rawKey, available, uid) {
+//
+// P-SELFUPDATE §5 (Q7 = A): a STAMPED KDS passes its compat generation, and `compat` goes on BOTH whole records of the
+// ONE atomic update (rules: an optional numeric child; with a kitchen floor set, .write admits only compat ≥ floor and
+// updated_at == server now). No compat argument (an unstamped page) → EXACTLY the two shapes above, byte-for-byte.
+export async function setItemAvailability(rid, rawKey, available, uid, compat) {
   const enc = globalThis.availKey;
   if (typeof enc !== 'function') throw new Error('availKey unavailable');   // avail-key.js classic script missing → surface, don't half-write
   const key = enc(rawKey);
   const avail = !!available;
   const ts = serverTimestamp();
+  const c = (Number.isInteger(compat) && compat >= 1) ? { compat } : {};
   await update(ref(db), {
-    [`restaurants/${rid}/item_availability/${key}`]: { available: avail, updated_at: ts },
-    [`restaurants/${rid}/availability_audit/${key}`]: { available: avail, updated_at: ts, updated_by: uid || null }
+    [`restaurants/${rid}/item_availability/${key}`]: { available: avail, updated_at: ts, ...c },
+    [`restaurants/${rid}/availability_audit/${key}`]: { available: avail, updated_at: ts, updated_by: uid || null, ...c }
   });
+}
+
+// P-SELFUPDATE §5 — THE authoritative kitchen floor for this restaurant (restaurants/{rid}/client_floor/kitchen: the
+// value the rules enforce; staff-membership read; client writes denied). Absent = null = OFF. Reads only.
+export function watchKitchenFloor(rid, callback) {
+  return onValue(ref(db, `restaurants/${rid}/client_floor/kitchen`), (snap) => callback(snap.val()), () => callback(undefined));
+}
+export async function readKitchenFloor(rid) {
+  return (await get(ref(db, `restaurants/${rid}/client_floor/kitchen`))).val();
 }
 
 /**
