@@ -63,17 +63,68 @@ function workDeadline(stop, reserveMs) {
   const reserve = Math.max(0, Math.min(reserveMs, Math.floor(stop.remaining() / 2)));
   return { reserve, remaining: () => Math.max(0, stop.remaining() - reserve), stopped: () => stop.stopped() || stop.remaining() <= reserve };
 }
-// 🔴 NO WORK STARTS PAST THE WORK DEADLINE (codex c1 build r3 S1): takes a THUNK, checks the work deadline BEFORE invoking
-// it (racing an already-started promise cannot un-start its I/O, and an already-settled one can even win a 0 ms race),
-// then races it against the remaining work time. Past the deadline it rejects `${label}_work_deadline` (e.workDeadline)
-// and the thunk is never called. Every await in the restaurant passes is followed by a call through here (or an
-// explicit check) before the next operation starts.
+// ── THE I/O GATE (codex c1 build r3 S1 → r4: one mechanism, threaded everywhere) ─────────────────────────────────────
+// A GATE is any { stopped(), remaining() } — a deadline (makeDeadline), a work deadline (workDeadline) or both of them
+// (bothGates). Every function that does I/O receives one, nested and FOREIGN helpers included, in one of two forms:
+//   · a GATED HANDLE — gateIo(db | rtdb, gate): a Firestore / RTDB handle that REFUSES TO START any I/O once its gate
+//     has stopped (it rejects — or, for a synchronous subscribe, throws — WorkDeadline, and the I/O never starts).
+//     Builders (collection / doc / where / orderBy / startAfter / limit / select / ref / child …) return gated handles;
+//     cleanup (`off`) always passes; a Firestore transaction's `tx` is gated too. So a helper that threads no stop of its
+//     own (readVersionDocs, getActiveVersionId, readCursor, casCursor, versionPage …) still cannot start I/O late;
+//   · an explicit gate parameter — readVersionSnapshot, loadVersionNode, d4aProjection, checkRung, writeVersion — which
+//     REQUIRE it: a missing / malformed gate throws (fail closed; there is no no-op default).
+// boundedWork() is the one helper that STARTS an operation (only before the deadline) and CLASSIFIES its end: a
+// timeout whose limit was the work budget — including a nested helper's own timer clipped to it — is WorkDeadline;
+// a genuine failure, or an operation's own SHORTER timeout, stays what it is.
+// Self-checking: identity-record.test.js instruments the fakes BELOW the gate and fails on any I/O started past the
+// work deadline (checkpoint operations: past the hard deadline), across every deadline scenario on both schedules.
+class WorkDeadline extends Error { constructor(label = 'io') { super(`${label}_work_deadline`); this.workDeadline = true; } }
+function requireGate(gate, where) {
+  if (!gate || typeof gate.stopped !== 'function' || typeof gate.remaining !== 'function') throw new TypeError(`${where}: an I/O gate { stopped, remaining } is required`);
+  return gate;
+}
+const needIo = (io) => { if (!io || !io.db || !io.rtdb) throw new TypeError('reader: gated io handles { db, rtdb } are required'); return io; };
+const bothGates = (a, b) => ({ stopped: () => a.stopped() || b.stopped(), remaining: () => Math.min(a.remaining(), b.remaining()) });
+const IO_METHODS = new Set(['get', 'getAll', 'runTransaction', 'transaction', 'on', 'once', 'set', 'update', 'create', 'delete', 'remove', 'push', 'add', 'onSnapshot', 'listDocuments', 'listCollections']);
+const SYNC_IO = new Set(['on', 'onSnapshot']);
+const RAW = new WeakMap();
+const rawOf = (x) => (x !== null && (typeof x === 'object' || typeof x === 'function') && RAW.has(x) ? RAW.get(x) : x);
+function gateIo(target, gate, label = 'io') {
+  requireGate(gate, 'gateIo');
+  if (target === null || typeof target !== 'object') return target;
+  const proxy = new Proxy(target, {
+    get(t, k) {
+      const v = Reflect.get(t, k, t);
+      if (typeof k === 'symbol' || k === 'then' || k === 'constructor') return v;
+      if (v !== null && typeof v === 'object') return gateIo(v, gate, label);   // e.g. ref.parent / ref.root / ref.firestore
+      if (typeof v !== 'function') return v;
+      return (...args) => {
+        const a = args.map(rawOf);
+        if (IO_METHODS.has(k)) {
+          if (gate.stopped()) { const e = new WorkDeadline(label); if (SYNC_IO.has(k)) throw e; return Promise.reject(e); }
+          if (k === 'runTransaction' && typeof a[0] === 'function') { const fn = a[0]; return v.call(t, (tx) => fn(gateIo(tx, gate, label)), ...a.slice(1)); }
+          return v.apply(t, a);   // I/O results (snapshots, promises) are data — returned unwrapped
+        }
+        const out = v.apply(t, a);
+        return out !== null && typeof out === 'object' && typeof out.then !== 'function' ? gateIo(out, gate, label) : out;
+      };
+    },
+  });
+  RAW.set(proxy, target);
+  return proxy;
+}
+// Starts `thunk` ONLY before the work deadline, races it against the remaining work time, and classifies the end.
 function boundedWork(work, thunk, ms, label) {
+  requireGate(work, 'boundedWork');
   const left = Math.min(ms, work.remaining());
-  if (work.stopped() || !(left > 0)) return Promise.reject(Object.assign(new Error(`${label}_work_deadline`), { workDeadline: true }));
+  if (work.stopped() || !(left > 0)) return Promise.reject(new WorkDeadline(label));
+  const byWork = !(ms < work.remaining());   // the operation's limit IS the work budget → its timeout means work expiry
   let p;
   try { p = thunk(); } catch (e) { p = Promise.reject(e); }
-  return race(p, left, label);
+  return race(p, left, label).catch((e) => {
+    if (e && (e.workDeadline || (e.timeout && (byWork || work.stopped())))) throw new WorkDeadline(label);
+    throw e;
+  });
 }
 function withTimer(promise, ms, onTimeout) {
   let timer = null;
@@ -85,16 +136,19 @@ function withTimer(promise, ms, onTimeout) {
 
 // ONE read-only Firestore transaction on the NAMED version (the D4-a readActiveSnapshot pattern, without the pointer):
 // the record, its updateTime, items, extras and structure — one consistent state, validated BEFORE the RTDB transaction.
-async function readVersionSnapshot(db, rid, versionId, stop = () => {}) {
-  return db.runTransaction(async (tx) => {
-    const vref = versionRefOf(db, rid, versionId);
+// The GATE is required (codex c1 build r4 S2): every read runs through the gated handle, so the transaction, the record
+// read and the three reads after it each START only while the gate is open — after the first read resolves past the
+// deadline, nothing further starts (the gated `tx.get` refuses; the transaction rejects WorkDeadline).
+async function readVersionSnapshot(db, rid, versionId, gate) {
+  requireGate(gate, 'readVersionSnapshot');
+  const gdb = gateIo(db, gate, 'version_read');
+  return gdb.runTransaction(async (tx) => {
+    const vref = versionRefOf(gdb, rid, versionId);
     const recSnap = await tx.get(vref);
-    stop();
     if (!recSnap.exists) return { missing: true };
     const [items, extras, structureSnap] = await Promise.all([
       tx.get(vref.collection('menu_items')), tx.get(vref.collection('extras')), tx.get(vref.collection('meta').doc('menu_structure')),
     ]);
-    stop();
     return {
       rid, versionId, record: recSnap.data() || {}, updateTime: recSnap.updateTime,
       items: rowsOf(items), extras: rowsOf(extras), structure: structureSnap.exists ? (structureSnap.data() || null) : null,
@@ -113,7 +167,7 @@ function race(promise, ms, label) {
   let timer = null;
   const p = Promise.resolve(promise);
   p.catch(() => {});
-  return Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label}_timeout`)), Math.max(0, ms)); })])
+  return Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(`${label}_timeout`), { timeout: true })), Math.max(0, ms)); })])
     .finally(() => { if (timer) clearTimeout(timer); });
 }
 // Bounded read. Throws `cursor_read_timeout` past the deadline.
@@ -214,8 +268,11 @@ function createIdentityRecordWriter({
   const stats = { reads: 0, transactions: 0, callbackCalls: 0, versionDocsFetched: 0 };
 
   // writeVersion(rid, versionId) → { rid, versionId, settled, committed, outcomes, ... }. NEVER rejects; bounded.
-  function writeVersion(rid, versionId, { deadlineMs = IDENTITY_TRIGGER_DEADLINE_MS, source = 'direct' } = {}) {
+  function writeVersion(rid, versionId, { deadlineMs = IDENTITY_TRIGGER_DEADLINE_MS, source = 'direct', gate = null } = {}) {
     const stop = makeDeadline(deadlineMs, now);
+    const g = gate ? bothGates(stop, requireGate(gate, 'writeVersion')) : stop;   // its own deadline, inside the caller's gate
+    const gdb = gateIo(db, g, 'write');
+    const grtdb = gateIo(rtdb, g, 'write');
     const report = (r) => { const out = { rid, versionId, source, ...r }; log('identity_record_write', out); return out; };
     const work = (async () => {
       await null;
@@ -223,7 +280,7 @@ function createIdentityRecordWriter({
         if (!isPathKey(rid) || !isPathKey(versionId)) return report({ settled: true, committed: false, outcomes: ['source_malformed'] });
         stop();
         stats.reads += 1;
-        const snap = await readVersionSnapshot(db, rid, versionId, stop);
+        const snap = await readVersionSnapshot(gdb, rid, versionId, g);
         if (snap.missing) return report({ settled: true, committed: false, outcomes: ['version_missing'] });
         const built = buildIdentityRecord(snap, recordOpts);
         if (!built.ok) return report({ settled: true, committed: false, outcomes: [built.reason], detail: built.detail || null });
@@ -233,9 +290,9 @@ function createIdentityRecordWriter({
         stop();
         let last = null; let aborted = false;
         stats.transactions += 1;
-        const res = await nodeRefOf(rtdb, rid, versionId).transaction((current) => {
+        const res = await nodeRefOf(grtdb, rid, versionId).transaction((current) => {
           stats.callbackCalls += 1;
-          if (stop.stopped()) { aborted = true; last = null; return undefined; }   // abandonment on EVERY retry: commit nothing
+          if (g.stopped()) { aborted = true; last = null; return undefined; }   // abandonment on EVERY retry: commit nothing
           aborted = false;
           last = applyCandidate(current, cand, { rid, versionId }, applyOpts);
           return last.write ? last.next : undefined;
@@ -248,7 +305,7 @@ function createIdentityRecordWriter({
         return report({ settled: true, committed, outcomes: last.outcomes, ...base,
           unrecoverable: last.detail.unrecoverable, evicted: last.detail.evicted, nodeBytes: last.detail.bytes });
       } catch (e) {
-        if (e && e.abandoned) return { rid, versionId, source, settled: false, committed: false, outcomes: ['timeout'], late: true };
+        if (e && (e.abandoned || e.workDeadline)) return { rid, versionId, source, settled: false, committed: false, outcomes: ['timeout'], late: true };
         return report({ settled: true, committed: false, outcomes: ['read_failed'], error: String((e && e.message) || e).slice(0, 200) });
       }
     })();
@@ -268,12 +325,13 @@ function createIdentityRecordWriter({
   }
 
   // ── default production readers (each injectable for tests) ─────────────────────────────────────────────────────────
+  // every reader does its I/O through the caller's GATED handles `io` = { db, rtdb } (required)
   const readers = {
-    mirrorVersionId: async (rid) => { const s = await rtdb.ref(`catalog_snapshot/${rid}/version`).get(); const v = s && s.val(); return isPathKey(v) ? v : null; },
-    activeVersionId: async (rid) => readPointerSnap(await activePointerRef(db, rid).get(), rid).version,
+    mirrorVersionId: async (rid, io) => { const s = await needIo(io).rtdb.ref(`catalog_snapshot/${rid}/version`).get(); const v = s && s.val(); return isPathKey(v) ? v : null; },
+    activeVersionId: async (rid, io) => readPointerSnap(await activePointerRef(needIo(io).db, rid).get(), rid).version,
     // ONE bounded Firestore page in the fixed order, from the persisted position (never a collection scan)
-    versionPage: async (rid, position, limit) => {
-      const page = await versionPage(db, rid, position, limit);
+    versionPage: async (rid, position, limit, io) => {
+      const page = await versionPage(needIo(io).db, rid, position, limit);
       stats.versionDocsFetched += page.length;
       return page;
     },
@@ -288,28 +346,30 @@ function createIdentityRecordWriter({
     const work = workDeadline(stop, checkpointReserveMs);
     const clip = (ms) => Math.max(0, Math.min(ms, work.remaining()));
     const clipCheckpoint = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
-    const checkpoint = (observed, next) => casCursor(rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`), observed, next, { ms: clipCheckpoint(cursorOpMs), now, isStopped: () => stop.stopped() });
+    const io = { db: gateIo(db, work, 'reconcile'), rtdb: gateIo(rtdb, work, 'reconcile') };   // ALL work I/O: the work gate
+    const checkpointRtdb = gateIo(rtdb, stop, 'checkpoint');                                  // only the checkpoint: the hard gate
+    const checkpoint = (observed, next) => casCursor(checkpointRtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`), observed, next, { ms: clipCheckpoint(cursorOpMs), now, isStopped: () => stop.stopped() });
     const settledRead = (p, ms) => boundedWork(work, p, ms, 'rung_read').catch((e) => ({ error: String((e && e.message) || e).slice(0, 160), workDeadline: !!(e && e.workDeadline) }));
     // (1) the mirror's version and the active version, each with its own deadline
     for (const [name, fn] of [['mirror', r.mirrorVersionId], ['active', r.activeVersionId]]) {
       const ms = clip(rungDeadlineMs);
       const t0 = now();
-      const vid = await settledRead(() => fn(rid), ms);
+      const vid = await settledRead(() => fn(rid, io), ms);
       if (vid && vid.error) { out.rungs[name] = { outcomes: [vid.workDeadline ? 'budget_exhausted' : 'rung_read_failed'], error: vid.error }; continue; }
       if (!vid) { out.rungs[name] = { outcomes: ['no_version'] }; continue; }
       if (Object.values(out.rungs).some((x) => x.versionId === vid)) { out.rungs[name] = { versionId: vid, outcomes: ['same_as_mirror'] }; continue; }
       const left = Math.min(ms - (now() - t0), work.remaining());
       if (left <= 0) { out.rungs[name] = { versionId: vid, outcomes: ['budget_exhausted'], settled: false }; continue; }
-      const res = await writeVersion(rid, vid, { deadlineMs: left, source: `reconcile_${name}` });
+      const res = await writeVersion(rid, vid, { deadlineMs: left, source: `reconcile_${name}`, gate: work });
       out.rungs[name] = { versionId: vid, outcomes: res.outcomes, settled: res.settled };
     }
     // (2) retained versions: ONE bounded page query per page, from the persisted cursor
-    const cref = rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`);
+    const cref = io.rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`);
     for (;;) {   // ends at the wrap, a partial / lost checkpoint, an error, or the work deadline (the cursor read's gate)
       let observed, fetched;
       try {
         observed = await boundedWork(work, () => readCursor(cref, { ms: clip(cursorOpMs) }), cursorOpMs, 'cursor_read');
-        fetched = await boundedWork(work, () => r.versionPage(rid, observed.position, pageSize + 1), IDENTITY_LIST_DEADLINE_MS, 'version_page');
+        fetched = await boundedWork(work, () => r.versionPage(rid, observed.position, pageSize + 1, io), IDENTITY_LIST_DEADLINE_MS, 'version_page');
       } catch (e) {
         if (e && e.workDeadline) { out.stopped = e.message; break; }   // the work deadline passed between operations: nothing more starts
         out.listError = String((e && e.message) || e).slice(0, 160); break;
@@ -333,7 +393,7 @@ function createIdentityRecordWriter({
           if (!isPathKey(page[i].versionId)) {   // not addressable as an RTDB key: skipped, reported, settled
             settled[i] = true; out.versions.push({ versionId: String(page[i].versionId).slice(0, 80), outcomes: ['version_id_malformed'], settled: true }); continue;
           }
-          const res = await writeVersion(rid, page[i].versionId, { deadlineMs: Math.max(1, work.remaining()), source: 'reconcile_retained' });
+          const res = await writeVersion(rid, page[i].versionId, { deadlineMs: Math.max(1, work.remaining()), source: 'reconcile_retained', gate: work });
           settled[i] = res.settled === true;   // success OR a reported failure; a timeout/abort is UNSETTLED
           out.versions.push({ versionId: page[i].versionId, outcomes: res.outcomes, settled: res.settled });
         }
@@ -367,9 +427,10 @@ function createIdentityRecordWriter({
       log('identity_reconcile', { ok: false, error: String((e && e.message) || e).slice(0, 160) });
       return { ok: false, results: [] };
     }
-    const rref = rtdb.ref(RESTAURANT_CURSOR_PATH);
+    // schedule-level cursor ops sit OUTSIDE the restaurant budgets: each is gated by its OWN cursor-op deadline
+    const rcursor = (label) => gateIo(rtdb, makeDeadline(cursorOpMs, now), label).ref(RESTAURANT_CURSOR_PATH);
     let observed;
-    try { observed = await readCursor(rref, { ms: cursorOpMs }); } catch (e) {
+    try { observed = await readCursor(rcursor('restaurant_cursor'), { ms: cursorOpMs }); } catch (e) {
       log('identity_reconcile', { ok: false, error: 'restaurant_cursor_unreadable' });
       return { ok: false, results: [] };   // without the observed cursor no CAS is possible: do nothing rather than guess
     }
@@ -390,7 +451,7 @@ function createIdentityRecordWriter({
     const reachedEnd = settledRids.length === order.length;
     const nextCursor = reachedEnd ? { generation: observed.generation + 1, position: null }
       : settledRids.length ? { generation: observed.generation, position: settledRids[settledRids.length - 1] } : null;
-    const cas = nextCursor ? await casCursor(rref, observed, nextCursor, { ms: cursorOpMs, now }) : null;
+    const cas = nextCursor ? await casCursor(rcursor('restaurant_checkpoint'), observed, nextCursor, { ms: cursorOpMs, now }) : null;
     const counts = {};
     const oversize = {};   // §3b rollout check: per restaurant, every `oversize` refusal (expected: none)
     for (const r of results) {
@@ -409,7 +470,7 @@ function createIdentityRecordWriter({
 }
 
 module.exports = {
-  workDeadline, boundedWork, isCursorSeq,
+  workDeadline, boundedWork, isCursorSeq, gateIo, bothGates, requireGate, needIo, WorkDeadline,
   createIdentityRecordWriter, readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, versionPage, makeDeadline, race,
   CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
   IDENTITY_TRIGGER_DEADLINE_MS, IDENTITY_TRIGGER_TIMEOUT_S, IDENTITY_RECONCILE_INTERVAL, IDENTITY_RECONCILE_INTERVAL_MS,

@@ -628,6 +628,179 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
   }
   ok('codex build r3 S1 — no work starts past the work deadline (both schedules): with zero budget no read, write, load or cursor operation is started at all; a cursor read that crosses the work deadline starts no page fetch (and no checkpoint — nothing settled); a rung read that crosses it starts no write / load and no later read; the verifier never starts activeServed after a crossing read; with budget left the same fakes do see every read');
 
+  // ── codex build r4 — THE I/O GATE, layer by layer, then SELF-CHECKING across every deadline scenario ─────────────
+  const W4 = require('./identity-record-writer');
+  const V4 = require('./identity-record-verifier');
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  {
+    // (layer 1) gateIo: refuses to START I/O once stopped; builders + cleanup pass; tx is gated; nested props gated; no gate → throws
+    let open = true;
+    const gate = { stopped: () => !open, remaining: () => (open ? 1e6 : 0) };
+    const calls = [];
+    const leaf = (path) => ({ path, get: () => { calls.push(`get ${path}`); return Promise.resolve('snap'); }, off: () => calls.push(`off ${path}`), on: () => calls.push(`on ${path}`), child: (c) => leaf(`${path}/${c}`), parent: { path: 'P', get: () => { calls.push('get P'); return Promise.resolve(); } } });
+    const raw = { ref: (p) => leaf(p), runTransaction: (fn) => { calls.push('tx'); return fn({ get: (r) => { calls.push(`tx.get ${r.path}`); return Promise.resolve('s'); } }); } };
+    const g = W4.gateIo(raw, gate, 't');
+    assert.strictEqual(await g.ref('a').child('b').get(), 'snap');
+    await g.runTransaction(async (tx) => tx.get(g.ref('x')));   // a gated ref is unwrapped for the SDK
+    open = false;
+    await assert.rejects(g.ref('a').get(), (e) => e.workDeadline === true && /t_work_deadline/.test(e.message));
+    await assert.rejects(g.ref('a').parent.get(), (e) => e.workDeadline);     // object-valued props are gated too
+    await assert.rejects(g.runTransaction(async () => {}), (e) => e.workDeadline);
+    assert.throws(() => g.ref('a').on('value', () => {}), (e) => e.workDeadline, 'a synchronous subscribe throws');
+    g.ref('a').off('value');                                                     // cleanup always passes
+    assert.deepStrictEqual(calls, ['get a/b', 'tx', 'tx.get x', 'off a'], '🔴 nothing started once stopped; off still ran');
+    open = true; calls.length = 0;
+    const late = W4.gateIo(raw, gate, 't');
+    await late.runTransaction(async (tx) => { open = false; await assert.rejects(tx.get(late.ref('y')), (e) => e.workDeadline); });
+    assert.deepStrictEqual(calls, ['tx'], 'a transaction\'s tx.get after the gate closes is refused');
+    for (const bad of [undefined, null, {}, { stopped: () => false }]) assert.throws(() => W4.gateIo(raw, bad), /gate .* is required/, 'no gate → fail closed');
+    // (layer 2) boundedWork: start gate + classification
+    const wk = (ms) => { const until = Date.now() + ms; return { stopped: () => Date.now() >= until, remaining: () => Math.max(0, until - Date.now()) }; };
+    let started = 0;
+    await assert.rejects(W4.boundedWork(wk(0), () => { started += 1; }, 1000, 'op'), (e) => e.workDeadline && e.message === 'op_work_deadline');
+    assert.strictEqual(started, 0, 'past the deadline the thunk is never called');
+    await assert.rejects(W4.boundedWork(wk(40), () => new Promise(() => {}), 1000, 'op'), (e) => e.workDeadline === true, 'stalled, limit = the work budget → WorkDeadline');
+    await assert.rejects(W4.boundedWork(wk(40), () => W4.readCursor({ get: () => new Promise(() => {}) }, { ms: 40 }), 1000, 'cursor_read'), (e) => e.workDeadline === true, 'a NESTED helper timer clipped to the budget → WorkDeadline');
+    await assert.rejects(W4.boundedWork(wk(500), () => new Promise(() => {}), 20, 'op'), (e) => !e.workDeadline && e.message === 'op_timeout', 'the op\'s OWN shorter timeout stays a timeout');
+    await assert.rejects(W4.boundedWork(wk(500), () => Promise.reject(new Error('permission')), 1000, 'op'), (e) => !e.workDeadline && e.message === 'permission', 'a genuine failure stays itself');
+    assert.throws(() => W4.boundedWork(undefined, () => {}, 1, 'op'), /required/);
+    // (layer 3) readVersionSnapshot / loadVersionNode / d4aProjection REQUIRE a gate, and stop after a delayed first read
+    const fsCalls = [];
+    let release;
+    const slowFirst = new Promise((r) => { release = r; });
+    const fdoc = (path) => ({ path, collection: (c) => fdoc(`${path}/${c}`), doc: (d) => fdoc(`${path}/${d}`) });
+    const fdb = { collection: (c) => fdoc(c), runTransaction: (fn) => fn({ get: (r) => { fsCalls.push(r.path); return r.path.endsWith('/v1') ? slowFirst : Promise.resolve({ docs: [], exists: false, data: () => null }); } }) };
+    for (const call of [() => W4.readVersionSnapshot(fdb, 'r1', 'v1'), () => V4.loadVersionNode({}, 'r1', 'v1', {}), () => V4.d4aProjection(fdb, 'r1', 'v1', null)]) {
+      await assert.rejects(Promise.resolve().then(call), /gate .* is required/, 'a missing gate fails closed');
+    }
+    const g3 = wk(30);
+    const pr = W4.readVersionSnapshot(fdb, 'r1', 'v1', g3).catch((e) => e);
+    await sleep(60);
+    release({ exists: true, data: () => ({ seq: 1 }), updateTime: null });   // the first read resolves AFTER the gate closed
+    const pe = await pr;
+    assert.ok(pe && pe.workDeadline, `the snapshot rejects WorkDeadline (${pe && pe.message})`);
+    assert.deepStrictEqual(fsCalls, ['restaurants/r1/versions/v1'], '🔴 no read after the delayed first read (codex r4 S2)');
+    // writeVersion maps a gate refusal to UNSETTLED (never a settled read_failed that a checkpoint would pass)
+    let gOpen = true;
+    const wgate = { stopped: () => !gOpen, remaining: () => (gOpen ? 1e6 : 0) };
+    const wdb = { collection: (c) => fdoc(c), runTransaction: (fn) => fn({ get: () => { gOpen = false; return Promise.resolve({ exists: true, data: () => ({}), updateTime: null }); } }) };
+    const wv = await within(createIdentityRecordWriter({ db: wdb, rtdb: { ref: () => ({}) }, log: () => {} }).writeVersion('r1', 'v1', { deadlineMs: 5000, gate: wgate }), 2000, 'writeVersion gate refusal');
+    assert.deepStrictEqual([wv.settled, wv.outcomes], [false, ['timeout']], `a gate refusal inside the write is UNSETTLED: ${JSON.stringify(wv)}`);
+  }
+  ok('codex build r4 — the I/O gate, layer by layer: a gated handle refuses to START any I/O once its gate closes (refs, nested props, transactions and a tx.get inside one) while builders and cleanup pass; boundedWork never calls a thunk past the deadline and classifies a stall at the work budget (also a nested helper\'s clipped timer) as WorkDeadline, but an op\'s own shorter timeout and a genuine failure as themselves; readVersionSnapshot / loadVersionNode / d4aProjection fail closed without a gate and start nothing after a delayed first read; a refusal inside writeVersion is unsettled');
+
+  // ── SELF-CHECKING: an instrumented Firestore + RTDB BELOW the gate records every I/O start; across every deadline
+  //    scenario on BOTH schedules (the REAL production readers) any start past the work deadline — past the hard deadline
+  //    for the checkpoint's own operations — fails the suite, including late starts after the pass has returned. ──────
+  {
+    const RID = 'x_pizza'; const VID = 'v-test';
+    const certified = cand(rawFor('x_pizza', { certified: true, revision: 1, stamp: allStamped }));
+    const goodNode = step(null, certified).node;
+    const served = tablesOf('x_pizza');
+    const mkWorld = (plan = {}) => {
+      const starts = [];
+      const at = (kind, path) => { starts.push({ t: Date.now(), kind, path }); const p = plan[`${kind} ${path}`] ?? plan[path]; return p; };
+      const respond = (p, value) => (p === 'stall' ? new Promise(() => {}) : p instanceof Error ? Promise.reject(p) : typeof p === 'number' ? sleep(p).then(() => value) : Promise.resolve(value));
+      const rt = { [`catalog_snapshot/${RID}/version`]: plan.mirrorVid === undefined ? VID : plan.mirrorVid, [`catalog_snapshot/${RID}`]: plan.mirrorVal === undefined ? { version: VID, seq: 7, menu: served.menu, extras: served.extras } : plan.mirrorVal, [`catalog_ctx/${RID}/${VID}`]: goodNode };
+      const rref = (path) => ({
+        path, child: (c) => rref(`${path}/${c}`),
+        get: () => respond(at('rtdb.get', path), { val: () => (rt[path] === undefined ? null : rt[path]) }),
+        on: (ev, cb) => { at('rtdb.on', path); setTimeout(() => cb({ val: () => rt[path] ?? null }), 0); return cb; },
+        off: () => {},
+        transaction: (fn) => { const p = at('rtdb.tx', path); const v = fn(rt[path] ?? null); if (v !== undefined) rt[path] = v; return respond(p, { committed: v !== undefined }); },
+      });
+      const rawV = rawFor('x_pizza', { certified: true, revision: 1, stamp: allStamped });   // a REAL version: the write path runs end to end
+      const docsOf = (rows) => ({ docs: rows.map((d) => ({ id: d.id, data: () => d.data })) });
+      const fsData = (path) => {
+        if (path === `restaurants/${RID}/meta/active_version`) return { exists: true, data: () => ({ version: VID, generation: 1 }) };
+        if (path === `restaurants/${RID}/versions/${VID}`) return { exists: true, data: () => rawV.record, updateTime: rawV.updateTime };
+        if (path === `restaurants/${RID}/versions/${VID}/menu_items`) return docsOf(rawV.items);
+        if (path === `restaurants/${RID}/versions/${VID}/extras`) return docsOf(rawV.extras);
+        if (path.endsWith('/menu_structure')) return { exists: true, data: () => rawV.structure };
+        if (path === `restaurants/${RID}/versions` ) return { docs: (plan.page || []).map((v) => ({ id: v.versionId, data: () => ({ seq: v.seq }) })) };
+        return { docs: [] };
+      };
+      const fref = (path) => {
+        const q = { where: () => q, orderBy: () => q, startAfter: () => q, limit: () => q, select: () => q, get: () => respond(at('fs.query', path), fsData(path)) };
+        return { path, collection: (c) => fref(`${path}/${c}`), doc: (d) => fref(`${path}/${d}`), ...q, get: () => respond(at('fs.get', path), fsData(path)) };
+      };
+      const db = { collection: (c) => fref(c), runTransaction: (fn) => { at('fs.tx', ''); return Promise.resolve().then(() => fn({ get: (r) => respond(at('fs.tx.get', r.path), fsData(r.path)) })); } };
+      return { starts, db, rtdb: { ref: rref } };
+    };
+    // op limits (cursor 1,000 ms, page 10 s, reads 15 s) all EXCEED the work budget here, as in codex r4's repro
+    const H = 300; const RESERVE = 100; const TOL = 3;
+    const isCheckpointOp = (s) => /cursor/.test(s.path) && (s.kind === 'rtdb.on' || s.kind === 'rtdb.tx');
+    const run = async (schedule, plan, opts = {}) => {
+      const world = mkWorld(plan);
+      const hard = opts.H === undefined ? H : opts.H;
+      const t0 = Date.now();
+      const stop = W4.makeDeadline(hard);
+      const reserve = Math.min(RESERVE, Math.floor(hard / 2));
+      const out = schedule === 'writer'
+        ? await within(createIdentityRecordWriter({ db: world.db, rtdb: world.rtdb, log: () => {} }).reconcileRestaurant(RID, stop, { pageSize: 5, concurrency: 1, cursorOpMs: opts.cursorOpMs || 1000, checkpointReserveMs: RESERVE }), 3000, `${schedule} pass`)
+        : await within(createIdentityVerifier({ db: world.db, rtdb: world.rtdb, log: () => {} }).verifyRestaurant(RID, stop, { pageSize: 5, cursorOpMs: opts.cursorOpMs || 1000, checkpointReserveMs: RESERVE }), 3000, `${schedule} pass`);
+      await sleep(Math.max(0, t0 + hard + 150 - Date.now()));   // late starts (a nested read after the pass returned) count too
+      const W = t0 + hard - reserve;
+      const bad = world.starts.filter((st) => (isCheckpointOp(st) ? st.t > t0 + hard + TOL : (hard === 0 ? true : st.t > W + TOL)));
+      assert.deepStrictEqual(bad.map((b) => `${b.kind} ${b.path} @${b.t - t0}ms (work deadline ${W - t0}ms)`), [], `🔴 ${schedule} / ${opts.label}: I/O STARTED past the deadline`);
+      return { out, starts: world.starts, t0, W };
+    };
+    const SCENARIOS = [
+      { label: 'zero budget', plan: {}, opts: { H: 0 } },
+      { label: 'stalled mirror read', plan: { [`catalog_snapshot/${RID}/version`]: 'stall', [`catalog_snapshot/${RID}`]: 'stall' } },
+      { label: 'stalled active read', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: 'stall' } },
+      { label: 'stalled cursor read', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: new Error('x'), [`catalog_ctx_cursor/${RID}`]: 'stall', [`catalog_ctx_verify_cursor/${RID}`]: 'stall' } },
+      { label: 'stalled page query', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: new Error('x'), [`fs.query restaurants/${RID}/versions`]: 'stall' } },
+      { label: 'mirror read resolving past the work deadline', plan: { [`catalog_snapshot/${RID}/version`]: 240, [`catalog_snapshot/${RID}`]: 240 } },
+      { label: 'version first read resolving past it (writer write / verifier projection)', plan: { [`fs.tx.get restaurants/${RID}/versions/${VID}`]: 240 } },
+      { label: 'active pointer resolving past it (then readVersionDocs / the rung write)', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: 240 } },
+      { label: 'a retained version whose first read resolves past it', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: new Error('x'), page: [{ versionId: VID, seq: 7 }], [`fs.tx.get restaurants/${RID}/versions/${VID}`]: 240 } },
+      { label: 'healthy (non-vacuity)', plan: { page: [{ versionId: VID, seq: 7 }] }, opts: { H: 1500 } },
+    ];
+    const res = {};
+    for (const sc of SCENARIOS) for (const schedule of ['writer', 'verifier']) res[`${schedule}:${sc.label}`] = await run(schedule, sc.plan, { label: sc.label, ...(sc.opts || {}) });
+    // non-vacuity: the instrument sees I/O, and in the healthy world every production reader ran
+    const hw = res['writer:healthy (non-vacuity)'].starts.map((x) => `${x.kind} ${x.path}`);
+    const hv = res['verifier:healthy (non-vacuity)'].starts.map((x) => `${x.kind} ${x.path}`);
+    for (const k of [`rtdb.get catalog_snapshot/${RID}/version`, `fs.get restaurants/${RID}/meta/active_version`, `rtdb.get catalog_ctx_cursor/${RID}`, `fs.query restaurants/${RID}/versions`, `fs.tx.get restaurants/${RID}/versions/${VID}`, `rtdb.tx catalog_ctx/${RID}/${VID}`, `rtdb.tx catalog_ctx_cursor/${RID}`]) assert.ok(hw.includes(k), `writer healthy: ${k}`);
+    for (const k of [`rtdb.get catalog_snapshot/${RID}`, `rtdb.get catalog_ctx/${RID}/${VID}`, `fs.tx.get restaurants/${RID}/versions/${VID}`, `fs.tx.get restaurants/${RID}/versions/${VID}/menu_items`, `fs.get restaurants/${RID}/meta/active_version`, `fs.get restaurants/${RID}/versions/${VID}/menu_items`, `rtdb.get catalog_ctx_verify_cursor/${RID}`, `fs.query restaurants/${RID}/versions`, `rtdb.tx catalog_ctx_verify_cursor/${RID}`]) assert.ok(hv.includes(k), `verifier healthy: ${k}`);
+    assert.strictEqual(res['writer:zero budget'].starts.length + res['verifier:zero budget'].starts.length, 0, 'zero budget: no I/O at all');
+    // the delayed-first-read cases really did start the first read, and nothing after it
+    for (const sch of ['writer', 'verifier']) {
+      const st = res[`${sch}:version first read resolving past it (writer write / verifier projection)`].starts.map((x) => x.path);
+      assert.ok(st.includes(`restaurants/${RID}/versions/${VID}`) && !st.includes(`restaurants/${RID}/versions/${VID}/menu_items`), `${sch}: the first read started, the next three did not (${st.join(', ')})`);
+    }
+    // 🔴 codex r4 S1 — stalled reads are classified as the WORK BUDGET, not as read failures (both schedules)
+    const wo = (l) => res[`writer:${l}`].out; const vo = (l) => res[`verifier:${l}`].out;
+    assert.deepStrictEqual(wo('stalled mirror read').rungs.mirror.outcomes, ['budget_exhausted']);
+    assert.strictEqual(vo('stalled mirror read').rungs.find((g) => g.rung === 'mirror').reason, 'budget_exhausted');
+    assert.strictEqual(vo('stalled active read').rungs.find((g) => g.rung === 'active').reason, 'budget_exhausted');
+    assert.deepStrictEqual([wo('stalled cursor read').stopped, wo('stalled cursor read').listError], ['cursor_read_work_deadline', undefined]);
+    assert.deepStrictEqual([vo('stalled cursor read').retainedStopped, vo('stalled cursor read').retainedError], ['cursor_read_work_deadline', undefined]);
+    assert.deepStrictEqual([wo('stalled page query').stopped, wo('stalled page query').listError], ['version_page_work_deadline', undefined]);
+    assert.deepStrictEqual([vo('stalled page query').retainedStopped, vo('stalled page query').retainedError], ['version_page_work_deadline', undefined]);
+    assert.deepStrictEqual([wo('a retained version whose first read resolves past it').versions[0].settled, wo('a retained version whose first read resolves past it').cursor.reason], [false, 'first_version_unsettled'], 'an unfinished version is not checkpointed');
+    // …while an op's OWN shorter timeout and a genuine failure stay what they are
+    const own = { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: new Error('x'), [`catalog_ctx_cursor/${RID}`]: 'stall', [`catalog_ctx_verify_cursor/${RID}`]: 'stall' };
+    assert.strictEqual((await run('writer', own, { label: 'own cursor timeout', cursorOpMs: 30 })).out.listError, 'cursor_read_timeout');
+    assert.strictEqual((await run('verifier', own, { label: 'own cursor timeout', cursorOpMs: 30 })).out.retainedError, 'cursor_read_timeout');
+    const fail = { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: new Error('x'), [`catalog_ctx_cursor/${RID}`]: new Error('permission'), [`catalog_ctx_verify_cursor/${RID}`]: new Error('permission') };
+    assert.strictEqual((await run('writer', fail, { label: 'genuine cursor failure' })).out.listError, 'permission');
+    assert.strictEqual((await run('verifier', fail, { label: 'genuine cursor failure' })).out.retainedError, 'permission');
+    // 🔴 codex r4 S2 — the projection's OWN deadline (shorter than the budget) also stops its nested reads
+    {
+      const world = mkWorld({ [`fs.tx.get restaurants/${RID}/versions/${VID}`]: 120 });
+      const v = createIdentityVerifier({ db: world.db, rtdb: world.rtdb, log: () => {} });
+      const r = await within(v.checkRung(RID, 'mirror', { rid: RID, versionId: VID, seq: 7, prices: served }, W4.makeDeadline(5000), { projectionMs: 40 }), 2000, 'projection own deadline');
+      await sleep(200);
+      assert.strictEqual(r.d4a, null);
+      assert.ok(/timeout/.test(r.reason || '') || r.category === 'incomparable', JSON.stringify(r));
+      const st = world.starts.map((x) => x.path);
+      assert.ok(st.includes(`restaurants/${RID}/versions/${VID}`) && !st.includes(`restaurants/${RID}/versions/${VID}/menu_items`), `🔴 no projection read after its own deadline (${st.join(', ')})`);
+    }
+  }
+  ok('codex build r4 — SELF-CHECKING I/O gate: an instrumented Firestore + RTDB below the gate records every I/O start; across 10 scenarios × both schedules on the REAL production readers (zero budget; stalled mirror / active / cursor / page reads; mirror, version-first-read, active-pointer and retained-version reads resolving past the work deadline; healthy) no I/O starts past the work deadline (checkpoint ops: past the hard deadline), late nested starts included; stalled reads report the work budget (budget_exhausted / stopped / retainedStopped), an op\'s own shorter timeout and a genuine failure stay themselves; an unfinished version is never checkpointed; the projection\'s own deadline stops its nested reads');
+
   // rung checks are CLIPPED to the caller's remaining budget (load and D4-a projection), not only to their own deadlines
   {
     const never = () => new Promise(() => {});
@@ -639,6 +812,10 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     let t0 = Date.now();
     let r = await within(hungLoad.checkRung('x_pizza', 'mirror', served, stop(80)), 2000, 'checkRung (hung load)');
     assert.ok(Date.now() - t0 < 300 && r.category === 'unavailable', `a hung load is clipped to the remaining 80 ms (${Date.now() - t0} ms, ${r.reason})`);
+    assert.strictEqual(r.reason, 'budget_exhausted', 'a load ended by the BUDGET is reported as the budget, not as a load timeout (codex r4 S1)');
+    // …while a load ended by its OWN shorter limit stays a load timeout
+    const own = await within(V4.loadVersionNode({ ref: () => ({ get: never }) }, 'x_pizza', 'v-test', { timeoutMs: 30, gate: W4.makeDeadline(5000) }), 1000, 'own load timeout');
+    assert.deepStrictEqual(own, { error: 'timeout' });
     const hungD4a = createIdentityVerifier({ db: { collection: () => ({ doc: () => ({ collection: () => ({}) }) }), runTransaction: never }, rtdb: { ref: () => ({ get: async () => ({ val: () => node }) }) }, log: () => {} });
     t0 = Date.now();
     r = await within(hungD4a.checkRung('x_pizza', 'active', served, stop(80)), 2000, 'checkRung (hung D4-a)');

@@ -106,12 +106,12 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   ok('fixtures through the real writers: x_pizza / synthetic_3 certified (revision 1); la_musa + synthetic_uncert uncertified; the x_pizza revision-0 record was written BEFORE certification');
 
   // ═══ §3b MEASUREMENT (UTF-8 bytes of the serialized RTDB value, incl. escaping) + the pinned constant ═══
-  const measure = async (rid, v) => R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, v));
+  const measure = async (rid, v) => R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, v, W.makeDeadline(30000)));
   // la_musa is uncertified in production (and its keys are rid-bound, so its data cannot be published under another
   // id): its CERTIFIED shape is measured from its own snapshot carrying exactly what the bootstrap writes — each
   // object's display.identity_id from the registry, identity_certified, identity_revision 1.
   const certifiedShape = async (rid, v) => {
-    const s = await W.readVersionSnapshot(fs, rid, v);
+    const s = await W.readVersionSnapshot(fs, rid, v, W.makeDeadline(30000));
     for (const [rows, kind] of [[s.items, 'dish'], [s.extras, 'extra']]) {
       for (const r of rows) {
         const row = (await keysColOf(fs, rid, kind).doc(encodeKey(r.data.key)).get()).data();
@@ -312,7 +312,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       for (;;) { const pg = await W.versionPage(fs, rid, pos, 7); if (!pg.length) break; everything.push(...pg); pos = pg[pg.length - 1]; }
       assert.ok(!everything.some((v) => /noseq|negseq/.test(v.versionId)), 'versions without a non-negative numeric seq are not paged');
       assert.strictEqual(everything.length, all.length, 'a STATIC set: one pass pages every numeric-seq version, each once');
-      assert.strictEqual(R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, `${v1}-noseq`)).reason, 'seq_malformed', '…and could never have a record');
+      assert.strictEqual(R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, `${v1}-noseq`, W.makeDeadline(30000))).reason, 'seq_malformed', '…and could never have a record');
       await vrefOf(rid, `${v1}-noseq`).delete(); await vrefOf(rid, `${v1}-negseq`).delete();
     }
     const recorded = [];
@@ -614,13 +614,13 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     const lm = await mirrorVal('la_musa');
     const k0 = Object.keys(lm.menu)[0];
     const badServed = { rid: 'la_musa', versionId: lm.version, seq: lm.seq, prices: { menu: { ...lm.menu, [k0]: lm.menu[k0] + 1 }, extras: lm.extras } };
-    const chk = await ver.checkRung('la_musa', 'mirror', badServed);
+    const chk = await ver.checkRung('la_musa', 'mirror', badServed, W.makeDeadline(30000));
     assert.strictEqual(chk.category, 'not_attached');
-    const wrongSeq = await ver.checkRung('la_musa', 'mirror', { ...badServed, seq: lm.seq + 1, prices: { menu: lm.menu, extras: lm.extras } });
+    const wrongSeq = await ver.checkRung('la_musa', 'mirror', { ...badServed, seq: lm.seq + 1, prices: { menu: lm.menu, extras: lm.extras } }, W.makeDeadline(30000));
     assert.strictEqual(wrongSeq.category, 'not_attached', 'a wrong seq does not attach');
     // a record removed → unavailable (never certified:false)
     await rtdb.ref(`${R.IDENTITY_PATH}/synthetic_uncert`).remove();
-    const gone = await ver.checkRung('synthetic_uncert', 'active', await ver.readers.activeServed('synthetic_uncert', (await getActivePointer(fs, 'synthetic_uncert')).version));
+    const gone = await ver.checkRung('synthetic_uncert', 'active', await ver.readers.activeServed('synthetic_uncert', (await getActivePointer(fs, 'synthetic_uncert')).version, { db: fs, rtdb }), W.makeDeadline(30000));
     assert.strictEqual(gone.category, 'unavailable');
     await app.verifyIdentityRecords.run({});   // the deployed scheduled function runs end-to-end
   }
@@ -633,13 +633,13 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     const coldRtdb = coldApp.database();
     const mv = await mirrorVal('x_pizza');
     const t0 = Date.now();
-    const loaded = await V.loadVersionNode(coldRtdb, 'x_pizza', mv.version);
+    const loaded = await V.loadVersionNode(coldRtdb, 'x_pizza', mv.version, { gate: W.makeDeadline(30000) });
     assert.ok(!loaded.error && Date.now() - t0 < V.IDENTITY_LOAD_TIMEOUT_MS, `cold load within ${V.IDENTITY_LOAD_TIMEOUT_MS} ms`);
     const res = R.identityFromVersionNode(loaded.node, { rid: 'x_pizza', versionId: mv.version, seq: mv.seq, prices: { menu: mv.menu, extras: mv.extras } }, { rid: 'x_pizza', versionId: mv.version });
     assert.deepStrictEqual([res.availability, res.usableForWriting], ['available', true]);
     const hung = { ref: () => ({ get: () => new Promise(() => {}) }) };
     const t1 = Date.now();
-    assert.deepStrictEqual(await within(V.loadVersionNode(hung, 'x_pizza', mv.version), V.IDENTITY_LOAD_TIMEOUT_MS + 500, 'hung loadVersionNode'), { error: 'timeout' });
+    assert.deepStrictEqual(await within(V.loadVersionNode(hung, 'x_pizza', mv.version, { gate: W.makeDeadline(30000) }), V.IDENTITY_LOAD_TIMEOUT_MS + 500, 'hung loadVersionNode'), { error: 'timeout' });
     assert.ok(Date.now() - t1 < V.IDENTITY_LOAD_TIMEOUT_MS + 500, 'a hung RTDB read is bounded at 1,500 ms');
     await coldApp.delete();
   }

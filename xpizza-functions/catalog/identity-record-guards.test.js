@@ -89,7 +89,9 @@ try {
     assert.strictEqual((code['catalog/identity-record.js'].match(/\.transaction\(/g) || []).length, 0, 'the pure core does no I/O');
     const wr = code['catalog/identity-record-writer.js'];
     assert.strictEqual((wr.match(/\.transaction\(/g) || []).length, 2, 'the writer: ONE node transaction + ONE cursor CAS transaction');
-    assert.ok(/nodeRefOf\(rtdb, rid, versionId\)\.transaction\(/.test(wr) && /const nodeRefOf = \(rtdb, rid, versionId\) => rtdb\.ref\(`\$\{IDENTITY_PATH\}\/\$\{rid\}\/\$\{versionId\}`\)/.test(wr));
+    // the node transaction runs on the write's GATED rtdb handle (codex c1 build r4: no I/O starts past the deadline)
+    assert.ok(/const grtdb = gateIo\(rtdb, g, 'write'\);/.test(wr), 'the write\'s rtdb handle is the gated one');
+    assert.ok(/nodeRefOf\(grtdb, rid, versionId\)\.transaction\(/.test(wr) && /const nodeRefOf = \(rtdb, rid, versionId\) => rtdb\.ref\(`\$\{IDENTITY_PATH\}\/\$\{rid\}\/\$\{versionId\}`\)/.test(wr));
     assert.ok(/IDENTITY_PATH = 'catalog_ctx'/.test(code['catalog/identity-record.js']));
     assert.strictEqual((code['catalog/identity-record-verifier.js'].match(/\.transaction\(/g) || []).length, 0, 'the verifier writes only through casCursor');
     for (const [f, src] of Object.entries(code)) {

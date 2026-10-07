@@ -26,6 +26,7 @@ const {
 } = require('./identity-record');
 const {
   readVersionSnapshot, casCursor, readCursor, normCursor, versionPage, makeDeadline, race, workDeadline, boundedWork, isCursorSeq,
+  gateIo, bothGates, requireGate, needIo,
   IDENTITY_RUN_BUDGET_MS, IDENTITY_RESTAURANT_BUDGET_MS, IDENTITY_PAGE_SIZE, CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
 } = require('./identity-record-writer');
 
@@ -43,26 +44,35 @@ function deadline(promise, ms, label) {
     .finally(() => { if (timer) clearTimeout(timer); });
 }
 
-// ONE RTDB get, bounded, size-capped. → { node } | { error }
-async function loadVersionNode(rtdb, rid, versionId, { timeoutMs = IDENTITY_LOAD_TIMEOUT_MS, nodeCap = NODE_CAP_BYTES } = {}) {
+// ONE RTDB get, bounded, size-capped, through the REQUIRED gate. → { node } | { error }. `budget_exhausted` when the gate
+// is closed before the get starts, or when the load timed out at the gate's remaining time (the budget, not the load
+// limit, ended it); `timeout` only for the load's own (shorter) limit.
+async function loadVersionNode(rtdb, rid, versionId, { timeoutMs = IDENTITY_LOAD_TIMEOUT_MS, nodeCap = NODE_CAP_BYTES, gate } = {}) {
+  requireGate(gate, 'loadVersionNode');
   if (!isPathKey(rid) || !isPathKey(versionId)) return { error: 'bad_key' };
+  const ms = Math.min(timeoutMs, gate.remaining());
+  if (gate.stopped() || !(ms > 0)) return { error: 'budget_exhausted' };
+  const byGate = !(timeoutMs < gate.remaining());
   try {
-    const p = rtdb.ref(`${IDENTITY_PATH}/${rid}/${versionId}`).get();
+    const p = gateIo(rtdb, gate, 'identity_load').ref(`${IDENTITY_PATH}/${rid}/${versionId}`).get();
     if (p && typeof p.catch === 'function') p.catch(() => {});
-    const snap = await deadline(p, timeoutMs, 'identity_load');
+    const snap = await deadline(p, ms, 'identity_load');
     const node = snap && typeof snap.val === 'function' ? snap.val() : null;
     if (node !== null && utf8Bytes(node) > nodeCap) return { error: 'oversize' };
     return { node };
   } catch (e) {
-    return { error: /timeout/.test(String(e && e.message)) ? 'timeout' : 'read_failed' };
+    if (e && e.workDeadline) return { error: 'budget_exhausted' };
+    return { error: /timeout/.test(String(e && e.message)) ? (byGate ? 'budget_exhausted' : 'timeout') : 'read_failed' };
   }
 }
 
 // D4-a's projection for a version, from a LIVE Firestore read (the D4-a builder over the D4-a persisted encoding),
 // attached against the SAME independently served prices. → { comparable, intact, complete, attached, usable, digest, identityRevision }
-async function d4aProjection(db, rid, versionId, served) {
+// The gate is REQUIRED (codex c1 build r4 S2): the projection's nested Firestore reads each start only while it is open.
+async function d4aProjection(db, rid, versionId, served, gate) {
+  requireGate(gate, 'd4aProjection');
   try {
-    const snap = await readVersionSnapshot(db, rid, versionId);
+    const snap = await readVersionSnapshot(db, rid, versionId, gate);
     if (snap.missing) return { comparable: false, reason: 'version_missing' };
     const built = buildIdentityRecord(snap);
     if (!built.ok && built.reason !== 'content_integrity') return { comparable: false, reason: built.reason };
@@ -71,6 +81,7 @@ async function d4aProjection(db, rid, versionId, served) {
     const attached = !!served && served.rid === rid && served.versionId === versionId && served.seq === ctx.seq && pricesExactlyEqual(ctx.prices, served.prices);
     return { comparable: true, intact: true, complete: ctx.complete === true, attached, usable: ctx.complete === true && attached, digest: built.digest, identityRevision: built.record.identityRevision };
   } catch (e) {
+    if (e && e.workDeadline) return { comparable: false, reason: 'budget_exhausted' };
     return { comparable: false, reason: 'read_failed', error: String((e && e.message) || e).slice(0, 160) };
   }
 }
@@ -88,31 +99,37 @@ function classify(r, d) {
 function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { try { console.log(k, JSON.stringify(d)); } catch (_) {} } } = {}) {
   const stats = { versionDocsFetched: 0 };
   const readers = {
-    mirrorValue: async (rid) => { const s = await rtdb.ref(`catalog_snapshot/${rid}`).get(); return s && s.val(); },
-    activeServed: async (rid, versionId) => {
-      const { itemDocs, extraDocs, seq } = await readVersionDocs(db, rid, versionId);   // the live pricing read (completeness-checked)
+    // every reader does its I/O through the caller's GATED handles `io` = { db, rtdb } (required) — the foreign
+    // readVersionDocs / getActiveVersionId included: they receive the gated db, so none of their reads can start late
+    mirrorValue: async (rid, io) => { const s = await needIo(io).rtdb.ref(`catalog_snapshot/${rid}`).get(); return s && s.val(); },
+    activeServed: async (rid, versionId, io) => {
+      const { itemDocs, extraDocs, seq } = await readVersionDocs(needIo(io).db, rid, versionId);   // the live pricing read (completeness-checked)
       const { menu, extras } = buildTablesFromDocs(itemDocs, extraDocs);
       return { rid, versionId, seq, prices: { menu, extras } };
     },
-    activeVersionId: async (rid) => getActiveVersionId(db, rid),
-    versionPage: async (rid, position, limit) => { const p = await versionPage(db, rid, position, limit); stats.versionDocsFetched += p.length; return p; },
+    activeVersionId: async (rid, io) => getActiveVersionId(needIo(io).db, rid),
+    versionPage: async (rid, position, limit, io) => { const p = await versionPage(needIo(io).db, rid, position, limit); stats.versionDocsFetched += p.length; return p; },
   };
-  const noStop = { remaining: () => Infinity, stopped: () => false };
-
   // One rung check, CLIPPED to the caller's remaining budget (the load, the D4-a projection — each bounded by both).
-  async function checkRung(rid, rung, served, stop = noStop) {
+  // The gate `stop` is REQUIRED (no no-op default): the load and the projection — and every read nested in them — start
+  // only while it is open; an end caused by the budget is `budget_exhausted`, never a read failure.
+  async function checkRung(rid, rung, served, stop, { projectionMs = IDENTITY_VERIFY_READ_DEADLINE_MS } = {}) {
+    requireGate(stop, 'checkRung');
     const versionId = served.versionId;
     const where = { rid, versionId };
-    const loadMs = Math.min(IDENTITY_LOAD_TIMEOUT_MS, stop.remaining());
-    if (!(loadMs > 0)) return { rung, versionId, category: 'unavailable', reason: 'budget_exhausted' };
-    const loaded = await loadVersionNode(rtdb, rid, versionId, { timeoutMs: loadMs });
+    const loaded = await loadVersionNode(rtdb, rid, versionId, { timeoutMs: IDENTITY_LOAD_TIMEOUT_MS, gate: stop });
+    if (loaded.error === 'budget_exhausted') return { rung, versionId, category: 'unavailable', reason: 'budget_exhausted' };
     if (loaded.error) return { rung, versionId, category: loaded.error === 'oversize' ? 'invalid' : 'unavailable', reason: `load_${loaded.error}` };
     const r = identityFromVersionNode(loaded.node, served, where);
     let d = null;
     if (r.availability === 'available') {
-      const ms = Math.min(IDENTITY_VERIFY_READ_DEADLINE_MS, stop.remaining());
-      d = ms > 0 ? await race(d4aProjection(db, rid, versionId, served), ms, 'd4a').catch(() => ({ comparable: false, reason: 'timeout' }))
-        : { comparable: false, reason: 'budget_exhausted' };
+      const ms = Math.min(projectionMs, stop.remaining());
+      const byBudget = !(projectionMs < stop.remaining());
+      // the projection's OWN gate: its deadline inside the caller's — when the race below gives up, so does every
+      // nested read the projection has not started yet (codex c1 build r4 S2)
+      const pg = bothGates(makeDeadline(ms, now), stop);
+      d = stop.stopped() || !(ms > 0) ? { comparable: false, reason: 'budget_exhausted' }
+        : await race(d4aProjection(db, rid, versionId, served, pg), ms, 'd4a').catch(() => ({ comparable: false, reason: byBudget || stop.stopped() ? 'budget_exhausted' : 'timeout' }));
     }
     return {
       rung, versionId, category: classify(r, d), reason: r.reason || (d && !d.comparable ? d.reason : null),
@@ -127,12 +144,13 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     const out = { rid, rungs: [], retained: {}, cursor: null };
     const work = workDeadline(stop, checkpointReserveMs);
     const clip = (ms) => Math.max(0, Math.min(ms, work.remaining()));
+    const io = { db: gateIo(db, work, 'verify'), rtdb: gateIo(rtdb, work, 'verify') };   // ALL work I/O: the work gate
     // every read is a THUNK started only before the work deadline (codex c1 build r3 S1) — never an already-started promise
     const bounded = (thunk) => boundedWork(work, thunk, IDENTITY_VERIFY_READ_DEADLINE_MS, 'verify_read');
     const why = (e, fallback) => (e && e.workDeadline ? 'budget_exhausted' : fallback);
     // mirror rung: the ACTUAL catalog_snapshot value's version/seq/tables
     try {
-      const m = await bounded(() => r.mirrorValue(rid));
+      const m = await bounded(() => r.mirrorValue(rid, io));
       if (!m || !isPathKey(m.version)) out.rungs.push({ rung: 'mirror', category: 'incomparable', reason: 'no_mirror' });
       else if (!m.menu || typeof m.menu !== 'object' || !m.extras || typeof m.extras !== 'object') {
         out.rungs.push({ rung: 'mirror', versionId: m.version, category: 'incomparable', reason: 'mirror_tables_missing' });
@@ -140,26 +158,24 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     } catch (e) { out.rungs.push({ rung: 'mirror', category: 'incomparable', reason: why(e, 'mirror_read_failed') }); }
     // active rung: the live Firestore read's tables
     try {
-      const vid = await bounded(() => r.activeVersionId(rid));
+      const vid = await bounded(() => r.activeVersionId(rid, io));
       if (!vid) out.rungs.push({ rung: 'active', category: 'incomparable', reason: 'no_active_version' });
-      else out.rungs.push(await checkRung(rid, 'active', await bounded(() => r.activeServed(rid, vid)), work));
+      else out.rungs.push(await checkRung(rid, 'active', await bounded(() => r.activeServed(rid, vid, io)), work));
     } catch (e) { out.rungs.push({ rung: 'active', category: 'incomparable', reason: why(e, 'active_read_failed') }); }
     // retained versions: ONE bounded page per run, from this verifier's own cursor (no served prices → attachment N/A)
-    const cref = rtdb.ref(`${VERIFY_VERSION_CURSOR_PATH}/${rid}`);
+    const cref = io.rtdb.ref(`${VERIFY_VERSION_CURSOR_PATH}/${rid}`);
     {   // the cursor read's gate is the work-deadline check
       try {
         const observed = await boundedWork(work, () => readCursor(cref, { ms: clip(cursorOpMs) }), cursorOpMs, 'cursor_read');
         // the page and "last page" come from the RAW query rows (a skipped row must never end a generation early)
-        const rows = (await boundedWork(work, () => r.versionPage(rid, observed.position, pageSize + 1), IDENTITY_LIST_DEADLINE_MS, 'version_page')).filter(Boolean);
+        const rows = (await boundedWork(work, () => r.versionPage(rid, observed.position, pageSize + 1, io), IDENTITY_LIST_DEADLINE_MS, 'version_page')).filter(Boolean);
         const page = rows.slice(0, pageSize);
         if (!page.every((v) => isCursorSeq(v.seq))) throw new Error('seq_not_cursor_safe');   // unreachable under the query: fail closed
         let k = 0;
         for (const v of page) {
           if (!isPathKey(v.versionId)) { out.retained.version_id_malformed = (out.retained.version_id_malformed || 0) + 1; k += 1; continue; }
-          const ms = Math.min(IDENTITY_LOAD_TIMEOUT_MS, work.remaining());
-          if (!(ms > 0)) break;
-          const loaded = await loadVersionNode(rtdb, rid, v.versionId, { timeoutMs: ms });
-          if (loaded.error === 'timeout' && work.stopped()) break;
+          const loaded = await loadVersionNode(rtdb, rid, v.versionId, { timeoutMs: IDENTITY_LOAD_TIMEOUT_MS, gate: work });
+          if (loaded.error === 'budget_exhausted') break;   // the work gate ended it: not counted, not checkpointed
           const res = loaded.error ? { availability: loaded.error === 'oversize' ? 'invalid' : 'unavailable' } : identityFromVersionNode(loaded.node, null, { rid, versionId: v.versionId });
           out.retained[res.availability] = (out.retained[res.availability] || 0) + 1;
           k += 1;
@@ -168,7 +184,7 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
           ? { generation: observed.generation + 1, position: null }
           : k > 0 ? { generation: observed.generation, position: { seq: page[k - 1].seq, versionId: page[k - 1].versionId } } : null;
         // the checkpoint spends the reserve: clipped to the HARD deadline, stopped only by the hard stop
-        if (next) out.cursor = { to: next, prefix: k, page: page.length, cas: await casCursor(cref, observed, next, { ms: Math.max(0, Math.min(cursorOpMs, stop.remaining())), now, isStopped: () => stop.stopped() }) };
+        if (next) out.cursor = { to: next, prefix: k, page: page.length, cas: await casCursor(gateIo(rtdb, stop, 'checkpoint').ref(`${VERIFY_VERSION_CURSOR_PATH}/${rid}`), observed, next, { ms: Math.max(0, Math.min(cursorOpMs, stop.remaining())), now, isStopped: () => stop.stopped() }) };
       } catch (e) {
         if (e && e.workDeadline) out.retainedStopped = e.message;   // the work deadline passed between operations: nothing more starts
         else out.retainedError = String((e && e.message) || e).slice(0, 160);
@@ -188,9 +204,10 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
       log('identity_record_check_run', { ok: false, error: String((e && e.message) || e).slice(0, 160) });
       return { ok: false, results: [] };
     }
-    const rref = rtdb.ref(VERIFY_RESTAURANT_CURSOR_PATH);
+    // schedule-level cursor ops sit OUTSIDE the restaurant budgets: each is gated by its OWN cursor-op deadline
+    const rcursor = (label) => gateIo(rtdb, makeDeadline(cursorOpMs, now), label).ref(VERIFY_RESTAURANT_CURSOR_PATH);
     let observed;
-    try { observed = await readCursor(rref, { ms: cursorOpMs }); } catch (_) {
+    try { observed = await readCursor(rcursor('restaurant_cursor'), { ms: cursorOpMs }); } catch (_) {
       log('identity_record_check_run', { ok: false, error: 'restaurant_cursor_unreadable' });
       return { ok: false, results: [] };
     }
@@ -208,7 +225,7 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     }
     const nextCursor = done.length === order.length ? { generation: observed.generation + 1, position: null }
       : done.length ? { generation: observed.generation, position: done[done.length - 1] } : null;
-    const cas = nextCursor ? await casCursor(rref, observed, nextCursor, { ms: cursorOpMs, now }) : null;
+    const cas = nextCursor ? await casCursor(rcursor('restaurant_checkpoint'), observed, nextCursor, { ms: cursorOpMs, now }) : null;
     const totals = {};
     for (const r of results) for (const x of r.rungs || []) totals[`${x.rung}:${x.category}`] = (totals[`${x.rung}:${x.category}`] || 0) + 1;
     log('identity_record_check_run', { ok: true, restaurants: ids.length, checked: done.length, totals, cursor: nextCursor, cas });
