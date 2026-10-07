@@ -6,8 +6,8 @@
 //   PORTAL_PROBE_ID_TOKEN=<a portal owner's Firebase ID token>   (read from the env; NEVER printed or written)
 //   node tools/portal-latency-probe.js --label before --mode cold --samples 10 --rid x_pizza --stats-day 2026-10-05 [--wait-min 20] [--out f.jsonl]
 //   node tools/portal-latency-probe.js --label before --mode warm --samples 50 --rid x_pizza --stats-day 2026-10-05
-//   node tools/portal-latency-probe.js --summarize f.jsonl [--logs]        (run --logs ≥ 5 min after the last sample)
-//   node tools/portal-latency-probe.js --warm-guard before-warm.jsonl after-warm.jsonl
+//   node tools/portal-latency-probe.js --summarize f.jsonl --logs [--evidence f.attributed.json]   (≥ 5 min after the run)
+//   node tools/portal-latency-probe.js --warm-guard before.attributed.json after.attributed.json
 //
 // THE PRIMARY INTERVAL (§5): from the start of an UNCACHED preflight to the completion of the successful response —
 // Node's fetch keeps no preflight cache, so the probe sends the OPTIONS itself, exactly as a browser's first call would,
@@ -29,10 +29,20 @@
 //   ambiguous  — legs on different instances where either started in the window, or a leg with several request logs;
 //   uncorrelated — a leg with no request log / no instance id (e.g. logs not yet ingested).
 // Only cold and warm samples enter statistics (each in its own mode); ambiguous and uncorrelated ones are EXCLUDED and
-// counted, never guessed. A startup of some OTHER instance in the window is irrelevant by construction. The matched
-// evidence (trace, revision, instance, startup timestamp) is kept on every classified row.
+// counted, never guessed. A startup of some OTHER instance in the window is irrelevant by construction. Every request-log
+// hit of a leg is validated and the leg is identified by its (revision, instance) PAIR: two pairs for one trace →
+// ambiguous (codex build r2 #3).
 //
-// WARM GUARD (§5): ≥ 50 warm samples per endpoint; PASS iff p95_after ≤ p95_before + min(0.10 × p95_before, 50 ms).
+// ELIGIBILITY (codex build r2 #4): a sample is a measurement only if its preflight SUCCEEDED as a browser requires
+// (2xx + Access-Control-Allow-Origin == the portal origin) AND its GET answered 200; anything else is excluded and counted.
+//
+// THE EVIDENCE ARTIFACT (codex build r2 #1): `--summarize --logs` WRITES `<file>.attributed.json` (or --evidence): the
+// workload, when the logs were read, and EVERY row — excluded ones included — with its eligibility and its attribution
+// (class, reason, and per leg: trace, revision, instance, request time, startup time).
+//
+// WARM GUARD (§5; codex build r2 #2): it reads TWO evidence artifacts (never the raw sample files), counts ONLY eligible,
+// attributed-WARM samples of warm runs, prints every exclusion per endpoint BEFORE enforcing ≥ 50 per endpoint, and PASSES
+// iff p95_after ≤ p95_before + min(0.10 × p95_before, 50 ms) — over the SAME workload.
 const crypto = require('crypto');
 const fs = require('fs');
 const { execFileSync } = require('child_process');
@@ -50,8 +60,9 @@ const canon = (v) => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'objec
 // ── the workload: resolved once ─────────────────────────────────────────────────────────────────────────────────
 function resolveWorkload({ rid, statsDay, base, nowMs }) {
   if (typeof rid !== 'string' || !/^[a-z0-9][a-z0-9_-]{1,39}$/.test(rid)) throw new Error('--rid <restaurant id> is required');
-  if (typeof statsDay !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(statsDay) || Number.isNaN(Date.parse(`${statsDay}T00:00:00Z`))) {
-    throw new Error('--stats-day YYYY-MM-DD is required (an explicit, settled day — never derived from the clock)');
+  const parsed = typeof statsDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(statsDay) ? Date.parse(`${statsDay}T00:00:00Z`) : NaN;
+  if (Number.isNaN(parsed) || new Date(parsed).toISOString().slice(0, 10) !== statsDay) {   // round trip: 2026-02-30 is not a day
+    throw new Error('--stats-day YYYY-MM-DD is required (an explicit, real, settled calendar day — never derived from the clock)');
   }
   // settled: the whole day ended ≥ 1 day ago in every timezone the platform serves (UTC-6 + a margin)
   if (Date.parse(`${statsDay}T00:00:00Z`) + 2 * DAY_MS > nowMs) throw new Error(`--stats-day ${statsDay} is not settled yet (pick a day at least 2 days ago)`);
@@ -87,7 +98,7 @@ async function sample(fn, workload, token, label, mode, round) {
     destination: workload.destination, path: workload.paths[fn],
     startedAt, endedAt: new Date().toISOString(),
     preflightTrace: pfT.trace, getTrace: getT.trace,
-    preflightStatus: pf.status, preflightMaxAge: pf.headers.get('access-control-max-age'), status: r.status,
+    preflightStatus: pf.status, preflightAllowOrigin: pf.headers.get('access-control-allow-origin'), preflightMaxAge: pf.headers.get('access-control-max-age'), status: r.status,
     primaryMs: +(t2 - t0).toFixed(1), preflightMs: +(t1 - t0).toFixed(1), requestMs: +(t2 - t1).toFixed(1),
   };
 }
@@ -99,10 +110,10 @@ function classifySample(row, requestLogs, startupLogs, { skewMs = SKEW_MS } = {}
   const leg = (trace) => {
     const hits = requestLogs.filter((l) => l.trace === trace);
     if (hits.length === 0) return { ok: false, reason: 'no_request_log' };
-    const instances = [...new Set(hits.map((h) => h.instance))];
-    if (instances.length > 1) return { ok: false, ambiguous: true, reason: 'several_instances_for_one_trace' };
+    if (hits.some((h) => !h.instance || !h.revision)) return { ok: false, reason: 'request_log_without_instance' };   // EVERY hit validated
+    const pairs = [...new Set(hits.map((h) => `${h.revision}\u0000${h.instance}`))];
+    if (pairs.length > 1) return { ok: false, ambiguous: true, reason: 'several_instances_for_one_trace', pairs: pairs.map((x) => x.split('\u0000')) };
     const h = hits[0];
-    if (!h.instance || !h.revision) return { ok: false, reason: 'request_log_without_instance' };
     return { ok: true, trace, revision: h.revision, instance: h.instance, at: h.timestamp };
   };
   const pf = leg(row.preflightTrace); const get = leg(row.getTrace);
@@ -153,6 +164,14 @@ function fetchLogs(rows, read = gcloudRead) {
   return { requestLogs, startupLogs };
 }
 
+// ── eligibility: what a browser would have completed ──────────────────────────────────────────────────────────
+function eligibility(row) {
+  if (!(row.preflightStatus >= 200 && row.preflightStatus < 300)) return { eligible: false, reason: `preflight_status_${row.preflightStatus}` };
+  if (row.preflightAllowOrigin !== ORIGIN) return { eligible: false, reason: 'preflight_origin_not_allowed' };
+  if (row.status !== 200) return { eligible: false, reason: `get_status_${row.status}` };
+  return { eligible: true };
+}
+
 // ── files ──────────────────────────────────────────────────────────────────────────────────────────────────────
 function loadRows(file) {
   return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -163,21 +182,24 @@ function singleWorkload(rows, file) {
   return ids[0];
 }
 
-function summarize(file, { logs = false, read = gcloudRead, nowMs = Date.now(), print = console.log } = {}) {
-  const rows = loadRows(file).filter((r) => r.status === 200);
+function summarize(file, { logs = false, read = gcloudRead, nowMs = Date.now(), print = console.log, evidenceOut } = {}) {
+  const rows = loadRows(file);
   const wid = singleWorkload(rows, file);
+  for (const r of rows) r.eligibility = eligibility(r);
+  const eligible = rows.filter((r) => r.eligibility.eligible);
   if (logs) {
     const last = Math.max(...rows.map((r) => Date.parse(r.endedAt)));
     if (nowMs - last < 5 * 60000) throw new Error('run --logs at least 5 minutes after the last sample (log ingestion delay); an un-ingested log would read as uncorrelated');
     const { requestLogs, startupLogs } = fetchLogs(rows, read);
-    for (const r of rows) Object.assign(r, { attribution: classifySample(r, requestLogs, startupLogs) });
+    for (const r of rows) r.attribution = classifySample(r, requestLogs, startupLogs);   // EVERY row, excluded ones too
   }
   const groups = {}; const excluded = {};
+  const exclude = (k) => { excluded[k] = (excluded[k] || 0) + 1; };
   for (const r of rows) {
+    if (!r.eligibility.eligible) { exclude(`${r.mode} run → ineligible (${r.eligibility.reason})`); continue; }
     let bucket = r.mode;
     if (r.attribution) {
-      const c = r.attribution.cls;
-      if (c !== r.mode) { const k = `${r.mode} run → ${c}`; excluded[k] = (excluded[k] || 0) + 1; continue; }   // only matching cold/warm count
+      if (r.attribution.cls !== r.mode) { exclude(`${r.mode} run → ${r.attribution.cls}`); continue; }   // only matching cold/warm count
     } else if (r.mode === 'cold') bucket = 'cold (UNATTRIBUTED: run with --logs; not evidence of a cold start)';
     (groups[`${r.label} ${bucket} ${r.fn}`] = groups[`${r.label} ${bucket} ${r.fn}`] || []).push(r);
   }
@@ -187,30 +209,54 @@ function summarize(file, { logs = false, read = gcloudRead, nowMs = Date.now(), 
     print(`${k}: n=${rs.length} median ${quantile(p, 0.5)} ms p95 ${quantile(p, 0.95)} ms | preflight median ${quantile(rs.map((r) => r.preflightMs), 0.5)} ms, request median ${quantile(rs.map((r) => r.requestMs), 0.5)} ms`);
   }
   for (const [k, n] of Object.entries(excluded).sort()) print(`EXCLUDED ${k}: ${n}`);
-  return { rows, groups, excluded, workloadId: wid };
+  let evidencePath = null;
+  if (logs) {
+    evidencePath = evidenceOut || file.replace(/\.jsonl$/, '') + '.attributed.json';
+    const artifact = { kind: 'portal-probe-evidence', version: 1, source: file, workloadId: wid, logsReadAt: new Date(nowMs).toISOString(),
+      counts: { rows: rows.length, eligible: eligible.length, excluded }, rows };
+    fs.writeFileSync(evidencePath, JSON.stringify(artifact, null, 1));
+    print(`wrote evidence ${evidencePath} (${rows.length} rows, every one with its eligibility and attribution)`);
+  }
+  return { rows, groups, excluded, workloadId: wid, evidencePath };
+}
+
+function loadEvidence(file) {
+  let a = null;
+  try { a = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { /* a raw .jsonl sample file is not one JSON document */ }
+  if (!a || a.kind !== 'portal-probe-evidence' || !Array.isArray(a.rows)) throw new Error(`${file}: not a probe evidence artifact — run --summarize <samples.jsonl> --logs first (raw sample files are refused)`);
+  for (const r of a.rows) if (!r.attribution || !r.eligibility) throw new Error(`${file}: a row carries no attribution/eligibility — refusing`);
+  if (singleWorkload(a.rows, file) !== a.workloadId) throw new Error(`${file}: rows disagree with the artifact's workload`);
+  return a;
 }
 
 // §5 WARM GUARD: per endpoint, PASS iff p95_after ≤ p95_before + min(0.10 × p95_before, 50 ms) (the stricter bound) —
-// and only over the SAME workload.
+// only over the SAME workload, and only over ELIGIBLE, attributed-WARM samples of warm runs (from the evidence artifacts).
 function warmGuard(beforeFile, afterFile, print = console.log) {
-  const load = (f) => loadRows(f).filter((r) => r.mode === 'warm');
-  const b = load(beforeFile); const a = load(afterFile);
-  const wb = singleWorkload(b, beforeFile); const wa = singleWorkload(a, afterFile);
-  if (wb !== wa) {
-    const d = (k) => `${k}: ${JSON.stringify(b[0][k])} vs ${JSON.stringify(a[0][k])}`;
-    throw new Error(`REFUSED: before and after measured DIFFERENT workloads (${wb} vs ${wa}; ${['rid', 'statsDay', 'destination'].filter((k) => b[0][k] !== a[0][k]).map(d).join('; ') || 'paths differ'})`);
+  const B = loadEvidence(beforeFile); const A = loadEvidence(afterFile);
+  if (B.workloadId !== A.workloadId) {
+    const b = B.rows[0]; const a = A.rows[0];
+    const d = (k) => `${k}: ${JSON.stringify(b[k])} vs ${JSON.stringify(a[k])}`;
+    throw new Error(`REFUSED: before and after measured DIFFERENT workloads (${B.workloadId} vs ${A.workloadId}; ${['rid', 'statsDay', 'destination'].filter((k) => b[k] !== a[k]).map(d).join('; ') || 'paths differ'})`);
   }
+  const split = (art, fn) => {
+    const counted = []; const excl = {};
+    for (const r of art.rows.filter((x) => x.fn === fn)) {
+      const why = r.mode !== 'warm' ? `mode_${r.mode}` : !r.eligibility.eligible ? r.eligibility.reason : r.attribution.cls !== 'warm' ? `attributed_${r.attribution.cls}` : null;
+      if (why) excl[why] = (excl[why] || 0) + 1; else counted.push(r.primaryMs);
+    }
+    return { counted, excl };
+  };
   let fail = 0; const results = {};
   for (const fn of ENDPOINTS) {
-    const ok = (rs) => rs.filter((r) => r.fn === fn && r.status === 200).map((r) => r.primaryMs);
-    const pb = ok(b); const pa = ok(a);
-    if (pb.length < 50 || pa.length < 50) { print(`${fn}: INSUFFICIENT (${pb.length} before, ${pa.length} after; need ≥ 50 each)`); results[fn] = 'INSUFFICIENT'; fail++; continue; }
-    const before = quantile(pb, 0.95); const after = quantile(pa, 0.95); const limit = before + Math.min(0.10 * before, 50);
+    const sb = split(B, fn); const sa = split(A, fn);
+    print(`${fn}: counted ${sb.counted.length} before / ${sa.counted.length} after; excluded before ${JSON.stringify(sb.excl)}, after ${JSON.stringify(sa.excl)}`);
+    if (sb.counted.length < 50 || sa.counted.length < 50) { print(`${fn}: INSUFFICIENT attributed-warm samples (need ≥ 50 each)`); results[fn] = 'INSUFFICIENT'; fail++; continue; }
+    const before = quantile(sb.counted, 0.95); const after = quantile(sa.counted, 0.95); const limit = before + Math.min(0.10 * before, 50);
     const pass = after <= limit; if (!pass) fail++;
     results[fn] = pass ? 'PASS' : 'FAIL';
     print(`${fn}: p95 before ${before} ms, after ${after} ms, limit ${limit.toFixed(1)} ms → ${results[fn]}`);
   }
-  return { pass: fail === 0, results, workloadId: wb };
+  return { pass: fail === 0, results, workloadId: B.workloadId };
 }
 
 async function probe(argv, env = process.env, print = console.log) {
@@ -231,21 +277,22 @@ async function probe(argv, env = process.env, print = console.log) {
       const row = await sample(fn, workload, token, label, mode, round);
       fs.appendFileSync(out, `${JSON.stringify(row)}\n`);
       print(`${mode} r${round} ${fn}: ${row.status} primary ${row.primaryMs} ms (preflight ${row.preflightMs}, request ${row.requestMs})`);
-      if (row.status !== 200) print(`  ⚠ ${fn} answered ${row.status} — excluded from statistics (only successful requests count)`);
+      const el = eligibility(row);
+      if (!el.eligible) print(`  ⚠ ${fn}: ${el.reason} — not a measurement (excluded from statistics)`);
     }
   }
   print(`wrote ${out}`);
   return out;
 }
 
-module.exports = { resolveWorkload, classifySample, fetchLogs, summarize, warmGuard, probe, traceHeaders, SKEW_MS };
+module.exports = { resolveWorkload, classifySample, eligibility, fetchLogs, summarize, loadEvidence, warmGuard, probe, traceHeaders, SKEW_MS };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);
   const arg = (k) => { const i = argv.indexOf(k); return i > -1 ? argv[i + 1] : undefined; };
   (async () => {
     if (arg('--warm-guard')) { const r = warmGuard(arg('--warm-guard'), argv[argv.indexOf('--warm-guard') + 2]); process.exitCode = r.pass ? 0 : 1; return; }
-    if (arg('--summarize')) { summarize(arg('--summarize'), { logs: argv.includes('--logs') }); return; }
+    if (arg('--summarize')) { summarize(arg('--summarize'), { logs: argv.includes('--logs'), evidenceOut: arg('--evidence') }); return; }
     await probe(argv);
   })().catch((e) => { console.error(e && e.message); process.exitCode = 2; });
 }

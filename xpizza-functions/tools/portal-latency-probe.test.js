@@ -1,6 +1,7 @@
 'use strict';
-// PORTAL SPEED §5 probe — codex build r1 SF1 (cold attribution) + SF2 (fixed workload). No network beyond 127.0.0.1;
-// the gcloud log reader is injected, so every case is deterministic.
+// PORTAL SPEED §5 probe — codex build r1 SF1/SF2 and r2 #1–#5. No network beyond 127.0.0.1: the module-level cases inject
+// the log reader, and the CLI cases put a FAKE `gcloud` first on PATH (fixture-driven, asserting it is called read-only
+// with the project pinned), so the tool itself carries no test hook.
 // Run: node tools/portal-latency-probe.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -14,51 +15,89 @@ let __finished = false;
 process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 portal-latency-probe: exited before finishing'); process.exit(1); } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const NOW = Date.parse('2026-10-07T18:00:00Z');
+const ORIGIN = 'https://sherpa-portal.netlify.app';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'probe-'));
 const silent = () => {};
+const f = (name) => path.join(tmp, name);
+
+// a fake `gcloud` (first on PATH): answers `logging read <filter>` from a fixture, refuses anything else
+const BIN = f('bin'); fs.mkdirSync(BIN);
+fs.writeFileSync(path.join(BIN, 'gcloud'), `#!${process.execPath}
+const a = process.argv.slice(2);
+if (a[0] !== 'logging' || a[1] !== 'read' || !a.includes('--project=xpizza-delivery')) { console.error('fake gcloud: refused ' + a.join(' ')); process.exit(3); }
+require('fs').appendFileSync(process.env.FAKE_GCLOUD_CALLS, a[2] + '\\n');
+const fx = JSON.parse(require('fs').readFileSync(process.env.FAKE_GCLOUD_FIXTURE, 'utf8'));
+const filter = a[2];
+const req = /log_id\\("run.googleapis.com\\/requests"\\)/.test(filter);
+const out = (req ? fx.requests : fx.startups).filter((e) => req ? filter.includes('"' + e.trace + '"') : filter.includes('"' + e.labels.instanceId + '"'));
+process.stdout.write(JSON.stringify(out));
+`);
+fs.chmodSync(path.join(BIN, 'gcloud'), 0o755);
+
+function cli(args, env = {}) {
+  return new Promise((resolve) => {
+    const p = spawn(process.execPath, [path.join(__dirname, 'portal-latency-probe.js'), ...args], { env: { ...process.env, PATH: `${BIN}:${process.env.PATH}`, ...env } });
+    let o = ''; p.stdout.on('data', (d) => { o += d; }); p.stderr.on('data', (d) => { o += d; });
+    p.on('close', (code) => resolve({ code, o }));
+  });
+}
 
 (async () => {
-  // ── SF2: the workload ──────────────────────────────────────────────────────────────────────────────────────────
+  // ── the workload (r1 SF2 + r2 #5) ──────────────────────────────────────────────────────────────────────────────
   {
     const w = P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-04', nowMs: NOW });
     assert.strictEqual(w.paths.getSalesStats, '/getSalesStats?restaurantId=x_pizza&from=2026-10-04&to=2026-10-04&compare=none');
     assert.strictEqual(w.destination, 'https://us-central1-xpizza-delivery.cloudfunctions.net');
     assert.match(w.workloadId, /^[0-9a-f]{16}$/);
-    assert.strictEqual(P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-04', nowMs: NOW + 3 * 86400000 }).workloadId, w.workloadId, 'the id does not depend on WHEN it is resolved (no clock in the workload)');
+    assert.strictEqual(P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-04', nowMs: NOW + 3 * 86400000 }).workloadId, w.workloadId, 'the id does not depend on WHEN it is resolved');
     for (const [k, v] of [['rid', 'la_musa'], ['statsDay', '2026-10-03'], ['base', 'https://other.example']]) {
       assert.notStrictEqual(P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-04', nowMs: NOW, [k]: v }).workloadId, w.workloadId, `${k} is part of the workload id`);
     }
-    assert.throws(() => P.resolveWorkload({ rid: 'x_pizza', nowMs: NOW }), /--stats-day YYYY-MM-DD is required/, 'no default day: it must be explicit');
+    assert.throws(() => P.resolveWorkload({ rid: 'x_pizza', nowMs: NOW }), /--stats-day YYYY-MM-DD is required/, 'no default day');
     assert.throws(() => P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-06', nowMs: NOW }), /not settled/, 'yesterday is not settled');
-    assert.throws(() => P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-13-40', nowMs: NOW }), /required/);
+    for (const bad of ['2026-02-30', '2026-04-31', '2025-02-29', '2026-13-01', '2026-00-10', '2026-1-05', '2026-10-04T00:00']) {
+      assert.throws(() => P.resolveWorkload({ rid: 'x_pizza', statsDay: bad, nowMs: NOW }), /required/, `🔴 ${bad} is not a real calendar day (Date.parse normalizes it)`);
+    }
+    assert.strictEqual(P.resolveWorkload({ rid: 'x_pizza', statsDay: '2024-02-29', nowMs: NOW }).statsDay, '2024-02-29', 'a real leap day is accepted');
     assert.throws(() => P.resolveWorkload({ rid: undefined, statsDay: '2026-10-04', nowMs: NOW }), /--rid/);
     assert.throws(() => P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-04', base: 'https://h.example/path', nowMs: NOW }), /origin/);
     assert.ok(!JSON.stringify(w).match(/token|bearer|secret/i), 'nothing secret in the workload');
   }
-  ok('workload: resolved once from rid + an EXPLICIT settled stats day + destination (no clock-derived default; yesterday/malformed/missing refused); its id changes with any of them and not with the time of resolution');
+  ok('workload: resolved once from rid + an EXPLICIT, REAL (round-tripped: 2026-02-30 / 04-31 / non-leap 02-29 refused), settled stats day + destination; its id changes with any of them and not with the time of resolution');
 
-  // the CLI against a local server: one workload for every sample, a trace id per LEG, the token never written
-  const seen = [];
+  // ── eligibility (r2 #4) ─────────────────────────────────────────────────────────────────────────────────────────
+  {
+    const base = { preflightStatus: 204, preflightAllowOrigin: ORIGIN, status: 200 };
+    assert.deepStrictEqual(P.eligibility(base), { eligible: true });
+    assert.deepStrictEqual(P.eligibility({ ...base, preflightStatus: 500 }), { eligible: false, reason: 'preflight_status_500' }, '🔴 OPTIONS 500 + GET 200 is not a measurement');
+    assert.deepStrictEqual(P.eligibility({ ...base, preflightAllowOrigin: null }), { eligible: false, reason: 'preflight_origin_not_allowed' }, 'a preflight a browser would reject');
+    assert.deepStrictEqual(P.eligibility({ ...base, preflightAllowOrigin: 'https://other.example' }), { eligible: false, reason: 'preflight_origin_not_allowed' });
+    assert.deepStrictEqual(P.eligibility({ ...base, status: 403 }), { eligible: false, reason: 'get_status_403' });
+    assert.deepStrictEqual(P.eligibility({ ...base, preflightStatus: 200 }), { eligible: true }, '2xx preflight');
+  }
+  ok('eligibility: a sample counts only if its preflight succeeded as a browser requires (2xx + Access-Control-Allow-Origin == the portal origin) AND its GET answered 200 — OPTIONS 500 + GET 200 is excluded');
+
+  // ── the probe CLI against a local server ───────────────────────────────────────────────────────────────────────
+  const seen = []; let failPreflightFor = null;
   const srv = http.createServer((req, res) => {
     seen.push({ method: req.method, url: req.url, traceparent: req.headers.traceparent, xct: req.headers['x-cloud-trace-context'], auth: req.headers.authorization });
-    res.writeHead(req.method === 'OPTIONS' ? 204 : 200, { 'access-control-max-age': '600' }); res.end(req.method === 'OPTIONS' ? '' : '{}');
+    if (req.method === 'OPTIONS') {
+      if (failPreflightFor && req.url.startsWith(`/${failPreflightFor}`)) { res.writeHead(500); return res.end(); }
+      res.writeHead(204, { 'access-control-allow-origin': req.headers.origin, 'access-control-max-age': '600' }); return res.end();
+    }
+    res.writeHead(200, { 'access-control-allow-origin': req.headers.origin }); res.end('{}');
   });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const TOKEN = 'tok-' + 'S'.repeat(40);
-  const out = path.join(tmp, 'warm.jsonl');
-  const cli = (args, env) => new Promise((resolve) => {
-    const p = spawn(process.execPath, [path.join(__dirname, 'portal-latency-probe.js'), ...args], { env: { ...process.env, ...env } });
-    let o = ''; p.stdout.on('data', (d) => { o += d; }); p.stderr.on('data', (d) => { o += d; });
-    p.on('close', (code) => resolve({ code, o }));
-  });
-  const base = `http://127.0.0.1:${srv.address().port}`;
-  const run = await cli(['--label', 'before', '--mode', 'warm', '--samples', '2', '--rid', 'x_pizza', '--stats-day', '2026-10-04', '--base', base, '--out', out], { PORTAL_PROBE_ID_TOKEN: TOKEN });
-  srv.close();
+  const baseUrl = `http://127.0.0.1:${srv.address().port}`;
+  const out = f('warm.jsonl');
+  failPreflightFor = 'getEditableCatalog';   // r2 #4: OPTIONS 500 followed by a 200 GET, on one endpoint
+  const run = await cli(['--label', 'before', '--mode', 'warm', '--samples', '2', '--rid', 'x_pizza', '--stats-day', '2026-10-04', '--base', baseUrl, '--out', out], { PORTAL_PROBE_ID_TOKEN: TOKEN });
+  failPreflightFor = null;
   assert.strictEqual(run.code, 0, run.o);
   const rows = fs.readFileSync(out, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   assert.strictEqual(rows.length, 6);
   assert.strictEqual(new Set(rows.map((r) => r.workloadId)).size, 1, 'every sample carries the ONE workload');
-  assert.deepStrictEqual([...new Set(rows.filter((r) => r.fn === 'getSalesStats').map((r) => r.path))], ['/getSalesStats?restaurantId=x_pizza&from=2026-10-04&to=2026-10-04&compare=none']);
   for (const r of rows) for (const k of ['rid', 'statsDay', 'destination', 'path', 'preflightTrace', 'getTrace']) assert.ok(r[k], `row records ${k}`);
   assert.strictEqual(new Set(rows.flatMap((r) => [r.preflightTrace, r.getTrace])).size, 12, 'a distinct trace id per leg');
   for (const r of rows) {
@@ -66,120 +105,182 @@ const silent = () => {};
     const get = seen.find((s) => s.method === 'GET' && s.traceparent && s.traceparent.includes(r.getTrace));
     assert.ok(pf && get, 'each leg was SENT with its recorded trace id');
     assert.ok(pf.xct.startsWith(`${r.preflightTrace}/`) && get.xct.startsWith(`${r.getTrace}/`), 'X-Cloud-Trace-Context carries the same id');
-    assert.strictEqual(pf.auth, undefined, 'the preflight carries no credentials'); assert.strictEqual(get.auth, `Bearer ${TOKEN}`);
+    assert.strictEqual(pf.auth, undefined); assert.strictEqual(get.auth, `Bearer ${TOKEN}`);
   }
+  const failed = rows.filter((r) => r.fn === 'getEditableCatalog');
+  assert.ok(failed.every((r) => r.preflightStatus === 500 && r.status === 200), 'fixture: OPTIONS 500 then GET 200 recorded as such');
+  assert.ok(rows.filter((r) => r.fn !== 'getEditableCatalog').every((r) => r.preflightAllowOrigin === ORIGIN), 'the preflight ACAO is recorded');
   assert.ok(!run.o.includes(TOKEN.slice(4)) && !fs.readFileSync(out, 'utf8').includes(TOKEN.slice(4)), '🔴 the token appears in no output and no file');
-  // a file never mixes workloads
-  const mix = await cli(['--label', 'before', '--mode', 'warm', '--samples', '1', '--rid', 'x_pizza', '--stats-day', '2026-10-03', '--base', base, '--out', out], { PORTAL_PROBE_ID_TOKEN: TOKEN });
+  const mix = await cli(['--label', 'before', '--mode', 'warm', '--samples', '1', '--rid', 'x_pizza', '--stats-day', '2026-10-03', '--base', baseUrl, '--out', out], { PORTAL_PROBE_ID_TOKEN: TOKEN });
   assert.notStrictEqual(mix.code, 0); assert.match(mix.o, /mixes 2 workloads/);
-  const noTok = await cli(['--label', 'x', '--mode', 'warm', '--rid', 'x_pizza', '--stats-day', '2026-10-04', '--base', base, '--out', path.join(tmp, 'n.jsonl')], { PORTAL_PROBE_ID_TOKEN: '' });
+  const noTok = await cli(['--label', 'x', '--mode', 'warm', '--rid', 'x_pizza', '--stats-day', '2026-10-04', '--base', baseUrl, '--out', f('n.jsonl')], { PORTAL_PROBE_ID_TOKEN: '' });
   assert.notStrictEqual(noTok.code, 0); assert.match(noTok.o, /PORTAL_PROBE_ID_TOKEN/);
-  ok('probe run: every sample records the one workload (rid, statsDay, destination, path) + a DISTINCT trace id per leg, actually sent (traceparent + X-Cloud-Trace-Context); credentials only on the GET; the token is in no output or file; appending a different workload to a file is refused; no token → refused');
+  srv.close();
+  ok('probe run: every sample records the one workload + a DISTINCT trace id per leg, actually sent; the preflight status AND its Allow-Origin are recorded (an OPTIONS 500 + GET 200 sample is recorded as such); credentials only on the GET; the token is in no output or file; mixing workloads in a file and a missing token are refused');
 
-  // ── SF2: the warm guard refuses mismatched workloads ───────────────────────────────────────────────────────────
-  const synth = (file, { rid = 'x_pizza', statsDay = '2026-10-04', base: b, slow = 0, mode = 'warm', extra = [] } = {}) => {
-    const w = P.resolveWorkload({ rid, statsDay, base: b, nowMs: NOW });
-    const L = [];
-    for (let i = 0; i < 50; i++) for (const fn of ['getMyRestaurants', 'getEditableCatalog', 'getSalesStats']) {
-      L.push({ label: 'x', mode, fn, status: 200, workloadId: w.workloadId, rid: w.rid, statsDay: w.statsDay, destination: w.destination, path: w.paths[fn],
-        primaryMs: 100 + i + (fn === 'getSalesStats' ? slow : 0), preflightMs: 1, requestMs: 1, startedAt: 'x', endedAt: 'y' });
-    }
-    fs.writeFileSync(file, [...L, ...extra].map((r) => JSON.stringify(r)).join('\n'));
-  };
-  const f = (n) => path.join(tmp, n);
-  synth(f('b')); synth(f('a'));
-  assert.strictEqual(P.warmGuard(f('b'), f('a'), silent).pass, true, 'same workload, same latency → PASS');
-  synth(f('a-slow'), { slow: 60 });
-  const slow = P.warmGuard(f('b'), f('a-slow'), silent);
-  assert.strictEqual(slow.pass, false); assert.strictEqual(slow.results.getSalesStats, 'FAIL'); assert.strictEqual(slow.results.getMyRestaurants, 'PASS');
-  for (const [name, o, re] of [['rid', { rid: 'la_musa' }, /rid: "x_pizza" vs "la_musa"/], ['statsDay', { statsDay: '2026-10-03' }, /statsDay: "2026-10-04" vs "2026-10-03"/], ['destination', { base: 'https://other.example' }, /destination/]]) {
-    synth(f(`a-${name}`), o);
-    assert.throws(() => P.warmGuard(f('b'), f(`a-${name}`), silent), re, `🔴 a ${name} mismatch must be REFUSED, never PASS`);
+  // ── r2 #1: the CLI retains the evidence (through a fake gcloud) ────────────────────────────────────────────────
+  {
+    // age the samples past the ingestion guard, and give the fake log store one row per class
+    const aged = rows.map((r) => ({ ...r, startedAt: new Date(Date.parse(r.startedAt) - 15 * 60000).toISOString(), endedAt: new Date(Date.parse(r.endedAt) - 15 * 60000).toISOString() }));
+    fs.writeFileSync(out, aged.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const ms = aged.filter((r) => r.fn === 'getMyRestaurants');   // round 0 → cold, round 1 → warm
+    const ss = aged.filter((r) => r.fn === 'getSalesStats');      // round 0 → ambiguous (pair conflict), round 1 → uncorrelated
+    const rq = (trace, instance, revision, at) => ({ trace: `projects/xpizza-delivery/traces/${trace}`, resource: { labels: { revision_name: revision } }, labels: { instanceId: instance }, timestamp: at });
+    const fixture = {
+      requests: [
+        rq(ms[0].preflightTrace, 'A', 'r1', ms[0].endedAt), rq(ms[0].getTrace, 'A', 'r1', ms[0].endedAt),
+        rq(ms[1].preflightTrace, 'B', 'r1', ms[1].endedAt), rq(ms[1].getTrace, 'B', 'r1', ms[1].endedAt),
+        rq(ss[0].preflightTrace, 'C', 'r1', ss[0].endedAt), rq(ss[0].preflightTrace, 'C', 'r2', ss[0].endedAt), rq(ss[0].getTrace, 'C', 'r1', ss[0].endedAt),
+        rq(ss[1].preflightTrace, 'D', 'r1', ss[1].endedAt),   // the GET leg has no request log
+        ...aged.filter((r) => r.fn === 'getEditableCatalog').flatMap((r) => [rq(r.preflightTrace, 'E', 'r1', r.endedAt), rq(r.getTrace, 'E', 'r1', r.endedAt)]),
+      ],
+      startups: [{ labels: { instanceId: 'A' }, resource: { labels: { revision_name: 'r1' } }, timestamp: ms[0].startedAt },
+        { labels: { instanceId: 'C' }, resource: { labels: { revision_name: 'r1' } }, timestamp: ss[0].startedAt }],
+    };
+    fs.writeFileSync(f('fixture.json'), JSON.stringify(fixture));
+    const calls = f('gcloud-calls.txt'); fs.writeFileSync(calls, '');
+    const sum = await cli(['--summarize', out, '--logs'], { FAKE_GCLOUD_FIXTURE: f('fixture.json'), FAKE_GCLOUD_CALLS: calls });
+    assert.strictEqual(sum.code, 0, sum.o);
+    const evPath = out.replace(/\.jsonl$/, '') + '.attributed.json';
+    assert.match(sum.o, new RegExp(`wrote evidence ${evPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    const ev = JSON.parse(fs.readFileSync(evPath, 'utf8'));
+    assert.strictEqual(ev.kind, 'portal-probe-evidence'); assert.strictEqual(ev.workloadId, rows[0].workloadId); assert.ok(ev.logsReadAt);
+    assert.strictEqual(ev.rows.length, 6, '🔴 EVERY row is retained, excluded ones included');
+    const byTrace = (t) => ev.rows.find((r) => r.getTrace === t);
+    const cold = byTrace(ms[0].getTrace).attribution;
+    assert.strictEqual(cold.cls, 'cold');
+    assert.deepStrictEqual([cold.evidence.preflight.trace, cold.evidence.preflight.revision, cold.evidence.preflight.instance, cold.evidence.get.instance, cold.evidence.get.startup],
+      [ms[0].preflightTrace, 'r1', 'A', 'A', ms[0].startedAt], 'the matched trace / revision / instance / startup are retained');
+    assert.strictEqual(byTrace(ms[1].getTrace).attribution.cls, 'warm');
+    assert.strictEqual(byTrace(ss[0].getTrace).attribution.cls, 'ambiguous'); assert.deepStrictEqual(byTrace(ss[0].getTrace).attribution.evidence.preflight.pairs, [['r1', 'C'], ['r2', 'C']]);
+    assert.strictEqual(byTrace(ss[1].getTrace).attribution.cls, 'uncorrelated');
+    for (const r of ev.rows.filter((x) => x.fn === 'getEditableCatalog')) assert.deepStrictEqual(r.eligibility, { eligible: false, reason: 'preflight_status_500' }, 'the excluded OPTIONS-500 rows are retained with their reason');
+    assert.ok(!fs.readFileSync(evPath, 'utf8').includes(TOKEN.slice(4)), 'no token in the evidence');
+    const filters = fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean);
+    assert.ok(filters.length >= 2 && filters.every((x) => /resource\.type="cloud_run_revision"/.test(x)), 'every log read is a scoped, read-only `gcloud logging read` with the project pinned (the fake refuses anything else)');
+    assert.match(sum.o, /EXCLUDED warm run → ineligible \(preflight_status_500\): 2/);
+    // --evidence names the artifact explicitly
+    const sum2 = await cli(['--summarize', out, '--logs', '--evidence', f('named.json')], { FAKE_GCLOUD_FIXTURE: f('fixture.json'), FAKE_GCLOUD_CALLS: calls });
+    assert.strictEqual(sum2.code, 0, sum2.o); assert.strictEqual(JSON.parse(fs.readFileSync(f('named.json'), 'utf8')).rows.length, 6);
+    // the guard over CLI artifacts: refuses raw files; over the artifact it prints exclusions, then INSUFFICIENT
+    const raw = await cli(['--warm-guard', out, evPath]);
+    assert.notStrictEqual(raw.code, 0); assert.match(raw.o, /not a probe evidence artifact/);
+    const g = await cli(['--warm-guard', evPath, f('named.json')]);
+    assert.strictEqual(g.code, 1, g.o);
+    const iEx = g.o.indexOf('getEditableCatalog: counted 0 before / 0 after; excluded before {"preflight_status_500":2}');
+    assert.ok(iEx > -1 && iEx < g.o.indexOf('getEditableCatalog: INSUFFICIENT'), 'exclusions are reported BEFORE the minimum is enforced');
+    assert.match(g.o, /getSalesStats: counted 0 before \/ 0 after; excluded before \{"attributed_ambiguous":1,"attributed_uncorrelated":1\}/);
+    assert.match(g.o, /getMyRestaurants: counted 1 before \/ 1 after; excluded before \{"attributed_cold":1\}/);
   }
-  synth(f('a-mixed'), { extra: [{ mode: 'warm', fn: 'getSalesStats', status: 200, workloadId: 'ffffffffffffffff', primaryMs: 1 }] });
-  assert.throws(() => P.warmGuard(f('b'), f('a-mixed'), silent), /mixes 2 workloads/);
-  fs.writeFileSync(f('old'), JSON.stringify({ mode: 'warm', fn: 'getSalesStats', status: 200, primaryMs: 1 }));
-  assert.throws(() => P.warmGuard(f('old'), f('a'), silent), /no workloadId/, 'a pre-revision file (no workload recorded) is refused, not trusted');
-  ok('warm guard: the stricter bound per endpoint (PASS / FAIL as before), and it REFUSES a before/after pair whose restaurant, stats day (query) or destination differ, a file mixing workloads, and a file with no recorded workload');
+  ok('CLI evidence retention (fake gcloud on PATH, read-only + project-pinned): `--summarize --logs` WRITES <file>.attributed.json (or --evidence) holding EVERY row — cold, warm, ambiguous (with both conflicting pairs), uncorrelated and the OPTIONS-500 exclusions — each with eligibility, class, reason and per-leg trace/revision/instance/startup; the CLI warm guard refuses the raw file and, over the artifacts, prints every exclusion per endpoint before INSUFFICIENT');
 
-  // ── SF1: cold attribution ──────────────────────────────────────────────────────────────────────────────────────
+  // ── r2 #2: the warm guard counts only eligible, attributed-WARM samples ─────────────────────────────────────────
+  const artifact = (file, { rid = 'x_pizza', statsDay = '2026-10-04', base: b, slow = 0, cls = 'warm', preflightStatus = 204, mode = 'warm', extraRows = [] } = {}) => {
+    const w = P.resolveWorkload({ rid, statsDay, base: b, nowMs: NOW });
+    const R = [];
+    for (let i = 0; i < 50; i++) for (const fn of ['getMyRestaurants', 'getEditableCatalog', 'getSalesStats']) {
+      const r = { label: 'x', mode, fn, workloadId: w.workloadId, rid: w.rid, statsDay: w.statsDay, destination: w.destination, path: w.paths[fn],
+        preflightStatus, preflightAllowOrigin: ORIGIN, status: 200, primaryMs: 100 + i + (fn === 'getSalesStats' ? slow : 0), preflightMs: 1, requestMs: 1 };
+      r.eligibility = P.eligibility(r); r.attribution = { cls, reason: 'fixture', evidence: {} };
+      R.push(r);
+    }
+    fs.writeFileSync(file, JSON.stringify({ kind: 'portal-probe-evidence', version: 1, workloadId: w.workloadId, rows: [...R, ...extraRows] }));
+  };
+  artifact(f('b.json')); artifact(f('a.json'));
+  assert.strictEqual(P.warmGuard(f('b.json'), f('a.json'), silent).pass, true, 'same workload, attributed-warm, same latency → PASS');
+  artifact(f('a-slow.json'), { slow: 60 });
+  const slow = P.warmGuard(f('b.json'), f('a-slow.json'), silent);
+  assert.strictEqual(slow.pass, false); assert.strictEqual(slow.results.getSalesStats, 'FAIL'); assert.strictEqual(slow.results.getMyRestaurants, 'PASS');
+  // 🔴 codex r2 repros: 50 UNCORRELATED per endpoint per file, OPTIONS 500 + GET 200, cold- or ambiguous-attributed → never a PASS
+  for (const [label, opts] of [['uncorrelated', { cls: 'uncorrelated' }], ['ambiguous', { cls: 'ambiguous' }], ['cold', { cls: 'cold' }], ['OPTIONS 500 + GET 200', { preflightStatus: 500 }], ['a cold-mode run', { mode: 'cold' }]]) {
+    artifact(f('x-b.json'), opts); artifact(f('x-a.json'), opts);
+    const lines = []; const r = P.warmGuard(f('x-b.json'), f('x-a.json'), (l) => lines.push(l));
+    assert.strictEqual(r.pass, false, `🔴 ${label} samples must not PASS the warm guard`);
+    assert.deepStrictEqual(Object.values(r.results), ['INSUFFICIENT', 'INSUFFICIENT', 'INSUFFICIENT'], `${label}: nothing is counted`);
+    assert.ok(lines[0].includes('counted 0 before / 0 after; excluded before {"'), `${label}: the exclusion is reported first (${lines[0]})`);
+  }
+  for (const [name, o, re] of [['rid', { rid: 'la_musa' }, /rid: "x_pizza" vs "la_musa"/], ['statsDay', { statsDay: '2026-10-03' }, /statsDay: "2026-10-04" vs "2026-10-03"/], ['destination', { base: 'https://other.example' }, /destination/]]) {
+    artifact(f(`a-${name}.json`), o);
+    assert.throws(() => P.warmGuard(f('b.json'), f(`a-${name}.json`), silent), re, `🔴 a ${name} mismatch must be REFUSED`);
+  }
+  artifact(f('a-mixed.json'), { extraRows: [{ mode: 'warm', fn: 'getSalesStats', workloadId: 'ffffffffffffffff', eligibility: { eligible: true }, attribution: { cls: 'warm' }, primaryMs: 1 }] });
+  assert.throws(() => P.warmGuard(f('b.json'), f('a-mixed.json'), silent), /mixes 2 workloads/);
+  artifact(f('a-noattr.json'), { extraRows: [{ mode: 'warm', fn: 'getSalesStats', workloadId: 'x', eligibility: { eligible: true }, primaryMs: 1 }] });
+  assert.throws(() => P.warmGuard(f('b.json'), f('a-noattr.json'), silent), /no attribution/);
+  assert.throws(() => P.warmGuard(out, f('a.json'), silent), /not a probe evidence artifact/, 'a raw sample file is refused');
+  fs.writeFileSync(f('old.jsonl'), JSON.stringify({ mode: 'warm', fn: 'getSalesStats', preflightStatus: 204, preflightAllowOrigin: ORIGIN, status: 200, primaryMs: 1, startedAt: 'x', endedAt: 'y' }));
+  assert.throws(() => P.summarize(f('old.jsonl'), { print: silent }), /no workloadId/, 'a pre-revision sample file (no workload recorded) is refused, not trusted');
+  ok('warm guard: reads only evidence artifacts; counts ONLY eligible, attributed-WARM samples of warm runs — 50 uncorrelated / ambiguous / cold-attributed / OPTIONS-500 / cold-mode samples per endpoint per file are each INSUFFICIENT, never PASS, with the exclusions printed first; the stricter bound as before; mismatched workloads, mixed files, unattributed rows and raw files are REFUSED');
+
+  // ── cold attribution (r1 SF1 + r2 #3) ──────────────────────────────────────────────────────────────────────────
   {
     const row = { preflightTrace: 'p1', getTrace: 'g1', startedAt: '2026-10-07T12:00:00.000Z', endedAt: '2026-10-07T12:00:04.000Z' };
     const rq = (trace, instance, revision = 'getsalesstats-00007-abc') => ({ trace, instance, revision, timestamp: '2026-10-07T12:00:03Z' });
     const st = (instance, ts, revision = 'getsalesstats-00007-abc') => ({ instance, revision, timestamp: ts });
-    // the true cold start: both legs on instance A, A started inside the window
     let c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', '2026-10-07T12:00:00.500Z')]);
-    assert.strictEqual(c.cls, 'cold'); assert.strictEqual(c.evidence.get.instance, 'A'); assert.strictEqual(c.evidence.get.revision, 'getsalesstats-00007-abc'); assert.strictEqual(c.evidence.get.startup, '2026-10-07T12:00:00.500Z');
-    // 🔴 codex repro: an UNRELATED concurrent startup (another instance, another revision) in the window → NOT cold
-    c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('Z', '2026-10-07T12:00:01Z'), st('A2', '2026-10-07T12:00:01Z', 'getsalesstats-00008-new')]);
-    assert.strictEqual(c.cls, 'warm', '🔴 a concurrent startup of ANOTHER instance must not make this sample cold');
-    // same instance id, other revision started in the window → not this instance
-    c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', '2026-10-07T12:00:01Z', 'getsalesstats-00008-new')]);
-    assert.strictEqual(c.cls, 'warm', 'an instance is (revision, instance id)');
-    // the SAME instance id on two revisions is two instances: GET's revision started in the window → ambiguous, not warm
-    c = P.classifySample(row, [rq('p1', 'A', 'rev-old'), rq('g1', 'A', 'rev-new')], [st('A', '2026-10-07T12:00:01Z', 'rev-new')]);
-    assert.strictEqual(c.cls, 'ambiguous', 'an instance is (revision, instance id) on the legs too');
-    // the instance started BEFORE the sample (pre-warmed) → warm
-    c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', '2026-10-07T11:40:00Z')]);
+    assert.strictEqual(c.cls, 'cold'); assert.strictEqual(c.evidence.get.startup, '2026-10-07T12:00:00.500Z');
+    // r1 repro: an UNRELATED concurrent startup → NOT cold
+    c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('Z', '2026-10-07T12:00:01Z'), st('A2', '2026-10-07T12:00:01Z', 'rev-new')]);
     assert.strictEqual(c.cls, 'warm');
-    // 🔴 preflight and GET on DIFFERENT instances, one of them cold → ambiguous, excluded
-    c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'B')], [st('B', '2026-10-07T12:00:02Z')]);
-    assert.strictEqual(c.cls, 'ambiguous'); assert.strictEqual(c.reason, 'legs_on_different_instances_one_started');
-    c = P.classifySample(row, [rq('p1', 'A'), rq('g1', 'B')], [st('A', '2026-10-07T12:00:00.2Z')]);
-    assert.strictEqual(c.cls, 'ambiguous', 'either leg cold on a different instance → ambiguous');
-    // different instances, neither started → still warm (both warm instances)
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', '2026-10-07T12:00:01Z', 'rev-new')]).cls, 'warm', 'an instance is (revision, instance id)');
+    // 🔴 r2 #3 repro: preflight trace with (r1,A) AND (r2,A), GET (r1,A), (r1,A) started in the window → NOT cold
+    c = P.classifySample(row, [rq('p1', 'A', 'r1'), rq('p1', 'A', 'r2'), rq('g1', 'A', 'r1')], [st('A', '2026-10-07T12:00:01Z', 'r1')]);
+    assert.notStrictEqual(c.cls, 'cold', '🔴 conflicting revisions in one trace must not produce cold');
+    assert.strictEqual(c.cls, 'ambiguous'); assert.deepStrictEqual(c.evidence.preflight.pairs, [['r1', 'A'], ['r2', 'A']]);
+    // the same conflict on the GET leg, and a hit order that puts the conflicting pair first
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A', 'r1'), rq('g1', 'A', 'r2'), rq('g1', 'A', 'r1')], [st('A', '2026-10-07T12:00:01Z', 'r1')]).cls, 'ambiguous');
+    // EVERY hit validated: a valid hit + an id-less hit for one leg → uncorrelated (not the first hit's verdict)
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A'), { trace: 'g1', revision: 'getsalesstats-00007-abc', instance: undefined, timestamp: 'x' }], [st('A', '2026-10-07T12:00:01Z')]).reason, 'get_request_log_without_instance');
+    // duplicate hits of the SAME pair are fine
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('p1', 'A'), rq('g1', 'A')], [st('A', '2026-10-07T12:00:01Z')]).cls, 'cold');
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A', 'rev-old'), rq('g1', 'A', 'rev-new')], [st('A', '2026-10-07T12:00:01Z', 'rev-new')]).cls, 'ambiguous', 'legs: same id, different revisions');
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', '2026-10-07T11:40:00Z')]).cls, 'warm', 'pre-warmed');
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'B')], [st('B', '2026-10-07T12:00:02Z')]).cls, 'ambiguous', 'different instances, one started');
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'B')], [st('A', '2026-10-07T12:00:00.2Z')]).cls, 'ambiguous');
     assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'B')], []).cls, 'warm');
-    // uncorrelated legs fail closed
     assert.deepStrictEqual([P.classifySample(row, [rq('g1', 'A')], [st('A', '2026-10-07T12:00:01Z')]).cls, P.classifySample(row, [rq('g1', 'A')], []).reason], ['uncorrelated', 'preflight_no_request_log']);
     assert.strictEqual(P.classifySample(row, [rq('p1', 'A')], []).reason, 'get_no_request_log');
-    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), { trace: 'g1', revision: 'r', instance: undefined, timestamp: 'x' }], []).reason, 'get_request_log_without_instance');
-    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A'), rq('g1', 'B')], []).cls, 'ambiguous', 'one trace on two instances → ambiguous');
-    // the window: a startup a moment outside (beyond the skew) does not count
-    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', new Date(Date.parse(row.endedAt) + P.SKEW_MS + 1).toISOString())]).cls, 'warm');
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A'), rq('g1', 'B')], []).cls, 'ambiguous', 'one trace on two instances');
+    assert.strictEqual(P.classifySample(row, [rq('p1', 'A'), rq('g1', 'A')], [st('A', new Date(Date.parse(row.endedAt) + P.SKEW_MS + 1).toISOString())]).cls, 'warm', 'outside the skew');
   }
-  ok('cold attribution: cold ONLY when both legs\' own request logs (by their trace ids) name the SAME (revision, instance) and THAT instance\'s startup log is inside the sample window; a concurrent unrelated startup (other instance or revision) → warm; pre-warmed → warm; preflight and GET on different instances with a startup → ambiguous (excluded); a missing request log / instance id → uncorrelated (excluded); a trace on two instances → ambiguous; the evidence (trace, revision, instance, startup) is kept');
+  ok('cold attribution: cold ONLY when every request-log hit of both legs validates and names ONE (revision, instance) pair, the same for both legs, whose startup is inside the window — the codex r2 repro ((r1,A)+(r2,A) on the preflight trace, (r1,A) started) is ambiguous with both pairs kept, in either hit order and on either leg; an id-less hit among valid ones → uncorrelated; duplicate hits of one pair are fine; the r1 cases (unrelated startup, other revision, pre-warmed, cross-instance, missing logs, skew) hold');
 
-  // the log fetch + summarize composition, with an injected (read-only) reader
+  // ── summarize composition (module level, injected reader) ──────────────────────────────────────────────────────
   {
-    const file = path.join(tmp, 'cold.jsonl');
+    const file = f('cold.jsonl');
     const w = P.resolveWorkload({ rid: 'x_pizza', statsDay: '2026-10-04', nowMs: NOW });
-    const mk = (i, fn, cls) => ({ label: 'after', mode: 'cold', round: i, fn, workloadId: w.workloadId, rid: 'x_pizza', statsDay: '2026-10-04', destination: w.destination, path: w.paths[fn],
-      startedAt: `2026-10-07T12:0${i}:00.000Z`, endedAt: `2026-10-07T12:0${i}:03.000Z`, preflightTrace: `p${i}${fn}`, getTrace: `g${i}${fn}`, status: 200, primaryMs: cls === 'cold' ? 2000 : 150, preflightMs: 1, requestMs: 1, _want: cls });
-    const rows = [mk(1, 'getSalesStats', 'cold'), mk(2, 'getSalesStats', 'warm'), mk(3, 'getSalesStats', 'ambiguous'), mk(4, 'getSalesStats', 'uncorrelated')];
-    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n'));
-    const filters = [];
+    const mk = (i, want, extra = {}) => ({ label: 'after', mode: 'cold', round: i, fn: 'getSalesStats', workloadId: w.workloadId, rid: 'x_pizza', statsDay: '2026-10-04', destination: w.destination, path: w.paths.getSalesStats,
+      startedAt: `2026-10-07T12:0${i}:00.000Z`, endedAt: `2026-10-07T12:0${i}:03.000Z`, preflightTrace: `p${i}`, getTrace: `g${i}`, preflightStatus: 204, preflightAllowOrigin: ORIGIN, status: 200,
+      primaryMs: want === 'cold' ? 2000 : 150, preflightMs: 1, requestMs: 1, _want: want, ...extra });
+    const rows2 = [mk(1, 'cold'), mk(2, 'warm'), mk(3, 'ambiguous'), mk(4, 'uncorrelated'), mk(5, 'cold', { preflightStatus: 500 })];
+    fs.writeFileSync(file, rows2.map((r) => JSON.stringify(r)).join('\n'));
     const read = (filter) => {
-      filters.push(filter);
       if (/log_id\("run.googleapis.com\/requests"\)/.test(filter)) {
         const L = [];
-        for (const r of rows) {
-          const sameInst = `i${r.round}`;
+        for (const r of rows2) {
           if (r._want === 'uncorrelated') continue;
-          L.push({ trace: `projects/xpizza-delivery/traces/${r.preflightTrace}`, resource: { labels: { revision_name: 'rev1' } }, labels: { instanceId: sameInst }, timestamp: r.endedAt });
-          L.push({ trace: `projects/xpizza-delivery/traces/${r.getTrace}`, resource: { labels: { revision_name: 'rev1' } }, labels: { instanceId: r._want === 'ambiguous' ? `${sameInst}b` : sameInst }, timestamp: r.endedAt });
+          const inst = `i${r.round}`;
+          L.push({ trace: `projects/xpizza-delivery/traces/${r.preflightTrace}`, resource: { labels: { revision_name: 'rev1' } }, labels: { instanceId: inst }, timestamp: r.endedAt });
+          L.push({ trace: `projects/xpizza-delivery/traces/${r.getTrace}`, resource: { labels: { revision_name: 'rev1' } }, labels: { instanceId: r._want === 'ambiguous' ? `${inst}b` : inst }, timestamp: r.endedAt });
         }
         return L.filter((e) => filter.includes(e.trace));
       }
-      // startup logs: i1 (cold) and i3b (the ambiguous GET instance) started in their windows; an UNRELATED instance in every window
-      const S = [{ labels: { instanceId: 'i1' }, resource: { labels: { revision_name: 'rev1' } }, timestamp: '2026-10-07T12:01:01Z' },
-        { labels: { instanceId: 'i3b' }, resource: { labels: { revision_name: 'rev1' } }, timestamp: '2026-10-07T12:03:01Z' },
-        { labels: { instanceId: 'unrelated' }, resource: { labels: { revision_name: 'rev1' } }, timestamp: '2026-10-07T12:02:01Z' }];
+      const S = [['i1', '2026-10-07T12:01:01Z'], ['i3b', '2026-10-07T12:03:01Z'], ['i5', '2026-10-07T12:05:01Z'], ['unrelated', '2026-10-07T12:02:01Z']]
+        .map(([id, t]) => ({ labels: { instanceId: id }, resource: { labels: { revision_name: 'rev1' } }, timestamp: t }));
       return S.filter((e) => filter.includes(`"${e.labels.instanceId}"`));
     };
-    const lines = [];
-    const s = P.summarize(file, { logs: true, read, nowMs: Date.parse('2026-10-07T12:30:00Z'), print: (l) => lines.push(l) });
-    assert.deepStrictEqual(s.rows.map((r) => r.attribution.cls), ['cold', 'warm', 'ambiguous', 'uncorrelated']);
-    assert.deepStrictEqual(Object.keys(s.groups), ['after cold getSalesStats']); assert.strictEqual(s.groups['after cold getSalesStats'].length, 1, 'ONLY the attributed cold sample enters the cold statistics');
-    assert.deepStrictEqual(s.excluded, { 'cold run → ambiguous': 1, 'cold run → uncorrelated': 1, 'cold run → warm': 1 });
-    assert.ok(filters.every((x) => /resource\.type="cloud_run_revision"/.test(x)), 'every read is scoped to Cloud Run');
-    assert.ok(filters.some((x) => x.includes('trace=("projects/xpizza-delivery/traces/p1getSalesStats"')), 'request logs are looked up BY THE LEGS\' TRACE IDS');
-    assert.ok(filters.filter((x) => /Starting new instance/.test(x)).every((x) => /labels\.instanceId=\(/.test(x) && !x.includes('"unrelated"')), 'startup logs are looked up BY THE MATCHED INSTANCE IDS only');
-    assert.throws(() => P.summarize(file, { logs: true, read, nowMs: Date.parse('2026-10-07T12:05:00Z'), print: silent }), /at least 5 minutes/, 'too-early log reads are refused (an un-ingested log would read as uncorrelated)');
-    // without --logs a cold run is reported as UNATTRIBUTED, never as cold
+    const s = P.summarize(file, { logs: true, read, nowMs: Date.parse('2026-10-07T12:30:00Z'), print: silent, evidenceOut: f('cold.attributed.json') });
+    assert.deepStrictEqual(s.rows.map((r) => r.attribution.cls), ['cold', 'warm', 'ambiguous', 'uncorrelated', 'cold']);
+    assert.strictEqual(s.groups['after cold getSalesStats'].length, 1, 'ONLY the eligible, attributed cold sample enters the cold statistics');
+    assert.deepStrictEqual(s.excluded, { 'cold run → ambiguous': 1, 'cold run → uncorrelated': 1, 'cold run → warm': 1, 'cold run → ineligible (preflight_status_500)': 1 },
+      'the OPTIONS-500 sample is excluded even though it is attributed cold');
+    assert.strictEqual(JSON.parse(fs.readFileSync(f('cold.attributed.json'), 'utf8')).rows.length, 5);
+    assert.throws(() => P.summarize(file, { logs: true, read, nowMs: Date.parse('2026-10-07T12:07:00Z'), print: silent }), /at least 5 minutes/);
     const u = P.summarize(file, { logs: false, print: silent });
     assert.deepStrictEqual(Object.keys(u.groups), ['after cold (UNATTRIBUTED: run with --logs; not evidence of a cold start) getSalesStats']);
+    assert.strictEqual(u.evidencePath, null, 'no artifact without --logs');
   }
-  ok('summarize --logs (injected read-only reader): request logs fetched by the legs\' trace ids, startup logs only for the matched instances; of 4 cold-run samples only the attributed cold one is counted — warm / ambiguous / uncorrelated are EXCLUDED and counted; a read < 5 min after the run is refused; without --logs cold samples are labelled UNATTRIBUTED');
+  ok('summarize: of 5 cold-run samples only the eligible attributed-cold one counts — warm / ambiguous / uncorrelated and an attributed-cold OPTIONS-500 sample are excluded and counted; reads < 5 min after the run are refused; without --logs cold samples are UNATTRIBUTED and no artifact is written');
 
   fs.rmSync(tmp, { recursive: true, force: true });
   __finished = true;
