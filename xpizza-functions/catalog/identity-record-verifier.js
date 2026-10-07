@@ -200,14 +200,14 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
   async function verify({ listIds, runBudgetMs = IDENTITY_RUN_BUDGET_MS, restaurantBudgetMs = IDENTITY_RESTAURANT_BUDGET_MS,
     listDeadlineMs = IDENTITY_LIST_DEADLINE_MS, cursorOpMs = CURSOR_OP_DEADLINE_MS, ...opts } = {}) {
     let ids;
-    try { ids = sanitize(await race(Promise.resolve().then(() => listIds()), listDeadlineMs, 'identity_verify_list')).slice().sort(); } catch (e) {
+    try { ids = sanitize(await boundedWork(makeDeadline(listDeadlineMs, now), () => listIds(), listDeadlineMs, 'identity_verify_list'))   /* started and ACCEPTED only inside the list deadline */.slice().sort(); } catch (e) {
       log('identity_record_check_run', { ok: false, error: String((e && e.message) || e).slice(0, 160) });
       return { ok: false, results: [] };
     }
     // schedule-level cursor ops sit OUTSIDE the restaurant budgets: each is gated by its OWN cursor-op deadline
-    const rcursor = (label) => gateIo(rtdb, makeDeadline(cursorOpMs, now), label).ref(VERIFY_RESTAURANT_CURSOR_PATH);
+    const rcursor = (label) => { const g = makeDeadline(cursorOpMs, now); return { g, ref: gateIo(rtdb, g, label).ref(VERIFY_RESTAURANT_CURSOR_PATH) }; };
     let observed;
-    try { observed = await readCursor(rcursor('restaurant_cursor'), { ms: cursorOpMs }); } catch (_) {
+    try { observed = await readCursor(rcursor('restaurant_cursor').ref, { ms: cursorOpMs }); } catch (_) {
       log('identity_record_check_run', { ok: false, error: 'restaurant_cursor_unreadable' });
       return { ok: false, results: [] };
     }
@@ -225,7 +225,8 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     }
     const nextCursor = done.length === order.length ? { generation: observed.generation + 1, position: null }
       : done.length ? { generation: observed.generation, position: done[done.length - 1] } : null;
-    const cas = nextCursor ? await casCursor(rcursor('restaurant_checkpoint'), observed, nextCursor, { ms: cursorOpMs, now }) : null;
+    const fc = rcursor('restaurant_checkpoint');
+    const cas = nextCursor ? await casCursor(fc.ref, observed, nextCursor, { ms: cursorOpMs, now, isStopped: () => fc.g.stopped() }) : null;
     const totals = {};
     for (const r of results) for (const x of r.rungs || []) totals[`${x.rung}:${x.category}`] = (totals[`${x.rung}:${x.category}`] || 0) + 1;
     log('identity_record_check_run', { ok: true, restaurants: ids.length, checked: done.length, totals, cursor: nextCursor, cas });

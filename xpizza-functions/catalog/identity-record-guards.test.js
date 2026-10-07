@@ -93,6 +93,18 @@ try {
     assert.ok(/const grtdb = gateIo\(rtdb, g, 'write'\);/.test(wr), 'the write\'s rtdb handle is the gated one');
     assert.ok(/nodeRefOf\(grtdb, rid, versionId\)\.transaction\(/.test(wr) && /const nodeRefOf = \(rtdb, rid, versionId\) => rtdb\.ref\(`\$\{IDENTITY_PATH\}\/\$\{rid\}\/\$\{versionId\}`\)/.test(wr));
     assert.ok(/IDENTITY_PATH = 'catalog_ctx'/.test(code['catalog/identity-record.js']));
+    // codex c1 build r5 (d) — NO RAW HANDLE BY CLOSURE: in the writer and verifier, every bare `db` / `rtdb` is a parameter
+    // definition, the first argument of gateIo(), an argument to a function that REQUIRES a gate and wraps at once
+    // (readVersionSnapshot / loadVersionNode / d4aProjection / requireGated), or a builder taking an already-gated handle.
+    // Anything else (e.g. `rtdb.ref(…).get()` on the factory's raw handle) fails here; the runtime instrument backs it.
+    const ALLOWED = [
+      /\bgateIo\((db|rtdb),/g, /\b(db|rtdb): gateIo\(/g, /\b(readVersionSnapshot|loadVersionNode|d4aProjection)\((db|rtdb),/g, /\brequireGated\(db,/g,
+      /= \((db|rtdb), rid, versionId\) => (db|rtdb)\./g, /\basync function versionPage\(db,/g, /\blet q = db\.collection\(/g,
+      /\{ db, rtdb, now/g, /^\s*db, rtdb, now = Date\.now,/gm, /GATED io handles \{ db, rtdb \}/g,
+    ];
+    const bareLeft = (src) => { let t = src; for (const re of ALLOWED) t = t.replace(re, ''); return (t.match(/(^|[^.\w$])(db|rtdb)\b(?!\s*:)/gm) || []).length; };
+    for (const f of ['catalog/identity-record-writer.js', 'catalog/identity-record-verifier.js']) assert.strictEqual(bareLeft(code[f]), 0, `🔴 ${f}: a raw db / rtdb handle is used outside the gate`);
+    for (const planted of ["const s = await rtdb.ref('x').get();", 'return readVersionDocs(db, rid, v);', 'const q = db.collection("x");']) assert.ok(bareLeft(planted) > 0, `sensitivity: ${planted}`);
     assert.strictEqual((code['catalog/identity-record-verifier.js'].match(/\.transaction\(/g) || []).length, 0, 'the verifier writes only through casCursor');
     for (const [f, src] of Object.entries(code)) {
       assert.ok(!/catalog_snapshot_ctx|CONTEXT_PATH|active_snapshot|makeRtdbMirror\(|publishVersion|rollbackVersion|bootstrapIdentityStamps|flipPointer/.test(src), `🔴 ${f} references a D4-a / publish artifact`);

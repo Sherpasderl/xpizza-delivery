@@ -83,15 +83,57 @@ function requireGate(gate, where) {
   if (!gate || typeof gate.stopped !== 'function' || typeof gate.remaining !== 'function') throw new TypeError(`${where}: an I/O gate { stopped, remaining } is required`);
   return gate;
 }
-const needIo = (io) => { if (!io || !io.db || !io.rtdb) throw new TypeError('reader: gated io handles { db, rtdb } are required'); return io; };
+const needIo = (io) => { if (!io || !isGated(io.db) || !isGated(io.rtdb)) throw new TypeError('reader: GATED io handles { db, rtdb } (gateIo) are required'); return io; };
 const bothGates = (a, b) => ({ stopped: () => a.stopped() || b.stopped(), remaining: () => Math.min(a.remaining(), b.remaining()) });
 const IO_METHODS = new Set(['get', 'getAll', 'runTransaction', 'transaction', 'on', 'once', 'set', 'update', 'create', 'delete', 'remove', 'push', 'add', 'onSnapshot', 'listDocuments', 'listCollections']);
 const SYNC_IO = new Set(['on', 'onSnapshot']);
 const RAW = new WeakMap();
-const rawOf = (x) => (x !== null && (typeof x === 'object' || typeof x === 'function') && RAW.has(x) ? RAW.get(x) : x);
+const isGated = (x) => x !== null && typeof x === 'object' && RAW.has(x);
+const rawOf = (x) => (isGated(x) ? RAW.get(x) : x);
+function requireGated(handle, where) {
+  if (!isGated(handle)) throw new TypeError(`${where}: a GATED handle (gateIo) is required — a raw handle could start I/O past the deadline`);
+  return handle;
+}
+// RESULTS keep the gate (codex c1 build r5 S3) — a FINITE wrap of the reference-bearing fields of SDK results, never an
+// open-ended proxy: Firestore DocumentSnapshot / QueryDocumentSnapshot `.ref`, QuerySnapshot `.query`, `.docs[]`,
+// `forEach`, `docChanges()[].doc`, getAll arrays; RTDB DataSnapshot `.ref`, `child()`, `forEach` children, and a
+// transaction result's `.snapshot`. Everything else (data(), val(), exists, id, key, …) is the snapshot's own.
+function gateResult(x, gate, label) {
+  if (x === null || typeof x !== 'object') return x;
+  if (Array.isArray(x)) return x.map((e) => gateResult(e, gate, label));
+  return new Proxy(x, {
+    get(t, k) {
+      const v = Reflect.get(t, k, t);
+      if (k === 'ref' || k === 'query') return v !== null && typeof v === 'object' ? gateIo(v, gate, label) : v;
+      if ((k === 'docs') && Array.isArray(v)) return v.map((d) => gateResult(d, gate, label));
+      if (k === 'snapshot') return gateResult(v, gate, label);
+      if (typeof v !== 'function' || typeof k === 'symbol' || k === 'constructor') return v;
+      if (k === 'child') return (...a) => gateResult(v.apply(t, a), gate, label);
+      if (k === 'forEach') return (cb, ...rest) => v.call(t, (c, ...r) => cb(gateResult(c, gate, label), ...r), ...rest);
+      if (k === 'docChanges') return (...a) => v.apply(t, a).map((ch) => ({ type: ch.type, oldIndex: ch.oldIndex, newIndex: ch.newIndex, doc: gateResult(ch.doc, gate, label) }));
+      return v.bind(t);
+    },
+  });
+}
+// Listener callbacks receive gated snapshots; the wrapper is remembered per (callback, gate) so `off(cb)` — through any
+// handle of the same gate, e.g. another ref instance of the same path, as the SDK allows — still detaches it (callback
+// identity is preserved for the caller: `on` returns the caller's own callback).
+const WRAPPED_CB = new WeakMap();
+function wrapCallback(cb, gate, label) {
+  if (typeof cb !== 'function') return cb;
+  let per = WRAPPED_CB.get(cb);
+  if (!per) { per = new WeakMap(); WRAPPED_CB.set(cb, per); }
+  if (!per.has(gate)) per.set(gate, function gatedListener(snap, ...rest) { return cb.call(this, gateResult(snap, gate, label), ...rest); });
+  return per.get(gate);
+}
+const wrappedOf = (cb, gate) => { const per = typeof cb === 'function' ? WRAPPED_CB.get(cb) : null; return per && per.has(gate) ? per.get(gate) : cb; };
 function gateIo(target, gate, label = 'io') {
   requireGate(gate, 'gateIo');
   if (target === null || typeof target !== 'object') return target;
+  // 🔴 COMPLETION is gated too (codex c1 build r5 S1): Promise.race lets a completion beat an overdue timer, so a result
+  // is accepted only if the gate is STILL open when it arrives — a late result rejects WorkDeadline (a late write / CAS
+  // acknowledgement is therefore reported as not settled / false: conservative; the next run redoes it idempotently).
+  const settle = (p) => Promise.resolve(p).then((res) => { if (gate.stopped()) throw new WorkDeadline(label); return gateResult(res, gate, label); });
   const proxy = new Proxy(target, {
     get(t, k) {
       const v = Reflect.get(t, k, t);
@@ -100,10 +142,16 @@ function gateIo(target, gate, label = 'io') {
       if (typeof v !== 'function') return v;
       return (...args) => {
         const a = args.map(rawOf);
+        if (k === 'off') { if (typeof a[1] === 'function') a[1] = wrappedOf(a[1], gate); return v.apply(t, a); }   // cleanup always passes
         if (IO_METHODS.has(k)) {
           if (gate.stopped()) { const e = new WorkDeadline(label); if (SYNC_IO.has(k)) throw e; return Promise.reject(e); }
-          if (k === 'runTransaction' && typeof a[0] === 'function') { const fn = a[0]; return v.call(t, (tx) => fn(gateIo(tx, gate, label)), ...a.slice(1)); }
-          return v.apply(t, a);   // I/O results (snapshots, promises) are data — returned unwrapped
+          if (k === 'runTransaction' && typeof a[0] === 'function') { const fn = a[0]; return settle(v.call(t, (tx) => fn(gateIo(tx, gate, label)), ...a.slice(1))); }
+          if (SYNC_IO.has(k)) {
+            const i = a.findIndex((x) => typeof x === 'function');   // the value callback; a cancel callback gets an error, not a snapshot
+            if (i >= 0) { const own = a[i]; a[i] = wrapCallback(own, gate, label); v.apply(t, a); return own; }
+            return v.apply(t, a);
+          }
+          return settle(v.apply(t, a));
         }
         const out = v.apply(t, a);
         return out !== null && typeof out === 'object' && typeof out.then !== 'function' ? gateIo(out, gate, label) : out;
@@ -121,7 +169,10 @@ function boundedWork(work, thunk, ms, label) {
   const byWork = !(ms < work.remaining());   // the operation's limit IS the work budget → its timeout means work expiry
   let p;
   try { p = thunk(); } catch (e) { p = Promise.reject(e); }
-  return race(p, left, label).catch((e) => {
+  return race(p, left, label).then((v) => {
+    if (work.stopped()) throw new WorkDeadline(label);   // completion past the deadline is not accepted (codex c1 build r5 S1)
+    return v;
+  }, (e) => {
     if (e && (e.workDeadline || (e.timeout && (byWork || work.stopped())))) throw new WorkDeadline(label);
     throw e;
   });
@@ -172,6 +223,7 @@ function race(promise, ms, label) {
 }
 // Bounded read. Throws `cursor_read_timeout` past the deadline.
 async function readCursor(ref, { ms = CURSOR_OP_DEADLINE_MS } = {}) {
+  requireGated(ref, 'readCursor');
   const snap = await race(ref.get(), ms, 'cursor_read');
   return normCursor(snap && typeof snap.val === 'function' ? snap.val() : null);
 }
@@ -185,7 +237,9 @@ async function readCursor(ref, { ms = CURSOR_OP_DEADLINE_MS } = {}) {
 // stop has passed — so a retry after abandonment can never commit. (A write the callback produced BEFORE the deadline may
 // still be acknowledged later; it is the exact compare-and-set the caller asked for, against the value it observed.)
 // → true only when this call committed.
-async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now = Date.now, isStopped = () => false } = {}) {
+async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now = Date.now, isStopped } = {}) {
+  requireGated(ref, 'casCursor');
+  if (typeof isStopped !== 'function') throw new TypeError('casCursor: the caller\'s isStopped is required (no no-op default)');
   const want = canonicalJson(normCursor(observed));
   const until = now() + ms;
   let abandoned = false;
@@ -248,6 +302,7 @@ async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now 
 const isCursorSeq = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
 const positionOf = (v) => ({ seq: v.seq, versionId: v.versionId });
 async function versionPage(db, rid, position, limit) {
+  requireGated(db, 'versionPage');
   let q = db.collection('restaurants').doc(rid).collection('versions')
     .where('seq', '>=', 0).where('seq', '<=', Number.MAX_SAFE_INTEGER)
     .orderBy('seq', 'desc').orderBy(FieldPath.documentId(), 'desc');
@@ -268,9 +323,11 @@ function createIdentityRecordWriter({
   const stats = { reads: 0, transactions: 0, callbackCalls: 0, versionDocsFetched: 0 };
 
   // writeVersion(rid, versionId) → { rid, versionId, settled, committed, outcomes, ... }. NEVER rejects; bounded.
-  function writeVersion(rid, versionId, { deadlineMs = IDENTITY_TRIGGER_DEADLINE_MS, source = 'direct', gate = null } = {}) {
+  // The caller's GATE is REQUIRED (codex c1 build r5 S2): missing / null / malformed → throws; the trigger passes its own.
+  function writeVersion(rid, versionId, { deadlineMs = IDENTITY_TRIGGER_DEADLINE_MS, source = 'direct', gate } = {}) {
+    requireGate(gate, 'writeVersion');
     const stop = makeDeadline(deadlineMs, now);
-    const g = gate ? bothGates(stop, requireGate(gate, 'writeVersion')) : stop;   // its own deadline, inside the caller's gate
+    const g = bothGates(stop, gate);   // its own deadline, inside the caller's gate
     const gdb = gateIo(db, g, 'write');
     const grtdb = gateIo(rtdb, g, 'write');
     const report = (r) => { const out = { rid, versionId, source, ...r }; log('identity_record_write', out); return out; };
@@ -317,7 +374,7 @@ function createIdentityRecordWriter({
     try {
       if (value === null || value === undefined) { log('identity_record_trigger', { rid, outcome: 'deleted_noop' }); return { rid, outcomes: ['deleted_noop'] }; }
       if (typeof value !== 'object' || !isPathKey(value.version)) { log('identity_record_trigger', { rid, outcome: 'malformed_noop' }); return { rid, outcomes: ['malformed_noop'] }; }
-      return await writeVersion(rid, value.version, { deadlineMs, source: 'trigger' });
+      return await writeVersion(rid, value.version, { deadlineMs, source: 'trigger', gate: makeDeadline(deadlineMs, now) });
     } catch (e) {
       log('identity_record_trigger', { rid, outcome: 'failed', error: String((e && e.message) || e).slice(0, 160) });
       return { rid, outcomes: ['failed'] };
@@ -358,8 +415,9 @@ function createIdentityRecordWriter({
       if (vid && vid.error) { out.rungs[name] = { outcomes: [vid.workDeadline ? 'budget_exhausted' : 'rung_read_failed'], error: vid.error }; continue; }
       if (!vid) { out.rungs[name] = { outcomes: ['no_version'] }; continue; }
       if (Object.values(out.rungs).some((x) => x.versionId === vid)) { out.rungs[name] = { versionId: vid, outcomes: ['same_as_mirror'] }; continue; }
+      // a rung read completing past either limit was already refused by boundedWork; `left` can only be ≤ 0 on a
+      // sub-millisecond boundary, where writeVersion's own gate refuses all I/O and reports an unsettled timeout
       const left = Math.min(ms - (now() - t0), work.remaining());
-      if (left <= 0) { out.rungs[name] = { versionId: vid, outcomes: ['budget_exhausted'], settled: false }; continue; }
       const res = await writeVersion(rid, vid, { deadlineMs: left, source: `reconcile_${name}`, gate: work });
       out.rungs[name] = { versionId: vid, outcomes: res.outcomes, settled: res.settled };
     }
@@ -422,15 +480,15 @@ function createIdentityRecordWriter({
   } = {}) {
     let ids;
     try {
-      ids = sanitize(await race(Promise.resolve().then(() => listIds()), listDeadlineMs, 'identity_reconcile_list')).slice().sort();
+      ids = sanitize(await boundedWork(makeDeadline(listDeadlineMs, now), () => listIds(), listDeadlineMs, 'identity_reconcile_list'))   /* started and ACCEPTED only inside the list deadline */.slice().sort();
     } catch (e) {
       log('identity_reconcile', { ok: false, error: String((e && e.message) || e).slice(0, 160) });
       return { ok: false, results: [] };
     }
     // schedule-level cursor ops sit OUTSIDE the restaurant budgets: each is gated by its OWN cursor-op deadline
-    const rcursor = (label) => gateIo(rtdb, makeDeadline(cursorOpMs, now), label).ref(RESTAURANT_CURSOR_PATH);
+    const rcursor = (label) => { const g = makeDeadline(cursorOpMs, now); return { g, ref: gateIo(rtdb, g, label).ref(RESTAURANT_CURSOR_PATH) }; };
     let observed;
-    try { observed = await readCursor(rcursor('restaurant_cursor'), { ms: cursorOpMs }); } catch (e) {
+    try { observed = await readCursor(rcursor('restaurant_cursor').ref, { ms: cursorOpMs }); } catch (e) {
       log('identity_reconcile', { ok: false, error: 'restaurant_cursor_unreadable' });
       return { ok: false, results: [] };   // without the observed cursor no CAS is possible: do nothing rather than guess
     }
@@ -451,7 +509,8 @@ function createIdentityRecordWriter({
     const reachedEnd = settledRids.length === order.length;
     const nextCursor = reachedEnd ? { generation: observed.generation + 1, position: null }
       : settledRids.length ? { generation: observed.generation, position: settledRids[settledRids.length - 1] } : null;
-    const cas = nextCursor ? await casCursor(rcursor('restaurant_checkpoint'), observed, nextCursor, { ms: cursorOpMs, now }) : null;
+    const fc = rcursor('restaurant_checkpoint');
+    const cas = nextCursor ? await casCursor(fc.ref, observed, nextCursor, { ms: cursorOpMs, now, isStopped: () => fc.g.stopped() }) : null;
     const counts = {};
     const oversize = {};   // §3b rollout check: per restaurant, every `oversize` refusal (expected: none)
     for (const r of results) {
@@ -470,7 +529,7 @@ function createIdentityRecordWriter({
 }
 
 module.exports = {
-  workDeadline, boundedWork, isCursorSeq, gateIo, bothGates, requireGate, needIo, WorkDeadline,
+  workDeadline, boundedWork, isCursorSeq, gateIo, gateResult, bothGates, requireGate, requireGated, isGated, needIo, WorkDeadline,
   createIdentityRecordWriter, readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, versionPage, makeDeadline, race,
   CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
   IDENTITY_TRIGGER_DEADLINE_MS, IDENTITY_TRIGGER_TIMEOUT_S, IDENTITY_RECONCILE_INTERVAL, IDENTITY_RECONCILE_INTERVAL_MS,

@@ -96,7 +96,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   const uV1 = await seedPreP1('synthetic_uncert', { dataFrom: 'x_pizza' });
   // revision 0 → 1 discovery: record the PRE-certification state FIRST, then certify through the real bootstrap
   const w0 = writer();
-  const pre = await w0.writeVersion('x_pizza', xV1, { source: 'test' });
+  const pre = await w0.writeVersion('x_pizza', xV1, { source: 'test', gate: W.makeDeadline(60000) });
   assert.ok(pre.committed && pre.outcomes.includes('inserted') && pre.outcomes.includes('head_advanced'), JSON.stringify(pre));
   const preHead = (await nodeOf('x_pizza', xV1)).head;
   assert.strictEqual(preHead.ck.revision, 0, 'premise — the pre-P1 version is revision 0');
@@ -196,7 +196,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     const hungDb = { collection: () => ({ doc: () => ({ collection: () => ({}) }) }), runTransaction: never };
     const hung = W.createIdentityRecordWriter({ db: hungDb, rtdb, log: capture });
     const t0 = Date.now();
-    const pending = hung.writeVersion('la_musa', lV1, { deadlineMs: 400, source: 'test' });
+    const pending = hung.writeVersion('la_musa', lV1, { deadlineMs: 400, source: 'test', gate: W.makeDeadline(60000) });
     await rtdb.ref(`${CONTEXT_PATH}/la_musa`).remove();
     await app.writeCatalogContextOnMirror.run(mirrorEvent('la_musa', lm));
     assert.strictEqual((await rtdb.ref(`${CONTEXT_PATH}/la_musa`).get()).val().head.versionId, lV1, 'the D4-a trigger completes while an identity invocation hangs');
@@ -212,7 +212,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   {
     const rid = 'oldexec';
     const v = await seedPreP1(rid, { dataFrom: 'x_pizza' });
-    const r0 = await writer().writeVersion(rid, v, { source: 'test' });
+    const r0 = await writer().writeVersion(rid, v, { source: 'test', gate: W.makeDeadline(60000) });
     assert.ok(r0.committed);
     const h0 = (await nodeOf(rid, v)).head;
     // the old executable writes stamps ONE AT A TIME (no revision bump; the version record is untouched until the end)
@@ -223,7 +223,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       await doc.ref.update({ 'display.identity_id': row.canonical_id });
     };
     await stampOne(docs[0]);   // captured MID-WRITE: same record updateTime → equal CK, different content
-    const mid = await writer().writeVersion(rid, v, { source: 'test' });
+    const mid = await writer().writeVersion(rid, v, { source: 'test', gate: W.makeDeadline(60000) });
     assert.ok(mid.outcomes.includes('ck_conflict'), `equal CK + different digest → ck_conflict (${mid.outcomes})`);
     const hMid = (await nodeOf(rid, v)).head;
     assert.deepStrictEqual(hMid, h0, 'head unchanged by the conflicting capture');
@@ -235,7 +235,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     }
     await vref.update({ identity_certified: true });   // the final certification: the record's updateTime advances
     assert.strictEqual((await vref.get()).data().identity_revision, undefined, 'premise — NO revision bump (old executable)');
-    const fin = await writer().writeVersion(rid, v, { source: 'test' });
+    const fin = await writer().writeVersion(rid, v, { source: 'test', gate: W.makeDeadline(60000) });
     assert.ok(fin.outcomes.includes('head_advanced'), `recovered by the greater CK (${fin.outcomes})`);
     const node = await nodeOf(rid, v);
     assert.strictEqual(node.head.ck.revision, 0);
@@ -298,18 +298,18 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       const passes = runs.length;
       assert.ok(fetched <= passes * (all.length + pagesRun1 + 1), `documents fetched ${fetched} ≤ ${passes} × (${all.length} versions + ${pagesRun1} look-aheads + 1)`);
       assert.ok(fetched < passes * all.length * pagesRun1, `…far below a per-page scan (${passes * all.length * pagesRun1})`);
-      const q = await W.versionPage(fs, rid, null, 6);
+      const q = await W.versionPage(W.gateIo(fs, W.makeDeadline(60000)), rid, null, 6);
       assert.strictEqual(q.length, 6, 'a page query returns at most its limit');
       const expect = W.orderVersions(all.map((v, i) => ({ versionId: v, seq: i === 0 ? (rec.seq || 1) : (rec.seq || 1) + i }))).slice(0, 6);
       assert.deepStrictEqual(q, expect, 'in the fixed order: seq desc, ties versionId desc');
-      const q2 = await W.versionPage(fs, rid, { seq: q[5].seq, versionId: q[5].versionId }, 6);
+      const q2 = await W.versionPage(W.gateIo(fs, W.makeDeadline(60000)), rid, { seq: q[5].seq, versionId: q[5].versionId }, 6);
       assert.deepStrictEqual(q2[0], W.orderVersions(all.map((v, i) => ({ versionId: v, seq: i === 0 ? (rec.seq || 1) : (rec.seq || 1) + i })))[6], 'startAfter the persisted position');
       // malformed / missing seq: not reached by the sweep (the constructor would refuse it anyway — seq_malformed)
       await vrefOf(rid, `${v1}-noseq`).set({ ...rec, version: `${v1}-noseq`, seq: 'x' });
       await vrefOf(rid, `${v1}-negseq`).set({ ...rec, version: `${v1}-negseq`, seq: -3 });
       const everything = [];
       let pos = null;
-      for (;;) { const pg = await W.versionPage(fs, rid, pos, 7); if (!pg.length) break; everything.push(...pg); pos = pg[pg.length - 1]; }
+      for (;;) { const pg = await W.versionPage(W.gateIo(fs, W.makeDeadline(60000)), rid, pos, 7); if (!pg.length) break; everything.push(...pg); pos = pg[pg.length - 1]; }
       assert.ok(!everything.some((v) => /noseq|negseq/.test(v.versionId)), 'versions without a non-negative numeric seq are not paged');
       assert.strictEqual(everything.length, all.length, 'a STATIC set: one pass pages every numeric-seq version, each once');
       assert.strictEqual(R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, `${v1}-noseq`, W.makeDeadline(30000))).reason, 'seq_malformed', '…and could never have a record');
@@ -362,7 +362,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       assert.deepStrictEqual([row.cursor.advanced, row.cursor.prefix], [true, 2], JSON.stringify(row.cursor));
       assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: g, position: { seq: top[1].seq, versionId: top[1].versionId } },
         '🔴 the checkpoint is the last version of the settled PREFIX, not the end of the page');
-      await writer().writeVersion(rid, top[2].versionId, { source: 'test' });   // restore the record for the cells below
+      await writer().writeVersion(rid, top[2].versionId, { source: 'test', gate: W.makeDeadline(60000) });   // restore the record for the cells below
     }
     // the deployed scheduled function runs end-to-end over the Firestore registry
     await app.reconcileIdentityRecords.run({});
@@ -445,7 +445,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       await put('neginf', -Infinity, false);
       await put('nan', NaN, false);
       assert.ok(!W.isCursorSeq(Infinity) && !W.isCursorSeq(2 ** 53 + 2) && !W.isCursorSeq(NaN) && !W.isCursorSeq(-1) && W.isCursorSeq(7.5) && W.isCursorSeq(0) && W.isCursorSeq(Number.MAX_SAFE_INTEGER));
-      const p1 = await W.versionPage(fs, srid, null, 2);
+      const p1 = await W.versionPage(W.gateIo(fs, W.makeDeadline(60000)), srid, null, 2);
       assert.deepStrictEqual(p1.map((v) => v.versionId), ['s10', 's09'], '🔴 Infinity / unsafe integers are excluded at the query — never a page row, never a position');
       // the fraction ends a page: c-style stall on the version after it (s07) → the persisted position IS the fraction
       const cref = rtdb.ref(`${W.VERSION_CURSOR_PATH}/${srid}`);
@@ -538,19 +538,21 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   {
     for (const path of [`${W.VERSION_CURSOR_PATH}/cas_probe`, W.RESTAURANT_CURSOR_PATH]) {
       const ref = rtdb.ref(path);
+      const gref = () => W.gateIo(rtdb, W.makeDeadline(60000)).ref(path);   // the primitives take GATED handles
+      const cas = (o, nx) => W.casCursor(gref(), o, nx, { isStopped: () => false });
       await ref.set({ generation: 4, position: path.includes('probe') ? { seq: 30, versionId: 'v30' } : 'aaa' });
-      const observed = await W.readCursor(ref);   // two runs observe the SAME cursor
+      const observed = await W.readCursor(gref());   // two runs observe the SAME cursor
       const farther = path.includes('probe') ? { generation: 4, position: { seq: 10, versionId: 'v10' } } : { generation: 4, position: 'mmm' };
       const partial = path.includes('probe') ? { generation: 4, position: { seq: 25, versionId: 'v25' } } : { generation: 4, position: 'ccc' };
-      assert.strictEqual(await W.casCursor(ref, observed, farther), true, 'the faster run commits the farther checkpoint');
-      assert.strictEqual(await W.casCursor(ref, observed, partial), false, '🔴 the slower partial checkpoint cannot replace it');
+      assert.strictEqual(await cas(observed, farther), true, 'the faster run commits the farther checkpoint');
+      assert.strictEqual(await cas(observed, partial), false, '🔴 the slower partial checkpoint cannot replace it');
       assert.deepStrictEqual(W.normCursor((await ref.get()).val()), W.normCursor(farther));
       // wraparound: a run wraps to the next generation; a stale pre-wraparound checkpoint cannot replace it
-      const obs2 = await W.readCursor(ref);
+      const obs2 = await W.readCursor(gref());
       const stale = { ...obs2 };   // captured before the wrap
-      assert.strictEqual(await W.casCursor(ref, obs2, { generation: 5, position: null }), true, 'wrap → generation 5');
+      assert.strictEqual(await cas(obs2, { generation: 5, position: null }), true, 'wrap → generation 5');
       const lateCheckpoint = path.includes('probe') ? { generation: 4, position: { seq: 5, versionId: 'v05' } } : { generation: 4, position: 'zzz' };
-      assert.strictEqual(await W.casCursor(ref, stale, lateCheckpoint), false, '🔴 a stale pre-wraparound checkpoint cannot replace the next generation');
+      assert.strictEqual(await cas(stale, lateCheckpoint), false, '🔴 a stale pre-wraparound checkpoint cannot replace the next generation');
       assert.deepStrictEqual(W.normCursor((await ref.get()).val()), { generation: 5, position: null });
     }
     // and through the real reconcile: two OVERLAPPING runs over the restaurant cursor — the slower one (fewer restaurants
@@ -620,7 +622,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     assert.strictEqual(wrongSeq.category, 'not_attached', 'a wrong seq does not attach');
     // a record removed → unavailable (never certified:false)
     await rtdb.ref(`${R.IDENTITY_PATH}/synthetic_uncert`).remove();
-    const gone = await ver.checkRung('synthetic_uncert', 'active', await ver.readers.activeServed('synthetic_uncert', (await getActivePointer(fs, 'synthetic_uncert')).version, { db: fs, rtdb }), W.makeDeadline(30000));
+    const gone = await ver.checkRung('synthetic_uncert', 'active', await ver.readers.activeServed('synthetic_uncert', (await getActivePointer(fs, 'synthetic_uncert')).version, { db: W.gateIo(fs, W.makeDeadline(60000)), rtdb: W.gateIo(rtdb, W.makeDeadline(60000)) }), W.makeDeadline(30000));
     assert.strictEqual(gone.category, 'unavailable');
     await app.verifyIdentityRecords.run({});   // the deployed scheduled function runs end-to-end
   }

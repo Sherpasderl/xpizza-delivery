@@ -5,7 +5,9 @@
 const assert = require('assert');
 const crypto = require('crypto');
 const R = require('./identity-record');
-const { createIdentityRecordWriter, casCursor, readCursor, CURSOR_OP_DEADLINE_MS } = require('./identity-record-writer');
+const { createIdentityRecordWriter, casCursor, readCursor, CURSOR_OP_DEADLINE_MS, gateIo, makeDeadline: mkDeadline } = require('./identity-record-writer');
+// cursor-primitive fixtures run on GATED fake refs (the primitives refuse raw handles); this test gate never closes
+const OPEN_GATE = { stopped: () => false, remaining: () => 1e9 };
 const { createIdentityVerifier } = require('./identity-record-verifier');
 const { buildContext } = require('./catalog-context');
 const { contentHash } = require('./content-hash');
@@ -449,17 +451,17 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       },
     }) });
     const w = createIdentityRecordWriter({ db: fakeDb, rtdb: fakeRtdb('normal'), log: (k, d) => logs.push({ k, d }) });
-    const r1 = await within(w.writeVersion('x_pizza', 'v-test'), 2000, 'writeVersion r1');
+    const r1 = await within(w.writeVersion('x_pizza', 'v-test', { gate: mkDeadline(60000) }), 2000, 'writeVersion r1');
     assert.deepStrictEqual([r1.committed, r1.settled], [true, true]);
     assert.strictEqual(logs.filter((l) => l.k === 'identity_record_write').length, 1, 'ONE log line, after the transaction settled');
-    const r2 = await within(w.writeVersion('x_pizza', 'v-test'), 2000, 'writeVersion r2');
+    const r2 = await within(w.writeVersion('x_pizza', 'v-test', { gate: mkDeadline(60000) }), 2000, 'writeVersion r2');
     assert.deepStrictEqual([r2.committed, calls], [false, ['write', 'abort']], 'retry with the stored value → no-op');
     // abandonment: the deadline expires between the callback's first call and the retry → aborted, nothing committed
     delete store['catalog_ctx/x_pizza/v-test'];
     store['catalog_ctx/x_pizza/v-test'] = clone(step(null, cand(rawFor('x_pizza', { revision: 0 }))).node);
     const before = canonicalJson(store['catalog_ctx/x_pizza/v-test']);
     const w2 = createIdentityRecordWriter({ db: fakeDb, rtdb: fakeRtdb('expire-between'), log: () => {} });
-    const r3 = await within(w2.writeVersion('x_pizza', 'v-test', { deadlineMs: 15 }), 1000, 'abandoned writeVersion');
+    const r3 = await within(w2.writeVersion('x_pizza', 'v-test', { deadlineMs: 15, gate: mkDeadline(60000) }), 1000, 'abandoned writeVersion');
     assert.ok(['aborted', 'timeout'].includes(r3.outcomes[0]) && r3.committed === false, JSON.stringify(r3));
     await new Promise((r) => setTimeout(r, 60));
     assert.strictEqual(canonicalJson(store['catalog_ctx/x_pizza/v-test']), before, '🔴 an abandoned write commits nothing');
@@ -472,35 +474,35 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     // an instrumented ref: counts live listeners, captures the transaction callback, configurable stalls
     const mkRef = ({ fireOn = true, cancel = false, txStall = false, value = { generation: 3 } } = {}) => {
       const st = { listeners: 0, txFn: null, onCalls: 0, offCalls: 0 };
-      return { st, ref: {
+      return { st, ref: gateIo({
         on: (ev, cb, onCancel) => { st.listeners += 1; st.onCalls += 1; if (cancel) setTimeout(() => onCancel(new Error('permission')), 5); else if (fireOn) setTimeout(() => cb({ val: () => value }), 5); return cb; },
         off: () => { st.listeners -= 1; st.offCalls += 1; },
         get: () => (txStall === 'get' ? never() : Promise.resolve({ val: () => value })),
         transaction: (fn) => { st.txFn = fn; if (txStall) return never(); const v = fn(value); return Promise.resolve({ committed: v !== undefined }); },
-      } };
+      }, OPEN_GATE) };
     };
     const ms = 60;
     const timed = async (p) => { const t0 = Date.now(); const v = await within(p, ms + 1000, 'casCursor'); return [v, Date.now() - t0]; };
     // success
     let x = mkRef();
-    let [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    let [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms, isStopped: () => false }));
     assert.deepStrictEqual([v, x.st.listeners, x.st.onCalls, x.st.offCalls], [true, 0, 1, 1], 'success: committed, ONE listener attached and detached');
     // mismatch (a farther cursor): refused, detached
     x = mkRef({ value: { generation: 3, position: 'zz' } });
-    [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms, isStopped: () => false }));
     assert.deepStrictEqual([v, x.st.listeners], [false, 0]);
     // stalled INITIALIZATION (the listener's first event never comes): bounded, detached, no transaction attempted
     x = mkRef({ fireOn: false });
-    let el; [v, el] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    let el; [v, el] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms, isStopped: () => false }));
     assert.deepStrictEqual([v, x.st.listeners, x.st.txFn], [false, 0, null], 'stalled init → false, listener detached');
     assert.ok(el < ms + 200, `bounded (${el} ms)`);
     // cancellation (listener cancelled by the server)
     x = mkRef({ cancel: true });
-    [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms, isStopped: () => false }));
     assert.deepStrictEqual([v, x.st.listeners], [false, 0], 'cancelled → false, detached');
     // stalled TRANSACTION: bounded, detached, and a LATE retry of the callback (after abandonment) refuses to write
     x = mkRef({ txStall: true });
-    [v, el] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    [v, el] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms, isStopped: () => false }));
     assert.deepStrictEqual([v, x.st.listeners], [false, 0], 'stalled transaction → false, detached');
     assert.ok(el < ms + 200, `bounded (${el} ms)`);
     assert.strictEqual(x.st.txFn({ generation: 3 }), undefined, '🔴 late recovery: a retry after abandonment commits nothing');
@@ -515,7 +517,7 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     // a subscribe that THROWS: refused (false), never a rejection, and no transaction attempted
     x = mkRef();
     x.ref.on = () => { throw new Error('bad path'); };
-    assert.strictEqual(await within(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }), ms + 1000, 'casCursor (throwing on)'), false, 'a throwing subscribe → false');
+    assert.strictEqual(await within(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms, isStopped: () => false }), ms + 1000, 'casCursor (throwing on)'), false, 'a throwing subscribe → false');
     assert.strictEqual(x.st.txFn, null);
     // stalled read
     x = mkRef({ txStall: 'get' });
@@ -596,14 +598,15 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       untouched(x.io, 'verifier, zero budget');
       assert.deepStrictEqual([vo.rungs.map((g) => g.reason), vo.retainedStopped], [['budget_exhausted', 'budget_exhausted'], 'cursor_read_work_deadline']);
     }
-    // (b) the CURSOR read crosses the work deadline → no page fetch starts, and no checkpoint (nothing settled: unchanged)
+    // (b) the CURSOR read crosses the work deadline → its late COMPLETION is not accepted (codex r5 S1: rejected as the
+    //     work deadline at completion), no page fetch starts, and no checkpoint (nothing settled: unchanged)
     {
       let x = mk({ cross: 'cursor' });
       const wo = await within(x.w.reconcileRestaurant('r1', makeDeadline(100, x.now), { r: x.wr, cursorOpMs: 50 }), 1000, 'writer cursor crossing');
-      assert.deepStrictEqual([x.io.cursorGet, x.io.page, x.io.cursorTx, x.io.cursorOn, wo.stopped, wo.cursor], [1, 0, 0, 0, 'version_page_work_deadline', null], `writer: 🔴 no page fetch after the crossing read ${JSON.stringify(x.io)}`);
+      assert.deepStrictEqual([x.io.cursorGet, x.io.page, x.io.cursorTx, x.io.cursorOn, wo.stopped, wo.cursor], [1, 0, 0, 0, 'cursor_read_work_deadline', null], `writer: 🔴 no page fetch after the crossing read ${JSON.stringify(x.io)}`);
       x = mk({ cross: 'cursor' });
       const vo = await within(x.v.verifyRestaurant('r1', makeDeadline(100, x.now), { r: x.vr, cursorOpMs: 50 }), 1000, 'verifier cursor crossing');
-      assert.deepStrictEqual([x.io.cursorGet, x.io.page, x.io.cursorTx, vo.retainedStopped, vo.cursor], [1, 0, 0, 'version_page_work_deadline', null], `verifier: 🔴 no page fetch after the crossing read ${JSON.stringify(x.io)}`);
+      assert.deepStrictEqual([x.io.cursorGet, x.io.page, x.io.cursorTx, vo.retainedStopped, vo.cursor], [1, 0, 0, 'cursor_read_work_deadline', null], `verifier: 🔴 no page fetch after the crossing read ${JSON.stringify(x.io)}`);
     }
     // (c) a RUNG read crosses it → no write / load and no later read starts
     {
@@ -651,7 +654,7 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     assert.deepStrictEqual(calls, ['get a/b', 'tx', 'tx.get x', 'off a'], '🔴 nothing started once stopped; off still ran');
     open = true; calls.length = 0;
     const late = W4.gateIo(raw, gate, 't');
-    await late.runTransaction(async (tx) => { open = false; await assert.rejects(tx.get(late.ref('y')), (e) => e.workDeadline); });
+    await assert.rejects(late.runTransaction(async (tx) => { open = false; await assert.rejects(tx.get(late.ref('y')), (e) => e.workDeadline); }), (e) => e.workDeadline, 'and the transaction completing after the close is not accepted');
     assert.deepStrictEqual(calls, ['tx'], 'a transaction\'s tx.get after the gate closes is refused');
     for (const bad of [undefined, null, {}, { stopped: () => false }]) assert.throws(() => W4.gateIo(raw, bad), /gate .* is required/, 'no gate → fail closed');
     // (layer 2) boundedWork: start gate + classification
@@ -660,7 +663,7 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     await assert.rejects(W4.boundedWork(wk(0), () => { started += 1; }, 1000, 'op'), (e) => e.workDeadline && e.message === 'op_work_deadline');
     assert.strictEqual(started, 0, 'past the deadline the thunk is never called');
     await assert.rejects(W4.boundedWork(wk(40), () => new Promise(() => {}), 1000, 'op'), (e) => e.workDeadline === true, 'stalled, limit = the work budget → WorkDeadline');
-    await assert.rejects(W4.boundedWork(wk(40), () => W4.readCursor({ get: () => new Promise(() => {}) }, { ms: 40 }), 1000, 'cursor_read'), (e) => e.workDeadline === true, 'a NESTED helper timer clipped to the budget → WorkDeadline');
+    await assert.rejects(W4.boundedWork(wk(40), () => W4.readCursor(W4.gateIo({ get: () => new Promise(() => {}) }, OPEN_GATE), { ms: 40 }), 1000, 'cursor_read'), (e) => e.workDeadline === true, 'a NESTED helper timer clipped to the budget → WorkDeadline');
     await assert.rejects(W4.boundedWork(wk(500), () => new Promise(() => {}), 20, 'op'), (e) => !e.workDeadline && e.message === 'op_timeout', 'the op\'s OWN shorter timeout stays a timeout');
     await assert.rejects(W4.boundedWork(wk(500), () => Promise.reject(new Error('permission')), 1000, 'op'), (e) => !e.workDeadline && e.message === 'permission', 'a genuine failure stays itself');
     assert.throws(() => W4.boundedWork(undefined, () => {}, 1, 'op'), /required/);
@@ -704,7 +707,7 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       const rt = { [`catalog_snapshot/${RID}/version`]: plan.mirrorVid === undefined ? VID : plan.mirrorVid, [`catalog_snapshot/${RID}`]: plan.mirrorVal === undefined ? { version: VID, seq: 7, menu: served.menu, extras: served.extras } : plan.mirrorVal, [`catalog_ctx/${RID}/${VID}`]: goodNode };
       const rref = (path) => ({
         path, child: (c) => rref(`${path}/${c}`),
-        get: () => respond(at('rtdb.get', path), { val: () => (rt[path] === undefined ? null : rt[path]) }),
+        get: () => respond(at('rtdb.get', path), { val: () => (rt[path] === undefined ? null : rt[path]), key: path.split('/').pop(), ref: rref(path), child: (c) => ({ val: () => null, ref: rref(`${path}/${c}`) }) }),
         on: (ev, cb) => { at('rtdb.on', path); setTimeout(() => cb({ val: () => rt[path] ?? null }), 0); return cb; },
         off: () => {},
         transaction: (fn) => { const p = at('rtdb.tx', path); const v = fn(rt[path] ?? null); if (v !== undefined) rt[path] = v; return respond(p, { committed: v !== undefined }); },
@@ -721,10 +724,12 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
         return { docs: [] };
       };
       const fref = (path) => {
-        const q = { where: () => q, orderBy: () => q, startAfter: () => q, limit: () => q, select: () => q, get: () => respond(at('fs.query', path), fsData(path)) };
-        return { path, collection: (c) => fref(`${path}/${c}`), doc: (d) => fref(`${path}/${d}`), ...q, get: () => respond(at('fs.get', path), fsData(path)) };
+        const q = { where: () => q, orderBy: () => q, startAfter: () => q, limit: () => q, select: () => q, get: () => respond(at('fs.query', path), withRefs(fsData(path), path, q)) };
+        return { path, collection: (c) => fref(`${path}/${c}`), doc: (d) => fref(`${path}/${d}`), ...q, get: () => respond(at('fs.get', path), withRefs(fsData(path), path, q)) };
       };
-      const db = { collection: (c) => fref(c), runTransaction: (fn) => { at('fs.tx', ''); return Promise.resolve().then(() => fn({ get: (r) => respond(at('fs.tx.get', r.path), fsData(r.path)) })); } };
+      // snapshots carry .ref (and query snapshots .docs[].ref / .query) exactly as the SDK's do — the fakes are not laxer
+      const withRefs = (snap, path, q) => (snap.docs ? { ...snap, query: q, docs: snap.docs.map((d) => ({ ...d, ref: fref(`${path}/${d.id}`) })) } : { ...snap, id: path.split('/').pop(), ref: fref(path) });
+      const db = { collection: (c) => fref(c), runTransaction: (fn) => { at('fs.tx', ''); return Promise.resolve().then(() => fn({ get: (r) => respond(at('fs.tx.get', r.path), withRefs(fsData(r.path), r.path, null)) })); } };
       return { starts, db, rtdb: { ref: rref } };
     };
     // op limits (cursor 1,000 ms, page 10 s, reads 15 s) all EXCEED the work budget here, as in codex r4's repro
@@ -755,6 +760,7 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       { label: 'version first read resolving past it (writer write / verifier projection)', plan: { [`fs.tx.get restaurants/${RID}/versions/${VID}`]: 240 } },
       { label: 'active pointer resolving past it (then readVersionDocs / the rung write)', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: 240 } },
       { label: 'a retained version whose first read resolves past it', plan: { mirrorVid: null, mirrorVal: null, [`restaurants/${RID}/meta/active_version`]: new Error('x'), page: [{ versionId: VID, seq: 7 }], [`fs.tx.get restaurants/${RID}/versions/${VID}`]: 240 } },
+      { label: 'stalled activeServed (the live pricing read)', plan: { mirrorVid: null, mirrorVal: null, [`fs.get restaurants/${RID}/versions/${VID}`]: 'stall' } },
       { label: 'healthy (non-vacuity)', plan: { page: [{ versionId: VID, seq: 7 }] }, opts: { H: 1500 } },
     ];
     const res = {};
@@ -775,6 +781,7 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     assert.deepStrictEqual(wo('stalled mirror read').rungs.mirror.outcomes, ['budget_exhausted']);
     assert.strictEqual(vo('stalled mirror read').rungs.find((g) => g.rung === 'mirror').reason, 'budget_exhausted');
     assert.strictEqual(vo('stalled active read').rungs.find((g) => g.rung === 'active').reason, 'budget_exhausted');
+    assert.strictEqual(vo('stalled activeServed (the live pricing read)').rungs.find((g) => g.rung === 'active').reason, 'budget_exhausted', 'a stalled activeServed (foreign readVersionDocs) is the budget, not a read failure');
     assert.deepStrictEqual([wo('stalled cursor read').stopped, wo('stalled cursor read').listError], ['cursor_read_work_deadline', undefined]);
     assert.deepStrictEqual([vo('stalled cursor read').retainedStopped, vo('stalled cursor read').retainedError], ['cursor_read_work_deadline', undefined]);
     assert.deepStrictEqual([wo('stalled page query').stopped, wo('stalled page query').listError], ['version_page_work_deadline', undefined]);
@@ -799,7 +806,110 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       assert.ok(st.includes(`restaurants/${RID}/versions/${VID}`) && !st.includes(`restaurants/${RID}/versions/${VID}/menu_items`), `🔴 no projection read after its own deadline (${st.join(', ')})`);
     }
   }
-  ok('codex build r4 — SELF-CHECKING I/O gate: an instrumented Firestore + RTDB below the gate records every I/O start; across 10 scenarios × both schedules on the REAL production readers (zero budget; stalled mirror / active / cursor / page reads; mirror, version-first-read, active-pointer and retained-version reads resolving past the work deadline; healthy) no I/O starts past the work deadline (checkpoint ops: past the hard deadline), late nested starts included; stalled reads report the work budget (budget_exhausted / stopped / retainedStopped), an op\'s own shorter timeout and a genuine failure stay themselves; an unfinished version is never checkpointed; the projection\'s own deadline stops its nested reads');
+  ok('codex build r4 — SELF-CHECKING I/O gate: an instrumented Firestore + RTDB below the gate records every I/O start; across 11 scenarios × both schedules on the REAL production readers (zero budget; stalled mirror / active / cursor / page reads; mirror, version-first-read, active-pointer and retained-version reads resolving past the work deadline; healthy) no I/O starts past the work deadline (checkpoint ops: past the hard deadline), late nested starts included; stalled reads report the work budget (budget_exhausted / stopped / retainedStopped), an op\'s own shorter timeout and a genuine failure stay themselves; an unfinished version is never checkpointed; the projection\'s own deadline stops its nested reads');
+
+  // ── codex build r5 — closing the escape classes: completion after the deadline (S1), a required writeVersion gate
+  //    (S2), and raw handles reachable through RESULTS and listener arguments (S3) ──────────────────────────────────────
+  {
+    // S2: writeVersion REQUIRES its caller's gate — missing / null / malformed throw before any I/O; the trigger supplies its own
+    const noIo = { runTransaction: () => { throw new Error('🔴 I/O started without a gate'); } };
+    const w5 = createIdentityRecordWriter({ db: noIo, rtdb: { ref: () => { throw new Error('🔴 I/O started without a gate'); } }, log: () => {} });
+    assert.throws(() => w5.writeVersion('r1', 'v1'), /writeVersion: an I\/O gate/, 'no options at all');
+    for (const bad of [undefined, null, {}, { stopped: () => false }, { remaining: () => 1 }, 'gate']) assert.throws(() => w5.writeVersion('r1', 'v1', { gate: bad }), /writeVersion: an I\/O gate/, `gate ${JSON.stringify(bad)} → throws`);
+    const hungDb = { collection: (c) => ({ doc: () => ({ collection: () => ({ doc: () => ({}) }) }) }), runTransaction: () => new Promise(() => {}) };
+    const tr = await within(createIdentityRecordWriter({ db: hungDb, rtdb: { ref: () => ({}) }, log: () => {} }).onMirrorWritten('r1', { version: 'v1' }, { deadlineMs: 40 }), 1000, 'trigger');
+    assert.deepStrictEqual(tr.outcomes, ['timeout'], `the trigger creates and passes its own deadline gate (${JSON.stringify(tr.outcomes)})`);
+
+    // (c) no RAW handle anywhere: the cursor primitives, the page query and every reader refuse an ungated handle, and
+    //     casCursor refuses a missing isStopped (no no-op default) — each before any I/O
+    const rawRef = { get: () => { throw new Error('🔴 raw I/O'); }, on: () => { throw new Error('🔴 raw I/O'); }, off: () => {}, transaction: () => { throw new Error('🔴 raw I/O'); } };
+    await assert.rejects(W4.readCursor(rawRef), /readCursor: a GATED handle/);
+    await assert.rejects(W4.casCursor(rawRef, {}, {}, { isStopped: () => false }), /casCursor: a GATED handle/);
+    await assert.rejects(W4.casCursor(W4.gateIo(rawRef, OPEN_GATE), {}, {}), /casCursor: the caller's isStopped is required/);
+    await assert.rejects(W4.versionPage({ collection: () => { throw new Error('🔴 raw I/O'); } }, 'r1', null, 2), /versionPage: a GATED handle/);
+    const rawIo = { db: { collection: () => { throw new Error('🔴 raw I/O'); } }, rtdb: { ref: () => { throw new Error('🔴 raw I/O'); } } };
+    const wR = createIdentityRecordWriter({ db: rawIo.db, rtdb: rawIo.rtdb, log: () => {} }).readers;
+    const vR = createIdentityVerifier({ db: rawIo.db, rtdb: rawIo.rtdb, log: () => {} }).readers;
+    for (const [name, call] of [['mirrorVersionId', () => wR.mirrorVersionId('r1', rawIo)], ['activeVersionId', () => wR.activeVersionId('r1', rawIo)], ['versionPage', () => wR.versionPage('r1', null, 2, rawIo)],
+      ['mirrorValue', () => vR.mirrorValue('r1', rawIo)], ['activeServed', () => vR.activeServed('r1', 'v1', rawIo)], ['activeVersionId (verifier)', () => vR.activeVersionId('r1', rawIo)], ['versionPage (verifier)', () => vR.versionPage('r1', null, 2, rawIo)],
+      ['no io at all', () => wR.mirrorVersionId('r1')]]) {
+      await assert.rejects(Promise.resolve().then(call), /GATED io handles/, `${name}: raw / missing io refused`);
+    }
+
+    // S1 (helper level): a completion that lands after the work deadline is NOT accepted, even though it won the race
+    let open = true;
+    const wg = { stopped: () => !open, remaining: () => (open ? 1e6 : 0) };
+    await assert.rejects(W4.boundedWork(wg, () => Promise.resolve().then(() => { open = false; return 'late'; }), 1000, 'op'), (e) => e.workDeadline && e.message === 'op_work_deadline');
+    open = true;
+    await assert.rejects(W4.gateIo({ get: () => Promise.resolve().then(() => { open = false; return 'late'; }) }, wg, 'h').get(), (e) => e.workDeadline, 'and at the handle: a result arriving after the close rejects');
+    // S1 (both schedules, codex's deterministic repro): hard 100, reserve 50; the retained read's completion moves the
+    // clock to 80 and resolves BEFORE any timer callback → not counted, not checkpointed past that version
+    {
+      const clock = { t: 0 }; const now = () => clock.t;
+      const crossing = (v) => Promise.resolve().then(() => { clock.t = 80; return v; });
+      const io = { cursorTx: 0, cursorOn: 0 };
+      const rtdb = { ref: (path) => (/cursor/.test(path)
+        ? { get: () => Promise.resolve({ val: () => null }), on: (e, cb) => { io.cursorOn += 1; setTimeout(() => cb({ val: () => null }), 0); return cb; }, off: () => {}, transaction: () => { io.cursorTx += 1; return Promise.resolve({ committed: true }); } }
+        : { get: () => crossing({ val: () => null }), transaction: () => crossing({ committed: true }) }) };
+      const fdoc = (path) => ({ path, collection: (c) => fdoc(`${path}/${c}`), doc: (d) => fdoc(`${path}/${d}`) });
+      const raw = rawFor('x_pizza', { certified: true, revision: 1, stamp: allStamped });
+      const db = { collection: (c) => fdoc(c), runTransaction: (fn) => fn({ get: () => crossing({ exists: true, data: () => raw.record, updateTime: raw.updateTime, docs: [] }) }) };
+      const r = { mirrorVersionId: async () => null, activeVersionId: async () => null, mirrorValue: async () => null, versionPage: async () => [{ versionId: 'v-test', seq: 7 }] };
+      const vo = await within(createIdentityVerifier({ db, rtdb, now, log: () => {} }).verifyRestaurant('x_pizza', W4.makeDeadline(100, now), { r, pageSize: 5, cursorOpMs: 50 }), 2000, 'verifier late completion');
+      assert.deepStrictEqual([vo.retained, vo.cursor, io.cursorTx], [{}, null, 0], `verifier: 🔴 a load completing past the deadline is neither counted nor checkpointed ${JSON.stringify(vo)}`);
+      clock.t = 0;
+      const wo = await within(createIdentityRecordWriter({ db, rtdb, now, log: () => {} }).reconcileRestaurant('x_pizza', W4.makeDeadline(100, now), { r, pageSize: 5, concurrency: 1, cursorOpMs: 50 }), 2000, 'writer late completion');
+      assert.deepStrictEqual([wo.versions[0].settled, wo.cursor && wo.cursor.reason, io.cursorTx], [false, 'first_version_unsettled', 0], `writer: 🔴 a read completing past the deadline leaves the version unsettled, not checkpointed ${JSON.stringify(wo)}`);
+    }
+
+    // (b) the schedules' LISTING too: a registry read completing past the list deadline is not accepted (both schedules)
+    for (const mk of [(o) => createIdentityRecordWriter(o).reconcile, (o) => createIdentityVerifier(o).verify]) {
+      const clock = { t: 0 }; const now = () => clock.t;
+      let touched = 0;   // the run must not go on at all — a later failure would also return ok:false, so observe it directly
+      const fn = mk({ db: {}, rtdb: { ref: () => { touched += 1; throw new Error('🔴 the run went on after a late listing'); } }, now, log: () => {} });
+      const res = await within(fn({ listDeadlineMs: 50, listIds: () => Promise.resolve().then(() => { clock.t = 80; return ['r1']; }) }), 1000, 'late listing');
+      assert.deepStrictEqual([res.ok, res.results, touched], [false, [], 0], 'a listing completing past its deadline is refused; nothing else starts');
+    }
+
+    // S3 (below the gate): every reference reachable from a RESULT or a listener argument stays gated
+    const rec = [];
+    const listeners = new Set();
+    const fref = (path) => ({ path, collection: (c) => fref(`${path}/${c}`), doc: (d) => fref(`${path}/${d}`), get: () => { rec.push(`get ${path}`); return Promise.resolve(path.split('/').length % 2 ? qsnap(path) : dsnap(path)); } });
+    const dsnap = (path) => ({ exists: true, id: path.split('/').pop(), data: () => ({ a: 1 }), ref: fref(path) });
+    const qsnap = (path) => { const docs = [dsnap(`${path}/d1`)]; return { docs, size: 1, query: fref(path), forEach(cb) { docs.forEach(cb); }, docChanges: () => [{ type: 'added', oldIndex: -1, newIndex: 0, doc: docs[0] }] }; };
+    const rsnap = (path) => ({ key: path.split('/').pop(), val: () => 1, ref: rref(path), child: (c) => rsnap(`${path}/${c}`), forEach(cb) { cb(rsnap(`${path}/k1`)); return false; } });
+    const rref = (path) => ({ path, get: () => { rec.push(`rget ${path}`); return Promise.resolve(rsnap(path)); }, transaction: () => { rec.push(`rtx ${path}`); return Promise.resolve({ committed: true, snapshot: rsnap(path) }); }, on: (ev, cb) => { rec.push(`on ${path}`); listeners.add(cb); setTimeout(() => cb(rsnap(path)), 0); return cb; }, off: (ev, cb) => { rec.push(`off ${path}`); listeners.delete(cb); } });
+    let gOpen = true;
+    const gate5 = { stopped: () => !gOpen, remaining: () => (gOpen ? 1e6 : 0) };
+    const gdb = W4.gateIo({ collection: (c) => fref(c), getAll: (...refs) => { rec.push('getAll'); return Promise.resolve(refs.map((x) => dsnap(x.path))); } }, gate5, 's3');
+    const grt = W4.gateIo({ ref: (p) => rref(p) }, gate5, 's3');
+    const ds = await gdb.collection('restaurants').doc('r1').get();
+    const qs = await gdb.collection('restaurants').get();
+    const [ga] = await gdb.getAll(gdb.collection('restaurants').doc('r2'));
+    const rs = await grt.ref('a').get();
+    const txr = await grt.ref('t').transaction(() => 1);
+    let lsnap = null;
+    const cb = (snap) => { lsnap = snap; };
+    const bref = grt.ref('b');
+    assert.strictEqual(bref.on('value', cb), cb, 'on returns the CALLER\'S own callback (identity preserved)');
+    await sleep(10);
+    assert.deepStrictEqual([ds.data(), ds.exists, rs.val(), qs.size, lsnap && lsnap.val()], [{ a: 1 }, true, 1, 1, 1], 'the data is the snapshot\'s own');
+    rec.length = 0;
+    gOpen = false;
+    let fe; qs.forEach((d) => { fe = d; });
+    let rc; rs.forEach((k) => { rc = k; });
+    const escapes = {
+      'DocumentSnapshot.ref': () => ds.ref.get(), 'QuerySnapshot.docs[].ref': () => qs.docs[0].ref.get(), 'QuerySnapshot.query': () => qs.query.get(),
+      'QuerySnapshot.forEach doc.ref': () => fe.ref.get(), 'docChanges()[].doc.ref': () => qs.docChanges()[0].doc.ref.get(), 'getAll()[].ref': () => ga.ref.get(),
+      'DataSnapshot.ref': () => rs.ref.get(), 'DataSnapshot.child().ref': () => rs.child('x').ref.get(), 'DataSnapshot.forEach child.ref': () => rc.ref.get(),
+      'transaction result .snapshot.ref': () => txr.snapshot.ref.get(), 'listener argument .ref': () => lsnap.ref.get(),
+    };
+    for (const [name, use] of Object.entries(escapes)) await assert.rejects(Promise.resolve().then(use), (e) => e.workDeadline === true, `${name} after the close`);
+    assert.deepStrictEqual(rec, [], `🔴 no reference reachable from a result or listener argument started I/O after the gate closed (${rec.join(', ')})`);
+    grt.ref('b').off('value', cb);   // through ANOTHER ref instance of the same path and gate, as the SDK allows
+    assert.strictEqual(listeners.size, 0, 'off(cb) detaches the gated wrapper (callback identity preserved for off)');
+  }
+  ok('codex build r5 — escape classes closed: writeVersion refuses a missing / null / malformed gate before any I/O and the trigger passes its own; a completion landing after the work deadline is not accepted (boundedWork and the gated handle), so on both schedules a read finishing past the deadline before the timer fires is neither counted nor checkpointed; every reference reachable from a result or a listener argument (DocumentSnapshot / docs[] / query / forEach / docChanges / getAll; DataSnapshot / child / forEach / transaction snapshot) stays gated — zero I/O after the close — and off(cb) still detaches through any ref of the same gate');
 
   // rung checks are CLIPPED to the caller's remaining budget (load and D4-a projection), not only to their own deadlines
   {
