@@ -25,7 +25,7 @@ const {
   IDENTITY_PATH, NODE_CAP_BYTES, buildIdentityRecord, identityFromVersionNode, utf8Bytes, isPathKey,
 } = require('./identity-record');
 const {
-  readVersionSnapshot, casCursor, readCursor, normCursor, versionPage, makeDeadline, race,
+  readVersionSnapshot, casCursor, readCursor, normCursor, versionPage, makeDeadline, race, workDeadline, isCursorSeq,
   IDENTITY_RUN_BUDGET_MS, IDENTITY_RESTAURANT_BUDGET_MS, IDENTITY_PAGE_SIZE, CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
 } = require('./identity-record-writer');
 
@@ -121,9 +121,12 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     };
   }
 
-  async function verifyRestaurant(rid, stop, { r = readers, pageSize = IDENTITY_PAGE_SIZE, cursorOpMs = CURSOR_OP_DEADLINE_MS } = {}) {
+  // Every read, rung check, page fetch and load is clipped to the WORK deadline; only the checkpoint CAS spends the reserve
+  // (codex c1 build r2 B1 — the settled prefix is persisted even when a load stalls to the work deadline).
+  async function verifyRestaurant(rid, stop, { r = readers, pageSize = IDENTITY_PAGE_SIZE, cursorOpMs = CURSOR_OP_DEADLINE_MS, checkpointReserveMs = cursorOpMs } = {}) {
     const out = { rid, rungs: [], retained: {}, cursor: null };
-    const clip = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
+    const work = workDeadline(stop, checkpointReserveMs);
+    const clip = (ms) => Math.max(0, Math.min(ms, work.remaining()));
     const bounded = (p) => race(p, clip(IDENTITY_VERIFY_READ_DEADLINE_MS), 'verify_read');
     // mirror rung: the ACTUAL catalog_snapshot value's version/seq/tables
     try {
@@ -131,30 +134,32 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
       if (!m || !isPathKey(m.version)) out.rungs.push({ rung: 'mirror', category: 'incomparable', reason: 'no_mirror' });
       else if (!m.menu || typeof m.menu !== 'object' || !m.extras || typeof m.extras !== 'object') {
         out.rungs.push({ rung: 'mirror', versionId: m.version, category: 'incomparable', reason: 'mirror_tables_missing' });
-      } else out.rungs.push(await checkRung(rid, 'mirror', { rid, versionId: m.version, seq: m.seq, prices: { menu: m.menu, extras: m.extras } }, stop));
+      } else out.rungs.push(await checkRung(rid, 'mirror', { rid, versionId: m.version, seq: m.seq, prices: { menu: m.menu, extras: m.extras } }, work));
     } catch (e) { out.rungs.push({ rung: 'mirror', category: 'incomparable', reason: 'mirror_read_failed' }); }
     // active rung: the live Firestore read's tables
-    if (!stop.stopped()) {
+    if (!work.stopped()) {
       try {
         const vid = await bounded(r.activeVersionId(rid));
         if (!vid) out.rungs.push({ rung: 'active', category: 'incomparable', reason: 'no_active_version' });
-        else out.rungs.push(await checkRung(rid, 'active', await bounded(r.activeServed(rid, vid)), stop));
+        else out.rungs.push(await checkRung(rid, 'active', await bounded(r.activeServed(rid, vid)), work));
       } catch (e) { out.rungs.push({ rung: 'active', category: 'incomparable', reason: 'active_read_failed' }); }
     }
     // retained versions: ONE bounded page per run, from this verifier's own cursor (no served prices → attachment N/A)
     const cref = rtdb.ref(`${VERIFY_VERSION_CURSOR_PATH}/${rid}`);
-    if (!stop.stopped()) {
+    if (!work.stopped()) {
       try {
         const observed = await readCursor(cref, { ms: clip(cursorOpMs) });
-        const rows = (await race(Promise.resolve(r.versionPage(rid, observed.position, pageSize + 1)), clip(IDENTITY_LIST_DEADLINE_MS), 'version_page'))
-          .filter((v) => v && isPathKey(v.versionId));
+        // the page and "last page" come from the RAW query rows (a skipped row must never end a generation early)
+        const rows = (await race(Promise.resolve(r.versionPage(rid, observed.position, pageSize + 1)), clip(IDENTITY_LIST_DEADLINE_MS), 'version_page')).filter(Boolean);
         const page = rows.slice(0, pageSize);
+        if (!page.every((v) => isCursorSeq(v.seq))) throw new Error('seq_not_cursor_safe');   // unreachable under the query: fail closed
         let k = 0;
         for (const v of page) {
-          const ms = Math.min(IDENTITY_LOAD_TIMEOUT_MS, stop.remaining());
+          if (!isPathKey(v.versionId)) { out.retained.version_id_malformed = (out.retained.version_id_malformed || 0) + 1; k += 1; continue; }
+          const ms = Math.min(IDENTITY_LOAD_TIMEOUT_MS, work.remaining());
           if (!(ms > 0)) break;
           const loaded = await loadVersionNode(rtdb, rid, v.versionId, { timeoutMs: ms });
-          if (loaded.error === 'timeout' && stop.stopped()) break;
+          if (loaded.error === 'timeout' && work.stopped()) break;
           const res = loaded.error ? { availability: loaded.error === 'oversize' ? 'invalid' : 'unavailable' } : identityFromVersionNode(loaded.node, null, { rid, versionId: v.versionId });
           out.retained[res.availability] = (out.retained[res.availability] || 0) + 1;
           k += 1;
@@ -162,7 +167,8 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
         const next = page.length === 0 || (k === page.length && rows.length <= pageSize)
           ? { generation: observed.generation + 1, position: null }
           : k > 0 ? { generation: observed.generation, position: { seq: page[k - 1].seq, versionId: page[k - 1].versionId } } : null;
-        if (next) out.cursor = { to: next, cas: await casCursor(cref, observed, next, { ms: clip(cursorOpMs), now, isStopped: () => stop.stopped() }) };
+        // the checkpoint spends the reserve: clipped to the HARD deadline, stopped only by the hard stop
+        if (next) out.cursor = { to: next, prefix: k, page: page.length, cas: await casCursor(cref, observed, next, { ms: Math.max(0, Math.min(cursorOpMs, stop.remaining())), now, isStopped: () => stop.stopped() }) };
       } catch (e) { out.retainedError = String((e && e.message) || e).slice(0, 160); }
     }
     const counts = {};

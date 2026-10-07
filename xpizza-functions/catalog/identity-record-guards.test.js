@@ -128,6 +128,10 @@ try {
     // TOTAL schedule bound (codex build r1 B2): listing + restaurant-cursor read + run budget + last-restaurant slack + final CAS
     const total = Wm.IDENTITY_LIST_DEADLINE_MS + Wm.CURSOR_OP_DEADLINE_MS + Wm.IDENTITY_RUN_BUDGET_MS + 50 + Wm.CURSOR_OP_DEADLINE_MS;
     assert.ok(total < Wm.IDENTITY_RECONCILE_TIMEOUT_S * 1000 && total < Vm.IDENTITY_VERIFY_TIMEOUT_S * 1000, `both schedules' total bound ${total} ms < their 300 s function timeout`);
+    // checkpoint reserve (codex build r2 B1): inside the restaurant budget (never adds to the total), work gets the rest
+    const wd = Wm.workDeadline(Wm.makeDeadline(Wm.IDENTITY_RESTAURANT_BUDGET_MS), Wm.CURSOR_OP_DEADLINE_MS);
+    assert.ok(wd.reserve === Wm.CURSOR_OP_DEADLINE_MS && wd.remaining() <= Wm.IDENTITY_RESTAURANT_BUDGET_MS - wd.reserve && wd.remaining() > 0, 'reserve = one cursor-op deadline (5 s) inside the 60 s restaurant budget');
+    assert.strictEqual(Wm.workDeadline(Wm.makeDeadline(100), 5000).reserve, 50, 'a small budget: the reserve is at most half, so work still happens');
     // own resources: the D4-a invokers' options are unchanged (index.js pin above) and the new ones are separate exports
     assert.ok(!/contextWriter\(\)/.test(block), 'the new functions never call the D4-a writer');
     // NOT on the request path: only index.js's lazy inits and the three modules import them

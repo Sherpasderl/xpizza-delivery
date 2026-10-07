@@ -55,6 +55,14 @@ function makeDeadline(ms, now = Date.now) {
   stop.forced = false;
   return stop;
 }
+// 🔴 CHECKPOINT RESERVE (codex c1 build r2 B1): the WORK deadline sits `reserve` ms before the hard one. Reads, rungs,
+// page fetches and writes stop at the work deadline; only the checkpoint CAS may spend the reserve. So a write that
+// stalls until the work deadline can never leave the settled prefix unpersisted (the CAS still has its time, and the
+// caller has not yet stopped). The reserve is at most half the budget, so a small budget still does work.
+function workDeadline(stop, reserveMs) {
+  const reserve = Math.max(0, Math.min(reserveMs, Math.floor(stop.remaining() / 2)));
+  return { reserve, remaining: () => Math.max(0, stop.remaining() - reserve), stopped: () => stop.stopped() || stop.remaining() <= reserve };
+}
 function withTimer(promise, ms, onTimeout) {
   let timer = null;
   // onTimeout may return a value OR throw — a throw REJECTS the race (never an uncaught exception in a timer callback)
@@ -146,14 +154,31 @@ async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now 
 // ── The retained order: seq DESCENDING, ties by versionId DESCENDING ──────────────────────────────────────────────────
 // Firestore sorts __name__ in the direction of the last sorted field, so (seq desc, __name__ desc) is served by the
 // AUTOMATIC single-field index — no composite index, no deploy step (the opposite tie direction would need one).
-// Missing / malformed seq — explicit disposition: the page query is `seq >= 0`, so a version without a non-negative
-// numeric seq is not reached by the retained sweep. Nothing is lost: the one constructor refuses such a version
-// (`seq_malformed`), so no record could exist for it; if it is ever the mirror's or the active version, the rung pass
-// attempts it and reports the refusal.
+// Malformed seq — explicit, CURSOR-SAFE disposition (codex c1 build r2 S2). The page query is
+// 0 ≤ seq ≤ Number.MAX_SAFE_INTEGER, so every value it returns is a finite number that RTDB stores and JSON round-trips
+// exactly — a page position can always be persisted:
+//   · missing / non-numeric / negative / NaN / ±Infinity / unsafe integers (> 2^53−1): EXCLUDED by the query, never paged,
+//     never a position;
+//   · fractions within range (e.g. 3.5): paged in order; the one constructor refuses them (`seq_malformed`, settled), and
+//     the position {seq: 3.5, versionId} is a finite double, so the cursor moves past them.
+// Nothing is lost: the constructor refuses every excluded value too, so no record could exist for it; if one is ever the
+// mirror's or the active version, the rung pass attempts it and reports the refusal. A row that is somehow not
+// cursor-safe (unreachable under the query) ends the run with no checkpoint — fail closed, never a poisoned cursor.
+//
+// COVERAGE SEMANTICS (codex c1 build r2 S3) — keyset pagination over immutable keys (seq, versionId), per generation:
+//   · every version present when a generation starts is visited AT LEAST ONCE in that generation (no offsets: a key
+//     can be neither skipped nor shifted by inserts or deletes);
+//   · a version inserted BEHIND the cursor (a smaller key, not yet reached) is visited in the CURRENT generation;
+//     one inserted AHEAD of it (a larger key — new publishes have the highest seq) is visited in the NEXT generation
+//     (and by the trigger, which records the named version at once);
+//   · overlapping runs and unsettled-prefix retries visit some versions MORE THAN ONCE, by design; every write is the
+//     idempotent §3a transaction, so a duplicate visit commits nothing.
+const isCursorSeq = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
 const positionOf = (v) => ({ seq: v.seq, versionId: v.versionId });
 async function versionPage(db, rid, position, limit) {
   let q = db.collection('restaurants').doc(rid).collection('versions')
-    .where('seq', '>=', 0).orderBy('seq', 'desc').orderBy(FieldPath.documentId(), 'desc');
+    .where('seq', '>=', 0).where('seq', '<=', Number.MAX_SAFE_INTEGER)
+    .orderBy('seq', 'desc').orderBy(FieldPath.documentId(), 'desc');
   if (position) q = q.startAfter(position.seq, position.versionId);
   const snap = await q.limit(limit).select('seq').get();
   return snap.docs.map((d) => ({ versionId: d.id, seq: (d.data() || {}).seq }));
@@ -236,63 +261,72 @@ function createIdentityRecordWriter({
     },
   };
 
-  // One restaurant: rungs first, then bounded pages of retained versions from the cursor. Never rejects; bounded by `stop`
-  // (every read, write, cursor read and cursor CAS is clipped to the restaurant's remaining budget).
+  // One restaurant: rungs first, then bounded pages of retained versions from the cursor. Never rejects; bounded by `stop`.
+  // Every read, rung, page fetch and write is clipped to the WORK deadline; the checkpoint CAS to the hard one (the reserve).
   async function reconcileRestaurant(rid, stop, opts) {
     const { pageSize = IDENTITY_PAGE_SIZE, concurrency = IDENTITY_PAGE_CONCURRENCY, rungDeadlineMs = IDENTITY_RUNG_DEADLINE_MS,
-      cursorOpMs = CURSOR_OP_DEADLINE_MS, r = readers } = opts;
+      cursorOpMs = CURSOR_OP_DEADLINE_MS, checkpointReserveMs = cursorOpMs, r = readers } = opts;
     const out = { rid, rungs: {}, versions: [], pages: 0, cursor: null };
-    const clip = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
+    const work = workDeadline(stop, checkpointReserveMs);
+    const clip = (ms) => Math.max(0, Math.min(ms, work.remaining()));
+    const clipCheckpoint = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
+    const checkpoint = (observed, next) => casCursor(rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`), observed, next, { ms: clipCheckpoint(cursorOpMs), now, isStopped: () => stop.stopped() });
     const settledRead = (p, ms) => race(Promise.resolve().then(p), ms, 'rung_read').catch((e) => ({ error: String((e && e.message) || e).slice(0, 160) }));
     // (1) the mirror's version and the active version, each with its own deadline
     for (const [name, fn] of [['mirror', r.mirrorVersionId], ['active', r.activeVersionId]]) {
-      if (stop.stopped()) break;
+      if (work.stopped()) break;
       const ms = clip(rungDeadlineMs);
       const t0 = now();
       const vid = await settledRead(() => fn(rid), ms);
       if (vid && vid.error) { out.rungs[name] = { outcomes: ['rung_read_failed'], error: vid.error }; continue; }
       if (!vid) { out.rungs[name] = { outcomes: ['no_version'] }; continue; }
       if (Object.values(out.rungs).some((x) => x.versionId === vid)) { out.rungs[name] = { versionId: vid, outcomes: ['same_as_mirror'] }; continue; }
-      const left = Math.min(ms - (now() - t0), stop.remaining());
+      const left = Math.min(ms - (now() - t0), work.remaining());
       if (left <= 0) { out.rungs[name] = { versionId: vid, outcomes: ['budget_exhausted'], settled: false }; continue; }
       const res = await writeVersion(rid, vid, { deadlineMs: left, source: `reconcile_${name}` });
       out.rungs[name] = { versionId: vid, outcomes: res.outcomes, settled: res.settled };
     }
     // (2) retained versions: ONE bounded page query per page, from the persisted cursor
     const cref = rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`);
-    while (!stop.stopped()) {
+    while (!work.stopped()) {
       let observed, fetched;
       try {
         observed = await readCursor(cref, { ms: clip(cursorOpMs) });
         fetched = await race(Promise.resolve(r.versionPage(rid, observed.position, pageSize + 1)), clip(IDENTITY_LIST_DEADLINE_MS), 'version_page');
       } catch (e) { out.listError = String((e && e.message) || e).slice(0, 160); break; }
-      const rows = (Array.isArray(fetched) ? fetched : []).filter((v) => v && isPathKey(v.versionId));
+      const rows = (Array.isArray(fetched) ? fetched : []).filter(Boolean);
       if (rows.length === 0) {   // nothing after the position → wraparound: the next generation starts from the top
-        const ok = await casCursor(cref, observed, { generation: observed.generation + 1, position: null }, { ms: clip(cursorOpMs), now, isStopped: () => stop.stopped() });
+        const ok = await checkpoint(observed, { generation: observed.generation + 1, position: null });
         out.cursor = { wrapped: true, cas: ok };
         break;
       }
+      // the page and "last page" come from the RAW query rows (a skipped row must never end a generation early)
       const page = rows.slice(0, pageSize);
       const isLastPage = rows.length <= pageSize;
+      if (!page.every((v) => isCursorSeq(v.seq))) { out.listError = 'seq_not_cursor_safe'; break; }   // unreachable under the query: fail closed
       out.pages += 1;
       const settled = new Array(page.length).fill(false);
       let next = 0;
       const worker = async () => {
-        while (next < page.length && !stop.stopped()) {
+        while (next < page.length && !work.stopped()) {
           const i = next++;
-          const res = await writeVersion(rid, page[i].versionId, { deadlineMs: Math.max(1, stop.remaining()), source: 'reconcile_retained' });
+          if (!isPathKey(page[i].versionId)) {   // not addressable as an RTDB key: skipped, reported, settled
+            settled[i] = true; out.versions.push({ versionId: String(page[i].versionId).slice(0, 80), outcomes: ['version_id_malformed'], settled: true }); continue;
+          }
+          const res = await writeVersion(rid, page[i].versionId, { deadlineMs: Math.max(1, work.remaining()), source: 'reconcile_retained' });
           settled[i] = res.settled === true;   // success OR a reported failure; a timeout/abort is UNSETTLED
           out.versions.push({ versionId: page[i].versionId, outcomes: res.outcomes, settled: res.settled });
         }
       };
       await Promise.allSettled(Array.from({ length: Math.min(concurrency, page.length) }, worker));
-      // checkpoint ONLY the contiguous prefix of settled versions
+      // checkpoint ONLY the contiguous prefix of settled versions — inside the reserve, so it is persisted even when the
+      // work deadline cut the page short
       let k = 0; while (k < page.length && settled[k]) k += 1;
       if (k === 0) { out.cursor = { advanced: false, reason: 'first_version_unsettled' }; break; }
       const nextCursor = k === page.length && isLastPage
         ? { generation: observed.generation + 1, position: null }
         : { generation: observed.generation, position: positionOf(page[k - 1]) };
-      const ok = await casCursor(cref, observed, nextCursor, { ms: clip(cursorOpMs), now, isStopped: () => stop.stopped() });
+      const ok = await checkpoint(observed, nextCursor);
       out.cursor = { advanced: ok, to: nextCursor, prefix: k, page: page.length };
       if (!ok) { log('identity_cursor_cas_lost', { rid, observed, attempted: nextCursor }); break; }
       if (k < page.length || nextCursor.position === null) break;
@@ -355,6 +389,7 @@ function createIdentityRecordWriter({
 }
 
 module.exports = {
+  workDeadline, isCursorSeq,
   createIdentityRecordWriter, readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, versionPage, makeDeadline, race,
   CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
   IDENTITY_TRIGGER_DEADLINE_MS, IDENTITY_TRIGGER_TIMEOUT_S, IDENTITY_RECONCILE_INTERVAL, IDENTITY_RECONCILE_INTERVAL_MS,

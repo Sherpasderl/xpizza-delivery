@@ -311,7 +311,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       let pos = null;
       for (;;) { const pg = await W.versionPage(fs, rid, pos, 7); if (!pg.length) break; everything.push(...pg); pos = pg[pg.length - 1]; }
       assert.ok(!everything.some((v) => /noseq|negseq/.test(v.versionId)), 'versions without a non-negative numeric seq are not paged');
-      assert.strictEqual(everything.length, all.length, 'every numeric-seq version is paged exactly once');
+      assert.strictEqual(everything.length, all.length, 'a STATIC set: one pass pages every numeric-seq version, each once');
       assert.strictEqual(R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, `${v1}-noseq`)).reason, 'seq_malformed', '…and could never have a record');
       await vrefOf(rid, `${v1}-noseq`).delete(); await vrefOf(rid, `${v1}-negseq`).delete();
     }
@@ -369,6 +369,156 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     globalThis.__many = { rid, all };
   }
   ok('reconciler: 23 retained versions recorded across several runs (page 5, contiguous-prefix checkpoints, the cursor wraps to the next generation); a repeated pass is idempotent; a STALLED run (hung read) is bounded, checkpoints nothing and leaves the cursor unmoved; the deployed reconcileIdentityRecords runs over the Firestore registry');
+
+  // ═══ codex c1 build r2 — checkpoint reserve (B1), cursor-safe seq (S2), tie boundaries + concurrent inserts (S3) ═══
+  {
+    const noRungs = (w) => ({ ...w.readers, mirrorVersionId: async () => null, activeVersionId: async () => null });
+    // an RTDB whose transactions / reads on the named identity nodes NEVER settle (everything else is the real emulator)
+    const hangOn = (paths, { tx = true, get = false } = {}) => ({ ref: (path) => {
+      const real = rtdb.ref(path);
+      if (!paths.includes(path)) return real;
+      return { get: get ? () => new Promise(() => {}) : (...a) => real.get(...a), transaction: tx ? () => new Promise(() => {}) : (...a) => real.transaction(...a) };
+    } });
+    const vpath = (rid, v) => `${R.IDENTITY_PATH}/${rid}/${v}`;
+    const { rid, all } = globalThis.__many;
+    const seqOf = async (v) => (await vrefOf(rid, v).get()).data().seq;
+    const order = W.orderVersions(await Promise.all(all.map(async (v) => ({ versionId: v, seq: await seqOf(v) }))));
+    const [a, b, c] = order;
+
+    // ── B1, WRITER: a, b settle; c stalls until the work deadline → the prefix (a, b) IS persisted; the next run resumes at c
+    {
+      const cref = rtdb.ref(`${W.VERSION_CURSOR_PATH}/${rid}`);
+      await cref.set({ generation: 40 });
+      const hw = W.createIdentityRecordWriter({ db: fs, rtdb: hangOn([vpath(rid, c.versionId)]), log: capture });
+      const t0 = Date.now();
+      const out = await within(hw.reconcileRestaurant(rid, W.makeDeadline(2000), { pageSize: 5, concurrency: 1, cursorOpMs: 1000, r: noRungs(hw) }), 4000, 'exhausted writer pass');
+      assert.ok(Date.now() - t0 <= 2100, `the pass ends inside its 2,000 ms budget (${Date.now() - t0} ms)`);
+      assert.deepStrictEqual(out.versions.map((x) => [x.versionId, x.settled]), [[a.versionId, true], [b.versionId, true], [c.versionId, false]], JSON.stringify(out.versions));
+      assert.deepStrictEqual([out.cursor.advanced, out.cursor.prefix], [true, 2], `🔴 the settled prefix is checkpointed despite the exhausted budget: ${JSON.stringify(out.cursor)}`);
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: 40, position: { seq: b.seq, versionId: b.versionId } });
+      // next invocation (c healthy again): resumes AT c — a and b are not repeated
+      const w2 = writer();
+      const out2 = await within(w2.reconcileRestaurant(rid, W.makeDeadline(20000), { pageSize: 5, concurrency: 1, r: noRungs(w2) }), 25000, 'resumed writer pass');
+      assert.strictEqual(out2.versions[0].versionId, c.versionId, 'the next pass starts at c');
+      assert.ok(!out2.versions.some((x) => x.versionId === a.versionId || x.versionId === b.versionId), 'a and b are not re-processed');
+    }
+    // ── B1, VERIFIER: the same shape on the verifier's own cursor (c's load stalls to the work deadline)
+    {
+      const vref = rtdb.ref(`${V.VERIFY_VERSION_CURSOR_PATH}/${rid}`);
+      await vref.set({ generation: 50 });
+      const hv = V.createIdentityVerifier({ db: fs, rtdb: hangOn([vpath(rid, c.versionId)], { tx: false, get: true }), log: () => {} });
+      const t0 = Date.now();
+      const out = await within(hv.verifyRestaurant(rid, W.makeDeadline(1500), { pageSize: 5, cursorOpMs: 500, r: { ...hv.readers, mirrorValue: async () => null, activeVersionId: async () => null } }), 3000, 'exhausted verifier pass');
+      assert.ok(Date.now() - t0 <= 1600, `the verifier pass ends inside its 1,500 ms budget (${Date.now() - t0} ms)`);
+      assert.deepStrictEqual([out.cursor && out.cursor.cas, out.cursor && out.cursor.prefix], [true, 2], `🔴 verifier prefix checkpointed: ${JSON.stringify(out.cursor)}`);
+      assert.deepStrictEqual(W.normCursor((await vref.get()).val()), { generation: 50, position: { seq: b.seq, versionId: b.versionId } });
+      const v2 = V.createIdentityVerifier({ db: fs, rtdb, log: () => {} });
+      const seen = [];
+      const out2 = await within(v2.verifyRestaurant(rid, W.makeDeadline(20000), { pageSize: 5, r: { ...v2.readers, mirrorValue: async () => null, activeVersionId: async () => null,
+        versionPage: async (...x) => { const pg = await v2.readers.versionPage(...x); seen.push(...pg.map((v) => v.versionId)); return pg; } } }), 25000, 'resumed verifier pass');
+      assert.strictEqual(seen[0], c.versionId, 'the next verifier pass starts at c');
+      assert.ok(out2.cursor && out2.cursor.cas, 'and checkpoints');
+    }
+
+    // ── S2: malformed NUMERIC seqs — never paged when not cursor-safe; a fraction is paged and is a valid, resumable position
+    {
+      const srid = 'seqs';
+      const v1 = await seedPreP1(srid, { dataFrom: 'x_pizza' });
+      const src = vrefOf(srid, v1);
+      const rec = (await src.get()).data();
+      const sub = {};
+      for (const col of ['menu_items', 'extras']) sub[col] = (await src.collection(col).get()).docs.map((d) => [d.id, d.data()]);
+      const structure = (await src.collection('meta').doc('menu_structure').get()).data();
+      const put = async (id, seq, full = true) => {
+        const ref = vrefOf(srid, id);
+        await ref.set({ ...rec, version: id, seq });
+        if (full) { for (const col of ['menu_items', 'extras']) for (const [did, d] of sub[col]) await ref.collection(col).doc(did).set(d); await ref.collection('meta').doc('menu_structure').set(structure); }
+      };
+      await vrefOf(srid, v1).update({ seq: 6 });
+      for (const [id, seq] of [['s10', 10], ['s09', 9], ['s08', 8], ['s07', 7]]) await put(id, seq);
+      await put('frac', 7.5);                                   // lands at the END of page 2 (page size 2)
+      await put('x.dot', 6.5, false);                           // a Firestore id that is NOT an RTDB key, mid-generation…
+      await put('s05', 5);                                      // …with a valid version after it
+      await put('inf', Infinity, false);                        // would be page 1's first row
+      await put('unsafe', 2 ** 53 + 2, false);                  // would be page 1's second row (its position)
+      await put('maxsafe1', Number.MAX_SAFE_INTEGER + 1, false);
+      await put('neginf', -Infinity, false);
+      await put('nan', NaN, false);
+      assert.ok(!W.isCursorSeq(Infinity) && !W.isCursorSeq(2 ** 53 + 2) && !W.isCursorSeq(NaN) && !W.isCursorSeq(-1) && W.isCursorSeq(7.5) && W.isCursorSeq(0) && W.isCursorSeq(Number.MAX_SAFE_INTEGER));
+      const p1 = await W.versionPage(fs, srid, null, 2);
+      assert.deepStrictEqual(p1.map((v) => v.versionId), ['s10', 's09'], '🔴 Infinity / unsafe integers are excluded at the query — never a page row, never a position');
+      // the fraction ends a page: c-style stall on the version after it (s07) → the persisted position IS the fraction
+      const cref = rtdb.ref(`${W.VERSION_CURSOR_PATH}/${srid}`);
+      await cref.set({ generation: 3 });
+      const hw = W.createIdentityRecordWriter({ db: fs, rtdb: hangOn([vpath(srid, 's07')]), log: capture });
+      const out = await within(hw.reconcileRestaurant(srid, W.makeDeadline(3000), { pageSize: 2, concurrency: 1, cursorOpMs: 1000, r: noRungs(hw) }), 5000, 'seqs pass 1');
+      const fracRow = out.versions.find((x) => x.versionId === 'frac');
+      assert.ok(fracRow && fracRow.settled === true && !fracRow.outcomes.includes('inserted'), `the fraction is paged and refused, settled: ${JSON.stringify(fracRow)}`);
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: 3, position: { seq: 7.5, versionId: 'frac' } }, 'a fractional position is persisted (finite: RTDB stores it)');
+      const w2 = writer();
+      const out2 = await within(w2.reconcileRestaurant(srid, W.makeDeadline(20000), { pageSize: 2, concurrency: 1, r: noRungs(w2) }), 25000, 'seqs pass 2');
+      assert.deepStrictEqual(out2.versions.map((x) => x.versionId), ['s07', 'x.dot', v1, 's05'], 'resumes after the fraction; the rest of the generation follows');
+      assert.deepStrictEqual(out2.versions[1].outcomes, ['version_id_malformed'], '🔴 a non-key id is skipped and reported — and does NOT end the generation early (s05 after it is still reached)');
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: 4, position: null }, 'the generation completes and wraps');
+      for (const x of [...out.versions, ...out2.versions]) assert.ok(!/^(inf|unsafe|maxsafe1|neginf|nan)$/.test(x.versionId), `never paged: ${x.versionId}`);
+      // the VERIFIER pages the same way: from the fractional position, the non-key id is counted and the generation goes on
+      const vref = rtdb.ref(`${V.VERIFY_VERSION_CURSOR_PATH}/${srid}`);
+      await vref.set({ generation: 2, position: { seq: 7.5, versionId: 'frac' } });
+      const vv = V.createIdentityVerifier({ db: fs, rtdb, log: () => {} });
+      const vr = { ...vv.readers, mirrorValue: async () => null, activeVersionId: async () => null };
+      const vo = await within(vv.verifyRestaurant(srid, W.makeDeadline(20000), { pageSize: 2, r: vr }), 25000, 'seqs verifier 1');
+      assert.strictEqual(vo.retained.version_id_malformed, 1, 'the non-key id is counted, not loaded');
+      assert.deepStrictEqual(W.normCursor((await vref.get()).val()), { generation: 2, position: { seq: 6.5, versionId: 'x.dot' } }, '🔴 verifier: a skipped id does not end the generation early');
+      await within(vv.verifyRestaurant(srid, W.makeDeadline(20000), { pageSize: 2, r: vr }), 25000, 'seqs verifier 2');
+      assert.deepStrictEqual(W.normCursor((await vref.get()).val()), { generation: 3, position: null }, 'the verifier reaches s05 and wraps');
+      for (const v of ['s10', 's09', 's08', 's07', v1, 's05']) assert.ok(await nodeOf(srid, v), `${v} recorded`);
+    }
+
+    // ── S3: EQUAL-seq groups across page boundaries, and inserts on BOTH sides of the cursor
+    {
+      const trid = 'ties';
+      const v1 = await seedPreP1(trid, { dataFrom: 'x_pizza' });
+      const src = vrefOf(trid, v1);
+      const rec = (await src.get()).data();
+      const sub = {};
+      for (const col of ['menu_items', 'extras']) sub[col] = (await src.collection(col).get()).docs.map((d) => [d.id, d.data()]);
+      const structure = (await src.collection('meta').doc('menu_structure').get()).data();
+      const put = async (id, seq) => {
+        const ref = vrefOf(trid, id);
+        await ref.set({ ...rec, version: id, seq });
+        for (const col of ['menu_items', 'extras']) for (const [did, d] of sub[col]) await ref.collection(col).doc(did).set(d);
+        await ref.collection('meta').doc('menu_structure').set(structure);
+      };
+      await vrefOf(trid, v1).update({ seq: 1 });
+      // five versions share seq 20 (a tie group straddling pages of 2), then 10
+      for (const id of ['t0', 't1', 't2', 't3', 't4']) await put(id, 20);
+      await put('u10', 10);
+      const expected = ['t4', 't3', 't2', 't1', 't0', 'u10', v1];   // seq desc, ties versionId desc
+      const cref = rtdb.ref(`${W.VERSION_CURSOR_PATH}/${trid}`);
+      await cref.set({ generation: 0 });
+      // pass 1 stalls INSIDE the tie group (t2): the persisted position is (20, 't3') — a tie boundary
+      let hw = W.createIdentityRecordWriter({ db: fs, rtdb: hangOn([vpath(trid, 't2')]), log: capture });
+      let out = await within(hw.reconcileRestaurant(trid, W.makeDeadline(3000), { pageSize: 2, concurrency: 1, cursorOpMs: 1000, r: noRungs(hw) }), 5000, 'ties pass 1');
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: 0, position: { seq: 20, versionId: 't3' } });
+      const visited = out.versions.filter((x) => x.settled).map((x) => x.versionId);
+      // now INSERT on both sides of the cursor: 'ahead' has the highest key (already passed in this generation),
+      // 'behind' a smaller key (not yet reached)
+      await put('ahead', 99);
+      await put('behind', 15);
+      const w2 = writer();
+      out = await within(w2.reconcileRestaurant(trid, W.makeDeadline(20000), { pageSize: 2, concurrency: 1, r: noRungs(w2) }), 25000, 'ties pass 2');
+      const gen0 = [...visited, ...out.versions.map((x) => x.versionId)];
+      assert.deepStrictEqual(gen0, ['t4', 't3', 't2', 't1', 't0', 'behind', 'u10', v1], '🔴 the tie group continues exactly after (20, t3) — no skip, no repeat — and the insert BEHIND the cursor is covered in this generation');
+      assert.ok(!gen0.includes('ahead'), 'the insert AHEAD of the cursor is deferred…');
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: 1, position: null });
+      const w3 = writer();
+      out = await within(w3.reconcileRestaurant(trid, W.makeDeadline(20000), { pageSize: 2, concurrency: 1, r: noRungs(w3) }), 25000, 'ties pass 3');
+      assert.deepStrictEqual(out.versions.map((x) => x.versionId), ['ahead', ...expected.slice(0, 5), 'behind', 'u10', v1], '…and covered after wraparound (the next generation visits everything, in order)');
+      assert.ok(out.versions.filter((x) => x.versionId !== 'ahead').every((x) => !x.outcomes.includes('inserted') && !x.outcomes.includes('head_advanced')), 'duplicate visits commit nothing (idempotent)');
+      for (const v of [...expected, 'ahead', 'behind']) assert.ok(await nodeOf(trid, v), `${v} recorded`);
+    }
+  }
+  ok('codex c1 build r2: (B1) on BOTH schedules a page whose 3rd version stalls until the work deadline still checkpoints the settled prefix inside the budget (reserve), and the next invocation resumes at that version; (S2) Infinity / unsafe integers / NaN / negatives are excluded at the query (never a row or a position), a fraction is paged, refused and is a persisted, resumable position; (S3) a tie group straddling pages continues exactly after a tie-boundary position, an insert behind the cursor is covered in the current generation, one ahead of it after wraparound, and duplicate visits commit nothing');
 
   // ═══ codex c1 r7 S1 — CURSOR overlap + wraparound, on BOTH cursors ═══
   {
