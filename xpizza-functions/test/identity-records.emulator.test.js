@@ -32,8 +32,18 @@ const R = require('../catalog/identity-record');
 const W = require('../catalog/identity-record-writer');
 const V = require('../catalog/identity-record-verifier');
 
-let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let n = 0; let lastCell = '(none)';
+const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); lastCell = `${n} ${l.slice(0, 80)}`; };
 let FINISHED = false;
+// Every case ENDS: an await that exercises a hung dependency goes through within() (past its deadline the case FAILS,
+// named, instead of hanging; the timer is cleared on settle); the suite watchdog backstops the rest.
+const within = (p, ms, label) => {
+  let t = null;
+  return Promise.race([Promise.resolve(p), new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`🔴 test deadline: ${label} did not settle within ${ms} ms`)), ms); })])
+    .finally(() => clearTimeout(t));
+};
+const SUITE_DEADLINE_MS = 300000;
+const watchdog = setTimeout(() => { console.error(`🔴 identity-records(emulator): HUNG — not finished within ${SUITE_DEADLINE_MS} ms; last completed cell: ${lastCell}`); process.exit(1); }, SUITE_DEADLINE_MS);
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('identity-records(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const logs = [];
@@ -125,9 +135,9 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   // constant derived from them (4 × the larger, rounded UP to the next KiB).
   const MEASURED = { x_pizza_certified: 12211, la_musa_uncertified: 19949, la_musa_certified: 21787 };
   assert.deepStrictEqual(bytes, MEASURED, '🔴 the §3b measurement moved — re-measure and re-pin RECORD_BOUND_BYTES');
-  assert.strictEqual(R.RECORD_BOUND_BYTES, Math.ceil((4 * largest) / 1024) * 1024, 'RECORD_BOUND_BYTES = 4 × the larger record, rounded up to a KiB');
+  assert.strictEqual(R.RECORD_BOUND_BYTES, 4 * largest, 'RECORD_BOUND_BYTES = EXACTLY 4 × the larger record (advisor amendment: no rounding)');
   assert.strictEqual(R.NODE_CAP_BYTES, 8 * R.RECORD_BOUND_BYTES + 4096);
-  ok(`§3b: records measured from the real writers ${JSON.stringify(bytes)} bytes; RECORD_BOUND_BYTES = ${R.RECORD_BOUND_BYTES} (4 × ${largest}, KiB-rounded), node cap = 8 × bound + 4 KB — both pinned`);
+  ok(`§3b: records measured from the real writers ${JSON.stringify(bytes)} bytes; RECORD_BOUND_BYTES = ${R.RECORD_BOUND_BYTES} (EXACTLY 4 × ${largest}), node cap = 8 × bound + 4 KB — both pinned`);
 
   // ═══ THE DEPLOYED TRIGGER: the version NAMED in the mirror value; trigger ≡ reconciler bytes; real-RTDB round trip ═══
   {
@@ -192,7 +202,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     assert.strictEqual((await rtdb.ref(`${CONTEXT_PATH}/la_musa`).get()).val().head.versionId, lV1, 'the D4-a trigger completes while an identity invocation hangs');
     const pub = await republish('synthetic_uncert', 'x_pizza', 'idr-u2');
     assert.ok(pub.versionId && pub.ok !== false, 'a publish completes while an identity invocation hangs');
-    const hr = await pending;
+    const hr = await within(pending, 5000, 'hung writeVersion');
     assert.deepStrictEqual([hr.outcomes, hr.settled], [['timeout'], false]);
     assert.ok(Date.now() - t0 < 5000, 'the hung identity write is bounded by its deadline');
   }
@@ -279,6 +289,32 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       const r0 = runs[runs.length - 1].results[0];
       console.log(`    §3 measured: run ${i + 1} settled ${r0.versions.filter((x) => x.settled).length} retained versions + ${Object.keys(r0.rungs).length} rungs in ${Date.now() - t0} ms (emulator; page 5)`);
     }
+    // 🔴 BOUNDED READS (codex build r1 S3): each page is ONE query of ≤ pageSize + 1 documents in the fixed order — never a
+    // collection scan. Across the whole sweep the documents fetched stay ≤ versions + one look-ahead per page (+ the final
+    // empty probe), where a scan-and-slice would fetch the whole collection on EVERY page.
+    {
+      const pagesRun1 = runs[0].results[0].pages;
+      const fetched = w.stats.versionDocsFetched;
+      const passes = runs.length;
+      assert.ok(fetched <= passes * (all.length + pagesRun1 + 1), `documents fetched ${fetched} ≤ ${passes} × (${all.length} versions + ${pagesRun1} look-aheads + 1)`);
+      assert.ok(fetched < passes * all.length * pagesRun1, `…far below a per-page scan (${passes * all.length * pagesRun1})`);
+      const q = await W.versionPage(fs, rid, null, 6);
+      assert.strictEqual(q.length, 6, 'a page query returns at most its limit');
+      const expect = W.orderVersions(all.map((v, i) => ({ versionId: v, seq: i === 0 ? (rec.seq || 1) : (rec.seq || 1) + i }))).slice(0, 6);
+      assert.deepStrictEqual(q, expect, 'in the fixed order: seq desc, ties versionId desc');
+      const q2 = await W.versionPage(fs, rid, { seq: q[5].seq, versionId: q[5].versionId }, 6);
+      assert.deepStrictEqual(q2[0], W.orderVersions(all.map((v, i) => ({ versionId: v, seq: i === 0 ? (rec.seq || 1) : (rec.seq || 1) + i })))[6], 'startAfter the persisted position');
+      // malformed / missing seq: not reached by the sweep (the constructor would refuse it anyway — seq_malformed)
+      await vrefOf(rid, `${v1}-noseq`).set({ ...rec, version: `${v1}-noseq`, seq: 'x' });
+      await vrefOf(rid, `${v1}-negseq`).set({ ...rec, version: `${v1}-negseq`, seq: -3 });
+      const everything = [];
+      let pos = null;
+      for (;;) { const pg = await W.versionPage(fs, rid, pos, 7); if (!pg.length) break; everything.push(...pg); pos = pg[pg.length - 1]; }
+      assert.ok(!everything.some((v) => /noseq|negseq/.test(v.versionId)), 'versions without a non-negative numeric seq are not paged');
+      assert.strictEqual(everything.length, all.length, 'every numeric-seq version is paged exactly once');
+      assert.strictEqual(R.buildIdentityRecord(await W.readVersionSnapshot(fs, rid, `${v1}-noseq`)).reason, 'seq_malformed', '…and could never have a record');
+      await vrefOf(rid, `${v1}-noseq`).delete(); await vrefOf(rid, `${v1}-negseq`).delete();
+    }
     const recorded = [];
     for (const v of all) if (await nodeOf(rid, v)) recorded.push(v);
     assert.strictEqual(recorded.length, all.length, `every retained version recorded across runs (${recorded.length}/${all.length})`);
@@ -298,11 +334,36 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     const never = () => new Promise(() => {});
     const stalled = W.createIdentityRecordWriter({ db: { collection: (...a) => fs.collection(...a), runTransaction: never }, rtdb, log: capture });
     const t0 = Date.now();
-    const sr = await stalled.reconcile({ listIds: async () => [rid], pageSize: 5, restaurantBudgetMs: 1500, runBudgetMs: 3000,
-      r: { ...stalled.readers, mirrorVersionId: async () => null, activeVersionId: async () => null } });
+    const sr = await within(stalled.reconcile({ listIds: async () => [rid], pageSize: 5, restaurantBudgetMs: 1500, runBudgetMs: 3000,
+      r: { ...stalled.readers, mirrorVersionId: async () => null, activeVersionId: async () => null } }), 6000, 'stalled reconcile');
     assert.ok(Date.now() - t0 < 6000, 'the stalled run is bounded');
     assert.strictEqual(sr.results[0].cursor && sr.results[0].cursor.advanced, false, 'nothing settled → no checkpoint');
     assert.deepStrictEqual((await rtdb.ref(`${W.VERSION_CURSOR_PATH}/${rid}`).get()).val(), before, 'the cursor did not move');
+    // 🔴 a PARTIALLY settled page WITH budget remaining (the stalled run above cannot show this: once the budget is gone
+    // the checkpoint CAS refuses anyway): the 3rd version's transaction is aborted (unsettled) at once while the others
+    // settle → only the contiguous prefix (versions 1–2) is checkpointed, never the whole page.
+    {
+      const top = W.orderVersions(all.map((v, i) => ({ versionId: v, seq: i === 0 ? (rec.seq || 1) : (rec.seq || 1) + i }))).slice(0, 5);
+      const failPath = `${R.IDENTITY_PATH}/${rid}/${top[2].versionId}`;
+      await rtdb.ref(failPath).remove();   // so this version's transaction WANTS to write
+      const flaky = { ref: (path) => {
+        const real = rtdb.ref(path);
+        if (path !== failPath) return real;
+        return { get: (...a) => real.get(...a), transaction: async (fn) => { fn((await real.get()).val()); return { committed: false, snapshot: null }; } };
+      } };
+      const g = W.normCursor((await cref.get()).val()).generation;
+      await cref.set({ generation: g });
+      const pw = W.createIdentityRecordWriter({ db: fs, rtdb: flaky, log: capture });
+      const pr = await within(pw.reconcile({ listIds: async () => [rid], pageSize: 5, restaurantBudgetMs: 20000, runBudgetMs: 30000,
+        r: { ...pw.readers, mirrorVersionId: async () => null, activeVersionId: async () => null } }), 30000, 'partial-page reconcile');
+      const row = pr.results[0];
+      assert.deepStrictEqual(row.versions.find((x) => x.versionId === top[2].versionId).outcomes, ['aborted'], 'the 3rd version is unsettled');
+      assert.ok(row.versions.filter((x) => x.settled).length >= 4, 'the others settled (budget remained)');
+      assert.deepStrictEqual([row.cursor.advanced, row.cursor.prefix], [true, 2], JSON.stringify(row.cursor));
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: g, position: { seq: top[1].seq, versionId: top[1].versionId } },
+        '🔴 the checkpoint is the last version of the settled PREFIX, not the end of the page');
+      await writer().writeVersion(rid, top[2].versionId, { source: 'test' });   // restore the record for the cells below
+    }
     // the deployed scheduled function runs end-to-end over the Firestore registry
     await app.reconcileIdentityRecords.run({});
     globalThis.__many = { rid, all };
@@ -335,8 +396,8 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     let releaseSlow; const slowGate = new Promise((r) => { releaseSlow = r; });
     const quick = writer();
     const slow = writer();
-    const noRungs = { mirrorVersionId: async () => null, activeVersionId: async () => null, listVersions: async () => [] };
-    const slowRun = slow.reconcile({ listIds: async () => rids, restaurantBudgetMs: 5000, r: { ...noRungs, listVersions: async (rid) => { if (rid === 'ov_a') await slowGate; return []; } } });
+    const noRungs = { mirrorVersionId: async () => null, activeVersionId: async () => null, versionPage: async () => [] };
+    const slowRun = slow.reconcile({ listIds: async () => rids, restaurantBudgetMs: 5000, r: { ...noRungs, versionPage: async (rid) => { if (rid === 'ov_a') await slowGate; return []; } } });
     await wait(150);   // the slow run has observed the cursor and is stuck in ov_a
     const quickRun = await quick.reconcile({ listIds: async () => rids, r: noRungs });
     assert.strictEqual(quickRun.cas, true, 'the quick run wraps the restaurant cursor');
@@ -352,7 +413,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     await rtdb.ref(W.RESTAURANT_CURSOR_PATH).remove();
     const rids = ['rr_1', 'rr_2', 'rr_3', 'rr_4', 'rr_5'];
     const seenRids = [];
-    const slowRungs = { mirrorVersionId: async (rid) => { seenRids.push(rid); await wait(400); return null; }, activeVersionId: async () => null, listVersions: async () => [] };
+    const slowRungs = { mirrorVersionId: async (rid) => { seenRids.push(rid); await wait(400); return null; }, activeVersionId: async () => null, versionPage: async () => [] };
     const w = writer();
     for (let i = 0; i < 4; i++) await w.reconcile({ listIds: async () => rids, runBudgetMs: 900, restaurantBudgetMs: 800, r: slowRungs });
     for (const rid of rids) assert.ok(seenRids.includes(rid), `${rid} reached by round-robin (${seenRids.join(',')})`);
@@ -414,7 +475,7 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
     assert.deepStrictEqual([res.availability, res.usableForWriting], ['available', true]);
     const hung = { ref: () => ({ get: () => new Promise(() => {}) }) };
     const t1 = Date.now();
-    assert.deepStrictEqual(await V.loadVersionNode(hung, 'x_pizza', mv.version), { error: 'timeout' });
+    assert.deepStrictEqual(await within(V.loadVersionNode(hung, 'x_pizza', mv.version), V.IDENTITY_LOAD_TIMEOUT_MS + 500, 'hung loadVersionNode'), { error: 'timeout' });
     assert.ok(Date.now() - t1 < V.IDENTITY_LOAD_TIMEOUT_MS + 500, 'a hung RTDB read is bounded at 1,500 ms');
     await coldApp.delete();
   }
@@ -437,7 +498,10 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
   }
   ok('zero writes elsewhere: after the identity trigger, reconciler and verifier ran, catalog_snapshot_ctx (D4-a), catalog_snapshot (the price mirror), the active pointer and the version record are byte-identical');
 
+  clearTimeout(watchdog);
   FINISHED = true;
   console.log(`identity-records(emulator): OK (${n})`);
-  process.exit(0);
-})().catch((e) => { console.error('identity-records(emulator) FAILED:', e); process.exit(1); });
+  // close the SDK connections instead of process.exit(0): a handle left open by a case keeps the process alive and
+  // the runner reports it, rather than being papered over
+  await Promise.all(admin.apps.map((a) => a.delete()));
+})().catch((e) => { console.error('identity-records(emulator) FAILED:', e, '\nactive resources:', process.getActiveResourcesInfo()); process.exit(1); });

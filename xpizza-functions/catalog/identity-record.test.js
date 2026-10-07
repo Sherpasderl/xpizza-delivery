@@ -5,15 +5,28 @@
 const assert = require('assert');
 const crypto = require('crypto');
 const R = require('./identity-record');
-const { createIdentityRecordWriter } = require('./identity-record-writer');
+const { createIdentityRecordWriter, casCursor, readCursor, CURSOR_OP_DEADLINE_MS } = require('./identity-record-writer');
+const { createIdentityVerifier } = require('./identity-record-verifier');
 const { buildContext } = require('./catalog-context');
 const { contentHash } = require('./content-hash');
 const { catalogSnapshot } = require('./generate-form-bundle');
 const { canonicalJson } = require('./canonical-json');
 const { compareCK } = require('./context-fk');
 
-let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let n = 0; let lastCell = '(none)';
+const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); lastCell = `${n} ${l.slice(0, 80)}`; };
 let __finished = false;
+// Every case ENDS. An await of code under test that could stall goes through within(): past its deadline the case
+// FAILS (named) instead of hanging; its timer is cleared on settle, so it never holds the process open. The suite
+// watchdog backstops anything not wrapped and names the last completed cell. At the end no timer may remain active,
+// so a passing run exits on its own (no process.exit on success).
+const within = (p, ms, label) => {
+  let t = null;
+  return Promise.race([Promise.resolve(p), new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`🔴 test deadline: ${label} did not settle within ${ms} ms`)), ms); })])
+    .finally(() => clearTimeout(t));
+};
+const SUITE_DEADLINE_MS = 60000;
+const watchdog = setTimeout(() => { console.error(`🔴 identity-record: HUNG — not finished within ${SUITE_DEADLINE_MS} ms; last completed cell: ${lastCell}`); process.exit(1); }, SUITE_DEADLINE_MS);
 process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 identity-record: exited before finishing'); process.exit(1); } });
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const WHERE = { rid: 'x_pizza', versionId: 'v-test' };
@@ -199,6 +212,28 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
     const r2 = apply(forged2, A);   // A (rev 0) is older than B's real CK
     assert.strictEqual(r2.next.head.digest, B.digest, 'head = greatest VALID seen, not the forged CK');
   }
+  // ── codex build r1 B1: inserting / restoring a digest must NOT legitimize the head that named it ─────────────────
+  {
+    const fabricated = ck(1, 2000000000, 0);   // a future CK nothing ever validated
+    const Bc = cand(rawFor('x_pizza', { certified: true, revision: 1, stamp: allStamped, t: { seconds: 1700000000, nanoseconds: 5 } }));
+    const Bn = cand(rawFor('x_pizza', { certified: true, revision: 1, stamp: otherStamps, t: { seconds: 1700000100, nanoseconds: 0 } }));   // legit, later, BELOW the fabricated time
+    const histA = step(null, A).node;
+    for (const [label, mkNode] of [
+      ['dangling head (record MISSING) — the candidate inserts that digest', () => { const x = clone(histA); x.head = { digest: Bc.digest, ck: fabricated }; return x; }],
+      ['head naming a CORRUPT record — the candidate restores it from the exact source', () => { const x = clone(histA); x.records[Bc.digest] = { ...clone(Bc.record), seq: 99 }; x.seen[Bc.digest] = fabricated; x.head = { digest: Bc.digest, ck: fabricated }; return x; }],
+    ]) {
+      const r = apply(mkNode(), Bc);
+      assert.ok(r.outcomes.includes('head_invalid') && !r.outcomes.includes('head_repaired'), `${label}: ${r.outcomes}`);
+      assert.deepStrictEqual(r.next.head, { digest: Bc.digest, ck: Bc.ck }, `${label}: the fabricated CK is discarded; head = the candidate's own CK`);
+      assert.deepStrictEqual(r.next.seen[Bc.digest], Bc.ck, `${label}: 🔴 the fabricated CK is NOT promoted into seen`);
+      assert.deepStrictEqual(R.nodeInvariantProblems(r.next, WHERE), []);
+      assert.strictEqual(apply(r.next, Bc).write, false, `${label}: second invocation is a no-op`);
+      const later = apply(r.next, Bn);   // legitimate content BELOW the fabricated time still advances
+      assert.ok(later.outcomes.includes('head_advanced') && later.next.head.digest === Bn.digest, `${label}: a later real CK advances head`);
+    }
+  }
+  ok('codex build r1 B1: a head naming a MISSING record (inserted now) or a CORRUPT one (restored now from the exact source) is validated against the PRE-insertion records → head_invalid; its fabricated CK is discarded (head and seen = the candidate\'s own CK); stable; a later legitimate CK below the fabricated time still advances');
+
   ok('codex r7 S1: a revision-1 record under a structurally valid revision-9 head → head_invalid; the CK is discarded (never promoted into seen), head rebuilt from seen; repeating the same invocation is a no-op');
 
   // ── seen invariants (i)–(iv) ─────────────────────────────────────────────────────────────────────────
@@ -414,23 +449,146 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       },
     }) });
     const w = createIdentityRecordWriter({ db: fakeDb, rtdb: fakeRtdb('normal'), log: (k, d) => logs.push({ k, d }) });
-    const r1 = await w.writeVersion('x_pizza', 'v-test');
+    const r1 = await within(w.writeVersion('x_pizza', 'v-test'), 2000, 'writeVersion r1');
     assert.deepStrictEqual([r1.committed, r1.settled], [true, true]);
     assert.strictEqual(logs.filter((l) => l.k === 'identity_record_write').length, 1, 'ONE log line, after the transaction settled');
-    const r2 = await w.writeVersion('x_pizza', 'v-test');
+    const r2 = await within(w.writeVersion('x_pizza', 'v-test'), 2000, 'writeVersion r2');
     assert.deepStrictEqual([r2.committed, calls], [false, ['write', 'abort']], 'retry with the stored value → no-op');
     // abandonment: the deadline expires between the callback's first call and the retry → aborted, nothing committed
     delete store['catalog_ctx/x_pizza/v-test'];
     store['catalog_ctx/x_pizza/v-test'] = clone(step(null, cand(rawFor('x_pizza', { revision: 0 }))).node);
     const before = canonicalJson(store['catalog_ctx/x_pizza/v-test']);
     const w2 = createIdentityRecordWriter({ db: fakeDb, rtdb: fakeRtdb('expire-between'), log: () => {} });
-    const r3 = await w2.writeVersion('x_pizza', 'v-test', { deadlineMs: 15 });
+    const r3 = await within(w2.writeVersion('x_pizza', 'v-test', { deadlineMs: 15 }), 1000, 'abandoned writeVersion');
     assert.ok(['aborted', 'timeout'].includes(r3.outcomes[0]) && r3.committed === false, JSON.stringify(r3));
     await new Promise((r) => setTimeout(r, 60));
     assert.strictEqual(canonicalJson(store['catalog_ctx/x_pizza/v-test']), before, '🔴 an abandoned write commits nothing');
   }
   ok('writer plumbing: RTDB\'s null-first call then the stored value (retry) → a no-op is detected; ONE outcome log line per write, after settlement; a deadline expiring between callback calls aborts the transaction and commits nothing');
 
+  // ── codex build r1 B2: cursor operations are BOUNDED, and the listener never outlives the call ──────────────────
+  {
+    const never = () => new Promise(() => {});
+    // an instrumented ref: counts live listeners, captures the transaction callback, configurable stalls
+    const mkRef = ({ fireOn = true, cancel = false, txStall = false, value = { generation: 3 } } = {}) => {
+      const st = { listeners: 0, txFn: null, onCalls: 0, offCalls: 0 };
+      return { st, ref: {
+        on: (ev, cb, onCancel) => { st.listeners += 1; st.onCalls += 1; if (cancel) setTimeout(() => onCancel(new Error('permission')), 5); else if (fireOn) setTimeout(() => cb({ val: () => value }), 5); return cb; },
+        off: () => { st.listeners -= 1; st.offCalls += 1; },
+        get: () => (txStall === 'get' ? never() : Promise.resolve({ val: () => value })),
+        transaction: (fn) => { st.txFn = fn; if (txStall) return never(); const v = fn(value); return Promise.resolve({ committed: v !== undefined }); },
+      } };
+    };
+    const ms = 60;
+    const timed = async (p) => { const t0 = Date.now(); const v = await within(p, ms + 1000, 'casCursor'); return [v, Date.now() - t0]; };
+    // success
+    let x = mkRef();
+    let [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    assert.deepStrictEqual([v, x.st.listeners, x.st.onCalls, x.st.offCalls], [true, 0, 1, 1], 'success: committed, ONE listener attached and detached');
+    // mismatch (a farther cursor): refused, detached
+    x = mkRef({ value: { generation: 3, position: 'zz' } });
+    [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    assert.deepStrictEqual([v, x.st.listeners], [false, 0]);
+    // stalled INITIALIZATION (the listener's first event never comes): bounded, detached, no transaction attempted
+    x = mkRef({ fireOn: false });
+    let el; [v, el] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    assert.deepStrictEqual([v, x.st.listeners, x.st.txFn], [false, 0, null], 'stalled init → false, listener detached');
+    assert.ok(el < ms + 200, `bounded (${el} ms)`);
+    // cancellation (listener cancelled by the server)
+    x = mkRef({ cancel: true });
+    [v] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    assert.deepStrictEqual([v, x.st.listeners], [false, 0], 'cancelled → false, detached');
+    // stalled TRANSACTION: bounded, detached, and a LATE retry of the callback (after abandonment) refuses to write
+    x = mkRef({ txStall: true });
+    [v, el] = await timed(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }));
+    assert.deepStrictEqual([v, x.st.listeners], [false, 0], 'stalled transaction → false, detached');
+    assert.ok(el < ms + 200, `bounded (${el} ms)`);
+    assert.strictEqual(x.st.txFn({ generation: 3 }), undefined, '🔴 late recovery: a retry after abandonment commits nothing');
+    // a caller's stop that fires mid-CAS also aborts retries
+    let stopped = false;
+    x = mkRef({ txStall: true });
+    const p = casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms: 400, isStopped: () => stopped });
+    await new Promise((r) => setTimeout(r, 30));
+    stopped = true;
+    assert.strictEqual(x.st.txFn({ generation: 3 }), undefined, 'the caller\'s stop aborts a retry immediately');
+    assert.deepStrictEqual([await within(p, 1500, 'stopped casCursor'), x.st.listeners], [false, 0], 'the stopped CAS itself ends (bounded) and detaches');
+    // a subscribe that THROWS: refused (false), never a rejection, and no transaction attempted
+    x = mkRef();
+    x.ref.on = () => { throw new Error('bad path'); };
+    assert.strictEqual(await within(casCursor(x.ref, { generation: 3 }, { generation: 4 }, { ms }), ms + 1000, 'casCursor (throwing on)'), false, 'a throwing subscribe → false');
+    assert.strictEqual(x.st.txFn, null);
+    // stalled read
+    x = mkRef({ txStall: 'get' });
+    await assert.rejects(within(readCursor(x.ref, { ms }), ms + 1000, 'readCursor'), /cursor_read_timeout/);
+    assert.ok(CURSOR_OP_DEADLINE_MS === 5000);
+  }
+  ok('codex build r1 B2 — cursor primitives: ONE listener per CAS, detached on success / mismatch / stalled init / cancellation / stalled transaction (counts return to 0); every stall bounded by the deadline; a late transaction retry after abandonment (or after the caller\'s stop) refuses to write; a stalled cursor read times out');
+
+  // ── both schedules' TOTAL bounds with every dependency hung, and no listener left behind ────────────────────────
+  {
+    const never = () => new Promise(() => {});
+    const live = { n: 0 };
+    const hungRef = () => ({ get: never, on: (e, cb) => { live.n += 1; return cb; }, off: () => { live.n -= 1; }, transaction: never });
+    const hungRtdb = { ref: hungRef };
+    const hungDb = { collection: () => hungDb, doc: () => hungDb, where: () => hungDb, orderBy: () => hungDb, startAfter: () => hungDb, limit: () => hungDb, select: () => hungDb, get: never, runTransaction: never };
+    const B = { listDeadlineMs: 80, cursorOpMs: 60, runBudgetMs: 300, restaurantBudgetMs: 150 };
+    const bound = B.listDeadlineMs + B.cursorOpMs + B.runBudgetMs + 50 + B.cursorOpMs + 250;   // + timer slack
+    // (a) a hung listing
+    let t0 = Date.now();
+    let res = await within(createIdentityRecordWriter({ db: hungDb, rtdb: hungRtdb, log: () => {} }).reconcile({ listIds: never, ...B }), bound, 'reconcile (hung listing)');
+    assert.ok(!res.ok && Date.now() - t0 < B.listDeadlineMs + 250, 'writer: a hung listing is bounded');
+    res = await within(createIdentityVerifier({ db: hungDb, rtdb: hungRtdb, log: () => {} }).verify({ listIds: never, ...B }), bound, 'verify (hung listing)');
+    assert.ok(!res.ok, 'verifier: a hung listing is bounded');
+    // (b) a hung restaurant cursor: nothing processed, bounded
+    t0 = Date.now();
+    res = await within(createIdentityRecordWriter({ db: hungDb, rtdb: hungRtdb, log: () => {} }).reconcile({ listIds: async () => ['r1', 'r2'], ...B }), bound, 'reconcile (hung cursor read)');
+    assert.ok(!res.ok && Date.now() - t0 < B.listDeadlineMs + B.cursorOpMs + 250, 'writer: a hung restaurant-cursor read is bounded');
+    // (c) everything after the cursor read hung (a readable cursor, hung reads/writes/CAS): the whole run is bounded
+    const okCursorRtdb = { ref: (path) => (/restaurant_cursor$/.test(path) ? { get: async () => ({ val: () => null }), on: (e, cb) => { live.n += 1; setTimeout(() => cb({ val: () => null }), 1); return cb; }, off: () => { live.n -= 1; }, transaction: never } : hungRef()) };
+    for (const [name, run] of [
+      ['reconcile', () => createIdentityRecordWriter({ db: hungDb, rtdb: okCursorRtdb, log: () => {} }).reconcile({ listIds: async () => ['r1', 'r2', 'r3'], ...B })],
+      ['verify', () => createIdentityVerifier({ db: hungDb, rtdb: okCursorRtdb, log: () => {} }).verify({ listIds: async () => ['r1', 'r2', 'r3'], ...B })],
+    ]) {
+      t0 = Date.now();
+      const out = await within(run(), bound, name);
+      const el = Date.now() - t0;
+      assert.ok(out.ok && el < bound, `${name}: total ${el} ms < bound ${bound} ms with every dependency hung`);
+      await new Promise((r) => setTimeout(r, 300));   // let every bounded inner operation settle
+      assert.strictEqual(live.n, 0, `${name}: 🔴 no RTDB listener left attached (${live.n})`);
+    }
+  }
+  // rung checks are CLIPPED to the caller's remaining budget (load and D4-a projection), not only to their own deadlines
+  {
+    const never = () => new Promise(() => {});
+    const certified = cand(rawFor('x_pizza', { certified: true, revision: 1, stamp: allStamped }));
+    const node = step(null, certified).node;
+    const served = { rid: 'x_pizza', versionId: 'v-test', seq: 7, prices: tablesOf('x_pizza') };
+    const stop = (ms) => { const until = Date.now() + ms; return { remaining: () => Math.max(0, until - Date.now()), stopped: () => Date.now() >= until }; };
+    const hungLoad = createIdentityVerifier({ db: { runTransaction: never }, rtdb: { ref: () => ({ get: never }) }, log: () => {} });
+    let t0 = Date.now();
+    let r = await within(hungLoad.checkRung('x_pizza', 'mirror', served, stop(80)), 2000, 'checkRung (hung load)');
+    assert.ok(Date.now() - t0 < 300 && r.category === 'unavailable', `a hung load is clipped to the remaining 80 ms (${Date.now() - t0} ms, ${r.reason})`);
+    const hungD4a = createIdentityVerifier({ db: { collection: () => ({ doc: () => ({ collection: () => ({}) }) }), runTransaction: never }, rtdb: { ref: () => ({ get: async () => ({ val: () => node }) }) }, log: () => {} });
+    t0 = Date.now();
+    r = await within(hungD4a.checkRung('x_pizza', 'active', served, stop(80)), 2000, 'checkRung (hung D4-a)');
+    assert.ok(Date.now() - t0 < 300 && r.category === 'incomparable', `a hung D4-a projection is clipped to the remaining budget (${Date.now() - t0} ms, ${r.category})`);
+    r = await within(hungD4a.checkRung('x_pizza', 'active', served, stop(0)), 2000, 'checkRung (no budget)');
+    assert.strictEqual(r.reason, 'budget_exhausted', 'no budget → no load at all');
+  }
+  ok('verifier rung checks are clipped to the caller\'s remaining budget: a hung load and a hung D4-a projection each return within it; with no budget left nothing is started');
+
+  ok('both schedules\' TOTAL bounds: a hung listing, a hung restaurant-cursor read, and a run where every read / write / cursor op hangs all finish within listing + cursor read + run budget + final CAS; afterwards no RTDB listener remains attached');
+
+  clearTimeout(watchdog);
+  // nothing the cases started may outlive them: no timer still active → the process exits on its own
+  const lingering = process.getActiveResourcesInfo().filter((k) => k === 'Timeout');
+  assert.deepStrictEqual(lingering, [], `🔴 timers still active after the last case: ${lingering.length}`);
+  ok('every case ended: no timer remains active after the last case (the passing suite exits on its own)');
+
   __finished = true;
   console.log(`identity-record: OK (${n})`);
-})().catch((e) => { console.error('identity-record FAILED:', e); process.exit(1); });
+})().catch((e) => {
+  // failure path only: report, then exit non-zero even if a regressed bound left a timer running
+  console.error('identity-record FAILED:', e, '\nactive resources:', process.getActiveResourcesInfo());
+  process.exit(1);
+});

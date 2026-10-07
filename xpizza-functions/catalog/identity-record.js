@@ -32,7 +32,7 @@ const SCHEMA_V = 1;
 const MAX_RECORDS = 8;
 // §3b — the record bound: 4 × the larger of the two live restaurants' records, in UTF-8 bytes of the serialized RTDB
 // value. Measured and pinned in identity-record.test.js (the measurement is reproduced there from the real writers).
-const RECORD_BOUND_BYTES = 88064;   // = ceil(4 × 21787 / 1024) KiB: la_musa certified (the larger) — measured 2026-10-06
+const RECORD_BOUND_BYTES = 87148;   // = EXACTLY 4 × 21787 (la_musa certified, the larger) — measured 2026-10-06 (advisor amendment: fixture-derived, no rounding)
 const NODE_OVERHEAD_BYTES = 4096;   // head + 8 seen entries + keys
 const NODE_CAP_BYTES = MAX_RECORDS * RECORD_BOUND_BYTES + NODE_OVERHEAD_BYTES;
 
@@ -198,7 +198,10 @@ function applyCandidate(current, cand, where, { maxRecords = MAX_RECORDS, nodeCa
   const hasHistory = !!cur && (Object.keys(recsIn).length > 0 || cur.head !== undefined);
   let head = null;
   const h = cur ? cur.head : undefined;
-  const headValid = isValidHeadShape(h) && valid.has(h.digest) && h.ck.revision === valid.get(h.digest).identityRevision;
+  // 🔴 against the PRE-insertion valid records (codex c1 build r1 B1): a head naming a record that was missing or corrupt
+  // BEFORE this transaction is invalid — inserting or restoring that digest now must not legitimize the head's CK, which
+  // nothing ever validated (a fabricated future CK would otherwise be promoted into seen and block every real advance).
+  const headValid = isValidHeadShape(h) && preExisting.has(h.digest) && h.ck.revision === valid.get(h.digest).identityRevision;
   if (headValid) {
     head = { digest: h.digest, ck: cloneCK(h.ck) };
     // head/seen consistency (valid head only): seen is raised to head.ck; a greater seen moves head.

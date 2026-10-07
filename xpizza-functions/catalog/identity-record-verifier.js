@@ -25,8 +25,8 @@ const {
   IDENTITY_PATH, NODE_CAP_BYTES, buildIdentityRecord, identityFromVersionNode, utf8Bytes, isPathKey,
 } = require('./identity-record');
 const {
-  readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, makeDeadline,
-  IDENTITY_RUN_BUDGET_MS, IDENTITY_RESTAURANT_BUDGET_MS, IDENTITY_PAGE_SIZE,
+  readVersionSnapshot, casCursor, readCursor, normCursor, versionPage, makeDeadline, race,
+  IDENTITY_RUN_BUDGET_MS, IDENTITY_RESTAURANT_BUDGET_MS, IDENTITY_PAGE_SIZE, CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
 } = require('./identity-record-writer');
 
 const IDENTITY_LOAD_TIMEOUT_MS = 1500;
@@ -86,6 +86,7 @@ function classify(r, d) {
 }
 
 function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { try { console.log(k, JSON.stringify(d)); } catch (_) {} } } = {}) {
+  const stats = { versionDocsFetched: 0 };
   const readers = {
     mirrorValue: async (rid) => { const s = await rtdb.ref(`catalog_snapshot/${rid}`).get(); return s && s.val(); },
     activeServed: async (rid, versionId) => {
@@ -94,17 +95,25 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
       return { rid, versionId, seq, prices: { menu, extras } };
     },
     activeVersionId: async (rid) => getActiveVersionId(db, rid),
-    listVersions: async (rid) => (await db.collection('restaurants').doc(rid).collection('versions').select('seq').get()).docs
-      .map((d) => ({ versionId: d.id, seq: (d.data() || {}).seq })),
+    versionPage: async (rid, position, limit) => { const p = await versionPage(db, rid, position, limit); stats.versionDocsFetched += p.length; return p; },
   };
+  const noStop = { remaining: () => Infinity, stopped: () => false };
 
-  async function checkRung(rid, rung, served) {
+  // One rung check, CLIPPED to the caller's remaining budget (the load, the D4-a projection — each bounded by both).
+  async function checkRung(rid, rung, served, stop = noStop) {
     const versionId = served.versionId;
     const where = { rid, versionId };
-    const loaded = await loadVersionNode(rtdb, rid, versionId);
+    const loadMs = Math.min(IDENTITY_LOAD_TIMEOUT_MS, stop.remaining());
+    if (!(loadMs > 0)) return { rung, versionId, category: 'unavailable', reason: 'budget_exhausted' };
+    const loaded = await loadVersionNode(rtdb, rid, versionId, { timeoutMs: loadMs });
     if (loaded.error) return { rung, versionId, category: loaded.error === 'oversize' ? 'invalid' : 'unavailable', reason: `load_${loaded.error}` };
     const r = identityFromVersionNode(loaded.node, served, where);
-    const d = r.availability === 'available' ? await deadline(d4aProjection(db, rid, versionId, served), IDENTITY_VERIFY_READ_DEADLINE_MS, 'd4a').catch(() => ({ comparable: false, reason: 'timeout' })) : null;
+    let d = null;
+    if (r.availability === 'available') {
+      const ms = Math.min(IDENTITY_VERIFY_READ_DEADLINE_MS, stop.remaining());
+      d = ms > 0 ? await race(d4aProjection(db, rid, versionId, served), ms, 'd4a').catch(() => ({ comparable: false, reason: 'timeout' }))
+        : { comparable: false, reason: 'budget_exhausted' };
+    }
     return {
       rung, versionId, category: classify(r, d), reason: r.reason || (d && !d.comparable ? d.reason : null),
       record: { availability: r.availability, certified: r.certified, complete: r.complete, attached: r.attached, usableForWriting: r.usableForWriting, digest: r.digest || null },
@@ -112,46 +121,48 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     };
   }
 
-  async function verifyRestaurant(rid, stop, { r = readers, pageSize = IDENTITY_PAGE_SIZE } = {}) {
+  async function verifyRestaurant(rid, stop, { r = readers, pageSize = IDENTITY_PAGE_SIZE, cursorOpMs = CURSOR_OP_DEADLINE_MS } = {}) {
     const out = { rid, rungs: [], retained: {}, cursor: null };
-    const bounded = (p) => deadline(p, Math.max(1, Math.min(IDENTITY_VERIFY_READ_DEADLINE_MS, stop.remaining())), 'verify_read');
+    const clip = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
+    const bounded = (p) => race(p, clip(IDENTITY_VERIFY_READ_DEADLINE_MS), 'verify_read');
     // mirror rung: the ACTUAL catalog_snapshot value's version/seq/tables
     try {
       const m = await bounded(r.mirrorValue(rid));
       if (!m || !isPathKey(m.version)) out.rungs.push({ rung: 'mirror', category: 'incomparable', reason: 'no_mirror' });
       else if (!m.menu || typeof m.menu !== 'object' || !m.extras || typeof m.extras !== 'object') {
         out.rungs.push({ rung: 'mirror', versionId: m.version, category: 'incomparable', reason: 'mirror_tables_missing' });
-      } else out.rungs.push(await checkRung(rid, 'mirror', { rid, versionId: m.version, seq: m.seq, prices: { menu: m.menu, extras: m.extras } }));
+      } else out.rungs.push(await checkRung(rid, 'mirror', { rid, versionId: m.version, seq: m.seq, prices: { menu: m.menu, extras: m.extras } }, stop));
     } catch (e) { out.rungs.push({ rung: 'mirror', category: 'incomparable', reason: 'mirror_read_failed' }); }
     // active rung: the live Firestore read's tables
     if (!stop.stopped()) {
       try {
         const vid = await bounded(r.activeVersionId(rid));
         if (!vid) out.rungs.push({ rung: 'active', category: 'incomparable', reason: 'no_active_version' });
-        else out.rungs.push(await checkRung(rid, 'active', await bounded(r.activeServed(rid, vid))));
+        else out.rungs.push(await checkRung(rid, 'active', await bounded(r.activeServed(rid, vid)), stop));
       } catch (e) { out.rungs.push({ rung: 'active', category: 'incomparable', reason: 'active_read_failed' }); }
     }
-    // retained versions: a valid head + record exists (no served prices → attachment is not applicable)
+    // retained versions: ONE bounded page per run, from this verifier's own cursor (no served prices → attachment N/A)
     const cref = rtdb.ref(`${VERIFY_VERSION_CURSOR_PATH}/${rid}`);
     if (!stop.stopped()) {
       try {
-        const observed = await bounded(readCursor(cref));
-        const ordered = orderVersions((await bounded(r.listVersions(rid))).filter((v) => v && isPathKey(v.versionId)));
-        const p = observed.position;
-        const rest = ordered.filter((v) => !p || (Number.isSafeInteger(v.seq) ? v.seq : -1) < p.seq || ((Number.isSafeInteger(v.seq) ? v.seq : -1) === p.seq && v.versionId > p.versionId));
-        const page = rest.slice(0, pageSize);
+        const observed = await readCursor(cref, { ms: clip(cursorOpMs) });
+        const rows = (await race(Promise.resolve(r.versionPage(rid, observed.position, pageSize + 1)), clip(IDENTITY_LIST_DEADLINE_MS), 'version_page'))
+          .filter((v) => v && isPathKey(v.versionId));
+        const page = rows.slice(0, pageSize);
         let k = 0;
         for (const v of page) {
-          if (stop.stopped()) break;
-          const loaded = await loadVersionNode(rtdb, rid, v.versionId);
+          const ms = Math.min(IDENTITY_LOAD_TIMEOUT_MS, stop.remaining());
+          if (!(ms > 0)) break;
+          const loaded = await loadVersionNode(rtdb, rid, v.versionId, { timeoutMs: ms });
+          if (loaded.error === 'timeout' && stop.stopped()) break;
           const res = loaded.error ? { availability: loaded.error === 'oversize' ? 'invalid' : 'unavailable' } : identityFromVersionNode(loaded.node, null, { rid, versionId: v.versionId });
           out.retained[res.availability] = (out.retained[res.availability] || 0) + 1;
           k += 1;
         }
-        const next = page.length === 0 || (k === page.length && rest.length <= pageSize)
+        const next = page.length === 0 || (k === page.length && rows.length <= pageSize)
           ? { generation: observed.generation + 1, position: null }
-          : k > 0 ? { generation: observed.generation, position: { seq: Number.isSafeInteger(page[k - 1].seq) ? page[k - 1].seq : -1, versionId: page[k - 1].versionId } } : null;
-        if (next) out.cursor = { to: next, cas: await casCursor(cref, observed, next) };
+          : k > 0 ? { generation: observed.generation, position: { seq: page[k - 1].seq, versionId: page[k - 1].versionId } } : null;
+        if (next) out.cursor = { to: next, cas: await casCursor(cref, observed, next, { ms: clip(cursorOpMs), now, isStopped: () => stop.stopped() }) };
       } catch (e) { out.retainedError = String((e && e.message) || e).slice(0, 160); }
     }
     const counts = {};
@@ -160,34 +171,42 @@ function createIdentityVerifier({ db, rtdb, now = Date.now, log = (k, d) => { tr
     return out;
   }
 
-  async function verify({ listIds, runBudgetMs = IDENTITY_RUN_BUDGET_MS, restaurantBudgetMs = IDENTITY_RESTAURANT_BUDGET_MS, ...opts } = {}) {
-    const run = makeDeadline(runBudgetMs, now);
+  // TOTAL BOUND = listing + restaurant-cursor read + run budget + final CAS (each bounded), below the function timeout.
+  async function verify({ listIds, runBudgetMs = IDENTITY_RUN_BUDGET_MS, restaurantBudgetMs = IDENTITY_RESTAURANT_BUDGET_MS,
+    listDeadlineMs = IDENTITY_LIST_DEADLINE_MS, cursorOpMs = CURSOR_OP_DEADLINE_MS, ...opts } = {}) {
     let ids;
-    try { ids = sanitize(await deadline(listIds(), 10000, 'identity_verify_list')).slice().sort(); } catch (e) {
+    try { ids = sanitize(await race(Promise.resolve().then(() => listIds()), listDeadlineMs, 'identity_verify_list')).slice().sort(); } catch (e) {
       log('identity_record_check_run', { ok: false, error: String((e && e.message) || e).slice(0, 160) });
       return { ok: false, results: [] };
     }
     const rref = rtdb.ref(VERIFY_RESTAURANT_CURSOR_PATH);
-    let observed; try { observed = await readCursor(rref); } catch (_) { observed = normCursor(null); }
+    let observed;
+    try { observed = await readCursor(rref, { ms: cursorOpMs }); } catch (_) {
+      log('identity_record_check_run', { ok: false, error: 'restaurant_cursor_unreadable' });
+      return { ok: false, results: [] };
+    }
+    const run = makeDeadline(runBudgetMs, now);
     const start = observed.position === null ? 0 : ids.findIndex((x) => x > observed.position);
     const order = start < 0 ? [] : ids.slice(start);
     const results = []; const done = [];
     for (const rid of order) {
       if (run.stopped()) break;
-      const stop = makeDeadline(Math.min(restaurantBudgetMs, run.remaining()), now);
-      results.push(await verifyRestaurant(rid, stop, opts).catch((e) => ({ rid, error: String((e && e.message) || e).slice(0, 160) })));
+      const budget = Math.min(restaurantBudgetMs, run.remaining());
+      const stop = makeDeadline(budget, now);
+      results.push(await race(verifyRestaurant(rid, stop, { cursorOpMs, ...opts }), budget + 50, 'verify_restaurant')
+        .catch((e) => { stop.forced = true; return { rid, error: String((e && e.message) || e).slice(0, 160) }; }));
       done.push(rid);
     }
     const nextCursor = done.length === order.length ? { generation: observed.generation + 1, position: null }
       : done.length ? { generation: observed.generation, position: done[done.length - 1] } : null;
-    const cas = nextCursor ? await casCursor(rref, observed, nextCursor).catch(() => false) : null;
+    const cas = nextCursor ? await casCursor(rref, observed, nextCursor, { ms: cursorOpMs, now }) : null;
     const totals = {};
     for (const r of results) for (const x of r.rungs || []) totals[`${x.rung}:${x.category}`] = (totals[`${x.rung}:${x.category}`] || 0) + 1;
     log('identity_record_check_run', { ok: true, restaurants: ids.length, checked: done.length, totals, cursor: nextCursor, cas });
     return { ok: true, results, checked: done, cursor: nextCursor, cas, totals };
   }
 
-  return { verify, verifyRestaurant, checkRung, readers };
+  return { verify, verifyRestaurant, checkRung, readers, stats };
 }
 
 module.exports = {

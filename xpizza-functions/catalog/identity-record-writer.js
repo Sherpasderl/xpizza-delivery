@@ -17,6 +17,7 @@
 // operation never settles, AND `stop()` is checked before every further read/write and on every transaction retry (the
 // callback aborts). Overlapping invocations are SAFE: the §3a transaction is idempotent and the cursors move only by CAS.
 // ---------------------------------------------------------------------------
+const { FieldPath } = require('firebase-admin/firestore');
 const { canonicalJson } = require('./canonical-json');
 const { activePointerRef, readPointerSnap } = require('./catalog-firestore');
 const { sanitize } = require('./restaurant-registry');
@@ -82,55 +83,92 @@ async function readVersionSnapshot(db, rid, versionId, stop = () => {}) {
 }
 
 // ── Cursors: {generation, position}, moved ONLY by an exact-value CAS against what was observed ─────────────────────
+const CURSOR_OP_DEADLINE_MS = 5000;   // every cursor read and every CAS, each
 const normCursor = (c) => ({
   generation: c && Number.isSafeInteger(c.generation) && c.generation >= 0 ? c.generation : 0,
   position: c && c.position !== undefined && c.position !== null ? c.position : null,
 });
-async function readCursor(ref) {
-  const snap = await ref.get();
+// A promise raced against a deadline; the loser is never left unhandled.
+function race(promise, ms, label) {
+  let timer = null;
+  const p = Promise.resolve(promise);
+  p.catch(() => {});
+  return Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label}_timeout`)), Math.max(0, ms)); })])
+    .finally(() => { if (timer) clearTimeout(timer); });
+}
+// Bounded read. Throws `cursor_read_timeout` past the deadline.
+async function readCursor(ref, { ms = CURSOR_OP_DEADLINE_MS } = {}) {
+  const snap = await race(ref.get(), ms, 'cursor_read');
   return normCursor(snap && typeof snap.val === 'function' ? snap.val() : null);
 }
 // Commits `next` only if the stored cursor is EXACTLY `observed` (normalized). A slower run's partial checkpoint can
 // therefore never overwrite a farther one in the same generation, and a stale pre-wraparound one never replaces the next.
-// 🔴 THE FIRST CALLBACK MUST SEE THE SERVER VALUE. An RTDB transaction first runs its callback on the LOCAL cache — null
-// when nothing is cached — and a callback that returns undefined aborts on the spot, never seeing the server's value. A
-// CAS that refuses on mismatch would therefore refuse EVERY non-null cursor (measured: the version cursor never advanced
-// past its first checkpoint). A live value listener keeps the cache current for the duration, so the comparison is made
-// against what the server holds — exact, with no speculative write.
-async function casCursor(ref, observed, next) {
+// 🔴 THE FIRST CALLBACK MUST SEE THE SERVER VALUE: an RTDB transaction first runs its callback on the LOCAL cache (null when
+// nothing is cached), and a refusing callback aborts on the spot — so ONE value listener is attached and its first event
+// (the server's value) is awaited before the transaction. 🔴 BOUNDED, codex c1 build r1 B2: the listener's first event and
+// the transaction each race the SAME deadline; the listener is detached in `finally` on success, failure, cancellation and
+// timeout alike; and the transaction callback refuses (undefined) once the CAS is abandoned or its deadline / the caller's
+// stop has passed — so a retry after abandonment can never commit. (A write the callback produced BEFORE the deadline may
+// still be acknowledged later; it is the exact compare-and-set the caller asked for, against the value it observed.)
+// → true only when this call committed.
+async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now = Date.now, isStopped = () => false } = {}) {
   const want = canonicalJson(normCursor(observed));
-  const listener = ref.on('value', () => {}, () => {});
+  const until = now() + ms;
+  let abandoned = false;
+  const dead = () => abandoned || isStopped() || now() >= until;
+  let first; let fail;
+  const ready = new Promise((res, rej) => { first = res; fail = rej; });
+  ready.catch(() => {});
+  const onValue = () => first();
+  const onCancel = (e) => fail(e || new Error('cursor_listen_cancelled'));
   try {
-    await ref.once('value');
+    ref.on('value', onValue, onCancel);   // inside the try: a throwing subscribe is a refusal (false), never a rejection
+    await race(ready, until - now(), 'cursor_listen');
+    if (dead()) return false;
     let matched = false;
-    const res = await ref.transaction((cur) => {
+    const tx = ref.transaction((cur) => {
+      if (dead()) { matched = false; return undefined; }
       matched = canonicalJson(normCursor(cur)) === want;
       if (!matched) return undefined;
       const n = normCursor(next);
       return n.position === null ? { generation: n.generation } : n;
     }, undefined, false);
+    const res = await race(tx, until - now(), 'cursor_cas');
     return !!(matched && res && res.committed);
+  } catch (_) {
+    return false;
   } finally {
-    ref.off('value', listener);
+    abandoned = true;
+    ref.off('value', onValue);
   }
 }
 
-// Retained versions in the fixed order: seq DESCENDING, ties by versionId ascending. A version without an integer seq
-// sorts last (seq −1); its key stays deterministic.
-const seqOf = (v) => (Number.isSafeInteger(v.seq) ? v.seq : -1);
-function orderVersions(list) {
-  return list.slice().sort((a, b) => (seqOf(b) - seqOf(a)) || (a.versionId < b.versionId ? -1 : a.versionId > b.versionId ? 1 : 0));
+// ── The retained order: seq DESCENDING, ties by versionId DESCENDING ──────────────────────────────────────────────────
+// Firestore sorts __name__ in the direction of the last sorted field, so (seq desc, __name__ desc) is served by the
+// AUTOMATIC single-field index — no composite index, no deploy step (the opposite tie direction would need one).
+// Missing / malformed seq — explicit disposition: the page query is `seq >= 0`, so a version without a non-negative
+// numeric seq is not reached by the retained sweep. Nothing is lost: the one constructor refuses such a version
+// (`seq_malformed`), so no record could exist for it; if it is ever the mirror's or the active version, the rung pass
+// attempts it and reports the refusal.
+const positionOf = (v) => ({ seq: v.seq, versionId: v.versionId });
+async function versionPage(db, rid, position, limit) {
+  let q = db.collection('restaurants').doc(rid).collection('versions')
+    .where('seq', '>=', 0).orderBy('seq', 'desc').orderBy(FieldPath.documentId(), 'desc');
+  if (position) q = q.startAfter(position.seq, position.versionId);
+  const snap = await q.limit(limit).select('seq').get();
+  return snap.docs.map((d) => ({ versionId: d.id, seq: (d.data() || {}).seq }));
 }
-const positionOf = (v) => ({ seq: seqOf(v), versionId: v.versionId });
-// Is version v strictly AFTER position p in the fixed order?
-const after = (v, p) => !p || seqOf(v) < p.seq || (seqOf(v) === p.seq && v.versionId > p.versionId);
+// The pure order (used by tests to state expectations independently of Firestore).
+function orderVersions(list) {
+  return list.slice().sort((a, b) => (b.seq - a.seq) || (a.versionId < b.versionId ? 1 : a.versionId > b.versionId ? -1 : 0));
+}
 
 function createIdentityRecordWriter({
   db, rtdb, now = Date.now,
   log = (k, d) => { try { console.log(k, JSON.stringify(d)); } catch (_) {} },
   recordOpts = {}, applyOpts = {},
 } = {}) {
-  const stats = { reads: 0, transactions: 0, callbackCalls: 0 };
+  const stats = { reads: 0, transactions: 0, callbackCalls: 0, versionDocsFetched: 0 };
 
   // writeVersion(rid, versionId) → { rid, versionId, settled, committed, outcomes, ... }. NEVER rejects; bounded.
   function writeVersion(rid, versionId, { deadlineMs = IDENTITY_TRIGGER_DEADLINE_MS, source = 'direct' } = {}) {
@@ -190,44 +228,52 @@ function createIdentityRecordWriter({
   const readers = {
     mirrorVersionId: async (rid) => { const s = await rtdb.ref(`catalog_snapshot/${rid}/version`).get(); const v = s && s.val(); return isPathKey(v) ? v : null; },
     activeVersionId: async (rid) => readPointerSnap(await activePointerRef(db, rid).get(), rid).version,
-    listVersions: async (rid) => (await db.collection('restaurants').doc(rid).collection('versions').select('seq').get()).docs
-      .map((d) => ({ versionId: d.id, seq: (d.data() || {}).seq })),
+    // ONE bounded Firestore page in the fixed order, from the persisted position (never a collection scan)
+    versionPage: async (rid, position, limit) => {
+      const page = await versionPage(db, rid, position, limit);
+      stats.versionDocsFetched += page.length;
+      return page;
+    },
   };
 
-  // One restaurant: rungs first, then pages of retained versions from the cursor. Never rejects; bounded by `stop`.
+  // One restaurant: rungs first, then bounded pages of retained versions from the cursor. Never rejects; bounded by `stop`
+  // (every read, write, cursor read and cursor CAS is clipped to the restaurant's remaining budget).
   async function reconcileRestaurant(rid, stop, opts) {
-    const { pageSize = IDENTITY_PAGE_SIZE, concurrency = IDENTITY_PAGE_CONCURRENCY, rungDeadlineMs = IDENTITY_RUNG_DEADLINE_MS, r = readers } = opts;
+    const { pageSize = IDENTITY_PAGE_SIZE, concurrency = IDENTITY_PAGE_CONCURRENCY, rungDeadlineMs = IDENTITY_RUNG_DEADLINE_MS,
+      cursorOpMs = CURSOR_OP_DEADLINE_MS, r = readers } = opts;
     const out = { rid, rungs: {}, versions: [], pages: 0, cursor: null };
-    const settledRead = (p, ms) => withTimer(Promise.resolve().then(p).catch((e) => ({ error: String((e && e.message) || e).slice(0, 160) })), ms, () => ({ error: 'deadline' }));
+    const clip = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
+    const settledRead = (p, ms) => race(Promise.resolve().then(p), ms, 'rung_read').catch((e) => ({ error: String((e && e.message) || e).slice(0, 160) }));
     // (1) the mirror's version and the active version, each with its own deadline
     for (const [name, fn] of [['mirror', r.mirrorVersionId], ['active', r.activeVersionId]]) {
       if (stop.stopped()) break;
-      const ms = Math.min(rungDeadlineMs, stop.remaining());
+      const ms = clip(rungDeadlineMs);
       const t0 = now();
       const vid = await settledRead(() => fn(rid), ms);
       if (vid && vid.error) { out.rungs[name] = { outcomes: ['rung_read_failed'], error: vid.error }; continue; }
       if (!vid) { out.rungs[name] = { outcomes: ['no_version'] }; continue; }
       if (Object.values(out.rungs).some((x) => x.versionId === vid)) { out.rungs[name] = { versionId: vid, outcomes: ['same_as_mirror'] }; continue; }
-      const res = await writeVersion(rid, vid, { deadlineMs: Math.max(1, Math.min(ms - (now() - t0), stop.remaining())), source: `reconcile_${name}` });
+      const left = Math.min(ms - (now() - t0), stop.remaining());
+      if (left <= 0) { out.rungs[name] = { versionId: vid, outcomes: ['budget_exhausted'], settled: false }; continue; }
+      const res = await writeVersion(rid, vid, { deadlineMs: left, source: `reconcile_${name}` });
       out.rungs[name] = { versionId: vid, outcomes: res.outcomes, settled: res.settled };
     }
-    // (2) retained versions, paged from the persisted cursor
+    // (2) retained versions: ONE bounded page query per page, from the persisted cursor
     const cref = rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`);
     while (!stop.stopped()) {
-      let observed, list;
+      let observed, fetched;
       try {
-        observed = await withTimer(readCursor(cref), stop.remaining(), () => { throw new Abandoned(); });
-        list = await withTimer(Promise.resolve(r.listVersions(rid)), Math.min(IDENTITY_LIST_DEADLINE_MS, stop.remaining()), () => { throw new Error('list_deadline'); });
+        observed = await readCursor(cref, { ms: clip(cursorOpMs) });
+        fetched = await race(Promise.resolve(r.versionPage(rid, observed.position, pageSize + 1)), clip(IDENTITY_LIST_DEADLINE_MS), 'version_page');
       } catch (e) { out.listError = String((e && e.message) || e).slice(0, 160); break; }
-      const ordered = orderVersions((Array.isArray(list) ? list : []).filter((v) => v && isPathKey(v.versionId)));
-      const rest = ordered.filter((v) => after(v, observed.position));
-      if (rest.length === 0) {   // past the end → wraparound: the next generation starts from the top
-        const ok = await casCursor(cref, observed, { generation: observed.generation + 1, position: null });
+      const rows = (Array.isArray(fetched) ? fetched : []).filter((v) => v && isPathKey(v.versionId));
+      if (rows.length === 0) {   // nothing after the position → wraparound: the next generation starts from the top
+        const ok = await casCursor(cref, observed, { generation: observed.generation + 1, position: null }, { ms: clip(cursorOpMs), now, isStopped: () => stop.stopped() });
         out.cursor = { wrapped: true, cas: ok };
         break;
       }
-      const page = rest.slice(0, pageSize);
-      const isLastPage = rest.length <= pageSize;
+      const page = rows.slice(0, pageSize);
+      const isLastPage = rows.length <= pageSize;
       out.pages += 1;
       const settled = new Array(page.length).fill(false);
       let next = 0;
@@ -246,7 +292,7 @@ function createIdentityRecordWriter({
       const nextCursor = k === page.length && isLastPage
         ? { generation: observed.generation + 1, position: null }
         : { generation: observed.generation, position: positionOf(page[k - 1]) };
-      const ok = await casCursor(cref, observed, nextCursor);
+      const ok = await casCursor(cref, observed, nextCursor, { ms: clip(cursorOpMs), now, isStopped: () => stop.stopped() });
       out.cursor = { advanced: ok, to: nextCursor, prefix: k, page: page.length };
       if (!ok) { log('identity_cursor_cas_lost', { rid, observed, attempted: nextCursor }); break; }
       if (k < page.length || nextCursor.position === null) break;
@@ -255,51 +301,62 @@ function createIdentityRecordWriter({
   }
 
   // The scheduled run: round-robin from the persisted restaurant cursor; run budget never starves later restaurants.
+  // TOTAL BOUND = listing + restaurant-cursor read + run budget + final CAS (each bounded), below the function timeout.
   async function reconcile({
-    listIds, runBudgetMs = IDENTITY_RUN_BUDGET_MS, restaurantBudgetMs = IDENTITY_RESTAURANT_BUDGET_MS, ...opts
+    listIds, runBudgetMs = IDENTITY_RUN_BUDGET_MS, restaurantBudgetMs = IDENTITY_RESTAURANT_BUDGET_MS,
+    listDeadlineMs = IDENTITY_LIST_DEADLINE_MS, cursorOpMs = CURSOR_OP_DEADLINE_MS, ...opts
   } = {}) {
-    const run = makeDeadline(runBudgetMs, now);
     let ids;
     try {
-      const p = Promise.resolve(listIds()); p.catch(() => {});
-      ids = sanitize(await withTimer(p, IDENTITY_LIST_DEADLINE_MS, () => { throw new Error('identity_reconcile_list_timeout'); })).slice().sort();
+      ids = sanitize(await race(Promise.resolve().then(() => listIds()), listDeadlineMs, 'identity_reconcile_list')).slice().sort();
     } catch (e) {
       log('identity_reconcile', { ok: false, error: String((e && e.message) || e).slice(0, 160) });
       return { ok: false, results: [] };
     }
     const rref = rtdb.ref(RESTAURANT_CURSOR_PATH);
     let observed;
-    try { observed = await readCursor(rref); } catch (_) { observed = normCursor(null); }
+    try { observed = await readCursor(rref, { ms: cursorOpMs }); } catch (e) {
+      log('identity_reconcile', { ok: false, error: 'restaurant_cursor_unreadable' });
+      return { ok: false, results: [] };   // without the observed cursor no CAS is possible: do nothing rather than guess
+    }
+    const run = makeDeadline(runBudgetMs, now);
     const start = observed.position === null ? 0 : ids.findIndex((x) => x > observed.position);
     const order = start < 0 ? [] : ids.slice(start);
     const results = [];
     const settledRids = [];
     for (const rid of order) {
       if (run.stopped()) break;
-      const stop = makeDeadline(Math.min(restaurantBudgetMs, run.remaining()), now);
-      const res = await withTimer(reconcileRestaurant(rid, stop, opts).catch((e) => ({ rid, error: String((e && e.message) || e).slice(0, 160) })),
-        Math.min(restaurantBudgetMs, run.remaining()) + 50, () => { stop.forced = true; return { rid, timedOut: true }; });
+      const budget = Math.min(restaurantBudgetMs, run.remaining());
+      const stop = makeDeadline(budget, now);
+      const res = await withTimer(reconcileRestaurant(rid, stop, { cursorOpMs, ...opts }).catch((e) => ({ rid, error: String((e && e.message) || e).slice(0, 160) })),
+        budget + 50, () => { stop.forced = true; return { rid, timedOut: true }; });
       results.push(res);
       settledRids.push(rid);   // a restaurant whose bounded pass RETURNED is settled; its own cursor holds its progress
     }
     const reachedEnd = settledRids.length === order.length;
     const nextCursor = reachedEnd ? { generation: observed.generation + 1, position: null }
       : settledRids.length ? { generation: observed.generation, position: settledRids[settledRids.length - 1] } : null;
-    let cas = null;
-    if (nextCursor) cas = await casCursor(rref, observed, nextCursor).catch(() => false);
+    const cas = nextCursor ? await casCursor(rref, observed, nextCursor, { ms: cursorOpMs, now }) : null;
     const counts = {};
+    const oversize = {};   // §3b rollout check: per restaurant, every `oversize` refusal (expected: none)
     for (const r of results) {
-      for (const v of [...Object.values(r.rungs || {}), ...(r.versions || [])]) for (const o of v.outcomes || []) counts[o] = (counts[o] || 0) + 1;
+      for (const v of [...Object.values(r.rungs || {}), ...(r.versions || [])]) {
+        for (const o of v.outcomes || []) {
+          counts[o] = (counts[o] || 0) + 1;
+          if (o === 'oversize') oversize[r.rid] = (oversize[r.rid] || 0) + 1;
+        }
+      }
     }
-    log('identity_reconcile', { ok: true, restaurants: ids.length, processed: settledRids.length, cursor: nextCursor, cas, counts });
-    return { ok: true, results, processed: settledRids, cursor: nextCursor, cas };
+    log('identity_reconcile', { ok: true, restaurants: ids.length, processed: settledRids.length, cursor: nextCursor, cas, counts, oversize });
+    return { ok: true, results, processed: settledRids, cursor: nextCursor, cas, oversize };
   }
 
   return { writeVersion, onMirrorWritten, reconcile, reconcileRestaurant, readers, stats };
 }
 
 module.exports = {
-  createIdentityRecordWriter, readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, makeDeadline,
+  createIdentityRecordWriter, readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, versionPage, makeDeadline, race,
+  CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
   IDENTITY_TRIGGER_DEADLINE_MS, IDENTITY_TRIGGER_TIMEOUT_S, IDENTITY_RECONCILE_INTERVAL, IDENTITY_RECONCILE_INTERVAL_MS,
   IDENTITY_RECONCILE_TIMEOUT_S, IDENTITY_RUN_BUDGET_MS, IDENTITY_RESTAURANT_BUDGET_MS, IDENTITY_RUNG_DEADLINE_MS,
   IDENTITY_PAGE_SIZE, IDENTITY_PAGE_CONCURRENCY, VERSION_CURSOR_PATH, RESTAURANT_CURSOR_PATH,

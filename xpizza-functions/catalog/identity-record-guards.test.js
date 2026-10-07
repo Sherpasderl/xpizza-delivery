@@ -125,6 +125,9 @@ try {
     assert.deepStrictEqual([Wm.IDENTITY_RESTAURANT_BUDGET_MS, Wm.IDENTITY_RUNG_DEADLINE_MS, Wm.IDENTITY_PAGE_SIZE, Wm.IDENTITY_PAGE_CONCURRENCY], [60000, 30000, 25, 2], 'the plan\'s per-restaurant / rung / page / concurrency bounds');
     assert.ok(Vm.IDENTITY_VERIFY_INTERVAL === 'every 30 minutes' && Vm.IDENTITY_LOAD_TIMEOUT_MS === 1500 && Vm.IDENTITY_VERIFY_TIMEOUT_S * 1000 < 30 * 60 * 1000);
     assert.deepStrictEqual([Rm.MAX_RECORDS, Rm.NODE_CAP_BYTES], [8, 8 * Rm.RECORD_BOUND_BYTES + 4096]);
+    // TOTAL schedule bound (codex build r1 B2): listing + restaurant-cursor read + run budget + last-restaurant slack + final CAS
+    const total = Wm.IDENTITY_LIST_DEADLINE_MS + Wm.CURSOR_OP_DEADLINE_MS + Wm.IDENTITY_RUN_BUDGET_MS + 50 + Wm.CURSOR_OP_DEADLINE_MS;
+    assert.ok(total < Wm.IDENTITY_RECONCILE_TIMEOUT_S * 1000 && total < Vm.IDENTITY_VERIFY_TIMEOUT_S * 1000, `both schedules' total bound ${total} ms < their 300 s function timeout`);
     // own resources: the D4-a invokers' options are unchanged (index.js pin above) and the new ones are separate exports
     assert.ok(!/contextWriter\(\)/.test(block), 'the new functions never call the D4-a writer');
     // NOT on the request path: only index.js's lazy inits and the three modules import them
