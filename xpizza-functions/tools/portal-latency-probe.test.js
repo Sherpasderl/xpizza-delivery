@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const P = require('./portal-latency-probe');
 
 let __finished = false;
@@ -25,6 +25,7 @@ const BIN = f('bin'); fs.mkdirSync(BIN);
 fs.writeFileSync(path.join(BIN, 'gcloud'), `#!${process.execPath}
 const a = process.argv.slice(2);
 if (a[0] !== 'logging' || a[1] !== 'read' || !a.includes('--project=xpizza-delivery')) { console.error('fake gcloud: refused ' + a.join(' ')); process.exit(3); }
+if (process.env.NODE_OPTIONS !== undefined) { console.error('fake gcloud: refused an inherited NODE_OPTIONS (the child env must be hermetic)'); process.exit(4); }
 require('fs').appendFileSync(process.env.FAKE_GCLOUD_CALLS, a[2] + '\\n');
 const fx = JSON.parse(require('fs').readFileSync(process.env.FAKE_GCLOUD_FIXTURE, 'utf8'));
 const filter = a[2];
@@ -34,9 +35,18 @@ process.stdout.write(JSON.stringify(out));
 `);
 fs.chmodSync(path.join(BIN, 'gcloud'), 0o755);
 
+// 🔴 the child env is HERMETIC: gate-all injects tools/count-marks.js into every node process via NODE_OPTIONS, and that
+// preload appends a `##CELLS n` trailer to stdout. Inherited by the probe (and through it by the node-based fake gcloud) it
+// corrupts the gcloud JSON the probe parses. NODE_OPTIONS is node's only env-borne preload, so it is removed last (after
+// the per-call overrides) for every CLI child; the fake gcloud refuses to run if one still reaches it.
+function childEnv(extra = {}) {
+  const e = { ...process.env, PATH: `${BIN}:${process.env.PATH}`, ...extra };
+  delete e.NODE_OPTIONS;
+  return e;
+}
 function cli(args, env = {}) {
   return new Promise((resolve) => {
-    const p = spawn(process.execPath, [path.join(__dirname, 'portal-latency-probe.js'), ...args], { env: { ...process.env, PATH: `${BIN}:${process.env.PATH}`, ...env } });
+    const p = spawn(process.execPath, [path.join(__dirname, 'portal-latency-probe.js'), ...args], { env: childEnv(env) });
     let o = ''; p.stdout.on('data', (d) => { o += d; }); p.stderr.on('data', (d) => { o += d; });
     p.on('close', (code) => resolve({ code, o }));
   });
@@ -173,6 +183,27 @@ function cli(args, env = {}) {
     assert.match(g.o, /getMyRestaurants: counted 1 before \/ 1 after; excluded before \{"attributed_cold":1\}/);
   }
   ok('CLI evidence retention (fake gcloud on PATH, read-only + project-pinned): `--summarize --logs` WRITES <file>.attributed.json (or --evidence) holding EVERY row — cold, warm, ambiguous (with both conflicting pairs), uncorrelated and the OPTIONS-500 exclusions — each with eligibility, class, reason and per-leg trace/revision/instance/startup; the CLI warm guard refuses the raw file and, over the artifacts, prints every exclusion per endpoint before INSUFFICIENT');
+
+  // ── the gate's count-marks preload in the PARENT must not reach the CLI children (advisor gate RED at 1a44ccd) ──
+  {
+    const preload = path.join(__dirname, 'count-marks.js');
+    // non-vacuity: the preload really does append its trailer to a node child's stdout (what broke the gcloud JSON)
+    const leak = spawnSync(process.execPath, ['-e', 'process.stdout.write("{}")'], { env: { ...process.env, NODE_OPTIONS: `--require "${preload}"` }, encoding: 'utf8' });
+    assert.strictEqual(leak.status, 0, leak.stderr); assert.match(leak.stdout, /^\{\}##CELLS \d+\n$/, 'the preload pollutes a child that inherits it');
+    const prev = process.env.NODE_OPTIONS;
+    process.env.NODE_OPTIONS = `${prev ? `${prev} ` : ''}--require "${preload}"`;
+    try {
+      const calls = f('gcloud-calls-preload.txt'); fs.writeFileSync(calls, '');
+      const r = await cli(['--summarize', out, '--logs', '--evidence', f('preload.json')], { FAKE_GCLOUD_FIXTURE: f('fixture.json'), FAKE_GCLOUD_CALLS: calls });
+      assert.strictEqual(r.code, 0, `🔴 the CLI path must pass with the gate's NODE_OPTIONS set in the parent:\n${r.o}`);
+      assert.ok(!/##CELLS/.test(r.o), 'the probe child itself ran without the preload');
+      assert.ok(fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean).length >= 2, 'the fake gcloud was really reached (and it refuses an inherited NODE_OPTIONS)');
+      assert.strictEqual(JSON.parse(fs.readFileSync(f('preload.json'), 'utf8')).rows.length, 6);
+    } finally {
+      if (prev === undefined) delete process.env.NODE_OPTIONS; else process.env.NODE_OPTIONS = prev;
+    }
+  }
+  ok('hermetic CLI children: with the gate\'s count-marks NODE_OPTIONS set in the parent (a preload proven to append ##CELLS to an inheriting child), `--summarize --logs` through the fake gcloud still exits 0 with all 6 rows — neither the probe nor the fake gcloud inherits it');
 
   // ── r2 #2: the warm guard counts only eligible, attributed-WARM samples ─────────────────────────────────────────
   const artifact = (file, { rid = 'x_pizza', statsDay = '2026-10-04', base: b, slow = 0, cls = 'warm', preflightStatus = 204, mode = 'warm', extraRows = [] } = {}) => {
