@@ -63,6 +63,18 @@ function workDeadline(stop, reserveMs) {
   const reserve = Math.max(0, Math.min(reserveMs, Math.floor(stop.remaining() / 2)));
   return { reserve, remaining: () => Math.max(0, stop.remaining() - reserve), stopped: () => stop.stopped() || stop.remaining() <= reserve };
 }
+// 🔴 NO WORK STARTS PAST THE WORK DEADLINE (codex c1 build r3 S1): takes a THUNK, checks the work deadline BEFORE invoking
+// it (racing an already-started promise cannot un-start its I/O, and an already-settled one can even win a 0 ms race),
+// then races it against the remaining work time. Past the deadline it rejects `${label}_work_deadline` (e.workDeadline)
+// and the thunk is never called. Every await in the restaurant passes is followed by a call through here (or an
+// explicit check) before the next operation starts.
+function boundedWork(work, thunk, ms, label) {
+  const left = Math.min(ms, work.remaining());
+  if (work.stopped() || !(left > 0)) return Promise.reject(Object.assign(new Error(`${label}_work_deadline`), { workDeadline: true }));
+  let p;
+  try { p = thunk(); } catch (e) { p = Promise.reject(e); }
+  return race(p, left, label);
+}
 function withTimer(promise, ms, onTimeout) {
   let timer = null;
   // onTimeout may return a value OR throw — a throw REJECTS the race (never an uncaught exception in a timer callback)
@@ -165,12 +177,18 @@ async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now 
 // mirror's or the active version, the rung pass attempts it and reports the refusal. A row that is somehow not
 // cursor-safe (unreachable under the query) ends the run with no checkpoint — fail closed, never a poisoned cursor.
 //
-// COVERAGE SEMANTICS (codex c1 build r2 S3) — keyset pagination over immutable keys (seq, versionId), per generation:
-//   · every version present when a generation starts is visited AT LEAST ONCE in that generation (no offsets: a key
-//     can be neither skipped nor shifted by inserts or deletes);
-//   · a version inserted BEHIND the cursor (a smaller key, not yet reached) is visited in the CURRENT generation;
-//     one inserted AHEAD of it (a larger key — new publishes have the highest seq) is visited in the NEXT generation
-//     (and by the trigger, which records the named version at once);
+// COVERAGE SEMANTICS (codex c1 build r2 S3, wording r3) — keyset pagination over immutable keys (seq, versionId), per
+// generation. Each page is ONE query snapshot; its checkpoint then moves the cursor to that page's last settled key.
+//   · a version that is VISIBLE to its page's query and still RETAINED when that page is queried is visited AT LEAST
+//     ONCE in the generation (no offsets: a key is neither skipped nor shifted by other inserts or deletes);
+//   · an insert whose key the cursor has NOT yet reached (smaller than the checkpointed key, and outside any in-flight
+//     page's range) is visited in the CURRENT generation;
+//   · an insert whose key the cursor has already passed is visited in the NEXT generation — a larger key than the
+//     checkpoint (new publishes have the highest seq), AND one inserted after an in-flight page's query snapshot but
+//     before its checkpoint, between the old cursor and that page's last key (the checkpoint passes it);
+//   · a version deleted before its page is queried is not visited (there is nothing left to record);
+//   · the mirror trigger records at once only the version a mirror event NAMES (a publish / activation) — not arbitrary
+//     inserts;
 //   · overlapping runs and unsettled-prefix retries visit some versions MORE THAN ONCE, by design; every write is the
 //     idempotent §3a transaction, so a duplicate visit commits nothing.
 const isCursorSeq = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
@@ -271,14 +289,13 @@ function createIdentityRecordWriter({
     const clip = (ms) => Math.max(0, Math.min(ms, work.remaining()));
     const clipCheckpoint = (ms) => Math.max(0, Math.min(ms, stop.remaining()));
     const checkpoint = (observed, next) => casCursor(rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`), observed, next, { ms: clipCheckpoint(cursorOpMs), now, isStopped: () => stop.stopped() });
-    const settledRead = (p, ms) => race(Promise.resolve().then(p), ms, 'rung_read').catch((e) => ({ error: String((e && e.message) || e).slice(0, 160) }));
+    const settledRead = (p, ms) => boundedWork(work, p, ms, 'rung_read').catch((e) => ({ error: String((e && e.message) || e).slice(0, 160), workDeadline: !!(e && e.workDeadline) }));
     // (1) the mirror's version and the active version, each with its own deadline
     for (const [name, fn] of [['mirror', r.mirrorVersionId], ['active', r.activeVersionId]]) {
-      if (work.stopped()) break;
       const ms = clip(rungDeadlineMs);
       const t0 = now();
       const vid = await settledRead(() => fn(rid), ms);
-      if (vid && vid.error) { out.rungs[name] = { outcomes: ['rung_read_failed'], error: vid.error }; continue; }
+      if (vid && vid.error) { out.rungs[name] = { outcomes: [vid.workDeadline ? 'budget_exhausted' : 'rung_read_failed'], error: vid.error }; continue; }
       if (!vid) { out.rungs[name] = { outcomes: ['no_version'] }; continue; }
       if (Object.values(out.rungs).some((x) => x.versionId === vid)) { out.rungs[name] = { versionId: vid, outcomes: ['same_as_mirror'] }; continue; }
       const left = Math.min(ms - (now() - t0), work.remaining());
@@ -288,12 +305,15 @@ function createIdentityRecordWriter({
     }
     // (2) retained versions: ONE bounded page query per page, from the persisted cursor
     const cref = rtdb.ref(`${VERSION_CURSOR_PATH}/${rid}`);
-    while (!work.stopped()) {
+    for (;;) {   // ends at the wrap, a partial / lost checkpoint, an error, or the work deadline (the cursor read's gate)
       let observed, fetched;
       try {
-        observed = await readCursor(cref, { ms: clip(cursorOpMs) });
-        fetched = await race(Promise.resolve(r.versionPage(rid, observed.position, pageSize + 1)), clip(IDENTITY_LIST_DEADLINE_MS), 'version_page');
-      } catch (e) { out.listError = String((e && e.message) || e).slice(0, 160); break; }
+        observed = await boundedWork(work, () => readCursor(cref, { ms: clip(cursorOpMs) }), cursorOpMs, 'cursor_read');
+        fetched = await boundedWork(work, () => r.versionPage(rid, observed.position, pageSize + 1), IDENTITY_LIST_DEADLINE_MS, 'version_page');
+      } catch (e) {
+        if (e && e.workDeadline) { out.stopped = e.message; break; }   // the work deadline passed between operations: nothing more starts
+        out.listError = String((e && e.message) || e).slice(0, 160); break;
+      }
       const rows = (Array.isArray(fetched) ? fetched : []).filter(Boolean);
       if (rows.length === 0) {   // nothing after the position → wraparound: the next generation starts from the top
         const ok = await checkpoint(observed, { generation: observed.generation + 1, position: null });
@@ -389,7 +409,7 @@ function createIdentityRecordWriter({
 }
 
 module.exports = {
-  workDeadline, isCursorSeq,
+  workDeadline, boundedWork, isCursorSeq,
   createIdentityRecordWriter, readVersionSnapshot, casCursor, readCursor, normCursor, orderVersions, versionPage, makeDeadline, race,
   CURSOR_OP_DEADLINE_MS, IDENTITY_LIST_DEADLINE_MS,
   IDENTITY_TRIGGER_DEADLINE_MS, IDENTITY_TRIGGER_TIMEOUT_S, IDENTITY_RECONCILE_INTERVAL, IDENTITY_RECONCILE_INTERVAL_MS,

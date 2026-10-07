@@ -557,6 +557,77 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
       assert.strictEqual(live.n, 0, `${name}: 🔴 no RTDB listener left attached (${live.n})`);
     }
   }
+  // ── codex build r3 S1: NO WORK STARTS past the work deadline — zero budget starts no I/O at all, and an await that
+  //    crosses the work deadline starts nothing after it (both schedules; a deterministic clock moved by the fakes) ──────
+  {
+    const { makeDeadline } = require('./identity-record-writer');
+    const mk = ({ cross = null, mirrorVid = null, activeVid = null } = {}) => {
+      const clock = { t: 0 };
+      const now = () => clock.t;
+      const io = { cursorGet: 0, cursorTx: 0, cursorOn: 0, nodeGet: 0, db: 0, mirror: 0, active: 0, served: 0, page: 0 };
+      // `cross` names the read whose completion moves the clock PAST the work deadline (hard 100 ms, reserve 50 ms)
+      const done = (name, v) => Promise.resolve().then(() => { if (cross === name) clock.t = 60; return v; });
+      const rtdb = { ref: (path) => (/cursor/.test(path)
+        ? { get: () => { io.cursorGet += 1; return done('cursor', { val: () => null }); }, on: () => { io.cursorOn += 1; }, off: () => {}, transaction: () => { io.cursorTx += 1; return Promise.resolve({ committed: false }); } }
+        : { get: () => { io.nodeGet += 1; return Promise.resolve({ val: () => null }); }, transaction: () => { io.db += 1; return Promise.resolve({ committed: false }); } }) };
+      const db = { runTransaction: () => { io.db += 1; return new Promise(() => {}); }, collection: () => { io.db += 1; throw new Error('unexpected Firestore read'); } };
+      const wr = {
+        mirrorVersionId: () => { io.mirror += 1; return done('mirror', mirrorVid); },
+        activeVersionId: () => { io.active += 1; return done('active', activeVid); },
+        versionPage: () => { io.page += 1; return Promise.resolve([]); },
+      };
+      const vr = {
+        mirrorValue: () => { io.mirror += 1; return done('mirror', mirrorVid ? { version: mirrorVid, seq: 1, menu: {}, extras: {} } : null); },
+        activeVersionId: () => { io.active += 1; return done('active', activeVid); },
+        activeServed: () => { io.served += 1; return Promise.resolve({ rid: 'r1', versionId: activeVid, seq: 1, prices: { menu: {}, extras: {} } }); },
+        versionPage: () => { io.page += 1; return Promise.resolve([]); },
+      };
+      return { clock, now, io, w: createIdentityRecordWriter({ db, rtdb, now, log: () => {} }), v: createIdentityVerifier({ db, rtdb, now, log: () => {} }), wr, vr };
+    };
+    const untouched = (io, label) => assert.deepStrictEqual(io, { cursorGet: 0, cursorTx: 0, cursorOn: 0, nodeGet: 0, db: 0, mirror: 0, active: 0, served: 0, page: 0 }, `${label}: 🔴 no I/O started`);
+    // (a) ZERO budget: nothing is started at all
+    {
+      let x = mk();
+      const wo = await within(x.w.reconcileRestaurant('r1', makeDeadline(0, x.now), { r: x.wr, cursorOpMs: 50 }), 1000, 'writer zero budget');
+      untouched(x.io, 'writer, zero budget');
+      assert.deepStrictEqual([wo.rungs.mirror.outcomes, wo.rungs.active.outcomes, wo.versions, wo.stopped], [['budget_exhausted'], ['budget_exhausted'], [], 'cursor_read_work_deadline']);
+      x = mk();
+      const vo = await within(x.v.verifyRestaurant('r1', makeDeadline(0, x.now), { r: x.vr, cursorOpMs: 50 }), 1000, 'verifier zero budget');
+      untouched(x.io, 'verifier, zero budget');
+      assert.deepStrictEqual([vo.rungs.map((g) => g.reason), vo.retainedStopped], [['budget_exhausted', 'budget_exhausted'], 'cursor_read_work_deadline']);
+    }
+    // (b) the CURSOR read crosses the work deadline → no page fetch starts, and no checkpoint (nothing settled: unchanged)
+    {
+      let x = mk({ cross: 'cursor' });
+      const wo = await within(x.w.reconcileRestaurant('r1', makeDeadline(100, x.now), { r: x.wr, cursorOpMs: 50 }), 1000, 'writer cursor crossing');
+      assert.deepStrictEqual([x.io.cursorGet, x.io.page, x.io.cursorTx, x.io.cursorOn, wo.stopped, wo.cursor], [1, 0, 0, 0, 'version_page_work_deadline', null], `writer: 🔴 no page fetch after the crossing read ${JSON.stringify(x.io)}`);
+      x = mk({ cross: 'cursor' });
+      const vo = await within(x.v.verifyRestaurant('r1', makeDeadline(100, x.now), { r: x.vr, cursorOpMs: 50 }), 1000, 'verifier cursor crossing');
+      assert.deepStrictEqual([x.io.cursorGet, x.io.page, x.io.cursorTx, vo.retainedStopped, vo.cursor], [1, 0, 0, 'version_page_work_deadline', null], `verifier: 🔴 no page fetch after the crossing read ${JSON.stringify(x.io)}`);
+    }
+    // (c) a RUNG read crosses it → no write / load and no later read starts
+    {
+      let x = mk({ cross: 'mirror', mirrorVid: 'v1', activeVid: 'v2' });
+      const wo = await within(x.w.reconcileRestaurant('r1', makeDeadline(100, x.now), { r: x.wr, cursorOpMs: 50 }), 1000, 'writer rung crossing');
+      assert.deepStrictEqual([x.io.mirror, x.io.db, x.io.active, x.io.cursorGet, x.io.page], [1, 0, 0, 0, 0], `writer: 🔴 nothing after the crossing rung read ${JSON.stringify(x.io)}`);
+      assert.deepStrictEqual(wo.rungs.mirror.outcomes, ['budget_exhausted']);
+      x = mk({ cross: 'mirror', mirrorVid: 'v1', activeVid: 'v2' });
+      await within(x.v.verifyRestaurant('r1', makeDeadline(100, x.now), { r: x.vr, cursorOpMs: 50 }), 1000, 'verifier mirror crossing');
+      assert.deepStrictEqual([x.io.mirror, x.io.nodeGet, x.io.db, x.io.active, x.io.cursorGet, x.io.page], [1, 0, 0, 0, 0, 0], `verifier: 🔴 nothing after the crossing mirror read ${JSON.stringify(x.io)}`);
+      x = mk({ cross: 'active', activeVid: 'v2' });
+      const vo = await within(x.v.verifyRestaurant('r1', makeDeadline(100, x.now), { r: x.vr, cursorOpMs: 50 }), 1000, 'verifier active crossing');
+      assert.deepStrictEqual([x.io.active, x.io.served, x.io.nodeGet, x.io.cursorGet, x.io.page], [1, 0, 0, 0, 0], `verifier: 🔴 activeServed is not started after the crossing read ${JSON.stringify(x.io)}`);
+      assert.strictEqual(vo.rungs.find((g) => g.rung === 'active').reason, 'budget_exhausted');
+    }
+    // non-vacuity: with budget left, the same fakes DO perform the reads (the counters see I/O)
+    {
+      const x = mk({ activeVid: 'v2' });
+      await within(x.v.verifyRestaurant('r1', makeDeadline(100, x.now), { r: x.vr, cursorOpMs: 50 }), 1000, 'verifier with budget');
+      assert.ok(x.io.mirror === 1 && x.io.active === 1 && x.io.served === 1 && x.io.cursorGet === 1 && x.io.page === 1, JSON.stringify(x.io));
+    }
+  }
+  ok('codex build r3 S1 — no work starts past the work deadline (both schedules): with zero budget no read, write, load or cursor operation is started at all; a cursor read that crosses the work deadline starts no page fetch (and no checkpoint — nothing settled); a rung read that crosses it starts no write / load and no later read; the verifier never starts activeServed after a crossing read; with budget left the same fakes do see every read');
+
   // rung checks are CLIPPED to the caller's remaining budget (load and D4-a projection), not only to their own deadlines
   {
     const never = () => new Promise(() => {});

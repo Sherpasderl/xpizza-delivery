@@ -516,9 +516,23 @@ const mirrorVal = async (rid) => (await rtdb.ref(`catalog_snapshot/${rid}`).get(
       assert.deepStrictEqual(out.versions.map((x) => x.versionId), ['ahead', ...expected.slice(0, 5), 'behind', 'u10', v1], '…and covered after wraparound (the next generation visits everything, in order)');
       assert.ok(out.versions.filter((x) => x.versionId !== 'ahead').every((x) => !x.outcomes.includes('inserted') && !x.outcomes.includes('head_advanced')), 'duplicate visits commit nothing (idempotent)');
       for (const v of [...expected, 'ahead', 'behind']) assert.ok(await nodeOf(trid, v), `${v} recorded`);
+      // NIT (r3): an insert AFTER a page's query snapshot but BEFORE its checkpoint, between the old cursor and that page's
+      // last key, is passed by the checkpoint → covered in the NEXT generation, not this one
+      await cref.set({ generation: 7 });
+      const w4 = writer();
+      let injected = false;
+      const r4 = { ...noRungs(w4), versionPage: async (...x) => { const pg = await w4.readers.versionPage(...x); if (!injected) { injected = true; await put('mid', 50); } return pg; } };
+      out = await within(w4.reconcileRestaurant(trid, W.makeDeadline(30000), { pageSize: 2, concurrency: 1, r: r4 }), 35000, 'ties pass 4');
+      assert.deepStrictEqual(out.versions.slice(0, 2).map((x) => x.versionId), ['ahead', 't4'], 'page 1 = the snapshot taken BEFORE the insert');
+      assert.ok(!out.versions.some((x) => x.versionId === 'mid'), '🔴 the in-flight insert (key between the old cursor and the page\'s last key) is passed by the checkpoint in this generation…');
+      assert.deepStrictEqual(W.normCursor((await cref.get()).val()), { generation: 8, position: null });
+      const w5 = writer();
+      out = await within(w5.reconcileRestaurant(trid, W.makeDeadline(30000), { pageSize: 2, concurrency: 1, r: noRungs(w5) }), 35000, 'ties pass 5');
+      assert.deepStrictEqual(out.versions.slice(0, 2).map((x) => x.versionId), ['ahead', 'mid'], '…and covered in the next generation');
+      assert.ok(out.versions[1].outcomes.includes('inserted') && await nodeOf(trid, 'mid'), 'mid recorded in generation 8');
     }
   }
-  ok('codex c1 build r2: (B1) on BOTH schedules a page whose 3rd version stalls until the work deadline still checkpoints the settled prefix inside the budget (reserve), and the next invocation resumes at that version; (S2) Infinity / unsafe integers / NaN / negatives are excluded at the query (never a row or a position), a fraction is paged, refused and is a persisted, resumable position; (S3) a tie group straddling pages continues exactly after a tie-boundary position, an insert behind the cursor is covered in the current generation, one ahead of it after wraparound, and duplicate visits commit nothing');
+  ok('codex c1 build r2: (B1) on BOTH schedules a page whose 3rd version stalls until the work deadline still checkpoints the settled prefix inside the budget (reserve), and the next invocation resumes at that version; (S2) Infinity / unsafe integers / NaN / negatives are excluded at the query (never a row or a position), a fraction is paged, refused and is a persisted, resumable position; (S3) a tie group straddling pages continues exactly after a tie-boundary position, an insert behind the cursor is covered in the current generation, one ahead of it after wraparound, an insert landing between a page\'s query and its checkpoint inside that page\'s range is covered in the next generation, and duplicate visits commit nothing');
 
   // ═══ codex c1 r7 S1 — CURSOR overlap + wraparound, on BOTH cursors ═══
   {
