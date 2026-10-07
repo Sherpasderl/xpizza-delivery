@@ -109,7 +109,8 @@ function gateResult(x, gate, label) {
       if (k === 'snapshot') return gateResult(v, gate, label);
       if (typeof v !== 'function' || typeof k === 'symbol' || k === 'constructor') return v;
       if (k === 'child') return (...a) => gateResult(v.apply(t, a), gate, label);
-      if (k === 'forEach') return (cb, ...rest) => v.call(t, (c, ...r) => cb(gateResult(c, gate, label), ...r), ...rest);
+      // thisArg (Firestore) and the callback's return value (RTDB: `true` stops the iteration) are preserved
+      if (k === 'forEach') return (cb, thisArg, ...rest) => v.call(t, (c, ...r) => cb.call(thisArg, gateResult(c, gate, label), ...r), thisArg, ...rest);
       if (k === 'docChanges') return (...a) => v.apply(t, a).map((ch) => ({ type: ch.type, oldIndex: ch.oldIndex, newIndex: ch.newIndex, doc: gateResult(ch.doc, gate, label) }));
       return v.bind(t);
     },
@@ -148,7 +149,8 @@ function gateIo(target, gate, label = 'io') {
           if (k === 'runTransaction' && typeof a[0] === 'function') { const fn = a[0]; return settle(v.call(t, (tx) => fn(gateIo(tx, gate, label)), ...a.slice(1))); }
           if (SYNC_IO.has(k)) {
             const i = a.findIndex((x) => typeof x === 'function');   // the value callback; a cancel callback gets an error, not a snapshot
-            if (i >= 0) { const own = a[i]; a[i] = wrapCallback(own, gate, label); v.apply(t, a); return own; }
+            // RTDB `on` returns the callback (the caller's own, for off); Firestore `onSnapshot` returns its UNSUBSCRIBE function
+            if (i >= 0) { const own = a[i]; a[i] = wrapCallback(own, gate, label); const ret = v.apply(t, a); return k === 'on' ? own : ret; }
             return v.apply(t, a);
           }
           return settle(v.apply(t, a));
@@ -262,6 +264,7 @@ async function casCursor(ref, observed, next, { ms = CURSOR_OP_DEADLINE_MS, now 
       return n.position === null ? { generation: n.generation } : n;
     }, undefined, false);
     const res = await race(tx, until - now(), 'cursor_cas');
+    if (dead()) return false;   // an ack landing past this CAS's OWN deadline is not a timely settlement (codex c1 build r6)
     return !!(matched && res && res.committed);
   } catch (_) {
     return false;

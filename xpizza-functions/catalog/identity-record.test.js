@@ -911,6 +911,51 @@ const tablesOf = (rid) => { const s = catalogSnapshot(rid); return { menu: Objec
   }
   ok('codex build r5 — escape classes closed: writeVersion refuses a missing / null / malformed gate before any I/O and the trigger passes its own; a completion landing after the work deadline is not accepted (boundedWork and the gated handle), so on both schedules a read finishing past the deadline before the timer fires is neither counted nor checkpointed; every reference reachable from a result or a listener argument (DocumentSnapshot / docs[] / query / forEach / docChanges / getAll; DataSnapshot / child / forEach / transaction snapshot) stays gated — zero I/O after the close — and off(cb) still detaches through any ref of the same gate');
 
+  // ── codex build r6 — a CAS ack past the CAS's OWN deadline is not success; onSnapshot / forEach contracts preserved ──
+  {
+    // direct: the caller's gate (100) is still open, the CAS's own ms is 50, the transaction acks at injected time 80
+    const clock = { t: 0 }; const now = () => clock.t;
+    const st = { listeners: 0 };
+    const slowAck = (path) => ({ path, get: () => Promise.resolve({ val: () => null }), on: (e, cb) => { st.listeners += 1; setTimeout(() => cb({ val: () => null }), 0); return cb; }, off: () => { st.listeners -= 1; },
+      transaction: (fn) => { const v = fn(null); return Promise.resolve().then(() => { clock.t += 80; return { committed: v !== undefined }; }); } });
+    const caller = W4.makeDeadline(100, now);
+    const ok6 = await within(W4.casCursor(W4.gateIo(slowAck('c'), caller), { generation: 0 }, { generation: 1 }, { ms: 50, now, isStopped: () => caller.stopped() }), 1000, 'cas own deadline');
+    assert.deepStrictEqual([ok6, st.listeners], [false, 0], '🔴 an ack past the CAS\'s own 50 ms deadline (caller gate still open) → false, listener detached');
+    // both schedules' real checkpoint: hard 1,000 ms, cursorOpMs 50 (the CAS's own deadline), the ack lands at +80
+    for (const schedule of ['writer', 'verifier']) {
+      clock.t = 0; st.listeners = 0;
+      const rtdb = { ref: (path) => slowAck(path) };
+      const r = { mirrorVersionId: async () => null, activeVersionId: async () => null, mirrorValue: async () => null, versionPage: async () => [{ versionId: 'x.dot', seq: 3 }] };   // settles without I/O
+      const out = schedule === 'writer'
+        ? await within(createIdentityRecordWriter({ db: {}, rtdb, now, log: () => {} }).reconcileRestaurant('r1', W4.makeDeadline(1000, now), { r, pageSize: 5, cursorOpMs: 50 }), 2000, 'writer slow ack')
+        : await within(createIdentityVerifier({ db: {}, rtdb, now, log: () => {} }).verifyRestaurant('r1', W4.makeDeadline(1000, now), { r, pageSize: 5, cursorOpMs: 50 }), 2000, 'verifier slow ack');
+      const cas = schedule === 'writer' ? out.cursor.advanced : out.cursor.cas;
+      assert.deepStrictEqual([cas, st.listeners], [false, 0], `${schedule}: 🔴 the checkpoint acked past its own deadline is reported false, no listener left`);
+    }
+    // non-vacuity: the same world with a TIMELY ack reports success
+    clock.t = 0; st.listeners = 0;
+    const fast = (path) => ({ ...slowAck(path), transaction: (fn) => { const v = fn(null); return Promise.resolve({ committed: v !== undefined }); } });
+    const g2 = W4.makeDeadline(100, now);
+    assert.strictEqual(await within(W4.casCursor(W4.gateIo(fast('c'), g2), { generation: 0 }, { generation: 1 }, { ms: 50, now, isStopped: () => g2.stopped() }), 1000, 'cas timely'), true);
+
+    // onSnapshot returns Firestore's UNSUBSCRIBE (RTDB `on` returns the caller's callback, tested above); forEach keeps thisArg + return
+    const unsub = () => 'unsubscribed';
+    let delivered = null;
+    const fsDoc = { onSnapshot: (cb) => { setTimeout(() => cb({ ref: { get: () => Promise.resolve() } }), 0); return unsub; } };
+    const ret = W4.gateIo(fsDoc, OPEN_GATE).onSnapshot((snap) => { delivered = snap; });
+    assert.strictEqual(ret, unsub, 'onSnapshot returns the SDK\'s unsubscribe function');
+    await sleep(5);
+    assert.ok(delivered && W4.isGated(delivered.ref), 'and its listener argument is gated');
+    const ctx = { me: 1 };
+    let seenThis = null;
+    W4.gateResult({ forEach(cb, thisArg) { [1].forEach((x) => cb.call(thisArg, { x })); } }, OPEN_GATE, 't').forEach(function cbf() { seenThis = this; }, ctx);
+    assert.strictEqual(seenThis, ctx, 'forEach passes thisArg through');
+    const visited = [];
+    const stopped = W4.gateResult({ forEach(cb) { for (const k of ['a', 'b', 'c']) if (cb({ key: k }) === true) return true; return false; } }, OPEN_GATE, 't').forEach((c) => { visited.push(c.key); return c.key === 'b'; });
+    assert.deepStrictEqual([stopped, visited], [true, ['a', 'b']], 'forEach keeps the callback\'s return value (RTDB: true stops the iteration)');
+  }
+  ok('codex build r6 — a cursor CAS whose transaction acks past the CAS\'s OWN deadline (caller gate still open) is reported false with no listener left — directly and at both schedules\' real checkpoint — while a timely ack still succeeds; onSnapshot returns the SDK\'s unsubscribe function with a gated argument; forEach preserves thisArg and the callback\'s return value');
+
   // rung checks are CLIPPED to the caller's remaining budget (load and D4-a projection), not only to their own deadlines
   {
     const never = () => new Promise(() => {});
