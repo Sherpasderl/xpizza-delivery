@@ -45,6 +45,111 @@
       "collectionGroup": "stats_meta",
       "fieldPath": "pending_repair",
       "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "v",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "certified",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "generation",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "intent",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "ch",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "seq_c",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "rev_c",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "at",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "final_digest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "final_count",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "stampmap_digest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "stampmap_counts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "relocated_count",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "observed_digest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "plan",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "kind",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "observed_generation",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "checks_digest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "checks_count",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "identity_evidence",
+      "fieldPath": "vid",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        }
+      ]
     }
   ]
 }

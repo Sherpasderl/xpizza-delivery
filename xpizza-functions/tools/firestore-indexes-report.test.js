@@ -16,7 +16,10 @@ const api = R.loadFirebaseApi(findFirebaseTools().root);
 const NAME = 'projects/xpizza-delivery/databases/(default)/collectionGroups';
 const ix = (cg, fields, id = 'X') => ({ name: `${NAME}/${cg}/indexes/${id}`, queryScope: 'COLLECTION', fields });
 const LOCAL = JSON.parse(fs.readFileSync(R.inventoryFile(), 'utf8'));
-const statsRemote = LOCAL.fieldOverrides.map((o) => ({ name: `${NAME}/${o.collectionGroup}/fields/${o.fieldPath}`, indexConfig: { indexes: [], usesAncestorConfig: false } }));
+/* The remote as it stands once the committed overrides are deployed. Exemptions carry no index; a field that KEEPS an index
+   (1D D4-c2a: identity_evidence.vid, ascending, collection scope) carries it in the API's shape. */
+const statsRemote = LOCAL.fieldOverrides.map((o) => ({ name: `${NAME}/${o.collectionGroup}/fields/${o.fieldPath}`,
+  indexConfig: { indexes: (o.indexes || []).map((i) => ({ queryScope: i.queryScope, fields: [{ fieldPath: o.fieldPath, order: i.order }], state: 'READY' })), usesAncestorConfig: false } }));
 const withIdx = (indexes) => ({ indexes, fieldOverrides: LOCAL.fieldOverrides });
 
 (async () => {

@@ -74,10 +74,29 @@ try {
       'catalog/context-source.js': '04276ab1c11172cd8b9d8f0ffe85b2b3d4660838844e58a00a864b2f846a2efc',
       'catalog/context-fk.js': '54d8dcaf9f414f495fb549973fed22b5b921847dd71ead0f26922529c5eb9c11',
     };
-    for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(read(f)), want, `🔴 ${f} changed — D4-c1 must not modify it`);
+    /* 1D D4-c2a (PLAN-D4c2a rev 9 §6 guards): identity-bootstrap.js = this pin + EXACTLY the c2a blocks between the unique
+       delimiters; removing them reproduces the pinned sha byte for byte. Every other pin stays whole. */
+    const C2A = /[ \t]*\/\* c2a-evidence:begin \*\/[\s\S]*?\/\* c2a-evidence:end \*\/\n?/g;
+    const C2A_BLOCKS = { 'catalog/identity-bootstrap.js': 3 };
+    const baseOf = (f) => {
+      const src = read(f);
+      if (!C2A_BLOCKS[f]) return src;
+      const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
+      assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins}`);
+      assert.strictEqual((src.match(/\/\* c2a-evidence:end \*\//g) || []).length, begins, `🔴 ${f}: unbalanced c2a delimiters`);
+      return src.replace(C2A, '');
+    };
+    for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(baseOf(f)), want, `🔴 ${f} changed — D4-c1 must not modify it (c2a may only ADD delimited blocks to identity-bootstrap.js)`);
     assert.notStrictEqual(sha(`${read('catalog/pricing-tables.js')} `), PINS['catalog/pricing-tables.js'], 'sensitivity');
+    {
+      const boot = read('catalog/identity-bootstrap.js');
+      const planted = boot.replace('async function reconcileLegacyOrphans(', 'async function reconcileLegacyOrphanS(');
+      assert.notStrictEqual(planted, boot, 'sensitivity premise');
+      assert.notStrictEqual(sha(planted.replace(C2A, '')), PINS['catalog/identity-bootstrap.js'], 'sensitivity: a one-byte change OUTSIDE the c2a blocks is detected');
+      assert.notStrictEqual(boot.replace(C2A, ''), boot, 'non-vacuity: the c2a blocks are present and removed');
+    }
   }
-  ok('NEW zero-diff pins (vs 2745be5): pricing-tables.js, identity-bootstrap.js, the order-path modules of codex r7\'s census (menu-pricing, rewards-redeem[-config|-pricing|-intake], reorder-normalize, create-order-build, createorder-classify, quote-issue, compute-server-net, token-gate) and the D4-a context modules (context-writer/-source/-fk) are byte-identical');
+  ok('NEW zero-diff pins (vs 2745be5): pricing-tables.js, identity-bootstrap.js (= pin + exactly the 3 delimited c2a blocks), the order-path modules of codex r7\'s census (menu-pricing, rewards-redeem[-config|-pricing|-intake], reorder-normalize, create-order-build, createorder-classify, quote-issue, compute-server-net, token-gate) and the D4-a context modules (context-writer/-source/-fk) are byte-identical');
 
   // ── The new modules: what they write, and nothing else ───────────────────────────────────────────────────────
   const NEW = ['catalog/identity-record.js', 'catalog/identity-record-writer.js', 'catalog/identity-record-verifier.js'];

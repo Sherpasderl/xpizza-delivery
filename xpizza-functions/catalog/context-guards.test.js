@@ -21,13 +21,34 @@ try {
     'snapshot-fallback.js': 'e91f90f407e0d9603065a668b7209345a5a95610ce695174c30c7cc487a2303e', // the ladder (selection, K, deadlines)
     'catalog-firestore.js': '7cefff4a0b1d18bf801b91ab310c59ddcb2ada539d4a5b0fed6c98f029f044c0', // the pricing reader + pointer
   };
+  /* 1D D4-c2a (PLAN-D4c2a rev 9 §6 guards): catalog-publish.js = this pinned baseline + EXACTLY the c2a blocks between
+     the unique delimiters. Removing every delimited block must reproduce the pinned sha byte for byte; nothing outside
+     them may change. The other four files stay pinned whole. */
+  const C2A = /[ \t]*\/\* c2a-evidence:begin \*\/[\s\S]*?\/\* c2a-evidence:end \*\/\n?/g;
+  const C2A_BLOCKS = { 'catalog-publish.js': 8 };
+  const shaBase = (f) => {
+    const src = fsys.readFileSync(path.join(__dirname, f), 'utf8');
+    if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(fsys.readFileSync(path.join(__dirname, f))).digest('hex');
+    const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
+    const ends = (src.match(/\/\* c2a-evidence:end \*\//g) || []).length;
+    assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins} begin delimiters`);
+    assert.strictEqual(ends, begins, `🔴 ${f}: unbalanced c2a delimiters`);
+    return crypto.createHash('sha256').update(src.replace(C2A, '')).digest('hex');
+  };
   for (const [f, want] of Object.entries(FROZEN)) {
-    assert.strictEqual(sha(f), want, `🔴 ${f} changed — D4-a must not modify it (plan rev 9 steps 8-9)`);
+    assert.strictEqual(shaBase(f), want, `🔴 ${f} changed — D4-a must not modify it (plan rev 9 steps 8-9); c2a may only ADD delimited blocks`);
   }
-  // Sensitivity partner: the comparison detects a one-byte change.
+  // Sensitivity partners: the comparison detects a one-byte change OUTSIDE the blocks, in the whole file and in the baseline.
   const one = crypto.createHash('sha256').update(Buffer.concat([fsys.readFileSync(path.join(__dirname, 'catalog-publish.js')), Buffer.from(' ')])).digest('hex');
   assert.notStrictEqual(one, FROZEN['catalog-publish.js']);
-  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js, the legacy mirror, the pricing caches, the ladder, the pricing reader); a one-byte change is detected`);
+  {
+    const src = fsys.readFileSync(path.join(__dirname, 'catalog-publish.js'), 'utf8');
+    const planted = src.replace('async function releaseLease(', 'async function releaseLeasE(');
+    assert.notStrictEqual(planted, src, 'sensitivity premise: the plant changed the file');
+    assert.notStrictEqual(crypto.createHash('sha256').update(planted.replace(C2A, '')).digest('hex'), FROZEN['catalog-publish.js'], 'a one-byte change OUTSIDE the c2a blocks is detected');
+    assert.notStrictEqual(src.replace(C2A, ''), src, 'non-vacuity: the c2a blocks are present and removed');
+  }
+  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
 
   // The writer writes ONLY the context path; nothing in D4-a writes the legacy mirror or active_snapshot.
   const NEW = ['context-fk.js', 'policy-primitive.js', 'catalog-context.js', 'catalog-verifier.js', 'context-writer.js', 'context-source.js'];

@@ -513,6 +513,7 @@ function cartAdapterOf(rid) {
     'catalog/catalog-edit.js': 'the merchant diff, which must EXCLUDE identity from content',
     'catalog/content-hash.js': 'excludes identity from the content fingerprint',
     'catalog/catalog-context.js': "D4-a resolved context: the single gateway mapping a certified version's own stamp to canonicalId; reported only; keys no price/cart/quote/redemption/factura; not in the public payload",
+    'catalog/identity-evidence.js': "D4-c2a binding evidence: digests the stamps the activation writer commits (final_digest), inside that writer's transaction; writes only restaurants/{rid}/identity_evidence; dormant — nothing reads it; keys no price/cart/quote/redemption/factura",
   };
 
   /* \u{1f534} TWO OWNERS ARE DELIBERATELY NOT LISTED, AND THAT IS ITSELF PINNED BELOW.

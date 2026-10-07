@@ -245,7 +245,11 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
 
     // ...and a version that EXISTS but is not servable is refused at the same place.
     const { versionId: broken } = await publishFresh(db, rid);
-    await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').set({ version: good });
+    /* 1D D4-c2a: the reset KEEPS the pointer's generation, as every real pointer does (only the flip writes it, and it
+       only ever increments). Dropping it rewinds the generation to 0, and the next flip would take an activation-evidence id
+       g{G20(gen)} that is already taken — the §4 collision, which is not what this cell is about. */
+    { const ptr = db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
+      await ptr.set({ version: good, generation: ((await ptr.get()).data() || {}).generation }); }
     const e1 = (await db.collection('restaurants').doc(rid).collection('versions').doc(broken).collection('extras').get()).docs[0];
     await e1.ref.set({ key: e1.data().key, price: e1.data().price });        // strip its display record
     await assert.rejects(() => attempt(broken), (e) => {
@@ -256,7 +260,11 @@ const publishFresh = async (db, rid, over = {}) => publishVersion(db, rid, input
 
     // ...and a healthy target still flips, so the gate is not simply refusing everything.
     const { versionId: healthy } = await publishFresh(db, rid);
-    await db.collection('restaurants').doc(rid).collection('meta').doc('active_version').set({ version: good });
+    /* 1D D4-c2a: the reset KEEPS the pointer's generation, as every real pointer does (only the flip writes it, and it
+       only ever increments). Dropping it rewinds the generation to 0, and the next flip would take an activation-evidence id
+       g{G20(gen)} that is already taken — the §4 collision, which is not what this cell is about. */
+    { const ptr = db.collection('restaurants').doc(rid).collection('meta').doc('active_version');
+      await ptr.set({ version: good, generation: ((await ptr.get()).data() || {}).generation }); }
     await assert.doesNotReject(() => attempt(healthy), 'a servable version still flips');
     assert.strictEqual(await pointerOf(db, rid), healthy, 'and the pointer moved to it');
     ok('the WRITE POINT validates: flipPointer called directly — right lease, right snapshot, matching expectation — still refuses a nonexistent and an unservable version, and still accepts a healthy one');

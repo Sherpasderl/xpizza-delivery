@@ -71,6 +71,10 @@ const { legacyKeyOf } = require('./identity-backfill');
 const { activePointerRef, getActivePointer, readPointerSnap } = require('./catalog-firestore');
 const { sourceRefOf, encodeUpdateTime } = require('./source-store');
 const { revisionOf } = require('./context-fk');   // 1D D4-a: the ONE reading of identity_revision (absent/malformed → 0)
+/* c2a-evidence:begin */
+// 1D D4-c2a — certification evidence (PLAN-D4c2a rev 9 §3). Dormant: nothing reads it in this slice.
+const { buildCertificationEvidence, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
+/* c2a-evidence:end */
 
 /* Bounded because it writes every object of a version in ONE transaction: Firestore's hard ceiling is
    500 writes, and the write set here is (dishes + extras + the version record). The cap leaves room
@@ -460,7 +464,17 @@ async function bootstrapIdentityStamps(db, rid, { now = () => new Date().toISOSt
       return { ...o, display: { ...(o.display || {}), identity_id: id } };
     });
     tx.update(srcRef, { items: enrich(liveSrc.items, 'dish'), extras: enrich(liveSrc.extras, 'extra') });
-  });
+    /* c2a-evidence:begin */
+    /* 1D D4-c2a — appended after every read, the source checks and every existing write of this transaction (§3): the
+       evidence commits if and only if the certification does. Built from in-tx values only — the objects stamped above,
+       the live claimants and key rows read in THIS transaction, and the record as read. */
+    const c2aEvidence = buildCertificationEvidence({
+      versionId: active.versionId, observedGeneration: p.generation, revisionAfter: revisionOf(rec) + 1, record: rec,
+      objects: { dish: dishes, extra: extras }, liveByKey: { dish: liveDish, extra: liveExtra }, keyRowIdOf,
+    });
+    tx.create(evidenceRefOf(db, rid, c2aEvidence.docId), withAt(c2aEvidence.data));
+    /* c2a-evidence:end */
+  })/* c2a-evidence:begin */.catch(translateEvidenceCollision('certify_evidence_exists', rid, active.versionId))/* c2a-evidence:end */;
 
   report.stamped = true;
   try {

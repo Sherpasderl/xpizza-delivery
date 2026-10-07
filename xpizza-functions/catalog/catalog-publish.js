@@ -49,6 +49,10 @@ const { applyIdentityPlan } = require('./identity-writer');
 const { reconcileOnRollback } = require('./identity-reconcile');
 const { REGISTRY_AGREEMENT_REFUSALS } = require('./identity-stampmap');
 const { renameEnabled } = require('./identity-flags');
+/* c2a-evidence:begin */
+// 1D D4-c2a — binding evidence recorded at activation (PLAN-D4c2a rev 9 §2). Dormant: nothing reads it in this slice.
+const { buildActivationEvidence, activationEvidenceDoc, evidenceRefOf, withAt, translateEvidenceCollision } = require('./identity-evidence');
+/* c2a-evidence:end */
 /* The activation's own verification budget: the same ceiling bootstrap uses, for the same reason —
    one transaction can only verify so much, and verifying a SUBSET is worse than refusing. */
 const BOOTSTRAP_MAX_OBJECTS = 400;
@@ -694,6 +698,12 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           identity: certifiedCandidate ? 'reconciled_in_activation' : 'untouched_target_uncertified' }));
       } catch (_) {}
     }
+    /* c2a-evidence:begin */
+    /* 1D D4-c2a — declared INSIDE the transaction callback, so a retried attempt starts from nothing. Filled only by
+       a CERTIFIED activation; an uncertified one records no evidence (plan §1). */
+    let c2aEvidence = null;
+    const c2aPlans = { dish: null, extra: null };
+    /* c2a-evidence:end */
     if (certifiedCandidate) {
       const vref = versionsColOf(db, rid).doc(versionId);
       const [itemsSnap, extrasSnap, dishKeys, extraKeys, dishIds, extraIds] = await Promise.all([
@@ -834,6 +844,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           if (rec.refusals.length) {
             throw new Error(`${rec.refusals[0].code}: ${rid}/${versionId}/${kind} — ${rec.refusals.length} refusal(s) reconciling the rollback target — ${rec.refusals.map((r) => r.detail).join(' · ')}`);
           }
+          /* c2a-evidence:begin */ c2aPlans[kind] = { source: 'reconcile', rec }; /* c2a-evidence:end */
           if (!rec.restores.length && !rec.retires.length) continue;   // the registry already says what the target says
           /* 🔴 THE VERDICT COMES FROM THE RECONCILIATION, NOT FROM HERE. This used to assemble both
              halves by hand — `plan: {…rec.retires, …rec.restores}` beside
@@ -862,6 +873,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
         if (!renameOn && derived.moves.length) {
           throw new Error(`flip_rename_disabled: ${rid}/${versionId}/${kind} — ${derived.moves.length} move(s) derived while identity_flags.rename_enabled is OFF; the stamp map should have refused this activation first`);
         }
+        /* c2a-evidence:begin */ c2aPlans[kind] = { source: 'derived', plan }; /* c2a-evidence:end */
         if (!plan.moves.length && !plan.mints.length && !plan.retires.length) continue;   // ordinary republish: nothing to write
 
         /* THE DESTINATION-CLAIMANT GUARD (§4, inv #2/#4) — who holds each destination name RIGHT NOW,
@@ -891,6 +903,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
         }
         identityWrites[kind] = applyIdentityPlan(tx, { db, rid, kind, verified, existing: fullIds[kind] });
         for (const m of plan.mints) mintedThisFlip[kind].set(m.name, m.id);
+        /* c2a-evidence:begin */ c2aPlans[kind] = { source: 'verify', plan, verified }; /* c2a-evidence:end */
       }
       /* ══ A MINT MUST REACH THE VERSION **AND** THE SOURCE — BOTH, OR NEITHER ════════════════
          🔴 WHY THE VERSION. writeVersion stamps `display.identity_id` from the DRAFT, and a brand-new
@@ -1057,6 +1070,16 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
           try { console.log('identity_rollback_residue_retired', JSON.stringify({ rid, versionId, count: residue })); } catch (_) {}
         }
       }
+      /* c2a-evidence:begin */
+      /* 1D D4-c2a — ONE payload object exported from the certified block (plan §2): built from what this block already
+         holds — the candidate docs and record as read, the whole-registry maps read BEFORE any write, the stamp-map
+         verdicts, each kind's captured plan and the ids minted in this flip. No read, and nothing above is altered. */
+      c2aEvidence = buildActivationEvidence({
+        versionId, generation: priorGeneration + 1, intent: isRollback ? 'rollback' : 'publish',
+        record: candidateSnap.data() || {}, docs: { dish: itemsSnap, extra: extrasSnap }, docIdByKey, minted: mintedThisFlip,
+        registry, fullIds, fullKeys, judged, relocated, plans: c2aPlans,
+      });
+      /* c2a-evidence:end */
     }
 
     const activation = candidateSnap.exists ? (candidateSnap.data() || {}).identity_activation : undefined;
@@ -1118,6 +1141,13 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     // 1b: the snapshot rides the SAME transaction — coherence by construction. If the flip aborts
     // (lease lost/expired/stale), NEITHER the pointer nor the snapshot moves.
     tx.set(snapshotRefOf(db, rid), snapshot);
+    /* c2a-evidence:begin */
+    /* 1D D4-c2a — appended after every read and every existing write, inside the SAME transaction: the evidence commits
+       if and only if this activation does. Create-only — a collision surfaces at commit and is typed below (§4). */
+    const c2aDoc = activationEvidenceDoc(c2aEvidence, { certified: certifiedCandidate, versionId, generation: priorGeneration + 1,
+      intent: isRollback ? 'rollback' : 'publish', record: candidateSnap.data() || {} });
+    if (c2aDoc) tx.create(evidenceRefOf(db, rid, c2aDoc.docId), withAt(c2aDoc.data));
+    /* c2a-evidence:end */
     /* Returned from INSIDE the transaction, so the pair handed back is the pair this transaction
        committed — not one reconstructed by the caller from arguments that were merely intended. */
     /* 🔴 `certified` IS RETURNED SO THE CALLER CANNOT RE-DERIVE IT AND GET A DIFFERENT ANSWER. It
@@ -1125,7 +1155,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
        A caller computing it independently — from the same candidate doc, read outside this
        transaction — is exactly how two writers both come to believe they own one property. */
     return { version: versionId, generation: priorGeneration + 1, certified: certifiedCandidate };
-  });
+  })/* c2a-evidence:begin */.catch(translateEvidenceCollision('flip_evidence_exists', rid, versionId))/* c2a-evidence:end */;
 }
 
 // Release ONLY if we still own it (a reclaimer may have taken over after our expiry — never delete theirs).

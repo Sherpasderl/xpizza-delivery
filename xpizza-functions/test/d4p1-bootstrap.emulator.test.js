@@ -323,12 +323,16 @@ const asPreP1 = async (rid, versionId) => {
     await asPreP1(rid4, second.versionId);
     const secondId = second.versionId || second.version;
     // The new version is uncertified, so a pass CAN run on it — but move the pointer mid-flight.
+    /* 1D D4-c2a: the moved pointer KEEPS its generation, as a real pointer always carries one (only the flip writes it). Writing it
+       without one rewound the generation to 0, and the next activation took an evidence id g{G20(gen)} that was already taken —
+       the §4 collision, not what this cell is about. This cell moves the VERSION; the generation is cell 9's subject. */
+    const gen4 = ((await pointerOf(rid4).get()).data() || {}).generation;
     const orig = db.runTransaction.bind(db);
     let raced = false;
     const racing = {
       collection: (c) => db.collection(c),
       runTransaction: async (fn, o) => {
-        if (!raced) { raced = true; await pointerOf(rid4).set({ version: active.versionId, at: new Date() }); }
+        if (!raced) { raced = true; await pointerOf(rid4).set({ version: active.versionId, at: new Date(), generation: gen4 }); }
         return orig(fn, o);
       },
     };
@@ -338,7 +342,7 @@ const asPreP1 = async (rid, versionId) => {
     const stranded = await vrefOf(rid4, secondId).get();
     assert.strictEqual((stranded.data() || {}).identity_certified, undefined, '…and certified nothing');
     // put the pointer back for the cells below
-    await pointerOf(rid4).set({ version: secondId, at: new Date() });
+    await pointerOf(rid4).set({ version: secondId, at: new Date(), generation: gen4 });
     ok(`${rid4}: a pointer that moves under the pass refuses and writes nothing`);
   }
 
@@ -577,11 +581,16 @@ const asPreP1 = async (rid, versionId) => {
     await asPreP1(rid9, pub9.versionId);
     const v9id = pub9.versionId || pub9.version;
     const p9 = pointerOf(rid9);
-    await p9.set({ version: v9id, at: new Date(), generation: 3 });
+    /* 1D D4-c2a: the staged generations sit ABOVE the live one (G3 = live + 1, G4 = live + 2) rather than the literals 3/4. A real
+       pointer's generation only ever increases (only the flip writes it); a hand-set LOWER one rewound it, and the next activation
+       then landed on a generation whose evidence id g{G20(gen)} is already taken — the §4 collision, not what this cell is about.
+       Both stay non-zero and distinct, so the base_generation check below keeps its meaning. */
+    const G3 = (await readActiveVersion(db, rid9)).generation + 1, G4 = G3 + 1;
+    await p9.set({ version: v9id, at: new Date(), generation: G3 });
 
     const read = await readActiveVersion(db, rid9);
     assert.strictEqual(read.versionId, v9id, 'premise — the fresh version is live');
-    assert.strictEqual(read.generation, 3, 'premise — the pass captures generation 3');
+    assert.strictEqual(read.generation, G3, 'premise — the pass captures generation G3');
     assert.strictEqual(read.record.identity_certified, undefined, 'premise — it is uncertified, so the pass will reach its transaction');
 
     const orig = db.runTransaction.bind(db);
@@ -590,7 +599,7 @@ const asPreP1 = async (rid, versionId) => {
       collection: (c) => db.collection(c),
       runTransaction: async (fn, o) => {
         // SAME version, NEWER generation — the shape a rollback or re-activation leaves behind.
-        if (!bumped) { bumped = true; await p9.set({ version: v9id, at: new Date(), generation: 4 }); }
+        if (!bumped) { bumped = true; await p9.set({ version: v9id, at: new Date(), generation: G4 }); }
         return orig(fn, o);
       },
     };
@@ -601,16 +610,16 @@ const asPreP1 = async (rid, versionId) => {
     assert.strictEqual((after9.data() || {}).identity_certified, undefined, '…and it certified nothing');
 
     // SENSITIVITY: with the generation left alone, the very same pass on the very same version stamps.
-    await p9.set({ version: v9id, at: new Date(), generation: 4 });
+    await p9.set({ version: v9id, at: new Date(), generation: G4 });
     const okRun = await bootstrapIdentityStamps(db, rid9);
     assert.strictEqual(okRun.stamped, true, 'non-vacuity: an unmoved generation stamps normally');
-    assert.strictEqual(okRun.generation, 4, '…at the generation it captured');
+    assert.strictEqual(okRun.generation, G4, '…at the generation it captured');
     /* 🔴 AND THE RECORD MUST CARRY THAT GENERATION, NOT A PLACEHOLDER. base_generation is what binds
        this activation to the generation it was decided at; every other cell in this file runs at
        generation 0, where a hardcoded 0 is indistinguishable from the captured value. This is the one
        place the difference is observable. */
     const rec9 = await vrefOf(rid9, v9id).get();
-    assert.strictEqual((rec9.data() || {}).identity_activation.base_generation, 4,
+    assert.strictEqual((rec9.data() || {}).identity_activation.base_generation, G4,
       '🔴 the activation record was written with a generation it did not capture — the fence it anchors means nothing');
     ok(`${rid9}: the same version at a NEWER generation refuses; unmoved, the same pass stamps — the generation is fenced separately from the pointer`);
   }

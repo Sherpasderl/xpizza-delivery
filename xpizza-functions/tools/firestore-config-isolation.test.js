@@ -23,7 +23,10 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { findFirebaseTools } = require('./firebase-cli-nodelete');
-const { fieldOverrides } = require('../stats/stats-indexing');
+const { fieldOverrides: statsFieldOverrides } = require('../stats/stats-indexing');
+// 1D D4-c2a: the inventory also carries the identity_evidence exemptions, from their own source list.
+const { evidenceFieldOverrides } = require('../catalog/identity-evidence');
+const fieldOverrides = () => [...statsFieldOverrides(), ...evidenceFieldOverrides()];
 let __finished = false;
 process.on('exit', (code) => { if (code === 0 && !__finished) { console.error('🔴 suite exited before finishing'); process.exit(1); } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -279,14 +282,14 @@ const { loadCJSON } = require(path.join(CLI_LIB, 'loadCJSON'));
     }
     const r = await run(CONFIG_NAME, 'firestore:indexes');
     assert.strictEqual(r.indexes.length, 1, 'the dedicated config prepares ONE index set');
-    assert.deepStrictEqual(r.indexes[0].indexesRawSpec.fieldOverrides, fieldOverrides(), 'exactly the stats field overrides');
+    assert.deepStrictEqual(r.indexes[0].indexesRawSpec.fieldOverrides, fieldOverrides(), 'exactly the stats + identity_evidence field overrides');
     assert.deepStrictEqual(r.indexes[0].indexesRawSpec.indexes, [], 'no composite indexes');
     assert.deepStrictEqual(r.rules, [], 'the dedicated config prepares NO rules');
     // non-vacuity: the same prepare() DOES queue indexes when a config declares them
     const withIdx = JSON.parse(fs.readFileSync(path.join(dir, 'firebase.json'), 'utf8')); withIdx.firestore.indexes = 'firestore.indexes.json';
     fs.writeFileSync(path.join(dir, 'firebase.json'), JSON.stringify(withIdx));
     assert.strictEqual((await run('firebase.json', 'firestore')).indexes.length, 1, 'non-vacuity: a firebase.json WITH indexes would queue them');
-    ok(`installed firebase-tools ${findFirebaseTools().version}: firebase.json prepares 0 index ops (bare / firestore / firestore:indexes / rules / functions,firestore); the dedicated config prepares exactly the ${fieldOverrides().length} stats overrides and no rules`);
+    ok(`installed firebase-tools ${findFirebaseTools().version}: firebase.json prepares 0 index ops (bare / firestore / firestore:indexes / rules / functions,firestore); the dedicated config prepares exactly the ${fieldOverrides().length} stats + identity_evidence overrides and no rules`);
   } finally {
     Object.assign(ens, { ensure: keep.ensure }); FirestoreApi.prototype.getDatabase = keep.getDatabase; RulesDeploy.prototype.compile = keep.compile;
     fs.rmSync(dir, { recursive: true, force: true });

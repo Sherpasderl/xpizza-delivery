@@ -947,6 +947,8 @@ const PLATFORM_FACTURA = { x_pizza: true, la_musa: false };   // asserted below,
         // forwarded: a real transaction has update(), and a wrapper that drops it fails production
         // code here while the emulator is happy — the double narrowing what the test can see.
         update: (ref, v) => tx.update(ref, v),
+        // 1D D4-c2a: and create() — every activation now appends its identity evidence with tx.create (rev 12 §2/§2a).
+        create: (ref, v) => tx.create(ref, v),
         delete: (ref) => tx.delete(ref),
       })),
     };

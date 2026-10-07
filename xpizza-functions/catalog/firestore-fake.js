@@ -14,6 +14,12 @@
 //   • EVERY WRITE STAMPS A NEW updateTime. The draft CAS compares those, so a fake that left them
 //     constant would make a stale-draft publish look fresh — which is the exact race the CAS exists
 //     to lose.
+//
+// 🔴 ONE STATED DIFFERENCE, LAXER THAN PRODUCTION IN TIMING (1D D4-c2a): a transaction's create() refuses an existing
+// document AT THE CALL, where Firestore refuses at COMMIT. Writes buffered earlier in the same callback have already
+// been applied here (this fake applies every write immediately and models neither isolation nor rollback), so a
+// "nothing was committed" claim is NOT provable on this double — every such claim is proven on the Firestore emulator
+// with the real SDK (test/c2a-evidence.emulator.test.js), and the unit cells here assert only the typed error.
 // ---------------------------------------------------------------------------
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 
@@ -176,6 +182,17 @@ function makeDb() {
           node[parts[parts.length - 1]] = v;
         }
         put(ref.path, next);
+      },
+      /* 1D D4-c2a — a real transaction has create(), and the activation/certification evidence uses it. Same
+         refusal as Firestore: a document that already exists is ALREADY_EXISTS (gRPC code 6), naming the path. One
+         stated difference: Firestore refuses at COMMIT, this double at the call — the callback aborts either way. */
+      create: (ref, d) => {
+        if (docs.has(ref.path)) {
+          const e = new Error(`6 ALREADY_EXISTS: entity already exists: path=/${ref.path}`);
+          e.code = 6; e.details = `entity already exists: path=/${ref.path}`;
+          throw e;
+        }
+        put(ref.path, d);
       },
       delete: (ref) => { docs.delete(ref.path); },
     }),
