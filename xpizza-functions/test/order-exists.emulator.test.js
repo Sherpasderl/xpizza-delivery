@@ -14,8 +14,8 @@
 // CANDIDATE (default): every case's status, call sequence and changed-path set must EQUAL the base's — the refusal
 // paths add no read and change no write, and every success / read-failure control is unchanged — and ONLY the body of
 // the refusals differs, exactly as plan §1/§2 prescribe; the real page then sends exactly ONE request.
-// (The seventh emitter, :832 client_update_race, needs the client floor ON and is driven by
-// test/client-floor-http.emulator.test.js, which asserts the legacy body at the base and the typed body here.)
+// The seventh emitter, :832 client_update_race, needs the client floor ON: its cases run in a second phase with the floor
+// written (codex build r1 SF — recorded and composed like the other six).
 require('./_emulator-required')('database', 'firestore');
 
 const assert = require('assert');
@@ -100,6 +100,17 @@ async function failingReadsOf(pathEq, fn) {
   try { return await fn(); } finally { onceProto.once = realOnce; }
 }
 
+// the :832 race (as test/client-floor-http.emulator.test.js drives it): the order exists at the floor's admission probe
+// and is GONE at the create decision — the nth read of the order path removes it first
+async function vanishingOrderAt(pathEq, nth, fn) {
+  let k = 0;
+  onceProto.once = async function (...a) { if (rel(this.toString()) === pathEq && ++k === nth) await rtdb.ref(pathEq).remove(); return realOnce.apply(this, a); };
+  try { return await fn(); } finally { onceProto.once = realOnce; }
+}
+const H_LOW = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-xpizza', 'x-client-build': 'b1', 'x-client-compat': '1' };
+const H_EQ = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-xpizza', 'x-client-build': 'b2', 'x-client-compat': '2' };
+const FLOOR = 2;
+
 // ── fixtures ────────────────────────────────────────────────────────────────────────────────────────────────────
 async function seed(rid) {
   await sourceRefOf(fs, rid).set(canonicalize(buildSourceFromCode(rid)));
@@ -133,7 +144,7 @@ function bodyFor(rid, oid, method, { qty = 1, redeem = false, phone }) {
 }
 const send = async (rid, oid, method, opts) => {
   await rtdb.ref('rate_limits').remove();   // every request is 127.0.0.1 — the per-IP limit is reset between requests (test env only)
-  return post(method === 'online' ? app.chargeOnlineOrder : app.createOrder, bodyFor(rid, oid, method, opts), { 'x-firebase-id-token': `u_${rid}` });
+  return post(method === 'online' ? app.chargeOnlineOrder : app.createOrder, bodyFor(rid, oid, method, opts), { 'x-firebase-id-token': `u_${rid}`, ...(opts.hdr || {}) });
 };
 
 // flatten a tree into leaf paths → JSON value
@@ -203,6 +214,11 @@ def('near-miss: delivered cash order WITH payment_status refunded', { kind: 'ref
 def('near-miss: cancelled cash order WITH a cancel_claim_id (a cancel in flight)', { kind: 'refusal', path: 'cash', site: '818 (808) closed', want: 'closed', setup: async (rid, oid, ph) => { await cashMade(rid, oid, ph); await kdsStatus(oid, 'cancelled'); await rtdb.ref(`orders/${oid}/cancel_claim_id`).set('c-inflight'); }, request: (rid, s) => send(rid, s.oid, 'cash', { phone: s.ph }) });
 def('near-miss: terminal-safe-looking order of ANOTHER restaurant (cash)', { kind: 'refusal', path: 'cash', site: '818 (808) restaurant', want: 'conflict', crossRestaurant: true, setup: async (rid, oid, ph) => { await cashMade(otherRid(rid), oid, ph); await kdsStatus(oid, 'delivered'); }, request: (rid, s) => send(rid, s.oid, 'cash', { phone: s.ph }) });
 def('near-miss: terminal-safe-looking card_delivery order retried on cash (method)', { kind: 'refusal', path: 'cash', site: '818 (808) method', want: 'method', setup: async (rid, oid, ph) => { const r = await send(rid, oid, 'card_delivery', { phone: ph }); assert.strictEqual(r.status, 200, r.text); await kdsStatus(oid, 'delivered'); }, request: (rid, s) => send(rid, s.oid, 'cash', { phone: s.ph }) });
+// :832 (plan :822) — needs the client floor ON; these cases run in a second phase, after the floor is written and the
+// instance's floor cache has expired (one TTL)
+def('cash below-floor request, order VANISHES before the create decision (client_update_race)', { kind: 'refusal', path: 'cash', site: '832 (822) race', want: 'client_update_race', floor: true,
+  setup: async (rid, oid, ph) => cashMade(rid, oid, ph, { hdr: H_EQ }),
+  request: (rid, s) => vanishingOrderAt(`orders/${s.oid}`, 2, () => send(rid, s.oid, 'cash', { phone: s.ph, hdr: H_LOW })) });
 def('cash existence read FAILS', { kind: 'control', path: 'cash', setup: async (rid, oid, ph) => cashMade(rid, oid, ph), request: (rid, s) => failingReadsOf(`orders/${s.oid}`, () => send(rid, s.oid, 'cash', { phone: s.ph })) });
 
 // chargeOnlineOrder — :1504 / :1698 / :1706 / :1813 / :1817 (plan :1494 / :1688 / :1696 / :1803 / :1807), and the success controls
@@ -268,7 +284,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
 
   const results = {};
   let ci = 0;
-  for (const c of CASES) {
+  const runCase = async (c) => {
     for (const rid of ['x_pizza', 'la_musa']) {
       ci += 1;
       const oid = `oe_${String(ci).padStart(3, '0')}_${rid}`;
@@ -276,15 +292,25 @@ async function pageSends(dir, c, firstStatus, firstBody) {
       await c.setup(rid, oid, ph);
       results[`${c.name} | ${rid}`] = await traced({ ...c, oid }, rid, { oid, ph });
     }
-  }
+  };
+  for (const c of CASES.filter((x) => !x.floor)) await runCase(c);
+  // phase 2 — the client floor ON (it stays on; the page compositions below never reach a handler)
+  await rtdb.ref('platform_config/client_floor/orders').set(FLOOR);
+  await wait(require('../client-floor').FLOOR_TTL_MS + 1500);
+  for (const c of CASES.filter((x) => x.floor)) await runCase(c);
 
   const golden = CAPTURE ? null : JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
   const pageChecks = [];
+  // every failing check is COLLECTED and reported together at the end, so a mutant's log names each cell that kills it
+  // (e.g. a reverted body is caught by the body assertion AND, independently, by the page composition)
+  const FAILS = [];
+  const check = (fn) => { try { fn(); } catch (e) { FAILS.push(e.message.split('\n')[0]); } };
   for (const c of CASES) {
     for (const rid of ['x_pizza', 'la_musa']) {
       const key = `${c.name} | ${rid}`;
       const r = results[key];
       const L = `${key}`;
+      check(() => {
       if (CAPTURE) {
         // REPRODUCE-FIRST at the base: every covered refusal answers today's self-heal literal
         if (c.kind === 'refusal' || c.kind === 'terminal') {
@@ -312,6 +338,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
           assert.deepStrictEqual(r.body, g.body, `🔴 ${L}: a ${c.kind} outcome's body changed`);
         }
       }
+      });
       if (c.kind !== 'control') {
         for (const dir of ['xpizza-orders', 'la-musa-orders']) pageChecks.push({ c, key: `${L} → ${dir}`, mint: CAPTURE ? true : c.kind === 'terminal', p: pageSends(dir, c, r.status, r.raw) });
       }
@@ -323,25 +350,27 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     fsys.writeFileSync(CAPTURE, JSON.stringify(out, null, 1) + '\n');
     console.log(`order-exists: base trace written to ${CAPTURE} (${Object.keys(out.cases).length} cases)`);
   } else {
-    assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the base');
+    check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the base'));
   }
+  const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;
-  ok(`${CAPTURE ? 'BASE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (both restaurants) — ${kinds('refusal')} covered refusals, ${kinds('terminal')} terminal-safe controls, ${kinds('control')} success / read-failure controls` +
+  if (!caseFails) ok(`${CAPTURE ? 'BASE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (both restaurants) — ${kinds('refusal')} covered refusals, ${kinds('terminal')} terminal-safe controls, ${kinds('control')} success / read-failure controls` +
     (CAPTURE ? ' — every refusal answers today\'s self-heal literal' : ' — status, ordered RTDB+Firestore call sequence and changed-path set EQUAL the base on every case; only the refusals\' body changed, to EXACTLY {error:"order_exists", reason ∈ enum, detail, order_id}; terminal-safe and controls byte-identical'));
 
   const sends = await Promise.all(pageChecks.map((x) => x.p));
   await wait(1500 + 3000 + 300);   // every retry timer a page could have armed has run out
   await H.settle();
   let minted = 0; let once = 0;
-  pageChecks.forEach((x, i) => {
+  pageChecks.forEach((x, i) => check(() => {
     const ids = sends[i].map((s) => s.order_id);
     if (x.mint) { assert.strictEqual(ids.length, 2, `${x.key}: the page resends on the literal (${ids})`); assert.notStrictEqual(ids[0], ids[1], `${x.key}: …under a FRESH id`); minted += 1; }
-    else { assert.strictEqual(ids.length, 1, `🔴 ${x.key}: the page must NOT resubmit on order_exists (${ids})`); once += 1; }
-  });
+    else { assert.strictEqual(ids.length, 1, `🔴 COMPOSITION ${x.key}: the page must NOT resubmit on order_exists (${ids})`); once += 1; }
+  }));
+  H.closeAll();
+  if (FAILS.length) throw new Error(`${FAILS.length} failing check(s):\n  - ${FAILS.join('\n  - ')}`);
   ok(CAPTURE
     ? `BASE, composed with both brands' real pages: every covered refusal's real answer makes the page MINT a second order id and resend (${minted} page runs) — the defect, reproduced`
     : `CANDIDATE, composed with both brands' real pages: every covered refusal's real answer → exactly ONE request, no mint (${once} page runs); the terminal-safe controls still self-heal (${minted} page runs)`);
-  H.closeAll();
 
   FINISHED = true;
   console.log(`\norder-exists(emulator): OK (${n})`);

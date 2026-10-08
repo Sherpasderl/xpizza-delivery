@@ -4187,6 +4187,163 @@
     "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98/order_id",
     "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98/payment_method"
    ]
+  },
+  "cash below-floor request, order VANISHES before the create decision (client_update_race) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "client_update_race",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "orders/<oid>/cash_tendered_cents",
+    "orders/<oid>/created_at",
+    "orders/<oid>/customer_name",
+    "orders/<oid>/customer_phone",
+    "orders/<oid>/customer_uid",
+    "orders/<oid>/earn_preview/delta",
+    "orders/<oid>/earn_preview/goal",
+    "orders/<oid>/earn_preview/unit",
+    "orders/<oid>/earn_preview/welcome",
+    "orders/<oid>/factura_status",
+    "orders/<oid>/hub_lat",
+    "orders/<oid>/hub_lng",
+    "orders/<oid>/items/0/description",
+    "orders/<oid>/items/0/line_gross_cents",
+    "orders/<oid>/items/0/qty",
+    "orders/<oid>/items_text",
+    "orders/<oid>/notes",
+    "orders/<oid>/order_id",
+    "orders/<oid>/order_type",
+    "orders/<oid>/payment_fingerprint",
+    "orders/<oid>/payment_method",
+    "orders/<oid>/pickup_time",
+    "orders/<oid>/restaurant_id",
+    "orders/<oid>/restaurant_name",
+    "orders/<oid>/restaurant_phone",
+    "orders/<oid>/status",
+    "orders/<oid>/subtotal_cents",
+    "orders/<oid>/summary_lines/0/cents",
+    "orders/<oid>/summary_lines/0/name",
+    "orders/<oid>/summary_lines/0/qty",
+    "orders/<oid>/tax_cents",
+    "orders/<oid>/total",
+    "orders/<oid>/total_cents",
+    "orders/<oid>/tracking_token",
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash below-floor request, order VANISHES before the create decision (client_update_race) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "client_update_race",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "orders/<oid>/cash_tendered_cents",
+    "orders/<oid>/created_at",
+    "orders/<oid>/customer_name",
+    "orders/<oid>/customer_phone",
+    "orders/<oid>/customer_uid",
+    "orders/<oid>/earn_preview/delta",
+    "orders/<oid>/earn_preview/goal",
+    "orders/<oid>/earn_preview/unit",
+    "orders/<oid>/earn_preview/welcome",
+    "orders/<oid>/factura_status",
+    "orders/<oid>/hub_lat",
+    "orders/<oid>/hub_lng",
+    "orders/<oid>/items_text",
+    "orders/<oid>/notes",
+    "orders/<oid>/order_id",
+    "orders/<oid>/order_type",
+    "orders/<oid>/payment_fingerprint",
+    "orders/<oid>/payment_method",
+    "orders/<oid>/pickup_time",
+    "orders/<oid>/restaurant_id",
+    "orders/<oid>/restaurant_name",
+    "orders/<oid>/restaurant_phone",
+    "orders/<oid>/status",
+    "orders/<oid>/subtotal_cents",
+    "orders/<oid>/summary_lines/0/cents",
+    "orders/<oid>/summary_lines/0/name",
+    "orders/<oid>/summary_lines/0/qty",
+    "orders/<oid>/tax_cents",
+    "orders/<oid>/total",
+    "orders/<oid>/total_cents",
+    "orders/<oid>/tracking_token",
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
   }
  }
 }
