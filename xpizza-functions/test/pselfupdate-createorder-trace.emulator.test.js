@@ -40,6 +40,7 @@ let FAIL_CLASSIFY = false;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
 const app = require('../index.js');
+const CTL = require('./_order-control-trace');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
 const rtdb = admin.database();
@@ -196,9 +197,16 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     await rtdb.ref(`user_rewards/${uid}/${rid}`).set({ balance: 100000, reserved: 0 });
     await rtdb.ref('rate_limits').remove();
     assert.strictEqual((await post(app.createOrder, bodyFor(rid, `ctrace_${rid}_warm`, '99440000'), { 'x-firebase-id-token': uid })).status, 200, `${rid}: warm-up`);
+    // D4-c4: the switch cache is put in a KNOWN state before each recorded request (not left to timing): WARM for the
+    // fresh orders (served from the cache → no read); COLD for the retry and the conflict, which must read NO switch
+    // even with nothing cached (§0.5: the classifier's existing-order answers come first)
+    await CTL.controlWarm(rtdb, rid);
     const a = await traced(rid, `ctrace_${rid}_cash`, uid, '99441001');
+    CTL.controlCold();
     const b = await traced(rid, `ctrace_${rid}_cash`, uid, '99441001');
+    await CTL.controlWarm(rtdb, rid);
     const c = await traced(rid, `ctrace_${rid}_redeem`, uid, '99442001', { redeem: true });
+    CTL.controlCold();
     const d = await traced(rid, `ctrace_${rid}_cash`, uid, '99441001', { qty: 2 });
     for (const [k, v, want] of [['a_cash_fresh', a, 200], ['b_cash_idempotent_retry', b, 200], ['c_cash_redeem_fresh', c, 200], ['d_cash_conflict', d, 409]]) {
       assert.strictEqual(v.status, want, `${rid} ${k}: premise — status ${want} (${v.status})`);
@@ -213,12 +221,16 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   } else {
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
     // ALLOWLIST (ruling R3.2): exactly the HTTP floor's GET is excluded from the comparison, and asserted on its own
+    // D4-c4 ALLOWLIST (advisor ruling, DECISIONS 2026-10-08 — mirrors R3.2): exactly one more call family is excluded,
+    // the pause switch's read (rtdb once order_control/<rid>/current), asserted on its own by _order-control-trace.js
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
+    const CACHE = { a_cash_fresh: 'warm', b_cash_idempotent_retry: 'cold, existing order', c_cash_redeem_fresh: 'warm', d_cash_conflict: 'cold, existing order' };
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
-      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
+      const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache ${CACHE[k]})` });
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
@@ -227,11 +239,13 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     {
       const { FLOOR_TTL_MS } = require('../client-floor');
       await wait(FLOOR_TTL_MS + 1500);
+      CTL.controlCold();   // D4-c4: the switch cache COLD too — an idempotent retry still reads NO switch (§0.5)
       const t = await traced('x_pizza', 'ctrace_x_pizza_cash', 'u_trace_x_pizza', '99441001');
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
-      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.b_cash_idempotent_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
+      const rest = CTL.withoutControlRead(t.trace, 'x_pizza', { expected: 0, label: 'x_pizza post-TTL b_cash_idempotent_retry (switch cache cold, existing order)' });
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden.x_pizza.b_cash_idempotent_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
       console.log(`  ✓ x_pizza post-TTL b_cash_idempotent_retry: exactly 1 allowlisted floor GET; the rest identical to the golden`);
     }
     console.log('pselfupdate-createorder-trace(emulator): OK');
