@@ -244,7 +244,7 @@ const withPrice = (delta) => {
   //        the same discipline as the 2a gate-wiring guard. A handler that exists but is never exported,
   //        or is exported wired to the wrong verifier, is invisible to every test above.
   {
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     for (const [id, mod] of [['authorizeCatalogEdit', 'catalog/catalog-edit-auth'], ['editCatalogCore', 'catalog/edit-catalog-handler']]) {
       assert.ok(new RegExp(`\\{[^}]*\\b${id}\\b[^}]*\\}\\s*=\\s*require\\('\\./${mod.replace(/\//g, '\\/')}'\\)`).test(CODE),
@@ -290,7 +290,7 @@ const withPrice = (delta) => {
     // the lossy encoding this replaced: proof the distinction is real rather than theoretical
     assert.notStrictEqual(enc, new Date(ts.seconds * 1000).toISOString(), 'an ISO string is NOT equivalent — it cannot carry nanoseconds');
     // and index.js must reconstruct BOTH halves
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     assert.ok(/new FirestoreTimestamp\(Number\(sec\), Number\(nanos\)\)/.test(CODE),
       'index.js must rebuild the Timestamp from seconds AND nanoseconds');

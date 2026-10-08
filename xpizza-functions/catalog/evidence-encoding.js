@@ -18,7 +18,10 @@
    and the value reads as ["o","other"], so no activation that succeeds today can be refused by this
    module. (A cycle cannot occur in the values the writers pass; it is guarded rather than assumed.) */
 const crypto = require('crypto');
-const { Timestamp, GeoPoint, DocumentReference, VectorValue } = require('@google-cloud/firestore');
+/* Through firebase-admin, as every other module here: these ARE the underlying SDK's classes (identity-checked in the unit
+   test). firebase-admin does not export VectorValue by name, so it is taken from a vector value's own constructor. */
+const { Timestamp, GeoPoint, DocumentReference, FieldValue } = require('firebase-admin/firestore');
+const VectorValue = FieldValue.vector([]).constructor;
 
 const CLASSES = Object.freeze(['number', 'timestamp', 'bytes', 'reference', 'vector', 'geopoint', 'object', 'other']);
 const MAX_DEPTH = 64;   // far beyond any value the writers build; a deeper (or cyclic) value is classified, not walked

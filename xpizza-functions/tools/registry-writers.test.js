@@ -91,8 +91,10 @@ const r = enumerate();
     'catalog/identity-bootstrap.js::reconcileLegacyOrphans',
     'catalog/identity-sweep.js::sweepAllIdentityIntegrity',
     'catalog/publish-edited-handler.js::publishEditedCore',
-    'index.js::publishEdited',
     'index.js::sweepIdentityRegistry',
+    /* PORTAL SPEED P1: the publishEdited wrapper MOVED VERBATIM from index.js to portal/functions.js (isolated portal
+       entrypoints) — the same handler, still found, now named by its new file. */
+    'portal/functions.js::publishEdited',
     'tools/backfill-identities.js::(module scope)',
     /* 🔴 THE FIFTH TIME THIS CELL HAS NAMED A NEW WRITER OR CALLER BEFORE ANYONE SAID ANYTHING ABOUT
        FENCING IT. tools/bootstrap-identity.js is §10's cutover step, which had no runner at all until

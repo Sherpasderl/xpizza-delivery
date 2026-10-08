@@ -26,7 +26,12 @@ try {
   // ── index.js = base + exactly two additive blocks ─────────────────────────────────────────────────────────────
   {
     const BASE_INDEX = '86bd2aab1370089551d9fe488c5ceb7e47866812f8453d949bd8c65005173604';   // 2745be5:xpizza-functions/index.js
-    const idx = read('index.js');
+    // PORTAL SPEED P1 (PLAN-portal-speed rev 3 §6, comparison 1): the portal split's INVERSE (tools/portal-split.js —
+    // every moved region put back from the moved files, the early branch removed) must reproduce the integration
+    // parent's index.js EXACTLY. Comparison 2 is the unchanged D4-c1 normalization below, applied to that parent.
+    const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
+    const idx = require('../tools/portal-split').foldPortalSplit();
+    assert.strictEqual(sha(idx), PARENT_INDEX, '🔴 index.js + the portal split do not fold back to the integration parent bb37684 — something beyond the mechanical move changed');
     const cut = (s, startMarker, endMarker) => {
       const a = s.indexOf(startMarker); const b = s.indexOf(endMarker, a);
       assert.ok(a > 0 && b > a, `markers present: ${startMarker.slice(0, 40)}`);

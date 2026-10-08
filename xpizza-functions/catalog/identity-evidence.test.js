@@ -36,6 +36,9 @@ try {
     cases.forEach(([v, want], i) => assert.strictEqual(ENC(v), want, `ENC case #${i}`));
     // UTF-16 code-unit key order (not locale, not code-point): 'B' (0x42) < 'a' (0x61) < 'é' (0xE9) < '\uD83D…' (surrogate) < '\uFF21'
     assert.strictEqual(ENC({ '\uFF21': 1, '😀': 2, é: 3, a: 4, B: 5 }), '["m",[["B",["i","5"]],["a",["i","4"]],["é",["i","3"]],["😀",["i","2"]],["Ａ",["i","1"]]]]');
+    // the encoder's classes (taken through firebase-admin) ARE the SDK's own — so instanceof sees what Firestore returns
+    { const fa = require('firebase-admin/firestore');
+      assert.ok(fa.Timestamp === g.Timestamp && fa.GeoPoint === g.GeoPoint && fa.DocumentReference === g.DocumentReference && fa.FieldValue.vector([]).constructor === g.VectorValue, 'firebase-admin re-exports the SDK classes'); }
     // classes are a closed enum
     assert.deepStrictEqual([...CLASSES].sort(), ['bytes', 'geopoint', 'number', 'object', 'other', 'reference', 'timestamp', 'vector']);
   }

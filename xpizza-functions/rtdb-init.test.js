@@ -49,7 +49,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
   // The pinned instance matches the one the deployed functions use (index.js pins it independently,
   // because this phase keeps index.js byte-unchanged — so assert the two agree).
-  const indexSrc = readFileSync(join(__dirname, 'index.js'), 'utf8');
+  const indexSrc = require('./tools/portal-split').foldPortalSplit();   // PORTAL SPEED P1: the Admin init moved verbatim to lib/admin.js — folded back here
   assert.ok(indexSrc.includes(RTDB_URL), 'the CLIs must target the SAME RTDB instance as the deployed functions');
   ok('the CLI URL matches the instance index.js uses (one database, not two)');
   console.log(`rtdb-init: OK (${n})`);

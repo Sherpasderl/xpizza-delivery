@@ -154,7 +154,7 @@ const TWO = {
 
   // ── (5) THE WRAPPER. index.js cannot be imported here, so its wiring is asserted structurally. ─
   {
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     assert.ok(/\{[^}]*\bgetMyRestaurantsCore\b[^}]*\}\s*=\s*require\('\.\/catalog\/portal-reads'\)/.test(CODE),
       'index.js must import the core — a missing require is a runtime ReferenceError node --check cannot see');
@@ -333,7 +333,7 @@ const TWO = {
   }
   {
     // Wiring.
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     assert.ok(/\{[^}]*\bgetEditableCatalogCore\b[^}]*\}\s*=\s*require\('\.\/catalog\/portal-reads'\)/.test(CODE), 'index.js must import the core');
     assert.ok(/exports\.getEditableCatalog = onRequest\(/.test(CODE), 'and export the handler');
@@ -363,7 +363,7 @@ const TWO = {
 
   // ── (6) CORS: the portal is a different ORIGIN from the customer order sites ─────────────────
   {
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8')
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */
       .split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/.*$/, '')).join('\n');
     const blockOf = (name) => {
       const start = CODE.indexOf(`exports.${name} = onRequest(`);
@@ -493,7 +493,7 @@ const TWO = {
     // They move to PORTAL_ORIGINS *instead of*, not *in addition to*. The portal is their only browser
     // caller (verified across the tree), so this is strictly NARROWER — it also removes two money-write
     // endpoints from the reach of the customer order sites, where they never belonged.
-    const CODE = require('fs').readFileSync(require('path').join(__dirname, '..', 'index.js'), 'utf8');
+    const CODE = require('../tools/portal-split').foldPortalSplit() /* PORTAL SPEED P1: index.js with the verbatim-moved portal code folded back in from portal/functions.js */;
     const blockOf2 = (name) => {
       const start = CODE.indexOf(`exports.${name} = onRequest(`);
       assert.ok(start > -1, `the ${name} wrapper must exist`);

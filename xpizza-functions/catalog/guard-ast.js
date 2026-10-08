@@ -142,7 +142,9 @@ function runtimeImportGraph(entryFiles, resolveDir) {
   const requiresIn = (code, file) => {
     const specs = [];
     let ast;
-    try { ast = parse(code, { ecmaVersion: 'latest', sourceType: 'script', locations: true }); }
+    // allowReturnOutsideFunction: Node runs a CommonJS file as a function body, so a top-level `return` is legal
+    // (index.js's isolated-portal early branch — PORTAL SPEED P1); same option as tools/registry-writers.js.
+    try { ast = parse(code, { ecmaVersion: 'latest', sourceType: 'script', locations: true, allowReturnOutsideFunction: true }); }
     catch (e) { unresolved.push(`${file}: unparseable (${e.message})`); return specs; }
     const walkNode = (node) => {
       if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'require') {
