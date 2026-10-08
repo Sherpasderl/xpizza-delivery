@@ -91,6 +91,7 @@ const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Re
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { classifyExistingOrder, computeIncomingFingerprint, computeCanonicalIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
+const OE = require('./order-exists');   // D4-c5 P1: every existing-order refusal → typed 409 order_exists (no form auto-mints on it)
 const { redemptionFingerprint } = require('./rewards-redeem');   // F1 residual: recompute a redemption order's fp from the RESOLVED reserve (guaranteed present) if the top-level compute blipped
 const { duplicateSiblingDecision } = require('./materialize-guard');   // F3 create-side: shared pure sibling-collision decision
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
@@ -814,8 +815,14 @@ createOrderApp.all('*', async (req, res) => {
         { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },
         incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation, canonicalIncoming });
       if (cls.action === '409') {
-        console.warn(`createOrder: ${orderId} exists — 409 order_conflict (${cls.reason})`);
-        return res.status(409).json({ error: 'order_conflict', reason: cls.reason, order_id: orderId });
+        // D4-c5 P1: today's self-heal literal ONLY for a `closed` order provably terminal and money-free (from `ev`, no read)
+        const oe = OE.decideCashExistingRefusal(cls.reason, ev);
+        if (oe.legacy) {
+          console.warn(`createOrder: ${orderId} exists — 409 order_conflict (${cls.reason}, terminal-safe)`);
+          return res.status(409).json({ error: 'order_conflict', reason: cls.reason, order_id: orderId });
+        }
+        console.warn(`createOrder: ${orderId} exists — 409 order_exists (${cls.reason})`);
+        return res.status(409).json(OE.orderExistsBody(oe.reason, orderId));
       }
       console.log(`createOrder: order ${orderId} already exists, returning idempotent`);
       return res.status(200).json({ ok: true, idempotent: true, order_id: orderId, tracking_token: ev.tracking_token || null });
@@ -829,7 +836,7 @@ createOrderApp.all('*', async (req, res) => {
   // is refused with a NON-426 typed conflict — never presented as a safe-to-reload 426. Nothing has been written.
   if (floorAdmittedBelow) {
     console.warn(`createOrder: ${orderId} below the client floor reached the create decision — client_update_race`);
-    return res.status(409).json({ error: 'order_conflict', reason: 'client_update_race', order_id: orderId });
+    return res.status(409).json(OE.orderExistsBody('client_update_race', orderId));
   }
 
   // Config-plane identity (ADR-0002): fail-closed read, gate intake on active, zone-check from
@@ -1501,7 +1508,7 @@ chargeOnlineApp.all('*', async (req, res) => {
          · a malformed binding tag (codex r3 S1) → 409 binding_format_invalid;
          · a canonical order whose canonical fingerprint cannot be computed → 409 cart_unverifiable. */
     if (clsG && clsG.outcome === 'conflict' && clsG.reason === 'binding_format_invalid') {
-      return res.status(409).json({ error: 'Order conflict', reason: 'binding_format_invalid', order_id: orderId });
+      return res.status(409).json(OE.orderExistsBody('binding_format_invalid', orderId));
     }
     if (orderBindingFormat === CB.FORMAT_CANONICAL) {
       const c = canonicalFpG();
@@ -1695,7 +1702,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // order_id owned by a different restaurant. Runs before the CAS/fingerprint in acquireHostedAttempt.
   if (probeOrder && !sameRestaurant(probeOrder.restaurant_id, restaurantId)) {
     console.warn(`chargeOnlineOrder: ${orderId} exists for a different restaurant — conflict`);
-    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different restaurant', order_id: orderId });
+    return res.status(409).json(OE.orderExistsBody('conflict', orderId));   // D4-c5 P1: no disclosure of the other restaurant
   }
   /* 1D D4-b B1-c(1)/(3) — the DEGRADED path: classify threw, so THIS snapshot decides the order's binding format. A legacy
      (or absent) order continues exactly as today's fail-open. A malformed tag refuses. A canonical order is checked here,
@@ -1703,7 +1710,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      today's behaviour for any post-probe refusal — but never a reservation, wallet or order write). */
   if (classifyFailed) {
     const f = CB.formatOf(probeOrder, 'fp_format');
-    if (!f.ok) return res.status(409).json({ error: 'Order conflict', reason: 'binding_format_invalid', order_id: orderId });
+    if (!f.ok) return res.status(409).json(OE.orderExistsBody('binding_format_invalid', orderId));
     orderBindingFormat = f.format;
     if (orderBindingFormat === CB.FORMAT_CANONICAL) {
       const c = canonicalFpG();
@@ -1809,12 +1816,14 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
   if (acq.outcome === 'conflict') {
     await releaseHoldIfOwned();   // abandoned: order_id used for a different cart/total
-    // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch has none → today's exact body
-    return res.status(409).json({ error: 'Order conflict', detail: 'order_id already used for a different cart/total', order_id: orderId, ...(acq.reason ? { reason: acq.reason } : {}) });
+    // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
+    console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
+    return res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));
   }
   if (acq.outcome === 'closed') {
     await releaseHoldIfOwned();   // abandoned: order is in a terminal-closed state
-    return res.status(409).json({ error: 'Order closed', detail: `order is ${acq.reason}; please start a new order`, order_id: orderId });
+    console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire closed: ${acq.reason})`);   // the order's state: log only, never the body
+    return res.status(409).json(OE.orderExistsBody('closed', orderId));
   }
   /* ── 1C TASK 5 — THE CARD-PATH MONEY DECISION, AS ONE RUNNABLE UNIT ─────────────────────────
      resolveAndIssueHostedCheckout owns: what to do about the acquire outcome, the confirmed-net gate,

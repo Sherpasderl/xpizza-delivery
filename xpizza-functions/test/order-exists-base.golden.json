@@ -1,0 +1,4192 @@
+{
+ "note": "FROZEN — captured by test/order-exists.emulator.test.js run with ORDER_EXISTS_CAPTURE inside a checkout of f17466e; never regenerate from the candidate",
+ "cases": {
+  "cash idempotent retry (same cart) | x_pizza": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "idempotent": true,
+    "order_id": "<oid>",
+    "tracking_token": "<tracking_token>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash idempotent retry (same cart) | la_musa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "idempotent": true,
+    "order_id": "<oid>",
+    "tracking_token": "<tracking_token>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash live order, price/cart change | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "cart",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash live order, price/cart change | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "cart",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash live order, reward change | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "cart",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash live order, reward change | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "cart",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "live ONLINE order retried on cash | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "method",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "live ONLINE order retried on cash | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "method",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash order payment_status confirmed | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash order payment_status confirmed | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash order payment_status manual_review | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash order payment_status manual_review | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE cash delivered | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE cash delivered | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE cash completed | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE cash completed | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE cash cancelled (real cancelOrderCore) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE cash cancelled (real cancelOrderCore) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE card_delivery delivered | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "TERMINAL-SAFE card_delivery delivered | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: delivered cash order WITH a redemption | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/redemption_enabled"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: delivered cash order WITH a redemption | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/redemption_enabled"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: delivered cash order WITH payment_status refunded | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: delivered cash order WITH payment_status refunded | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: cancelled cash order WITH a cancel_claim_id (a cancel in flight) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: cancelled cash order WITH a cancel_claim_id (a cancel in flight) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "closed",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: terminal-safe-looking order of ANOTHER restaurant (cash) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "restaurant",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: terminal-safe-looking order of ANOTHER restaurant (cash) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "restaurant",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: terminal-safe-looking card_delivery order retried on cash (method) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "method",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "near-miss: terminal-safe-looking card_delivery order retried on cash (method) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "order_conflict",
+    "reason": "method",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash existence read FAILS | x_pizza": {
+   "status": 500,
+   "body": {
+    "error": "Database read failed",
+    "detail": "UNAVAILABLE (injected read failure)"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "cash existence read FAILS | la_musa": {
+   "status": 500,
+   "body": {
+    "error": "Database read failed",
+    "detail": "UNAVAILABLE (injected read failure)"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "card live checkout REUSE (same cart) | x_pizza": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "order_id": "<oid>",
+    "attempt_id": "<attempt_id>",
+    "poll_token": "<poll_token>",
+    "checkout_url": "<checkout_url>",
+    "payment_status": "pending"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/6ab53c4e04783c1b46d293d51c035582"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/6ab53c4e04783c1b46d293d51c035582",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/6ab53c4e04783c1b46d293d51c035582/at"
+   ]
+  },
+  "card live checkout REUSE (same cart) | la_musa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "order_id": "<oid>",
+    "attempt_id": "<attempt_id>",
+    "poll_token": "<poll_token>",
+    "checkout_url": "<checkout_url>",
+    "payment_status": "pending"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/43472f399852e2d9c733f25d4d8a8870"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/43472f399852e2d9c733f25d4d8a8870",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/43472f399852e2d9c733f25d4d8a8870/at"
+   ]
+  },
+  "card IN PROGRESS (attempt creating) | x_pizza": {
+   "status": 202,
+   "body": {
+    "ok": true,
+    "status": "in_progress",
+    "detail": "a checkout is being created; retry shortly",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/ac1f14c4c612ebd2376fc33aaf45a275"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/ac1f14c4c612ebd2376fc33aaf45a275",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/ac1f14c4c612ebd2376fc33aaf45a275/at"
+   ]
+  },
+  "card IN PROGRESS (attempt creating) | la_musa": {
+   "status": 202,
+   "body": {
+    "ok": true,
+    "status": "in_progress",
+    "detail": "a checkout is being created; retry shortly",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/af849e7c9b52e87be27ccdcadb3b028d"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/af849e7c9b52e87be27ccdcadb3b028d",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/af849e7c9b52e87be27ccdcadb3b028d/at"
+   ]
+  },
+  "card ROTATE (checkout expired) | x_pizza": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "order_id": "<oid>",
+    "attempt_id": "<attempt_id>",
+    "pixelpay_order_id": "<oid>-<active_attempt_id>",
+    "poll_token": "<poll_token>",
+    "checkout_url": "<checkout_url>",
+    "payment_status": "pending"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/d3205dbecece6b3724039eb695da6371"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/d3205dbecece6b3724039eb695da6371",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "update",
+     "path": "payment_attempts/<active_attempt_id>",
+     "keys": [
+      "hosted_created_at",
+      "hosted_expires_at",
+      "hosted_order_id",
+      "hosted_state",
+      "order_id",
+      "poll_token",
+      "total_cents"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "update",
+     "path": "payment_attempts/<active_attempt_id>",
+     "keys": [
+      "hosted_checkout_url",
+      "hosted_state",
+      "updated_at"
+     ]
+    }
+   ],
+   "changed": [
+    "orders/<oid>/active_attempt_id",
+    "payment_attempts/<active_attempt_id>/hosted_checkout_url",
+    "payment_attempts/<active_attempt_id>/hosted_created_at",
+    "payment_attempts/<active_attempt_id>/hosted_expires_at",
+    "payment_attempts/<active_attempt_id>/hosted_order_id",
+    "payment_attempts/<active_attempt_id>/hosted_state",
+    "payment_attempts/<active_attempt_id>/order_id",
+    "payment_attempts/<active_attempt_id>/poll_token",
+    "payment_attempts/<active_attempt_id>/total_cents",
+    "payment_attempts/<active_attempt_id>/updated_at",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/d3205dbecece6b3724039eb695da6371/at"
+   ]
+  },
+  "card ROTATE (checkout expired) | la_musa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "order_id": "<oid>",
+    "attempt_id": "<attempt_id>",
+    "pixelpay_order_id": "<oid>-<active_attempt_id>",
+    "poll_token": "<poll_token>",
+    "checkout_url": "<checkout_url>",
+    "payment_status": "pending"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/84a57d52c6da7d93a4d9f05b23fec99e"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/84a57d52c6da7d93a4d9f05b23fec99e",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "update",
+     "path": "payment_attempts/<active_attempt_id>",
+     "keys": [
+      "hosted_created_at",
+      "hosted_expires_at",
+      "hosted_order_id",
+      "hosted_state",
+      "order_id",
+      "poll_token",
+      "total_cents"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "update",
+     "path": "payment_attempts/<active_attempt_id>",
+     "keys": [
+      "hosted_checkout_url",
+      "hosted_state",
+      "updated_at"
+     ]
+    }
+   ],
+   "changed": [
+    "orders/<oid>/active_attempt_id",
+    "payment_attempts/<active_attempt_id>/hosted_checkout_url",
+    "payment_attempts/<active_attempt_id>/hosted_created_at",
+    "payment_attempts/<active_attempt_id>/hosted_expires_at",
+    "payment_attempts/<active_attempt_id>/hosted_order_id",
+    "payment_attempts/<active_attempt_id>/hosted_state",
+    "payment_attempts/<active_attempt_id>/order_id",
+    "payment_attempts/<active_attempt_id>/poll_token",
+    "payment_attempts/<active_attempt_id>/total_cents",
+    "payment_attempts/<active_attempt_id>/updated_at",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/84a57d52c6da7d93a4d9f05b23fec99e/at"
+   ]
+  },
+  "card ALREADY PAID | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Already paid",
+    "detail": "This order is already confirmed paid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/843001513412c9d337cb6a1c80c27c0c"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/843001513412c9d337cb6a1c80c27c0c",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/843001513412c9d337cb6a1c80c27c0c/at"
+   ]
+  },
+  "card ALREADY PAID | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Already paid",
+    "detail": "This order is already confirmed paid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/a869d5ead8ad779ff1ee8bebc76fa792"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/a869d5ead8ad779ff1ee8bebc76fa792",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/a869d5ead8ad779ff1ee8bebc76fa792/at"
+   ]
+  },
+  "card changed binding × PAID (already_paid wins) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Already paid",
+    "detail": "This order is already confirmed paid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/0090bcc4a69db959ded79cf09d44b3ab"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/0090bcc4a69db959ded79cf09d44b3ab",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/0090bcc4a69db959ded79cf09d44b3ab/at",
+    "recent_order_content/<key>/0090bcc4a69db959ded79cf09d44b3ab/order_id",
+    "recent_order_content/<key>/0090bcc4a69db959ded79cf09d44b3ab/payment_method"
+   ]
+  },
+  "card changed binding × PAID (already_paid wins) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Already paid",
+    "detail": "This order is already confirmed paid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/40340455e09ec374c9023acaa08af73d"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/40340455e09ec374c9023acaa08af73d",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/40340455e09ec374c9023acaa08af73d/at",
+    "recent_order_content/<key>/40340455e09ec374c9023acaa08af73d/order_id",
+    "recent_order_content/<key>/40340455e09ec374c9023acaa08af73d/payment_method"
+   ]
+  },
+  "card changed binding × LIVE checkout | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/37f19ebcf0c80557e7d519c61478d247"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/37f19ebcf0c80557e7d519c61478d247",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/37f19ebcf0c80557e7d519c61478d247/at",
+    "recent_order_content/<key>/37f19ebcf0c80557e7d519c61478d247/order_id",
+    "recent_order_content/<key>/37f19ebcf0c80557e7d519c61478d247/payment_method"
+   ]
+  },
+  "card changed binding × LIVE checkout | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/3b3976d95844c4f57b2705753024d3aa"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/3b3976d95844c4f57b2705753024d3aa",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/3b3976d95844c4f57b2705753024d3aa/at",
+    "recent_order_content/<key>/3b3976d95844c4f57b2705753024d3aa/order_id",
+    "recent_order_content/<key>/3b3976d95844c4f57b2705753024d3aa/payment_method"
+   ]
+  },
+  "card changed binding × CREATING | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/88121709a33d4773a169c47d48f2f499"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/88121709a33d4773a169c47d48f2f499",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/88121709a33d4773a169c47d48f2f499/at",
+    "recent_order_content/<key>/88121709a33d4773a169c47d48f2f499/order_id",
+    "recent_order_content/<key>/88121709a33d4773a169c47d48f2f499/payment_method"
+   ]
+  },
+  "card changed binding × CREATING | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/319b14cd54edd833e10ec08976227977"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/319b14cd54edd833e10ec08976227977",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/319b14cd54edd833e10ec08976227977/at",
+    "recent_order_content/<key>/319b14cd54edd833e10ec08976227977/order_id",
+    "recent_order_content/<key>/319b14cd54edd833e10ec08976227977/payment_method"
+   ]
+  },
+  "card changed binding × POINTER WITHOUT ATTEMPT | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/c03bbc85ce92901fc34236a873760b9c"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/c03bbc85ce92901fc34236a873760b9c",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/c03bbc85ce92901fc34236a873760b9c/at",
+    "recent_order_content/<key>/c03bbc85ce92901fc34236a873760b9c/order_id",
+    "recent_order_content/<key>/c03bbc85ce92901fc34236a873760b9c/payment_method"
+   ]
+  },
+  "card changed binding × POINTER WITHOUT ATTEMPT | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/ed69ce28f6ab4bd9deb45ab75204aa9a"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/ed69ce28f6ab4bd9deb45ab75204aa9a",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/ed69ce28f6ab4bd9deb45ab75204aa9a/at",
+    "recent_order_content/<key>/ed69ce28f6ab4bd9deb45ab75204aa9a/order_id",
+    "recent_order_content/<key>/ed69ce28f6ab4bd9deb45ab75204aa9a/payment_method"
+   ]
+  },
+  "card changed binding WITH a reward hold this call owns (cleanup) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/redemption_enabled"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/06fb388f789172e3dcf8b012e1d7cb3f"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/06fb388f789172e3dcf8b012e1d7cb3f",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "user_rewards/<uid>/x_pizza"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "user_rewards/<uid>/x_pizza"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/06fb388f789172e3dcf8b012e1d7cb3f/at",
+    "recent_order_content/<key>/06fb388f789172e3dcf8b012e1d7cb3f/order_id",
+    "recent_order_content/<key>/06fb388f789172e3dcf8b012e1d7cb3f/payment_method",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_1/cost",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_1/delta",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_1/order_id",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_1/state",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_1/ts",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_1/type",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_2/cost",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_2/delta",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_2/order_id",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_2/state",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_2/ts",
+    "user_rewards/<uid>/x_pizza/ledger/rsv_<oid>_2/type",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/config_version",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/cost",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/discount_cents",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/free_item_key",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/model",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/restaurant_id",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/canonical/type",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/config_version",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/cost",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/created_at",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/fp",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/hosted_expires_at",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/order_fingerprint",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/seq",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/state",
+    "user_rewards/<uid>/x_pizza/reservations/<oid>/updated_at"
+   ]
+  },
+  "card changed binding WITH a reward hold this call owns (cleanup) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different cart/total",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/redemption_enabled"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/663be4136f266c249155594d1507239a"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/663be4136f266c249155594d1507239a",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "user_rewards/<uid>/la_musa"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "user_rewards/<uid>/la_musa"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/663be4136f266c249155594d1507239a/at",
+    "recent_order_content/<key>/663be4136f266c249155594d1507239a/order_id",
+    "recent_order_content/<key>/663be4136f266c249155594d1507239a/payment_method",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_1/cost",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_1/delta",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_1/order_id",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_1/state",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_1/ts",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_1/type",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_2/cost",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_2/delta",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_2/order_id",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_2/state",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_2/ts",
+    "user_rewards/<uid>/la_musa/ledger/rsv_<oid>_2/type",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/config_version",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/discount_cents",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/items/0/cost",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/items/0/free_item_key",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/items/0/price_cents",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/items/0/qty",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/model",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/restaurant_id",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/total_cost",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/canonical/type",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/config_version",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/cost",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/created_at",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/fp",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/hosted_expires_at",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/order_fingerprint",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/seq",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/state",
+    "user_rewards/<uid>/la_musa/reservations/<oid>/updated_at"
+   ]
+  },
+  "card order CANCELLED | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order closed",
+    "detail": "order is pending; please start a new order",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/026c3f995bdf69a5243366d05a2c4ff7"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/026c3f995bdf69a5243366d05a2c4ff7",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/026c3f995bdf69a5243366d05a2c4ff7/at"
+   ]
+  },
+  "card order CANCELLED | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order closed",
+    "detail": "order is pending; please start a new order",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/b90a998109c093a2488e711babb6dcc8"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/b90a998109c093a2488e711babb6dcc8",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/b90a998109c093a2488e711babb6dcc8/at"
+   ]
+  },
+  "card order REFUNDED | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order closed",
+    "detail": "order is refunded; please start a new order",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/fadded642457f4733adb866864dc53ca"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/fadded642457f4733adb866864dc53ca",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/fadded642457f4733adb866864dc53ca/at"
+   ]
+  },
+  "card order REFUNDED | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order closed",
+    "detail": "order is refunded; please start a new order",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/4d2a3cf22a1ae2681162c24e30a124df"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/4d2a3cf22a1ae2681162c24e30a124df",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/4d2a3cf22a1ae2681162c24e30a124df/at"
+   ]
+  },
+  "card attempt VOIDED | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order closed",
+    "detail": "order is voided; please start a new order",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/2a97d453791a375ae366e179b3082305"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/2a97d453791a375ae366e179b3082305",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/2a97d453791a375ae366e179b3082305/at"
+   ]
+  },
+  "card attempt VOIDED | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order closed",
+    "detail": "order is voided; please start a new order",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/19c3dc40614edb562c7310e079ed1eb3"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/19c3dc40614edb562c7310e079ed1eb3",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/19c3dc40614edb562c7310e079ed1eb3/at"
+   ]
+  },
+  "card malformed binding tag (classify snapshot) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "reason": "binding_format_invalid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "card malformed binding tag (classify snapshot) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "reason": "binding_format_invalid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/count",
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start"
+   ]
+  },
+  "card malformed binding tag, CLASSIFY FAILS (degraded probe) | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "reason": "binding_format_invalid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/0708eca8a55b8afdfd44d4cda591f38f"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/0708eca8a55b8afdfd44d4cda591f38f",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/0708eca8a55b8afdfd44d4cda591f38f/at"
+   ]
+  },
+  "card malformed binding tag, CLASSIFY FAILS (degraded probe) | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "reason": "binding_format_invalid",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/38c141b3f50a8e375d56bf601df52dc3"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/38c141b3f50a8e375d56bf601df52dc3",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/38c141b3f50a8e375d56bf601df52dc3/at"
+   ]
+  },
+  "card order of ANOTHER restaurant | x_pizza": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different restaurant",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/f12f6b6d835875e76aec668de98c3f4d"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/f12f6b6d835875e76aec668de98c3f4d",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/f12f6b6d835875e76aec668de98c3f4d/at",
+    "recent_order_content/<key>/f12f6b6d835875e76aec668de98c3f4d/order_id",
+    "recent_order_content/<key>/f12f6b6d835875e76aec668de98c3f4d/payment_method"
+   ]
+  },
+  "card order of ANOTHER restaurant | la_musa": {
+   "status": 409,
+   "body": {
+    "error": "Order conflict",
+    "detail": "order_id already used for a different restaurant",
+    "order_id": "<oid>"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/a27d57d5ca3b89bdcbd1342728218eae"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/a27d57d5ca3b89bdcbd1342728218eae",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/a27d57d5ca3b89bdcbd1342728218eae/at",
+    "recent_order_content/<key>/a27d57d5ca3b89bdcbd1342728218eae/order_id",
+    "recent_order_content/<key>/a27d57d5ca3b89bdcbd1342728218eae/payment_method"
+   ]
+  },
+  "card CLASSIFY FAILS on a live checkout (fail-open → reuse) | x_pizza": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "order_id": "<oid>",
+    "attempt_id": "<attempt_id>",
+    "poll_token": "<poll_token>",
+    "checkout_url": "<checkout_url>",
+    "payment_status": "pending"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/ebb98e04c004c9528f82bb66fff698e8"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/ebb98e04c004c9528f82bb66fff698e8",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/ebb98e04c004c9528f82bb66fff698e8/at"
+   ]
+  },
+  "card CLASSIFY FAILS on a live checkout (fail-open → reuse) | la_musa": {
+   "status": 200,
+   "body": {
+    "ok": true,
+    "order_id": "<oid>",
+    "attempt_id": "<attempt_id>",
+    "poll_token": "<poll_token>",
+    "checkout_url": "<checkout_url>",
+    "payment_status": "pending"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/6b2d0d6280de6a5131a6c05e8b9a7d04"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/6b2d0d6280de6a5131a6c05e8b9a7d04",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "payment_attempts/<active_attempt_id>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/6b2d0d6280de6a5131a6c05e8b9a7d04/at"
+   ]
+  },
+  "card order PROBE read FAILS | x_pizza": {
+   "status": 500,
+   "body": {
+    "error": "Database error",
+    "detail": "UNAVAILABLE (injected read failure)"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/03d446ff40c44a682aa85206dd292ea0"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/03d446ff40c44a682aa85206dd292ea0",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/03d446ff40c44a682aa85206dd292ea0/at"
+   ]
+  },
+  "card order PROBE read FAILS | la_musa": {
+   "status": 500,
+   "body": {
+    "error": "Database error",
+    "detail": "UNAVAILABLE (injected read failure)"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/item_availability"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/d278f6c2cee1baf0b8f7ce36ae8c273c"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/d278f6c2cee1baf0b8f7ce36ae8c273c",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/count",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/d278f6c2cee1baf0b8f7ce36ae8c273c/at"
+   ]
+  },
+  "card ACQUIRE FAILS | x_pizza": {
+   "status": 500,
+   "body": {
+    "error": "Database error",
+    "detail": "UNAVAILABLE (injected acquire failure)"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/fba9d3b2ba6aeb995d5ee495b1fcf50c"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/fba9d3b2ba6aeb995d5ee495b1fcf50c",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/x_pizza/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/fba9d3b2ba6aeb995d5ee495b1fcf50c/at",
+    "recent_order_content/<key>/fba9d3b2ba6aeb995d5ee495b1fcf50c/order_id",
+    "recent_order_content/<key>/fba9d3b2ba6aeb995d5ee495b1fcf50c/payment_method"
+   ]
+  },
+  "card ACQUIRE FAILS | la_musa": {
+   "status": 500,
+   "body": {
+    "error": "Database error",
+    "detail": "UNAVAILABLE (injected acquire failure)"
+   },
+   "ops": [
+    {
+     "db": "rtdb",
+     "op": "remove",
+     "path": "rate_limits"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "config/token_enforce"
+    },
+    {
+     "db": "rtdb",
+     "op": "get",
+     "path": "deleted_uids/<uid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98"
+    },
+    {
+     "db": "rtdb",
+     "op": "set",
+     "path": "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98",
+     "keys": [
+      "at",
+      "order_id",
+      "payment_method"
+     ]
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "recent_order_content/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/ip/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "transaction",
+     "path": "rate_limits/phone/<key>"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "restaurants/la_musa/identity"
+    },
+    {
+     "db": "rtdb",
+     "op": "once",
+     "path": "orders/<oid>"
+    }
+   ],
+   "changed": [
+    "rate_limits/ip/<key>/window_start",
+    "rate_limits/phone/<key>/window_start",
+    "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98/at",
+    "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98/order_id",
+    "recent_order_content/<key>/f9ce0d3554a68916e6dca1549e10fa98/payment_method"
+   ]
+  }
+ }
+}

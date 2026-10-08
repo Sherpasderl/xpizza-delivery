@@ -228,7 +228,8 @@ const is426 = (r, label) => {
     const before = await tree();
     let r; try { r = await post(app.createOrder, body, { 'x-firebase-id-token': `u_${rid}`, ...H_LOW }); } finally { unhook(); }
     assert.strictEqual(r.status, 409, `${rid} createOrder race: ${r.text.slice(0, 160)}`);
-    assert.deepStrictEqual(r.json, { error: 'order_conflict', reason: 'client_update_race', order_id: oid });
+    // D4-c5 P1: the race answers the typed, non-self-healing order_exists (no form auto-mints a second id on it)
+    assert.deepStrictEqual(r.json, { error: 'order_exists', reason: 'client_update_race', detail: require('../order-exists').ORDER_EXISTS_DETAIL, order_id: oid });
     const after = JSON.parse(await tree()); const b4 = JSON.parse(before); delete b4.orders[oid];
     assert.deepStrictEqual(after, b4, `${rid}: the createOrder race wrote nothing (only the injected removal differs)`);
 

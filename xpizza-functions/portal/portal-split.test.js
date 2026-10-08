@@ -33,6 +33,7 @@ const ROOT = path.join(__dirname, '..');
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const { foldPortalSplit, PORTAL_TARGETS, REQUIRE_REWRITES } = require('../tools/portal-split');
+const { unapplyD4c5 } = require('../tools/d4c5-inverse');
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
@@ -369,14 +370,17 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
 
   // ── 6. THE FOLD GUARD'S SENSITIVITY ──────────────────────────────────────────────────────────────────────────
   {
-    assert.strictEqual(sha(foldPortalSplit()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
+    // D4-c5 P1: the order_exists slice's eight index.js hunks are reversed ON TOP of the fold (tools/d4c5-inverse.js), so this
+    // parent pin composes with the later slice and still proves nothing else changed.
+    const foldToParent = (root) => unapplyD4c5(foldPortalSplit(root));
+    assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
     const mutate = (file, from, to) => {
       for (const f of FILES) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.writeFileSync(path.join(tmp, f), read(f)); }
       const src = read(file); assert.ok(src.includes(from), `fixture anchor present: ${file} ${from.slice(0, 40)}`);
       fs.writeFileSync(path.join(tmp, file), src.replace(from, to));
-      try { return sha(foldPortalSplit(tmp)) === PARENT_INDEX ? 'UNDETECTED' : 'detected'; } catch (e) { return 'detected'; }
+      try { return sha(foldToParent(tmp)) === PARENT_INDEX ? 'UNDETECTED' : 'detected'; } catch (e) { return 'detected'; }
     };
     const CASES = [
       ['a byte inside a moved handler (publishEdited maxInstances)', 'portal/functions.js', 'timeoutSeconds: 120, memory: \'512MiB\', maxInstances: 2', 'timeoutSeconds: 120, memory: \'512MiB\', maxInstances: 3'],
@@ -391,6 +395,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       ['the Admin databaseURL', 'lib/admin.js', 'xpizza-delivery-default-rtdb', 'xpizza-delivery-default-rtdb2'],
       ['PORTAL_ORIGINS', 'portal/origins.js', "'https://sherpa-portal.netlify.app',", "'https://sherpa-portal.netlify.app', 'https://x.example',"],
       ['the stats keyer', 'stats/keyer.js', 'let _statsKeyer = null;', 'let _statsKeyer = undefined;'],
+      ['a byte inside a D4-c5 emitter hunk (the online closed reason)', 'index.js', "OE.orderExistsBody('closed', orderId)", "OE.orderExistsBody('conflict', orderId)"],
       ['a re-export site (wrong function)', 'index.js', 'exports.getEditableCatalog = portalFunctions.getEditableCatalog;', 'exports.getEditableCatalog = portalFunctions.getMyRestaurants;'],
     ];
     const results = CASES.map(([label, f, a, b]) => [label, mutate(f, a, b)]);
