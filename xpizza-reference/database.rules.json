@@ -79,6 +79,11 @@
       }
     },
 
+    "order_control": {
+      ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+      ".write": false
+    },
+
     "dispatcher_alerts": {
       ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
       ".indexOn": ["created_at"],

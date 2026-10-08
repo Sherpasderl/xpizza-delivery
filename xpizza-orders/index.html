@@ -3966,6 +3966,8 @@ async function processPixelPay(){
     });
     cfg = await res.json().catch(()=>({}));
     if(res.status===426 && cfg && cfg.error==='client_update_required'){ clientUpdateRequired(); return; }   // P-SELFUPDATE §5: terminal, pre-mutation
+    // D4-c4 "Pausar pedidos": the restaurant paused NEW orders — say so; the cart, order id and reward stay as they are
+    if(res.status===423 && cfg && cfg.error==='ordering_paused'){ return paymentFallback(cfg.detail || 'Este restaurante no está recibiendo pedidos en este momento. Probá de nuevo más tarde.'); }
     if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }
     if(res.status===202 && cfg && cfg.status==='in_progress'){
       // A checkout is already being created for this order (one-live-checkout) — brief wait + one retry.
@@ -3986,6 +3988,7 @@ async function processPixelPay(){
     // price rather than guess. This is transient and the cart is fine — so tell the customer to retry
     // the SAME cart. Never suggest editing it, and never fall through to the generic copy, which would
     // read as a cart problem and invite an edit that cannot help.
+    if(res.status===503 && cfg && cfg.retryable===true && cfg.error==='Service temporarily unavailable'){ return paymentFallback('Tuvimos un problema momentáneo, probá de nuevo.'); }   // D4-c4
     if(res.status===503 && cfg && cfg.error==='pricing_unavailable'){
       return paymentFallback('No pudimos confirmar el precio en este momento. Volvé a intentar en unos segundos — tu pedido está intacto.');
     }
@@ -4365,6 +4368,8 @@ async function submitOrder(paymentStatus){
         console.error('createOrder rejected', res.status, err);
         orderSubmitting=false;
         if(res.status===426 && err && err.error==='client_update_required'){ clientUpdateRequired(); return; }   // P-SELFUPDATE §5: terminal, pre-mutation
+        // D4-c4 "Pausar pedidos": a definitive refusal of THIS request — no resend, no new id; cart and reward kept
+        if(res.status===423 && err && err.error==='ordering_paused'){ document.getElementById('sending-msg').innerHTML = ICON_X_CIRCLE + escapeHtml(err.detail || 'Este restaurante no está recibiendo pedidos en este momento. Probá de nuevo más tarde.'); return; }
         // KDS 2b: server rejected because a line was 86'd between add + submit. Name the item(s)
         // + tell the customer to remove it — NOT the generic "Revisá los datos" (which triggers
         // confused retries). Handled BEFORE the generic 4xx branch. The item stays in the cart.
@@ -4450,6 +4455,7 @@ async function submitOrder(paymentStatus){
         return;
       }
       lastErr = new Error('HTTP '+res.status);   // 5xx → retry
+      lastErr.status = res.status;                 // D4-c4: a 503 after the last retry → "Tuvimos un problema momentáneo"
     } catch(e){
       lastErr = e;                                // network/throw → retry
       console.warn(`createOrder attempt ${attempt} failed:`, e.message);
@@ -4462,7 +4468,7 @@ async function submitOrder(paymentStatus){
 
   console.error('createOrder failed after retries', lastErr);
   orderSubmitting=false;
-  document.getElementById('sending-msg').innerHTML=ICON_X_CIRCLE+'Error de conexión. Intentá de nuevo.';
+  document.getElementById('sending-msg').innerHTML=ICON_X_CIRCLE+(lastErr && lastErr.status===503 ? 'Tuvimos un problema momentáneo, probá de nuevo.' : 'Error de conexión. Intentá de nuevo.');
 }
 
 // Customer wants to place another order from the success screen. Reset

@@ -30,8 +30,9 @@ try {
     // every moved region put back from the moved files, the early branch removed) must reproduce the integration
     // parent's index.js EXACTLY. Comparison 2 is the unchanged D4-c1 normalization below, applied to that parent.
     const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
-    // D4-c5 P1: the order_exists slice's eight index.js hunks reversed on top of the fold (tools/d4c5-inverse.js)
-    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/portal-split').foldPortalSplit());
+    // D4-c5 P1: the order_exists slice's eight index.js hunks reversed on top of the fold (tools/d4c5-inverse.js);
+    // D4-c4: the order-control slice's hunks (tools/d4c4-inverse.js) reversed first — it landed on top of D4-c5
+    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/portal-split').foldPortalSplit()));
     assert.strictEqual(sha(idx), PARENT_INDEX, '🔴 index.js + the portal split do not fold back to the integration parent bb37684 — something beyond the mechanical move changed');
     const cut = (s, startMarker, endMarker) => {
       const a = s.indexOf(startMarker); const b = s.indexOf(endMarker, a);
