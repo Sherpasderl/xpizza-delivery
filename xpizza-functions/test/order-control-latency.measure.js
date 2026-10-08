@@ -12,7 +12,9 @@ require('./_emulator-required')('database', 'firestore');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const WARM_ROUNDS = 1; const SAMPLES = 50; const CONC = 10;   // one warm-up round of 10 concurrent requests (≥ 5 warm-ups), then 5 rounds = 50 samples
+const WARM_ROUNDS = 1; const CONC = 10;   // one warm-up round of 10 concurrent requests (≥ 5 warm-ups), then 5 rounds = 50 samples
+// LAT_SAMPLES overrides the sample count for the mechanics SELF-TEST only (its outputs are not data; PREREG.md)
+const SAMPLES = process.env.LAT_SAMPLES ? Number(process.env.LAT_SAMPLES) : 50;
 const CASES = ['createOrder_fresh', 'charge_fresh', 'charge_reuse'];
 const MODES = ['hit', 'miss', 'refresh'];
 
@@ -28,21 +30,29 @@ const runChild = (dir, cs, mode) => {
 const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil(0.95 * s.length) - 1)]; };
 const med = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 const report = { warmups: WARM_ROUNDS * CONC, samples: SAMPLES, concurrency: CONC, rows: [], outage: null };
+let pair = 0;
 for (const cs of CASES) {
   for (const mode of MODES) {
-    const base = runChild(BASE_DIR, cs, 'base');
-    const cand = runChild(CAND_DIR, cs, mode);
+    // ABBA: the pair's order alternates (base first, then candidate first, …) so neither side always runs first
+    const first = pair++ % 2 === 0 ? 'base' : 'cand';
+    let base; let cand;
+    if (first === 'base') { base = runChild(BASE_DIR, cs, 'base'); cand = runChild(CAND_DIR, cs, mode); }
+    else { cand = runChild(CAND_DIR, cs, mode); base = runChild(BASE_DIR, cs, 'base'); }
     const bp = p95(base.ms); const cp = p95(cand.ms);
     const d = cp - bp;
     const row = { case: cs, cache: mode, base_p95: +bp.toFixed(1), cand_p95: +cp.toFixed(1), delta_ms: +d.toFixed(1), delta_pct: +((d / bp) * 100).toFixed(1),
-      base_median: +med(base.ms).toFixed(1), cand_median: +med(cand.ms).toFixed(1), base_status: base.status, cand_status: cand.status, cand_cache_states: cand.cache,
+      base_median: +med(base.ms).toFixed(1), cand_median: +med(cand.ms).toFixed(1), median_delta_ms: +(med(cand.ms) - med(base.ms)).toFixed(1),
+      first, base_attempts: base.attempts, cand_attempts: cand.attempts, base_errors: base.errors, cand_errors: cand.errors,
+      base_status: base.statusCounts, cand_status: cand.statusCounts, cand_cache_states: cand.cache,
+      valid: base.errors === 0 && cand.errors === 0 && base.ms.length === SAMPLES && cand.ms.length === SAMPLES,
       within: d <= 50 && d <= 0.10 * bp };
     report.rows.push(row);
     console.error(JSON.stringify(row));
   }
 }
 report.outage = runChild(CAND_DIR, 'createOrder_fresh', 'outage');
-report.pass = report.rows.every((r) => r.within);
+report.valid = report.rows.every((r) => r.valid);
+report.pass = report.valid && report.rows.every((r) => r.within);
 console.log(JSON.stringify(report));
 process.exit(0);
 
@@ -104,16 +114,20 @@ async function child(dir, cs, mode) {
     origLog(JSON.stringify({ case: 'createOrder fresh, switch read HUNG', max_ms: Math.max(...out.map((x) => x.ms)), statuses: [...new Set(out.map((x) => x.status))], n: out.length }));
     process.exit(0);
   }
-  const ms = []; const statuses = new Set();
+  const ms = []; const statusCounts = {}; let attempts = 0; let errors = 0;
   for (let round = 0; round < WARM_ROUNDS + Math.ceil(SAMPLES / CONC); round++) {
     await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove();
     prep();
     const batch = await Promise.all(Array.from({ length: CONC }, () => fire()));
-    if (round >= WARM_ROUNDS) for (const b of batch) { if (ms.length < SAMPLES) ms.push(b.ms); statuses.add(b.status); }
+    if (round >= WARM_ROUNDS) for (const b of batch) {
+      if (ms.length >= SAMPLES) continue;
+      attempts++; statusCounts[b.status] = (statusCounts[b.status] || 0) + 1; if (b.status !== 200) errors++;
+      ms.push(b.ms);
+    }
   }
   srv.close();
   console.log = origLog;
   const cache = {}; for (const l of logs) cache[l.cache] = (cache[l.cache] || 0) + 1;
-  origLog(JSON.stringify({ ms, status: [...statuses], cache }));
+  origLog(JSON.stringify({ ms, attempts, errors, statusCounts, cache }));
   process.exit(0);
 }
