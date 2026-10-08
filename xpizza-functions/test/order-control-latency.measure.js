@@ -42,9 +42,9 @@ for (const cs of CASES) {
     const d = cp - bp;
     const row = { case: cs, cache: mode, base_p95: +bp.toFixed(1), cand_p95: +cp.toFixed(1), delta_ms: +d.toFixed(1), delta_pct: +((d / bp) * 100).toFixed(1),
       base_median: +med(base.ms).toFixed(1), cand_median: +med(cand.ms).toFixed(1), median_delta_ms: +(med(cand.ms) - med(base.ms)).toFixed(1),
-      first, base_attempts: base.attempts, cand_attempts: cand.attempts, base_errors: base.errors, cand_errors: cand.errors,
+      first, base_not_reused: base.notReused, cand_not_reused: cand.notReused, base_attempts: base.attempts, cand_attempts: cand.attempts, base_errors: base.errors, cand_errors: cand.errors,
       base_status: base.statusCounts, cand_status: cand.statusCounts, cand_cache_states: cand.cache,
-      valid: base.errors === 0 && cand.errors === 0 && base.ms.length === SAMPLES && cand.ms.length === SAMPLES,
+      valid: base.errors === 0 && cand.errors === 0 && base.notReused === 0 && cand.notReused === 0 && base.ms.length === SAMPLES && cand.ms.length === SAMPLES,
       within: d <= 50 && d <= 0.10 * bp };
     report.rows.push(row);
     console.error(JSON.stringify(row));
@@ -95,15 +95,18 @@ async function child(dir, cs, mode) {
   const srv = await new Promise((r) => { const w = express(); w.use(express.json()); w.use(handler); const s = http.createServer(w).listen(0, () => r(s)); });
   const url = `http://127.0.0.1:${srv.address().port}/`;
   const reuseOid = `lat_reuse_${process.pid}`;
-  const oneBody = () => (cs === 'charge_reuse' ? body(reuseOid, 'online') : body(`lat_${process.pid}_${++seq}`, cs === 'charge_fresh' ? 'online' : 'cash'));
-  const fire = async () => { const t = process.hrtime.bigint(); const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lat-secret' }, body: JSON.stringify(oneBody()) }); await r.text(); return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status }; };
+  // every request carries its own phone (seq), so the per-phone limit (4 / 10 min) never refuses a sample; the charge
+  // fingerprint does not include the phone, so a reuse request still classifies as a reuse of the same live checkout
+  const oneBody = () => (cs === 'charge_reuse' ? (++seq, body(reuseOid, 'online')) : body(`lat_${process.pid}_${++seq}`, cs === 'charge_fresh' ? 'online' : 'cash'));
+  const fire = async () => { const t = process.hrtime.bigint(); const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lat-secret' }, body: JSON.stringify(oneBody()) }); const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch (_) {} return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, attempt: j && j.attempt_id }; };
   let OC = null; try { OC = req('order-control'); } catch (_) {}
   const prep = () => {
     if (!OC) return;
     if (mode === 'miss') OC._resetForTests();                       // every request: a cold miss
     if (mode === 'refresh' && !prep.done) { OC._resetForTests({ ttlMs: 0 }); prep.done = true; }   // every request after the first: an expired entry → a single-flight refresh
   };
-  if (cs === 'charge_reuse') { const r0 = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lat-secret' }, body: JSON.stringify(body(reuseOid, 'online')) }); await r0.text(); }
+  let reuseAttempt = null;   // charge_reuse: the live checkout every sample must REUSE (same attempt_id) — checked, not assumed
+  if (cs === 'charge_reuse') { const r0 = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lat-secret' }, body: JSON.stringify(body(reuseOid, 'online')) }); const j0 = JSON.parse(await r0.text()); reuseAttempt = j0.attempt_id || null; }
   if (mode === 'outage') {
     // a HUNG switch read: every read of order_control never answers → bounded at the 1 s timeout, then the 503
     let p = Object.getPrototypeOf(rtdb.ref('x')); while (p && !Object.prototype.hasOwnProperty.call(p, 'once')) p = Object.getPrototypeOf(p);
@@ -114,7 +117,7 @@ async function child(dir, cs, mode) {
     origLog(JSON.stringify({ case: 'createOrder fresh, switch read HUNG', max_ms: Math.max(...out.map((x) => x.ms)), statuses: [...new Set(out.map((x) => x.status))], n: out.length }));
     process.exit(0);
   }
-  const ms = []; const statusCounts = {}; let attempts = 0; let errors = 0;
+  const ms = []; const statusCounts = {}; let attempts = 0; let errors = 0; let notReused = 0;
   for (let round = 0; round < WARM_ROUNDS + Math.ceil(SAMPLES / CONC); round++) {
     await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove();
     prep();
@@ -122,12 +125,13 @@ async function child(dir, cs, mode) {
     if (round >= WARM_ROUNDS) for (const b of batch) {
       if (ms.length >= SAMPLES) continue;
       attempts++; statusCounts[b.status] = (statusCounts[b.status] || 0) + 1; if (b.status !== 200) errors++;
+      if (cs === 'charge_reuse' && b.status === 200 && (!reuseAttempt || b.attempt !== reuseAttempt)) notReused++;
       ms.push(b.ms);
     }
   }
   srv.close();
   console.log = origLog;
   const cache = {}; for (const l of logs) cache[l.cache] = (cache[l.cache] || 0) + 1;
-  origLog(JSON.stringify({ ms, attempts, errors, statusCounts, cache }));
+  origLog(JSON.stringify({ ms, attempts, errors, notReused, statusCounts, cache }));
   process.exit(0);
 }
