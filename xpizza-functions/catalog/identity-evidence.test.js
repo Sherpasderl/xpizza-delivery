@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const g = require('@google-cloud/firestore');
-const { ENC, H, D, DS, CLS, CLASSES, sortedSet } = require('./evidence-encoding');
+const { ENC, H, D, DS, CLS, CLASSES, sortedSet, DS2, planDigest } = require('./evidence-encoding');
 const E = require('./identity-evidence');
 const { encodeKey } = require('./identity-registry');
 
@@ -149,7 +149,7 @@ try {
     assert.strictEqual(ev.docId, 'g00000000000000000007', 'generation-keyed id, no version in it (rev 11 §2)');
     // final = the stamps AND the mint write-back (d2 carries ID_NEW once committed)
     assert.strictEqual(ev.data.final_count, 3);
-    assert.strictEqual(ev.data.final_digest, DS([{ k: 'dish', c: 'ID_MARG', n: 'Margherita', o: 'd1' }, { k: 'dish', c: 'ID_NEW', n: 'New Dish', o: 'd2' }, { k: 'extra', c: 'ID_QUESO', n: 'Queso', o: 'e1' }]));
+    assert.strictEqual(ev.data.final_digest, DS2('final', [{ k: 'dish', c: 'ID_MARG', n: 'Margherita', o: 'd1' }, { k: 'dish', c: 'ID_NEW', n: 'New Dish', o: 'd2' }, { k: 'extra', c: 'ID_QUESO', n: 'Queso', o: 'e1' }]));
     // …which is EXACTLY what c2b recomputes from the committed docs
     const committed = { dishDocs: snap([['d1', { key: 'Margherita', display: { identity_id: 'ID_MARG' } }], ['d2', { key: 'New Dish', display: { identity_id: 'ID_NEW' } }]]).docs,
       extraDocs: snap([['e1', { key: 'Queso', display: { identity_id: 'ID_QUESO' } }]]).docs };
@@ -157,12 +157,12 @@ try {
     assert.deepStrictEqual(ev.data.stampmap_counts, { verified: 2 });
     assert.strictEqual(ev.data.relocated_count, 0);
     assert.deepStrictEqual(ev.data.plan.dish, { mints: 1, moves: 0, restores: 0, retires: 0, deletions: 0, verified: true, plan_digest: ev.data.plan.dish.plan_digest });
-    assert.deepStrictEqual(ev.data.plan.extra, { mints: 0, moves: 0, restores: 0, retires: 0, deletions: 0, verified: false, plan_digest: D({ source: 'derived', moves: DS([]), mints: DS([]), retires: DS([]) }) });
+    assert.deepStrictEqual(ev.data.plan.extra, { mints: 0, moves: 0, restores: 0, retires: 0, deletions: 0, verified: false, plan_digest: planDigest('derived', [DS2('move', []), DS2('mint', []), DS2('retire', [])]) });
     // observed_digest EXACTLY, built here from the plan's definition (§2): per candidate object {k, o, id_row at THAT object's id
     // (a mint: absent from the pre-write map), key_row at encodeKey(key), other_kind_id_row, sm_id_row at the KEY ROW's id}
     const MARG = { legacy_key: 'Margherita', status: 'live', kind: 'dish' };
     const QUESO = { legacy_key: 'Queso', status: 'live', kind: undefined };
-    assert.strictEqual(ev.data.observed_digest, DS([
+    assert.strictEqual(ev.data.observed_digest, DS2('observed', [
       { k: 'dish', o: 'd1', id_row: { addr: 'ID_MARG', data: MARG }, key_row: { addr: encodeKey('Margherita'), data: { canonical_id: 'ID_MARG', kind: 'dish' } },
         other_kind_id_row: { addr: 'ID_MARG', absent: true }, sm_id_row: { addr: 'ID_MARG', data: MARG } },
       { k: 'dish', o: 'd2', id_row: { addr: 'ID_NEW', absent: true }, key_row: { addr: encodeKey('New Dish'), absent: true },
@@ -199,7 +199,7 @@ try {
     assert.strictEqual(ev.data.intent, 'rollback');
     assert.strictEqual(ev.data.relocated_count, 2);
     assert.deepStrictEqual(ev.data.stampmap_counts, { stamp_unregistered: 1, stamp_registry_disagrees: 1 });
-    assert.strictEqual(ev.data.stampmap_digest, DS([{ k: 'dish', o: 'd1', addr: { none: true }, code: 'stamp_unregistered', relocated: true },
+    assert.strictEqual(ev.data.stampmap_digest, DS2('stampmap', [{ k: 'dish', o: 'd1', addr: { none: true }, code: 'stamp_unregistered', relocated: true },
       { k: 'extra', o: 'e1', addr: 'ID_QUESO', code: 'stamp_registry_disagrees', relocated: true }]));
     assert.deepStrictEqual({ ...ev.data.plan.dish, plan_digest: 0 }, { mints: 0, moves: 0, restores: 1, retires: 1, deletions: 1, verified: true, plan_digest: 0 });
     assert.strictEqual(ev.data.plan.extra.verified, true, 'a no-op reconciliation (captured before the :837 continue) is still a computed reconciliation');
@@ -243,12 +243,12 @@ try {
     assert.strictEqual(c.data.certified, true);
     assert.strictEqual(c.data.kind, 'certify'); assert.strictEqual(c.data.rev_c, 1); assert.strictEqual(c.data.observed_generation, 4);
     assert.strictEqual(c.docId, 'c00000000000000000004_00000000000000000001', 'c{G20(observed_generation)}_{G20(rev)} (rev 11 §3)');
-    assert.strictEqual(c.data.checks_digest, DS([{ k: 'dish', n: 'Margherita', claimants: ['ID_MARG'], key_row_canonical_id: 'ID_MARG' },
+    assert.strictEqual(c.data.checks_digest, DS2('check', [{ k: 'dish', n: 'Margherita', claimants: ['ID_MARG'], key_row_canonical_id: 'ID_MARG' },
       { k: 'extra', n: 'Queso', claimants: ['ID_QUESO'], key_row_canonical_id: { absent: true } }]));
     assert.strictEqual(c.data.final_count, 2);
     const unsorted = E.buildCertificationEvidence({ versionId: 'v-9', observedGeneration: 4, revisionAfter: 1, record: {},
       objects: { dish: [{ id: 'd1', key: 'Margherita', canonical_id: 'ID_MARG' }] }, liveByKey: { dish: new Map([['Margherita', ['ZZ', 'AA', 'MM']]]) }, keyRowIdOf: new Map() });
-    assert.strictEqual(unsorted.data.checks_digest, DS([{ k: 'dish', n: 'Margherita', claimants: ['AA', 'MM', 'ZZ'], key_row_canonical_id: { absent: true } }]), 'claimants are SORTED in the digest');
+    assert.strictEqual(unsorted.data.checks_digest, DS2('check', [{ k: 'dish', n: 'Margherita', claimants: ['AA', 'MM', 'ZZ'], key_row_canonical_id: { absent: true } }]), 'claimants are SORTED in the digest');
   }
   ok('certification evidence: header {v, kind:certify, vid, observed_generation, rev_c, ch}, final over the stamped objects, checks_digest over claimants + key rows (an absent key row tagged {absent:true})');
 

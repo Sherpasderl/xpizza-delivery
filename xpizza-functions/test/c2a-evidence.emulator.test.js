@@ -172,8 +172,8 @@ function zeroExtrasSource() {
   {
     base = await publish(RID, seedVersion, 'c2a-base');
     const { ev } = await assertActivationEvidence(RID, 'publish');
-    const { D: Dg, DS: DSg } = require('../catalog/evidence-encoding');
-    const EMPTY_DERIVED = Dg({ source: 'derived', moves: DSg([]), mints: DSg([]), retires: DSg([]) });   // captured BEFORE the :865 continue
+    // captured BEFORE the :865 continue; the §2E.7 frozen golden vector for plan_digest(derived, empty) — ENC2 (rev 14)
+    const EMPTY_DERIVED = 'L_MTI5ZkTsrspaoJzAvCPQjPtZjx7bkoB7hjXCa4DK8';
     for (const k of ['dish', 'extra']) {
       assert.deepStrictEqual(ev.plan[k], { mints: 0, moves: 0, restores: 0, retires: 0, deletions: 0, verified: false, plan_digest: EMPTY_DERIVED },
         `${k}: an unchanged republish skips verifyPlan — recorded as the EMPTY DERIVED plan (its exact digest), never implying the verifier ran`);
@@ -191,7 +191,7 @@ function zeroExtrasSource() {
     const { ev } = await assertActivationEvidence(RID, 'publish');
     assert.strictEqual(ev.plan.dish.mints, 1); assert.strictEqual(ev.plan.dish.verified, true);
     assert.strictEqual(ev.plan.extra.verified, false, 'the unchanged kind beside a mint skips verifyPlan');
-    { const { D: Dg, DS: DSg } = require('../catalog/evidence-encoding'); assert.strictEqual(ev.plan.extra.plan_digest, Dg({ source: 'derived', moves: DSg([]), mints: DSg([]), retires: DSg([]) }), 'the empty DERIVED plan, exactly'); }
+    assert.strictEqual(ev.plan.extra.plan_digest, 'L_MTI5ZkTsrspaoJzAvCPQjPtZjx7bkoB7hjXCa4DK8', 'the empty DERIVED plan, exactly (§2E.7 golden, ENC2)');
     assert.notStrictEqual(ev.plan.dish.plan_digest, ev.plan.extra.plan_digest);
     const items = (await versionsColOf(db, RID).doc(minted).collection('menu_items').get()).docs.map((d) => d.data());
     assert.ok(items.some((d) => d.key === `Zz C2a Mint ${STAMP}` && d.display && d.display.identity_id), 'premise — the version carries the minted stamp');
