@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const g = require('@google-cloud/firestore');
-const { ENC, H, D, DS, CLS, CLASSES } = require('./evidence-encoding');
+const { ENC, H, D, DS, CLS, CLASSES, sortedSet } = require('./evidence-encoding');
 const E = require('./identity-evidence');
 const { encodeKey } = require('./identity-registry');
 
@@ -98,6 +98,12 @@ try {
     assert.strictEqual(DS(a), DS(a.slice().reverse()), 'a set digest is independent of order');
     assert.notStrictEqual(DS(a), DS(a.slice(1)), 'and sensitive to membership');
     assert.strictEqual(DS([]), H('["a",[]]'));
+    // DS is EXACTLY H(sortedSet(list)) — incl. where UTF-8 byte order and UTF-16 code-unit order DISAGREE (a supplementary char
+    // vs one in U+E000–U+FFFF), duplicates, and long members
+    for (const list of [['\uFF21', '😀'], ['😀', '\uFF21', 'a', 'é'], [{ x: '\uFFFD' }, { x: '😀' }, { x: '\uE000' }], ['a', 'a', 'b'], ['x'.repeat(1125), 'y'], [1, '1', null, undefined, true]]) {
+      assert.strictEqual(DS(list), H(sortedSet(list)), `DS = H(sortedSet) for ${JSON.stringify(list).slice(0, 40)}`);
+    }
+    assert.notStrictEqual(['\uFF21', '😀'].sort()[0], [...['\uFF21', '😀'].map((x) => Buffer.from(x))].sort(Buffer.compare)[0].toString(), 'premise: these two orders really disagree');
     const want = [[5, 5], [0, 0], [undefined, 'o:absent'], [null, 'o:null'], ['7', 'o:string'], [true, 'o:boolean'], [-1, 'o:number'], [-0, 'o:number'],
       [1.5, 'o:number'], [NaN, 'o:number'], [Number.MAX_SAFE_INTEGER + 2, 'o:number'], [{}, 'o:object'], [[], 'o:object'], [g.Timestamp.now(), 'o:timestamp'],
       [offline.doc('a/b'), 'o:reference'], [Buffer.from('x'), 'o:bytes']];

@@ -102,8 +102,18 @@ function sortedSet(list) {
   enc.sort((a, b) => Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8')));
   return `["a",[${enc.join(',')}]]`;
 }
-// The digest of a set-like list.
-function DS(list) { return H(sortedSet(list)); }
+/* The digest of a set-like list — EXACTLY H(sortedSet(list)), computed without the per-comparison allocations: each member is
+   encoded once and turned into its UTF-8 bytes once; the sort compares those same Buffers (UTF-8 byte order, as sortedSet's
+   comparator does); and the hash is fed the frame and the members incrementally rather than one joined string. Every piece is a
+   complete well-formed string (JSON output and ASCII punctuation), so the UTF-8 of the parts IS the UTF-8 of the whole. */
+const OPEN = Buffer.from('["a",[', 'utf8'), COMMA = Buffer.from(',', 'utf8'), CLOSE = Buffer.from(']]', 'utf8');
+function DS(list) {
+  const bufs = (Array.isArray(list) ? list : []).map((x) => Buffer.from(ENC(x), 'utf8'));
+  bufs.sort(Buffer.compare);
+  const h = crypto.createHash('sha256').update(OPEN);
+  for (let i = 0; i < bufs.length; i += 1) { if (i) h.update(COMMA); h.update(bufs[i]); }
+  return h.update(CLOSE).digest('base64url');
+}
 
 /* CLS(x) — a BOUNDED header projection: x itself if it is a safe non-negative integer, else "o:<class>".
    The class here extends the closed enum with the exact-tag kinds a header field can also hold, so a

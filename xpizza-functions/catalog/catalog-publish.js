@@ -1145,7 +1145,7 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
     /* 1D D4-c2a — appended after every read and every existing write, inside the SAME transaction: the evidence commits
        if and only if this activation does. Create-only — a collision surfaces at commit and is typed below (§4). */
     const c2aDoc = activationEvidenceDoc(c2aEvidence, { certified: certifiedCandidate, versionId, generation: priorGeneration + 1,
-      intent: isRollback ? 'rollback' : 'publish', record: candidateSnap.data() || {} });
+      intent: isRollback ? 'rollback' : 'publish', record: (certifiedCandidate && c2aEvidence) ? null : (candidateSnap.data() || {}) });   // parsed ONLY when activationEvidenceDoc will use it (exactly its `certified && built` test)
     if (c2aDoc) tx.create(evidenceRefOf(db, rid, c2aDoc.docId), withAt(c2aDoc.data));
     /* c2a-evidence:end */
     /* Returned from INSIDE the transaction, so the pair handed back is the pair this transaction
