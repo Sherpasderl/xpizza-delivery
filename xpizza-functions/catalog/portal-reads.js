@@ -143,6 +143,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
      • renderedCategories: the sections this brand's order page draws (renderer contract) — the only ones a
        product can be added to;
      • restaurantName: for the fiscal note, never a literal;
+     • pendingAdditions: the saved draft's unpublished new products (keys), present only when there are some;
      • draft_unpublishable: present ONLY when the saved draft cannot publish against what is serving (a
        structural drift or an unbuildable draft) — the portal then offers "Volver al menú publicado".
      An assessment that cannot be made (the live read failed) is simply omitted: the editor still loads. */
@@ -151,10 +152,14 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
   let restaurantName = rid;
   try { restaurantName = await displayName(db, rid); } catch (_) { restaurantName = rid; }
   let draftUnpublishable = null;
+  let pendingAdditions = null;
   if (readActiveBuilt && activeVersionId != null) {
     try {
       const a = assessDraft(rid, source, await readActiveBuilt(rid));
       if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
+      // the saved draft's products that are NOT published yet (keys), so a reloaded editor still marks them NUEVO
+      // and lets the owner remove them ("Quitar") — present only when there are some
+      else if (Array.isArray(a.additions) && a.additions.length) pendingAdditions = a.additions;
     } catch (e) {
       console.warn('portal_draft_assessment_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
     }
@@ -164,6 +169,7 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     renderedCategories,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),
+    ...(pendingAdditions ? { pendingAdditions } : {}),
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.
     sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null,

@@ -544,6 +544,12 @@ const TWO = {
     assert.strictEqual(d.status, 200, 'a drifted draft still LOADS');
     assert.ok(d.body.draft_unpublishable, 'a drifted draft is REPORTED');
     assert.strictEqual(d.body.draft_unpublishable.code, 'existing_item_changed', 'and says why it cannot publish');
+    // an unpublished ADDITION in the saved draft is reported by key (and the field is absent when there is none)
+    const withAdd = JSON.parse(JSON.stringify(xp)); const nid = Math.max(...xp.items.map((i) => i.display.id)) + 1;
+    withAdd.items.push({ key: 'Portal Nuevo', price: 400, display: { id: nid, cat: 'ny', name: 'Portal Nuevo', price: 400 } }); withAdd.structure.item_order.push('Portal Nuevo');
+    const pa = await call('x_pizza', withAdd, { readActiveBuilt: async () => activeOf('x_pizza', xp) });
+    assert.deepStrictEqual(pa.body.pendingAdditions, ['Portal Nuevo']);
+    assert.ok(!('pendingAdditions' in d.body), 'absent when there is none');
     const unk = await call('x_pizza', drift, { readActiveBuilt: async () => { throw new Error('down'); } });
     assert.strictEqual(unk.status, 200); assert.ok(!('draft_unpublishable' in unk.body), 'an assessment that cannot be made is omitted, the editor still loads');
     const noName = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-9', ...mkFs(xp) },
