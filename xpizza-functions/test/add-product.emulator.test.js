@@ -252,7 +252,7 @@ const wipe = async () => {
     for (const rid of ['x_pizza', 'la_musa']) {
       await wipe(); await seedBrand(rid, { certify: false });
       const base = await draft(rid);
-      const revBefore = await rev(rid);
+      let revBefore = await rev(rid);
       const one = (display) => { const s = JSON.parse(JSON.stringify(base)); const ref = tmp(); s.items.push({ ref, price: 555, display: { cat: CAT[rid], price: 555, ...display } }); s.structure.item_order.push(ref); return [s, ref]; };
       // an apostrophe in the name (attribute sink) — the most likely real-world case
       let [src, ref] = one({ name: "Mike's Special" });
@@ -269,6 +269,14 @@ const wipe = async () => {
       assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'name_taken', ref, 'name'], `${rid}: ${JSON.stringify(r.body)}`);
       // a section the order page does not draw — raised by the comparison AFTER allocation, attributed back to the ref
       const undrawn = (base.structure.categories || []).map((c) => c.id).find((id) => !require('../catalog/source-store').rendererContract(rid).renderedCategories.includes(id));
+      // codex build r1 #5 — a VALID name containing '/' is a lookup by its encoded key, never a raw document id: it saves
+      // AND publishes (the publish repeats the historical-name check) on the real Firestore
+      [src, ref] = one({ name: 'Pizza / Bacon' });
+      r = await save(rid, src);
+      assert.strictEqual(r.status, 200, `${rid}: "Pizza / Bacon" saves — ${JSON.stringify(r.body).slice(0, 200)}`);
+      const pb = await publish(rid, r);
+      assert.strictEqual(pb.status, 200, `${rid}: and publishes — ${JSON.stringify(pb.body).slice(0, 200)}`);
+      await wipe(); await seedBrand(rid, { certify: false }); revBefore = await rev(rid);   // back to a clean seed for the refusals below
       // a refusal raised by the COMPARISON after allocation (key-only there) is attributed back to the tmp row
       [src, ref] = one({ name: 'Con Eleccion', choice: 'Grande' });
       r = await save(rid, src);
@@ -287,7 +295,7 @@ const wipe = async () => {
       } else {
         assert.strictEqual(await rev(rid), revBefore, `${rid}: every refusal wrote NOTHING`);
       }
-      ok(`${rid}: the real handler refuses an unusable name/description, a live product's exact name${undrawn ? ', an undrawn section' : ''}${rid === 'la_musa' ? ' and a missing subsection' : ''} ON THE TMP ROW and its field — nothing written`);
+      ok(`${rid}: a valid name with '/' saves and publishes; the real handler refuses an unusable name/description, a live product's exact name${undrawn ? ', an undrawn section' : ''}${rid === 'la_musa' ? ' and a missing subsection' : ''} ON THE TMP ROW and its field — nothing written`);
     }
   }
   // ── the KDS sync of a SUPERSEDED activation writes nothing (it must not stamp an older list with a newer generation) ──

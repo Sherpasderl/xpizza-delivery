@@ -115,7 +115,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
         .filter((it) => it && typeof it === 'object' && Object.prototype.hasOwnProperty.call(it, 'ref') && it.display && typeof it.display.name === 'string')
         .map((it) => (keyMode === 'name' ? AP.tidyName(it.display.name) : AP.slugify(it.display.name)))
         .filter(Boolean);
-      const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective) : new Set();
+      const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective, keyMode) : new Set();
       const res = AP.allocateAdditions({ incoming: candidate, stored, activeItems: live.items, keyMode,
         hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k),
         fieldProblem: (f, v) => checkValue(v, FIELD_SINKS.item[f]) });

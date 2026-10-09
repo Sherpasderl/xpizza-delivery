@@ -5,7 +5,7 @@
 // except the post-activation KDS manifest sync (catalog/kds-manifest.js, its own conditional transaction).
 //   readKeyMode(rid)            the restaurant profile's pricing_key_mode (DATA, never a rid literal)
 //   hwmRef(rid)                 restaurants/{rid}/meta/display_id_hwm — the never-reused numeric id high-water mark
-//   registryKeysTaken(rid, ks)  which of these keys already have an identity-registry key row (a name used before)
+//   registryKeysTaken(rid, ks, keyMode)  which of these keys were used before (key row; + id doc in id mode); read errors propagate
 //   syncKds(rid, {versionId, generation})  write the active catalog's KDS manifest; never throws
 // ---------------------------------------------------------------------------
 const { keysColOf, idsColOf, encodeKey } = require('./identity-registry');
@@ -22,17 +22,25 @@ function addProductIo({ fs, rtdb }) {
       return snap.exists ? (snap.data() || {}).pricing_key_mode : undefined;
     },
     hwmRef: (rid) => hwmRefOf(fs, rid),
-    /* A key counts as PREVIOUSLY USED when the registry holds a key row for it — or, for a slug brand whose ids ARE its
-       keys, an id document with that slug (a rollback to a certified version retires the id and deletes the key row,
-       but the slug stays permanently reserved: re-adding it would save and then fail every publish with
-       identity_slug_retired). Random-token ids never collide with a key, so the id lookup is harmless elsewhere. */
-    registryKeysTaken: async (rid, keys) => {
+    /* A key counts as PREVIOUSLY USED when the registry holds a key row for it (both key modes — looked up by its
+       ENCODED form, so any display name is a valid lookup). For an id/slug brand, whose ids ARE its keys, an id
+       document with that slug counts too: a rollback to a certified version retires the id and deletes the key row,
+       but the slug stays permanently reserved (re-adding it would save and then fail every publish with
+       identity_slug_retired).
+       🔴 codex build r1 #5: the id-document lookup runs ONLY in id mode. In name mode a raw display name is not a
+       document id ("Pizza / Bacon" made .doc() throw → a persistent store_unavailable for a valid name), and a name
+       brand's ids are random tokens that never equal a key anyway. And a READ FAILURE IS NOT ABSENCE: every lookup's
+       error propagates (the handlers answer a retryable 503), so an outage can never wave a reused slug through. */
+    registryKeysTaken: async (rid, keys, keyMode) => {
+      if (keyMode !== 'name' && keyMode !== 'id') throw new Error(`registryKeysTaken: unknown key mode ${JSON.stringify(keyMode)}`);
       const uniq = [...new Set(keys)];
-      const snaps = await Promise.all(uniq.map((k) => Promise.all([
-        keysColOf(fs, rid, 'dish').doc(encodeKey(k)).get(),
-        idsColOf(fs, rid, 'dish').doc(String(k)).get().catch(() => ({ exists: false })),
-      ])));
-      return new Set(uniq.filter((k, i) => snaps[i][0].exists || snaps[i][1].exists));
+      const taken = await Promise.all(uniq.map(async (k) => {
+        const row = await keysColOf(fs, rid, 'dish').doc(encodeKey(k)).get();
+        if (row.exists) return true;
+        if (keyMode !== 'id') return false;
+        return (await idsColOf(fs, rid, 'dish').doc(String(k)).get()).exists;
+      }));
+      return new Set(uniq.filter((k, i) => taken[i]));
     },
     /* The activation's generation comes from the ACTIVE POINTER, read after the publish (catalog-publish.js is pinned
        and is not modified to return it). If the pointer already names a NEWER version, this activation was superseded:
