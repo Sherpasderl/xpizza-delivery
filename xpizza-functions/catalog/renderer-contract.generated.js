@@ -8,10 +8,16 @@
 //   categoriesNamed — the renderer prints a category label, so every category must carry a name
 //   badges          — the badges it can SELECT (TAG_PRIORITY intersected with TAG_BADGES). An empty
 //                     list means the brand has no badge renderer, so no tag on it can be honoured.
+//   renderedCategories — the category ids its renderMenu actually DRAWS. A product may be ADDED only to one
+//                     of these (an unrendered category would hold a priced, invisible product). [] = none.
 module.exports = {
   "x_pizza": {
     "categoriesNamed": false,
-    "badges": []
+    "badges": [],
+    "renderedCategories": [
+      "individual",
+      "ny"
+    ]
   },
   "la_musa": {
     "categoriesNamed": true,
@@ -22,6 +28,16 @@ module.exports = {
       "crowd_favourite",
       "most_ordered",
       "price_pending"
+    ],
+    "renderedCategories": [
+      "dim_sum",
+      "starters",
+      "house_specials",
+      "crudo",
+      "noodles",
+      "rice",
+      "soups_salads",
+      "bebidas"
     ]
   }
 };

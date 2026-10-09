@@ -118,14 +118,23 @@ function rendererContract(rid) {
     // No bespoke renderer to honour. The badge set is EMPTY — never the keys the submission declares,
     // which would be the document deciding its own rules again — and categories need no labels,
     // because nothing prints them.
-    return { categoriesNamed: false, badges: new Set() };
+    return { categoriesNamed: false, badges: new Set(), renderedCategories: [] };
   }
   const entry = table[rid];
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)
     || typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)) {
     throw new Error(`source_malformed: the renderer contract for ${rid} is present but malformed; refusing to validate against a renderer it does not describe`);
   }
-  return { categoriesNamed: entry.categoriesNamed, badges: new Set(entry.badges) };
+  // 1D add-product A §1: the categories this renderer DRAWS. Absent → [] (nothing is known to render, so
+  // nothing can be ADDED); present but not an array of non-empty strings → malformed, like the fields above.
+  let renderedCategories = [];
+  if (Object.prototype.hasOwnProperty.call(entry, 'renderedCategories')) {
+    if (!Array.isArray(entry.renderedCategories) || entry.renderedCategories.some((c) => typeof c !== 'string' || !c)) {
+      throw new Error(`source_malformed: the renderer contract for ${rid} carries a malformed renderedCategories; refusing to guess what it draws`);
+    }
+    renderedCategories = entry.renderedCategories.slice();
+  }
+  return { categoriesNamed: entry.categoriesNamed, badges: new Set(entry.badges), renderedCategories };
 }
 
 // THREE SEPARATE QUESTIONS PER FIELD: is it required, what TYPE must it be, and is its content safe.
@@ -694,4 +703,4 @@ async function readSource(db, rid) {
   return { source, revision: encodeUpdateTime(snap.updateTime) };
 }
 
-module.exports = { SCHEMA_VERSION, KNOWN_STRUCTURE_FIELDS, readSource, validateSource, encodeUpdateTime, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };
+module.exports = { SCHEMA_VERSION, KNOWN_STRUCTURE_FIELDS, readSource, validateSource, rendererContract, encodeUpdateTime, sourceToBuildInputs, canonicalize, sourceRefOf, isPositiveInt, extrasKeyOf, SOURCE_COVERED_LITERALS };

@@ -215,4 +215,40 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   ok('extra_categories is type-validated whenever present, required only when extras exist');
 }
 
+{
+  // 1D add-product A §1 — renderedCategories, derived from the shipped renderMenu
+  const { renderedCategoriesOf } = require('../tools/generate-renderer-contract');
+  assert.deepStrictEqual(committed.x_pizza.renderedCategories, ['individual', 'ny'], 'x_pizza draws exactly its two literal-filtered sections');
+  assert.deepStrictEqual(committed.la_musa.renderedCategories, ['dim_sum', 'starters', 'house_specials', 'crudo', 'noodles', 'rice', 'soups_salads', 'bebidas'],
+    'la_musa walks CATEGORIES and filters p.cat === c.id → every category of its literal, in order');
+  const walk = "const CATEGORIES = [{id:'a',name:'A'},{id:'b',name:'B'}];\nfunction renderMenu() {\n  CATEGORIES.forEach(c => { const items = MENU.filter(p => p.cat === c.id); if (x) { y(); } });\n}\n";
+  assert.deepStrictEqual(renderedCategoriesOf(walk), ['a', 'b'], 'a CATEGORIES walk with p.cat === c.id → the literal ids');
+  assert.deepStrictEqual(renderedCategoriesOf(walk.replace('p.cat === c.id', 'p.kind === c.id')), [], 'a walk that does NOT filter by category → nothing is known to render');
+  assert.deepStrictEqual(renderedCategoriesOf(walk.replace("const CATEGORIES = [{id:'a',name:'A'},{id:'b',name:'B'}];", '')), [], 'a walk with no CATEGORIES literal → [] (fail closed)');
+  const lit = "function renderMenu(){\n  const a = MENU.filter(p=>p.cat==='individual');\n  const b = MENU.filter(p => p.cat === \"ny\");\n  if (q) { r(); }\n}\nfunction other(){ return MENU.filter(p=>p.cat==='hidden'); }\n";
+  assert.deepStrictEqual(renderedCategoriesOf(lit), ['individual', 'ny'], 'literal filters INSIDE renderMenu only — a filter in another function is not drawing');
+  assert.deepStrictEqual(renderedCategoriesOf('function other(){ return MENU.filter(p=>p.cat===\'x\'); }'), [], 'no renderMenu → []');
+  assert.deepStrictEqual(renderedCategoriesOf('function renderMenu(){ MENU.filter(p=>p.cat===\'x\')'), [], 'an unterminated body → [] (never a partial guess)');
+  ok('renderedCategories: from renderMenu only — a CATEGORIES walk filtering p.cat === c.id → its literal ids; literal p.cat===\'x\' filters → those; anything else → [] (fail closed)');
+}
+{
+  // the accessor: absent → [] (nothing addable), malformed → refuse, present → a copy
+  const Module = require('module');
+  // the artifact is required LAZILY inside rendererContract, so the stub must be in place for the CALL
+  const load = (table) => ({ rendererContract: (rid) => {
+    const orig = Module._load;
+    Module._load = function (request, ...rest) { if (request === './renderer-contract.generated') return table; return orig.call(this, request, ...rest); };
+    try { delete require.cache[require.resolve('./source-store')]; return require('./source-store').rendererContract(rid); } finally { Module._load = orig; }
+  } });
+  try {
+    assert.deepStrictEqual(load({ r1: { categoriesNamed: false, badges: [] } }).rendererContract('r1').renderedCategories, [], 'absent field → []');
+    assert.deepStrictEqual(load({ r1: { categoriesNamed: false, badges: [] } }).rendererContract('zz').renderedCategories, [], 'undescribed brand → []');
+    assert.deepStrictEqual(load({ r1: { categoriesNamed: false, badges: [], renderedCategories: ['c1'] } }).rendererContract('r1').renderedCategories, ['c1']);
+    for (const bad of ['c1', [''], [1], null, {}]) {
+      assert.throws(() => load({ r1: { categoriesNamed: false, badges: [], renderedCategories: bad } }).rendererContract('r1'), /renderedCategories/, `malformed ${JSON.stringify(bad)} refused`);
+    }
+  } finally { delete require.cache[require.resolve('./source-store')]; }
+  ok('rendererContract().renderedCategories: absent field or undescribed brand → [] (fail closed); malformed → refused; present → those ids');
+}
+
 console.log(`renderer-contract: OK (${n})`);
