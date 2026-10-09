@@ -56,19 +56,23 @@ class BudgetDeferral extends Error { constructor(stage) { super(`budget_deferred
 class OversizedDeferral extends Error { constructor(reason) { super(reason); this.oversized = reason; } }
 
 /* ── the run's read budget + pacing ───────────────────────────────────────────────────────────────────────────────────
-   reserve(n) BEFORE a read is issued (throws BudgetDeferral if the run cap would be passed); pace(n) then waits for n
-   tokens of a 100/s bucket. Count queries are reserved at their billed upper bound (limit(401) ≤ 1, limit(20001) ≤ 21). */
+   reserve(n) BEFORE a read is issued (throws BudgetDeferral if the run cap would be passed); pace(n) then waits until issuing n
+   more reads keeps EVERY 1-second window at ≤ perSecond (a sliding window — a token bucket that starts full would allow ~2×
+   in its first second). Count queries are reserved at their billed upper bound (limit(401) ≤ 1, limit(20001) ≤ 21). */
 function createReadBudget({ cap = RUN_READ_CAP, perSecond = READS_PER_SECOND, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   let used = 0;
-  let tokens = perSecond; let last = now();
-  const log = [];   // (t, n) per paced read — the pacing assertion reads this
+  const window = [];   // [t, n] issued within the last second
+  const log = [];      // (t, n) per paced read — the pacing assertion reads this
   return {
     reserve(n, stage) { if (used + n > cap) throw new BudgetDeferral(stage); used += n; },
     async pace(n) {
+      if (n > perSecond) throw new RangeError(`pace: one operation of ${n} reads exceeds the ${perSecond}/s limit`);
       for (;;) {
-        const t = now(); tokens = Math.min(perSecond, tokens + ((t - last) / 1000) * perSecond); last = t;
-        if (tokens >= n || (n > perSecond && tokens >= perSecond)) { tokens -= n; log.push([t, n]); return; }
-        await sleep(Math.ceil(((Math.min(n, perSecond) - tokens) / perSecond) * 1000));
+        const t = now();
+        while (window.length && window[0][0] <= t - 1000) window.shift();
+        const inWindow = window.reduce((sum, [, k]) => sum + k, 0);
+        if (inWindow + n <= perSecond) { window.push([t, n]); log.push([t, n]); return; }
+        await sleep(Math.max(1, window[0][0] + 1000 - t));
       }
     },
     used: () => used,
