@@ -1758,7 +1758,7 @@ test('🔴 FIX: a refused name reopens THAT product’s drawer with the server�
   await app.loadMenu('x_pizza');
   const ref = await addAndFill(byId, app, { name: 'Pizza' });
   installFetch((fn) => (fn === 'editCatalog'
-    ? refusal(409, { error: 'name_taken', detail: 'taken', ref, field: 'name' }) : ADD_LOAD()));
+    ? refusal(400, { error: 'name_taken', detail: '"Pizza" is already on your menu', key: 'Pizza', ref, field: 'name' }) : ADD_LOAD()));   // the REAL handler's body (emulator cell 16)
   await fire(byId.get('review'));
   const btn = byId.get('mbody').querySelectorAll('button')[0];
   assert.match(btn.textContent, /Corregir el nombre/);
@@ -1840,4 +1840,40 @@ test('🔴 a stored draft that cannot even LOAD offers "Volver al menú publicad
   const reset = calls.find((c) => c.fn === 'resetDraftToLive');
   assert.strictEqual(reset && reset.body.expectedRevision, 'T0');
   assert.strictEqual(app.state.draft, null, 'no draft was built from an invalid source');
+});
+
+
+test('🔴 FIX never opens an EXISTING product: a target that is not a new product opens no drawer', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app, { name: 'Pizza' });
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'name_taken', detail: 'x', key: 'Pizza', field: 'name' }) : ADD_LOAD()));   // a key-only body naming the LIVE "Pizza"
+  await fire(byId.get('review'));
+  await fire(byId.get('mbody').querySelectorAll('button')[0]);
+  assert.notStrictEqual(app.state.drawerKey, 'Pizza', 'the live product’s drawer is NOT opened with an error on it');
+  assert.strictEqual(byId.get('drawer').querySelectorAll('.ferr').length, 0, 'no field error lands anywhere it does not belong');
+  assert.ok(app.state.draft.state.items.some((i) => typeof i.ref === 'string'), 'the new product is still in the draft');
+});
+
+test('FIX: an unusable description opens the drawer with the error under Descripción, in its own words', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addAndFill(byId, app);
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'text_unsafe', detail: 'the desc contains markup characters', ref, field: 'desc' }) : ADD_LOAD()));
+  await fire(byId.get('review'));
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.strictEqual(btn.textContent, 'Corregir la descripción');
+  await fire(btn);
+  assert.strictEqual(app.state.drawerKey, ref);
+  const errs = byId.get('drawer').querySelectorAll('.ferr');
+  assert.strictEqual(errs.length, 1);
+  assert.match(errs[0].textContent, /signos < y >/, 'the merchant reads what to change, not the server’s English');
+  const fld = byId.get('drawer').querySelectorAll('.fld').find((f) => f.children.some((c) => c.attrs && c.attrs['aria-label'] === 'Descripción'));
+  assert.ok(fld && fld.querySelectorAll('.ferr').length === 1, 'and it sits on the Descripción field');
 });

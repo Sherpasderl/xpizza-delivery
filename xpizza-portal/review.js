@@ -514,6 +514,12 @@ const PANELS = {
   name_unusable: { icon: 'warn', title: 'Ese nombre no sirve',
     detail: 'El nombre necesita al menos una letra o un número.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  text_unsafe: { icon: 'warn', title: 'Ese nombre lleva caracteres que no se pueden usar',
+    detail: 'El nombre de un producto no puede llevar comillas ni apóstrofos, ni los signos < y >. Cambialo para poder guardarlo.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  subcat_invalid: { icon: 'warn', title: 'Falta la subsección',
+    detail: 'Esa sección se divide en subsecciones. Elegí en cuál va el producto nuevo.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Elegir la subsección' } },
   category_not_renderable: { icon: 'warn', title: 'Esa sección no se muestra en tu página de pedidos',
     detail: 'Elegí una de las secciones que tus clientes ven al pedir.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Elegir la sección' } },
@@ -596,6 +602,12 @@ export function outcomeFor(err, op = 'publish') {
     const target = typeof b.ref === 'string' ? b.ref : (typeof b.key === 'string' ? b.key : null);
     if (target) base.target = target;
     if (typeof b.field === 'string') base.field = b.field;
+  }
+  // the description has its own (looser) rule: quotes are fine there, the signs < and > are not
+  if (code === 'text_unsafe' && base.field === 'desc') {
+    base.title = 'La descripción lleva caracteres que no se pueden usar';
+    base.detail = 'La descripción de un producto no puede llevar los signos < y >. Cambiala para poder guardarlo.';
+    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Corregir la descripción' };
   }
   // not_owner on a draft that ADDS products is about adding, not the factura
   if (code === 'not_owner' && b && typeof b.detail === 'string' && /add products/.test(b.detail)) {

@@ -1317,10 +1317,12 @@ function showOutcome(outcome) {
       // 1D add-product A — back to editing, with the new product's drawer open at the field the server named
       $('scrim').classList.remove('show');
       clearReview();
-      if (outcome.target) {
+      // ONLY a new product's drawer: a target that names an existing product (or nothing on screen) opens nothing —
+      // the field error must never land on a product the owner did not add
+      const it = outcome.target ? (draftSource(state.draft).items || []).find((i) => i && rowId(i) === outcome.target) : null;
+      if (it && isAddition(it)) {
         state.drawerError = { target: outcome.target, field: outcome.field || null, message: outcome.detail };
-        const it = (draftSource(state.draft).items || []).find((i) => i && rowId(i) === outcome.target);
-        if (it && it.display && it.display.cat) state.selectedCat = it.display.cat;
+        if (it.display && it.display.cat) state.selectedCat = it.display.cat;
         paint(); syncUi();
         openDrawer(outcome.target);
       } else { paint(); syncUi(); }

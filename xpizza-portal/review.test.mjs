@@ -1111,3 +1111,13 @@ test('the receipt warns when the kitchen list could not be updated — only on a
     assert.strictEqual(textOf(root).includes('No se pudo actualizar la lista de la cocina'), want);
   }
 });
+
+
+test('text_unsafe speaks about the FIELD the server named: the name forbids quotes, the description only < and >', () => {
+  const n = outcomeFor(Object.assign(err('text_unsafe', 400), { body: { ref: 'tmp:1', field: 'name' } }), 'edit');
+  const d = outcomeFor(Object.assign(err('text_unsafe', 400), { body: { ref: 'tmp:1', field: 'desc' } }), 'edit');
+  assert.match(n.detail, /comillas/); assert.strictEqual(n.action.label, 'Corregir el nombre');
+  assert.doesNotMatch(d.detail, /comillas/, 'quotes ARE allowed in a description — saying otherwise would be false');
+  assert.strictEqual(d.action.label, 'Corregir la descripción');
+  assert.deepStrictEqual([d.target, d.field, d.action.id], ['tmp:1', 'desc', PUBLISH_ACTIONS.FIX]);
+});
