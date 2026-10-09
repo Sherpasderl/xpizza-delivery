@@ -30,8 +30,8 @@ const { getActivePointer } = require('./catalog-firestore');
 const { encodeUpdateTime } = require('./source-store');
 const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
 const AP = require('./add-product');
-const { rendererContract, sourceToBuildInputs } = require('./source-store');
-const { buildCatalogV2 } = require('./form-menu-source');
+const { rendererContract } = require('./source-store');
+const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
 
 const reply = (status, body) => ({ status, body });
 
@@ -140,8 +140,8 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // …and BUILD it with publish's builder: a draft the builder cannot carry is refused here, never stored.
   let draftBuilt, draftExtraRecords;
   try {
-    const inputs = sourceToBuildInputs(candidate);
-    const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
+    const { inputs, built } = buildSourceCandidate(rid, candidate);
+    assertBuiltValid(rid, built, `${rid} (save)`);   // codex build r1 #4: publish's candidate validation, before the CAS write
     draftBuilt = { ...built, extras: inputs.extras };
     draftExtraRecords = built.extras;
   } catch (e) {

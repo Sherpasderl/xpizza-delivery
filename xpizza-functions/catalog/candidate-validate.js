@@ -18,7 +18,8 @@
 // The failures are re-tagged `publish_refused_invalid` with the validator's own message intact: the
 // caller needs to branch on "this candidate cannot go live" while a human still needs the reason.
 // ---------------------------------------------------------------------------
-const { validateSource, SCHEMA_VERSION } = require('./source-store');
+const { validateSource, SCHEMA_VERSION, sourceToBuildInputs } = require('./source-store');
+const { buildCatalogV2 } = require('./form-menu-source');
 
 // A candidate in source shape. `extras` is the RECORD array (key/price/display), never the numeric
 // charging table — the publisher carries both and they are easy to confuse, so the one that names
@@ -39,4 +40,20 @@ function assertCandidateValid(restaurantId, candidate, where) {
   return true;
 }
 
-module.exports = { candidateSource, assertCandidateValid };
+// 🔴 codex build r1 #4 — EVERY SOURCE-BUILT CANDIDATE IS BUILT ONE WAY. The source carries the extras' PRICES
+// (inputs.extras); the builder used to be called without them and fell back to the CODE extras table, so an edited
+// extra price produced records priced from code beside a charging table priced from the source (Salsa Roja 40 ≠ 39,
+// rice_white 51 ≠ 50). SAVE stored it, and PUBLISH's candidate validation refused it — a live dead end for every
+// portal extra-price edit. Built here, with the source's own extras table, by SAVE, draft assessment, PUBLISH and the
+// CLIs alike; with an unedited source (extras equal to code today) the output is byte-identical to the old call.
+function buildSourceCandidate(restaurantId, source) {
+  const inputs = sourceToBuildInputs(source);
+  const built = buildCatalogV2(restaurantId, { formData: inputs.formData, priceTable: inputs.priceTable, extrasTable: inputs.extras });
+  return { inputs, built };
+}
+// …and the built candidate is validated exactly as PUBLISH validates it (pre-publish), so a draft that cannot publish
+// is refused when it is SAVED rather than discovered at publish.
+const assertBuiltValid = (restaurantId, built, where) =>
+  assertCandidateValid(restaurantId, candidateSource(restaurantId, { items: built.items, extras: built.extras, structure: built.structure }), where);
+
+module.exports = { candidateSource, assertCandidateValid, buildSourceCandidate, assertBuiltValid };

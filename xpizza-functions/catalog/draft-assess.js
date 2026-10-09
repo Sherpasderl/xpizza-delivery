@@ -6,8 +6,8 @@
 // drifts from the active catalog). The SAME checks a save runs: validate, build with publish's builder, and the
 // structural comparison (honouring the D4-P1 deletion claim). Pure given its inputs; reads nothing itself.
 // ---------------------------------------------------------------------------
-const { validateSource, sourceToBuildInputs, rendererContract } = require('./source-store');
-const { buildCatalogV2 } = require('./form-menu-source');
+const { validateSource, rendererContract } = require('./source-store');
+const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
 const AP = require('./add-product');
 
 // activeRes: { built: {items, structure}, extraRecords } (readActiveBuilt's shape)
@@ -17,8 +17,8 @@ function assessDraft(rid, source, activeRes) {
   }
   let built;
   try {
-    const inputs = sourceToBuildInputs(source);
-    built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
+    built = buildSourceCandidate(rid, source).built;
+    assertBuiltValid(rid, built, `${rid} (assessment)`);   // codex build r1 #4: the same candidate validation publish runs
   } catch (e) {
     return { publishable: false, code: 'draft_unbuildable', detail: String((e && e.message) || e).slice(0, 300) };
   }
