@@ -542,6 +542,7 @@ const TWO = {
     const drift = JSON.parse(JSON.stringify(xp)); drift.items[0].display.desc = 'cambiada';
     const d = await call('x_pizza', drift, { readActiveBuilt: async () => activeOf('x_pizza', xp) });
     assert.strictEqual(d.status, 200, 'a drifted draft still LOADS');
+    assert.ok(d.body.draft_unpublishable, 'a drifted draft is REPORTED');
     assert.strictEqual(d.body.draft_unpublishable.code, 'existing_item_changed', 'and says why it cannot publish');
     const unk = await call('x_pizza', drift, { readActiveBuilt: async () => { throw new Error('down'); } });
     assert.strictEqual(unk.status, 200); assert.ok(!('draft_unpublishable' in unk.body), 'an assessment that cannot be made is omitted, the editor still loads');

@@ -207,6 +207,7 @@ const builtFor = (rid, mutate) => {
     const codeKnown = new Set(Object.keys(require('../menu-pricing').MENU_BY_RESTAURANT.x_pizza));
     for (const [name, deps] of Object.entries(paths)) {
       const ig = await MG.createGateReader(deps).intakeGatesFor('x_pizza');
+      assert.ok(ig.known instanceof Set, `${name}: a membership SET is always returned (never null)`);
       const wk = await MG.createGateReader(deps).weekendOnlyKeysFor('x_pizza');
       assert.deepStrictEqual([...ig.weekend].sort(), [...wk].sort(), `${name}: the weekend set is weekendOnlyKeysFor's`);
       if (name === 'authored' || name === 'unauthored weekend') assert.deepStrictEqual([...ig.known].sort(), ['Margherita NY', 'Pepperoni', 'Portal New'], `${name}: known = the snapshot's keys`);

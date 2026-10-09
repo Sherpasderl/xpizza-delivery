@@ -53,7 +53,8 @@ const T1 = 'tmp:aaaaaaaa-0001'; const T2 = 'tmp:aaaaaaaa-0002';
 {
   // name-keyed brand: key = the tidied name, id = above every known id and the high-water mark
   const maxId = Math.max(...SRC.x_pizza.items.map((i) => i.display.id));
-  const r = alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: '  NY  Probe ' }, { ref: T2, name: 'Second Probe', cat: 'individual' }]));
+  let r;
+  assert.doesNotThrow(() => { r = alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: '  NY  Probe ' }, { ref: T2, name: 'Second Probe', cat: 'individual' }])); }, 'two additions in one save get two DISTINCT ids');
   const added = r.source.items.slice(-2);
   assert.deepStrictEqual(added.map((i) => [i.key, i.display.id, i.display.name]), [['NY Probe', maxId + 1, 'NY Probe'], ['Second Probe', maxId + 2, 'Second Probe']]);
   assert.ok(added.every((i) => !('ref' in i)), 'the temporary reference is gone');
@@ -116,7 +117,7 @@ const T1 = 'tmp:aaaaaaaa-0001'; const T2 = 'tmp:aaaaaaaa-0002';
   const extraName = SRC.x_pizza.extras[0].display.name;
   throwsCode(() => alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: extraName }])), 'name_taken', 'an addition named like an extra');
   const accented = SRC.la_musa.items.find((i) => /[áéíóúñ]/i.test(i.display.name));
-  if (accented) throwsCode(() => alloc('la_musa', withFresh('la_musa', SRC.la_musa, [{ ref: T1, name: accented.display.name.normalize('NFD').replace(/[̀-ͯ]/g, '') }])), 'name_taken', 'accent-folded');
+  if (accented) throwsCode(() => alloc('la_musa', withFresh('la_musa', SRC.la_musa, [{ ref: T1, name: accented.display.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '') }])), 'name_taken', 'accent-folded');
   throwsCode(() => alloc('la_musa', withFresh('la_musa', SRC.la_musa, [{ ref: T1, name: SRC.la_musa.items[0].key.replace(/_/g, ' ') }])), 'key_taken', 'a slug equal to a live key');
   // the registry: a key row for the allocated key means the name was used before
   throwsCode(() => alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: 'Gone Pizza' }]), { registry: new Set(['Gone Pizza']) }), 'name_previously_used');
@@ -178,7 +179,14 @@ const allocated = (rid, adds) => alloc(rid, withFresh(rid, SRC[rid], adds)).sour
   throwsCode(() => cmp(rid, wk), 'structure_changed', 'the weekend rule');
   const stamp = clone(SRC[rid]); stamp.items[0].display.identity_id = 'forged';
   throwsCode(() => cmp(rid, stamp), 'existing_item_changed', 'a stamp the live item does not carry');
-  ok('existing items keep everything but price (desc, category, presence, order); extras membership and structure (weekend rule) frozen; a forged stamp refused');
+  // has_photo is a non-price field too (la_musa's builder carries it)
+  const lm = clone(SRC.la_musa); lm.items[0].has_photo = !lm.items[0].has_photo;
+  throwsCode(() => cmp('la_musa', lm), 'existing_item_changed', 'a has_photo toggle on an existing item');
+  // the comparison's OWN cap (independent of the allocator's)
+  const big = build(rid, SRC[rid]); const extra = Array.from({ length: 21 }, (_, i) => ({ key: `Cap ${i}`, price: 5, display: { id: 900 + i, cat: 'ny', name: `Cap ${i}`, price: 5 } }));
+  throwsCode(() => A.compareToActive({ draftBuilt: { ...big, items: [...big.items, ...extra], structure: { ...big.structure, item_order: [...big.structure.item_order, ...extra.map((e) => e.key)] } },
+    activeBuilt: build(rid, SRC[rid]), draftAuthored: authored(SRC[rid]), renderedCategories: rc(rid) }), 'too_many_additions', 'the comparison caps additions by itself');
+  ok('existing items keep everything but price (desc, category, presence, order, has_photo); extras membership and structure (weekend rule) frozen; a forged stamp refused; the comparison caps additions on its own');
 }
 {
   const rid = 'x_pizza';
@@ -236,5 +244,36 @@ const allocated = (rid, adds) => alloc(rid, withFresh(rid, SRC[rid], adds)).sour
   const swapped = clone(removed); [swapped.structure.item_order[0], swapped.structure.item_order[1]] = [swapped.structure.item_order[1], swapped.structure.item_order[0]];
   throwsCode(() => C(swapped, new Set([gone.display.identity_id])), 'item_order_changed', 'a removal does not license a reorder');
   ok('D4-P1 preserved (ruling A): undeclared or mis-declared removal refused; a declared removal allowed; declared+additions accepted only when both halves pass; no other change licensed');
+}
+{
+  // ADVISOR (checkpoint review): add-product.js READS identity stamps for its ADD-ONLY checks and must never WRITE or
+  // KEY by them. Proven on the syntax tree: the module requires nothing (no datastore handle, so it cannot write); no
+  // `identity_id` is ever an assignment / update target or an object-literal key; and what it RETURNS is item keys.
+  const acorn = require('acorn');
+  const src = require('fs').readFileSync(require.resolve('./add-product'), 'utf8');
+  const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
+  const requires = []; const writes = []; const keys = []; let reads = 0;
+  const isIdentity = (node) => node && ((node.type === 'MemberExpression' && !node.computed && node.property.name === 'identity_id')
+    || (node.type === 'MemberExpression' && node.computed && node.property.type === 'Literal' && node.property.value === 'identity_id'));
+  (function walk(node, parent) {
+    if (!node || typeof node.type !== 'string') return;
+    if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'require') requires.push(node.loc.start.line);
+    if (node.type === 'AssignmentExpression' && isIdentity(node.left)) writes.push(node.loc.start.line);
+    if (node.type === 'UpdateExpression' && isIdentity(node.argument)) writes.push(node.loc.start.line);
+    if (node.type === 'UnaryExpression' && node.operator === 'delete' && isIdentity(node.argument)) writes.push(node.loc.start.line);
+    if (node.type === 'Property' && !node.computed && ((node.key.type === 'Identifier' && node.key.name === 'identity_id') || (node.key.type === 'Literal' && node.key.value === 'identity_id'))) keys.push(node.loc.start.line);
+    if (isIdentity(node)) reads += 1;
+    for (const k of Object.keys(node)) { const v = node[k]; if (Array.isArray(v)) v.forEach((c) => walk(c, node)); else if (v && typeof v.type === 'string' && k !== 'loc') walk(v, node); }
+  })(ast, null);
+  assert.deepStrictEqual(requires, [], 'add-product.js requires NOTHING — it holds no datastore handle, so it cannot write');
+  assert.deepStrictEqual(writes, [], 'no identity_id is ever assigned, updated or deleted');
+  assert.deepStrictEqual(keys, [], 'no object the module builds carries an identity_id key');
+  assert.ok(reads > 0, '(and it does read stamps — the check is not vacuous)');
+  // the RETURNED keys are item keys, never stamps (a declared removal comes back as the item's key)
+  const st = clone(SRC.x_pizza); st.items.forEach((it, i) => { it.display.identity_id = `id_${i}`; });
+  const rm = clone(st); const gone = rm.items.pop(); rm.structure.item_order = rm.structure.item_order.filter((k) => k !== gone.key);
+  const out = A.compareToActive({ draftBuilt: build('x_pizza', rm), activeBuilt: build('x_pizza', st), draftAuthored: authored(rm), renderedCategories: rc('x_pizza'), deletedIds: [gone.display.identity_id] });
+  assert.deepStrictEqual(out.removals, [gone.key]); assert.ok(!out.removals.includes(gone.display.identity_id));
+  ok(`identity: add-product.js requires nothing, never assigns / updates / deletes / keys an identity_id (${reads} read sites), and returns item KEYS, never stamps`);
 }
 console.log(`\nadd-product: OK (${n})`);

@@ -52,6 +52,11 @@ Either way the name stays taken: adding it again is refused ("Ese nombre ya exis
 
 **Window:** for ≤ 45 s an instance may still price the removed product. Orders accepted then are normal orders; staff fulfil or cancel them with the existing tools. There is no refund automation.
 
+## Notes for operators
+- **`node publish-menus.mjs`** (dry run AND `--commit`) now reads the **active catalog** from Firestore, so it needs credentials (ADC) even for the dry run. The dry run prints, per brand, the active version, the row count and any keys not in the code-derived manifest.
+- **`getEditableCatalog` on an invalid stored draft** is still the `503 source_unavailable` it was, but the body now also carries `draft_unpublishable {code, detail}` and `sourceUpdateTime`, which is what "Volver al menú publicado" needs.
+- **`resetDraftToLive` is not one of the isolated portal functions:** a cold start loads the full functions bundle. Measured locally (module load, median of 5): about 110 ms isolated vs about 710 ms full, so roughly +0.6 s per cold start of this rarely used recovery action.
+
 ## A draft that cannot publish
 `getEditableCatalog` reports `draft_unpublishable` (code + reason). The portal then offers **"Volver al menú publicado"**:
 - it replaces the saved draft with the published menu, conditional on the revision the owner saw;

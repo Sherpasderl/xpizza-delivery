@@ -38,7 +38,7 @@ const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // Case-, accent- and whitespace-folded: "Pizza  Única" and "pizza unica" are the same name to a customer.
 function normalizeName(s) {
-  return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 // The display name as stored: trimmed, inner whitespace collapsed. A trailing space is not a different product.
 const tidyName = (s) => String(s).replace(/\s+/g, ' ').trim();
