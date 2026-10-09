@@ -35,6 +35,7 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const { foldPortalSplit, PORTAL_TARGETS, REQUIRE_REWRITES } = require('../tools/portal-split');
 const { unapplyD4c5 } = require('../tools/d4c5-inverse');
 const { unapplyD4c4 } = require('../tools/d4c4-inverse');
+const { unapplyD4c2b } = require('../tools/d4c2b-inverse');
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
@@ -376,8 +377,9 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
   {
     // D4-c5 P1: the order_exists slice's eight index.js hunks are reversed ON TOP of the fold (tools/d4c5-inverse.js), so this
     // parent pin composes with the later slice and still proves nothing else changed. D4-c4: the order-control slice's
-    // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5.
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(foldPortalSplit(root)));
+    // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5. D4-c2b: the monitor's ONE delimited,
+    // byte-pinned block (tools/d4c2b-inverse.js) is reversed before that — it landed on top of D4-c4.
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyD4c2b(foldPortalSplit(root))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
@@ -402,6 +404,9 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       ['the stats keyer', 'stats/keyer.js', 'let _statsKeyer = null;', 'let _statsKeyer = undefined;'],
       ['a byte inside a D4-c5 emitter hunk (the online closed reason)', 'index.js', "OE.orderExistsBody('closed', orderId)", "OE.orderExistsBody('conflict', orderId)"],
       ['a byte inside a D4-c4 hunk (the race-guard reason)', 'index.js', "if (acq.reason === 'order_control') {", "if (acq.reason === 'order_controI') {"],
+      ['a byte inside the D4-c2b block (the monitor retry policy)', 'index.js', 'maxInstances: 1, concurrency: 1, retryCount: 0 },', 'maxInstances: 1, concurrency: 1, retryCount: 1 },'],
+      ['a SECOND d4c2b block', 'index.js', 'exports.sweepStalePending = onSchedule(', '/* d4c2b:begin */\n/* d4c2b:end */\nexports.sweepStalePending = onSchedule('],
+      ['the d4c2b block removed', 'index.js', '/* d4c2b:begin */', '/* d4c2b:gone */'],
       ['a re-export site (wrong function)', 'index.js', 'exports.getEditableCatalog = portalFunctions.getEditableCatalog;', 'exports.getEditableCatalog = portalFunctions.getMyRestaurants;'],
     ];
     const results = CASES.map(([label, f, a, b]) => [label, mutate(f, a, b)]);
