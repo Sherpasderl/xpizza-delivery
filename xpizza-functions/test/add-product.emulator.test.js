@@ -93,7 +93,9 @@ const wipe = async () => {
       assert.ok(!('ref' in added) && typeof added.key === 'string', `${tag}: allocated`);
       if (rid === 'x_pizza') {
         assert.ok(Number.isInteger(added.display.id) && added.display.id > Math.max(...base.items.map((i) => i.display.id)), `${tag}: id above the live max`);
-        assert.strictEqual((await hwmRefOf(db, rid).get()).data().value, added.display.id, `${tag}: the high-water mark advanced in the same commit`);
+        const hwmDoc = await hwmRefOf(db, rid).get();
+        assert.ok(hwmDoc.exists, `${tag}: the save WROTE the high-water mark`);
+        assert.strictEqual(hwmDoc.data().value, added.display.id, `${tag}: the high-water mark advanced in the same commit`);
       } else assert.strictEqual(added.key, 'producto_nuevo');
       assert.deepStrictEqual(await draft(rid), s1.body.source, `${tag}: the response IS the stored canonical source`);
       const s2 = await save(rid, s1.body.source);   // back to editing → review again
@@ -107,7 +109,9 @@ const wipe = async () => {
       const live = await previewVersion(db, rid, await getActiveVersionId(db, rid));
       assert.ok(live.items.some((i) => i.key === added.key), `${tag}: live`);
       const ptr = await getActivePointer(db, rid);
-      assert.ok((await manifest(rid)).some((r) => r.key === added.key && r.category === CAT[rid]), `${tag}: the KDS manifest has the new row`);
+      const kdsList = await manifest(rid);
+      assert.ok(Array.isArray(kdsList), `${tag}: the publish WROTE the KDS list (got ${JSON.stringify(kdsList)})`);
+      assert.ok(kdsList.some((r) => r.key === added.key && r.category === CAT[rid]), `${tag}: the KDS manifest has the new row`);
       assert.deepStrictEqual([(await meta(rid)).source_generation, (await meta(rid)).version_id], [ptr.generation, ptr.version], `${tag}: stamped with the activation`);
       const keyRow = await keysColOf(db, rid, 'dish').doc(encodeKey(added.key)).get();
       assert.ok(keyRow.exists, `${tag}: the identity was registered on publish`);
