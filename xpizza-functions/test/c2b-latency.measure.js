@@ -29,6 +29,23 @@ const ROWS = [
     .flatMap((op) => ['other', 'same'].map((ov) => ({ key: `${op}/x_pizza/${ov}`, op, rid: 'x_pizza', overlap: ov }))),
 ];
 
+/* TARGETED RESTORE (advisor ruling R1) — the per-operation restore sets, DECLARED from the discovery run (c2b-work/latency/discover:
+   what ONE run of each operation writes in the restaurant's Firestore subtree). `fresh` = collections whose docs absent from the seed
+   are deleted (recursively); `docs` = docs rewritten from the seed (or deleted if the seed has none). Read-only operations: none.
+   Equivalence is PROVEN, not assumed: the full canonical subtree digest must equal the SEEDED digest at every child start, after
+   every restore in the self-test (LAT_DIGEST_EVERY=1), and after every 10th sample's restore in the real run — any mismatch VOIDS
+   the try (the child stops, the parent stops; no silent re-restore). */
+const META = (d) => `meta/${d}`;
+const RESTORE_SETS = Object.freeze({
+  publish: { fresh: ['versions', 'identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock')] },
+  publishEdited: { fresh: ['versions', 'identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock'), META('source')] },
+  rollback: { fresh: ['identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock')] },
+  editCatalog: { fresh: [], docs: [META('source')] },
+  editCatalog_unchanged: { fresh: [], docs: [META('source')] },
+  getMyRestaurants: null, getEditableCatalog: null, getSalesStats_json: null, getSalesStats_csv_daily: null, getSalesStats_csv_orders: null,
+});
+const DIGEST_EVERY = process.env.LAT_DIGEST_EVERY ? Number(process.env.LAT_DIGEST_EVERY) : 10;
+
 if (process.argv[2] === '--child') { child(process.argv[3], process.argv[4]); return; }
 
 const ST = require('./_latency-stats');
@@ -39,11 +56,19 @@ const runChild = (rowKey, cond) => {
   const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.FORCE_COLOR;
   const t0 = Date.now();
   const out = execFileSync('node', [__filename, '--child', rowKey, cond], { encoding: 'utf8', env, maxBuffer: 1 << 27, timeout: 1800000 });
-  return { ...JSON.parse(out.trim().split('\n').pop()), started_at: t0, ended_at: Date.now() };
+  const res = { ...JSON.parse(out.trim().split('\n').pop()), started_at: t0, ended_at: Date.now() };
+  if (!res.digest || res.digest.mismatches !== 0 || res.digest.start_ok !== true) {
+    // R1: a state mismatch VOIDS the try — stop now, report what was found; never re-restore and continue
+    console.error(JSON.stringify({ VOID: 'state_digest_mismatch', row: rowKey, cond, digest: res.digest }));
+    console.log(JSON.stringify({ void: true, reason: 'state_digest_mismatch', row: rowKey, cond, digest: res.digest }));
+    process.exit(4);
+  }
+  return res;
 };
+if (process.env.LAT_DISCOVER) { for (const row of rows) console.log(JSON.stringify(runChild(row.key, 'off'))); process.exit(0); }
 const xFirst = (k) => [true, false, false, true][k % 4];
 const pairRun = (k, runX, runY) => { if (xFirst(k)) { const x = runX(); return { x, y: runY(), first: 'x' }; } const y = runY(); return { x: runX(), y, first: 'y' }; };
-const childValid = (c, cond) => c.errors === 0 && c.ms.length === SAMPLES && (cond === 'on' ? c.monitor.overlapped === SAMPLES && c.monitor.runs > 0 : c.monitor.runs === 0);
+const childValid = (c, cond) => c.digest && c.digest.mismatches === 0 && c.digest.start_ok === true && c.errors === 0 && c.ms.length === SAMPLES && (cond === 'on' ? c.monitor.overlapped === SAMPLES && c.monitor.runs > 0 : c.monitor.runs === 0);
 const r1 = (v) => +v.toFixed(1);
 
 const raw = {};
@@ -98,6 +123,7 @@ async function child(rowKey, cond) {
 
   // ── seed ONCE per emulator (idempotent: a marker doc), then capture each target's seeded state ────────────────────
   const marker = db.doc('c2b_latency/seeded');
+  let seededNow = false;
   if (!(await marker.get()).exists) {
     await F.seed('x_pizza'); const xv1 = await F.publish('x_pizza', 'lat-x1');
     await require('../catalog/identity-backfill').backfillIdentities(db, 'x_pizza', await require('../catalog/catalog-menu').getRestaurantMenu(db, 'x_pizza'), { captured: await getActivePointer(db, 'x_pizza') });
@@ -111,6 +137,7 @@ async function child(rowKey, cond) {
       await rtdb.ref(`restaurants/${rid}/identity/name`).set(rid);
     }
     await marker.set({ xv1, lv1, at: new Date() });
+    seededNow = true;
   }
   const seeded = (await marker.get()).data();
   const capture = async (rid) => {
@@ -120,9 +147,44 @@ async function child(rowKey, cond) {
   };
   // the seeded state of the target, captured once per child (Timestamps kept as Timestamps)
   const snap = await capture(row.rid);
+  // FULL subtree state, canonicalised: every doc's path + data (Timestamps as [s, ns], refs as their path, keys sorted)
+  const canon = (v) => {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
+    if (typeof v.toMillis === 'function' && 'nanoseconds' in v) return JSON.stringify(['ts', v.seconds, v.nanoseconds]);
+    if (typeof v.path === 'string' && typeof v.firestore === 'object') return JSON.stringify(['ref', v.path]);
+    if (Array.isArray(v)) return `[${v.map(canon).join(',')}]`;
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}`;
+  };
+  const fullState = async () => new Map((await capture(row.rid)).map(([p, d]) => [p, canon(d)]));
+  const digestOf = (m) => require('crypto').createHash('sha256').update([...m.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([p, d]) => `${p}\u0000${d}`).join('\n')).digest('hex');
+  // the SEEDED digest per restaurant is recorded ONCE (right after seeding) outside the subtree; every child must START from it
+  const digestDoc = db.doc(`c2b_latency/digest_${row.rid}`);
+  const startDigest = digestOf(new Map(snap.map(([p, d]) => [p, canon(d)])));
+  if (seededNow || !(await digestDoc.get()).exists) {
+    for (const rid of ['x_pizza', 'la_musa', 'synth_lat_400', ...OTHERS]) {
+      const d = digestOf(new Map((await capture(rid)).map(([p, x]) => [p, canon(x)])));
+      if (!(await db.doc(`c2b_latency/digest_${rid}`).get()).exists) await db.doc(`c2b_latency/digest_${rid}`).set({ digest: d });
+    }
+  }
+  const SEEDED_DIGEST = (await digestDoc.get()).data().digest;
+  const digest = { start_ok: startDigest === SEEDED_DIGEST, checked: 0, mismatches: 0, first_mismatch: null };
+  const seedByPath = new Map(snap);
+  const RS = RESTORE_SETS[row.op];
+  const root = db.collection('restaurants').doc(row.rid);
   const restore = async () => {
-    await db.recursiveDelete(db.collection('restaurants').doc(row.rid));
-    const w = db.bulkWriter(); for (const [p, d] of snap) w.set(db.doc(p), d); await w.close();
+    if (!RS) return;   // read-only: nothing to restore (the digest checks prove it)
+    for (const c of RS.fresh) {
+      for (const d of await root.collection(c).listDocuments()) if (!seedByPath.has(d.path)) await db.recursiveDelete(d);
+    }
+    for (const rel of RS.docs) {
+      const ref = root.collection(rel.split('/')[0]).doc(rel.split('/')[1]);
+      if (seedByPath.has(ref.path)) await ref.set(seedByPath.get(ref.path)); else await ref.delete();
+    }
+  };
+  const verify = async (label) => {
+    digest.checked += 1;
+    const now = digestOf(await fullState());
+    if (now !== SEEDED_DIGEST) { digest.mismatches += 1; if (!digest.first_mismatch) digest.first_mismatch = label; }
   };
 
   // ── the monitor (B): a tight loop inside THIS process, max pacing, quiet window 0 ───────────────────────────────────
@@ -186,10 +248,36 @@ async function child(rowKey, cond) {
     return r.status === 200 ? r : false;
   }
 
+  // ── DISCOVERY (self-test only): what does ONE run of this operation write? ─────────────────────────────────────────
+  if (process.env.LAT_DISCOVER) {
+    let fn = ops[row.op];
+    if (row.op === 'publishEdited') {
+      await saveOnly((x) => { x.items[0].price += 1; if (x.items[0].display) x.items[0].display.price = x.items[0].price; return x; });
+      const mid = await fullState();
+      const saved = await saveOnly((x) => x);   // re-issue a token on the saved draft
+      const readDraft = async () => { const sn = await sourceRefOf(db, row.rid).get(); return { source: sn.data(), updateTime: encodeUpdateTime(sn.updateTime) }; };
+      fn = async () => (await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, sourceSha: 'lat' }, { restaurantId: row.rid, token: saved && saved.body.token, fiscalAck: true }, {})).status === 200;
+      void mid;
+    }
+    const before = await fullState(); const okRun = await fn(); const after = await fullState();
+    const pat = (p) => p.replace(`restaurants/${row.rid}/`, '').replace(/versions\/[^/]+/, 'versions/*').replace(/identity_evidence\/[^/]+/, 'identity_evidence/*')
+      .replace(/(ids|keys)\/[^/]+/, '$1/*').replace(/(menu_items|extras)\/[^/]+/, '$1/*');
+    const group = (ps) => { const g = {}; for (const p of ps) g[pat(p)] = (g[pat(p)] || 0) + 1; return g; };
+    const added = [...after.keys()].filter((p) => !before.has(p)); const removed = [...before.keys()].filter((p) => !after.has(p));
+    const changed = [...after.keys()].filter((p) => before.has(p) && before.get(p) !== after.get(p));
+    stop = true; if (loop) await loop;
+    console.log = origLog;
+    origLog(JSON.stringify({ row: rowKey, ok: okRun, added: group(added), removed: group(removed), changed: group(changed) }));
+    process.exit(0);
+  }
+
   // ── samples ────────────────────────────────────────────────────────────────────────────────────────────────────
   const ms = []; let attempts = 0; let errors = 0; let overlapped = 0; const statuses = {};
-  for (let i = 0; i < WARM + SAMPLES; i += 1) {
-    await restore();
+  if (digest.start_ok) for (let i = 0; i < WARM + SAMPLES; i += 1) {
+    if (i > 0) {
+      await restore();
+      if ((i - WARM) % DIGEST_EVERY === 0 || DIGEST_EVERY === 1) { await verify(`before sample ${i}`); if (digest.mismatches) break; }
+    }
     let fn = ops[row.op];
     if (row.op === 'publishEdited') {
       const saved = await saveOnly((s) => { s.items[0].price += 1; if (s.items[0].display) s.items[0].display.price = s.items[0].price; return s; });
@@ -207,7 +295,9 @@ async function child(rowKey, cond) {
     if (cond === 'on' && (mon.windows.some(([a, b]) => a <= t1 && b >= t0) || (mon.current !== null && mon.current <= t1))) overlapped += 1;
   }
   stop = true; if (loop) await loop;
+  // leave the seeded state behind for the next child (and prove it)
+  await restore(); if (digest.start_ok && !digest.mismatches) await verify('child end');
   console.log = origLog;
-  origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, overlapped } }));
+  origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, digest, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, overlapped } }));
   process.exit(0);
 }

@@ -3,7 +3,9 @@
    the REAL pacer (no virtual time): ten 400-object merchants — one SLOW (injected read latency), one FAILING (a malformed pointer)
    — must each be covered within 3 runs, with the 30 s summary reserve intact; the measured envelope is REPORTED. Peak RSS is
    sampled IN THE MONITOR'S OWN fresh process (test/_c2b-monitor-child.js — the deployed function's footprint) during the
-   400-object runs and the long-value (1,125-char keys) and escape-heavy (control-character keys) runs, asserted < 256 MiB; the real pacing log is asserted ≤ 100 reads in every 1 s window. Run: npm run test:c2b-capacity */
+   400-object runs and the long-value (1,125-char keys) and escape-heavy (control-character keys) runs. Asserted per the advisor's
+   ruling R2 (clarifying §5's "< 256 MiB", which conflated the codebase baseline with the monitor's cost): the monitor's own
+   increment (peak − the process baseline after index.js loads) ≤ 130 MiB AND the total < 512 MiB; all three reported; the real pacing log is asserted ≤ 100 reads in every 1 s window. Run: npm run test:c2b-capacity */
 require('./_emulator-required')('database', 'firestore');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const assert = require('assert');
@@ -44,11 +46,14 @@ function monitorRun(input) {
     for (const x of r.results) if (x.outcome === 'checked') covered.add(x.rid);
     runs.push({ run: k, ms: r.ms, summaryAt: r.summaryAt, reads: r.reads, checked: r.results.filter((x) => x.outcome === 'checked').map((x) => x.rid), outcomes: r.results.map((x) => `${x.rid.slice(-2)}:${x.outcome}`), peakMiB: Math.round(r.peakRss / MiB), baseMiB: Math.round(r.baseRss / MiB), heapAtPeakMiB: r.atPeak ? Math.round(r.atPeak.heapUsed / MiB) : null });
     const firstSummary = r.summaryAt !== null;
-    console.log(`     run ${k}: ${Math.round(runs[k - 1].ms / 1000)} s, summaries at ${Math.round(runs[k - 1].summaryAt / 1000)} s, ${r.reads} reads, checked ${runs[k - 1].checked.length}, peak RSS ${runs[k - 1].peakMiB} MiB (baseline ${runs[k - 1].baseMiB}, heap at peak ${runs[k - 1].heapAtPeakMiB}) — ${runs[k - 1].outcomes.join(' ')}`);
+    console.log(`     run ${k}: ${Math.round(runs[k - 1].ms / 1000)} s, summaries at ${Math.round(runs[k - 1].summaryAt / 1000)} s, ${r.reads} reads, checked ${runs[k - 1].checked.length}, RSS baseline ${runs[k - 1].baseMiB} + increment ${runs[k - 1].peakMiB - runs[k - 1].baseMiB} = total ${runs[k - 1].peakMiB} MiB (heap at peak ${runs[k - 1].heapAtPeakMiB}) — ${runs[k - 1].outcomes.join(' ')}`);
     lineStamps.push(r.lines.length);
     assert.strictEqual(r.lines.length, RIDS.length, `run ${k}: one summary line for EVERY enumerated restaurant (incl. the failing one)`);
     assert.ok(firstSummary && r.summaryAt <= (INTEGRITY_TIMEOUT_S * 1000) - SUMMARY_RESERVE_MS, `run ${k}: summaries began with ≥ ${SUMMARY_RESERVE_MS / 1000} s of the ${INTEGRITY_TIMEOUT_S} s left (at ${Math.round(r.summaryAt / 1000)} s)`);
-    assert.ok(r.peakRss < 256 * MiB, `run ${k}: the monitor process's peak RSS ${Math.round(r.peakRss / MiB)} MiB < 256 MiB`);
+    // §5 as clarified by the advisor (ruling R2): the MONITOR'S OWN increment (peak − the process baseline after index.js loads)
+    // ≤ the plan's 130 MiB worst-case arithmetic, AND the total < the deployed 512 MiB container; all three reported
+    assert.ok(r.peakRss - r.baseRss <= 130 * MiB, `run ${k}: the monitor's own increment ${Math.round((r.peakRss - r.baseRss) / MiB)} MiB ≤ 130 MiB`);
+    assert.ok(r.peakRss < 512 * MiB, `run ${k}: total peak ${Math.round(r.peakRss / MiB)} MiB < 512 MiB`);
     assert.ok(r.reads <= RUN_READ_CAP, `run ${k}: ${r.reads} reads ≤ the ${RUN_READ_CAP} cap`);
     // pacing: ≤ 100 reads in EVERY 1 s window (real time)
     for (const [ts] of r.pacing) { const w = r.pacing.filter(([t]) => t >= ts && t < ts + 1000).reduce((s, [, c]) => s + c, 0); assert.ok(w <= 100, `run ${k}: ${w} reads in the 1 s window from ${ts}`); }
@@ -57,7 +62,7 @@ function monitorRun(input) {
   assert.deepStrictEqual(healthy.filter((x) => !covered.has(x)), [], `every healthy merchant (incl. the slow one) covered within ${runs.length} run(s)`);
   assert.ok(covered.has(SLOW));
   assert.ok(!covered.has(FAILING) && (await F.nodeOf(FAILING)).coverage.failures >= 1, 'the failing one is backed off, never covered, still emitting');
-  ok(`TIMED capacity (real clock, real pacing): ten 400-object merchants incl. one SLOW (+15 ms per read) and one FAILING — all ${healthy.length} healthy covered within ${runs.length} run(s) (per run: ${runs.map((x) => `${x.checked.length} checked / ${x.reads} reads / ${Math.round(x.ms / 1000)} s`).join('; ')}); summaries always began with the 30 s reserve intact; a summary line for all 10 every run; ≤ 100 reads in every 1 s window; peak RSS ${Math.max(...runs.map((x) => x.peakMiB))} MiB`);
+  ok(`TIMED capacity (real clock, real pacing): ten 400-object merchants incl. one SLOW (+15 ms per read) and one FAILING — all ${healthy.length} healthy covered within ${runs.length} run(s) (per run: ${runs.map((x) => `${x.checked.length} checked / ${x.reads} reads / ${Math.round(x.ms / 1000)} s`).join('; ')}); summaries always began with the 30 s reserve intact; a summary line for all 10 every run; ≤ 100 reads in every 1 s window; monitor RSS increment ≤ ${Math.max(...runs.map((x) => x.peakMiB - x.baseMiB))} MiB (≤ 130), total ≤ ${Math.max(...runs.map((x) => x.peakMiB))} MiB (< 512)`);
 
   // ── 2. LONG-VALUE and ESCAPE-HEAVY keys on a 400-object version: the monitor completes, peak RSS < 256 MiB ─────────────
   {
@@ -71,12 +76,13 @@ function monitorRun(input) {
       const w = db.bulkWriter();
       docs.forEach((d, i) => { w.update(d.ref, { key: keyOf(i) }); w.set(db.doc(`restaurants/${R}/identity/dish/keys/${encodeKey(keyOf(i))}`), { canonical_id: d.data().display.identity_id, kind: 'dish' }); });
       await w.close();
-      const r = monitorRun({ rids: [R] }); const pk = r.peakRss;
+      const r = monitorRun({ rids: [R] }); const pk = r.peakRss; const inc = r.peakRss - r.baseRss;
       assert.strictEqual(r.results[0].outcome, 'checked', `${label}: the check completed (${JSON.stringify(r.results[0])})`);
-      peaks[label] = Math.round(pk / MiB);
-      assert.ok(pk < 256 * MiB, `${label}: peak RSS ${Math.round(pk / MiB)} MiB < 256 MiB`);
+      peaks[label] = `baseline ${Math.round(r.baseRss / MiB)} + increment ${Math.round(inc / MiB)} = total ${Math.round(pk / MiB)} MiB`;
+      assert.ok(inc <= 130 * MiB, `${label}: the monitor's own increment ${Math.round(inc / MiB)} MiB ≤ 130 MiB`);
+      assert.ok(pk < 512 * MiB, `${label}: total ${Math.round(pk / MiB)} MiB < 512 MiB`);
     }
-    ok(`peak RSS of the monitor process during the long-value and escape-heavy 400-object checks: ${Object.entries(peaks).map(([k, v]) => `${k} ${v} MiB`).join('; ')} — each < 256 MiB of the 512 MiB allocation`);
+    ok(`monitor-process RSS during the long-value and escape-heavy 400-object checks: ${Object.entries(peaks).map(([k, v]) => `${k}: ${v}`).join('; ')} — increment ≤ 130 MiB (the plan's arithmetic), total < 512 MiB (advisor ruling R2)`);
   }
 
   console.log(`     envelope: ${JSON.stringify(runs.map(({ run, ms, summaryAt, reads, checked, peakMiB }) => ({ run, s: Math.round(ms / 1000), summary_s: Math.round(summaryAt / 1000), reads, checked: checked.length, peakMiB })))}`);
