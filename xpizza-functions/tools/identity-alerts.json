@@ -1,0 +1,49 @@
+{
+  "_comment": "1D D4-c2b (PLAN-D4c2b rev 14 §6, §6a) — the EXACT log-based metrics + alert policies, applied by the owner-run tools/setup-identity-alerts.js (explicit project, verified email channel, dry-run default, idempotent). {{PROJECT}}, {{CHANNEL}}, {{SLOW_S}} and {{SERVICE}} are filled by the tool; nothing else is computed at apply time.",
+  "region": "us-central1",
+  "integrity": {
+    "service": "verifyidentityintegrity",
+    "base_filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"verifyidentityintegrity\"",
+    "state_event": "identity_integrity_state",
+    "heartbeat_event": "identity_integrity_heartbeat",
+    "metrics": [
+      { "name": "identity_integrity_open_violations", "field": "open_violations", "alert": true },
+      { "name": "identity_integrity_open_degraded", "field": "open_degraded", "alert": true },
+      { "name": "identity_integrity_stale", "field": "stale", "alert": true },
+      { "name": "identity_integrity_open_gaps", "field": "open_gaps", "alert": false }
+    ],
+    "heartbeat_metric": "identity_integrity_heartbeat",
+    "state_policy": {
+      "aggregations": [{ "alignmentPeriod": "1800s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": ["metric.label.rid"] }],
+      "comparison": "COMPARISON_GT", "thresholdValue": 0, "duration": "60s", "evaluationMissingData": "EVALUATION_MISSING_DATA_INACTIVE",
+      "autoClose": "3600s"
+    },
+    "heartbeat_policy": {
+      "aggregations": [{ "alignmentPeriod": "900s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": [] }],
+      "absentDuration": "2700s",
+      "autoClose": "3600s"
+    }
+  },
+  "portal": {
+    "functions": [
+      { "name": "getMyRestaurants", "service": "getmyrestaurants", "method": "GET", "default_s": 3, "small_n_rule": "default" },
+      { "name": "getEditableCatalog", "service": "geteditablecatalog", "method": "GET", "default_s": 3, "small_n_rule": "default" },
+      { "name": "editCatalog", "service": "editcatalog", "method": "POST", "default_s": 4, "small_n_rule": "default" },
+      { "name": "publishEdited", "service": "publishedited", "method": "POST", "default_s": 5, "small_n_rule": "observed_max" },
+      { "name": "getSalesStats", "service": "getsalesstats", "method": "GET", "default_s": 5, "small_n_rule": "default" }
+    ],
+    "excluded": [{ "name": "reportClientVersion", "why": "background, not a merchant wait" }],
+    "request_log": "run.googleapis.com%2Frequests",
+    "synthetic_label": "c2b_acceptance",
+    "threshold_rule": "n >= 20: max(observed max, 1.5 x p95) + 0.5 s, rounded UP to 0.5 s; 5 <= n < 20: the default, except publishEdited = (observed max + 0.5 s) rounded UP to 0.5 s (floor: none); n < 5: the default. Population: that function's Cloud Run request entries over the trailing 30 days, synthetic (c2b_acceptance) entries excluded.",
+    "distribution_buckets": [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 7.5, 10, 15, 20, 30],
+    "slow_policy": {
+      "aggregations": [{ "alignmentPeriod": "3600s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": [] }],
+      "comparison": "COMPARISON_GT", "thresholdValue": 1, "duration": "60s", "evaluationMissingData": "EVALUATION_MISSING_DATA_INACTIVE", "autoClose": "3600s"
+    },
+    "error_policy": {
+      "aggregations": [{ "alignmentPeriod": "900s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": [] }],
+      "comparison": "COMPARISON_GT", "thresholdValue": 2, "duration": "60s", "evaluationMissingData": "EVALUATION_MISSING_DATA_INACTIVE", "autoClose": "3600s"
+    }
+  }
+}
