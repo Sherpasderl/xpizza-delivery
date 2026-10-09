@@ -99,7 +99,11 @@ function classifyItems(incoming, activeKeys) {
    hwm             the stored display-id high-water mark (an integer ≥ 0, or null when never written)
    registryHasKey  (key) → boolean: does the identity registry hold a key row for this key (a name used before)?
    Returns { source, hwm, additions:[{key, name, ref|null}], allocatedNow:[keys] }. Never mutates its inputs. */
-function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey }) {
+// fieldProblem(field, value) → a reason string | null: the caller injects the VALIDATOR's own per-field safety check
+// (display-safety checkValue for that field's sink), so a new product's unusable name / description is refused HERE,
+// field-mapped to its row, instead of surfacing as an unattributed invalid_source. Default: no opinion (the
+// validator that runs after allocation still refuses — this only names the field).
+function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null }) {
   const source = JSON.parse(JSON.stringify(incoming));
   const activeKeys = new Set((activeItems || []).map((it) => it.key));
   const storedByKey = new Map(((stored && stored.items) || []).filter((it) => isObj(it) && typeof it.key === 'string').map((it) => [it.key, it]));
@@ -131,6 +135,24 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     if (own(item.display, 'id')) refuse('client_supplied_key', 'a new product must not carry an id — the server allocates it', { ref: item.ref, field: 'id' });
     if (own(item.display, 'identity_id')) refuse('client_supplied_key', 'a new product must not carry an identity stamp', { ref: item.ref, field: 'identity_id' });
     if (typeof item.display.name !== 'string' || !tidyName(item.display.name)) refuse('name_required', 'a new product needs a name', { ref: item.ref, field: 'name' });
+    for (const f of ['name', 'desc']) {
+      const v = item.display[f];
+      if (typeof v !== 'string') continue;
+      const why = fieldProblem(f, f === 'name' ? tidyName(v) : v);
+      if (why) refuse('text_unsafe', `the ${f} ${why}`, { ref: item.ref, field: f });
+    }
+    // The validator's subcategory coverage, for THIS row: a section that groups by subsections needs one of its own;
+    // one that declares none takes none. (An undeclared section is category_not_renderable's business, later.)
+    const cats = isObj(source.structure) && Array.isArray(source.structure.categories) ? source.structure.categories : [];
+    const cat = cats.find((c) => isObj(c) && c.id === item.display.cat);
+    if (cat) {
+      const declared = Array.isArray(cat.subcats) ? cat.subcats : [];
+      const sub = item.display.subcat;
+      if (declared.length ? !declared.includes(sub) : sub != null) {
+        refuse('subcat_invalid', declared.length ? `choose one of this section's subsections (${declared.join(', ')})` : 'this section has no subsections',
+          { ref: item.ref, field: 'subcat' });
+      }
+    }
   }
 
   // Allocate.
@@ -142,6 +164,10 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
   let next = Math.max(Number.isInteger(hwm) && hwm >= 0 ? hwm : 0, ...numericIds, 0);
   const allocatedNow = [];
   const refToKey = new Map();
+  // After allocation a FRESH addition is known by its key — but the portal still holds it by its tmp reference (the
+  // refused save stored nothing). Every refusal from here on names BOTH, so the portal opens the row it actually
+  // has, and never an existing product that happens to share the key.
+  const at = (key) => { for (const [r, k] of refToKey) if (k === key) return { key, ref: r }; return { key }; };
   for (const { item } of fresh) {
     const name = tidyName(item.display.name);
     let key; let id;
@@ -184,22 +210,23 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     const n = normalizeName(add.display.name);
     for (const o of others(add)) {
       if (isObj(o) && isObj(o.display) && typeof o.display.name === 'string' && normalizeName(o.display.name) === n) {
-        refuse('name_taken', `"${add.display.name}" is already on your menu`, { key: add.key, field: 'name' });
+        refuse('name_taken', `"${add.display.name}" is already on your menu`, { ...at(add.key), field: 'name' });
       }
-      if (isObj(o) && o.key === add.key) refuse('key_taken', `the identifier for "${add.display.name}" is already used`, { key: add.key, field: 'name' });
+      if (isObj(o) && o.key === add.key) refuse('key_taken', `the identifier for "${add.display.name}" is already used`, { ...at(add.key), field: 'name' });
       if (isObj(o) && isObj(o.display) && o.display.id !== undefined && String(o.display.id) === String(add.display.id)) {
-        refuse('id_taken', `the id ${add.display.id} is already used`, { key: add.key, field: 'id' });
+        refuse('id_taken', `the id ${add.display.id} is already used`, { ...at(add.key), field: 'id' });
       }
     }
-    if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { key: add.key, field: 'name' });
+    if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { ...at(add.key), field: 'name' });
   }
   // A name (key) used before — a registry key row exists — is refused: today it would silently inherit that
   // identity, and the merchant would be publishing a "new" product that carries an old one's history.
   for (const key of allocatedNow) {
-    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { key, field: 'name' });
+    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: 'name' });
   }
 
-  return { source, hwm: keyMode === 'name' ? next : (Number.isInteger(hwm) ? hwm : null), additions: additions.map((a) => ({ key: a.key, name: a.display.name })), allocatedNow };
+  return { source, hwm: keyMode === 'name' ? next : (Number.isInteger(hwm) ? hwm : null), additions: additions.map((a) => ({ key: a.key, name: a.display.name })), allocatedNow,
+    refs: Object.fromEntries([...refToKey].map(([r, k]) => [k, r])) };
 }
 
 /* ── THE STRUCTURAL COMPARISON ─────────────────────────────────────────────────────────────────────────────

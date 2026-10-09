@@ -18,6 +18,7 @@
 //   the diff has to be against the live version — but never moves it. A save is not a price change.
 // ---------------------------------------------------------------------------
 const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
+const { checkValue, FIELD_SINKS } = require('./display-safety');
 const { persistDeletionClaim } = require('./identity-partition');
 const { getActivePointer } = require('./catalog-firestore');
 
@@ -102,6 +103,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   // same commit as the draft below.
   let candidate = canonicalize(source);
   let hwmPlan = null;
+  let refOfKey = {};          // fresh additions: allocated key → the tmp reference the portal still holds
   if (hasAdditions) {
     if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
     try {
@@ -115,8 +117,10 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
         .filter(Boolean);
       const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective) : new Set();
       const res = AP.allocateAdditions({ incoming: candidate, stored, activeItems: live.items, keyMode,
-        hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k) });
+        hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k),
+        fieldProblem: (f, v) => checkValue(v, FIELD_SINKS.item[f]) });
       candidate = res.source;
+      refOfKey = res.refs || {};
       if (res.allocatedNow.length) hwmPlan = { ref: hwmRef, snap: hwmSnap, value: res.hwm };
     } catch (e) {
       if (e instanceof AP.AddProductError) return refusal(e);
@@ -322,7 +326,10 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
     });
   } catch (e) {
-    if (e instanceof AP.AddProductError) return refusal(e);
+    if (e instanceof AP.AddProductError) {
+      if (e.key && !e.ref && Object.prototype.hasOwnProperty.call(refOfKey, e.key)) e.ref = refOfKey[e.key];
+      return refusal(e);
+    }
     return reply(500, { error: 'structural_check_failed', detail: String((e && e.message) || e).slice(0, 200) });
   }
 

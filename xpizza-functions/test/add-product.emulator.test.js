@@ -243,6 +243,45 @@ const wipe = async () => {
     assert.deepStrictEqual(await getActivePointer(db, rid), before, 'nothing published');
     ok('publish repeats the save\'s checks: a staff caller with an owner\'s token over additions → 403; a registry row that appeared after the save → name_previously_used; the pointer never moves');
   }
+  // ── FIELD-MAPPED REFUSALS FROM THE REAL HANDLER — the exact bodies the portal's FIX path reads ──
+  {
+    for (const rid of ['x_pizza', 'la_musa']) {
+      await wipe(); await seedBrand(rid, { certify: false });
+      const base = await draft(rid);
+      const revBefore = await rev(rid);
+      const one = (display) => { const s = JSON.parse(JSON.stringify(base)); const ref = tmp(); s.items.push({ ref, price: 555, display: { cat: CAT[rid], price: 555, ...display } }); s.structure.item_order.push(ref); return [s, ref]; };
+      // an apostrophe in the name (attribute sink) — the most likely real-world case
+      let [src, ref] = one({ name: "Mike's Special" });
+      let r = await save(rid, src);
+      assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'text_unsafe', ref, 'name'], `${rid}: ${JSON.stringify(r.body)}`);
+      // markup in the description (body sink)
+      [src, ref] = one({ name: 'Con Descripcion', desc: 'con <b>queso</b>' });
+      r = await save(rid, src);
+      assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'text_unsafe', ref, 'desc'], `${rid}: ${JSON.stringify(r.body)}`);
+      // 🔴 the EXACT name of a live product: the refusal names the TMP row, not (only) the live product's key
+      const live0 = base.items[0];
+      [src, ref] = one({ name: live0.display.name });
+      r = await save(rid, src);
+      assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'name_taken', ref, 'name'], `${rid}: ${JSON.stringify(r.body)}`);
+      // a section the order page does not draw — raised by the comparison AFTER allocation, attributed back to the ref
+      const undrawn = (base.structure.categories || []).map((c) => c.id).find((id) => !require('../catalog/source-store').rendererContract(rid).renderedCategories.includes(id));
+      if (undrawn) {
+        [src, ref] = one({ name: 'En Seccion Oculta', cat: undrawn });
+        r = await save(rid, src);
+        assert.deepStrictEqual([r.body.error, r.body.ref, r.body.field], ['category_not_renderable', ref, 'cat'], `${rid}: ${JSON.stringify(r.body)}`);
+      }
+      if (rid === 'la_musa') {
+        [src, ref] = one({ name: 'Nueva Bebida', cat: 'bebidas' });          // groups by subsection; none chosen
+        r = await save(rid, src);
+        assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'subcat_invalid', ref, 'subcat'], `${rid}: ${JSON.stringify(r.body)}`);
+        [src, ref] = one({ name: 'Nueva Bebida', cat: 'bebidas', subcat: 'Sodas' });
+        assert.strictEqual((await save(rid, src)).status, 200, 'with its subsection it saves');
+      } else {
+        assert.strictEqual(await rev(rid), revBefore, `${rid}: every refusal wrote NOTHING`);
+      }
+      ok(`${rid}: the real handler refuses an unusable name/description, a live product's exact name${undrawn ? ', an undrawn section' : ''}${rid === 'la_musa' ? ' and a missing subsection' : ''} ON THE TMP ROW and its field — nothing written`);
+    }
+  }
   // ── the KDS sync of a SUPERSEDED activation writes nothing (it must not stamp an older list with a newer generation) ──
   {
     const rid = 'la_musa';

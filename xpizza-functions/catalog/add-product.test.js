@@ -276,4 +276,55 @@ const allocated = (rid, adds) => alloc(rid, withFresh(rid, SRC[rid], adds)).sour
   assert.deepStrictEqual(out.removals, [gone.key]); assert.ok(!out.removals.includes(gone.display.identity_id));
   ok(`identity: add-product.js requires nothing, never assigns / updates / deletes / keys an identity_id (${reads} read sites), and returns item KEYS, never stamps`);
 }
+{
+  // 🔴 FIELD-MAPPED, AND IN AGREEMENT WITH THE VALIDATOR. The pre-check is the validator's OWN per-field rule (injected
+  // display-safety checkValue + the subcategory coverage), so for every value: refused here ⇔ refused by validateSource.
+  const { checkValue, FIELD_SINKS } = require('./display-safety');
+  const fieldProblem = (f, v) => checkValue(v, FIELD_SINKS.item[f]);
+  const allocChecked = (rid, incoming) => A.allocateAdditions({ incoming, stored: SRC[rid], activeItems: SRC[rid].items, keyMode: MODE[rid], hwm: null,
+    registryHasKey: () => false, fieldProblem });
+  const validatorRefuses = (rid, incoming) => { try { validateSource(alloc(rid, incoming).source, rid); return false; } catch (e) { return !(e instanceof A.AddProductError); } };
+  const cases = [];
+  for (const name of ["Mike's Special", 'Pizza "La Especial"', 'Back`tick', 'Menor < que', 'Ent &lt; idad', 'Ñandú Picante', 'Pizza 2x1 & Más']) cases.push({ name });
+  for (const desc of ['con <b>queso</b>', 'con "comillas" y apóstrofo\'s', 'a &gt; b', 'Ingredientes, porción']) cases.push({ name: 'Con Desc', desc });
+  let refused = 0;
+  for (const rid of ['x_pizza', 'la_musa']) {
+    for (const c of cases) {
+      const inc = withFresh(rid, SRC[rid], [{ ref: T1, ...c }]);
+      let pre = null; try { allocChecked(rid, inc); } catch (e) { pre = e; }
+      const val = validatorRefuses(rid, inc);
+      assert.strictEqual(!!pre, val, `${rid} ${JSON.stringify(c)}: pre-check ${pre ? pre.code : 'passes'} but validator ${val ? 'refuses' : 'accepts'}`);
+      if (pre) {
+        refused += 1;
+        assert.deepStrictEqual([pre.code, pre.ref, pre.field], ['text_unsafe', T1, c.desc ? 'desc' : 'name'], `${JSON.stringify(c)} names its row and field`);
+      }
+    }
+  }
+  assert.ok(refused >= 6 && refused < cases.length * 2, `the matrix exercises both outcomes (${refused} refused)`);
+  // subcategories (la_musa bebidas groups by subsections; noodles declares none)
+  const sub = (cat, subcat) => withFresh('la_musa', SRC.la_musa, [{ ref: T1, name: 'Nueva Bebida', cat, extra: subcat === undefined ? {} : { subcat } }]);
+  for (const [cat, subcat, bad] of [['bebidas', undefined, true], ['bebidas', 'Nope', true], ['bebidas', 'Sodas', false], ['noodles', 'Sodas', true], ['noodles', undefined, false]]) {
+    let pre = null; try { allocChecked('la_musa', sub(cat, subcat)); } catch (e) { pre = e; }
+    // the VALIDATOR's own verdict on the same row: allocate a row that passes, then give it this case's subsection
+    const okSub = cat === 'bebidas' ? 'Sodas' : undefined;
+    const placed = alloc('la_musa', sub(cat, okSub)).source;
+    const row = placed.items.at(-1);
+    if (subcat === undefined) delete row.display.subcat; else row.display.subcat = subcat;
+    let val = false; try { validateSource(placed, 'la_musa'); } catch (_) { val = true; }
+    assert.strictEqual(val, bad, `premise: the validator ${bad ? 'refuses' : 'accepts'} ${cat}/${subcat}`);
+    assert.deepStrictEqual(pre ? [pre.code, pre.ref, pre.field] : null, bad ? ['subcat_invalid', T1, 'subcat'] : null, `${cat}/${subcat}`);
+  }
+  // 🔴 every refusal after allocation names the TMP reference the portal still holds — never only a key that may be an
+  // EXISTING product's (x_pizza keys by name: "Pizza" typed again would otherwise point at the live "Pizza")
+  const live0 = SRC.x_pizza.items[0];
+  const e1 = (() => { try { alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: live0.display.name }])); } catch (e) { return e; } return null; })();
+  assert.deepStrictEqual([e1 && e1.code, e1 && e1.ref, e1 && e1.key], ['name_taken', T1, live0.key], 'name_taken carries the ref beside the (existing) key');
+  const e2 = (() => { try { alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: 'Usado Antes' }]), { registry: new Set(['Usado Antes']) }); } catch (e) { return e; } return null; })();
+  assert.deepStrictEqual([e2 && e2.code, e2 && e2.ref], ['name_previously_used', T1]);
+  const e3 = (() => { try { alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: 'Doble' }, { ref: T2, name: 'doble' }])); } catch (e) { return e; } return null; })();
+  assert.ok(e3 && e3.code === 'name_taken' && [T1, T2].includes(e3.ref), 'two additions colliding: the refusal names one of THEIR refs');
+  const r = alloc('x_pizza', withFresh('x_pizza', SRC.x_pizza, [{ ref: T1, name: 'Mapeada' }]));
+  assert.deepStrictEqual(r.refs, { Mapeada: T1 }, 'the allocation returns key → ref for the handler to attribute later refusals');
+  ok(`field-mapped: an unusable name/desc (text_unsafe) and a wrong subsection (subcat_invalid) are refused on THEIR row, in exact agreement with the validator (${refused} of ${cases.length * 2} text cases refused); every post-allocation refusal names the tmp ref`);
+}
 console.log(`\nadd-product: OK (${n})`);
