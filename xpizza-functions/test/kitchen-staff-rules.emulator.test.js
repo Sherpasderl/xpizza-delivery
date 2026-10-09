@@ -109,6 +109,12 @@ const OUT = 'out-uid';        // authenticated, no role at all
   await no('A: PUBLIC (unauth) writes /menus/{rid} — DENIED', set(anonDb, 'menus/x_pizza', [{ key: 'x' }]));
   await no('A: role-less authed writes /menus/{rid} — DENIED', set(outDb, 'menus/x_pizza', [{ key: 'x' }]));
   await ok('A: dispatcher/publish writes /menus/{rid}', set(dispDb, 'menus/x_pizza', [{ key: 'Pizza N1', label: 'Pizza N1', category: 'Pizzas' }]));
+  // 1D add-product A §0b.3: the manifest's generation stamp /menus/_meta/{rid} is Admin-SDK-only. A dispatcher CLIENT
+  // could otherwise forge a high source_generation and freeze every later manifest write (the writer no-ops on older).
+  await ok('A: PUBLIC (unauth) reads /menus/_meta/{rid} — OK', get(anonDb, 'menus/_meta/x_pizza'));
+  await no('A: dispatcher writes /menus/_meta/{rid} — DENIED (not a rid)', set(dispDb, 'menus/_meta/x_pizza', { source_generation: 999999 }));
+  await no('A: dispatcher writes /menus/_meta — DENIED', set(dispDb, 'menus/_meta', { x_pizza: { source_generation: 999999 } }));
+  await ok('A: dispatcher still writes /menus/{rid} beside it', set(dispDb, 'menus/la_musa', [{ key: 'k', label: 'k', category: 'c' }]));
 
   // ── Section R — REGRESSION: additive diff did NOT loosen/break existing paths ──
   // The load-bearing KDS contract: a flat /kitchen member can write /orders/{id}/status.

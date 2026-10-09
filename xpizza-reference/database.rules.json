@@ -211,6 +211,10 @@
 
     "menus": {
       ".read": true,
+      "_meta": {
+        ".read": true,
+        ".write": false
+      },
       "$rid": {
         ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()"
       }
