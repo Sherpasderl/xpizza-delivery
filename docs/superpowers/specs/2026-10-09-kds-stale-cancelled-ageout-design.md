@@ -14,7 +14,8 @@ A **stale** cancelled order (older than one service day) **ages out of the KDS e
 
 ## Design — one pure predicate + one choke
 
-1. **`isStaleCancelled(o, nowMs, staleMs)`** — new PURE export in `card-model.js` (uses the existing `toMs` + `KDS_STATUS.CANCELADO`): true iff the card is `Cancelado` AND its aging anchor (`toMs(o.hora)` = released_at||created_at) is `>= staleMs` old. **No anchor → NOT stale** (fail-safe: never hide a cancellation we can't age).
+1. **`isStaleCancelled(o, nowMs, staleMs)`** — new PURE export in `card-model.js` (uses the existing `toMs` + `KDS_STATUS.CANCELADO`): true iff the card is `Cancelado` AND its **`cancelled_at`** (WHEN it was cancelled) is `>= staleMs` old. **Ages on `cancelled_at`, NOT the order's age** (codex gate P1): a fresh cancel of an *old* order (created hours ago, cancelled now) must still show — aging on `hora`=created/released would wrongly hide it, the exact failure this fix prevents, via another door. `cancelled_at` is stamped on `orders/{id}/cancelled_at` by `cancelPaidOrder` (xpizza-delivery.js). **Missing/invalid/future `cancelled_at` → NOT stale** (fail-safe: never hide a cancellation we can't time). The mapper (index.html) carries `cancelled_at: o.cancelled_at || null` onto the card (alongside `completed_at`).
+   - **Residual (noted):** a server-auto-cancel path that writes `status:'cancelled'` WITHOUT an `orders/{id}/cancelled_at` (the server `index.js` cancel paths stamp only `order_tracking/.../cancelled_at`) won't age out — it keeps showing (safe degrade, never a wrong-hide). Narrow follow-up if such orders are observed lingering: stamp `cancelled_at` on those server paths (money-adjacent, separate gate). The common staff cancel (dispatch `cancelPaidOrder`) stamps it, so the owner-reported case is covered.
 2. **Single choke** — in `startOrdersSubscription`'s live handler (index.html ~2984), filter stale-cancelled cards out of the mapped `orders` BEFORE `render()` + `checkForNewOrders()`:
    ```js
    const nowMs = Date.now();
@@ -28,7 +29,8 @@ A **stale** cancelled order (older than one service day) **ages out of the KDS e
 
 ## No-regression (must hold — the working paths this must NOT break)
 
-- **Fresh cancellation still alerts + shows stop-cooking in Abiertos** — within the window `isStaleCancelled` is false → card unchanged (open pool + `checkForNewOrders` fire exactly as today).
+- **Fresh cancellation still alerts + shows stop-cooking in Abiertos** — cancelled within the window (incl. a fresh cancel of an OLD order, P1) → `isStaleCancelled` false → card unchanged (open pool + `checkForNewOrders` fire exactly as today).
+- **Boundary (P2):** `>= staleMs` is inclusive by design (a 1ms edge at exactly the window → stale); design + test agree on `>=`. Kept as-is.
 - **Delivered → Completados** unchanged (`Archivado`, not cancelled → predicate false).
 - **Completados recency** (`completedTabVisible`/`RECENT_COMPLETED_MS`) untouched.
 - **A recently-archived cancel** (in `completedSet`, <window) still shows in Completados until it ages out — predicate only removes cards older than the window.

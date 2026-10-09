@@ -3069,6 +3069,9 @@ function mapFirebaseOrderToCard(o, key) {
     // #5: server COMPLETION time (already on the /orders record — no new read), for the Completados recency
     // anchor. Present only for terminal orders; absent → completedTabVisible falls back to the hora anchor.
     completed_at: o.delivered_at || o.ready_at || o.completed_at || null,
+    // server CANCELLATION time (orders/{id}/cancelled_at, stamped by cancelPaidOrder) — drives isStaleCancelled
+    // age-out by WHEN IT WAS CANCELLED, not when the order was created. Absent → kept showing (fail-safe).
+    cancelled_at: o.cancelled_at || null,
     cancelled: o.status === 'cancelled'
   };
 }
