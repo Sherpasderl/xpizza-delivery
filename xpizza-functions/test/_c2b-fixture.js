@@ -72,7 +72,13 @@ function fixture({ db, rtdb, now, sleep } = {}) {
   async function merchant(rid, { dishes = null, certify = true } = {}) {
     await seed(rid, synthSource(rid, dishes));
     const v1 = await publish(rid, `${rid}-v1`);
-    if (certify) await bootstrap(rid);
+    if (certify) {
+      // the D1 backfill registers every object first (bootstrap mints nothing), as the cutover runbook does
+      const { backfillIdentities } = require('../catalog/identity-backfill');
+      const { getRestaurantMenu } = require('../catalog/catalog-menu');
+      await backfillIdentities(db, rid, await getRestaurantMenu(db, rid), { captured: await getActivePointer(db, rid) });
+      await bootstrap(rid);
+    }
     return v1;
   }
   /* the MERCHANT'S REAL PATH: save through editCatalogCore (issues the edit token, owns the deletion claim) → publishEditedCore */

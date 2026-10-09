@@ -54,4 +54,45 @@ function verdict({ pooled, paired, noise, base, cand, valid }) {
   return { checks, pass: Object.values(checks).every(Boolean) };
 }
 
-module.exports = { nearestRank, p95, med, medianOf, pooledP95Delta, blockMedianDeltas, pairedMedianDelta, bootstrapCI, aaNoise, verdict };
+// ── LATENCY-PROTOCOL v2 (2026-10-09; D4-c3 rev 7 §0.6 and every later plan that references it) ──────────────────────
+// The PREREG-2 `verdict` above stays as recorded c4 evidence. v2 changes HOW the plan's bars are judged, never the bars:
+//   • the bars are PARAMETERS (the plan's X % and Y ms on p95, the paired-median limit M) — nothing hardcoded;
+//   • A/A noise NEVER widens a bar. It grades the measurement: ADEQUATE iff noise_p95 ≤ 2X AND noise_med ≤ M;
+//   • PASS = every cost check holds AND adequate; FAIL = any cost check fails AND adequate; INCONCLUSIVE = not adequate
+//     (every cost value still reported). Inclusive bounds throughout.
+//   • noise is the LARGEST absolute block-level A/A Δ ("largest", whatever K is — not a quantile over blocks).
+function aaNoiseMax(aaBlocks) {
+  if (!Array.isArray(aaBlocks) || !aaBlocks.length) throw new Error('aaNoiseMax: no A/A blocks');
+  return {
+    noise_p95: Math.max(...aaBlocks.map((b) => Math.abs(p95(b.y) - p95(b.x)) / p95(b.x))),
+    noise_med: Math.max(...aaBlocks.map((b) => Math.abs(med(b.y) - med(b.x)))),
+  };
+}
+function checkBars(bars) {
+  const { relMax, absMaxMs, medMaxMs } = bars || {};
+  for (const [k, v] of Object.entries({ relMax, absMaxMs, medMaxMs })) {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) throw new Error(`verdictV2: bar ${k} must be a positive finite number (got ${JSON.stringify(v)})`);
+  }
+  return { relMax, absMaxMs, medMaxMs };
+}
+// invariants: { name: boolean } — the plan's own invariants (attempts / errors equal, preservation timeouts, completed
+// registrations, …), each TRUE when it holds; validity: every A/B AND A/A child complete, error-free and invariant-clean.
+function verdictV2({ pooled, paired, noise, invariants, valid, bars }) {
+  const { relMax, absMaxMs, medMaxMs } = checkBars(bars);
+  if (!invariants || typeof invariants !== 'object' || !Object.keys(invariants).length) throw new Error('verdictV2: no invariants given');
+  const cost = {
+    p95_abs: pooled.delta_ms <= absMaxMs,
+    p95_rel: pooled.delta_rel <= relMax,
+    median: paired <= medMaxMs,
+    ...Object.fromEntries(Object.entries(invariants).map(([k, v]) => [`inv_${k}`, v === true])),
+    valid: valid === true,
+  };
+  const quality = { noise_p95: noise.noise_p95 <= 2 * relMax, noise_med: noise.noise_med <= medMaxMs };
+  const adequate = quality.noise_p95 && quality.noise_med;
+  const costOk = Object.values(cost).every(Boolean);
+  const verdict = !adequate ? 'INCONCLUSIVE' : (costOk ? 'PASS' : 'FAIL');
+  return { cost, quality, adequate, costOk, verdict,
+    values: { p95_delta_ms: pooled.delta_ms, p95_delta_rel: pooled.delta_rel, paired_median_ms: paired, noise_p95: noise.noise_p95, noise_med: noise.noise_med } };
+}
+
+module.exports = { nearestRank, p95, med, medianOf, pooledP95Delta, blockMedianDeltas, pairedMedianDelta, bootstrapCI, aaNoise, verdict, aaNoiseMax, verdictV2 };

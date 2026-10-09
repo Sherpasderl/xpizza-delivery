@@ -251,6 +251,9 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     const work = workDeadline(stop, COMMIT_RESERVE_MS);
     const gdb = gateIo(db, work, 'integrity_read');
     const bounded = (thunk, label) => boundedWork(work, thunk, READ_OP_MS, label);
+    // check A is ONE transaction of up to ~1,700 PACED reads (≤ 100/s ≈ 17 s at the 400-object cap): it is bounded by the
+    // restaurant's whole remaining work allowance (25 s, §5), never by the single-read limit
+    const boundedStage = (thunk, label) => boundedWork(work, thunk, work.remaining(), label);
     const result = { rid };
     let pre;
     try { pre = await bounded(() => precheck(gdb, rid, budget, quietMs), 'precheck'); } catch (e) { return fail(rid, stop, e, 'precheck'); }
@@ -269,7 +272,7 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     } catch (e) { return fail(rid, stop, e, 'node'); }
     let active; let audit = null; let count = null; let onboarded = null;
     try {
-      const obs = await bounded(() => observeActive(gdb, rid, budget), 'check_active');
+      const obs = await boundedStage(() => observeActive(gdb, rid, budget), 'check_active');
       const obsT = obs.obs_t;
       if (obs.none) active = { none: true, obs_t: obs.obs_t };
       else active = { obs, result: C.classifyActive(obs, boundary ? { G0: boundary.G0 } : null) };

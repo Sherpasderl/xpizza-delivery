@@ -323,6 +323,44 @@ try {
 
   // ── 10. the read budget + pacing (§5) ────────────────────────────────────────────────────────────────────────────
   (async () => {
+    // ── 11 (first, async): the quiet-period PRECHECK on fake snapshots — each signal ALONE, server time = the readTime ──
+    {
+      const { precheck } = require('./identity-integrity-monitor');
+      const READ = 1_800_000_000_000;
+      const ts = (ms) => ({ toMillis: () => ms, seconds: Math.floor(ms / 1000), nanoseconds: (ms % 1000) * 1e6 });
+      const fakeDb = (docs, calls) => {
+        const ref = (p) => ({ path: p, collection: (c) => ({ doc: (d) => ref(`${p}/${c}/${d}`) }) });
+        return { collection: (c) => ({ doc: (d) => ref(`${c}/${d}`) }),
+          runTransaction: async (fn, opts) => { calls.push(opts); return fn({ getAll: async (...refs) => refs.map((r) => {
+            const d = docs[r.path]; return { exists: !!d, data: () => (d ? d.data : undefined), updateTime: d ? ts(d.ut) : undefined, readTime: ts(READ) }; }) }); } };
+      };
+      const lockP = 'restaurants/r/meta/publish_lock'; const srcP = 'restaurants/r/meta/source'; const ptrP = 'restaurants/r/meta/active_version';
+      const MIN = 60000; const old = READ - 60 * MIN; const recent = READ - 5 * MIN;
+      const quiet = { [srcP]: { data: {}, ut: old }, [ptrP]: { data: { version: 'v', at: ts(old) }, ut: old } };
+      const budget = createReadBudget({ perSecond: 100, now: () => 0, sleep: async () => {} });
+      const run = async (docs) => { const calls = []; const r = await precheck(fakeDb(docs, calls), 'r', budget); return { ...r, calls }; };
+      let r = await run(quiet);
+      assert.deepStrictEqual([r.active, r.why, r.calls], [false, { lease: false, draft: false, pointer: false }, [{ readOnly: true }]], 'quiet; ONE read-only transaction');
+      assert.strictEqual(r.obs_t, S.obsT(ts(READ)), 'server time = the snapshot readTime');
+      r = await run({ ...quiet, [lockP]: { data: { owner_token: 't', expires_at: ts(READ + 30000) }, ut: old } });
+      assert.deepStrictEqual([r.active, r.why], [true, { lease: true, draft: false, pointer: false }], 'a LIVE lease alone');
+      r = await run({ ...quiet, [lockP]: { data: { owner_token: 't', expires_at: ts(READ - 1) }, ut: old } });
+      assert.strictEqual(r.active, false, 'an EXPIRED lease is free');
+      r = await run({ ...quiet, [lockP]: { data: { expires_at: ts(READ + 30000) }, ut: old } });
+      assert.strictEqual(r.active, false, 'a lease without an owner token is free');
+      r = await run({ ...quiet, [srcP]: { data: {}, ut: recent } });
+      assert.deepStrictEqual([r.active, r.why], [true, { lease: false, draft: true, pointer: false }], 'a draft edited < 10 min ago alone');
+      r = await run({ ...quiet, [srcP]: { data: {}, ut: READ - 10 * MIN } });
+      assert.strictEqual(r.active, false, 'exactly 10 min ago is not < 10 min');
+      r = await run({ ...quiet, [ptrP]: { data: { version: 'v', at: ts(recent) }, ut: old } });
+      assert.deepStrictEqual([r.active, r.why], [true, { lease: false, draft: false, pointer: true }], 'the pointer\'s `at` moved < 10 min ago alone');
+      r = await run({ ...quiet, [ptrP]: { data: { version: 'v', at: ts(old) }, ut: recent } });
+      assert.strictEqual(r.active, true, 'or its document updateTime');
+      const calls = []; r = await precheck(fakeDb({ ...quiet, [srcP]: { data: {}, ut: recent } }, calls), 'r', budget, 0);
+      assert.strictEqual(r.active, false, 'the window is a parameter (0 = disabled)');
+    }
+    ok('§4 quiet-period precheck (fake snapshots): ONE read-only getAll; server time = the snapshot readTime; a live lease, a draft edited < 10 min ago, and a pointer moved < 10 min ago (its `at` or its updateTime) EACH alone defer; an expired / ownerless lease and exactly 10 min do not');
+
     let clock = 0;
     const b = createReadBudget({ cap: 300, perSecond: 100, now: () => clock, sleep: async (ms) => { clock += ms; } });
     for (let i = 0; i < 12; i += 1) { b.reserve(25, 'objects'); await b.pace(25); }
