@@ -48,7 +48,10 @@ From `xpizza-functions`:
 - **Certified** target: the added product's identity is **retired**.
 - **Uncertified** target: it **stays live** (no reconciliation for uncertified targets, as today).
 
-Either way the name stays taken: adding it again is refused ("Ese nombre ya existió en tu menú").
+**Re-adding the same name afterwards:**
+- refused ("Ese nombre ya existió en tu menú") when the identity stays live (uncertified target, either brand);
+- refused for a **slug** brand (La Musa) even after retirement, because the retired id keeps the slug reserved;
+- **allowed** for a **name**-keyed brand (X. Pizza) after a certified rollback, which deletes the key row. The re-added product gets a fresh identity.
 
 **Window:** for ≤ 45 s an instance may still price the removed product. Orders accepted then are normal orders; staff fulfil or cancel them with the existing tools. There is no refund automation.
 
