@@ -63,6 +63,7 @@ const runChild = (rowKey, cond) => {
     console.log(JSON.stringify({ void: true, reason: 'state_digest_mismatch', row: rowKey, cond, digest: res.digest }));
     process.exit(4);
   }
+  console.error(JSON.stringify({ child: rowKey, cond, secs: +((res.ended_at - res.started_at) / 1000).toFixed(1), samples: res.ms.length, digest_checked: res.digest.checked, digest_mismatches: res.digest.mismatches, monitor_runs: res.monitor.runs }));
   return res;
 };
 if (process.env.LAT_DISCOVER) { for (const row of rows) console.log(JSON.stringify(runChild(row.key, 'off'))); process.exit(0); }
