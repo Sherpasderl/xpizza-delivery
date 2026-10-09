@@ -367,12 +367,15 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
     assert.ok(!new RegExp(`\\b${banned}\\b`).test(app + render + editor),
       `${banned} is a 2b-2c/2b-2d mutator and must not exist in the shipped portal`);
   }
-  // the edit state exposes price setters and nothing else that writes
+  // the edit state exposes price setters and — 1D add-product A, DELIBERATELY NARROW — the ADD-ONLY affordances:
+  // addProduct (a new row with a tmp reference, no key), setAddition (an UNSAVED addition's fields), removeAddition
+  // ("Quitar": an addition only — never an existing product), adopt (the server's canonical source after a save),
+  // and the read-only rowId / incompleteAdditions. Every banned 2b-2c/2b-2d name above stays banned.
   const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
   assert.deepStrictEqual(exported, [
-    'canEditDraft', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'invalidKeys', 'isPublishable',
-    'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup',
-    'setExtraPrice', 'setItemPrice',
+    'addProduct', 'adopt', 'canEditDraft', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isPublishable',
+    'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup', 'removeAddition', 'rowId',
+    'setAddition', 'setExtraPrice', 'setItemPrice',
   ], 'the edit state exports exactly these');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
@@ -751,10 +754,14 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   // 🔴 COMMIT, NOT DISCARD. They are opposite operations, and discard() here reset the editor to the
   // PRE-EDIT prices: it showed 299 after publishing 310, and the next unrelated edit carried 299 back
   // into the diff and silently reverted the price that had just gone live.
-  const successPath = app.slice(successIdx, successIdx + 900);
-  // 🔴 commitTo(SUBMITTED), not commit(live draft): if the merchant kept editing after opening the
-  // review, what went live is what was REVIEWED, and the later edit must stay pending.
-  assert.ok(/if \(captured && captured\.submitted\) commitTo\(state\.draft, captured\.submitted\)/.test(successPath),
+  const successPath = app.slice(successIdx, successIdx + 2600);
+  // 1D add-product A §3: the success path RELOADS the authoritative source (a certified publish writes stamps back, and
+  // published additions stop being additions), generation- and tenant-guarded, before editing resumes …
+  assert.ok(/apiFetch\('getEditableCatalog', \{ rid, token \}\)/.test(successPath) && /if \(gen !== opGeneration \|\| rid !== state\.draftRid\) return;/.test(successPath),
+    'the baseline is RELOADED from the server, behind the generation + tenant guards');
+  // 🔴 … and when that reload fails, commitTo(SUBMITTED) — not commit(live draft): if the merchant kept editing after
+  // opening the review, what went live is what was REVIEWED, and the later edit must stay pending.
+  assert.ok(/\} else if \(captured && captured\.submitted\) \{\s*commitTo\(state\.draft, captured\.submitted\);/.test(successPath),
     'the baseline becomes the SUBMITTED snapshot');
   // FAIL CLOSED: no fallback to the live draft, which would silently mark later edits as published
   assert.ok(!/commitTo\([^)]*\|\|/.test(successPath), 'and a missing snapshot leaves the baseline alone rather than guessing');
@@ -930,25 +937,31 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
   //   'ender'    — the code that ENDS a world (auth change, tenant switch, invalidation). It writes
   //                unconditionally on purpose; guarding it would be guarding the guard.
   const CENSUS = {
-    'state.draft':               [3, 'canEdit', 'created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
+    'state.draft':               [4, 'canEdit', '[1D add-product A: + the post-publish RELOAD, behind the generation + tenant guard, with the lock still held] created on load, cleared by the auth ender AND at the start of a tenant switch; every MUTATION goes through editor.js'],
     'state.review':              [2, 'guarded', '🔴 DOWN FROM 9, THEN FROM 5. The record is now minted in one call and is IMMUTABLE afterwards — the four writes that assembled it field by field (rid, attestation, acknowledged twice) are gone, and `acknowledged` is an accessor with no setter, so it cannot be written at all. What remains is ONE mint and ONE clear: every path that drops a review goes through clearReview(), which also retires it as the live one — so a retained record cannot be reinstalled and replayed. 🔴 RESIDUAL #4 IS CLOSED: whole-record replacement — including restoring a genuine prior minted record — is refused at publish admission, so no fiscal path leans on the analyzer.'],
     'state.publishGen':          [2, 'guarded', 'set only on genuine admission inside runPublish, cleared by the ender'],
     'state.reviewLock':          [8, 'guarded', 'ticket bookkeeping; every write pairs with a take/release on a generation-checked path — the 7th releases a ticket acquired by a publish that was then refused, the 8th is endWrite handing back a ticket whose request settled into a world that had ended'],
     'state.currentRid':          [3, 'ender',   'the tenant switch and the auth handler — the two things that end a world'],
     'state.groups':              [3, 'guarded', 'the rendered menu, written only after the generation check on both settle paths'],
-    'state.usesPlatformFactura': [2, 'guarded', '🔴 the fiscal capability — load path, behind the generation check'],
-    'state.sourceUpdateTime':    [3, 'guarded', '🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
+    'state.usesPlatformFactura': [3, 'guarded', '[1D add-product A: + the post-publish reload, same guard] 🔴 the fiscal capability — load path, behind the generation check'],
+    'state.sourceUpdateTime':    [4, 'guarded', '[1D add-product A: + the post-publish reload — a certified publish writes stamps back, so the revision moves] 🔴 the CAS baseline — load path and the save settle path, both generation-checked, plus the tenant-switch clear that stops one tenant\u2019s baseline being used to write another\u2019s document'],
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
-    'state.selectedCat':         [3, 'view',    'which category the rail highlights — a stale write repaints, it cannot mis-price'],
+    'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
     'state.openGroups':          [3, 'view',    'which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
-    'state.drawerKey':           [3, 'view',    'which dish the drawer shows; the fields inside it are canEdit-guarded'],
+    'state.drawerKey':           [5, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [1, 'guarded', 'the switcher list, written by loadRestaurants behind its generation check'],
     'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender — which no longer clears it unconditionally: a ticket with a request on the wire is not the ender\u2019s to reclaim'],
     'writeSeq':                  [2, 'guarded', 'the monotonic source of request ids — declared once, incremented once, never reused, which is what makes a request id an identity rather than a label'],
     'pendingWrite':              [3, 'guarded', '🔴 SERVER-WRITE ADMISSION. The declaration, beginWrite and endWrite — set when a request is genuinely ADMITTED and cleared when THAT request settles, keyed on a per-request id rather than the reusable ticket, so a refused duplicate can neither claim nor surrender ownership of the wire'],
     'state.draftRid':            [2, 'guarded', '🔴 WHICH TENANT THE DRAFT IS. Written on the load settle path behind the generation check and cleared at the start of a switch; it is what the write path names, so a review can never carry one tenant\u2019s rid with another\u2019s source'],
     'state.menuLoading':         [3, 'guarded', 'loading represented explicitly rather than inferred from a null draft: set at the start of a switch, cleared on BOTH settle paths behind the generation check, and read by review admission'],
+    // ── 1D add-product A ──
+    'state.additionKeys':        [3, 'guarded', 'which rows are NEW (server-said pendingAdditions + the keys a save allocated) — reset at the start of a load, set on the load settle path and on the save settle path, both behind the generation check'],
+    'state.renderedCategories':  [2, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check'],
+    'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
+    'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
+    'state.drawerError':         [5, 'view',    'the field error shown in the add drawer after a refused save — presentational; the server re-checks every save'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
   };
 
@@ -1064,7 +1077,10 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // never caught up. That is the drift the cross-check below exists to end.
                  'endWrite', 'repaintFromDraft', 'showOutcome',
                  // again found by the tree, not by hand — clearReview writes state.review
-                 'clearReview'];
+                 'clearReview',
+                 // 1D add-product A — the add flow's writers (the tree found them; each is either canEdit-guarded via
+                 // editor.js or a load/settle path behind the generation check)
+                 'addProduct', 'setAddition', 'removeAddition', 'adopt', 'onAddProduct', 'resetToLive', 'applyAddProductFacts'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();
@@ -1128,6 +1144,15 @@ const LISTENERS = {
   "renderDetail::callback":       ['bound', ['openDrawer'], 'the inline price cells. onPrice is bound AT THE CALL SITE — the function itself belongs to no world — and is deliberately NOT listed here, so the lexical check requires it to sit inside the wrapper. openDrawer is listed: it writes only which dish the drawer shows.'],
   "renderAttestation::callback":  ['bound', [], '🔴 the acknowledgement — nothing here is allowed outside the wrapper'],
   "renderOutcome::callback":      ['bound', [], 'the recovery controls — real transitions, not messages, and every one of them inside the wrapper'],
+  // 1D add-product A — the "Nuevo producto" drawer and the reset offer. Every one that writes is bound().
+  "resetBtn::click":              ['bound', [], '"Volver al menú publicado": resetDraftToLive then a full reload — inside the wrapper'],
+  "name::input":                  ['bound', [], 'an UNSAVED addition\u2019s name, through setAddition (canEdit)'],
+  "desc::input":                  ['bound', [], 'an UNSAVED addition\u2019s description, through setAddition (canEdit)'],
+  "sec::change":                  ['bound', [], 'an UNSAVED addition\u2019s section, through setAddition (canEdit); the rail follows (view)'],
+  "sub::change":                  ['bound', [], 'an UNSAVED addition\u2019s subsection, through setAddition (canEdit)'],
+  "price::input":                 ['bound', [], 'an addition\u2019s price, through setAddition / setItemPrice (canEdit)'],
+  "quitar::click":                ['bound', [], '"Quitar": removeAddition (canEdit) — an addition only, never an existing product'],
+  "listo::click":                 ['bound', [], 'closes the add drawer and repaints'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
@@ -1361,6 +1386,8 @@ const ALLOWED_METHOD_CHAINS = new Set([
   'state.groups.find', 'state.groups.some',
   'state.openGroups.has',
   'state.openGroups.add', 'state.openGroups.delete',   // the group toggle; counted by the field census
+  // 1D add-product A — membership reads of server-said facts, and the save settle path recording allocated keys
+  'state.additionKeys.has', 'state.additionKeys.add', 'state.renderedCategories.includes',
 ]);
 
 function grammarViolations(src) {
@@ -1625,11 +1652,20 @@ test('🔴 the evidence has ONE home — nothing renders from the pre-mint local
   // why only a structural check can hold the line: the point is that no second copy is in use, so a
   // later edit to one of those locals cannot make the screen and the record disagree.
   const app = codeOf('app.js');
-  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff\)\)/,
+  // (1D add-product A: + a `describe` option that names a NEW product from the adopted draft — a lookup, not evidence)
+  assert.match(app, /renderReview\(\$\('mbody'\), reviewModel\(state\.review\.diff\)(?:, \{ describe: describeAddition \})?\)/,
     '🔴 the review renders from the MINTED diff');
   assert.match(app, /renderAttestation\(attBox, state\.review\.attestation,/,
     '🔴 the attestation renders from the MINTED attestation, not the local it was computed into');
   // and the frozen copy is what the record holds, rather than the caller's object
   assert.match(app, /value: frozenCopy\(fields\[k\]\)/, 'every field is stored as a frozen copy');
   assert.match(app, /return Object\.freeze\(copy\)/, '...and the freeze is applied to the COPY, all the way down');
+});
+
+
+test('🔴 RULING A: no portal module names deleted_ids — removal claims are server-owned; the portal adds only', () => {
+  const hits = JS.filter((f) => /deleted_?ids/i.test(codeOf(f)));
+  assert.deepStrictEqual(hits, [], 'a portal module that names the claim could author one');
+  assert.ok(/deleted_?ids/i.test("x.deleted_ids = []") && /deleted_?ids/i.test('deletedIds'), 'non-vacuity: the detector fires on planted code');
+  assert.ok(JS.length >= 8, `the portal modules were actually read (${JS.length})`);
 });

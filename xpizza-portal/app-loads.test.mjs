@@ -48,6 +48,7 @@ function installDom() {
         contains: (c) => n._class.split(/\s+/).includes(c),
       },
       append: (...cs) => n.children.push(...cs),
+      prepend: (...cs) => n.children.unshift(...cs),
       replaceChildren: (...cs) => { n.children = [...cs]; },
       setAttribute: (k, v) => { n.attrs[k] = v; },
       removeAttribute: (k) => { delete n.attrs[k]; },
@@ -81,6 +82,7 @@ function installDom() {
     getElementById: (id) => byId.get(id) || null,
     createElement: (t) => mk(t, null),
     createElementNS: (_ns, t) => mk(t, null),
+    createTextNode: (t) => ({ tag: '#text', children: [], textContent: String(t), _class: '' }),
     querySelector: () => null,
     querySelectorAll: () => [],
     // A REAL listener registry, not a no-op. app.js's document-level wiring — portal:auth,
@@ -1673,4 +1675,169 @@ test('a normal same-world publish is still admitted — the checks refuse stalen
   assert.strictEqual(calls.filter((c) => c.fn === 'publishEdited').length, 1,
     '🔴 the genuine publish went through');
   assert.strictEqual(app.state.review, null, 'and the review retires on success, so it cannot be replayed either');
+});
+
+
+// ── 1D add-product A — THE ADD FLOW, composed: the real app.js, the real editor/render/review, only fetch stubbed ──
+const ADD_SRC = () => {
+  const s = SOURCE();
+  s.structure.categories = [{ id: 'c', name: 'Pizzas' }, { id: 'hidden', name: 'Oculta' }];
+  Object.assign(s.structure, { pickup_only_cats: ['c'], weekend_only_cats: ['c'], redeem_eligible_cats: ['c'] });
+  return s;
+};
+const ADD_LOAD = (extra = {}) => okJson({ source: ADD_SRC(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false, renderedCategories: ['c'], restaurantName: 'X', ...extra });
+const refusal = (status, body) => ({ ok: false, status, json: async () => body });
+const fire = async (n, ev = 'click') => { for (const f of (n.listeners[ev] || [])) await f({ preventDefault() {}, target: n }); };
+async function addAndFill(byId, app, { name = 'Pizza Nueva', price = '420' } = {}) {
+  const addRow = byId.get('detail').querySelectorAll('.addrow')[0];
+  assert.ok(addRow, 'premise: the section the order page draws offers "Agregar producto"');
+  await fire(addRow);
+  const ref = app.state.drawerKey;
+  assert.match(String(ref), /^tmp:/, 'the drawer is open on the new row, by its temporary reference');
+  const inputs = byId.get('drawer').querySelectorAll('input');
+  const nameIn = inputs.find((i) => i.attrs['aria-label'] === 'Nombre');
+  const priceIn = inputs.find((i) => i.attrs['aria-label'] === 'Precio');
+  nameIn.value = name; await fire(nameIn, 'input');
+  priceIn.value = price; await fire(priceIn, 'input');
+  return ref;
+}
+
+test('🔴 ADD FLOW: add → save ADOPTS the server’s canonical row → review names it → publish → reload ends it as a plain product', async () => {
+  const byId = installDom();
+  let loads = 0;
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') {
+      loads += 1;
+      if (loads === 1) return ADD_LOAD();
+      const s = ADD_SRC(); s.items.push({ key: 'Pizza Nueva', price: 420, display: { id: 2, cat: 'c', name: 'Pizza Nueva', price: 420 } });
+      s.structure.item_order.push('Pizza Nueva');
+      return ADD_LOAD({ source: s, sourceUpdateTime: 'T9' });
+    }
+    if (fn === 'editCatalog') {
+      const sent = calls.at(-1).body.source;
+      const canon = JSON.parse(JSON.stringify(sent));
+      const row = canon.items.find((i) => i.ref);
+      delete row.ref; row.key = 'Pizza Nueva'; row.display.id = 2;
+      canon.structure.item_order = canon.structure.item_order.map((k) => (k.startsWith('tmp:') ? 'Pizza Nueva' : k));
+      return okJson({ token: 'ET', updateTime: 'T2', source: canon,
+        diff: { added: [{ surface: 'item', key: 'Pizza Nueva', price: 420 }], removed: [], renamed: [], changed: [], largeChangeSet: [] } });
+    }
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addAndFill(byId, app);
+  assert.strictEqual(pendingCountOf(app), 1, 'the unsaved product is pending work');
+
+  await fire(byId.get('review'));
+  const save = calls.find((c) => c.fn === 'editCatalog');
+  const sentRow = save.body.source.items.find((i) => i.ref === ref);
+  assert.deepStrictEqual(sentRow, { ref, price: 420, display: { cat: 'c', name: 'Pizza Nueva', price: 420 } }, '🔴 the wire carries a REF, never a key or an id');
+  assert.ok(!('deleted_ids' in save.body.source), 'ruling A: no deletion claim is authored');
+  assert.ok(app.state.draft.state.items.some((i) => i.key === 'Pizza Nueva' && !('ref' in i)), '🔴 the draft ADOPTED the server’s canonical row');
+  assert.ok(app.state.additionKeys.has('Pizza Nueva'), 'and knows it as a saved, unpublished addition');
+  assert.ok(byId.get('mbody').querySelectorAll('.bsec').some((n) => /Pizzas/.test(n.textContent)), 'the review names its section');
+  assert.ok(byId.get('mbody').querySelectorAll('.brules').some((n) => n.textContent === 'Solo para recoger · Solo fines de semana · Canjeable con recompensas'),
+    'and the rules it INHERITS from that section, all three');
+
+  await fire(byId.get('pubbtn'));
+  const pub = calls.find((c) => c.fn === 'publishEdited');
+  assert.ok(pub && pub.body.token === 'ET', 'published with the token minted for this review');
+  assert.strictEqual(loads, 2, '🔴 the publish RELOADED the authoritative source');
+  assert.strictEqual(app.state.sourceUpdateTime, 'T9', '...and its revision');
+  assert.strictEqual(app.state.additionKeys.size, 0, 'a published product is no longer an addition');
+  assert.strictEqual(pendingCountOf(app), 0);
+  assert.ok(app.state.draft.state.items.some((i) => i.key === 'Pizza Nueva'));
+});
+
+test('🔴 FIX: a refused name reopens THAT product’s drawer with the server’s message on the field; the product is kept', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD()
+    : fn === 'editCatalog' ? null : okJson({ versionId: 'v2' })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addAndFill(byId, app, { name: 'Pizza' });
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(409, { error: 'name_taken', detail: 'taken', ref, field: 'name' }) : ADD_LOAD()));
+  await fire(byId.get('review'));
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.match(btn.textContent, /Corregir el nombre/);
+  await fire(btn);
+  assert.strictEqual(app.state.drawerKey, ref, 'the drawer is open on the refused product');
+  const errs = byId.get('drawer').querySelectorAll('.ferr');
+  assert.strictEqual(errs.length, 1, 'one field carries the error');
+  assert.ok(app.state.draft.state.items.some((i) => i.ref === ref && i.display.name === 'Pizza'), 'nothing the owner typed was lost');
+  assert.strictEqual(byId.get('drawer').querySelectorAll('input').find((i) => i.attrs['aria-label'] === 'Nombre').disabled, false, 'and the name is editable again');
+});
+
+test('🔴 RESET: a drifted draft goes back to the published menu — conditional on the revision the owner saw — and reloads', async () => {
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD()
+    : fn === 'editCatalog' ? refusal(409, { error: 'item_order_changed', detail: 'x', field: 'item_order' })
+      : fn === 'resetDraftToLive' ? okJson({ ok: true }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  await fire(byId.get('review'));
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.match(btn.textContent, /Volver al menú publicado/, 'a deterministic drift refusal offers RESET, never a retry loop');
+  const before = calls.filter((c) => c.fn === 'getEditableCatalog').length;
+  await fire(btn);
+  const reset = calls.find((c) => c.fn === 'resetDraftToLive');
+  assert.ok(reset, 'resetDraftToLive was called');
+  assert.strictEqual(reset.body.expectedRevision, 'T', '🔴 conditional on the revision the owner loaded (the refused save moved nothing)');
+  assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, before + 1, 'and the menu was reloaded');
+  assert.strictEqual(pendingCountOf(app), 0);
+});
+
+test('the add entry is absent for a section the order page does not draw, and while the draft is owned', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD({ renderedCategories: [] }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(byId.get('detail').querySelectorAll('.addrow').length, 0, 'not drawn → no add entry');
+  assert.strictEqual(app.state.draft.state.items.length, 1);
+});
+
+
+test('the Sección list offers ONLY the sections the order page draws', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  const sel = byId.get('drawer').querySelectorAll('select').find((x) => x.attrs['aria-label'] === 'Sección');
+  assert.deepStrictEqual(sel.children.map((o) => o.value), ['c'], '"Oculta" is declared but not drawn — not offered');
+});
+
+test('🔴 a SAVED, unpublished addition: its name is locked, and "Quitar" removes it (the server listed it)', async () => {
+  const byId = installDom();
+  const s = ADD_SRC(); s.items.push({ key: 'Guardada', price: 300, display: { id: 2, cat: 'c', name: 'Guardada', price: 300 } });
+  s.structure.item_order.push('Guardada');
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD({ source: s, pendingAdditions: ['Guardada'] }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.ok(byId.get('detail').querySelectorAll('.newtag').length === 1, 'the saved addition carries NUEVO');
+  app.openDrawer('Guardada');
+  const nameIn = byId.get('drawer').querySelectorAll('input').find((i) => i.attrs['aria-label'] === 'Nombre');
+  assert.strictEqual(nameIn.disabled, true, '🔴 the server allocated its key from this name — it is no longer retypable');
+  const quitar = byId.get('drawer').querySelectorAll('button').find((b) => b.textContent === 'Quitar');
+  await fire(quitar);
+  assert.ok(!app.state.draft.state.items.some((i) => i.key === 'Guardada'), 'Quitar removed the saved addition');
+  assert.strictEqual(pendingCountOf(app), 1, 'and that removal is pending work, not silently clean');
+});
+
+test('🔴 a stored draft that cannot even LOAD offers "Volver al menú publicado" at the revision the server reported', async () => {
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog'
+    ? refusal(503, { error: 'source_unavailable', draft_unpublishable: { code: 'invalid_source', detail: 'x' }, sourceUpdateTime: 'T0' })
+    : okJson({ ok: true })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const box = byId.get('detail').querySelectorAll('.unpub')[0];
+  assert.ok(box, 'the way back is on screen');
+  await fire(box.querySelectorAll('button')[0]);
+  const reset = calls.find((c) => c.fn === 'resetDraftToLive');
+  assert.strictEqual(reset && reset.body.expectedRevision, 'T0');
+  assert.strictEqual(app.state.draft, null, 'no draft was built from an invalid source');
 });

@@ -83,7 +83,7 @@ const el = (tag, cls, text) => {
 
 const shown = (v) => (Number.isInteger(v) && v > 0 ? `L${v}` : (v === null || v === undefined ? '—' : String(v)));
 
-export function renderReview(root, model) {
+export function renderReview(root, model, opts = {}) {
   root.replaceChildren();
 
   if (model.total === 0) {
@@ -151,7 +151,16 @@ export function renderReview(root, model) {
       const r = el('div', `brow${cls === 'rem' ? ' rem' : ''}`);
       r.dataset.k = `${x.surface}::${x.key}`;
       r.append(el('span', `bchip ${cls}`, chip));
-      r.append(el('span', 'bnm', String(x.key)));
+      // 1D add-product A — a NEW product reads as the merchant wrote it: its name, its section and the rules it
+      // INHERITS from that section (e.g. "Solo para recoger · Solo fines de semana"), not its pricing key.
+      const info = cls === 'add' && typeof opts.describe === 'function' ? opts.describe(x) : null;
+      if (info) {
+        const nm = el('span', 'bnm');
+        nm.append(el('b', null, info.name || String(x.key)));
+        if (info.section) nm.append(el('span', 'bsec', ` · ${info.section}`));
+        if (Array.isArray(info.rules) && info.rules.length) nm.append(el('span', 'brules', info.rules.join(' · ')));
+        r.append(nm);
+      } else r.append(el('span', 'bnm', String(x.key)));
       r.append(el('span', 'bval', shown(x.price)));
       g.append(r);
     }
@@ -220,7 +229,10 @@ export function attestationModel(diff, ctx = {}) {
   const hasNothing = reviewModel(diff).total === 0;
   // A price we cannot vouch for blocks the publish outright, ahead of any acknowledgement — the server
   // would refuse it anyway, and no signature should be collected for something that cannot go live.
-  const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
+  // 1D add-product A — NEW products are priced lines too: they join the zero-price refusal and the attestation copy.
+  const addedRows = ((diff && Array.isArray(diff.added)) ? diff.added : []).filter((a) => a && a.surface === 'item')
+    .map((a) => ({ key: a.key, now: a.price }));
+  const hasZero = sealRows.some((r) => !(Number.isInteger(r.now) && r.now > 0)) || addedRows.some((r) => !(Number.isInteger(r.now) && r.now > 0));
 
   return {
     isFiscal,
@@ -229,6 +241,7 @@ export function attestationModel(diff, ctx = {}) {
     needsPlainAck: !isFiscal && ackSet.length > 0,
     needsAck: !hasNothing && (isFiscal || ackSet.length > 0),
     sealRows,
+    addedRows,
     ackSet,
     hasZero,
     // What the publish will send. Two separate fields for two separate facts: the attestation, and
@@ -243,7 +256,8 @@ export function attestationModel(diff, ctx = {}) {
 export const canPublish = (model, acknowledged) =>
   !model.hasNothing && !model.hasZero && (!model.needsAck || acknowledged === true);
 
-export function renderAttestation(root, model, onToggle) {
+export function renderAttestation(root, model, onToggle, opts = {}) {
+  const nameOf = (key) => { const d = typeof opts.describe === 'function' ? opts.describe({ surface: 'item', key }) : null; return (d && d.name) || String(key); };
   root.replaceChildren();
   const checkbox = (cls, build) => {
     const label = el('label', cls);
@@ -280,7 +294,20 @@ export function renderAttestation(root, model, onToggle) {
       c.append(v);
       body.append(c);
     }
-    if (!model.sealRows.length) {
+    // 1D add-product A — the NEW products, with the prices the factura will print for them.
+    const added = Array.isArray(model.addedRows) ? model.addedRows : [];
+    if (added.length) {
+      body.append(el('p', null, added.length === 1 ? 'Vas a agregar 1 producto nuevo con este precio:' : `Vas a agregar ${added.length} productos nuevos con estos precios:`));
+      for (const r of added) {
+        const c = el('div', 'seachg');
+        c.append(el('span', 'sn', nameOf(r.key)));
+        const v = el('span', 'sv');
+        v.append(el('span', 'now', shown(r.now)));
+        c.append(v);
+        body.append(c);
+      }
+    }
+    if (!model.sealRows.length && !added.length) {
       // Honest, and clearable: the merchant is fiscal, so the server will demand the attestation even
       // though this particular edit moves no price.
       body.append(el('p', 'seachg', 'Esta edición no cambia ningún precio, pero afecta el documento fiscal.'));
@@ -293,9 +320,12 @@ export function renderAttestation(root, model, onToggle) {
       const t = el('span', 'at');
       t.append(el('b', null, 'Autorizo'));
       const n = model.sealRows.length;
-      t.append(n === 1
-        ? ' este cambio de precio en la factura fiscal.'
-        : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`));
+      const a = Array.isArray(model.addedRows) ? model.addedRows.length : 0;
+      const prices = n === 1 ? 'este cambio de precio' : `estos ${n} cambios de precio`;
+      const adds = a === 1 ? '1 producto nuevo' : `${a} productos nuevos`;
+      t.append(a === 0
+        ? (n === 1 ? ' este cambio de precio en la factura fiscal.' : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`))
+        : (n === 0 ? ` ${adds} con sus precios en la factura fiscal.` : ` ${prices} y ${adds} en la factura fiscal.`));
       return t;
     }));
     root.append(seal);
@@ -309,7 +339,7 @@ export function renderAttestation(root, model, onToggle) {
       // Real pluralisation rather than "cambio(s)": it reads better, and the parenthesised form parses
       // as a function call to the wiring guard that checks every call is defined or imported.
       const n = model.ackSet.length;
-      t.append(` ${n} ${n === 1 ? 'cambio importante' : 'cambios importantes'}: ${model.ackSet.map((a) => a.key).join(', ')}`);
+      t.append(` ${n} ${n === 1 ? 'cambio importante' : 'cambios importantes'}: ${model.ackSet.map((a) => (a.surface === 'item' ? nameOf(a.key) : a.key)).join(', ')}`);
       return t;
     }));
   }
@@ -426,6 +456,8 @@ export const PUBLISH_ACTIONS = {
   REREVIEW: 'rereview',   // the LIVE version moved — call editCatalog for a fresh diff + token
   BACK: 'back',           // something on the review was not confirmed — return and tick it
   RETRY: 'retry',         // nothing about the edit was wrong — send the same payload again
+  FIX: 'fix',             // 1D add-product A: a NEW product needs a correction — back to editing, its drawer open at the field
+  RESET: 'reset',         // 1D add-product A: the saved draft cannot publish — "Volver al menú publicado"
 };
 
 // The six first-class states, each with its own explanation and its own way forward. The copy says
@@ -466,6 +498,54 @@ const PANELS = {
     detail: 'Para publicar precios que se imprimen en la factura fiscal hay que autorizarlos explícitamente. Nada cambió en vivo — volvé a la revisión y marcá "Autorizo".',
     action: { id: PUBLISH_ACTIONS.BACK, label: 'Volver a autorizar' },
   },
+  // ── 1D add-product A — the add-only refusals. Each names what to do; the field ones reopen the product. ──
+  name_taken: { icon: 'warn', title: 'Ese nombre ya está en tu menú',
+    detail: 'Ya hay un producto u opcional con ese nombre. Cambiale el nombre al producto nuevo para poder guardarlo.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  key_taken: { icon: 'warn', title: 'Ese nombre ya está en tu menú',
+    detail: 'Ese nombre coincide con un producto que ya existe. Cambiale el nombre al producto nuevo para poder guardarlo.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  name_previously_used: { icon: 'warn', title: 'Ese nombre ya existió en tu menú',
+    detail: 'Ese nombre ya se usó antes en tu menú — usá otro nombre para el producto nuevo.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  name_required: { icon: 'warn', title: 'Falta el nombre',
+    detail: 'Cada producto nuevo necesita un nombre.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Agregar el nombre' } },
+  name_unusable: { icon: 'warn', title: 'Ese nombre no sirve',
+    detail: 'El nombre necesita al menos una letra o un número.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  category_not_renderable: { icon: 'warn', title: 'Esa sección no se muestra en tu página de pedidos',
+    detail: 'Elegí una de las secciones que tus clientes ven al pedir.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Elegir la sección' } },
+  too_many_additions: { icon: 'warn', title: 'Demasiados productos nuevos a la vez',
+    detail: 'Podés agregar hasta 20 productos por publicación. Quitá algunos, publicá, y agregá el resto después.',
+    action: { id: PUBLISH_ACTIONS.BACK, label: 'Entendido' } },
+  choices_not_supported_yet: { icon: 'info', title: 'Todavía no se pueden agregar productos con elección',
+    detail: 'Por ahora solo se pueden agregar productos sin elección obligatoria.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Entendido' } },
+  existing_item_changed: { icon: 'warn', title: 'Solo se pueden cambiar precios y agregar productos',
+    detail: 'Tu borrador cambia algo más que precios en un producto existente. Volvé al menú publicado y aplicá tus cambios de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  structure_changed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
+    detail: 'Tu borrador cambia la estructura del menú. Volvé al menú publicado y aplicá tus cambios de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  // A saved draft that already differs from the live menu (removed product, changed opcionales, reordered
+  // products) is refused on EVERY save — "Reintentar" would loop forever, so these go to RESET too.
+  existing_item_removed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
+    detail: 'Tu borrador no tiene un producto que está en el menú publicado. Volvé al menú publicado y aplicá tus cambios de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  extras_changed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
+    detail: 'Tu borrador cambia los opcionales más allá de sus precios. Volvé al menú publicado y aplicá tus cambios de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  item_order_changed: { icon: 'warn', title: 'Tu borrador no coincide con el menú publicado',
+    detail: 'Tu borrador cambia el orden de los productos. Volvé al menú publicado y aplicá tus cambios de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  draft_unbuildable: { icon: 'warn', title: 'Tu borrador no se puede publicar',
+    detail: 'Volvé al menú publicado y aplicá tus cambios de nuevo.',
+    action: { id: PUBLISH_ACTIONS.RESET, label: 'Volver al menú publicado' } },
+  flip_evidence_exists: { icon: 'info', title: 'No se publicó',
+    detail: 'El menú en vivo no cambió. Revisá de nuevo los cambios y volvé a confirmar.',
+    action: { id: PUBLISH_ACTIONS.REREVIEW, label: 'Revisar de nuevo' } },
   store_unavailable: {
     icon: 'warn',
     title: 'No se pudo publicar',
@@ -510,6 +590,18 @@ export function outcomeFor(err, op = 'publish') {
   const code = (err && typeof err.code === 'string') ? err.code : null;
   const panel = (code && Object.prototype.hasOwnProperty.call(PANELS, code)) ? PANELS[code] : null;
   const base = { code, op, generic: !panel, ...(panel || GENERIC) };
+  // 1D add-product A — WHICH new product and WHICH field, when the server named them (field-mapped refusals).
+  const b = err && err.body && typeof err.body === 'object' ? err.body : null;
+  if (b) {
+    const target = typeof b.ref === 'string' ? b.ref : (typeof b.key === 'string' ? b.key : null);
+    if (target) base.target = target;
+    if (typeof b.field === 'string') base.field = b.field;
+  }
+  // not_owner on a draft that ADDS products is about adding, not the factura
+  if (code === 'not_owner' && b && typeof b.detail === 'string' && /add products/.test(b.detail)) {
+    base.title = 'Solo el propietario puede agregar productos';
+    base.detail = 'Agregar productos al menú lo hace el propietario del local. Tus cambios de precio siguen en pantalla.';
+  }
 
   // (operation) x (did the server answer?) — the only cell that may claim uncertainty is a PUBLISH
   // whose answer never arrived.
@@ -552,6 +644,8 @@ export function receiptFor(res, captured) {
     // it would ship silently — so it is counted correctly now rather than left as a trap.
     count: rows.length + arr(diff.added).length + arr(diff.removed).length + arr(diff.renamed).length,
     rows,
+    // 1D add-product A §0b.3: the publish went live but the kitchen's list could not be updated after 3 tries.
+    kdsSyncPending: !!(res && res.kds_sync_pending === true),
   };
 }
 
@@ -588,6 +682,9 @@ export function renderReceipt(root, receipt) {
   // The version id, when the server gave one. No "Ver en Historial" button: neither a Historial view
   // nor a rollback endpoint exists, and a control that does nothing is the failure this slice has been
   // guarding against since the 2b-2a switcher shipped display-only.
+  if (receipt.kdsSyncPending) {
+    r.append(el('p', 'kdswarn', 'No se pudo actualizar la lista de la cocina. Avisá al equipo para sincronizarla.'));
+  }
   if (receipt.versionId) {
     const vp = el('div', 'vpill');
     vp.append(el('span', null, 'Versión '));

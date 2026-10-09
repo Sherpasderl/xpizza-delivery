@@ -62,8 +62,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "3e0de68c7c837065b1c26ce31abdadcbcacd303a59e899f90a1c4a7c9fca3a83",
-   "bytes": 61891
+   "sha256": "5f2d2f7a252748c56da9134a811a0022213a49f32563205b6dd77f59c1663675",
+   "bytes": 62965
   }
  },
  "diff_aid": {
@@ -237,6 +237,18 @@
    [
     "",
     ".brow.rem .bnm",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".brules",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".bsec",
     "color",
     "var(--mute)"
    ],
@@ -656,6 +668,12 @@
    ],
    [
     "",
+    ".ferr",
+    "color",
+    "var(--red-text)"
+   ],
+   [
+    "",
     ".fh",
     "color",
     "var(--gold)"
@@ -746,9 +764,21 @@
    ],
    [
     "",
+    ".fld.err input,.fld.err textarea,.fld.err select",
+    "border-color",
+    "var(--red)"
+   ],
+   [
+    "",
     ".fld>label",
     "color",
     "var(--mute2)"
+   ],
+   [
+    "",
+    ".fotosoon",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -857,6 +887,12 @@
     ".irow:hover .iinfo.clk .nm",
     "color",
     "var(--accent)"
+   ],
+   [
+    "",
+    ".kdswarn",
+    "color",
+    "var(--red-text)"
    ],
    [
     "",
@@ -1115,6 +1151,18 @@
     ".nav:hover",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".newtag",
+    "background",
+    "var(--green-soft)"
+   ],
+   [
+    "",
+    ".newtag",
+    "color",
+    "var(--green-text)"
    ],
    [
     "",
@@ -1955,6 +2003,18 @@
     ".tslot:hover",
     "background",
     "var(--board-2)"
+   ],
+   [
+    "",
+    ".unpub p",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".unpub",
+    "background",
+    "var(--red-soft)"
    ],
    [
     "",

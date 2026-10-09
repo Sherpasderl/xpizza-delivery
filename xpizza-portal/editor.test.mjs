@@ -21,6 +21,7 @@ import assert from 'node:assert';
 import {
   createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount,
   isPublishable, invalidKeys, discard, commit, commitTo, draftSource, parsePrice, canEditDraft,
+  addProduct, setAddition, removeAddition, adopt, rowId, incompleteAdditions,
 } from './editor.js';
 
 const SRC = () => ({
@@ -458,4 +459,113 @@ test('🔴 the boundary itself cannot be switched off', () => {
   assert.strictEqual(draft.state.items[0].price, 310, 'an unlocked draft still edits');
   discard(draft);
   assert.strictEqual(draft.state.items[0].price, 299, 'and discard still restores — it assigns draft.state');
+});
+
+
+// ── 1D add-product A — ADDING plain products ───────────────────────────────────────────────────────────────────
+const REF = 'tmp:aaaaaaaa-1111-2222-3333-444444444444';
+test('addProduct appends a row with a TEMPORARY reference and nothing the server owns, at the end of item_order', () => {
+  const d = createDraft(SRC());
+  addProduct(d, { ref: REF, cat: 'c1' });
+  const row = d.state.items.at(-1);
+  assert.deepStrictEqual(row, { ref: REF, price: null, display: { cat: 'c1', name: '', price: null } });
+  assert.ok(!('key' in row) && !('id' in row.display) && !('identity_id' in row.display), 'no key, no id, no stamp');
+  assert.deepStrictEqual(d.state.structure.item_order.at(-1), REF, 'appended LAST');
+  assert.deepStrictEqual(d.orig.items.length, 2, 'the loaded document is untouched');
+  addProduct(d, { ref: REF, cat: 'c1' });
+  assert.strictEqual(d.state.items.length, 3, 'the same reference is never added twice');
+  for (const bad of [{ ref: 'x', cat: 'c1' }, { ref: REF + 'b' }, { cat: 'c1' }]) { addProduct(d, bad); }
+  assert.strictEqual(d.state.items.length, 3, 'a malformed request adds nothing');
+  addProduct(d, { ref: 'tmp:bbbbbbbb-1', cat: 'c1', subcat: 'calientes' });
+  assert.strictEqual(d.state.items.at(-1).display.subcat, 'calientes');
+  assert.strictEqual(rowId(d.state.items.at(-1)), 'tmp:bbbbbbbb-1'); assert.strictEqual(rowId(d.state.items[0]), 'Plato Uno');
+});
+
+test('setAddition edits an UNSAVED addition only; prices go through parsePrice; never an existing product', () => {
+  const d = createDraft(SRC());
+  addProduct(d, { ref: REF, cat: 'c1' });
+  setAddition(d, REF, 'name', 'Pizza Nueva'); setAddition(d, REF, 'desc', 'rica'); setAddition(d, REF, 'price', '420');
+  assert.deepStrictEqual(d.state.items.at(-1), { ref: REF, price: 420, display: { cat: 'c1', name: 'Pizza Nueva', price: 420, desc: 'rica' } });
+  setAddition(d, REF, 'price', '12.5');
+  assert.strictEqual(d.state.items.at(-1).price, null, 'a non-price is held as null, never coerced');
+  setAddition(d, REF, 'desc', '   '); assert.ok(!('desc' in d.state.items.at(-1).display), 'a blank description is removed, not stored');
+  setAddition(d, REF, 'subcat', 's1'); setAddition(d, REF, 'cat', 'c2');
+  assert.deepStrictEqual([d.state.items.at(-1).display.cat, d.state.items.at(-1).display.subcat], ['c2', undefined], 'a new section drops the old subsection');
+  setAddition(d, REF, 'key', 'Forged'); setAddition(d, REF, 'id', 9); setAddition(d, REF, 'identity_id', 'x');
+  assert.ok(!('key' in d.state.items.at(-1)) && !('id' in d.state.items.at(-1).display), 'key / id / stamp are not fields it writes');
+  setAddition(d, 'Plato Uno', 'name', 'Renombrado');
+  assert.strictEqual(d.state.items[0].display.name, 'Plato Uno', 'an EXISTING product cannot be renamed through it');
+  // once the server allocated a key the row is no longer "unsaved": its name is the server's
+  adopt(d, { ...d.state, items: d.state.items.map((i) => (i.ref ? { key: 'Pizza Nueva', price: 420, display: { ...i.display, id: 3, name: 'Pizza Nueva' } } : i)),
+    structure: { ...d.state.structure, item_order: ['Plato Uno', 'Plato Dos', 'Pizza Nueva'] } });
+  setAddition(d, 'Pizza Nueva', 'name', 'Otro');
+  assert.strictEqual(d.state.items.at(-1).display.name, 'Pizza Nueva', 'a saved addition’s name is fixed');
+});
+
+test('removeAddition ("Quitar") removes an addition — unsaved, or saved-and-unpublished when listed — and NEVER an existing product', () => {
+  const d = createDraft(SRC());
+  addProduct(d, { ref: REF, cat: 'c1' });
+  removeAddition(d, REF);
+  assert.deepStrictEqual([d.state.items.length, d.state.structure.item_order], [2, ['Plato Uno', 'Plato Dos']], 'gone from items AND item_order');
+  removeAddition(d, 'Plato Uno');
+  removeAddition(d, 'Plato Uno', new Set());
+  assert.strictEqual(d.state.items.length, 2, 'an existing product is never removed');
+  const withSaved = createDraft({ ...SRC(), items: [...SRC().items, { key: 'Guardado', price: 5, display: { id: 9, cat: 'c1', name: 'Guardado', price: 5 } }],
+    structure: { ...SRC().structure, item_order: ['Plato Uno', 'Plato Dos', 'Guardado'] } });
+  removeAddition(withSaved, 'Guardado');
+  assert.strictEqual(withSaved.state.items.length, 3, 'a saved row is removable ONLY when the server listed it as an addition');
+  removeAddition(withSaved, 'Guardado', new Set(['Guardado']));
+  assert.deepStrictEqual(withSaved.state.structure.item_order, ['Plato Uno', 'Plato Dos']);
+});
+
+test('🔴 the add-only mutators respect the STATE boundary; adopt is server truth and does not', () => {
+  let open = false;
+  const d = createDraft(SRC(), { canEdit: () => open });
+  addProduct(d, { ref: REF, cat: 'c1' });
+  assert.strictEqual(d.state.items.length, 2, 'addProduct refused while the draft is owned');
+  open = true; addProduct(d, { ref: REF, cat: 'c1' }); open = false;
+  setAddition(d, REF, 'name', 'X'); removeAddition(d, REF);
+  assert.deepStrictEqual([d.state.items.length, d.state.items.at(-1).display.name], [3, ''], 'setAddition / removeAddition refused while owned');
+  const canonical = { ...SRC(), items: [...SRC().items, { key: 'Nueva', price: 9, display: { id: 3, cat: 'c1', name: 'Nueva', price: 9 } }] };
+  adopt(d, canonical);
+  assert.deepStrictEqual(d.state, canonical, 'adopt installs the server’s canonical source even while the review owns the draft');
+  canonical.items.pop();
+  assert.strictEqual(d.state.items.length, 3, 'adopt copies — the response object can no longer reach the draft');
+  adopt(d, null); adopt(d, { items: 'x' });
+  assert.strictEqual(d.state.items.length, 3, 'a malformed response is ignored');
+});
+
+test('🔴 DIRTY-GUARD: pendingChanges counts ADDED and REMOVED rows, so a self-update reload never discards an unsaved product', () => {
+  const d = createDraft(SRC());
+  assert.strictEqual(pendingCount(d), 0);
+  addProduct(d, { ref: REF, cat: 'c1' });
+  assert.deepStrictEqual(pendingChanges(d), [{ surface: 'item', key: REF, from: null, to: null, added: true }]);
+  assert.strictEqual(pendingCount(d), 1, 'an unsaved product with NO price and NO name is still pending work');
+  const saved = { ...SRC(), items: [...SRC().items, { key: 'Guardado', price: 5, display: { id: 9, cat: 'c1', name: 'Guardado', price: 5 } }] };
+  const d2 = createDraft(saved);
+  removeAddition(d2, 'Guardado', new Set(['Guardado']));
+  assert.deepStrictEqual(pendingChanges(d2), [{ surface: 'item', key: 'Guardado', from: 5, to: null, removed: true }], 'a removed addition is pending too');
+  discard(d); assert.strictEqual(pendingCount(d), 0, 'discard drops the unsaved addition');
+});
+
+test('isPublishable refuses an unsaved addition without a name or a price — on the row, before the review', () => {
+  const d = createDraft(SRC());
+  addProduct(d, { ref: REF, cat: 'c1' });
+  assert.deepStrictEqual([isPublishable(d), incompleteAdditions(d), invalidKeys(d)], [false, [REF], [{ surface: 'item', key: REF }]]);
+  setAddition(d, REF, 'name', 'Pizza'); assert.strictEqual(isPublishable(d), false, 'still no price');
+  setAddition(d, REF, 'price', '300'); assert.strictEqual(isPublishable(d), true);
+  setAddition(d, REF, 'name', '   '); assert.strictEqual(isPublishable(d), false, 'a blank name is no name');
+});
+
+
+test('🔴 RULING A (wiring): the editor never AUTHORS or ALTERS deleted_ids — it only echoes the server-owned claim it loaded', () => {
+  const claim = { ids: ['item:7'], base: 'v3' };
+  const withClaim = createDraft({ ...SRC(), deleted_ids: claim });
+  const without = createDraft(SRC());
+  for (const d of [withClaim, without]) {
+    addProduct(d, { ref: REF, cat: 'c1' }); setAddition(d, REF, 'name', 'N'); setAddition(d, REF, 'price', '9');
+    setItemPrice(d, 'Plato Uno', '260'); removeAddition(d, REF); addProduct(d, { ref: REF + '2', cat: 'c1' });
+  }
+  assert.deepStrictEqual(draftSource(withClaim).deleted_ids, claim, 'a stored claim is echoed byte-for-byte (the server classifies that as an echo)');
+  assert.ok(!('deleted_ids' in draftSource(without)), 'and none is ever created');
 });

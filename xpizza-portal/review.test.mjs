@@ -1031,3 +1031,83 @@ test('🔴 an EMPTY diff attests to nothing and publishes nothing', () => {
   assert.strictEqual(one.hasNothing, false, 'one change is not nothing');
   assert.strictEqual(canPublish(one, false), true, 'and it publishes');
 });
+
+
+// ── 1D add-product A — the add-only review, attestation, panels and receipt ─────────────────────────────────────
+import { readFileSync } from 'node:fs';
+
+const ADD_DIFF = () => ({ added: [{ surface: 'item', key: 'Pizza Nueva', price: 420 }, { surface: 'extra', key: 'x', price: 5 }],
+  removed: [], renamed: [], changed: [{ key: 'Pizza Margherita', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] });
+
+test('attestation: a NEW product is a priced line — it joins the zero-price refusal and the seal copy', () => {
+  const m = attestationModel(ADD_DIFF(), { usesPlatformFactura: true });
+  assert.deepStrictEqual(m.addedRows, [{ key: 'Pizza Nueva', now: 420 }], 'only ITEM additions, with their price');
+  assert.strictEqual(m.hasZero, false);
+  for (const bad of [0, null, 12.5, '420']) {
+    const d = ADD_DIFF(); d.added[0].price = bad;
+    const z = attestationModel(d, { usesPlatformFactura: true });
+    assert.strictEqual(z.hasZero, true, `an added product priced ${JSON.stringify(bad)} blocks the publish`);
+    assert.strictEqual(canPublish(z, true), false, '...whatever was ticked');
+  }
+  const root = fakeDom();
+  renderAttestation(root, m, () => {}, { describe: (x) => (x.key === 'Pizza Nueva' ? { name: 'Pizza Nueva (rica)' } : null) });
+  const t = textOf(root);
+  assert.ok(t.includes('Vas a agregar 1 producto nuevo con este precio:'), t);
+  assert.ok(t.includes('Pizza Nueva (rica)') && t.includes('420'), 'the new product by its DISPLAY name, with its price');
+  assert.ok(t.includes('este cambio de precio y 1 producto nuevo en la factura fiscal.'), 'one signature covers both');
+  const two = ADD_DIFF(); two.changed = []; two.added.push({ surface: 'item', key: 'Otra', price: 100 });
+  const r2 = fakeDom(); renderAttestation(r2, attestationModel(two, { usesPlatformFactura: true }), () => {});
+  assert.ok(textOf(r2).includes('Vas a agregar 2 productos nuevos con estos precios:') && textOf(r2).includes('2 productos nuevos con sus precios en la factura fiscal.'));
+});
+
+test('review: a new product reads as name · section + inherited rules, not its key', () => {
+  const root = fakeDom();
+  renderReview(root, reviewModel(ADD_DIFF()), { describe: (x) => (x.surface === 'item' ? { name: 'Pizza Nueva', section: 'NY', rules: ['Solo para recoger', 'Solo fines de semana'] } : null) });
+  const t = textOf(root);
+  assert.ok(t.includes('Pizza Nueva') && t.includes(' · NY') && t.includes('Solo para recoger · Solo fines de semana'), t);
+  assert.ok(t.includes('Nuevo'), 'the NUEVO chip');
+  const plain = fakeDom(); renderReview(plain, reviewModel(ADD_DIFF()));
+  assert.ok(textOf(plain).includes('Pizza Nueva'), 'without a describer it still shows the key, never nothing');
+});
+
+test('🔴 EVERY merchant-reachable add-product refusal has a designed panel — derived from the SERVER source, not a list', () => {
+  const src = readFileSync(new URL('../xpizza-functions/catalog/add-product.js', import.meta.url), 'utf8');
+  const codes = [...new Set([...src.matchAll(/refuse\('([a-z_]+)'/g)].map((m) => m[1]))];
+  assert.ok(codes.length >= 15, `the server source was actually read (${codes.length} codes)`);
+  // Not reachable from this portal (it never sends a key, an id, a malformed row or a mismatched ref), or a server
+  // configuration fault the merchant cannot fix: the generic panel is the honest answer for these.
+  const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent']);
+  const RESET = new Set(['existing_item_changed', 'existing_item_removed', 'extras_changed', 'item_order_changed', 'structure_changed']);
+  for (const c of codes) {
+    if (GENERIC_BY_DESIGN.has(c)) continue;
+    const o = outcomeFor(err(c, 409), 'edit');
+    assert.strictEqual(o.generic, false, `${c} lands on a designed panel`);
+    assert.notStrictEqual(o.action.id, PUBLISH_ACTIONS.RETRY, `${c} is deterministic — RETRY would be refused again, forever`);
+    if (RESET.has(c)) assert.strictEqual(o.action.id, PUBLISH_ACTIONS.RESET, `${c}: a drifted draft recovers only by "Volver al menú publicado"`);
+  }
+  for (const c of GENERIC_BY_DESIGN) assert.ok(codes.includes(c), `${c} is still a real server code (no stale exemption)`);
+  for (const c of ['draft_unbuildable']) assert.strictEqual(outcomeFor(err(c, 400), 'edit').action.id, PUBLISH_ACTIONS.RESET);
+  assert.strictEqual(outcomeFor(err('flip_evidence_exists', 409)).action.id, PUBLISH_ACTIONS.REREVIEW, 'flip evidence: nothing changed live, re-review');
+});
+
+test('a field-mapped refusal carries WHICH new product and WHICH field; not_owner on an add speaks about adding', () => {
+  const e = Object.assign(err('name_taken', 409), { body: { error: 'name_taken', ref: 'tmp:1', key: 'K', field: 'name' } });
+  const o = outcomeFor(e, 'edit');
+  assert.deepStrictEqual([o.target, o.field, o.action.id], ['tmp:1', 'name', PUBLISH_ACTIONS.FIX], 'the ref wins over the key');
+  assert.strictEqual(outcomeFor(Object.assign(err('key_taken', 409), { body: { key: 'K' } }), 'edit').target, 'K');
+  assert.strictEqual(outcomeFor(err('name_taken', 409), 'edit').target, undefined, 'no body, no invented target');
+  const own = outcomeFor(Object.assign(err('not_owner', 403), { body: { detail: 'only the owner can add products' } }), 'edit');
+  assert.strictEqual(own.title, 'Solo el propietario puede agregar productos');
+  assert.notStrictEqual(outcomeFor(err('not_owner', 403), 'edit').title, own.title, 'a price-only not_owner keeps its own panel');
+});
+
+test('the receipt warns when the kitchen list could not be updated — only on a literal true', () => {
+  const cap = { diff: ADD_DIFF() };
+  assert.strictEqual(receiptFor({ versionId: 'v1' }, cap).count, 3, 'additions count as changes');
+  for (const [res, want] of [[{ kds_sync_pending: true }, true], [{ kds_sync_pending: 'true' }, false], [{}, false], [null, false]]) {
+    const r = receiptFor(res, cap);
+    assert.strictEqual(r.kdsSyncPending, want);
+    const root = fakeDom(); renderReceipt(root, r);
+    assert.strictEqual(textOf(root).includes('No se pudo actualizar la lista de la cocina'), want);
+  }
+});

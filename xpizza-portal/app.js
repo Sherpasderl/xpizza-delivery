@@ -3,8 +3,8 @@
 // Rendering the menu is Task 6; this resolves WHICH restaurant is in view and keeps that choice.
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
-import { apiFetch, editCatalog, publishEdited } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, commitTo, draftSource, optionGroups, groupUsage } from './editor.js';
+import { apiFetch, editCatalog, publishEdited, resetDraftToLive } from './api.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, commitTo, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
@@ -12,7 +12,7 @@ import { token } from './auth.js';
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
-export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null };
+export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set() };
 
 export { pickRid, messageFor } from './portal-logic.js';
 
@@ -388,6 +388,12 @@ export async function loadMenu(rid) {
   state.sourceUpdateTime = null;
   state.menuLoading = true;
   state.usesPlatformFactura = false;
+  // 1D add-product A — per-load facts from the server (never derived from a rid)
+  state.additionKeys = new Set();
+  state.renderedCategories = [];
+  state.restaurantName = '';
+  state.draftUnpublishable = null;
+  state.drawerError = null;
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
   const gen = opGeneration;
   $('detail').replaceChildren();
@@ -407,6 +413,10 @@ export async function loadMenu(rid) {
     $('rail').replaceChildren();
     const [t, d] = messageFor(e);
     showEmpty(t, d);
+    // 1D add-product A §0.1 — a stored draft that cannot even be loaded says WHY and carries its revision: offer the
+    // way back to the published menu instead of a dead end.
+    const b = e && e.body;
+    if (b && b.draft_unpublishable && typeof b.sourceUpdateTime === 'string') offerResetToLive($('detail'), rid, b.sourceUpdateTime);
     syncUi();
     return;
   }
@@ -422,6 +432,7 @@ export async function loadMenu(rid) {
     { canEdit: () => editLockHolder === null });
   state.sourceUpdateTime = (data && data.sourceUpdateTime) || null;
   state.usesPlatformFactura = (data && data.usesPlatformFactura) === true;
+  applyAddProductFacts(data);
   // WHICH TENANT THIS DRAFT IS. Recorded with the draft, from the rid the request was made for — so
   // the write path names the restaurant it actually loaded rather than the one currently selected.
   state.draftRid = rid;
@@ -443,6 +454,73 @@ function repaintFromDraft() {
   }
   paint();
   refreshBar();
+}
+
+// ── 1D add-product A — the facts the add flow reads, all from the server's getEditableCatalog response ──────────
+function applyAddProductFacts(data) {
+  state.additionKeys = new Set(Array.isArray(data && data.pendingAdditions) ? data.pendingAdditions.filter((k) => typeof k === 'string') : []);
+  state.renderedCategories = Array.isArray(data && data.renderedCategories) ? data.renderedCategories.filter((c) => typeof c === 'string') : [];
+  state.restaurantName = (data && typeof data.restaurantName === 'string') ? data.restaurantName : '';
+  state.draftUnpublishable = (data && data.draft_unpublishable && typeof data.draft_unpublishable === 'object') ? data.draft_unpublishable : null;
+}
+// A NEW product: still unsaved (a temporary reference), or saved but not yet published (the server said so).
+const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWith('tmp:') && !('key' in it));
+function isAddition(it) {
+  return isTmpRow(it) || !!(it && typeof it.key === 'string' && state.additionKeys && state.additionKeys.has(it.key));
+}
+const canAddTo = (catId) => state.renderedCategories.includes(catId);   // always an array: declared [] and set from data
+const categoriesOf = () => { const st = (draftSource(state.draft) || {}).structure || {}; return Array.isArray(st.categories) ? st.categories : []; };
+const categoryName = (id) => { const c = categoriesOf().find((x) => x && String(x.id) === String(id)); return (c && typeof c.name === 'string' && c.name.trim()) ? c.name : String(id); };
+// What a NEW product inherits from its section — said in the review so the owner knows before publishing.
+function inheritedRules(catId) {
+  const st = (draftSource(state.draft) || {}).structure || {};
+  const has = (f) => Array.isArray(st[f]) && st[f].includes(catId);
+  const out = [];
+  if (has('pickup_only_cats')) out.push('Solo para recoger');
+  if (has('weekend_only_cats')) out.push('Solo fines de semana');
+  if (has('redeem_eligible_cats')) out.push('Canjeable con recompensas');
+  return out;
+}
+function describeAddition(x) {
+  const it = ((draftSource(state.draft) || {}).items || []).find((i) => i && rowId(i) === (x && x.key));
+  if (!it || !it.display) return null;
+  const d = it.display;
+  return { name: typeof d.name === 'string' && d.name.trim() ? d.name : String(x.key),
+    section: categoryName(d.cat) + (typeof d.subcat === 'string' && d.subcat ? ` / ${d.subcat}` : ''), rules: inheritedRules(d.cat) };
+}
+function onAddProduct(catId) {
+  if (!state.draft || !canAddTo(catId)) return;
+  const ref = `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
+  const cat = categoriesOf().find((c) => c && String(c.id) === String(catId));
+  addProduct(state.draft, { ref, cat: catId, subcat: (cat && Array.isArray(cat.subcats) && cat.subcats.length === 1) ? cat.subcats[0] : null });
+  if (!draftSource(state.draft).items.some((i) => i && i.ref === ref)) return;   // refused (the draft is owned)
+  state.drawerError = null;
+  repaintFromDraft();
+  openDrawer(ref);
+}
+// "Volver al menú publicado" (§0.1): replace the saved draft with the published menu, conditional on the revision
+// the owner saw, then load it again. Distinct from "Descartar", which only drops unsaved edits in this browser.
+async function resetToLive(rid, expectedRevision) {
+  if (!rid || typeof expectedRevision !== 'string') return;
+  try {
+    await resetDraftToLive({ rid, expectedRevision, token });
+  } catch (e) {
+    const [t, d] = messageFor(e);
+    showEmpty(t, d);
+    return;
+  }
+  await loadMenu(rid);
+}
+function offerResetToLive(host, rid, rev) {
+  const box = document.createElement('div');
+  box.className = 'unpub';
+  const p = document.createElement('p');
+  p.textContent = 'Tu borrador guardado no se puede publicar tal como está. Podés volver al menú publicado y aplicar tus cambios de nuevo.';
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button'; resetBtn.className = 'btn accent'; resetBtn.textContent = 'Volver al menú publicado';
+  resetBtn.addEventListener('click', bound(() => resetToLive(rid, rev)));
+  box.append(p, resetBtn);
+  host.prepend(box);
 }
 
 // The review bar states the count in the merchant's own terms and gates the way forward. It is the
@@ -480,6 +558,7 @@ function refreshBar() {
 
 function onPrice(surface, key, value) {
   if (surface === 'extra') setExtraPrice(state.draft, key, value);
+  else if (typeof key === 'string' && key.startsWith('tmp:')) setAddition(state.draft, key, 'price', value);   // an unsaved addition
   else setItemPrice(state.draft, key, value);
   // The bar updates on every keystroke; the rows are NOT rebuilt, or the field being typed into would
   // be replaced mid-keystroke and lose the caret.
@@ -511,7 +590,12 @@ function paint() {
     // unbound would have closed the two cases the review named and left the ordinary one open.
     onPrice: bound(onPrice),
     onOpen: openDrawer,
+    // 1D add-product A — NUEVO tags, and "Agregar producto" only on sections the order page draws
+    isAddition,
+    canAdd: canAddTo,
+    onAdd: bound(onAddProduct),
   });
+  if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
 }
 
 // ── the item drawer (Task 3: PRICE ONLY) ───────────────────────────────────────────────────────
@@ -561,9 +645,10 @@ function renderDrawer() {
   const keepScroll = scroller ? scroller.scrollTop : 0;
 
   const src = draftSource(state.draft);
-  const it = (src.items || []).find((i) => i && i.key === state.drawerKey);
+  const it = (src.items || []).find((i) => i && rowId(i) === state.drawerKey);
   d.replaceChildren();
   if (!it) { d.classList.remove('show'); return; }
+  if (isAddition(it)) { renderAddDrawer(d, it, keepScroll); return; }   // 1D add-product A
 
   const head = document.createElement('div');
   head.className = 'dwh';
@@ -608,6 +693,120 @@ function renderDrawer() {
   // it in. `.hidden` (display:none) is the APP SHELL's mechanism, not this panel's — toggling it here
   // left the drawer permanently off-canvas while every structural check still passed, because the
   // listeners were all correctly attached to a panel nobody could see.
+  d.classList.add('show');
+  body.scrollTop = keepScroll;
+}
+
+// ── 1D add-product A — THE "NUEVO PRODUCTO" DRAWER (the approved mock's Phase A subset) ────────────────────────
+// Foto (próximamente), Nombre, Descripción, Sección (+ Subsección when the section needs one), Precio, the fiscal
+// note from DATA, and Quitar / Listo. NOT here (Phase B or never in A): "Elección requerida", rename / delete / 86 of
+// existing products, the mock's scaffolding. Every write goes through the guarded editor (setAddition /
+// setItemPrice / removeAddition); nothing below assigns a draft field.
+// An unsaved addition is fully editable; a saved-but-unpublished one shows its name and section and keeps only its
+// price and Quitar (its key is now the server's).
+function renderAddDrawer(d, it, keepScroll) {
+  const id = rowId(it);
+  const unsaved = isTmpRow(it);
+  const disp = it.display || {};
+  // the field error after a refused save — copied as PRIMITIVES (a state object never leaves its scope)
+  const errOn = !!(state.drawerError && state.drawerError.target === id);
+  const errField = errOn && typeof state.drawerError.field === 'string' ? `${state.drawerError.field}` : '';
+  const errMsg = errOn && typeof state.drawerError.message === 'string' ? `${state.drawerError.message}` : '';
+  const errFor = (field) => (errOn && (errField === field || (!errField && field === 'name')) ? errMsg : null);
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const field = (label, control, errKey) => {
+    const f = mk('div', 'fld');
+    f.append(mk('label', null, label), control);
+    const m = errKey ? errFor(errKey) : null;
+    if (m) { f.classList.add('err'); f.append(mk('div', 'ferr', m)); }
+    return f;
+  };
+  const after = () => { refreshBar(); paint(); };
+
+  const head = mk('div', 'dwh');
+  const title = mk('div', 'dwt', 'Nuevo producto');
+  title.append(mk('span', 'newtag', 'Nuevo'));
+  const close = document.createElement('button');
+  close.type = 'button'; close.className = 'dwx'; close.textContent = 'Cerrar';
+  close.addEventListener('click', () => { state.drawerKey = null; d.classList.remove('show'); });
+  head.append(title, close);
+
+  const body = mk('div', 'dwb');
+  body.append(field('Foto', mk('div', 'fotosoon', 'Foto: próximamente — por ahora se muestra el emoji de la sección.')));
+
+  const name = document.createElement('input');
+  name.type = 'text'; name.value = typeof disp.name === 'string' ? disp.name : ''; name.setAttribute('aria-label', 'Nombre');
+  name.disabled = !unsaved;
+  name.addEventListener('input', bound(() => { setAddition(state.draft, id, 'name', name.value); after(); }));
+  body.append(field('Nombre', name, 'name'));
+
+  const desc = document.createElement('textarea');
+  desc.value = typeof disp.desc === 'string' ? disp.desc : ''; desc.setAttribute('aria-label', 'Descripción');
+  desc.placeholder = 'Ingredientes, porción…'; desc.disabled = !unsaved;
+  desc.addEventListener('input', bound(() => { setAddition(state.draft, id, 'desc', desc.value); after(); }));
+  body.append(field('Descripción', desc, 'desc'));
+
+  const row2 = mk('div', 'drow2');
+  const sec = document.createElement('select');
+  sec.setAttribute('aria-label', 'Sección'); sec.disabled = !unsaved;
+  for (const c of categoriesOf()) {
+    const catId = String(c && c.id);
+    if (!canAddTo(catId)) continue;   // declared AND drawn by the order page
+    const o = mk('option', null, categoryName(catId));
+    o.value = catId; o.selected = catId === disp.cat;
+    sec.append(o);
+  }
+  sec.addEventListener('change', bound(() => { setAddition(state.draft, id, 'cat', sec.value); state.selectedCat = sec.value; after(); renderDrawer(); }));
+  row2.append(field('Sección', sec, 'cat'));
+  const prf = mk('div', 'fld pr');
+  prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
+  const price = document.createElement('input');
+  price.type = 'text'; price.inputMode = 'numeric'; price.setAttribute('aria-label', 'Precio');
+  price.value = (Number.isInteger(it.price) && it.price > 0) ? String(it.price) : ''; price.placeholder = 'Sin precio';
+  price.addEventListener('input', bound(() => {
+    if (unsaved) setAddition(state.draft, id, 'price', price.value); else setItemPrice(state.draft, id, price.value);
+    refreshBar(); syncRow('item', id, price.value);
+  }));
+  prf.append(price);
+  if (errFor('price')) { prf.classList.add('err'); prf.append(mk('div', 'ferr', errFor('price'))); }
+  row2.append(prf);
+  body.append(row2);
+
+  // Subsección — only when the chosen section declares subsections (the server requires one there)
+  const cat = categoriesOf().find((c) => c && String(c.id) === String(disp.cat));
+  if (cat && Array.isArray(cat.subcats) && cat.subcats.length) {
+    const sub = document.createElement('select');
+    sub.setAttribute('aria-label', 'Subsección'); sub.disabled = !unsaved;
+    const ph = mk('option', null, 'Elegí una subsección'); ph.value = ''; ph.disabled = true; ph.selected = !disp.subcat;
+    sub.append(ph);
+    for (const sc of cat.subcats) { const o = mk('option', null, String(sc)); o.value = String(sc); o.selected = sc === disp.subcat; sub.append(o); }
+    sub.addEventListener('change', bound(() => { setAddition(state.draft, id, 'subcat', sub.value); after(); }));
+    body.append(field('Subsección', sub, 'subcat'));
+  }
+
+  if (state.usesPlatformFactura) {
+    const note = mk('div', 'fiscnote');
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24');
+    for (const dd of ['M12 3l7 4v5c0 5-3 8-7 9-4-1-7-4-7-9V7z', 'M9 12l2 2 4-4']) { const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', dd); svg.append(pth); }
+    note.append(svg, document.createTextNode('Este precio aparece en la factura fiscal' + ' (SAR) de ' + (state.restaurantName || 'tu restaurante') + ' — el cambio pedirá tu autorización al publicar.'));
+    body.append(note);
+  }
+
+  const foot = mk('div', 'dwf');
+  const quitar = document.createElement('button');
+  quitar.type = 'button'; quitar.className = 'btn delx'; quitar.textContent = 'Quitar';
+  quitar.addEventListener('click', bound(() => {
+    removeAddition(state.draft, id, state.additionKeys);
+    state.drawerError = null;
+    closeDrawer(); repaintFromDraft();
+  }));
+  const listo = document.createElement('button');
+  listo.type = 'button'; listo.className = 'btn accent'; listo.textContent = 'Listo';
+  listo.addEventListener('click', bound(() => { state.drawerKey = null; d.classList.remove('show'); paint(); }));
+  foot.append(quitar, listo);
+
+  d.append(head, body, foot);
   d.classList.add('show');
   body.scrollTop = keepScroll;
 }
@@ -779,6 +978,15 @@ async function openReviewFlow() {
     // Everything the publish will need, kept exactly as the server sent it. The ack set is captured
     // here — at the moment the token was minted — so what is replayed is what the token is bound to.
     const diff = res && res.diff;
+    // 1D add-product A §3 — ADOPT the canonical saved source (allocated keys / ids, canonical order) before the review
+    // is built, so what the owner reviews — and every later save — is server truth. The saved additions are now known
+    // by key.
+    if (res && res.source) {
+      adopt(state.draft, res.source);
+      for (const a of ((diff && diff.added) || [])) if (a && a.surface === 'item' && typeof a.key === 'string') state.additionKeys.add(a.key);
+      state.drawerError = null;
+      repaintFromDraft();
+    }
     // THE ATTESTATION, gated on the SERVER's capability flag — never on the rid. usesPlatformFactura
     // came back with getEditableCatalog (Task 2b) and is the only thing that decides whether this
     // merchant's edit touches a SAR factura.
@@ -804,7 +1012,7 @@ async function openReviewFlow() {
     // 🔴 RENDERED FROM THE MINTED RECORD, not from the locals it was built out of. What the merchant
     // reads must be the same object the publish will send — rendering from the pre-freeze originals
     // would leave a second, mutable copy of the evidence alive for as long as this scope is.
-    renderReview($('mbody'), reviewModel(state.review.diff));
+    renderReview($('mbody'), reviewModel(state.review.diff), { describe: describeAddition });
     const attBox = document.createElement('div');
     $('mbody').append(attBox);
     // BOUND to this review and this world. Dispatching A's checkbox after B opened must acknowledge
@@ -815,7 +1023,7 @@ async function openReviewFlow() {
     renderAttestation(attBox, state.review.attestation, bound((v) => {
       minted.acknowledge(v);
       syncUi();
-    }));
+    }), { describe: describeAddition });
     syncPublishButton();
     restorePublishFooter();
     // The drawer is z-index 26; the review scrim is 20. An open drawer therefore sits OVER the
@@ -1027,7 +1235,23 @@ async function runPublish() {
   // the merchant had typed since as though it had published. If the snapshot is missing we do not know
   // what went live, so the baseline is left alone and the changes stay pending — visible and
   // republishable, rather than quietly marked live.
-  if (captured && captured.submitted) commitTo(state.draft, captured.submitted);
+  // 1D add-product A §3 — RELOAD the authoritative source and revision before editing resumes: a certified publish
+  // writes identity stamps back to the source (so "publish doesn't change the revision" no longer holds), and the
+  // published additions stop being additions. Same tenant + generation guards as every load; the lock is held until
+  // the reload settles, so nothing can be edited against a baseline that is about to move. If the reload fails, the
+  // old behaviour stands: the reviewed snapshot becomes the baseline.
+  const rid = state.draftRid;
+  let fresh = null;
+  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
+  if (gen !== opGeneration || rid !== state.draftRid) return;
+  if (fresh && fresh.source) {
+    state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null });
+    state.sourceUpdateTime = fresh.sourceUpdateTime || null;
+    state.usesPlatformFactura = fresh.usesPlatformFactura === true;
+    applyAddProductFacts(fresh);
+  } else if (captured && captured.submitted) {
+    commitTo(state.draft, captured.submitted);
+  }
   releaseEditLock(state.reviewLock);      // the publish is done; editing is handed back
   state.reviewLock = null;
   repaintFromDraft();
@@ -1087,6 +1311,26 @@ function showOutcome(outcome) {
       // DIRECTLY: rendering this panel detached #pubbtn, so any lookup of it here is null.
       restorePublishFooter();
       await runPublish();
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.FIX) {
+      // 1D add-product A — back to editing, with the new product's drawer open at the field the server named
+      $('scrim').classList.remove('show');
+      clearReview();
+      if (outcome.target) {
+        state.drawerError = { target: outcome.target, field: outcome.field || null, message: outcome.detail };
+        const it = (draftSource(state.draft).items || []).find((i) => i && rowId(i) === outcome.target);
+        if (it && it.display && it.display.cat) state.selectedCat = it.display.cat;
+        paint(); syncUi();
+        openDrawer(outcome.target);
+      } else { paint(); syncUi(); }
+      return;
+    }
+    if (id === PUBLISH_ACTIONS.RESET) {
+      // 1D add-product A §0.1 — "Volver al menú publicado"
+      $('scrim').classList.remove('show');
+      clearReview();
+      await resetToLive(state.draftRid, state.sourceUpdateTime);
       return;
     }
     // An action id nothing handles must do NOTHING rather than fall through into a publish. Every id

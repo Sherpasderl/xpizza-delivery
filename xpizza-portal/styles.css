@@ -326,6 +326,17 @@
   .dwf{padding:15px 22px;border-top:1px solid var(--line2);display:flex;gap:10px;align-items:center}
   .dwf .delx{color:var(--red);border-color:transparent;background:transparent;margin-right:auto;padding-left:2px}
   .dwf .delx:hover{color:var(--red-text);background:var(--red-soft)}
+  /* 1D add-product A — the "Nuevo producto" drawer (the approved mock's Phase A subset) */
+  .newtag{display:inline-flex;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;background:var(--green-soft);color:var(--green-text);border:1px solid var(--green-line);vertical-align:2px}
+  .fotosoon{border:1.5px dashed var(--line);border-radius:12px;padding:16px;color:var(--mute);font-size:13px}
+  .drow2{display:block}
+  .fld.err input,.fld.err textarea,.fld.err select{border-color:var(--red)}
+  .ferr{font-size:12px;color:var(--red-text);line-height:1.4}
+  .unpub{margin:14px 20px;padding:14px 16px;border:1px solid var(--red-line);background:var(--red-soft);border-radius:12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .unpub p{margin:0;font-size:13px;color:var(--ink);flex:1;min-width:220px;line-height:1.5}
+  .bsec{color:var(--mute);font-weight:500}
+  .brules{display:block;font-size:11.5px;color:var(--mute);margin-top:2px}
+  .kdswarn{font-size:13px;color:var(--red-text)}
   .dwf .btn.accent{flex:none}
 
   /* ── orders view ── */

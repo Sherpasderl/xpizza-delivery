@@ -74,12 +74,29 @@ const AA_PAIRS = [
   ['.tag.new', 'the NEW tag'], ['.dchip.add', 'the added diff chip'], ['.opill.ok', 'the paid order pill'], ['.bchip.add', 'the added bundle chip'],
   ['.del:hover', 'the delete hover'], ['.dchip.rem', 'the removed diff chip'], ['.model:hover', 'the modifier delete hover'],
   ['.opill.refund', 'the refund order pill'], ['.premove:hover', 'the remove hover'], ['.bchip.rem', 'the removed bundle chip'],
+  ['.newtag', 'the add-product NUEVO tag'],
 ];
 for (const [sel, label] of AA_PAIRS) {
   test(`AA: ${label} (${sel}) text clears 4.5:1 on its soft background in the light theme`, () => {
     const body = ruleBody(sel);
     const fg = token(varOf(body, 'color'));
     const bg = token(varOf(body, 'background'));
+    const r = contrast(fg, bg);
+    assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
+  });
+}
+// 1D add-product A — the new text whose background comes from ANOTHER rule: the drawer / modal / detail surface (--card),
+// or the box it sits in (.unpub). Same light-theme tokens, same unrounded 4.5:1.
+const CROSS_AA = [
+  ['.unpub p', () => token(varOf(ruleBody('.unpub'), 'background')), 'the "Volver al menú publicado" message on its box'],
+  ['.ferr', () => token('card'), 'the field error in the drawer'], ['.kdswarn', () => token('card'), 'the kitchen-sync warning on the receipt'],
+  ['.bsec', () => token('card'), 'the section of a new product in the review'], ['.brules', () => token('card'), 'its inherited rules'],
+  ['.fotosoon', () => token('card'), 'the photo placeholder copy'],
+];
+for (const [sel, bgOf, label] of CROSS_AA) {
+  test(`AA: ${label} (${sel}) clears 4.5:1 in the light theme`, () => {
+    const fg = token(varOf(ruleBody(sel), 'color'));
+    const bg = bgOf();
     const r = contrast(fg, bg);
     assert.ok(r >= 4.5, `${sel}: ${fg} on ${bg} = ${r.toFixed(2)}:1 (needs ≥ 4.5)`);
   });
