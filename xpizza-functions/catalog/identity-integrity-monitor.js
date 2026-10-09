@@ -259,11 +259,14 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
       log('identity_integrity_check', { rid, outcome: 'deferred_merchant_active', why: pre.why });
       return { ...result, outcome: 'deferred_merchant_active' };
     }
-    // the node's boundary / cursor (one small get each, budgeted)
-    budget.reserve(2, 'node');
-    const gr = gateIo(rtdb, work, 'integrity_node');
-    const [bSnap, aSnap] = await Promise.all([nodeRef(gr, rid).child('boundary').get(), nodeRef(gr, rid).child('audited_through').get()]);
-    const boundary = bSnap.val(); const through0 = aSnap.val();
+    // the node's boundary / cursor (one small get each, budgeted, gated, bounded) — a budget deferral here is a stage boundary too
+    let boundary; let through0;
+    try {
+      budget.reserve(2, 'node');
+      const gr = gateIo(rtdb, work, 'integrity_node');
+      const [bSnap, aSnap] = await bounded(() => Promise.all([nodeRef(gr, rid).child('boundary').get(), nodeRef(gr, rid).child('audited_through').get()]), 'node_read');
+      boundary = bSnap.val(); through0 = aSnap.val();
+    } catch (e) { return fail(rid, stop, e, 'node'); }
     let active; let audit = null; let count = null; let onboarded = null;
     try {
       const obs = await bounded(() => observeActive(gdb, rid, budget), 'check_active');
@@ -312,7 +315,9 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
 
   async function fail(rid, stop, e, stage) {
     const reason = e && e.budgetDeferral ? e.message : (e && e.workDeadline ? 'budget_exhausted' : `${stage}_failed`);
-    try { await commit(rid, stop, [(n) => S.deferFailure(n, { nowMs: now(), reason })]); } catch (_) { /* the next run retries */ }
+    // the failure commit records the enumeration too: a restaurant that ALWAYS fails must still go stale (missing coverage
+    // 45 min after first enumeration, §6) — otherwise it would never alert
+    try { await commit(rid, stop, [(n) => S.enumerated(n, { obs_t: S.fromMs(now()) }), (n) => S.deferFailure(n, { nowMs: now(), reason })]); } catch (_) { /* the next run retries */ }
     log('identity_integrity_check', { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason, error: String((e && e.message) || e).slice(0, 160) });
     return { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason };
   }
@@ -330,6 +335,14 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     for (const rid of ids) {
       try { budget.reserve(2, 'views'); } catch (_) { enumeratedOk = false; break; }
       try { views.push(await viewOf(rid)); } catch (_) { views.push({ rid, coverage: {}, summary: null }); }
+    }
+    // every enumerated restaurant gets its first_enumerated_at recorded, even one this run never reaches (§6 missing coverage)
+    for (const v of views) {
+      if (v.coverage && v.coverage.first_enumerated_at) continue;
+      try {
+        const g = makeDeadline(READ_OP_MS, now);
+        await gateIo(rtdb, g, 'integrity_enumerated').ref(`${INTEGRITY_PATH}/${v.rid}`).transaction((cur) => S.withSize(S.enumerated(cur, { obs_t: S.fromMs(now()) })), undefined, false);
+      } catch (_) { /* recorded next run */ }
     }
     const results = [];
     for (const rid of S.scheduleOrder(views, now())) {

@@ -57,6 +57,8 @@ async function run({ db, rtdb, record, rid = null, apply = false, log = console.
     if (!apply) { out.push({ rid: r, ...d, wouldWrite: doc }); continue; }
     let written = false; let existing = null;
     const res = await rtdb.ref(`${INTEGRITY_PATH}/${r}`).transaction((cur) => {
+      // a null first call is the SDK's unloaded cache: building from it is safe — the server rejects the mismatch and re-runs us on
+      // the real node, where an existing boundary aborts (WRITE-ONCE)
       written = false; existing = cur && cur.boundary ? cur.boundary : null;
       if (existing) return undefined;   // WRITE-ONCE: abort, nothing changes
       const step = S.setBoundary(cur, doc); written = step.written;

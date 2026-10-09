@@ -36,6 +36,9 @@ async function acknowledge({ rtdb, rid, finding, note, by, apply = false, nowMs 
   if (!apply) return { ok: true, dryRun: true, finding: { id: finding, ...f }, summaryBefore: before.summary };
   let result = null;
   const tx = await ref.transaction((cur) => {
+    // the SDK's FIRST call may pass its (unloaded) local cache as null: returning null makes the server compare and re-run us
+    // with the real node; returning undefined would ABORT before the server value is ever seen
+    if (cur === null) { result = null; return null; }
     const r = S.ack(cur, finding, { at: nowMs, by, note }); result = r;
     return r.ok ? S.withSize(r.node) : undefined;   // abort if it vanished / was acknowledged meanwhile
   }, undefined, false);
