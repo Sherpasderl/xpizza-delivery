@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('./card-model.js', import.meta.url), 'utf8');
 const {
   KDS_STATUS, agingAnchorMs, bandClass, isLateBand,
-  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, orderForTab, paginate, countOffPage,
+  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, isStaleCancelled, orderForTab, paginate, countOffPage,
 } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 let n = 0;
@@ -213,6 +213,36 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   const noStamp = { id: 'd4', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 2 * HR).toISOString() };
   assert.equal(completedTabVisible(noStamp, set, now, WIN), true, 'no completed_at → falls back to hora anchor');
   ok('#5 completedTabVisible: recency anchored on completed_at (+ hora fallback) + future-clamp');
+}
+
+// ── isStaleCancelled: ages on cancelled_at (WHEN cancelled), not order age (owner A; codex gate P1) ──
+{
+  const now = Date.UTC(2026, 9, 9, 18, 0, 0);
+  const STALE = 18 * 60 * 60 * 1000;                 // ≈ one service day (= CANCELLED_STALE_MS)
+  const iso = (msAgo) => new Date(now - msAgo).toISOString();
+  const H = 60 * 60 * 1000;
+  const C = KDS_STATUS.CANCELADO;
+
+  // FRESH cancellation (cancelled within the window) → NOT stale → still shows in Abiertos + alerts
+  assert.equal(isStaleCancelled({ id: 'c1', estado: C, cancelled_at: iso(1 * H) }, now, STALE), false, 'cancelled 1h ago → shown');
+  assert.equal(isStaleCancelled({ id: 'c2', estado: C, cancelled_at: iso(17 * H) }, now, STALE), false, 'cancelled 17h ago (<window) → shown');
+  // 🔴 P1 REGRESSION: an OLD order (created 20h ago) cancelled NOW must STILL show (age on cancel time, not order age)
+  assert.equal(isStaleCancelled({ id: 'p1', estado: C, hora: iso(20 * H), cancelled_at: now }, now, STALE), false, 'OLD order cancelled NOW → NOT stale (shows + alerts) — ages on cancelled_at not hora');
+  // STALE cancellation (cancelled >= window ago) → ages out (even if the order itself is recent)
+  assert.equal(isStaleCancelled({ id: 'c3', estado: C, cancelled_at: iso(20 * H) }, now, STALE), true, 'cancelled 20h ago → stale, aged out');
+  assert.equal(isStaleCancelled({ id: 'c4', estado: C, cancelled_at: iso(STALE) }, now, STALE), true, 'cancelled exactly at the window (>=) → stale');
+  assert.equal(isStaleCancelled({ id: 'c5', estado: C, hora: iso(1 * H), cancelled_at: iso(20 * H) }, now, STALE), true, 'recent order but cancelled 20h ago → stale (ages on cancel time)');
+  // future cancelled_at (clock skew) → negative age → NOT stale → shows (fail-safe)
+  assert.equal(isStaleCancelled({ id: 'f1', estado: C, cancelled_at: new Date(now + 10 * H).toISOString() }, now, STALE), false, 'future cancelled_at → not stale (shows)');
+  // NON-cancelled orders never age out via this predicate — regardless of age
+  assert.equal(isStaleCancelled({ id: 'n1', estado: KDS_STATUS.NUEVO, cancelled_at: iso(48 * H) }, now, STALE), false, 'Nuevo (even with a stray old cancelled_at) → not stale');
+  assert.equal(isStaleCancelled({ id: 'a1', estado: KDS_STATUS.ARCHIVADO, cancelled_at: iso(48 * H) }, now, STALE), false, 'Archivado (delivered) → not stale (it is completed)');
+  // FAIL-SAFE: a cancellation with no/invalid cancel time is NEVER hidden (e.g. a server path that didn't stamp it)
+  assert.equal(isStaleCancelled({ id: 'm1', estado: C }, now, STALE), false, 'no cancelled_at → not stale (fail-safe, keep showing)');
+  assert.equal(isStaleCancelled({ id: 'm2', estado: C, cancelled_at: 'not-a-date' }, now, STALE), false, 'invalid cancelled_at → not stale (fail-safe)');
+  assert.equal(isStaleCancelled({ id: 'm3', estado: C, cancelled_at: 0 }, now, STALE), false, 'zero cancelled_at → not stale (fail-safe)');
+  assert.equal(isStaleCancelled(null, now, STALE), false, 'null order → false');
+  ok('isStaleCancelled: ages on cancelled_at (fresh cancel of OLD order still shown); stale ages out; un-timed kept');
 }
 
 // ── SOURCE-INSPECTION contract: recall + toggleItem handlers perform NO setOrderStatus ──
