@@ -59,7 +59,7 @@
     "test:d4p1-activation": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-activation.emulator.test.js\"",
     "test:d4p1-roundtrip": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/d4p1-save-publish.emulator.test.js\"",
     "test:catalog-versioned": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-versioned.emulator.test.js\"",
-    "test:add-product": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/add-product.emulator.test.js && node test/add-product-intake.emulator.test.js\"",
+    "test:add-product": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/add-product.emulator.test.js && node test/add-product-golden.emulator.test.js && node test/add-product-intake.emulator.test.js\"",
     "test:kds-manifest-writer": "node --test kds-manifest-writer.test.mjs",
     "test:kitchen-staff-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
     "test:client-version": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-version.emulator.test.js\"",
