@@ -223,6 +223,41 @@ const wipe = async () => {
     ok('c2a: flip_evidence_exists → a typed 409 with the pointer unchanged');
   }
 
+  // ── publish-time authority (mutation-driven): the checks the SAVE already ran are REPEATED at publish ──
+  {
+    const rid = 'x_pizza';
+    await wipe(); await seedBrand(rid, { certify: false });
+    // edit tokens are not role-bound: a staff caller holding an owner's token over a draft WITH additions is refused
+    const s = await save(rid, withAdds(rid, await draft(rid), ['Solo Dueño']));
+    assert.strictEqual(s.status, 200);
+    const before = await getActivePointer(db, rid);
+    const staffPub = await publish(rid, s, 'staff');
+    assert.deepStrictEqual([staffPub.status, staffPub.body.error], [403, 'not_owner'], JSON.stringify(staffPub.body).slice(0, 200));
+    assert.deepStrictEqual(await getActivePointer(db, rid), before, 'nothing published');
+    // a registry key row that appears AFTER the save (another writer registered the name) is caught at publish
+    const k = s.body.source.items.at(-1).key;
+    await keysColOf(db, rid, 'dish').doc(encodeKey(k)).set({ canonical_id: 'someone_else', legacy_key: k });
+    const reused = await publish(rid, s);
+    assert.deepStrictEqual([reused.status, reused.body.error], [400, 'name_previously_used'], JSON.stringify(reused.body).slice(0, 200));
+    assert.deepStrictEqual(await getActivePointer(db, rid), before, 'nothing published');
+    ok('publish repeats the save\'s checks: a staff caller with an owner\'s token over additions → 403; a registry row that appeared after the save → name_previously_used; the pointer never moves');
+  }
+  // ── the KDS sync of a SUPERSEDED activation writes nothing (it must not stamp an older list with a newer generation) ──
+  {
+    const rid = 'la_musa';
+    await wipe(); await seedBrand(rid, { certify: false });
+    const v1 = (await getActivePointer(db, rid)).version;
+    const s = await save(rid, priced(await draft(rid)));
+    assert.strictEqual((await publish(rid, s)).status, 200);
+    const now = await getActivePointer(db, rid);
+    const before = [await manifest(rid), await meta(rid)];
+    assert.deepStrictEqual(before[1], { ...before[1], source_generation: now.generation, version_id: now.version });
+    const late = await io.syncKds(rid, { versionId: v1 });   // a delayed sync for the OLDER activation
+    assert.deepStrictEqual(late, { pending: false, written: false, reason: 'superseded' });
+    assert.deepStrictEqual([await manifest(rid), await meta(rid)], before, 'the newer list and its stamp are untouched');
+    ok('a delayed KDS sync for a superseded activation writes NOTHING — never the older list under the newer generation');
+  }
+
   FINISHED = true;
   console.log(`\nadd-product(emulator): OK (${n})`);
   process.exit(0);
