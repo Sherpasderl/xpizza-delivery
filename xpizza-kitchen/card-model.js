@@ -95,6 +95,22 @@ export function completedTabVisible(o, completedSet, nowMs, recentMs, skewTolera
   return (nowMs - anchor) < recentMs;                             // else: only if recent
 }
 
+// A cancelled order (estado 'Cancelado') never becomes server-terminal and never leaves the live feed, and
+// its "Archivar" acknowledgment is a LOCAL 24h overlay (completedSet) — so once that overlay is pruned it
+// resurfaces in Abiertos every day (owner-reported). This ages a STALE cancellation out of the KDS entirely
+// (the subscription drops it before render + the cancel alert, so it shows in NEITHER tab): a cancellation
+// older than `staleMs` (≈ one service day) is gone. A FRESH cancellation (within the window) is NOT stale →
+// still shows in Abiertos with stop-cooking treatment + alert (no-regression). Anchors on the aging anchor
+// (`hora` = released_at||created_at — orders are cancelled near creation); an UN-anchorable/invalid time is
+// NOT stale (fail-safe: never hide a cancellation we can't age). Pure + golden. Only 'Cancelado' is affected
+// (delivered → Archivado is a completed card, not aged here). Display-only — no status write.
+export function isStaleCancelled(o, nowMs, staleMs) {
+  if (!o || o.estado !== KDS_STATUS.CANCELADO) return false;
+  const anchor = toMs(o.hora);
+  if (anchor == null || anchor <= 0) return false;                 // can't age it → keep showing (fail-safe)
+  return (nowMs - anchor) >= staleMs;
+}
+
 // Per-tab render ORDERING (pure, testable) — a render-sort only, never a data/status change.
 //   • Open (Abiertos): FIFO — oldest-first by `hora`, with PRIORITIZED cards jumped to the FRONT
 //     (prioritized keep FIFO among themselves; the rest FIFO after). Order #1 sits top-left like a rail.

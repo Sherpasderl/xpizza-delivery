@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('./card-model.js', import.meta.url), 'utf8');
 const {
   KDS_STATUS, agingAnchorMs, bandClass, isLateBand,
-  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, orderForTab, paginate, countOffPage,
+  actionStatusWrite, isLocalOnlyAction, deriveTab, completedTabVisible, isStaleCancelled, orderForTab, paginate, countOffPage,
 } = await import('data:text/javascript,' + encodeURIComponent(src));
 
 let n = 0;
@@ -213,6 +213,30 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   const noStamp = { id: 'd4', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 2 * HR).toISOString() };
   assert.equal(completedTabVisible(noStamp, set, now, WIN), true, 'no completed_at → falls back to hora anchor');
   ok('#5 completedTabVisible: recency anchored on completed_at (+ hora fallback) + future-clamp');
+}
+
+// ── isStaleCancelled: a cancelled order older than one service day ages OUT of the KDS entirely (owner A) ──
+{
+  const now = Date.UTC(2026, 9, 9, 18, 0, 0);
+  const STALE = 18 * 60 * 60 * 1000;                 // ≈ one service day (= CANCELLED_STALE_MS)
+  const iso = (msAgo) => new Date(now - msAgo).toISOString();
+  const H = 60 * 60 * 1000;
+
+  // FRESH cancellation (within the window) → NOT stale → still shows in Abiertos + alerts (no-regression)
+  assert.equal(isStaleCancelled({ id: 'c1', estado: KDS_STATUS.CANCELADO, hora: iso(1 * H) }, now, STALE), false, 'fresh cancel (1h) → shown');
+  assert.equal(isStaleCancelled({ id: 'c2', estado: KDS_STATUS.CANCELADO, hora: iso(17 * H) }, now, STALE), false, 'cancel at 17h (<window) → shown');
+  // STALE cancellation (>= window) → ages out
+  assert.equal(isStaleCancelled({ id: 'c3', estado: KDS_STATUS.CANCELADO, hora: iso(20 * H) }, now, STALE), true, 'cancel at 20h → stale, aged out');
+  assert.equal(isStaleCancelled({ id: 'c4', estado: KDS_STATUS.CANCELADO, hora: iso(STALE) }, now, STALE), true, 'exactly at the window (>=) → stale');
+  // NON-cancelled orders never age out via this predicate — regardless of age
+  assert.equal(isStaleCancelled({ id: 'n1', estado: KDS_STATUS.NUEVO, hora: iso(48 * H) }, now, STALE), false, 'old Nuevo → not stale-cancelled');
+  assert.equal(isStaleCancelled({ id: 'l1', estado: KDS_STATUS.LISTO, hora: iso(48 * H) }, now, STALE), false, 'old Listo → not stale-cancelled');
+  assert.equal(isStaleCancelled({ id: 'a1', estado: KDS_STATUS.ARCHIVADO, hora: iso(48 * H) }, now, STALE), false, 'old Archivado (delivered) → not stale-cancelled (it is completed, not aged here)');
+  // FAIL-SAFE: a cancellation we cannot age (missing/invalid/absent anchor, or null) is NEVER hidden
+  assert.equal(isStaleCancelled({ id: 'm1', estado: KDS_STATUS.CANCELADO }, now, STALE), false, 'no hora → not stale (fail-safe, keep showing)');
+  assert.equal(isStaleCancelled({ id: 'm2', estado: KDS_STATUS.CANCELADO, hora: 'not-a-date' }, now, STALE), false, 'invalid hora → not stale (fail-safe)');
+  assert.equal(isStaleCancelled(null, now, STALE), false, 'null order → false');
+  ok('isStaleCancelled: stale cancel ages out; fresh cancel + non-cancelled + un-anchored stay');
 }
 
 // ── SOURCE-INSPECTION contract: recall + toggleItem handlers perform NO setOrderStatus ──

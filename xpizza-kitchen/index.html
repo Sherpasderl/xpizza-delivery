@@ -1484,7 +1484,7 @@ import { nudgeEligibility, classAction, nextBeepState, nudgeRestaurantFromHost }
 import { railCount, enumerateItems } from './rail-count.js?v=2';
 import { groupScheduledByDay } from './scheduled-view.js?v=1';
 import { KDS_STATUS, agingAnchorMs, bandClass as bandClassPure, isLateBand,
-         actionStatusWrite, deriveTab, completedTabVisible, orderForTab, paginate, countOffPage } from './card-model.js?v=3';
+         actionStatusWrite, deriveTab, completedTabVisible, isStaleCancelled, orderForTab, paginate, countOffPage } from './card-model.js?v=4';
 
 /* ── Phase-1 Step 2: v0 overdue-nudge controller (isolated; fed the canonical raw orders via a
    try/caught hook in the subscribeToOrders callback — NO second /orders subscription). Toggles the
@@ -1677,6 +1677,7 @@ const ITEM_CHECK_MS    = 350; // 2b: per-item fill-ring sweep before the green d
 // Completados tab shows this session's local bumps + server-completed within this recent window (a RENDER
 // filter — not a status change, not a new read — so the tab is a short useful list, not 100+ historical).
 const RECENT_COMPLETED_MS = 18 * 60 * 60 * 1000;   // 18h ≈ one service day
+const CANCELLED_STALE_MS = RECENT_COMPLETED_MS;    // a cancelled order older than one service day ages out of the KDS entirely (owner A) — see card-model.isStaleCancelled
 
 // Per-device ticket-layout settings (localStorage; presentational only, Phase A). Columns 3/4/5 + the
 // ticket layout mode: 'flex' (Flex Rail — content-height cards, all items) | 'fill' (Tile Fill — capped
@@ -2978,11 +2979,18 @@ function startOrdersSubscription() {
     // completedSet is durable and canonical-driven downstream (deriveTab), so no localState reconcile is
     // needed: a delivered order (estado 'Archivado') always classifies to the Completed tab whether or not
     // it was locally bumped. The completion beat (completionSeq) is self-clearing via its own timers.
-    allOrders = orders;
+    // Age STALE cancellations out of the KDS entirely (owner A): a 'cancelled' order never becomes server-
+    // terminal and never leaves the live feed, and "Archivar" is a 24h-expiring LOCAL overlay — so without
+    // this a cancel resurfaces in Abiertos every day. Drop cancels older than one service day BEFORE render
+    // + the alert, so ONE choke keeps open pool / Completados / cancel alert / action lookups consistent. A
+    // FRESH cancel (within the window) is unaffected → still shows with stop-cooking treatment + alert.
+    const nowCancelMs = Date.now();
+    const visibleOrders = orders.filter(o => !isStaleCancelled(o, nowCancelMs, CANCELLED_STALE_MS));
+    allOrders = visibleOrders;
     // Render the FULL live set — render() splits Open vs Completed by deriveTab (completed = locally
     // bumped OR delivered). checkForNewOrders still fires on the Open pool only.
-    render(orders);
-    checkForNewOrders(orders.filter(o => deriveTab(o, completedSet) === 'open'));
+    render(visibleOrders);
+    checkForNewOrders(visibleOrders.filter(o => deriveTab(o, completedSet) === 'open'));
     // Phase-1 Step 2 nudge — fed the canonical RAW ordersById AFTER render; try/caught so a nudge bug
     // can never take down the live KDS render (optional chaining guards absence, try/catch guards throw).
     try { window.__readyNudge?.onOrders(ordersById); } catch (e) { console.warn('nudge onOrders failed', e); }
