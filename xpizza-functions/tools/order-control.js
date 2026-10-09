@@ -75,7 +75,8 @@ async function serverNowEstimate() {
   const opId = `oc_${Date.now().toString(36)}_${crypto.randomBytes(5).toString('hex')}`;
   // §0.3: re-validate the end time against server-now at the moment of applying (a slow operator / a delayed apply)
   const atApply = C.serverClock(clock.offsetMs, Date.now()).serverNow;
-  if (plan.to.until !== undefined && !(plan.to.until > atApply)) { console.error('order-control: REFUSED — the end time has already passed; nothing written'); process.exit(1); }
+  const late = C.checkAtApply(plan, atApply);
+  if (!late.ok) { console.error(`order-control: REFUSED — ${late.error}`); process.exit(1); }
   const tx = await nodeRef.transaction(C.txnCallback({ expectedVersion: plan.expectedVersion, to: plan.to, opId, actor: args.actor, principal, reason: args.reason, timestamp: admin.database.ServerValue.TIMESTAMP }));
   const after = tx.snapshot.val();
   if (!(tx.committed && after && after.current && after.current.op_id === opId)) {

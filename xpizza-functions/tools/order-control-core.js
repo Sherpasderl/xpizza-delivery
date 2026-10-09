@@ -95,6 +95,15 @@ function planChange({ node, args, serverNow }) {
   return { ok: true, noop: sameSnap(from, to), expectedVersion: v, from, to };
 }
 
+// §0.3: re-validate the end time at the moment of applying, against a server-time estimate taken THEN (a slow operator /
+// a delayed apply): an end time at or before server-now is refused. An indefinite pause and a resume carry no end time and
+// are never refused here. A non-finite estimate refuses a timed change (fail closed, nothing written).
+function checkAtApply(plan, serverNowAtApply) {
+  if (plan.to.until === undefined) return { ok: true };
+  if (plan.to.until > serverNowAtApply) return { ok: true };
+  return { ok: false, error: `the end time has already passed (until ${new Date(plan.to.until).toISOString()}, server now ${Number.isFinite(serverNowAtApply) ? new Date(serverNowAtApply).toISOString() : String(serverNowAtApply)}); nothing written` };
+}
+
 // §1: ONE transaction on order_control/{rid}. Null-first-safe and side-effect free: everything it writes was decided
 // before it runs (op_id, principal, the target); a version mismatch or the same state ABORTS (no write); RTDB's first
 // optimistic call with `null` for an existing node returns null, which the server rejects and re-runs with the real value.
@@ -127,4 +136,4 @@ const describeState = (current, now) => {
   return e.state === S.PAUSED ? `PAUSED (${e.until === null ? 'no end time' : `until ${describeUntil(e.until)}`})` : e.state.toUpperCase();
 };
 
-module.exports = { USAGE, MIN_LEAD_MS, SKEW_WARN_MS, MAX_FOR_MS, UNTIL_RE, parseArgs, serverClock, snapOf, versionOf, planChange, txnCallback, describeUntil, describeState };
+module.exports = { USAGE, MIN_LEAD_MS, SKEW_WARN_MS, MAX_FOR_MS, UNTIL_RE, parseArgs, serverClock, snapOf, versionOf, planChange, checkAtApply, txnCallback, describeUntil, describeState };

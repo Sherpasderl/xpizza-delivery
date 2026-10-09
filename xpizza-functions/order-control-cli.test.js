@@ -3,6 +3,7 @@
 // Parsing (strict, incl. the explicit-offset rule), the server clock (positive / negative / excessive skew — warned, values
 // still corrected), the change plan (indefinite / --for / --until, the 60 s lead, same-state no-op, version conflict) and
 // the transaction callback (null-first-safe, aborts without a write, full {paused, until} snapshots, the audit row).
+// The §0.3 apply-time re-check (`checkAtApply`, a delayed apply) and its wiring in the CLI (estimate AT apply, before the transaction).
 // The real CLI is driven end to end on the emulator by test/order-control-cli.emulator.test.js.
 const assert = require('assert');
 const C = require('./tools/order-control-core');
@@ -154,6 +155,40 @@ const cb = (o) => C.txnCallback({ expectedVersion: 0, to: { paused: true }, opId
   assert.strictEqual(S.effectiveState(w3.current, NOW).state, 'open');
   assert.deepStrictEqual(Object.keys(w3.events), ['op1', 'op2', 'op3']);
   ok('what the CLI writes reads back through the SHARED module: indefinite → PAUSED; timed → PAUSED until, OPEN at until; resume → OPEN; three audit rows');
+}
+{
+  // §0.3 delayed apply: the end time is re-checked against server-now AT apply
+  const timed = C.planChange({ node: null, args: P('--pause', '--until', '2030-01-01T00:01:01Z'), serverNow: NOW });
+  const until = timed.to.until;
+  assert.strictEqual(C.checkAtApply(timed, until).ok, false, 'until == server-now at apply → REFUSED');
+  assert.match(C.checkAtApply(timed, until).error, /already passed/);
+  assert.strictEqual(C.checkAtApply(timed, until + 1).ok, false, 'until in the past at apply → REFUSED');
+  assert.strictEqual(C.checkAtApply(timed, until - 1).ok, true, 'server-now = until − 1 at apply → applies');
+  assert.strictEqual(C.checkAtApply(timed, NaN).ok, false, 'no usable server-time estimate → a timed change is REFUSED (fail closed)');
+  const fr = C.planChange({ node: null, args: P('--pause', '--for', '30m'), serverNow: NOW });
+  assert.strictEqual(C.checkAtApply(fr, fr.to.until).ok, false, '--for whose end has arrived by apply → REFUSED');
+  assert.strictEqual(C.checkAtApply(fr, fr.to.until - 1).ok, true);
+  const ind = C.planChange({ node: null, args: P('--pause'), serverNow: NOW });
+  const res = C.planChange({ node: node({ paused: true, until: NOW + 5, version: 7 }), args: P('--resume'), serverNow: NOW });
+  for (const at of [NOW, NOW + 7 * 24 * 3600000, Number.MAX_SAFE_INTEGER, NaN]) {
+    assert.deepStrictEqual(C.checkAtApply(ind, at), { ok: true }, 'an indefinite pause is never refused at apply');
+    assert.deepStrictEqual(C.checkAtApply(res, at), { ok: true }, 'a resume is never refused at apply');
+  }
+  ok('delayed apply (§0.3): until == server-now at apply → REFUSED, until − 1 → applies, a passed --for / --until → REFUSED, no estimate → REFUSED; an indefinite pause and a resume are NEVER refused');
+}
+{
+  // wiring: the CLI calls the check with a server-time estimate taken AT apply (a fresh Date.now(), not the read-time
+  // serverNow), refuses + exits on it, and all of that happens BEFORE the transaction
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'tools', 'order-control.js'), 'utf8');
+  const at = src.indexOf('const atApply = C.serverClock(clock.offsetMs, Date.now()).serverNow;');
+  const call = src.indexOf('const late = C.checkAtApply(plan, atApply);');
+  const refuse = src.indexOf("if (!late.ok) { console.error(`order-control: REFUSED — ${late.error}`); process.exit(1); }");
+  const txn = src.indexOf('nodeRef.transaction(');
+  assert.ok(at > 0 && call > at && refuse > call && txn > refuse, `order: estimate ${at} < check ${call} < refuse ${refuse} < transaction ${txn}`);
+  assert.strictEqual(src.split('C.checkAtApply(').length - 1, 1, 'exactly one apply-time check');
+  assert.strictEqual(src.split('nodeRef.transaction(').length - 1, 1, 'exactly one transaction');
+  assert.ok(src.indexOf('const plan = C.planChange(') < at, 'the plan is made before the apply-time estimate');
+  ok('wiring: the CLI takes a fresh server-time estimate AT apply, calls checkAtApply with it and exits on a refusal, all BEFORE the one transaction');
 }
 {
   assert.match(C.describeUntil(Date.parse('2030-01-01T06:00:00Z')), /^2030-01-01T06:00:00\.000Z \(UTC\) = /);
