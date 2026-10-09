@@ -18,8 +18,9 @@ service cloud.firestore {
       // deliberately NO `match /{sub=**}` — unenumerated subpaths (versions, meta/*, publish_lock,
       // publish_probes, payouts, ledger, private) → deny.
       // 1D D4-c2a — identity binding evidence: written ONLY by the server (Admin SDK, inside the activation /
-      // certification transaction); never readable or writable by any client. Stated explicitly, not left to the
-      // default-deny, so a future wildcard above cannot open it by accident.
+      // certification transaction); never readable or writable by any client. This rule DOCUMENTS that intended
+      // restriction; it is not a shield: Firestore allows are additive, so an explicit deny does not override an allow
+      // from another matching rule. Any future wildcard grant MUST exclude identity_evidence.
       match /identity_evidence/{evidenceId} { allow read, write: if false; }
     }
     match /{document=**} { allow read, write: if false; }               // global default-deny

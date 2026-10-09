@@ -699,8 +699,8 @@ async function flipPointer(db, rid, token, versionId, snapshot, expected, { roll
       } catch (_) {}
     }
     /* c2a-evidence:begin */
-    /* 1D D4-c2a — declared INSIDE the transaction callback, so a retried attempt starts from nothing. Filled only by
-       a CERTIFIED activation; an uncertified one records no evidence (plan §1). */
+    /* 1D D4-c2a — declared INSIDE the transaction callback, so a retried attempt starts from nothing. Only certified
+       activations populate this full payload; uncertified activations receive the minimal evidence record below. */
     let c2aEvidence = null;
     const c2aPlans = { dish: null, extra: null };
     /* c2a-evidence:end */
