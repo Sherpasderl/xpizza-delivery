@@ -141,10 +141,20 @@ async function child(rowKey, cond) {
     seededNow = true;
   }
   const seeded = (await marker.get()).data();
+  /* the COMPLETE subtree (every collection at every depth, missing parents included), walked level by level IN PARALLEL: per
+     level, each collection's documents are listed, read in batches (getAll), and their subcollections listed concurrently.
+     Same set of documents as a depth-first walk; ~O(depth) round-trip latency instead of one round-trip per document. */
+  const pool = async (items, n, fn) => { const out = new Array(items.length); let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } })); return out; };
   const capture = async (rid) => {
     const out = [];
-    const walk = async (ref) => { const s = await ref.get(); if (s.exists) out.push([ref.path, s.data()]); for (const c of await ref.listCollections()) for (const d of await c.listDocuments()) await walk(d); };
-    await walk(db.collection('restaurants').doc(rid)); return out;
+    const root = db.collection('restaurants').doc(rid);
+    let docs = [root];
+    while (docs.length) {
+      for (let k = 0; k < docs.length; k += 300) { const snaps = await db.getAll(...docs.slice(k, k + 300)); for (const sn of snaps) if (sn.exists) out.push([sn.ref.path, sn.data()]); }
+      const cols = (await pool(docs, 64, (d) => d.listCollections())).flat();
+      docs = (await pool(cols, 64, (c) => c.listDocuments())).flat();
+    }
+    return out;
   };
   // the seeded state of the target, captured once per child (Timestamps kept as Timestamps)
   const snap = await capture(row.rid);
