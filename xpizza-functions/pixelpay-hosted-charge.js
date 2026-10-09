@@ -49,7 +49,13 @@ function genPollToken() {
    live-checkout reuse. At the authoritative fresh-issuance decision (the same point the 86 gate uses, below every terminal
    and genuine-reuse return), such a request is refused with a NON-426 typed conflict before the CAS — it writes nothing.
    Default false → every existing caller and path is unchanged. */
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false) {
+/* D4-c4 §3/§0.2: `controlRefuseFresh` — true ONLY when the pause pre-gate admitted this request while the restaurant is
+   PAUSED or its pause state is UNKNOWN (a non-fresh classification: reuse / in_progress / a terminal answer). If the state
+   drifted and THIS call would now mint a fresh / rotated payable URL (create / install / recover / rotate), it is refused
+   at the same authoritative point, FIRST, before the CAS — the EXISTING conflict shape, reason 'order_control' (the
+   caller's conflict cleanup releases only a hold it owns, and answers with the kind its pre-gate recorded). Default
+   false → every existing caller and path is unchanged. */
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false) {
   const canon = once(canonicalFp);
   const orderRef = db.ref(`orders/${orderId}`);
 
@@ -103,6 +109,7 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     // BEFORE the CAS transaction — so a blocked cart writes NOTHING (no orders/{id}, no payment_attempts,
     // no charge) and can NEVER be handed a payable URL, regardless of what the read-only classify predicted.
     // Fail-open: cartBlocked === [] (the default, and every checkItemAvailability read-error) ⇒ CAS proceeds.
+    if (controlRefuseFresh === true) return { outcome: 'conflict', reason: 'order_control' };   // D4-c4 §0.2: paused / unknown → no fresh URL
     if (Array.isArray(cartBlocked) && cartBlocked.length > 0) {
       return { outcome: 'item_unavailable', blocked: cartBlocked };
     }

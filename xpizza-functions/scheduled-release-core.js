@@ -10,10 +10,18 @@
  *
  * Closed/invalid at release ⇒ HOLD + block + dispatcher alert (owner ruling) — never dumped on a dark kitchen.
  *
- * deps = { db, alert(kind, detail), genToken(), now?, restaurantFallback? }
+ * deps = { db, alert(kind, detail), genToken(), now?, restaurantFallback?, orderControl?(rid) }
+ *
+ * D4-c4 §3a/§0.7 — PAUSE HOLD. `deps.orderControl(rid)` (order-control.js orderControlFor, wired by index.js for the sweep,
+ * the manual release and the stale-releasing recovery) is read at the shared finalization, BEFORE any release write.
+ * PAUSED or UNKNOWN → the claim is reverted (status scheduled, release ownership cleared) and the order carries
+ * `control_held: { at, cause: 'paused' | 'unavailable' }` (kept as-is when already held for the same cause); NO
+ * materialization, any unrelated `scheduled_blocked` is left untouched, no alert is pushed (dispatch shows the tag). The
+ * next sweep retries; once OPEN (resume or an expired `until`) today's path runs and clears the marker.
  */
 const { buildMaterializeUpdates } = require('./materialize');
 const S = require('./scheduled-orders');
+const { releaseHold } = require('./order-control-state');
 
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 
@@ -37,6 +45,18 @@ async function claimForRelease(deps, orderId, now, claimId) {
 async function finalizeRelease(deps, orderId, order, now) {
   const { db, alert } = deps;
   const rid = order.restaurant_id || 'x_pizza';
+  if (typeof deps.orderControl === 'function') {
+    const hold = releaseHold(await deps.orderControl(rid));
+    if (hold) {
+      const prev = order.control_held;
+      const keep = prev && typeof prev === 'object' && prev.cause === hold.cause && isNum(prev.at);   // deduplicated
+      await db.ref(`orders/${orderId}`).update({
+        status: S.SCHEDULED, release_claim_id: null, releasing_since: null,
+        ...(keep ? {} : { control_held: { at: now, cause: hold.cause } }),
+      });
+      return { released: false, blocked: false, held: true, cause: hold.cause };
+    }
+  }
   const hours = (await db.ref(`restaurants/${rid}/identity/hours`).once('value')).val() || null;
   const check = S.releaseTimeValid(hours, order, now);
 
@@ -46,6 +66,7 @@ async function finalizeRelease(deps, orderId, order, now) {
     await db.ref(`orders/${orderId}`).update({
       status: S.SCHEDULED, scheduled_blocked: true, blocked_reason: check.reason,
       release_claim_id: null, releasing_since: null,
+      ...(order.control_held !== undefined ? { control_held: null } : {}),   // D4-c4 §3a: OPEN again → the marker goes
     });
     if (alert) await alert('scheduled_blocked', { orderId, reason: check.reason, scheduled_for: order.scheduled_for });
     return { released: false, blocked: true, reason: check.reason };
@@ -62,6 +83,7 @@ async function finalizeRelease(deps, orderId, order, now) {
   updates[`orders/${orderId}/release_claim_id`] = null;
   updates[`orders/${orderId}/releasing_since`] = null;
   updates[`orders/${orderId}/released_at`] = now;
+  if (order.control_held !== undefined) updates[`orders/${orderId}/control_held`] = null;   // D4-c4 §3a: OPEN again → the marker goes
   await db.ref().update(updates);
   return { released: true, blocked: false, trackingToken };
 }

@@ -92,6 +92,8 @@ const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   
 const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
 const { classifyExistingOrder, computeIncomingFingerprint, computeCanonicalIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
 const OE = require('./order-exists');   // D4-c5 P1: every existing-order refusal → typed 409 order_exists (no form auto-mints on it)
+const OC = require('./order-control');   // D4-c4: "Pausar pedidos" — the per-restaurant pause switch (fresh intake only)
+const OCS = require('./order-control-state');
 const { redemptionFingerprint } = require('./rewards-redeem');   // F1 residual: recompute a redemption order's fp from the RESOLVED reserve (guaranteed present) if the top-level compute blipped
 const { duplicateSiblingDecision } = require('./materialize-guard');   // F3 create-side: shared pure sibling-collision decision
 const { reserveRedemption, releaseRedemption, attachAttempt, settleRedemptionAtConfirm, holdRedemptionForManual, sweepStaleReservations, sweepConsumeRecovery, reverseRedemptionForOrder } = require('./rewards-reserve');
@@ -839,6 +841,10 @@ createOrderApp.all('*', async (req, res) => {
     return res.status(409).json(OE.orderExistsBody('client_update_race', orderId));
   }
 
+  // D4-c4 §3/§0.5 — "Pausar pedidos": this request is NEW work (every existing-order answer and the :839 race returned
+  // above, unchanged). The control read starts HERE, alongside the identity read just below; it is decided after it.
+  const ctlP = OC.orderControlFor(db, restaurantId);
+
   // Config-plane identity (ADR-0002): fail-closed read, gate intake on active, zone-check from
   // config. After the idempotency check so idempotent retries don't re-read config; the delivery
   // zone enforcement (clients are bypassable) now uses identity.hub + identity.delivery_radius_km.
@@ -849,6 +855,13 @@ createOrderApp.all('*', async (req, res) => {
     console.error(`createOrder: config unavailable for ${orderId}: ${e.message}`);
     res.set('Retry-After', '2');
     return res.status(e.statusCode || 503).json({ error: 'Service temporarily unavailable', detail: 'restaurant config unavailable', retryable: true });
+  }
+  {
+    const ctl = await ctlP;   // D4-c4: PAUSED → 423 ordering_paused; UNKNOWN → the retryable 503 — before any write
+    if (ctl) {
+      console.warn(`createOrder: ${orderId} — ${OCS.REFUSALS[ctl].status} (order control: ${ctl})`);
+      return OC.respond(res, ctl);
+    }
   }
   if (!restIdentity.active) {
     console.warn(`createOrder: ${restaurantId} inactive — rejecting ${orderId}`);
@@ -1483,6 +1496,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      `null` (unknown) until the authoritative order probe below decides it. */
   let orderBindingFormat = null;
   let classifyFailed = false;
+  let controlArmed = null;   // D4-c4 §0.2: the race guard's refusal kind ('paused' | 'unavailable'), armed by the pre-gate below
   let canonicalFpG = null;   // the canonical recompute for the classify + probe checks — a request-local memoizer (the reserve/acquire
                              // site has its own request-local memoizer, canonicalChargeFp, over the same inputs)
   {
@@ -1495,6 +1509,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     canonicalFpG = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: totalCentsG,
       items: body.items, redemption: redemptionResolved, rid: restaurantId, context: contextOfTables(pricingTables),
       schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
+    const ctlP = OC.orderControlFor(db, restaurantId);   // D4-c4: read alongside the classify below; decided at the pre-gate
     try {
       clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG);
       orderBindingFormat = (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) ? CB.FORMAT_CANONICAL : CB.FORMAT_LEGACY;   // classify's snapshot
@@ -1517,6 +1532,18 @@ chargeOnlineApp.all('*', async (req, res) => {
     // P-SELFUPDATE §5 (1) — a below-floor request proceeds ONLY as a classified genuine reuse of a live checkout. A
     // classify failure, or any other outcome, is NEW (or unprovable) work → 426, still before any write.
     if (floorBelow && !(clsG && clsG.outcome === 'reuse')) return CF.updateRequired(res, 'orders', ordersFloor);
+    /* D4-c4 §3/§0.2 — the PAUSE PRE-GATE: after the client-floor / classify step, BEFORE the availability read, the
+       bookkeeping writes, the probe refusals and the reward reserve — a refusal here reserved and released NOTHING. A fresh
+       classification is refused with this request's decision (PAUSED 423 / UNKNOWN 503); a failed classifier → 503 (a
+       retry re-classifies); anything else (reuse, in_progress, …) is honoured and ARMS the race guard with the decision. */
+    {
+      const g = OCS.chargePreGate(await ctlP, clsG);
+      if (g.refuse) {
+        console.warn(`chargeOnlineOrder: ${orderId} — ${OCS.REFUSALS[g.refuse].status} (order control pre-gate: ${g.refuse}; classify ${clsG ? (clsG.outcome || 'fresh') : 'failed'})`);
+        return OC.respond(res, g.refuse);
+      }
+      controlArmed = g.arm;
+    }
     // Skip the read ONLY for a MONOTONIC-terminal order — one that provably can't drift into a fresh-URL
     // path within this request. in_progress / reuse are DELIBERATELY excluded (they can rotate → fresh),
     // so we read + let the CAS decide. acquire returns in_progress/reuse before the cartBlocked check.
@@ -1796,7 +1823,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow);   // P-SELFUPDATE §5 (2): refuseFresh
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
@@ -1816,6 +1843,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   }
   if (acq.outcome === 'conflict') {
     await releaseHoldIfOwned();   // abandoned: order_id used for a different cart/total
+    if (acq.reason === 'order_control') {   // D4-c4 §0.2: the race guard refused a drift to a fresh URL — this request's kind
+      console.warn(`chargeOnlineOrder: ${orderId} — ${OCS.REFUSALS[controlArmed].status} (order control race guard: ${controlArmed})`);
+      return OC.respond(res, controlArmed);
+    }
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
     console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
     return res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));
@@ -6103,7 +6134,8 @@ exports.sweepPendingOrders = onSchedule(
 
 // Deps for the release core: alert via the shipped dispatcher-alert surface; a fresh public token per release.
 function scheduledReleaseDeps(db) {
-  return { db, alert: (kind, detail) => paymentAlert(db, kind, detail), genToken: () => generateTrackingToken() };
+  return { db, alert: (kind, detail) => paymentAlert(db, kind, detail), genToken: () => generateTrackingToken(),
+    orderControl: (rid) => OC.orderControlFor(db, rid) };   // D4-c4 §3a: the pause hold
 }
 
 // sweepScheduledReleases — every 2 min: atomically release DUE scheduled orders (scheduled→releasing→new,
@@ -6165,6 +6197,14 @@ exports.releaseScheduledOrder = onRequest(
     if (!order) return res.status(404).json({ error: 'not_found' });
     if (order.status === 'releasing') return res.status(409).json({ error: 'release_in_progress', detail: 'order is materializing; the sweep recovers it if stalled' });
     if (order.status !== 'scheduled') return res.status(409).json({ error: 'not_releasable', detail: `order is ${order.status}, not scheduled` });
+    // D4-c4 §3a: the pause check runs BEFORE the override clears anything — a refused manual release changes nothing
+    {
+      const ctl = await OC.orderControlFor(db, order.restaurant_id || 'x_pizza');
+      if (ctl) {
+        console.warn(`releaseScheduledOrder: ${orderId} — ${OCS.REFUSALS[ctl].status} (order control: ${ctl})`);
+        return OC.respond(res, ctl);
+      }
+    }
 
     // Dispatcher override: clear the block + force the release gate to now, then the SAME claim path runs
     // (which STILL re-validates open hours — a manual release can't dump onto a closed kitchen either).

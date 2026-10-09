@@ -675,6 +675,22 @@ export async function setAutoAssignEnabled(enabled) {
   await set(ref(db, 'config/auto_assign_enabled'), !!enabled);
 }
 
+// D4-c4 "Pausar pedidos" (PLAN-D4c4 rev 13 §4/§0.9) — READ-ONLY. The PARENT order_control node (dispatcher-read; written
+// only by the owner CLI): every restaurant with a node is enumerated, so a new restaurant needs no code change. onError →
+// the banner shows "Estado de pausa no disponible" (never "abierto"). Never written.
+export function subscribeToOrderControl(onData, onError) {
+  return onValue(ref(db, 'order_control'), (snap) => onData(snap.val() || {}), (err) => onError(err));
+}
+// The banner's restaurant name: restaurants/{rid}/identity/name (dispatcher-readable). null on any failure → the rid shows.
+export async function fetchRestaurantName(rid) {
+  try { const v = (await get(ref(db, `restaurants/${rid}/identity/name`))).val(); return typeof v === 'string' && v.trim() ? v : null; }
+  catch (_) { return null; }
+}
+// The server-corrected clock the banner evaluates `until` against (§0.3). Read-only.
+export function subscribeToServerTimeOffset(callback) {
+  return onValue(ref(db, '.info/serverTimeOffset'), (snap) => callback(Number(snap.val()) || 0));
+}
+
 export function subscribeToAutoAssignEnabled(callback) {
   return onValue(ref(db, 'config/auto_assign_enabled'), (snap) => {
     const val = snap.val();

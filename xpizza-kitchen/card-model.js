@@ -95,6 +95,26 @@ export function completedTabVisible(o, completedSet, nowMs, recentMs, skewTolera
   return (nowMs - anchor) < recentMs;                             // else: only if recent
 }
 
+// A cancelled order (estado 'Cancelado') never becomes server-terminal and never leaves the live feed, and
+// its "Archivar" acknowledgment is a LOCAL 24h overlay (completedSet) — so once that overlay is pruned it
+// resurfaces in Abiertos every day (owner-reported). This ages a STALE cancellation out of the KDS entirely
+// (the subscription drops it before render + the cancel alert, so it shows in NEITHER tab): a cancellation
+// whose CANCELLATION TIME is older than `staleMs` (≈ one service day) is gone.
+//
+// Ages on `cancelled_at` (the cancel path stamps orders/{id}/cancelled_at — xpizza-delivery.js cancelPaidOrder),
+// NOT the order's age: a FRESH cancel of an OLD order (created hours ago, cancelled NOW) must still show in
+// Abiertos with stop-cooking treatment + alert — aging on created/released time would wrongly hide it, the
+// exact failure this fix exists to prevent (codex gate P1). A missing/invalid/future cancelled_at is NOT
+// stale → keep showing (fail-safe: never hide a cancellation we can't time; a server path that doesn't stamp
+// cancelled_at just shows longer rather than wrongly hiding). Only 'Cancelado' is affected (delivered →
+// Archivado is a completed card). Pure + golden. Display-only — no status write.
+export function isStaleCancelled(o, nowMs, staleMs) {
+  if (!o || o.estado !== KDS_STATUS.CANCELADO) return false;
+  const cancelledMs = toMs(o.cancelled_at);
+  if (cancelledMs == null || cancelledMs <= 0) return false;       // no valid cancel time → keep showing (fail-safe)
+  return (nowMs - cancelledMs) >= staleMs;                         // future cancelled_at → negative age → not stale → shows
+}
+
 // Per-tab render ORDERING (pure, testable) — a render-sort only, never a data/status change.
 //   • Open (Abiertos): FIFO — oldest-first by `hora`, with PRIORITIZED cards jumped to the FRONT
 //     (prioritized keep FIFO among themselves; the rest FIFO after). Order #1 sits top-left like a rail.

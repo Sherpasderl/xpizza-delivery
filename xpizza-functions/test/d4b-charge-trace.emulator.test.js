@@ -39,6 +39,7 @@ let FAIL_CLASSIFY = false;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
 const app = require('../index.js');
+const CTL = require('./_order-control-trace');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
 const rtdb = admin.database();
@@ -197,9 +198,13 @@ async function traced(rid, oid, uid, phone) {
     // per-request sequence rather than a cold-cache artefact.
     await rtdb.ref('rate_limits').remove();
     assert.strictEqual((await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm`, '99330000'), { 'x-firebase-id-token': uid })).status, 200, `${rid}: warm-up`);
+    // D4-c4: the switch cache is put WARM before each recorded request (not left to timing) → no switch read in these
+    await CTL.controlWarm(rtdb, rid);
     const a1 = await traced(rid, `trace_${rid}_normal`, uid, '99331001');
+    await CTL.controlWarm(rtdb, rid);
     const a2 = await traced(rid, `trace_${rid}_normal`, uid, '99331001');
     FAIL_CLASSIFY = true;
+    await CTL.controlWarm(rtdb, rid);
     let b1; try { b1 = await traced(rid, `trace_${rid}_degraded`, uid, '99332001'); } finally { FAIL_CLASSIFY = false; }
     for (const [k, v] of [['a_normal_fresh', a1], ['a_normal_retry', a2], ['b_classify_failure_fresh', b1]]) {
       assert.strictEqual(v.status, 200, `${rid} ${k}: premise — the legacy path charges (${v.status})`);
@@ -216,12 +221,15 @@ async function traced(rid, oid, uid, phone) {
     // P-SELFUPDATE ALLOWLIST (advisor ruling R3.2): the comparison EXCLUDES exactly one call family — a GET of
     // `platform_config/client_floor/orders` (the HTTP floor's cached read) — asserted on its own: only gets, at most one
     // per request. Every other call must equal the frozen 717f97e golden (NOT recaptured) byte-for-byte.
+    // D4-c4 ALLOWLIST (advisor ruling, DECISIONS 2026-10-08 — mirrors R3.2): exactly one more call family is excluded,
+    // the pause switch's read (rtdb once order_control/<rid>/current), asserted on its own by _order-control-trace.js
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
-      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
+      const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache warm)` });
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
@@ -230,12 +238,18 @@ async function traced(rid, oid, uid, phone) {
     {
       const { FLOOR_TTL_MS } = require('../client-floor');
       await wait(FLOOR_TTL_MS + 1500);
+      CTL.controlCold();   // D4-c4: the switch cache COLD too (explicitly, not by timing) → this request makes its own read
       const t = await traced('x_pizza', 'trace_x_pizza_normal', 'u_trace_x_pizza', '99331001');
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
-      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
-      console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET; the rest identical to the golden`);
+      // §0.5 position on the charge: issued before the classifier → right before its first read of the order
+      const ctlOpts = { expected: 1, label: 'x_pizza post-TTL a_normal_retry (switch cache cold)',
+        anchor: ({ after }) => !!after && after.db === 'rtdb' && after.op === 'once' && after.path === 'orders/<oid>' };
+      const rest = CTL.withoutControlRead(t.trace, 'x_pizza', ctlOpts);
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
+      CTL.assertOtherRidRefused(t.trace, 'x_pizza', 'la_musa', ctlOpts);
+      console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET + exactly 1 switch read (before the classifier's order read); the rest identical to the golden; a switch read on la_musa's path is refused`);
     }
     console.log('d4b-charge-trace(emulator): OK');
   }

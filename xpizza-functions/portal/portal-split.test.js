@@ -34,6 +34,7 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const { foldPortalSplit, PORTAL_TARGETS, REQUIRE_REWRITES } = require('../tools/portal-split');
 const { unapplyD4c5 } = require('../tools/d4c5-inverse');
+const { unapplyD4c4 } = require('../tools/d4c4-inverse');
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
@@ -374,8 +375,9 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
   // ── 6. THE FOLD GUARD'S SENSITIVITY ──────────────────────────────────────────────────────────────────────────
   {
     // D4-c5 P1: the order_exists slice's eight index.js hunks are reversed ON TOP of the fold (tools/d4c5-inverse.js), so this
-    // parent pin composes with the later slice and still proves nothing else changed.
-    const foldToParent = (root) => unapplyD4c5(foldPortalSplit(root));
+    // parent pin composes with the later slice and still proves nothing else changed. D4-c4: the order-control slice's
+    // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5.
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(foldPortalSplit(root)));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
@@ -399,6 +401,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       ['PORTAL_ORIGINS', 'portal/origins.js', "'https://sherpa-portal.netlify.app',", "'https://sherpa-portal.netlify.app', 'https://x.example',"],
       ['the stats keyer', 'stats/keyer.js', 'let _statsKeyer = null;', 'let _statsKeyer = undefined;'],
       ['a byte inside a D4-c5 emitter hunk (the online closed reason)', 'index.js', "OE.orderExistsBody('closed', orderId)", "OE.orderExistsBody('conflict', orderId)"],
+      ['a byte inside a D4-c4 hunk (the race-guard reason)', 'index.js', "if (acq.reason === 'order_control') {", "if (acq.reason === 'order_controI') {"],
       ['a re-export site (wrong function)', 'index.js', 'exports.getEditableCatalog = portalFunctions.getEditableCatalog;', 'exports.getEditableCatalog = portalFunctions.getMyRestaurants;'],
     ];
     const results = CASES.map(([label, f, a, b]) => [label, mutate(f, a, b)]);

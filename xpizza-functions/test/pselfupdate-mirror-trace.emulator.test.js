@@ -61,6 +61,7 @@ let FAIL_CLASSIFY = false;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
 const app = require('../index.js');
+const CTL = require('./_order-control-trace');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
 const rtdb = admin.database();
@@ -251,8 +252,10 @@ async function capturePhase() {
     await rtdb.ref('rate_limits').remove();
     const a = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'quote' });
     await rtdb.ref('rate_limits').remove();
+    await CTL.controlWarm(rtdb, rid);   // D4-c4: the switch cache WARM (explicitly, not by timing) → no switch read in b
     const b = await traced(rid, `mcash_${rid}_a`, uid, '99551001', { kind: 'cash' });
     CLOCK_OFFSET += 61000;                                                       // REFRESH: past every per-instance TTL
+    CTL.controlCold();                  // D4-c4: …and the switch cache COLD (explicitly) → c (a quote) reads none, d reads it once
     await rtdb.ref('rate_limits').remove();
     const c = await traced(rid, 'qtrace_unused_oid', uid, '99000001', { kind: 'quote' });
     await rtdb.ref('rate_limits').remove();
@@ -336,13 +339,24 @@ async function capturePhase() {
     assertPremises();
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
+    // D4-c4 ALLOWLIST (advisor ruling, DECISIONS 2026-10-08 — mirrors R3.2): exactly one more call family is excluded,
+    // the pause switch's read (rtdb once order_control/<rid>/current), asserted on its own by _order-control-trace.js:
+    // quotes never read it (not wired); b ran WARM → 0; d ran COLD → exactly 1, at its §0.5 position — after the
+    // classifier's read of the order, right before the (unmoved) identity read
+    const ctlOpts = (rid, k) => ({ expected: k === 'd_cash_mirror_refresh' ? 1 : 0, label: `${rid} ${k}`,
+      anchor: ({ before, after }) => !!before && !!after && before.db === 'rtdb' && before.op === 'once' && before.path === 'orders/<oid>'
+        && after.db === 'rtdb' && after.op === 'once' && after.path === `restaurants/${rid}/identity` });
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request — got ${floorCalls.length}`);
-      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace`);
-      console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
+      const opts = ctlOpts(rid, k);
+      const rest = CTL.withoutControlRead(out[rid][k], rid, opts);
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace`);
+      console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get, +${opts.expected} switch read)`);
     }
+    for (const [rid, other] of [['x_pizza', 'la_musa'], ['la_musa', 'x_pizza']]) CTL.assertOtherRidRefused(out[rid].d_cash_mirror_refresh, rid, other, ctlOpts(rid, 'd_cash_mirror_refresh'));
+    console.log('  ✓ sensitivity: a switch read on the OTHER restaurant\'s path fails each restaurant\'s guard');
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
     const LIVE_426 = { error: 'client_update_required', app: 'orders', required_compat: 2 };   // the live route's body (client-floor-http Z)
     for (const rid of ['x_pizza', 'la_musa']) for (const kind of ['quote', 'cash']) {
