@@ -26,7 +26,7 @@ No form change and no client-floor change. Old and new order pages already show 
 - New page loads show it after ≤ 30 s (browser cache) / 120 s (shared cache). Pricing instances learn it after ≤ 45 s.
 - In that window, an order containing it may get a **retryable** `503 menu_updating` ("El menú se está actualizando — probá de nuevo en un momento"), or today's `400 unknown menu item`. It is **refused, never mispriced**.
 - **The kitchen (KDS) Disponibilidad list gets the new row automatically.**
-  - If the publish response says `kds_sync_pending`, the portal shows "La cocina se actualizará en unos minutos".
+  - If the publish response says `kds_sync_pending` (3 attempts failed; `kds_manifest_sync_failed` is logged), the portal shows "No se pudo actualizar la lista de la cocina. Avisá al equipo para sincronizarla."
   - Resync it with `node publish-menus.mjs --commit`. It derives the list from the **active** catalog and never overwrites a newer one.
 
 ## Rollback after an add
