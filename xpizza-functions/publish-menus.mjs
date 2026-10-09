@@ -38,25 +38,33 @@ async function main() {
   runStep('regenerate manifests (build-menus)', 'build-menus.mjs');
   runStep('keys-golden (menus.test)', 'menus.test.mjs');
 
-  // Extract the exact payloads we'd publish (in-memory — same extractor the golden just validated).
+  // The code-derived payloads (the same extractor the golden just validated) — now the YARDSTICK, not the source.
   const manifests = Object.fromEntries(RESTAURANT_IDS.map((rid) => [rid, extractManifest(rid)]));
 
-  if (!COMMIT) {
-    for (const rid of RESTAURANT_IDS) console.log(`[publish] DRY-RUN would write /menus/${rid} (${manifests[rid].length} items)`);
-    console.log('[publish] dry-run OK — re-run with --commit to publish to Firebase.');
-    process.exit(0);
-  }
-
-  // 3) --commit: write to Firebase /menus/{rid}. Owner action; needs admin creds (like a deploy).
+  /* 1D add-product A §0.4/§0b.3 — the manifest is derived from the ACTIVE CATALOG (the same authority publishEdited
+     and rollback-version write from), through the ONE conditional writer (catalog/kds-manifest.js): stamped with the
+     active generation, and a no-op when a newer generation is already stored. Products added in the portal are in the
+     active catalog, so they get their KDS rows; with no additions the rows equal the code-derived ones (golden). */
   const require = createRequire(import.meta.url);
   const admin = require('firebase-admin');
   admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: DB_URL });
-  const db = admin.database();
+  const fs = admin.firestore();
+  const { getActivePointer } = require('./catalog/catalog-firestore');
+  const { previewVersion } = require('./catalog/catalog-publish');
+  const { writeKdsManifest } = require('./catalog/kds-manifest');
+  const { generateKdsManifest } = require('./catalog/generate-form-bundle');
   for (const rid of RESTAURANT_IDS) {
-    await db.ref(`menus/${rid}`).set(manifests[rid]);
-    console.log(`[publish] wrote /menus/${rid} (${manifests[rid].length} items) → ${DB_URL}`);
+    const ptr = await getActivePointer(fs, rid);
+    if (!ptr || !ptr.version) { console.log(`[publish] ${rid}: no active version — skipped`); continue; }
+    const items = (await previewVersion(fs, rid, ptr.version)).items;
+    const live = generateKdsManifest(rid, { items });
+    const extra = live.filter((r) => !manifests[rid].some((c) => c.key === r.key)).map((r) => r.key);
+    console.log(`[publish] ${rid}: active ${ptr.version}@${ptr.generation} → ${live.length} rows (${extra.length ? `not in code: ${extra.join(', ')}` : 'identical keys to the code-derived manifest'})`);
+    if (!COMMIT) continue;
+    const r = await writeKdsManifest(admin.database(), rid, { catalog: { items }, generation: ptr.generation, versionId: ptr.version });
+    console.log(`[publish] ${rid}: ${r.written ? 'wrote /menus/' + rid : 'NOT written (' + r.reason + ')'} → ${DB_URL}`);
   }
-  console.log('[publish] done');
+  console.log(COMMIT ? '[publish] done' : '[publish] dry-run OK — re-run with --commit to publish to Firebase.');
   process.exit(0);
 }
 

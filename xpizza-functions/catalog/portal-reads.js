@@ -19,7 +19,8 @@
 // Brand-agnostic: nothing here knows which restaurants exist.
 // ---------------------------------------------------------------------------
 const { readOwnerRestaurants } = require('./owner-index');
-const { sourceRefOf, validateSource } = require('./source-store');
+const { sourceRefOf, validateSource, rendererContract } = require('./source-store');
+const { assessDraft } = require('./draft-assess');   // 1D add-product A
 const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: the fiscal capability, server-owned
 // The EXISTING codec from the 2b-1 write path, imported rather than reimplemented. `sourceUpdateTime`
 // is what a later slice hands straight back to editCatalog as `baseSourceUpdateTime`, and Firestore
@@ -94,7 +95,7 @@ async function getMyRestaurantsCore({ db, verifyIdToken }, req) {
 //
 // READ-ONLY. Nothing in this module writes.
 // ---------------------------------------------------------------------------
-async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, _sourceRefOf = sourceRefOf, _validateSource = validateSource }, req) {
+async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId, readActiveBuilt = null, _sourceRefOf = sourceRefOf, _validateSource = validateSource }, req) {
   if (!req || req.method !== 'GET') return reply(405, { error: 'method_not_allowed' });
   const rid = req.query && req.query.restaurantId;
 
@@ -123,7 +124,11 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     _validateSource(source, rid);
   } catch (e) {
     console.error('portal_source_invalid', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 200) }));
-    return reply(503, { error: 'source_unavailable', retryable: false, detail: 'the stored catalog failed validation and cannot be edited' });
+    // 1D add-product A §0.1: still a 503 (it cannot be edited), but now it says WHY and carries the revision, so
+    // the portal can offer "Volver al menú publicado" (resetDraftToLive) instead of a dead end.
+    return reply(503, { error: 'source_unavailable', retryable: false, detail: 'the stored catalog failed validation and cannot be edited',
+      draft_unpublishable: { code: 'invalid_source', detail: String((e && e.message) || e).slice(0, 300) },
+      sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null });
   }
 
   let activeVersionId;
@@ -134,7 +139,31 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
     return reply(503, { error: 'source_unavailable', retryable: true });
   }
 
+  /* 1D add-product A — what the "Agregar producto" drawer and the recovery path need, from DATA:
+     • renderedCategories: the sections this brand's order page draws (renderer contract) — the only ones a
+       product can be added to;
+     • restaurantName: for the fiscal note, never a literal;
+     • draft_unpublishable: present ONLY when the saved draft cannot publish against what is serving (a
+       structural drift or an unbuildable draft) — the portal then offers "Volver al menú publicado".
+     An assessment that cannot be made (the live read failed) is simply omitted: the editor still loads. */
+  let renderedCategories = [];
+  try { renderedCategories = rendererContract(rid).renderedCategories; } catch (_) { renderedCategories = []; }
+  let restaurantName = rid;
+  try { restaurantName = await displayName(db, rid); } catch (_) { restaurantName = rid; }
+  let draftUnpublishable = null;
+  if (readActiveBuilt && activeVersionId != null) {
+    try {
+      const a = assessDraft(rid, source, await readActiveBuilt(rid));
+      if (!a.publishable) draftUnpublishable = { code: a.code, detail: a.detail, ...(a.key ? { key: a.key } : {}) };
+    } catch (e) {
+      console.warn('portal_draft_assessment_unavailable', JSON.stringify({ rid, error: String((e && e.message) || e).slice(0, 160) }));
+    }
+  }
+
   return reply(200, {
+    renderedCategories,
+    restaurantName,
+    ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),
     source,
     // The CAS baseline. Byte-identical to editCatalog's baseSourceUpdateTime by construction.
     sourceUpdateTime: doc.updateTime ? encodeUpdateTime(doc.updateTime) : null,

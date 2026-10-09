@@ -35,20 +35,29 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const { foldPortalSplit, PORTAL_TARGETS, REQUIRE_REWRITES } = require('../tools/portal-split');
 const { unapplyD4c5 } = require('../tools/d4c5-inverse');
 const { unapplyD4c4 } = require('../tools/d4c4-inverse');
+const { unapplyAddProductFold } = require('../tools/addproduct-inverse');
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
 const PORTAL_GRAPH_LOCAL = [
+  'catalog/add-product-io.js',              // 1D add-product A: the profile key mode, high-water mark, registry key reads, KDS sync
+  'catalog/add-product.js',                 // 1D add-product A: the pure allocation + structural comparison (editCatalog / publishEdited)
   'catalog/candidate-validate.js', 'catalog/canonical-json.js', 'catalog/catalog-edit-auth.js', 'catalog/catalog-edit.js',
   'catalog/catalog-firestore.js', 'catalog/catalog-integrity.js', 'catalog/catalog-menu.js', 'catalog/catalog-publish.js',
-  'catalog/catalog-transform.js', 'catalog/content-hash.js', 'catalog/display-safety.js', 'catalog/edit-catalog-handler.js',
+  'catalog/catalog-transform.js', 'catalog/content-hash.js', 'catalog/display-safety.js',
+  'catalog/draft-assess.js',                // 1D add-product A: getEditableCatalog's draft_unpublishable assessment (pure)
+  'catalog/edit-catalog-handler.js',
   'catalog/evidence-encoding.js',           // 1D D4-c2a: the identity-evidence encoder (pure), reached via catalog-publish.js
-  'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'catalog/form-menu-source.js', 'catalog/identity-backfill.js',
+  'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'catalog/form-menu-source.js',
+  'catalog/generate-form-bundle.js',        // 1D add-product A: generateKdsManifest (pure over a catalog), via kds-manifest.js
+  'catalog/identity-backfill.js',
   'catalog/identity-derive.js', 'catalog/identity-destination.js',
   'catalog/identity-evidence.js',           // 1D D4-c2a: the activation-evidence builders, reached via catalog-publish.js (publishEdited)
   'catalog/identity-fence.js', 'catalog/identity-flags.js',
   'catalog/identity-partition.js', 'catalog/identity-plan.js', 'catalog/identity-reconcile.js', 'catalog/identity-registry.js',
-  'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js', 'catalog/mirror-rtdb.js',
+  'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
+  'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
+  'catalog/mirror-rtdb.js',
   'catalog/owner-index.js', 'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
@@ -377,7 +386,8 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // D4-c5 P1: the order_exists slice's eight index.js hunks are reversed ON TOP of the fold (tools/d4c5-inverse.js), so this
     // parent pin composes with the later slice and still proves nothing else changed. D4-c4: the order-control slice's
     // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5.
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(foldPortalSplit(root)));
+    // 1D add-product A: its hunks (index.js + the moved blocks) are reversed FIRST — it landed on top of D4-c4.
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(foldPortalSplit(root))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
@@ -426,11 +436,21 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       ['portal/functions.js', [rewrite(m.blocks.A), rewrite(m.blocks.B), rewrite(m.blocks.C)]], ['portal/preflight-max-age.js', []],
     ].map(([f, parts]) => `=== ${f}\n${cut(read(f), parts)}`).join('\n');
     const SKELETON = 'f5596b86b0c298cece9a8d0030d26fb7ffa9613cfc14a2c3de6f093fbf8e6119';
-    assert.strictEqual(sha(skeleton), SKELETON, `🔴 the split's non-moved text changed (headers / imports / exports / the wrap loop / the wrapper): ${sha(skeleton)}`);
-    assert.notStrictEqual(sha(skeleton.replace("exports[name] = withPreflightMaxAge(exports[name]);", 'void 0;')), SKELETON, 'sensitivity: dropping the wrap is caught');
+    // 1D add-product A adds EXACTLY two header lines to portal/functions.js (outside the moved blocks, so the fold's
+    // require count is untouched). The PIN stays the pre-slice one: those two lines — each present exactly once — are
+    // removed, and the remainder must still hash to it. Any other skeleton change still fails.
+    const AP_LINES = [
+      "const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)\n",
+      "const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() });\n",
+    ];
+    const skeletonPre = AP_LINES.reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
+    assert.strictEqual(sha(skeletonPre), SKELETON, `🔴 the split's non-moved text changed (headers / imports / exports / the wrap loop / the wrapper): ${sha(skeletonPre)}`);
+    assert.notStrictEqual(sha(skeleton), SKELETON, '(the add-product lines are really there)');
+    assert.notStrictEqual(sha(skeletonPre.replace("exports[name] = withPreflightMaxAge(exports[name]);", 'void 0;')), SKELETON, 'sensitivity: dropping the wrap is caught');
     // metadata preservation is guarded by section 3 (its naive-wrapper sensitivity); REQUIRE_REWRITES is the exact count
     assert.strictEqual(REQUIRE_REWRITES, 12);
-    assert.strictEqual((read('portal/functions.js').match(/require\('\.\.\//g) || []).length, REQUIRE_REWRITES + 4, '12 rewritten in-block specifiers + the 4 header imports (lib/admin, lib/payment-alert, stats/stats-api, stats/keyer)');
+    // + 1D add-product A's add-product-io header import (the fifth header import; outside the moved blocks)
+    assert.strictEqual((read('portal/functions.js').match(/require\('\.\.\//g) || []).length, REQUIRE_REWRITES + 5, '12 rewritten in-block specifiers + the 5 header imports (catalog/add-product-io, lib/admin, lib/payment-alert, stats/stats-api, stats/keyer)');
   }
   ok('fold-guard sensitivity: a byte changed inside a moved handler, a moved helper, a moved block\'s non-require text, outside the permitted edits, in paymentAlert / the Admin URL / PORTAL_ORIGINS / the keyer, a re-export pointed at the wrong function, one rewrite too few or a rewrite outside the rule — each FAILS the reconstruction; the routing Set and the marker fail the exact early-branch pin; every non-moved byte of the split files (headers, imports, the wrap loop, the wrapper module) is SKELETON-pinned; the wrapper\'s metadata preservation fails §3');
 

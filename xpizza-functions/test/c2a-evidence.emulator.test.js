@@ -261,7 +261,7 @@ function zeroExtrasSource() {
     ok('a COLLISION on the rollback evidence id → flip_evidence_exists (cause: ALREADY_EXISTS); pointer, snapshot, registry, source and version stamps UNCHANGED; no post-flip pass');
   }
 
-  // ── 8. COLLISION through the PORTAL HANDLER (save → publishEditedCore): generic failure mapping, nothing committed ─
+  // ── 8. COLLISION through the PORTAL HANDLER (save → publishEditedCore): a typed 409 (add-product A), nothing committed ─
   {
     const cur = await getActivePointer(db, RID);
     const owner = async () => ({ ok: true, uid: 'u_o', role: 'owner', actor: 'o@x.hn' });
@@ -272,7 +272,7 @@ function zeroExtrasSource() {
       const inputs = sourceToBuildInputs({ items: menu.items.map((i) => ({ key: i.key, price: i.price, display: i.display })),
         extras: menu.extras.map((e) => ({ key: e.key, price: e.price, display: e.display })), structure: menu.structure });
       const built = buildCatalogV2(RID, { formData: inputs.formData, priceTable: inputs.priceTable });
-      return { built: { ...built, extras: inputs.extras }, versionId: (await getActivePointer(db, RID)).version };
+      return { built: { ...built, extras: inputs.extras }, versionId: (await getActivePointer(db, RID)).version, extraRecords: built.extras };   // 1D add-product A
     };
     // the merchant's real save: a one-unit price edit, through editCatalogCore, which issues the edit token
     const srcSnap = await sourceRefOf(db, RID).get();
@@ -293,8 +293,10 @@ function zeroExtrasSource() {
       { restaurantId: RID, token: saved.body.token, fiscalAck: true }, {});
     });
     assert.deepStrictEqual(await readEvidence(RID, plantedId), { planted: true }, 'the colliding doc is untouched');
-    assert.strictEqual(reply.status, 500, `generic failure mapping (publish-edited-handler.js:197), got ${JSON.stringify(reply).slice(0, 300)}`);
-    assert.strictEqual(reply.body.error, 'publish_failed'); assert.ok(/^flip_evidence_exists: /.test(reply.body.detail), reply.body.detail);
+    // 1D add-product A §2 (DELIBERATE): flip_evidence_exists is now a TYPED 409 instead of the generic 500 — everything
+    // else this cell pins (nothing committed, the colliding doc untouched, no mirror write) is unchanged.
+    assert.strictEqual(reply.status, 409, `typed mapping (add-product A), got ${JSON.stringify(reply).slice(0, 300)}`);
+    assert.strictEqual(reply.body.error, 'flip_evidence_exists'); assert.ok(/^flip_evidence_exists: /.test(reply.body.detail), reply.body.detail);
     assert.deepStrictEqual(await stateOf(RID, [cur.version]), before, '🔴 the refused publish changed pointer / snapshot / registry / source / the live version');
     assert.strictEqual(mirrorCalls.length, 0, 'no mirror write');
     assert.ok(!logs.some((l) => l.includes('identity_postflip_pass')), 'no post-flip pass');
@@ -307,7 +309,7 @@ function zeroExtrasSource() {
       { restaurantId: RID, token: saved2.body.token, fiscalAck: true }, {});
     assert.strictEqual(ok2.status, 200, `after the collision the publish succeeds: ${JSON.stringify(ok2.body).slice(0, 200)}`);
     await assertActivationEvidence(RID, 'publish');
-    ok('a COLLISION through the portal (save → publishEditedCore) → the existing generic 500 publish_failed (detail flip_evidence_exists); pointer, snapshot, registry, source and the live version UNCHANGED; no mirror write; no post-flip pass; the next publish succeeds and records evidence');
+    ok('a COLLISION through the portal (save → publishEditedCore) → a TYPED 409 flip_evidence_exists (add-product A; was the generic 500); pointer, snapshot, registry, source and the live version UNCHANGED; no mirror write; no post-flip pass; the next publish succeeds and records evidence');
   }
 
   // ── 9. MAXIMUM-LENGTH (1,500-byte) version id: rollback (activation) AND certification succeed ─────────────────

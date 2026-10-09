@@ -470,8 +470,10 @@ const TWO = {
     const r = await getEditableCatalogCore({
       db: {}, fsdb: {}, authorize: asOwner2, readActiveVersionId: async () => 'v-9', ...mkFs(src),
     }, gq);
-    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
-      'exactly the three existing fields plus the one new one — nothing else appeared');
+    // 1D add-product A adds renderedCategories + restaurantName (always present); draft_unpublishable appears only
+    // when the saved draft cannot publish (asserted in its own cell below).
+    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
+      'the four existing fields plus add-product A\'s two — nothing else appeared');
     assert.deepStrictEqual(r.body.source, src, 'the source is untouched');
     assert.strictEqual(r.body.sourceUpdateTime, '1788754374.634000000', 'the CAS baseline is byte-identical to before');
     assert.strictEqual(r.body.activeVersionId, 'v-9', 'and the live version id');
@@ -515,6 +517,43 @@ const TWO = {
     assert.deepStrictEqual(require('../platform-manifest').PLATFORM.ACCOUNT_ORIGINS, ['https://orders.xpizza.hn', 'https://orders.lamusa.hn'],
       'ACCOUNT_ORIGINS is unchanged — exactly the two customer order sites, never widened to reach the portal');
     ok('the two write endpoints accept the portal origin and only it; ACCOUNT_ORIGINS is untouched');
+  }
+
+  {
+    // 1D add-product A — what the "Agregar producto" drawer and the recovery path read
+    const { buildSourceFromCode } = require('../tools/seed-source-store');
+    const { canonicalize, sourceToBuildInputs } = require('./source-store');
+    const { buildCatalogV2 } = require('./form-menu-source');
+    const asOwner3 = async () => ({ ok: true, uid: 'u1', role: 'owner', actor: 'o@m.hn' });
+    const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable });
+      return { built: { items: b.items, structure: b.structure, extras: i.extras }, versionId: 'v-9', extraRecords: b.extras }; };
+    const rtdbName = (name) => ({ ref: () => ({ get: async () => ({ val: () => name }) }) });
+    const call = (rid, src, extra = {}) => getEditableCatalogCore({ db: rtdbName('X. Pizza'), fsdb: {}, authorize: asOwner3,
+      readActiveVersionId: async () => 'v-9', ...mkFs(src), ...extra }, { method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const src = canonicalize(buildSourceFromCode(rid));
+      const r = await call(rid, src, { readActiveBuilt: async () => activeOf(rid, src) });
+      assert.strictEqual(r.status, 200);
+      assert.deepStrictEqual(r.body.renderedCategories, require('./source-store').rendererContract(rid).renderedCategories, `${rid}: the contract's drawn sections`);
+      assert.strictEqual(r.body.restaurantName, 'X. Pizza', 'the name from RTDB identity — never a literal');
+      assert.ok(!('draft_unpublishable' in r.body), `${rid}: a publishable draft carries no flag`);
+    }
+    const xp = canonicalize(buildSourceFromCode('x_pizza'));
+    const drift = JSON.parse(JSON.stringify(xp)); drift.items[0].display.desc = 'cambiada';
+    const d = await call('x_pizza', drift, { readActiveBuilt: async () => activeOf('x_pizza', xp) });
+    assert.strictEqual(d.status, 200, 'a drifted draft still LOADS');
+    assert.strictEqual(d.body.draft_unpublishable.code, 'existing_item_changed', 'and says why it cannot publish');
+    const unk = await call('x_pizza', drift, { readActiveBuilt: async () => { throw new Error('down'); } });
+    assert.strictEqual(unk.status, 200); assert.ok(!('draft_unpublishable' in unk.body), 'an assessment that cannot be made is omitted, the editor still loads');
+    const noName = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-9', ...mkFs(xp) },
+      { method: 'GET', query: { restaurantId: 'x_pizza' }, get: () => 'Bearer tok' });
+    assert.strictEqual(noName.body.restaurantName, 'x_pizza', 'an unreadable name falls back to the id');
+    const bad = JSON.parse(JSON.stringify(xp)); bad.items[0].price = 0;
+    const b503 = await call('x_pizza', bad);
+    assert.strictEqual(b503.status, 503, 'an invalid stored draft is still the 503 it was');
+    assert.strictEqual(b503.body.draft_unpublishable.code, 'invalid_source', 'but now says why');
+    assert.strictEqual(typeof b503.body.sourceUpdateTime, 'string', 'and carries the revision resetDraftToLive needs');
+    ok('add-product A: renderedCategories from the contract, restaurantName from RTDB (id fallback), draft_unpublishable only when the saved draft cannot publish (drift / invalid → with the revision); an unavailable assessment never blocks loading');
   }
 
   console.log(`portal-reads: OK (${n})`);

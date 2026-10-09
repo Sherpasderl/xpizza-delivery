@@ -190,6 +190,37 @@ const builtFor = (rid, mutate) => {
   }
   ok('a malformed injected set degrades to static enforcement instead of throwing (no order drop)');
 
+  {
+    // 1D add-product A §0b.1 — intakeGatesFor: the weekend answer IS weekendOnlyKeysFor's, path for path; `known` is the
+    // snapshot's dish keys (or every code-known dish in fallback); absentFromMenu keys by the pricing key.
+    const MG = require('./menu-gates');
+    const built = { items: [{ key: 'Margherita NY', display: { cat: 'ny' } }, { key: 'Portal New', display: { cat: 'ny' } }, { key: 'Pepperoni', display: { cat: 'individual' } }],
+      structure: { weekend_only_cats: ['ny'], pickup_only_cats: ['ny'] } };
+    const paths = {
+      'no pointer probe': { getMenu: async () => built },
+      'pointer throws': { getMenu: async () => built, getVersionId: async () => { throw new Error('x'); } },
+      'no version (flat)': { getMenu: async () => built, getVersionId: async () => null },
+      'read fails': { getMenu: async () => { throw new Error('down'); }, getVersionId: async () => 'v1' },
+      'unauthored weekend': { getMenu: async () => ({ items: built.items, structure: {} }), getVersionId: async () => 'v1' },
+      authored: { getMenu: async () => built, getVersionId: async () => 'v1' },
+    };
+    const codeKnown = new Set(Object.keys(require('../menu-pricing').MENU_BY_RESTAURANT.x_pizza));
+    for (const [name, deps] of Object.entries(paths)) {
+      const ig = await MG.createGateReader(deps).intakeGatesFor('x_pizza');
+      const wk = await MG.createGateReader(deps).weekendOnlyKeysFor('x_pizza');
+      assert.deepStrictEqual([...ig.weekend].sort(), [...wk].sort(), `${name}: the weekend set is weekendOnlyKeysFor's`);
+      if (name === 'authored' || name === 'unauthored weekend') assert.deepStrictEqual([...ig.known].sort(), ['Margherita NY', 'Pepperoni', 'Portal New'], `${name}: known = the snapshot's keys`);
+      else assert.deepStrictEqual([...ig.known].sort(), [...codeKnown].sort(), `${name}: known = every code-known dish (fallback)`);
+    }
+    assert.deepStrictEqual([...MG.staticKnownFallback('r3_synthetic')], [], 'a brand with no code table knows nothing in fallback');
+    const known = new Set(['Margherita NY']);
+    assert.deepStrictEqual(MG.absentFromMenu([{ name: 'Margherita NY' }, { name: 'Portal New' }, { name: 'Portal New' }], 'x_pizza', known), ['Portal New'], 'deduplicated, by the pricing key (x_pizza: name)');
+    assert.deepStrictEqual(MG.absentFromMenu([{ id: 'dimsum_01', name: 'x' }], 'la_musa', new Set(['dimsum_01'])), [], 'la_musa keys by id');
+    assert.deepStrictEqual(MG.absentFromMenu([{ name: 'A' }], 'x_pizza', null), ['A'], 'no membership → everything is unknown (fail closed)');
+    assert.strictEqual(MG.MENU_UPDATING.retryable, true); assert.strictEqual(MG.MENU_UPDATING.error, 'menu_updating');
+    ok('add-product A: intakeGatesFor\'s weekend set equals weekendOnlyKeysFor\'s on every path; known = snapshot keys or code keys in fallback (none for a code-less brand); absentFromMenu keys by the pricing key and fails closed');
+  }
+
   FINISHED = true;
   console.log(`menu-gates: OK (${n})`);
 })().catch((e) => { console.error(e); process.exit(1); });

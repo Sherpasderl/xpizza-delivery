@@ -98,6 +98,12 @@ const db = admin.firestore();
   const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),
     expected: { activeVersionId: active, activeGeneration } });
   console.log(`  done — active_version=${res.versionId}, mirrored=${res.mirrored}`);
+  // 1D add-product A §0.2/§0b.3 — the KDS manifest of the catalog now active, through the ONE conditional writer,
+  // stamped with THIS activation's generation (read from the pointer; a newer activation would supersede it).
+  const kds = await require('../catalog/add-product-io').addProductIo({ fs: db, rtdb: admin.database() }).syncKds(RID, { versionId: res.versionId });
+  console.log(kds.pending
+    ? '  ⚠ the kitchen (KDS) list was NOT updated — run: node publish-menus.mjs --commit'
+    : `  kitchen (KDS) list: ${kds.written ? 'updated' : `not written (${kds.reason})`}`);
   console.log('now run: node tools/verify-catalog.js');
   process.exit(0);
 })().catch((e) => { console.error('rollback failed (pointer NOT moved unless stated above):', e && e.message); process.exit(1); });

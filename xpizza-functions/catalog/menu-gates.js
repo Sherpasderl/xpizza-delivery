@@ -18,7 +18,7 @@
 // The cache is keyed by VERSION, not by time: published versions are immutable, so one read serves
 // every order on that version and a new version re-reads by construction.
 // ---------------------------------------------------------------------------
-const { X_PIZZA_WEEKEND_ONLY } = require('../menu-pricing');   // FALLBACK ONLY — never the live authority
+const { X_PIZZA_WEEKEND_ONLY, MENU_BY_RESTAURANT, itemPricingKey } = require('../menu-pricing');   // FALLBACK ONLY — never the live authority
 const { weekendRule, pickupRule, redeemRule, untypedUnion } = require('./policy-primitive');
 
 const GATE_READ_DEADLINE_MS = 1500;
@@ -91,9 +91,9 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     } catch (e) {
       // FALLBACK TO TODAY — the static set. Not cached, so the next order retries the catalog.
       console.warn('menu_gates_read_failed', JSON.stringify({ restaurantId, versionId: versionId || null, error: String((e && e.message) || e).slice(0, 160) }));
-      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
+      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId) };
     }
-    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true };
+    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId) };
     // PER-GATE authored checks. A gate the store has not authored falls back on ITS OWN and never drags
     // the others down with it. This was a shared early-return, and it was wrong in a way no direct
     // derivation test could see: la_musa has NO weekend categories at all, so every la_musa read
@@ -113,6 +113,9 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
       // legitimate redemption — the opposite error from the weekend gate but just as wrong.
       redeem: redeemAuthored(built) ? redeemEligibleFrom(restaurantId, built) : null,
       fallback: !weekendAuthored,
+      // 1D add-product A §0b.1 — the COMPLETE set of dish keys this snapshot knows (same version as the gates).
+      // A key outside it is one the gates cannot classify (a product added after this snapshot) → refused upstream.
+      known: new Set((built.items || []).map((it) => it && it.key).filter((k) => typeof k === 'string')),
     };
     if (cache.size >= MAX_CACHED_VERSIONS) cache.delete(cache.keys().next().value);   // bounded
     cache.set(key, gates);
@@ -133,6 +136,31 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     const versionId = await withDeadline(p, deadlineMs, 'gate_pointer');
     pointer.set(restaurantId, { at: nowMs(), versionId });
     return versionId;
+  }
+
+  /* 1D add-product A §0b.1 — the INTAKE gates, from ONE snapshot: the weekend set (exactly as weekendOnlyKeysFor)
+     and the known-key membership. NEVER THROWS: every failure path lands on the static sets — the code weekend
+     set and every code-known dish — so an existing item behaves exactly as today, and a key the gate cannot
+     classify (a product added since this snapshot, or any portal addition while the read fails) is refused by
+     the caller with a retryable "menu updating". */
+  async function intakeGatesFor(restaurantId) {
+    const fallback = () => ({ weekend: staticWeekendFallback(restaurantId), known: staticKnownFallback(restaurantId), fallback: true });
+    if (!getVersionId) return fallback();
+    let versionId;
+    try {
+      versionId = await activeVersionOf(restaurantId);
+    } catch (e) {
+      console.warn('menu_gates_pointer_failed', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
+      return fallback();
+    }
+    if (versionId == null) return fallback();
+    try {
+      const g = await gatesFor(restaurantId, versionId);
+      return { weekend: g.weekend, known: g.known || staticKnownFallback(restaurantId), fallback: !!g.fallback };
+    } catch (e) {
+      console.error('menu_gates_unexpected', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
+      return fallback();
+    }
   }
 
   // NEVER THROWS. Every failure path lands on the static set = today's behaviour.
@@ -156,6 +184,7 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
   return {
     gatesFor,
     weekendOnlyKeysFor,
+    intakeGatesFor,
     getWeekendOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).weekend,
     // NEVER THROWS. null ⇒ "use the static allowlist" — today's exact answer, which is neither
     // over-permissive (no free NY pie) nor over-restrictive (no refused legitimate redemption).
@@ -178,9 +207,26 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
   };
 }
 
+// 1D add-product A §0b.1 — fallback membership = every CODE-known dish (the static pricing table). A brand with no
+// code table knows nothing in fallback mode, so its portal additions are refused while the gate cannot be read.
+function staticKnownFallback(restaurantId) {
+  return new Set(Object.keys(MENU_BY_RESTAURANT[restaurantId] || {}));
+}
+
+// The order's lines whose pricing key the snapshot does not know (deduplicated, in order).
+function absentFromMenu(items, restaurantId, known) {
+  const out = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    const k = itemPricingKey(it, restaurantId);
+    if (typeof k === 'string' && !(known instanceof Set && known.has(k)) && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
+const MENU_UPDATING = Object.freeze({ error: 'menu_updating', detail: 'El menú se está actualizando — probá de nuevo en un momento', retryable: true });
+
 // The pre-portal behaviour, preserved exactly: only x_pizza has weekend-only items today.
 function staticWeekendFallback(restaurantId) {
   return restaurantId === 'x_pizza' ? new Set(X_PIZZA_WEEKEND_ONLY) : new Set();
 }
 
-module.exports = { createGateReader, weekendOnlyKeysFrom, pickupOnlyKeysFrom, redeemEligibleFrom, gateAuthored, staticWeekendFallback, GATE_READ_DEADLINE_MS, POINTER_TTL_MS };
+module.exports = { createGateReader, weekendOnlyKeysFrom, pickupOnlyKeysFrom, redeemEligibleFrom, gateAuthored, staticWeekendFallback, staticKnownFallback, absentFromMenu, MENU_UPDATING, GATE_READ_DEADLINE_MS, POINTER_TTL_MS };

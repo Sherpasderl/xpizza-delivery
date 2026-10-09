@@ -71,7 +71,7 @@ function stubFirestore(sourceDoc, { onGetSource = null, activeVersionId = ACTIVE
       state.activeReads++;
       const inputs = require('./source-store').sourceToBuildInputs(versionBuilt);
       const built = require('./form-menu-source').buildCatalogV2(RID, { formData: inputs.formData, priceTable: inputs.priceTable });
-      return { built: { ...built, extras: inputs.extras }, versionId: activeVersionId };
+      return { built: { ...built, extras: inputs.extras }, versionId: activeVersionId, extraRecords: built.extras };   // 1D add-product A: the comparator needs the extras' display records
     },
     collection: (c) => ({ doc: (d) => ({ collection: (c2) => ({ doc: (d2) => doc(`${c}/${d}/${c2}/${d2}`) }), get: async () => ({ exists: true, data: () => ({}) }) }) }),
   };

@@ -56,7 +56,7 @@ const readActiveBuilt = async () => {
     extras: menu.extras.map((e) => ({ key: e.key, price: e.price, display: e.display })), structure: menu.structure });
   const built = buildCatalogV2(RID, { formData: inputs.formData, priceTable: inputs.priceTable });
   const live = await getActivePointer(db, RID);
-  return { built: { ...built, extras: inputs.extras }, versionId: live.version };
+  return { built: { ...built, extras: inputs.extras }, versionId: live.version, extraRecords: built.extras };   // 1D add-product A: + the extras' records (the structural comparison)
 };
 
 const save = (source, extra = {}) => editCatalogCore({ db, authorize: owner, readActiveBuilt, toPrecondition },

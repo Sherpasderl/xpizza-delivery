@@ -28,6 +28,9 @@ const { getActivePointer } = require('./catalog-firestore');
 // Re-exported here so every existing importer is unchanged.
 const { encodeUpdateTime } = require('./source-store');
 const { catalogDiff, issueEditToken, sha256 } = require('./catalog-edit');
+const AP = require('./add-product');
+const { rendererContract, sourceToBuildInputs } = require('./source-store');
+const { buildCatalogV2 } = require('./form-menu-source');
 
 const reply = (status, body) => ({ status, body });
 
@@ -42,7 +45,10 @@ const isPreconditionFailure = (e) =>
 // can never match, so every conditional write fails and no edit is ever saveable. The encoding lives
 // with the Firestore code that produces it; the default is identity, for stubs that deal in opaque
 // strings. This is deliberately injected rather than imported: the core stays free of firebase-admin.
-async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v }, body, req) {
+// An add-product refusal, typed and field-mapped for the portal.
+const refusal = (e) => reply(e.status || 400, { error: e.code, detail: e.detail, ...(e.field ? { field: e.field } : {}), ...(e.key ? { key: e.key } : {}), ...(e.ref ? { ref: e.ref } : {}) });
+
+async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition = (v) => v, addProduct = null }, body, req) {
   const rid = body && body.restaurantId;
 
   // AUTH FIRST — before any read. Its typed status/error pass through verbatim so the caller can tell
@@ -59,14 +65,27 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   const base = body && body.baseSourceUpdateTime;
   if (typeof base !== 'string' || !base) return reply(400, { error: 'bad_request', detail: 'baseSourceUpdateTime is required (the write is conditional on it)' });
 
-  // VALIDATE BEFORE WRITING. The 2a validator is the structural gate — mis-keyed extras, dangling
-  // categories, non-positive or float prices, key/item non-bijection, inline-price disagreement — and
-  // it names the offending field. A draft that fails it is never stored, so a broken draft cannot sit
-  // in the store waiting for someone to publish it.
+  /* ── 1D add-product A §1 — THE ACTIVE CATALOG IS READ FIRST ────────────────────────────────────────
+     Every save is now checked against what is SERVING before anything is written: the draft is built with
+     the same builder publish uses, validated, and structurally compared (ADD-ONLY: existing items, extras
+     and structure may change only in price; new plain products may be appended; the D4-P1 deletion claim
+     is honoured). A draft that cannot pass is never stored, so it can never be saved again and poison every
+     later publish. (Declared permitted difference: this read used to follow the write.) */
+  let liveRes;
   try {
-    validateSource(source, rid);
+    liveRes = await readActiveBuilt(rid);
   } catch (e) {
-    return reply(400, { error: 'invalid_source', detail: String((e && e.message) || e).slice(0, 400) });
+    return reply(503, { error: 'live_version_unavailable', retryable: true });
+  }
+  const live = liveRes.built;
+  const baseActiveVersionId = liveRes.versionId;
+  const activeKeys = new Set((live.items || []).map((it) => it && it.key));
+  const isAddition = (it) => !(it && typeof it === 'object' && typeof it.key === 'string' && activeKeys.has(it.key)
+    && !Object.prototype.hasOwnProperty.call(it, 'ref'));
+  const hasAdditions = Array.isArray(source.items) && source.items.some(isAddition);
+  // OWNER-ONLY for any draft that adds products (§1); price-only drafts keep today's tiers.
+  if (hasAdditions && auth.role !== 'owner') {
+    return reply(403, { error: 'not_owner', detail: 'only the restaurant owner can add products' });
   }
 
   const ref = sourceRefOf(db, rid);
@@ -77,11 +96,58 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     return reply(503, { error: 'store_unavailable', retryable: true });
   }
   if (!snap || !snap.exists) return reply(409, { error: 'source_missing', detail: 'no draft to edit — seed the store first' });
+  const stored = (snap.data && snap.data()) || {};
+
+  // SERVER ALLOCATION (§2): tmp references become keys/ids here, once; the high-water mark advances in the
+  // same commit as the draft below.
+  let candidate = canonicalize(source);
+  let hwmPlan = null;
+  if (hasAdditions) {
+    if (!addProduct) return reply(503, { error: 'add_product_unavailable', retryable: false });
+    try {
+      const keyMode = AP.resolveKeyMode(await addProduct.readKeyMode(rid), live.items);
+      const hwmRef = addProduct.hwmRef(rid);
+      const hwmSnap = await hwmRef.get();
+      const hwmVal = hwmSnap.exists ? (hwmSnap.data() || {}).value : null;
+      const prospective = (candidate.items || [])
+        .filter((it) => it && typeof it === 'object' && Object.prototype.hasOwnProperty.call(it, 'ref') && it.display && typeof it.display.name === 'string')
+        .map((it) => (keyMode === 'name' ? AP.tidyName(it.display.name) : AP.slugify(it.display.name)))
+        .filter(Boolean);
+      const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective) : new Set();
+      const res = AP.allocateAdditions({ incoming: candidate, stored, activeItems: live.items, keyMode,
+        hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k) });
+      candidate = res.source;
+      if (res.allocatedNow.length) hwmPlan = { ref: hwmRef, snap: hwmSnap, value: res.hwm };
+    } catch (e) {
+      if (e instanceof AP.AddProductError) return refusal(e);
+      return reply(503, { error: 'store_unavailable', retryable: true });
+    }
+  }
+
+  // VALIDATE BEFORE WRITING. The 2a validator is the structural gate — mis-keyed extras, dangling
+  // categories, non-positive or float prices, key/item non-bijection, inline-price disagreement — and
+  // it names the offending field. A draft that fails it is never stored, so a broken draft cannot sit
+  // in the store waiting for someone to publish it.
+  try {
+    validateSource(candidate, rid);
+  } catch (e) {
+    return reply(400, { error: 'invalid_source', detail: String((e && e.message) || e).slice(0, 400) });
+  }
+  // …and BUILD it with publish's builder: a draft the builder cannot carry is refused here, never stored.
+  let draftBuilt, draftExtraRecords;
+  try {
+    const inputs = sourceToBuildInputs(candidate);
+    const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
+    draftBuilt = { ...built, extras: inputs.extras };
+    draftExtraRecords = built.extras;
+  } catch (e) {
+    return reply(400, { error: 'draft_unbuildable', detail: String((e && e.message) || e).slice(0, 200) });
+  }
 
   // The whole-object write. update() carries the precondition; set() cannot. Every top-level field the
   // stored doc has but the new source does not is explicitly cleared, so an update is a REPLACEMENT
   // rather than a merge — a stale field left behind would be content nobody authored and nobody saw.
-  const next = canonicalize(source);
+  const next = candidate;
 
   /* ── 1D D4-P1 — THE DELETION CLAIM IS SERVER-OWNED, AND THE REPLACEMENT ABOVE WOULD EAT IT ──────
      🔴 TWO THINGS GO WRONG IF THIS IS LEFT TO THE CLIENT, and they pull in opposite directions.
@@ -244,42 +310,54 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   if (claimResult.claim) next.deleted_ids = claimResult.claim;
   }
 
+  /* THE STRUCTURAL COMPARISON (§1), after the deletion claim is settled so it can honour it (advisor ruling A:
+     ADD-ONLY for portal-authored changes; the pre-existing D4-P1 server-owned deletion claim is preserved). */
+  try {
+    AP.assertSameAuthoredFields(next.structure, stored.structure);
+    AP.compareToActive({
+      draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure },
+      activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure },
+      draftAuthored: Object.keys(next.structure || {}),
+      renderedCategories: rendererContract(rid).renderedCategories,
+      deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
+    });
+  } catch (e) {
+    if (e instanceof AP.AddProductError) return refusal(e);
+    return reply(500, { error: 'structural_check_failed', detail: String((e && e.message) || e).slice(0, 200) });
+  }
+
   const stale = Object.keys((snap.data && snap.data()) || {}).filter((k) => !Object.prototype.hasOwnProperty.call(next, k));
   const payload = { ...next };
   for (const k of stale) payload[k] = null;   // cleared; the source schema is closed, so this is normally empty
 
   let writeTime;
   try {
-    const res = await ref.update(payload, { lastUpdateTime: toPrecondition(base) });
+    let res;
+    if (hwmPlan) {
+      /* The draft and the high-water mark commit TOGETHER, each conditional: the draft on the revision the
+         merchant loaded, the mark on the version read above (or create-only when it has never existed). A
+         concurrent save loses on one of the two preconditions, never half-commits. */
+      const batch = db.batch();
+      batch.update(ref, payload, { lastUpdateTime: toPrecondition(base) });
+      if (hwmPlan.snap.exists) batch.update(hwmPlan.ref, { value: hwmPlan.value }, { lastUpdateTime: hwmPlan.snap.updateTime });
+      else batch.create(hwmPlan.ref, { value: hwmPlan.value });
+      const results = await batch.commit();
+      res = results && results[0];
+    } else {
+      res = await ref.update(payload, { lastUpdateTime: toPrecondition(base) });
+    }
     writeTime = (res && (res.writeTime || res.updateTime)) || null;
     if (writeTime && typeof writeTime === 'object') writeTime = encodeUpdateTime(writeTime);
   } catch (e) {
-    if (isPreconditionFailure(e)) {
+    if (isPreconditionFailure(e) || (hwmPlan && (e && (e.code === 6 || e.code === 'already-exists')))) {
       // Someone else saved. Their draft stands; this edit is refused rather than merged or overwritten.
       return reply(409, { error: 'stale_edit', detail: 'the draft changed since you loaded it — reload and re-apply your edit' });
     }
     return reply(503, { error: 'store_unavailable', retryable: true });
   }
 
-  // Everything below is read-only. The draft is already saved, so a failure here costs the caller their
-  // token (they can re-request a diff), never their edit.
-  let live, baseActiveVersionId;
-  try {
-    ({ built: live, versionId: baseActiveVersionId } = await readActiveBuilt(rid));
-  } catch (e) {
-    return reply(503, { error: 'live_version_unavailable', retryable: true, updateTime: writeTime });
-  }
-
-  const { sourceToBuildInputs } = require('./source-store');
-  const { buildCatalogV2 } = require('./form-menu-source');
-  let draftBuilt;
-  try {
-    const inputs = sourceToBuildInputs(source);
-    draftBuilt = { ...buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }), extras: inputs.extras };
-  } catch (e) {
-    return reply(500, { error: 'draft_build_failed', detail: String((e && e.message) || e).slice(0, 200), updateTime: writeTime });
-  }
-
+  // Everything below is read-only and in memory: the live catalog and the built draft were read and built
+  // BEFORE the write (above).
   const diff = catalogDiff(live, draftBuilt);
   /* 🔴 THE TOKEN MUST HASH WHAT PUBLISH WILL HASH, AND THAT IS THE STORED DRAFT — NOT THE BODY.
      This hashed the incoming `source`, and publish hashes the draft it reads BACK. Those agreed only
@@ -300,7 +378,9 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
     rid, actor: auth.actor || auth.uid, role: auth.role, updateTime: writeTime,
     counts: { added: diff.added.length, removed: diff.removed.length, renamed: diff.renamed.length, changed: diff.changed.length, large: diff.largeChangeSet.length },
   }));
-  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token });
+  // 1D add-product A §3: the CANONICAL saved source comes back, so the portal adopts server truth (allocated
+  // keys and ids, canonical order) before it builds the review.
+  return reply(200, { updateTime: writeTime, baseActiveVersionId, sourceHash, diff, token, source: next });
 }
 
 module.exports = { editCatalogCore, isPreconditionFailure, encodeUpdateTime };

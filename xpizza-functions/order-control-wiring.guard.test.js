@@ -16,7 +16,8 @@ const { unapplyD4c4, HUNKS } = require('./tools/d4c4-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const idx = read('index.js');
+// 1D add-product A landed on top of D4-c4: its index.js hunks (tools/addproduct-inverse.js) are reversed FIRST.
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(read('index.js'));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });

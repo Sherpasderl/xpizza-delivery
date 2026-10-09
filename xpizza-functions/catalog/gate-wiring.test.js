@@ -64,8 +64,12 @@ const CODE = SRC.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n')
     assert.strictEqual(args.split(',').length, 4, `every call site must pass the catalog key set — found: weekendOnlyViolation(${args})`);
     assert.ok(/weekendKeys\s*$/.test(args.trim()), `the 4th argument must be the resolved catalog set — found: weekendOnlyViolation(${args})`);
   }
-  const awaits = [...CODE.matchAll(/const weekendKeys = await gateReader\(\)\.weekendOnlyKeysFor\(restaurantId\);/g)];
+  // 1D add-product A §0b.1: both sites now resolve ONE intake snapshot (the weekend set + the known-key membership)
+  // from the gate reader, per request, and take the weekend set from THAT snapshot. intakeGatesFor's weekend answer is
+  // weekendOnlyKeysFor's, path for path (catalog/menu-gates.test.js pins the equivalence).
+  const awaits = [...CODE.matchAll(/const intakeGates = await gateReader\(\)\.intakeGatesFor\(restaurantId\);\n(?:[^\n]*\n){0,12}?\s*const weekendKeys = intakeGates\.weekend;/g)];
   assert.strictEqual(awaits.length, 2, 'both sites must RESOLVE the set from the gate reader, not reuse a stale local');
+  assert.strictEqual([...CODE.matchAll(/gateReader\(\)\.weekendOnlyKeysFor\(/g)].length, 0, 'no intake site reads the weekend set separately from the membership');
   ok('both intake sites resolve the catalog set and pass it (neither is left on the static 3-arg form)');
 }
 
@@ -74,7 +78,7 @@ const CODE = SRC.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n')
 {
   let searchFrom = 0;
   for (let i = 0; i < 2; i++) {
-    const resolve = CODE.indexOf('const weekendKeys = await gateReader()', searchFrom);
+    const resolve = CODE.indexOf('const weekendKeys = intakeGates.weekend;', searchFrom);   // 1D add-product A: taken from the intake snapshot (resolved just above it)
     const verdict = CODE.indexOf('weekendOnlyViolation(body.items', searchFrom);
     assert.ok(resolve > -1 && verdict > -1, `site ${i + 1} must have both halves`);
     assert.ok(resolve < verdict, `site ${i + 1}: the gate set must be resolved BEFORE the verdict — otherwise weekendKeys is undefined and the static fallback silently wins`);

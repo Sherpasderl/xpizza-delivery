@@ -372,6 +372,7 @@ function clientFloorReader() {
 // which is exactly today's behaviour. A pre-charge gate that fails OPEN would accept a weekday order
 // for a weekend-only item; being briefly stale is strictly the better failure.
 const { createGateReader } = require('./catalog/menu-gates');
+const { absentFromMenu, MENU_UPDATING } = require('./catalog/menu-gates');   // 1D add-product A §0b.1: keys the gate snapshot cannot classify
 const { previewVersion } = require('./catalog/catalog-publish');
 let _gateReader = null;
 function gateReader() {
@@ -895,7 +896,16 @@ createOrderApp.all('*', async (req, res) => {
     const fMs = Number.isFinite(SCHED.normalizeScheduledFor(body.scheduled_for)) ? SCHED.normalizeScheduledFor(body.scheduled_for) : Date.now();
     // 2a: the weekend-only set comes from the CATALOG (weekend_only_cats × the dishes in them), so a
     // portal edit takes effect. Falls back to the static set on any failure — never an open gate.
-    const weekendKeys = await gateReader().weekendOnlyKeysFor(restaurantId);
+    // 1D add-product A §0b.1: from the SAME snapshot, the known-key membership — a key it cannot classify (a product
+    // added after this snapshot, or a portal addition while the read fails) is refused, retryably, before any write.
+    const intakeGates = await gateReader().intakeGatesFor(restaurantId);
+    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known);
+    if (unknownKeys.length) {
+      console.warn(`createOrder: ${orderId} — 503 menu_updating (keys the gate snapshot does not know: ${unknownKeys.join(', ')})`);
+      res.set('Retry-After', '2');
+      return res.status(503).json({ ...MENU_UPDATING });
+    }
+    const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
       return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
@@ -1497,6 +1507,8 @@ chargeOnlineApp.all('*', async (req, res) => {
   let orderBindingFormat = null;
   let classifyFailed = false;
   let controlArmed = null;   // D4-c4 §0.2: the race guard's refusal kind ('paused' | 'unavailable'), armed by the pre-gate below
+  let menuArmed = false;     // 1D add-product A §0b.1: a non-fresh request carrying a key the gate snapshot does not know
+  let clsForMenu = null;     // 1D add-product A: the preliminary classification, for the menu pre-gate below (null = failed)
   let canonicalFpG = null;   // the canonical recompute for the classify + probe checks — a request-local memoizer (the reserve/acquire
                              // site has its own request-local memoizer, canonicalChargeFp, over the same inputs)
   {
@@ -1512,6 +1524,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     const ctlP = OC.orderControlFor(db, restaurantId);   // D4-c4: read alongside the classify below; decided at the pre-gate
     try {
       clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG);
+      clsForMenu = clsG;   // 1D add-product A
       orderBindingFormat = (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) ? CB.FORMAT_CANONICAL : CB.FORMAT_LEGACY;   // classify's snapshot
     } catch (e) {
       console.error(`chargeOnlineOrder: availability classify failed for ${orderId} (failing open, reading availability + deferring to the CAS)`, e && e.message);
@@ -1561,7 +1574,21 @@ chargeOnlineApp.all('*', async (req, res) => {
     const fMs = Number.isFinite(SCHED.normalizeScheduledFor(body.scheduled_for)) ? SCHED.normalizeScheduledFor(body.scheduled_for) : Date.now();
     // 2a: the weekend-only set comes from the CATALOG (weekend_only_cats × the dishes in them), so a
     // portal edit takes effect. Falls back to the static set on any failure — never an open gate.
-    const weekendKeys = await gateReader().weekendOnlyKeysFor(restaurantId);
+    // 1D add-product A §0b.1: the known-key membership from the SAME snapshot, enforced like c4's race guard — a
+    // FRESH checkout (or a failed classifier) is refused here, before reserving; anything else (reuse, in_progress,
+    // paid, closed) is honoured and ARMS the guard in acquireHostedAttempt against a drift to a fresh issuance.
+    const intakeGates = await gateReader().intakeGatesFor(restaurantId);
+    const unknownKeys = absentFromMenu(body.items, restaurantId, intakeGates.known);
+    if (unknownKeys.length) {
+      const mg = OCS.chargePreGate('menu_updating', clsForMenu);
+      if (mg.refuse) {
+        console.warn(`chargeOnlineOrder: ${orderId} — 503 menu_updating (keys the gate snapshot does not know: ${unknownKeys.join(', ')})`);
+        res.set('Retry-After', '2');
+        return res.status(503).json({ ...MENU_UPDATING });
+      }
+      menuArmed = true;
+    }
+    const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
       return res.status(400).json({ ok: false, error: 'weekend_only', item: weekendBad,
@@ -1823,7 +1850,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
@@ -1846,6 +1873,11 @@ chargeOnlineApp.all('*', async (req, res) => {
     if (acq.reason === 'order_control') {   // D4-c4 §0.2: the race guard refused a drift to a fresh URL — this request's kind
       console.warn(`chargeOnlineOrder: ${orderId} — ${OCS.REFUSALS[controlArmed].status} (order control race guard: ${controlArmed})`);
       return OC.respond(res, controlArmed);
+    }
+    if (acq.reason === 'menu_updating') {   // 1D add-product A §0b.1: a drift to a fresh issuance with a key the gate cannot classify
+      console.warn(`chargeOnlineOrder: ${orderId} — 503 menu_updating (menu guard)`);
+      res.set('Retry-After', '2');
+      return res.status(503).json({ ...MENU_UPDATING });
     }
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
     console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
@@ -6626,6 +6658,7 @@ module.exports.sendPaidAfterCloseRefund = sendPaidAfterCloseRefund;
 const portalFunctions = require('./portal/functions');
 exports.editCatalog = portalFunctions.editCatalog;
 exports.publishEdited = portalFunctions.publishEdited;
+exports.resetDraftToLive = require('./portal/reset-draft').resetDraftToLive;   // 1D add-product A §0.1: "Volver al menú publicado" (full load; not an isolated portal fn)
 
 // PORTAL SPEED P1: the Portal 2b-2a block (getMyRestaurants, getEditableCatalog) moved verbatim to portal/functions.js.
 exports.getMyRestaurants = portalFunctions.getMyRestaurants;
