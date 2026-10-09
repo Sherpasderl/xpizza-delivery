@@ -139,9 +139,13 @@ const order = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).val();
     ok('gate outage, cash: the added product → 503 menu_updating (retryable, Retry-After 2), nothing written; an existing product behaves exactly as today');
   }
   {
-    const f = await send('ap_card_out', 'online', NEW, 624, SAT, phone());
+    const fph = phone();
+    const f = await send('ap_card_out', 'online', NEW, 624, SAT, fph);
     assert.strictEqual(f.status, 503); assert.strictEqual(f.json.error, 'menu_updating');
     assert.strictEqual(await order('ap_card_out'), null, 'a FRESH checkout: no order, no attempt');
+    // refused at the PRE-GATE — before the dedupe bookkeeping and the rate-limit writes, not later at the guard
+    assert.strictEqual((await rtdb.ref('recent_order_content').get()).val(), null, 'no dedupe bookkeeping written');
+    assert.strictEqual((await rtdb.ref('rate_limits').get()).val(), null, 'no rate-limit token spent');
     const r = await send('ap_card_reuse', 'online', NEW, 624, SAT, cph);
     assert.strictEqual(r.status, 200, `genuine reuse during the outage is honoured: ${r.text.slice(0, 200)}`);
     assert.strictEqual(r.json.checkout_url, card.json.checkout_url, 'the SAME checkout');

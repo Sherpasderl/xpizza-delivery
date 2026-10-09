@@ -225,7 +225,8 @@ const wipe = async () => {
 
   // ── publish-time authority (mutation-driven): the checks the SAVE already ran are REPEATED at publish ──
   {
-    const rid = 'x_pizza';
+    // la_musa: NO fiscal gate, so nothing but the add-only owner check stands between a staff caller and a publish
+    const rid = 'la_musa';
     await wipe(); await seedBrand(rid, { certify: false });
     // edit tokens are not role-bound: a staff caller holding an owner's token over a draft WITH additions is refused
     const s = await save(rid, withAdds(rid, await draft(rid), ['Solo Dueño']));
