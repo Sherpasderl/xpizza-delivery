@@ -1994,3 +1994,32 @@ test('🔴 r1 BLOCKER 2: the draft is NOT editable while a reset is on the wire,
   assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, before + 1, 'the reset reloads the menu');
   assert.strictEqual(app.state.draft.canEdit(), true, 'and hands editing back on the reloaded draft');
 });
+
+test('🔴 r1: a world that ends while the post-publish reload is held drops that reload — and leaves nothing stuck', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  let xLoads = 0;
+  installFetch((fn, n) => {
+    if (fn === 'getEditableCatalog') {
+      xLoads += 1;
+      if (xLoads === 1) return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+      if (xLoads === 2) return hold.promise.then(() => okJson({ source: P310(), sourceUpdateTime: 'T9', activeVersionId: 'v2', usesPlatformFactura: false }));
+      return okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'TL', activeVersionId: 'lv', usesPlatformFactura: false });   // the other tenant
+    }
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v2' }); void n;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const cell = inlineCell(byId); cell.value = '310'; cell.listeners.input[0]();
+  await fire(byId.get('review'));
+  const pub = fire(byId.get('pubbtn'));
+  await ticks(() => xLoads === 2);
+  await app.loadMenu('la_musa');                                    // the merchant switched tenants mid-reload
+  assert.deepStrictEqual([app.state.draftRid, app.state.settle], ['la_musa', null], 'the new world owes nothing');
+  hold.resolve(); await pub;
+  assert.strictEqual(app.state.draftRid, 'la_musa', '🔴 the stale reload did not adopt X. Pizza’s source into La Musa');
+  assert.strictEqual(app.state.draft.state.items.length, 2, 'La Musa’s draft is untouched');
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and editable — nothing is left locked by the dropped reload');
+  assert.strictEqual(byId.get('pubback').disabled, false, 'and "Listo" is not left disabled');
+});
