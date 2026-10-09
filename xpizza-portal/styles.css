@@ -327,7 +327,7 @@
   .dwf .delx{color:var(--red);border-color:transparent;background:transparent;margin-right:auto;padding-left:2px}
   .dwf .delx:hover{color:var(--red-text);background:var(--red-soft)}
   /* 1D add-product A — the "Nuevo producto" drawer (the approved mock's Phase A subset) */
-  .newtag{display:inline-flex;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;background:var(--green-soft);color:var(--green-text);border:1px solid var(--green-line);vertical-align:2px}
+  .newtag{display:inline-flex;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;background:var(--green-soft);color:var(--accent);border:1px solid var(--green-line);vertical-align:2px}
   .fotosoon{border:1.5px dashed var(--line);border-radius:12px;padding:16px;color:var(--mute);font-size:13px}
   .drow2{display:block}
   .fld.err input,.fld.err textarea,.fld.err select{border-color:var(--red)}

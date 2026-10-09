@@ -62,8 +62,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "5f2d2f7a252748c56da9134a811a0022213a49f32563205b6dd77f59c1663675",
-   "bytes": 62965
+   "sha256": "fa5424049d7aafb2dc7c5e3039474841c9ab8baad0059b12edac4ceb303230e2",
+   "bytes": 62961
   }
  },
  "diff_aid": {
@@ -1162,7 +1162,7 @@
     "",
     ".newtag",
     "color",
-    "var(--green-text)"
+    "var(--accent)"
    ],
    [
     "",
