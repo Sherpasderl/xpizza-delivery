@@ -1877,3 +1877,120 @@ test('FIX: an unusable description opens the drawer with the error under Descrip
   const fld = byId.get('drawer').querySelectorAll('.fld').find((f) => f.children.some((c) => c.attrs && c.attrs['aria-label'] === 'Descripción'));
   assert.ok(fld && fld.querySelectorAll('.ferr').length === 1, 'and it sits on the Descripción field');
 });
+
+// ── codex build r1 (advisor relay 2026-10-09): post-publish reload ownership + reset lifecycle ──────────────────────
+const P310 = () => { const s = SOURCE(); s.items[0].price = 310; s.items[0].display.price = 310; return s; };
+const ticks = async (until, max = 50) => { for (let i = 0; i < max && !until(); i += 1) await new Promise((r) => setImmediate(r)); };
+
+test('🔴 r1 BLOCKER 1: "Listo" cannot hand editing back while the post-publish reload is in flight — a later edit is never discarded', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  let loads = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') {
+      loads += 1;
+      if (loads === 1) return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+      return hold.promise.then(() => okJson({ source: P310(), sourceUpdateTime: 'T9', activeVersionId: 'v2', usesPlatformFactura: false }));
+    }
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  let cell = inlineCell(byId); cell.value = '310'; cell.listeners.input[0]();
+  await fire(byId.get('review'));
+  const pub = fire(byId.get('pubbtn'));
+  await ticks(() => loads === 2);
+  assert.strictEqual(loads, 2, 'premise: the publish succeeded and the authoritative reload is in flight (held)');
+
+  await fire(byId.get('pubback'));                                   // the merchant presses "Listo" mid-reload
+  assert.ok(byId.get('scrim').classList.contains('show'), '🔴 the receipt stays up until the reload is adopted');
+  assert.strictEqual(byId.get('pubback').disabled, true, '...and "Listo" is not pressable yet');
+  cell = inlineCell(byId); cell.value = '350'; cell.listeners.input[0]();
+  assert.notStrictEqual(app.state.draft.state.items[0].price, 350, '🔴 no edit is ACCEPTED against a baseline that is about to be replaced');
+
+  hold.resolve(); await pub;
+  assert.deepStrictEqual([app.state.draft.state.items[0].price, app.state.sourceUpdateTime, pendingCountOf(app)], [310, 'T9', 0], 'the authoritative source + revision were adopted');
+  assert.strictEqual(byId.get('pubback').disabled, false, '"Listo" is pressable once the reload is adopted');
+  await fire(byId.get('pubback'));
+  assert.ok(!byId.get('scrim').classList.contains('show'), 'and closes the receipt');
+  cell = inlineCell(byId); cell.value = '350'; cell.listeners.input[0]();
+  assert.deepStrictEqual([app.state.draft.state.items[0].price, pendingCountOf(app)], [350, 1], '🔴 an edit made AFTER the reload sticks');
+});
+
+test('🔴 r1 SHOULD-FIX 3: a FAILED post-publish reload keeps editing locked, says so, and recovers only by adopting a fresh read', async () => {
+  const byId = installDom();
+  let loads = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') {
+      loads += 1;
+      if (loads === 1) return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+      if (loads === 2) return { ok: false, status: 503, json: async () => ({ error: 'store_unavailable' }) };
+      return okJson({ source: P310(), sourceUpdateTime: 'T9', activeVersionId: 'v2', usesPlatformFactura: false });
+    }
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const cell = inlineCell(byId); cell.value = '310'; cell.listeners.input[0]();
+  await fire(byId.get('review'));
+  await fire(byId.get('pubbtn'));
+  assert.strictEqual(loads, 2, 'premise: the reload was attempted and failed');
+  assert.strictEqual(app.state.draft.canEdit(), false, '🔴 editing does NOT resume on the stale baseline (T2)');
+  assert.ok(byId.get('mbody').querySelectorAll('p').some((p) => p.textContent === 'Publicado; recargá para seguir editando.'), 'the merchant is told the publish went through and a reload is needed');
+  const again = byId.get('revFoot').querySelectorAll('button').find((b) => b.textContent === 'Recargar');
+  assert.ok(again, 'a retry of the authoritative read is offered');
+  await fire(byId.get('pubback'));
+  assert.ok(byId.get('scrim').classList.contains('show'), '"Listo" cannot dismiss it while the reload is owed');
+  await fire(again);
+  assert.strictEqual(loads, 3);
+  assert.deepStrictEqual([app.state.sourceUpdateTime, app.state.draft.state.items[0].price, app.state.draft.canEdit()], ['T9', 310, true], 'editing resumes only after the fresh source + revision are adopted');
+});
+
+test('🔴 r1 BLOCKER 2: a reset that settles after a TENANT SWITCH neither reloads nor repaints the tenant you left', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  const calls = installFetch((fn, n) => {
+    const rid = (calls.at(-1) && calls.at(-1).body && calls.at(-1).body.restaurantId) || null; void rid;
+    if (fn === 'getEditableCatalog') return calls.filter((c) => c.fn === 'getEditableCatalog').length === 1
+      ? refusal(503, { error: 'source_unavailable', draft_unpublishable: { code: 'invalid_source', detail: 'x' }, sourceUpdateTime: 'T0' })
+      : okJson({ source: SOURCE(), sourceUpdateTime: 'TL', activeVersionId: 'lv', usesPlatformFactura: false });
+    if (fn === 'resetDraftToLive') return hold.promise.then(() => okJson({ ok: true }));
+    return okJson({}); void n;
+  });
+  const app = await loadAppModule();
+  app.state.restaurants = [{ rid: 'x_pizza' }, { rid: 'la_musa' }];
+  app.state.currentRid = 'x_pizza';
+  await app.loadMenu('x_pizza');
+  const resetP = fire(byId.get('detail').querySelectorAll('.unpub')[0].querySelectorAll('button')[0]);
+  await ticks(() => calls.some((c) => c.fn === 'resetDraftToLive'));
+  app.state.currentRid = 'la_musa';
+  await app.loadMenu('la_musa');                                      // the merchant switched while the reset is on the wire
+  assert.strictEqual(app.state.draftRid, 'la_musa', 'premise: La Musa is loaded');
+  const loadsBefore = calls.filter((c) => c.fn === 'getEditableCatalog').length;
+  hold.resolve(); await resetP;
+  assert.deepStrictEqual([app.state.currentRid, app.state.draftRid], ['la_musa', 'la_musa'], '🔴 the screen stays on the tenant you are on');
+  assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, loadsBefore, 'and the finished reset loads nothing for the tenant you left');
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and La Musa is editable once the reset has settled');
+});
+
+test('🔴 r1 BLOCKER 2: the draft is NOT editable while a reset is on the wire, and the reset reloads when it lands', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD()
+    : fn === 'editCatalog' ? refusal(409, { error: 'item_order_changed', detail: 'x', field: 'item_order' })
+      : fn === 'resetDraftToLive' ? hold.promise.then(() => okJson({ ok: true })) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  await fire(byId.get('review'));
+  const resetP = fire(byId.get('mbody').querySelectorAll('button')[0]);   // "Volver al menú publicado"
+  await ticks(() => calls.some((c) => c.fn === 'resetDraftToLive'));
+  assert.strictEqual(app.state.draft.canEdit(), false, '🔴 editing is locked while the reset is on the wire');
+  assert.strictEqual(byId.get('review').disabled, true, 'and no review can start against a draft that is being replaced');
+  const before = calls.filter((c) => c.fn === 'getEditableCatalog').length;
+  hold.resolve(); await resetP;
+  assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, before + 1, 'the reset reloads the menu');
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and hands editing back on the reloaded draft');
+});

@@ -749,24 +749,26 @@ test('every publish state is wired — and edit_superseded re-reviews rather tha
   assert.ok(/const captured = state\.review/.test(app), 'the review is captured before the draft is thrown away');
   assert.ok(/receiptFor\(out\.res, captured\)/.test(app), '...and the receipt is built from it');
   const successIdx = app.indexOf('renderReceipt(');
-  const commitIdx = app.indexOf('commitTo(state.draft', successIdx);
-  assert.ok(commitIdx > successIdx, 'the receipt renders BEFORE the baseline moves');
-  // 🔴 COMMIT, NOT DISCARD. They are opposite operations, and discard() here reset the editor to the
-  // PRE-EDIT prices: it showed 299 after publishing 310, and the next unrelated edit carried 299 back
-  // into the diff and silently reverted the price that had just gone live.
-  const successPath = app.slice(successIdx, successIdx + 2600);
-  // 1D add-product A §3: the success path RELOADS the authoritative source (a certified publish writes stamps back, and
-  // published additions stop being additions), generation- and tenant-guarded, before editing resumes …
-  assert.ok(/apiFetch\('getEditableCatalog', \{ rid, token \}\)/.test(successPath) && /if \(gen !== opGeneration \|\| rid !== state\.draftRid\) return;/.test(successPath),
-    'the baseline is RELOADED from the server, behind the generation + tenant guards');
-  // 🔴 … and when that reload fails, commitTo(SUBMITTED) — not commit(live draft): if the merchant kept editing after
-  // opening the review, what went live is what was REVIEWED, and the later edit must stay pending.
-  assert.ok(/\} else if \(captured && captured\.submitted\) \{\s*commitTo\(state\.draft, captured\.submitted\);/.test(successPath),
-    'the baseline becomes the SUBMITTED snapshot');
-  // FAIL CLOSED: no fallback to the live draft, which would silently mark later edits as published
-  assert.ok(!/commitTo\([^)]*\|\|/.test(successPath), 'and a missing snapshot leaves the baseline alone rather than guessing');
-  assert.ok(!/\bcommit\(state\.draft\)/.test(successPath), '...not the live draft');
-  assert.ok(!/discard\(state\.draft\)/.test(successPath), '...and never the pre-edit prices');
+  const settleIdx = app.indexOf('state.settle = {', successIdx);
+  assert.ok(settleIdx > successIdx, 'the receipt renders BEFORE the baseline moves');
+  // 🔴 COMMIT, NOT DISCARD — and since codex build r1 #1/#3, NOT EVEN COMMIT: the success path RELOADS the
+  // authoritative source (a certified publish writes stamps back; published additions stop being additions) while the
+  // publish still OWNS the draft, and editing comes back ONLY by adopting that read. No snapshot fallback: the reviewed
+  // snapshot predates the stamps and the canonical allocation, so committing it resumed editing on a stale baseline.
+  const successPath = app.slice(successIdx, successIdx + 1800);
+  const settle = app.slice(app.indexOf('async function settlePublish()'), app.indexOf('function renderSettleFailure('));
+  assert.ok(/apiFetch\('getEditableCatalog', \{ rid: st\.rid, token \}\)/.test(settle)
+    && /if \(state\.settle !== st \|\| st\.gen !== opGeneration \|\| st\.rid !== state\.draftRid\) return;/.test(settle),
+    'the baseline is RELOADED from the server, behind the settle + generation + tenant guards');
+  assert.ok(settle.indexOf('releaseEditLock(st.lock)') > settle.indexOf('state.draft = createDraft(fresh.source'),
+    '🔴 the lock is released only AFTER the fresh source is adopted');
+  assert.ok(/if \(!fresh \|\| !fresh\.source\) \{[^}]*renderSettleFailure\(true\);[^}]*return;/.test(settle),
+    'a failed read reports and RETURNS — it never hands editing back');
+  assert.ok(!/commitTo\(/.test(successPath + settle), 'no snapshot fallback');
+  assert.ok(!/\bcommit\(state\.draft\)/.test(successPath + settle), '...not the live draft');
+  assert.ok(!/discard\(state\.draft\)/.test(successPath + settle), '...and never the pre-edit prices');
+  assert.ok(/if \(state\.settle\) return;/.test(app.slice(app.indexOf('function closeReview()'), app.indexOf('function closeReview()') + 1200)),
+    '🔴 the receipt cannot hand editing back while the reload is owed');
   // discard still exists — it is what the "Descartar" button legitimately does
   assert.ok(/\$\('discard'\)\.addEventListener/.test(app) && /discard\(state\.draft\)/.test(app),
     'discard remains wired to the Descartar button, where reverting IS the intent');
@@ -961,6 +963,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.renderedCategories':  [2, 'guarded', 'the sections a product may be added to (the renderer contract via getEditableCatalog) — load path, behind the generation check'],
     'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
     'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
+    'state.settle':              [3, 'guarded', 'codex build r1 #1/#3 — the post-publish reload is OWED: set on publish success (lock still held), cleared when the fresh source is ADOPTED (which releases the lock) and by the ender; while set, "Listo" is disabled and closeReview refuses'],
     'state.drawerError':         [5, 'view',    'the field error shown in the add drawer after a refused save — presentational; the server re-checks every save'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
   };
@@ -1080,7 +1083,9 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  'clearReview',
                  // 1D add-product A — the add flow's writers (the tree found them; each is either canEdit-guarded via
                  // editor.js or a load/settle path behind the generation check)
-                 'addProduct', 'setAddition', 'removeAddition', 'adopt', 'onAddProduct', 'resetToLive', 'applyAddProductFacts'];
+                 'addProduct', 'setAddition', 'removeAddition', 'adopt', 'onAddProduct', 'resetToLive', 'applyAddProductFacts',
+                 // codex build r1 #1/#3 — the post-publish authoritative reload (adopts, releases the publish's lock)
+                 'settlePublish'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();
@@ -1153,6 +1158,8 @@ const LISTENERS = {
   "price::input":                 ['bound', [], 'an addition\u2019s price, through setAddition / setItemPrice (canEdit)'],
   "quitar::click":                ['bound', [], '"Quitar": removeAddition (canEdit) — an addition only, never an existing product'],
   "listo::click":                 ['bound', [], 'closes the add drawer and repaints'],
+  // codex build r1 #3 — "Recargar" on the receipt after a failed post-publish reload: retries the authoritative read
+  "again::click":                 ['bound', [], 'retries the post-publish authoritative read; adopts only behind the settle/generation/tenant guard'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {

@@ -4,7 +4,7 @@
 // Nothing here decides what a merchant may see — every answer comes from the server, and the UI simply
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive } from './api.js';
-import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, commitTo, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
+import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
@@ -12,7 +12,7 @@ import { token } from './auth.js';
 const $ = (id) => document.getElementById(id);
 const REMEMBERED = 'sherpa.portal.rid';
 
-export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set() };
+export const state = { restaurants: [], currentRid: null, groups: [], extras: {}, selectedCat: null, renderedCategories: [], additionKeys: new Set(), settle: null };
 
 export { pickRid, messageFor } from './portal-logic.js';
 
@@ -367,6 +367,8 @@ function syncUi() {
     rev.disabled = owned || state.menuLoading === true || !state.draft || !valid;
     rev.title = (state.draft && !valid) ? 'Hay un precio sin valor válido' : '';
   }
+  // "Listo" on the receipt is not pressable while the post-publish reload is owed (derived, like every other control)
+  if (PUBBACK) PUBBACK.disabled = !!state.settle;
   setDrawerInert(owned);
 }
 
@@ -500,13 +502,31 @@ function onAddProduct(catId) {
 }
 // "Volver al menú publicado" (§0.1): replace the saved draft with the published menu, conditional on the revision
 // the owner saw, then load it again. Distinct from "Descartar", which only drops unsaved edits in this browser.
+// 🔴 codex build r1 #2 — A WRITE LIKE ANY OTHER: it takes the edit lock (nothing can be typed into a draft that is about
+// to be replaced), holds a write ticket while the request is outstanding (a tenant switch cannot hand the lock away),
+// and its continuations check the captured generation AND tenant before painting an error or reloading — a reset of
+// X. Pizza that lands after the merchant moved to La Musa does nothing to La Musa's screen.
 async function resetToLive(rid, expectedRevision) {
   if (!rid || typeof expectedRevision !== 'string') return;
+  const lock = takeEditLock();
+  if (lock === null) return;                 // a save, publish or reset already owns the draft
+  const gen = opGeneration;
+  syncUi();
+  const writeId = beginWrite(lock);
+  let failed = null;
   try {
     await resetDraftToLive({ rid, expectedRevision, token });
   } catch (e) {
-    const [t, d] = messageFor(e);
+    failed = e;
+  } finally {
+    endWrite(writeId, lock, gen);             // settled; a world that ended gets its lock back here
+  }
+  if (gen !== opGeneration || (state.currentRid && state.currentRid !== rid)) return;   // the merchant is elsewhere now
+  releaseEditLock(lock);
+  if (failed) {
+    const [t, d] = messageFor(failed);
     showEmpty(t, d);
+    syncUi();
     return;
   }
   await loadMenu(rid);
@@ -1064,6 +1084,10 @@ function closeReview() {
   //
   // Failure-panel recovery still releases, because by then the operation has settled.
   if (publisher.busy && state.publishGen === opGeneration) return;
+  // 🔴 …AND NEITHER IS A PUBLISH WHOSE AUTHORITATIVE RELOAD IS STILL OWED (codex build r1 #1/#3). The receipt is up, but
+  // the draft on screen is about to be REPLACED by the post-publish source; handing editing back now let an edit land
+  // and then be silently overwritten by the reload. Ownership is released by the reload's adoption, never by "Listo".
+  if (state.settle) return;
   $('scrim').classList.remove('show');
   clearReview();
   releaseEditLock(state.reviewLock);
@@ -1221,40 +1245,52 @@ async function runPublish() {
   PUBBACK.textContent = 'Listo';
   renderReceipt($('mbody'), receiptFor(out.res, captured));
   clearReview();
-  // 🔴 COMMIT, not discard. The published prices ARE the new baseline: the stored source is exactly
-  // what went live, so ORIG moves forward to it. discard() — which shipped here — reset the editor to
-  // the PRE-EDIT prices, so it showed 299 after publishing 310 and the next unrelated edit carried 299
-  // back into the diff, silently reverting the price that had just gone live.
-  //
-  // sourceUpdateTime needs no change: publishEdited does not write the source, so the CAS baseline
-  // editCatalog established still describes the document that was published.
-  // 🔴 The SUBMITTED snapshot, not the live draft. If the merchant kept editing after opening the
-  // review, what went live is what was reviewed — and the later edit must stay pending rather than be
-  // marked live.
-  // FAIL CLOSED. The fallback here used to be the LIVE draft, which would silently commit whatever
-  // the merchant had typed since as though it had published. If the snapshot is missing we do not know
-  // what went live, so the baseline is left alone and the changes stay pending — visible and
-  // republishable, rather than quietly marked live.
   // 1D add-product A §3 — RELOAD the authoritative source and revision before editing resumes: a certified publish
   // writes identity stamps back to the source (so "publish doesn't change the revision" no longer holds), and the
-  // published additions stop being additions. Same tenant + generation guards as every load; the lock is held until
-  // the reload settles, so nothing can be edited against a baseline that is about to move. If the reload fails, the
-  // old behaviour stands: the reviewed snapshot becomes the baseline.
-  const rid = state.draftRid;
+  // published additions stop being additions.
+  // 🔴 codex build r1 #1/#3 — THE PUBLISH OWNS THE DRAFT UNTIL THAT RELOAD IS ADOPTED. Not until the receipt is
+  // dismissed (that let an edit land and be overwritten), and not on a failed read (that resumed editing on a stale
+  // baseline — the reviewed snapshot predates the certified stamps and the canonical allocation). A failure leaves the
+  // receipt up with "Publicado; recargá para seguir editando." and a retry of the same authoritative read.
+  state.settle = { gen, rid: state.draftRid, lock: state.reviewLock };
+  syncUi();
+  await settlePublish();
+}
+// The authoritative post-publish read. Runs under the publish's lock; adopts or reports, nothing in between.
+async function settlePublish() {
+  const st = state.settle;
+  if (!st || st.gen !== opGeneration) return;
+  renderSettleFailure(false);
   let fresh = null;
-  try { fresh = await apiFetch('getEditableCatalog', { rid, token }); } catch (_) { fresh = null; }
-  if (gen !== opGeneration || rid !== state.draftRid) return;
-  if (fresh && fresh.source) {
-    state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null });
-    state.sourceUpdateTime = fresh.sourceUpdateTime || null;
-    state.usesPlatformFactura = fresh.usesPlatformFactura === true;
-    applyAddProductFacts(fresh);
-  } else if (captured && captured.submitted) {
-    commitTo(state.draft, captured.submitted);
+  try { fresh = await apiFetch('getEditableCatalog', { rid: st.rid, token }); } catch (_) { fresh = null; }
+  if (state.settle !== st || st.gen !== opGeneration || st.rid !== state.draftRid) return;   // a world that ended
+  if (!fresh || !fresh.source) {
+    renderSettleFailure(true);
+    syncUi();
+    return;
   }
-  releaseEditLock(state.reviewLock);      // the publish is done; editing is handed back
+  state.draft = createDraft(fresh.source, { canEdit: () => editLockHolder === null });
+  state.sourceUpdateTime = fresh.sourceUpdateTime || null;
+  state.usesPlatformFactura = fresh.usesPlatformFactura === true;
+  applyAddProductFacts(fresh);
+  state.settle = null;
+  releaseEditLock(st.lock);               // the publish is done AND its result adopted; editing is handed back
   state.reviewLock = null;
   repaintFromDraft();
+}
+// The recovery state on the receipt: said plainly, with the one action that resolves it.
+function renderSettleFailure(on) {
+  const body = $('mbody');
+  body.replaceChildren(...Array.from(body.children).filter((n) => !(n.dataset && n.dataset.settle === '1')));
+  if (!on) { $('revFoot').replaceChildren(PUBBACK); return; }
+  const p = document.createElement('p');
+  p.className = 'kdswarn'; p.dataset.settle = '1';
+  p.textContent = 'Publicado; recargá para seguir editando.';
+  $('mbody').append(p);
+  const again = document.createElement('button');
+  again.type = 'button'; again.className = 'btn accent'; again.textContent = 'Recargar';
+  again.addEventListener('click', bound(() => settlePublish()));
+  $('revFoot').replaceChildren(PUBBACK, again);
 }
 PUBBTN.addEventListener('click', runPublish);
 
@@ -1352,6 +1388,7 @@ function invalidateReview() {
   // but the WRITE is not, and admission is about the write. Everything else here is UI and is cleared.
   editLockHolder = pendingWrite ? pendingWrite.ticket : null;   // held only by a request genuinely outstanding
   state.reviewLock = null;
+  state.settle = null;                     // an owed post-publish reload belongs to the world that ended
   clearReview();
   state.publishGen = null;                 // and it is not waiting on anything
   closeDrawer();
@@ -1389,7 +1426,7 @@ document.addEventListener('portal:auth', (e) => {
 // merchant is told once, plainly: "Nueva versión: guardá tus cambios para actualizar".
 function portalReloadFacts() {
   const a = document.activeElement;
-  return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy, review: !!state.review, reviewLock: !!state.reviewLock,
+  return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
     pendingCount: state.draft ? pendingCount(state.draft) : 0, focusedTag: a ? a.tagName : null };
 }
 try {
