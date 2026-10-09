@@ -66,6 +66,8 @@ try {
     bad({ ...full.data, extra_field: 1 }, 'fields');
     bad((({ observed_digest, ...r }) => r)(full.data), 'fields');
     bad({ ...full.data, vid: 'short' }, 'header');
+    bad({ ...full.data, vid: `${full.data.vid}A` }, 'header');   // exactly 43 base64url characters, not "at least"
+    bad({ ...full.data, ch: full.data.ch.slice(0, 40) }, 'header');
     bad({ ...full.data, generation: 'o:string' }, 'header');
     bad({ ...full.data, intent: 'other' }, 'intent');
     bad({ ...full.data, final_digest: 'x' }, 'body');
@@ -96,6 +98,10 @@ try {
     // activation for ANOTHER version → evidence_mismatch
     r = C.classifyActive(obsOf(w, { activation: activation(w, { version: 'v-other' }) }), B);
     assert.deepStrictEqual(kinds(r), ['evidence_mismatch']);
+    // malformed activation + a VALID certification over altered objects: no binding judgement through the certification
+    r = C.classifyActive(obsOf(w, { activation: { ...activation(w), data: { ...activation(w).data, v: 9 } }, certifications: [certification(w)],
+      objects: { count: 3, pairs: w.pairs.slice(1), unstamped: [] } }), B);
+    assert.deepStrictEqual(kinds(r), ['evidence_malformed'], 'unusable evidence → the binding is not judged at all (no coverage/digest findings)');
     // absent activation: below G0 → pre_boundary state, no finding; at/above → unattested{generation_gap}; unknown → {boundary_unknown}
     r = C.classifyActive(obsOf(w, { activation: null, origin: { kind: 'none' } }), { G0: 8 });
     assert.deepStrictEqual([r.state, kinds(r)], ['pre_boundary', []]);
@@ -140,6 +146,8 @@ try {
     const dup = w.pairs.map((p, i) => (i === 1 ? { ...p, id: w.pairs[0].id } : p));
     assert.ok(cov({ count: 4, pairs: dup, unstamped: [] }).includes('coverage_broken'), 'a duplicated id within a kind');
     assert.ok(cov({ count: 3, pairs: w.pairs.slice(1), unstamped: [] }).includes('coverage_broken'), 'a missing object (count ≠ final_count)');
+    assert.deepStrictEqual(cov({ count: 4, pairs: w.pairs.slice(1), unstamped: [{ kind: 'dish', docId: 'd0' }] }), ['coverage_broken', 'stamps_changed'],
+      'an object UNSTAMPED with the count still equal to final_count: coverage_broken by the unstamped rule itself');
     // a PLANTED SWAP: two dishes exchange ids → the digest changes AND the registry disagrees
     const swap = w.pairs.map((p) => (p.docId === 'd0' ? { ...p, id: 'ID_D1' } : (p.docId === 'd1' ? { ...p, id: 'ID_D0' } : p)));
     assert.deepStrictEqual(cov({ count: 4, pairs: swap, unstamped: [] }), ['registry_disagrees', 'stamps_changed']);
@@ -219,6 +227,7 @@ try {
     // the audit page: applied only if contiguous; findings scoped audit are never cleared by the active check
     node.audited_through = 4;
     assert.strictEqual(S.applyAuditPage(node, { start: 6, end: 8, findings: [], obs_t: t(61), current: 8 }).applied, false, 'a non-contiguous page is discarded whole');
+    assert.strictEqual(S.applyAuditPage(node, { start: 4, end: 6, findings: [], obs_t: t(61), current: 8 }).applied, false, 'a page overlapping work already applied (a stale page) is discarded whole');
     const gap = C.finding('unattested', 'g5', { generation: 5, reason: 'generation_gap' });
     ({ node } = S.applyAuditPage(node, { start: 5, end: 8, findings: [gap], obs_t: t(62), current: 8 }));
     assert.deepStrictEqual([node.audited_through, node.summary.open_gaps, node.coverage.audit_ok_obs_t], [8, 1, t(62)]);
@@ -288,11 +297,21 @@ try {
     assert.deepStrictEqual(st({ ...ok0, backlog: 40 }, 11).stale, 0);
     assert.deepStrictEqual(st({ ...ok0, backlog: 3, backlog_since_ms: at(-111) }, 10).reasons, ['backlog_age'], 'backlog age > 2 h');
     assert.deepStrictEqual(st({ ...ok0, findings_count: 2001 }, 11).reasons, ['state_growth']);
+    assert.deepStrictEqual(st({ ...ok0, findings_count: 2000, node_bytes: 1024 * 1024 }, 11).stale, 0, 'exactly 2,000 findings / 1 MiB is not over');
     assert.deepStrictEqual(st({ ...ok0, node_bytes: 1024 * 1024 + 1 }, 11).reasons, ['state_growth']);
     const line = S.summaryLine('rid1', { coverage: ok0, summary: { open_violations: 2, open_gaps: 1, open_degraded: 0 } }, at(11));
     assert.deepStrictEqual(line, { event: 'identity_integrity_state', rid: 'rid1', open_violations: 2, open_gaps: 1, open_degraded: 0, stale: 0 });
     assert.deepStrictEqual(S.summaryLine('rid2', { coverage: {}, summary: null }, at(0)), { event: 'identity_integrity_state', rid: 'rid2', open_violations: 0, open_gaps: 0, open_degraded: 0, stale: 0 }, 'a never-processed restaurant still emits');
     assert.deepStrictEqual(S.heartbeatLine({ enumerated: 3, covered: 2 }), { event: 'identity_integrity_heartbeat', enumerated: 3, covered: 2 });
+    assert.deepStrictEqual(S.summaryLine('rid3', { coverage: { first_enumerated_at: t(0) }, summary: null }, at(46)),
+      { event: 'identity_integrity_state', rid: 'rid3', open_violations: 0, open_gaps: 0, open_degraded: 0, stale: 1, stale_reasons: ['coverage_gap'] }, 'the line carries stale = 1 and its reasons');
+    // enumeration keeps the FIRST time; the backlog age is mirrored into the compact coverage child
+    const en = S.enumerated(S.enumerated(null, { obs_t: t(0) }), { obs_t: t(30) });
+    assert.strictEqual(en.coverage.first_enumerated_at, t(0), 'a later enumeration never resets the first');
+    let bn = S.applyActive(null, { state: 'ok', findings: [], degradedPairs: [], coverage: true }, { obs_t: t(0), generation: 30 }).node; bn.audited_through = 0;
+    bn = S.applyAuditPage(bn, { start: 1, end: 20, findings: [], obs_t: t(1), current: 30, head: { g: 21, at_ms: at(-200) } }).node;
+    assert.deepStrictEqual([bn.coverage.backlog, bn.coverage.backlog_since_ms], [10, at(-200)], 'backlog + the head generation\'s own time');
+    assert.deepStrictEqual(S.staleOf({ coverage: { ...bn.coverage, first_enumerated_at: t(0), audit_ok_obs_t: t(1) } }, at(1)).reasons, ['backlog_age'], 'the waiting head is > 2 h old');
   }
   ok('§6 stale: activity deferrals alone never stale at 45 / 105 / exactly 120 min, stale{merchant_active} only past 120; missing timestamps stale after 45 min from first enumeration; either check older than 45 min; backlog > 40 / age > 2 h; state growth (findings > 2,000, node > 1 MiB); the summary line for processed and never-processed restaurants; the heartbeat line');
 

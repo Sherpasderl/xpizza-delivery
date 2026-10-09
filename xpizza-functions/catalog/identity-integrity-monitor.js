@@ -318,9 +318,8 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
 
   async function fail(rid, stop, e, stage) {
     const reason = e && e.budgetDeferral ? e.message : (e && e.workDeadline ? 'budget_exhausted' : `${stage}_failed`);
-    // the failure commit records the enumeration too: a restaurant that ALWAYS fails must still go stale (missing coverage
-    // 45 min after first enumeration, §6) — otherwise it would never alert
-    try { await commit(rid, stop, [(n) => S.enumerated(n, { obs_t: S.fromMs(now()) }), (n) => S.deferFailure(n, { nowMs: now(), reason })]); } catch (_) { /* the next run retries */ }
+    // (first_enumerated_at is recorded by run() for EVERY enumerated restaurant, so one that always fails still goes stale)
+    try { await commit(rid, stop, [(n) => S.deferFailure(n, { nowMs: now(), reason })]); } catch (_) { /* the next run retries */ }
     log('identity_integrity_check', { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason, error: String((e && e.message) || e).slice(0, 160) });
     return { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason };
   }
