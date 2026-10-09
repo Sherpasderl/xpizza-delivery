@@ -25,14 +25,14 @@ function fakeDb() {
 }
 function reader(extra = {}) {
   let now = 1_000_000;
-  const logs = [];
-  const r = OC.createReader({ clock: () => now, log: (l) => logs.push(l), timeoutMs: 60, ...extra });
-  return { r, logs, at: (t) => { now = t; }, now: () => now };
+  const logs = []; const seen = [];
+  const r = OC.createReader({ clock: () => now, log: (l) => logs.push(l), observe: (rec) => seen.push(rec), timeoutMs: 60, ...extra });
+  return { r, logs, seen, at: (t) => { now = t; }, now: () => now };
 }
 
 (async () => {
   {
-    const db = fakeDb(); const { r, logs, at } = reader();
+    const db = fakeDb(); const { r, logs, seen, at } = reader();
     const p = r.orderControlFor(db, 'r3_synthetic');
     await tick();
     assert.strictEqual(db.reads.length, 1);
@@ -50,17 +50,18 @@ function reader(extra = {}) {
     assert.strictEqual(db.reads.length, 2, 'at exactly the TTL the entry is expired → a refresh');
     db.reads[1].ok(null);
     assert.strictEqual(await p2, null);
-    assert.match(logs[2], /"cache":"refresh"/);
-    ok('ONE read of order_control/<rid>/current (any rid — a third synthetic one here); miss → hit within 10 s → refresh at exactly 10 s from INITIATION; the log line names the cache state');
+    assert.strictEqual(logs.length, 2, 'the refresh found OPEN → no log line');
+    assert.deepStrictEqual(seen.map((x) => x.cache), ['miss', 'hit', 'refresh']);
+    ok('ONE read of order_control/<rid>/current (any rid — a third synthetic one here); miss → hit within 10 s → refresh at exactly 10 s from INITIATION; the log line (non-OPEN) / the observer names the cache state');
   }
   {
-    const db = fakeDb(); const { r, logs } = reader();
+    const db = fakeDb(); const { r, seen } = reader();
     const a = r.orderControlFor(db, 'x'); const b = r.orderControlFor(db, 'x'); const c = r.orderControlFor(db, 'x'); await tick();
     await tick();
     assert.strictEqual(db.reads.length, 1, 'single-flight');
     db.reads[0].ok({ paused: false });
     assert.deepStrictEqual(await Promise.all([a, b, c]), [null, null, null]);
-    assert.ok(logs.filter((l) => /"cache":"join"/.test(l)).length === 2);
+    assert.deepStrictEqual(seen.map((x) => x.cache), ['miss', 'join', 'join']);
     const other = r.orderControlFor(db, 'y');
     await tick();
     assert.strictEqual(db.reads.length, 2, 'per-restaurant entries');
@@ -138,6 +139,78 @@ function reader(extra = {}) {
     assert.strictEqual(await r.orderControlFor(db, 'x'), 'unavailable');
     assert.strictEqual(db.reads.length, 1, 'a malformed node was read successfully → cached raw, UNKNOWN on every request');
     ok('a successfully read but MALFORMED node → "unavailable" (cached raw like any node)');
+  }
+  {
+    // the log line: a healthy OPEN request logs NOTHING — on every cache state (miss, join, hit, refresh) and for every
+    // way of being OPEN (absent node, paused:false, a timed pause past its until); the observer still sees each request
+    const db = fakeDb(); const { r, logs, seen, at } = reader();
+    const a = r.orderControlFor(db, 'x'); const b = r.orderControlFor(db, 'x'); await tick();
+    db.reads[0].ok(null); assert.deepStrictEqual(await Promise.all([a, b]), [null, null]);
+    assert.strictEqual(await r.orderControlFor(db, 'x'), null);
+    at(1_000_000 + 10_000);
+    const c = r.orderControlFor(db, 'x'); await tick(); db.reads[1].ok({ paused: false }); assert.strictEqual(await c, null);
+    at(1_000_000 + 20_000);
+    const d = r.orderControlFor(db, 'x'); await tick(); db.reads[2].ok({ paused: true, until: 1_000_000 + 20_000 }); assert.strictEqual(await d, null);
+    assert.deepStrictEqual(logs, [], 'no log line on a healthy OPEN request');
+    assert.deepStrictEqual(seen.map((x) => [x.cache, x.state]), [['miss', 'open'], ['join', 'open'], ['hit', 'open'], ['refresh', 'open'], ['refresh', 'open']]);
+    ok('a healthy OPEN request logs NOTHING (miss / join / hit / refresh; absent, paused:false, past until) — the observer still sees every request');
+  }
+  {
+    // ... and it logs EXACTLY one line, with the exact record, when the request is NOT a healthy OPEN
+    const db = fakeDb(); const { r, logs, at } = reader({ timeoutMs: 40 });
+    const line = (o) => `order_control_read ${JSON.stringify(o)}`;
+    const p = r.orderControlFor(db, 'r3_synthetic'); await tick(); db.reads[0].ok({ paused: true });
+    assert.strictEqual(await p, 'paused');
+    assert.strictEqual(await r.orderControlFor(db, 'r3_synthetic'), 'paused');
+    assert.deepStrictEqual(logs, [line({ rid: 'r3_synthetic', cache: 'miss', ms: 0, state: 'paused' }), line({ rid: 'r3_synthetic', cache: 'hit', ms: 0, state: 'paused' })], 'PAUSED: one line per request, hit included');
+    logs.length = 0; at(1_000_000 + 10_000);
+    const f = r.orderControlFor(db, 'r3_synthetic'); await tick(); db.reads[1].fail();
+    assert.strictEqual(await f, 'unavailable');
+    assert.deepStrictEqual(logs, [line({ rid: 'r3_synthetic', cache: 'refresh', ms: 0, state: 'unknown', read: 'failed' })], 'a FAILED read');
+    logs.length = 0;
+    assert.strictEqual(await r.orderControlFor(db, 'r3_synthetic'), 'unavailable');   // never answered → the bound
+    assert.deepStrictEqual(logs, [line({ rid: 'r3_synthetic', cache: 'refresh', ms: 0, state: 'unknown', read: 'failed' })], 'a TIMED-OUT read');
+    logs.length = 0;
+    const m = r.orderControlFor(db, 'r3_synthetic'); await tick(); db.reads[3].ok({ paused: 'yes' });
+    assert.strictEqual(await m, 'unavailable');
+    assert.deepStrictEqual(logs, [line({ rid: 'r3_synthetic', cache: 'refresh', ms: 0, state: 'unknown' })], 'a MALFORMED node (read fine → no read:failed)');
+    ok('a NON-OPEN request logs exactly one line with the exact record: PAUSED (miss and hit), a failed read, a timed-out read, a malformed node');
+  }
+  {
+    // a healthy OPEN request with no observer builds NO record at all (not just no log line): the only clock reads are the
+    // cache check and the `until` evaluation; a non-OPEN request reads it once more, for the record's `ms`
+    const db = fakeDb(); let reads = 0; const now = 1_000_000;
+    const r = OC.createReader({ clock: () => { reads++; return now; }, log: () => {}, timeoutMs: 60 });
+    const p = r.orderControlFor(db, 'x'); await tick(); db.reads[0].ok({ paused: false }); assert.strictEqual(await p, null);
+    reads = 0; assert.strictEqual(await r.orderControlFor(db, 'x'), null);
+    const openReads = reads;
+    const q = r.orderControlFor(db, 'y'); await tick(); db.reads[1].ok({ paused: true }); assert.strictEqual(await q, 'paused');
+    reads = 0; assert.strictEqual(await r.orderControlFor(db, 'y'), 'paused');
+    assert.strictEqual(openReads, 3, 'OPEN hit: t0 + the cache check + the until evaluation — no record built');
+    assert.strictEqual(reads, 4, 'PAUSED hit: the same + the record\'s ms');
+    ok('a healthy OPEN request with no observer builds no log record at all (no extra work on the order path)');
+  }
+  {
+    // the production defaults: the log goes to console.log, ONLY when not OPEN; no observer unless a test sets one
+    const db = fakeDb(); const out = []; const orig = console.log; console.log = (...x) => out.push(x.join(' '));
+    try {
+      const r = OC.createReader({ timeoutMs: 60 });
+      const p = r.orderControlFor(db, 'x'); await tick(); db.reads[0].ok({ paused: false }); assert.strictEqual(await p, null);
+      const q = r.orderControlFor(db, 'y'); await tick(); db.reads[1].ok({ paused: true }); assert.strictEqual(await q, 'paused');
+    } finally { console.log = orig; }
+    assert.strictEqual(out.length, 1, `exactly the PAUSED request logged (got ${JSON.stringify(out)})`);
+    assert.match(out[0], /^order_control_read \{"rid":"y","cache":"miss","ms":\d+,"state":"paused"\}$/);
+    const seen = []; OC._observeForTests((x) => seen.push(x));
+    try {
+      const p = OC.orderControlFor(db, 'z'); await tick(); db.reads[2].ok(null); assert.strictEqual(await p, null);   // the reader in use NOW
+      OC._resetForTests({ ttlMs: 0 });   // a later reset keeps the observer
+      const p2 = OC.orderControlFor(db, 'w'); await tick(); db.reads[3].ok(null); assert.strictEqual(await p2, null);
+    } finally { OC._observeForTests(null); }
+    assert.deepStrictEqual(seen.map((x) => [x.rid, x.cache, x.state]), [['z', 'miss', 'open'], ['w', 'miss', 'open']]);
+    OC._resetForTests();
+    const p3 = OC.orderControlFor(db, 'z'); await tick(); db.reads[4].ok(null); assert.strictEqual(await p3, null);
+    assert.strictEqual(seen.length, 2, 'cleared: the observer no longer sees requests');
+    ok('production defaults: console.log ONLY for the non-OPEN request; _observeForTests covers the reader in use at once, survives _resetForTests, and is cleared by null');
   }
   {
     const mk = () => { const h = {}; const r = { headers: h, set(k, v) { h[k] = v; return r; }, status(s) { r.code = s; return r; }, json(b) { r.body = b; return r; } }; return r; };

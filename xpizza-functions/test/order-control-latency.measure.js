@@ -7,52 +7,83 @@
 //
 //   npm run measure:order-control-latency -- <baseline xpizza-functions dir>       (writes the report to stdout as JSON)
 //
-// Each (version, case) runs in its OWN child process (one index.js per process), sequentially, alternating versions.
+// Each (version, case) runs in its OWN child process (one index.js per process), sequentially. The design + statistics
+// are PREREG-2's (K blocks, ABBA/BAAB, an A/A control; test/_latency-stats.js).
 require('./_emulator-required')('database', 'firestore');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
 const WARM_ROUNDS = 1; const CONC = 10;   // one warm-up round of 10 concurrent requests (≥ 5 warm-ups), then 5 rounds = 50 samples
-// LAT_SAMPLES overrides the sample count for the mechanics SELF-TEST only (its outputs are not data; PREREG.md)
+// LAT_SAMPLES / LAT_BLOCKS override the sample and block counts for the mechanics SELF-TEST only (its outputs are not data)
 const SAMPLES = process.env.LAT_SAMPLES ? Number(process.env.LAT_SAMPLES) : 50;
+const BLOCKS = process.env.LAT_BLOCKS ? Number(process.env.LAT_BLOCKS) : 6;
 const CASES = ['createOrder_fresh', 'charge_fresh', 'charge_reuse'];
 const MODES = ['hit', 'miss', 'refresh'];
 
 if (process.argv[2] === '--child') return child(process.argv[3], process.argv[4], process.argv[5]);
 
+// PREREG-2 design: per row, K blocks; a block = one A/B pair (base vs candidate) + one A/A pair (base #1 vs base #2), 50
+// samples per child. The side that runs FIRST in a pair follows ABBA BAAB … over the blocks (X first in blocks 0, 3, 4, 7,
+// …), so with K = 6 each side runs first in exactly 3 blocks; the A/B and A/A pairs swap order every block.
+const ST = require('./_latency-stats');
 const BASE_DIR = path.resolve(process.argv[2] || '');
 const CAND_DIR = path.join(__dirname, '..');
 const runChild = (dir, cs, mode) => {
   const env = { ...process.env }; delete env.NODE_OPTIONS; delete env.FORCE_COLOR;
+  const t0 = Date.now();
   const out = execFileSync('node', [path.join(CAND_DIR, 'test', 'order-control-latency.measure.js'), '--child', dir, cs, mode], { encoding: 'utf8', env, maxBuffer: 1 << 26, timeout: 600000 });
-  return JSON.parse(out.trim().split('\n').pop());
+  return { ...JSON.parse(out.trim().split('\n').pop()), started_at: t0, ended_at: Date.now() };
 };
-const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.ceil(0.95 * s.length) - 1)]; };
-const med = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
-const report = { warmups: WARM_ROUNDS * CONC, samples: SAMPLES, concurrency: CONC, rows: [], outage: null };
-let pair = 0;
+const xFirst = (k) => [true, false, false, true][k % 4];
+const pairRun = (k, runX, runY) => { if (xFirst(k)) { const x = runX(); return { x, y: runY(), first: 'x' }; } const y = runY(); return { x: runX(), y, first: 'y' }; };
+const childOk = (c) => c.errors === 0 && c.notReused === 0 && c.ms.length === SAMPLES;
+const sum = (xs, f) => xs.reduce((a, c) => a + f(c), 0);
+const r1 = (v) => +v.toFixed(1); const r3 = (v) => +v.toFixed(3);
+
+const report = { design: { blocks: BLOCKS, warmups: WARM_ROUNDS * CONC, samples: SAMPLES, concurrency: CONC, order: 'ABBA BAAB per row; A/B and A/A pairs swap order each block' }, rows: [], outage: null };
+const raw = {};   // row key → { ab: [{k, first, base, cand}], aa: [{k, first, base1, base2}] }
+for (let k = 0; k < BLOCKS; k++) {
+  for (const cs of CASES) {
+    for (const mode of MODES) {
+      const key = `${cs}/${mode}`; const R = raw[key] || (raw[key] = { ab: [], aa: [] });
+      const ab = () => { const p = pairRun(k, () => runChild(BASE_DIR, cs, 'base'), () => runChild(CAND_DIR, cs, mode)); R.ab.push({ k, first: p.first === 'x' ? 'base' : 'cand', base: p.x, cand: p.y }); };
+      const aa = () => { const p = pairRun(k, () => runChild(BASE_DIR, cs, 'base'), () => runChild(BASE_DIR, cs, 'base')); R.aa.push({ k, first: p.first === 'x' ? 'base1' : 'base2', base1: p.x, base2: p.y }); };
+      if (k % 2 === 0) { ab(); aa(); } else { aa(); ab(); }
+      console.error(JSON.stringify({ block: k, row: key, ab_first: R.ab[R.ab.length - 1].first, aa_first: R.aa[R.aa.length - 1].first }));
+    }
+  }
+}
 for (const cs of CASES) {
   for (const mode of MODES) {
-    // ABBA: the pair's order alternates (base first, then candidate first, …) so neither side always runs first
-    const first = pair++ % 2 === 0 ? 'base' : 'cand';
-    let base; let cand;
-    if (first === 'base') { base = runChild(BASE_DIR, cs, 'base'); cand = runChild(CAND_DIR, cs, mode); }
-    else { cand = runChild(CAND_DIR, cs, mode); base = runChild(BASE_DIR, cs, 'base'); }
-    const bp = p95(base.ms); const cp = p95(cand.ms);
-    const d = cp - bp;
-    const row = { case: cs, cache: mode, base_p95: +bp.toFixed(1), cand_p95: +cp.toFixed(1), delta_ms: +d.toFixed(1), delta_pct: +((d / bp) * 100).toFixed(1),
-      base_median: +med(base.ms).toFixed(1), cand_median: +med(cand.ms).toFixed(1), median_delta_ms: +(med(cand.ms) - med(base.ms)).toFixed(1),
-      first, base_not_reused: base.notReused, cand_not_reused: cand.notReused, base_attempts: base.attempts, cand_attempts: cand.attempts, base_errors: base.errors, cand_errors: cand.errors,
-      base_status: base.statusCounts, cand_status: cand.statusCounts, cand_cache_states: cand.cache,
-      valid: base.errors === 0 && cand.errors === 0 && base.notReused === 0 && cand.notReused === 0 && base.ms.length === SAMPLES && cand.ms.length === SAMPLES,
-      within: d <= 50 && d <= 0.10 * bp };
-    report.rows.push(row);
-    console.error(JSON.stringify(row));
+    const R = raw[`${cs}/${mode}`];
+    const abBlocks = R.ab.map((b) => ({ x: b.base.ms, y: b.cand.ms }));
+    const aaBlocks = R.aa.map((b) => ({ x: b.base1.ms, y: b.base2.ms }));
+    const pooled = ST.pooledP95Delta(abBlocks); const paired = ST.pairedMedianDelta(abBlocks); const noise = ST.aaNoise(aaBlocks);
+    const base = { attempts: sum(R.ab, (b) => b.base.attempts), errors: sum(R.ab, (b) => b.base.errors) };
+    const cand = { attempts: sum(R.ab, (b) => b.cand.attempts), errors: sum(R.ab, (b) => b.cand.errors) };
+    const valid = R.ab.every((b) => childOk(b.base) && childOk(b.cand)) && R.aa.every((b) => childOk(b.base1) && childOk(b.base2));
+    const v = ST.verdict({ pooled, paired, noise, base, cand, valid });
+    const cacheStates = {}; for (const b of R.ab) for (const [s, c] of Object.entries(b.cand.cache)) cacheStates[s] = (cacheStates[s] || 0) + c;
+    report.rows.push({
+      case: cs, cache: mode,
+      base_p95: r1(pooled.x_p95), cand_p95: r1(pooled.y_p95), p95_delta_ms: r1(pooled.delta_ms), p95_delta_pct: r1(pooled.delta_rel * 100),
+      paired_median_delta_ms: r1(paired), paired_median_ci95: ST.bootstrapCI(abBlocks).map(r1), block_median_deltas: ST.blockMedianDeltas(abBlocks).map(r1),
+      aa_noise_p95_pct: r1(noise.noise_p95 * 100), aa_noise_median_ms: r1(noise.noise_median),
+      aa_pooled_p95_delta_ms: r1(ST.pooledP95Delta(aaBlocks).delta_ms), aa_paired_median_delta_ms: r1(ST.pairedMedianDelta(aaBlocks)),
+      bar_p95_rel_pct: r1(Math.max(0.10, noise.noise_p95) * 100), bar_median_ms: r3(Math.max(5, noise.noise_median)),
+      ab_first: R.ab.map((b) => b.first), aa_first: R.aa.map((b) => b.first),
+      base_attempts: base.attempts, cand_attempts: cand.attempts, base_errors: base.errors, cand_errors: cand.errors,
+      aa_attempts: sum(R.aa, (b) => b.base1.attempts + b.base2.attempts), aa_errors: sum(R.aa, (b) => b.base1.errors + b.base2.errors),
+      not_reused: sum(R.ab, (b) => b.base.notReused + b.cand.notReused) + sum(R.aa, (b) => b.base1.notReused + b.base2.notReused),
+      cand_cache_states: cacheStates, valid, checks: v.checks, pass: v.pass,
+    });
+    console.error(JSON.stringify(report.rows[report.rows.length - 1]));
   }
 }
 report.outage = runChild(CAND_DIR, 'createOrder_fresh', 'outage');
 report.valid = report.rows.every((r) => r.valid);
-report.pass = report.valid && report.rows.every((r) => r.within);
+report.pass = report.rows.every((r) => r.pass);
+report.raw = raw;   // every child's samples, statuses, cache states and wall-clock window — the stats recompute from this
 console.log(JSON.stringify(report));
 process.exit(0);
 
@@ -68,7 +99,7 @@ async function child(dir, cs, mode) {
   const ph = require.resolve(path.join(dir, 'pixelpay-hosted'));
   const realH = req('pixelpay-hosted'); require.cache[ph] = { id: ph, filename: ph, loaded: true, children: [], paths: [], exports: { ...realH, createHostedCharge: async (r) => ({ ok: true, url: `https://pay.test/${r.pixelpayOrderId}` }) } };
   const logs = [];
-  const origLog = console.log; console.log = (...a) => { const l = a.join(' '); if (l.startsWith('order_control_read ')) logs.push(JSON.parse(l.slice('order_control_read '.length))); };
+  const origLog = console.log; console.log = () => {};   // stdout carries only this child's JSON result
   console.warn = () => {}; console.error = () => {};
   const app = req('index.js');
   const admin = require(path.join(dir, 'node_modules', 'firebase-admin'));
@@ -100,6 +131,8 @@ async function child(dir, cs, mode) {
   const oneBody = () => (cs === 'charge_reuse' ? (++seq, body(reuseOid, 'online')) : body(`lat_${process.pid}_${++seq}`, cs === 'charge_fresh' ? 'online' : 'cash'));
   const fire = async () => { const t = process.hrtime.bigint(); const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lat-secret' }, body: JSON.stringify(oneBody()) }); const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch (_) {} return { ms: Number(process.hrtime.bigint() - t) / 1e6, status: r.status, attempt: j && j.attempt_id }; };
   let OC = null; try { OC = req('order-control'); } catch (_) {}
+  // the candidate's cache state per request comes from the reader's test observer (a healthy OPEN request logs nothing)
+  if (OC) OC._observeForTests((rec) => logs.push(rec));
   const prep = () => {
     if (!OC) return;
     if (mode === 'miss') OC._resetForTests();                       // every request: a cold miss

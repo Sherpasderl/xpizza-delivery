@@ -18,7 +18,8 @@ const CACHE_TTL_MS = 10000;
 const READ_TIMEOUT_MS = 1000;
 const READ_FAILED = Symbol('read_failed');
 
-function createReader({ ttlMs = CACHE_TTL_MS, timeoutMs = READ_TIMEOUT_MS, clock = Date.now, log = (l) => console.log(l) } = {}) {
+// `observe` (tests and the §6 harness only; production never sets it) sees EVERY request's record, OPEN included
+function createReader({ ttlMs = CACHE_TTL_MS, timeoutMs = READ_TIMEOUT_MS, clock = Date.now, log = (l) => console.log(l), observe = null } = {}) {
   const cache = new Map();      // rid → { initiatedAt, raw }
   const inflight = new Map();   // rid → { initiatedAt, promise → raw | READ_FAILED }
 
@@ -54,8 +55,14 @@ function createReader({ ttlMs = CACHE_TTL_MS, timeoutMs = READ_TIMEOUT_MS, clock
     const raw = await r.promise;
     const eff = raw === READ_FAILED ? { state: S.UNKNOWN, until: null } : S.effectiveState(raw, clock());
     const decision = S.decisionOf(eff.state);
-    // §6: the latency measurement classifies the cache state per request from this line
-    log(`order_control_read ${JSON.stringify({ rid: key, cache: r.cache, ms: clock() - t0, state: eff.state, ...(raw === READ_FAILED ? { read: 'failed' } : {}) })}`);
+    // the log line fires ONLY when the request is not a healthy OPEN — PAUSED, or UNKNOWN (a failed / timed-out read, a
+    // malformed node); a healthy OPEN request logs nothing (no per-request log volume on the order path)
+    const quiet = eff.state === S.OPEN;
+    if (!quiet || observe) {
+      const rec = { rid: key, cache: r.cache, ms: clock() - t0, state: eff.state, ...(raw === READ_FAILED ? { read: 'failed' } : {}) };
+      if (!quiet) log(`order_control_read ${JSON.stringify(rec)}`);
+      if (observe) observe(rec);
+    }
     return decision;
   }
 
@@ -64,7 +71,9 @@ function createReader({ ttlMs = CACHE_TTL_MS, timeoutMs = READ_TIMEOUT_MS, clock
 
 let shared = createReader();
 const orderControlFor = (db, rid) => shared.orderControlFor(db, rid);
-function _resetForTests(opts) { shared = createReader(opts); return shared; }
+let testObserve = null;   // set by _observeForTests; every later _resetForTests reader keeps it
+function _resetForTests(opts) { shared = createReader({ observe: testObserve, ...opts }); return shared; }
+function _observeForTests(fn) { testObserve = fn; return _resetForTests(); }
 
 // the refusal for a decision ('paused' → 423 ordering_paused; 'unavailable' → the retryable 503)
 function respond(res, decision) {
@@ -73,4 +82,4 @@ function respond(res, decision) {
   return res.status(r.status).json({ ...r.body });
 }
 
-module.exports = { CACHE_TTL_MS, READ_TIMEOUT_MS, createReader, orderControlFor, _resetForTests, respond };
+module.exports = { CACHE_TTL_MS, READ_TIMEOUT_MS, createReader, orderControlFor, _resetForTests, _observeForTests, respond };
