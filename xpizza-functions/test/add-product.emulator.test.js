@@ -265,6 +265,10 @@ const wipe = async () => {
       assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'name_taken', ref, 'name'], `${rid}: ${JSON.stringify(r.body)}`);
       // a section the order page does not draw — raised by the comparison AFTER allocation, attributed back to the ref
       const undrawn = (base.structure.categories || []).map((c) => c.id).find((id) => !require('../catalog/source-store').rendererContract(rid).renderedCategories.includes(id));
+      // a refusal raised by the COMPARISON after allocation (key-only there) is attributed back to the tmp row
+      [src, ref] = one({ name: 'Con Eleccion', choice: 'Grande' });
+      r = await save(rid, src);
+      assert.deepStrictEqual([r.status, r.body.error, r.body.ref, r.body.field], [400, 'choices_not_supported_yet', ref, 'choices'], `${rid}: ${JSON.stringify(r.body)}`);
       if (undrawn) {
         [src, ref] = one({ name: 'En Seccion Oculta', cat: undrawn });
         r = await save(rid, src);
