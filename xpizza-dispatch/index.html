@@ -1997,7 +1997,8 @@
   .otros-head { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); font-weight: 700; margin: 14px 2px 8px; }
   .ex-list { display: flex; flex-direction: column; gap: 9px; }
   /* D4-c4 "Pausar pedidos" banner + held tag — plain, the alert strip's tokens (a restyle is the later UI slice) */
-  .pause-banner { display: flex; flex-direction: column; gap: 4px; padding: 8px 16px; background: var(--card-1); border-bottom: 1px solid var(--warn); color: var(--text); font-size: 13px; }
+  .pause-banner { display: flex; flex-direction: column; gap: 4px; margin-left: 54px; padding: 8px 16px; background: var(--card-1); border-bottom: 1px solid var(--warn); color: var(--text); font-size: 13px; }   /* clears the fixed 54px nav rail, like header.topbar / .app */
+  .pause-banner[hidden] { display: none; }   /* the class's display:flex would otherwise override [hidden] → an empty bordered strip when OPEN */
   .pause-banner .pb-row { display: flex; align-items: center; gap: 8px; }
   .pause-banner .pb-row svg { color: var(--warn); flex: none; }
   .pause-banner .pb-unknown svg { color: var(--text-dim); }

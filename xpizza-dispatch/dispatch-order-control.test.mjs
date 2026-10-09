@@ -112,4 +112,39 @@ const model = (nodes, extra = {}) => pauseBannerModel({ status: 'ok', nodes, nam
   ok('wiring: brand-agnostic + write-free module; the board subscribes to the PARENT order_control node and identity/name, evaluates with .info/serverTimeOffset, and re-renders on the 30 s timer, visibilitychange and focus; Programados rows carry the held tag');
 }
 
+{
+  // CSS structure (codex build r1, SHOULD-FIX 1 + 2). No headless browser in the repo, so the rules are asserted here; the
+  // rendered check (computed display / left edge in Chrome) is evidence outside the repo.
+  const html = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+  const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+  const decl = (body, prop) => { const m = body.match(new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`)); return m ? m[1].trim() : null; };
+  const own = rules.filter((r) => r.sel.split(',').map((x) => x.trim()).includes('.pause-banner'));
+  assert.strictEqual(own.length, 1, 'exactly one .pause-banner base rule');
+  assert.strictEqual(decl(own[0].body, 'display'), 'flex', 'the base rule shows the banner as a flex column');
+  const hid = rules.filter((r) => r.sel.split(',').map((x) => x.trim()).includes('.pause-banner[hidden]'));
+  assert.strictEqual(hid.length, 1, 'a .pause-banner[hidden] rule exists');
+  assert.strictEqual(decl(hid[0].body, 'display'), 'none', '[hidden] → display:none (the class display:flex would otherwise override the UA [hidden] rule)');
+  // nothing more specific than .pause-banner[hidden] (0,2,0) re-shows it, and no !important display on the banner
+  // (every selector whose SUBJECT is the banner itself: .pause-banner / #pause-banner with optional qualifiers, possibly after ancestors)
+  const subject = /(^|[\s>+~])(\.pause-banner|#pause-banner)(\[[^\]]+\]|:[\w-]+|\.[\w-]+)*$/;
+  const setters = rules.flatMap((r) => r.sel.split(',').map((x) => x.trim()).filter((sel) => subject.test(sel) && decl(r.body, 'display') !== null).map((sel) => `${sel} { display: ${decl(r.body, 'display')} }`));
+  assert.deepStrictEqual(setters, ['.pause-banner { display: flex }', '.pause-banner[hidden] { display: none }'], 'no other rule sets the banner\'s own display');
+  // the fixed rail and the offset that clears it
+  const rail = rules.find((r) => r.sel === '.nav-rail');
+  assert.ok(rail && decl(rail.body, 'position') === 'fixed' && decl(rail.body, 'left') === '0', 'the nav rail is fixed at the left edge');
+  const railW = decl(rail.body, 'width');
+  assert.strictEqual(railW, '54px');
+  assert.strictEqual(decl(own[0].body, 'margin-left'), railW, 'the banner starts at the rail width, like header.topbar / .app');
+  const shift = rules.find((r) => r.sel === 'header.topbar, .app');
+  assert.ok(shift && decl(shift.body, 'margin-left') === railW, 'the topbar / .app shift is the same width');
+  // the element: body level (not inside .app, which would double the offset), hidden by default, toggled by its content
+  const body = html.slice(html.indexOf('<body'));
+  const at = body.indexOf('<div class="pause-banner" id="pause-banner" role="status" aria-live="polite" hidden></div>');
+  assert.ok(at > 0, 'the banner element starts hidden');
+  assert.ok(at > body.indexOf('</header>') && at < body.indexOf('<div class="app left-open right-open" id="app">'), 'a body-level sibling after the topbar and before .app');
+  assert.ok(/el\.innerHTML = html; el\.hidden = !html;/.test(html), 'renderPauseBanner hides the element exactly when the model renders nothing');
+  ok('CSS: .pause-banner[hidden] { display:none } so OPEN / resumed / expired leaves NO strip; the banner clears the fixed 54px nav rail (margin-left = the rail width, as topbar / .app); body-level, hidden by default');
+}
+
 console.log(`\ndispatch-order-control: OK (${pass})`);
