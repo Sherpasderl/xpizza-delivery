@@ -315,7 +315,12 @@ async function capturePhase() {
   const idMapFile = path.join(dir, 'ids.json'), outFile = path.join(dir, 'out.json');
   await seedAndExport(idMapFile);
   const env = { ...process.env, PSU_MIRROR_PHASE: 'capture', PSU_MIRROR_IDMAP: idMapFile, PSU_MIRROR_OUT: outFile,
-    FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', PSU_MIRROR_FLOOR: CAPTURE ? '0' : '1' };
+    FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', PSU_MIRROR_FLOOR: CAPTURE ? '0' : '1',
+    // R1: this run STARTED Firestore, so the NULL endpoint is refused unless the outage is DECLARED deliberate — and a
+    // declared-dead service keeps the real SDK's async UNAVAILABLE behaviour, which is exactly what this route measures.
+    // The Firestore alias would otherwise still name the live emulator (the validator refuses a disagreeing alias).
+    XPIZZA_EMU_DEAD: 'firestore' };
+  delete env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
   try { execFileSync('node', [__filename], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 900000, killSignal: 'SIGKILL' }); }
   catch (e) { console.error(String(e.stdout || '').slice(-1500) + String(e.stderr || '').slice(-3000)); throw new Error(`capture phase failed (${e.status === null ? 'TIMEOUT' : e.status})`); }
   const { out, floorOn, unhandled, money, premises } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));

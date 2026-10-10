@@ -9,9 +9,8 @@
  *
  * Silent when there is nothing to guard. If the guard cannot be armed it throws: an unguarded NULL is a hang.
  */
-const path = require('path');
 const { NULL_ENDPOINT, HOST_VAR, DATA_SERVICES, DEAD_VAR, installNullGuard } = require('../lib/emulator-endpoint');
 
 const dead = new Set(String(process.env[DEAD_VAR] || '').split(',').map((s) => s.trim()).filter(Boolean));
 const nulls = DATA_SERVICES.filter((s) => process.env[HOST_VAR[s]] === NULL_ENDPOINT && !dead.has(s));
-if (nulls.length) installNullGuard(nulls, { requireFrom: path.join(__dirname, '..', 'index.js') });
+if (nulls.length) installNullGuard(nulls, require('firebase-admin/app'));

@@ -25,6 +25,8 @@
         "firebase-debug.*.log",
         ".env",
         ".env.example",
+        ".env.local",
+        ".env.local.*",
         "README.md",
         ".firebase",
         "firebase.emulator.*.json",

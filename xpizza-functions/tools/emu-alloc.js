@@ -46,7 +46,7 @@ const newNonce = () => crypto.randomBytes(8).toString('hex');
 function formatMarker({ slot, pid, nonce, start }) { return `${slot}:${pid}:${nonce}:${start}`; }
 function parseMarker(s) {
   const m = /^(\d{1,2}):(\d+):([0-9a-f]{16}):(\d+)$/.exec(String(s == null ? '' : s));
-  if (!m) return null;
+  if (!m || Number(m[1]) >= SLOTS) return null;
   return { slot: Number(m[1]), pid: Number(m[2]), nonce: m[3], start: Number(m[4]) };
 }
 

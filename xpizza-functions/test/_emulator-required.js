@@ -31,14 +31,14 @@ module.exports = function requireEmulator(...services) {
   const missing = services.filter((s) => EE.HOST_VAR[s] && !process.env[EE.HOST_VAR[s]]);
   if (missing.length) return refuse(`${missing.map((s) => EE.HOST_VAR[s]).join(', ')} not set`,
     'This suite would run against real infrastructure instead of the emulator.');
-  /* 🔴 FAIL CLOSED WITHOUT THE RUN'S SLOT. Without XPIZZA_EMU_OFFSET this cannot tell THIS run's emulator from
-     another worktree's on the same machine, so it refuses rather than accept "some local emulator". */
-  if (!process.env[EE.OFFSET_VAR]) return refuse(`${EE.OFFSET_VAR} is not set — the run's slot is unknown`,
-    'Without it this cannot tell THIS run\'s emulator from another worktree\'s, so it refuses.');
   let v;
   try { v = EE.validateEmulatorEnv(process.env); } catch (e) {
     return refuse(String(e && e.message || e).replace(/^🔴 REFUSED — /, ''), 'A foreign or half-configured emulator is someone else\'s tree — asserting against it proves nothing about this one.');
   }
+  /* 🔴 FAIL CLOSED WITHOUT THE RUN'S SLOT. Without XPIZZA_EMU_OFFSET this cannot tell THIS run's emulator from
+     another worktree's on the same machine, so it refuses rather than accept "some local emulator". */
+  if (!process.env[EE.OFFSET_VAR]) return refuse(`${EE.OFFSET_VAR} is not set — the run's slot is unknown`,
+    'Without it this cannot tell THIS run\'s emulator from another worktree\'s, so it refuses.');
   for (const s of services) {
     if (v.endpoints[s] === EE.NULL_ENDPOINT) return refuse(`${EE.HOST_VAR[s]} is the NULL endpoint — this run did not start ${s}`,
       `Add ${s} to the script's --only list.`);

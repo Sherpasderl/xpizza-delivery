@@ -20,8 +20,6 @@
  *   · Accidental use of a NULL service must fail FAST: measured on firebase-admin here, a NULL Firestore read takes
  *     ~46 s to reject and a NULL RTDB read never settles. installNullGuard() makes the client constructor throw.
  */
-const path = require('path');
-
 const NULL_ENDPOINT = '127.0.0.1:1';
 const SLOTS = 40;
 const STEP = 10;
@@ -152,17 +150,22 @@ function validateRtdbUrl(url, env, expectedNs) {
 
 /* ── NULL guard: accidental use of a NULL service throws at client construction, not after ~46 s / never ── */
 const GUARD = Symbol.for('xpizza.emu.nullGuard');
-function installNullGuard(nullServices, { requireFrom } = {}) {
+/* The SDK's FirebaseApp prototype, reached through the PUBLIC API only (its file is hidden by the package exports map):
+   a throwaway NAMED app — no network, no default app — is created and immediately removed from the app store. The
+   caller passes its own `require('firebase-admin/app')` so the prototype is the one ITS clients use. Literal requires
+   only: this file sits inside index.js's require-closure, whose scanner refuses any dynamic require. */
+function firebaseAppPrototype(adminApp) {
+  const name = `__xpizza_null_guard_probe_${process.pid}_${Date.now()}`;
+  const probe = adminApp.initializeApp({ projectId: 'demo-null-guard-probe' }, name);
+  const proto = Object.getPrototypeOf(probe);
+  adminApp.deleteApp(probe).catch(() => { /* a probe app with no services — nothing to fail */ });
+  return proto;
+}
+function installNullGuard(nullServices, adminApp = require('firebase-admin/app')) {
   const svc = new Set(nullServices || []);
   if (!svc.size) return false;
-  // Resolve THE firebase-admin the caller uses (same file ⇒ same module instance ⇒ same prototype). The SDK's
-  // exports map hides lib/app/firebase-app.js from bare specifiers; an absolute path is not subject to it.
-  const req = requireFrom ? require('module').createRequire(requireFrom) : require;
-  let FirebaseApp;
-  try {
-    FirebaseApp = req(path.join(path.dirname(req.resolve('firebase-admin/app')), 'firebase-app.js')).FirebaseApp;
-  } catch (e) { throw new EmulatorEndpointError(`NULL guard could not load firebase-admin (${e && e.message}) — refusing rather than leaving a NULL service unguarded`); }
-  const proto = FirebaseApp && FirebaseApp.prototype;
+  let proto;
+  try { proto = firebaseAppPrototype(adminApp); } catch (e) { throw new EmulatorEndpointError(`NULL guard could not reach firebase-admin (${e && e.message}) — refusing rather than leaving a NULL service unguarded`); }
   if (!proto || typeof proto.getOrInitService !== 'function') throw new EmulatorEndpointError('NULL guard: firebase-admin FirebaseApp.getOrInitService not found — refusing rather than leaving a NULL service unguarded');
   const prior = proto[GUARD];
   const all = new Set([...(prior ? prior.services : []), ...svc]);

@@ -281,6 +281,8 @@ const log = (msg) => console.error(`emulator-run: ${msg}`);
     }
     return lastBusy.length === 0;
   };
+  // A pinned run states its whole band BEFORE arbitration, so the plan is visible even when the pin is refused.
+  if (PIN !== null) log(`pinned slot ${PIN} (XPIZZA_EMU_PORT_OFFSET=${PIN * 10}) — ${bandListeners(services, planPorts(PIN * 10)).map(([nm, pt]) => `${nm} ${pt}`).join(', ')}`);
   const deadlineS = Number(process.env.XPIZZA_EMU_QUEUE_DEADLINE_S || 1200);
   let got;
   try {

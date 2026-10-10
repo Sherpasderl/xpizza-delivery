@@ -7879,8 +7879,8 @@
     "id": "e2a-19",
     "slice": "e2a",
     "file": "tools/emulator-run.js",
-    "from": "  String(command).replace(/\\bnode\\s+(?=[\\w./-]+\\.(?:js|mjs)\\b)/g, `node -r ${counter} `);",
-    "to": "  String(command).replace(/^node\\s+/, `node -r ${counter} `);",
+    "from": "  String(command).replace(/\\bnode\\s+(?=[\\w./-]+\\.(?:js|mjs)\\b)/g, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
+    "to": "  String(command).replace(/^node\\s+/, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
     "label": "only the first command in a chained script is preloaded",
     "kills_with": "a chained script preloaded only some of its suites — the rest report no count at all",
     "command": [
@@ -8245,45 +8245,6 @@
     "command": [
       "node",
       "tools/sweep-baseline.test.js"
-    ]
-  },
-  {
-    "id": "e2h-01",
-    "slice": "e2h",
-    "file": "tools/gate-all.js",
-    "from": "      return onRefuse(2);",
-    "to": "      break;",
-    "label": "the settle wait FALLS THROUGH on timeout instead of refusing",
-    "kills_with": "the settle wait FELL THROUGH on timeout",
-    "command": [
-      "node",
-      "tools/emulator-ports.guard.test.js"
-    ]
-  },
-  {
-    "id": "e2h-02",
-    "slice": "e2h",
-    "file": "tools/gate-all.js",
-    "from": "  if (waited >= SETTLE_POLL_MS) {",
-    "to": "  if (false) {",
-    "label": "the settle wait engages silently, recording nothing",
-    "kills_with": "an engagement was not recorded — a silent wait is indistinguishable from no wait",
-    "command": [
-      "node",
-      "tools/emulator-ports.guard.test.js"
-    ]
-  },
-  {
-    "id": "e2h-03",
-    "slice": "e2h",
-    "file": "tools/gate-all.js",
-    "from": "    const busy = ports.filter(([, port]) => !isFree(port));",
-    "to": "    const busy = [];",
-    "label": "the settle wait never looks at the ports",
-    "kills_with": "it did not wait for the held port to clear",
-    "command": [
-      "node",
-      "tools/emulator-ports.guard.test.js"
     ]
   },
   {
@@ -10790,6 +10751,100 @@
     "command": [
       "node",
       "tools/firestore-config-isolation.test.js"
+    ]
+  },
+  {
+    "id": "r1-01",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "      if (started.has(svc) && !dead.has(svc)) {",
+    "to": "      if (false) {",
+    "label": "the NULL endpoint is accepted for a service the run STARTED",
+    "kills_with": "NOT refused: NULL for a started service",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-02",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "  if (accidental.length) installNullGuard(accidental);",
+    "to": "  void accidental;",
+    "label": "accidental use of a NULL service hangs instead of failing fast",
+    "kills_with": "no fast failure",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-03",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "      throw new EmulatorEndpointError(`${varName} is not set while other emulator signals are",
+    "to": "      continue; throw new EmulatorEndpointError(`${varName} is not set while other emulator signals are",
+    "label": "a half-configured process falls back to production for the unset service",
+    "kills_with": [
+      "NOT refused: Firestore host only",
+      "lib/admin.js did not refuse"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-04",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (isAlive(r.pid)) { incomplete = true; unreadable.push({ pid: r.pid, why: r.why }); }",
+    "to": "      void 0;",
+    "label": "a live unreadable same-user process no longer makes the scan incomplete",
+    "kills_with": "a LIVE unreadable same-user row did not make the scan incomplete",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-05",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    else if (e.args.startsWith(p.args + ' ')) row.env = e.args.slice(p.args.length + 1);",
+    "to": "    else if (e.args.startsWith(p.args + ' ')) row.env = e.args;",
+    "label": "argv is read as environment (x=y in argv, or a marker in argv, counts)",
+    "kills_with": "argv x=y leaked into the env",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-06",
+    "slice": "r1",
+    "file": "tools/emu-reap.js",
+    "from": "  if (sup && !ALLOC.isZombie(sup.state) && sup.start === mk.start) return { ok: false, why: 'supervisor is ALIVE — a live run is never signalled' };",
+    "to": "  void sup;",
+    "label": "emu-reap signals a process whose supervisor is ALIVE",
+    "kills_with": "a LIVE supervisor's process would be signalled",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-07",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (!server) { lastReason = `slot ${slot} sentinel held by another run`; continue; }",
+    "to": "      if (!server) { lastReason = `slot ${slot} sentinel held by another run`; return { slot, server: null, offset: slot * 10 }; }",
+    "label": "a held sentinel is treated as an acquired slot (two runs share a band)",
+    "kills_with": "concurrent allocators did not get",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
     ]
   }
 ]
