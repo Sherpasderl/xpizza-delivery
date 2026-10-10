@@ -58,7 +58,9 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
   'catalog/mirror-rtdb.js',
-  'catalog/owner-index.js', 'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/owner-index.js',
+  'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
+  'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs

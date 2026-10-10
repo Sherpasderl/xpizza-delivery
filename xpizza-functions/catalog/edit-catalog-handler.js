@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------------------
 const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
 const { checkValue, FIELD_SINKS } = require('./display-safety');
+const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the ONE platform authoring switch
 const { persistDeletionClaim } = require('./identity-partition');
 const { getActivePointer } = require('./catalog-firestore');
 
@@ -118,7 +119,9 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective, keyMode) : new Set();
       const res = AP.allocateAdditions({ incoming: candidate, stored, activeItems: live.items, keyMode,
         hwm: Number.isInteger(hwmVal) ? hwmVal : null, registryHasKey: (k) => taken.has(k),
-        fieldProblem: (f, v) => checkValue(v, FIELD_SINKS.item[f]) });
+        // the validator's own sinks: item fields by FIELD_SINKS.item; a group's label / prompt by FIELD_SINKS.variant (body)
+        fieldProblem: (f, v) => checkValue(v, Object.prototype.hasOwnProperty.call(FIELD_SINKS.item, f) ? FIELD_SINKS.item[f] : FIELD_SINKS.variant.label),
+        authoring: groupCapabilities().authoring });
       candidate = res.source;
       refOfKey = res.refs || {};
       if (res.allocatedNow.length) hwmPlan = { ref: hwmRef, snap: hwmSnap, value: res.hwm };
@@ -317,13 +320,14 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
   /* THE STRUCTURAL COMPARISON (§1), after the deletion claim is settled so it can honour it (advisor ruling A:
      ADD-ONLY for portal-authored changes; the pre-existing D4-P1 server-owned deletion claim is preserved). */
   try {
-    AP.assertSameAuthoredFields(next.structure, stored.structure);
+    AP.assertSameAuthoredFields(next.structure, stored.structure, { activeHasVariantItems: live.structure && live.structure.variant_items !== undefined });
     AP.compareToActive({
       draftBuilt: { items: draftBuilt.items, extras: draftExtraRecords, structure: draftBuilt.structure },
       activeBuilt: { items: live.items, extras: liveRes.extraRecords, structure: live.structure },
       draftAuthored: Object.keys(next.structure || {}),
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
+      authoring: groupCapabilities().authoring,
     });
   } catch (e) {
     if (e instanceof AP.AddProductError) {

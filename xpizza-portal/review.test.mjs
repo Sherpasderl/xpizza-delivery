@@ -1121,3 +1121,15 @@ test('text_unsafe speaks about the FIELD the server named: the name forbids quot
   assert.strictEqual(d.action.label, 'Corregir la descripción');
   assert.deepStrictEqual([d.target, d.field, d.action.id], ['tmp:1', 'desc', PUBLISH_ACTIONS.FIX]);
 });
+
+test('add-product B: text_unsafe on a group speaks per field — an OPTION follows the name rule, the group name / prompt only forbids < and >', () => {
+  const at = (field) => outcomeFor(Object.assign(err('text_unsafe', 400), { body: { ref: 'tmp:v', field } }), 'edit');
+  const c = at('choice'); const l = at('label'); const p = at('prompt');
+  assert.match(c.detail, /comillas/); assert.strictEqual(c.action.label, 'Corregir la opción');
+  for (const o of [l, p]) { assert.doesNotMatch(o.detail, /comillas/, 'quotes are fine in a group name'); assert.match(o.detail, /< y >/); }
+  assert.deepStrictEqual([c.target, c.field, c.action.id], ['tmp:v', 'choice', PUBLISH_ACTIONS.FIX]);
+  for (const code of ['label_required', 'choice_label_required', 'choice_duplicate', 'choices_too_few']) {
+    const o = outcomeFor(Object.assign(err(code, 400), { body: { ref: 'tmp:v', field: 'choice' } }), 'edit');
+    assert.deepStrictEqual([o.generic, o.action.id], [false, PUBLISH_ACTIONS.FIX], `${code}: a designed FIX panel`);
+  }
+});

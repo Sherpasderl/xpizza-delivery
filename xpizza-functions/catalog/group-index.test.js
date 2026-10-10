@@ -76,6 +76,10 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
       assert.throws(() => pg.parseRender(bad), /platform_groups_malformed/, `a malformed render artifact (${JSON.stringify(bad)}) is refused, never read as on`);
     }
     assert.deepStrictEqual([pg.parseRender({ render: true }), pg.parseRender({ render: false })], [true, false], 'a well-formed artifact is read as written');
+    const { deriveRender, RENDER_PLATFORM } = require('../tools/generate-renderer-contract');
+    assert.strictEqual(readFileSync(join(__dirname, 'platform-render.generated.js'), 'utf8'), RENDER_PLATFORM(deriveRender()),
+      '🔴 the committed render capability does not match the shipped forms — regenerate with tools/generate-renderer-contract.js');
+    assert.strictEqual(deriveRender(), false, 'no form carries the shared group picker (GROUP_PICKER_V1) yet → render is off');
     const src = readFileSync(join(__dirname, 'platform-groups.js'), 'utf8');
     assert.ok(!/restaurant|rid\b|x_pizza|la_musa/i.test(src.replace(/\/\/.*$/gm, '')), 'no brand anywhere in the switch module');
     ok('the two PLATFORM switches: both off in PB-1; a malformed render artifact throws; no brand appears in the module');
