@@ -67,13 +67,18 @@ function post(handler, body) {
 }
 let PH = 0;
 const phone = () => `9966${String(PH += 1).padStart(4, '0')}`;
-// the next day-of-week (0 = Sunday) at 12:00 Honduras time (UTC−6): ≥ 2 h ahead and inside the 7-day horizon
+// the next day-of-week (0 = Sunday), Honduras time (UTC−6), ≥ 2 h ahead and inside the 160 h horizon — at 12:00 when that
+// fits, else the nearest other hour of that day (the fixture's kitchen is open 24 h). Noon-only threw every SATURDAY after
+// ~10:00 HN: today's noon was < 2 h away and next Saturday's (168 h) lay beyond the horizon.
 function nextDay(dow) {
   const now = Date.now();
   const hnNow = new Date(now - 6 * 3600000);
+  const HOURS_HN = [12, 13, 11, 14, 10, 15, 9, 16, 8, 17, 7, 18, 6, 19, 5, 20, 4, 21, 3, 22, 2, 23, 1, 0];
   for (let d = 0; d <= 7; d += 1) {
-    const t = Date.UTC(hnNow.getUTCFullYear(), hnNow.getUTCMonth(), hnNow.getUTCDate() + d, 18, 0, 0);   // 12:00 HN = 18:00 UTC
-    if (new Date(t - 6 * 3600000).getUTCDay() === dow && t > now + 2 * 3600000 && t < now + 160 * 3600000) return t;
+    for (const h of HOURS_HN) {
+      const t = Date.UTC(hnNow.getUTCFullYear(), hnNow.getUTCMonth(), hnNow.getUTCDate() + d, h + 6, 0, 0);   // h:00 HN = (h+6):00 UTC
+      if (new Date(t - 6 * 3600000).getUTCDay() === dow && t > now + 2 * 3600000 && t < now + 160 * 3600000) return t;
+    }
   }
   throw new Error(`no ${dow} within the horizon`);
 }
