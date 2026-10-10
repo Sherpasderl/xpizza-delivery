@@ -25,7 +25,12 @@ function isLauncher(p, variantItems) { return !!(p && variantItems && variantIte
 function isVariant(p) { return !!(p && p.variantOf); }
 
 /* A variant map the renderer can draw, judged against the dishes ARRIVING with it (a map is a set of references into
-   the dish list). Throws with a typed reason; the error strings are the form's established apply-rejection codes. */
+   the dish list). Throws with a typed reason; the error strings are the form's established apply-rejection codes.
+   A GROUP IS ONE ID NAMESPACE: its choice ids are all strings or all finite numbers (whatever the brand's dish ids
+   are), each resolved strictly; the launcher KEY — a JSON key, so always a string — resolves only to a dish whose id
+   has that SAME type. So x_pizza's numeric group { "30": { variantIds: [31, 32] } } is drawable, while a key or an id
+   that matches only after coercion (a numeric dish under a string group, "7" vs 7) is still refused. */
+const idTypeOf = (id) => (typeof id === "string" && id !== "") ? "string" : (typeof id === "number" && isFinite(id)) ? "number" : null;
 function validateVariantBlock(vi, dishes, origin) {
   if (!vi || typeof vi !== "object" || Array.isArray(vi)) throw new Error("apply_variant_items_malformed@" + origin);
   Object.keys(vi).forEach(function (k) {
@@ -33,11 +38,12 @@ function validateVariantBlock(vi, dishes, origin) {
     if (!cfg || typeof cfg !== "object") throw new Error("apply_variant_cfg_malformed@" + origin + ":" + k);
     if (!(typeof cfg.basePrice === "number" && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error("apply_variant_basePrice@" + origin + ":" + k);
     if (!Array.isArray(cfg.variantIds) || !cfg.variantIds.length) throw new Error("apply_variant_ids_missing@" + origin + ":" + k);
+    const groupType = idTypeOf(cfg.variantIds[0]);
     cfg.variantIds.forEach(function (vid) {
-      if (typeof vid !== "string" || !vid) throw new Error("apply_variant_id_type@" + origin + ":" + k + ":" + String(vid));
+      if (!groupType || idTypeOf(vid) !== groupType) throw new Error("apply_variant_id_type@" + origin + ":" + k + ":" + String(vid));
       if (!dishes.some(function (d) { return sameDishId(d.id, vid); })) throw new Error("apply_variant_id_orphan@" + origin + ":" + k + ":" + vid);
     });
-    if (!dishes.some(function (d) { return sameDishId(d.id, k); })) throw new Error("apply_variant_launcher_orphan@" + origin + ":" + k);
+    if (!dishes.some(function (d) { return typeof d.id === groupType && String(d.id) === k; })) throw new Error("apply_variant_launcher_orphan@" + origin + ":" + k);
   });
 }
 
@@ -62,25 +68,38 @@ function choiceDelta(v, range) { const d = range ? v.price - range.min : 0; retu
 // the disabled commit prompt, derived from the group label: "Elegí tu {label en minúscula}"
 function promptText(cfg) { return "Elegí tu " + String(cfg.label).toLocaleLowerCase("es"); }
 
-/* The required single-select group: its label row and one row per choice. Text reaches the page only through the
-   form's own escapers (escapeHtml for body text, safeText for the data-id attribute). */
-function choiceRowsHtml(opts) {
-  const cfg = opts.cfg, menu = opts.menu, stagedId = opts.stagedId, escapeHtml = opts.escapeHtml, safeText = opts.safeText;
+/* ── THE CHOICE ROWS, AS DATA ─────────────────────────────────────────────────────────────────────────────────────
+   One entry per RESOLVED choice, in the group's order (an unresolvable id renders nothing). Each form draws these in its
+   own markup (a brand slot); WHAT a row says — its label, its amount, whether it is chosen, whether it is recommended —
+   is decided here, once. */
+const RECOMMENDED_LABEL = "Recomendada";
+function isRecommended(v) { return !!(v && Array.isArray(v.tags) && v.tags.indexOf("recommended") !== -1); }
+function choiceRows(cfg, menu, stagedId) {
   const range = priceRange(cfg, menu);
-  let html = `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
-  html += `<div class="detail-extras-list">`;
-  cfg.variantIds.forEach(vid => {
+  const rows = [];
+  (cfg.variantIds || []).forEach(vid => {
     const v = menu.find(p => sameDishId(p.id, vid)); if (!v) return;
-    const delta = choiceDelta(v, range);
-    const sel = stagedId === vid;
-    html += `<div class="detail-variant-row${sel ? ' sel' : ''}" data-act="variant" data-id="${safeText(vid)}">
-      <div><span class="detail-extras-name">${escapeHtml(v.choice)}</span>${delta !== null ? `
-      <span class="detail-extras-price">+L ${delta}</span>` : ''}</div>
-      <span class="detail-variant-radio"></span>
-    </div>`;
+    rows.push({ id: vid, choice: v.choice, delta: choiceDelta(v, range), selected: stagedId === vid, recommended: isRecommended(v) });
   });
-  html += `</div>`;
-  return html;
+  return rows;
+}
+
+/* ── EXTRAS POLICY (rev 6 §0b.7) — one source field, `extras_policy: 'none'`, stamped on a group's launcher AND every
+   choice. Absent = today's behaviour. Any other value is a snapshot the form refuses whole. */
+function noExtras(item) { return !!(item && item.extras_policy === "none"); }
+function validateExtrasPolicy(dishes) {
+  dishes.forEach(function (d, i) {
+    if (d && Object.prototype.hasOwnProperty.call(d, "extras_policy") && d.extras_policy !== "none") throw new Error("apply_dish_extras_policy@" + i);
+  });
+}
+
+/* ── WHOLE-DISH AVAILABILITY (rev 6 §0d.4) — a choice is available iff the choice AND its launcher are. `ownSoldOut` is
+   the form's own per-record reader (its keys, its fail-open rule); this only adds the parent. */
+function parentOf(item, menu) { return item && item.variantOf !== undefined ? menu.find(p => sameDishId(p.id, item.variantOf)) || null : null; }
+function soldOutWithParent(item, menu, ownSoldOut) {
+  if (ownSoldOut(item)) return true;
+  const parent = parentOf(item, menu);
+  return !!(parent && ownSoldOut(parent));
 }
 
 /* What the commit button may do for an open launcher:
@@ -99,6 +118,7 @@ function ctaDecision(opts) {
   return { kind: "add", total: (v ? v.price : 0) + extrasSum };
 }
 
-const GroupPicker = { GROUP_PICKER_V1, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta, promptText, choiceRowsHtml, ctaDecision };
+const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
+  promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, parentOf, soldOutWithParent, ctaDecision };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

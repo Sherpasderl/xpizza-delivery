@@ -1708,6 +1708,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
         if (!rl || rl.key == null) { dropped++; continue; }
         const item = laMusa ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
         if (!item) { dropped++; continue; }                                   // not on today's menu → drop
+        // 1D add-product B: a bare LAUNCHER (a legacy line from before its group) is never a cart line — dropped, and counted in the notice
+        if (typeof itemIsLauncher === 'function' && itemIsLauncher(item)) { dropped++; continue; }
         let so = false; try { so = (typeof soldOutById === 'function') && soldOutById(item.id); } catch (_) {}
         if (so) { dropped++; continue; }                                      // 86'd → drop (UX best-effort; server re-gates)
         const n = Number(rl.qty);

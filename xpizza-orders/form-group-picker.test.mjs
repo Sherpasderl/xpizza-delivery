@@ -30,25 +30,58 @@ test('validateVariantBlock: the renderer’s own acceptance test, against the ar
   const bad = [
     [null, /apply_variant_items_malformed@supplied/], [[], /apply_variant_items_malformed/],
     [{ L: null }, /apply_variant_cfg_malformed@supplied:L/], [{ L: { basePrice: 0, variantIds: ['a'] } }, /apply_variant_basePrice/],
-    [{ L: { basePrice: 5, variantIds: [] } }, /apply_variant_ids_missing/], [{ L: { basePrice: 5, variantIds: [7] } }, /apply_variant_id_type/],
+    [{ L: { basePrice: 5, variantIds: [] } }, /apply_variant_ids_missing/], [{ L: { basePrice: 5, variantIds: [7] } }, /apply_variant_id_orphan@supplied:L:7/], [{ L: { basePrice: 5, variantIds: [null] } }, /apply_variant_id_type/],
     [{ L: { basePrice: 5, variantIds: ['zz'] } }, /apply_variant_id_orphan@supplied:L:zz/], [{ Q: { basePrice: 5, variantIds: ['a'] } }, /apply_variant_launcher_orphan@supplied:Q/],
   ];
   for (const [vi, re] of bad) assert.throws(() => GP.validateVariantBlock(vi, dishes, 'supplied'), re, JSON.stringify(vi));
 });
 
-test('choiceRowsHtml: the label row + one row per choice, the selected one marked, text through the form’s escapers', () => {
-  const menu = [{ id: 'a', choice: 'Pollo <b>', price: 342 }, { id: 'b', choice: 'Sin', price: 307 }];
-  const html = GP.choiceRowsHtml({ cfg: { label: 'Proteína', basePrice: 307, variantIds: ['b', 'a', 'gone'] }, menu, stagedId: 'a', escapeHtml: esc, safeText: esc });
-  assert.ok(html.startsWith('<div class="detail-cat-label">Proteína <span class="detail-req">· Requerido</span></div><div class="detail-extras-list">'));
-  assert.strictEqual((html.match(/detail-variant-row/g) || []).length, 2, 'one row per RESOLVED choice (an unresolvable id renders nothing)');
-  assert.ok(/data-id="a"[\s\S]*Pollo &lt;b&gt;/.test(html), 'the choice label is escaped');
-  assert.ok(/detail-variant-row sel" data-act="variant" data-id="a"/.test(html) && !/sel" data-act="variant" data-id="b"/.test(html), 'only the staged choice is marked');
-  assert.ok(/data-id="a"[\s\S]*\+L 35/.test(html), 'a dearer choice shows its delta above the cheapest');
-  assert.ok(!/L 307/.test(html) && (html.match(/detail-extras-price/g) || []).length === 1, 'the cheapest choice shows NO amount (rev 6 §0c.3)');
-  const equal = GP.choiceRowsHtml({ cfg: { label: 'Salsa', variantIds: ['x', 'y'] }, menu: [{ id: 'x', choice: 'Roja', price: 624 }, { id: 'y', choice: 'Vodka', price: 624 }], stagedId: null, escapeHtml: esc, safeText: esc });
-  assert.ok(!/detail-extras-price/.test(equal), 'all choices equal → no row shows an amount');
-  const stale = GP.choiceRowsHtml({ cfg: { label: 'P', basePrice: 9999, variantIds: ['a', 'b'] }, menu, stagedId: null, escapeHtml: esc, safeText: esc });
-  assert.ok(/\+L 35/.test(stale), 'a stale authored basePrice is never an input: deltas come from the choices themselves');
+test('validateVariantBlock: a group is ONE id namespace — numeric groups draw, coerced matches are refused', () => {
+  const numeric = [{ id: 30 }, { id: 31 }, { id: 32 }];
+  assert.doesNotThrow(() => GP.validateVariantBlock({ 30: { basePrice: 624, variantIds: [31, 32] } }, numeric, 's'), 'x_pizza: numeric dish ids, the key is the JSON string of the launcher id');
+  const mixedMenu = [{ id: 'L' }, { id: 'a' }, { id: 7 }];
+  for (const [vi, re, why] of [
+    [{ 30: { basePrice: 624, variantIds: ['31', '32'] } }, /apply_variant_id_orphan@s:30:31/, 'string ids naming numeric dishes (coercion only)'],
+    [{ 30: { basePrice: 624, variantIds: [31, '32'] } }, /apply_variant_id_type@s:30:32/, 'one group, two id types'],
+    [{ 30: { basePrice: 624, variantIds: [31, NaN] } }, /apply_variant_id_type/, 'a non-finite number is not an id'],
+  ]) assert.throws(() => GP.validateVariantBlock(vi, numeric, 's'), re, why);
+  assert.throws(() => GP.validateVariantBlock({ 7: { basePrice: 5, variantIds: ['a'] } }, mixedMenu, 's'), /apply_variant_launcher_orphan@s:7/,
+    'a string group whose KEY matches only a NUMERIC dish (after coercion) is refused');
+  assert.throws(() => GP.validateVariantBlock({ L: { basePrice: 5, variantIds: [7] } }, mixedMenu, 's'), /apply_variant_launcher_orphan@s:L/,
+    'a numeric group whose key names only a STRING dish is refused');
+});
+
+test('choiceRows: one row per RESOLVED choice in group order — label, amount, chosen, recommended — decided once', () => {
+  const menu = [{ id: 'a', choice: 'Pollo', price: 342, tags: ['recommended'] }, { id: 'b', choice: 'Sin', price: 307 }, { id: 7, choice: 'Num', price: 400 }];
+  assert.deepStrictEqual(GP.choiceRows({ variantIds: ['b', 'a', 'gone'] }, menu, 'a'), [
+    { id: 'b', choice: 'Sin', delta: null, selected: false, recommended: false },
+    { id: 'a', choice: 'Pollo', delta: 35, selected: true, recommended: true },
+  ], 'the cheapest shows no amount, a dearer one its delta; an unresolvable id renders nothing');
+  assert.deepStrictEqual(GP.choiceRows({ variantIds: ['a', 'b'], basePrice: 9999 }, menu, null).map((r) => r.delta), [35, null],
+    'a stale authored basePrice is never an input: deltas come from the choices themselves');
+  assert.ok(GP.choiceRows({ variantIds: ['x', 'y'] }, [{ id: 'x', price: 624 }, { id: 'y', price: 624 }], null).every((r) => r.delta === null), 'all equal → no amounts');
+  assert.deepStrictEqual(GP.choiceRows({ variantIds: [7] }, menu, '7').map((r) => r.selected), [false], 'chosen is strict too: "7" is not 7');
+  assert.deepStrictEqual([GP.isRecommended({ tags: ['recommended'] }), GP.isRecommended({ tags: 'recommended' }), GP.isRecommended({})], [true, false, false]);
+  assert.strictEqual(GP.RECOMMENDED_LABEL, 'Recomendada');
+});
+
+test('extras_policy: "none" hides extras; absent = today; any other value refuses the snapshot whole', () => {
+  assert.deepStrictEqual([GP.noExtras({ extras_policy: 'none' }), GP.noExtras({}), GP.noExtras({ extras_policy: 'None' }), GP.noExtras(null)], [true, false, false, false]);
+  assert.doesNotThrow(() => GP.validateExtrasPolicy([{ id: 1 }, { id: 2, extras_policy: 'none' }]));
+  for (const bad of ['None', '', null, undefined, 'all', 0]) {
+    assert.throws(() => GP.validateExtrasPolicy([{ id: 1 }, { id: 2, extras_policy: bad }]), /apply_dish_extras_policy@1/, JSON.stringify(bad));
+  }
+});
+
+test('whole-dish availability: a choice is available iff it AND its launcher are', () => {
+  const menu = [{ id: 30, name: 'L' }, { id: 31, name: 'L - a', variantOf: 30 }, { id: 32, name: 'L - b', variantOf: 30 }, { id: 'x', name: 'X', variantOf: '30' }];
+  const out = new Set();
+  const own = (it) => out.has(it.name);
+  assert.strictEqual(GP.soldOutWithParent(menu[1], menu, own), false);
+  out.add('L - a'); assert.deepStrictEqual([GP.soldOutWithParent(menu[1], menu, own), GP.soldOutWithParent(menu[2], menu, own)], [true, false], 'child-only 86');
+  out.clear(); out.add('L'); assert.deepStrictEqual([GP.soldOutWithParent(menu[1], menu, own), GP.soldOutWithParent(menu[2], menu, own)], [true, true], 'parent 86 hides every choice');
+  assert.strictEqual(GP.soldOutWithParent(menu[3], menu, own), false, 'the parent is resolved strictly ("30" is not 30)');
+  assert.strictEqual(GP.parentOf(menu[0], menu), null, 'a launcher has no parent');
 });
 
 test('the price rule is DERIVED from the choices: "L {min}" when equal, else "desde L {min}"', () => {

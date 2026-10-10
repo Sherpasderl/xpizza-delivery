@@ -496,6 +496,7 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .detail-req{color:#B61218;font-weight:700;font-size:.85em}
 .detail-variant-row{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1.5px solid #ece2e2;border-radius:12px;margin-bottom:8px;cursor:pointer}
 .detail-variant-row.sel{border-color:#b9adae}
+.detail-variant-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--jade);color:var(--cream);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
 .detail-variant-radio{width:20px;height:20px;border-radius:50%;border:2px solid #b9adae;flex:none}
 .detail-variant-row.sel .detail-variant-radio{border-color:#B61218;box-shadow:inset 0 0 0 5px #B61218}
 
@@ -2502,6 +2503,7 @@ function liveMenuPrepare(body){
      once a caller starts reporting them. */
   // 1D add-product B: the variant-map rule is the shared picker's (form-group-picker.js), judged against the arriving dishes
   const validateVariantBlock = (vi, origin) => GroupPicker.validateVariantBlock(vi, dishes, origin);
+  GroupPicker.validateExtrasPolicy(dishes);   // 1D add-product B: extras_policy ∈ {'none'} or absent — the same boundary in every form
   let variantItems = VARIANT_ITEMS;
   if (body.variant_items !== undefined) {
     validateVariantBlock(body.variant_items, 'supplied');
@@ -5594,8 +5596,17 @@ function renderLauncherModal(pizza) {
   </div>`;
 
   // Required single-select protein group
-  // 1D add-product B: the required single-select rows are the shared picker's
-  html += GroupPicker.choiceRowsHtml({ cfg, menu: MENU, stagedId: stagedVariantId, escapeHtml, safeText });
+  // 1D add-product B: WHAT each row says is the shared picker's (GroupPicker.choiceRows); this is la_musa's markup for it
+  html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
+  html += `<div class="detail-extras-list">`;
+  GroupPicker.choiceRows(cfg, MENU, stagedVariantId).forEach(r => {
+    html += `<div class="detail-variant-row${r.selected ? ' sel' : ''}" data-act="variant" data-id="${safeText(r.id)}">
+      <div><span class="detail-extras-name">${escapeHtml(r.choice)}</span>${r.recommended ? `<span class="detail-variant-badge">${escapeHtml(GroupPicker.RECOMMENDED_LABEL)}</span>` : ''}${r.delta !== null ? `
+      <span class="detail-extras-price">+L ${r.delta}</span>` : ''}</div>
+      <span class="detail-variant-radio"></span>
+    </div>`;
+  });
+  html += `</div>`;
 
   // Optional extras (staged, always visible)
   extrasCatsForItem(pizza).forEach(cat => {

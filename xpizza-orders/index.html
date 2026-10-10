@@ -512,6 +512,18 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 }
 .detail-cta:active{opacity:.92}
 .detail-cta-divider{opacity:.5}
+/* 1D add-product B — the required-choice picker, exactly the approved mock (xpizza-plainslice-mock/APPROVED-*). The mock's
+   disabled-CTA look is scoped to the picker's button so no existing CTA changes. */
+.detail-req{color:var(--red);font-weight:700;font-size:.85em}
+.detail-variant-row{display:flex;justify-content:space-between;align-items:center;padding:14px 14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:#fff}
+.detail-variant-row.sel{border-color:var(--charcoal)}
+.detail-variant-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--border2);flex:none}
+.detail-variant-row.sel .detail-variant-radio{border-color:var(--charcoal);box-shadow:inset 0 0 0 5px var(--charcoal)}
+.choice-line{display:flex;align-items:center;gap:8px}
+.choice-line .detail-extras-name{display:inline}
+.choice-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:var(--gold-lt);color:var(--gold-dk);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
+.choice-delta{font-size:14px;color:#5A4F47;font-weight:500;margin-left:auto;margin-right:14px;white-space:nowrap}
+.detail-cta.detail-cta--group[disabled]{background:#cfcbc4;color:#fff;cursor:not-allowed}
 
 /* Pill state: morphs from the full-width button into a centered cart
    pill (matching main menu .cart-bar). Shows whole cart total. */
@@ -1454,6 +1466,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <!-- 1D D4-b · availabilityReducer — the ONE 86 decision rule (window.availabilityReducer); shared byte-identical across KDS/forms/server -->
 <script src="availability-reducer.js"></script>
 <script src="form-safe-render.js"></script>
+<script src="form-group-picker.js"></script>
 <script src="form-confirm-quote.js"></script>
 <script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
@@ -1589,6 +1602,16 @@ function _legacyCartForSig(items) {
   });
 }
 let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;   // 1D D2 — un-stripped: the id rides into the cart
+/* 1D add-product B — REQUIRED-CHOICE GROUPS, the shared picker's model (form-group-picker.js): a LAUNCHER dish, its priced
+   VARIANT dishes (`variantOf`, `choice`) and this map. Absent ⇒ no groups — today's form, unchanged. A bundled map the
+   shared rule refuses is dropped WHOLE (never half-read), and the grid then hides every dish of a group it cannot draw
+   (see gridDishes), so an unreadable map can never surface a bare launcher as an ordinary dish. */
+let VARIANT_ITEMS = (function(){
+  if (_BUNDLE.variant_items === undefined) return {};
+  try { GroupPicker.validateVariantBlock(_BUNDLE.variant_items, MENU, 'bundle'); return _BUNDLE.variant_items; }
+  catch (e) { try { console.warn('[groups] bundled variant_items refused:', e && e.message); } catch(_){} return {}; }
+})();
+function itemIsLauncher(p) { return GroupPicker.isLauncher(p, VARIANT_ITEMS); }
 
 
 const MIN_ORDER = 250;
@@ -2015,14 +2038,15 @@ function liveMenuPriceVersion(){
   } catch (_) { return null; }
 }
 try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
-const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'];
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS', 'VARIANT_ITEMS'];
 function liveMenuGlobalGet(n){
-  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : WEEKEND_ONLY_CATS;
+  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : n === 'VARIANT_ITEMS' ? VARIANT_ITEMS : WEEKEND_ONLY_CATS;
 }
 function liveMenuGlobalSet(n, v){
   if (n === 'MENU') MENU = v;
   else if (n === 'EXTRAS') EXTRAS = v;
   else if (n === 'PICKUP_ONLY_CATS') PICKUP_ONLY_CATS = v;
+  else if (n === 'VARIANT_ITEMS') VARIANT_ITEMS = v;
   else WEEKEND_ONLY_CATS = v;
 }
 function liveMenuContainers(){ return ['menu-individual', 'menu-ny']; }
@@ -2055,6 +2079,18 @@ function liveMenuPrepare(body){
   // every lookup — cart reconciliation, pricing, availability — and which one is an accident of order.
   if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');
   if (new Set(extras.map((e) => String(e.id))).size !== extras.length) throw new Error('apply_extra_duplicate');
+  /* 1D add-product B — the group model, judged by the SHARED rules against the dishes ARRIVING (form-group-picker.js):
+     an extras_policy other than 'none' refuses the snapshot whole; a supplied variant map must be drawable, and a
+     RETAINED one (absent ⇒ keep what is in force) is re-judged too — it is a set of references into the dish list
+     this snapshot replaces, so dropping the choices must not leave a launcher with nothing to choose. */
+  GroupPicker.validateExtrasPolicy(dishes);
+  let variantItems = VARIANT_ITEMS;
+  if (body.variant_items !== undefined) {
+    GroupPicker.validateVariantBlock(body.variant_items, dishes, 'supplied');
+    variantItems = body.variant_items;
+  } else {
+    GroupPicker.validateVariantBlock(variantItems, dishes, 'retained');
+  }
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
@@ -2070,6 +2106,7 @@ function liveMenuPrepare(body){
     // pickup-only list must not silently OPEN a gate that is currently closed.
     PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,
     WEEKEND_ONLY_CATS: Array.isArray(body.weekend_only_cats) ? body.weekend_only_cats : WEEKEND_ONLY_CATS,
+    VARIANT_ITEMS: variantItems,
   };
 }
 
@@ -2473,7 +2510,12 @@ function availKeysFor(item){
 }
 // x_pizza is priced — and therefore 86'd — by NAME.
 function AVAIL_IDENTITY(item){ return item.name; }
+/* 1D add-product B — WHOLE-DISH AVAILABILITY (the shared rule): a choice is sold out when it OR its launcher is. The
+   per-record reader below is unchanged; with no groups in the menu this is exactly it. */
 function isSoldOut(item){
+  try { return GroupPicker.soldOutWithParent(item, MENU, ownSoldOut); } catch(_){ return false; }   // any doubt ⇒ available
+}
+function ownSoldOut(item){
   try {
     if(!item || typeof window.availKey !== 'function') return false;
     const keys = availKeysFor(item);
@@ -2573,6 +2615,9 @@ function wireMenuDelegate(){
     const dish = MENU.find(function(x){ return String(x.id) === String(raw); });
     if (!dish) return;                       // an id nothing matches is inert, which is the safe outcome
     if (act === 'open') { openDetailModal(dish.id); return; }
+    // 1D add-product B: a launcher is never added itself — any "add" on it opens its picker; a choice row stages a choice
+    if (act === 'inc' && itemIsLauncher(dish)) { openDetailModal(dish.id); return; }
+    if (act === 'variant') { selectVariant(dish.id); return; }
     if (act === 'inc')  { chg(dish.id, 1);  return; }
     if (act === 'dec')  { chg(dish.id, -1); return; }
     if (act === 'badge'){ toggleControls(dish.id); return; }
@@ -2595,16 +2640,24 @@ function wireMenuDelegate(){
 }
 
 /* ── Menu rendering ── */
+/* 1D add-product B — what the grid shows: never a choice (it is reached through its launcher), and never a dish that
+   choices point at while no drawable map makes it a launcher (an unreadable map must not surface a bare launcher as
+   an ordinary, orderable dish). With no groups in the menu this is MENU itself. */
+function gridDishes(){
+  return MENU.filter(p => !GroupPicker.isVariant(p)
+    && (itemIsLauncher(p) || !MENU.some(v => GroupPicker.isVariant(v) && GroupPicker.sameDishId(v.variantOf, p.id))));
+}
 function renderMenu(){
-  const indiv = MENU.filter(p=>p.cat==='individual');
-  const ny    = MENU.filter(p=>p.cat==='ny');
+  const grid  = gridDishes();
+  const indiv = grid.filter(p=>p.cat==='individual');
+  const ny    = grid.filter(p=>p.cat==='ny');
   /* 🔴 EVERY AUTHORED FIELD GOES THROUGH THE RENDERER FOR ITS OWN CONTEXT — see form-safe-render.js.
      The id appears only in `id=` and `data-` attributes, never inside a handler: the click is delegated
      and resolves the id back through MENU (see wireMenuDelegate). safeText is correct for an attribute
      as well as for body text, and because HTML attribute values are DECODED on parse, escaping here
      changes the serialization only — getElementById('card-' + p.id) still finds the element it always
      found, so this is safe AND behaviour-preserving. */
-  const card = p => `
+  const plainCard = p => `
     <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
       <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
         ${safeImgUrl(p.img)
@@ -2636,12 +2689,35 @@ function renderMenu(){
         </div>
       </div>
     </div>`;
+  /* 1D add-product B — a LAUNCHER card: the same card, priced by the shared rule ("L {min}" / "desde L {min}"), and its
+     one button OPENS the picker — a launcher is never added to the cart itself. */
+  const launcherCard = p => `
+    <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
+      <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
+        ${safeImgUrl(p.img)
+          ? `<img class="pizza-photo-img" src="${safeText(safeImgUrl(p.img))}" alt="${safeText(p.name)}" loading="lazy" style="display:block">`
+          : `<div class="pizza-photo-label">${safeText(p.emoji||'🍕')}</div>`
+        }
+        <div class="qty-overlay" data-stop="1">
+          <button class="qty-add-btn" id="qty-add-${safeText(p.id)}" aria-label="Elegir" data-act="open" data-id="${safeText(p.id)}">+</button>
+        </div>
+      </div>
+      <div class="pizza-card-body">
+        <div class="pizza-card-name">${safeText(p.name)}</div>
+        <div class="pizza-card-desc">${safeText(p.desc||'')}</div>
+        <div class="pizza-card-footer">
+          <span class="pizza-card-price">${safeText(GroupPicker.priceText(VARIANT_ITEMS[p.id], MENU) || '—')}</span>
+        </div>
+      </div>
+    </div>`;
+  const card = p => (itemIsLauncher(p) ? launcherCard(p) : plainCard(p));
   document.getElementById('menu-individual').innerHTML = indiv.map(card).join('');
   document.getElementById('menu-ny').innerHTML = ny.map(card).join('');
   applyAvailability();   // KDS 2b: re-apply sold-out overlay after any (re)render (no-op when availability absent)
 }
 
 function chg(id,d){
+  if(d>0 && itemIsLauncher(MENU.find(p => p.id === id))) return;   // 1D add-product B: a launcher is never a cart line — its choice is
   if(d>0 && soldOutById(id)) return;   // KDS 2b: item 86'd — freeze add/increment (decrements still allowed so an in-cart item can be removed). Fail-open: soldOutById is false on any doubt.
   // (qty[id]||0): a dish that arrives with a live upgrade has no entry yet, and undefined+1 is NaN —
   // which would render as "NaN" in the total and the subtotal of a money form.
@@ -4854,10 +4930,14 @@ function showSuccess(){
    closes it and reveals the detail modal as it was.
    ═══════════════════════════════════════════════════ */
 let currentDetailPizzaId = null;
+// 1D add-product B — the choice staged in an open LAUNCHER's picker (a variant id, or null). Every open starts fresh.
+let stagedVariantId = null;
+function selectVariant(vid) { stagedVariantId = vid; updateDetailModal(); }
 
 function openDetailModal(pizzaId) {
   if (pizzaId === undefined || pizzaId === null) return;
   currentDetailPizzaId = pizzaId;
+  stagedVariantId = null;
   renderDetailModal();
 
   document.getElementById('detail-overlay').classList.add('open');
@@ -5001,11 +5081,14 @@ function renderDetailModal() {
   if (!pizza) return;
 
   document.getElementById('detail-header-title').textContent = pizza.name;
+  if (itemIsLauncher(pizza)) { renderLauncherModal(pizza); return; }
 
+  // 1D add-product B: a CHOICE (reopened from the cart) shows its launcher's photo and description
+  const look = GroupPicker.parentOf(pizza, MENU) || pizza;
   const pizzaQty = qty[pizzaId] || 0;
-  const photoColor = safeColor(pizza.color, '#C8321A');   // 1B Task 8 — constrained grammar, not an escape
-  const emoji = pizza.emoji || '🍕';
-  const desc = pizza.desc || '';
+  const photoColor = safeColor(look.color, '#C8321A');   // 1B Task 8 — constrained grammar, not an escape
+  const emoji = look.emoji || '🍕';
+  const desc = look.desc || '';
   const isNutella = pizza.name === 'Nutella';
 
   let html = '';
@@ -5016,9 +5099,9 @@ function renderDetailModal() {
      <img> took the "there is not" branch, so the two disagreed about the same field. The colour was
      then never used, which is also why a mutation that removed its constraint survived: the test could
      not reach the code it was aiming at. */
-  html += `<div class="detail-photo" style="background:${safeImgUrl(pizza.img) ? '#000' : photoColor}">
-    ${safeImgUrl(pizza.img)
-      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(pizza.img))}" alt="${safeText(pizza.name)}">`
+  html += `<div class="detail-photo" style="background:${safeImgUrl(look.img) ? '#000' : photoColor}">
+    ${safeImgUrl(look.img)
+      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(look.img))}" alt="${safeText(pizza.name)}">`
       : `<span class="detail-photo-label">${safeText(emoji)}</span>`
     }
   </div>`;
@@ -5042,8 +5125,8 @@ function renderDetailModal() {
     </div>
   </div>`;
 
-  // Extras section — only if qty>0 AND not Nutella
-  if (pizzaQty > 0 && !isNutella) {
+  // Extras section — only if qty>0 AND not Nutella AND the dish allows extras (1D add-product B: extras_policy 'none')
+  if (pizzaQty > 0 && !isNutella && !GroupPicker.noExtras(pizza)) {
     const cats = [...new Set(EXTRAS.map(e => e.cat))];
     for (let inst = 0; inst < pizzaQty; inst++) {
       if (pizzaQty > 1) {
@@ -5076,6 +5159,38 @@ function renderDetailModal() {
   updateDetailCta();
 }
 
+/* 1D add-product B — a LAUNCHER's picker, exactly the approved mock: photo, name, description, the derived price, then the
+   required single-select group. No quantity and no extras here: Add commits ONE of the chosen variant and closes, and
+   that variant is then an ordinary cart line (its own modal, its own extras — unless extras_policy is 'none'). */
+function renderLauncherModal(pizza) {
+  const cfg = VARIANT_ITEMS[pizza.id];
+  const photoColor = safeColor(pizza.color, '#C8321A');
+  let html = `<div class="detail-photo" style="background:${safeImgUrl(pizza.img) ? '#000' : photoColor}">
+    ${safeImgUrl(pizza.img)
+      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(pizza.img))}" alt="${safeText(pizza.name)}">`
+      : `<span class="detail-photo-label">${safeText(pizza.emoji || '🍕')}</span>`
+    }
+  </div>`;
+  html += `<div class="detail-body"><div class="detail-name">${escapeHtml(pizza.name)}</div>`
+    + (pizza.desc ? `<div class="detail-desc">${escapeHtml(pizza.desc)}</div>` : '')
+    + `<div class="detail-price">${safeText(GroupPicker.priceText(cfg, MENU) || '—')}</div></div>`;
+  html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
+  html += `<div class="detail-extras-list">` + GroupPicker.choiceRows(cfg, MENU, stagedVariantId).map(r =>
+    `<div class="detail-variant-row${r.selected ? ' sel' : ''}" data-act="variant" data-id="${safeText(r.id)}">`
+    + `<div class="choice-line"><span class="detail-extras-name">${escapeHtml(r.choice)}</span>`
+    + (r.recommended ? `<span class="choice-badge">${escapeHtml(GroupPicker.RECOMMENDED_LABEL)}</span>` : '') + `</div>`
+    + (r.delta !== null ? `<span class="choice-delta">+L ${safeText(r.delta)}</span>` : '')
+    + `<span class="detail-variant-radio"></span></div>`).join('') + `</div>`;
+  html += `<div style="height:24px"></div>`;
+  document.getElementById('detail-scroll').innerHTML = html;
+  if (stagedVariantId === null) document.getElementById('detail-scroll').scrollTop = 0;   // a fresh open; a choice tap keeps the scroll
+  updateDetailCta();
+}
+
+function launcherCtaDecision(pizza) {
+  return GroupPicker.ctaDecision({ stagedId: stagedVariantId, menu: MENU, isSoldOut: isSoldOut, stagedExtras: null, extras: EXTRAS });
+}
+
 function updateDetailCta() {
   const cta = document.getElementById('detail-cta');
   if (!cta) return;
@@ -5083,6 +5198,23 @@ function updateDetailCta() {
   if (pizzaId === null) return;
   const pizza = MENU.find(p => p.id === pizzaId);
   if (!pizza) return;
+  // 1D add-product B — a launcher's button: choose → "Elegí tu {label}" (disabled); the chosen choice (or its launcher)
+  // sold out → "Agotado" (disabled); else "Agregar · L {chosen price}".
+  if (itemIsLauncher(pizza)) {
+    const decision = launcherCtaDecision(pizza);
+    cta.className = 'detail-cta detail-cta--group';
+    cta.style.opacity = '1';
+    if (decision.kind === 'add') {
+      cta.style.pointerEvents = 'auto'; cta.disabled = false;
+      cta.innerHTML = `<span>Agregar</span>
+      <span class="detail-cta-divider">·</span>
+      <span>L ${escapeHtml(decision.total)}</span>`;
+    } else {
+      cta.style.pointerEvents = 'none'; cta.disabled = true;
+      cta.innerHTML = decision.kind === 'soldout' ? '<span>Agotado</span>' : `<span>${escapeHtml(GroupPicker.promptText(VARIANT_ITEMS[pizza.id]))}</span>`;
+    }
+    return;
+  }
   const pizzaQty = qty[pizzaId] || 0;
   cta.style.opacity = '1';
   cta.style.pointerEvents = 'auto'; cta.disabled = false;
@@ -5131,6 +5263,15 @@ function updateDetailCta() {
 function detailCtaTap() {
   const pizzaId = currentDetailPizzaId;
   if (pizzaId === null) return;
+  // 1D add-product B — a launcher commits ONE of the chosen variant and closes; nothing chosen (or sold out) does nothing
+  const launcher = MENU.find(p => p.id === pizzaId);
+  if (itemIsLauncher(launcher)) {
+    if (launcherCtaDecision(launcher).kind !== 'add') return;
+    const vid = stagedVariantId;
+    chg(vid, 1);
+    closeDetailModal();
+    return;
+  }
   const wasZero = (qty[pizzaId] || 0) === 0;
   if (wasZero) {
     chg(pizzaId, 1);
