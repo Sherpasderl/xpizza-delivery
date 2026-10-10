@@ -83,6 +83,62 @@ try {
   }
   ok('brand-free (no restaurant literal, no rid branch) across the monitor modules and tools; loaded only by index.js\'s d4c2b block (never a request path); scheduled every 15 min / 300 s / 512 MiB / maxInstances 1 / concurrency 1 / no retry; the plan\'s budgets (25 s / 30 s reserve / 15,000 reads / 100 reads/s / pages 25 / batches 10 / audit 20 / certs 9 / counts 401 + 20001 / quiet 10 min)');
 
+  // ── 4. THE OWNS_IDENTITY ENTRIES STAY TRUE (advisor ruling 2026-10-10): identity-integrity.js and identity-integrity-monitor.js are
+  //    allowlisted in catalog/identity-public-contract.test.js as identity-owning VERIFIERS that are alert-only and reached from
+  //    the serving code ONLY through the scheduled verifyIdentityIntegrity export. Pinned here: (a) the EXACT requirer set of each
+  //    module across xpizza-functions (tests excluded) — index.js's d4c2b block, the monitor itself, and three operator CLIs in
+  //    tools/ that nothing outside tools/ requires; (b) index.js requires the monitor ONCE, inside the d4c2b block, and uses it
+  //    nowhere else; (c) the write surface: the classifier is PURE (no database handle, no I/O call), and every RTDB ref in the
+  //    monitor is under catalog_integrity (Firestore read-only is cell 2). Each part carries a planted RED.
+  {
+    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.name === 'node_modules' || e.name.startsWith('.') ? []
+      : e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(c?js|mjs)$/.test(e.name) ? [path.join(dir, e.name)] : []));
+    const FILES = Object.fromEntries(walk(ROOT).map((f) => path.relative(ROOT, f)).filter((f) => !/\.test\.|^test\//.test(f)).map((f) => [f, read(f)]));
+    const MODS = ['identity-integrity', 'identity-integrity-monitor'];
+    const census = (files) => Object.fromEntries(MODS.map((m) => [m, Object.keys(files)
+      .filter((f) => new RegExp(`require\\(\\s*['"\`](\\.{1,2}/)+(catalog/)?${m}(\\.js)?['"\`]\\s*\\)`).test(strip(files[f]))).sort()]));
+    const WANT = {
+      'identity-integrity': ['catalog/identity-integrity-monitor.js', 'tools/identity-boundary-core.js'],
+      'identity-integrity-monitor': ['index.js', 'tools/ack-identity-finding.js', 'tools/record-evidence-boundary.js'],
+    };
+    assert.deepStrictEqual(census(FILES), WANT, '🔴 a new requirer of the identity integrity modules — the OWNS_IDENTITY entries assume they are reached only via the scheduled export (advisor ruling 2026-10-10)');
+    const OPS = ['tools/identity-boundary-core.js', 'tools/ack-identity-finding.js', 'tools/record-evidence-boundary.js'];
+    for (const t of OPS) {
+      const base = path.basename(t, '.js');
+      const users = Object.keys(FILES).filter((f) => !f.startsWith('tools/') && new RegExp(`require\\([^)]*${base}`).test(strip(FILES[f])));
+      assert.deepStrictEqual(users, [], `🔴 ${t} (an operator CLI that loads the integrity modules) is required from outside tools/: ${users}`);
+    }
+    // non-vacuity: a money module requiring either one goes RED
+    for (const m of MODS) {
+      const planted = { ...FILES, 'menu-pricing.js': `${FILES['menu-pricing.js']}\nconst X = require('./catalog/${m}');\n` };
+      assert.notDeepStrictEqual(census(planted), WANT, `sensitivity: menu-pricing.js requiring ${m} is detected`);
+    }
+    assert.ok(FILES['menu-pricing.js'], 'premise: the planted money module exists');
+
+    // (b) index.js: once, inside the block, used nowhere else
+    const idx = FILES['index.js'];
+    const inBlock = (src) => { const a = src.indexOf('/* d4c2b:begin */'); const b = src.indexOf('/* d4c2b:end */'); return [src.slice(0, a) + src.slice(b), src.slice(a, b)]; };
+    const idxOk = (src) => { const [out, blk] = inBlock(src);
+      return (strip(blk).match(/require\('\.\/catalog\/identity-integrity-monitor'\)/g) || []).length === 1 && !/identity-integrity/.test(strip(out)) && !/\bIIM\b/.test(strip(out)); };
+    assert.ok(idxOk(idx), '🔴 index.js must require the monitor exactly once, INSIDE the d4c2b block, and use it nowhere else');
+    assert.ok(!idxOk(`${idx}\nconst Y = require('./catalog/identity-integrity');\n`), 'sensitivity: a require outside the block is detected');
+    assert.ok(!idxOk(`${idx}\nexports.leak = () => IIM.RUN_READ_CAP;\n`), 'sensitivity: a use of IIM outside the block is detected');
+
+    // (c) write surface
+    const cls = strip(FILES['catalog/identity-integrity.js']);
+    const classifierPure = (src) => !/require\(['"]firebase/.test(src) && !/\b(getFirestore|getDatabase|runTransaction|bulkWriter)\b|\.transaction\(|\.(ref|doc|collection|batch)\(/.test(src);
+    assert.strictEqual(cls.split(/require\(/).length - 1, 3, 'premise: the classifier imports only identity-evidence, evidence-encoding and catalog-verifier (all pure)');
+    assert.ok(classifierPure(cls), '🔴 the classifier must stay PURE: no database handle, no ref/doc/collection/batch, no transaction');
+    for (const w of ["db.doc('x').set({})", "rtdb.ref('menus').set(1)", "require('firebase-admin')", 'db.runTransaction(async () => {})', "db.collection('orders')"])
+      assert.ok(!classifierPure(`${cls}\n${w}`), `sensitivity: a planted ${w} in the classifier is detected`);
+    const mon = strip(FILES['catalog/identity-integrity-monitor.js']);
+    const refsOk = (src) => { const refs = src.match(/\.ref\(([^)]*)\)/g) || []; return refs.length >= 3 && refs.every((r) => /^\.ref\(`\$\{INTEGRITY_PATH\}\//.test(r)); };
+    assert.strictEqual(require('./identity-integrity-monitor').INTEGRITY_PATH, 'catalog_integrity');
+    assert.ok(refsOk(mon), '🔴 every RTDB ref in the monitor must be under catalog_integrity/');
+    assert.ok(!refsOk(`${mon} rtdb.ref('menus/x').set(1)`), 'sensitivity: an RTDB ref outside catalog_integrity is detected');
+  }
+  ok('OWNS_IDENTITY stays true (advisor ruling 2026-10-10): the identity integrity modules are required ONLY by index.js\'s d4c2b block (once, used nowhere else), the monitor, and three operator CLIs nothing outside tools/ loads; the classifier is pure; every monitor RTDB ref is under catalog_integrity/ — a planted money-module requirer, an out-of-block require or use, a classifier write and a foreign RTDB ref each go RED');
+
   console.log(`identity-integrity-guards: OK (${n})`);
 } catch (e) {
   console.error('identity-integrity-guards FAILED:', e);

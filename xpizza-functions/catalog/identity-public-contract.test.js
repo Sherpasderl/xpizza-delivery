@@ -515,6 +515,8 @@ function cartAdapterOf(rid) {
     'catalog/content-hash.js': 'excludes identity from the content fingerprint',
     'catalog/catalog-context.js': "D4-a resolved context: the single gateway mapping a certified version's own stamp to canonicalId; reported only; keys no price/cart/quote/redemption/factura; not in the public payload",
     'catalog/identity-evidence.js': "D4-c2a binding evidence: digests the stamps the activation writer commits (final_digest), inside that writer's transaction; writes only restaurants/{rid}/identity_evidence; dormant — nothing reads it; keys no price/cart/quote/redemption/factura",
+    'catalog/identity-integrity.js': "D4-c2b VERIFIER of the stamped binding (pure classifier): recomputes the c2a final digest over the active version's display.identity_id; ALERT-ONLY; reached from index.js ONLY via the scheduled verifyIdentityIntegrity export (the d4c2b block); keys no price/cart/quote/redemption/factura. Unplanned allowlist widening — advisor ruling 2026-10-10; the requirer set and write surface are pinned in catalog/identity-integrity-guards.test.js cell 4",
+    'catalog/identity-integrity-monitor.js': "D4-c2b VERIFIER of the stamped binding (scheduled, read-only on Firestore): reads display.identity_id under a field mask for the classifier; ALERT-ONLY — its only write is its own RTDB node catalog_integrity/{rid}; reached from index.js ONLY via the scheduled verifyIdentityIntegrity export (the d4c2b block); keys no price/cart/quote/redemption/factura. Unplanned allowlist widening — advisor ruling 2026-10-10; the requirer set and write surface are pinned in catalog/identity-integrity-guards.test.js cell 4",
   };
 
   /* \u{1f534} TWO OWNERS ARE DELIBERATELY NOT LISTED, AND THAT IS ITSELF PINNED BELOW.
