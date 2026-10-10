@@ -1717,7 +1717,13 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       if (!resolved.length) { toast('Esos productos ya no están disponibles.'); return; }
       const notice = () => { if (dropped) toast(dropped === 1 ? '1 producto ya no está disponible' : dropped + ' productos ya no están disponibles'); };
       const seed = (replace) => {
-        if (replace) { try { Object.keys(qty).forEach((k) => { qty[k] = 0; }); Object.keys(pizzaExtras).forEach((k) => { delete pizzaExtras[k]; }); } catch (_) {} }
+        if (replace) {
+          try {
+            const had = Object.keys(qty).filter((k) => (qty[k] || 0) > 0);
+            Object.keys(qty).forEach((k) => { qty[k] = 0; }); Object.keys(pizzaExtras).forEach((k) => { delete pizzaExtras[k]; });
+            had.forEach(syncCartLine);   // HOTFIX: "Empezar de nuevo" empties CART too, not only the quantities
+          } catch (_) {}
+        }
         applyReorderToCart(resolved, laMusa);
         closeSheet();
         notice();
@@ -1753,6 +1759,20 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
     });
   }
 
+  /* 🔴 HOTFIX (owner-confirmed live 2026-10-09: "Reordenar" left the cart EMPTY — total L 0, nothing on the cards).
+     Since 1B Task 4 the form's CART is the serialization source, and a quantity reaches it ONLY through cartSync (chg()
+     calls it; so does the payment-return restore). This reader wrote qty/pizzaExtras directly and never synced, so every
+     reordered line existed in qty alone: no CART line, no total, nothing serialized at checkout — and the renderMenu()
+     below then redrew every card in its zero state. Each line now goes through the form's own seams, in the order its
+     own paths use: the chosen extras captured as priced now (CART.noteExtra, as toggling one does), then cartSync. */
+  function syncCartLine(id) { try { if (typeof cartSync === 'function') cartSync(id); } catch (_) {} }
+  function noteReorderExtras(eids) {
+    try {
+      if (typeof CART === 'undefined' || typeof findMenuExtra !== 'function') return;
+      eids.forEach((eid) => { const ex = findMenuExtra(eid); if (ex) CART.noteExtra(ex); });
+    } catch (_) {}
+  }
+
   function applyReorderToCart(resolved, laMusa) {
     for (const r of resolved) {
       const id = r.item.id;
@@ -1783,8 +1803,19 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
           }
         } catch (_) {}
       }
+      // HOTFIX: extras first (captured as priced now), then the line itself into CART
+      try {
+        const sel = pizzaExtras[id] || {};
+        const eids = laMusa ? Object.keys(sel).filter((k) => sel[k] > 0)
+          : [...new Set(Object.values(sel).flatMap((inst) => (inst && typeof inst === 'object') ? Object.keys(inst).filter((k) => inst[k] > 0) : []))];
+        noteReorderExtras(eids);
+      } catch (_) {}
+      syncCartLine(id);
     }
     try { if (typeof renderMenu === 'function') renderMenu(); } catch (_) {}
+    // HOTFIX: renderMenu draws every card in its zero state; re-apply the cart's lines to them exactly as the live-menu
+    // repaint does (chg(key, 0) re-renders a card's stepper without changing its quantity)
+    try { if (typeof cartLines === 'function' && typeof chg === 'function') cartLines().forEach((l) => { try { chg(l.key, 0); } catch (_) {} }); } catch (_) {}
     try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}
     try { if (typeof updateTotal === 'function') updateTotal(); } catch (_) {}
   }

@@ -44,11 +44,17 @@ export const envelope = (rid, menu, representationVersion = '1b.1') => ({ rid, r
    a page running without that module's globals. Guards written as `typeof thing === 'function' ? … : …`
    are only ever exercised on this path, and until it existed they were each untested in the branch
    that matters. */
-export function loadForm(dir, { omit = [] } = {}) {
+/* `transforms` ({ 'account.js': (code) => code }) rewrites ONE local script before it is inlined — for a seam the page has
+   no other way to offer (account.js loads the Firebase SDK by dynamic https import, which jsdom cannot run). A transform
+   must replace only the unreachable dependency; everything around it runs as shipped. */
+export function loadForm(dir, { omit = [], transforms = {} } = {}) {
   let html = readFileSync(new URL(`./${dir}/index.html`, import.meta.url), 'utf8');
   html = html.replace(/<script src="(?!https?:)([^"]+)"><\/script>/g, (m, src) => {
     if (omit.indexOf(src) !== -1) return '';
-    try { return `<script>\n${readFileSync(new URL(`./${dir}/${src}`, import.meta.url), 'utf8')}\n</script>`; }
+    try {
+      const code = readFileSync(new URL(`./${dir}/${src}`, import.meta.url), 'utf8');
+      return `<script>\n${transforms[src] ? transforms[src](code) : code}\n</script>`;
+    }
     catch { return ''; }
   });
   html = html.replace(/<script[^>]*src="https?:[^"]*"[^>]*><\/script>/g, '');
