@@ -96,6 +96,9 @@ const cmp = (rid, src, authoring = true) => A.compareToActive({ draftBuilt: buil
   refusesWith(() => alloc(rid, withGroup(rid, { variantExtra: [{ cat: 'individual' }] })), 'addition_malformed', V[0], 'cat', 'an option escaping its product’s category');
   refusesWith(() => alloc(rid, withGroup(rid, { launcherExtra: { extras_policy: 'none' }, variantExtra: [{ extras_policy: 'all' }] })), 'addition_malformed', V[0], 'extras_policy', 'an option contradicting its group’s extras setting');
   refusesWith(() => alloc(rid, withGroup(rid, { launcherExtra: { extras_policy: 'all' } })), 'addition_malformed', L, 'extras_policy', 'an extras setting other than "none"');
+  // the SAME option listed twice in one group is refused as a malformed unit (option claimed twice), never as a label clash
+  const twice = withGroup(rid); twice.structure.variant_items[L].variantIds = [V[0], V[1], V[0]];
+  refusesWith(() => alloc(rid, twice), 'addition_malformed', V[0], 'choices', 'one option listed twice in its group');
   const orphan = withGroup(rid); orphan.structure.variant_items[L].variantIds = [V[0], 'tmp:vvvvvvvv-9999'];
   refusesWith(() => alloc(rid, orphan), 'addition_malformed', L, 'choices', 'an option ref that is not a new option of this group');
   // options for an EXISTING product (la_musa's Pad Thai): never an add-only change

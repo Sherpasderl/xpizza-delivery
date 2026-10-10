@@ -73,6 +73,7 @@ const node86 = (key) => ({ [availKey(key)]: { available: false } });
     assert.deepStrictEqual([blockedOnly.respond, blockedOnly.block], [null, ['V']], 'parent-86 joins cartBlocked, which acquire already enforces on fresh issuance');
     assert.deepStrictEqual(GI.chargeDecision({ unclassifiable: true }, { willIssueFreshUrl: false }), { respond: null, armChoice: false, armMenu: true, block: [] }, 'unclassifiable + reuse → arm the menu guard');
     assert.strictEqual(GI.chargeDecision({ unclassifiable: true }, { willIssueFreshUrl: true }).respond.status, 503);
+    assert.strictEqual(GI.chargeDecision({ unclassifiable: true }, null).respond.status, 503, 'unclassifiable + the classifier failed → retryable 503 (never an armed guard on an unknown issuance)');
     assert.deepStrictEqual(GI.chargeDecision(null, { willIssueFreshUrl: true }), { respond: null, armChoice: false, armMenu: false, block: [] }, 'nothing to object to → nothing');
     ok('card: classifier failed → 503; fresh → 409 choice_required; reuse → honoured + guard armed; parent-86 → cartBlocked; unclassifiable → 503 / menu guard');
   }
