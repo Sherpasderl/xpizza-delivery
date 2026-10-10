@@ -68,13 +68,42 @@ ok(`PROOF (i): unapplyAddProductB(index.js) === 4e2a710:index.js byte-for-byte (
     assert.ok(gate > 0 && readAt > gate && readAt - gate < 200, `${ep}: the group check (and its gate read) is behind the render capability`);
   }
 }
+// codex PB-1 r1 P1-3 — the BOUND-REUSE fast path and the preparation-failure precedence, pinned by position
+{
+  const ch = idx.slice(idx.indexOf('chargeOnlineApp.all('));
+  const probe = ch.indexOf('const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });');
+  const prep = ch.indexOf('const prep = await prepareRedemption(db, { redeem: body.redeem');
+  const classify = ch.indexOf('clsG = await classifyHostedAttempt(');
+  const reserve = ch.indexOf('reserveRedemption(');
+  const acquire = ch.indexOf('acq = await acquireHostedAttempt(');
+  const auth = ch.indexOf('customer_uid = await Promise.race(');
+  assert.ok(auth > 0 && probe > auth && prep > probe && classify > prep && reserve > classify && acquire > reserve,
+    `bound reuse: verified identity (${auth}) < probe (${probe}) < prepareRedemption (${prep}) < classify (${classify}) < reserve (${reserve}) < acquire (${acquire})`);
+  const gate = ch.lastIndexOf('if (body.redeem != null && customer_uid && groupCapabilities().render) {', probe);
+  assert.ok(gate > 0 && probe - gate < 200, 'the fast path runs only for a reward, a verified customer and the render capability');
+  const blockEnd = ch.indexOf('\n  }\n', probe);
+  const block = ch.slice(probe, blockEnd);
+  assert.ok(/const flow = await resolveBoundReuse\(\{ acq: boundAcq,/.test(block) && /return res\.status\(flow\.respond\.status\)\.json\(flow\.respond\.body\);/.test(block),
+    'a bound reuse answers through the hosted-flow reuse branch and RETURNS');
+  const WRITES = /\.(set|update|transaction|remove|push|setWithPriority)\(|reserveRedemption|acquireHostedAttempt|createHostedCharge/;
+  assert.ok(!WRITES.test(block), 'the fast-path block performs no write and reaches no reserve / acquire / charge');
+  const br = read('catalog/bound-reuse.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert.ok(!WRITES.test(br) && /catch \(_\) \{\s*return null;/.test(br), 'catalog/bound-reuse.js is read-only and any error → null (the current path)');
+  const fail = ch.indexOf('const pr = GI.prepFailureRefusal(await GI.groupIssues({');
+  const failGate = ch.indexOf('if (!prep.ok) {');
+  const prepReturn = ch.indexOf('return res.status(prep.status).json({ ...prep.body, order_id: orderId });');
+  assert.ok(failGate > prep && fail > failGate && prepReturn > fail && prepReturn - failGate < 900, 'the precedence check runs ONLY inside the preparation-failure branch, before its own error');
+  const bind = idx.indexOf("...(redemptionCanonical && groupCapabilities().render && CI.chargeInputsFingerprint(body) ? { charge_inputs_fp: CI.chargeInputsFingerprint(body) } : {}),");
+  const pendingAt = idx.indexOf('const pendingOrderRecord = {');
+  assert.ok(pendingAt > 0 && bind > pendingAt && bind - pendingAt < 2000, 'the charge-input fingerprint is bound on the pending reward order (render capability only)');
+}
 ok('PROOF (ii): seam order — cash refusal after the unknown-key refusal and before the first write and the reserve; card decision after the menu pre-gate and before reserve/acquire; the guard reaches acquire (after reuse, before CAS); quote checks behind the render capability');
 
 // ── (iii) §0d.6 — no brand branch in group behaviour ─────────────────────────────────────────────────────────────
 {
   const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   const BRAND = /\b(x_pizza|la_musa)\b|restaurantId\s*===|rid\s*===|===\s*['"](x_pizza|la_musa)['"]/;
-  for (const f of ['catalog/group-index.js', 'catalog/group-intake.js', 'catalog/platform-groups.js']) {
+  for (const f of ['catalog/group-index.js', 'catalog/group-intake.js', 'catalog/platform-groups.js', 'catalog/bound-reuse.js', 'catalog/charge-inputs.js']) {
     assert.ok(!BRAND.test(strip(read(f))), `${f}: no brand literal or rid comparison`);
   }
   const ap = strip(read('catalog/add-product.js'));

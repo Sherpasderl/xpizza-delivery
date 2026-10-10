@@ -218,27 +218,52 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     ...(activeItems || []).filter((it) => !(isObj(self) && it.key === self.key)),
   ];
   const extraNames = (source.extras || []).map((e) => (isObj(e) && isObj(e.display) ? e.display.name : null)).filter((n) => typeof n === 'string');
+  // codex PB-1 r1 P2-4: an OPTION's name is derived from its choice, so a name refusal on it points at the choice input
+  const nameField = (item) => (isGroupVariant(item) ? 'choice' : 'name');
   for (const add of additions) {
     const n = normalizeName(add.display.name);
     for (const o of others(add)) {
       if (isObj(o) && isObj(o.display) && typeof o.display.name === 'string' && normalizeName(o.display.name) === n) {
-        refuse('name_taken', `"${add.display.name}" is already on your menu`, { ...at(add.key), field: 'name' });
+        refuse('name_taken', `"${add.display.name}" is already on your menu`, { ...at(add.key), field: nameField(add) });
       }
-      if (isObj(o) && o.key === add.key) refuse('key_taken', `the identifier for "${add.display.name}" is already used`, { ...at(add.key), field: 'name' });
+      if (isObj(o) && o.key === add.key) refuse('key_taken', `the identifier for "${add.display.name}" is already used`, { ...at(add.key), field: nameField(add) });
       if (isObj(o) && isObj(o.display) && o.display.id !== undefined && String(o.display.id) === String(add.display.id)) {
         refuse('id_taken', `the id ${add.display.id} is already used`, { ...at(add.key), field: 'id' });
       }
     }
-    if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { ...at(add.key), field: 'name' });
+    if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { ...at(add.key), field: nameField(add) });
   }
   // A name (key) used before — a registry key row exists — is refused: today it would silently inherit that
   // identity, and the merchant would be publishing a "new" product that carries an old one's history.
+  const addedByKey = new Map(additions.map((a) => [a.key, a]));
   for (const key of allocatedNow) {
-    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: 'name' });
+    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: nameField(addedByKey.get(key)) });
   }
 
   return { source, hwm: keyMode === 'name' ? next : (Number.isInteger(hwm) ? hwm : null), additions: additions.map((a) => ({ key: a.key, name: a.display.name })), allocatedNow,
     refs: Object.fromEntries([...refToKey].map(([r, k]) => [k, r])) };
+}
+
+// ONE derivation of an option's full name — used by prepareGroups (which sets it) and by prospectiveAdditionNames (which the
+// SAVE handler queries the registry with BEFORE allocation), so the two can never disagree.
+const optionName = (launcherName, choice) => `${tidyName(String(launcherName))} - ${tidyName(String(choice))}`;
+
+/* codex PB-1 r1 P2-4 — the names every FRESH addition WILL carry, options included (derived "{launcher} - {choice}" when the
+   request omits them, which the supported shape does). Pure; tolerant of malformed input (allocation refuses it later). */
+function prospectiveAdditionNames(source) {
+  const items = isObj(source) && Array.isArray(source.items) ? source.items : [];
+  const fresh = items.filter((it) => isObj(it) && own(it, 'ref') && isObj(it.display));
+  const byRef = new Map(fresh.map((it) => [it.ref, it]));
+  const out = [];
+  for (const it of fresh) {
+    const d = it.display;
+    if (typeof d.name === 'string' && tidyName(d.name)) { out.push(tidyName(d.name)); continue; }
+    const parent = typeof d.variantOf === 'string' ? byRef.get(d.variantOf) : null;
+    if (parent && isObj(parent.display) && typeof parent.display.name === 'string' && typeof d.choice === 'string' && tidyName(d.choice)) {
+      out.push(optionName(parent.display.name, d.choice));
+    }
+  }
+  return out;
 }
 
 /* ── 1D add-product B (rev 6, UNIFORM) — REQUIRED-CHOICE GROUPS, AS ONE ATOMIC UNIT ─────────────────────────────
@@ -294,7 +319,7 @@ function prepareGroups(source, fresh, { authoring, fieldProblem }) {
       const folded = normalizeName(choice);
       if (seen.has(folded)) refuse('choice_duplicate', `"${choice}" appears twice in this group`, { ref: vRef, field: 'choice' });
       seen.add(folded);
-      const name = `${lName} - ${choice}`;
+      const name = optionName(lName, choice);
       if (own(v.display, 'name') && tidyName(String(v.display.name)) !== name) refuse('addition_malformed', `an option's name is derived ("${name}")`, { ref: vRef, field: 'name' });
       const nWhy = fieldProblem('name', name);
       if (nWhy) refuse('text_unsafe', `the option's full name "${name}" ${nWhy}`, { ref: vRef, field: 'choice' });
@@ -446,6 +471,6 @@ function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHa
 
 module.exports = {
   MAX_ADDITIONS, TMP_RE, AddProductError, normalizeName, tidyName, slugify, sameJson,
-  resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant,
+  resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
   ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,
 };

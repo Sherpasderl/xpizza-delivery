@@ -39,6 +39,13 @@ async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], 
   if (!caps || caps.render !== true) return null;
   if (!gates || gates.groups == null) return { unclassifiable: true };
   const { launchers, parentOf } = gates.groups;
+  /* codex PB-1 r1 P1-1 — a REWARD key is classified by the SAME snapshot as the paid lines: it must be a key this snapshot
+     KNOWS (a dish, or an extra — la_musa's acompañamientos are redeemable), or the whole request is unclassifiable
+     (menu_updating). Without this a reward naming a product added after the snapshot — e.g. a new launcher while the gate
+     pointer read fails and the code fallback is in force — escaped every group rule and redeemed at its stored price. */
+  const knownDish = gates.known instanceof Set ? gates.known : null;
+  const knownExtra = gates.knownExtras instanceof Set ? gates.knownExtras : null;
+  if (rewardKeys.length && (!knownDish || !knownExtra || rewardKeys.some((k) => !knownDish.has(k) && !knownExtra.has(k)))) return { unclassifiable: true };
   const lines = (Array.isArray(items) ? items : []).map((it) => ({ it, key: itemPricingKey(it, restaurantId) })).filter((l) => typeof l.key === 'string' && l.key);
   const bare = [...new Set(lines.filter((l) => launchers.has(l.key)).map((l) => l.key))];
   const rewardBare = rewardKeys.filter((k) => launchers.has(k));
@@ -102,4 +109,13 @@ function quoteRefusal(issues) {
   return null;
 }
 
-module.exports = { groupIssues, cashRefusal, chargeDecision, quoteRefusal, rewardKeysOf, CHOICE_REQUIRED };
+/* codex PB-1 r1 P1-3 (precedence): when the card path's redemption PREPARATION has already failed, a reward that is a bare
+   launcher answers 409 choice_required (and an unclassifiable reward 503 menu_updating) instead of the preparation's own
+   error (e.g. redemption_invalid). Consulted ONLY on that failure path, so nothing that succeeds today changes. */
+function prepFailureRefusal(issues) {
+  if (!issues) return null;
+  if (issues.unclassifiable) return { status: 503, retryAfter: 2, body: { ...MENU_UPDATING } };
+  if (issues.rewardBare.length) return { status: 409, body: { ...CHOICE_REQUIRED, keys: issues.rewardBare.slice() } };
+  return null;
+}
+module.exports = { groupIssues, cashRefusal, chargeDecision, quoteRefusal, prepFailureRefusal, rewardKeysOf, CHOICE_REQUIRED };

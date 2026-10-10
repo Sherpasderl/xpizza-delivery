@@ -7,11 +7,25 @@ const { availKey } = require('../avail-key');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ON = { render: true, authoring: false }; const OFF = { render: false, authoring: true };
-// one gate snapshot per brand: a launcher with two choices, by PRICING key
-const SNAP = {
-  x_pizza: { groups: { launchers: new Set(['NY Plain Slice']), parentOf: new Map([['NY Plain Slice - Salsa Roja', 'NY Plain Slice'], ['NY Plain Slice - Combinada', 'NY Plain Slice']]) } },
-  la_musa: { groups: { launchers: new Set(['noodle_01']), parentOf: new Map([['noodle_01_pollo', 'noodle_01'], ['noodle_01_sin', 'noodle_01']]) } },
-};
+/* PRODUCTION-FAITHFUL gate snapshots (codex PB-1 r1: the old hand-built fixtures omitted `known`, which masked P1-1):
+   each brand's snapshot is what the REAL gate reader (catalog/menu-gates.js createGateReader) derives from a REAL built
+   catalog — known dish keys, known extra keys and the group index all from the same version. la_musa = its live catalog
+   (Pad Thai = noodle_01 + three choices); x_pizza = its live catalog plus a NY Plain Slice group with two choices. */
+const { buildCatalogV2 } = require('./form-menu-source');
+const { createGateReader } = require('./menu-gates');
+function xpWithGroup() {
+  const b = buildCatalogV2('x_pizza');
+  const maxId = Math.max(...b.items.map((it) => Number(it.display.id) || 0));
+  const L = maxId + 1; const A = L + 1; const C = L + 2;
+  b.items.push({ key: 'NY Plain Slice', price: 624, display: { id: L, cat: 'ny', name: 'NY Plain Slice', price: 624 } });
+  b.items.push({ key: 'NY Plain Slice - Salsa Roja', price: 624, display: { id: A, cat: 'ny', name: 'NY Plain Slice - Salsa Roja', price: 624, variantOf: L, choice: 'Salsa Roja' } });
+  b.items.push({ key: 'NY Plain Slice - Combinada', price: 654, display: { id: C, cat: 'ny', name: 'NY Plain Slice - Combinada', price: 654, variantOf: L, choice: 'Combinada' } });
+  b.structure.variant_items = { [String(L)]: { label: 'Salsa', variantIds: [A, C] } };
+  return b;
+}
+const BUILT = { x_pizza: xpWithGroup(), la_musa: buildCatalogV2('la_musa') };
+const READER = createGateReader({ getMenu: async (rid) => BUILT[rid], getVersionId: async (rid) => `v-${rid}` });
+const SNAP = {};
 // the same order, written in each brand's line shape
 const LINE = {
   x_pizza: (key) => ({ name: key, qty: 1, price: 624 }),
@@ -23,6 +37,9 @@ const PLAIN = { x_pizza: 'Pepperoni', la_musa: 'dimsum_01' };
 const node86 = (key) => ({ [availKey(key)]: { available: false } });
 
 (async () => {
+  for (const rid of ['x_pizza', 'la_musa']) SNAP[rid] = await READER.intakeGatesFor(rid);
+  assert.ok(SNAP.x_pizza.groups && SNAP.x_pizza.groups.launchers.has('NY Plain Slice') && SNAP.la_musa.groups.launchers.has('noodle_01'), 'premise: the real reader indexes both groups');
+  assert.ok(SNAP.la_musa.knownExtras.has('rice_white') && SNAP.x_pizza.known.has('Pepperoni'), 'premise: known dishes AND known extras come from the same snapshot');
   {
     let reads = 0;
     for (const rid of ['x_pizza', 'la_musa']) {
@@ -45,6 +62,29 @@ const node86 = (key) => ({ [availKey(key)]: { available: false } });
         `${rid}: an unreadable variant map is UNCLASSIFIABLE, never "no launchers"`);
     }
     ok('the SAME rule on both brands’ key adapters: a bare launcher line or reward is refused; a choice is fine; an unreadable map is unclassifiable');
+  }
+  /* ── codex PB-1 r1 P1-1 — a REWARD is classified by the SAME snapshot: an unknown reward key is UNCLASSIFIABLE ── */
+  {
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const ghost = rid === 'la_musa' ? 'noodle_09' : 'NY Garlic Slice';   // a product added AFTER this snapshot (e.g. a new launcher)
+      assert.deepStrictEqual(await GI.groupIssues({ caps: ON, gates: SNAP[rid], items: [LINE[rid](PLAIN[rid])], restaurantId: rid, rewardKeys: [ghost] }), { unclassifiable: true },
+        `🔴 ${rid}: a reward key the snapshot does not know → unclassifiable (menu_updating), never "not a launcher"`);
+      assert.deepStrictEqual(await GI.groupIssues({ caps: ON, gates: { ...SNAP[rid], knownExtras: undefined }, items: [LINE[rid](PLAIN[rid])], restaurantId: rid, rewardKeys: [PLAIN[rid]] }), { unclassifiable: true },
+        `🔴 ${rid}: a snapshot without extra membership cannot classify a reward → unclassifiable`);
+    }
+    assert.strictEqual(await GI.groupIssues({ caps: ON, gates: SNAP.la_musa, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['rice_white'] }), null,
+      'la_musa: a KNOWN extra (acompañamiento) as the reward stays legitimate');
+    // the reproduced path: the gate POINTER read fails → the code fallback; a launcher added in the portal is in neither code set
+    const failing = createGateReader({ getMenu: async () => BUILT.la_musa, getVersionId: async () => { throw new Error('pointer read failed'); } });
+    const fb = await failing.intakeGatesFor('la_musa');
+    assert.strictEqual(fb.fallback, true, 'premise: the fallback snapshot is in force');
+    assert.deepStrictEqual(await GI.groupIssues({ caps: ON, gates: fb, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['noodle_09'] }), { unclassifiable: true },
+      '🔴 la_musa, gate pointer failing: a portal-added launcher as the reward is unclassifiable (no bypass at its stored price)');
+    assert.deepStrictEqual(await GI.groupIssues({ caps: ON, gates: fb, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['noodle_01'] }), { bare: [], rewardBare: ['noodle_01'], parentBlocked: [] },
+      'la_musa, fallback: the CODE launcher (Pad Thai) is still recognised as bare');
+    assert.strictEqual(await GI.groupIssues({ caps: ON, gates: fb, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['rice_white'] }), null,
+      'la_musa, fallback: a code-known extra reward stays legitimate');
+    ok('rewards are classified by the same snapshot: an unknown reward key (incl. a portal launcher under the read-failure fallback) or a snapshot without extra membership is unclassifiable; known extras and choices stay legitimate');
   }
   {
     for (const rid of ['x_pizza', 'la_musa']) {

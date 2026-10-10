@@ -31,8 +31,8 @@ function withGroup(rid, { choices = ['Salsa Roja', 'Salsa Vodka', 'Combinada'], 
   s.structure.variant_items = { ...(s.structure.variant_items || {}), [L]: { label, variantIds: V.slice(0, choices.length) } };
   return s;
 }
-const alloc = (rid, incoming, { authoring = true, hwm = null } = {}) => A.allocateAdditions({
-  incoming, stored: SRC[rid], activeItems: SRC[rid].items, keyMode: MODE[rid], hwm, registryHasKey: () => false, fieldProblem, authoring });
+const alloc = (rid, incoming, { authoring = true, hwm = null, history = new Set() } = {}) => A.allocateAdditions({
+  incoming, stored: SRC[rid], activeItems: SRC[rid].items, keyMode: MODE[rid], hwm, registryHasKey: (k) => history.has(k), fieldProblem, authoring });
 const refusesWith = (fn, code, ref, field, why) => assert.throws(fn, (e) => e instanceof A.AddProductError && e.code === code && e.ref === ref && e.field === field,
   `${why} → ${code} {ref:${ref}, field:${field}}`);
 const cmp = (rid, src, authoring = true) => A.compareToActive({ draftBuilt: build(rid, src), activeBuilt: build(rid, SRC[rid]),
@@ -92,6 +92,9 @@ const cmp = (rid, src, authoring = true) => A.compareToActive({ draftBuilt: buil
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', 'roja '] })), 'choice_duplicate', V[1], 'choice', 'a duplicate option (folded)');
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', 'Mike’s'.replace('’', "'")] })), 'text_unsafe', V[1], 'choice', 'an apostrophe makes the derived NAME unusable (attribute sink) — mapped to the option');
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', 'A <b>'] })), 'text_unsafe', V[1], 'choice', 'markup in an option');
+  // codex PB-1 r1 P2-6: the per-choice text check is NOT subsumed — it answers BEFORE the derived-name contradiction check
+  refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', '<bad>'], variantExtra: [undefined, { name: 'Otra cosa' }] })), 'text_unsafe', V[1], 'choice',
+    'markup in an option AND a contradictory supplied name → the option\'s own text_unsafe, not addition_malformed/name');
   refusesWith(() => alloc(rid, withGroup(rid, { variantExtra: [{ name: 'Otra cosa' }] })), 'addition_malformed', V[0], 'name', 'a client name contradicting the derived one');
   refusesWith(() => alloc(rid, withGroup(rid, { variantExtra: [{ cat: 'individual' }] })), 'addition_malformed', V[0], 'cat', 'an option escaping its product’s category');
   refusesWith(() => alloc(rid, withGroup(rid, { launcherExtra: { extras_policy: 'none' }, variantExtra: [{ extras_policy: 'all' }] })), 'addition_malformed', V[0], 'extras_policy', 'an option contradicting its group’s extras setting');
@@ -132,5 +135,37 @@ const cmp = (rid, src, authoring = true) => A.compareToActive({ draftBuilt: buil
   assert.throws(() => A.assertSameAuthoredFields(withVi, x), /structure fields/, 'default (fail-closed): the active map is assumed present');
   ok('authored-fields exception: the variant map may appear/disappear ONLY while the active catalog has none; all else frozen; fail-closed default');
 }
+
+
+// ── codex PB-1 r1 P2-4: SAVE looks up the registry with EVERY name an addition will carry — an option's DERIVED name too ──
+// The same three real pieces the handler wires (catalog/edit-catalog-handler.js): prospectiveAdditionNames → the real
+// registryKeysTaken (add-product-io, over a fake Firestore that throws on a '/' id like the real one) → allocateAdditions.
+(async () => {
+  const { addProductIo } = require('./add-product-io');
+  const { encodeKey } = require('./identity-registry');
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const req = withGroup(rid);
+    const names = A.prospectiveAdditionNames(req);
+    const derived = ['Salsa Roja', 'Salsa Vodka', 'Combinada'].map((c) => A.optionName('NY Plain Slice', c));
+    assert.deepStrictEqual(names, ['NY Plain Slice', ...derived], `${rid}: the launcher AND every option's derived name are prospective`);
+    const keyOf = (nm) => (MODE[rid] === 'name' ? A.tidyName(nm) : A.slugify(nm));
+    const historical = keyOf(derived[2]);                       // "NY Plain Slice - Combinada" existed before
+    const rows = new Set([`restaurants/${rid}/identity/dish/keys/${encodeKey(historical)}`, ...(MODE[rid] === 'id' ? [`restaurants/${rid}/identity/dish/ids/${historical}`] : [])]);
+    const node = (path) => ({
+      collection: (c) => node([...path, c]),
+      doc: (id) => {
+        if (typeof id !== 'string' || !id || id.includes('/')) throw new Error(`Value for argument "documentPath" must point to a document, but was "${id}"`);
+        const pth = [...path, id].join('/');
+        return { ...node([...path, id]), get: async () => ({ exists: rows.has(pth) }) };
+      },
+    });
+    const io = addProductIo({ fs: node([]), rtdb: null });
+    const taken = await io.registryKeysTaken(rid, names.map(keyOf), MODE[rid]);
+    assert.deepStrictEqual([...taken], [historical], `${rid}: the real registry lookup finds the historical OPTION key`);
+    refusesWith(() => alloc(rid, withGroup(rid), { history: taken }), 'name_previously_used', V[2], 'choice',
+      `${rid}: an option whose DERIVED name was used before → name_previously_used on ITS ref, mapped to the choice input`);
+  }
+  console.log('  ✓ registry (P2-4): SAVE derives every option name before the registry lookup; a historical option key is refused on its ref, field choice — both brands');
+})().catch((e) => { console.error('add-product-groups (registry) FAILED:', e); process.exit(1); });
 
 console.log(`\nadd-product-groups: OK (${n})`);

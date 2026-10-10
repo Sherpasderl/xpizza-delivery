@@ -112,9 +112,9 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       const hwmRef = addProduct.hwmRef(rid);
       const hwmSnap = await hwmRef.get();
       const hwmVal = hwmSnap.exists ? (hwmSnap.data() || {}).value : null;
-      const prospective = (candidate.items || [])
-        .filter((it) => it && typeof it === 'object' && Object.prototype.hasOwnProperty.call(it, 'ref') && it.display && typeof it.display.name === 'string')
-        .map((it) => (keyMode === 'name' ? AP.tidyName(it.display.name) : AP.slugify(it.display.name)))
+      // every name a fresh addition WILL carry — an option's derived "{launcher} - {choice}" included (codex PB-1 r1 P2-4)
+      const prospective = AP.prospectiveAdditionNames(candidate)
+        .map((n) => (keyMode === 'name' ? n : AP.slugify(n)))
         .filter(Boolean);
       const taken = prospective.length ? await addProduct.registryKeysTaken(rid, prospective, keyMode) : new Set();
       const res = AP.allocateAdditions({ incoming: candidate, stored, activeItems: live.items, keyMode,

@@ -165,6 +165,109 @@ async function wipe() {
   }
   ok('rewards: a bare launcher reward is refused (cash, no hold taken; quoteRedemption 409); a choice as the reward redeems normally');
 
+  /* ── codex PB-1 r1 P1-3 / P2-5 — REWARD LIFECYCLES with an OWNED hold ────────────────────────────────────────────────── */
+  const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
+  const { buildMaterializeUpdates } = require('../materialize');
+  const { paymentHash } = require('../pixelpay');
+  const KEY = '1234567890', SECRET = '@s4ndb0x-abcd-1234-n1l4-p1x3l';   // sandbox (resolvePixelPayConfig default)
+  const hookDeps = { db: rtdb, restaurant: { lat: 14.1, lng: -87.2, name: 'La Musa', phone: '+504' }, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) };
+  const holdOf = async (oid) => (await rtdb.ref(`user_rewards/u_la_musa/la_musa/reservations/${oid}`).get()).val();
+  const reservedNow = async () => Number(((await rtdb.ref('user_rewards/u_la_musa/la_musa').get()).val() || {}).reserved) || 0;
+  const paidCallback = async (oid) => {
+    const o = await order(oid); const hosted = `${oid}-${o.active_attempt_id}`;
+    return handleHostedCallback(hookDeps, { order: hosted, status: 'paid', amount: o.total_cents / 100, uuid: `P-${oid}`, transaction_id: `T-${oid}`, payment_hash: paymentHash(hosted, KEY, SECRET) }, Date.now());
+  };
+  const PAID = [line('la_musa', 'dimsum_01', 225)];
+
+  // S1 — a BARE launcher reward issued while render was OFF (legacy, no bound input fingerprint): it reuses and
+  // materializes from its bound values; its rotation after the flip is refused (choice_required) and the hold is untouched.
+  {
+    Object.assign(CAPS, { render: false });
+    const rdL = { type: 'points_ala_carte', items: [{ id: 'noodle_01', qty: 1, name: 'Pad Thai' }] };
+    const a1 = await send('la_musa', 'apg_lc_A', 'online', PAID, { redeem: rdL });
+    const b1 = await send('la_musa', 'apg_lc_B', 'online', PAID, { redeem: rdL });
+    assert.ok(a1.status === 200 && a1.json.checkout_url && b1.status === 200, `setup (render OFF): two launcher-reward checkouts — ${a1.text.slice(0, 160)} / ${b1.text.slice(0, 160)}`);
+    assert.ok((await holdOf('apg_lc_A')).state === 'reserved' && (await holdOf('apg_lc_B')).state === 'reserved', 'setup: each owns a reserved hold');
+    assert.strictEqual((await order('apg_lc_A')).charge_inputs_fp, undefined, 'render OFF binds no input fingerprint (dormant)');
+    Object.assign(CAPS, { render: true });
+    const held = await reservedNow();
+    const a2 = await send('la_musa', 'apg_lc_A', 'online', PAID, { redeem: rdL });
+    assert.deepStrictEqual([a2.status, a2.json && a2.json.checkout_url], [200, a1.json.checkout_url], `🔴 after the flip the issued launcher-reward checkout REUSES its URL — ${a2.text.slice(0, 200)}`);
+    assert.strictEqual(await reservedNow(), held, 'no second hold');
+    const boundTotal = (await order('apg_lc_A')).total_cents;
+    const cb = await paidCallback('apg_lc_A');
+    const oa = await order('apg_lc_A');
+    assert.ok(cb.code === 200 && oa.payment_status === 'confirmed', `the paid callback materializes it — ${JSON.stringify(cb).slice(0, 160)}`);
+    assert.strictEqual(oa.total_cents, boundTotal, 'materialized from the BOUND total');
+    assert.ok(oa.redemption, 'the bound reward stays on the order');
+    assert.strictEqual((await holdOf('apg_lc_A')).state, 'consumed', 'the owned hold is CONSUMED at materialize');
+    const attB = (await order('apg_lc_B')).active_attempt_id;
+    await rtdb.ref(`payment_attempts/${attB}/hosted_expires_at`).set(1);
+    const heldB = await reservedNow();
+    const b2 = await send('la_musa', 'apg_lc_B', 'online', PAID, { redeem: rdL });
+    assert.deepStrictEqual([b2.status, b2.json && b2.json.error], [409, 'choice_required'], `🔴 the expired launcher-reward checkout's ROTATION is refused — ${b2.text.slice(0, 200)}`);
+    assert.strictEqual((await order('apg_lc_B')).active_attempt_id, attB, 'no new attempt was issued');
+    assert.strictEqual((await holdOf('apg_lc_B')).state, 'reserved', 'the hold (not this request\'s to release) is untouched — the expiry sweep owns it');
+    assert.strictEqual(await reservedNow(), heldB, 'no hold taken or released by the refused rotation');
+  }
+  ok('launcher REWARD issued before the flip (owned hold): reuse returns its URL with no second hold, the paid callback materializes the bound total and CONSUMES the hold; an expired one\'s rotation is refused (choice_required) with no new attempt and the hold untouched');
+
+  // S2 — a CHOICE reward issued under render ON is BOUND (charge_inputs_fp): its reuse survives a whole-dish 86, a reward
+  // re-price and an eligibility change; different options / fee input / an expired attempt take the CURRENT path.
+  {
+    const rdV = { type: 'points_ala_carte', items: [{ id: 'noodle_01_pollo', qty: 1, name: 'Pad Thai - Pollo' }] };
+    const c1 = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV });
+    assert.ok(c1.status === 200 && c1.json.checkout_url, `setup: a bound choice-reward checkout — ${c1.text.slice(0, 200)}`);
+    assert.match(String((await order('apg_bd_C')).charge_inputs_fp), /^[0-9a-f]{64}$/, 'render ON binds the charge-input fingerprint at issuance');
+    const urlC = c1.json.checkout_url;
+    const heldC = await reservedNow();
+    /* WHICH PATH ANSWERED, observed rather than inferred: the bound fast path writes NOTHING, while the current path's
+       unblocked branch always writes its rate-limit bookkeeping (send() clears rate_limits first). A same-URL answer is
+       not enough on its own — the current path's pricing / eligibility reads sit behind a 45 s pointer cache and could
+       also reuse — so every cell below asserts the footprint too. */
+    const footprint = async () => (await rtdb.ref('rate_limits').get()).val();
+    const sameUrl = async (label) => {
+      const r = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV });
+      assert.deepStrictEqual([r.status, r.json && r.json.checkout_url], [200, urlC], `🔴 ${label}: the bound checkout is resumed (same URL) — ${r.text.slice(0, 200)}`);
+      assert.strictEqual(await footprint(), null, `🔴 ${label}: answered by the BOUND fast path (no write at all)`);
+      assert.strictEqual(await reservedNow(), heldC, `${label}: no second hold`);
+    };
+    await sameUrl('an untouched resume');
+    for (const k of ['noodle_01', 'noodle_01_pollo']) await rtdb.ref(`restaurants/la_musa/item_availability/${availKey(k)}`).set({ available: false });
+    await sameUrl('whole dish + the choice 86\'d after issuance');
+    for (const k of ['noodle_01', 'noodle_01_pollo']) await rtdb.ref(`restaurants/la_musa/item_availability/${availKey(k)}`).remove();
+    const lm = canonicalize(buildSourceFromCode('la_musa'));
+    const repriced = JSON.parse(JSON.stringify(lm)); const pi = repriced.items.find((i) => i.key === 'noodle_01_pollo'); pi.price = 352; pi.display.price = 352;
+    await publishSource('la_musa', repriced);
+    await sameUrl('the reward re-priced after issuance');
+    const inel = JSON.parse(JSON.stringify(repriced)); inel.structure.redeem_eligible_cats = inel.structure.redeem_eligible_cats.filter((c) => c !== 'noodles');
+    await publishSource('la_musa', inel);
+    await sameUrl('the reward made INELIGIBLE after issuance');
+    // different options on a line / a different fee input → not the bound inputs → the CURRENT path answers (footprint)
+    const ext = await send('la_musa', 'apg_bd_C', 'online', [{ ...PAID[0], extras: [{ id: 'rice_white', qty: 1 }] }], { redeem: rdV });
+    // (its total differs, so the current path's classifier refuses it as a conflict before any bookkeeping write; the fast
+    // path only ever answers 200 with the bound URL, so "not that answer" is the proof here)
+    assert.ok(!(ext.status === 200 && ext.json && ext.json.checkout_url === urlC), `🔴 same items + DIFFERENT options fall through — ${ext.text.slice(0, 160)}`);
+    const fee = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV, order_type: 'delivery', address_detected: 'Col. X', address_details: 'casa', lat: 14.1, lng: -87.2 });
+    assert.notStrictEqual(await footprint(), null, `🔴 same content + a DIFFERENT fee input falls through to the CURRENT path (its footprint) — ${fee.text.slice(0, 160)}`);
+    // an EXPIRED identical checkout → the current path, with CURRENT enforcement (the reward choice 86'd now — a fresh read)
+    const attC = (await order('apg_bd_C')).active_attempt_id;
+    await rtdb.ref(`payment_attempts/${attC}/hosted_expires_at`).set(1);
+    await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01_pollo')}`).set({ available: false });
+    const rot = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV });
+    assert.deepStrictEqual([rot.status, rot.json && rot.json.error], [409, 'reward_unavailable'], `🔴 an EXPIRED identical checkout rotates through CURRENT enforcement — ${rot.text.slice(0, 200)}`);
+    assert.strictEqual((await order('apg_bd_C')).active_attempt_id, attC, 'no new attempt was issued');
+    await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01_pollo')}`).remove();
+    // precedence: a FRESH bare-launcher reward whose preparation FAILS (the launcher 86'd — a fresh read) answers
+    // choice_required, not the preparation's own reward_unavailable
+    await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01')}`).set({ available: false });
+    const pre = await send('la_musa', 'apg_bd_D', 'online', PAID, { redeem: { type: 'points_ala_carte', items: [{ id: 'noodle_01', qty: 1, name: 'Pad Thai' }] } });
+    assert.deepStrictEqual([pre.status, pre.json && pre.json.error], [409, 'choice_required'], `🔴 precedence: a fresh launcher reward whose preparation failed → choice_required — ${pre.text.slice(0, 200)}`);
+    await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01')}`).remove();
+    await publishSource('la_musa', lm);   // restore today's catalog
+  }
+  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path with ZERO writes and no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change; different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
+
   FINISHED = true;
   console.log(`\nadd-product-groups-intake: OK (${n})`);
   process.exit(0);

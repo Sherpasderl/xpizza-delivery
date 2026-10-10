@@ -374,6 +374,9 @@ function clientFloorReader() {
 const { createGateReader } = require('./catalog/menu-gates');
 const { absentFromMenu, MENU_UPDATING } = require('./catalog/menu-gates');   // 1D add-product A §0b.1: keys the gate snapshot cannot classify
 const GI = require('./catalog/group-intake');   // 1D add-product B (rev 6): the group rules at intake / quote (render capability only)
+const BR = require('./catalog/bound-reuse');      // 1D add-product B (codex PB-1 r1 P1-3): a reward order's live checkout resumes from its BOUND snapshot
+const CI = require('./catalog/charge-inputs');    // 1D add-product B (codex PB-1 r1 P1-3): the ONE charge-input canonicalizer (bound at issuance)
+const { resolveHostedAttemptAction: resolveBoundReuse } = require('./hosted-charge-flow');   // the SAME reuse answer acquire's reuse gets
 const { groupCapabilities } = require('./catalog/platform-groups');   // 1D add-product B: the two PLATFORM switches (no brand)
 const { previewVersion } = require('./catalog/catalog-publish');
 let _gateReader = null;
@@ -1453,10 +1456,30 @@ chargeOnlineApp.all('*', async (req, res) => {
   let redemptionFreeItems = null, redemptionFp = '';   // v2: full free-item set (summary) + canonical-set hash (fingerprint fold-in)
   let redemptionResolved = null;   // 1C T5: the RESOLVED redemption the quote's token was issued over — the gate must bind this exact object (the cash path captures the same thing)
   let effTotal = total;
+  /* 1D add-product B (codex PB-1 r1 P1-3; plan §0d.1) — BOUND REUSE, before any re-preparation: a reward order whose live
+     checkout was issued under the render capability resumes from its BOUND snapshot (same charge inputs, same verified
+     customer, a live URL by the existing classifier, the hold still this order's) — never re-priced, re-gated or re-checked
+     against today's catalog. Read-only; any doubt or error → null → the current path below (fresh issuance and rotation
+     always meet current enforcement). Answered exactly as acquire's reuse is (the same hosted-flow reuse branch). */
+  if (body.redeem != null && customer_uid && groupCapabilities().render) {
+    const boundAcq = await BR.probeBoundReuse(db, { orderId, uid: customer_uid, rid: restaurantId, body, now: Date.now() });
+    if (boundAcq) {
+      const never = () => { throw new Error('bound reuse never gates, releases or retires'); };
+      const flow = await resolveBoundReuse({ acq: boundAcq, orderId, totalCents: null, releaseHold: never, retireAttempt: never, runGate: never, log: console });
+      return res.status(flow.respond.status).json(flow.respond.body);
+    }
+  }
   if (body.redeem != null) {
     const prep = await prepareRedemption(db, { redeem: body.redeem, items: body.items, restaurantId,
       itemsText: fields.items_text, totalLempiras: total, customerUid: customer_uid, tables: pricingTables, eligible: redeemEligible });   // 1b-1b + 2a eligibility
-    if (!prep.ok) return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
+    if (!prep.ok) {
+      // 1D add-product B (codex PB-1 r1 P1-3): a failed preparation whose reward is a bare launcher (or unclassifiable by the
+      // gate snapshot) answers choice_required / menu_updating rather than its own error — render capability only.
+      const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),
+        items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem) }));
+      if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }
+      return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
+    }
     redemptionCanonical = prep.canonical;
     redemptionPriced = prep.priced;
     redemptionCost = prep.redemption.cost;
@@ -1727,6 +1750,8 @@ chargeOnlineApp.all('*', async (req, res) => {
     ...(effBreakdown.desc_rebaja_cents ? { desc_rebaja_cents: effBreakdown.desc_rebaja_cents } : {}),   // A-F: factura comp rebaja (x_pizza only)
     ...onlineRewardStamp,   // reward-card earn_preview + summary_lines (materialize copies to order_tracking at confirm/release)
     ...(redemptionCanonical ? { redemption: redemptionCanonical } : {}),   // bind the reward to the order (reserved until confirm consumes/holds)
+    // 1D add-product B (codex PB-1 r1 P1-3): the CHARGE-INPUT fingerprint this reward order is bound to (render capability only)
+    ...(redemptionCanonical && groupCapabilities().render && CI.chargeInputsFingerprint(body) ? { charge_inputs_fp: CI.chargeInputsFingerprint(body) } : {}),
     notes: fields.notes,
     payment_method: 'online',
     payment_status: 'pending',

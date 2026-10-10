@@ -32,7 +32,15 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
   {
     const b = built('la_musa');
     const withVi = (vi) => { const c = clone(b); if (vi === undefined) delete c.structure.variant_items; else c.structure.variant_items = vi; return c; };
-    assert.deepStrictEqual(groupIndexFrom(withVi(undefined)).ok, true, 'ABSENT = no groups');
+    // codex PB-1 r1 P1-2: a map that is ABSENT or EMPTY while items still declare variantOf is CONTRADICTORY → unreadable
+    assert.strictEqual(groupIndexFrom(withVi(undefined)).ok, false, '🔴 map ABSENT while Pad Thai\'s choices still declare variantOf → unreadable (never "no launchers")');
+    assert.strictEqual(groupIndexFrom(withVi({})).ok, false, '🔴 map {} while choices declare variantOf → unreadable');
+    const noChoices = clone(b); delete noChoices.structure.variant_items;
+    noChoices.items = noChoices.items.filter((it) => it.display.variantOf === undefined);
+    assert.deepStrictEqual([groupIndexFrom(noChoices).ok, groupIndexFrom(noChoices).launchers.size], [true, 0], 'ABSENT with no item declaring variantOf = no groups');
+    const vids = b.structure.variant_items.noodle_01.variantIds;
+    assert.strictEqual(groupIndexFrom(withVi({ noodle_01: { label: 'L', variantIds: vids.slice(0, 2) } })).ok, false, '🔴 the reverse direction: a choice no entry lists → unreadable');
+    assert.strictEqual(groupIndexFrom(withVi({ noodle_01: { label: 'L', variantIds: [...vids, vids[0]] } })).ok, false, '🔴 one choice listed twice → unreadable');
     for (const bad of [null, 'x', 7, []]) assert.strictEqual(groupIndexFrom(withVi(bad)).ok, false, `present but ${JSON.stringify(bad)} → unreadable`);
     assert.strictEqual(groupIndexFrom(withVi({ ghost: { label: 'L', variantIds: ['noodle_01_pollo'] } })).ok, false, 'a launcher id that resolves to no item');
     assert.strictEqual(groupIndexFrom(withVi({ noodle_01: { label: 'L', variantIds: ['nope'] } })).ok, false, 'a variant id that resolves to no item');
@@ -40,7 +48,7 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
     assert.strictEqual(groupIndexFrom(withVi({ noodle_01: { label: 'L' } })).ok, false, 'no variantIds');
     assert.strictEqual(groupIndexFrom({ items: null, structure: {} }).ok, false);
     assert.strictEqual(groupIndexFrom(null).ok, false);
-    ok('fail-closed: absent = no groups; a present map that cannot be read as written is UNREADABLE (never "no launchers")');
+    ok('fail-closed, BOTH directions: absent/{} with declared choices, an unlisted choice, a doubly-listed one, or a map that cannot be read as written are UNREADABLE (never "no launchers"); absent with no choices = no groups');
   }
   {
     assert.strictEqual(readFileSync(join(__dirname, 'fallback-groups.generated.js'), 'utf8'), RENDER_FALLBACK_GROUPS(deriveFallbackGroups()),

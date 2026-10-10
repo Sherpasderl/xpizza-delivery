@@ -12,7 +12,10 @@
 // FAIL-CLOSED: `ok:false` whenever the map cannot be read as written (present but not an object, a launcher or
 // variant id that resolves to no item, a variant listed by one launcher but pointing at another). Callers treat an
 // unreadable map as an UNCLASSIFIABLE snapshot — never as "no launchers" (plan §0b.4).
-// Pure: no I/O, no brand literal. ABSENT `variant_items` means "no groups" (ok:true, empty).
+// BOTH DIRECTIONS (codex PB-1 r1 P1-2): every map entry's choices point back at it, AND every item that declares a
+// `variantOf` is listed by exactly that launcher's entry. Contradictory group evidence — choices with no map (absent or
+// {}), a choice no entry lists, one listed twice — is ok:false (UNCLASSIFIABLE → menu_updating), never "no launchers".
+// Pure: no I/O, no brand literal. ABSENT `variant_items` with NO item declaring `variantOf` means "no groups".
 // ---------------------------------------------------------------------------
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -21,9 +24,12 @@ function groupIndexFrom(built) {
   const items = built && Array.isArray(built.items) ? built.items : null;
   const st = built && isObj(built.structure) ? built.structure : null;
   if (!items || !st) return { ok: false, launchers: new Set(), parentOf: new Map() };
-  if (!Object.prototype.hasOwnProperty.call(st, 'variant_items') || st.variant_items === undefined) return empty;
+  const bad = { ok: false, launchers: new Set(), parentOf: new Map() };
+  const declaresParent = (it) => it && isObj(it.display) && it.display.variantOf !== undefined && it.display.variantOf !== null;
+  const choices = items.filter(declaresParent);
+  if (!Object.prototype.hasOwnProperty.call(st, 'variant_items') || st.variant_items === undefined) return choices.length ? bad : empty;
   const vi = st.variant_items;
-  if (!isObj(vi)) return { ok: false, launchers: new Set(), parentOf: new Map() };
+  if (!isObj(vi)) return bad;
 
   const keyOfId = new Map();
   for (const it of items) {
@@ -44,9 +50,12 @@ function groupIndexFrom(built) {
       if (!vItem || !isObj(vItem.display) || String(vItem.display.variantOf) !== String(launcherId)) {
         return { ok: false, launchers: new Set(), parentOf: new Map() };
       }
+      if (parentOf.has(vKey)) return bad;                     // one choice listed twice (or by two launchers)
       parentOf.set(vKey, lKey);
     }
   }
+  // the reverse direction: every item that names a parent is a listed choice of exactly that parent
+  for (const it of choices) if (!parentOf.has(it.key)) return bad;
   return { ok: true, launchers, parentOf };
 }
 
