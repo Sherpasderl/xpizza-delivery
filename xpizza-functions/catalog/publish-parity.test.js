@@ -128,6 +128,14 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // verify-catalog must check store-vs-code too, so a drifted store is caught between cutovers
   const VC = readFileSync(join(__dirname, '..', 'tools', 'verify-catalog.js'), 'utf8');
   assert.ok(/assertStoreCodeParity\(rid, storeBuilt, codeBuilt\)/.test(VC), 'verify-catalog must assert store == code');
+  // add-product B: the store-built candidate is validated as publish validates it — BEFORE either parity comparison,
+  // and a refusal counts as a failure (bad++) rather than being logged and passed over
+  const vcBuild = VC.indexOf('buildSourceCandidate(rid, source)');
+  const vcValid = VC.indexOf('assertBuiltValid(rid, storeRaw,');
+  assert.ok(vcBuild > 0 && vcValid > vcBuild, 'verify-catalog validates the candidate it just built');
+  assert.ok(vcValid < VC.indexOf('assertStoreMatchesActive(rid, storeBuilt') && vcValid < VC.indexOf('assertStoreCodeParity(rid, storeBuilt'),
+    '...before either parity comparison');
+  assert.ok(/assertBuiltValid\(rid, storeRaw, `\$\{rid\} \(verify\)`\); \}\s*catch \(e\) \{ bad\+\+;/.test(VC), '...and an invalid candidate is COUNTED as a failure');
   assert.ok(/source_missing/.test(VC), 'and must tolerate a pre-2a absent store rather than failing the whole verify');
   ok('verify-catalog is store-aware: asserts store == code, and tolerates a pre-2a absent store');
 
@@ -137,7 +145,7 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // one-shots where the first execution IS the cutover. Assert the imports resolve, statically.
   for (const [file, ids] of [
     ['tools/publish-version.js', ['readSource', 'buildSourceCandidate', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],   // codex build r1 #4: the shared source builder
-    ['tools/verify-catalog.js', ['readSource', 'buildSourceCandidate', 'assertStoreCodeParity', 'buildCatalogV2']],
+    ['tools/verify-catalog.js', ['readSource', 'buildSourceCandidate', 'assertBuiltValid', 'assertStoreCodeParity', 'buildCatalogV2']],
     ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf', 'attachRedeemFields']],
     ['tools/rollback-version.js', ['rollbackVersion', 'makeRtdbMirror', 'RTDB_URL']],
   ]) {
