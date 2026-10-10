@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 const { X_PIZZA_WEEKEND_ONLY, MENU_BY_RESTAURANT, itemPricingKey } = require('../menu-pricing');   // FALLBACK ONLY — never the live authority
 const { weekendRule, pickupRule, redeemRule, untypedUnion } = require('./policy-primitive');
+const { groupIndexFrom } = require('./group-index');   // 1D add-product B (rev 6): bare launchers + variant parents, every brand
 
 const GATE_READ_DEADLINE_MS = 1500;
 const MAX_CACHED_VERSIONS = 8;
@@ -91,9 +92,15 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     } catch (e) {
       // FALLBACK TO TODAY — the static set. Not cached, so the next order retries the catalog.
       console.warn('menu_gates_read_failed', JSON.stringify({ restaurantId, versionId: versionId || null, error: String((e && e.message) || e).slice(0, 160) }));
-      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId) };
+      return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId), groups: staticGroupsFallback(restaurantId) };
     }
-    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId) };
+    if (!built || !built.structure) return { weekend: staticWeekendFallback(restaurantId), pickup: null, redeem: null, fallback: true, known: staticKnownFallback(restaurantId), groups: staticGroupsFallback(restaurantId) };
+    // 1D add-product B (rev 6, §0b.4): the group index comes from the SAME snapshot as `known`. A variant map that cannot
+    // be read is NEVER "no launchers": it is reported as groups:null (UNCLASSIFIABLE), and the group rules — which run
+    // only once the platform RENDER capability is on — refuse retryably on it. Every other gate is untouched, so a
+    // dormant PB-1 changes nothing.
+    const groups = groupIndexFrom(built);
+    if (!groups.ok) console.warn('menu_gates_groups_unreadable', JSON.stringify({ restaurantId, versionId: versionId || null }));
     // PER-GATE authored checks. A gate the store has not authored falls back on ITS OWN and never drags
     // the others down with it. This was a shared early-return, and it was wrong in a way no direct
     // derivation test could see: la_musa has NO weekend categories at all, so every la_musa read
@@ -116,6 +123,8 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
       // 1D add-product A §0b.1 — the COMPLETE set of dish keys this snapshot knows (same version as the gates).
       // A key outside it is one the gates cannot classify (a product added after this snapshot) → refused upstream.
       known: new Set((built.items || []).map((it) => it && it.key).filter((k) => typeof k === 'string')),
+      // 1D add-product B (rev 6): { launchers:Set<key>, parentOf:Map<variantKey,launcherKey> } from this same version.
+      groups: groups.ok ? { launchers: groups.launchers, parentOf: groups.parentOf } : null,
     };
     if (cache.size >= MAX_CACHED_VERSIONS) cache.delete(cache.keys().next().value);   // bounded
     cache.set(key, gates);
@@ -144,7 +153,7 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
      classify (a product added since this snapshot, or any portal addition while the read fails) is refused by
      the caller with a retryable "menu updating". */
   async function intakeGatesFor(restaurantId) {
-    const fallback = () => ({ weekend: staticWeekendFallback(restaurantId), known: staticKnownFallback(restaurantId), fallback: true });
+    const fallback = () => ({ weekend: staticWeekendFallback(restaurantId), known: staticKnownFallback(restaurantId), groups: staticGroupsFallback(restaurantId), fallback: true });
     if (!getVersionId) return fallback();
     let versionId;
     try {
@@ -156,7 +165,7 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     if (versionId == null) return fallback();
     try {
       const g = await gatesFor(restaurantId, versionId);
-      return { weekend: g.weekend, known: g.known || staticKnownFallback(restaurantId), fallback: !!g.fallback };
+      return { weekend: g.weekend, known: g.known || staticKnownFallback(restaurantId), groups: g.groups === undefined ? staticGroupsFallback(restaurantId) : g.groups, fallback: !!g.fallback };
     } catch (e) {
       console.error('menu_gates_unexpected', JSON.stringify({ restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
       return fallback();
@@ -213,6 +222,15 @@ function staticKnownFallback(restaurantId) {
   return new Set(Object.keys(MENU_BY_RESTAURANT[restaurantId] || {}));
 }
 
+// 1D add-product B (rev 6, §0b.4): the CODE catalogs' groups (baked, catalog/fallback-groups.generated.js), so the read-
+// failure fallback still recognises a code-defined bare launcher. A brand with no entry has no code groups.
+function staticGroupsFallback(restaurantId) {
+  const table = require('./fallback-groups.generated');
+  const e = Object.prototype.hasOwnProperty.call(table, restaurantId) ? table[restaurantId] : null;
+  if (!e) return { launchers: new Set(), parentOf: new Map() };
+  return { launchers: new Set(e.launchers), parentOf: new Map(Object.entries(e.parentOf)) };
+}
+
 // The order's lines whose pricing key the snapshot does not know (deduplicated, in order).
 function absentFromMenu(items, restaurantId, known) {
   const out = [];
@@ -229,4 +247,4 @@ function staticWeekendFallback(restaurantId) {
   return restaurantId === 'x_pizza' ? new Set(X_PIZZA_WEEKEND_ONLY) : new Set();
 }
 
-module.exports = { createGateReader, weekendOnlyKeysFrom, pickupOnlyKeysFrom, redeemEligibleFrom, gateAuthored, staticWeekendFallback, staticKnownFallback, absentFromMenu, MENU_UPDATING, GATE_READ_DEADLINE_MS, POINTER_TTL_MS };
+module.exports = { createGateReader, weekendOnlyKeysFrom, pickupOnlyKeysFrom, redeemEligibleFrom, gateAuthored, staticWeekendFallback, staticKnownFallback, staticGroupsFallback, absentFromMenu, MENU_UPDATING, GATE_READ_DEADLINE_MS, POINTER_TTL_MS };
