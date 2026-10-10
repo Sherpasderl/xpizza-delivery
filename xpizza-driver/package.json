@@ -1,1 +1,1 @@
-{ "type": "module", "private": true }
+{ "type": "module", "private": true, "scripts": { "test": "node cash-helpers.test.js && node driver-collect-render.test.js" } }
