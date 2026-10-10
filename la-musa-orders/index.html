@@ -2005,6 +2005,7 @@ function itemIsVariant(p)  { return GroupPicker.isVariant(p); }
 // list to the right categories). Combine cat-level and per-item
 // extras, with cat-level rendered first.
 function extrasCatsForItem(item) {
+  if (GroupPicker.noExtras(item)) return [];   // 1D add-product B: extras_policy 'none' — no extras anywhere this item is offered
   const fromCat  = EXTRAS_BY_CATEGORY[item.cat] || [];
   const fromItem = EXTRAS_BY_ITEM[item.id] || [];
   const seen = new Set(fromCat);
@@ -2908,7 +2909,13 @@ function availKeysFor(item){
 // la_musa is priced — and therefore 86'd — by ID, so a rename cannot move its key. The history below
 // still applies: it costs nothing and keeps the two forms the same shape.
 function AVAIL_IDENTITY(item){ return item.id; }
+/* 1D add-product B — WHOLE-DISH AVAILABILITY (the shared rule): a choice is sold out when it OR its launcher is (86-ing
+   "Pad Thai" now blocks Pad Thai - Pollo too, matching the kitchen's intent — rev 6 §0d.4). The per-record reader below
+   is unchanged; for every dish that is not a choice this is exactly it. */
 function isSoldOut(item){
+  try { return GroupPicker.soldOutWithParent(item, MENU, ownSoldOut); } catch(_){ return false; }   // any doubt ⇒ available
+}
+function ownSoldOut(item){
   try {
     if(!item || typeof window.availKey !== 'function') return false;
     const keys = availKeysFor(item);
