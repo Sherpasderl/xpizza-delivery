@@ -220,6 +220,11 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
   const extraNames = (source.extras || []).map((e) => (isObj(e) && isObj(e.display) ? e.display.name : null)).filter((n) => typeof n === 'string');
   // codex PB-1 r1 P2-4: an OPTION's name is derived from its choice, so a name refusal on it points at the choice input
   const nameField = (item) => (isGroupVariant(item) ? 'choice' : 'name');
+  /* codex PB-1 r2 (defence in depth): a NEW dish may not take a KEY an existing extra already uses. The identity registry keeps
+     dish and extra namespaces apart, so nothing else refuses it — yet the reward calculator resolves a key DISH-first, so the
+     new dish would silently re-point every reward that names the extra (la_musa: "Rice White" → rice_white = "Arroz Blanco").
+     Additions only; pre-existing overlaps (x_pizza's dish and extra both named "Pepperoni") are untouched. */
+  const extraKeys = new Set((source.extras || []).map((e) => (isObj(e) ? e.key : null)).filter((k) => typeof k === 'string'));
   for (const add of additions) {
     const n = normalizeName(add.display.name);
     for (const o of others(add)) {
@@ -232,6 +237,7 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
       }
     }
     if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { ...at(add.key), field: nameField(add) });
+    if (extraKeys.has(add.key)) refuse('key_taken', `the identifier for "${add.display.name}" is already used by an option (extra) on your menu`, { ...at(add.key), field: nameField(add) });
   }
   // A name (key) used before — a registry key row exists — is refused: today it would silently inherit that
   // identity, and the merchant would be publishing a "new" product that carries an old one's history.

@@ -92,7 +92,13 @@ ok(`PROOF (i): unapplyAddProductB(index.js) === 4e2a710:index.js byte-for-byte (
   const fail = ch.indexOf('const pr = GI.prepFailureRefusal(await GI.groupIssues({');
   const failGate = ch.indexOf('if (!prep.ok) {');
   const prepReturn = ch.indexOf('return res.status(prep.status).json({ ...prep.body, order_id: orderId });');
-  assert.ok(failGate > prep && fail > failGate && prepReturn > fail && prepReturn - failGate < 900, 'the precedence check runs ONLY inside the preparation-failure branch, before its own error');
+  assert.ok(failGate > prep && fail > failGate && prepReturn > fail && prepReturn - failGate < 1200, 'the precedence check runs ONLY inside the preparation-failure branch, before its own error');
+  // codex PB-1 r2 P2-a: the render capability wraps the WHOLE precedence block — with it off, the failure branch reads nothing
+  const branch = ch.slice(failGate, prepReturn);
+  const renderGuard = branch.indexOf('if (groupCapabilities().render) {');
+  const gateRead = branch.indexOf('gateReader().intakeGatesFor(restaurantId)');
+  assert.ok(renderGuard > 0 && gateRead > renderGuard, 'the precedence gate read sits INSIDE the render-capability guard');
+  assert.strictEqual(branch.split('intakeGatesFor(').length - 1, 1, 'and it is the branch\'s only gate read');
   const bind = idx.indexOf("...(redemptionCanonical && groupCapabilities().render && CI.chargeInputsFingerprint(body) ? { charge_inputs_fp: CI.chargeInputsFingerprint(body) } : {}),");
   const pendingAt = idx.indexOf('const pendingOrderRecord = {');
   assert.ok(pendingAt > 0 && bind > pendingAt && bind - pendingAt < 2000, 'the charge-input fingerprint is bound on the pending reward order (render capability only)');

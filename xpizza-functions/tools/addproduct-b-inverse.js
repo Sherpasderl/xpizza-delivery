@@ -16,7 +16,7 @@ const INDEX_HUNKS = [
   ""
  ],
  [
-  "    // 1D add-product B (rev 6): the group rules, render capability on only — a bare launcher line or reward → 409\n    // choice_required; a choice whose launcher is 86'd → item_unavailable; an unreadable variant map → 503. Same snapshot,\n    // after the dedupe, before any write or reserve.\n    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,\n      rewardKeys: GI.rewardKeysOf(body.redeem), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));\n    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }\n",
+  "    // 1D add-product B (rev 6): the group rules, render capability on only — a bare launcher line or reward → 409\n    // choice_required; a choice whose launcher is 86'd → item_unavailable; an unreadable variant map → 503. Same snapshot,\n    // after the dedupe, before any write or reserve.\n    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,\n      rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));\n    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }\n",
   ""
  ],
  [
@@ -24,7 +24,7 @@ const INDEX_HUNKS = [
   ""
  ],
  [
-  "    if (!prep.ok) {\n      // 1D add-product B (codex PB-1 r1 P1-3): a failed preparation whose reward is a bare launcher (or unclassifiable by the\n      // gate snapshot) answers choice_required / menu_updating rather than its own error — render capability only.\n      const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),\n        items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem) }));\n      if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }\n      return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet\n    }\n",
+  "    if (!prep.ok) {\n      // 1D add-product B (codex PB-1 r1 P1-3): a failed preparation whose reward is a bare launcher (or unclassifiable by the\n      // gate snapshot) answers choice_required / menu_updating rather than its own error — render capability only.\n      // render capability FIRST (codex PB-1 r2 P2-a): with it off this branch reads nothing and returns the preparation's error\n      if (groupCapabilities().render) {\n        const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),\n          items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables) }));\n        if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }\n      }\n      return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet\n    }\n",
   "    if (!prep.ok) return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet\n"
  ],
  [
@@ -32,7 +32,7 @@ const INDEX_HUNKS = [
   ""
  ],
  [
-  "    }\n    // 1D add-product B (rev 6): the group rules (render capability only), decided like the guard above — a FRESH issuance\n    // is refused here; a verified reuse keeps its BOUND snapshot and only arms the guard in acquireHostedAttempt (so a\n    // reuse → fresh rotation is refused there); parent-86'd choices join cartBlocked (acquire enforces it the same way).\n    {\n      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,\n        rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id),\n        readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);\n      if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }\n      if (gd.armMenu) menuArmed = true;\n      if (gd.armChoice) choiceArmed = true;\n      for (const b of gd.block) if (!cartBlocked.includes(b)) cartBlocked.push(b);\n",
+  "    }\n    // 1D add-product B (rev 6): the group rules (render capability only), decided like the guard above — a FRESH issuance\n    // is refused here; a verified reuse keeps its BOUND snapshot and only arms the guard in acquireHostedAttempt (so a\n    // reuse → fresh rotation is refused there); parent-86'd choices join cartBlocked (acquire enforces it the same way).\n    {\n      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,\n        rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables),\n        readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);\n      if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }\n      if (gd.armMenu) menuArmed = true;\n      if (gd.armChoice) choiceArmed = true;\n      for (const b of gd.block) if (!cartBlocked.includes(b)) cartBlocked.push(b);\n",
   ""
  ],
  [
@@ -52,7 +52,7 @@ const INDEX_HUNKS = [
   ""
  ],
  [
-  "      // 1D add-product B: a bare launcher (line or reward) quotes as choice_required (render capability on only)\n      if (groupCapabilities().render) {\n        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem) }));\n        if (qr) return res.status(409).json({ ok: false, ...qr });\n      }\n",
+  "      // 1D add-product B: a bare launcher (line or reward) quotes as choice_required (render capability on only)\n      if (groupCapabilities().render) {\n        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));\n        if (qr) return res.status(409).json({ ok: false, ...qr });\n      }\n",
   ""
  ],
 ];

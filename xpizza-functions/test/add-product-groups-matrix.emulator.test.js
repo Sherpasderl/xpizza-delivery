@@ -26,6 +26,7 @@ const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
 const db = admin.firestore();
+// (hookDeps.db is set once the RTDB handle exists)
 const { readFileSync } = require('fs');
 const { join } = require('path');
 const { editCatalogCore } = require('../catalog/edit-catalog-handler');
@@ -42,6 +43,15 @@ const { backfillIdentities } = require('../catalog/identity-backfill');
 const { writeKdsManifest } = require('../catalog/kds-manifest');
 const { encodeKey } = require('../catalog/identity-registry');
 const A = require('../catalog/add-product');
+const { handleHostedCallback } = require('../pixelpay-hosted-webhook');
+const { buildMaterializeUpdates } = require('../materialize');
+const { paymentHash } = require('../pixelpay');
+const { linesOf, emptySummary, addOrder } = require('../stats/stats-build');
+const { buildFacturaRecord } = require('../factura/build-record');
+const KEY = '1234567890', SECRET = '@s4ndb0x-abcd-1234-n1l4-p1x3l';   // sandbox (resolvePixelPayConfig default)
+const hookDeps = { db: null, restaurant: { lat: 14.1, lng: -87.2, name: 'Matrix', phone: '+504' }, buildMaterializeUpdates, alert: () => {}, genToken: () => 'TOK', client: {}, voidOrRefund: async () => ({ voided: true }) };
+const FACTURA_CONFIG = { restaurant_name: 'X. Pizza', legal_name: 'X PIZZA SA', rtn: '08011999123456', address_1: 'A', address_2: 'B', email: 'f@x.hn', phone: '+504',
+  cai_code: 'ABC-123-CAI', prefix: '000-001-01', range_start: 1, range_end: 100000, fecha_limite: '2027-12-31', is_temp: false };
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -115,14 +125,16 @@ function post(handler, body, headers = {}) {
 let PH = 0;
 const phone = () => `9977${String(PH += 1).padStart(4, '0')}`;
 const order = async (oid) => (await rtdb.ref(`orders/${oid}`).get()).val();
-const charge = async (rid, oid, method, key, price) => {
+const charge = async (rid, oid, method, key, price, name = key) => {
   await rtdb.ref('rate_limits').remove(); await rtdb.ref('recent_order_content').remove();
-  const item = rid === 'la_musa' ? { id: key, name: key, qty: 1, price, extras: [] } : { name: key, qty: 1, price, extras: [] };
+  // the line in each form's own shape: la_musa keys by id and carries the dish's display name; x_pizza keys by name
+  const item = rid === 'la_musa' ? { id: key, name, qty: 1, price, extras: [] } : { name: key, qty: 1, price, extras: [] };
   return post(method === 'online' ? app.chargeOnlineOrder : app.createOrder, { restaurant_id: rid, order_id: oid, customer_name: 'Matrix', customer_phone: phone(),
     customer_email: 'm@example.com', items_text: `1x ${key}`, order_type: 'pickup', payment_method: method, items: [item] }, { 'x-firebase-id-token': `u_${rid}` });
 };
 
 (async () => {
+  hookDeps.db = rtdb;
   // ── the matrix: equal / unequal × both brands — authored in the portal (BOTH groups in ONE save + publish, so the
   //    handlers' pricing / gate readers first read the catalog AFTER it is published — no pointer-TTL staleness), charged
   //    at the CHOICE's own price ──
@@ -152,6 +164,32 @@ const charge = async (rid, oid, method, key, price) => {
       const placed = await order(`apm_cash_${rid}_${fx}`);
       assert.strictEqual(Number(placed.total), prices[1], `🔴 ${rid}/${fx}: the PLACED cash order's total is the choice's price`);
       assert.ok(String(placed.items_text).includes(vodka) || JSON.stringify(placed).includes('NY Plain Slice - Salsa Vodka'), `${rid}/${fx}: the persisted order names the choice`);
+      // ── the NON-cheapest choice end to end (codex PB-1 r2 P2-b): card → the REAL paid callback (materialization) →
+      //    summary_lines (stored name + cents) → the REAL stats aggregation; x_pizza → the REAL factura record builder ──
+      const combName = `${NAMES[fx]} - Combinada`; const combKey = keys[3]; const combCents = prices[2] * 100;
+      const cOid = `apm_mat_${rid}_${fx}`;
+      const cc = await charge(rid, cOid, 'online', combKey, prices[2], combName);
+      assert.strictEqual(cc.status, 200, `${rid}/${fx} card (Combinada): ${cc.text.slice(0, 200)}`);
+      const pendC = await order(cOid);
+      const hosted = `${cOid}-${pendC.active_attempt_id}`;
+      const cb = await handleHostedCallback(hookDeps, { order: hosted, status: 'paid', amount: pendC.total_cents / 100, uuid: `P-${cOid}`, transaction_id: `T-${cOid}`, payment_hash: paymentHash(hosted, KEY, SECRET) }, Date.now());
+      const mat = await order(cOid);
+      assert.ok(cb.code === 200 && mat.payment_status === 'confirmed', `${rid}/${fx}: the paid callback materializes the card order — ${JSON.stringify(cb).slice(0, 160)}`);
+      assert.strictEqual(mat.total_cents, combCents, `🔴 ${rid}/${fx}: the MATERIALIZED card order is the choice's price (L ${prices[2]})`);
+      const cash2 = await order(`apm_cash_${rid}_${fx}`);
+      for (const [label, o, nm, cents] of [['materialized card', mat, combName, combCents], ['placed cash', cash2, `${NAMES[fx]} - Salsa Vodka`, prices[1] * 100]]) {
+        const lines = linesOf(o);
+        assert.deepStrictEqual(lines.map((l) => [l.name, l.qty, l.cents]), [[nm, 1, cents]], `🔴 ${rid}/${fx} ${label}: summary_lines store the choice's NAME and its cents`);
+        const sum = emptySummary();
+        assert.strictEqual(addOrder(sum, o, rid, () => 'k'), 'sale', `${rid}/${fx} ${label}: aggregated as a sale`);
+        assert.deepStrictEqual(sum.items[nm], { qty: 1, cents }, `🔴 ${rid}/${fx} ${label}: STATS aggregate the choice under its own name at its own cents (never the launcher minimum)`);
+        if (rid === 'x_pizza') {   // the platform factura (x_pizza): the REAL record builder over the persisted order, as the issuing trigger passes it
+          const rec = buildFacturaRecord({ order: { ...o, orderId: o.order_id, razon_social: o.razon_social || '', rtn_cliente: o.rtn_cliente || '' }, config: FACTURA_CONFIG, reserved: 1, now: Date.now() });
+          assert.deepStrictEqual(rec.items.map((i) => [i.description, i.qty]), [[nm, 1]], `🔴 x_pizza/${fx} ${label}: the factura prints the choice as its own line`);
+          assert.strictEqual(rec.total_cents, cents, `🔴 x_pizza/${fx} ${label}: the factura total is the choice's price`);
+          assert.strictEqual(rec.subtotal_cents + rec.isv_total_cents, rec.total_cents, `x_pizza/${fx} ${label}: the factura foots`);
+        }
+      }
       const bare = await charge(rid, `apm_bare_${rid}_${fx}`, 'cash', keys[0], Math.min(...prices));
       assert.deepStrictEqual([bare.status, bare.json && bare.json.error], [409, 'choice_required'], `${rid}/${fx}: the bare launcher is refused`);
       // the THIRD KDS writer — publish-menus.mjs's exact sequence — over this group-bearing active catalog
@@ -167,7 +205,7 @@ const charge = async (rid, oid, method, key, price) => {
   const pm = readFileSync(join(__dirname, '..', 'publish-menus.mjs'), 'utf8');
   assert.ok(/getActivePointer\(fs, rid\)/.test(pm) && /previewVersion\(fs, rid, ptr\.version\)\)\.items/.test(pm) && /writeKdsManifest\(admin\.database\(\), rid, \{ catalog: \{ items \}, generation: ptr\.generation, versionId: ptr\.version \}\)/.test(pm),
     'premise: publish-menus.mjs runs exactly this sequence (pointer → previewVersion → writeKdsManifest)');
-  ok('matrix (equal + unequal × both brands): portal save + publish → the card PENDING order and the cash PLACED order carry the choice\'s own price; the bare launcher is refused; the publish-menus resync lists whole-dish + per-choice rows');
+  ok('matrix (equal + unequal × both brands): portal save + publish → the card PENDING order and the cash PLACED order carry the choice\'s own price; a NON-cheapest choice is MATERIALIZED by the real paid callback at its price; summary_lines store its name + cents and the real stats aggregation sums it under its own name; x_pizza\'s factura prints it as its own line and foots; the bare launcher is refused; the publish-menus resync lists whole-dish + per-choice rows');
 
   // ── P2-4: SAVE refuses an option whose DERIVED name was used before — the REAL registry, field-mapped to the choice ──
   for (const rid of ['x_pizza', 'la_musa']) {

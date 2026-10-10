@@ -18,7 +18,7 @@
 // The parent-availability read happens ONLY when a line or reward is a variant, and keeps today's fail-open: a read
 // failure blocks nothing (availability-gate.js semantics).
 // ---------------------------------------------------------------------------
-const { itemPricingKey } = require('../menu-pricing');
+const { itemPricingKey, resolvePriceTables } = require('../menu-pricing');
 const { availKey } = require('../avail-key');
 const availabilityReducer = require('../availability-reducer');
 
@@ -35,7 +35,19 @@ function rewardKeysOf(redeem) {
 
 /* groupIssues({ caps, gates, items, restaurantId, rewardKeys, readAvailability }) → null | { unclassifiable:true } |
    { bare:[keys], rewardBare:[keys], parentBlocked:[labels] }  (null also when there is nothing to object to) */
-async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], readAvailability = null }) {
+/* codex PB-1 r2 P1 — WHICH NAMESPACE A REWARD KEY RESOLVES TO, decided exactly as the reward calculator does
+   (rewards-redeem.js laMusaPriceCents: the pricing tables' DISHES first, then EXTRAS). A key that resolves to a dish must be
+   a dish this snapshot knows; only a key that resolves to an EXTRA may rely on extra membership — so a portal dish whose key
+   shadows an existing extra (la_musa "Rice White" → rice_white, the key of the extra "Arroz Blanco") can never be admitted
+   by that extra's membership. → (key) → 'dish' | 'extra' | null (priced in neither). */
+function rewardNamespaceIn(restaurantId, tables) {
+  let t = null;
+  try { t = resolvePriceTables(restaurantId, tables); } catch (_) { t = null; }
+  const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+  return (key) => (t && has(t.menu, key) ? 'dish' : t && has(t.extraPrices, key) ? 'extra' : null);
+}
+
+async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], readAvailability = null, rewardNamespace = null }) {
   if (!caps || caps.render !== true) return null;
   if (!gates || gates.groups == null) return { unclassifiable: true };
   const { launchers, parentOf } = gates.groups;
@@ -45,10 +57,18 @@ async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], 
      pointer read fails and the code fallback is in force — escaped every group rule and redeemed at its stored price. */
   const knownDish = gates.known instanceof Set ? gates.known : null;
   const knownExtra = gates.knownExtras instanceof Set ? gates.knownExtras : null;
-  if (rewardKeys.length && (!knownDish || !knownExtra || rewardKeys.some((k) => !knownDish.has(k) && !knownExtra.has(k)))) return { unclassifiable: true };
+  const nsOf = typeof rewardNamespace === 'function' ? rewardNamespace : null;
+  if (rewardKeys.length) {
+    if (!knownDish || !knownExtra || !nsOf) return { unclassifiable: true };
+    for (const k of rewardKeys) {
+      const ns = nsOf(k);
+      const member = ns === 'dish' ? knownDish.has(k) : ns === 'extra' ? knownExtra.has(k) : (knownDish.has(k) || knownExtra.has(k));
+      if (!member) return { unclassifiable: true };
+    }
+  }
   const lines = (Array.isArray(items) ? items : []).map((it) => ({ it, key: itemPricingKey(it, restaurantId) })).filter((l) => typeof l.key === 'string' && l.key);
   const bare = [...new Set(lines.filter((l) => launchers.has(l.key)).map((l) => l.key))];
-  const rewardBare = rewardKeys.filter((k) => launchers.has(k));
+  const rewardBare = rewardKeys.filter((k) => launchers.has(k) && (!nsOf || nsOf(k) !== 'extra'));   // a key that resolves to an EXTRA is never a launcher
   // parent-or-variant: one availability read, only when some line or reward has a launcher
   const parentBlocked = [];
   const variantLines = lines.filter((l) => parentOf.has(l.key));
@@ -118,4 +138,4 @@ function prepFailureRefusal(issues) {
   if (issues.rewardBare.length) return { status: 409, body: { ...CHOICE_REQUIRED, keys: issues.rewardBare.slice() } };
   return null;
 }
-module.exports = { groupIssues, cashRefusal, chargeDecision, quoteRefusal, prepFailureRefusal, rewardKeysOf, CHOICE_REQUIRED };
+module.exports = { groupIssues, rewardNamespaceIn, cashRefusal, chargeDecision, quoteRefusal, prepFailureRefusal, rewardKeysOf, CHOICE_REQUIRED };

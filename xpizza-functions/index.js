@@ -914,7 +914,7 @@ createOrderApp.all('*', async (req, res) => {
     // choice_required; a choice whose launcher is 86'd → item_unavailable; an unreadable variant map → 503. Same snapshot,
     // after the dedupe, before any write or reserve.
     const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
-      rewardKeys: GI.rewardKeysOf(body.redeem), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
+      rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
     if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
     const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
@@ -1475,9 +1475,12 @@ chargeOnlineApp.all('*', async (req, res) => {
     if (!prep.ok) {
       // 1D add-product B (codex PB-1 r1 P1-3): a failed preparation whose reward is a bare launcher (or unclassifiable by the
       // gate snapshot) answers choice_required / menu_updating rather than its own error — render capability only.
-      const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),
-        items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem) }));
-      if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }
+      // render capability FIRST (codex PB-1 r2 P2-a): with it off this branch reads nothing and returns the preparation's error
+      if (groupCapabilities().render) {
+        const pr = GI.prepFailureRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId),
+          items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables) }));
+        if (pr) { if (pr.retryAfter) res.set('Retry-After', String(pr.retryAfter)); return res.status(pr.status).json({ ...pr.body, order_id: orderId }); }
+      }
       return res.status(prep.status).json({ ...prep.body, order_id: orderId });   // non-payable, nothing written, NO reserve yet
     }
     redemptionCanonical = prep.canonical;
@@ -1625,7 +1628,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     // reuse → fresh rotation is refused there); parent-86'd choices join cartBlocked (acquire enforces it the same way).
     {
       const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
-        rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id),
+        rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables),
         readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);
       if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }
       if (gd.armMenu) menuArmed = true;
@@ -6647,7 +6650,7 @@ exports.quoteRedemption = onRequest(
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);
       // 1D add-product B: a bare launcher (line or reward) quotes as choice_required (render capability on only)
       if (groupCapabilities().render) {
-        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem) }));
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));
         if (qr) return res.status(409).json({ ok: false, ...qr });
       }
       const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });

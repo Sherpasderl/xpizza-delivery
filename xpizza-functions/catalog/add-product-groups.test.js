@@ -92,6 +92,10 @@ const cmp = (rid, src, authoring = true) => A.compareToActive({ draftBuilt: buil
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', 'roja '] })), 'choice_duplicate', V[1], 'choice', 'a duplicate option (folded)');
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', 'Mike’s'.replace('’', "'")] })), 'text_unsafe', V[1], 'choice', 'an apostrophe makes the derived NAME unusable (attribute sink) — mapped to the option');
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', 'A <b>'] })), 'text_unsafe', V[1], 'choice', 'markup in an option');
+  // codex PB-1 r2 (defence in depth): a NEW dish may not take a KEY an existing extra uses (la_musa keys by id; the registry
+  // keeps dish / extra namespaces apart, and the reward calculator resolves a key DISH-first)
+  refusesWith(() => alloc('la_musa', withGroup('la_musa', { name: 'Rice White' })), 'key_taken', L, 'name', 'la_musa: a launcher whose key (rice_white) is an existing extra\'s key');
+  refusesWith(() => alloc('la_musa', withGroup('la_musa', { name: 'Sauce', choices: ['Aioli', 'Chipotle', 'Pad Thai'] })), 'key_taken', V[0], 'choice', 'la_musa: an option whose derived key (sauce_aioli) is an existing extra\'s key → mapped to its choice');
   // codex PB-1 r1 P2-6: the per-choice text check is NOT subsumed — it answers BEFORE the derived-name contradiction check
   refusesWith(() => alloc(rid, withGroup(rid, { choices: ['Roja', '<bad>'], variantExtra: [undefined, { name: 'Otra cosa' }] })), 'text_unsafe', V[1], 'choice',
     'markup in an option AND a contradictory supplied name → the option\'s own text_unsafe, not addition_malformed/name');

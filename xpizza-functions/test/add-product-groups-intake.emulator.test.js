@@ -20,6 +20,9 @@ stub('../catalog/platform-groups', (r) => ({ ...r, groupCapabilities: () => ({ .
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => ({ ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }) }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
+// codex PB-1 r2 P2-a — every intake gate-snapshot read, counted (the REAL reader, wrapped)
+let GATE_READS = 0;
+stub('../catalog/menu-gates', (r) => ({ ...r, createGateReader: (...a) => { const g = r.createGateReader(...a); return { ...g, intakeGatesFor: async (...b) => { GATE_READS += 1; return g.intakeGatesFor(...b); } }; } }));
 let DRIFT = null;
 stub('../pixelpay-hosted-charge', (r) => ({ ...r, classifyHostedAttempt: async (...a) => { const c = await r.classifyHostedAttempt(...a); if (DRIFT) await DRIFT(a[1]); return c; } }));
 
@@ -112,6 +115,24 @@ async function wipe() {
     }
     ok('render OFF: nothing changes — a bare launcher is accepted and priced as today, on both brands');
   }
+  // codex PB-1 r2 P2-a — a FAILED redemption preparation (no verified customer → login_required) with render OFF returns at
+  // once with ZERO gate reads; with render ON the precedence check makes exactly one
+  {
+    const rd = { type: 'points_ala_carte', items: [{ id: 'noodle_01_pollo', qty: 1, name: 'Pad Thai - Pollo' }] };
+    const failPrep = async (oid) => { await clean(); return post(app.chargeOnlineOrder, body('la_musa', oid, 'online', [line('la_musa', 'dimsum_01', 225)], { redeem: rd })); };   // no id token
+    Object.assign(CAPS, { render: false });
+    let before = GATE_READS;
+    const off = await failPrep('apg_pf_off');
+    assert.deepStrictEqual([off.status, off.json && off.json.error], [401, 'login_required'], `premise: the preparation fails — ${off.text.slice(0, 160)}`);
+    assert.strictEqual(GATE_READS - before, 0, '🔴 render OFF: a failed preparation makes ZERO gate reads (returns the preparation error immediately)');
+    Object.assign(CAPS, { render: true });
+    before = GATE_READS;
+    const on = await failPrep('apg_pf_on');
+    assert.deepStrictEqual([on.status, on.json && on.json.error], [401, 'login_required'], `render ON: a non-launcher reward keeps the preparation's own error — ${on.text.slice(0, 160)}`);
+    assert.strictEqual(GATE_READS - before, 1, 'render ON: the precedence check reads the snapshot exactly once');
+    Object.assign(CAPS, { render: false });
+  }
+  ok('a failed redemption preparation: render OFF → its own error with ZERO gate reads; render ON → one read for the precedence check');
   // a live card checkout carrying a BARE launcher, made while render is OFF (for the reuse / rotation cells)
   const liveOid = 'apg_card_live_x';
   assert.strictEqual((await send('x_pizza', liveOid, 'online', [line('x_pizza', G.x_pizza.launcher, 624)])).status, 200, 'setup: a live checkout with a bare launcher');
@@ -221,7 +242,8 @@ async function wipe() {
     assert.match(String((await order('apg_bd_C')).charge_inputs_fp), /^[0-9a-f]{64}$/, 'render ON binds the charge-input fingerprint at issuance');
     const urlC = c1.json.checkout_url;
     const heldC = await reservedNow();
-    /* WHICH PATH ANSWERED, observed rather than inferred: the bound fast path writes NOTHING, while the current path's
+    /* WHICH PATH ANSWERED, observed rather than inferred: the bound probe + reuse branch write NOTHING (the request as a whole
+       may still emit a pre-existing pricing-fallback alert — codex r2 note — so this is NOT a "request write-free" claim), while the current path's
        unblocked branch always writes its rate-limit bookkeeping (send() clears rate_limits first). A same-URL answer is
        not enough on its own — the current path's pricing / eligibility reads sit behind a 45 s pointer cache and could
        also reuse — so every cell below asserts the footprint too. */
@@ -229,7 +251,7 @@ async function wipe() {
     const sameUrl = async (label) => {
       const r = await send('la_musa', 'apg_bd_C', 'online', PAID, { redeem: rdV });
       assert.deepStrictEqual([r.status, r.json && r.json.checkout_url], [200, urlC], `🔴 ${label}: the bound checkout is resumed (same URL) — ${r.text.slice(0, 200)}`);
-      assert.strictEqual(await footprint(), null, `🔴 ${label}: answered by the BOUND fast path (no write at all)`);
+      assert.strictEqual(await footprint(), null, `🔴 ${label}: answered by the BOUND fast path (its probe + reuse branch leave no rate-limit footprint)`);
       assert.strictEqual(await reservedNow(), heldC, `${label}: no second hold`);
     };
     await sameUrl('an untouched resume');
@@ -266,7 +288,7 @@ async function wipe() {
     await rtdb.ref(`restaurants/la_musa/item_availability/${availKey('noodle_01')}`).remove();
     await publishSource('la_musa', lm);   // restore today's catalog
   }
-  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path with ZERO writes and no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change; different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
+  ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path (probe + reuse branch write-free: no rate-limit footprint) with no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change; different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
 
   FINISHED = true;
   console.log(`\nadd-product-groups-intake: OK (${n})`);
