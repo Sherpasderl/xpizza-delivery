@@ -79,7 +79,7 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
   }
   {
     const pg = require('./platform-groups');
-    assert.deepStrictEqual(pg.groupCapabilities(), { render: false, authoring: false }, 'PB-1 ships DORMANT: neither switch is on');
+    assert.deepStrictEqual(pg.groupCapabilities(), { render: true, authoring: false }, 'PB-2 (§0b.3(b)/(c)): render is ON — both forms ship the picker; authoring stays OFF until the portal (§0b.3(e))');
     for (const bad of [{}, { render: 'yes' }, null, { render: 1 }]) {
       assert.throws(() => pg.parseRender(bad), /platform_groups_malformed/, `a malformed render artifact (${JSON.stringify(bad)}) is refused, never read as on`);
     }
@@ -87,10 +87,35 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
     const { deriveRender, RENDER_PLATFORM } = require('../tools/generate-renderer-contract');
     assert.strictEqual(readFileSync(join(__dirname, 'platform-render.generated.js'), 'utf8'), RENDER_PLATFORM(deriveRender()),
       '🔴 the committed render capability does not match the shipped forms — regenerate with tools/generate-renderer-contract.js');
-    assert.strictEqual(deriveRender(), false, 'no form carries the shared group picker (GROUP_PICKER_V1) yet → render is off');
+    assert.strictEqual(deriveRender(), true, 'both shipped forms carry the shared group picker → render is on');
+    // STRICT: the exact tag in index.html (once) AND the declaration in the module beside it — each alone leaves it OFF
+    {
+      const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('fs');
+      const os = require('os');
+      const tmp = mkdtempSync(join(os.tmpdir(), 'render-marker-'));
+      const root = join(tmp, 'a', 'b');
+      mkdirSync(root, { recursive: true });
+      const TAG = '<script src="form-group-picker.js"></script>';
+      const MOD = 'const GROUP_PICKER_V1 = 1;\n';
+      const lay = (form, { html, mod }) => {
+        const d = join(tmp, form); mkdirSync(d, { recursive: true });
+        writeFileSync(join(d, 'index.html'), html);
+        if (mod === null) { try { rmSync(join(d, 'form-group-picker.js')); } catch (_) {} } else writeFileSync(join(d, 'form-group-picker.js'), mod);
+      };
+      const both = (spec) => { lay('xpizza-orders', spec); lay('la-musa-orders', { html: `<html>${TAG}</html>`, mod: MOD }); return deriveRender(root); };
+      try {
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: MOD }), true, 'premise: tag + declared module → on');
+        assert.strictEqual(both({ html: '<html></html>', mod: MOD }), false, 'a module nobody loads → off');
+        assert.strictEqual(both({ html: `<html>${TAG}${TAG}</html>`, mod: MOD }), false, 'the tag twice → off (exactly one)');
+        assert.strictEqual(both({ html: '<html><script src="form-group-picker.js" defer></script></html>', mod: MOD }), false, 'not the exact tag → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: null }), false, 'a tag naming a file that is not there → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: '// GROUP_PICKER_V1 someday\n' }), false, 'the marker only in a comment → off');
+        assert.strictEqual(both({ html: `<!-- GROUP_PICKER_V1 --><html></html>`, mod: MOD }), false, 'the marker in the HTML alone → off');
+      } finally { rmSync(tmp, { recursive: true, force: true }); }
+    }
     const src = readFileSync(join(__dirname, 'platform-groups.js'), 'utf8');
     assert.ok(!/restaurant|rid\b|x_pizza|la_musa/i.test(src.replace(/\/\/.*$/gm, '')), 'no brand anywhere in the switch module');
-    ok('the two PLATFORM switches: both off in PB-1; a malformed render artifact throws; no brand appears in the module');
+    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module; 6 near-misses each off), authoring OFF; a malformed render artifact throws; no brand appears in the module');
   }
   console.log(`\ngroup-index: OK (${n})`);
 })().catch((e) => { console.error('group-index FAILED:', e); process.exit(1); });

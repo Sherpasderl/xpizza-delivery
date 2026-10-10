@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "generations": {
-    "orders": 1,
+    "orders": 2,
     "kitchen": 1,
     "dispatch": 1,
     "dispatch-mobile": 1,

@@ -4,5 +4,5 @@
 // The platform RENDER capability for required-choice groups: true only when every shipped customer form carries the
 // shared group picker (GROUP_PICKER_V1). Read by catalog/platform-groups.js; ONE value for every restaurant.
 module.exports = {
-  "render": false
+  "render": true
 };
