@@ -140,7 +140,8 @@ const countCells = (out) => {
    STREAMING. A launcher queued behind 40 busy slots prints admission heartbeats to stderr; captured with spawnSync
    they would surface only after the suite ends, which reads as a hang. Scripts that reach the launcher — directly
    (emulator-run.js in the body) or INDIRECTLY (a test file that self-launches it, e.g. test:kds-manifest-writer) —
-   have their `emulator-run:` stderr lines teed live, while the full output is still captured for ##CELLS. */
+   have their `emulator-run:` lines teed live (from stderr AND stdout — see runScript), while the full output is still
+   captured for ##CELLS. */
 const launcherFiles = (body) => [...String(body).matchAll(/(?:^|\s|")((?:\.\.?\/)?[\w./-]+\.(?:js|mjs))\b/g)].map((m) => m[1]);
 function reachesLauncher(body, root = ROOT) {
   if (/emulator-run\.js/.test(body)) return true;
@@ -205,15 +206,21 @@ function runScript(name, env) {
   const stream = reachesLauncher(pkgScripts[name] || '');
   return new Promise((resolve) => {
     const c = spawn('npm', ['run', '--silent', name], { cwd: ROOT, env });
-    let out = ''; let errBuf = '';
-    c.stdout.on('data', (d) => { out += d; });
-    c.stderr.on('data', (d) => {
-      out += d;
-      if (!stream) return;
-      errBuf += d;
-      const lines = errBuf.split('\n'); errBuf = lines.pop();
-      for (const l of lines) if (/^emulator-run:/.test(l)) process.stderr.write(`  │ ${name}: ${l}\n`);
-    });
+    let out = '';
+    /* BOTH streams are scanned: a launcher reached INDIRECTLY through `node --test` has its stderr forwarded by the test
+       runner VERBATIM onto STDOUT (measured, live, line-for-line) — teeing stderr alone would never show its heartbeats. */
+    const tee = () => {
+      let buf = '';
+      return (d) => {
+        out += d;
+        if (!stream) return;
+        buf += d;
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const l of lines) if (/^emulator-run:/.test(l)) process.stderr.write(`  │ ${name}: ${l}\n`);
+      };
+    };
+    c.stdout.on('data', tee());
+    c.stderr.on('data', tee());
     c.on('error', (e) => resolve({ status: 1, out: `${out}\nspawn error: ${e && e.message}` }));
     c.on('close', (code) => resolve({ status: code, out }));
   });
