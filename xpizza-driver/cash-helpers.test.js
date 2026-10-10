@@ -1,6 +1,6 @@
 // Pure cash-helper tests — run: `node cash-helpers.test.js` (no framework, repo idiom).
 import assert from 'node:assert/strict';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, isCashPayment, collectionFor } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, isCashPayment, collectionFor, COLLECT_WARN_TEXT } from './cash-helpers.js';
 
 let passed = 0;
 function t(name, fn) { fn(); passed++; }
@@ -147,5 +147,8 @@ t('shiftCash: card_delivery counts as collected but NOT cash owed', () => {
   assert.equal(r.cashOwed, 0);
   assert.equal(r.cashOrderCount, 0);
 });
+
+// Pin the exact driver-facing warning copy (owner/advisor-specified) so a literal change is caught.
+t('warn text is exactly the spec string', () => assert.equal(COLLECT_WARN_TEXT, 'Pago no confirmado — consultá a despacho'));
 
 console.log(`✓ cash-helpers: ${passed} tests passed`);
