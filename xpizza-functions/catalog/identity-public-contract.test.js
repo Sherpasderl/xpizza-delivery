@@ -111,6 +111,19 @@ function functionDeclarationOf(html, name) {
   return null;
 }
 
+/* A global the form gets from one of its SHARED MODULES (`<script src="form-*.js">`, which publish `window.NAME = …`)
+   is resolved by loading that module — the real rule, never an empty stub. 1D add-product B: la_musa's helpers now
+   delegate to `GroupPicker` (form-group-picker.js), and a `{}` stub turned "the helper ran" into "X is not a function". */
+function sharedModuleGlobalOf(rid, html, name) {
+  for (const m of html.matchAll(/<script src="(form-[\w-]+\.js)"><\/script>/g)) {
+    const file = path.join(REPO, FORM_DIR[rid], m[1]);
+    if (!fs.existsSync(file) || !new RegExp(`\\bwindow\\.${name}\\s*=`).test(fs.readFileSync(file, 'utf8'))) continue;
+    const mod = require(file);
+    return { value: mod && mod[name] !== undefined ? mod[name] : mod, file: m[1] };
+  }
+  return null;
+}
+
 function livePrepareOf(rid, probeBody) {
   const html = formHtml(rid);
   const at = html.indexOf('function liveMenuPrepare(');
@@ -146,7 +159,9 @@ function livePrepareOf(rid, probeBody) {
       assert.ok(m, `premise — building ${FORM_DIR[rid]}'s liveMenuPrepare failed for a reason this harness cannot resolve: ${e && e.message}`);
       const missing = m[1];
       const decl = functionDeclarationOf(html, missing);
+      const shared = decl ? null : sharedModuleGlobalOf(rid, html, missing);
       if (decl) extras.push(decl);
+      else if (shared) stubs.set(missing, shared.value);
       else stubs.set(missing, /_CATS$/.test(missing) ? [] : {});
     }
   }
