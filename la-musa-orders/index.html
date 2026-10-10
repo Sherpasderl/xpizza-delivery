@@ -3104,7 +3104,7 @@ function renderMenu() {
         '<div class="pizza-card-name">' + safeText(p.name) + '</div>' +
         '<div class="pizza-card-desc">' + safeText(p.desc || '') + '</div>' +
         '<div class="pizza-card-footer">' +
-          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? 'desde L ' + safeText(VARIANT_ITEMS[p.id].basePrice) : (p.price > 0 ? 'L ' + safeText(p.price) : '—')) + '</span>' +
+          /* LA_MUSA_CURRENCY_PREFIX */ '<span class="pizza-card-price">' + (itemIsLauncher(p) ? safeText(GroupPicker.priceText(VARIANT_ITEMS[p.id], MENU) || '—') : (p.price > 0 ? 'L ' + safeText(p.price) : '—')) + '</span>' +
           '<span class="card-extras-indicator" id="extras-indicator-' + safeText(p.id) + '" style="display:none">✓ Extras</span>' +
           /* LA_MUSA_POLISH_V1: removed dead 'Extras →' hint (modal opens via photo tap) */
         '</div>' +
@@ -5590,7 +5590,7 @@ function renderLauncherModal(pizza) {
   html += `<div class="detail-body">
     <div class="detail-name">${escapeHtml(pizza.name)}</div>
     ${pizza.desc ? `<div class="detail-desc">${escapeHtml(pizza.desc)}</div>` : ''}
-    <div class="detail-price">desde L ${safeText(cfg.basePrice)}</div>
+    <div class="detail-price">${safeText(GroupPicker.priceText(cfg, MENU) || '—')}</div>
   </div>`;
 
   // Required single-select protein group
@@ -5655,7 +5655,7 @@ function updateDetailCta() {
      control which looks unavailable should BE unavailable by the same mechanism assistive technology
      and the keyboard use. Set on a real <button>, so `disabled` is honoured natively. */
       cta.style.opacity = '.5'; cta.style.pointerEvents = 'none'; cta.disabled = true;
-      cta.innerHTML = '<span>Elegí una proteína</span>';
+      cta.innerHTML = `<span>${escapeHtml(GroupPicker.promptText(VARIANT_ITEMS[pizza.id]))}</span>`;
       return;
     }
     /* 🔴 THE LAUNCHER IS 86'd PER VARIANT, NOT PER DISH. "Pad Thai" is a launcher; what the kitchen
@@ -5674,7 +5674,7 @@ function updateDetailCta() {
     }
     const total = decision.total;
     cta.className = 'detail-cta';
-    cta.innerHTML = `<span>Agregar al carrito</span>
+    cta.innerHTML = `<span>Agregar</span>
       <span class="detail-cta-divider">·</span>
       <span>L ${total}</span>`;
     return;

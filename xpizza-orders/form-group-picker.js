@@ -41,20 +41,41 @@ function validateVariantBlock(vi, dishes, origin) {
   });
 }
 
+/* ── THE PRICE RULE (rev 6 §0c.3 / §0d.2) — identical for every restaurant ─────────────────────────────────────────
+   Everything is DERIVED from the choices' own prices; a launcher's stored price (and any authored basePrice) is legacy,
+   non-chargeable data and is never an input. */
+function choicePrices(cfg, menu) {
+  return (cfg.variantIds || []).map(vid => menu.find(p => sameDishId(p.id, vid)))
+    .filter(v => v && typeof v.price === "number" && isFinite(v.price) && v.price > 0).map(v => v.price);
+}
+function priceRange(cfg, menu) {
+  const ps = choicePrices(cfg, menu);
+  return ps.length ? { min: Math.min.apply(null, ps), max: Math.max.apply(null, ps) } : null;
+}
+// card / header: "L {min}" when every choice costs the same, else "desde L {min}"; null = nothing renderable
+function priceText(cfg, menu) {
+  const r = priceRange(cfg, menu);
+  return r ? (r.min === r.max ? "L " + r.min : "desde L " + r.min) : null;
+}
+// a choice row's amount: the delta above the cheapest choice, or nothing (the cheapest, or all equal)
+function choiceDelta(v, range) { const d = range ? v.price - range.min : 0; return d > 0 ? d : null; }
+// the disabled commit prompt, derived from the group label: "Elegí tu {label en minúscula}"
+function promptText(cfg) { return "Elegí tu " + String(cfg.label).toLocaleLowerCase("es"); }
+
 /* The required single-select group: its label row and one row per choice. Text reaches the page only through the
    form's own escapers (escapeHtml for body text, safeText for the data-id attribute). */
 function choiceRowsHtml(opts) {
   const cfg = opts.cfg, menu = opts.menu, stagedId = opts.stagedId, escapeHtml = opts.escapeHtml, safeText = opts.safeText;
+  const range = priceRange(cfg, menu);
   let html = `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
   html += `<div class="detail-extras-list">`;
   cfg.variantIds.forEach(vid => {
     const v = menu.find(p => sameDishId(p.id, vid)); if (!v) return;
-    const delta = v.price - cfg.basePrice;
-    const priceLabel = delta > 0 ? `+L ${delta}` : `L ${v.price}`;
+    const delta = choiceDelta(v, range);
     const sel = stagedId === vid;
     html += `<div class="detail-variant-row${sel ? ' sel' : ''}" data-act="variant" data-id="${safeText(vid)}">
-      <div><span class="detail-extras-name">${escapeHtml(v.choice)}</span>
-      <span class="detail-extras-price">${priceLabel}</span></div>
+      <div><span class="detail-extras-name">${escapeHtml(v.choice)}</span>${delta !== null ? `
+      <span class="detail-extras-price">+L ${delta}</span>` : ''}</div>
       <span class="detail-variant-radio"></span>
     </div>`;
   });
@@ -78,6 +99,6 @@ function ctaDecision(opts) {
   return { kind: "add", total: (v ? v.price : 0) + extrasSum };
 }
 
-const GroupPicker = { GROUP_PICKER_V1, sameDishId, isLauncher, isVariant, validateVariantBlock, choiceRowsHtml, ctaDecision };
+const GroupPicker = { GROUP_PICKER_V1, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta, promptText, choiceRowsHtml, ctaDecision };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

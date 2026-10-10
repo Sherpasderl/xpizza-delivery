@@ -1835,17 +1835,24 @@ for (const dir of Object.keys(BRAND)) {
        served block applied or was dropped on the floor. The supplied block therefore carries a value
        the literal does not have, and that value is what is read back — and read back off the SCREEN as
        well, because a global nobody renders is not evidence the customer saw a working launcher. */
+    /* 1D add-product B (rev 6 §0d.2): the displayed "desde" is DERIVED from the choices' own prices — an authored
+       basePrice is legacy data and is never shown. So the value read back off the screen is the supplied LABEL
+       (which the literal does not have), and the stale basePrice the block also carries must NOT be what shows. */
     {
       const m = B.menu(w);
       const distinct = cfg.basePrice + 7;
-      m.variant_items = { [launcherKey]: { ...cfg, basePrice: distinct } };
+      const distinctLabel = `${cfg.label} Servida`;
+      m.variant_items = { [launcherKey]: { ...cfg, label: distinctLabel, basePrice: distinct } };
       await serve(w, envelope(B.rid, m));
-      assert.strictEqual(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey].basePrice, distinct,
+      assert.strictEqual(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey].label, distinctLabel,
         `${dir}: non-vacuity — the SUPPLIED block applied, not the page's own literal`);
       w.openDetailModal(launcherKey);
       const modal = w.document.getElementById('detail-scroll');
-      assert.ok(modal.textContent.includes('desde L ' + distinct),
-        `${dir}: non-vacuity — and the applied basePrice is what the launcher shows`);
+      assert.ok(modal.textContent.includes(distinctLabel),
+        `${dir}: non-vacuity — and the applied block is what the launcher shows`);
+      const minChoice = Math.min(...cfg.variantIds.map((vid) => m.dishes.find((d) => d.id === vid).price));
+      assert.ok(modal.textContent.includes('desde L ' + minChoice) && !modal.textContent.includes('desde L ' + distinct),
+        `${dir}: the "desde" is the cheapest CHOICE (L ${minChoice}), never the authored basePrice (L ${distinct})`);
       const rows = modal.querySelectorAll('.detail-variant-row');
       assert.strictEqual(rows.length, cfg.variantIds.length,
         `${dir}: 🔴 the launcher renders one row per variant — never a required group with no choices (got ${rows.length})`);

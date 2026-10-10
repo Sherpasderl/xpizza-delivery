@@ -43,7 +43,27 @@ test('choiceRowsHtml: the label row + one row per choice, the selected one marke
   assert.strictEqual((html.match(/detail-variant-row/g) || []).length, 2, 'one row per RESOLVED choice (an unresolvable id renders nothing)');
   assert.ok(/data-id="a"[\s\S]*Pollo &lt;b&gt;/.test(html), 'the choice label is escaped');
   assert.ok(/detail-variant-row sel" data-act="variant" data-id="a"/.test(html) && !/sel" data-act="variant" data-id="b"/.test(html), 'only the staged choice is marked');
-  assert.ok(/\+L 35/.test(html) && /L 307/.test(html), 'today’s labels: +L delta above "desde", the price otherwise (step 1 = la_musa’s exact rule)');
+  assert.ok(/data-id="a"[\s\S]*\+L 35/.test(html), 'a dearer choice shows its delta above the cheapest');
+  assert.ok(!/L 307/.test(html) && (html.match(/detail-extras-price/g) || []).length === 1, 'the cheapest choice shows NO amount (rev 6 §0c.3)');
+  const equal = GP.choiceRowsHtml({ cfg: { label: 'Salsa', variantIds: ['x', 'y'] }, menu: [{ id: 'x', choice: 'Roja', price: 624 }, { id: 'y', choice: 'Vodka', price: 624 }], stagedId: null, escapeHtml: esc, safeText: esc });
+  assert.ok(!/detail-extras-price/.test(equal), 'all choices equal → no row shows an amount');
+  const stale = GP.choiceRowsHtml({ cfg: { label: 'P', basePrice: 9999, variantIds: ['a', 'b'] }, menu, stagedId: null, escapeHtml: esc, safeText: esc });
+  assert.ok(/\+L 35/.test(stale), 'a stale authored basePrice is never an input: deltas come from the choices themselves');
+});
+
+test('the price rule is DERIVED from the choices: "L {min}" when equal, else "desde L {min}"', () => {
+  const menu = [{ id: 'a', price: 342 }, { id: 'b', price: 307 }, { id: 'c', price: 414 }, { id: 'z', price: 0 }, { id: 'n', price: '9' }];
+  assert.deepStrictEqual(GP.priceRange({ variantIds: ['a', 'b', 'c'] }, menu), { min: 307, max: 414 });
+  assert.strictEqual(GP.priceText({ variantIds: ['a', 'b', 'c'], basePrice: 1 }, menu), 'desde L 307', 'unequal → "desde", from the cheapest CHOICE (never the stored basePrice)');
+  assert.strictEqual(GP.priceText({ variantIds: ['a', 'a'] }, menu), 'L 342', 'equal → the price alone');
+  assert.strictEqual(GP.priceText({ variantIds: ['a', 'z', 'n', 'gone'] }, menu), 'L 342', 'unpriceable / unresolvable choices are not inputs');
+  assert.strictEqual(GP.priceText({ variantIds: ['z', 'gone'] }, menu), null, 'nothing priceable → null (the form renders its own placeholder)');
+  assert.deepStrictEqual([GP.choiceDelta({ price: 342 }, { min: 307 }), GP.choiceDelta({ price: 307 }, { min: 307 }), GP.choiceDelta({ price: 5 }, null)], [35, null, null]);
+});
+
+test('promptText: "Elegí tu {label en minúscula}", the same for every restaurant', () => {
+  assert.strictEqual(GP.promptText({ label: 'Proteína' }), 'Elegí tu proteína');
+  assert.strictEqual(GP.promptText({ label: 'SALSA' }), 'Elegí tu salsa');
 });
 
 test('ctaDecision: choose → soldout → add (the chosen price + the staged extras)', () => {
