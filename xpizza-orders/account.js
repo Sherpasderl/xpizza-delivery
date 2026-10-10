@@ -1719,9 +1719,10 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
       const seed = (replace) => {
         if (replace) {
           try {
-            const had = Object.keys(qty).filter((k) => (qty[k] || 0) > 0);
             Object.keys(qty).forEach((k) => { qty[k] = 0; }); Object.keys(pizzaExtras).forEach((k) => { delete pizzaExtras[k]; });
-            had.forEach(syncCartLine);   // HOTFIX: "Empezar de nuevo" empties CART too, not only the quantities
+            // HOTFIX: "Empezar de nuevo" is a WHOLE NEW cart — CART's lines AND its captured-options ledger (else the discarded
+            // cart's option prices would be re-used for the reorder's options); "Agregar" (merge) keeps both untouched
+            try { if (typeof CART !== 'undefined' && typeof CART.reset === 'function') CART.reset(); } catch (_) {}
           } catch (_) {}
         }
         applyReorderToCart(resolved, laMusa);

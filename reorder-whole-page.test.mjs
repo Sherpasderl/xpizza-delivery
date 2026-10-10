@@ -4,9 +4,9 @@
 // menu applied as in production, the account chip → "Mis pedidos" (the real history pane, reading user_orders entries
 // in the exact shape createOrder writes — create-order-build.js attachCustomerAttribution) → tap "Reordenar". The ONLY
 // seam is account.js's Firebase SDK (a dynamic https import jsdom cannot run), replaced by a fake that serves the
-// history read; the pane, the button, the reorder reader and the form's cart are all as shipped.
-// Asserted where the customer and the order see it: the card steppers, CART (cartLines), calcTotal, the cart pill, and
-// the checkout serialization (buildOrder) — plus the existing "no longer available" notice for an off-menu line.
+// history read; the pane, the button, the smart-cart prompt, the reorder reader and the form's cart are all as shipped.
+// Asserted where the customer and the order see it: the card steppers, the cart pill, CART (cartLines), calcTotal and
+// the REAL checkout body (buildOrder() → currentOrder: items + total) — plus the existing "no longer available" notice.
 import assert from 'node:assert';
 import { loadForm, settle, serve, envelope, closeAll, counter, BRAND } from './form-harness.mjs';
 
@@ -20,11 +20,15 @@ const ENTRY = {
     items_text: '2x Sichuan Spicy Wonton (L223) [+ 1x Arroz Blanco] | 1x Pad Thai - Pollo (L342) | 1x Gone (L1)',
     items: [{ key: 'dimsum_01', qty: 2, options: [{ id: 'rice_white', qty: 1 }] }, { key: 'noodle_01_pollo', qty: 1 }, { key: 'gone_99', qty: 1 }] },
 };
-// What each recipe must restore: [dish id, qty] and the expected total from the LIVE menu.
-const WANT = {
-  x_pizza: { lines: [[2, 2], [19, 1]], total: 2 * 340 + 624 + 39 },
-  la_musa: { lines: [['dimsum_01', 2], ['noodle_01_pollo', 1]], total: 2 * 223 + 50 + 342 },
-};
+/* Per brand: the restored lines [dish id, qty], the total from the LIVE menu, which of those dishes have a CARD on the
+   grid (a choice of a group has none — it is reached through its launcher), the extra the recipe restores (for the
+   ledger cells) with the form's OWN hand-toggle for it, and another dish to pre-load the cart with. */
+const BRANDS = [
+  { dir: 'xpizza-orders', rid: 'x_pizza', marker: 'xpizza_acct', lines: [[2, 2], [19, 1]], total: 2 * 340 + 624 + 39, cards: [2, 19], noCard: [],
+    extra: { id: 'e1', price: 39, on: 19, toggle: (w) => w.toggleDetailExtra('e1', 19, 0) }, other: { id: 3, price: 337 } },
+  { dir: 'la-musa-orders', rid: 'la_musa', marker: 'lamusa_acct', lines: [['dimsum_01', 2], ['noodle_01_pollo', 1]], total: 2 * 223 + 50 + 342, cards: ['dimsum_01'], noCard: ['noodle_01_pollo'],
+    extra: { id: 'rice_white', price: 50, on: 'dimsum_01', toggle: (w) => w.chgDetailExtra('rice_white', 'dimsum_01', 1) }, other: { id: 'dimsum_03', price: 198 } },
+];
 
 function fakeFirebase(rid) {
   const snap = (v) => ({ exists: () => v != null, val: () => v });
@@ -41,7 +45,7 @@ function fakeFirebase(rid) {
     },
   };
 }
-const transforms = (rid, marker) => ({
+const transforms = (marker) => ({
   'account.js': (code) => {
     const seam = 'async function ensureFirebase() {';
     assert.strictEqual(code.split(seam).length, 2, 'premise: account.js has exactly one ensureFirebase');
@@ -49,112 +53,137 @@ const transforms = (rid, marker) => ({
       + code.replace(seam, `${seam} if (window.__FB_FAKE) return window.__FB_FAKE;`);
   },
 });
-
-for (const [dir, rid, marker] of [['xpizza-orders', 'x_pizza', 'xpizza_acct'], ['la-musa-orders', 'la_musa', 'lamusa_acct']]) {
-  const B = BRAND[dir];
-  const w = loadForm(dir, { transforms: transforms(rid, marker) });
-  w.__FB_FAKE = fakeFirebase(rid);
+async function page(b) {
+  const B = BRAND[b.dir];
+  const w = loadForm(b.dir, { transforms: transforms(b.marker) });
+  w.__FB_FAKE = fakeFirebase(b.rid);
   await settle();
   await serve(w, envelope(B.rid, B.menu(w)));                       // the live menu, applied as in production
-  const toasts = [];
-  const toastEl = () => w.document.querySelector('.acct-toast, #acct-toast');
-
-  // chip → sheet → "Mis pedidos" → "Reordenar"
+  return w;
+}
+// chip → sheet → "Mis pedidos" → "Reordenar" [→ the smart-cart prompt's choice]
+async function reorderViaUI(w, choice) {
   const chip = w.document.querySelector('#acct-chip button');
-  assert.ok(chip && /Ana/.test(chip.textContent), `${rid}: premise — the signed-in chip`);
+  assert.ok(chip && /Ana/.test(chip.textContent), 'premise — the signed-in chip');
   chip.click(); await settle();
   const row = w.document.getElementById('acct-row-orders');
-  assert.ok(row, `${rid}: premise — the account sheet shows "Mis pedidos"`);
+  assert.ok(row, 'premise — the account sheet shows "Mis pedidos"');
   row.click(); await settle(); await settle();
   const btn = w.document.querySelector('#acct-pane-orders .acct-ordreorder');
-  assert.ok(btn, `${rid}: premise — the history pane lists the order with a Reordenar button`);
-  const obs = new w.MutationObserver(() => { const t = toastEl(); if (t && t.textContent) toasts.push(t.textContent.trim()); });
-  obs.observe(w.document.body, { childList: true, subtree: true, characterData: true });
+  assert.ok(btn, 'premise — the history pane lists the order with a Reordenar button');
   btn.click(); await settle(); await settle();
-  obs.disconnect();
-
-  // ── what the customer and the order see ──
-  const lines = w.eval('cartLines().map(l => [String(l.key), l.qty])');
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(lines)), WANT[rid].lines.map(([id, n]) => [String(id), n]), `🔴 ${rid}: CART holds the reordered lines`);
-  assert.strictEqual(w.calcTotal(), WANT[rid].total, `🔴 ${rid}: the total is the reordered order at today's prices`);
-  for (const [id, n] of WANT[rid].lines) {
-    const num = w.document.getElementById(`qty-${id}`) || w.document.getElementById(`qty-badge-num-${id}`);
-    if (num) assert.strictEqual(num.textContent, String(n), `🔴 ${rid}: card ${id} shows its quantity`);
+  if (choice) {
+    const p = w.document.getElementById(choice === 'add' ? 'acct-ro-add' : 'acct-ro-replace');
+    assert.ok(p, `premise — the smart-cart prompt offers "${choice}"`);
+    p.click(); await settle(); await settle();
+  } else {
+    assert.strictEqual(w.document.getElementById('acct-ro-add'), null, 'premise — an empty cart reorders without the prompt');
   }
-  const visibleControls = WANT[rid].lines.filter(([id]) => { const c = w.document.getElementById(`qty-controls-${id}`); return c && c.classList.contains('visible'); }).length;
-  const anyCard = WANT[rid].lines.some(([id]) => w.document.getElementById(`qty-controls-${id}`));
-  if (anyCard) assert.ok(visibleControls > 0, `🔴 ${rid}: the reordered cards show their steppers`);
-  // the checkout body's items are redeemCartItems() (buildOrder: `items: redeemCartItems()`, both forms); buildOrder itself
-  // also needs the customer's details, which this chain does not fill, so its item serializer is asserted directly
-  assert.strictEqual(w.eval('cartConflicts().length'), 0, `🔴 ${rid}: the reordered cart carries no conflict that would block the send`);
-  const sent = JSON.parse(JSON.stringify(w.eval('redeemCartItems()')));
-  assert.deepStrictEqual(sent.map((i) => i.qty), WANT[rid].lines.map(([, n]) => n), `🔴 ${rid}: the checkout serializes every reordered line`);
-  assert.strictEqual(sent.reduce((t, i) => t + i.price * i.qty + (i.extrasTotal || 0), 0), WANT[rid].total, `🔴 ${rid}: …at the same total, extras included`);
-  assert.ok(toasts.some((t) => /ya no está disponible/.test(t)) || /ya no está disponible/.test(w.document.body.textContent),
-    `${rid}: the off-menu line produced today's notice`);
-  ok(`${rid}: chip → Mis pedidos → Reordenar fills the cart — CART lines, L ${WANT[rid].total}, steppers, the checkout items; the off-menu line gets today's notice`);
+}
+const cartKeys = (w) => JSON.parse(JSON.stringify(w.eval('cartLines().map(l => [String(l.key), l.qty])')));
+const sorted = (a) => a.map(([k, n]) => [String(k), n]).sort();
+const pill = (w) => w.document.getElementById('cart-total').textContent;
+// the REAL checkout body: buildOrder() → currentOrder (both forms send `items: redeemCartItems()` and `total: calcTotal()`)
+function checkout(w) {
+  assert.strictEqual(w.buildOrder(), true, 'buildOrder accepts the cart (no conflict blocks the send)');
+  return JSON.parse(JSON.stringify(w.eval('({ items: currentOrder.items, total: currentOrder.total })')));
+}
+const lineTotal = (items) => items.reduce((t, i) => t + i.price * i.qty + (i.extrasTotal || 0), 0);   // x_pizza's subtotal excludes extras, la_musa's includes them
+
+function assertFilled(w, b, { lines, total }) {
+  assert.deepStrictEqual(cartKeys(w), lines.map(([id, n]) => [String(id), n]), `🔴 ${b.rid}: CART holds the reordered lines`);
+  assert.strictEqual(w.calcTotal(), total, `🔴 ${b.rid}: calcTotal is the reordered cart at today's prices`);
+  assert.strictEqual(pill(w), `L ${total}`, `🔴 ${b.rid}: the cart pill shows it`);
+  for (const id of b.cards) {
+    const n = lines.find(([k]) => String(k) === String(id))[1];
+    // A card in the cart shows its quantity in ONE of its two real states: the open stepper, or — once any click lands
+    // outside it (the form's own registerOutsideClick, which this UI chain's clicks can trigger) — the collapsed badge.
+    // Either way it is never back in its zero state ("+" only), which is what the owner saw.
+    const controls = w.document.getElementById(`qty-controls-${id}`);
+    const num = w.document.getElementById(`qty-${id}`);
+    const badge = w.document.getElementById(`qty-badge-${id}`);
+    const badgeNum = w.document.getElementById(`qty-badge-num-${id}`);
+    const addBtn = w.document.getElementById(`qty-add-${id}`);
+    assert.ok(controls && num && badge && badgeNum && addBtn, `premise — card ${id} is on the grid`);
+    const open = controls.classList.contains('visible');
+    const collapsed = badge.style.display !== 'none';
+    assert.ok(open || collapsed, `🔴 ${b.rid}: card ${id} shows its stepper or its quantity badge`);
+    assert.strictEqual(addBtn.style.display, 'none', `🔴 ${b.rid}: card ${id} is not in its zero state`);
+    assert.strictEqual((open ? num : badgeNum).textContent, String(n), `🔴 ${b.rid}: card ${id} shows its quantity`);
+  }
+  for (const id of b.noCard) assert.strictEqual(w.document.getElementById(`card-${id}`), null, `${b.rid}: ${id} is a choice of a group — no card of its own (by design)`);
+  const body = checkout(w);
+  assert.deepStrictEqual(body.items.map((i) => i.qty), lines.map(([, n]) => n), `🔴 ${b.rid}: the checkout body carries every reordered line`);
+  assert.strictEqual(body.total, total, `🔴 ${b.rid}: the checkout body's total`);
+  assert.strictEqual(lineTotal(body.items), total, `🔴 ${b.rid}: …and its lines (extras included) sum to it`);
 }
 
-// ── a NON-EMPTY cart: the real smart-cart prompt — "Agregar a mi pedido" merges, "Empezar de nuevo" replaces — on both ──
-async function openHistoryAndReorder(w, choice) {
-  w.document.querySelector('#acct-chip button').click(); await settle();
-  w.document.getElementById('acct-row-orders').click(); await settle(); await settle();
-  w.document.querySelector('#acct-pane-orders .acct-ordreorder').click(); await settle();
-  const btn = w.document.getElementById(choice === 'add' ? 'acct-ro-add' : 'acct-ro-replace');
-  assert.ok(btn, `premise — the smart-cart prompt offers ${choice}`);
-  btn.click(); await settle(); await settle();
+// ── 1. an empty cart: Reordenar fills it — both forms ───────────────────────────────────────────────────────────────
+for (const b of BRANDS) {
+  const w = await page(b);
+  await reorderViaUI(w, null);
+  assertFilled(w, b, b);
+  assert.strictEqual((w.document.getElementById('acct-toast') || {}).textContent, '1 producto ya no está disponible', `${b.rid}: the off-menu line produced today's notice`);
 }
-for (const [dir, rid, marker, other, otherPrice] of [['xpizza-orders', 'x_pizza', 'xpizza_acct', 3, 337], ['la-musa-orders', 'la_musa', 'lamusa_acct', 'dimsum_03', 198]]) {
+ok('an empty cart: chip → Mis pedidos → Reordenar fills it on both forms — steppers, pill, CART, calcTotal and the real checkout body (items + total); the off-menu line gets today\'s notice');
+
+// ── 2. a non-empty cart, through the real prompt: "Agregar" merges, "Empezar de nuevo" replaces — both forms ────────
+for (const b of BRANDS) {
   for (const choice of ['add', 'replace']) {
-    const B = BRAND[dir];
-    const w = loadForm(dir, { transforms: transforms(rid, marker) });
-    w.__FB_FAKE = fakeFirebase(rid);
-    await settle();
-    await serve(w, envelope(B.rid, B.menu(w)));
-    w.chg(other, 1); await settle();
-    assert.strictEqual(w.calcTotal(), otherPrice, `${rid}: premise — one ${other} already in the cart`);
-    await openHistoryAndReorder(w, choice);
-    const keys = JSON.parse(JSON.stringify(w.eval('cartLines().map(l => String(l.key))'))).sort();
-    const reordered = WANT[rid].lines.map(([id]) => String(id));
+    const w = await page(b);
+    w.chg(b.other.id, 1); await settle();
+    assert.strictEqual(w.calcTotal(), b.other.price, `${b.rid}: premise — one ${b.other.id} already in the cart`);
+    await reorderViaUI(w, choice);
     if (choice === 'add') {
-      assert.deepStrictEqual(keys, [String(other), ...reordered].sort(), `🔴 ${rid}: "Agregar" keeps the existing line and adds the reorder`);
-      assert.strictEqual(w.calcTotal(), otherPrice + WANT[rid].total, `🔴 ${rid}: …and the total is both`);
+      assert.deepStrictEqual(sorted(cartKeys(w)), sorted([[b.other.id, 1], ...b.lines]), `🔴 ${b.rid}: "Agregar" keeps the existing line and adds the reorder`);
+      assert.strictEqual(w.calcTotal(), b.other.price + b.total, `🔴 ${b.rid}: …and the total is both`);
+      assert.strictEqual(pill(w), `L ${b.other.price + b.total}`, `🔴 ${b.rid}: the pill shows both`);
+      assert.strictEqual(checkout(w).total, b.other.price + b.total, `🔴 ${b.rid}: the checkout body is the merged cart`);
     } else {
-      assert.deepStrictEqual(keys, [...reordered].sort(), `🔴 ${rid}: "Empezar de nuevo" leaves ONLY the reorder in CART`);
-      assert.strictEqual(w.calcTotal(), WANT[rid].total, `🔴 ${rid}: …and the total is the reorder alone`);
-      const c = w.document.getElementById(`qty-controls-${other}`);
-      if (c) assert.ok(!c.classList.contains('visible'), `🔴 ${rid}: the replaced dish's card is back to its zero state`);
+      assertFilled(w, b, b);
+      const c = w.document.getElementById(`qty-controls-${b.other.id}`);
+      assert.ok(c && !c.classList.contains('visible'), `🔴 ${b.rid}: the replaced dish's card is back to its zero state`);
     }
   }
 }
-ok('a non-empty cart, through the real prompt: "Agregar a mi pedido" merges (both lines, both totals), "Empezar de nuevo" leaves only the reorder in CART — both forms');
+ok('a non-empty cart, through the real prompt on both forms: "Agregar a mi pedido" merges (lines, pill, checkout body), "Empezar de nuevo" leaves ONLY the reorder');
 
-// ── an extra restored by reorder is CAPTURED like a toggled one: a later re-price surfaces exactly as it does for a toggle ──
-{
-  const conflictsAfterReprice = async (via) => {
-    const dir = 'xpizza-orders'; const B = BRAND[dir];
-    const w = loadForm(dir, { transforms: transforms('x_pizza', 'xpizza_acct') });
-    w.__FB_FAKE = fakeFirebase('x_pizza');
-    await settle();
-    await serve(w, envelope(B.rid, B.menu(w)));
-    if (via === 'reorder') {
-      w.document.querySelector('#acct-chip button').click(); await settle();
-      w.document.getElementById('acct-row-orders').click(); await settle(); await settle();
-      w.document.querySelector('#acct-pane-orders .acct-ordreorder').click(); await settle(); await settle();
-    } else {
-      w.chg(2, 2); w.chg(19, 1); await settle();
-      w.toggleDetailExtra('e1', 19, 0); await settle();
-    }
-    const m = B.menu(w); m.extras = m.extras.map((e) => (e.id === 'e1' ? { ...e, price: e.price + 11 } : e));
-    await serve(w, envelope(B.rid, m));
-    return JSON.parse(JSON.stringify(w.eval('cartConflicts().map(c => [String(c.key), c.unresolved || c.kind || null])')));
-  };
-  const viaToggle = await conflictsAfterReprice('toggle');
-  const viaReorder = await conflictsAfterReprice('reorder');
-  assert.ok(viaToggle.length > 0, 'premise: a re-priced option the customer chose is surfaced, not silently adopted');
-  assert.deepStrictEqual(viaReorder, viaToggle, '🔴 a reordered extra is captured exactly like a toggled one (same conflict after a re-price)');
-  ok('a reordered extra is captured as priced at reorder time — after a re-price it surfaces exactly as a toggled extra does');
+/* ── 3. THE CAPTURED-OPTIONS LEDGER (codex r1 P2) — both forms ───────────────────────────────────────────────────────
+   The customer chose the recipe's extra by hand earlier (captured at its price), the merchant then re-prices it +L11,
+   and the customer reorders:
+     "Empezar de nuevo" = a WHOLE NEW cart → the reorder's extra is captured at TODAY's price: no conflict, and the pill,
+                          CART and the checkout body carry the new price;
+     "Agregar"          = a merge → the earlier capture is KEPT (the price that customer agreed to); the re-price surfaces
+                          exactly as it does for an extra toggled by hand. */
+async function capturedThenRepriced(b) {
+  const B = BRAND[b.dir];
+  const w = await page(b);
+  w.chg(b.extra.on, 1); await settle();
+  b.extra.toggle(w); await settle();
+  const m = B.menu(w); m.extras = m.extras.map((e) => (e.id === b.extra.id ? { ...e, price: e.price + 11 } : e));
+  await serve(w, envelope(B.rid, m));
+  assert.strictEqual(w.liveMenuGlobalGet('EXTRAS').find((e) => e.id === b.extra.id).price, b.extra.price + 11, `${b.rid}: premise — the extra was re-priced live`);
+  return w;
 }
+const conflicts = (w) => JSON.parse(JSON.stringify(w.eval('cartConflicts().map(c => String(c.key))'))).sort();
+const agreedExtraPrice = (w, id) => w.eval(`(function(){ const ex = findMenuExtra(${JSON.stringify(id)}); const k = CART.noteExtra(ex); return CART.extraAgreed(k).price; })()`);
+for (const b of BRANDS) {
+  {
+    const w = await capturedThenRepriced(b);
+    assert.ok(conflicts(w).length > 0, `${b.rid}: premise — the hand-chosen extra, re-priced, is surfaced (not silently adopted)`);
+    await reorderViaUI(w, 'replace');
+    assert.deepStrictEqual(conflicts(w), [], `🔴 ${b.rid}: "Empezar de nuevo" carries NO captured price from the discarded cart (no conflict)`);
+    assertFilled(w, b, { lines: b.lines, total: b.total + 11 });
+  }
+  {
+    const w = await capturedThenRepriced(b);
+    const before = conflicts(w);
+    await reorderViaUI(w, 'add');
+    assert.ok(conflicts(w).length > 0 && before.every((k) => conflicts(w).includes(k)), `🔴 ${b.rid}: "Agregar" keeps the ledger — the earlier capture still stands against the re-price`);
+    assert.strictEqual(agreedExtraPrice(w, b.extra.id), b.extra.price, `🔴 ${b.rid}: the agreed price after the merge is the ORIGINAL L ${b.extra.price}, not the re-price`);
+  }
+}
+ok('the captured-options ledger, on both forms: after a +L11 re-price, "Empezar de nuevo" captures the reorder\'s extra at today\'s price (no conflict; pill, CART, checkout at +11) while "Agregar" keeps the earlier agreed price');
 
 closeAll();
 console.log('\nreorder-whole-page: OK');

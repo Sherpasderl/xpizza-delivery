@@ -132,6 +132,10 @@ function createCart(options) {
   const has = (key) => lines.has(key);
   const keys = () => [...lines.keys()];
   const clear = () => lines.clear();
+  // A WHOLE NEW CART: the lines AND the captured-options ledger. clear() keeps the ledger on purpose (a line removed and
+  // re-added keeps the option price the customer already agreed to); a cart the customer explicitly DISCARDS ("Empezar de
+  // nuevo") must not carry the discarded cart's captured option prices into the fresh one.
+  const reset = () => { lines.clear(); chosenExtras.clear(); };
 
   // 🔴 HOW A LINE BECOMES UNRESOLVED. Three ways, and each is a different question to the customer:
   //
@@ -272,7 +276,7 @@ function createCart(options) {
   const remove = (key) => lines.delete(key);
 
   return {
-    setQty, setQtyByKey, qtyOf, has, keys, clear, remove,
+    setQty, setQtyByKey, qtyOf, has, keys, clear, reset, remove,
     noteExtra, extraAddedRecord, extraAgreed, classifyExtra, acceptExtra,
     resolve, accept, classify, snapshot, hydrate,
   };
