@@ -246,6 +246,59 @@ const refuses = (env, re, label) => {
     ok('no network and no launch at import: index.js full load + the portal entry, each with no signal AND with the discovery env; cors-preflight.test.js + rtdb-init.test.js run with loopback-only, off-band contact');
   }
 
+  // ── 9. P1-A + §c.1: EVERY HARNESS refuses BEFORE any client/HTTP — missing signal, foreign, half-configured ──
+  {
+    /* Each harness is driven for real, under the no-connect observer, and must refuse as ONE process with a clean
+       nonzero exit, zero connection attempts and zero launches. Its refusal must precede require('../index.js'):
+       with no signal lib/admin.js takes the PRODUCTION branch, which is the whole point of P1-A. */
+    const runRec = (args, extra) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r1-harness-'));
+      try {
+        const env = cleanEnv({ ...extra, NO_CONNECT_DIR: dir });
+        env.NODE_OPTIONS = `${env.NODE_OPTIONS || ''} --require ${NO_CONNECT}`.trim();
+        const r = spawnSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8', timeout: 60000, env });
+        const recs = fs.readdirSync(dir).filter((f) => f.endsWith('.rec')).map((f) => fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter(Boolean));
+        return { r, recs, connects: recs.flatMap((l) => l.filter((x) => x.startsWith('CONNECT '))), spawns: recs.flatMap((l) => l.filter((x) => x.startsWith('SPAWN '))) };
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    };
+    const PROD_FN = 'https://us-central1-xpizza-delivery.cloudfunctions.net/createOrder';
+    const good = { FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: String(OFF), FIREBASE_EMULATOR_HUB: lo(P.hub) };
+    const HARNESSES = [
+      ['test/d4p1-capture-order-control.js', {}],
+      ['deploy/emulator-e2e.js', { CREATEORDER_URL: `http://127.0.0.1:${P.functions}/demo-xpizza/us-central1/createOrder` }],
+      ['deploy/config-read-probe.js', { CREATEORDER_URL: `http://127.0.0.1:${P.functions}/demo-xpizza/us-central1/createOrder`, INTAKE_SECRET: 's', PROBE_STAMP: 'r1-stamp-0123456789abcdef' }],
+      ['test/portal-emulator-workers.probe.js', {}],
+      ['test/preparing-ready.emulator.test.js', {}],
+    ];
+    const SHAPES = [
+      ['NO emulator signal', () => ({})],
+      ['a FOREIGN host', () => ({ ...good, FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABASE_EMULATOR_HOST: 'evil.example:9000' })],
+      ['HALF-configured (RTDB only)', () => ({ FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: String(OFF) })],
+    ];
+    let driven = 0;
+    for (const [file, extra] of HARNESSES) {
+      for (const [shape, env] of SHAPES) {
+        const x = runRec([file], { ...extra, ...env() });
+        const label = `${file} under ${shape}`;
+        assert.ok(typeof x.r.status === 'number' && x.r.status !== 0 && x.r.signal === null, `🔴 ${label}: did not refuse (exit ${x.r.status}, signal ${x.r.signal})\n${(x.r.stderr || '').slice(-600)}`);
+        assert.match(x.r.stderr || '', /^[ \t]*(?:🔴 REFUSED —|🛑 REFUSING TO RUN —)/m, `🔴 ${label}: no anchored refusal banner\n${(x.r.stderr || '').slice(-600)}`);
+        assert.ok(x.recs.length === 1, `🔴 ${label}: ${x.recs.length} process records — a refusal must be ONE observed process`);
+        assert.deepStrictEqual(x.connects, [], `🔴 ${label}: contacted ${x.connects.join(', ')} before refusing`);
+        assert.deepStrictEqual(x.spawns, [], `🔴 ${label}: launched ${x.spawns.join(', ')} before refusing`);
+        driven += 1;
+      }
+    }
+    // config-read-probe: a PROD Functions URL with valid emulator vars is refused before the fetch (non-vacuous: the
+    // same env with a loopback URL gets PAST the guard and does attempt the fetch, so the guard is what stopped it)
+    const prod = runRec(['deploy/config-read-probe.js'], { ...good, CREATEORDER_URL: PROD_FN, INTAKE_SECRET: 's', PROBE_STAMP: 'r1-stamp-0123456789abcdef' });
+    assert.ok(prod.r.status !== 0 && /REFUSED — emulator endpoint: functions URL/.test(prod.r.stderr) && !prod.connects.length, `🔴 config-read-probe called (or did not refuse) a PROD Functions URL in emulator mode\n${prod.r.stderr}`);
+    const past = runRec(['deploy/config-read-probe.js'], { ...good, CREATEORDER_URL: `http://127.0.0.1:${P.functions}/demo-xpizza/us-central1/createOrder`, INTAKE_SECRET: 's', PROBE_STAMP: 'r1-stamp-0123456789abcdef' });
+    assert.ok(past.connects.some((c) => c.includes(`127.0.0.1:${P.functions}`)), `premise — with a valid loopback URL the probe gets PAST the guard to its fetch (${past.connects.join(', ') || 'no contact'})`);
+    const both = runRec(['deploy/config-read-probe.js'], { ...good, PROBE_TARGET: 'prod', CREATEORDER_URL: PROD_FN, INTAKE_SECRET: 's', PROBE_STAMP: 'r1-stamp-0123456789abcdef' });
+    assert.ok(both.r.status !== 0 && /mixed signals/.test(both.r.stderr) && !both.connects.length, '🔴 PROBE_TARGET=prod WITH emulator vars was not refused');
+    ok(`P1-A/§c.1: ${HARNESSES.length} harnesses × ${SHAPES.length} shapes (${driven} runs) each REFUSE as one process with zero contact and zero launches; config-read-probe refuses a PROD Functions URL in emulator mode before its fetch (the loopback control does reach its fetch) and refuses prod+emulator mixed signals`);
+  }
+
   console.log(`\nemulator-endpoint: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('emulator-endpoint FAILED:', e && e.stack || e); process.exit(1); });
