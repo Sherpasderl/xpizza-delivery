@@ -40,7 +40,41 @@ function deriveContract(restaurantId) {
     // definition without a priority entry.
     badges = priority.filter((t) => defined.has(t));
   } catch (_) { badges = []; }        // no badge system in this renderer: it can select NOTHING
-  return { categoriesNamed, badges };
+  return { categoriesNamed, badges, renderedCategories: renderedCategoriesOf(src) };
+}
+
+// 1D add-product A §1 — WHICH CATEGORIES DOES THE RENDERER ACTUALLY DRAW? A category the catalog accepts but
+// the form never draws is a product that is priced, orderable and INVISIBLE, and nothing downstream would
+// refuse it. So the contract carries the set, read from the shipped renderMenu itself:
+//   • a renderer that walks CATEGORIES and filters `p.cat === c.id` draws every category in that literal;
+//   • a renderer that filters literal ids (`p.cat==='ny'`) draws exactly those.
+// Anything else — no renderMenu, an unparseable body, a CATEGORIES walk with no literal — is [] (FAIL CLOSED):
+// no category is known to render, so no product can be added to one. Order is the renderer's own.
+function renderedCategoriesOf(src) {
+  const start = src.search(/function\s+renderMenu\s*\(/);
+  if (start === -1) return [];
+  const open = src.indexOf('{', start);
+  if (open === -1) return [];
+  let depth = 0; let end = -1;
+  for (let i = open; i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) return [];
+  const body = src.slice(open, end + 1);
+  const out = [];
+  const add = (id) => { if (typeof id === 'string' && id && !out.includes(id)) out.push(id); };
+  if (/CATEGORIES\.forEach\(\s*\(?\s*(\w+)\s*\)?\s*=>/.test(body)) {
+    const v = body.match(/CATEGORIES\.forEach\(\s*\(?\s*(\w+)\s*\)?\s*=>/)[1];
+    if (new RegExp(`p\\.cat\\s*===\\s*${v}\\.id\\b`).test(body)) {
+      try {
+        const cats = readLiteral(src, 'CATEGORIES');
+        if (Array.isArray(cats)) for (const c of cats) add(c && c.id);
+      } catch (_) { /* no literal: nothing is known to render through the walk */ }
+    }
+  }
+  for (const m of body.matchAll(/p\.cat\s*===\s*(['"])([^'"\\]+)\1/g)) add(m[2]);
+  return out;
 }
 
 const deriveContracts = (brands = BRANDS) => {
@@ -59,6 +93,8 @@ const RENDER = (contracts) => `'use strict';
 //   categoriesNamed — the renderer prints a category label, so every category must carry a name
 //   badges          — the badges it can SELECT (TAG_PRIORITY intersected with TAG_BADGES). An empty
 //                     list means the brand has no badge renderer, so no tag on it can be honoured.
+//   renderedCategories — the category ids its renderMenu actually DRAWS. A product may be ADDED only to one
+//                     of these (an unrendered category would hold a priced, invisible product). [] = none.
 module.exports = ${JSON.stringify(contracts, null, 2)};
 `;
 
@@ -69,4 +105,4 @@ function writeContract(target) {
 }
 
 if (require.main === module) console.log(`wrote ${writeContract()}`);
-module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS };
+module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS, renderedCategoriesOf };

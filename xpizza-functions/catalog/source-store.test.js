@@ -776,6 +776,9 @@ const GOOD = () => ({
     ["contractTable :: !table || typeof table !== 'object' || Array.isArray(table)", 'shape', 'this predicate IS the type test'],
     ['rendererContract :: !Object.prototype.hasOwnProperty.call(table, rid)', 'requiredness', 'own-property membership separates undescribed from present-but-broken'],
     ["rendererContract :: !entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.categoriesNamed !== 'boolean' || !Array.isArray(entry.badges)", 'shape', 'this predicate IS the type test'],
+    ["rendererContract :: Object.prototype.hasOwnProperty.call(entry, 'renderedCategories')", 'requiredness', 'own-property presence of renderedCategories; absent means NOTHING is known to render (additions refused), never "anything renders"'],
+    ["rendererContract :: !Array.isArray(entry.renderedCategories) || entry.renderedCategories.some((c) => typeof c !== 'string' || !c)", 'shape', 'this predicate IS the type test for renderedCategories (an array of non-empty strings)'],
+    ["rendererContract :: typeof c !== 'string'", 'shape', 'the element type test inside the renderedCategories shape check'],
     ["<module> :: typeof v === 'string'", 'shape', 'this predicate IS the type test'],
     ["<module> :: typeof v === 'number' && Number.isFinite(v)", 'shape', 'this predicate IS the type test'],
     ['<module> :: isPositiveInt(v)', 'shape', 'this predicate IS the type test'],
@@ -921,7 +924,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 142, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 145, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -935,7 +938,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 18, 'post-type': 64, shape: 44, 'not-a-presence-test': 16 },
+  assert.deepStrictEqual(counts, { requiredness: 19, 'post-type': 64, shape: 46, 'not-a-presence-test': 16 },
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

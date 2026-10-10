@@ -13,6 +13,8 @@ const { paymentAlert } = require('../lib/payment-alert');
 const { getSalesStatsCore } = require('../stats/stats-api');
 const { statsKeyer, _statsLiveCache } = require('../stats/keyer');
 const { withPreflightMaxAge } = require('./preflight-max-age');
+const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)
+const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() });
 
 // ⟪moved:A — verbatim from index.js@bb37684 (relative require specifiers './' → '../')⟫
 // ── Portal 2b-1 — the merchant catalog write path ──────────────────────────────────────────────
@@ -38,7 +40,7 @@ async function readActiveBuiltForEdit(rid) {
   if (versionId == null) throw new Error(`no_active_version: ${rid}`);   // fail-closed: nothing to diff against
   const [preview, docs] = await Promise.all([previewVersionForEdit(fs, rid, versionId), readVersionDocsForEdit(fs, rid, versionId)]);
   const { extras } = buildTablesForEdit(docs.itemDocs, docs.extraDocs);
-  return { built: { items: preview.items, structure: preview.structure, extras }, versionId };
+  return { built: { items: preview.items, structure: preview.structure, extras }, versionId, extraRecords: preview.extras };   // 1D add-product A: + the extras' records
 }
 
 exports.editCatalog = onRequest(
@@ -51,6 +53,7 @@ exports.editCatalog = onRequest(
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveBuilt: readActiveBuiltForEdit,
         toPrecondition: decodeUpdateTimeForEdit,
+        addProduct: addProductIoForEdit(),   // 1D add-product A
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {
@@ -103,6 +106,7 @@ exports.publishEdited = onRequest(
         publishVersion: publishVersionForEdit,
         mirror: makeRtdbMirrorForEdit(getDatabase()),
         alarm: (kind, detail) => paymentAlert(getDatabase(), kind, detail),
+        addProduct: addProductIoForEdit(),   // 1D add-product A
       }, req.body || {}, req);
       return res.status(out.status).json(out.body);
     } catch (e) {
@@ -151,6 +155,7 @@ exports.getEditableCatalog = onRequest(
         fsdb: getFirestore(),
         authorize: (rid) => authorizeCatalogEdit({ db: getDatabase(), verifyIdToken: (t) => getAuth().verifyIdToken(t) }, req, rid),
         readActiveVersionId: (fsdb, rid) => getActiveVersionIdForPortal(fsdb, rid),
+        readActiveBuilt: readActiveBuiltForEdit,   // 1D add-product A: assess the saved draft against what is serving
       }, req);
       return res.status(out.status).json(out.body);
     } catch (e) {

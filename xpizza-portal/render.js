@@ -136,6 +136,11 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   const changed = opts.changed || (() => false);
   const onPrice = opts.onPrice || (() => {});
   const onOpen = opts.onOpen || null;
+  // 1D add-product A — which rows are NEW (a NUEVO tag) and whether this section can take a new product (only one the
+  // brand's order page draws). Both are the caller's answers; the renderer only draws them.
+  const isAddition = opts.isAddition || (() => false);
+  const onAdd = editable && typeof opts.onAdd === 'function' && group && opts.canAdd && opts.canAdd(group.category.id) ? opts.onAdd : null;
+  const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
   detailEl.replaceChildren();
   if (!group) {
     const e = el('div', 'empty');
@@ -145,6 +150,15 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   }
   const head = el('div', 'dhead');
   head.append(el('div', 'dtitle', group.category.name));
+  if (onAdd) {
+    const right = el('span', 'dright');
+    const add = el('button', 'btn', '');
+    add.type = 'button';
+    add.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
+    add.addEventListener('click', () => onAdd(group.category.id));
+    right.append(add);
+    head.append(right);
+  }
   detailEl.append(head);
 
   if (group.items.length === 0) {
@@ -159,11 +173,14 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     // `.nm` carries the name typography (display face, 750, 16px); `.nmed` is the mock's
     // CONTENTEDITABLE option-name affordance and carries only a focus ring. Using .nmed here left the
     // name in the body font AND dressed unwritable text as editable — the wrong class in both senses.
-    info.append(el('div', 'nm', typeof d.name === 'string' && d.name.trim() ? d.name : String(it.key || '')));
+    const nmEl = el('div', 'nm', typeof d.name === 'string' && d.name.trim() ? d.name : (it.key ? String(it.key) : 'Nuevo producto'));
+    if (isAddition(it)) nmEl.append(el('span', 'newtag', 'Nuevo'));
+    info.append(nmEl);
     if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', 'idesc', d.desc));
     // Opening the drawer is a separate affordance from the inline field, so a merchant editing in the
     // row is never one stray click from a modal, and the row itself stays a non-interactive surface.
-    const label = typeof d.name === 'string' && d.name.trim() ? d.name : String(it.key || '');
+    const label = typeof d.name === 'string' && d.name.trim() ? d.name : (it.key ? String(it.key) : 'Nuevo producto');
+    const id = rid(it);
     const cells = [];
     if (editable && onOpen) {
       // The mock's own three openers, rather than an invented control: a neutral 50x50 placeholder, the
@@ -171,24 +188,32 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       // but images are deferred in this slice and a camera would advertise an upload that does nothing.
       const thumb = el('div', 'thumb');
       thumb.title = 'Editar producto';
-      thumb.addEventListener('click', () => onOpen(it.key));
+      thumb.addEventListener('click', () => onOpen(id));
       cells.push(thumb);
       info.classList.add('clk');
-      info.addEventListener('click', () => onOpen(it.key));
+      info.addEventListener('click', () => onOpen(id));
       // A real <button>, not the mock's <span>: this is the row's only keyboard-reachable way into the
       // editor, and a merchant who cannot use a mouse still has to be able to change a price.
       const chev = el('button', 'rowchev');
       chev.type = 'button';
       chev.setAttribute('aria-label', `Editar ${label}`);
       chev.append(svgIcon('M9 6l6 6-6 6'));
-      chev.addEventListener('click', () => onOpen(it.key));
+      chev.addEventListener('click', () => onOpen(id));
       cells.push(chev);
     }
     row.append(...cells.slice(0, 1), info, priceCell(it && it.price, {
-      editable, changed: changed('item', it.key), onInput: (v) => onPrice('item', it.key, v),
-      surface: 'item', key: it.key,
+      editable, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),
+      surface: 'item', key: id,
     }), ...cells.slice(1));
     detailEl.append(row);
+  }
+  if (onAdd) {
+    const addRow = el('div', 'addrow');
+    addRow.setAttribute('role', 'button'); addRow.tabIndex = 0;
+    addRow.append(svgIcon('M12 5v14M5 12h14'), document.createTextNode('Agregar producto'));
+    addRow.addEventListener('click', () => onAdd(group.category.id));
+    addRow.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(group.category.id); } });
+    detailEl.append(addRow);
   }
 
   // Extras are priced lines on the same order, so a menu that showed only dishes would be showing a

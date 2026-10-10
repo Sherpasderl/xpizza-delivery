@@ -35,8 +35,9 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
 const { publishVersion } = require('../catalog/catalog-publish');
 const { makeRtdbMirror, RTDB_URL } = require('../catalog/mirror-rtdb');   // 1b: the RTDB disaster-fallback writer
-const { readSource, sourceToBuildInputs } = require('../catalog/source-store');   // portal 2a
+const { readSource } = require('../catalog/source-store');   // portal 2a
 const { assertStoreCodeParity } = require('../catalog/publish-parity');                    // portal 2a: the pre-flip gate
+const { buildSourceCandidate } = require('../catalog/candidate-validate');                   // codex build r1 #4: extras priced from the source
 
 const gitSha = () => { try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { return 'unknown'; } };
 
@@ -77,8 +78,7 @@ function buildPublishCandidate(rid, baseline, { source_sha = 'unknown' } = {}) {
   const expected = { activeVersionId: activeVersionId === undefined ? null : activeVersionId };
   if (source) {
     // Build from the STORE, then prove it equals what the CODE builds — the no-op gate.
-    const inputs = sourceToBuildInputs(source);
-    const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
+    const { inputs, built } = buildSourceCandidate(rid, source);
     const codeBuilt = { ...buildCatalogV2(rid), extras: EXTRAS_BY_RESTAURANT[rid] || {} };
     assertStoreCodeParity(rid, { items: built.items, structure: built.structure, extras: inputs.extras }, codeBuilt);   // THROWS → nothing written, no flip
     // The draft expectation is the revision the candidate was BUILT FROM. Present by KEY, so

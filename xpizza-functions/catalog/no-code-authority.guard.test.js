@@ -32,7 +32,7 @@ const RETIRED = {
 const ALLOWED = {
   'menu-pricing.js': { why: 'DEFINES them. Its own resolvePriceTables(rid, null) is the documented fallback.', ids: null },
   'restaurant-id.js': { why: 'the KNOWN_RESTAURANTS FLOOR — the registry may only add to it, never subtract (Task 8).', ids: ['MENU_BY_RESTAURANT'] },
-  'catalog/menu-gates.js': { why: 'the static weekend fallback, used only when the catalog is unreadable or unauthored (Task 5).', ids: ['X_PIZZA_WEEKEND_ONLY'] },
+  'catalog/menu-gates.js': { why: 'the static weekend fallback, used only when the catalog is unreadable or unauthored (Task 5); and (1D add-product A §0b.1) the fallback MEMBERSHIP — the code-known dish KEYS (never a price) — so a portal-added key the gate cannot classify is refused while existing keys behave as today.', ids: ['X_PIZZA_WEEKEND_ONLY', 'MENU_BY_RESTAURANT'] },
   'rewards-redeem-config.js': { why: 'the static redemption fallback, used only when the catalog is unreadable or unauthored (Task 6).', ids: ['X_PIZZA_REDEEM_ELIGIBLE', 'LA_MUSA_ACOMP'] },
   'catalog/redeem-source.js': { why: 'AUTHORS the store FROM the code allowlists at seed time — the one-way derivation, verified as a no-op (Task 6/6b).', ids: ['X_PIZZA_REDEEM_ELIGIBLE', 'LA_MUSA_ACOMP'] },
   'catalog/form-menu-source.js': { why: 'the code-side build the pre-flip parity gate compares the store against — bootstrap, never a serving path.', ids: ['MENU_BY_RESTAURANT', 'EXTRAS_BY_RESTAURANT'] },

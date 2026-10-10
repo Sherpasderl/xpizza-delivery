@@ -15,8 +15,9 @@ const admin = require('firebase-admin');
 const { requireProject } = require('./require-project');
 const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');
-const { readSource, sourceToBuildInputs } = require('../catalog/source-store');   // portal 2a
+const { readSource } = require('../catalog/source-store');   // portal 2a
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
+const { buildSourceCandidate } = require('../catalog/candidate-validate');   // codex build r1 #4: extras priced from the source
 const { assertStoreCodeParity, assertStoreMatchesActive } = require('../catalog/publish-parity');
 const { buildTablesFromDocs } = require('../catalog/catalog-transform');
 const { previewVersion } = require('../catalog/catalog-publish');                 // portal 2b-1
@@ -79,8 +80,8 @@ async function activeBuiltOf(rid) {
       if (/source_missing/.test(String(e && e.message))) { console.log(`${rid}: no source store yet (pre-2a) — skipping store parity`); continue; }
       throw e;
     }
-    const inputs = sourceToBuildInputs(source);
-    const storeBuilt = { ...buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable }), extras: inputs.extras };
+    const { inputs, built: storeRaw } = buildSourceCandidate(rid, source);
+    const storeBuilt = { ...storeRaw, extras: inputs.extras };
     if (VS_ACTIVE) {
       try {
         const { built, versionId } = await activeBuiltOf(rid);

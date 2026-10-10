@@ -116,7 +116,7 @@ function fakeDom() {
     };
     return n;
   };
-  globalThis.document = { createElement: mk, createElementNS: (_ns, tag) => mk(tag) };
+  globalThis.document = { createElement: mk, createElementNS: (_ns, tag) => mk(tag), createTextNode: (t) => ({ tag: '#text', children: [], textContent: t, _class: '' }) };
   return mk('div');
 }
 const walk = (n, out = []) => { out.push(n); for (const c of n.children || []) walk(c, out); return out; };
@@ -183,4 +183,43 @@ test('the read-only render is unchanged — no inputs, no openers', () => {
   assert.strictEqual(byClass(root, 'rowchev').length, 0, 'no chevrons');
   assert.ok(textsIn(root, 'price').includes('L10'), 'prices render as text');
   assert.ok(textsIn(root, 'price').includes('L5'), '...for extras too');
+});
+
+
+// ── 1D add-product A — the NUEVO tag and the two "Agregar producto" entries ───────────────────────────────────
+const GROUP = { category: { id: 'c1', name: 'C' }, items: [
+  { key: 'a', price: 10, display: { id: 'a', cat: 'c1', name: 'A' } },
+  { ref: 'tmp:1', price: null, display: { cat: 'c1', name: '' } },
+] };
+const fire = (n, ev, arg = {}) => (n.listeners[ev] || []).forEach((f) => f({ preventDefault() {}, ...arg }));
+const addEntries = (root) => [...byClass(root, 'dright').flatMap((r) => r.children), ...byClass(root, 'addrow')];
+
+test('the add entries exist ONLY when editable AND the caller says the section can take a product', () => {
+  const calls = [];
+  const opts = { editable: true, onOpen: () => {}, onAdd: (c) => calls.push(c), canAdd: (c) => c === 'c1' };
+  let root = fakeDom(); renderDetail(root, GROUP, [], opts);
+  const [btn, row] = addEntries(root);
+  assert.strictEqual(addEntries(root).length, 2, 'the header button and the trailing row');
+  assert.ok(walk(btn).some((n) => n.textContent === 'Agregar producto') && walk(row).some((n) => n.textContent === 'Agregar producto'));
+  fire(btn, 'click'); fire(row, 'click'); fire(row, 'keydown', { key: 'Enter' }); fire(row, 'keydown', { key: ' ' }); fire(row, 'keydown', { key: 'a' });
+  assert.deepStrictEqual(calls, ['c1', 'c1', 'c1', 'c1'], 'each entry adds to THIS section; other keys do nothing');
+  for (const o of [{ ...opts, editable: false }, { ...opts, canAdd: () => false }, { ...opts, canAdd: undefined }, { ...opts, onAdd: undefined }]) {
+    root = fakeDom(); renderDetail(root, GROUP, [], o);
+    assert.strictEqual(addEntries(root).length, 0, 'no add entry: read-only, a section the order page does not draw, or no handler');
+  }
+});
+
+test('an addition carries the NUEVO tag, an unnamed one reads "Nuevo producto", and its openers/price use its temporary ref', () => {
+  const opened = []; const priced = [];
+  const root = fakeDom();
+  renderDetail(root, GROUP, [], { editable: true, onOpen: (id) => opened.push(id), onPrice: (s, k, v) => priced.push([s, k, v]),
+    isAddition: (it) => typeof it.ref === 'string' });
+  const tags = byClass(root, 'newtag');
+  assert.deepStrictEqual(tags.map((t) => t.textContent), ['Nuevo'], 'exactly one NUEVO tag — on the addition, not on the existing product');
+  assert.ok(textsIn(root, 'nm').includes('Nuevo producto'), 'an unnamed addition is labelled, never blank');
+  byClass(root, 'rowchev').forEach((c) => fire(c, 'click'));
+  assert.deepStrictEqual(opened, ['a', 'tmp:1']);
+  const inputs = walk(root).filter((n) => n.tag === 'input');
+  inputs.forEach((i) => (i.listeners.input || []).forEach((f) => f({ target: { value: '7' } })));
+  assert.deepStrictEqual(priced.map((p) => p[1]), ['a', 'tmp:1'], 'the price input of an addition is addressed by its ref');
 });

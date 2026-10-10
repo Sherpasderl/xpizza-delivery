@@ -48,6 +48,7 @@ function installDom() {
         contains: (c) => n._class.split(/\s+/).includes(c),
       },
       append: (...cs) => n.children.push(...cs),
+      prepend: (...cs) => n.children.unshift(...cs),
       replaceChildren: (...cs) => { n.children = [...cs]; },
       setAttribute: (k, v) => { n.attrs[k] = v; },
       removeAttribute: (k) => { delete n.attrs[k]; },
@@ -81,6 +82,7 @@ function installDom() {
     getElementById: (id) => byId.get(id) || null,
     createElement: (t) => mk(t, null),
     createElementNS: (_ns, t) => mk(t, null),
+    createTextNode: (t) => ({ tag: '#text', children: [], textContent: String(t), _class: '' }),
     querySelector: () => null,
     querySelectorAll: () => [],
     // A REAL listener registry, not a no-op. app.js's document-level wiring — portal:auth,
@@ -1673,4 +1675,351 @@ test('a normal same-world publish is still admitted — the checks refuse stalen
   assert.strictEqual(calls.filter((c) => c.fn === 'publishEdited').length, 1,
     '🔴 the genuine publish went through');
   assert.strictEqual(app.state.review, null, 'and the review retires on success, so it cannot be replayed either');
+});
+
+
+// ── 1D add-product A — THE ADD FLOW, composed: the real app.js, the real editor/render/review, only fetch stubbed ──
+const ADD_SRC = () => {
+  const s = SOURCE();
+  s.structure.categories = [{ id: 'c', name: 'Pizzas' }, { id: 'hidden', name: 'Oculta' }];
+  Object.assign(s.structure, { pickup_only_cats: ['c'], weekend_only_cats: ['c'], redeem_eligible_cats: ['c'] });
+  return s;
+};
+const ADD_LOAD = (extra = {}) => okJson({ source: ADD_SRC(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false, renderedCategories: ['c'], restaurantName: 'X', ...extra });
+const refusal = (status, body) => ({ ok: false, status, json: async () => body });
+const fire = async (n, ev = 'click') => { for (const f of (n.listeners[ev] || [])) await f({ preventDefault() {}, target: n }); };
+async function addAndFill(byId, app, { name = 'Pizza Nueva', price = '420' } = {}) {
+  const addRow = byId.get('detail').querySelectorAll('.addrow')[0];
+  assert.ok(addRow, 'premise: the section the order page draws offers "Agregar producto"');
+  await fire(addRow);
+  const ref = app.state.drawerKey;
+  assert.match(String(ref), /^tmp:/, 'the drawer is open on the new row, by its temporary reference');
+  const inputs = byId.get('drawer').querySelectorAll('input');
+  const nameIn = inputs.find((i) => i.attrs['aria-label'] === 'Nombre');
+  const priceIn = inputs.find((i) => i.attrs['aria-label'] === 'Precio');
+  nameIn.value = name; await fire(nameIn, 'input');
+  priceIn.value = price; await fire(priceIn, 'input');
+  return ref;
+}
+
+test('🔴 ADD FLOW: add → save ADOPTS the server’s canonical row → review names it → publish → reload ends it as a plain product', async () => {
+  const byId = installDom();
+  let loads = 0;
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') {
+      loads += 1;
+      if (loads === 1) return ADD_LOAD();
+      const s = ADD_SRC(); s.items.push({ key: 'Pizza Nueva', price: 420, display: { id: 2, cat: 'c', name: 'Pizza Nueva', price: 420 } });
+      s.structure.item_order.push('Pizza Nueva');
+      return ADD_LOAD({ source: s, sourceUpdateTime: 'T9' });
+    }
+    if (fn === 'editCatalog') {
+      const sent = calls.at(-1).body.source;
+      const canon = JSON.parse(JSON.stringify(sent));
+      const row = canon.items.find((i) => i.ref);
+      delete row.ref; row.key = 'Pizza Nueva'; row.display.id = 2;
+      canon.structure.item_order = canon.structure.item_order.map((k) => (k.startsWith('tmp:') ? 'Pizza Nueva' : k));
+      return okJson({ token: 'ET', updateTime: 'T2', source: canon,
+        diff: { added: [{ surface: 'item', key: 'Pizza Nueva', price: 420 }], removed: [], renamed: [], changed: [], largeChangeSet: [] } });
+    }
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addAndFill(byId, app);
+  assert.strictEqual(pendingCountOf(app), 1, 'the unsaved product is pending work');
+
+  await fire(byId.get('review'));
+  const save = calls.find((c) => c.fn === 'editCatalog');
+  const sentRow = save.body.source.items.find((i) => i.ref === ref);
+  assert.deepStrictEqual(sentRow, { ref, price: 420, display: { cat: 'c', name: 'Pizza Nueva', price: 420 } }, '🔴 the wire carries a REF, never a key or an id');
+  assert.ok(!('deleted_ids' in save.body.source), 'ruling A: no deletion claim is authored');
+  assert.ok(app.state.draft.state.items.some((i) => i.key === 'Pizza Nueva' && !('ref' in i)), '🔴 the draft ADOPTED the server’s canonical row');
+  assert.ok(app.state.additionKeys.has('Pizza Nueva'), 'and knows it as a saved, unpublished addition');
+  assert.ok(byId.get('mbody').querySelectorAll('.bsec').some((n) => /Pizzas/.test(n.textContent)), 'the review names its section');
+  assert.ok(byId.get('mbody').querySelectorAll('.brules').some((n) => n.textContent === 'Solo para recoger · Solo fines de semana · Canjeable con recompensas'),
+    'and the rules it INHERITS from that section, all three');
+
+  await fire(byId.get('pubbtn'));
+  const pub = calls.find((c) => c.fn === 'publishEdited');
+  assert.ok(pub && pub.body.token === 'ET', 'published with the token minted for this review');
+  assert.strictEqual(loads, 2, '🔴 the publish RELOADED the authoritative source');
+  assert.strictEqual(app.state.sourceUpdateTime, 'T9', '...and its revision');
+  assert.strictEqual(app.state.additionKeys.size, 0, 'a published product is no longer an addition');
+  assert.strictEqual(pendingCountOf(app), 0);
+  assert.ok(app.state.draft.state.items.some((i) => i.key === 'Pizza Nueva'));
+});
+
+test('🔴 FIX: a refused name reopens THAT product’s drawer with the server’s message on the field; the product is kept', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD()
+    : fn === 'editCatalog' ? null : okJson({ versionId: 'v2' })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addAndFill(byId, app, { name: 'Pizza' });
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'name_taken', detail: '"Pizza" is already on your menu', key: 'Pizza', ref, field: 'name' }) : ADD_LOAD()));   // the REAL handler's body (emulator cell 16)
+  await fire(byId.get('review'));
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.match(btn.textContent, /Corregir el nombre/);
+  await fire(btn);
+  assert.strictEqual(app.state.drawerKey, ref, 'the drawer is open on the refused product');
+  const errs = byId.get('drawer').querySelectorAll('.ferr');
+  assert.strictEqual(errs.length, 1, 'one field carries the error');
+  assert.ok(app.state.draft.state.items.some((i) => i.ref === ref && i.display.name === 'Pizza'), 'nothing the owner typed was lost');
+  assert.strictEqual(byId.get('drawer').querySelectorAll('input').find((i) => i.attrs['aria-label'] === 'Nombre').disabled, false, 'and the name is editable again');
+});
+
+test('🔴 RESET: a drifted draft goes back to the published menu — conditional on the revision the owner saw — and reloads', async () => {
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD()
+    : fn === 'editCatalog' ? refusal(409, { error: 'item_order_changed', detail: 'x', field: 'item_order' })
+      : fn === 'resetDraftToLive' ? okJson({ ok: true }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  await fire(byId.get('review'));
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.match(btn.textContent, /Volver al menú publicado/, 'a deterministic drift refusal offers RESET, never a retry loop');
+  const before = calls.filter((c) => c.fn === 'getEditableCatalog').length;
+  await fire(btn);
+  const reset = calls.find((c) => c.fn === 'resetDraftToLive');
+  assert.ok(reset, 'resetDraftToLive was called');
+  assert.strictEqual(reset.body.expectedRevision, 'T', '🔴 conditional on the revision the owner loaded (the refused save moved nothing)');
+  assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, before + 1, 'and the menu was reloaded');
+  assert.strictEqual(pendingCountOf(app), 0);
+});
+
+test('the add entry is absent for a section the order page does not draw, and while the draft is owned', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD({ renderedCategories: [] }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.strictEqual(byId.get('detail').querySelectorAll('.addrow').length, 0, 'not drawn → no add entry');
+  assert.strictEqual(app.state.draft.state.items.length, 1);
+});
+
+
+test('the Sección list offers ONLY the sections the order page draws', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  const sel = byId.get('drawer').querySelectorAll('select').find((x) => x.attrs['aria-label'] === 'Sección');
+  assert.deepStrictEqual(sel.children.map((o) => o.value), ['c'], '"Oculta" is declared but not drawn — not offered');
+});
+
+test('🔴 a SAVED, unpublished addition: its name is locked, and "Quitar" removes it (the server listed it)', async () => {
+  const byId = installDom();
+  const s = ADD_SRC(); s.items.push({ key: 'Guardada', price: 300, display: { id: 2, cat: 'c', name: 'Guardada', price: 300 } });
+  s.structure.item_order.push('Guardada');
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD({ source: s, pendingAdditions: ['Guardada'] }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  assert.ok(byId.get('detail').querySelectorAll('.newtag').length === 1, 'the saved addition carries NUEVO');
+  app.openDrawer('Guardada');
+  const nameIn = byId.get('drawer').querySelectorAll('input').find((i) => i.attrs['aria-label'] === 'Nombre');
+  assert.strictEqual(nameIn.disabled, true, '🔴 the server allocated its key from this name — it is no longer retypable');
+  const quitar = byId.get('drawer').querySelectorAll('button').find((b) => b.textContent === 'Quitar');
+  await fire(quitar);
+  assert.ok(!app.state.draft.state.items.some((i) => i.key === 'Guardada'), 'Quitar removed the saved addition');
+  assert.strictEqual(pendingCountOf(app), 1, 'and that removal is pending work, not silently clean');
+});
+
+test('🔴 a stored draft that cannot even LOAD offers "Volver al menú publicado" at the revision the server reported', async () => {
+  const byId = installDom();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog'
+    ? refusal(503, { error: 'source_unavailable', draft_unpublishable: { code: 'invalid_source', detail: 'x' }, sourceUpdateTime: 'T0' })
+    : okJson({ ok: true })));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const box = byId.get('detail').querySelectorAll('.unpub')[0];
+  assert.ok(box, 'the way back is on screen');
+  await fire(box.querySelectorAll('button')[0]);
+  const reset = calls.find((c) => c.fn === 'resetDraftToLive');
+  assert.strictEqual(reset && reset.body.expectedRevision, 'T0');
+  assert.strictEqual(app.state.draft, null, 'no draft was built from an invalid source');
+});
+
+
+test('🔴 FIX never opens an EXISTING product: a target that is not a new product opens no drawer', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app, { name: 'Pizza' });
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'name_taken', detail: 'x', key: 'Pizza', field: 'name' }) : ADD_LOAD()));   // a key-only body naming the LIVE "Pizza"
+  await fire(byId.get('review'));
+  await fire(byId.get('mbody').querySelectorAll('button')[0]);
+  assert.notStrictEqual(app.state.drawerKey, 'Pizza', 'the live product’s drawer is NOT opened with an error on it');
+  assert.strictEqual(byId.get('drawer').querySelectorAll('.ferr').length, 0, 'no field error lands anywhere it does not belong');
+  assert.ok(app.state.draft.state.items.some((i) => typeof i.ref === 'string'), 'the new product is still in the draft');
+});
+
+test('FIX: an unusable description opens the drawer with the error under Descripción, in its own words', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addAndFill(byId, app);
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'text_unsafe', detail: 'the desc contains markup characters', ref, field: 'desc' }) : ADD_LOAD()));
+  await fire(byId.get('review'));
+  const btn = byId.get('mbody').querySelectorAll('button')[0];
+  assert.strictEqual(btn.textContent, 'Corregir la descripción');
+  await fire(btn);
+  assert.strictEqual(app.state.drawerKey, ref);
+  const errs = byId.get('drawer').querySelectorAll('.ferr');
+  assert.strictEqual(errs.length, 1);
+  assert.match(errs[0].textContent, /signos < y >/, 'the merchant reads what to change, not the server’s English');
+  const fld = byId.get('drawer').querySelectorAll('.fld').find((f) => f.children.some((c) => c.attrs && c.attrs['aria-label'] === 'Descripción'));
+  assert.ok(fld && fld.querySelectorAll('.ferr').length === 1, 'and it sits on the Descripción field');
+});
+
+// ── codex build r1 (advisor relay 2026-10-09): post-publish reload ownership + reset lifecycle ──────────────────────
+const P310 = () => { const s = SOURCE(); s.items[0].price = 310; s.items[0].display.price = 310; return s; };
+const ticks = async (until, max = 50) => { for (let i = 0; i < max && !until(); i += 1) await new Promise((r) => setImmediate(r)); };
+
+test('🔴 r1 BLOCKER 1: "Listo" cannot hand editing back while the post-publish reload is in flight — a later edit is never discarded', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  let loads = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') {
+      loads += 1;
+      if (loads === 1) return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+      return hold.promise.then(() => okJson({ source: P310(), sourceUpdateTime: 'T9', activeVersionId: 'v2', usesPlatformFactura: false }));
+    }
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  let cell = inlineCell(byId); cell.value = '310'; cell.listeners.input[0]();
+  await fire(byId.get('review'));
+  const pub = fire(byId.get('pubbtn'));
+  await ticks(() => loads === 2);
+  assert.strictEqual(loads, 2, 'premise: the publish succeeded and the authoritative reload is in flight (held)');
+
+  await fire(byId.get('pubback'));                                   // the merchant presses "Listo" mid-reload
+  assert.ok(byId.get('scrim').classList.contains('show'), '🔴 the receipt stays up until the reload is adopted');
+  assert.strictEqual(byId.get('pubback').disabled, true, '...and "Listo" is not pressable yet');
+  cell = inlineCell(byId); cell.value = '350'; cell.listeners.input[0]();
+  assert.notStrictEqual(app.state.draft.state.items[0].price, 350, '🔴 no edit is ACCEPTED against a baseline that is about to be replaced');
+
+  hold.resolve(); await pub;
+  assert.deepStrictEqual([app.state.draft.state.items[0].price, app.state.sourceUpdateTime, pendingCountOf(app)], [310, 'T9', 0], 'the authoritative source + revision were adopted');
+  assert.strictEqual(byId.get('pubback').disabled, false, '"Listo" is pressable once the reload is adopted');
+  await fire(byId.get('pubback'));
+  assert.ok(!byId.get('scrim').classList.contains('show'), 'and closes the receipt');
+  cell = inlineCell(byId); cell.value = '350'; cell.listeners.input[0]();
+  assert.deepStrictEqual([app.state.draft.state.items[0].price, pendingCountOf(app)], [350, 1], '🔴 an edit made AFTER the reload sticks');
+});
+
+test('🔴 r1 SHOULD-FIX 3: a FAILED post-publish reload keeps editing locked, says so, and recovers only by adopting a fresh read', async () => {
+  const byId = installDom();
+  let loads = 0;
+  installFetch((fn) => {
+    if (fn === 'getEditableCatalog') {
+      loads += 1;
+      if (loads === 1) return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+      if (loads === 2) return { ok: false, status: 503, json: async () => ({ error: 'store_unavailable' }) };
+      return okJson({ source: P310(), sourceUpdateTime: 'T9', activeVersionId: 'v2', usesPlatformFactura: false });
+    }
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const cell = inlineCell(byId); cell.value = '310'; cell.listeners.input[0]();
+  await fire(byId.get('review'));
+  await fire(byId.get('pubbtn'));
+  assert.strictEqual(loads, 2, 'premise: the reload was attempted and failed');
+  assert.strictEqual(app.state.draft.canEdit(), false, '🔴 editing does NOT resume on the stale baseline (T2)');
+  assert.ok(byId.get('mbody').querySelectorAll('p').some((p) => p.textContent === 'Publicado; recargá para seguir editando.'), 'the merchant is told the publish went through and a reload is needed');
+  const again = byId.get('revFoot').querySelectorAll('button').find((b) => b.textContent === 'Recargar');
+  assert.ok(again, 'a retry of the authoritative read is offered');
+  await fire(byId.get('pubback'));
+  assert.ok(byId.get('scrim').classList.contains('show'), '"Listo" cannot dismiss it while the reload is owed');
+  await fire(again);
+  assert.strictEqual(loads, 3);
+  assert.deepStrictEqual([app.state.sourceUpdateTime, app.state.draft.state.items[0].price, app.state.draft.canEdit()], ['T9', 310, true], 'editing resumes only after the fresh source + revision are adopted');
+});
+
+test('🔴 r1 BLOCKER 2: a reset that settles after a TENANT SWITCH neither reloads nor repaints the tenant you left', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  const calls = installFetch((fn, n) => {
+    const rid = (calls.at(-1) && calls.at(-1).body && calls.at(-1).body.restaurantId) || null; void rid;
+    if (fn === 'getEditableCatalog') return calls.filter((c) => c.fn === 'getEditableCatalog').length === 1
+      ? refusal(503, { error: 'source_unavailable', draft_unpublishable: { code: 'invalid_source', detail: 'x' }, sourceUpdateTime: 'T0' })
+      : okJson({ source: SOURCE(), sourceUpdateTime: 'TL', activeVersionId: 'lv', usesPlatformFactura: false });
+    if (fn === 'resetDraftToLive') return hold.promise.then(() => okJson({ ok: true }));
+    return okJson({}); void n;
+  });
+  const app = await loadAppModule();
+  app.state.restaurants = [{ rid: 'x_pizza' }, { rid: 'la_musa' }];
+  app.state.currentRid = 'x_pizza';
+  await app.loadMenu('x_pizza');
+  const resetP = fire(byId.get('detail').querySelectorAll('.unpub')[0].querySelectorAll('button')[0]);
+  await ticks(() => calls.some((c) => c.fn === 'resetDraftToLive'));
+  app.state.currentRid = 'la_musa';
+  await app.loadMenu('la_musa');                                      // the merchant switched while the reset is on the wire
+  assert.strictEqual(app.state.draftRid, 'la_musa', 'premise: La Musa is loaded');
+  const loadsBefore = calls.filter((c) => c.fn === 'getEditableCatalog').length;
+  hold.resolve(); await resetP;
+  assert.deepStrictEqual([app.state.currentRid, app.state.draftRid], ['la_musa', 'la_musa'], '🔴 the screen stays on the tenant you are on');
+  assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, loadsBefore, 'and the finished reset loads nothing for the tenant you left');
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and La Musa is editable once the reset has settled');
+});
+
+test('🔴 r1 BLOCKER 2: the draft is NOT editable while a reset is on the wire, and the reset reloads when it lands', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  const calls = installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD()
+    : fn === 'editCatalog' ? refusal(409, { error: 'item_order_changed', detail: 'x', field: 'item_order' })
+      : fn === 'resetDraftToLive' ? hold.promise.then(() => okJson({ ok: true })) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  await fire(byId.get('review'));
+  const resetP = fire(byId.get('mbody').querySelectorAll('button')[0]);   // "Volver al menú publicado"
+  await ticks(() => calls.some((c) => c.fn === 'resetDraftToLive'));
+  assert.strictEqual(app.state.draft.canEdit(), false, '🔴 editing is locked while the reset is on the wire');
+  assert.strictEqual(byId.get('review').disabled, true, 'and no review can start against a draft that is being replaced');
+  const before = calls.filter((c) => c.fn === 'getEditableCatalog').length;
+  hold.resolve(); await resetP;
+  assert.strictEqual(calls.filter((c) => c.fn === 'getEditableCatalog').length, before + 1, 'the reset reloads the menu');
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and hands editing back on the reloaded draft');
+});
+
+test('🔴 r1: a world that ends while the post-publish reload is held drops that reload — and leaves nothing stuck', async () => {
+  const byId = installDom();
+  const hold = deferred();
+  let xLoads = 0;
+  installFetch((fn, n) => {
+    if (fn === 'getEditableCatalog') {
+      xLoads += 1;
+      if (xLoads === 1) return okJson({ source: SOURCE(), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false });
+      if (xLoads === 2) return hold.promise.then(() => okJson({ source: P310(), sourceUpdateTime: 'T9', activeVersionId: 'v2', usesPlatformFactura: false }));
+      return okJson({ source: TWO_ITEMS(), sourceUpdateTime: 'TL', activeVersionId: 'lv', usesPlatformFactura: false });   // the other tenant
+    }
+    if (fn === 'editCatalog') return okJson({ token: 'ET', updateTime: 'T2', diff: CHANGED_DIFF });
+    return okJson({ versionId: 'v2' }); void n;
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const cell = inlineCell(byId); cell.value = '310'; cell.listeners.input[0]();
+  await fire(byId.get('review'));
+  const pub = fire(byId.get('pubbtn'));
+  await ticks(() => xLoads === 2);
+  await app.loadMenu('la_musa');                                    // the merchant switched tenants mid-reload
+  assert.deepStrictEqual([app.state.draftRid, app.state.settle], ['la_musa', null], 'the new world owes nothing');
+  hold.resolve(); await pub;
+  assert.strictEqual(app.state.draftRid, 'la_musa', '🔴 the stale reload did not adopt X. Pizza’s source into La Musa');
+  assert.strictEqual(app.state.draft.state.items.length, 2, 'La Musa’s draft is untouched');
+  assert.strictEqual(app.state.draft.canEdit(), true, 'and editable — nothing is left locked by the dropped reload');
+  assert.strictEqual(byId.get('pubback').disabled, false, 'and "Listo" is not left disabled');
 });

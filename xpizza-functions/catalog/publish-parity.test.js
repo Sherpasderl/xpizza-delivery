@@ -104,7 +104,8 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // question the moment the code was factored properly; what still has to be true is that the store is
   // read fail-closed, the candidate is built through the gated builder, and the publish comes last.
   const builder = SRC.slice(SRC.indexOf('function buildPublishCandidate'), SRC.indexOf('module.exports'));
-  assert.ok(builder.length > 200 && builder.includes('sourceToBuildInputs'), 'non-vacuity: the slice really is buildPublishCandidate');
+  // codex build r1 #4: the store branch builds through the ONE shared source builder (extras priced from the source)
+  assert.ok(builder.length > 200 && builder.includes('buildSourceCandidate(rid, source)'), 'non-vacuity: the slice really is buildPublishCandidate');
   assert.ok(builder.includes('assertStoreCodeParity(rid,'), 'the gate must be CALLED from the builder, not merely imported');
   assert.ok(builder.indexOf('assertStoreCodeParity(rid,') < builder.indexOf('return {'),
     'and it must run BEFORE the input is returned — a gate after the build is decoration');
@@ -135,8 +136,8 @@ ok('the gate THROWS parity_mismatch on every drift class: price, added/removed i
   // `node --check` passes that happily — it is a runtime ReferenceError, and these CLIs are owner-run
   // one-shots where the first execution IS the cutover. Assert the imports resolve, statically.
   for (const [file, ids] of [
-    ['tools/publish-version.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],
-    ['tools/verify-catalog.js', ['readSource', 'sourceToBuildInputs', 'assertStoreCodeParity', 'buildCatalogV2']],
+    ['tools/publish-version.js', ['readSource', 'buildSourceCandidate', 'assertStoreCodeParity', 'buildCatalogV2', 'publishVersion']],   // codex build r1 #4: the shared source builder
+    ['tools/verify-catalog.js', ['readSource', 'buildSourceCandidate', 'assertStoreCodeParity', 'buildCatalogV2']],
     ['tools/seed-source-store.js', ['validateSource', 'sourceRefOf', 'extrasKeyOf', 'readLiteral', 'pricingKeyOf', 'attachRedeemFields']],
     ['tools/rollback-version.js', ['rollbackVersion', 'makeRtdbMirror', 'RTDB_URL']],
   ]) {

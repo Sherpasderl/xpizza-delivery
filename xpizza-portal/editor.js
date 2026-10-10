@@ -12,10 +12,14 @@
 // Pure and DOM-free on purpose: node can import it, so every rule below is asserted directly rather
 // than through a rendered page.
 //
-// DEFERRED, and deliberately NOT IMPLEMENTED HERE (2b-2c): adding, removing or renaming an item,
-// adding or removing an option, category edits. All of those write the pricing KEY, which is the
-// per-merchant key-strategy work. There is no setter for them in this file — not a disabled one, not
-// a guarded one. A capability that does not exist cannot be reached by accident.
+// STILL NOT IMPLEMENTED HERE: renaming or removing an EXISTING item, adding or removing an option, category edits.
+// There is no setter for them in this file — not a disabled one, not a guarded one. A capability that does not exist
+// cannot be reached by accident.
+//
+// 1D add-product A — ADDING a plain product IS here, and it writes NO key: a new row carries only a temporary
+// reference (`ref: 'tmp:<uuid>'`) and its display fields; the SERVER allocates the pricing key and id on save
+// (editCatalog), and the portal ADOPTS the canonical source it returns. Only an addition can be edited beyond its
+// price (name / description / section — while it is still unsaved) or removed again ("Quitar").
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -111,6 +115,10 @@ export function draftSource(draft) {
   return draft.state;
 }
 
+// A row's identity on the screen: its key once the server allocated one, its temporary reference until then.
+export const rowId = (row) => (row && typeof row.key === 'string' ? row.key : (row && typeof row.ref === 'string' ? row.ref : undefined));
+const isTmp = (row) => !!(row && typeof row.ref === 'string' && row.ref.startsWith('tmp:') && !('key' in row));
+
 const rowsOf = (src, surface) => (surface === 'item'
   ? (Array.isArray(src.items) ? src.items : [])
   : (Array.isArray(src.extras) ? src.extras : []));
@@ -139,17 +147,94 @@ function setPrice(draft, surface, key, raw) {
 export const setItemPrice = (draft, key, raw) => setPrice(draft, 'item', key, raw);
 export const setExtraPrice = (draft, key, raw) => setPrice(draft, 'extra', key, raw);
 
+// ── 1D add-product A — ADDING A PLAIN PRODUCT ──────────────────────────────────────────────────────────────────
+// A new row: the temporary reference the caller minted, the section it goes in, and nothing the server owns (no
+// key, no id, no identity stamp). Appended at the END of item_order — the server refuses anything else. The price
+// starts empty (the merchant types it) and is held unvalidated like any other price field.
+export function addProduct(draft, { ref, cat, subcat = null } = {}) {
+  if (!canEditDraft(draft)) return draft;
+  if (typeof ref !== 'string' || !ref.startsWith('tmp:') || typeof cat !== 'string' || !cat) return draft;
+  const st = draft.state;
+  if (!Array.isArray(st.items)) st.items = [];
+  if (st.items.some((r) => r && r.ref === ref)) return draft;
+  const display = { cat, name: '', price: null };
+  if (typeof subcat === 'string' && subcat) display.subcat = subcat;
+  st.items.push({ ref, price: null, display });
+  st.structure = st.structure || {};
+  if (!Array.isArray(st.structure.item_order)) st.structure.item_order = [];
+  st.structure.item_order.push(ref);
+  return draft;
+}
+
+// Edit an UNSAVED addition's field. name / desc / cat / subcat only while it is still a temporary row: once the
+// server allocated its key, the name IS the key for some brands, so it is no longer the merchant's to retype here
+// (they can still change its price, or remove it). Price goes through parsePrice like every price.
+// The branches below ARE the field whitelist: any other field (key, id, identity_id…) matches none and writes nothing.
+export function setAddition(draft, ref, field, raw) {
+  if (!canEditDraft(draft)) return draft;
+  const row = rowsOf(draft.state, 'item').find((r) => r && r.ref === ref && isTmp(r));
+  if (!row) return draft;
+  if (field === 'price') {
+    const next = parsePrice(raw);
+    row.price = next;
+    row.display.price = next;
+    return draft;
+  }
+  const v = typeof raw === 'string' ? raw : '';
+  if (field === 'name') row.display.name = v;
+  else if (field === 'desc') { if (v.trim()) row.display.desc = v; else delete row.display.desc; }
+  else if (field === 'cat') { if (v) { row.display.cat = v; delete row.display.subcat; } }
+  else if (field === 'subcat') { if (v) row.display.subcat = v; else delete row.display.subcat; }
+  return draft;
+}
+
+// "Quitar": remove an ADDITION — an unsaved row (its tmp reference) or a saved-but-unpublished one (its key, when the
+// caller's set of saved additions holds its key). Never an existing published item: removing those is not an add-product capability.
+export function removeAddition(draft, id, savedAdditions = new Set()) {
+  if (!canEditDraft(draft)) return draft;
+  const items = rowsOf(draft.state, 'item');
+  const saved = savedAdditions instanceof Set ? savedAdditions : new Set();
+  const i = items.findIndex((r) => r && rowId(r) === id && (isTmp(r) || (typeof r.key === 'string' && saved.has(r.key))));
+  if (i === -1) return draft;
+  items.splice(i, 1);
+  const order = draft.state.structure && draft.state.structure.item_order;
+  if (Array.isArray(order)) { const j = order.indexOf(id); if (j !== -1) order.splice(j, 1); }
+  return draft;
+}
+
+// ADOPT the server's canonical source after a save: allocated keys and ids replace the temporary references, in the
+// server's canonical order — so the review, and every later save, shows and sends server truth. Not a user edit and
+// not gated by canEdit: it runs while the review owns the draft, with the response that review is built from.
+// ORIG is untouched — what was loaded stays the yardstick until a publish reloads it.
+export function adopt(draft, canonical) {
+  if (!canonical || typeof canonical !== 'object' || !Array.isArray(canonical.items)) return draft;
+  draft.state = clone(canonical);
+  return draft;
+}
+
 // What actually differs from what was loaded — never a log of keystrokes. Typing a price back to its
 // original value is not a change, and counting it as one would tell a merchant they have unpublished
 // work when they have none, and put a no-op on the review screen.
+//
+// 1D add-product A — and ADDED / REMOVED rows count. A row in the draft that the loaded document did not have is an
+// unsaved addition (or an adopted one); a row the loaded document had and the draft no longer does is a removed
+// addition. Not counting them was a dirty-guard hole: a product typed but not yet saved read as "nothing pending",
+// so a deploy-triggered self-update reload could throw it away.
 export function pendingChanges(draft) {
   const out = [];
   for (const surface of ['item', 'extra']) {
     const origRows = rowsOf(draft.orig, surface);
-    for (const row of rowsOf(draft.state, surface)) {
-      const was = origRows.find((r) => r && r.key === row.key);
-      if (!was || was.price === row.price) continue;
-      out.push({ surface, key: row.key, from: was.price, to: row.price });
+    const stateRows = rowsOf(draft.state, surface);
+    for (const row of stateRows) {
+      const id = rowId(row);
+      const was = origRows.find((r) => r && rowId(r) === id);
+      if (!was) { out.push({ surface, key: id, from: null, to: row.price, added: true }); continue; }
+      if (was.price === row.price) continue;
+      out.push({ surface, key: id, from: was.price, to: row.price });
+    }
+    for (const was of origRows) {
+      const id = rowId(was);
+      if (!stateRows.some((r) => r && rowId(r) === id)) out.push({ surface, key: id, from: was.price, to: null, removed: true });
     }
   }
   return out;
@@ -164,7 +249,7 @@ export function invalidKeys(draft) {
   const out = [];
   for (const surface of ['item', 'extra']) {
     for (const row of rowsOf(draft.state, surface)) {
-      if (!(Number.isInteger(row.price) && row.price > 0)) out.push({ surface, key: row.key });
+      if (!(Number.isInteger(row.price) && row.price > 0)) out.push({ surface, key: rowId(row) });
     }
   }
   return out;
@@ -173,7 +258,12 @@ export function invalidKeys(draft) {
 // Fail closed. The server would refuse a non-positive price anyway, but it would do so later and less
 // clearly — after the review, after the attestation, as a 400 on a screen that had said everything
 // was ready.
-export const isPublishable = (draft) => invalidKeys(draft).length === 0;
+// 1D add-product A — an unsaved addition with no name cannot be saved (the server refuses name_required); say so
+// here, on the row, rather than after the review.
+export function incompleteAdditions(draft) {
+  return rowsOf(draft.state, 'item').filter((r) => isTmp(r) && !(r.display && typeof r.display.name === 'string' && r.display.name.trim())).map((r) => r.ref);
+}
+export const isPublishable = (draft) => invalidKeys(draft).length === 0 && incompleteAdditions(draft).length === 0;
 
 // ── Task 4 — OPTION GROUPS ───────────────────────────────────────────────────────────────────────
 // The approved mock models options as first-class `groups` with an id and a required/optional `type`.

@@ -46,7 +46,10 @@ function harness(rid, draftSrc, { activeVersionId = ACTIVE, draftUpdateTime = T_
     deps: {
       db: {},
       authorize: allow,
-      readActiveBuilt: async () => ({ built: builtOf(liveSrc, rid), versionId: state.activeVersionId }),
+      readActiveBuilt: async () => {   // 1D add-product A: the comparator also needs the extras' display records
+        const i = sourceToBuildInputs(liveSrc);
+        return { built: builtOf(liveSrc, rid), versionId: state.activeVersionId, extraRecords: buildCatalogV2(rid, { formData: i.formData, priceTable: i.priceTable }).extras };
+      },
       readDraft: async () => ({ source: state.draft, updateTime: state.draftUpdateTime }),
       publishVersion: async (_db, r, input, opts) => {
         state.publishes.push({ rid: r, input, opts });

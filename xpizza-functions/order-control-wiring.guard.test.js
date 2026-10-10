@@ -16,14 +16,16 @@ const { unapplyD4c4, HUNKS } = require('./tools/d4c4-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-// D4-c2b landed on top of D4-c4: its one delimited index.js block (tools/d4c2b-inverse.js, advisor ruling N1) is reversed FIRST.
-const idx = require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js'));
+// 1D add-product A landed on top of D4-c4: its index.js hunks (tools/addproduct-inverse.js) are reversed before the D4-c4 proof.
+// D4-c2b landed on top of add-product A: its one delimited index.js block (tools/d4c2b-inverse.js, advisor ruling N1) is reversed FIRST.
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js')));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 assert.strictEqual(unapplyD4c4(idx), BASE, '🔴 index.js minus the D4-c4 hunks is not e1aeb3f:index.js — something beyond the stated seams changed');
 assert.ok(HUNKS.length >= 8);
-assert.notStrictEqual(unapplyD4c4(read('index.js')), BASE, 'non-vacuity: without the D4-c2b inverse the real index.js does NOT fold back (its block is present)');
+{ let folds; try { folds = unapplyD4c4(require('./tools/addproduct-inverse').unapplyAddProduct(read('index.js'))) === BASE; } catch (_) { folds = false; }
+  assert.ok(!folds, 'non-vacuity: without the D4-c2b inverse the real index.js does NOT fold back (its block is present)'); }
 {
   const inHunk = idx.replace("if (acq.reason === 'order_control') {", "if (acq.reason === 'order_controL') {");
   let detected; try { detected = unapplyD4c4(inHunk) !== BASE; } catch (_) { detected = true; }

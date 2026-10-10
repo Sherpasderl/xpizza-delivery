@@ -111,6 +111,11 @@ export const ALLOWED_CONSUMERS = new Set([
   'renderRail', 'renderDetail', 'renderReview', 'renderAttestation', 'renderOutcome', 'receiptFor',
   // A WeakSet membership test. It cannot reach the object's properties, let alone write one.
   'mintedReviews.has',
+  // 1D add-product A — the add-only setters (canEdit-guarded in editor.js: addProduct, setAddition, removeAddition, which
+  // receives the saved-additions Set and only calls .has on it), a pure array check, and ADOPT: the one draft setter
+  // not gated by canEdit, called ONLY on the save settle path after the generation check, with the server's own
+  // canonical source — the response the review is built from.
+  'addProduct', 'setAddition', 'removeAddition', 'adopt', 'Array.isArray',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
@@ -118,6 +123,8 @@ export const ALLOWED_METHOD_CHAINS = new Set([
   'state.restaurants.find', 'state.restaurants.some',
   'state.groups.find', 'state.groups.some',
   'state.openGroups.has', 'state.openGroups.add', 'state.openGroups.delete',
+  // 1D add-product A — membership reads of server-said facts; the save settle path records allocated keys (census-counted)
+  'state.additionKeys.has', 'state.additionKeys.add', 'state.renderedCategories.includes',
 ]);
 // 🔴 PROPERTIES WHOSE VALUE IS A PRIMITIVE, and therefore cannot be retained or mutated by whoever
 // receives it. Reading one yields a copy of a string, number, boolean or null, so the escape rules

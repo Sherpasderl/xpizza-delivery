@@ -47,7 +47,7 @@ async function readActiveBuilt(rid) {
   if (versionId == null) throw new Error(`no_active_version: ${rid}`);
   const [preview, docs] = await Promise.all([previewVersion(db, rid, versionId), readVersionDocs(db, rid, versionId)]);
   const { extras } = buildTablesFromDocs(docs.itemDocs, docs.extraDocs);
-  return { built: { items: preview.items, structure: preview.structure, extras }, versionId };
+  return { built: { items: preview.items, structure: preview.structure, extras }, versionId, extraRecords: preview.extras };   // 1D add-product A: as portal/functions.js
 }
 async function readDraft(rid) {
   const snap = await sourceRefOf(db, rid).get();

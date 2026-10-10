@@ -512,6 +512,7 @@ function cartAdapterOf(rid) {
     'catalog/identity-partition.js': 'the partition law is stated over these ids',
     'catalog/catalog-publish.js': 'the writer that stamps display.identity_id from the draft',
     'catalog/catalog-edit.js': 'the merchant diff, which must EXCLUDE identity from content',
+    'catalog/add-product.js': "1D add-product A ADD-ONLY structural check: an existing item must keep its stamp, a NEW item may not carry one (client stamps refused), and a removal is licensed only by the D4-P1 deletion claim's ids (advisor ruling A); keys no price/cart/quote/redemption/factura",
     'catalog/content-hash.js': 'excludes identity from the content fingerprint',
     'catalog/catalog-context.js': "D4-a resolved context: the single gateway mapping a certified version's own stamp to canonicalId; reported only; keys no price/cart/quote/redemption/factura; not in the public payload",
     'catalog/identity-evidence.js': "D4-c2a binding evidence: digests the stamps the activation writer commits (final_digest), inside that writer's transaction; writes only restaurants/{rid}/identity_evidence; dormant — nothing reads it; keys no price/cart/quote/redemption/factura",

@@ -138,6 +138,16 @@ export async function publishEdited({ rid, editToken, acknowledgedChanges, fisca
   });
 }
 
+// 1D add-product A §0.1 — "Volver al menú publicado": replace the saved draft with the published menu, conditional on the
+// revision the owner saw (a draft that changed since is refused, 409 stale_edit). Owner-only on the server.
+export async function resetDraftToLive({ rid, expectedRevision, token }) {
+  return apiFetch('resetDraftToLive', {
+    rid,
+    token,
+    body: { restaurantId: rid, expectedRevision },
+  });
+}
+
 // ── Stats S1 — sales history (getSalesStats) ─────────────────────────────────────────────────────
 // JSON: KPIs, series, breakdowns, customers, times — aggregates only (the server never returns a
 // phone, name or customer key).
