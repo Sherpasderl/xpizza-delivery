@@ -34,11 +34,17 @@ const ROWS = [
    are deleted (recursively); `docs` = docs rewritten from the seed (or deleted if the seed has none). Read-only operations: none.
    Equivalence is PROVEN, not assumed: the full canonical subtree digest must equal the SEEDED digest at every child start, after
    every restore in the self-test (LAT_DIGEST_EVERY=1), and after every 10th sample's restore in the real run — any mismatch VOIDS
-   the try (the child stops, the parent stops; no silent re-restore). */
+   the try (the child stops, the parent stops; no silent re-restore).
+   WINDOW 2 (merged onto main 4e2a710, 1D add-product A; advisor ruling 2026-10-10): the editCatalog / publishEdited rows run the
+   DEPLOYED dependencies (portal/functions.js) — the add-product io (incl. the KDS-manifest sync after a publish), the RTDB catalog
+   mirror, and the production-shaped live read (extraRecords). Their RTDB writes are part of the restaurant's state: `rtdb` = the
+   restaurant's RTDB paths (RTDB_PATHS), included in the canonical state + digest for EVERY row and restored from the seed for
+   publishEdited. */
 const META = (d) => `meta/${d}`;
+const RTDB_PATHS = (rid) => [`catalog_snapshot/${rid}`, `menus/${rid}`, `menus/_meta/${rid}`];
 const RESTORE_SETS = Object.freeze({
   publish: { fresh: ['versions', 'identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock')] },
-  publishEdited: { fresh: ['versions', 'identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock'), META('source')] },
+  publishEdited: { fresh: ['versions', 'identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock'), META('source')], rtdb: true },
   rollback: { fresh: ['identity_evidence'], docs: [META('active_version'), META('active_snapshot'), META('publish_lock')] },
   editCatalog: { fresh: [], docs: [META('source')] },
   editCatalog_unchanged: { fresh: [], docs: [META('source')] },
@@ -58,12 +64,13 @@ const runChild = (rowKey, cond) => {
   const t0 = Date.now();
   const out = execFileSync('node', [__filename, '--child', rowKey, cond], { encoding: 'utf8', env, maxBuffer: 1 << 27, timeout: 1800000 });
   const res = { ...JSON.parse(out.trim().split('\n').pop()), started_at: t0, ended_at: Date.now() };
-  if (!res.digest || res.digest.mismatches !== 0 || res.digest.start_ok !== true) {
+  if (!process.env.LAT_DISCOVER && (!res.digest || res.digest.mismatches !== 0 || res.digest.start_ok !== true)) {   // discovery (self-test only) reports writes, not samples
     // R1: a state mismatch VOIDS the try — stop now, report what was found; never re-restore and continue
     console.error(JSON.stringify({ VOID: 'state_digest_mismatch', row: rowKey, cond, digest: res.digest }));
     console.log(JSON.stringify({ void: true, reason: 'state_digest_mismatch', row: rowKey, cond, digest: res.digest }));
     process.exit(4);
   }
+  if (process.env.LAT_DISCOVER) return res;
   console.error(JSON.stringify({ child: rowKey, cond, timing: res.timing, secs: +((res.ended_at - res.started_at) / 1000).toFixed(1), samples: res.ms.length, digest_checked: res.digest.checked, digest_mismatches: res.digest.mismatches, monitor_runs: res.monitor.runs }));
   return res;
 };
@@ -145,6 +152,7 @@ async function child(rowKey, cond) {
       const cols = (await pool(docs, 64, (d) => d.listCollections())).flat();
       docs = (await pool(cols, 64, (c) => c.listDocuments())).flat();
     }
+    for (const rp of RTDB_PATHS(rid)) { const v = (await rtdb.ref(rp).get()).val(); if (v !== null) out.push([`rtdb:${rp}`, v]); }
     return out;
   };
   // the seeded state of the target, captured once per child (Timestamps kept as Timestamps)
@@ -183,6 +191,7 @@ async function child(rowKey, cond) {
       const ref = root.collection(rel.split('/')[0]).doc(rel.split('/')[1]);
       if (seedByPath.has(ref.path)) await ref.set(seedByPath.get(ref.path)); else await ref.delete();
     }
+    if (RS.rtdb) for (const rp of RTDB_PATHS(row.rid)) { const k = `rtdb:${rp}`; if (seedByPath.has(k)) await rtdb.ref(rp).set(seedByPath.get(k)); else await rtdb.ref(rp).remove(); }
   };
   const verify = async (label) => {
     const tv = Date.now();
@@ -235,21 +244,25 @@ async function child(rowKey, cond) {
   };
   const { editCatalogCore } = require('../catalog/edit-catalog-handler');
   const { publishEditedCore } = require('../catalog/publish-edited-handler');
-  const { getRestaurantMenu } = require('../catalog/catalog-menu');
-  const { sourceToBuildInputs } = require('../catalog/source-store');
-  const { buildCatalogV2 } = require('../catalog/form-menu-source');
   const { publishVersion } = require('../catalog/catalog-publish');
   const owner = async () => ({ ok: true, uid: UID, role: 'owner', actor: 'lat@x.hn' });
+  // the DEPLOYED edit dependencies (portal/functions.js): the live read incl. extraRecords, the add-product io, the RTDB mirror
   const readActiveBuilt = async () => {
-    const menu = await getRestaurantMenu(db, row.rid);
-    const inputs = sourceToBuildInputs({ items: menu.items.map((i) => ({ key: i.key, price: i.price, display: i.display })), extras: menu.extras.map((e) => ({ key: e.key, price: e.price, display: e.display })), structure: menu.structure });
-    const built = buildCatalogV2(row.rid, { formData: inputs.formData, priceTable: inputs.priceTable });
-    return { built: { ...built, extras: inputs.extras }, versionId: (await getActivePointer(db, row.rid)).version };
+    const { previewVersion: pv } = require('../catalog/catalog-publish');
+    const { readVersionDocs, getActiveVersionId } = require('../catalog/catalog-firestore');
+    const { buildTablesFromDocs } = require('../catalog/catalog-transform');
+    const versionId = await getActiveVersionId(db, row.rid);
+    const [preview, docs] = await Promise.all([pv(db, row.rid, versionId), readVersionDocs(db, row.rid, versionId)]);
+    const { extras } = buildTablesFromDocs(docs.itemDocs, docs.extraDocs);
+    return { built: { items: preview.items, structure: preview.structure, extras }, versionId, extraRecords: preview.extras };
   };
+  const addProduct = require('../catalog/add-product-io').addProductIo({ fs: db, rtdb });
+  const mirror = require('../catalog/mirror-rtdb').makeRtdbMirror(rtdb);
+  const alarm = async () => {};   // production pages on a failed mirror; a sample that needed it is an error anyway
   const toPrecondition = (v) => { if (typeof v !== 'string') return v; const [s, ns] = v.split('.'); return new admin.firestore.Timestamp(Number(s), Number(ns)); };
   async function saveOnly(mutate) {
     const snapS = await sourceRefOf(db, row.rid).get();
-    const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt, toPrecondition }, { restaurantId: row.rid, source: mutate(JSON.parse(JSON.stringify(snapS.data()))), baseSourceUpdateTime: encodeUpdateTime(snapS.updateTime) }, {});
+    const r = await editCatalogCore({ db, authorize: owner, readActiveBuilt, toPrecondition, addProduct }, { restaurantId: row.rid, source: mutate(JSON.parse(JSON.stringify(snapS.data()))), baseSourceUpdateTime: encodeUpdateTime(snapS.updateTime) }, {});
     return r.status === 200 ? r : false;
   }
 
@@ -261,7 +274,7 @@ async function child(rowKey, cond) {
       const mid = await fullState();
       const saved = await saveOnly((x) => x);   // re-issue a token on the saved draft
       const readDraft = async () => { const sn = await sourceRefOf(db, row.rid).get(); return { source: sn.data(), updateTime: encodeUpdateTime(sn.updateTime) }; };
-      fn = async () => (await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, sourceSha: 'lat' }, { restaurantId: row.rid, token: saved && saved.body.token, fiscalAck: true }, {})).status === 200;
+      fn = async () => (await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha: 'lat', addProduct }, { restaurantId: row.rid, token: saved && saved.body.token, fiscalAck: true }, {})).status === 200;
       void mid;
     }
     const before = await fullState(); const okRun = await fn(); const after = await fullState();
@@ -288,7 +301,7 @@ async function child(rowKey, cond) {
     if (row.op === 'publishEdited') {
       const saved = await saveOnly((s) => { s.items[0].price += 1; if (s.items[0].display) s.items[0].display.price = s.items[0].price; return s; });
       const readDraft = async () => { const sn = await sourceRefOf(db, row.rid).get(); return { source: sn.data(), updateTime: encodeUpdateTime(sn.updateTime) }; };
-      fn = async () => (await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, sourceSha: 'lat' }, { restaurantId: row.rid, token: saved && saved.body.token, fiscalAck: true }, {})).status === 200;
+      fn = async () => (await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, mirror, alarm, sourceSha: 'lat', addProduct }, { restaurantId: row.rid, token: saved && saved.body.token, fiscalAck: true }, {})).status === 200;
     }
     const t0 = Date.now(); const h0 = process.hrtime.bigint();
     let okRes = false;

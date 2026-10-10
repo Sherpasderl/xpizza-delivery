@@ -87,26 +87,40 @@ function fixture({ db, rtdb, now, sleep } = {}) {
   const { getRestaurantMenu } = require('../catalog/catalog-menu');
   const owner = async () => ({ ok: true, uid: 'u_o', role: 'owner', actor: 'o@x.hn' });
   const toPrecondition = (v) => { if (typeof v !== 'string') return v; const [sec, nanos] = v.split('.'); return new admin.firestore.Timestamp(Number(sec), Number(nanos)); };
-  async function portalSaveAndPublish(rid, mutate, tag = 'portal') {
-    const readDraft = async () => { const snap = await sourceRefOf(db, rid).get(); return { source: snap.data(), updateTime: encodeUpdateTime(snap.updateTime) }; };
-    const readActiveBuilt = async () => {
-      const menu = await getRestaurantMenu(db, rid);
-      const inputs = sourceToBuildInputs({ items: menu.items.map((i) => ({ key: i.key, price: i.price, display: i.display })),
-        extras: menu.extras.map((e) => ({ key: e.key, price: e.price, display: e.display })), structure: menu.structure });
-      const built = buildCatalogV2(rid, { formData: inputs.formData, priceTable: inputs.priceTable });
-      return { built: { ...built, extras: inputs.extras }, versionId: (await getActivePointer(db, rid)).version };
-    };
+  const PORTAL_READ_DRAFT = (rid) => async () => { const snap = await sourceRefOf(db, rid).get(); return { source: snap.data(), updateTime: encodeUpdateTime(snap.updateTime) }; };
+  // the LIVE version exactly as production reads it for an edit (portal/functions.js readActiveBuiltForEdit), incl. the extras'
+  // records that 1D add-product A's structural comparison needs
+  const PORTAL_READ_ACTIVE = (rid) => async () => {
+    const { previewVersion } = require('../catalog/catalog-publish');
+    const { readVersionDocs, getActiveVersionId } = require('../catalog/catalog-firestore');
+    const { buildTablesFromDocs } = require('../catalog/catalog-transform');
+    const versionId = await getActiveVersionId(db, rid);
+    const [preview, docs] = await Promise.all([previewVersion(db, rid, versionId), readVersionDocs(db, rid, versionId)]);
+    const { extras } = buildTablesFromDocs(docs.itemDocs, docs.extraDocs);
+    return { built: { items: preview.items, structure: preview.structure, extras }, versionId, extraRecords: preview.extras };
+  };
+  /* the save alone (no throw): main's add-only rules refuse some draft shapes AT SAVE, and a cell asserts which */
+  async function portalSave(rid, mutate) {
+    const readActiveBuilt = PORTAL_READ_ACTIVE(rid);
     const snap = await sourceRefOf(db, rid).get();
     const base = await getActivePointer(db, rid);   // the baseline the merchant LOADED (a deletion claim is bound to it)
     const next = mutate(JSON.parse(JSON.stringify(snap.data())), { version: base.version, generation: base.generation });
     // the deletion claim's baseline is a REQUEST field (edit-catalog-handler.js:216), not part of the draft
     const loadedBase = next.deleted_ids_loaded_base; delete next.deleted_ids_loaded_base;
-    const saved = await editCatalogCore({ db, authorize: owner, readActiveBuilt, toPrecondition }, { restaurantId: rid, source: next, baseSourceUpdateTime: encodeUpdateTime(snap.updateTime),
+    // 1D add-product A: the deployed editCatalog / publishEdited receive the add-product io (portal/functions.js addProductIoForEdit)
+    const addProduct = require('../catalog/add-product-io').addProductIo({ fs: db, rtdb });
+    const saved = await editCatalogCore({ db, authorize: owner, readActiveBuilt, toPrecondition, addProduct }, { restaurantId: rid, source: next, baseSourceUpdateTime: encodeUpdateTime(snap.updateTime),
       ...(loadedBase ? { deleted_ids_loaded_base: loadedBase } : {}) }, {});
+    return saved;
+  }
+  async function portalSaveAndPublish(rid, mutate, tag = 'portal') {
+    const readActiveBuilt = PORTAL_READ_ACTIVE(rid); const readDraft = PORTAL_READ_DRAFT(rid);
+    const addProduct = require('../catalog/add-product-io').addProductIo({ fs: db, rtdb });
+    const saved = await portalSave(rid, mutate);
     if (saved.status !== 200) throw new Error(`portal save refused ${saved.status}: ${JSON.stringify(saved.body).slice(0, 300)}`);
     // the merchant confirms EXACTLY the large-change set the save reported (as the portal's confirmation dialog does)
     const ack = ((saved.body.diff && saved.body.diff.largeChangeSet) || []).map((l) => ({ key: l.key, surface: l.surface }));
-    const pub = await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, sourceSha: tag },
+    const pub = await publishEditedCore({ db, authorize: owner, readActiveBuilt, readDraft, publishVersion, sourceSha: tag, addProduct },
       { restaurantId: rid, token: saved.body.token, fiscalAck: true, ...(ack.length ? { acknowledgedChanges: ack } : {}) }, {});
     if (pub.status !== 200) throw new Error(`portal publish refused ${pub.status}: ${JSON.stringify(pub.body).slice(0, 300)}`);
     return (await getActivePointer(db, rid)).version;
@@ -114,7 +128,7 @@ function fixture({ db, rtdb, now, sleep } = {}) {
   const nodeOf = async (rid) => (await rtdb.ref(`${INTEGRITY_PATH}/${rid}`).get()).val();
   const setNode = (rid, v) => rtdb.ref(`${INTEGRITY_PATH}/${rid}`).set(v);
   const openFindings = (node) => Object.entries((node && node.findings) || {}).filter(([, f]) => f.status === 'open');
-  return { candidateFromSource, seed, publish, rollback, bootstrap, addDish, monitor, runFor, nodeOf, setNode, openFindings, versionsColOf, evidenceCol, evidenceIds, pointerRef, merchant, portalSaveAndPublish };
+  return { candidateFromSource, seed, publish, rollback, bootstrap, addDish, monitor, runFor, nodeOf, setNode, openFindings, versionsColOf, evidenceCol, evidenceIds, pointerRef, merchant, portalSave, portalSaveAndPublish };
 }
 function initEmulatorApp() {
   if (!admin.apps.length) admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza-default-rtdb` });

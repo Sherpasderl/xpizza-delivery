@@ -223,34 +223,80 @@ const evidence = async (rid) => (await db.collection('restaurants').doc(rid).col
     ok('rollbacks: to a bootstrap-certified version → certification origin, unaltered, no finding; to a version whose origin predates c2a → history_unknown (+ the gap), also when superseded before the run; to a target whose binding differs from what it re-activated → rollback_target_altered, detected after it was superseded');
   }
 
-  // ── 11. legitimate operations through the MERCHANT'S REAL PATH (editCatalogCore → publishEditedCore) → NO violation:
-  //        a rename (P1a: the old id declared deleted + the new name minted), a delete, a recreate, a name reuse, an unchanged
-  //        republish, a rollback with the registry moved; La Musa uncertified ───────────────────────────────────────────
+  // ── 11. legitimate operations through the MERCHANT'S REAL PATH on main's ADD-ONLY portal (1D add-product A; advisor ruling
+  //        2026-10-10) → NO violation: a price edit, a delete (the old identity declared deleted), an ADD by server allocation
+  //        (`ref: tmp:…` → server-assigned key + a minted identity), a rename = a delete + an add under the new name, an unchanged
+  //        republish, then a rollback across all of them with the registry moved; the OLD rename / recreate draft shapes are
+  //        REFUSED at save (client_supplied_key) — main's rule pinned, not dropped; La Musa uncertified ─────────────────────────
   {
-    const R = 'synth_legit';
-    const v1 = await F.merchant(R);
-    await F.publish(R, 'legit-certified');          // a certified version to edit from
+    const R = 'x_pizza';                                   // a brand with a renderer contract: only a RENDERED category takes an add
+    await db.recursiveDelete(db.collection('restaurants').doc(R)); await rtdb.ref(`catalog_integrity/${R}`).remove();   // fresh, after cells 1–10
+    await db.collection('restaurants').doc(R).set({ name: R, pricing_key_mode: 'name', active: true, schema_version: 2 });   // as add-product's own suite seeds it
+    await F.seed(R);
+    const v1 = await F.publish(R, 'legit-v1');
+    {
+      const { backfillIdentities } = require('../catalog/identity-backfill');
+      const { getRestaurantMenu } = require('../catalog/catalog-menu');
+      await backfillIdentities(db, R, await getRestaurantMenu(db, R), { captured: await getActivePointer(db, R) });
+      assert.strictEqual((await F.bootstrap(R)).stamped, true, 'premise: certified');
+    }
     const idOf = (src, key) => { const it = src.items.find((x) => x.key === key); return it && it.display && it.display.identity_id; };
-    const reorder = (src) => { src.structure.item_order = src.items.map((x) => x.key); return src; };
-    let victim;
-    await F.portalSaveAndPublish(R, (src, loaded) => {       // rename = delete the old identity + mint the new name
-      const it = src.items[1]; victim = it.key; const oldId = idOf(src, it.key); src.deleted_ids_loaded_base = loaded;
-      src.items[1] = { ...it, key: `${it.key} Renamed`, name: `${it.key} Renamed`, display: { ...it.display, name: `${it.key} Renamed` } }; delete src.items[1].display.identity_id;
-      src.deleted_ids = [...(src.deleted_ids || []), oldId].filter(Boolean); return reorder(src);
-    }, 'legit-rename');
-    let gone;
-    await F.portalSaveAndPublish(R, (src, loaded) => { gone = src.items.splice(2, 1)[0]; src.deleted_ids = [...(src.deleted_ids || []), gone.display.identity_id].filter(Boolean); src.deleted_ids_loaded_base = loaded; return reorder(src); }, 'legit-delete');
-    await F.portalSaveAndPublish(R, (src) => { const back = { ...gone, display: { ...gone.display } }; delete back.display.identity_id; src.items.push(back); return reorder(src); }, 'legit-recreate');
-    await F.portalSaveAndPublish(R, (src) => { const reuse = { ...src.items[0], key: victim, name: victim, display: { ...src.items[0].display, id: 9999, name: victim } }; delete reuse.display.identity_id; src.items.push(reuse); return reorder(src); }, 'legit-reuse');
+    const order = (src) => { src.structure.item_order = src.items.map((x) => x.key || x.ref); return src; };
+    let T = 0; const tmpRef = () => `tmp:c2b00000-${String(T += 1).padStart(4, '0')}`;
+    const add = (src, name) => { src.items.push({ ref: tmpRef(), price: 555, display: { cat: 'ny', name, price: 555, desc: 'nuevo' } }); return src; };
+    const del = (src, loaded, i) => { const [g] = src.items.splice(i, 1); src.deleted_ids = [...(src.deleted_ids || []), idOf({ items: [g] }, g.key)].filter(Boolean); src.deleted_ids_loaded_base = loaded; return g; };
+    await F.portalSaveAndPublish(R, (src) => { src.items[0].price += 1; src.items[0].display.price = src.items[0].price; return src; }, 'legit-price');
+    let gone; await F.portalSaveAndPublish(R, (src, loaded) => { gone = del(src, loaded, src.items.length - 1); return order(src); }, 'legit-delete');
+    await F.portalSaveAndPublish(R, (src) => order(add(src, 'Producto C2B')), 'legit-add');
+    let renamed; await F.portalSaveAndPublish(R, (src, loaded) => { renamed = del(src, loaded, src.items.length - 2); return order(src); }, 'legit-rename-delete');
+    await F.portalSaveAndPublish(R, (src) => order(add(src, `${renamed.display.name} Nueva`)), 'legit-rename-add');
+    // the OLD shapes are refused AT SAVE: a client-chosen key for a new product (rename in place / recreate by re-adding the row)
+    const oldRename = await F.portalSave(R, (src) => { const it = src.items[1]; src.items[1] = { ...it, key: `${it.key} Renamed`, display: { ...it.display, name: `${it.key} Renamed` } }; delete src.items[1].display.identity_id; return order(src); });
+    const oldRecreate = await F.portalSave(R, (src) => { const back = JSON.parse(JSON.stringify(gone)); delete back.display.identity_id; src.items.push(back); return order(src); });
+    assert.deepStrictEqual([[oldRename.status, oldRename.body.error], [oldRecreate.status, oldRecreate.body.error]], [[400, 'client_supplied_key'], [400, 'client_supplied_key']],
+      `main's add-only rule: ${JSON.stringify([oldRename.body, oldRecreate.body])}`);
     await F.portalSaveAndPublish(R, (src) => src, 'legit-unchanged');
-    await F.rollback(R, v1);                         // the registry moved since v1 (rename, delete, recreate, reuse)
+    const live = (await F.candidateFromSource(R)).items.map((i) => i.key);
+    assert.ok(live.includes('Producto C2B') && live.includes(`${renamed.display.name} Nueva`) && !live.includes(gone.key) && !live.includes(renamed.key), `premise: the lifecycle happened ${JSON.stringify(live)}`);
+    await F.rollback(R, v1);                         // the registry moved since v1 (delete, add, rename)
     await run1(R);
     const node = await F.nodeOf(R);
     assert.deepStrictEqual([node.summary.open_violations, (await open(R)).filter((k) => !k.startsWith('unattested') && k !== 'history_unknown')], [0, []], `no violation: ${JSON.stringify(await open(R))}`);
     await F.seed('la_musa'); await F.publish('la_musa', 'lm');
     await run1('la_musa');
     assert.deepStrictEqual([(await F.nodeOf('la_musa')).active.state, await open('la_musa')], ['uncertified', []]);
-    ok('legitimate operations through the merchant\'s REAL path (editCatalogCore → publishEditedCore) → NO violation: a rename (old identity declared deleted + new name minted, P1a), a delete, a recreate, a name reuse, an unchanged republish, then a rollback across all of them with the registry moved; La Musa uncertified → state uncertified, no finding');
+    ok('legitimate operations through the merchant\'s REAL path on main\'s ADD-ONLY portal (editCatalogCore → publishEditedCore, with the add-product io) → NO violation: a price edit, a delete, an ADD by server allocation, a rename as delete + add, an unchanged republish, then a rollback across all of them with the registry moved; the old rename / recreate shapes are REFUSED at save (client_supplied_key); La Musa uncertified → state uncertified, no finding');
+  }
+
+  // ── 11b. the OPERATOR path can still RECREATE a deleted name and REUSE a used one: publishVersion (catalog/catalog-publish.js,
+  //         unchanged by add-product A) carries no add-product gate, and tools/publish-version.js gates only store == code parity —
+  //         an operator code change + seed + publish. Driven here through the same core over a direct draft edit, after a portal
+  //         delete → the real monitor raises NO false alarm (advisor ruling 2026-10-10) ───────────────────────────────────────────
+  {
+    const R = 'synth_legit';
+    const v1 = await F.merchant(R);
+    await db.collection('restaurants').doc(R).set({ pricing_key_mode: 'name' }, { merge: true });
+    await F.publish(R, 'op-certified');
+    const idOf = (src, key) => { const it = src.items.find((x) => x.key === key); return it && it.display && it.display.identity_id; };
+    const reorder = (src) => { src.structure.item_order = src.items.map((x) => x.key); return src; };
+    let gone; let victim;
+    await F.portalSaveAndPublish(R, (src, loaded) => { gone = src.items.splice(2, 1)[0]; src.deleted_ids = [...(src.deleted_ids || []), idOf({ items: [gone] }, gone.key)].filter(Boolean); src.deleted_ids_loaded_base = loaded; return reorder(src); }, 'op-delete-1');
+    await F.portalSaveAndPublish(R, (src, loaded) => { const v = src.items.splice(1, 1)[0]; victim = v.key; src.deleted_ids = [...(src.deleted_ids || []), idOf({ items: [v] }, v.key)].filter(Boolean); src.deleted_ids_loaded_base = loaded; return reorder(src); }, 'op-delete-2');
+    {  // operator RECREATE: the deleted row itself comes back (no identity stamp; the registry still holds its key)
+      const { sourceRefOf } = require('../catalog/source-store');
+      const src = (await sourceRefOf(db, R).get()).data(); const back = JSON.parse(JSON.stringify(gone)); delete back.display.identity_id;
+      src.items.push(back); await sourceRefOf(db, R).set(reorder(src));
+      await F.publish(R, 'op-recreate');
+    }
+    await F.addDish(R, victim); await F.publish(R, 'op-reuse');     // operator REUSE: a used name on a DIFFERENT object (new display id)
+    await F.publish(R, 'op-unchanged');
+    const live = (await F.candidateFromSource(R)).items.map((i) => i.key);
+    assert.ok(live.includes(gone.key) && live.includes(victim), `premise: recreated + reused ${JSON.stringify(live)}`);
+    await F.rollback(R, v1);
+    await run1(R);
+    const node = await F.nodeOf(R);
+    assert.deepStrictEqual([node.summary.open_violations, (await open(R)).filter((k) => !k.startsWith('unattested') && k !== 'history_unknown')], [0, []], `no violation: ${JSON.stringify(await open(R))}`);
+    ok('the OPERATOR path (publishVersion over a direct draft edit — no add-product gate; the CLI gates only store == code parity) still RECREATES a deleted name and REUSES a used one: after two portal deletes, a recreate, a reuse on a new object, an unchanged republish and a rollback, the real monitor raises NO violation');
   }
 
   // ── 12. reducer on the real path: a crash before LOGGING re-logs the same counts; a crash before COMMIT loses nothing ──
