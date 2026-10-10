@@ -2606,26 +2606,26 @@
   {
     "id": "b7-20",
     "slice": "b7",
-    "file": "../la-musa-orders/index.html",
+    "file": "../la-musa-orders/form-group-picker.js",
     "command": [
       "node",
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: the launcher CTA ignores the selected variant's availability — a sold-out protein shows a priced Agregar",
-    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {\n      cta.className = 'detail-cta';\n      cta.style.opacity = '.5';\n      cta.style.pointerEvents = 'none'; cta.disabled = true;\n      cta.innerHTML = '<span>Agotado</span>';\n      return;\n    }\n",
-    "to": "    ;\n"
+    "from": "  if (v && typeof opts.isSoldOut === \"function\" && opts.isSoldOut(v)) return { kind: \"soldout\" };\n",
+    "to": ""
   },
   {
     "id": "b7-21",
     "slice": "b7",
-    "file": "../la-musa-orders/index.html",
+    "file": "../la-musa-orders/form-group-picker.js",
     "command": [
       "node",
       "../live-apply.test.mjs"
     ],
-    "label": "la_musa: the launcher CTA asks about the LAUNCHER instead of the selected variant",
-    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {",
-    "to": "    if (v && typeof isSoldOut === 'function' && isSoldOut(pizza)) {"
+    "label": "la_musa: the launcher CTA asks about ANOTHER dish instead of the selected variant",
+    "from": "  if (v && typeof opts.isSoldOut === \"function\" && opts.isSoldOut(v)) return { kind: \"soldout\" };",
+    "to": "  if (v && typeof opts.isSoldOut === \"function\" && opts.isSoldOut(opts.menu.find(p => p !== v) || v)) return { kind: \"soldout\" };"
   },
   {
     "id": "b7-22",
@@ -2740,8 +2740,8 @@
     "slice": "b8",
     "label": "the card name is rendered unescaped again",
     "file": "../xpizza-orders/index.html",
-    "from": "<div class=\"pizza-card-name\">${safeText(p.name)}</div>",
-    "to": "<div class=\"pizza-card-name\">${p.name}</div>",
+    "from": "        <div class=\"pizza-card-name\">${safeText(p.name)}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">L ${safeText(p.price)}</span>",
+    "to": "        <div class=\"pizza-card-name\">${p.name}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">L ${safeText(p.price)}</span>",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2764,8 +2764,32 @@
     "slice": "b8",
     "label": "the card photo colour is taken raw",
     "file": "../xpizza-orders/index.html",
-    "from": "style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\"",
-    "to": "style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\"",
+    "from": "  const plainCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\">",
+    "to": "  const plainCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\">",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-08L",
+    "slice": "b8",
+    "label": "the LAUNCHER card name is rendered unescaped (1D add-product B)",
+    "file": "../xpizza-orders/index.html",
+    "from": "        <div class=\"pizza-card-name\">${safeText(p.name)}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">${safeText(GroupPicker.priceText(",
+    "to": "        <div class=\"pizza-card-name\">${p.name}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">${safeText(GroupPicker.priceText(",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-10L",
+    "slice": "b8",
+    "label": "the LAUNCHER card photo colour is taken raw (1D add-product B)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const launcherCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\">",
+    "to": "  const launcherCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\">",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2822,9 +2846,9 @@
   {
     "id": "b8-15",
     "slice": "b8",
-    "label": "la_musa: the launcher modal prints the authored basePrice raw",
+    "label": "la_musa: the launcher modal prints the AUTHORED basePrice (raw) instead of the price derived from its choices",
     "file": "../la-musa-orders/index.html",
-    "from": "    <div class=\"detail-price\">desde L ${safeText(cfg.basePrice)}</div>",
+    "from": "    <div class=\"detail-price\">${safeText(GroupPicker.priceText(cfg, MENU) || '—')}</div>",
     "to": "    <div class=\"detail-price\">desde L ${cfg.basePrice}</div>",
     "command": [
       "node",
@@ -2933,9 +2957,9 @@
     "id": "b8-24",
     "slice": "b8",
     "label": "la_musa: a launcher's basePrice is accepted without being checked as a number",
-    "file": "../la-musa-orders/index.html",
-    "from": "      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + origin + ':' + k);",
-    "to": "      if (false) throw new Error('apply_variant_basePrice@' + origin + ':' + k);",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "    if (!(typeof cfg.basePrice === \"number\" && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error(\"apply_variant_basePrice@\" + origin + \":\" + k);",
+    "to": "    if (false) throw new Error(\"apply_variant_basePrice@\" + origin + \":\" + k);",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3041,9 +3065,9 @@
     "id": "b8-33",
     "slice": "b8",
     "label": "la_musa: variantId validation goes back to coercing, so it admits what the renderer cannot draw",
-    "file": "../la-musa-orders/index.html",
-    "from": "        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);",
-    "to": "        if (!dishes.some((d) => String(d.id) === String(vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "      if (!dishes.some(function (d) { return sameDishId(d.id, vid); })) throw new Error(\"apply_variant_id_orphan@\" + origin + \":\" + k + \":\" + vid);",
+    "to": "      if (!dishes.some(function (d) { return String(d.id) === String(vid); })) throw new Error(\"apply_variant_id_orphan@\" + origin + \":\" + k + \":\" + vid);",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3053,9 +3077,9 @@
     "id": "b8-34",
     "slice": "b8",
     "label": "la_musa: the shared dish-identity comparison stops pinning the type",
-    "file": "../la-musa-orders/index.html",
-    "from": "function sameDishId(a, b) { return typeof a === 'string' && typeof b === 'string' && a === b; }",
-    "to": "function sameDishId(a, b) { return String(a) === String(b); }",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "  if (typeof a === \"string\" && typeof b === \"string\") return a === b;\n  if (typeof a === \"number\" && typeof b === \"number\") return isFinite(a) && a === b;\n  return false;",
+    "to": "  return String(a) === String(b);",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3065,9 +3089,9 @@
     "id": "b8-35",
     "slice": "b8",
     "label": "la_musa: a variantId of the wrong type is accepted",
-    "file": "../la-musa-orders/index.html",
-    "from": "        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));",
-    "to": "        if (false) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "      if (!groupType || idTypeOf(vid) !== groupType) throw new Error(\"apply_variant_id_type@\" + origin + \":\" + k + \":\" + String(vid));",
+    "to": "      if (false) throw new Error(\"apply_variant_id_type@\" + origin + \":\" + k + \":\" + String(vid));",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3091,9 +3115,9 @@
     "id": "b8-37",
     "slice": "b8",
     "label": "la_musa: the variant renderer dereferences a miss instead of skipping it",
-    "file": "../la-musa-orders/index.html",
-    "from": "    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;",
-    "to": "    const v = MENU.find(p => sameDishId(p.id, vid));",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "    const v = menu.find(p => sameDishId(p.id, vid)); if (!v) return;\n    rows.push(",
+    "to": "    const v = menu.find(p => sameDishId(p.id, vid));\n    rows.push(",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3103,9 +3127,9 @@
     "id": "b8-38",
     "slice": "b8",
     "label": "la_musa: the variant renderer's comparison coerces, disagreeing with the validator",
-    "file": "../la-musa-orders/index.html",
-    "from": "    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;",
-    "to": "    const v = MENU.find(p => String(p.id) === String(vid)); if (!v) return;",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "    const v = menu.find(p => sameDishId(p.id, vid)); if (!v) return;\n    rows.push(",
+    "to": "    const v = menu.find(p => String(p.id) === String(vid)); if (!v) return;\n    rows.push(",
     "command": [
       "node",
       "../live-apply.test.mjs"

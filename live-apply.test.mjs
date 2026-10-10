@@ -1191,6 +1191,15 @@ for (const dir of Object.keys(BRAND)) {
       const vi = w.liveMenuGlobalGet('VARIANT_ITEMS');
       const lk = Object.keys(vi)[0];
       m.variant_items = { [lk]: { ...vi[lk], label: payload('label') } };
+    } else {
+      /* 1D add-product B: x_pizza now draws groups too — a served group whose LAUNCHER (its card AND its picker), label and
+         choices are hostile, so the launcher card's own template and the x_pizza picker are on this walk (ids stay valid). */
+      m.dishes = m.dishes.concat([
+        { id: 900, cat: 'ny', name: payload('launcher'), price: 624, desc: payload('ldesc'), emoji: payload('emoji'), color: HOSTILE_COLOR },
+        { id: 901, cat: 'ny', name: payload('vname1'), price: 624, variantOf: 900, choice: payload('choice') },
+        { id: 902, cat: 'ny', name: payload('vname2'), price: 650, variantOf: 900, choice: payload('choice2') },
+      ]);
+      m.variant_items = { 900: { label: payload('label'), basePrice: 624, variantIds: [901, 902] } };
     }
     await serve(w, envelope(B.rid, m));
     assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, m.dishes[0].name,
@@ -1235,6 +1244,8 @@ for (const dir of Object.keys(BRAND)) {
     grids.forEach((g, i) => visit(g, 'card-grid#' + i, null));
     assert.ok(grids.some((g) => g && g.textContent.includes(MARK + 'name')),
       `${dir}: non-vacuity — the hostile dish NAME was rendered on one of the card grids`);
+    if (dir === 'xpizza-orders') assert.ok(grids.some((g) => g && g.textContent.includes(MARK + 'launcher')),
+      `${dir}: non-vacuity — the hostile LAUNCHER card was rendered on a grid`);
     // 2. the ordinary detail modal
     w.openDetailModal(first.id);
     visit(w.document.getElementById('detail-scroll'), 'detail-modal', 'emoji');
@@ -1265,8 +1276,8 @@ for (const dir of Object.keys(BRAND)) {
     w.buildOrder();
     w.showSuccess();
     visit(w.document.getElementById('s5'), 'receipt', 'name');
-    // 7. la_musa's launcher modal and its subcategory headings
-    if (dir === 'la-musa-orders') {
+    // 7. the launcher modal (both brands draw groups — 1D add-product B), and la_musa's subcategory headings
+    {
       const launcher = w.liveMenuGlobalGet('MENU').find((d) => w.itemIsLauncher(d));
       if (launcher) {
         w.openDetailModal(launcher.id);
@@ -1278,7 +1289,8 @@ for (const dir of Object.keys(BRAND)) {
           `${dir}/launcher-modal: non-vacuity — and each variant's CHOICE was rendered here, as text`);
         w.closeDetailModal();
       }
-      visit(w.document.getElementById('menu-sections'), 'subcategory-headings', 'subcat');
+      assert.ok(launcher, `${dir}: non-vacuity — a launcher was on this walk`);
+      if (dir === 'la-musa-orders') visit(w.document.getElementById('menu-sections'), 'subcategory-headings', 'subcat');
     }
     assert.ok(reached.length >= 5, `${dir}: non-vacuity — every surface was actually visited (${reached.join(', ')})`);
     ok(`${dir}: a hostile catalog is inert on ${reached.length} render paths (${reached.join(', ')})`);
