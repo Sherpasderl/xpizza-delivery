@@ -18,9 +18,14 @@ const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = b
     const added = A.allocateAdditions({ incoming: (() => { const s = clone(SRC.x_pizza); s.items.push({ ref: 'tmp:cccccccc-0001', price: 500, display: { cat: 'ny', name: 'Drift Probe', price: 500 } }); s.structure.item_order.push('tmp:cccccccc-0001'); return s; })(),
       stored: SRC.x_pizza, activeItems: SRC.x_pizza.items, keyMode: 'name', hwm: null, registryHasKey: () => false }).source;
     const drifted = clone(SRC.la_musa); drifted.items[0].display.name += ' X';
+    // a WELL-FORMED group (add-product B's uniform rules need ≥ 2 choices) on a draft — not authorable yet, so it is drift
     const poisoned = clone(SRC.x_pizza); poisoned.items.push({ key: 'Launcher', price: 500, display: { id: 99, cat: 'ny', name: 'Launcher', price: 500 } },
-      { key: 'Launcher - Roja', price: 500, display: { id: 100, cat: 'ny', name: 'Launcher - Roja', price: 500, variantOf: 99, choice: 'Roja' } });
-    poisoned.structure.item_order.push('Launcher', 'Launcher - Roja'); poisoned.structure.variant_items = { 99: { label: 'Salsa', variantIds: [100] } };
+      { key: 'Launcher - Roja', price: 500, display: { id: 100, cat: 'ny', name: 'Launcher - Roja', price: 500, variantOf: 99, choice: 'Roja' } },
+      { key: 'Launcher - Blanca', price: 500, display: { id: 101, cat: 'ny', name: 'Launcher - Blanca', price: 500, variantOf: 99, choice: 'Blanca' } });
+    poisoned.structure.item_order.push('Launcher', 'Launcher - Roja', 'Launcher - Blanca'); poisoned.structure.variant_items = { 99: { label: 'Salsa', variantIds: [100, 101] } };
+    // …and a MALFORMED one (a single choice): refused by the validator first, still drift
+    const single = clone(poisoned); single.items = single.items.filter((i) => i.key !== 'Launcher - Blanca');
+    single.structure.item_order = single.structure.item_order.filter((k) => k !== 'Launcher - Blanca'); single.structure.variant_items = { 99: { label: 'Salsa', variantIds: [100] } };
     const sources = { x_pizza: SRC.x_pizza, la_musa: drifted, r3_added: added, r3_poison: poisoned, r3_nosrc: null, r3_noact: SRC.x_pizza, r3_boom: SRC.x_pizza };
     const actives = { x_pizza: activeOf('x_pizza', SRC.x_pizza), la_musa: activeOf('la_musa', SRC.la_musa), r3_added: activeOf('x_pizza', SRC.x_pizza), r3_poison: activeOf('x_pizza', SRC.x_pizza), r3_noact: null };
     // r3_* rows reuse a brand's catalog under another id: assessDraft is brand-keyed by rid, so they are run AS that brand
@@ -38,6 +43,9 @@ const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = b
     const poisonRows = await driftReport({ rids: ['x_pizza'], readSource: async () => poisoned, readActive: async () => actives.x_pizza });
     assert.strictEqual(poisonRows[0].status, 'drift', 'the poisoned (variant) x_pizza draft is reported');
     assert.ok(['choices_not_supported_yet', 'draft_unbuildable'].includes(poisonRows[0].code), poisonRows[0].code);
+    const singleRows = await driftReport({ rids: ['x_pizza'], readSource: async () => single, readActive: async () => actives.x_pizza });
+    assert.deepStrictEqual([singleRows[0].status, singleRows[0].code], ['drift', 'invalid_source'], 'a single-choice group is refused by the uniform group rules (≥ 2 choices)');
+    assert.match(singleRows[0].detail, /at least 2/);
     void asBrand;
     ok('rows: publishable (no change / an unpublished addition), drift (a La Musa rename; the poisoned variant draft), no_source, no_active, unreadable');
   }
