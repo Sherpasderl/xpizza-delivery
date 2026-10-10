@@ -4,11 +4,12 @@
 //   node test/_kds-writer-worker.js <argsJsonFile>   → prints one JSON line {result, saw:[storedGen per invocation]}
 const fs = require('fs');
 const path = require('path');
+// R1: the same validator as its parent (it inherits the run's env), not a presence check — before any client.
+require('./_emulator-required')('database');
 const admin = require('firebase-admin');
 const { writeKdsManifest } = require('../catalog/kds-manifest');
 
 const args = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) { console.error('refusing: no RTDB emulator'); process.exit(2); }
 admin.initializeApp({ databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=${args.ns}`, projectId: args.ns });
 const rtdb = admin.database();
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);   // a SYNCHRONOUS pause

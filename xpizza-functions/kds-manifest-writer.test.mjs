@@ -28,6 +28,8 @@ if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
   process.exit(r.status === null ? 1 : r.status);
 }
 
+// R1: under the runner, validate THIS run's endpoints (strict loopback, exact slot) before any client exists.
+require('./test/_emulator-required')('database');
 const admin = require('firebase-admin');
 const { writeKdsManifest, nextMenus } = require('./catalog/kds-manifest');
 const { catalogSnapshot } = require('./catalog/generate-form-bundle');

@@ -14,51 +14,34 @@
  * Override the port block with XPIZZA_EMU_PORT_OFFSET=<0..390, multiple of 10>.
  */
 const { spawn } = require('child_process');
-const crypto = require('crypto');
 const fs = require('fs');
-const net = require('net');
 const os = require('os');
 const path = require('path');
+const EE = require('../lib/emulator-endpoint');
+const ALLOC = require('./emu-alloc');
 
 const ROOT = path.join(__dirname, '..');
 const BASE_CONFIG = path.join(ROOT, 'firebase.json');
-const SLOTS = 40;
+const SLOTS = EE.SLOTS;
 
 /* 🔴 EVERY LISTENER FIREBASE OPENS NEEDS A BAND, NOT JUST THE OBVIOUS THREE. Starting `functions`
-   also starts Eventarc and Cloud Tasks; the hub always starts; and LOGGING starts too (it shows up
-   in every run's shutdown log). Unbanded services take their shared defaults, and the installed CLI
-   SEARCHES FOR ANOTHER PORT when one is occupied — retry-instead-of-refuse, the precise behaviour
-   this tool exists to remove, reintroduced through a service nobody listed.
-   Bands are 400 wide so offsets 0..390 can never make one service's port equal another's. Asserted
-   across all slots by cell 3 of tools/emulator-ports.guard.test.js — the previous layout claimed
-   disjointness in a comment and was wrong (the websocket band overlapped database's). */
-function planPorts(offset) {
-  return {
-    ui: 4000 + offset,
-    hub: 4400 + offset,
-    logging: 4800 + offset,
-    functions: 5200 + offset,
-    eventarc: 5600 + offset,
-    tasks: 6000 + offset,
-    firestore: 8080 + offset,
-    firestoreWebsocket: 8500 + offset,
-    database: 9000 + offset,
-  };
-}
+   also starts Eventarc and Cloud Tasks; the hub always starts; and LOGGING starts too. Bands are 400
+   wide so offsets 0..390 can never make one service's port equal another's (cell 3 of the guard).
+   R1: the table lives in lib/emulator-endpoint.js so the validator and the launcher cannot disagree. */
+const planPorts = EE.planPorts;
 
-function offsetFor(root) {
-  const env = process.env.XPIZZA_EMU_PORT_OFFSET;
-  if (env !== undefined && env !== '') {
-    const n = Number(env);
-    if (!Number.isInteger(n) || n < 0 || n > (SLOTS - 1) * 10 || n % 10 !== 0) {
-      console.error(`emulator-run: XPIZZA_EMU_PORT_OFFSET must be a multiple of 10 in 0..${(SLOTS - 1) * 10}, got ${JSON.stringify(env)}`);
-      process.exit(2);
-    }
-    return n;
+/* R1: the slot is no longer derived from the checkout path (40 slots, ~60 worktrees: birthday collisions
+   shared bands). It is OWNED per run by a sentinel socket (tools/emu-alloc.js). XPIZZA_EMU_PORT_OFFSET is
+   still honoured — as a PIN that goes through the same arbitration and refuses rather than queues. */
+function pinFromEnv(env = process.env) {
+  const raw = env.XPIZZA_EMU_PORT_OFFSET;
+  if (raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > (SLOTS - 1) * 10 || n % 10 !== 0 || !/^\d+$/.test(String(raw))) {
+    console.error(`emulator-run: XPIZZA_EMU_PORT_OFFSET must be a multiple of 10 in 0..${(SLOTS - 1) * 10}, got ${JSON.stringify(raw)}`);
+    process.exit(2);
   }
-  let real = root;
-  try { real = fs.realpathSync(root); } catch { /* not yet resolvable; the raw path still hashes */ }
-  return (crypto.createHash('sha256').update(real).digest().readUInt32BE(0) % SLOTS) * 10;
+  return n / 10;
 }
 
 /* Services this runner knows how to pin AND preflight, with the extra listeners each one drags in.
@@ -103,10 +86,24 @@ const ALL_HOST_ENV = [
 /* Exported so the guard can test it without launching anything: the clearing is the load-bearing
    half of the inherited-host-var fix, and a cell that needed a live emulator to check it would not
    be run often enough to matter. */
-function childEnv(services, parentEnv) {
+function childEnv(services, parentEnv, run = null) {
   const env = { ...parentEnv };
   const keep = new Set([].concat(...services.map((s) => HOST_ENV[s] || [])));
   for (const v of ALL_HOST_ENV) if (!keep.has(v)) delete env[v];
+  /* 🔴 R1 (advisor-approved): a data service this run does NOT start gets the NULL endpoint, never an absent var.
+     Absent meant "the Admin SDK goes to production" for whatever touched it; lib/admin.js now REFUSES a
+     half-configured process, and the NULL endpoint (127.0.0.1:1 — privileged, never bound) is the one value that
+     is valid, unreachable by construction, and fails fast through the NULL guard. */
+  for (const svc of EE.DATA_SERVICES) {
+    if (!services.includes(svc)) env[EE.HOST_VAR[svc]] = EE.NULL_ENDPOINT;
+  }
+  // Inherited run identity is never trusted: a nested or stale value would name someone else's slot.
+  for (const v of [ALLOC.RUN_VAR, ALLOC.OFFSET_VAR, EE.SERVICES_VAR, EE.DEAD_VAR]) delete env[v];
+  if (run) {
+    env[ALLOC.RUN_VAR] = ALLOC.formatMarker(run);
+    env[ALLOC.OFFSET_VAR] = String(run.slot * 10);
+    env[EE.SERVICES_VAR] = services.join(',');
+  }
 
   /* 🔴 THE ONE LISTENER WE COULD NOT PIN — REMOVED RATHER THAN DOCUMENTED. Starting `functions` makes
      the CLI discover the source by booting a temporary admin server: basePort = 8000 + randomInt(0,
@@ -143,44 +140,57 @@ const discoveryDirFor = (pid) => path.join(os.tmpdir(), `${DISCOVERY_PREFIX}${pi
    test:rewards:emulator runs six suites joined by `&&` inside the single command string — so a
    `^node ` prefix would preload only the first and the other five would report nothing. Exported so
    that property is DRIVEN rather than asserted by reading: it is the shape the review asked about. */
-const injectCounter = (command, counter) =>
-  String(command).replace(/\bnode\s+(?=[\w./-]+\.(?:js|mjs)\b)/g, `node -r ${counter} `);
+const injectCounter = (command, counter, ...more) =>
+  String(command).replace(/\bnode\s+(?=[\w./-]+\.(?:js|mjs)\b)/g, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);
 
-module.exports = { planPorts, offsetFor, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, injectCounter };
+/* Per-run TMPDIR: the CLI writes its hub locator to `${os.tmpdir()}/hub-<project>.json` (hub.js:25) and WARNS AND
+   LEAVES it when a live one exists — so two same-project runs sharing a TMPDIR fight over one locator. Each run gets
+   its own, named by supervisor pid so the dead-pid sweep can tell a stale one from a live one. */
+const TMP_PREFIX = 'xpizza-emu-tmp.';
+
+/* The services a run starts. `functions` IMPLIES both data services (advisor-approved): discovery's env is NOT
+   process.env (runtimes/node/index.js:119-127) — it carries host vars only for RUNNING emulators — so a NULL
+   endpoint cannot reach it, and lib/admin.js would refuse a half-configured discovery. Starting both makes
+   discovery see two real hosts. Order preserved, duplicates dropped. */
+function servicesFor(only) {
+  const list = only ? String(only).split(',').map((x) => x.trim()).filter(Boolean) : Object.keys(SERVICE_LISTENERS);
+  const out = [];
+  const add = (x) => { if (!out.includes(x)) out.push(x); };
+  for (const x of list) add(x);
+  if (out.includes('functions')) { add('firestore'); add('database'); }
+  return out;
+}
+
+/* Every listener a run opens: hub + logging always (the UI is disabled and --ui refused), plus each service's. */
+function bandListeners(services, ports) {
+  const out = [['hub', ports.hub], ['logging', ports.logging]];
+  for (const s of services) for (const l of (SERVICE_LISTENERS[s] || [])) out.push([l, ports[l]]);
+  return out;
+}
+
+module.exports = { planPorts, pinFromEnv, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, TMP_PREFIX, injectCounter, servicesFor, bandListeners };
 if (require.main !== module) return;
 
-/* 🔴 THE SWEEP RUNS BEFORE ANYTHING THAT CAN EXIT — including offsetFor(), which exits 2 on a
-   malformed override. It sat below the --only check once and left strays behind on that path; then
-   it sat below offsetFor() and left them behind on THAT path. Cleanup that only runs on the happy
-   path is not cleanup. */
+
+/* 🔴 THE SWEEP RUNS BEFORE ANYTHING THAT CAN EXIT — including the pin parse, which exits 2 on a malformed
+   override. It sat below the --only check once and left strays behind on that path. Cleanup that only runs on
+   the happy path is not cleanup. Dead-pid generated configs in ROOT; dead-pid discovery and TMPDIR dirs. */
+const deadPid = (pid) => { try { process.kill(pid, 0); return false; } catch (e) { return !(e && e.code === 'EPERM'); } };
 for (const f of fs.readdirSync(ROOT)) {
-  const m = /^firebase\.emulator\.(\d+)\.json$/.exec(f);
-  if (!m) continue;
-  let alive = false;
-  try { process.kill(Number(m[1]), 0); alive = true; } catch (e) { alive = e && e.code === 'EPERM'; }
-  if (!alive) { try { fs.unlinkSync(path.join(ROOT, f)); } catch { /* raced with another sweep */ } }
+  const m = /^firebase\.emulator\.(\d+)\.json(?:\.tmp)?$/.exec(f);
+  if (m && deadPid(Number(m[1]))) { try { fs.unlinkSync(path.join(ROOT, f)); } catch { /* raced with another sweep */ } }
 }
-// …and our own discovery directories, by the same dead-pid rule.
 try {
   for (const d of fs.readdirSync(os.tmpdir())) {
-    if (!d.startsWith(DISCOVERY_PREFIX)) continue;
-    const pid = Number(d.slice(DISCOVERY_PREFIX.length));
-    if (!Number.isInteger(pid)) continue;
-    let alive = false;
-    try { process.kill(pid, 0); alive = true; } catch (e) { alive = e && e.code === 'EPERM'; }
-    if (!alive) { try { fs.rmSync(path.join(os.tmpdir(), d), { recursive: true, force: true }); } catch { /* raced */ } }
+    const prefix = [DISCOVERY_PREFIX, TMP_PREFIX].find((p) => d.startsWith(p));
+    if (!prefix) continue;
+    const pid = Number(d.slice(prefix.length));
+    if (Number.isInteger(pid) && deadPid(pid)) { try { fs.rmSync(path.join(os.tmpdir(), d), { recursive: true, force: true }); } catch { /* raced */ } }
   }
 } catch { /* tmpdir unreadable — nothing to sweep */ }
 
-/* 🔴 ARGUMENTS ARE ALLOWLISTED, NOT SCANNED. Scanning for the FIRST --only while Firebase's parser
-   takes the LAST meant `--only firestore --only auth` validated firestore and started an unbanded
-   auth emulator; `--config firebase.json` re-pointed the CLI at the committed config and restored the
-   DEFAULT ports after we had preflighted different ones; `--ui` overrode enabled:false and started
-   the UI; `--inspect-functions` opened an unchecked debug listener. Every one of those bypasses the
-   preflight. An allowlist is the only shape where a flag nobody anticipated cannot get through, so
-   only --only and --project pass, each at most once, plus exactly one command string. All 42 scripts
-   already fit that. Duplicates are refused rather than resolved: the CLI would take the last and this
-   runner the first, and a disagreement about which value is real is not something to paper over. */
+/* 🔴 ARGUMENTS ARE ALLOWLISTED, NOT SCANNED. Only --only and --project pass, each at most once, plus exactly one
+   command string (`--config`, `--ui`, `--inspect-functions`, a repeated --only … each once bypassed the preflight). */
 const argv = process.argv.slice(2);
 const opts = {};
 const rest = [];
@@ -202,15 +212,8 @@ for (let i = 0; i < argv.length; i++) {
 }
 if (rest.length !== 1) { console.error(`emulator-run: expected exactly one command string, got ${rest.length}`); process.exit(2); }
 
-const OFFSET = offsetFor(ROOT);
-const PORTS = planPorts(OFFSET);
-const services = opts.only ? opts.only.split(',').map((s) => s.trim()).filter(Boolean) : Object.keys(SERVICE_LISTENERS);
-
-/* The hub and the logging emulator come up on every run whether or not they were asked for, so both
-   are preflighted unconditionally. The UI is NOT: ui.enabled is false below and --ui is refused
-   above, so it cannot start. (An earlier comment here claimed the UI was checked. It was not, and
-   saying so was worse than not checking it.) */
-const toCheck = [['hub', PORTS.hub], ['logging', PORTS.logging]];
+const PIN = pinFromEnv();
+const services = servicesFor(opts.only);
 for (const s of services) {
   if (!SERVICE_LISTENERS[s]) {
     console.error(`\nemulator-run: --only names "${s}", which this runner has no port band for.`);
@@ -220,43 +223,97 @@ for (const s of services) {
     console.error('   Add its band to planPorts() and its listeners to SERVICE_LISTENERS.\n');
     process.exit(2);
   }
-  for (const l of SERVICE_LISTENERS[s]) toCheck.push([l, PORTS[l]]);
+}
+if (opts.only && services.join(',') !== opts.only.split(',').map((x) => x.trim()).filter(Boolean).join(',')) {
+  console.error(`emulator-run: --only ${opts.only} → starting ${services.join(',')} (functions implies both data services: discovery must see two real hosts)`);
+}
+/* Project: BOTH project env vars are normalised to ONE value (a stale GOOGLE_CLOUD_PROJECT from a parent shell
+   used to survive beside the CLI's GCLOUD_PROJECT). A script with no --project gets the demo default — the CLI
+   would otherwise resolve .firebaserc's PRODUCTION id. Suites that need the prod id pass it explicitly. */
+const PROJECT = opts.project || 'demo-xpizza';
+
+/* Rules files the generated config names must EXIST and parse: a missing Firestore rules file makes the emulator
+   fall back to PERMISSIVE rules (controller.js ~:477) and every rules suite would pass vacuously. Loaded-ness is
+   proved behaviourally by the guard (a denied write), not assumed here. */
+{
+  const base = JSON.parse(fs.readFileSync(BASE_CONFIG, 'utf8'));
+  const need = [];
+  if (services.includes('database') && base.database && base.database.rules) need.push(['database', base.database.rules]);
+  if (services.includes('firestore') && base.firestore && base.firestore.rules) need.push(['firestore', base.firestore.rules]);
+  for (const [svc, rel] of need) {
+    const abs = path.join(ROOT, rel);
+    let text = null;
+    try { text = fs.readFileSync(abs, 'utf8'); } catch { /* reported below */ }
+    let bad = text === null ? 'is missing' : (!text.trim() ? 'is empty' : null);
+    if (!bad && svc === 'database') { try { JSON.parse(text); } catch (e) { bad = `is not valid JSON (${e.message})`; } }
+    if (bad) {
+      console.error(`\n🔴 EMULATOR REFUSED TO START — the ${svc} rules file ${rel} ${bad}.`);
+      console.error('   The emulator would fall back to permissive (or no) rules and every rules assertion would be vacuous.');
+      console.error(`   ${svc === 'database' ? 'Run `npm run sync:rules` first (it copies ../xpizza-reference/database.rules.json).' : ''}\n`);
+      process.exit(2);
+    }
+  }
 }
 
-console.error(`emulator-run: offset ${OFFSET}${process.env.XPIZZA_EMU_PORT_OFFSET ? ' (XPIZZA_EMU_PORT_OFFSET)' : ' (from checkout path)'} — ${toCheck.map(([nm, pt]) => `${nm} ${pt}`).join(', ')}`);
+/* SAME-CHECKOUT CONCURRENCY IS UNSUPPORTED (one session per worktree). Best-effort, explicitly NON-ATOMIC courtesy
+   refusal: a live run's generated config in ROOT means another run of THIS checkout is up. Two simultaneous starts
+   can both pass this check (stated, not fixed — PLAN §b.9); it exists for the common "B after A" case. */
+for (const f of fs.readdirSync(ROOT)) {
+  const m = /^firebase\.emulator\.(\d+)\.json$/.exec(f);
+  if (m && Number(m[1]) !== process.pid && !deadPid(Number(m[1]))) {
+    console.error(`\n🔴 EMULATOR REFUSED TO START — another emulator run of THIS checkout is live (pid ${m[1]}, ${f}).`);
+    console.error('   Same-checkout concurrency is unsupported: use a separate worktree per session.\n');
+    process.exit(4);
+  }
+}
 
-/* 🔴 THE RACE, STATED RATHER THAN PAPERED OVER. Preflight binds, releases, then launches, so two runs
-   starting in the same instant can both see a free port. Not closable from here — holding the socket
-   would stop firebase binding it. What bounds it: two different checkouts never share a band unless
-   they hash to the same slot; concurrent runs in ONE checkout are already forbidden; and if the race
-   is lost, the second firebase fails to bind and exits non-zero rather than attaching, because the
-   hub port is per-checkout too and hub discovery is how a foreign emulator gets adopted. */
-
-const probe = (port) => new Promise((resolve) => {
-  const srv = net.createServer();
-  srv.once('error', (e) => resolve(e && e.code === 'EADDRINUSE' ? 'in-use' : `error:${(e && e.code) || e}`));
-  srv.once('listening', () => srv.close(() => resolve('free')));
-  srv.listen(port, '127.0.0.1');
-});
+const log = (msg) => console.error(`emulator-run: ${msg}`);
 
 (async () => {
-  const taken = [];
-  for (const [name, port] of toCheck) {
-    const state = await probe(port);
-    if (state !== 'free') taken.push({ name, port, state });
-  }
-  if (taken.length) {
-    console.error('\n🔴 EMULATOR REFUSED TO START — a port this checkout needs is already bound.\n');
-    for (const t of taken) console.error(`   ${t.name.padEnd(22)} 127.0.0.1:${t.port}   ${t.state}`);
-    console.error(`\n   checkout : ${ROOT}`);
-    console.error(`   offset   : ${OFFSET}${process.env.XPIZZA_EMU_PORT_OFFSET ? ' (from XPIZZA_EMU_PORT_OFFSET)' : ' (derived from the checkout path)'}`);
-    console.error('\n   REFUSING rather than attaching. An emulator already on this port belongs to another run —');
-    console.error('   attaching to it would assert against a different tree and still report green.');
-    console.error(`   Find it with:  lsof -nP -iTCP:${taken[0].port} -sTCP:LISTEN`);
-    console.error('   Or pick another block:  XPIZZA_EMU_PORT_OFFSET=<multiple of 10, 0..390>\n');
+  /* ── 1. OWN A SLOT (sentinel socket) — quarantine, never kill; queue past saturation ─────────────── */
+  let lastBusy = [];
+  const probeBand = async (slot) => {
+    const ports = planPorts(slot * 10);
+    lastBusy = [];
+    for (const [nm, pt] of bandListeners(services, ports)) {
+      const st = await ALLOC.probePort(pt);
+      if (st !== 'free') lastBusy.push({ name: nm, port: pt, state: st });
+    }
+    return lastBusy.length === 0;
+  };
+  const deadlineS = Number(process.env.XPIZZA_EMU_QUEUE_DEADLINE_S || 1200);
+  let got;
+  try {
+    got = await ALLOC.acquireSlot({
+      pin: PIN,
+      bind: ALLOC.bindSentinel,
+      scan: (slot) => ALLOC.scanSlot(slot),
+      probeBand,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      log,
+      deadlineMs: (Number.isFinite(deadlineS) && deadlineS > 0 ? deadlineS : 1200) * 1000,
+    });
+  } catch (e) {
+    console.error(`\n🔴 EMULATOR REFUSED TO START — ${e && e.message}\n`);
     process.exit(3);
   }
+  if (got.slot === null) {
+    console.error('\n🔴 EMULATOR REFUSED TO START — the PINNED slot is unavailable (XPIZZA_EMU_PORT_OFFSET).\n');
+    console.error(`   ${got.reason || 'unavailable'}`);
+    for (const t of lastBusy) console.error(`   ${t.name.padEnd(22)} 127.0.0.1:${t.port}   ${t.state}`);
+    console.error('\n   REFUSING rather than attaching. A listener already on this band belongs to another run —');
+    console.error('   attaching to it would assert against a different tree and still report green.');
+    if (lastBusy[0]) console.error(`   Find it with:  lsof -nP -iTCP:${lastBusy[0].port} -sTCP:LISTEN`);
+    console.error('   Or drop the pin: without XPIZZA_EMU_PORT_OFFSET the runner picks a free slot itself.\n');
+    process.exit(3);
+  }
+  const { slot, server: sentinel } = got;
+  const OFFSET = slot * 10;
+  const PORTS = planPorts(OFFSET);
+  const run = { slot, pid: process.pid, nonce: ALLOC.newNonce(), start: ALLOC.ownStart() };
+  log(`slot ${slot} (offset ${OFFSET}${PIN !== null ? ', pinned' : ''}) — ${bandListeners(services, PORTS).map(([nm, pt]) => `${nm} ${pt}`).join(', ')} — sentinel 127.0.0.1:${ALLOC.sentinelPort(slot)}`);
 
+  /* ── 2. Per-run state: generated config (atomic), discovery dir, TMPDIR ─────────────────────────── */
   const base = JSON.parse(fs.readFileSync(BASE_CONFIG, 'utf8'));
   base.emulators = {
     firestore: { host: '127.0.0.1', port: PORTS.firestore, websocketPort: PORTS.firestoreWebsocket },
@@ -267,60 +324,118 @@ const probe = (port) => new Promise((resolve) => {
     logging: { host: '127.0.0.1', port: PORTS.logging },
     hub: { host: '127.0.0.1', port: PORTS.hub },
     ui: { enabled: false, host: '127.0.0.1', port: PORTS.ui },
-    /* 🔴 NO singleProjectMode. It changes what the emulator ACCEPTS, not where it listens, and several
-       rules suites deliberately use their own project ids. Two changes in one commit message. */
+    /* 🔴 NO singleProjectMode: it changes what the emulator ACCEPTS, and several rules suites use their own ids. */
   };
+  /* The config stays in ROOT, so projectDir = ROOT and functions `source: "."` stays RELATIVE (an absolute source
+     breaks controller.js:344's path.join). Published atomically (.tmp + rename): no reader sees a partial file. */
   const generated = path.join(ROOT, `firebase.emulator.${process.pid}.json`);
-  fs.writeFileSync(generated, JSON.stringify(base, null, 2) + '\n');
-
+  fs.writeFileSync(`${generated}.tmp`, JSON.stringify(base, null, 2) + '\n');
+  fs.renameSync(`${generated}.tmp`, generated);
   const discoveryDir = services.includes('functions') ? discoveryDirFor(process.pid) : null;
   if (discoveryDir) fs.mkdirSync(discoveryDir, { recursive: true });
+  const tmpDir = path.join(os.tmpdir(), `${TMP_PREFIX}${process.pid}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
 
-  let cleaned = false;
-  const cleanup = () => {
-    if (cleaned) return;
-    cleaned = true;
+  let filesCleaned = false;
+  const cleanFiles = () => {
+    if (filesCleaned) return;
+    filesCleaned = true;
     try { fs.unlinkSync(generated); } catch { /* already gone */ }
     if (discoveryDir) { try { fs.rmSync(discoveryDir, { recursive: true, force: true }); } catch { /* already gone */ } }
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* already gone */ }
   };
-  process.on('exit', cleanup);
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { cleanup(); process.exit(130); });
+  process.on('exit', cleanFiles);   // last resort only — the orderly path below does it after confirmed death
 
-  /* 🔴 CLEAR THE HOST VARS WE ARE NOT SERVING. Firebase only sets the host variable for a service it
-     actually starts, and this process inherits the whole environment — so a suite launched with
-     `--only database` in a shell that still carries a FIRESTORE_EMULATOR_HOST from somewhere else
-     reads THAT emulator, silently, and reports green. That is the shape of test:rewards-intake and
-     test:intake-availability. An inherited value is never trustworthy here: if we are not starting
-     the service, the variable must be absent, so a suite that needs it fails loudly instead. */
-  const env = childEnv(services, process.env);
+  /* ── 3. The child env: cleared foreign hosts, NULL for unstarted data services, the run marker, TMPDIR,
+     one project id on both vars. The marker is in env AT SPAWN, so `ps -E` sees it in every child. ── */
+  const env = childEnv(services, process.env, run);
+  env.TMPDIR = tmpDir;
+  env.GCLOUD_PROJECT = PROJECT;
+  env.GOOGLE_CLOUD_PROJECT = PROJECT;
 
-  /* 🔴 THE CELL COUNTER IS INJECTED INTO THE SUITE, NOT INHERITED BY THE CLI. tools/count-marks.js
-     must load in the process that writes the ASSERTIONS and nowhere else: firebase is itself node, so
-     an inherited NODE_OPTIONS would make the CLI count its own "✔ firestore: …" chrome — the exact
-     inflation the counter exists to remove, reintroduced one level up. Injecting here instead means
-     nothing is inherited and no guard has to know which process it is in.
-
-     Anchored on `node <file>`, not a bare prefix, because ONE script is a chain —
-     test:rewards:emulator runs six suites joined by `&&` inside the single command string — and a
-     prefix would preload only the first. Every routed script is `node <file>` repeated, so this is
-     regular rather than a general shell rewrite. If a shape ever escapes it, the suite runs WITHOUT
-     the preload, emits no ##CELLS trailer, and gate-all fails it: a missed injection is loud. */
+  /* 🔴 THE CELL COUNTER IS INJECTED INTO THE SUITE, NOT INHERITED BY THE CLI (firebase is node too, and would
+     count its own chrome). Anchored on `node <file>` so a chained command preloads every suite. The NULL guard
+     rides the same injection. A missed injection emits no ##CELLS and the gate fails it: loud. */
   const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');
-  const inner = injectCounter(rest[0], COUNTER);
+  const NULL_GUARD = path.join(ROOT, 'tools', 'emu-null-guard.js');
+  const inner = injectCounter(rest[0], COUNTER, NULL_GUARD);
   if (!/count-marks\.js/.test(inner)) {
     console.error(`\nemulator-run: could not inject the cell counter into ${JSON.stringify(rest[0])}.`);
     console.error('   The suite would run uncounted and the gate would fail it for a missing trailer.');
     console.error('   Expected a command of the form `node <file>` (possibly chained with &&).\n');
-    process.exit(2);
+    await teardown(1);
+    return;
   }
-  /* …and it must not reach firebase through the environment either. */
   if (env.NODE_OPTIONS) env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/--require[= ]\S*count-marks\.js/g, '').trim() || undefined;
+  if (env.NODE_OPTIONS === undefined) delete env.NODE_OPTIONS;
 
-  const child = spawn('firebase', ['emulators:exec', '--config', generated, ...(opts.project ? ['--project', opts.project] : []), '--only', services.join(','), inner], { stdio: 'inherit', cwd: ROOT, env });
-  child.on('error', (e) => { cleanup(); console.error(`emulator-run: could not launch firebase — ${e && e.message}`); process.exit(1); });
+  /* ── 4. Run, then tear down: forward signals; after firebase exits, terminate OUR marked processes
+     INDIVIDUALLY (never kill(-pgid): the launching shell's group can hold another worktree's live run), to a
+     confirmed-death barrier; verify the band released; remove per-run files; close the sentinel LAST. ── */
+  let child = null;
+  let exitCode = null;
+  let tornDown = false;
+  async function teardown(code) {
+    if (tornDown) return;
+    tornDown = true;
+    const leftovers = await reapOwn();
+    if (leftovers.length) log(`🔴 ${leftovers.length} of this run's processes survived SIGKILL: ${leftovers.join(', ')} — the slot stays quarantined for the next admission (reclaim: node tools/emu-reap.js ${slot})`);
+    const deadline = Date.now() + 10000;
+    let busy = [];
+    for (;;) {
+      busy = [];
+      for (const [nm, pt] of bandListeners(services, PORTS)) if ((await ALLOC.probePort(pt)) !== 'free') busy.push(`${nm} ${pt}`);
+      if (!busy.length || Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (busy.length) log(`🔴 band not released 10s after teardown: ${busy.join(', ')} — the next admission will skip this slot (band probe)`);
+    cleanFiles();
+    await ALLOC.closeServer(sentinel);
+    process.exit(code);
+  }
+  /* Our own marked processes, by NONCE (not by slot: a reaped-then-reused slot could name another run). Each pid is
+     re-read FRESH immediately before it is signalled; a pid that vanished or changed identity is skipped. */
+  async function reapOwn() {
+    const mine = () => {
+      const rows = ALLOC.joinScans(...(() => { const t = ALLOC.readPsTables(); return [t.plain, t.withEnv]; })());
+      return rows.filter((r) => r.readable && r.pid !== process.pid && !ALLOC.isZombie(r.state))
+        .filter((r) => { const mk = ALLOC.markerIn(r.env); return mk && mk.nonce === run.nonce && mk.pid === run.pid; });
+    };
+    const signalAll = (sig) => {
+      for (const r of mine()) {
+        try { process.kill(r.pid, sig); } catch { /* vanished between scan and signal */ }
+      }
+    };
+    let left = mine();
+    if (!left.length) return [];
+    signalAll('SIGTERM');
+    for (const [sig, waitMs] of [[null, 8000], ['SIGKILL', 4000]]) {
+      if (sig) signalAll(sig);
+      const until = Date.now() + waitMs;
+      while ((left = mine()).length && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
+      if (!left.length) return [];
+    }
+    return left.map((r) => r.pid);
+  }
+
+  let signalled = null;
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => {
+      if (signalled) return;
+      signalled = sig;
+      if (child && child.exitCode === null) {
+        try { child.kill(sig); } catch { /* already gone */ }
+        // firebase gets a bounded grace period; then it is killed individually and teardown proceeds anyway
+        setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 30000).unref();
+      } else teardown(130);
+    });
+  }
+
+  child = spawn('firebase', ['emulators:exec', '--config', generated, '--project', PROJECT, '--only', services.join(','), inner], { stdio: 'inherit', cwd: ROOT, env });
+  child.on('error', (e) => { console.error(`emulator-run: could not launch firebase — ${e && e.message}`); teardown(1); });
   child.on('exit', (code, signal) => {
-    cleanup();
     // The suite's own exit code is the result. A wrapper that swallowed it would turn a red suite green.
-    process.exit(signal ? 1 : (code === null ? 1 : code));
+    exitCode = signalled ? 130 : (signal ? 1 : (code === null ? 1 : code));
+    teardown(exitCode);
   });
 })();

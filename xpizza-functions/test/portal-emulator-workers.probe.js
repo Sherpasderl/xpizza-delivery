@@ -5,12 +5,17 @@
 // output) shows `portal_isolated_entry <name>` for the portal workers and no marker for the others.
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" node tools/emulator-run.js --only functions,firestore,database --project demo-xpizza "node test/portal-emulator-workers.probe.js"
 const assert = require('assert');
+// R1: the run's endpoints (incl. the hub it asks for the functions address) are validated before the first fetch,
+// and the functions URL it builds is checked against THIS run's functions band before it is called.
+require('./_emulator-required').harness(['firestore', 'database']);
+const EE = require('../lib/emulator-endpoint');
 (async () => {
   const hub = process.env.FIREBASE_EMULATOR_HUB;
   assert.ok(hub, 'run under tools/emulator-run.js');
   const list = await (await fetch(`http://${hub}/emulators`)).json();
   const fx = list.functions; assert.ok(fx, 'functions emulator running');
-  const base = `http://${fx.host}:${fx.port}/demo-xpizza/us-central1`;
+  const base = `http://${fx.host}:${fx.port}/${process.env.GCLOUD_PROJECT || 'demo-xpizza'}/us-central1`;
+  EE.validateFunctionsUrl(base, process.env);
   const out = [];
   for (const [fn, q] of [['getMyRestaurants', ''], ['getEditableCatalog', '?restaurantId=x_pizza'], ['getSalesStats', '?restaurantId=x_pizza'], ['editCatalog', ''], ['publishEdited', ''],
     ['getPublicMenu', '/menu/x_pizza'], ['reportClientVersion', '']]) {
