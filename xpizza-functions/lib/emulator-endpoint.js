@@ -93,7 +93,10 @@ function validateEmulatorEnv(env, { ns } = {}) {
   const offset = readOffset(env);
   const started = listVar(env, SERVICES_VAR);
   const dead = listVar(env, DEAD_VAR);
-  for (const d of dead) if (!DATA_SERVICES.includes(d)) throw new EmulatorEndpointError(`${DEAD_VAR} names "${d}", which is not a data service`);
+  /* The ONLY accepted opt-in (advisor 2026-10-10) is the exact value "firestore" — a deliberate Firestore outage on a
+     run that started Firestore (users: test/pselfupdate-mirror-trace.emulator.test.js's capture phase). Any other
+     value, including "database" or a list, fails CLOSED: an undeclared opt-in is not an opt-in. */
+  if (present(env[DEAD_VAR]) && env[DEAD_VAR] !== 'firestore') throw new EmulatorEndpointError(`${DEAD_VAR}=${JSON.stringify(env[DEAD_VAR])} — the only accepted value is "firestore"`);
 
   const endpoints = {};
   const nulls = [];

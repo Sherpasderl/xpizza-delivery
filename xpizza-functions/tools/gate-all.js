@@ -212,7 +212,7 @@ function runScript(name, env) {
       if (!stream) return;
       errBuf += d;
       const lines = errBuf.split('\n'); errBuf = lines.pop();
-      for (const l of lines) if (/^emulator-run:|EMULATOR REFUSED/.test(l)) process.stderr.write(`  │ ${name}: ${l}\n`);
+      for (const l of lines) if (/^emulator-run:/.test(l)) process.stderr.write(`  │ ${name}: ${l}\n`);
     });
     c.on('error', (e) => resolve({ status: 1, out: `${out}\nspawn error: ${e && e.message}` }));
     c.on('close', (code) => resolve({ status: code, out }));

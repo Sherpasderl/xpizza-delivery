@@ -159,9 +159,11 @@ const refuses = (env, re, label) => {
     refuses({ ...both, XPIZZA_EMU_SERVICES: 'firestore,database' }, /cannot be both real and null/, 'NULL for a started service');
     assert.deepStrictEqual(validateEmulatorEnv({ ...both, XPIZZA_EMU_SERVICES: 'firestore,database', XPIZZA_EMU_DEAD: 'firestore' }).dead, ['firestore']);
     refuses({ ...both, XPIZZA_EMU_SERVICES: 'database', FIRESTORE_EMULATOR_HOST: lo(P.firestore) }, /did NOT start/, 'a real endpoint for a service the run did not start');
-    refuses({ ...both, XPIZZA_EMU_DEAD: 'database' }, /not the NULL endpoint/, 'DEAD declared on a real endpoint');
-    refuses({ ...both, XPIZZA_EMU_DEAD: 'auth' }, /not a data service/, 'DEAD naming a non-data service');
-    ok('NULL for a started service refuses; XPIZZA_EMU_DEAD is the only opt-in and must itself be consistent; a real endpoint for an unstarted service refuses');
+    refuses({ ...both, XPIZZA_EMU_SERVICES: 'firestore,database', FIRESTORE_EMULATOR_HOST: lo(P.firestore), XPIZZA_EMU_DEAD: 'firestore' }, /not the NULL endpoint/, 'DEAD declared on a real endpoint');
+    for (const bad of ['database', 'auth', 'firestore,database', 'Firestore', ' firestore', 'firestore ', '1', 'true']) {
+      refuses({ ...both, XPIZZA_EMU_DEAD: bad }, /only accepted value is "firestore"/, `XPIZZA_EMU_DEAD=${JSON.stringify(bad)} (fail closed — only the exact "firestore")`);
+    }
+    ok('NULL for a started service refuses; XPIZZA_EMU_DEAD accepts ONLY the exact "firestore" (8 other values fail closed) and must match a NULL endpoint; a real endpoint for an unstarted service refuses');
   }
 
   // ── 7. ACCIDENTAL NULL USE FAILS FAST — bounded and asserted, through the REAL lib/admin.js ─────────────

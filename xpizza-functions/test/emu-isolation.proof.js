@@ -4,7 +4,7 @@
  * chain: it boots JVMs and needs a second worktree of the same commit. Run in a CLEAR WINDOW (no old-code emulator
  * runs on the machine):
  *
- *   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" node tools/emu-isolation.proof.js run <second-worktree-root>
+ *   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" node test/emu-isolation.proof.js run <second-worktree-root>
  *
  * Proves, each against the real firebase-tools 15.16.0:
  *   1. ISOLATION — two concurrent same-project runs (A here, B in the other worktree) write DIFFERENT sentinels to the
@@ -34,8 +34,8 @@ const waitFor = async (fn, ms, what) => { const t = Date.now() + ms; while (Date
 
 // ═══ INSIDE: runs as the suite command under tools/emulator-run.js ═══════════════════════════════════════════════
 async function inside(ctl, tag, peer) {
-  require('../test/_emulator-required')('firestore', 'database');
-  const A = require('./emu-alloc');
+  require('./_emulator-required')('firestore', 'database');
+  const A = require('../tools/emu-alloc');
   const admin = require('firebase-admin');
   const fsHost = process.env.FIRESTORE_EMULATOR_HOST, dbHost = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
   const NS = `${PROJECT}-default-rtdb`;
@@ -78,8 +78,8 @@ async function inside(ctl, tag, peer) {
 
 // ═══ functions step: a worker carries the marker; discovery passed lib/admin's validator ═════════════════════════
 async function insideFunctions(ctl) {
-  require('../test/_emulator-required')('firestore', 'database');
-  const A = require('./emu-alloc');
+  require('./_emulator-required')('firestore', 'database');
+  const A = require('../tools/emu-alloc');
   const hub = process.env.FIREBASE_EMULATOR_HUB;
   const list = await (await fetch(`http://${hub}/emulators`)).json();
   const fx = list.functions;
@@ -114,13 +114,13 @@ async function run(rootB) {
   assert.notStrictEqual(fs.realpathSync(rootB), fs.realpathSync(ROOT), 'premise — two DIFFERENT checkouts');
   const ctl = fs.mkdtempSync(path.join(os.tmpdir(), 'r1-proof-'));
   const report = {};
-  const inner = (tag, peer) => `node tools/emu-isolation.proof.js inside ${ctl} ${tag} ${peer || ''}`.trim();
+  const inner = (tag, peer) => `node test/emu-isolation.proof.js inside ${ctl} ${tag} ${peer || ''}`.trim();
 
   // ── 1-6: A + B concurrently, same project, same parent TMPDIR; C (same checkout as A) refused ──
   const a = launch(ROOT, 'firestore,database', inner('A', 'B'));
   const b = launch(rootB, 'firestore,database', inner('B', 'A'));
   await waitFor(() => fs.existsSync(path.join(ctl, 'A.ready')), 180000, 'A.ready');
-  const c = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, `node tools/emu-isolation.proof.js inside ${ctl} C`], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' }, timeout: 60000 });
+  const c = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, `node test/emu-isolation.proof.js inside ${ctl} C`], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' }, timeout: 60000 });
   const [ra, rb] = await Promise.all([a.done, b.done]);
   assert.strictEqual(ra.code, 0, `A failed:\n${ra.out.slice(-2000)}`);
   assert.strictEqual(rb.code, 0, `B failed:\n${rb.out.slice(-2000)}`);
@@ -153,14 +153,14 @@ async function run(rootB) {
   report.sameCheckout = 'C (A\'s checkout, while A live) refused exit 4';
 
   // ── 7: quarantine + reap ──
-  const ALLOC = require('./emu-alloc');
+  const ALLOC = require('../tools/emu-alloc');
   let X = null;
   for (let s = ALLOC.SLOTS - 1; s >= 0 && X === null; s--) { const sv = await ALLOC.bindSentinel(ALLOC.sentinelPort(s)); if (sv) { await ALLOC.closeServer(sv); X = s; } }
   const deadSup = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
   const orphan = spawn(process.execPath, ['-e', 'setTimeout(()=>{},120000)'], { env: { ...process.env, NODE_OPTIONS: '', [ALLOC.RUN_VAR]: ALLOC.formatMarker({ slot: X, pid: Number(deadSup.stdout), nonce: ALLOC.newNonce(), start: 1 }) }, stdio: 'ignore', detached: true });
   orphan.unref();
   await sleep(500);
-  const noop = `node tools/emu-isolation.proof.js noop`;
+  const noop = `node test/emu-isolation.proof.js noop`;
   const pinned = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, noop], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '', XPIZZA_EMU_PORT_OFFSET: String(X * 10) }, timeout: 120000 });
   assert.strictEqual(pinned.status, 3, `🔴 a pin onto a slot with a marked orphan was not refused (exit ${pinned.status})\n${pinned.stderr}`);
   assert.match(pinned.stderr, new RegExp(`QUARANTINED — orphan pid\\(s\\) ${orphan.pid}`), '🔴 the refusal does not name the orphan');
@@ -192,7 +192,7 @@ async function run(rootB) {
   report.rulesRefusal = cases.map(([l]) => l).join('; ') + ' — each refused (exit 2) before any emulator started';
 
   // ── 9: functions — discovery validated by lib/admin.js, a worker carries the marker ──
-  const fnRun = launch(ROOT, 'functions', `node tools/emu-isolation.proof.js functions ${ctl}`);
+  const fnRun = launch(ROOT, 'functions', `node test/emu-isolation.proof.js functions ${ctl}`);
   const rf = await fnRun.done;
   assert.strictEqual(rf.code, 0, `functions step failed:\n${rf.out.slice(-2500)}`);
   assert.match(rf.out, /starting functions,firestore,database/, 'functions implied both data services');
@@ -209,7 +209,7 @@ async function run(rootB) {
 const [mode, ...args] = process.argv.slice(2);
 const main = mode === 'inside' ? () => inside(...args)
   : mode === 'functions' ? () => insideFunctions(...args)
-    : mode === 'noop' ? async () => { require('../test/_emulator-required')('database'); console.log('  ✓ 1 noop'); process.exit(0); }
+    : mode === 'noop' ? async () => { require('./_emulator-required')('database'); console.log('  ✓ 1 noop'); process.exit(0); }
       : mode === 'run' ? () => run(...args)
         : () => { console.error('usage: emu-isolation.proof.js run <second-worktree>'); process.exit(2); };
 main().catch((e) => { console.error('emu-isolation proof FAILED:', e && e.stack || e); process.exit(1); });

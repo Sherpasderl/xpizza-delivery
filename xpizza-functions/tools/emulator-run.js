@@ -201,9 +201,9 @@ for (let i = 0; i < argv.length; i++) {
   else if (a.startsWith('--only=') || a.startsWith('--project=')) { const j = a.indexOf('='); name = a.slice(2, j); value = a.slice(j + 1); }
   else if (a.startsWith('-')) {
     console.error(`\nemulator-run: refusing the argument "${a}".`);
-    console.error('   Only --only and --project are forwarded. Anything else can change ports or config');
-    console.error('   AFTER the preflight has checked different ones (--config, --ui, --inspect-functions),');
-    console.error('   which would put this back to attaching silently. Add it here deliberately if it is needed.\n');
+    console.error('emulator-run:    Only --only and --project are forwarded. Anything else can change ports or config');
+    console.error('emulator-run:    AFTER the preflight has checked different ones (--config, --ui, --inspect-functions),');
+    console.error('emulator-run:    which would put this back to attaching silently. Add it here deliberately if it is needed.\n');
     process.exit(2);
   } else { rest.push(a); continue; }
   if (value === undefined || String(value).startsWith('-')) { console.error(`emulator-run: --${name} needs a value`); process.exit(2); }
@@ -217,10 +217,10 @@ const services = servicesFor(opts.only);
 for (const s of services) {
   if (!SERVICE_LISTENERS[s]) {
     console.error(`\nemulator-run: --only names "${s}", which this runner has no port band for.`);
-    console.error(`   known: ${Object.keys(SERVICE_LISTENERS).join(', ')}`);
-    console.error('   REFUSING: an unpinned emulator takes a shared default port, unpreflighted, and the');
-    console.error('   installed CLI will SEARCH FOR ANOTHER PORT if it is busy rather than stop.');
-    console.error('   Add its band to planPorts() and its listeners to SERVICE_LISTENERS.\n');
+    console.error(`emulator-run:    known: ${Object.keys(SERVICE_LISTENERS).join(', ')}`);
+    console.error('emulator-run:    REFUSING: an unpinned emulator takes a shared default port, unpreflighted, and the');
+    console.error('emulator-run:    installed CLI will SEARCH FOR ANOTHER PORT if it is busy rather than stop.');
+    console.error('emulator-run:    Add its band to planPorts() and its listeners to SERVICE_LISTENERS.\n');
     process.exit(2);
   }
 }
@@ -247,9 +247,9 @@ const PROJECT = opts.project || 'demo-xpizza';
     let bad = text === null ? 'is missing' : (!text.trim() ? 'is empty' : null);
     if (!bad && svc === 'database') { try { JSON.parse(text); } catch (e) { bad = `is not valid JSON (${e.message})`; } }
     if (bad) {
-      console.error(`\n🔴 EMULATOR REFUSED TO START — the ${svc} rules file ${rel} ${bad}.`);
-      console.error('   The emulator would fall back to permissive (or no) rules and every rules assertion would be vacuous.');
-      console.error(`   ${svc === 'database' ? 'Run `npm run sync:rules` first (it copies ../xpizza-reference/database.rules.json).' : ''}\n`);
+      console.error(`\nemulator-run: 🔴 EMULATOR REFUSED TO START — the ${svc} rules file ${rel} ${bad}.`);
+      console.error('emulator-run:    The emulator would fall back to permissive (or no) rules and every rules assertion would be vacuous.');
+      console.error(`emulator-run:    ${svc === 'database' ? 'Run `npm run sync:rules` first (it copies ../xpizza-reference/database.rules.json).' : ''}\n`);
       process.exit(2);
     }
   }
@@ -261,8 +261,8 @@ const PROJECT = opts.project || 'demo-xpizza';
 for (const f of fs.readdirSync(ROOT)) {
   const m = /^firebase\.emulator\.(\d+)\.json$/.exec(f);
   if (m && Number(m[1]) !== process.pid && !deadPid(Number(m[1]))) {
-    console.error(`\n🔴 EMULATOR REFUSED TO START — another emulator run of THIS checkout is live (pid ${m[1]}, ${f}).`);
-    console.error('   Same-checkout concurrency is unsupported: use a separate worktree per session.\n');
+    console.error(`\nemulator-run: 🔴 EMULATOR REFUSED TO START — another emulator run of THIS checkout is live (pid ${m[1]}, ${f}).`);
+    console.error('emulator-run:    Same-checkout concurrency is unsupported: use a separate worktree per session.\n');
     process.exit(4);
   }
 }
@@ -296,17 +296,17 @@ const log = (msg) => console.error(`emulator-run: ${msg}`);
       deadlineMs: (Number.isFinite(deadlineS) && deadlineS > 0 ? deadlineS : 1200) * 1000,
     });
   } catch (e) {
-    console.error(`\n🔴 EMULATOR REFUSED TO START — ${e && e.message}\n`);
+    console.error(`\nemulator-run: 🔴 EMULATOR REFUSED TO START — ${e && e.message}\n`);
     process.exit(3);
   }
   if (got.slot === null) {
-    console.error('\n🔴 EMULATOR REFUSED TO START — the PINNED slot is unavailable (XPIZZA_EMU_PORT_OFFSET).\n');
-    console.error(`   ${got.reason || 'unavailable'}`);
-    for (const t of lastBusy) console.error(`   ${t.name.padEnd(22)} 127.0.0.1:${t.port}   ${t.state}`);
-    console.error('\n   REFUSING rather than attaching. A listener already on this band belongs to another run —');
-    console.error('   attaching to it would assert against a different tree and still report green.');
-    if (lastBusy[0]) console.error(`   Find it with:  lsof -nP -iTCP:${lastBusy[0].port} -sTCP:LISTEN`);
-    console.error('   Or drop the pin: without XPIZZA_EMU_PORT_OFFSET the runner picks a free slot itself.\n');
+    console.error('\nemulator-run: 🔴 EMULATOR REFUSED TO START — the PINNED slot is unavailable (XPIZZA_EMU_PORT_OFFSET).\n');
+    console.error(`emulator-run:    ${got.reason || 'unavailable'}`);
+    for (const t of lastBusy) console.error(`emulator-run:    ${t.name.padEnd(22)} 127.0.0.1:${t.port}   ${t.state}`);
+    console.error('\nemulator-run:    REFUSING rather than attaching. A listener already on this band belongs to another run —');
+    console.error('emulator-run:    attaching to it would assert against a different tree and still report green.');
+    if (lastBusy[0]) console.error(`emulator-run:    Find it with:  lsof -nP -iTCP:${lastBusy[0].port} -sTCP:LISTEN`);
+    console.error('emulator-run:    Or drop the pin: without XPIZZA_EMU_PORT_OFFSET the runner picks a free slot itself.\n');
     process.exit(3);
   }
   const { slot, server: sentinel } = got;
@@ -363,8 +363,8 @@ const log = (msg) => console.error(`emulator-run: ${msg}`);
   const inner = injectCounter(rest[0], COUNTER, NULL_GUARD);
   if (!/count-marks\.js/.test(inner)) {
     console.error(`\nemulator-run: could not inject the cell counter into ${JSON.stringify(rest[0])}.`);
-    console.error('   The suite would run uncounted and the gate would fail it for a missing trailer.');
-    console.error('   Expected a command of the form `node <file>` (possibly chained with &&).\n');
+    console.error('emulator-run:    The suite would run uncounted and the gate would fail it for a missing trailer.');
+    console.error('emulator-run:    Expected a command of the form `node <file>` (possibly chained with &&).\n');
     await teardown(1);
     return;
   }

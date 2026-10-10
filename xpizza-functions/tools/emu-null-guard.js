@@ -11,6 +11,7 @@
  */
 const { NULL_ENDPOINT, HOST_VAR, DATA_SERVICES, DEAD_VAR, installNullGuard } = require('../lib/emulator-endpoint');
 
-const dead = new Set(String(process.env[DEAD_VAR] || '').split(',').map((s) => s.trim()).filter(Boolean));
+// Exactly the validator's rule: only the literal "firestore" opts out; anything else is NOT an opt-out (fail closed).
+const dead = new Set(process.env[DEAD_VAR] === 'firestore' ? ['firestore'] : []);
 const nulls = DATA_SERVICES.filter((s) => process.env[HOST_VAR[s]] === NULL_ENDPOINT && !dead.has(s));
 if (nulls.length) installNullGuard(nulls, require('firebase-admin/app'));
