@@ -5735,6 +5735,7 @@ loadAvailability();
 try {
   const _feed = bootLiveMenu();
   if (_feed) _feed.refresh();
+  if (_feed && typeof _feed.watchVisibility === 'function') _feed.watchVisibility(document, { minIntervalMs: 60000 });   // 1D add-product B: re-fetch on return to view
 } catch (_) { /* the bundle stands */ }
 setInterval(loadAvailability, 60000);
 
