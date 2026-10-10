@@ -118,4 +118,23 @@ const rename = (src, id, name) => {
   ok('the ungated builder: an x_pizza group is carried by the build, indexed by pricing key, emitted in the bundle (derived "desde"), and served whole; unequal prices allowed; no groups → the key stays absent; la_musa’s order is unchanged');
 }
 
+{
+  // §0c.6 — the KDS manifest (the ONE generator all three writers share: publish, rollback, publish-menus) lists a group as a
+  // WHOLE-DISH row (the launcher: 86 = hide every choice) plus one row per choice, for every brand
+  const { generateKdsManifest } = require('./generate-form-bundle');
+  const g = GROUPS.x_pizza();
+  const i = sourceToBuildInputs(g.src);
+  const built = buildCatalogV2('x_pizza', { formData: i.formData, priceTable: i.priceTable, extrasTable: i.extras });
+  const rows = generateKdsManifest('x_pizza', built).slice(-4);
+  assert.deepStrictEqual(rows, [
+    { key: 'NY Plain Slice', label: 'NY Plain Slice', category: 'ny' },
+    { key: 'NY Plain Slice - Salsa Roja', label: 'NY Plain Slice - Salsa Roja', category: 'ny' },
+    { key: 'NY Plain Slice - Salsa Vodka', label: 'NY Plain Slice - Salsa Vodka', category: 'ny' },
+    { key: 'NY Plain Slice - Combinada', label: 'NY Plain Slice - Combinada', category: 'ny' },
+  ], 'the whole-dish row, then one row per choice');
+  const lm = generateKdsManifest('la_musa', buildCatalogV2('la_musa')).filter((r) => r.key.startsWith('noodle_01'));
+  assert.deepStrictEqual(lm.map((r) => r.key), ['noodle_01', 'noodle_01_sin', 'noodle_01_pollo', 'noodle_01_camaron'], 'la_musa’s Pad Thai: the same shape it has today');
+  ok('KDS: a group is a whole-dish row (the launcher) plus one row per choice — the same shape on both brands (Pad Thai unchanged)');
+}
+
 console.log(`\ngroup-rules: OK (${n})`);
