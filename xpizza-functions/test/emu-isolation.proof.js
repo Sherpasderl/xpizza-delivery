@@ -169,7 +169,9 @@ async function run(rootB) {
   assert.notStrictEqual(slotOf(free.stderr), X, '🔴 an unpinned run was admitted onto the quarantined slot');
   const rp = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emu-reap.js'), String(X)], { encoding: 'utf8', timeout: 60000 });
   assert.strictEqual(rp.status, 0, `emu-reap failed: ${rp.stderr}`);
-  assert.ok(!ALLOC.pidAlive(orphan.pid), '🔴 emu-reap left the orphan alive');
+  // the orphan is THIS script's child, so once killed it is a zombie until its exit is delivered here
+  const orphanGone = orphan.exitCode !== null || orphan.signalCode !== null || await Promise.race([new Promise((r) => orphan.once('exit', () => r(true))), sleep(5000).then(() => false)]);
+  assert.ok(orphanGone, `🔴 emu-reap left the orphan alive\n${rp.stderr}`);
   const again = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, noop], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '', XPIZZA_EMU_PORT_OFFSET: String(X * 10) }, timeout: 180000 });
   assert.strictEqual(again.status, 0, `🔴 the pin onto the RECLAIMED slot failed:\n${again.stderr.slice(-1500)}`);
   report.quarantine = `orphan ${orphan.pid} on slot ${X}: pin refused naming it; unpinned run → slot ${slotOf(free.stderr)}; emu-reap reclaimed; pin then admitted`;
