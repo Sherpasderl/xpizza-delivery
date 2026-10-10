@@ -373,6 +373,8 @@ function clientFloorReader() {
 // for a weekend-only item; being briefly stale is strictly the better failure.
 const { createGateReader } = require('./catalog/menu-gates');
 const { absentFromMenu, MENU_UPDATING } = require('./catalog/menu-gates');   // 1D add-product A §0b.1: keys the gate snapshot cannot classify
+const GI = require('./catalog/group-intake');   // 1D add-product B (rev 6): the group rules at intake / quote (render capability only)
+const { groupCapabilities } = require('./catalog/platform-groups');   // 1D add-product B: the two PLATFORM switches (no brand)
 const { previewVersion } = require('./catalog/catalog-publish');
 let _gateReader = null;
 function gateReader() {
@@ -905,6 +907,12 @@ createOrderApp.all('*', async (req, res) => {
       res.set('Retry-After', '2');
       return res.status(503).json({ ...MENU_UPDATING });
     }
+    // 1D add-product B (rev 6): the group rules, render capability on only — a bare launcher line or reward → 409
+    // choice_required; a choice whose launcher is 86'd → item_unavailable; an unreadable variant map → 503. Same snapshot,
+    // after the dedupe, before any write or reserve.
+    const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
+      rewardKeys: GI.rewardKeysOf(body.redeem), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
+    if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
     const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
@@ -1509,6 +1517,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   let controlArmed = null;   // D4-c4 §0.2: the race guard's refusal kind ('paused' | 'unavailable'), armed by the pre-gate below
   let menuArmed = false;     // 1D add-product A §0b.1: a non-fresh request carrying a key the gate snapshot does not know
   let clsForMenu = null;     // 1D add-product A: the preliminary classification, for the menu pre-gate below (null = failed)
+  let choiceArmed = false;   // 1D add-product B: a non-fresh request carrying a bare launcher (line or reward) — no fresh URL
   let canonicalFpG = null;   // the canonical recompute for the classify + probe checks — a request-local memoizer (the reserve/acquire
                              // site has its own request-local memoizer, canonicalChargeFp, over the same inputs)
   {
@@ -1587,6 +1596,18 @@ chargeOnlineApp.all('*', async (req, res) => {
         return res.status(503).json({ ...MENU_UPDATING });
       }
       menuArmed = true;
+    }
+    // 1D add-product B (rev 6): the group rules (render capability only), decided like the guard above — a FRESH issuance
+    // is refused here; a verified reuse keeps its BOUND snapshot and only arms the guard in acquireHostedAttempt (so a
+    // reuse → fresh rotation is refused there); parent-86'd choices join cartBlocked (acquire enforces it the same way).
+    {
+      const gd = GI.chargeDecision(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
+        rewardKeys: (redemptionFreeItems || []).map((fi) => fi.item_id),
+        readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }), clsForMenu);
+      if (gd.respond) { if (gd.respond.retryAfter) res.set('Retry-After', String(gd.respond.retryAfter)); return res.status(gd.respond.status).json({ ...gd.respond.body, order_id: orderId }); }
+      if (gd.armMenu) menuArmed = true;
+      if (gd.armChoice) choiceArmed = true;
+      for (const b of gd.block) if (!cartBlocked.includes(b)) cartBlocked.push(b);
     }
     const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
@@ -1850,7 +1871,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
@@ -1878,6 +1899,10 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.warn(`chargeOnlineOrder: ${orderId} — 503 menu_updating (menu guard)`);
       res.set('Retry-After', '2');
       return res.status(503).json({ ...MENU_UPDATING });
+    }
+    if (acq.reason === 'choice_required') {   // 1D add-product B: a drift to a fresh issuance carrying a bare launcher
+      console.warn(`chargeOnlineOrder: ${orderId} — 409 choice_required (group guard)`);
+      return res.status(409).json({ ...GI.CHOICE_REQUIRED, order_id: orderId });
     }
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
     console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
@@ -6529,6 +6554,11 @@ exports.quoteOrder = onRequest(
       // 2c: a quote is display-only, so it fails SOFT — the client keeps its own total and checkout is
       // never blocked by a pricing outage. (The ORDER still fail-closes; only the preview degrades.)
       if (!tables) return res.status(200).json({ ok: false, error: 'pricing_unavailable' });
+      // 1D add-product B: a bare launcher quotes as choice_required (render capability on only — no read otherwise)
+      if (groupCapabilities().render) {
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId }));
+        if (qr) return res.status(200).json({ ok: false, ...qr });
+      }
       const { total, error } = computeServerTotal(body.items, restaurantId, tables);
       // fail-SOFT: an unknown item or a corrupt price is a 200 + ok:false, so the client keeps its own
       // total on screen instead of a broken checkout. The order path will reject it for real if it is
@@ -6590,6 +6620,11 @@ exports.quoteRedemption = onRequest(
       // 2a: the quote must preview on the SAME allowlist the order enforces, or a customer is shown a
       // redemption the order then refuses (or vice versa).
       const quoteEligible = await gateReader().redeemEligibleFor(restaurantId);
+      // 1D add-product B: a bare launcher (line or reward) quotes as choice_required (render capability on only)
+      if (groupCapabilities().render) {
+        const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem) }));
+        if (qr) return res.status(409).json({ ok: false, ...qr });
+      }
       const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }

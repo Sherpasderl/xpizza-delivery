@@ -15,7 +15,9 @@ const { foldPortalSplit } = require('./tools/portal-split');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const git = (spec) => execFileSync('git', ['show', spec], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
-const idx = read('index.js');
+// 1D add-product B landed on top of A: its index.js hunks (tools/addproduct-b-inverse.js) are reversed FIRST.
+const { unapplyAddProductB } = require('./tools/addproduct-b-inverse');
+const idx = unapplyAddProductB(read('index.js'));
 const BASE = git('37dcf43:xpizza-functions/index.js');
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -40,8 +42,8 @@ ok(`PROOF (i): unapplyAddProduct(candidate index.js) === 37dcf43:index.js byte-f
   try {
     execFileSync('bash', ['-c', `git -C "${path.join(__dirname, '..')}" archive 37dcf43 xpizza-functions | tar -x -C "${tmp}"`]);
     const baseFold = require(path.join(tmp, 'xpizza-functions', 'tools', 'portal-split')).foldPortalSplit(path.join(tmp, 'xpizza-functions'));
-    assert.strictEqual(unapplyAddProductFold(foldPortalSplit()), baseFold, '🔴 the portal fold minus the add-product hunks is not the 37dcf43 fold');
-    const fold = foldPortalSplit();
+    assert.strictEqual(unapplyAddProductFold(unapplyAddProductB(foldPortalSplit())), baseFold, '🔴 the portal fold minus the add-product hunks is not the 37dcf43 fold');
+    const fold = unapplyAddProductB(foldPortalSplit());
     const [pnow] = PORTAL_HUNKS[0];
     const k = fold.indexOf(pnow) + 2;
     let detected; try { detected = unapplyAddProductFold(fold.slice(0, k) + '#' + fold.slice(k + 1)) !== baseFold; } catch (_) { detected = true; }
