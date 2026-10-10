@@ -21,7 +21,7 @@ const { execFileSync } = require('child_process');
 const SAMPLES = process.env.LAT_SAMPLES ? Number(process.env.LAT_SAMPLES) : 50;
 const BLOCKS = process.env.LAT_BLOCKS ? Number(process.env.LAT_BLOCKS) : 6;
 const WARM = process.env.LAT_WARM ? Number(process.env.LAT_WARM) : 5;
-const BARS = Object.freeze({ relMax: 0.10, absMaxMs: 150, medMaxMs: 5 });   // the plan's FIXED bars (§8), never widened
+const { BARS } = require('./_c2b-latency-verdict');   // the plan's FIXED bars (§8), never widened — ONE definition
 const OTHERS = ['synth_lat_o1', 'synth_lat_o2', 'synth_lat_o3'];
 const ROWS = [
   ...['x_pizza', 'la_musa', 'synth400'].flatMap((c) => ['publish', 'rollback'].map((op) => ({ key: `${op}/${c}`, op, rid: c === 'synth400' ? 'synth_lat_400' : c, overlap: 'same+others' }))),
@@ -49,6 +49,7 @@ const DIGEST_EVERY = process.env.LAT_DIGEST_EVERY ? Number(process.env.LAT_DIGES
 if (process.argv[2] === '--child') { child(process.argv[3], process.argv[4]); return; }
 
 const ST = require('./_latency-stats');
+const { verdictRow } = require('./_c2b-latency-verdict');
 const argRows = (() => { const i = process.argv.indexOf('--rows'); return i > 0 ? process.argv[i + 1].split(',') : null; })();
 const rows = argRows ? ROWS.filter((r) => argRows.includes(r.key)) : ROWS;
 if (!rows.length) { console.error(`no rows; known: ${ROWS.map((r) => r.key).join(' ')}`); process.exit(2); }
@@ -63,17 +64,20 @@ const runChild = (rowKey, cond) => {
     console.log(JSON.stringify({ void: true, reason: 'state_digest_mismatch', row: rowKey, cond, digest: res.digest }));
     process.exit(4);
   }
-  console.error(JSON.stringify({ child: rowKey, cond, secs: +((res.ended_at - res.started_at) / 1000).toFixed(1), samples: res.ms.length, digest_checked: res.digest.checked, digest_mismatches: res.digest.mismatches, monitor_runs: res.monitor.runs }));
+  console.error(JSON.stringify({ child: rowKey, cond, timing: res.timing, secs: +((res.ended_at - res.started_at) / 1000).toFixed(1), samples: res.ms.length, digest_checked: res.digest.checked, digest_mismatches: res.digest.mismatches, monitor_runs: res.monitor.runs }));
   return res;
 };
 if (process.env.LAT_DISCOVER) { for (const row of rows) console.log(JSON.stringify(runChild(row.key, 'off'))); process.exit(0); }
 const xFirst = (k) => [true, false, false, true][k % 4];
 const pairRun = (k, runX, runY) => { if (xFirst(k)) { const x = runX(); return { x, y: runY(), first: 'x' }; } const y = runY(); return { x: runX(), y, first: 'y' }; };
-const childValid = (c, cond) => c.digest && c.digest.mismatches === 0 && c.digest.start_ok === true && c.errors === 0 && c.ms.length === SAMPLES && (cond === 'on' ? c.monitor.overlapped === SAMPLES && c.monitor.runs > 0 : c.monitor.runs === 0);
-const r1 = (v) => +v.toFixed(1);
 
+// a JOB may run a contiguous BLOCK RANGE of the K = 6 design (PREREG job split; each job on a fresh emulator). The block index k
+// is kept, so the ABBA BAAB position pattern is the design's, not the job's; test/c2b-latency.merge.js computes the verdicts over
+// all blocks of a row from the jobs' raw reports with the same statistics.
+const BLOCK_FROM = process.env.LAT_BLOCK_FROM ? Number(process.env.LAT_BLOCK_FROM) : 0;
+const BLOCK_TO = process.env.LAT_BLOCK_TO ? Number(process.env.LAT_BLOCK_TO) : BLOCKS - 1;
 const raw = {};
-for (let k = 0; k < BLOCKS; k++) {
+for (let k = BLOCK_FROM; k <= BLOCK_TO; k++) {
   for (const row of rows) {
     const R = raw[row.key] || (raw[row.key] = { ab: [], aa: [] });
     const ab = () => { const p = pairRun(k, () => runChild(row.key, 'off'), () => runChild(row.key, 'on')); R.ab.push({ k, first: p.first === 'x' ? 'off' : 'on', off: p.x, on: p.y }); };
@@ -82,28 +86,14 @@ for (let k = 0; k < BLOCKS; k++) {
     console.error(JSON.stringify({ block: k, row: row.key, ab_first: R.ab[R.ab.length - 1].first, aa_first: R.aa[R.aa.length - 1].first }));
   }
 }
-const report = { design: { blocks: BLOCKS, warmups: WARM, samples: SAMPLES, concurrency: 1, bars: BARS, order: 'ABBA BAAB per row; A/B and A/A pairs swap order each block; block-major',
+const report = { block_range: [BLOCK_FROM, BLOCK_TO], design: { blocks: BLOCKS, warmups: WARM, samples: SAMPLES, concurrency: 1, bars: BARS, order: 'ABBA BAAB per row; A/B and A/A pairs swap order each block; block-major',
   A: 'monitor OFF', B: 'monitor ON (in-process, max pacing, quiet window 0)' }, rows: [] };
-for (const row of rows) {
-  const R = raw[row.key];
-  const abBlocks = R.ab.map((b) => ({ x: b.off.ms, y: b.on.ms }));
-  const aaBlocks = R.aa.map((b) => ({ x: b.off1.ms, y: b.off2.ms }));
-  const pooled = ST.pooledP95Delta(abBlocks); const paired = ST.pairedMedianDelta(abBlocks); const noise = ST.aaNoiseMax(aaBlocks);
-  const sum = (xs, f) => xs.reduce((a, c) => a + f(c), 0);
-  const att = { off: sum(R.ab, (b) => b.off.attempts), on: sum(R.ab, (b) => b.on.attempts) };
-  const err = { off: sum(R.ab, (b) => b.off.errors), on: sum(R.ab, (b) => b.on.errors) };
-  const valid = R.ab.every((b) => childValid(b.off, 'off') && childValid(b.on, 'on')) && R.aa.every((b) => childValid(b.off1, 'off') && childValid(b.off2, 'off'));
-  const v = ST.verdictV2({ pooled, paired, noise, invariants: { attempts_equal: att.off === att.on, errors_equal: err.off === err.on }, valid, bars: BARS });
-  report.rows.push({ row: row.key, overlap: row.overlap, off_p95: r1(pooled.x_p95), on_p95: r1(pooled.y_p95), p95_delta_ms: r1(pooled.delta_ms), p95_delta_pct: r1(pooled.delta_rel * 100),
-    paired_median_delta_ms: r1(paired), paired_median_ci95: ST.bootstrapCI(abBlocks).map(r1), block_median_deltas: ST.blockMedianDeltas(abBlocks).map(r1),
-    aa_noise_p95_pct: r1(noise.noise_p95 * 100), aa_noise_median_ms: r1(noise.noise_med),
-    attempts: att, errors: err, monitor: { runs: sum(R.ab, (b) => b.on.monitor.runs), reads: sum(R.ab, (b) => b.on.monitor.reads), checked: sum(R.ab, (b) => b.on.monitor.checked) },
-    ab_first: R.ab.map((b) => b.first), aa_first: R.aa.map((b) => b.first), valid, verdict: v.verdict, cost: v.cost, quality: v.quality, values: v.values });
-  console.error(JSON.stringify(report.rows[report.rows.length - 1]));
-}
+for (const row of rows) report.rows.push(verdictRow(row, raw[row.key], SAMPLES));
 report.raw = raw;
 console.log(JSON.stringify(report));
 process.exit(0);
+
+
 
 // ── one (row, condition) in its own process ──────────────────────────────────────────────────────────────────────
 async function child(rowKey, cond) {
@@ -112,6 +102,7 @@ async function child(rowKey, cond) {
   process.env.STATS_HMAC_SECRET = process.env.STATS_HMAC_SECRET || 'c2b-latency-stats-'.padEnd(48, 'x');
   const origLog = console.log; console.log = () => {}; console.warn = () => {}; console.error = () => {};
   const row = ROWS.find((r) => r.key === rowKey);
+  const T0 = Date.now(); const tm = { startup_ms: 0, restore_ms: 0, verify_ms: 0 };
   require('../index.js');
   const admin = require('firebase-admin');
   const db = admin.firestore(); const rtdb = admin.database();
@@ -182,7 +173,8 @@ async function child(rowKey, cond) {
   const seedByPath = new Map(snap);
   const RS = RESTORE_SETS[row.op];
   const root = db.collection('restaurants').doc(row.rid);
-  const restore = async () => {
+  const restore = async () => { const t = Date.now(); try { await restoreInner(); } finally { tm.restore_ms += Date.now() - t; } };
+  const restoreInner = async () => {
     if (!RS) return;   // read-only: nothing to restore (the digest checks prove it)
     for (const c of RS.fresh) {
       for (const d of await root.collection(c).listDocuments()) if (!seedByPath.has(d.path)) await db.recursiveDelete(d);
@@ -193,9 +185,11 @@ async function child(rowKey, cond) {
     }
   };
   const verify = async (label) => {
+    const tv = Date.now();
     digest.checked += 1;
     const now = digestOf(await fullState());
     if (now !== SEEDED_DIGEST) { digest.mismatches += 1; if (!digest.first_mismatch) digest.first_mismatch = label; }
+    tm.verify_ms += Date.now() - tv;
   };
 
   // ── the monitor (B): a tight loop inside THIS process, max pacing, quiet window 0 ───────────────────────────────────
@@ -283,6 +277,7 @@ async function child(rowKey, cond) {
   }
 
   // ── samples ────────────────────────────────────────────────────────────────────────────────────────────────────
+  tm.startup_ms = Date.now() - T0;
   const ms = []; let attempts = 0; let errors = 0; let overlapped = 0; const statuses = {};
   if (digest.start_ok) for (let i = 0; i < WARM + SAMPLES; i += 1) {
     if (i > 0) {
@@ -309,6 +304,6 @@ async function child(rowKey, cond) {
   // leave the seeded state behind for the next child (and prove it)
   await restore(); if (digest.start_ok && !digest.mismatches) await verify('child end');
   console.log = origLog;
-  origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, digest, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, overlapped } }));
+  origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, digest, timing: tm, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, overlapped } }));
   process.exit(0);
 }
