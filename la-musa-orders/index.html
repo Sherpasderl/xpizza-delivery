@@ -3590,7 +3590,8 @@ function successTotalCents(o){
 function buildRedeemCatalog(){
   const CAT={ dim_sum:['Dim Sum','dumpling'], starters:['Starters','skewer'], soups_salads:['Sopas y ensaladas','soup'], noodles:['Noodles','noodle'], rice:['Rice','rice'], crudo:['Crudo','fish'], house_specials:['Especiales','star'], bebidas:['Bebidas','glass'] };
   const out=[];
-  MENU.forEach(p=>{ if(String(p.id).indexOf('beer_')===0) return; const c=CAT[p.cat]; if(!c) return; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c[0], icon:c[1] }); });
+  // 1D add-product B: eligibility is this brand's data (its categories, no alcohol); the shared rule drops launchers
+  GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p => String(p.id).indexOf('beer_')!==0 && !!CAT[p.cat]).forEach(p=>{ const c=CAT[p.cat]; out.push({ key:p.id, name:p.name, price_cents:Math.round(p.price*100), section:c[0], icon:c[1] }); });
   (typeof EXTRAS!=='undefined'?EXTRAS:[]).forEach(e=>{ if(e.cat!=='Acompañamientos') return; out.push({ key:e.id, name:e.name, price_cents:Math.round(e.price*100), section:'Acompañamientos', icon:'rice' }); });
   return out;
 }

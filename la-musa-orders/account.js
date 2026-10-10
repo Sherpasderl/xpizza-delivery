@@ -458,8 +458,21 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // golden ticket re-renders and the RESUMED order re-attaches the SAME redeem (same canonical → the server
   // reuses the ONE existing reservation, never a second). The quote is display-only (the server re-prices on
   // submit); require .ok so the applied-ticket predicate (rkApplied) matches. No payload → no-op (guest / non-redeemed retry).
+  /* 1D add-product B (rev 6 §0d.1) — a reward naming a bare LAUNCHER (e.g. a selection saved before its group's rule) is
+     never submitted bare: the whole selection is dropped on restore and the customer re-picks. The key resolves through
+     today's MENU by id, then by name — whichever the brand's reward catalog keys on, with no brand branch. */
+  function redeemHoldsLauncher(payload) {
+    try {
+      if (typeof itemIsLauncher !== 'function' || typeof MENU === 'undefined') return false;
+      const keys = payload.type === 'free_pizza_choice' ? [payload.item_id]
+        : (Array.isArray(payload.items) ? payload.items.map((it) => it && it.id) : []);
+      const dish = (k) => MENU.find((p) => String(p.id) === String(k)) || MENU.find((p) => p.name === k) || null;
+      return keys.some((k) => k != null && itemIsLauncher(dish(k)));
+    } catch (_) { return false; }
+  }
   function restoreRedeem(payload, quote, items) {
     if (!payload) return;
+    if (redeemHoldsLauncher(payload)) { try { toast('Elegí de nuevo tu premio'); } catch (_) {} return; }
     _redeemPending = payload;
     /* 🔴 A RESTORED QUOTE IS DROPPED, NOT RE-CERTIFIED. An earlier version stamped the SAVED quote with
        the CURRENT cart and menu version, which is a false "fresh": the snapshot came out of storage

@@ -73,6 +73,13 @@ test('extras_policy: "none" hides extras; absent = today; any other value refuse
   }
 });
 
+test('rewardDishes: the brand\'s eligibility data, minus launchers — a group is offered as its choices', () => {
+  const menu = [{ id: 'L', cat: 'n' }, { id: 'a', cat: 'n', variantOf: 'L' }, { id: 'b', cat: 'n', variantOf: 'L' }, { id: 'x', cat: 'n' }, { id: 'beer', cat: 'n' }];
+  const ids = GP.rewardDishes(menu, { L: { variantIds: ['a', 'b'] } }, (p) => p.id !== 'beer').map((p) => p.id);
+  assert.deepStrictEqual(ids, ['a', 'b', 'x'], 'launcher dropped, choices kept, the brand exclusion still applied');
+  assert.deepStrictEqual(GP.rewardDishes(menu, {}, () => true).map((p) => p.id), ['L', 'a', 'b', 'x', 'beer'], 'no groups → exactly the eligibility filter');
+});
+
 test('whole-dish availability: a choice is available iff it AND its launcher are', () => {
   const menu = [{ id: 30, name: 'L' }, { id: 31, name: 'L - a', variantOf: 30 }, { id: 32, name: 'L - b', variantOf: 30 }, { id: 'x', name: 'X', variantOf: '30' }];
   const out = new Set();

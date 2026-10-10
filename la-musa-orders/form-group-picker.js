@@ -93,6 +93,13 @@ function validateExtrasPolicy(dishes) {
   });
 }
 
+/* ── REWARDS (rev 6 §0d.1, owner 2026-10-10) — the reward list offers ORDERABLE dishes only: a group appears as its CHOICES,
+   each its own reward row; the bare launcher never does. `isEligible` is the brand's eligibility DATA (its categories,
+   its exclusions); this adds the one group rule, identically for every restaurant. */
+function rewardDishes(menu, variantItems, isEligible) {
+  return menu.filter(p => isEligible(p) && !isLauncher(p, variantItems));
+}
+
 /* ── WHOLE-DISH AVAILABILITY (rev 6 §0d.4) — a choice is available iff the choice AND its launcher are. `ownSoldOut` is
    the form's own per-record reader (its keys, its fail-open rule); this only adds the parent. */
 function parentOf(item, menu) { return item && item.variantOf !== undefined ? menu.find(p => sameDishId(p.id, item.variantOf)) || null : null; }
@@ -119,6 +126,6 @@ function ctaDecision(opts) {
 }
 
 const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
-  promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, parentOf, soldOutWithParent, ctaDecision };
+  promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

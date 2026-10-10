@@ -3134,7 +3134,8 @@ function successTotalCents(o){
 // pizzas, each with a per-topping fine-line icon. 18" NY pies excluded (the server enforces this too).
 function buildRedeemCatalog(){
   const ICON={'Anchovies':'fish','Shrimp Scampi':'fish','Pistaccio Mortadella':'meat','Prosciutto':'meat','Sopressatta Chili Honey':'meat','Carnivora':'meat','Crispy Bacon':'bacon','Pancetta Vodka Sauce':'tomato','Mushroom':'mushroom','Sweet Corn & Calabrian Chili':'chili','Spinach':'leaf','Pepperoni':'slice','Potato & Dill Sausage':'meat','Margherita':'tomato','Cacio e Pepe':'cheese','Ham':'meat','Nutella':'slice'};
-  return MENU.filter(p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:ICON[p.name]||'slice' }));
+  // 1D add-product B: eligibility is this brand's data (12" individual pizzas); the shared rule drops launchers
+  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:ICON[p.name]||'slice' }));
 }
 
 function calcTotal(){
