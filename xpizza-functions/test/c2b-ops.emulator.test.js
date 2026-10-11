@@ -154,7 +154,31 @@ const QUIET = 10 * 60 * 1000;
     assert.ok(runLine && runLine.ok === true && runLine.enumerated >= 5, `the scheduled function enumerated the registry: ${JSON.stringify(runLine)}`);
     const states = logs.filter((x) => x.includes('"identity_integrity_state"')).length;
     assert.strictEqual(states, runLine.enumerated, 'one summary line per enumerated restaurant');
-    ok(`the DEPLOYED scheduled function (verifyIdentityIntegrity.run): ${runLine.enumerated} restaurants enumerated by makeFirestoreRegistryReader, one summary line each, run ok (${runLine.reads} reads)`);
+    ok(`the DEPLOYED scheduled function (verifyIdentityIntegrity.run): ${runLine.enumerated} restaurants enumerated by the monitor's BOUNDED reader (one limited query), one summary line each, run ok (${runLine.reads} reads)`);
+  }
+
+  // ── 6. RECONCILIATION (advisor ruling, rail (ii)): when every restaurant has its restaurants/{rid} document (onboarding creates it),
+  //       the bounded reader enumerates EXACTLY what the platform registry (listDocuments, restaurant-registry.js:96) sees; a
+  //       subcollection-only restaurant is invisible to it (the residual the rollout gate and provisioning requirement close);
+  //       ZERO enumerated is a FAILED enumeration — no heartbeat (rail (i)) ───────────────────────────────────────────────────────
+  {
+    const { makeFirestoreRegistryReader } = require('../catalog/restaurant-registry');
+    const { makeBoundedRegistryReader, ENUMERATION_MAX } = require('../catalog/identity-integrity-monitor');
+    const platform = async () => (await makeFirestoreRegistryReader(db)()).slice().sort();
+    const bounded = async () => (await makeBoundedRegistryReader(db)({ limit: ENUMERATION_MAX + 1 })).slice().sort();
+    assert.deepStrictEqual(await bounded(), await platform(), 'every restaurant has its document → the bounded reader === the platform registry');
+    // a SUBCOLLECTION-ONLY restaurant: the platform registry sees it (a missing parent), the bounded reader does not
+    await db.collection('restaurants').doc('synth_subonly').collection('meta').doc('source').set({ items: [] });
+    const [p2, b2] = [await platform(), await bounded()];
+    assert.ok(p2.includes('synth_subonly') && !b2.includes('synth_subonly'), 'a subcollection-only restaurant is invisible to the bounded reader');
+    await db.recursiveDelete(db.collection('restaurants').doc('synth_subonly'));
+    // ZERO enumerated → a FAILED enumeration: an error line, NO heartbeat
+    const lines = [];
+    const m = require('../catalog/identity-integrity-monitor').createIdentityIntegrityMonitor({ db, rtdb, log: (k, d) => lines.push([k, d]) });
+    const r0 = await m.run({ listIds: async () => [], quietMs: 0 });
+    assert.ok(r0.ok && lines.some(([k]) => k === 'identity_integrity_enumeration_empty') && !lines.some(([k]) => k === 'identity_integrity_heartbeat'),
+      `0 enumerated → identity_integrity_enumeration_empty, no heartbeat (${lines.map(([k]) => k).join(' ')})`);
+    ok(`reconciliation: with every restaurant's document present, the bounded reader enumerates exactly the platform registry's ${p2.length - 1} restaurants; a subcollection-only restaurant is invisible to it (rollout gate + provisioning requirement); 0 enumerated → a FAILED enumeration (error line, no heartbeat)`);
   }
 
   FINISHED = true;

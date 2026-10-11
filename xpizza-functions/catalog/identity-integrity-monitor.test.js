@@ -284,6 +284,14 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
     ok(`P1-C (bounded at the fetch): 201 restaurants → ONE query limit ${M.ENUMERATION_MAX + 1}, listed units ≤ the exact reservation, overflow detected → truncated + no heartbeat; 200 → complete; cap 200 → never issued; a reader that ignores the limit → refused`);
   }
 
+  // ── 10. rail (i): ZERO restaurants enumerated is a FAILED enumeration — an error line, NO heartbeat (never a clean empty run) ──
+  {
+    const lines = []; const quiet = { ref: (p) => ({ child: () => quiet.ref(p), get: async () => ({ val: () => null }), transaction: async () => ({ committed: true }) }) };
+    const out = await M.createIdentityIntegrityMonitor({ db: {}, rtdb: quiet, log: (k) => lines.push(k) }).run({ listIds: async () => [] });
+    assert.deepStrictEqual([out.ok, out.ids.length, lines.includes('identity_integrity_enumeration_empty'), lines.includes('identity_integrity_heartbeat')], [true, 0, true, false]);
+    ok('rail (i): 0 restaurants enumerated → identity_integrity_enumeration_empty, NO heartbeat (the absence alert fires) — never a clean, heartbeat-emitting empty run');
+  }
+
   FINISHED = true;
   console.log(`identity-integrity-monitor: OK (${n})`);
 })().catch((e) => { console.error('identity-integrity-monitor FAILED:', e); process.exit(1); });

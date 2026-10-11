@@ -103,6 +103,13 @@ The monitor enumerates restaurants with ONE limited query of at most 201 restaur
 - **What to do:** coverage past 200 needs a follow-up slice — raise `ENUMERATION_MAX` (if the run's read and time budget allow), or page the enumeration across runs. Until it lands, the restaurants past the first 200 are unmonitored. Do not acknowledge the absence alert as a false alarm.
 - **Onboarding checklist:** when onboarding a restaurant, count the restaurant documents. **If there are more than 150 restaurants, schedule the pagination slice.**
 
+## Rollout gate + provisioning requirement: every restaurant has its `restaurants/{rid}` DOCUMENT
+
+The monitor enumerates restaurant DOCUMENTS (a limited query). The platform registry (`listDocuments`) also sees "missing" parents: a restaurant that exists only as subcollections. Such a restaurant is INVISIBLE to the monitor.
+- **Gate — before deploy, and at each onboarding:** verify, read-only, that every restaurant has its `restaurants/{rid}` document. List the ids with and without `showMissing`; the two lists must be identical. *Verified by the advisor on 2026-10-11 (Firestore REST, ids only): existing docs = [la_musa, x_pizza]; with showMissing = the same two, both existing; zero missing-parent restaurants.*
+- **Provisioning requirement (admin-portal / onboarding slice):** onboarding MUST create the `restaurants/{rid}` document.
+- **Rail:** if the monitor ever enumerates ZERO restaurants, it logs `identity_integrity_enumeration_empty` and emits no heartbeat, so the absence alert fires. Treat that as this gate failing.
+
 ## Bootstrap / migration CLIs
 
 `tools/bootstrap-identity.js` has no publish lease. Pause the monitor job first, run it, then resume:

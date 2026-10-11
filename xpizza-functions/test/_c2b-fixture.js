@@ -36,7 +36,8 @@ function fixture({ db, rtdb, now, sleep } = {}) {
     return { items: built.items, structure: built.structure, extras: inputs.extras,
       extraRecords: (src.extras || []).map((e) => ({ key: e.key, price: e.price, display: e.display })) };
   }
-  async function seed(rid, source = buildSourceFromCode(rid)) { await sourceRefOf(db, rid).set(source); }
+  // onboarding creates the restaurant's own document (restaurants/{rid}) — the monitor's bounded reader enumerates DOCUMENTS (rail (ii))
+  async function seed(rid, source = buildSourceFromCode(rid)) { await db.collection('restaurants').doc(rid).set({ name: rid }, { merge: true }); await sourceRefOf(db, rid).set(source); }
   async function publish(rid, tag = 'c2b') {
     const p = await getActivePointer(db, rid).catch(() => ({ version: null }));
     const snap = await sourceRefOf(db, rid).get();

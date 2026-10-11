@@ -383,6 +383,9 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
       listed = raw.length;
       ids = sanitize(raw).slice().sort();
       if (listed > enumerationMax) { enumeratedOk = false; ids = ids.slice(0, enumerationMax); log('identity_integrity_enumeration_truncated', { listed: `> ${enumerationMax}`, max: enumerationMax }); }
+      // ZERO restaurants is a FAILED enumeration (advisor ruling, rail (i)): the bounded reader sees restaurant DOCUMENTS only, so a
+      // registry whose restaurants lack their restaurants/{rid} document reads as empty — never a clean, heartbeat-emitting run
+      if (!ids.length) { enumeratedOk = false; log('identity_integrity_enumeration_empty', { error: 'no restaurant documents enumerated — the heartbeat is suppressed (every restaurant needs its restaurants/{rid} document)' }); }
       budget.release(limit - Math.max(1, listed));   // the actual cost: one per returned document (≥ 1)
     } catch (e) {
       log('identity_integrity_run', { ok: false, error: String((e && e.message) || e).slice(0, 160), reads: budget.used() });
