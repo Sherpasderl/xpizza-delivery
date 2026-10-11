@@ -72,6 +72,7 @@ let REC = null;
 // R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
 // recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
 const Q = require('./_quiescence').makeQuiescence();
+const CTL = require('./_order-control-trace');
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -161,6 +162,10 @@ const tree = async () => leaves((await rtdb.ref().get()).val() || {});
 async function traced(c, rid, setupState) {
   const before = await tree();
   const pre = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};
+  // R1b: the pause-switch reader cache (10 s from read initiation) put in a KNOWN state — WARM — with the recorder OFF,
+  // right before the request. It was left to timing: the case's setup warmed it, and under load setup + the tree read
+  // outran the 10 s TTL, so the handler re-read order_control/<rid>/current — one call the pre-c4 golden never had.
+  await CTL.controlWarm(rtdb, rid);
   REC = [];
   const r = await c.request(rid, setupState);
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
