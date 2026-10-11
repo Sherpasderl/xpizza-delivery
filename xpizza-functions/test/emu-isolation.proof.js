@@ -1,27 +1,34 @@
 #!/usr/bin/env node
 'use strict';
-/* R1 EVIDENCE PROOF (PLAN-emulator-isolation v5 §e) — REAL emulators, REAL launcher, TWO worktrees. Not in a test
- * chain: it boots JVMs and needs a second worktree of the same commit. Run in a CLEAR WINDOW (no old-code emulator
- * runs on the machine):
+/* R1 EVIDENCE PROOF (PLAN-emulator-isolation v5 §e + codex R1-build P2-7) — REAL emulators, the REAL launcher, TWO
+ * worktrees. Not in a test chain: it boots JVMs, holds the real sentinel pool for the cancellation case, and needs a
+ * second worktree of the same commit. Run ONLY in a CLEAR WINDOW (no old-code emulator runs on the machine):
  *
  *   PATH="/opt/homebrew/opt/openjdk/bin:$PATH" node test/emu-isolation.proof.js run <second-worktree-root>
  *
- * Proves, each against the real firebase-tools 15.16.0:
- *   1. ISOLATION — two concurrent same-project runs (A here, B in the other worktree) write DIFFERENT sentinels to the
- *      SAME Firestore doc and RTDB path; each reads back only its own, before and after the other finishes.
- *   2. HUB — both runs inherit one parent TMPDIR, yet each gets its own hub-<project>.json (per-run child TMPDIR).
- *   3. RULES LOADED, BEHAVIOURALLY — per run, unauthenticated REST: Firestore public read ALLOWED + write and a
- *      default-deny read DENIED; RTDB /menus read ALLOWED + /orders read and a write DENIED. Allowed+denied together
- *      cannot both hold under either permissive or closed defaults, so this is non-vacuous.
- *   4. PROJECT — a stale parent GOOGLE_CLOUD_PROJECT is normalised to the run's project in the suite.
- *   5. MARKERS — the run's own nonce is visible on its emulator JVMs (and, in the functions step, on a worker).
- *   6. SAME-CHECKOUT — a second run in worktree A while A is live is REFUSED (exit 4).
- *   7. QUARANTINE + REAP — a marked orphan with a dead supervisor quarantines its slot (a pin to it refuses naming the
- *      orphan); an unpinned run lands elsewhere; emu-reap reclaims it; the pin then succeeds.
- *   8. RULES MISSING / INVALID — the launcher refuses before starting (in the second worktree, restored after).
- *   9. FUNCTIONS — discovery passes lib/admin.js's validator (both data hosts real), a worker carries the marker.
+ *  1 ISOLATION   A (here) and B (other worktree), same project, concurrently: each writes its own sentinel to the SAME
+ *                Firestore doc + RTDB path and reads back only its own; then A DELETES its data and B's survives, B
+ *                deletes and A's deletion stood (deletion isolation). Each records its result only AFTER its final read.
+ *  2 HUB         one parent TMPDIR, yet each run has its own hub-<project>.json.
+ *  3 RULES       per run, unauthenticated REST: allowed + denied, both services (non-vacuous).
+ *  4 PROJECT     a stale parent GOOGLE_CLOUD_PROJECT is normalised.  5 MARKERS  JVMs + CLI + suite carry the run marker.
+ *  6 SAME-CHECKOUT  a second run in A's checkout while A is live is refused (exit 4).
+ *  7 TEARDOWN-BEFORE-RELEASE  a watcher binds A's sentinel the instant it frees: at that instant A has NO marked process
+ *                and its band is free.
+ *  8 LEAKED DESCENDANT  a suite step leaves a detached marked child behind; the launcher's teardown ends it.
+ *  9 SUPERVISOR SIGKILL MID-CHAIN  the chain runs on under the marked wrapper; every scan shows the slot quarantined and a
+ *                pin onto it is refused, until the chain and its emulators are gone.
+ * 10 ORPHAN WRITER  a marked writer with a dead supervisor keeps (re)trying the slot's RTDB: the slot is quarantined (pin
+ *                refused, naming it), an unpinned run goes elsewhere; emu-reap ends it; the reclaimed slot's run then sees
+ *                NONE of the orphan's writes.
+ * 11 QUEUE CANCELLATION  with all 40 real sentinels held, SIGINT cancels a queued run promptly, holding nothing.
+ * 12 LOUD RE-SLOT  a listener appears on the admitted slot's logging port after admission (a real race): the CLI refuses,
+ *                the launcher says RE-SLOTTING, tears down and succeeds on another slot.
+ * 13 RULES REFUSAL  missing / invalid-JSON RTDB rules, missing / empty / INVALID NON-EMPTY Firestore rules each refuse.
+ * 14 FUNCTIONS   discovery passes lib/admin.js's validator (both data hosts real); a worker carries the marker.
  */
 const assert = require('assert');
+const net = require('net');
 const { spawn, spawnSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -29,82 +36,110 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const PROJECT = 'demo-xpizza';
+const NS = `${PROJECT}-default-rtdb`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const waitFor = async (fn, ms, what) => { const t = Date.now() + ms; while (Date.now() < t) { if (fn()) return; await sleep(200); } throw new Error(`timeout waiting for ${what}`); };
+const waitFor = async (fn, ms, what) => { const t = Date.now() + ms; while (Date.now() < t) { if (await fn()) return; await sleep(100); } throw new Error(`timeout waiting for ${what}`); };
+const touch = (f) => fs.writeFileSync(f, String(Date.now()));
 
-// ═══ INSIDE: runs as the suite command under tools/emulator-run.js ═══════════════════════════════════════════════
+// ═══ INSIDE modes: run as the suite command under tools/emulator-run.js ═════════════════════════════════════════
 async function inside(ctl, tag, peer) {
   require('./_emulator-required')('firestore', 'database');
   const A = require('../tools/emu-alloc');
   const admin = require('firebase-admin');
   const fsHost = process.env.FIRESTORE_EMULATOR_HOST, dbHost = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
-  const NS = `${PROJECT}-default-rtdb`;
   const out = { tag, offset: process.env.XPIZZA_EMU_OFFSET, tmpdir: os.tmpdir(), gcloud: process.env.GCLOUD_PROJECT, gcp: process.env.GOOGLE_CLOUD_PROJECT };
   out.hubFile = path.join(os.tmpdir(), `hub-${PROJECT}.json`);
   out.hubFileExists = fs.existsSync(out.hubFile);
-  // rules, behaviourally (unauthenticated REST)
   const st = async (url, init) => (await fetch(url, init)).status;
   const fsDoc = (p) => `http://${fsHost}/v1/projects/${PROJECT}/databases/(default)/documents/${p}`;
   out.rules = {
-    fsPublicRead: await st(fsDoc('restaurants/r1probe')),                                   // allowed → 404 (no doc)
-    fsDenyRead: await st(fsDoc('r1secret/x')),                                              // global default-deny → 403
+    fsPublicRead: await st(fsDoc('restaurants/r1probe')),
+    fsDenyRead: await st(fsDoc('r1secret/x')),
     fsDenyWrite: await st(`${fsDoc('restaurants')}?documentId=r1probe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"fields":{}}' }),
-    dbPublicRead: await st(`http://${dbHost}/menus.json?ns=${NS}`),                          // .read true → 200
-    dbDenyRead: await st(`http://${dbHost}/orders.json?ns=${NS}`),                           // no grant → 401
+    dbPublicRead: await st(`http://${dbHost}/menus.json?ns=${NS}`),
+    dbDenyRead: await st(`http://${dbHost}/orders.json?ns=${NS}`),
     dbDenyWrite: await st(`http://${dbHost}/r1probe.json?ns=${NS}`, { method: 'PUT', body: '"x"' }),
   };
-  // markers on this run's own processes
   const nonce = A.parseMarker(process.env[A.RUN_VAR]).nonce;
   const t = A.readPsTables();
   const mine = A.joinScans(t.plain, t.withEnv).filter((r) => r.readable && (A.markerIn(r.env) || {}).nonce === nonce);
-  out.marked = mine.map((r) => (/\bjava\b|\/java /.test(r.argv) ? 'java' : /firebase/.test(r.argv) ? 'firebase-cli' : 'node'));
-  // isolation: the SAME paths, different values
+  out.marked = mine.map((r) => (/\bjava\b|\/java /.test(r.argv) ? 'java' : /firebase/.test(r.argv) ? 'firebase-cli' : /emu-cmd-wrapper/.test(r.argv) ? 'wrapper' : 'node'));
   admin.initializeApp({ projectId: PROJECT, databaseURL: `http://${dbHost}?ns=${NS}` });
   const fsd = admin.firestore(); const db = admin.database();
+  const read = async () => [(await fsd.doc('r1iso/sentinel').get()).get('tag') || null, (await db.ref('r1iso/sentinel').once('value')).val()];
+  const del = async () => { await fsd.doc('r1iso/sentinel').delete(); await db.ref('r1iso').remove(); };
+  const F = (n) => path.join(ctl, n);
   await fsd.doc('r1iso/sentinel').set({ tag });
   await db.ref('r1iso/sentinel').set(tag);
-  const read = async () => [(await fsd.doc('r1iso/sentinel').get()).get('tag'), (await db.ref('r1iso/sentinel').once('value')).val()];
-  fs.writeFileSync(path.join(ctl, `${tag}.ready`), '1');
-  if (peer) await waitFor(() => fs.existsSync(path.join(ctl, `${peer}.ready`)), 120000, `${peer}.ready`);
-  out.readAfterPeerWrote = await read();
-  fs.writeFileSync(path.join(ctl, `${tag}.done`), '1');
-  if (peer) await waitFor(() => fs.existsSync(path.join(ctl, `${peer}.done`)) || fs.existsSync(path.join(ctl, `${peer}.json`)), 120000, `${peer}.done`);
-  await sleep(1500);                                         // let the peer reach / pass its teardown
-  out.readAfterPeerDone = await read();
-  fs.writeFileSync(path.join(ctl, `${tag}.json`), JSON.stringify(out));
-  console.log(`  ✓ 1 inside ${tag}: wrote + read back (${out.readAfterPeerDone.join(', ')})`);
+  touch(F(`${tag}.ready`));
+  await waitFor(() => fs.existsSync(F(`${peer}.ready`)), 180000, `${peer}.ready`);
+  out.readAfterPeerWrote = await read();                                         // [tag, tag]
+  if (tag === 'A') {                                                             // A deletes FIRST, then B checks it survived
+    await del(); touch(F('A.deleted'));
+    await waitFor(() => fs.existsSync(F('B.deleted')), 180000, 'B.deleted');
+  } else {
+    await waitFor(() => fs.existsSync(F('A.deleted')), 180000, 'A.deleted');
+    out.readAfterPeerDeleted = await read();                                     // B's data SURVIVED A's deletion
+    await del(); touch(F('B.deleted'));
+  }
+  out.readAfterOwnDelete = await read();                                         // [null, null] — own deletion worked
+  fs.writeFileSync(F(`${tag}.json`), JSON.stringify(out));                      // written only AFTER the final read
+  console.log(`  ✓ 1 inside ${tag}`);
   process.exit(0);
 }
 
-// ═══ functions step: a worker carries the marker; discovery passed lib/admin's validator ═════════════════════════
+// a step that leaves a DETACHED marked descendant behind (it inherits the run marker) and exits 0
+function insideLeaky(pidFile) {
+  require('./_emulator-required')('database');
+  const c = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { env: process.env, stdio: 'ignore', detached: true });
+  c.unref();
+  fs.writeFileSync(pidFile, String(c.pid));
+  console.log('  ✓ 1 leaky step left a detached marked child');
+  process.exit(0);
+}
+
+// the reclaimed slot's run: nothing the orphan writer tried to write reached THIS run's emulator
+async function insideOrphanCheck(ctl) {
+  require('./_emulator-required')('database');
+  await sleep(2500);                                                              // give a (dead) writer every chance
+  const v = await (await fetch(`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/r1orphan.json?ns=${NS}`)).json();
+  fs.writeFileSync(path.join(ctl, 'orphan-check.json'), JSON.stringify({ value: v, offset: process.env.XPIZZA_EMU_OFFSET }));
+  console.log('  ✓ 1 orphan check');
+  process.exit(0);
+}
+
 async function insideFunctions(ctl) {
   require('./_emulator-required')('firestore', 'database');
   const A = require('../tools/emu-alloc');
-  const hub = process.env.FIREBASE_EMULATOR_HUB;
-  const list = await (await fetch(`http://${hub}/emulators`)).json();
+  const list = await (await fetch(`http://${process.env.FIREBASE_EMULATOR_HUB}/emulators`)).json();
   const fx = list.functions;
   const r = await fetch(`http://${fx.host}:${fx.port}/${PROJECT}/us-central1/reportClientVersion`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   const nonce = A.parseMarker(process.env[A.RUN_VAR]).nonce;
   const t = A.readPsTables();
   const rows = A.joinScans(t.plain, t.withEnv).filter((x) => x.readable && (A.markerIn(x.env) || {}).nonce === nonce);
   const worker = rows.filter((x) => /FUNCTION_TARGET=reportClientVersion/.test(x.env) && /FUNCTIONS_EMULATOR=true/.test(x.env));
-  fs.writeFileSync(path.join(ctl, 'fn.json'), JSON.stringify({ status: r.status, workerMarked: worker.length, kinds: rows.length }));
-  console.log(`  ✓ 1 functions: reportClientVersion → ${r.status}; ${worker.length} marked worker(s)`);
+  fs.writeFileSync(path.join(ctl, 'fn.json'), JSON.stringify({ status: r.status, workerMarked: worker.length }));
+  console.log(`  ✓ 1 functions: ${r.status}; ${worker.length} marked worker(s)`);
   process.exit(0);
 }
 
-// ═══ ORCHESTRATOR ════════════════════════════════════════════════════════════════════════════════════════════════
-function launch(root, only, inner, extraEnv = {}) {
-  const env = { ...process.env, GOOGLE_CLOUD_PROJECT: 'stale-parent-project', ...extraEnv };
+// ═══ ORCHESTRATOR ══════════════════════════════════════════════════════════════════════════════════════════════
+const cleanEnv = (extra = {}) => {
+  const env = { ...process.env, GOOGLE_CLOUD_PROJECT: 'stale-parent-project', ...extra };
   if (env.NODE_OPTIONS) env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/--require[= ]\S*count-marks\.js/g, '').trim() || undefined;
   if (env.NODE_OPTIONS === undefined) delete env.NODE_OPTIONS;
-  const c = spawn(process.execPath, [path.join(root, 'tools', 'emulator-run.js'), '--only', only, '--project', PROJECT, inner], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
-  let out = '';
-  c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; });
-  const done = new Promise((res) => c.on('exit', (code) => res({ code, out })));
-  return { child: c, done, get out() { return out; } };
+  return env;
+};
+function launch(root, only, inner, extraEnv = {}) {
+  const c = spawn(process.execPath, [path.join(root, 'tools', 'emulator-run.js'), '--only', only, '--project', PROJECT, inner], { cwd: root, env: cleanEnv(extraEnv), stdio: ['ignore', 'pipe', 'pipe'] });
+  const o = { child: c, out: '' };
+  c.stdout.on('data', (d) => { o.out += d; }); c.stderr.on('data', (d) => { o.out += d; });
+  o.done = new Promise((res) => c.on('exit', (code, signal) => res({ code, signal, out: o.out })));
+  return o;
 }
-const slotOf = (out) => { const m = /emulator-run: slot (\d+)/.exec(out); return m ? Number(m[1]) : null; };
+const slotOf = (out) => { const m = /emulator-run: slot (\d+) \(/.exec(out); return m ? Number(m[1]) : null; };
+const slotsOf = (out) => [...out.matchAll(/emulator-run: slot (\d+) \(/g)].map((m) => Number(m[1]));
+const runSync = (root, only, inner, extraEnv = {}, timeout = 240000) => spawnSync(process.execPath, [path.join(root, 'tools', 'emulator-run.js'), '--only', only, '--project', PROJECT, inner], { cwd: root, encoding: 'utf8', env: cleanEnv(extraEnv), timeout });
 
 async function run(rootB) {
   rootB = path.resolve(rootB, fs.existsSync(path.join(rootB, 'xpizza-functions')) ? 'xpizza-functions' : '.');
@@ -112,95 +147,200 @@ async function run(rootB) {
   const head = (r) => execFileSync('git', ['-C', r, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   assert.strictEqual(head(rootB), head(ROOT), 'premise — both worktrees are the SAME commit');
   assert.notStrictEqual(fs.realpathSync(rootB), fs.realpathSync(ROOT), 'premise — two DIFFERENT checkouts');
+  const ALLOC = require('../tools/emu-alloc');
+  const EE = require('../lib/emulator-endpoint');
   const ctl = fs.mkdtempSync(path.join(os.tmpdir(), 'r1-proof-'));
   const report = {};
-  const inner = (tag, peer) => `node test/emu-isolation.proof.js inside ${ctl} ${tag} ${peer || ''}`.trim();
+  const inner = (mode, ...a) => ['node', 'test/emu-isolation.proof.js', mode, ...a].join(' ');
 
-  // ── 1-6: A + B concurrently, same project, same parent TMPDIR; C (same checkout as A) refused ──
-  const a = launch(ROOT, 'firestore,database', inner('A', 'B'));
-  const b = launch(rootB, 'firestore,database', inner('B', 'A'));
-  await waitFor(() => fs.existsSync(path.join(ctl, 'A.ready')), 180000, 'A.ready');
-  const c = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, `node test/emu-isolation.proof.js inside ${ctl} C`], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' }, timeout: 60000 });
-  const [ra, rb] = await Promise.all([a.done, b.done]);
-  assert.strictEqual(ra.code, 0, `A failed:\n${ra.out.slice(-2000)}`);
-  assert.strictEqual(rb.code, 0, `B failed:\n${rb.out.slice(-2000)}`);
-  const A = JSON.parse(fs.readFileSync(path.join(ctl, 'A.json'), 'utf8'));
-  const B = JSON.parse(fs.readFileSync(path.join(ctl, 'B.json'), 'utf8'));
-  report.slots = [slotOf(ra.out), slotOf(rb.out)];
-  assert.notStrictEqual(report.slots[0], report.slots[1], '🔴 two concurrent runs got the SAME slot');
-  assert.deepStrictEqual([A.readAfterPeerWrote, A.readAfterPeerDone], [['A', 'A'], ['A', 'A']], `🔴 A read B's data (or lost its own): ${JSON.stringify(A)}`);
-  assert.deepStrictEqual([B.readAfterPeerWrote, B.readAfterPeerDone], [['B', 'B'], ['B', 'B']], `🔴 B read A's data (or lost its own): ${JSON.stringify(B)}`);
-  report.isolation = 'A reads only A, B reads only B — Firestore r1iso/sentinel + RTDB r1iso/sentinel, before and after the peer finished';
-  assert.notStrictEqual(A.tmpdir, B.tmpdir, '🔴 the two runs shared a TMPDIR');
-  assert.ok(A.hubFileExists && B.hubFileExists, `🔴 a run's own hub-${PROJECT}.json was not in its own TMPDIR: ${JSON.stringify([A.hubFile, B.hubFile])}`);
-  report.hub = [A.hubFile, B.hubFile];
-  for (const R of [A, B]) {
-    assert.strictEqual(R.gcloud, PROJECT); assert.strictEqual(R.gcp, PROJECT, `🔴 the stale parent GOOGLE_CLOUD_PROJECT reached the suite: ${R.gcp}`);
-    const x = R.rules;
-    assert.ok(x.fsPublicRead === 404 || x.fsPublicRead === 200, `🔴 Firestore public read not allowed (${x.fsPublicRead}) — rules not loaded as written`);
-    assert.strictEqual(x.fsDenyRead, 403, `🔴 Firestore default-deny read was ALLOWED (${x.fsDenyRead}) — permissive fallback, rules NOT loaded`);
-    assert.strictEqual(x.fsDenyWrite, 403, `🔴 Firestore client write was ALLOWED (${x.fsDenyWrite})`);
-    assert.strictEqual(x.dbPublicRead, 200, `🔴 RTDB /menus public read denied (${x.dbPublicRead}) — rules not loaded as written`);
-    assert.ok(x.dbDenyRead === 401 || x.dbDenyRead === 403, `🔴 RTDB /orders read ALLOWED (${x.dbDenyRead}) — rules NOT loaded`);
-    assert.ok(x.dbDenyWrite === 401 || x.dbDenyWrite === 403, `🔴 RTDB client write ALLOWED (${x.dbDenyWrite})`);
-    assert.ok(R.marked.filter((k) => k === 'java').length >= 2, `🔴 the run's emulator JVMs do not carry its marker: ${JSON.stringify(R.marked)}`);
+  // ── 1-7: A + B concurrently; C refused; A's sentinel watched for teardown-before-release ──
+  {
+    const a = launch(ROOT, 'firestore,database', inner('inside', ctl, 'A', 'B'));
+    const b = launch(rootB, 'firestore,database', inner('inside', ctl, 'B', 'A'));
+    await waitFor(() => fs.existsSync(path.join(ctl, 'A.ready')), 180000, 'A.ready');
+    const slotA = slotOf(a.out);
+    // the WATCHER: bind A's sentinel the instant it frees; at that instant record A's marked processes + band state
+    let release = null;
+    const watcher = (async () => {
+      while (!release) {
+        const sv = await ALLOC.bindSentinel(ALLOC.sentinelPort(slotA));
+        if (sv) {
+          const sc = ALLOC.scanSlot(slotA);
+          const busy = [];
+          for (const [nm, pt] of [['hub', EE.planPorts(slotA * 10).hub], ['logging', EE.planPorts(slotA * 10).logging], ['firestore', EE.planPorts(slotA * 10).firestore], ['database', EE.planPorts(slotA * 10).database]]) {
+            if ((await ALLOC.probePort(pt)) !== 'free') busy.push(`${nm}`);
+          }
+          release = { at: Date.now(), occupied: sc.occupied, orphans: sc.orphans.length, live: sc.live.length, busy, aExited: a.child.exitCode !== null };
+          await ALLOC.closeServer(sv);
+          break;
+        }
+        await sleep(25);
+      }
+    })();
+    const c = runSync(ROOT, 'database', inner('noop'), {}, 60000);
+    const [ra, rb] = await Promise.all([a.done, b.done]);
+    await watcher;
+    assert.strictEqual(ra.code, 0, `A failed:\n${ra.out.slice(-2500)}`);
+    assert.strictEqual(rb.code, 0, `B failed:\n${rb.out.slice(-2500)}`);
+    const A = JSON.parse(fs.readFileSync(path.join(ctl, 'A.json'), 'utf8'));
+    const B = JSON.parse(fs.readFileSync(path.join(ctl, 'B.json'), 'utf8'));
+    report.slots = [slotA, slotOf(rb.out)];
+    assert.notStrictEqual(report.slots[0], report.slots[1], '🔴 two concurrent runs got the SAME slot');
+    assert.deepStrictEqual(A.readAfterPeerWrote, ['A', 'A'], `🔴 A read B's data: ${JSON.stringify(A)}`);
+    assert.deepStrictEqual(B.readAfterPeerWrote, ['B', 'B'], `🔴 B read A's data: ${JSON.stringify(B)}`);
+    assert.deepStrictEqual(B.readAfterPeerDeleted, ['B', 'B'], `🔴 A's DELETION reached B's data: ${JSON.stringify(B)}`);
+    assert.deepStrictEqual([A.readAfterOwnDelete, B.readAfterOwnDelete], [[null, null], [null, null]], 'each run\'s own deletion worked (the check is not vacuous)');
+    report.isolation = 'writes AND deletions isolated: A/B wrote the same Firestore doc + RTDB path in their own runs; A deleted, B\'s survived; each own delete took effect';
+    assert.notStrictEqual(A.tmpdir, B.tmpdir, '🔴 the two runs shared a TMPDIR');
+    assert.ok(A.hubFileExists && B.hubFileExists, '🔴 a run\'s own hub file was not in its own TMPDIR');
+    for (const R of [A, B]) {
+      assert.strictEqual(R.gcloud, PROJECT); assert.strictEqual(R.gcp, PROJECT, `🔴 the stale parent GOOGLE_CLOUD_PROJECT reached the suite: ${R.gcp}`);
+      const x = R.rules;
+      assert.ok(x.fsPublicRead === 404 || x.fsPublicRead === 200, `🔴 Firestore public read denied (${x.fsPublicRead})`);
+      assert.strictEqual(x.fsDenyRead, 403); assert.strictEqual(x.fsDenyWrite, 403);
+      assert.strictEqual(x.dbPublicRead, 200); assert.ok([401, 403].includes(x.dbDenyRead)); assert.ok([401, 403].includes(x.dbDenyWrite));
+      assert.ok(R.marked.filter((k) => k === 'java').length >= 2 && R.marked.includes('wrapper'), `🔴 the run's JVMs / wrapper do not carry its marker: ${JSON.stringify(R.marked)}`);
+    }
+    report.rules = { A: A.rules, B: B.rules }; report.marked = { A: A.marked, B: B.marked };
+    assert.strictEqual(c.status, 4, `🔴 a second run in A's checkout was not refused (exit ${c.status})\n${c.stderr}`);
+    report.sameCheckout = 'C in A\'s checkout while A live: refused exit 4';
+    assert.ok(release, 'premise — the watcher saw A\'s sentinel free');
+    assert.deepStrictEqual({ occupied: release.occupied, busy: release.busy }, { occupied: false, busy: [] },
+      `🔴 A's sentinel was released BEFORE its teardown finished: ${JSON.stringify(release)}`);
+    assert.match(ra.out, /teardown complete — slot \d+: own processes confirmed down, band released; releasing the sentinel/);
+    report.teardownBeforeRelease = `at the instant A's sentinel freed: marked processes ${release.orphans + release.live}, busy band ports ${release.busy.length}`;
   }
-  report.rules = { A: A.rules, B: B.rules };
-  report.marked = { A: A.marked, B: B.marked };
-  report.project = 'stale parent GOOGLE_CLOUD_PROJECT=stale-parent-project → both runs see GCLOUD_PROJECT = GOOGLE_CLOUD_PROJECT = demo-xpizza';
-  assert.strictEqual(c.status, 4, `🔴 a second run in A's checkout was not refused (exit ${c.status})\n${c.stderr}`);
-  assert.match(c.stderr, /another emulator run of THIS checkout is live/);
-  report.sameCheckout = 'C (A\'s checkout, while A live) refused exit 4';
 
-  // ── 7: quarantine + reap ──
-  const ALLOC = require('../tools/emu-alloc');
-  let X = null;
-  for (let s = ALLOC.SLOTS - 1; s >= 0 && X === null; s--) { const sv = await ALLOC.bindSentinel(ALLOC.sentinelPort(s)); if (sv) { await ALLOC.closeServer(sv); X = s; } }
-  const deadSup = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
-  const orphan = spawn(process.execPath, ['-e', 'setTimeout(()=>{},120000)'], { env: { ...process.env, NODE_OPTIONS: '', [ALLOC.RUN_VAR]: ALLOC.formatMarker({ slot: X, pid: Number(deadSup.stdout), nonce: ALLOC.newNonce(), start: 1 }) }, stdio: 'ignore', detached: true });
-  orphan.unref();
-  await sleep(500);
-  const noop = `node test/emu-isolation.proof.js noop`;
-  const pinned = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, noop], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '', XPIZZA_EMU_PORT_OFFSET: String(X * 10) }, timeout: 120000 });
-  assert.strictEqual(pinned.status, 3, `🔴 a pin onto a slot with a marked orphan was not refused (exit ${pinned.status})\n${pinned.stderr}`);
-  assert.match(pinned.stderr, new RegExp(`QUARANTINED — orphan pid\\(s\\) ${orphan.pid}`), '🔴 the refusal does not name the orphan');
-  const free = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, noop], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' }, timeout: 180000 });
-  assert.strictEqual(free.status, 0, `unpinned run failed:\n${free.stderr.slice(-1500)}`);
-  assert.notStrictEqual(slotOf(free.stderr), X, '🔴 an unpinned run was admitted onto the quarantined slot');
-  const rp = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emu-reap.js'), String(X)], { encoding: 'utf8', timeout: 60000 });
-  assert.strictEqual(rp.status, 0, `emu-reap failed: ${rp.stderr}`);
-  // the orphan is THIS script's child, so once killed it is a zombie until its exit is delivered here
-  const orphanGone = orphan.exitCode !== null || orphan.signalCode !== null || await Promise.race([new Promise((r) => orphan.once('exit', () => r(true))), sleep(5000).then(() => false)]);
-  assert.ok(orphanGone, `🔴 emu-reap left the orphan alive\n${rp.stderr}`);
-  const again = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'database', '--project', PROJECT, noop], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '', XPIZZA_EMU_PORT_OFFSET: String(X * 10) }, timeout: 180000 });
-  assert.strictEqual(again.status, 0, `🔴 the pin onto the RECLAIMED slot failed:\n${again.stderr.slice(-1500)}`);
-  report.quarantine = `orphan ${orphan.pid} on slot ${X}: pin refused naming it; unpinned run → slot ${slotOf(free.stderr)}; emu-reap reclaimed; pin then admitted`;
-
-  // ── 8: missing / invalid rules refuse (second worktree; restored) ──
-  const dbRules = path.join(rootB, 'database.rules.json'), fsRules = path.join(rootB, 'firestore.rules');
-  const keepDb = fs.readFileSync(dbRules), keepFs = fs.readFileSync(fsRules);
-  const tryRun = (only) => spawnSync(process.execPath, [path.join(rootB, 'tools', 'emulator-run.js'), '--only', only, '--project', PROJECT, noop], { cwd: rootB, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' }, timeout: 60000 });
-  const cases = [];
-  try {
-    fs.unlinkSync(dbRules); cases.push(['database rules MISSING', tryRun('database')]); fs.writeFileSync(dbRules, keepDb);
-    fs.writeFileSync(dbRules, '{ "rules": '); cases.push(['database rules INVALID JSON', tryRun('database')]); fs.writeFileSync(dbRules, keepDb);
-    fs.unlinkSync(fsRules); cases.push(['firestore rules MISSING', tryRun('firestore')]); fs.writeFileSync(fsRules, keepFs);
-    fs.writeFileSync(fsRules, '   \n'); cases.push(['firestore rules EMPTY', tryRun('firestore')]); fs.writeFileSync(fsRules, keepFs);
-  } finally { fs.writeFileSync(dbRules, keepDb); fs.writeFileSync(fsRules, keepFs); }
-  for (const [label, r] of cases) {
-    assert.strictEqual(r.status, 2, `🔴 ${label}: the launcher started anyway (exit ${r.status})`);
-    assert.match(r.stderr, /rules file .* (is missing|is not valid JSON|is empty)/, `${label}: names why`);
+  // ── 8: a LEAKED marked descendant is ended by the launcher's teardown ──
+  {
+    const pidFile = path.join(ctl, 'leaky.pid');
+    const r = runSync(ROOT, 'database', inner('leaky', pidFile));
+    assert.strictEqual(r.status, 0, r.stderr.slice(-1500));
+    const kid = Number(fs.readFileSync(pidFile, 'utf8'));
+    assert.ok(!ALLOC.pidAlive(kid), `🔴 the detached marked descendant ${kid} outlived its run's teardown`);
+    report.leakedDescendant = `detached marked child ${kid} left by a step: ended by teardown before release`;
   }
-  report.rulesRefusal = cases.map(([l]) => l).join('; ') + ' — each refused (exit 2) before any emulator started';
 
-  // ── 9: functions — discovery validated by lib/admin.js, a worker carries the marker ──
-  const fnRun = launch(ROOT, 'functions', `node test/emu-isolation.proof.js functions ${ctl}`);
-  const rf = await fnRun.done;
-  assert.strictEqual(rf.code, 0, `functions step failed:\n${rf.out.slice(-2500)}`);
-  assert.match(rf.out, /starting functions,firestore,database/, 'functions implied both data services');
-  const fn = JSON.parse(fs.readFileSync(path.join(ctl, 'fn.json'), 'utf8'));
-  assert.ok(fn.workerMarked >= 1, `🔴 no functions worker carried the run marker: ${JSON.stringify(fn)}`);
-  report.functions = `discovery loaded index.js through lib/admin.js's validator (would refuse otherwise); reportClientVersion → ${fn.status}; ${fn.workerMarked} marked worker(s)`;
+  // ── 9: supervisor SIGKILL MID-CHAIN through the REAL launcher ──
+  {
+    const l = launch(ROOT, 'database', `${inner('sleep', '6000')} && ${inner('noop')}`);
+    await waitFor(() => /Running script/.test(l.out), 120000, 'the chain to start');
+    const slot = slotOf(l.out);
+    await sleep(1000);
+    l.child.kill('SIGKILL');
+    await l.done;
+    const samples = []; let pinRefused = null;
+    for (let i = 0; i < 200; i++) {
+      const sc = ALLOC.scanSlot(slot);
+      samples.push(sc.occupied);
+      if (sc.occupied && pinRefused === null) {
+        const p = runSync(ROOT, 'database', inner('noop'), { XPIZZA_EMU_PORT_OFFSET: String(slot * 10) }, 60000);
+        pinRefused = p.status === 3 && /QUARANTINED/.test(p.stderr);
+      }
+      if (!sc.occupied) break;
+      await sleep(250);
+    }
+    assert.ok(samples.length >= 4 && samples.slice(0, -1).every(Boolean), `🔴 after the supervisor died mid-chain, the slot was not continuously quarantined: ${JSON.stringify(samples)}`);
+    assert.strictEqual(pinRefused, true, '🔴 a pin onto the mid-chain orphaned slot was not refused as QUARANTINED');
+    assert.strictEqual(samples[samples.length - 1], false, 'the slot frees once the chain and its emulators are gone');
+    report.midChain = `supervisor SIGKILLed mid-chain on slot ${slot}: ${samples.length - 1} consecutive scans quarantined until the wrapper/chain/emulators exited; a pin meanwhile was refused (QUARANTINED)`;
+  }
+
+  // ── 10: an orphan WRITER keeps trying the slot; quarantine, reap, and the reclaimed slot sees none of its writes ──
+  {
+    let X = null;
+    for (let s = ALLOC.SLOTS - 1; s >= 0 && X === null; s--) { const sv = await ALLOC.bindSentinel(ALLOC.sentinelPort(s)); if (sv) { await ALLOC.closeServer(sv); X = s; } }
+    const deadSup = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
+    const dbPort = EE.planPorts(X * 10).database;
+    const writer = `const admin=require('firebase-admin');admin.initializeApp({projectId:'${PROJECT}',databaseURL:'http://127.0.0.1:${dbPort}?ns=${NS}'});`
+      + `const db=admin.database();setInterval(()=>{db.ref('r1orphan').set(Date.now()).catch(()=>{})},200);`;
+    const orphan = spawn(process.execPath, ['-e', writer], { cwd: ROOT, env: { ...cleanEnv(), FIREBASE_DATABASE_EMULATOR_HOST: `127.0.0.1:${dbPort}`, [ALLOC.RUN_VAR]: ALLOC.formatMarker({ slot: X, pid: Number(deadSup.stdout), nonce: ALLOC.newNonce(), start: 1 }) }, stdio: 'ignore', detached: true });
+    orphan.unref();
+    await sleep(800);
+    const pinned = runSync(ROOT, 'database', inner('noop'), { XPIZZA_EMU_PORT_OFFSET: String(X * 10) }, 60000);
+    assert.strictEqual(pinned.status, 3, `🔴 a pin onto a slot with a live orphan WRITER was not refused\n${pinned.stderr}`);
+    assert.match(pinned.stderr, new RegExp(`QUARANTINED — orphan pid\\(s\\) ${orphan.pid}`), '🔴 the refusal does not name the orphan writer');
+    const free = runSync(ROOT, 'database', inner('noop'));
+    assert.strictEqual(free.status, 0, free.stderr.slice(-1500));
+    assert.notStrictEqual(slotOf(free.stderr), X, '🔴 an unpinned run was admitted onto the orphan writer\'s slot');
+    const rp = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emu-reap.js'), String(X)], { encoding: 'utf8', timeout: 60000 });
+    assert.strictEqual(rp.status, 0, `emu-reap did not CONFIRM: ${rp.stderr}`);
+    await sleep(300);
+    assert.ok(!ALLOC.pidAlive(orphan.pid), '🔴 emu-reap left the orphan writer alive');
+    const again = runSync(ROOT, 'database', inner('orphancheck', ctl), { XPIZZA_EMU_PORT_OFFSET: String(X * 10) });
+    assert.strictEqual(again.status, 0, `🔴 the pin onto the RECLAIMED slot failed:\n${again.stderr.slice(-1500)}`);
+    const oc = JSON.parse(fs.readFileSync(path.join(ctl, 'orphan-check.json'), 'utf8'));
+    assert.strictEqual(oc.value, null, `🔴 the orphan writer's data reached the reclaimed slot's run: ${JSON.stringify(oc)}`);
+    report.orphanWriter = `live marked writer ${orphan.pid} on slot ${X} (dead supervisor, retrying RTDB every 200 ms): pin refused naming it; unpinned run → slot ${slotOf(free.stderr)}; emu-reap CONFIRMED; the reclaimed slot's run saw no orphan write`;
+  }
+
+  // ── 11: queue CANCELLATION with the real pool saturated ──
+  {
+    const held = [];
+    for (let s = 0; s < ALLOC.SLOTS; s++) { const sv = await ALLOC.bindSentinel(ALLOC.sentinelPort(s)); assert.ok(sv, `premise — sentinel ${s} free in the clear window`); held.push(sv); }
+    try {
+      const q = launch(ROOT, 'database', inner('noop'));
+      await waitFor(() => /QUEUED/.test(q.out), 30000, 'QUEUED');
+      const t0 = Date.now();
+      q.child.kill('SIGINT');
+      const rq = await q.done;
+      assert.strictEqual(rq.code, 130, `🔴 a cancelled queued run did not exit 130 (${rq.code})\n${rq.out.slice(-800)}`);
+      assert.match(rq.out, /cancelled while QUEUED/, 'it says why');
+      assert.ok(Date.now() - t0 < 3000, `🔴 cancellation was not prompt (${Date.now() - t0} ms)`);
+      report.cancellation = `all 40 sentinels held; a queued run SIGINTed exited 130 in ${Date.now() - t0} ms holding nothing`;
+    } finally { for (const sv of held) await ALLOC.closeServer(sv); }
+  }
+
+  // ── 12: LOUD RE-SLOT on real startup contention ──
+  {
+    const l = launch(ROOT, 'database', inner('noop'));
+    let squatter = null; let squattedPort = null;
+    await waitFor(() => { const m = /emulator-run: slot (\d+) \(/.exec(l.out); return !!m; }, 120000, 'first admission');
+    const first = slotOf(l.out);
+    squattedPort = EE.planPorts(first * 10).logging;
+    squatter = net.createServer();
+    const bound = await new Promise((res) => { squatter.once('error', () => res(false)); squatter.listen({ port: squattedPort, host: '0.0.0.0' }, () => res(true)); });
+    const rl = await l.done;
+    await new Promise((res) => squatter.close(res));
+    if (bound && /RE-SLOTTING/.test(rl.out)) {
+      const slots = slotsOf(rl.out);
+      assert.strictEqual(rl.code, 0, `the re-slotted run failed:\n${rl.out.slice(-1500)}`);
+      assert.ok(slots.length >= 2 && slots[1] !== first, `🔴 re-slot landed on the same slot: ${slots}`);
+      report.reslot = `a listener appeared on slot ${first}'s logging port ${squattedPort} after admission: CLI refused, launcher RE-SLOTTED loudly to slot ${slots[1]} and passed`;
+    } else {
+      report.reslot = `race not won this time (squatter bound=${bound}; the CLI had already bound the port) — re-run to observe; exit ${rl.code}`;
+    }
+  }
+
+  // ── 13: rules refusal (second worktree; restored) ──
+  {
+    const dbRules = path.join(rootB, 'database.rules.json'), fsRules = path.join(rootB, 'firestore.rules');
+    const keepDb = fs.readFileSync(dbRules), keepFs = fs.readFileSync(fsRules);
+    const tryRun = (only) => runSync(rootB, only, inner('noop-fs'), {}, 120000);
+    const cases = [];
+    try {
+      fs.unlinkSync(dbRules); cases.push(['database rules MISSING', tryRun('database'), /is missing/]); fs.writeFileSync(dbRules, keepDb);
+      fs.writeFileSync(dbRules, '{ "rules": '); cases.push(['database rules INVALID JSON', tryRun('database'), /not valid JSON/]); fs.writeFileSync(dbRules, keepDb);
+      fs.unlinkSync(fsRules); cases.push(['firestore rules MISSING', tryRun('firestore'), /is missing/]); fs.writeFileSync(fsRules, keepFs);
+      fs.writeFileSync(fsRules, '   \n'); cases.push(['firestore rules EMPTY', tryRun('firestore'), /is empty/]); fs.writeFileSync(fsRules, keepFs);
+      fs.writeFileSync(fsRules, "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    this is not valid ((( \n  }\n}\n");
+      cases.push(['firestore rules INVALID (non-empty)', tryRun('firestore'), /Firestore rules .* did not load/]); fs.writeFileSync(fsRules, keepFs);
+    } finally { fs.writeFileSync(dbRules, keepDb); fs.writeFileSync(fsRules, keepFs); }
+    for (const [label, r, re] of cases) {
+      assert.strictEqual(r.status, 2, `🔴 ${label}: the run was not refused (exit ${r.status})\n${r.stderr.slice(-800)}`);
+      assert.match(r.stderr, re, `${label}: names why`);
+    }
+    report.rulesRefusal = `${cases.map(([l]) => l).join('; ')} — each refused (exit 2); the invalid non-empty Firestore file is caught by the wrapper's rules load`;
+  }
+
+  // ── 14: functions ──
+  {
+    const rf = await launch(ROOT, 'functions', inner('functions', ctl)).done;
+    assert.strictEqual(rf.code, 0, `functions step failed:\n${rf.out.slice(-2500)}`);
+    const fn = JSON.parse(fs.readFileSync(path.join(ctl, 'fn.json'), 'utf8'));
+    assert.ok(fn.workerMarked >= 1, `🔴 no functions worker carried the run marker: ${JSON.stringify(fn)}`);
+    report.functions = `discovery through lib/admin.js's validator; reportClientVersion → ${fn.status}; ${fn.workerMarked} marked worker(s)`;
+  }
 
   fs.rmSync(ctl, { recursive: true, force: true });
   console.log(JSON.stringify(report, null, 2));
@@ -209,9 +349,15 @@ async function run(rootB) {
 }
 
 const [mode, ...args] = process.argv.slice(2);
-const main = mode === 'inside' ? () => inside(...args)
-  : mode === 'functions' ? () => insideFunctions(...args)
-    : mode === 'noop' ? async () => { require('./_emulator-required')('database'); console.log('  ✓ 1 noop'); process.exit(0); }
-      : mode === 'run' ? () => run(...args)
-        : () => { console.error('usage: emu-isolation.proof.js run <second-worktree>'); process.exit(2); };
-main().catch((e) => { console.error('emu-isolation proof FAILED:', e && e.stack || e); process.exit(1); });
+const MODES = {
+  inside: () => inside(...args),
+  leaky: () => insideLeaky(...args),
+  orphancheck: () => insideOrphanCheck(...args),
+  functions: () => insideFunctions(...args),
+  sleep: async () => { require('./_emulator-required')('database'); await sleep(Number(args[0]) || 1000); console.log('  ✓ 1 slept'); process.exit(0); },
+  noop: async () => { require('./_emulator-required')('database'); console.log('  ✓ 1 noop'); process.exit(0); },
+  'noop-fs': async () => { console.log('  ✓ 1 noop'); process.exit(0); },
+  run: () => run(...args),
+};
+(MODES[mode] || (async () => { console.error('usage: emu-isolation.proof.js run <second-worktree>'); process.exit(2); }))()
+  .catch((e) => { console.error('emu-isolation proof FAILED:', e && e.stack || e); process.exit(1); });
