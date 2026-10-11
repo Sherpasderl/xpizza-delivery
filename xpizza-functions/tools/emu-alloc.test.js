@@ -351,6 +351,10 @@ const childEnv = (extra = {}) => {
 
     } finally {
       for (const p of [liveSup, orphan, liveChild]) { try { p.kill('SIGKILL'); } catch { /* gone */ } }
+      // never leak a marked test process into the REAL pool (a leaked one quarantines a real slot): the descendant, if any
+      const kf = path.join(require('os').tmpdir(), `emu-alloc-kid-${process.pid}`);
+      try { process.kill(Number(fs.readFileSync(kf, 'utf8')), 'SIGKILL'); } catch { /* none / gone */ }
+      fs.rmSync(kf, { force: true });
       await A.closeServer(lock);
     }
     ok('emu-reap: fresh per-pid validation (live supervisor / reused target / changed marker / vanished → skipped; reused SUPERVISOR pid → still an orphan); on real processes in ONE group it kills only the orphan, leaves the co-grouped live run, reaches the death barrier, refuses a held sentinel, reports an EPERM pid UNCONFIRMED (exit 1), and reaps a marked descendant spawned DURING the reap');
@@ -432,8 +436,9 @@ const childEnv = (extra = {}) => {
       assert.ok(samples.slice(0, -1).every((x) => x.occupied && x.wrapperOrphan), `🔴 while the dead supervisor's chain ran, the slot was NOT continuously quarantined with the wrapper visible: ${JSON.stringify(samples)}`);
       assert.strictEqual(code, 0, 'the chain completed');
       assert.strictEqual(fs.readFileSync(flag, 'utf8'), marker, 'step 2 ran under the wrapper with the run marker (visible, not a shell)');
-      await sleep(300);
-      assert.ok(!A.scanSlot(SLOT).occupied, 'once the wrapper and its chain are gone, the slot is free');
+      let after = A.scanSlot(SLOT);
+      for (let i = 0; i < 50 && after.occupied; i++) { await sleep(100); after = A.scanSlot(SLOT); }   // exit delivery is async
+      assert.ok(!after.occupied, `once the wrapper and its chain are gone, the slot is free (still marked: ${JSON.stringify([...after.orphans, ...after.live])})`);
       // SIGTERM is FORWARDED to the running step, and no later step starts
       fs.rmSync(flag, { force: true });
       const w2 = spawn(process.execPath, [WRAP, encode(steps)], { env: childEnv({ [A.RUN_VAR]: marker }), stdio: 'ignore' });
