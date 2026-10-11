@@ -262,7 +262,8 @@ async function child(rowKey, cond) {
     return (await F.versionsColOf(row.rid).orderBy('seq').get()).docs.map((d) => d.id).find((v) => v !== act); })() : null;
   void seeded;
   const liveCache = makeLiveCache ? makeLiveCache() : null;
-  const today = new Date().toISOString().slice(0, 10);
+  // the stats day is the RESTAURANT's local date (stats-time.js dateOf), not UTC: a UTC 'today' is a future day after 18:00 HN (bad_range)
+  const today = require('../stats/stats-time').dateOf(Date.now());
   const ops = {
     publish: async () => { const r = await F.publish(row.rid, 'lat'); return !!r; },
     rollback: async () => { await F.rollback(row.rid, rbTarget); return true; },
