@@ -3415,7 +3415,7 @@ function placePin(la,ln,fallback){
   });
   updateLocInfo(la,ln,fallback);
   reverseGeocode(la,ln);
-  document.getElementById('btnConfirm').disabled=false;
+  { const _bc=document.getElementById('btnConfirm'); if(_bc) _bc.disabled=false; }  // guard: no #btnConfirm exists in the markup — the old unguarded access THREW on every placePin (swallowed in the async geoloc callback), and now would land in locPickPred's catch and falsely refuse every successful search pick
   // Also show payment section hint
   const payEl = document.getElementById('btn-pay');
   if(payEl) payEl.disabled = false;   // never disabled — Confirmar stays tappable (processPayment guides on a miss)
@@ -3564,6 +3564,10 @@ function updateLocInfo(la,ln,fallback){
   const search=document.getElementById('loc-search-wrap');
   if(search) search.style.display=fallback?'block':'none';
   if(!fallback){ const preds=document.getElementById('loc-preds'); if(preds){ preds.style.display='none'; preds.innerHTML=''; } }
+  // A real location is now confirmed (fallback===false) — reached by EVERY valid fix path: a search pick
+  // (placePin→here), a marker DRAG (dragend→here), the FULLSCREEN editor (closeFullscreenMap→here) and a
+  // GPS success. Clear any prior pick-failure refusal so checkout is never forever-refused after a recovery.
+  if(!fallback && typeof __locPickFailed!=='undefined') __locPickFailed=false;
   // In fail state only, point the existing map hint at the fullscreen editor (tap opens it — no inline
   // placement). Untouched on the happy path, so the chip stays byte-identical there.
   if(fallback){ const hint=document.getElementById('map-tap-hint'); if(hint) hint.textContent='Tocá el mapa para ajustarlo'; }
@@ -3637,6 +3641,7 @@ function locRenderPreds(suggestions){
 async function locPickPred(p,label){
   if(__locPicking) return;              // serialize: ignore a second pick while a details fetch is in flight
   __locPicking=true;
+  __locPickFailed=false;                 // fresh attempt — don't carry a prior pick's failure into this one
   __locPickPromise=new Promise(function(r){ __locPickDone=r; });  // checkout (processPayment) awaits this so a Confirmar tap mid-pick submits the PICKED coords, not the pre-pick fallback
   clearTimeout(__locSearchTimer);        // cancel any queued debounce so a late fetch can't repopulate during this selection
   __locReqSeq++;                         // dismiss the dropdown + invalidate any pending prediction response
@@ -3766,12 +3771,15 @@ async function processPayment(){
   // path → no wait, no message (byte-identical). The outer race is pure defense so a never-released waiter
   // (should not happen — locPickPred bounds + releases in finally) can't lock checkout.
   if(typeof __locPickPromise!=='undefined' && __locPickPromise){
-    try { await Promise.race([__locPickPromise, new Promise(function(r){ setTimeout(r, 10000); })]); } catch(_){}
+    const _capMs=(typeof window!=='undefined' && window.__LOC_PICK_CAP_MS) || 10000;
+    let _capped=false;
+    try { _capped = await Promise.race([ __locPickPromise.then(function(){ return false; }), new Promise(function(r){ setTimeout(function(){ r(true); }, _capMs); }) ]); } catch(_){ _capped=false; }
+    if(_capped && typeof __locPickFailed!=='undefined') __locPickFailed=true;  // outer cap won (waiter never released — should not happen; locPickPred bounds + releases in finally) → FAIL CLOSED
   }
-  // If that pick hung/errored, REFUSE the submit — do NOT silently ship the fallback coords. Guide the
-  // customer to re-pick or use the map; the card stays "aproximada" (placePin never ran).
+  // If that pick hung/errored (or the cap tripped), REFUSE — never silently ship the fallback coords. Do
+  // NOT clear the flag here: a second Confirmar with no correction STAYS refused. It clears only when a real
+  // location is confirmed via updateLocInfo(false) (search pick / marker drag / fullscreen editor / GPS).
   if(typeof __locPickFailed!=='undefined' && __locPickFailed){
-    __locPickFailed=false;
     const _e3=document.getElementById('err3'); if(_e3){ _e3.style.display='block'; _e3.textContent='No pudimos ubicar esa dirección. Elegila de nuevo o ajustá el mapa.'; }
     const _sw=document.getElementById('loc-search-wrap'); if(_sw) _sw.scrollIntoView({behavior:'smooth', block:'center'});
     return;

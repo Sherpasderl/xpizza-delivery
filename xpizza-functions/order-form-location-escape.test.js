@@ -186,14 +186,20 @@ function fakePred(main, la, ln) {
     css[brand] = sliceBlock(src, CSS_START, CSS_END);
   }
 
-  // (d) placePin's BODY is byte-UNCHANGED vs origin/main in BOTH forms — selecting a prediction reuses it.
+  // (d) placePin's WRITE PATH is UNCHANGED vs origin/main — selecting a prediction reuses it, no new write
+  // path. la-musa is byte-identical; x_pizza's ONLY change is guarding the pre-existing unguarded #btnConfirm
+  // access (it has no element with that id → the old line THREW on every placePin; now it would land in
+  // locPickPred's catch and falsely refuse every pick). Normalize that one line back and assert the rest matches.
   for (const [brand, rel] of Object.entries(PATH)) {
     const now = readFileSync(FORM[brand], 'utf8');
     const base = execSync(`git show origin/main:${rel}`, { cwd: join(__dirname, '..'), maxBuffer: 64 * 1024 * 1024 }).toString();
     const body = (s) => { const i = s.indexOf('function placePin(la,ln,fallback){'); return i < 0 ? '<none>' : s.slice(i, s.indexOf('\n}\n', i) + 2); };
-    assert.strictEqual(body(now), body(base), `[${brand}] placePin body byte-identical to origin/main (no new write path)`);
+    let nowBody = body(brand === 'x_pizza'
+      ? now.replace(/\{ const _bc=document\.getElementById\('btnConfirm'\); if\(_bc\) _bc\.disabled=false; \}[^\n]*/, "document.getElementById('btnConfirm').disabled=false;")
+      : now);
+    assert.strictEqual(nowBody, body(base), `[${brand}] placePin write path unchanged vs origin/main (only change: the gated btnConfirm guard) — no new write path`);
   }
-  ok('placePin body unchanged vs origin/main in both forms (prediction pick reuses it)');
+  ok('placePin write path unchanged vs origin/main in both forms (only the gated btnConfirm guard differs; prediction pick reuses it)');
 
   // (e) PARITY — the search machinery (JS block, search HTML, CSS block) is byte-identical across both forms.
   assert.strictEqual(blocks.x_pizza, blocks.la_musa, 'updateLocInfo + escape-hatch JS block byte-identical across both forms');

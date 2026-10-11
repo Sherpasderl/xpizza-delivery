@@ -91,6 +91,16 @@ Observation (NOT this feature; pre-existing, flagged to the advisor): X.Pizza `p
 
 byte-identical across forms (locPickPred + the processPayment guard block diff-clean); happy path byte-identical.
 
+## REVISE round 6 (gate on de2bc57 — __locPickFailed lifecycle cluster; 2 blockers)
+
+1. 🔴 **Second-tap shipped the fallback** (re-opened P1-1): the refuse path cleared `__locPickFailed`, so a 2nd Confirmar with no correction passed → shipped 15.5003,-88.025. FIX: `processPayment` refuses WITHOUT clearing; the flag clears only on a confirmed location.
+2. 🔴 **Stale flag → false refusal**: the flag, once set, was never reset. FIX: reset at the START of `locPickPred` AND clear in `updateLocInfo(fallback===false)` — the one choke every valid fix funnels through (search pick via placePin, marker DRAG via dragend, FULLSCREEN editor via closeFullscreenMap, GPS success). So no recovery leaves the refusal on (no forever-refused lost sale), and only a real fix clears it.
+3. 🔴 **X.Pizza search fully broken**: `placePin`'s unguarded `getElementById('btnConfirm').disabled` (no such element) THREW; landing in `locPickPred`'s new catch, it refused EVERY successful X.Pizza pick. FIX: guard the btnConfirm access in placePin (also fixes the latent pre-existing throw); the test no longer injects a fake #btnConfirm — X.Pizza search succeeds without it.
+4. **Outer cap now fails CLOSED**: a cap-timeout sets `__locPickFailed` (refuse), never proceeds.
+5. **Tests** (`location-pick-submit-sync`, both forms, DISTINCT A/B/GPS/EDITOR coords, lat AND lng — 16/16): mid-pick wait→PICKED; hung→refused + repeated-tap-stays-refused + late-result-inert; A-fails/B-succeeds-before-checkout→B; recovery via GPS→GPS coords; recovery via the fullscreen editor→editor coords; outer-cap→refused. All three new guards mutation-proven non-vacuous (neuter refuse-no-clear → 2nd-tap submits; neuter updateLocInfo-clear → recovery refused; neuter cap → proceeds). `order-form-location-escape` (d) relaxed: placePin write path unchanged vs origin/main except the gated btnConfirm guard (la-musa still byte-identical); 28/28.
+
+The flag now means exactly "current location is not a validly-placed point" — set on a failed/hung/capped pick, cleared by any real confirmed location.
+
 ## Separate (surfaced to owner — NOT in this diff)
 
 Telemetry (#3) transmits `client_user_agent`/`client_referrer` but the server does NOT persist them (`createOrder` / `create-order-build.js` writes only known fields), so Phase-1 telemetry currently measures nothing — even "later". Delivering its purpose needs a small additive functions change (persist the 2 fields onto the order node) with its own gate + deploy. Held as an owner call; the transmission code is correct, it just has no sink yet. See memory [[phase1-telemetry-no-server-sink]].
