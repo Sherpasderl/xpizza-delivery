@@ -42,6 +42,11 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); },
   acquireHostedAttempt: async (...a) => { if (FAIL_ACQUIRE) throw new Error('UNAVAILABLE (injected acquire failure)'); return realHC.acquireHostedAttempt(...a); } } };
 
+// 1D add-product B (PB-2 ruling (A)): the frozen f17466e base is the render-OFF path — render is PINNED off for it; the
+// render-ON companion below re-runs every case with it on and asserts the exact delta (test/_render-delta.js)
+const RP = require('./_render-pin');
+const RD = require('./_render-delta');
+const CTL = require('./_order-control-trace');
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -291,17 +296,21 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`user_rewards/u_${rid}/${rid}`).set({ balance: 100000, reserved: 0 });
 
   const results = {};
+  const onResults = {};   // the render-ON companion (its own map: the base comparison below sees exactly the base's cases)
   let ci = 0;
-  const runCase = async (c) => {
+  const runCase = async (c, into = results, on = false) => {
     for (const rid of ['x_pizza', 'la_musa']) {
       ci += 1;
       const oid = `oe_${String(ci).padStart(3, '0')}_${rid}`;
       const ph = phoneFor();
       await c.setup(rid, oid, ph);
-      results[`${c.name} | ${rid}`] = await traced({ ...c, oid }, rid, { oid, ph });
+      if (on) await CTL.controlWarm(rtdb, rid);   // the switch cache WARM (not left to its TTL): a refresh is no render delta
+      into[`${c.name} | ${rid}`] = await traced({ ...c, oid }, rid, { oid, ph });
     }
   };
   for (const c of CASES.filter((x) => !x.floor)) await runCase(c);
+  // RENDER-ON COMPANION: every (non-floor) case again with render ON — setup AND request, the steady state after the flip
+  await RP.withRender(true, async () => { for (const c of CASES.filter((x) => !x.floor)) await runCase(c, onResults, true); });
   // phase 2 — the client floor ON (it stays on; the page compositions below never reach a handler)
   await rtdb.ref('platform_config/client_floor/orders').set(FLOOR);
   await wait(require('../client-floor').FLOOR_TTL_MS + 1500);
@@ -360,10 +369,35 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the base'));
   }
+  // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)): each case == its render-OFF run of THIS process — status,
+  // body, changed paths, call sequence — except a card request carrying a reward (its render-OFF trace touches the
+  // customer's reward balance), which gains exactly the bound-reuse probe's order read right after the customer check:
+  // none of these orders carries a bound charge-input fingerprint, so the probe stops there and the current path runs.
+  let probed = 0;
+  if (!CAPTURE) {
+    const carriesReward = (r, rid) => r.ops.some((e) => e.db === 'rtdb' && e.path === `user_rewards/<uid>/${rid}`);
+    for (const c of CASES.filter((x) => !x.floor)) {
+      for (const rid of ['x_pizza', 'la_musa']) {
+        const key = `${c.name} | ${rid}`; const off = results[key]; const on = onResults[key];
+        check(() => {
+          const L = `${key} (render ON)`;
+          assert.ok(on, `${L}: ran`);
+          assert.strictEqual(on.status, off.status, `🔴 ${L}: status (${off.status} → ${on.status})`);
+          assert.deepStrictEqual(on.body, off.body, `🔴 ${L}: body`);
+          assert.deepStrictEqual(on.changed.map(RD.contentHash), off.changed.map(RD.contentHash), `🔴 ${L}: the changed-path set`);
+          const offOps = RD.normOps(off.ops); const onOps = RD.normOps(on.ops);
+          if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
+          else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);
+        });
+      }
+    }
+    check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
+  }
   const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;
   if (!caseFails) ok(`${CAPTURE ? 'BASE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (both restaurants) — ${kinds('refusal')} covered refusals, ${kinds('terminal')} terminal-safe controls, ${kinds('control')} success / read-failure controls` +
     (CAPTURE ? ' — every refusal answers today\'s self-heal literal' : ' — status, ordered RTDB+Firestore call sequence and changed-path set EQUAL the base on every case; only the refusals\' body changed, to EXACTLY {error:"order_exists", reason ∈ enum, detail, order_id}; terminal-safe and controls byte-identical'));
+  if (!caseFails && !CAPTURE) ok(`render-ON companion: ${Object.keys(onResults).length} cases re-run with render ON (setup + request) — status, body and changed paths equal the render-OFF run; the call sequence equal too, except the ${probed} card request(s) carrying a reward: + exactly the bound-reuse probe's order read after the customer check (shipped render: ${RP.SHIPPED}; the base cells ran PINNED off)`);
 
   const sends = await Promise.all(pageChecks.map((x) => x.p));
   await wait(1500 + 3000 + 300);   // every retry timer a page could have armed has run out

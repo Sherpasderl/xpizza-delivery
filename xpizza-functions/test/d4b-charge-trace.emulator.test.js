@@ -38,6 +38,10 @@ const realHC = require('../pixelpay-hosted-charge');
 let FAIL_CLASSIFY = false;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
+// 1D add-product B (PB-2 ruling (A)): the frozen 717f97e trace is the render-OFF path — render is PINNED off for it; the
+// render-ON companion below records the same requests with it on and asserts the exact delta (test/_render-delta.js)
+const RP = require('./_render-pin');
+const RD = require('./_render-delta');
 const app = require('../index.js');
 const CTL = require('./_order-control-trace');
 const admin = require('firebase-admin');
@@ -189,7 +193,10 @@ async function traced(rid, oid, uid, phone) {
   // other order flips the flag; an added, dropped or repeated document changes the multiset.
   const batch = (raw) => ({ paths: raw.map(norm).sort(), raw_order: raw.every((x, i) => i === 0 || raw[i - 1] <= x) ? 'ascending' : 'other', count: raw.length });
   const trace = calls.map((c) => ({ ...c, ...(c.path !== undefined ? { path: norm(c.path) } : {}), ...(c.paths ? batch(c.paths) : {}), ...(c.keys ? { keys: c.keys.map(norm) } : {}) }));
-  return { status: r.status, trace };
+  // the answer, request-local values normalised (read only by the render-ON companion)
+  const body = r.json ? JSON.parse(norm(JSON.stringify(r.json)).replace(/https:\/\/pay\.test\/[^"]+/g, '<checkout_url>')) : null;
+  if (body) for (const k of ['poll_token', 'attempt_id', 'pixelpay_order_id']) if (typeof body[k] === 'string') body[k] = `<${k}>`;
+  return { status: r.status, trace, body };
 }
 
 (async () => {
@@ -258,6 +265,48 @@ async function traced(rid, oid, uid, phone) {
       assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
       CTL.assertOtherRidRefused(t.trace, 'x_pizza', 'la_musa', ctlOpts);
       console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET + exactly 1 switch read (before the classifier's order read); the rest identical to the golden; a switch read on la_musa's path is refused`);
+    }
+    // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────
+    // Each render-ON request is compared with a render-OFF request recorded right before it in the SAME cache state (an
+    // unrecorded warm-up absorbs any due TTL refresh first): ON == OFF + exactly the probe, at the probe's position.
+    // The pin's sensitivity: every pair below MUST differ by its non-empty declared delta.
+    console.log(`  (render capability shipped by catalog/platform-render.generated.js: ${RP.SHIPPED}; the golden cells above ran with it PINNED off)`);
+    {
+      const pair = async (label, offReq, onReq) => {
+        await rtdb.ref('rate_limits').remove();
+        const off = await RP.withRender(false, offReq);
+        const on = await RP.withRender(true, onReq);
+        for (const [s, v] of [['OFF', off], ['ON', on]]) assert.strictEqual(v.status, 200, `${label} (${s}): premise — charged (${v.status})`);
+        assert.deepStrictEqual(on.body, off.body, `🔴 ${label}: the render-ON answer differs from the render-OFF one`);
+        return { off: RD.normOps(off.trace.filter((e) => !isFloorRead(e))), on: RD.normOps(on.trace.filter((e) => !isFloorRead(e))) };
+      };
+      let W = 0;   // each warm-up its own phone: the duplicate-order guard keys on phone + content
+      const warm = async (rid, uid, tag) => { await rtdb.ref('rate_limits').remove(); W += 1; await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm_${tag}`, `9935${String(W).padStart(4, '0')}`), { 'x-firebase-id-token': uid }); await CTL.controlWarm(rtdb, rid); };
+      const at = (rid, oid, uid, phone) => async () => { await CTL.controlWarm(rtdb, rid); return traced(rid, oid, uid, phone); };
+      for (const rid of ['x_pizza', 'la_musa']) {
+        const uid = `u_trace_${rid}`;
+        const R = `trace_${rid}_ron_ref`; const N = `trace_${rid}_ron_new`;
+        // a fresh reward charge: + the probe's order read (no order yet → null), right after the customer's check
+        await warm(rid, uid, 'f');
+        let p = await pair(`${rid} render-ON fresh`, at(rid, R, uid, '99361001'), at(rid, N, uid, '99362001'));
+        RD.assertInserted(p.off, p.on, RD.afterUidCheck(p.off, rid), RD.PROBE_ABSENT(), `${rid} render-ON fresh`);
+        // the retry of an order ISSUED with render ON: its bound charge-input fingerprint matches → the full probe answers
+        // the bound reuse (the same answer as the render-OFF reuse), and the request ends there
+        await warm(rid, uid, 'r');
+        p = await pair(`${rid} render-ON retry (bound reuse)`, at(rid, R, uid, '99361001'), at(rid, N, uid, '99362001'));
+        RD.assertShortCircuit(p.off, p.on, RD.afterUidCheck(p.off, rid), RD.PROBE_FULL(rid), `${rid} render-ON retry (bound reuse)`);
+        // the retry, with render ON, of an order issued with render OFF (in flight across the flip): no bound fingerprint →
+        // the probe stops at the order read and the current path runs unchanged
+        await warm(rid, uid, 't');
+        p = await pair(`${rid} render-ON retry of a render-OFF order`, at(rid, R, uid, '99361001'), at(rid, R, uid, '99361001'));
+        RD.assertInserted(p.off, p.on, RD.afterUidCheck(p.off, rid), RD.PROBE_ABSENT(), `${rid} render-ON retry of a render-OFF order`);
+        // the classify-failure fresh path: the probe reads the (absent) order and never classifies
+        await warm(rid, uid, 'd');
+        FAIL_CLASSIFY = true;
+        try { p = await pair(`${rid} render-ON classify failure`, at(rid, `${R}_deg`, uid, '99363001'), at(rid, `${N}_deg`, uid, '99364001')); } finally { FAIL_CLASSIFY = false; }
+        RD.assertInserted(p.off, p.on, RD.afterUidCheck(p.off, rid), RD.PROBE_ABSENT(), `${rid} render-ON classify failure`);
+        console.log(`  ✓ ${rid} render-ON: fresh / render-OFF-order retry / classify failure = the render-OFF trace + exactly the probe's order read after the customer check; a render-ON order's retry = the render-OFF prefix + exactly the full probe, answering the render-OFF reuse's body`);
+      }
     }
     console.log('d4b-charge-trace(emulator): OK');
   }

@@ -46,10 +46,20 @@ require.cache[fa] = { id: fa, filename: fa, loaded: true, children: [], paths: [
 const hc = require.resolve('../pixelpay-hosted-charge');
 const realHC = require('../pixelpay-hosted-charge');
 let FAIL_CLASSIFY = false; let DRIFT = null;
+// 1D add-product B (PB-2 ruling (A)): the race drift is keyed on the CALL SITE, not on a call count. With render ON the
+// bound-reuse probe (catalog/bound-reuse.js) calls this same classifier BEFORE the gate's classify; a one-shot hook would
+// fire there and the race would never reach the gate. DRIFT_AT names the site it fires at — 'gate' (the race under test)
+// or 'bound-reuse' (the in-suite MUTANT below, which must turn the own-hold assertion RED).
+let DRIFT_AT = 'gate';
+const classifySite = (stack) => (/[\\/]catalog[\\/]bound-reuse\.js:/.test(stack) ? 'bound-reuse' : 'gate');
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   // the race: the REAL classification, then the order/attempt drifts (as a concurrent writer would) before the acquire
-  classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); const r = await realHC.classifyHostedAttempt(...a); if (DRIFT) await DRIFT(a[1]); return r; } } };
+  classifyHostedAttempt: async (...a) => { const site = classifySite(new Error().stack); if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); const r = await realHC.classifyHostedAttempt(...a); if (DRIFT && site === DRIFT_AT) await DRIFT(a[1]); return r; } } };
 
+// 1D add-product B (PB-2 ruling (A)): the frozen e1aeb3f baseline is the render-OFF path — render is PINNED off for it;
+// the render-ON companion re-runs the cases with it on and asserts the exact delta (test/_render-delta.js)
+const RP = require('./_render-pin');
+const RD = require('./_render-delta');
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -307,26 +317,41 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
 
   const results = {};
   let ci = 0;
-  const runCase = async (c) => {
+  // `into` / `setupRender`: the render-ON companion's own maps, and the render its SETUP runs under (default: the request's)
+  const runCase = async (c, into = results, { setupRender = null } = {}) => {
     for (const state of Object.keys(STATES)) {
       for (const rid of ['x_pizza', 'la_musa']) {
         ci += 1;
         const oid = `oc_${String(ci).padStart(4, '0')}_${rid}`;
         const ph = phoneFor();
         await setSwitch(rid, 'absent'); FAIL_PREFIX = null;
-        await c.setup(rid, oid, ph);                     // the REAL writers, with the switch absent
+        if (setupRender === null) await c.setup(rid, oid, ph);   // the REAL writers, with the switch absent
+        else await RP.withRender(setupRender, () => c.setup(rid, oid, ph));
         await setSwitch(rid, state);
         const holdBefore = c.hold ? await resv(rid, oid) : null;
         const r = await traced(oid, rid, () => c.request(rid, { oid, ph, redeem: !!c.redeem }));
         FAIL_PREFIX = null;
         r.holdBefore = holdBefore; r.holdAfter = c.hold ? await resv(rid, oid) : null;
         r.orderAfter = (await rtdb.ref(`orders/${oid}`).get()).val();
-        results[`${c.name} | ${state} | ${rid}`] = r;
+        into[`${c.name} | ${state} | ${rid}`] = r;
         await setSwitch(rid, 'absent');
       }
     }
   };
   for (const c of CASES.filter((x) => !x.floor)) await runCase(c);
+  // ── RENDER-ON COMPANION runs (asserted after the baseline comparison) ─────────────────────────────────────────────
+  //   ON  — every (non-floor) case, setup AND request with render ON: the steady state after the flip;
+  //   ONT — every reward case issued with render OFF and retried with render ON: the orders in flight across the flip;
+  //   MUT — the hold-release races with render ON and the drift MOVED to bound-reuse's classify: must go RED.
+  const onRes = {}; const ontRes = {}; const mutRes = {};
+  const isRewardCase = (c) => !!c.redeem || /reward/.test(c.name);
+  const isHoldRelease = (c) => c.hold === 're_reserved' || c.hold === 'created';
+  await RP.withRender(true, async () => {
+    for (const c of CASES.filter((x) => !x.floor)) await runCase(c, onRes);
+    for (const c of CASES.filter((x) => !x.floor && isRewardCase(x))) await runCase(c, ontRes, { setupRender: false });
+    DRIFT_AT = 'bound-reuse';
+    try { for (const c of CASES.filter(isHoldRelease)) await runCase(c, mutRes); } finally { DRIFT_AT = 'gate'; }
+  });
   await rtdb.ref('platform_config/client_floor/orders').set(FLOOR);
   await wait(require('../client-floor').FLOOR_TTL_MS + 1500);
   for (const c of CASES.filter((x) => x.floor)) await runCase(c);
@@ -367,8 +392,20 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
 
   const golden = CAPTURE ? null : JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
   if (process.env.ORDER_CONTROL_DUMP) fsys.writeFileSync(process.env.ORDER_CONTROL_DUMP, JSON.stringify(results, null, 1));
+  if (process.env.ORDER_CONTROL_DUMP_RENDER_ON) fsys.writeFileSync(process.env.ORDER_CONTROL_DUMP_RENDER_ON, JSON.stringify({ on: onRes, ont: ontRes, mut: mutRes }, null, 1));
   const FAILS = [];
   const check = (fn) => { try { fn(); } catch (e) { FAILS.push(e.message.split('\n')[0]); } };
+  // THIS call's own hold: reserved BY this call and then released (PB-2 ruling (A)). `state === 'released'` alone is vacuous
+  // for the re-reserved case — its setup already left the hold released, so a call that never reserved passes too. So
+  // the hold's own transition counter must have moved by exactly 2 (reserve +1, release +1) and the call must have
+  // issued exactly those two transactions on the customer's reward balance.
+  const assertOwnHoldReleased = (r, rid, key) => {
+    assert.strictEqual(r.holdAfter && r.holdAfter.state, 'released', `🔴 ${key}: THIS call's own hold is released (never left held)`);
+    const seq0 = (r.holdBefore && r.holdBefore.seq) || 0;
+    assert.strictEqual(r.holdAfter.seq, seq0 + 2, `🔴 ${key}: THIS call reserved the hold and released it (seq ${seq0} → ${r.holdAfter.seq}, want ${seq0 + 2})`);
+    const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
+    assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
+  };
   const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o));
   const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o));
   const tally = { same: 0, refused: 0 };
@@ -410,13 +447,92 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.ok(!r.ops.some((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === 'orders/<oid>'), `🔴 ${key}: the CAS never ran (refused BEFORE it)`);
         assert.ok(!r.ops.some((o) => o.db === 'rtdb' && o.op === 'update' && /^payment_attempts\//.test(o.path)), `🔴 ${key}: no attempt was claimed`);
         if (c.hold === 'reused') assert.strictEqual(r.holdAfter && r.holdAfter.state, 'reserved', `🔴 ${key}: an existing payable checkout's hold stays HELD`);
-        if (c.hold === 're_reserved' || c.hold === 'created') assert.strictEqual(r.holdAfter && r.holdAfter.state, 'released', `🔴 ${key}: THIS call's own hold is released (never left held)`);
+        if (c.hold === 're_reserved' || c.hold === 'created') assertOwnHoldReleased(r, key.split(' | ')[2], key);
       } else {
         assert.ok(!r.ops.some((o) => WRITE_OPS.has(o.op) && !isTestOp(o)), `🔴 ${key}: refused BEFORE any write (${JSON.stringify(r.ops.filter((o) => WRITE_OPS.has(o.op)))})`);
         assert.deepStrictEqual(r.changed, [], `🔴 ${key}: nothing changed`);
       }
       tally.refused += 1;
     });
+  }
+
+  // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────────
+  // Each render-ON result is compared with the render-OFF result of the SAME case, state and restaurant in THIS process
+  // (itself == the frozen baseline above). What render ON changes, by the code that changes it:
+  //   • a card request with a reward runs the bound-reuse probe right after the customer check (catalog/bound-reuse.js):
+  //       – a live checkout ISSUED with render ON whose hold is still THIS order's (the reuse cases) → the FULL probe answers
+  //         the bound reuse: the render-OFF prefix + exactly the probe, ending there; the render-OFF reuse's status and
+  //         body; READ-ONLY (nothing changed, the hold untouched). The race cell's drift never fires: the gate never runs;
+  //       – a render-ON order whose hold is NOT this order's (the hold-release races) → the full probe returns null, then
+  //         the render-OFF trace unchanged (+ the probe inserted), the same race refusal, the own hold released;
+  //       – no bound fingerprint (a fresh order, or an order issued with render OFF) → + exactly the probe's order read;
+  //   • a reward order is written with its charge-input fingerprint (index.js: charge_inputs_fp) → + that one path when
+  //     the request wrote the order's binding;
+  //   • everything else — every cash case, every card case without a reward — byte-equal to the render-OFF run.
+  // THE CATALOG CACHE REFRESH: the per-instance catalog (pointer + version) is TTL-cached and reloads on its own clock — a
+  // leading block of Firestore reads before the request's first RTDB call, landing in whichever request crosses the TTL
+  // (or the process's first, which loads the whole version and certifies it in its own transaction). Like the floor's
+  // cached read (isCacheRefresh), it is set aside on BOTH sides — only that shape: a LEADING block of get / getAll under
+  // restaurants/<this rid>/meta/active_version or …/versions/<v>/…, and the load's runTransaction. No render-gated call
+  // can hide there: the probe is RTDB, and the charge's render-gated gate read follows a failed preparation.
+  let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
+  if (!CAPTURE) {
+    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o)));
+    const inCatalog = (rid) => (p) => p === `restaurants/${rid}/meta/active_version` || p === `restaurants/${rid}/versions/<v>` || p.startsWith(`restaurants/${rid}/versions/<v>/`);
+    const isCatalogRead = (rid) => (o) => o.db === 'fs' && (o.op === 'runTransaction'
+      || ((o.op === 'get' || o.op === 'getAll') && [o.path, ...(o.paths || [])].filter((p) => typeof p === 'string').every(inCatalog(rid))));
+    const withoutCatalogRefresh = (ops, rid, L) => {
+      let i = 0; while (i < ops.length && ops[i].db === 'fs') i += 1;
+      assert.ok(ops.slice(0, i).every(isCatalogRead(rid)), `🔴 ${L}: a leading Firestore block that is not the catalog cache refresh (${JSON.stringify(ops.slice(0, i))})`);
+      return ops.slice(i);
+    };
+    const REUSE_REF = 'card REUSE of a live checkout holding a reward (the hold stays)';
+    const BOUND = new Set([REUSE_REF, 'RACE with a REUSED reward hold (kept)']);
+    const compare = (pass, key, on, c, steady) => {
+      const [, state, rid] = key.split(' | ');
+      const off = results[key];
+      const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
+      assert.ok(off && on, `${L}: ran on both sides`);
+      const offOps = withoutCatalogRefresh(NO(off.ops), rid, `${L} [render-OFF side]`); const onOps = withoutCatalogRefresh(NO(on.ops), rid, L);
+      const reward = c.path === 'card' && isRewardCase(c);
+      if (steady && BOUND.has(c.name)) {
+        const ref = results[`${REUSE_REF} | ${state} | ${rid}`];
+        assert.strictEqual(on.status, ref.status, `🔴 ${L}: the bound reuse answers the render-OFF reuse's status`);
+        assert.deepStrictEqual(on.body, ref.body, `🔴 ${L}: the bound reuse answers the render-OFF reuse's body`);
+        assert.deepStrictEqual(on.headers, ref.headers, `🔴 ${L}: headers`);
+        assert.deepStrictEqual(on.changed, [], `🔴 ${L}: the bound reuse is READ-ONLY (nothing changed)`);
+        assert.deepStrictEqual(on.holdAfter, on.holdBefore, `🔴 ${L}: the hold is untouched (still this order's, reserved)`);
+        RD.assertShortCircuit(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_FULL(rid), L);
+        companion.bound += 1;
+        return;
+      }
+      assert.strictEqual(on.status, off.status, `🔴 ${L}: status (${off.status} → ${on.status})`);
+      assert.deepStrictEqual(on.body, off.body, `🔴 ${L}: body`);
+      assert.deepStrictEqual(on.headers, off.headers, `🔴 ${L}: headers`);
+      assert.strictEqual(on.holdAfter && on.holdAfter.state, off.holdAfter && off.holdAfter.state, `🔴 ${L}: the hold ends as with render OFF`);
+      const wroteBinding = reward && off.changed.includes('orders/<oid>/payment_fingerprint');
+      if (wroteBinding) assert.strictEqual(typeof (on.orderAfter && on.orderAfter.charge_inputs_fp), 'string', `${L}: premise — the order carries its bound charge-input fingerprint`);
+      const wantChanged = [...off.changed, ...(wroteBinding ? ['orders/<oid>/charge_inputs_fp'] : [])].map(RD.contentHash).sort();
+      assert.deepStrictEqual(on.changed.map(RD.contentHash).sort(), wantChanged, `🔴 ${L}: the changed-path set`);
+      if (!reward) { assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`); return; }
+      const probe = steady && isHoldRelease(c) ? RD.PROBE_FULL(rid) : RD.PROBE_ABSENT();
+      RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), probe, L);
+      companion.probed += 1;
+      if (isHoldRelease(c) && !ADMIT.has(state)) assertOwnHoldReleased(on, rid, L);   // §0b.4 with render ON
+      if (c.hold === 'reused' && !ADMIT.has(state)) assert.strictEqual(on.holdAfter && on.holdAfter.state, 'reserved', `🔴 ${L}: an existing payable checkout's hold stays HELD`);
+    };
+    for (const [key, on] of Object.entries(onRes)) { const c = CASES.find((x) => x.name === key.split(' | ')[0]); check(() => { compare('ON', key, on, c, true); companion.on += 1; }); }
+    for (const [key, on] of Object.entries(ontRes)) { const c = CASES.find((x) => x.name === key.split(' | ')[0]); check(() => { compare('ONT', key, on, c, false); companion.ont += 1; }); }
+    // the MUTANT: the drift at bound-reuse's classify → every refused hold-release race must FAIL the own-hold assertion
+    for (const [key, r] of Object.entries(mutRes)) {
+      const [, state, rid] = key.split(' | ');
+      if (ADMIT.has(state)) continue;
+      check(() => {
+        assert.throws(() => assertOwnHoldReleased(r, rid, key), /THIS call/, `🔴 MUTANT ${key}: with the drift at bound-reuse's classify the own-hold assertion must go RED — it stayed green`);
+        companion.mut += 1;
+      });
+    }
+    check(() => assert.ok(companion.probed > 0 && companion.bound > 0 && companion.mut === 16, `render-ON companion: premise — the probe, the bound reuse and all 16 mutant cells exercised (${JSON.stringify(companion)})`));
   }
 
   // the scheduled holds (candidate)
@@ -524,6 +640,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   }
   if (!FAILS.length) ok(`${CAPTURE ? 'BASELINE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (${CASES.length} cases + the scheduled sweep × ${Object.keys(STATES).length} switch states × both restaurants)` +
     (CAPTURE ? ' — the switch node is inert at e1aeb3f; every state behaves as today' : ` — ${tally.same} UNCHANGED (status, body, headers, call sequence minus ONLY the control read, changed paths == baseline; the existing-order / :839 answers read NO switch); ${tally.refused} REFUSED with the exact 423 / 503 (+ Retry-After 2), nothing written, reward holds as planned — where the baseline admitted`));
+  if (!CAPTURE && !FAILS.length) ok(`render-ON companion (shipped render: ${RP.SHIPPED}; the baseline cells ran PINNED off): ${companion.on} cases with render ON + ${companion.ont} reward cases issued with render OFF, retried ON — cash and non-reward card byte-equal to the render-OFF run; ${companion.probed} reward card requests = the render-OFF trace + exactly the bound-reuse probe after the customer check (own hold reserved+released on every refused hold-release race, §0b.4); ${companion.bound} live render-ON reward checkouts answered by the bound reuse — the render-OFF reuse's status + body, read-only, the probe then nothing; MUTANT (drift at bound-reuse's classify): all ${companion.mut} refused hold-release races RED`);
   if (!CAPTURE && !FAILS.length) ok('scheduled: PAUSED / UNKNOWN hold with control_held {at, cause} (deduplicated), no materialization; AUTO-RESUME at until with no writer → released, marker cleared; an expired slot → today\'s block; a manual release refused (423 / 503 + Retry-After) changing NOTHING; a stale releasing claim held; a THIRD synthetic restaurant held and released through the same seam');
 
   // ── composition with both brands' real pages ────────────────────────────────────────────────────────────────────
