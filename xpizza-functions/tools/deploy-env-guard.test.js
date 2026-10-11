@@ -21,8 +21,8 @@ try {
   {
     const d = tree({});
     const names = G.deployEnvFiles(d).map((f) => path.basename(f)).sort();
-    assert.deepStrictEqual(names, ['.env', '.env.proj-s', '.env.proj-x', '.env.staging'], `the deploy env file set: ${names}`);
-    ok('checks exactly the files firebase-tools loads at deploy: .env, .env.<projectId> per project, .env.<alias> (not .env.local, emulator-only)');
+    assert.deepStrictEqual(names, ['.env', '.env.default', '.env.proj-s', '.env.proj-x', '.env.staging'], `the deploy env file set: ${names}`);
+    ok('checks exactly the files firebase-tools loads at deploy: .env, .env.<projectId> per project, .env.<alias> for EVERY alias incl. .env.default (not .env.local, emulator-only)');
   }
   // 2. each forbidden name is caught in each loaded file, incl. `export` and spacing; values never printed
   {
@@ -70,6 +70,34 @@ try {
       const fb = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'firebase.json'), 'utf8'));
       assert.ok(fb.functions[0].ignore.includes('.env.*'), 'premise — the archive ignores .env.*');
       ok('deploy LOADS .env, .env.<projectId>, .env.<alias> from the source dir (installed CLI loadUserEnvs) — independent of functions.ignore, which keeps every .env.* OUT of the uploaded archive');
+    }
+  }
+  // 6. codex r2 P1-3: `.env.default` is checked (firebase-tools selects the `default` alias), and the guard is ENFORCED on the
+  //    deploy path — the FIRST functions predeploy hook, run here EXACTLY as firebase-tools runs it (lifecycleHooks.js:
+  //    `"<node>" "<cross-env-shell>" "<command>"` through a shell, RESOURCE_DIR = the functions source dir)
+  {
+    const d = tree({ '.env.default': 'export FIREBASE_DATABASE_EMULATOR_HOST = super-secret-value\n' });
+    assert.deepStrictEqual(G.violations(d).bad, ['.env.default: FIREBASE_DATABASE_EMULATOR_HOST'], '🔴 .env.default (the default alias\'s dotenv) is not checked');
+    const FN = path.join(__dirname, '..');
+    const fb = JSON.parse(fs.readFileSync(path.join(FN, 'firebase.json'), 'utf8'));
+    const hooks = [].concat(fb.functions[0].predeploy || []);
+    assert.ok(hooks.length >= 1 && /deploy-env-guard\.js/.test(hooks[0]), '🔴 the deploy-env guard is not the FIRST functions predeploy hook — it would not run on deploy');
+    const ft = '/usr/local/lib/node_modules/firebase-tools';
+    if (fs.existsSync(ft)) {
+      const crossEnv = path.resolve(require.resolve('cross-env', { paths: [ft] }), '..', 'bin', 'cross-env-shell.js');
+      const runHook = (resourceDir) => spawnSync(`"${process.execPath}" "${crossEnv}" "${hooks[0].replace(/"/g, '\\"')}"`, [],
+        { shell: true, encoding: 'utf8', cwd: FN, env: { ...process.env, RESOURCE_DIR: resourceDir, PROJECT_DIR: FN, GCLOUD_PROJECT: 'xpizza-delivery' } });
+      const clean = runHook(FN);
+      assert.strictEqual(clean.status, 0, `🔴 the predeploy hook FAILED on the clean checkout: ${clean.stdout}${clean.stderr}`);
+      // a planted signal: a temp RESOURCE_DIR holding the guard, the configs and a poisoned .env.default
+      const pd = tree({ '.env.default': 'FIRESTORE_EMULATOR_HOST=super-secret-value\n' });
+      fs.mkdirSync(path.join(pd, 'tools'));
+      fs.copyFileSync(path.join(__dirname, 'deploy-env-guard.js'), path.join(pd, 'tools', 'deploy-env-guard.js'));
+      const planted = runHook(pd);
+      assert.notStrictEqual(planted.status, 0, '🔴 the predeploy hook PASSED with an emulator signal planted in .env.default — the deploy would proceed');
+      assert.match(planted.stderr, /\.env\.default: FIRESTORE_EMULATOR_HOST/, 'it fails LOUD, naming the file and key');
+      assert.ok(!/super-secret-value/.test(planted.stdout + planted.stderr), '🔴 the hook printed a VALUE');
+      ok(`.env.default is checked; the guard is the FIRST functions predeploy hook — run as firebase-tools runs it (cross-env-shell, RESOURCE_DIR): passes on this checkout (${clean.stdout.trim()}), FAILS loud on a planted .env.default without printing its value`);
     }
   }
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }

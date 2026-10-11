@@ -10992,5 +10992,115 @@
       "node",
       "tools/emulator-ports.guard.test.js"
     ]
+  },
+  {
+    "id": "r1-19",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "  for (const r of [...a.rows, ...b.rows]) {                     // the UNION: a pid in either view is classified",
+    "to": "  for (const r of [...a.rows]) {",
+    "label": "classification uses only the FIRST -E view (the handoff child is never classified)",
+    "kills_with": [
+      "the handoff child C was not classified",
+      "the union of both -E views does not contain the handoff child"
+    ],
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-20",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    if (a.stable) return classifyScan(a.union, slot, { isAlive });",
+    "to": "    return classifyScan(a.union, slot, { isAlive });",
+    "label": "an unstable process population is classified anyway (no bounded re-scan, never INCOMPLETE)",
+    "kills_with": "a population that changed on every try was not INCOMPLETE",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-21",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (signal && signal.aborted) { await closeServer(server); throw cancelled(); }\n      return { slot, server, offset: slot * 10 };",
+    "to": "      return { slot, server, offset: slot * 10 };",
+    "label": "a cancel that lands during the probe is admitted (the suite launches anyway)",
+    "kills_with": "a cancel during the probe was ADMITTED",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-22",
+    "slice": "r1",
+    "file": "tools/emu-cmd-wrapper.js",
+    "from": "const sigCode = (sig) => 128 + ((os.constants.signals || {})[sig] || 1);",
+    "to": "const sigCode = (sig) => 128 + ({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1 }[sig] || 1);",
+    "label": "the wrapper maps an unlisted signal (SIGABRT) to 129",
+    "kills_with": "a SIGABRT step mapped to",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-23",
+    "slice": "r1",
+    "file": "tools/require-project.js",
+    "from": "  guard.armClientRecheck('require-project');",
+    "to": "  void guard.armClientRecheck;",
+    "label": "a dotenv load AFTER require-project's check introduces a foreign emulator host unchecked",
+    "kills_with": "with a .env that injects a foreign Firestore host AFTER its early check",
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-24",
+    "slice": "r1",
+    "file": "scripts/test-ingest.js",
+    "from": "require('../tools/emu-mixed-guard').refuseAnySignal('test-ingest');",
+    "to": "require('../tools/emu-mixed-guard')('test-ingest');",
+    "label": "test-ingest (posts to a deployed INGEST_URL) runs under a coherent emulator env",
+    "kills_with": "test-ingest under a COHERENT emulator env",
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-25",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "names.add(`.env.${id}`); names.add(`.env.${alias}`); }",
+    "to": "names.add(`.env.${id}`); if (alias !== 'default') names.add(`.env.${alias}`); }",
+    "label": "the deploy guard skips .env.default (the alias a bare deploy selects)",
+    "kills_with": [
+      ".env.default (the default alias",
+      "the deploy env file set"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-26",
+    "slice": "r1",
+    "file": "firebase.json",
+    "from": "      \"predeploy\": [\n        \"node \\\"$RESOURCE_DIR/tools/deploy-env-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n      ],\n",
+    "to": "",
+    "label": "the deploy guard is not on the deploy path (no functions predeploy hook)",
+    "kills_with": "the deploy-env guard is not the FIRST functions predeploy hook",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
   }
 ]

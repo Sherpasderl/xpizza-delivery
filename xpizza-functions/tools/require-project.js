@@ -147,9 +147,12 @@ function requireProject(opts = {}) {
     console.error('project_guard_refused: nothing was read and nothing was written.\n');
     process.exit(2);
   }
-  // R1 (codex R1-build P1-1): emulator variables present but not ONE coherent local run ⇒ refuse (mixed signals).
-  require('./emu-mixed-guard')('require-project');
+  // R1 (codex R1-build P1-1): emulator variables present but not ONE coherent local run ⇒ refuse (mixed signals) —
+  // NOW, and again at every data-client construction (r2 P1-2: a later dotenv load can change the environment).
+  const guard = require('./emu-mixed-guard');
+  guard('require-project');
   console.log(`project: ${projectId}  (stated explicitly and matched against .firebaserc)`);
+  guard.armClientRecheck('require-project');
   return projectId;
 }
 

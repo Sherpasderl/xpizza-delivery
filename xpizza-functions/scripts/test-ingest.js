@@ -27,7 +27,7 @@ if (!INGEST_URL || !UID) {
 }
 
 // R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod).
-require('../tools/emu-mixed-guard')('test-ingest');
+require('../tools/emu-mixed-guard').refuseAnySignal('test-ingest');   // r2 P1-2: posts to a DEPLOYED INGEST_URL — production-only
 initializeApp({ databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' });
 const db = getDatabase();
 

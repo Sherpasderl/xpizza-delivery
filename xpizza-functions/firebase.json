@@ -17,6 +17,9 @@
     {
       "source": ".",
       "codebase": "default",
+      "predeploy": [
+        "node \"$RESOURCE_DIR/tools/deploy-env-guard.js\" --root \"$RESOURCE_DIR\""
+      ],
       "runtime": "nodejs22",
       "ignore": [
         "node_modules",

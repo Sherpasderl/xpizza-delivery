@@ -17,7 +17,10 @@
  * the launcher uses to tell a startup failure (re-slot) from a suite failure.
  */
 const fs = require('fs');
+const os = require('os');
 const { spawn } = require('child_process');
+// shell-equivalent status for a signal termination: 128 + the PLATFORM's signal number (codex r2 P2 — every signal, not four)
+const sigCode = (sig) => 128 + ((os.constants.signals || {})[sig] || 1);
 
 function decode(payload) {
   const steps = JSON.parse(Buffer.from(String(payload || ''), 'base64url').toString('utf8'));
@@ -62,7 +65,7 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(sig, () => {
     stopping = stopping || sig;
     if (current && current.exitCode === null && current.signalCode === null) { try { current.kill(sig); } catch { /* gone */ } }
-    else process.exit(128 + ({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1 })[sig]);
+    else process.exit(sigCode(sig));
   });
 }
 
@@ -76,7 +79,7 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       current.once('error', (e) => { console.error(`emulator-run: 🔴 could not start a suite step — ${e && e.message}`); res({ code: 1, signal: null }); });
       current.once('exit', (c, s) => res({ code: c, signal: s }));
     });
-    if (signal || code !== 0) process.exit(signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1, SIGKILL: 9 })[signal] || 1) : code);
+    if (signal || code !== 0) process.exit(signal ? sigCode(signal) : code);
   }
-  process.exit(stopping ? 128 + ({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1 })[stopping] : 0);
+  process.exit(stopping ? sigCode(stopping) : 0);
 })();

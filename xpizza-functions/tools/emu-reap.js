@@ -37,7 +37,7 @@ async function reap(slot, { dryRun = false, log = (m) => console.error(`emu-reap
   const sentinel = await ALLOC.bindSentinel(ALLOC.sentinelPort(slot, sentinelBase));
   if (!sentinel) { log(`slot ${slot}: the sentinel is held — a LIVE run owns this slot. Refusing.`); return { code: 3, signalled: [], left: [] }; }
   try {
-    const rt = readTable || (() => { const t = ALLOC.readPsTables(); return ALLOC.joinScans(t.plain, t.withEnv); });
+    const rt = readTable || ALLOC.readUnionTable;   // the UNION of both -E views (codex r2 P1-1)
     const first = ALLOC.classifyScan(rt(), slot, { isAlive: isAlive || ALLOC.pidAlive });
     if (first.live.length) log(`slot ${slot}: ${first.live.length} marked pid(s) of a LIVE supervisor (${first.live.map((o) => o.pid).join(', ')}) — never signalled`);
     log(`slot ${slot}: ${first.orphans.length} orphan(s)${first.orphans.length ? ': ' + first.orphans.map((o) => `${o.pid} (dead supervisor ${o.supervisorPid})`).join(', ') : ''}`);

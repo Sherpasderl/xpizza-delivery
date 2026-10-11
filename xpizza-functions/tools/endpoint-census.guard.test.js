@@ -163,6 +163,31 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
   }
   ok(`${cli} production CLI/script runs: every require-project CLI and every functions-root production script REFUSES mixed (either half emulated, the other prod) and foreign signals before any client`);
 
+  // 3b. r2 P1-2 — (a) test-ingest is PRODUCTION-ONLY: even a COHERENT emulator env is refused (it posts to INGEST_URL);
+  //     (b) DOTENV INJECTION: every require-project CLI that loads dotenv AFTER its early check is run from a directory
+  //     whose .env introduces a FOREIGN Firestore host — the client-construction re-check must refuse before any client.
+  {
+    const coherent = { FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: '70' };
+    refusedClean(observe([rel(F('scripts/test-ingest.js')), 'http://127.0.0.1:5270/demo-xpizza/us-central1/ingestDriverLocation', 'UID'], coherent), 'test-ingest under a COHERENT emulator env (production-only)');
+    const DOTENV_CLIS = fs.readdirSync(path.join(FN, 'tools')).filter((f) => f.endsWith('.js'))
+      .filter((f) => { const t = fs.readFileSync(path.join(FN, 'tools', f), 'utf8'); return /requireProject\(/.test(t) && /require\('dotenv'\)\.config\(\)/.test(t) && f !== 'require-project.js'; });
+    assert.ok(DOTENV_CLIS.length >= 10, `premise — the dotenv-loading require-project CLIs were found (${DOTENV_CLIS.length})`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r1-dotenv-'));
+    fs.writeFileSync(path.join(dir, '.env'), 'FIRESTORE_EMULATOR_HOST=evil.example:8080\n');
+    // the arguments / env each needs to REACH client construction (a usage exit would prove nothing about the re-check)
+    const ARGS2 = { 'stats-rollup.js': ['backfill', '--from', '2026-01-01', '--to', '2026-01-02'] };
+    const ENV2 = { 'stats-rollup.js': { STATS_HMAC_SECRET: 'r1-census-dummy-secret-0123456789abcdef' } };
+    const passed = [];
+    try {
+      for (const f of DOTENV_CLIS) {
+        const x = observe([path.join(FN, 'tools', f), ...(ARGS2[f] || []), '--project', 'xpizza-delivery'], { GOOGLE_CLOUD_PROJECT: 'xpizza-delivery', ...(ENV2[f] || {}) }, { cwd: dir });
+        refusedClean(x, `${f} with a .env that injects a foreign Firestore host AFTER its early check`);
+        passed.push(f);
+      }
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    ok(`test-ingest refuses even a coherent emulator env (production-only); ${passed.length} dotenv-loading require-project CLIs each refuse a .env-injected foreign emulator host at client construction, before any contact (${passed.join(', ')})`);
+  }
+
   // 4. the LATENCY CHILD: portal-speed-proof's `node -e` children load index.js → lib/admin.js refuses mixed/foreign
   {
     for (const [shape, env] of [['HALF', MIXED], ['FOREIGN', FOREIGN]]) {

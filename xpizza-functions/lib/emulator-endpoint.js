@@ -192,7 +192,10 @@ const GUARD = Symbol.for('xpizza.emu.nullGuard');
    only: this file sits inside index.js's require-closure, whose scanner refuses any dynamic require. */
 function firebaseAppPrototype(adminApp) {
   const name = `__xpizza_null_guard_probe_${process.pid}_${Date.now()}`;
-  const probe = adminApp.initializeApp({ projectId: 'demo-null-guard-probe' }, name);
+  // an INERT explicit credential: without one firebase-admin resolves application-default credentials EAGERLY — a side
+  // effect (and, with a bad GOOGLE_APPLICATION_CREDENTIALS, a throw) the probe must never have. Never used: no service.
+  const credential = { getAccessToken: async () => ({ access_token: 'unused', expires_in: 0 }) };
+  const probe = adminApp.initializeApp({ projectId: 'demo-null-guard-probe', credential }, name);
   const proto = Object.getPrototypeOf(probe);
   adminApp.deleteApp(probe).catch(() => { /* a probe app with no services — nothing to fail */ });
   return proto;
@@ -231,5 +234,5 @@ module.exports = {
   NULL_ENDPOINT, SLOTS, STEP, BANDS, DATA_SERVICES, HOST_VAR, FIRESTORE_ALIAS, HUB_VAR,
   OFFSET_VAR, SERVICES_VAR, DEAD_VAR,
   planPorts, hasEmulatorSignal, validateEmulatorEnv, validateFunctionsUrl, validateRtdbUrl,
-  installNullGuard, guardEmulatorProcess, EmulatorEndpointError,
+  installNullGuard, guardEmulatorProcess, firebaseAppPrototype, EmulatorEndpointError,
 };

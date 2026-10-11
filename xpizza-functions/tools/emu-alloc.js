@@ -73,7 +73,7 @@ function joinScans(plainLines, envLines) {
   const rows = [];
   for (const [pid, e] of withEnv) {
     const p = plain.get(pid);
-    const row = { pid, state: e.state, lstart: e.lstart, start: e.start, argv: p ? p.args : null, env: '', readable: true, why: null };
+    const row = { pid, state: e.state, lstart: e.lstart, start: e.start, argv: p ? p.args : null, env: '', readable: true, why: null, raw: e.args };
     if (isFallback(e.args) || (p && isFallback(p.args))) { row.readable = false; row.why = 'args unreadable (ps fallback)'; }
     else if (!p) { row.readable = false; row.why = 'absent from the plain scan'; }
     else if (p.start !== e.start) { row.readable = false; row.why = 'pid changed identity between scans'; }
@@ -117,23 +117,71 @@ const PS_TIMEOUT_MS = 10000;
 function readPsTables(uid = process.getuid()) {
   const run = (extra) => execFileSync('/bin/ps', ['-U', String(uid), '-ww', ...extra, '-o', 'pid=,state=,lstart=,args='],
     { encoding: 'utf8', env: PS_ENV, maxBuffer: 64 * 1024 * 1024, timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' }).split('\n').filter(Boolean);
-  /* -E FIRST, plain SECOND: we iterate the -E rows, so a row missing from the later plain scan has EXITED in
-     between (isAlive then skips it) — never "born after", which the opposite order mistook for unreadable
-     (measured: the second ps itself showed up as a live unreadable row and quarantined all 40 slots). */
+  /* -E, plain, -E AGAIN (codex R1-build r2 P1-1). The env is separated against the plain argv; the SECOND -E snapshot
+     exposes a HANDOFF between snapshots — a marked parent that spawns a marked child and exits between them was
+     silently dropped by a two-snapshot read (the parent "dead", the child never classified). analyzeTables() compares
+     the two -E views and the caller re-scans until they agree. */
   const withEnv = run(['-E']);
   const plain = run([]);
-  return { plain, withEnv };
+  const withEnv2 = run(['-E']);
+  return { plain, withEnv, withEnv2 };
 }
+
+/* The marked / unreadable population of one -E view, as a comparable signature, plus its rows normalised for
+   classification. A pid ABSENT from the plain snapshot (born after it, or exited before it) cannot have its env
+   separated: if its raw text carries a run marker it is kept as a MARKED row (conservative — it may be a handoff
+   child); otherwise it is an unmarked transient (any of the machine's constant process churn) and is dropped —
+   counting those would make every scan "unstable" on a busy machine. Genuinely unreadable live rows are kept. */
+function viewOf(plain, withEnv, isAlive) {
+  const rows = [];
+  for (const r of joinScans(plain, withEnv)) {
+    if (!r.readable && r.why === 'absent from the plain scan') {
+      if (new RegExp(`(?:^| )${RUN_VAR}=`).test(r.raw || '')) rows.push({ ...r, readable: true, env: r.raw, transient: true });
+      continue;
+    }
+    rows.push(r);
+  }
+  const sig = new Set();
+  for (const r of rows) {
+    if (isZombie(r.state)) continue;
+    if (!r.readable) { if (isAlive(r.pid)) sig.add(`${r.pid}:${r.start}:U`); continue; }
+    const mk = markerIn(r.env);
+    if (mk) sig.add(`${r.pid}:${r.start}:${mk.nonce}`);
+  }
+  return { rows, sig };
+}
+function analyzeTables(t, isAlive = pidAlive) {
+  const a = viewOf(t.plain, t.withEnv, isAlive);
+  const b = viewOf(t.plain, t.withEnv2 || t.withEnv, isAlive);
+  const stable = a.sig.size === b.sig.size && [...a.sig].every((x) => b.sig.has(x));
+  const byKey = new Map();
+  for (const r of [...a.rows, ...b.rows]) {                     // the UNION: a pid in either view is classified
+    const k = `${r.pid}:${r.start}`;
+    const prev = byKey.get(k);
+    if (!prev || (!prev.readable && r.readable)) byKey.set(k, r);
+  }
+  return { stable, union: [...byKey.values()], diff: [...a.sig].filter((x) => !b.sig.has(x)).concat([...b.sig].filter((x) => !a.sig.has(x))) };
+}
+// one UNION table (termination routines re-enumerate every iteration, so one snapshot triple per call is enough)
+function readUnionTable() { return analyzeTables(readPsTables()).union; }
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); } };
-function scanSlot(slot, { tables, isAlive = pidAlive } = {}) {
-  let t = tables;
-  if (!t) {
-    try { t = readPsTables(); } catch (e) {
+const SCAN_TRIES = 3;
+/* Classify `slot` over a STABLE population: the marked/unreadable set of the two -E views must agree; otherwise re-scan
+   (bounded); still unstable ⇒ INCOMPLETE ⇒ quarantine. `tables` may be one snapshot triple or a list of them (tests). */
+function scanSlot(slot, { tables, isAlive = pidAlive, tries = SCAN_TRIES } = {}) {
+  const queue = Array.isArray(tables) ? tables.slice() : (tables ? [tables] : null);
+  let lastDiff = [];
+  for (let i = 0; i < (queue ? queue.length : tries); i++) {
+    let t;
+    try { t = queue ? queue[i] : readPsTables(); } catch (e) {
       // a failed / timed-out scan proves nothing about the slot ⇒ INCOMPLETE ⇒ quarantine (unverifiable ⇒ refuse)
       return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `ps scan failed: ${(e && (e.code || e.message)) || e}` }], orphans: [], live: [] };
     }
+    const a = analyzeTables(t, isAlive);
+    if (a.stable) return classifyScan(a.union, slot, { isAlive });
+    lastDiff = a.diff;
   }
-  return classifyScan(joinScans(t.plain, t.withEnv), slot, { isAlive });
+  return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `marked process population changed between snapshots ${queue ? queue.length : tries}× (${lastDiff.slice(0, 4).join(', ')})` }], orphans: [], live: [] };
 }
 // ONE pid, fresh — the identity check made immediately before a signal. null = not listed (gone) or unreadable scan.
 function readPsRow(pid) {
@@ -154,7 +202,7 @@ function readPsRow(pid) {
  *   · death is CONFIRMED only for a pid that is gone, a zombie, or now a different process (start changed). An
  *     unreadable or EPERM target is UNCONFIRMED — never counted as dead.
  * Returns { confirmed, signalled, unconfirmed, eperm }. */
-async function terminateMarked({ select, same, readTable = () => { const t = readPsTables(); return joinScans(t.plain, t.withEnv); },
+async function terminateMarked({ select, same, readTable = readUnionTable,
   readRow = readPsRow, kill = process.kill.bind(process), isAlive = pidAlive, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   now = () => Date.now(), phases = [['SIGTERM', 8000], ['SIGKILL', 4000]], pollMs = 200, log = () => {} }) {
   const tracked = new Map();                           // pid → start (the identity we are ending)
@@ -206,7 +254,7 @@ async function terminateMarked({ select, same, readTable = () => { const t = rea
 }
 // The supervisor's own start (epoch seconds), read with the same normalisation the scan uses.
 function ownStart(pid = process.pid) {
-  const out = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'pid=,state=,lstart=,args='], { encoding: 'utf8', env: PS_ENV }).trim();
+  const out = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'pid=,state=,lstart=,args='], { encoding: 'utf8', env: PS_ENV, timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' }).trim();   // bounded (codex r2 P2)
   const r = parsePsLine(out);
   if (!r || r.start === null) throw new Error(`emu-alloc: could not read lstart for pid ${pid} (${JSON.stringify(out)})`);
   return r.start;
@@ -308,6 +356,8 @@ async function acquireSlot(opts) {
         continue;
       }
       if (!(await probeBand(slot))) { await closeServer(server); lastReason = `slot ${slot} sentinel free but a band port is busy (an un-sentinelled listener)`; log(lastReason); continue; }
+      // codex r2 P2: a cancel that arrived DURING the awaited scan/probe must not be admitted — release and stop
+      if (signal && signal.aborted) { await closeServer(server); throw cancelled(); }
       return { slot, server, offset: slot * 10 };
     }
     if (pin != null) return { slot: null, reason: lastReason };
@@ -322,6 +372,6 @@ module.exports = {
   SLOTS, SENTINEL_BASE, FIXTURE_SENTINEL_BASE, RUN_VAR, OFFSET_VAR, PS_ENV,
   sentinelPort, newNonce, formatMarker, parseMarker,
   parsePsLine, isZombie, isFallback, markerIn, joinScans, classifyScan,
-  readPsTables, readPsRow, pidAlive, scanSlot, ownStart, terminateMarked, PS_TIMEOUT_MS,
+  readPsTables, readPsRow, pidAlive, scanSlot, ownStart, terminateMarked, PS_TIMEOUT_MS, analyzeTables, readUnionTable, SCAN_TRIES,
   bindSentinel, closeServer, probePort, PROBE_HOSTS, shuffle, acquireSlot,
 };

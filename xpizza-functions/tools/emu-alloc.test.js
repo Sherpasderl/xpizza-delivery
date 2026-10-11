@@ -99,6 +99,33 @@ const childEnv = (extra = {}) => {
     ok('a free slot, a live run (occupied, not orphan), a dead supervisor (orphan), PID reuse (orphan), a zombie (skipped), a live unreadable row (INCOMPLETE) and a vanished one (skipped) are each classified correctly');
   }
 
+  // ── 3b. THE SNAPSHOT HANDOFF (codex R1-build r2 P1-1): parent P spawns child C and exits BETWEEN the snapshots ─────
+  {
+    const T2 = 'Sat Oct 10 22:00:09 2026';
+    const T2s = Math.floor(Date.parse(`${T2} UTC`) / 1000);
+    const dead = 4000;                                            // the run's supervisor: gone
+    const P = (env = true) => L(4101, 'S', T0, `node writer.js${env ? ` PATH=/x ${mk(5, dead, T0s)}` : ''}`);
+    const C = (env = true) => L(4102, 'S', T2, `node writer.js${env ? ` PATH=/x ${mk(5, dead, T0s)}` : ''}`);
+    const alive = (pid) => pid === 4102;                          // P exited; C lives on and keeps writing
+    // codex's exact sequence: -E sees P; plain sees C (P has exited); -E again sees C
+    const handoff = { withEnv: [P()], plain: [C(false)], withEnv2: [C()] };
+    const stableAfter = { withEnv: [C()], plain: [C(false)], withEnv2: [C()] };
+    const r1 = A.scanSlot(5, { tables: [handoff, stableAfter], isAlive: alive });
+    assert.ok(r1.occupied && r1.orphans.some((o) => o.pid === 4102), `🔴 the handoff child C was not classified — the slot would be silently admitted: ${JSON.stringify(r1)}`);
+    // the UNION alone, even on a single triple, must already see C (the two-snapshot read missed it)
+    const one = A.analyzeTables(handoff, alive);
+    assert.ok(!one.stable && one.union.some((r) => r.pid === 4102), '🔴 the union of both -E views does not contain the handoff child');
+    // a population that NEVER settles ⇒ INCOMPLETE after the bounded tries (never a silent admit)
+    const churn = { withEnv: [P()], plain: [], withEnv2: [] };
+    const r2 = A.scanSlot(5, { tables: [churn, churn, churn], isAlive: () => false });
+    assert.strictEqual(r2.incomplete, true, `🔴 a population that changed on every try was not INCOMPLETE: ${JSON.stringify(r2)}`);
+    assert.match(r2.unreadable[0].why, /changed between snapshots 3×/);
+    // an UNMARKED birth between snapshots (the machine's constant churn) does NOT destabilise the scan
+    const birth = { withEnv: [L(7, 'S', T0, 'node x.js'), L(7, 'S', T0, 'node x.js')].slice(0, 1), plain: [L(7, 'S', T0, 'node x.js')], withEnv2: [L(7, 'S', T0, 'node x.js'), L(8, 'S', T0, 'node other.js HOME=/h')] };
+    assert.ok(A.analyzeTables(birth, () => true).stable, '🔴 an unmarked process born between snapshots made the scan unstable (every busy machine would quarantine)');
+    ok('snapshot handoff: codex\'s sequence (P in -E, only C in plain, C in -E again) classifies C as an orphan — never a silent admit; the union alone contains C; a population that changes on every try is INCOMPLETE after 3; an unmarked birth between snapshots does not destabilise');
+  }
+
   // ── 4. P1-B ON THIS MACHINE: a normal process table admits a free slot ─────────────────────────────
   {
     let incomplete = 0; const occupied = [];
@@ -262,6 +289,15 @@ const childEnv = (extra = {}) => {
       assert.ok(Date.now() - t0 < 1500, `🔴 cancellation was not prompt (${Date.now() - t0} ms)`);
       for (const h of held2) await A.closeServer(h);
       const free0 = await bindMapped(0); assert.ok(free0, 'nothing leaked by the cancelled queue'); await A.closeServer(free0);
+    }
+    // CANCEL DURING ADMISSION (codex r2 P2): an abort that lands inside the awaited probe is NOT admitted, and the
+    // sentinel it held is released
+    {
+      const ac = new AbortController();
+      await assert.rejects(() => A.acquireSlot(deps({ signal: ac.signal, probeBand: async () => { ac.abort(); return true; } })), (e) => e && e.code === 'ECANCELLED', '🔴 a cancel during the probe was ADMITTED (the suite would launch)');
+      const back = await Promise.all([...Array(SL)].map((_, i) => bindMapped(i)));
+      assert.ok(back.every(Boolean), '🔴 the cancelled admission leaked its sentinel');
+      for (const b of back) await A.closeServer(b);
     }
     // DEADLINE PER SLOT: a slow scan cannot carry a sweep past the deadline (fake clock; each scan costs 1 s)
     {
@@ -447,6 +483,9 @@ const childEnv = (extra = {}) => {
       const c2 = await new Promise((r2) => w2.once('exit', (c) => r2(c)));
       assert.strictEqual(c2, 143, `the wrapper exits 128+SIGTERM (got ${c2})`);
       assert.ok(!fs.existsSync(flag), '🔴 a later step started after the wrapper was signalled');
+      // a step killed by ANY signal yields the shell-equivalent 128+N (SIGABRT → 134), not a fixed 129
+      const ab = require('child_process').spawnSync(process.execPath, [WRAP, encode([['node', '-e', "process.kill(process.pid, 'SIGABRT')"]])], { encoding: 'utf8', env: childEnv() });
+      assert.strictEqual(ab.status, 128 + require('os').constants.signals.SIGABRT, `🔴 a SIGABRT step mapped to ${ab.status}, not 128+SIGABRT`);
       // a non-node step is refused by the payload decoder itself
       const bad = require('child_process').spawnSync(process.execPath, [WRAP, encode([['sh', '-c', 'true']])], { encoding: 'utf8', env: childEnv() });
       assert.strictEqual(bad.status, 2, '🔴 the wrapper ran a non-node step');

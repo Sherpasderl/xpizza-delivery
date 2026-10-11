@@ -7,7 +7,8 @@
  * (or, with lib/admin's guard, refuse at cold start). That was a documented residual ("production assumes the signals
  * are absent"); this turns it into a CHECKED invariant over exactly what `firebase deploy --only functions` loads:
  * firebase-tools 15.16.0 functions/env.js findEnvfiles() → `.env`, `.env.<projectId>`, `.env.<alias>` (+ `.env.local`
- * for the emulator only), in the functions source dir — for every project and alias in .firebaserc.
+ * for the emulator only), in the functions source dir — for every project and EVERY alias in .firebaserc, `default`
+ * included. ENFORCED on the deploy path: firebase.json runs it as the FIRST functions predeploy hook.
  *
  * Reads KEY NAMES only. Values are never printed or returned: these files hold production secrets.
  *   node tools/deploy-env-guard.js [--root <functions-dir>]   → exit 0 clean, 1 if a forbidden key is present
@@ -32,7 +33,9 @@ function deployEnvFiles(root = ROOT) {
   const rcPath = [path.join(root, '.firebaserc'), path.join(root, '..', '.firebaserc')].find((p) => fs.existsSync(p));
   const rc = rcPath ? JSON.parse(fs.readFileSync(rcPath, 'utf8')) : { projects: {} };
   const names = new Set(['.env']);
-  for (const [alias, id] of Object.entries(rc.projects || {})) { names.add(`.env.${id}`); if (alias !== 'default') names.add(`.env.${alias}`); }
+  // EVERY alias, INCLUDING `default`: firebase-tools selects the `default` alias for a bare deploy (command.js:231) and
+  // functions/env.js:152 then loads `.env.default` (codex r2 P1-3) — excluding it left that file unchecked.
+  for (const [alias, id] of Object.entries(rc.projects || {})) { names.add(`.env.${id}`); names.add(`.env.${alias}`); }
   const fb = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
   const sources = [].concat(fb.functions || []).map((f) => path.resolve(root, f.source || '.'));
   const out = [];
