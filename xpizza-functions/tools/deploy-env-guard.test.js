@@ -129,5 +129,46 @@ try {
     assert.match(noCli.stderr, /deploy is BLOCKED[\s\S]*npm i -g firebase-tools/, 'it says the deploy is blocked and how to fix it');
     ok('codex\'s backtick input: the embedded FIRESTORE_EMULATOR_HOST (a key under the deploy\'s own parser) is caught; with no resolvable firebase-tools the guard FAILS CLOSED (exit 1: deploy blocked, how to fix) — there is no fallback parser');
   }
+  // 9. codex r5 — NO VALUE EVER LEAKS on ANY exit path, and the FIRST `firebase` on PATH decides (never a later one)
+  {
+    const SECRET = 'xyzzy-PLANTED-SECRET-9f8e7d';
+    const guard = (root, env) => spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', root], { encoding: 'utf8', env: { ...process.env, GCLOUD_PROJECT: 'proj-x', ...env } });
+    const paths = [
+      ['parse error (a malformed line carrying a secret)', tree({ '.env': `OK=1\nAPI-KEY=${SECRET}\n` }), {}, 1, /\.env: parse error: 1 unparseable line\(s\) \(line 2\)/],
+      ['forbidden key with a secret value', tree({ '.env': `FIRESTORE_EMULATOR_HOST=${SECRET}\n` }), {}, 1, /\.env: FIRESTORE_EMULATOR_HOST/],
+      ['unresolvable CLI (with a secret in the file)', tree({ '.env': `TOKEN=${SECRET}\n` }), { PATH: '/usr/bin:/bin' }, 1, /deploy is BLOCKED/],
+      ['clean pass (a secret value present)', tree({ '.env': `TOKEN=${SECRET}\n` }), {}, 0, /deploy-env-guard: OK/],
+    ];
+    for (const [label, root, env, code, re] of paths) {
+      const r = guard(root, env);
+      assert.strictEqual(r.status, code, `${label}: exit ${r.status}\n${r.stderr}`);
+      assert.match(`${r.stdout}${r.stderr}`, re, `${label}: the expected message`);
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(SECRET), `🔴 ${label}: a VALUE was printed`);
+    }
+    // an EARLIER `firebase` on PATH that is not firebase-tools (a wrapper script) ⇒ FAIL CLOSED, even though the real CLI
+    // is later on PATH — the deploy would run the wrapper, so its parser cannot be vouched for
+    const wrapDir = fs.mkdtempSync(path.join(tmp, 'wrap-'));
+    fs.writeFileSync(path.join(wrapDir, 'firebase'), '#!/bin/sh\nexec /usr/local/bin/firebase "$@"\n', { mode: 0o755 });
+    const realBin = path.dirname(fs.realpathSync(require('child_process').execFileSync('/usr/bin/which', ['firebase'], { encoding: 'utf8' }).trim()));
+    const wrapped = guard(tree({ '.env': 'A=1\n' }), { PATH: `${wrapDir}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}/usr/local/bin${path.delimiter}${realBin}` });
+    assert.strictEqual(wrapped.status, 1, `🔴 an earlier non-firebase-tools 'firebase' on PATH was skipped past (exit ${wrapped.status})`);
+    assert.match(wrapped.stderr, /the FIRST `firebase` on PATH is missing, or is not inside a firebase-tools package/);
+    // the FIRST `firebase` resolves INSIDE another package (nested in a firebase-tools-shaped dir): the NEAREST package
+    // decides — it is not firebase-tools ⇒ fail closed (walking further up to the outer firebase-tools would vouch for a
+    // parser the deploy does not run)
+    {
+      const outer = fs.mkdtempSync(path.join(tmp, 'fake-ft-'));
+      fs.writeFileSync(path.join(outer, 'package.json'), JSON.stringify({ name: 'firebase-tools' }));
+      fs.mkdirSync(path.join(outer, 'lib', 'functions'), { recursive: true });
+      fs.writeFileSync(path.join(outer, 'lib', 'functions', 'env.js'), `module.exports = require(${JSON.stringify('/usr/local/lib/node_modules/firebase-tools/lib/functions/env.js')});`);
+      const inner = path.join(outer, 'node_modules', 'other');
+      fs.mkdirSync(path.join(inner, 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(inner, 'package.json'), JSON.stringify({ name: 'other-tool' }));
+      fs.writeFileSync(path.join(inner, 'bin', 'firebase'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      const nested = guard(tree({ '.env': 'A=1\n' }), { PATH: `${path.join(inner, 'bin')}${path.delimiter}/usr/bin${path.delimiter}/bin` });
+      assert.strictEqual(nested.status, 1, `🔴 a first 'firebase' inside a NON-firebase-tools package was accepted via an OUTER firebase-tools dir (exit ${nested.status})`);
+    }
+    ok('no value is printed on ANY exit path (parse error — count + line number only, forbidden key, unresolvable CLI, clean pass), each with a planted secret; an EARLIER non-firebase-tools `firebase` on PATH FAILS CLOSED instead of skipping to the real CLI later on PATH, and so does a first `firebase` whose NEAREST package is not firebase-tools (never an outer one)');
+  }
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log(`\ndeploy-env-guard: OK (${n})`);

@@ -11186,5 +11186,37 @@
       "node",
       "tools/emu-alloc.test.js"
     ]
+  },
+  {
+    "id": "r1-33",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "            const e = new Error(`parse error: ${r.errors.length} unparseable line(s)${nums.length ? ` (line ${nums.join(', ')})` : ''} — the deploy's parseStrict would refuse this file too`);",
+    "to": "            const e = new Error(`parse error on: ${r.errors.join(',')}`);",
+    "label": "a parse-error diagnostic prints the raw line (a secret leaks)",
+    "kills_with": [
+      "a VALUE was printed",
+      "the expected message"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-34",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    if (name !== 'firebase-tools') return null;            // the nearest package is NOT firebase-tools ⇒ fail closed",
+    "to": "    if (name !== 'firebase-tools') continue;",
+    "label": "a non-firebase-tools `firebase` earlier on PATH is skipped (a later candidate vouches for a parser the deploy does not run)",
+    "kills_with": [
+      "inside a NON-firebase-tools package was accepted via an OUTER firebase-tools dir",
+      "an earlier non-firebase-tools 'firebase' on PATH was skipped past"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
   }
 ]

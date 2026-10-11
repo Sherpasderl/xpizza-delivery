@@ -32,28 +32,43 @@ const FORBIDDEN = new Set([
    returns as a key. So the parser is resolved the way the deploy resolves the CLI — the `firebase` executable on PATH,
    realpath'd to its firebase-tools package — and if it cannot be resolved the guard FAILS CLOSED (deploy blocked). */
 function resolveFirebaseTools(env = process.env) {
-  const dirs = String(env.PATH || '').split(path.delimiter).filter(Boolean);
-  for (const d of dirs) {
+  /* The FIRST executable `firebase` on PATH is the one the deploy runs (codex r5 P2) — never skip past it to a later
+     candidate: if its realpath is not inside a firebase-tools package with functions/env.js, FAIL CLOSED (return null). */
+  let first = null;
+  for (const d of String(env.PATH || '').split(path.delimiter).filter(Boolean)) {
     const bin = path.join(d, 'firebase');
-    let real;
-    try { real = fs.realpathSync(bin); } catch { continue; }
-    for (let dir = path.dirname(real); dir !== path.dirname(dir); dir = path.dirname(dir)) {
-      const pj = path.join(dir, 'package.json');
-      if (!fs.existsSync(pj)) continue;
-      let name = null; try { name = JSON.parse(fs.readFileSync(pj, 'utf8')).name; } catch { /* unreadable */ }
-      if (name !== 'firebase-tools') continue;
-      const envJs = path.join(dir, 'lib', 'functions', 'env.js');
-      /* parseStrict = parse() + reserved-key validation; it THROWS on a reserved key (e.g. any FIREBASE_* name), which would
-         hide WHICH keys are there. So the keys come from the same CLI's parse() — identical parsing — and a parse ERROR
-         is itself blocking (parseStrict would refuse that file at deploy too). */
-      try {
-        const E = require(envJs);
-        if (typeof E.parse === 'function' && typeof E.parseStrict === 'function') {
-          return { root: dir, name: `firebase-tools functions/env.js parse (${dir})`, keys: (t) => { const r = E.parse(t); if (r.errors && r.errors.length) { const e = new Error(`unparseable line(s) ${r.errors.join(',')} — the deploy's parseStrict would refuse this file too`); e.code = 'EUNPARSEABLE'; throw e; } return Object.keys(r.envs || {}); } };
-        }
-      } catch { /* broken install */ }
-      break;
-    }
+    try { const st = fs.statSync(bin); if (!st.isFile()) continue; fs.accessSync(bin, fs.constants.X_OK); first = bin; break; } catch { /* not here */ }
+  }
+  if (!first) return null;
+  let real;
+  try { real = fs.realpathSync(first); } catch { return null; }
+  for (let dir = path.dirname(real); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+    const pj = path.join(dir, 'package.json');
+    if (!fs.existsSync(pj)) continue;
+    let name = null; try { name = JSON.parse(fs.readFileSync(pj, 'utf8')).name; } catch { /* unreadable */ }
+    if (name !== 'firebase-tools') return null;            // the nearest package is NOT firebase-tools ⇒ fail closed
+    /* parseStrict = parse() + reserved-key validation; it THROWS on a reserved key (e.g. any FIREBASE_* name), which would
+       hide WHICH keys are there. So the keys come from the same CLI's parse() — identical parsing — and a parse ERROR
+       is itself blocking (parseStrict would refuse that file at deploy too). */
+    try {
+      const E = require(path.join(dir, 'lib', 'functions', 'env.js'));
+      if (typeof E.parse !== 'function' || typeof E.parseStrict !== 'function') return null;
+      return {
+        root: dir, name: `firebase-tools functions/env.js parse (${dir})`,
+        keys: (t) => {
+          const r = E.parse(t);
+          if (r.errors && r.errors.length) {
+            /* codex r5 P1: r.errors are the RAW unmatched lines — they can CONTAIN a secret. Report only the COUNT and
+               the line NUMBERS (computed here), never the content. */
+            const lines = String(t).replace(/\r\n?/g, '\n').split('\n');
+            const nums = r.errors.map((raw) => lines.indexOf(String(raw).replace(/\r$/, '')) + 1).filter((x) => x > 0);
+            const e = new Error(`parse error: ${r.errors.length} unparseable line(s)${nums.length ? ` (line ${nums.join(', ')})` : ''} — the deploy's parseStrict would refuse this file too`);
+            e.code = 'EUNPARSEABLE'; throw e;
+          }
+          return Object.keys(r.envs || {});
+        },
+      };
+    } catch { return null; }
   }
   return null;
 }
@@ -61,7 +76,7 @@ let PARSER = null;
 const parser = () => {
   if (!PARSER) PARSER = resolveFirebaseTools();
   if (!PARSER) {
-    const e = new Error('cannot resolve the firebase-tools that deploys (no `firebase` on PATH whose package provides lib/functions/env.js parse/parseStrict) — the deploy env cannot be read with the deploy\'s own parser, so the deploy is BLOCKED. Fix: install firebase-tools (npm i -g firebase-tools) so `firebase` is on PATH, then re-run.');
+    const e = new Error('cannot resolve the firebase-tools that deploys (the FIRST `firebase` on PATH is missing, or is not inside a firebase-tools package providing lib/functions/env.js parse/parseStrict) — the deploy env cannot be read with the deploy\'s own parser, so the deploy is BLOCKED. Fix: install firebase-tools (npm i -g firebase-tools) so `firebase` is on PATH, then re-run.');
     e.code = 'ENOPARSER';
     throw e;
   }
