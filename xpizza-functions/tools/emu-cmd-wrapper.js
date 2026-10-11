@@ -33,7 +33,28 @@ if (require.main !== module) return;
 
 let steps;
 try { steps = decode(process.argv[2]); } catch (e) { console.error(`emulator-run: 🔴 ${e.message}`); process.exit(2); }
-if (process.env.XPIZZA_EMU_STARTED_FILE) { try { fs.writeFileSync(process.env.XPIZZA_EMU_STARTED_FILE, String(process.pid)); } catch { /* best-effort signal */ } }
+
+/* RULES MUST COMPILE (codex R1-build P2-7). Measured: an INVALID, non-empty firestore.rules starts the Firestore emulator
+   with NO error on the console, and the suite ran anyway. So before the first step, the run's own rules are (re)loaded
+   through the emulator's rules API — the same PUT firebase-tools uses on a rules change — with ignore_errors:false, and
+   any ERROR issue (or a failed load) REFUSES the run instead of leaving unknown rules in force. */
+async function assertFirestoreRules() {
+  const file = process.env.XPIZZA_EMU_FS_RULES;
+  const host = process.env.FIRESTORE_EMULATOR_HOST;
+  if (!file || !host || host === '127.0.0.1:1') return;
+  const project = process.env.GCLOUD_PROJECT;
+  const res = await fetch(`http://${host}/emulator/v1/projects/${project}:securityRules`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ignore_errors: false, rules: { files: [{ name: 'security.rules', content: fs.readFileSync(file, 'utf8') }] } }),
+  });
+  const body = await res.json().catch(() => ({}));
+  const errors = (Array.isArray(body.issues) ? body.issues : []).filter((i) => String(i.severity).toUpperCase() === 'ERROR');
+  if (!res.ok || errors.length) {
+    console.error(`\nemulator-run: 🔴 REFUSED — the Firestore rules (${file}) did not load: HTTP ${res.status}${errors.length ? `, ${errors.length} compile error(s): ${errors.slice(0, 3).map((i) => `${(i.sourcePosition || {}).line}:${(i.sourcePosition || {}).column} ${i.description}`).join(' | ')}` : ''}.`);
+    console.error('emulator-run:    Running the suite against unknown rules would make every rules assertion meaningless.\n');
+    process.exit(2);
+  }
+}
 
 let current = null;
 let stopping = null;
@@ -46,6 +67,8 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 }
 
 (async () => {
+  await assertFirestoreRules();
+  if (process.env.XPIZZA_EMU_STARTED_FILE) { try { fs.writeFileSync(process.env.XPIZZA_EMU_STARTED_FILE, String(process.pid)); } catch { /* best-effort signal */ } }
   for (const argv of steps) {
     if (stopping) break;
     current = spawn(process.execPath, argv.slice(1), { stdio: 'inherit', env: process.env });

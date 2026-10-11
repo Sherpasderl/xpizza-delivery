@@ -99,7 +99,7 @@ function childEnv(services, parentEnv, run = null) {
   }
   // Inherited run identity is never trusted: a nested or stale value would name someone else's slot. An inherited
   // FIREBASE_CONFIG is scrubbed too (codex R1-build P2-6): the CLI derives the run's own from --project for the suite.
-  for (const v of [ALLOC.RUN_VAR, ALLOC.OFFSET_VAR, EE.SERVICES_VAR, EE.DEAD_VAR, 'FIREBASE_CONFIG']) delete env[v];
+  for (const v of [ALLOC.RUN_VAR, ALLOC.OFFSET_VAR, EE.SERVICES_VAR, EE.DEAD_VAR, 'FIREBASE_CONFIG', 'XPIZZA_EMU_FS_RULES', 'XPIZZA_EMU_STARTED_FILE']) delete env[v];
   if (run) {
     env[ALLOC.RUN_VAR] = ALLOC.formatMarker(run);
     env[ALLOC.OFFSET_VAR] = String(run.slot * 10);
@@ -450,6 +450,7 @@ async function runOnce(excluded, deadlineMs) {
   env.GCLOUD_PROJECT = PROJECT;
   env.GOOGLE_CLOUD_PROJECT = PROJECT;
   env.XPIZZA_EMU_STARTED_FILE = startedFile;
+  { const fb = JSON.parse(fs.readFileSync(BASE_CONFIG, 'utf8')); if (services.includes('firestore') && fb.firestore && fb.firestore.rules) env.XPIZZA_EMU_FS_RULES = path.join(ROOT, fb.firestore.rules); }
   if (env.NODE_OPTIONS) env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/--require[= ]\S*count-marks\.js/g, '').trim() || undefined;
   if (env.NODE_OPTIONS === undefined) delete env.NODE_OPTIONS;
 
