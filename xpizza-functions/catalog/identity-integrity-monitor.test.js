@@ -231,6 +231,10 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
       assert.ok(h.c.units <= cap, `cap ${cap}: ${h.c.units} units ISSUED > the cap`);
       assert.ok(h.c.units <= out.reads, `cap ${cap}: ${h.c.units} issued ≤ ${out.reads} reserved (every issued read was reserved first)`);
       if (h.c.units > worst.issued) worst = { cap, issued: h.c.units };
+      // PER STAGE: every RTDB transaction issued (each check's commit, its failure record, the first-enumeration records) had a
+      // reservation of its own — the slack other stages over-reserve (e.g. the growth count's 21) can never hide an unreserved one
+      const st = out.reservedByStage || {};
+      assert.ok((h.c.tx || 0) <= (st.commit || 0) + (st.enumerated || 0), `cap ${cap}: ${h.c.tx || 0} transactions issued > ${(st.commit || 0) + (st.enumerated || 0)} reserved for them ${JSON.stringify(st)}`);
       if (cap === 90) assert.ok(h.c.txFailRecords >= 1, `premise: the failure-record transaction ran after a failed main commit (${JSON.stringify(h.c)})`);
     }
     // cap 1: the enumeration's maximum does not fit → NOTHING is listed (never "1 reserved, 20 listed")

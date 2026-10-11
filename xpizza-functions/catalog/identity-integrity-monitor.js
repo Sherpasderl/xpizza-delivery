@@ -65,10 +65,11 @@ class OversizedDeferral extends Error { constructor(reason) { super(reason); thi
    in its first second). Count queries are reserved at their billed upper bound (limit(401) ≤ 1, limit(20001) ≤ 21). */
 function createReadBudget({ cap = RUN_READ_CAP, perSecond = READS_PER_SECOND, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   let used = 0;
+  const byStage = {};  // reserved reads per stage — observability, and the per-stage proof that every issued operation was reserved
   const window = [];   // [t, n] issued within the last second
   const log = [];      // (t, n) per paced read — the pacing assertion reads this
   return {
-    reserve(n, stage) { if (used + n > cap) throw new BudgetDeferral(stage); used += n; },
+    reserve(n, stage) { if (used + n > cap) throw new BudgetDeferral(stage); used += n; byStage[stage] = (byStage[stage] || 0) + n; },
     async pace(n) {
       if (n > perSecond) throw new RangeError(`pace: one operation of ${n} reads exceeds the ${perSecond}/s limit`);
       for (;;) {
@@ -82,6 +83,7 @@ function createReadBudget({ cap = RUN_READ_CAP, perSecond = READS_PER_SECOND, no
     // an UNUSED part of an up-front reservation (the enumeration's maximum) is returned once the actual cost is known
     release(n) { used = Math.max(0, used - Math.max(0, n)); },
     used: () => used,
+    byStage: () => ({ ...byStage }),
     log,
   };
 }
@@ -377,7 +379,7 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
       budget.release(enumerationMax - Math.max(1, Math.min(listed, enumerationMax)));   // the actual cost: one per listed restaurant (≥ 1)
     } catch (e) {
       log('identity_integrity_run', { ok: false, error: String((e && e.message) || e).slice(0, 160), reads: budget.used() });
-      return { ok: false, results: [], reads: budget.used(), pacing: budget.log };
+      return { ok: false, results: [], reads: budget.used(), reservedByStage: budget.byStage(), pacing: budget.log };
     }
     let summaryReserved = true;
     try { budget.reserve(2 * ids.length, 'summaries'); } catch (_) { summaryReserved = false; enumeratedOk = false; }
@@ -422,7 +424,7 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     const covered = results.filter((r) => r.outcome === 'checked').length;
     if (enumeratedOk && !anyStale) log('identity_integrity_heartbeat', S.heartbeatLine({ enumerated: ids.length, covered }));
     log('identity_integrity_run', { ok: true, run: id, enumerated: ids.length, covered, reads: budget.used(), outcomes: results.map((r) => `${r.rid}:${r.outcome}`) });
-    return { ok: true, run: id, ids, results, lines, reads: budget.used(), pacing: budget.log };
+    return { ok: true, run: id, ids, results, lines, reads: budget.used(), reservedByStage: budget.byStage(), pacing: budget.log };
   }
 
   return { run, checkRestaurant, commit };
