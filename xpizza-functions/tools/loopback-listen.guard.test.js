@@ -62,5 +62,27 @@ const shadowProbe = (listenArgs) => new Promise((resolve, reject) => {
     assert.deepStrictEqual(offenders, [], `🔴 test servers listening on the WILDCARD (shadowable by another process's 127.0.0.1 bind):\n  ${offenders.join('\n  ')}`);
     ok(`all ${checked} test-side ephemeral servers (listen(0, …)) bind 127.0.0.1 explicitly — none can be shadowed`);
   }
+  // 3. a FROZEN golden captured on a wildcard server recorded the IPv4-mapped peer ('::ffff:127.0.0.1') in its per-IP
+  //    rate-limit keys; a 127.0.0.1-bound server's peer is '127.0.0.1'. Every suite whose golden holds that peer's hash
+  //    must pin the client identity explicitly (X-Forwarded-For = the golden's peer), or its trace changes with the bind.
+  {
+    const crypto = require('crypto');
+    const ipKey = (ip) => crypto.createHash('sha256').update(ip).digest('hex').slice(0, 32);
+    const WILD = ipKey('::ffff:127.0.0.1');
+    const FN = path.join(REPO, 'xpizza-functions');
+    const goldensWithPeer = fs.readdirSync(path.join(FN, 'catalog')).filter((f) => f.endsWith('.golden.json') && fs.readFileSync(path.join(FN, 'catalog', f), 'utf8').includes(WILD));
+    assert.ok(goldensWithPeer.length >= 4, `premise — the wildcard-peer goldens were found (${goldensWithPeer.join(', ')})`);
+    const unpinned = [];
+    for (const g of goldensWithPeer) {
+      const readers = fs.readdirSync(path.join(FN, 'test')).filter((f) => /\.js$/.test(f) && fs.readFileSync(path.join(FN, 'test', f), 'utf8').includes(g));
+      if (!readers.length) unpinned.push(`${g}: no reader found`);
+      for (const r of readers) {
+        const src = fs.readFileSync(path.join(FN, 'test', r), 'utf8');
+        if (!/const GOLDEN_CLIENT_IP = '::ffff:127\.0\.0\.1';/.test(src) || !/'x-forwarded-for': GOLDEN_CLIENT_IP/.test(src)) unpinned.push(`test/${r} (golden ${g})`);
+      }
+    }
+    assert.deepStrictEqual(unpinned, [], `🔴 a suite whose FROZEN golden holds the wildcard peer's IP key does not pin that client identity:\n  ${unpinned.join('\n  ')}`);
+    ok(`all ${goldensWithPeer.length} goldens holding the wildcard peer's IP key are read by suites that pin X-Forwarded-For = '::ffff:127.0.0.1' (the bind does not change their trace)`);
+  }
   console.log(`\nloopback-listen guard: OK (${n})`);
 })().catch((e) => { console.error('LOOPBACK-LISTEN GUARD FAILED:', e && e.stack || e); process.exit(1); });

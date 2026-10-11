@@ -124,12 +124,17 @@ async function seedPreP1(rid) {
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
   await asPreP1(rid, res.versionId);
 }
+/* R1b: the server binds 127.0.0.1 (exclusive — see tools/loopback-listen.guard.test.js), so the socket peer is
+   '127.0.0.1'; the FROZEN golden was captured on a wildcard server, whose IPv4 peer is '::ffff:127.0.0.1'. The handlers
+   key their per-IP rate limit on the left-most X-Forwarded-For first (index.js clientIp), so the golden's client identity
+   is pinned EXPLICITLY here instead of depending on the socket family. */
+const GOLDEN_CLIENT_IP = '::ffff:127.0.0.1';
 function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
+        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-forwarded-for': GOLDEN_CLIENT_IP, ...headers }, body: JSON.stringify(body) });
         const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
         s.close(() => resolve({ status: res.status, json: j, text: t }));
       } catch (e) { s.close(() => reject(e)); }
