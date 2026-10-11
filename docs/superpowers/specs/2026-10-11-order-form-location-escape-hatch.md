@@ -101,6 +101,20 @@ byte-identical across forms (locPickPred + the processPayment guard block diff-c
 
 The flag now means exactly "current location is not a validly-placed point" — set on a failed/hung/capped pick, cleared by any real confirmed location.
 
+## REVISE round 7 (gate on 70b81515 — 3 more fallback-submit edges; same root)
+
+Codex reproduced 3 edges that submit the FALLBACK. Fixed #1+#2 with targeted patches to the negative
+`__locPickFailed` flag (NOT the proposed positive `__locConfirmed` refactor — see the note below). #3 held.
+
+1. 🔴 **location:null** — `fetchFields` RESOLVES but `place.location` is null → `placePin` skipped, flag not set → checkout released → fallback shipped. FIX: a pick that resolves with no usable location is now treated as a FAILED pick (`if(outcome!=='__ok' || !loc || typeof loc.lat!=='function')`), so it refuses.
+2. 🔴 **editor-correction-during-pending-pick** — a fullscreen/drag/GPS fix made WHILE a pick is pending, then the pick's later timeout re-set the flag → the valid fix got refused. FIX: a pick's failure sets the flag ONLY if the coords are still at the pre-pick point (`stillStart = lat===beforeLat && lng===beforeLng`). A stale pick's failure can neither re-refuse nor clobber a point confirmed meanwhile. (The existing moved-pin guard already covered the stale-*success* case.)
+
+**Why NOT the positive `__locConfirmed` refactor (surfaced to the advisor):** "`processPayment` refuses iff NOT `__locConfirmed`" would refuse **plain-fallback and GPS-pending** submits — reintroducing the universal "confirmá tu ubicación" gate the OWNER DECLINED (Out of scope, above) and adding happy-path friction. The negative flag refuses ONLY when a user-initiated pick failed; it leaves the pre-existing fallback submit allowed. It fixes #1+#2 and sidesteps #3 entirely (it never imposes a confirm requirement, so an editor commit at the unchanged fallback is simply the pre-existing allowed fallback submit — not a new false-clear).
+
+3. ⏸️ **unchanged-fallback-editor-commit** — HELD pending the owner's scope call (relayed by the advisor). It's the pre-existing editor behavior (closeFullscreenMap blesses the fallback center unconditionally); under the negative flag it is NOT a regression (fallback was always submittable). Fixing it = making the editor distinguish "moved" vs "pressed Listo unchanged," which changes pre-existing editor behavior → owner decision.
+
+Tests (`location-pick-submit-sync`, both forms): added location:null→refused and editor-correction-during-pending-pick→editor-coords. 20/20. order-form-location-escape 28/28; cart-decoupling 76.
+
 ## Separate (surfaced to owner — NOT in this diff)
 
 Telemetry (#3) transmits `client_user_agent`/`client_referrer` but the server does NOT persist them (`createOrder` / `create-order-build.js` writes only known fields), so Phase-1 telemetry currently measures nothing — even "later". Delivering its purpose needs a small additive functions change (persist the 2 fields onto the order node) with its own gate + deploy. Held as an owner call; the transmission code is correct, it just has no sink yet. See memory [[phase1-telemetry-no-server-sink]].

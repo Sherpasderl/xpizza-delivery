@@ -41,6 +41,12 @@ function heldPred(pt) {
   const place = { location: { lat: () => pt.lat, lng: () => pt.lng }, fetchFields: () => new Promise((rs, rj) => { resolve = rs; reject = rj; }) };
   return { p: { mainText: { text: 'Place' }, text: { text: 'Place' }, toPlace: () => place }, resolve: () => resolve(), reject: () => reject(new Error('fetchFields failed')) };
 }
+// a prediction whose details fetch RESOLVES but yields NO location (the Places "resolved-with-null" case)
+function nullPred() {
+  let resolve;
+  const place = { location: null, fetchFields: () => new Promise((rs) => { resolve = rs; }) };
+  return { p: { mainText: { text: 'NoLoc' }, text: { text: 'NoLoc' }, toPlace: () => place }, resolve: () => resolve() };
+}
 
 // Load a form, drive cart + contact fields + delivery preconditions, enter the GPS-fail fallback state.
 async function base(dir, { card, timeoutMs, capMs } = {}) {
@@ -162,6 +168,35 @@ async function cellOuterCap(dir) {
   ok(`${dir}: outer cap fails closed (refuses, never ships the fallback)`);
 }
 
+// ── 7. A pick that RESOLVES WITH NO location (location:null) is a FAILED pick → REFUSED (not fallback). ──
+async function cellNullLocation(dir) {
+  const { w, sent, g } = await base(dir, { card: false });
+  const np = nullPred();
+  const pk = w.locPickPred(np.p, 'NoLoc'); if (pk && pk.catch) pk.catch(() => {});
+  np.resolve(); // fetchFields RESOLVES, but place.location is null
+  await settle(); await settle();
+  const pay = w.processPayment(); if (pay && pay.catch) pay.catch(() => {});
+  await settle(); await settle();
+  assert.ok(!sent.createOrder && !sent.charge, `${dir}: 🔴 a pick that resolves with NO location must REFUSE — never ship the fallback`);
+  assert.ok(/No pudimos ubicar/.test(g('err3').textContent), `${dir}: location:null → the failure message is shown`);
+  ok(`${dir}: pick resolves with location:null → refused (not fallback)`);
+}
+
+// ── 8. An editor correction made WHILE a pick is pending is NOT un-confirmed by the pick's later timeout. ──
+async function cellEditorDuringPending(dir) {
+  const { w, sent } = await base(dir, { card: false, timeoutMs: 40 });
+  const a = heldPred(A); const pkA = w.locPickPred(a.p, 'A'); if (pkA && pkA.catch) pkA.catch(() => {}); // A pending (will time out at 40ms)
+  w.openFullscreenMap(); await settle();
+  w.__fsCenter = { lat: () => EDITOR.lat, lng: () => EDITOR.lng };
+  w.closeFullscreenMap(); await settle(); // EDITOR coords confirmed WHILE A is still pending
+  await new Promise((r) => setTimeout(r, 60)); await settle(); await settle(); // A now times out — must NOT re-refuse
+  const pay = w.processPayment(); if (pay && pay.catch) pay.catch(() => {});
+  await settle(); await settle();
+  assert.ok(isAt(sent.createOrder, EDITOR), `${dir}: 🔴 an editor correction during a pending pick is not un-confirmed by the stale pick's timeout → submits the EDITOR coords (${sent.createOrder && sent.createOrder.lat})`);
+  assert.ok(!isAt(sent.createOrder, A) && !isAt(sent.createOrder, FALLBACK), `${dir}: not A's and not the fallback`);
+  ok(`${dir}: editor-correction-during-pending-pick → stale timeout doesn't re-refuse → submits editor coords`);
+}
+
 (async () => {
   for (const dir of DIRS) {
     await cellHappy(dir, false); await cellHappy(dir, true);
@@ -170,6 +205,8 @@ async function cellOuterCap(dir) {
     await cellRecoverGPS(dir);
     await cellRecoverFullscreen(dir);
     await cellOuterCap(dir);
+    await cellNullLocation(dir);
+    await cellEditorDuringPending(dir);
   }
   console.log(`\nlocation-pick-submit-sync: ${count()} passed`);
   closeAll();

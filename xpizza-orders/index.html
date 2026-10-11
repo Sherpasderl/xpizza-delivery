@@ -3658,13 +3658,18 @@ async function locPickPred(p,label){
     let timer; const timeout=new Promise(function(r){ timer=setTimeout(function(){ r('__timeout'); }, ms); });
     const outcome=await Promise.race([ place.fetchFields({fields:['location']}).then(function(){ return '__ok'; }, function(){ return '__err'; }), timeout ]);
     clearTimeout(timer);
-    if(outcome!=='__ok'){ __locPickFailed=true; return; }  // timed out / errored → ABANDON: don't place, stay "aproximada", flag the refusal so checkout won't ship the fallback
-    // Don't clobber a point the customer set WHILE this details fetch was in flight (a map tap / drag
-    // moved lat/lng). A late details response must never overwrite a newer, deliberate placement.
-    if(typeof lat!=='undefined' && (lat!==beforeLat||lng!==beforeLng)) return;
-    const loc=place.location;
-    if(loc&&typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
-  }catch(e){ __locPickFailed=true; }
+    // "still at the pre-pick point": no valid placement (editor / drag / GPS / another pick) happened while
+    // this pick was in flight. A STALE pick's failure must not re-refuse — nor clobber — a point the customer
+    // has since confirmed. (beforeLat/beforeLng = the coords when THIS pick started.)
+    const stillStart=(typeof lat==='undefined') || (lat===beforeLat && lng===beforeLng);
+    const loc=(outcome==='__ok') ? place.location : null;
+    if(outcome!=='__ok' || !loc || typeof loc.lat!=='function'){   // timeout / reject / resolved with NO location → a FAILED pick (never place; don't ship the fallback)
+      if(stillStart) __locPickFailed=true;   // mark failed ONLY if nothing valid was placed meanwhile (else it's already confirmed — don't re-refuse)
+      return;
+    }
+    if(!stillStart) return;   // the customer placed a point meanwhile (editor / drag / GPS) — it's confirmed; a late pick must not clobber it
+    if(typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
+  }catch(e){ if((typeof lat==='undefined') || (lat===beforeLat && lng===beforeLng)) __locPickFailed=true; }
   finally{ __locSessToken=null; __locPicking=false; if(__locPickDone){ __locPickDone(); __locPickDone=null; } __locPickPromise=null; }  // retire the session token + release the checkout waiter on ANY outcome (fetchFields ends the session, incl. on reject)
 }
 
