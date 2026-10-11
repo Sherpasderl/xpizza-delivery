@@ -102,13 +102,15 @@ function monitorRun(input) {
       await w.close();
       const r = monitorRun({ rids: [R] }); const inc = r.peakRss - r.baseRss;
       const chk = r.checks.find((c) => c.rid === R) || {};
-      out[label] = { outcome: r.results[0].outcome, state: chk.state, reason: r.results[0].reason || chk.reason, mib: `baseline ${Math.round(r.baseRss / MiB)} + increment ${Math.round(inc / MiB)} = total ${Math.round(r.peakRss / MiB)} MiB`, reads: r.reads };
+      const node = await F.nodeOf(R);
+      out[label] = { outcome: r.results[0].outcome, state: chk.state, reason: node.active && node.active.reason, coverage: !!(node.coverage && node.coverage.active_ok_obs_t), mib: `baseline ${Math.round(r.baseRss / MiB)} + increment ${Math.round(inc / MiB)} = total ${Math.round(r.peakRss / MiB)} MiB`, reads: r.reads };
       assert.ok(inc <= 130 * MiB, `${label}: the monitor's own increment ${Math.round(inc / MiB)} MiB ≤ 130 MiB`);
       assert.ok(r.peakRss < 512 * MiB, `${label}: total ${Math.round(r.peakRss / MiB)} MiB < 512 MiB`);
     }
     const edge = out['at the budget (400 × ~10 KB keys)']; const over = out['far past it (400 × ~40 KB keys)'];
     assert.deepStrictEqual([edge.outcome, edge.state], ['checked', 'violation'], `at the budget: judged (the edited keys break the binding) ${JSON.stringify(edge)}`);
-    assert.deepStrictEqual([over.outcome, over.reason], ['unavailable', 'oversized_values'], `past the budget: unavailable{oversized_values} ${JSON.stringify(over)}`);
+    // past the budget: the check ran and recorded unavailable{oversized_values} — NOT coverage, never a violation (classifier §2.4/§5)
+    assert.deepStrictEqual([over.state, over.reason, over.coverage], ['unavailable', 'oversized_values', false], `past the budget: unavailable{oversized_values}, not coverage ${JSON.stringify(over)}`);
     assert.ok(over.reads < edge.reads, `past the budget the read STOPS early (${over.reads} vs ${edge.reads} reads)`);
     ok(`WORST-CASE retention: ${Object.entries(out).map(([k, v]) => `${k}: ${v.outcome}${v.state ? `/${v.state}` : ''}${v.reason ? `{${v.reason}}` : ''}, ${v.reads} reads, ${v.mib}`).join('; ')} — increment ≤ 130 MiB, total < 512 MiB (R2)`);
   }
