@@ -298,6 +298,9 @@ async function capturePhase() {
       return Object.fromEntries(Object.entries(flat).sort());
     };
     money[rid] = {
+      // R1b: the response behind each money row travels WITH it, so a money mismatch names what answered (status + body) —
+      // the capture's out.json lives in the run's own TMPDIR, swept when the run ends, so the assertion is the evidence
+      __resp: Object.fromEntries([['a_quote_mirror', a], ['b_cash_mirror', b], ['c_quote_mirror_refresh', c], ['d_cash_mirror_refresh', d]].map(([k, v]) => [k, `${v.status} ${JSON.stringify(v.json).slice(0, 400)}`])),
       a_quote_mirror: quoteMoney(a.json), b_cash_mirror: await orderMoney(`mcash_${rid}_a`),
       c_quote_mirror_refresh: quoteMoney(c.json), d_cash_mirror_refresh: await orderMoney(`mcash_${rid}_b`),
     };
@@ -355,7 +358,7 @@ async function capturePhase() {
     const MONEY_GOLDEN = JSON.parse(fsys.readFileSync(path.join(__dirname, '..', 'catalog', 'pselfupdate-mirror-money.golden.json'), 'utf8'));
     for (const rid of Object.keys(MONEY_GOLDEN)) for (const k of Object.keys(MONEY_GOLDEN[rid])) {
       assert.ok(Object.keys(MONEY_GOLDEN[rid][k]).length > 0, `non-vacuity: ${rid} ${k} froze money fields`);
-      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals`);
+      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals — response: ${money[rid].__resp[k]}`);
       console.log(`  ✓ ${rid} ${k}: money identical to ba29282 (${Object.entries(MONEY_GOLDEN[rid][k]).map(([f, v]) => `${f}=${v}`).join(', ').slice(0, 110)})`);
     }
     assertPremises();
