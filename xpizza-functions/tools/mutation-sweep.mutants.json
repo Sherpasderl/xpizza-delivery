@@ -10757,7 +10757,7 @@
     "id": "r1-01",
     "slice": "r1",
     "file": "lib/emulator-endpoint.js",
-    "from": "      if (started.has(svc) && !dead.has(svc)) {",
+    "from": "      if (!lenient && started.has(svc) && !dead.has(svc)) {",
     "to": "      if (false) {",
     "label": "the NULL endpoint is accepted for a service the run STARTED",
     "kills_with": "NOT refused: NULL for a started service",
@@ -10858,6 +10858,126 @@
     "command": [
       "node",
       "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-09",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    if (!row.readable) return 'unconfirmed';",
+    "to": "    if (!row.readable) return 'dead';",
+    "label": "an unreadable target is counted as dead",
+    "kills_with": "a target that became UNREADABLE was counted as dead",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-10",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (!fresh || !fresh.readable || fresh.start !== start || isZombie(fresh.state) || !same(fresh)) continue;   // gone / reused / unreadable: NOT signalled",
+    "to": "      void fresh;",
+    "label": "no fresh per-pid identity check before a signal (a reused pid is signalled)",
+    "kills_with": "a REUSED pid (a different process now) was signalled",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-11",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    for (const r of sel.targets) if (!tracked.has(r.pid)) tracked.set(r.pid, r.start);",
+    "to": "    if (!tracked.size) for (const r of sel.targets) tracked.set(r.pid, r.start);",
+    "label": "the barrier freezes the first snapshot (a descendant spawned during the reap is missed)",
+    "kills_with": "spawned during the reap survived it",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-12",
+    "slice": "r1",
+    "file": "tools/emulator-run.js",
+    "from": "  if (services.includes('functions')) {\n    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(run ? run.pid : process.pid);",
+    "to": "  if (services.includes('functions') && !env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH) {\n    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(run ? run.pid : process.pid);",
+    "label": "an inherited discovery path is kept (two worktrees share functions.yaml)",
+    "kills_with": "an inherited discovery path was kept",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-14",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "  return env.FUNCTIONS_EMULATOR === 'true' || present(env[HOST_VAR.firestore])",
+    "to": "  return present(env.FUNCTIONS_EMULATOR) || present(env[HOST_VAR.firestore])",
+    "label": "a non-\"true\" FUNCTIONS_EMULATOR counts as an emulator signal (a deployed \"false\" would throw)",
+    "kills_with": "the validator treats a non-\"true\" FUNCTIONS_EMULATOR as a signal",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-15",
+    "slice": "r1",
+    "file": "tools/emu-cmd-wrapper.js",
+    "from": "    if (stopping) break;",
+    "to": "    void stopping;",
+    "label": "the wrapper starts the next step after a forwarded SIGTERM",
+    "kills_with": "a later step started after the wrapper was signalled",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-16",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "  if (distinct.length > 1) throw new EmulatorEndpointError(",
+    "to": "  if (false) throw new EmulatorEndpointError(",
+    "label": "disagreeing project variables are accepted",
+    "kills_with": "NOT refused: GCLOUD_PROJECT",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-17",
+    "slice": "r1",
+    "file": "tools/emu-mixed-guard.js",
+    "from": "  try { EE.validateEmulatorEnv(env, { lenient: true }); return 'emulator'; } catch (e) {",
+    "to": "  try { return 'emulator'; } catch (e) {",
+    "label": "a production CLI runs with MIXED emulator/prod signals",
+    "kills_with": [
+      "did not refuse",
+      "no anchored refusal banner"
+    ],
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-13",
+    "slice": "r1",
+    "file": "tools/gate-all.js",
+    "from": "      buf[stream] += d;",
+    "to": "      buf.out += d;",
+    "label": "stdout and stderr chunks are merged in arrival order (a ##CELLS trailer is lost)",
+    "kills_with": "interleaved stdout/stderr chunks lost a ##CELLS trailer",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
     ]
   }
 ]

@@ -19,13 +19,7 @@
  */
 const ALLOC = require('./emu-alloc');
 
-function freshRow(pid) {
-  const t = ALLOC.readPsTables();
-  const rows = ALLOC.joinScans(t.plain.filter((l) => ALLOC.parsePsLine(l)?.pid === pid), t.withEnv.filter((l) => ALLOC.parsePsLine(l)?.pid === pid));
-  return rows[0] || null;
-}
-
-/* Pure decision for one target, given its fresh row and the fresh table — exported for the guard. */
+/* Pure decision for one target, given its fresh row and a table holding (or not) its supervisor — exported for the guard. */
 function stillOrphan(target, fresh, table) {
   if (!fresh || !fresh.readable || ALLOC.isZombie(fresh.state)) return { ok: false, why: 'vanished or unreadable' };
   if (fresh.start !== target.start) return { ok: false, why: 'pid reused (start time changed)' };
@@ -36,42 +30,31 @@ function stillOrphan(target, fresh, table) {
   return { ok: true };
 }
 
-async function reap(slot, { dryRun = false, log = (m) => console.error(`emu-reap: ${m}`), kill = process.kill.bind(process), sentinelBase } = {}) {
+/* Reclaim slot `slot`. Exit codes: 0 = every orphan CONFIRMED dead and the scan complete; 1 = UNCONFIRMED (an orphan
+   survived, was unreadable, answered EPERM, or the scan could not attribute a live process); 3 = a live run holds it. */
+async function reap(slot, { dryRun = false, log = (m) => console.error(`emu-reap: ${m}`), kill = process.kill.bind(process), sentinelBase,
+  readTable, readRow = ALLOC.readPsRow, phases, isAlive } = {}) {
   const sentinel = await ALLOC.bindSentinel(ALLOC.sentinelPort(slot, sentinelBase));
   if (!sentinel) { log(`slot ${slot}: the sentinel is held — a LIVE run owns this slot. Refusing.`); return { code: 3, signalled: [], left: [] }; }
   try {
-    const enumerate = () => {
-      const t = ALLOC.readPsTables();
-      const table = ALLOC.joinScans(t.plain, t.withEnv);
-      const sc = ALLOC.classifyScan(table, slot, { isAlive: ALLOC.pidAlive });
-      return { table, sc };
-    };
-    let { table, sc } = enumerate();
-    if (sc.live.length) log(`slot ${slot}: ${sc.live.length} marked pid(s) of a LIVE supervisor (${sc.live.map((o) => o.pid).join(', ')}) — never signalled`);
-    const targets = sc.orphans.map((o) => ({ ...o, slot, start: (table.find((r) => r.pid === o.pid) || {}).start }));
-    if (!targets.length) { log(`slot ${slot}: no orphans${sc.incomplete ? ' (scan INCOMPLETE — unreadable live pids: ' + sc.unreadable.map((u) => u.pid).join(', ') + ')' : ''}`); return { code: sc.incomplete ? 1 : 0, signalled: [], left: [] }; }
-    log(`slot ${slot}: ${targets.length} orphan(s): ${targets.map((o) => `${o.pid} (dead supervisor ${o.supervisorPid})`).join(', ')}`);
-    if (dryRun) return { code: 0, signalled: [], left: targets.map((o) => o.pid) };
-    const signalled = [];
-    const signalPass = (sig) => {
-      ({ table } = enumerate());
-      for (const tgt of targets) {
-        const v = stillOrphan(tgt, freshRow(tgt.pid), table);      // FRESH, immediately before the signal
-        if (!v.ok) continue;
-        try { kill(tgt.pid, sig); signalled.push(`${tgt.pid}:${sig}`); } catch (e) { if (e && e.code === 'EPERM') log(`pid ${tgt.pid}: EPERM — left alone, reported`); }
-      }
-    };
-    const remaining = () => { ({ table } = enumerate()); return targets.filter((tgt) => stillOrphan(tgt, table.find((r) => r.pid === tgt.pid) || null, table).ok); };
-    for (const [sig, waitMs] of [['SIGTERM', 8000], ['SIGKILL', 4000]]) {
-      signalPass(sig);
-      const until = Date.now() + waitMs;
-      while (remaining().length && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
-      if (!remaining().length) break;
-    }
-    const left = remaining().map((t) => t.pid);
-    if (left.length) log(`🔴 ${left.length} orphan(s) survived SIGKILL: ${left.join(', ')}`);
-    else log(`slot ${slot}: reclaimed — confirmed death of ${targets.length} orphan(s)`);
-    return { code: left.length ? 1 : 0, signalled, left };
+    const rt = readTable || (() => { const t = ALLOC.readPsTables(); return ALLOC.joinScans(t.plain, t.withEnv); });
+    const first = ALLOC.classifyScan(rt(), slot, { isAlive: isAlive || ALLOC.pidAlive });
+    if (first.live.length) log(`slot ${slot}: ${first.live.length} marked pid(s) of a LIVE supervisor (${first.live.map((o) => o.pid).join(', ')}) — never signalled`);
+    log(`slot ${slot}: ${first.orphans.length} orphan(s)${first.orphans.length ? ': ' + first.orphans.map((o) => `${o.pid} (dead supervisor ${o.supervisorPid})`).join(', ') : ''}`);
+    if (dryRun) return { code: 0, signalled: [], left: first.orphans.map((o) => o.pid) };
+    // a marked process is OURS to end only while its marker names this slot AND its supervisor is (freshly) dead
+    const supervisorDead = (mk) => { let sup; try { sup = readRow(mk.pid); } catch { return false; } return !sup || ALLOC.isZombie(sup.state) || sup.start !== mk.start; };
+    const res = await ALLOC.terminateMarked({
+      select: (table) => {
+        const sc = ALLOC.classifyScan(table, slot, { isAlive: isAlive || ALLOC.pidAlive });
+        return { targets: sc.orphans.map((o) => table.find((r) => r.pid === o.pid)).filter(Boolean), unattributable: sc.unreadable };
+      },
+      same: (row) => { const mk = ALLOC.markerIn(row.env); return !!mk && mk.slot === slot && supervisorDead(mk); },
+      readTable: rt, readRow, kill, log, ...(phases ? { phases } : {}), ...(isAlive ? { isAlive } : {}),
+    });
+    if (res.confirmed) log(`slot ${slot}: reclaimed — CONFIRMED death of every orphan (${res.signalled.length} signal(s))`);
+    else log(`🔴 slot ${slot}: UNCONFIRMED — ${res.unconfirmed.map((u) => `${u.pid} (${u.status})`).join(', ')}${res.eperm.length ? `; EPERM: ${res.eperm.join(', ')}` : ''}`);
+    return { code: res.confirmed ? 0 : 1, signalled: res.signalled, left: res.unconfirmed.map((u) => u.pid), unconfirmed: res.unconfirmed };
   } finally {
     await ALLOC.closeServer(sentinel);
   }

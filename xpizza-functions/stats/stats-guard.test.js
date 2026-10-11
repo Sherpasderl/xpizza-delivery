@@ -29,6 +29,8 @@ const ALLOWED_GRAPH = new Set([...RUNTIME_ENTRIES,
   'restaurant-id.js',              // DEFAULT_RESTAURANT_ID for rid-less legacy orders (advisor C2)
   'menu-pricing.js', 'price-valid.js',   // pulled in by restaurant-id.js (pure tables); nothing is called
   'tools/require-project.js',      // the CLI's project pin
+  'tools/emu-mixed-guard.js',      // R1: require-project's mixed-signal refusal (pure — env checks, no I/O)
+  'lib/emulator-endpoint.js',      // R1: the run-endpoint validator it calls (pure, no dependencies)
   'catalog/restaurant-registry.js',// makeFirestoreRegistryReader (read-only listDocuments)
   'catalog/mirror-rtdb.js',        // the CLI imports RTDB_URL only — see cell 2's call check
 ]);

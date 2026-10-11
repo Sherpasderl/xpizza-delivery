@@ -247,6 +247,28 @@ const childEnv = (extra = {}) => {
     assert.strictEqual(busy.slot, null, '🔴 a pin bypassed the band probe');
     // quarantine and band-busy release the sentinel (no leak) — the slot is bindable straight after
     const after = await bindMapped(base + 1); assert.ok(after, '🔴 a quarantined / band-busy pin leaked its sentinel'); await A.closeServer(after);
+    // EXCLUDE (re-slot): an excluded slot is never taken
+    const exc = await A.acquireSlot(deps({ exclude: new Set([0, 1, 2, 3, 4]) }));
+    assert.strictEqual(exc.slot, 5, '🔴 an EXCLUDED slot was taken (a re-slot would land back on the contended slot)');
+    await A.closeServer(exc.server);
+    // CANCELLATION: an abort while QUEUED stops promptly with ECANCELLED and holds nothing
+    {
+      const held2 = await Promise.all([...Array(SL)].map((_, i) => bindMapped(i)));
+      const ac = new AbortController();
+      const t0 = Date.now();
+      const q2 = A.acquireSlot(deps({ signal: ac.signal, sleep: (ms) => sleep(ms), waitMs: 200, jitterMs: 1 }));
+      setTimeout(() => ac.abort(), 150);
+      await assert.rejects(q2, (e) => e && e.code === 'ECANCELLED', '🔴 an aborted queue did not cancel');
+      assert.ok(Date.now() - t0 < 1500, `🔴 cancellation was not prompt (${Date.now() - t0} ms)`);
+      for (const h of held2) await A.closeServer(h);
+      const free0 = await bindMapped(0); assert.ok(free0, 'nothing leaked by the cancelled queue'); await A.closeServer(free0);
+    }
+    // DEADLINE PER SLOT: a slow scan cannot carry a sweep past the deadline (fake clock; each scan costs 1 s)
+    {
+      let clk = 0;
+      await assert.rejects(() => A.acquireSlot(deps({ now: () => clk, scan: () => { clk += 1000; return { occupied: true, incomplete: false, orphans: [], unreadable: [] }; }, deadlineMs: 2500 })),
+        (e) => /no free slot after [34]s/.test(e.message), '🔴 the deadline was not checked per slot (a slow sweep overran it)');
+    }
     // a non-EADDRINUSE bind error propagates out of acquireSlot
     await assert.rejects(() => A.acquireSlot(deps({ bind: async () => { const e = new Error('boom'); e.code = 'EACCES'; throw e; } })), /boom/);
     ok(`arbitration (${SL} private real ports ${PORTS.join(',')}): ${SL} concurrent allocators get ${SL} distinct slots; the next QUEUES with a heartbeat and takes the slot that frees; saturation refuses at the deadline; a pin goes through sentinel + quarantine + band probe and never queues; refusals release the sentinel; bind errors surface`);
@@ -292,7 +314,7 @@ const childEnv = (extra = {}) => {
       await sleep(500);
       const lines = [];
       const kills = [];
-      const res = await reap(SLOT, { sentinelBase: REAP_BASE, log: (m) => lines.push(m), kill: (pid, sig) => { kills.push([pid, sig]); process.kill(pid, sig); } });
+      const res = await reap(SLOT, { phases: [['SIGTERM', 2000], ['SIGKILL', 2000]], sentinelBase: REAP_BASE, log: (m) => lines.push(m), kill: (pid, sig) => { kills.push([pid, sig]); process.kill(pid, sig); } });
       assert.ok(kills.every(([pid]) => pid === orphan.pid), `🔴 emu-reap signalled something other than the orphan: ${JSON.stringify(kills)} (orphan ${orphan.pid}, live child ${liveChild.pid})`);
       assert.ok(kills.some(([pid]) => pid === orphan.pid), `the orphan was signalled (${lines.join(' | ')})`);
       assert.strictEqual(res.left.length, 0, 'confirmed-death barrier reached');
@@ -308,14 +330,127 @@ const childEnv = (extra = {}) => {
       const o2 = spawn(process.execPath, ['-e', 'setTimeout(()=>{},20000)'], { env: childEnv({ [A.RUN_VAR]: A.formatMarker({ slot: SLOT, pid: dead.pid, nonce: A.newNonce(), start: 1 }) }), stdio: 'ignore' });
       await sleep(400);
       const elog = [];
-      await reap(SLOT, { sentinelBase: REAP_BASE, log: (m) => elog.push(m), kill: () => { const e = new Error('EPERM'); e.code = 'EPERM'; throw e; } });
+      const er = await reap(SLOT, { phases: [['SIGTERM', 2000], ['SIGKILL', 2000]], sentinelBase: REAP_BASE, log: (m) => elog.push(m), kill: () => { const e = new Error('EPERM'); e.code = 'EPERM'; throw e; } });
       assert.ok(elog.some((l) => /EPERM/.test(l)) && A.pidAlive(o2.pid), '🔴 EPERM was not treated as alive-and-left');
+      assert.strictEqual(er.code, 1, '🔴 an EPERM target was reported as CONFIRMED death (exit 0) — it is UNCONFIRMED');
       o2.kill('SIGKILL');
+      await new Promise((r2) => o2.once('exit', r2));
+      // a marked DESCENDANT spawned DURING the reap (the orphan answers SIGTERM by spawning a marked child, then exits) is
+      // found by the re-enumeration and reaped too — the barrier is over the whole marked set, not the first snapshot
+      const spawner = "process.on('SIGTERM',()=>{const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{env:process.env,stdio:'ignore',detached:true});c.unref();require('fs').writeFileSync(process.env.KID,String(c.pid));process.exit(0)});setInterval(()=>{},1000)";
+      const kidFile = path.join(require('os').tmpdir(), `emu-alloc-kid-${process.pid}`);
+      const o3 = spawn(process.execPath, ['-e', spawner], { env: childEnv({ KID: kidFile, [A.RUN_VAR]: A.formatMarker({ slot: SLOT, pid: dead.pid, nonce: A.newNonce(), start: 1 }) }), stdio: 'ignore' });
+      await sleep(500);
+      const dr = await reap(SLOT, { phases: [['SIGTERM', 2000], ['SIGKILL', 2000]], sentinelBase: REAP_BASE, log: () => {} });
+      const kid = Number(fs.readFileSync(kidFile, 'utf8')); fs.rmSync(kidFile, { force: true });
+      await sleep(300);
+      assert.ok(!A.pidAlive(kid), `🔴 the marked descendant ${kid} spawned during the reap survived it`);
+      assert.strictEqual(dr.code, 0, '🔴 the reap did not confirm the death of the orphan AND its new descendant');
+      assert.ok(dr.signalled.some((x) => x.startsWith(`${kid}:`)), 'the descendant was signalled individually');
+      void o3;
+
     } finally {
       for (const p of [liveSup, orphan, liveChild]) { try { p.kill('SIGKILL'); } catch { /* gone */ } }
       await A.closeServer(lock);
     }
-    ok('emu-reap: fresh per-pid validation (live supervisor / reused target / changed marker / vanished → skipped; reused SUPERVISOR pid → still an orphan); on real processes in ONE group it kills only the orphan, leaves the co-grouped live run, reaches the death barrier, refuses a held sentinel, and leaves an EPERM pid');
+    ok('emu-reap: fresh per-pid validation (live supervisor / reused target / changed marker / vanished → skipped; reused SUPERVISOR pid → still an orphan); on real processes in ONE group it kills only the orphan, leaves the co-grouped live run, reaches the death barrier, refuses a held sentinel, reports an EPERM pid UNCONFIRMED (exit 1), and reaps a marked descendant spawned DURING the reap');
+  }
+
+  // ── 9. THE TERMINATION ROUTINE, injected: unreadable ≠ dead, EPERM ≠ dead, a REUSED pid is never signalled ────────
+  {
+    const mkRow = (pid, start, env, o = {}) => ({ pid, start, state: 'S', readable: true, env, argv: 'node x', lstart: T0, ...o });
+    const NON = 'a1b2c3d4e5f60718';
+    const ours = (row) => (A.markerIn(row.env) || {}).nonce === NON;
+    const env1 = mk(2, 100, T0s, NON);
+    const base = { same: ours, phases: [['SIGTERM', 300], ['SIGKILL', 300]], pollMs: 20, sleep: (ms) => sleep(Math.min(ms, 5)), isAlive: () => true };
+    // (a) the target turns UNREADABLE after its signal → UNCONFIRMED, never "dead"
+    {
+      let signalledOnce = false;
+      const res = await A.terminateMarked({ ...base,
+        readTable: () => [signalledOnce ? mkRow(300, T0s, '', { readable: false, why: 'args unreadable (ps fallback)' }) : mkRow(300, T0s, env1)],
+        readRow: (pid) => (signalledOnce ? mkRow(pid, T0s, '', { readable: false }) : mkRow(pid, T0s, env1)),
+        kill: () => { signalledOnce = true; },
+        select: (t) => ({ targets: t.filter((r) => r.readable && ours(r)), unattributable: [] }) });
+      assert.strictEqual(res.confirmed, false, '🔴 a target that became UNREADABLE was counted as dead');
+      assert.deepStrictEqual(res.unconfirmed.map((u) => u.pid), [300]);
+    }
+    // (b) EPERM → UNCONFIRMED
+    {
+      const res = await A.terminateMarked({ ...base, readTable: () => [mkRow(301, T0s, env1)], readRow: (pid) => mkRow(pid, T0s, env1),
+        kill: () => { const e = new Error('EPERM'); e.code = 'EPERM'; throw e; }, select: (t) => ({ targets: t.filter(ours), unattributable: [] }) });
+      assert.ok(!res.confirmed && res.eperm.includes(301), '🔴 an EPERM target was counted as dead');
+    }
+    // (c) TEARDOWN WITH PID REUSE: enumerated as ours (start T0), but at signal time the pid is a DIFFERENT process
+    //     (start T0+7) — it must NOT be signalled, and the original counts as gone
+    {
+      const kills = [];
+      let i = 0;
+      const res = await A.terminateMarked({ ...base, readTable: () => (i++ === 0 ? [mkRow(302, T0s, env1)] : [mkRow(302, T0s + 7, 'OTHER=1')]),
+        readRow: (pid) => mkRow(pid, T0s + 7, 'OTHER=1'), kill: (pid, sig) => kills.push([pid, sig]), select: (t) => ({ targets: t.filter(ours), unattributable: [] }) });
+      assert.deepStrictEqual(kills, [], '🔴 a REUSED pid (a different process now) was signalled');
+      assert.strictEqual(res.confirmed, true, 'the original process is gone (its pid names another process now)');
+    }
+    // (d) an unattributable live row (could be ours, cannot be read) keeps the result UNCONFIRMED
+    {
+      const res = await A.terminateMarked({ ...base, readTable: () => [], readRow: () => null, kill: () => {},
+        select: () => ({ targets: [], unattributable: [{ pid: 9, why: 'args unreadable' }] }) });
+      assert.strictEqual(res.confirmed, false, '🔴 an unattributable live row was ignored');
+    }
+    ok('termination routine: a target that turns unreadable and an EPERM target are UNCONFIRMED (never dead); a pid reused by another process between enumeration and signal is NOT signalled; an unattributable live row keeps the barrier unconfirmed');
+  }
+
+  // ── 10. THE MARKED WRAPPER (P1-2): a dead supervisor's chain keeps its slot QUARANTINED until the chain is gone ──────
+  {
+    const WRAP = path.join(__dirname, 'emu-cmd-wrapper.js');
+    const { encode } = require('./emu-cmd-wrapper');
+    let SLOT = null; let lock = null;
+    for (const s2 of [...Array(A.SLOTS).keys()].sort(() => Math.random() - 0.5)) { lock = await A.bindSentinel(A.sentinelPort(s2, A.FIXTURE_SENTINEL_BASE)); if (lock) { SLOT = s2; break; } }
+    const sup = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { env: childEnv(), stdio: 'ignore' });
+    await sleep(300);
+    const supStart = A.parsePsLine(require('child_process').execFileSync('/bin/ps', ['-p', String(sup.pid), '-o', 'pid=,state=,lstart=,args='], { encoding: 'utf8', env: A.PS_ENV }).trim()).start;
+    const flag = path.join(require('os').tmpdir(), `emu-wrap-step2-${process.pid}`);
+    fs.rmSync(flag, { force: true });
+    // step 1 EXITS 0 on SIGTERM (a well-behaved suite), so only the wrapper's own stop rule can keep step 2 from starting
+    const steps = [['node', '-e', "process.on('SIGTERM',()=>process.exit(0));setTimeout(()=>{},2500)"], ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(flag)}, String(process.env.${A.RUN_VAR}))`]];
+    const marker = A.formatMarker({ slot: SLOT, pid: sup.pid, nonce: A.newNonce(), start: supStart });
+    const w = spawn(process.execPath, [WRAP, encode(steps)], { env: childEnv({ [A.RUN_VAR]: marker }), stdio: 'ignore' });
+    const wExit = new Promise((r2) => w.once('exit', (c) => r2(c)));
+    try {
+      await sleep(700);
+      sup.kill('SIGKILL');                                      // the supervisor dies MID-CHAIN (step 1 running)
+      await new Promise((r2) => sup.once('exit', r2));
+      const samples = [];
+      let exited = false; wExit.then(() => { exited = true; });
+      while (!exited) {
+        const sc = A.scanSlot(SLOT);
+        if (!exited) samples.push({ occupied: sc.occupied, wrapperOrphan: sc.orphans.some((o) => o.pid === w.pid) });
+        await sleep(150);
+      }
+      const code = await wExit;
+      assert.ok(samples.length >= 3, `premise — the chain ran on after the supervisor died (${samples.length} samples)`);
+      // the last sample may race the wrapper's own exit; every sample taken while it was alive must show quarantine
+      assert.ok(samples.slice(0, -1).every((x) => x.occupied && x.wrapperOrphan), `🔴 while the dead supervisor's chain ran, the slot was NOT continuously quarantined with the wrapper visible: ${JSON.stringify(samples)}`);
+      assert.strictEqual(code, 0, 'the chain completed');
+      assert.strictEqual(fs.readFileSync(flag, 'utf8'), marker, 'step 2 ran under the wrapper with the run marker (visible, not a shell)');
+      await sleep(300);
+      assert.ok(!A.scanSlot(SLOT).occupied, 'once the wrapper and its chain are gone, the slot is free');
+      // SIGTERM is FORWARDED to the running step, and no later step starts
+      fs.rmSync(flag, { force: true });
+      const w2 = spawn(process.execPath, [WRAP, encode(steps)], { env: childEnv({ [A.RUN_VAR]: marker }), stdio: 'ignore' });
+      await sleep(700);
+      w2.kill('SIGTERM');
+      const c2 = await new Promise((r2) => w2.once('exit', (c) => r2(c)));
+      assert.strictEqual(c2, 143, `the wrapper exits 128+SIGTERM (got ${c2})`);
+      assert.ok(!fs.existsSync(flag), '🔴 a later step started after the wrapper was signalled');
+      // a non-node step is refused by the payload decoder itself
+      const bad = require('child_process').spawnSync(process.execPath, [WRAP, encode([['sh', '-c', 'true']])], { encoding: 'utf8', env: childEnv() });
+      assert.strictEqual(bad.status, 2, '🔴 the wrapper ran a non-node step');
+    } finally {
+      for (const p of [sup, w]) { try { p.kill('SIGKILL'); } catch { /* gone */ } }
+      fs.rmSync(flag, { force: true });
+      await A.closeServer(lock);
+    }
+    ok('marked wrapper: with the supervisor SIGKILLed MID-CHAIN, every scan while the chain ran showed the slot occupied with the wrapper as a visible orphan (quarantined); after it, the slot is free; a later step runs under the marked wrapper (no shell); SIGTERM is forwarded and stops the chain; a non-node step is refused');
   }
 
   console.log(`\nemu-alloc: OK (${n})`);

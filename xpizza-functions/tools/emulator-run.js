@@ -97,8 +97,9 @@ function childEnv(services, parentEnv, run = null) {
   for (const svc of EE.DATA_SERVICES) {
     if (!services.includes(svc)) env[EE.HOST_VAR[svc]] = EE.NULL_ENDPOINT;
   }
-  // Inherited run identity is never trusted: a nested or stale value would name someone else's slot.
-  for (const v of [ALLOC.RUN_VAR, ALLOC.OFFSET_VAR, EE.SERVICES_VAR, EE.DEAD_VAR]) delete env[v];
+  // Inherited run identity is never trusted: a nested or stale value would name someone else's slot. An inherited
+  // FIREBASE_CONFIG is scrubbed too (codex R1-build P2-6): the CLI derives the run's own from --project for the suite.
+  for (const v of [ALLOC.RUN_VAR, ALLOC.OFFSET_VAR, EE.SERVICES_VAR, EE.DEAD_VAR, 'FIREBASE_CONFIG']) delete env[v];
   if (run) {
     env[ALLOC.RUN_VAR] = ALLOC.formatMarker(run);
     env[ALLOC.OFFSET_VAR] = String(run.slot * 10);
@@ -117,14 +118,15 @@ function childEnv(services, parentEnv, run = null) {
      FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH=true takes the CLI's manifest branch on the same
      function: it writes functions.yaml to a temp dir and opens NO PORT. Verified: test:quality-runner
      passes its 17 checks this way, and nothing appears in 8000-8999 during the run.
-     Only set when unset — an operator who pointed it at a real path meant it. */
+     🔴 ALWAYS this run's own directory (codex R1-build P1-4): an INHERITED value used to be kept, so two worktrees
+     inheriting one path shared functions.yaml. An inherited value is overridden — and the launcher says so. */
   /* 🔴 A PATH WE OWN, NOT "true". The literal "true" makes the CLI mkdtemp its own
      firebase-discovery-XXXX directory and never remove it — discovery/index.js reads the manifest and
      deletes nothing, so every functions run leaks one. I found four already, all mine, from
      introducing this branch. Pointing it at a directory this process created makes the manifest ours
      to delete, on the same cleanup path as the generated config, signals included. */
-  if (services.includes('functions') && !env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH) {
-    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(process.pid);
+  if (services.includes('functions')) {
+    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(run ? run.pid : process.pid);
   }
   return env;
 }
@@ -168,7 +170,38 @@ function bandListeners(services, ports) {
   return out;
 }
 
-module.exports = { planPorts, pinFromEnv, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, TMP_PREFIX, injectCounter, servicesFor, bandListeners };
+/* R1 (codex R1-build P1-2): the suite command is parsed into a plain `node …` && chain and run by the MARKED wrapper
+   (tools/emu-cmd-wrapper.js), never by a shell — a platform shell carries the run marker invisibly to `ps`. Single and
+   double quotes group (no escapes inside); `&&` separates steps; ANY other shell syntax (; | & > < ` $ ( ) \ newline,
+   `||`) is REFUSED rather than guessed at. Every routed script is already this shape. */
+function parseChain(command) {
+  const toks = [];
+  let cur = null;
+  const s = String(command);
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"' || c === "'") {
+      const j = s.indexOf(c, i + 1);
+      if (j < 0) throw new Error(`unterminated ${c} quote`);
+      cur = (cur || '') + s.slice(i + 1, j); i = j; continue;
+    }
+    if (/\s/.test(c)) { if (c === '\n' || c === '\r') throw new Error('a newline (two commands)'); if (cur !== null) { toks.push(cur); cur = null; } continue; }
+    if (c === '&' && s[i + 1] === '&') { if (cur !== null) { toks.push(cur); cur = null; } toks.push({ op: '&&' }); i++; continue; }
+    if (';|&><`$()\\'.includes(c)) throw new Error(`shell syntax ${JSON.stringify(c)} outside quotes`);
+    cur = (cur || '') + c;
+  }
+  if (cur !== null) toks.push(cur);
+  const steps = [[]];
+  for (const t of toks) {
+    if (typeof t === 'object') { if (!steps[steps.length - 1].length) throw new Error('an empty step around &&'); steps.push([]); continue; }
+    steps[steps.length - 1].push(t);
+  }
+  if (!steps[steps.length - 1].length) throw new Error('an empty step around &&');
+  for (const st of steps) if (st[0] !== 'node' || st.length < 2) throw new Error(`a step that is not \`node …\`: ${JSON.stringify(st.join(' '))}`);
+  return steps;
+}
+
+module.exports = { planPorts, pinFromEnv, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, TMP_PREFIX, injectCounter, servicesFor, bandListeners, parseChain };
 if (require.main !== module) return;
 
 
@@ -269,8 +302,63 @@ for (const f of fs.readdirSync(ROOT)) {
 
 const log = (msg) => console.error(`emulator-run: ${msg}`);
 
+/* ── signals: while QUEUED they CANCEL the queue (nothing held); while RUNNING they are forwarded to firebase ── */
+const STATE = { phase: 'queued', child: null, signalled: null, abort: new AbortController(), teardown: null };
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => {
+    if (STATE.signalled) return;
+    STATE.signalled = sig;
+    if (STATE.phase === 'queued') { STATE.abort.abort(); return; }
+    if (STATE.child && STATE.child.exitCode === null) {
+      try { STATE.child.kill(sig); } catch { /* already gone */ }
+      // firebase gets a bounded grace period; then it is killed individually and teardown proceeds anyway
+      setTimeout(() => { try { STATE.child.kill('SIGKILL'); } catch { /* gone */ } }, 30000).unref();
+    } else if (STATE.teardown) STATE.teardown(130);
+  });
+}
+
+/* The suite command: injected + parsed ONCE, before any slot is taken (a refusal here holds nothing). */
+const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');
+const NULL_GUARD = path.join(ROOT, 'tools', 'emu-null-guard.js');
+const INNER = injectCounter(rest[0], COUNTER, NULL_GUARD);
+if (!/count-marks\.js/.test(INNER)) {
+  console.error(`\nemulator-run: could not inject the cell counter into ${JSON.stringify(rest[0])}.`);
+  console.error('emulator-run:    The suite would run uncounted and the gate would fail it for a missing trailer.');
+  console.error('emulator-run:    Expected a command of the form `node <file>` (possibly chained with &&).\n');
+  process.exit(2);
+}
+let STEPS;
+try { STEPS = parseChain(INNER); } catch (e) {
+  console.error(`\nemulator-run: 🔴 refusing the suite command — ${e.message}.`);
+  console.error('emulator-run:    Only `node …` steps joined by && are run (by a marked node wrapper, never a shell).\n');
+  process.exit(2);
+}
+const WRAPPER = path.join(ROOT, 'tools', 'emu-cmd-wrapper.js');
+if (/\s/.test(WRAPPER)) { console.error(`emulator-run: 🔴 the checkout path contains whitespace (${WRAPPER}) — refusing`); process.exit(2); }
+const WRAPPED = `node ${WRAPPER} ${require('./emu-cmd-wrapper').encode(STEPS)}`;
+const MAX_ATTEMPTS = 3;
+
 (async () => {
+  const deadlineS = Number(process.env.XPIZZA_EMU_QUEUE_DEADLINE_S || 1200);
+  const deadlineMs = (Number.isFinite(deadlineS) && deadlineS > 0 ? deadlineS : 1200) * 1000;
+  const excluded = new Set();
+  for (let attempt = 1; ; attempt++) {
+    const r = await runOnce(excluded, deadlineMs);
+    if (r.reslot && attempt < MAX_ATTEMPTS && PIN === null && !STATE.signalled) {
+      excluded.add(r.slot);
+      log(`🔴 STARTUP PORT CONTENTION on slot ${r.slot} (${r.why}) — the suite never started; this run's processes are confirmed down and the slot released. RE-SLOTTING (attempt ${attempt + 1}/${MAX_ATTEMPTS}, avoiding ${[...excluded].join(',')})`);
+      continue;
+    }
+    if (r.reslot) log(`🔴 STARTUP PORT CONTENTION on slot ${r.slot} (${r.why}) — ${PIN !== null ? 'the run is PINNED, so it refuses rather than moving' : `giving up after ${attempt} attempts`}.`);
+    process.exit(r.code);
+  }
+})();
+
+/* One attempt: acquire a slot, run the suite under it, tear down. Resolves { code, reslot, slot, why } AFTER the teardown
+   barrier (own processes confirmed down, band probed, files removed, sentinel closed LAST). */
+async function runOnce(excluded, deadlineMs) {
   /* ── 1. OWN A SLOT (sentinel socket) — quarantine, never kill; queue past saturation ─────────────── */
+  STATE.phase = 'queued';
   let lastBusy = [];
   const probeBand = async (slot) => {
     const ports = planPorts(slot * 10);
@@ -283,21 +371,26 @@ const log = (msg) => console.error(`emulator-run: ${msg}`);
   };
   // A pinned run states its whole band BEFORE arbitration, so the plan is visible even when the pin is refused.
   if (PIN !== null) log(`pinned slot ${PIN} (XPIZZA_EMU_PORT_OFFSET=${PIN * 10}) — ${bandListeners(services, planPorts(PIN * 10)).map(([nm, pt]) => `${nm} ${pt}`).join(', ')}`);
-  const deadlineS = Number(process.env.XPIZZA_EMU_QUEUE_DEADLINE_S || 1200);
   let got;
   try {
     got = await ALLOC.acquireSlot({
       pin: PIN,
+      exclude: excluded,
       bind: ALLOC.bindSentinel,
       scan: (slot) => ALLOC.scanSlot(slot),
       probeBand,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       log,
-      deadlineMs: (Number.isFinite(deadlineS) && deadlineS > 0 ? deadlineS : 1200) * 1000,
+      deadlineMs,
+      signal: STATE.abort.signal,
     });
   } catch (e) {
+    if (e && e.code === 'ECANCELLED') {
+      console.error(`\nemulator-run: 🔴 cancelled while QUEUED (${STATE.signalled}) — no slot was held, nothing started.\n`);
+      return { code: 130 };
+    }
     console.error(`\nemulator-run: 🔴 EMULATOR REFUSED TO START — ${e && e.message}\n`);
-    process.exit(3);
+    return { code: 3 };
   }
   if (got.slot === null) {
     console.error('\nemulator-run: 🔴 EMULATOR REFUSED TO START — the PINNED slot is unavailable (XPIZZA_EMU_PORT_OFFSET).\n');
@@ -307,7 +400,7 @@ const log = (msg) => console.error(`emulator-run: ${msg}`);
     console.error('emulator-run:    attaching to it would assert against a different tree and still report green.');
     if (lastBusy[0]) console.error(`emulator-run:    Find it with:  lsof -nP -iTCP:${lastBusy[0].port} -sTCP:LISTEN`);
     console.error('emulator-run:    Or drop the pin: without XPIZZA_EMU_PORT_OFFSET the runner picks a free slot itself.\n');
-    process.exit(3);
+    return { code: 3 };
   }
   const { slot, server: sentinel } = got;
   const OFFSET = slot * 10;
@@ -337,107 +430,91 @@ const log = (msg) => console.error(`emulator-run: ${msg}`);
   if (discoveryDir) fs.mkdirSync(discoveryDir, { recursive: true });
   const tmpDir = path.join(os.tmpdir(), `${TMP_PREFIX}${process.pid}`);
   fs.mkdirSync(tmpDir, { recursive: true });
+  const startedFile = path.join(tmpDir, 'suite-started');
+  try { fs.unlinkSync(startedFile); } catch { /* fresh */ }
 
-  let filesCleaned = false;
   const cleanFiles = () => {
-    if (filesCleaned) return;
-    filesCleaned = true;
     try { fs.unlinkSync(generated); } catch { /* already gone */ }
     if (discoveryDir) { try { fs.rmSync(discoveryDir, { recursive: true, force: true }); } catch { /* already gone */ } }
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* already gone */ }
   };
-  process.on('exit', cleanFiles);   // last resort only — the orderly path below does it after confirmed death
+  process.once('exit', cleanFiles);   // last resort only — the orderly path below does it after confirmed death
 
   /* ── 3. The child env: cleared foreign hosts, NULL for unstarted data services, the run marker, TMPDIR,
      one project id on both vars. The marker is in env AT SPAWN, so `ps -E` sees it in every child. ── */
   const env = childEnv(services, process.env, run);
+  if (services.includes('functions') && process.env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH && process.env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH !== env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH) {
+    log(`overriding an inherited FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH (${process.env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH}) with this run's own ${env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH}`);
+  }
   env.TMPDIR = tmpDir;
   env.GCLOUD_PROJECT = PROJECT;
   env.GOOGLE_CLOUD_PROJECT = PROJECT;
-
-  /* 🔴 THE CELL COUNTER IS INJECTED INTO THE SUITE, NOT INHERITED BY THE CLI (firebase is node too, and would
-     count its own chrome). Anchored on `node <file>` so a chained command preloads every suite. The NULL guard
-     rides the same injection. A missed injection emits no ##CELLS and the gate fails it: loud. */
-  const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');
-  const NULL_GUARD = path.join(ROOT, 'tools', 'emu-null-guard.js');
-  const inner = injectCounter(rest[0], COUNTER, NULL_GUARD);
-  if (!/count-marks\.js/.test(inner)) {
-    console.error(`\nemulator-run: could not inject the cell counter into ${JSON.stringify(rest[0])}.`);
-    console.error('emulator-run:    The suite would run uncounted and the gate would fail it for a missing trailer.');
-    console.error('emulator-run:    Expected a command of the form `node <file>` (possibly chained with &&).\n');
-    await teardown(1);
-    return;
-  }
+  env.XPIZZA_EMU_STARTED_FILE = startedFile;
   if (env.NODE_OPTIONS) env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/--require[= ]\S*count-marks\.js/g, '').trim() || undefined;
   if (env.NODE_OPTIONS === undefined) delete env.NODE_OPTIONS;
 
-  /* ── 4. Run, then tear down: forward signals; after firebase exits, terminate OUR marked processes
-     INDIVIDUALLY (never kill(-pgid): the launching shell's group can hold another worktree's live run), to a
-     confirmed-death barrier; verify the band released; remove per-run files; close the sentinel LAST. ── */
-  let child = null;
-  let exitCode = null;
-  let tornDown = false;
-  async function teardown(code) {
-    if (tornDown) return;
-    tornDown = true;
-    const leftovers = await reapOwn();
-    if (leftovers.length) log(`🔴 ${leftovers.length} of this run's processes survived SIGKILL: ${leftovers.join(', ')} — the slot stays quarantined for the next admission (reclaim: node tools/emu-reap.js ${slot})`);
-    const deadline = Date.now() + 10000;
-    let busy = [];
-    for (;;) {
-      busy = [];
-      for (const [nm, pt] of bandListeners(services, PORTS)) if ((await ALLOC.probePort(pt)) !== 'free') busy.push(`${nm} ${pt}`);
-      if (!busy.length || Date.now() > deadline) break;
-      await new Promise((r) => setTimeout(r, 250));
-    }
-    if (busy.length) log(`🔴 band not released 10s after teardown: ${busy.join(', ')} — the next admission will skip this slot (band probe)`);
-    cleanFiles();
-    await ALLOC.closeServer(sentinel);
-    process.exit(code);
-  }
-  /* Our own marked processes, by NONCE (not by slot: a reaped-then-reused slot could name another run). Each pid is
-     re-read FRESH immediately before it is signalled; a pid that vanished or changed identity is skipped. */
+  /* ── 4. Run, then tear down: after firebase exits, terminate OUR marked processes INDIVIDUALLY to a confirmed-death
+     barrier; verify the band released; remove per-run files; close the sentinel LAST. ── */
+  /* Our own marked processes, by NONCE (not by slot: a reaped-then-reused slot could name another run) — through the
+     SHARED termination routine (tools/emu-alloc.js terminateMarked): the full set re-enumerated every iteration (a
+     descendant spawned during teardown is added), each pid re-read FRESH (start + marker) immediately before each signal,
+     individual pids only. An unreadable live row cannot be attributed and is reported UNCONFIRMED, never assumed dead. */
   async function reapOwn() {
-    const mine = () => {
-      const rows = ALLOC.joinScans(...(() => { const t = ALLOC.readPsTables(); return [t.plain, t.withEnv]; })());
-      return rows.filter((r) => r.readable && r.pid !== process.pid && !ALLOC.isZombie(r.state))
-        .filter((r) => { const mk = ALLOC.markerIn(r.env); return mk && mk.nonce === run.nonce && mk.pid === run.pid; });
-    };
-    const signalAll = (sig) => {
-      for (const r of mine()) {
-        try { process.kill(r.pid, sig); } catch { /* vanished between scan and signal */ }
-      }
-    };
-    let left = mine();
-    if (!left.length) return [];
-    signalAll('SIGTERM');
-    for (const [sig, waitMs] of [[null, 8000], ['SIGKILL', 4000]]) {
-      if (sig) signalAll(sig);
-      const until = Date.now() + waitMs;
-      while ((left = mine()).length && Date.now() < until) await new Promise((r) => setTimeout(r, 200));
-      if (!left.length) return [];
-    }
-    return left.map((r) => r.pid);
-  }
-
-  let signalled = null;
-  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
-    process.on(sig, () => {
-      if (signalled) return;
-      signalled = sig;
-      if (child && child.exitCode === null) {
-        try { child.kill(sig); } catch { /* already gone */ }
-        // firebase gets a bounded grace period; then it is killed individually and teardown proceeds anyway
-        setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 30000).unref();
-      } else teardown(130);
+    const ours = (row) => { const mk = ALLOC.markerIn(row.env); return !!mk && mk.nonce === run.nonce && mk.pid === run.pid; };
+    const res = await ALLOC.terminateMarked({
+      select: (table) => ({
+        targets: table.filter((r) => r.pid !== process.pid && r.readable && !ALLOC.isZombie(r.state) && ours(r)),
+        unattributable: table.filter((r) => !r.readable && r.pid !== process.pid && ALLOC.pidAlive(r.pid)).map((r) => ({ pid: r.pid, why: r.why })),
+      }),
+      same: ours,
+      log,
     });
+    return res.confirmed ? [] : res.unconfirmed.map((u) => `${u.pid} (${u.status})`);
   }
+  let tornDown = null;
+  const teardown = (code) => {
+    if (tornDown) return tornDown;
+    tornDown = (async () => {
+      const leftovers = await reapOwn();
+      if (leftovers.length) log(`🔴 teardown UNCONFIRMED — ${leftovers.join(', ')} — the slot stays quarantined for the next admission while any marked process lives (reclaim: node tools/emu-reap.js ${slot})`);
+      const deadline = Date.now() + 10000;
+      let busy = [];
+      for (;;) {
+        busy = [];
+        for (const [nm, pt] of bandListeners(services, PORTS)) if ((await ALLOC.probePort(pt)) !== 'free') busy.push(`${nm} ${pt}`);
+        if (!busy.length || Date.now() > deadline) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (busy.length) log(`🔴 band not released 10s after teardown: ${busy.join(', ')} — the next admission will skip this slot (band probe)`);
+      cleanFiles();
+      process.removeListener('exit', cleanFiles);
+      log(`teardown complete — slot ${slot}: own processes ${leftovers.length ? 'UNCONFIRMED' : 'confirmed down'}, band ${busy.length ? 'NOT released' : 'released'}; releasing the sentinel`);
+      await ALLOC.closeServer(sentinel);
+      return code;
+    })();
+    return tornDown;
+  };
 
-  child = spawn('firebase', ['emulators:exec', '--config', generated, '--project', PROJECT, '--only', services.join(','), inner], { stdio: 'inherit', cwd: ROOT, env });
-  child.on('error', (e) => { console.error(`emulator-run: could not launch firebase — ${e && e.message}`); teardown(1); });
-  child.on('exit', (code, signal) => {
-    // The suite's own exit code is the result. A wrapper that swallowed it would turn a red suite green.
-    exitCode = signalled ? 130 : (signal ? 1 : (code === null ? 1 : code));
-    teardown(exitCode);
+  return new Promise((resolve) => {
+    STATE.phase = 'running';
+    STATE.teardown = (code) => teardown(code).then((c) => process.exit(c));
+    let contention = null;
+    const scan = (d) => {
+      const t = String(d);
+      const m = /(Could not start [^\n]*port taken[^\n]*|EADDRINUSE[^\n]*|address already in use[^\n]*)/i.exec(t);
+      if (m && !contention) contention = m[1].trim().slice(0, 160);
+    };
+    /* The CLI's output is TEED (byte-for-byte to our own streams) while it is scanned for a startup port refusal. */
+    const child = spawn('firebase', ['emulators:exec', '--config', generated, '--project', PROJECT, '--only', services.join(','), WRAPPED], { stdio: ['inherit', 'pipe', 'pipe'], cwd: ROOT, env });
+    STATE.child = child;
+    child.stdout.on('data', (d) => { process.stdout.write(d); scan(d); });
+    child.stderr.on('data', (d) => { process.stderr.write(d); scan(d); });
+    child.on('error', (e) => { console.error(`emulator-run: could not launch firebase — ${e && e.message}`); teardown(1).then((c) => resolve({ code: c, slot })); });
+    child.on('exit', (code, signal) => {
+      // The suite's own exit code is the result. A wrapper that swallowed it would turn a red suite green.
+      const exitCode = STATE.signalled ? 130 : (signal ? 1 : (code === null ? 1 : code));
+      const started = fs.existsSync(startedFile);
+      teardown(exitCode).then((c) => resolve({ code: c, slot, reslot: exitCode !== 0 && !started && !!contention && !STATE.signalled, why: contention }));
+    });
   });
-})();
+}

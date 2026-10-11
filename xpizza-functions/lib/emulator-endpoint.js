@@ -123,8 +123,38 @@ function validateEmulatorEnv(env, { ns, lenient = false } = {}) {
     throw new EmulatorEndpointError(`${FIRESTORE_ALIAS}=${env[FIRESTORE_ALIAS]} disagrees with ${HOST_VAR.firestore}=${env[HOST_VAR.firestore]} — the SDK honours both`);
   }
   if (present(env[HUB_VAR])) checkBand('hub', HUB_VAR, env[HUB_VAR], offset);
+  const project = checkProjectContract(env, offset);
   if (ns !== undefined && !/^[a-z0-9-]+$/.test(String(ns))) throw new EmulatorEndpointError(`RTDB namespace ${JSON.stringify(ns)} is malformed`);
-  return { offset, endpoints, nulls, started: [...started], dead: [...dead] };
+  return { offset, endpoints, nulls, started: [...started], dead: [...dead], project };
+}
+
+/* §c.1 PROJECT / FIREBASE_CONFIG CONTRACT (codex R1-build P2-6). Every project id present — GCLOUD_PROJECT,
+   GOOGLE_CLOUD_PROJECT, FIREBASE_CONFIG.projectId — must be the SAME; FIREBASE_CONFIG must parse, and its databaseURL
+   must be this run's loopback database (the discovery/worker shape, http://127.0.0.1:<db band>/?ns=…) or that SAME
+   project's own redirected URL (https://<project>[-default-rtdb].firebaseio.com — the CLI's suite shape, which the RTDB
+   host var redirects). Anything else refuses: a production-valued FIREBASE_CONFIG or disagreeing project vars are not
+   one coherent run. Returns the run's project (or null when none is stated). */
+function checkProjectContract(env, offset) {
+  const ids = [];
+  for (const k of ['GCLOUD_PROJECT', 'GOOGLE_CLOUD_PROJECT']) if (present(env[k])) ids.push([k, String(env[k])]);
+  let cfg = null;
+  if (present(env.FIREBASE_CONFIG)) {
+    try { cfg = JSON.parse(env.FIREBASE_CONFIG); } catch { throw new EmulatorEndpointError('FIREBASE_CONFIG does not parse'); }
+    if (!cfg || typeof cfg !== 'object') throw new EmulatorEndpointError('FIREBASE_CONFIG is not an object');
+    if (present(cfg.projectId)) ids.push(['FIREBASE_CONFIG.projectId', String(cfg.projectId)]);
+  }
+  const distinct = [...new Set(ids.map(([, v]) => v))];
+  if (distinct.length > 1) throw new EmulatorEndpointError(`project variables disagree (${ids.map(([k, v]) => `${k}=${v}`).join(', ')}) — not one coherent run`);
+  const project = distinct[0] || null;
+  if (cfg && present(cfg.databaseURL)) {
+    let u;
+    try { u = new URL(String(cfg.databaseURL)); } catch { throw new EmulatorEndpointError(`FIREBASE_CONFIG.databaseURL ${JSON.stringify(cfg.databaseURL)} does not parse`); }
+    if (u.protocol === 'http:') checkBand('database', 'FIREBASE_CONFIG.databaseURL', `${u.hostname}:${u.port}`, offset);
+    else if (!(u.protocol === 'https:' && project && [`${project}.firebaseio.com`, `${project}-default-rtdb.firebaseio.com`].includes(u.hostname))) {
+      throw new EmulatorEndpointError(`FIREBASE_CONFIG.databaseURL ${cfg.databaseURL} is neither this run's loopback database nor project ${project}'s own (redirected) URL`);
+    }
+  }
+  return project;
 }
 
 /* A functions/HTTP base URL must be this run's loopback functions endpoint. */
@@ -134,6 +164,11 @@ function validateFunctionsUrl(url, env) {
   try { u = new URL(String(url)); } catch { throw new EmulatorEndpointError(`functions URL ${JSON.stringify(url)} does not parse`); }
   if (u.protocol !== 'http:') throw new EmulatorEndpointError(`functions URL ${url} is not plain-http loopback`);
   checkBand('functions', 'functions URL', `${u.hostname === '::1' ? '[::1]' : u.hostname}:${u.port}`, offset);
+  // P2-6: the path must be THIS run's project (the emulator serves /<project>/<region>/<fn>); another project's path on
+  // the right port is another run's function.
+  const project = checkProjectContract(env, offset);
+  if (!project) throw new EmulatorEndpointError('functions URL given but no project is stated (GCLOUD_PROJECT) to check its path against');
+  if (!u.pathname.startsWith(`/${project}/`)) throw new EmulatorEndpointError(`functions URL ${url} is not under this run's project path /${project}/`);
   return u;
 }
 

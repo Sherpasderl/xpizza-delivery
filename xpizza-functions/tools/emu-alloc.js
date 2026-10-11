@@ -112,9 +112,11 @@ function classifyScan(rows, slot, { isAlive = () => true } = {}) {
 
 // ── Real scans (macOS /bin/ps, the supported platform) ──────────────────────────────────────────
 const PS_ENV = { LC_ALL: 'C', TZ: 'UTC', PATH: '/usr/bin:/bin' };
+// Every ps call is BOUNDED (codex R1-build P2-8): a hung ps throws here, and callers treat a failed scan as INCOMPLETE.
+const PS_TIMEOUT_MS = 10000;
 function readPsTables(uid = process.getuid()) {
   const run = (extra) => execFileSync('/bin/ps', ['-U', String(uid), '-ww', ...extra, '-o', 'pid=,state=,lstart=,args='],
-    { encoding: 'utf8', env: PS_ENV, maxBuffer: 64 * 1024 * 1024 }).split('\n').filter(Boolean);
+    { encoding: 'utf8', env: PS_ENV, maxBuffer: 64 * 1024 * 1024, timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' }).split('\n').filter(Boolean);
   /* -E FIRST, plain SECOND: we iterate the -E rows, so a row missing from the later plain scan has EXITED in
      between (isAlive then skips it) — never "born after", which the opposite order mistook for unreadable
      (measured: the second ps itself showed up as a live unreadable row and quarantined all 40 slots). */
@@ -123,8 +125,84 @@ function readPsTables(uid = process.getuid()) {
   return { plain, withEnv };
 }
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); } };
-function scanSlot(slot, { tables = readPsTables(), isAlive = pidAlive } = {}) {
-  return classifyScan(joinScans(tables.plain, tables.withEnv), slot, { isAlive });
+function scanSlot(slot, { tables, isAlive = pidAlive } = {}) {
+  let t = tables;
+  if (!t) {
+    try { t = readPsTables(); } catch (e) {
+      // a failed / timed-out scan proves nothing about the slot ⇒ INCOMPLETE ⇒ quarantine (unverifiable ⇒ refuse)
+      return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `ps scan failed: ${(e && (e.code || e.message)) || e}` }], orphans: [], live: [] };
+    }
+  }
+  return classifyScan(joinScans(t.plain, t.withEnv), slot, { isAlive });
+}
+// ONE pid, fresh — the identity check made immediately before a signal. null = not listed (gone) or unreadable scan.
+function readPsRow(pid) {
+  const run = (extra) => execFileSync('/bin/ps', ['-p', String(pid), '-ww', ...extra, '-o', 'pid=,state=,lstart=,args='],
+    { encoding: 'utf8', env: PS_ENV, timeout: PS_TIMEOUT_MS, killSignal: 'SIGKILL' }).split('\n').filter(Boolean);
+  let withEnv; let plain;
+  try { withEnv = run(['-E']); plain = run([]); } catch (e) { if (e && e.status === 1 && !e.signal) return null; throw e; }   // ps exits 1: no such pid
+  return joinScans(plain, withEnv)[0] || null;
+}
+
+/* ═══ THE TERMINATION ROUTINE — shared by emu-reap and the launcher's teardown (codex R1-build P1-3) ═══
+ * select(table) → { targets: rows that are ours to end, unattributable: live rows we could not read }
+ * same(row)     → is a FRESH row still the same marked process we meant (marker/nonce test; start compared here)
+ * Rules:
+ *   · the FULL selected set is re-enumerated every iteration, so a descendant spawned during the reap is added;
+ *   · each pid is re-read FRESH (readRow) immediately before EACH signal — same start time AND same(row) — else skipped;
+ *   · individual pids only, never a process group;
+ *   · death is CONFIRMED only for a pid that is gone, a zombie, or now a different process (start changed). An
+ *     unreadable or EPERM target is UNCONFIRMED — never counted as dead.
+ * Returns { confirmed, signalled, unconfirmed, eperm }. */
+async function terminateMarked({ select, same, readTable = () => { const t = readPsTables(); return joinScans(t.plain, t.withEnv); },
+  readRow = readPsRow, kill = process.kill.bind(process), isAlive = pidAlive, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  now = () => Date.now(), phases = [['SIGTERM', 8000], ['SIGKILL', 4000]], pollMs = 200, log = () => {} }) {
+  const tracked = new Map();                           // pid → start (the identity we are ending)
+  const signalled = []; const eperm = new Set();
+  let unattributable = [];
+  const refresh = () => {
+    let table;
+    try { table = readTable(); } catch (e) { unattributable = [{ pid: 0, why: `ps scan failed: ${(e && (e.code || e.message)) || e}` }]; return null; }
+    const sel = select(table);
+    for (const r of sel.targets) if (!tracked.has(r.pid)) tracked.set(r.pid, r.start);
+    unattributable = sel.unattributable || [];
+    return table;
+  };
+  const status = (pid, table) => {
+    const row = table ? table.find((r) => r.pid === pid) : null;
+    if (!row) return isAlive(pid) ? 'unconfirmed' : 'dead';
+    if (row.start !== tracked.get(pid)) return 'dead';            // the pid now names a DIFFERENT process
+    if (isZombie(row.state)) return 'dead';
+    if (!row.readable) return 'unconfirmed';
+    return same(row) ? 'alive' : 'unconfirmed';
+  };
+  const signalPass = (sig, done) => {
+    for (const [pid, start] of tracked) {
+      if (done.has(pid)) continue;                               // one signal per pid per phase; newcomers get theirs
+      let fresh;
+      try { fresh = readRow(pid); } catch { fresh = undefined; }
+      if (!fresh || !fresh.readable || fresh.start !== start || isZombie(fresh.state) || !same(fresh)) continue;   // gone / reused / unreadable: NOT signalled
+      done.add(pid);
+      try { kill(pid, sig); signalled.push(`${pid}:${sig}`); } catch (e) { if (e && e.code === 'EPERM') { eperm.add(pid); log(`pid ${pid}: EPERM — left alone, UNCONFIRMED`); } }
+    }
+  };
+  let table = refresh();
+  for (const [sig, waitMs] of phases) {
+    const done = new Set();
+    const until = now() + waitMs;
+    for (;;) {
+      signalPass(sig, done);
+      await sleep(pollMs);
+      table = refresh();                                         // re-enumerates the FULL set: descendants are added
+      const live = [...tracked.keys()].filter((pid) => status(pid, table) !== 'dead');
+      if (!live.length && !unattributable.length) return { confirmed: true, signalled, unconfirmed: [], eperm: [...eperm] };
+      if (now() >= until) break;
+    }
+  }
+  table = refresh();
+  const unconfirmed = [...tracked.keys()].filter((pid) => status(pid, table) !== 'dead').map((pid) => ({ pid, status: status(pid, table) }));
+  for (const u of unattributable) unconfirmed.push({ pid: u.pid, status: `unattributable (${u.why})` });
+  return { confirmed: false, signalled, unconfirmed, eperm: [...eperm] };
 }
 // The supervisor's own start (epoch seconds), read with the same normalisation the scan uses.
 function ownStart(pid = process.pid) {
@@ -193,7 +271,7 @@ function shuffle(arr, random = Math.random) {
  */
 async function acquireSlot(opts) {
   const {
-    slots = SLOTS, base = SENTINEL_BASE, pin = null,
+    slots = SLOTS, base = SENTINEL_BASE, pin = null, exclude = new Set(), signal = null,
     bind, probeBand, scan,
     now = () => Date.now(), sleep, random = Math.random, log = () => {},
     deadlineMs = 20 * 60 * 1000, waitMs = 2000, jitterMs = 500, heartbeatMs = 30000,
@@ -201,10 +279,23 @@ async function acquireSlot(opts) {
   if (pin != null && (!Number.isInteger(pin) || pin < 0 || pin >= slots)) throw new Error(`emu-alloc: pin ${pin} out of range 0..${slots - 1}`);
   const t0 = now();
   let lastBeat = -Infinity;
+  /* CANCELLATION (codex R1-build P2-7): an aborted signal stops the queue at the next check — before a bind, and out of
+     a sleep — with code ECANCELLED; nothing is held when it throws. DEADLINE (P2-8): checked before EVERY slot, not once
+     per full sweep, so a slow scan cannot carry the queue far past it. */
+  const cancelled = () => { const e = new Error('emu-alloc: cancelled while queued'); e.code = 'ECANCELLED'; return e; };
+  const overdue = () => { const w = now() - t0; if (w > deadlineMs) throw new Error(`emu-alloc: no free slot after ${(w / 1000).toFixed(0)}s (deadline ${deadlineMs / 1000}s) — all ${slots} slots busy`); };
+  const pause = (ms) => new Promise((res, rej) => {
+    if (signal && signal.aborted) return rej(cancelled());
+    let onAbort = null;
+    Promise.resolve(sleep(ms)).then(() => { if (signal && onAbort) signal.removeEventListener('abort', onAbort); res(); });
+    if (signal) { onAbort = () => rej(cancelled()); signal.addEventListener('abort', onAbort, { once: true }); }
+  });
   for (;;) {
-    const order = pin != null ? [pin] : shuffle([...Array(slots).keys()], random);
+    const order = pin != null ? [pin] : shuffle([...Array(slots).keys()].filter((x) => !exclude.has(x)), random);
     let lastReason = null;
     for (const slot of order) {
+      if (signal && signal.aborted) throw cancelled();
+      if (pin == null) overdue();
       const server = await bind(base + slot);      // reject (non-EADDRINUSE) propagates — surfaced loudly
       if (!server) { lastReason = `slot ${slot} sentinel held by another run`; continue; }
       const sc = await scan(slot);
@@ -220,10 +311,10 @@ async function acquireSlot(opts) {
       return { slot, server, offset: slot * 10 };
     }
     if (pin != null) return { slot: null, reason: lastReason };
+    overdue();
     const waited = now() - t0;
-    if (waited > deadlineMs) throw new Error(`emu-alloc: no free slot after ${(waited / 1000).toFixed(0)}s (deadline ${deadlineMs / 1000}s) — all ${slots} slots busy`);
     if (waited - lastBeat >= heartbeatMs) { log(`all ${slots} slots busy — QUEUED, waiting (${(waited / 1000).toFixed(0)}s of ${deadlineMs / 1000}s)…`); lastBeat = waited; }
-    await sleep(waitMs + Math.floor(random() * jitterMs));
+    await pause(waitMs + Math.floor(random() * jitterMs));
   }
 }
 
@@ -231,6 +322,6 @@ module.exports = {
   SLOTS, SENTINEL_BASE, FIXTURE_SENTINEL_BASE, RUN_VAR, OFFSET_VAR, PS_ENV,
   sentinelPort, newNonce, formatMarker, parseMarker,
   parsePsLine, isZombie, isFallback, markerIn, joinScans, classifyScan,
-  readPsTables, pidAlive, scanSlot, ownStart,
+  readPsTables, readPsRow, pidAlive, scanSlot, ownStart, terminateMarked, PS_TIMEOUT_MS,
   bindSentinel, closeServer, probePort, PROBE_HOSTS, shuffle, acquireSlot,
 };

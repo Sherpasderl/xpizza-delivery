@@ -335,9 +335,11 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       const bound = await new Promise((res) => { squatter.once('error', () => res(false)); squatter.listen(port, '127.0.0.1', () => res(true)); });
       if (!bound) continue;                                   // a real run holds this band — try another slot
       try {
-        const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'firestore', '--project', 'demo-xpizza', 'node -e "process.exit(0)"'],
+        const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'firestore', '--project', 'demo-xpizza', 'node test/emu-isolation.proof.js noop'],
           { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: String(s * 10) } });
-        if (r.status === 3 && /sentinel held by another run/.test(r.stderr)) continue;   // lost a race for the sentinel: retry elsewhere
+        // Refused for a reason OTHER than our squatter (another live run's sentinel, a transient quarantine / incomplete
+        // scan from other sessions' processes): this cell is about the band refusal, so try another slot.
+        if (r.status === 3 && !/sentinel free but a band port is busy/.test(r.stderr)) continue;
         assert.strictEqual(r.status, 3,
           `🔴 a bound port did not refuse (exit ${r.status}) — the run either attached to whatever is listening or started anyway\n${r.stderr}`);
         assert.match(r.stderr, /REFUSED TO START/, 'the refusal is loud');
@@ -444,7 +446,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     assert.deepStrictEqual(SERVICE_LISTENERS.functions, ['functions', 'eventarc', 'tasks'],
       '🔴 functions no longer declares its extra listeners — Eventarc and Cloud Tasks would start unbanded');
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'functions', '--project', 'demo-xpizza', 'node -e "process.exit(0)"'],
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'functions', '--project', 'demo-xpizza', 'node test/emu-isolation.proof.js noop'],
       { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: '0', PATH: '/nonexistent' } });
     for (const svc of ['hub', 'logging', 'functions', 'eventarc', 'tasks']) {
       assert.match(r.stderr, new RegExp(`${svc} \\d+`), `🔴 ${svc} is not in the preflight set — it would take a shared default port`);
@@ -461,7 +463,20 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const ignore = (fb.functions && fb.functions[0] && fb.functions[0].ignore) || [];
     assert.ok(ignore.includes('firebase.emulator.*.json'),
       '🔴 functions.ignore does not exclude the generated emulator config — a stray would be uploaded with a deploy');
-    ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore');
+    /* R1 (codex R1-build P2-8): .env.local and its backup / editor-temp shapes stay OUT of the deploy archive — driven
+       through the INSTALLED CLI's own archive walker (fsAsync.readdirRecursive, what prepareFunctionsUpload uses). */
+    const fsAsyncPath = ['/usr/local/lib/node_modules/firebase-tools/lib/fsAsync.js'].find((p) => fs.existsSync(p));
+    if (fsAsyncPath) {
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-ignore-'));
+      const names = ['.env.local', '.env.local~', '.env.local.bak', '.env.local.tmp', '.env.bak', '.env~', '.env.x.bak', 'index.js'];
+      for (const f of names) fs.writeFileSync(path.join(d, f), 'x');
+      const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(fsAsyncPath)}).readdirRecursive({ path: ${JSON.stringify(d)}, ignore: ${JSON.stringify(ignore)} }).then((fl) => require('fs').writeFileSync(${JSON.stringify(path.join(d, 'out.json'))}, JSON.stringify(fl.map((x) => require('path').basename(x.name)))))`], { encoding: 'utf8', timeout: 30000 });
+      assert.strictEqual(r.status, 0, r.stderr);
+      const uploaded = JSON.parse(fs.readFileSync(path.join(d, 'out.json'), 'utf8')).filter((x) => x !== 'out.json').sort();
+      fs.rmSync(d, { recursive: true, force: true });
+      assert.deepStrictEqual(uploaded, ['index.js'], `🔴 a local env file / backup would ride into the deploy archive: ${uploaded.join(', ')}`);
+    }
+    ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore; .env.local and its backups (~, .bak, .tmp) are excluded by the installed CLI\'s own archive walker while index.js is kept');
   }
 
   // ── 10b. 🔴 THE REFUSAL PREDICATE ITSELF, BEFORE ANYTHING RELIES ON IT ──────────────────────
@@ -917,6 +932,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual(fsOnly.FIREBASE_DATABASE_EMULATOR_HOST, '127.0.0.1:1', '🔴 a firestore-only run left the RTDB host absent or foreign');
     const stale = childEnv(['database'], { ...parent, XPIZZA_EMU_RUN: '1:2:a1b2c3d4e5f60718:3', XPIZZA_EMU_OFFSET: '10', XPIZZA_EMU_SERVICES: 'firestore', XPIZZA_EMU_DEAD: 'database' });
     for (const k of ['XPIZZA_EMU_RUN', 'XPIZZA_EMU_OFFSET', 'XPIZZA_EMU_SERVICES', 'XPIZZA_EMU_DEAD']) assert.strictEqual(stale[k], undefined, `🔴 an inherited ${k} survived — it would name someone else's run`);
+    const cfgd = childEnv(['database'], { ...parent, FIREBASE_CONFIG: '{"projectId":"xpizza-delivery","databaseURL":"https://xpizza-delivery-default-rtdb.firebaseio.com"}' });
+    assert.strictEqual(cfgd.FIREBASE_CONFIG, undefined, '🔴 an inherited (production-valued) FIREBASE_CONFIG survived into the run');
     assert.strictEqual(dbOnly.FIREBASE_DATABASE_EMULATOR_HOST, '127.0.0.1:9000', 'the served service keeps its var (firebase overwrites it with the real port)');
     assert.strictEqual(dbOnly.PUBSUB_EMULATOR_HOST, undefined, 'an unserved service\'s var is cleared too');
     assert.strictEqual(dbOnly.PATH, '/usr/bin', 'the rest of the environment is untouched');
@@ -1100,7 +1117,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       assert.strictEqual((injected.match(/-r \/abs/g) || []).length, nodes,
         `🔴 ${name}: ${nodes} node invocations but only ${(injected.match(/-r \/abs/g) || []).length} preloaded — the rest would be NOT MEASURED`);
     }
-    ok(`all ${routed} routed scripts receive the counter in every node invocation, chained ones included`);
+    // R1 (P1-2): every routed command must also PARSE into a `node …` && chain — that is what the marked wrapper runs
+    const { parseChain } = require('./emulator-run.js');
+    for (const [name, body] of Object.entries(pkg.scripts || {})) {
+      if (!/emulator-run\.js/.test(body)) continue;
+      const m = body.match(/"([^"]+)"\s*$/);
+      assert.doesNotThrow(() => parseChain(injectCounter(m[1], C, '/abs/tools/emu-null-guard.js')), `🔴 ${name}: its command does not parse into a node && chain — the marked wrapper would refuse it`);
+    }
+    ok(`all ${routed} routed scripts receive the counter in every node invocation, chained ones included, and each parses into a node && chain for the marked wrapper`);
   }
 
   // ── 14d. 🔴 THE GATE'S OWN MAIN PATH IS EXECUTED, NOT JUST ITS FUNCTIONS ────────────────────
@@ -1145,7 +1169,17 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.ok(g.reachesLauncher(pkg.scripts['test:kds-manifest-writer']), '🔴 the INDIRECT launcher (test:kds-manifest-writer → node --test → emulator-run.js) is not classified, so its heartbeats would not stream');
     assert.ok(g.reachesLauncher(pkg.scripts['test:pickup-ready']), 'a direct launcher is classified');
     assert.ok(!g.reachesLauncher(pkg.scripts['test:portal']), 'a script that never reaches the launcher is not');
-    ok('the gate has no settle wait; direct AND indirect launchers (test:kds-manifest-writer) are classified for live heartbeat streaming');
+    /* P2-5 — THE ADVERSE-CHUNK REPRODUCTION (codex: 12 → 0). Through the REAL collector + countCells. */
+    const teed = [];
+    const col = g.makeCollector({ tee: (l) => teed.push(l) });
+    col.feed('out', '  ✓ 1 x\n##CELLS 12');
+    col.feed('err', 'emulator-run: a diagnostic\n');
+    col.feed('out', '\n##CELLS 0\n');
+    assert.strictEqual(g.countCells(col.text()), 12, '🔴 interleaved stdout/stderr chunks lost a ##CELLS trailer (the 12 → 0 reproduction)');
+    const merged = '  ✓ 1 x\n##CELLS 12' + 'emulator-run: a diagnostic\n' + '\n##CELLS 0\n';
+    assert.strictEqual(g.countCells(merged), 0, 'premise — merging the chunks in arrival order DOES lose the 12 (what the fix prevents)');
+    assert.deepStrictEqual(teed, ['emulator-run: a diagnostic'], 'the tee still streams the launcher line live');
+    ok('the gate has no settle wait; direct AND indirect launchers (test:kds-manifest-writer) are classified for live heartbeat streaming; stdout/stderr are captured SEPARATELY so an adverse chunk interleaving keeps ##CELLS 12 (merged arrival order would read 0)');
   }
 
   // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
@@ -1201,10 +1235,15 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const dbOnly = childEnv(['database'], { PATH: '/usr/bin' });
     assert.strictEqual(dbOnly.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, undefined,
       'runs that start no functions are left alone');
-    const operator = childEnv(['functions'], { PATH: '/usr/bin', FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH: '/some/real/path' });
-    assert.strictEqual(operator.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '/some/real/path',
-      'an operator who set it deliberately is not overridden');
-    ok('a functions run discovers via manifest and opens no port; a deliberate operator value is preserved');
+    /* R1 (codex R1-build P1-4): an INHERITED path is OVERRIDDEN — two runs inheriting the SAME path get DISTINCT dirs. */
+    const runA = { slot: 3, pid: 41001, nonce: 'a1b2c3d4e5f60718', start: 1 };
+    const runB = { slot: 4, pid: 41002, nonce: 'b1b2c3d4e5f60718', start: 1 };
+    const shared = { PATH: '/usr/bin', FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH: '/some/shared/path' };
+    const ea = childEnv(['functions'], shared, runA); const eb = childEnv(['functions'], shared, runB);
+    assert.notStrictEqual(ea.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '/some/shared/path', '🔴 an inherited discovery path was kept — two worktrees would share functions.yaml');
+    assert.notStrictEqual(ea.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, eb.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '🔴 two runs with the same inherited path got the SAME discovery dir');
+    assert.strictEqual(ea.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, path.join(os.tmpdir(), `${DISCOVERY_PREFIX}41001`), 'derived from the run');
+    ok('a functions run discovers via manifest and opens no port; an INHERITED discovery path is overridden — two runs inheriting the same path get distinct per-run dirs');
   }
 
   console.log(`emulator-ports guard: OK (${n})`);

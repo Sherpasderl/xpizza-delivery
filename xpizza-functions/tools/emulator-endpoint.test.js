@@ -259,6 +259,30 @@ const refuses = (env, re, label) => {
     ok('no network and no launch at import: index.js full load + the portal entry, each with no signal AND with the discovery env; cors-preflight.test.js + rtdb-init.test.js run with loopback-only, off-band contact');
   }
 
+  // ── 10. P2-6: THE PROJECT / FIREBASE_CONFIG CONTRACT ──────────────────────────────────────────────────────────
+  {
+    const base = { FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: String(OFF), GCLOUD_PROJECT: 'demo-xpizza' };
+    const cfg = (o) => JSON.stringify(o);
+    // positives: the CLI's suite shape and discovery/worker shape
+    assert.strictEqual(validateEmulatorEnv({ ...base, FIREBASE_CONFIG: cfg({ projectId: 'demo-xpizza', databaseURL: 'https://demo-xpizza.firebaseio.com' }) }).project, 'demo-xpizza');
+    assert.ok(validateEmulatorEnv({ ...base, FIREBASE_CONFIG: cfg({ projectId: 'demo-xpizza', databaseURL: `http://127.0.0.1:${P.database}/?ns=xpizza-delivery-default-rtdb` }) }));
+    const bad = [
+      [{ GOOGLE_CLOUD_PROJECT: 'xpizza-delivery' }, /disagree/, 'GCLOUD_PROJECT ≠ GOOGLE_CLOUD_PROJECT'],
+      [{ FIREBASE_CONFIG: cfg({ projectId: 'xpizza-delivery' }) }, /disagree/, 'a PRODUCTION FIREBASE_CONFIG.projectId'],
+      [{ FIREBASE_CONFIG: cfg({ projectId: 'demo-xpizza', databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' }) }, /neither/, 'another project\'s databaseURL'],
+      [{ FIREBASE_CONFIG: cfg({ projectId: 'demo-xpizza', databaseURL: `http://127.0.0.1:${P.database + 10}/?ns=x` }) }, /not this run's database port/, 'a loopback databaseURL on another slot'],
+      [{ FIREBASE_CONFIG: cfg({ projectId: 'demo-xpizza', databaseURL: 'https://evil.example' }) }, /neither/, 'a foreign databaseURL'],
+      [{ FIREBASE_CONFIG: '{not json' }, /does not parse/, 'an unparseable FIREBASE_CONFIG'],
+    ];
+    for (const [extra, re, label] of bad) refuses({ ...base, ...extra }, re, label);
+    // the functions URL must be THIS run's project path
+    const fnOk = `http://127.0.0.1:${P.functions}/demo-xpizza/us-central1/createOrder`;
+    assert.ok(EE.validateFunctionsUrl(fnOk, base));
+    assert.throws(() => EE.validateFunctionsUrl(`http://127.0.0.1:${P.functions}/xpizza-delivery/us-central1/createOrder`, base), /not under this run's project path/, '🔴 another project\'s functions path was accepted');
+    assert.throws(() => EE.validateFunctionsUrl(fnOk, { ...base, GCLOUD_PROJECT: '' }), /no project is stated/);
+    ok(`P2-6: project vars must agree and FIREBASE_CONFIG must name this run's database (loopback band) or the same project's own URL — ${bad.length} incoherent shapes refuse; a functions URL under another project's path refuses`);
+  }
+
   // ── 9. P1-A + §c.1: EVERY HARNESS refuses BEFORE any client/HTTP — missing signal, foreign, half-configured ──
   {
     /* Each harness is driven for real, under the no-connect observer, and must refuse as ONE process with a clean

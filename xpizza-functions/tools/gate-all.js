@@ -150,7 +150,7 @@ function reachesLauncher(body, root = ROOT) {
   });
 }
 
-module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, reachesLauncher };
+module.exports = { classify, KNOWN_RED, ZERO_CELL_OK, countCells, reachesLauncher, makeCollector };
 if (require.main !== module) return;
 
 const EMULATORS_ONLY = process.argv.includes('--emulators');
@@ -200,29 +200,37 @@ for (const name of Object.keys(KNOWN_RED)) {
   }
 }
 
-/* Run one script; stream the launcher's own stderr lines live when it can queue. Async spawn, so a live line is
-   printed when it is written rather than when the suite ends. */
+/* SEPARATE capture buffers (codex R1-build P2-5). Arbitrary stdout and stderr CHUNKS interleaved into one string can split
+   a trailer: stdout `##CELLS 12`, a stderr line, then stdout `\n##CELLS 0\n` merged to a count of 0 — the 12 lost. Each
+   stream is captured whole on its own and the counted text is stdout + stderr concatenated, exactly as the base gate's
+   spawnSync produced it. Teeing is for the live heartbeat only and never touches what is counted. */
+function makeCollector({ tee = null } = {}) {
+  const buf = { out: '', err: '' };
+  const lineBuf = { out: '', err: '' };
+  return {
+    feed(stream, chunk) {
+      const d = String(chunk);
+      buf[stream] += d;
+      if (!tee) return;
+      lineBuf[stream] += d;
+      const lines = lineBuf[stream].split('\n'); lineBuf[stream] = lines.pop();
+      for (const l of lines) if (/^emulator-run:/.test(l)) tee(l);
+    },
+    text() { return `${buf.out}${buf.err}`; },
+  };
+}
+
+/* Run one script; stream the launcher's `emulator-run:` lines live when it can queue — from BOTH streams: a launcher
+   reached INDIRECTLY through `node --test` has its stderr forwarded by the test runner VERBATIM onto STDOUT (measured). */
 function runScript(name, env) {
   const stream = reachesLauncher(pkgScripts[name] || '');
   return new Promise((resolve) => {
     const c = spawn('npm', ['run', '--silent', name], { cwd: ROOT, env });
-    let out = '';
-    /* BOTH streams are scanned: a launcher reached INDIRECTLY through `node --test` has its stderr forwarded by the test
-       runner VERBATIM onto STDOUT (measured, live, line-for-line) — teeing stderr alone would never show its heartbeats. */
-    const tee = () => {
-      let buf = '';
-      return (d) => {
-        out += d;
-        if (!stream) return;
-        buf += d;
-        const lines = buf.split('\n'); buf = lines.pop();
-        for (const l of lines) if (/^emulator-run:/.test(l)) process.stderr.write(`  │ ${name}: ${l}\n`);
-      };
-    };
-    c.stdout.on('data', tee());
-    c.stderr.on('data', tee());
-    c.on('error', (e) => resolve({ status: 1, out: `${out}\nspawn error: ${e && e.message}` }));
-    c.on('close', (code) => resolve({ status: code, out }));
+    const col = makeCollector({ tee: stream ? (l) => process.stderr.write(`  │ ${name}: ${l}\n`) : null });
+    c.stdout.on('data', (d) => col.feed('out', d));
+    c.stderr.on('data', (d) => col.feed('err', d));
+    c.on('error', (e) => resolve({ status: 1, out: `${col.text()}\nspawn error: ${e && e.message}` }));
+    c.on('close', (code) => resolve({ status: code, out: col.text() }));
   });
 }
 
