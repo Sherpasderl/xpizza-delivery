@@ -128,7 +128,8 @@ try {
     // (c) write surface
     const cls = strip(FILES['catalog/identity-integrity.js']);
     const classifierPure = (src) => !/require\(['"]firebase/.test(src) && !/\b(getFirestore|getDatabase|runTransaction|bulkWriter)\b|\.transaction\(|\.(ref|doc|collection|batch)\(/.test(src);
-    assert.strictEqual(cls.split(/require\(/).length - 1, 3, 'premise: the classifier imports only identity-evidence, evidence-encoding and catalog-verifier (all pure)');
+    assert.deepStrictEqual((cls.match(/require\('[^']+'\)/g) || []).sort(), ["require('./catalog-verifier')", "require('./evidence-encoding')", "require('./identity-evidence')", "require('./identity-registry')"],
+      'premise: the classifier imports only identity-evidence, evidence-encoding, catalog-verifier and identity-registry (validIdShape) — all pinned, none a database handle');
     assert.ok(classifierPure(cls), '🔴 the classifier must stay PURE: no database handle, no ref/doc/collection/batch, no transaction');
     for (const w of ["db.doc('x').set({})", "rtdb.ref('menus').set(1)", "require('firebase-admin')", 'db.runTransaction(async () => {})', "db.collection('orders')"])
       assert.ok(!classifierPure(`${cls}\n${w}`), `sensitivity: a planted ${w} in the classifier is detected`);

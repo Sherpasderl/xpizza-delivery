@@ -11,6 +11,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const CH = 'projects/p/notificationChannels/1';
 const THR = { getMyRestaurants: 3, getEditableCatalog: 3, editCatalog: 4, publishEdited: 3, getSalesStats: 5 };
 
+setTimeout(() => { console.error('identity-alerts FAILED: the suite did not finish within 60 s (a bound was not enforced)'); process.exit(1); }, 60000).unref();
 (async () => {
   // ── 1. §6 policies exactly as the plan pins them ───────────────────────────────────────────────────────────────
   {
@@ -124,6 +125,81 @@ const THR = { getMyRestaurants: 3, getEditableCatalog: 3, editCatalog: 4, publis
     assert.strictEqual(T.JOB('p', 'us-central1'), 'projects/p/locations/us-central1/jobs/firebase-schedule-verifyIdentityIntegrity-us-central1');
   }
   ok('the tool (fake API): an unverified channel refused before any write; apply arms metrics (20) BEFORE policies (14); a second apply writes nothing; a changed threshold updates exactly that metric + policy; a real entry lacking any of the five resource labels is refused; the paused job is the function\'s scheduler job');
+
+  // ── 6. P1-4: INSTALL needs no heartbeat (the job is PAUSED at that point); ARM needs the job ENABLED and a heartbeat METRIC POINT ──
+  {
+    const tPol = Date.parse('2026-10-11T00:00:00Z'); let clock = tPol + 60000;
+    const st = { job: 'PAUSED', policies: [{ displayName: T.HB_POLICY, mutationRecord: { mutateTime: new Date(tPol).toISOString() } }], series: [], entries: [], calls: [] };
+    const api = {
+      getJob: async () => ({ state: st.job }), listPolicies: async () => st.policies,
+      timeSeries: async () => st.series, listEntries: async (f) => { st.calls.push(f); return st.entries.filter((e) => !e.match || e.match(f)); },
+    };
+    const sleep = async (ms) => { clock += ms; };
+    const base = { api, region: 'us-central1', project: 'p', now: () => clock, sleep, log: () => {}, waitMs: 5 * 60000, pollMs: 60000, transitionMs: 10 * 60000, askMs: 1000 };
+    // install needs NOTHING from the heartbeat: apply over an empty plan writes nothing and waits for nothing
+    assert.deepStrictEqual(await T.install({}, { metricDiff: [], policyDiff: [], metrics: [], policies: [] }), [], 'install never waits for a heartbeat');
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /resume it first/, 'arm refuses while the job is PAUSED');
+    st.job = 'ENABLED';
+    // a RAW heartbeat LOG entry alone is not arming: no ingested metric point → not armed, at the bounded wait
+    st.entries = [{ timestamp: new Date(clock).toISOString(), resource: { labels: { revision_name: 'rev-1' } } }];
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /no heartbeat METRIC POINT .* NOT armed/, 'a log entry without an ingested metric point does NOT arm');
+    // a point BEFORE the policy change does not count either
+    st.series = [{ points: [{ value: { int64Value: '1' }, interval: { endTime: new Date(tPol - 1000).toISOString() } }] }];
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /NOT armed/, 'a point ingested before the policy change does not arm');
+    // armed + the revision transition: a heartbeat from a NEW revision, a continuous series, the owner says no absence email
+    st.series = [{ points: [0, 15, 30, 45].map((m) => ({ value: { int64Value: '1' }, interval: { endTime: new Date(tPol + m * 60000).toISOString() } })) }];
+    st.entries = [{ timestamp: new Date(clock).toISOString(), resource: { labels: { revision_name: 'rev-1' } }, match: (f) => !/revision_name!=/.test(f) },
+      { timestamp: new Date(clock + 1).toISOString(), resource: { labels: { revision_name: 'rev-2' } }, match: (f) => /revision_name!="rev-1"/.test(f) }];
+    const r = await T.arm({ ...base, ask: async () => false });
+    assert.deepStrictEqual(r.revisions, ['rev-1', 'rev-2'], 'armed, then the revision transition passed');
+    await assert.rejects(() => T.arm({ ...base, ask: () => new Promise(() => {}) }), /did not confirm/, 'an UNANSWERED confirmation is a failure at its bound, never a hang');
+    await assert.rejects(() => T.arm({ ...base, ask: async () => true }), /absence incident opened on a revision transition/);
+    st.series = [{ points: [0, 50].map((m) => ({ value: { int64Value: '1' }, interval: { endTime: new Date(tPol + m * 60000).toISOString() } })) }];
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /≥ 45-min gap/, 'a 45-min gap in the service-level series across the transition fails');
+  }
+  ok('P1-4: install needs no heartbeat (the job stays PAUSED); arm refuses a paused job, and arms only on a heartbeat METRIC POINT ingested after the policy change (a raw log entry, or an older point, is NOT armed); the revision-transition acceptance needs a heartbeat from the NEW revision, no 45-min series gap and the owner\'s bounded confirmation');
+
+  // ── 7. P1-5: ABSENCE acceptance always RESUMES — at its independent deadline when nobody answers, and after a thrown error ──
+  {
+    const mk = (over = {}) => {
+      const st = { state: 'ENABLED', paused: 0, resumed: 0, gets: 0, failResume: 0 };
+      const hb = { timestamp: new Date(Date.now()).toISOString() };
+      const api = {
+        listEntries: async () => [hb], pauseJob: async () => { st.paused += 1; st.state = 'PAUSED'; },
+        resumeJob: async () => { st.resumed += 1; if (st.failResume > 0) { st.failResume -= 1; throw new Error('503'); } st.state = 'ENABLED'; },
+        getJob: async () => { st.gets += 1; return { state: st.state }; }, ...over(st),
+      };
+      return { st, api };
+    };
+    const lim = { region: 'r', log: () => {}, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))), drainMs: 10, totalMs: 300, passMs: 250, askMs: 60 };
+    // nobody ever answers: the prompt is bounded, the deadline is re-evaluated, the job is RESUMED and verified, the result is a FAIL
+    let { st, api } = mk(() => ({}));
+    const t0 = Date.now();
+    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: () => new Promise(() => {}) }), /no absence email/);
+    assert.deepStrictEqual([st.paused, st.resumed >= 1, st.state], [1, true, 'ENABLED'], 'resumed at the deadline although the prompt was never answered');
+    assert.ok(Date.now() - t0 < 2000, 'within its independent deadline');
+    // an exception AFTER the pause (the post-drain heartbeat refresh throws) → still resumed, the error surfaces
+    let n2 = 0;
+    ({ st, api } = mk(() => ({ listEntries: async () => { n2 += 1; if (n2 > 1) throw new Error('logging down'); return [{ timestamp: new Date().toISOString() }]; } })));
+    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /logging down/);
+    assert.deepStrictEqual([st.paused, st.resumed, st.state], [1, 1, 'ENABLED'], 'an exception after the pause still resumes');
+    // a failing resume is RETRIED, and the job state is VERIFIED
+    ({ st, api } = mk(() => ({})));
+    st.failResume = 2;
+    const ok7 = await T.acceptAbsence({ ...lim, api, ask: async () => true });
+    assert.deepStrictEqual([ok7.ok, st.resumed, st.state], [true, 3, 'ENABLED'], 'resume retried until ENABLED');
+    ({ st, api } = mk(() => ({ resumeJob: async () => { throw new Error('denied'); } })));
+    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /NOT enabled/, 'a resume that never takes is reported, never silent');
+    // the absence clock starts at the heartbeat re-read AFTER draining (the in-flight run may have emitted a later one)
+    let reads = 0;
+    ({ st, api } = mk(() => ({ listEntries: async () => { reads += 1; return [{ timestamp: new Date(reads === 1 ? Date.now() - 1000 : Date.now()).toISOString() }]; } })));
+    const ref7 = await T.acceptAbsence({ ...lim, api, ask: async () => true });
+    assert.strictEqual(ref7.ok, true, 'passes against the REFRESHED last heartbeat (the pre-pause one is 1 s old, past the 250 ms pass bound)');
+    // every API call can be bounded
+    const slow = T.boundedApi({ getJob: () => new Promise(() => {}) }, 30);
+    await assert.rejects(() => slow.getJob('r'), /api_getJob_timeout/);
+  }
+  ok('P1-5: absence acceptance always resumes — nobody answers → resumed and verified at the INDEPENDENT deadline (a FAIL, never a hang); an exception after the pause → resumed; a failing resume retried until ENABLED, a resume that never takes reported; every API call boundable');
 
   console.log(`identity-alerts: OK (${n})`);
 })().catch((e) => { console.error('identity-alerts FAILED:', e); process.exit(1); });

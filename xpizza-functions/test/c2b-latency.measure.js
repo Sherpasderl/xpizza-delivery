@@ -203,13 +203,46 @@ async function child(rowKey, cond) {
 
   // ── the monitor (B): a tight loop inside THIS process, max pacing, quiet window 0 ───────────────────────────────────
   const targets = row.overlap === 'other' ? OTHERS : (row.overlap === 'same' ? [row.rid] : [row.rid, ...OTHERS]);
-  const mon = { runs: 0, reads: 0, checked: 0, windows: [], current: null }; let stop = false; let loop = null;
+  const mon = { runs: 0, reads: 0, checked: 0, errors: 0, outcomes: {}, windows: [], current: null }; let stop = false; let loop = null;
+  /* the monitor's OWN Firestore reads, INSTRUMENTED (codex build r1 P1-3): every transactional get / getAll it issues is recorded as
+     [start, end, restaurants, docs] the moment it is issued (end = ∞ while in flight), so each ON sample is proven to overlap REAL
+     monitor reads on the restaurant set its row prescribes — never just the interval of a run that may have done no work. */
+  const monReads = [];
+  const pathOf = (x) => String((x && (x.path || (x._queryOptions && x._queryOptions.parentPath && x._queryOptions.parentPath.relativeName)
+    || (x._query && x._query._queryOptions && x._query._queryOptions.parentPath.relativeName))) || '');
+  const ridsOf = (args) => [...new Set(args.map((a) => (/^restaurants\/([^/]+)/.exec(pathOf(a)) || [])[1]).filter(Boolean))];
+  const instrumented = (base) => {
+    const wrapTx = (tx) => new Proxy(tx, { get(t, k) {
+      const v = Reflect.get(t, k, t);
+      if ((k === 'get' || k === 'getAll') && typeof v === 'function') {
+        return async (...a) => {
+          const e = [Date.now(), Infinity, ridsOf(a), 0]; monReads.push(e);
+          try { const res = await v.apply(t, a); e[3] = Array.isArray(res) ? res.length : (res && res.docs ? res.docs.length : 1); return res; } finally { e[1] = Date.now(); }
+        };
+      }
+      return typeof v === 'function' ? v.bind(t) : v;
+    } });
+    return new Proxy(base, { get(t, k) {
+      const v = Reflect.get(t, k, t);
+      if (k === 'runTransaction') return (fn, opts) => v.call(t, (tx) => fn(wrapTx(tx)), opts);
+      return typeof v === 'function' ? v.bind(t) : v;
+    } });
+  };
+  // the prescribed overlap: 'same' → reads of THIS restaurant only; 'other' → reads of the other restaurants, never this one;
+  // 'same+others' → reads of any target
+  const qualifies = (rids) => (row.overlap === 'same' ? rids.includes(row.rid) && rids.every((r) => r === row.rid)
+    : row.overlap === 'other' ? !rids.includes(row.rid) && rids.some((r) => OTHERS.includes(r)) : rids.some((r) => targets.includes(r)));
   if (cond === 'on') {
-    const m = createIdentityIntegrityMonitor({ db, rtdb, log: () => {} });
+    const m = createIdentityIntegrityMonitor({ db: instrumented(db), rtdb, log: () => {} });
     loop = (async () => {
       while (!stop) {
         const t0 = Date.now(); mon.current = t0;
-        try { const r = await m.run({ listIds: async () => targets, quietMs: 0 }); mon.reads += r.reads || 0; mon.checked += (r.results || []).filter((x) => x.outcome === 'checked').length; } catch (_) { /* a monitor failure never fails a merchant sample */ }
+        try {
+          const r = await m.run({ listIds: async () => targets, quietMs: 0 });
+          if (!r || r.ok !== true) mon.errors += 1;   // a failed run is a FAILED LOAD CONDITION (counted; the child is then invalid)
+          mon.reads += (r && r.reads) || 0;
+          for (const x of (r && r.results) || []) { mon.outcomes[x.outcome] = (mon.outcomes[x.outcome] || 0) + 1; if (x.outcome === 'checked') mon.checked += 1; }
+        } catch (_) { mon.errors += 1; }
         mon.windows.push([t0, Date.now()]); mon.current = null; mon.runs += 1;
       }
     })();
@@ -291,7 +324,7 @@ async function child(rowKey, cond) {
 
   // ── samples ────────────────────────────────────────────────────────────────────────────────────────────────────
   tm.startup_ms = Date.now() - T0;
-  const ms = []; let attempts = 0; let errors = 0; let overlapped = 0; const statuses = {};
+  const ms = []; let attempts = 0; let errors = 0; let overlapped = 0; const windows = []; const statuses = {};
   if (digest.start_ok) for (let i = 0; i < WARM + SAMPLES; i += 1) {
     if (i > 0) {
       await restore();
@@ -310,13 +343,34 @@ async function child(rowKey, cond) {
     if (i < WARM) continue;
     attempts += 1; if (!okRes) errors += 1; statuses[okRes ? 'ok' : 'error'] = (statuses[okRes ? 'ok' : 'error'] || 0) + 1;
     ms.push(dt);
-    // overlapped iff a monitor run's interval intersects the sample (a completed run, or the run still in progress)
+    // overlapped iff a monitor run's interval intersects the sample (a completed run, or the run still in progress) — reported only;
+    // QUALIFIED iff monitor Firestore reads were in flight DURING the sample on the prescribed restaurant set (codex build r1 P1-3)
     if (cond === 'on' && (mon.windows.some(([a, b]) => a <= t1 && b >= t0) || (mon.current !== null && mon.current <= t1))) overlapped += 1;
+    if (cond === 'on') windows.push([t0, t1]);
   }
   stop = true; if (loop) await loop;
+  /* QUALIFICATION, judged once the monitor has stopped (its intervals are then final). The monitor checks ONE restaurant at a time,
+     so its instrumented reads form CHECK INTERVALS: consecutive reads of the same restaurant, [first read issued, last read done]
+     (the paced gaps between a check's reads are inside its interval — that IS the monitor's load at max pacing). A sample is
+     QUALIFIED iff it intersects a check interval of a prescribed restaurant (and, for 'other', of none but the others). */
+  const checks = [];
+  for (const e of monReads.slice().sort((x, y) => x[0] - y[0])) {
+    const rid = e[2].length === 1 ? e[2][0] : e[2].join('+'); const end = Number.isFinite(e[1]) ? e[1] : Date.now();
+    const cur = checks[checks.length - 1];
+    if (cur && cur.rid === rid) { cur.b = Math.max(cur.b, end); cur.reads += Math.max(1, e[3]); } else checks.push({ rid, a: e[0], b: end, reads: Math.max(1, e[3]) });
+  }
+  let qualified = 0; const perSample = [];
+  for (const [t0, t1] of windows) {
+    const hit = checks.filter((c) => c.a <= t1 && c.b >= t0);
+    const rids = [...new Set(hit.map((c) => c.rid))];
+    perSample.push(hit.reduce((x, c) => x + c.reads, 0));
+    if (hit.length && qualifies(rids)) qualified += 1;
+  }
   // leave the seeded state behind for the next child (and prove it)
   await restore(); if (digest.start_ok && !digest.mismatches) await verify('child end');
   console.log = origLog;
-  origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, digest, timing: tm, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, overlapped } }));
+  origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, digest, timing: tm, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, errors: mon.errors, outcomes: mon.outcomes, overlapped, qualified,
+    fs_reads: monReads.reduce((x, e) => x + Math.max(1, e[3]), 0), check_intervals: checks.length,
+    reads_of_overlapping_checks: { min: perSample.length ? Math.min(...perSample) : 0, max: perSample.length ? Math.max(...perSample) : 0 } } }));
   process.exit(0);
 }

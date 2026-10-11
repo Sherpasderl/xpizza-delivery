@@ -216,9 +216,17 @@ try {
     assert.deepStrictEqual([a.ok, node.summary.open_violations, node.findings[id1].status], [true, 0, 'acknowledged']);
     assert.strictEqual(S.ack(node, id1, { at: 2, by: 'o', note: '' }).ok, false, 'acknowledging twice refused');
     assert.strictEqual(S.ack(node, 'nope', { at: 2, by: 'o', note: '' }).reason, 'no_such_finding');
+    // the SAME condition, still present (never cleared since the ack) → the acknowledged episode continues: no new finding, count 0
+    ({ node } = S.applyActive(node, res([viol]), { obs_t: t(40), generation: 8 }));
+    assert.deepStrictEqual([Object.keys(node.findings).length, node.summary.open_violations, node.findings[id1].status, node.findings[id1].last_obs_t],
+      [1, 0, 'acknowledged', t(40)], 'an UNINTERRUPTED condition after acknowledgement stays acknowledged (codex build r1 P2-7)');
+    // it DISAPPEARS (cleared, still acknowledged) …
+    ({ node } = S.applyActive(node, res([]), { obs_t: t(42), generation: 8 }));
+    assert.deepStrictEqual([node.findings[id1].status, node.findings[id1].condition, node.summary.open_violations], ['acknowledged', 'cleared', 0], 'the acknowledged episode ends when its condition clears');
+    // … and REAPPEARS → a NEW finding, open and counted
     ({ node } = S.applyActive(node, res([viol]), { obs_t: t(45), generation: 8 }));
     const ids = Object.keys(node.findings);
-    assert.deepStrictEqual([ids.length, node.summary.open_violations], [2, 1], 'reappearance after acknowledgement → a NEW finding');
+    assert.deepStrictEqual([ids.length, node.summary.open_violations], [2, 1], 'a disappearance THEN reappearance after acknowledgement → a NEW finding');
     assert.notStrictEqual(ids.find((x) => x !== id1), id1);
     // an unavailable result is not coverage: findings untouched, active_ok unchanged
     const before = node.coverage.active_ok_obs_t;
@@ -235,7 +243,7 @@ try {
     const gf = Object.values(node.findings).find((f) => f.kind === 'unattested');
     assert.deepStrictEqual([gf.condition, node.summary.open_gaps], ['present', 1], 'an audit finding is historical: the active check does not clear it');
   }
-  ok('§4 reducer: a finding stays OPEN when its condition clears (counted until acknowledged), an older active result is discarded, the same open finding is updated (no duplicate), acknowledgement closes it and recomputes the summary, a reappearance after acknowledgement opens a NEW finding; unavailable = no coverage; audit pages only when contiguous; audit findings are historical');
+  ok('§4 reducer: a finding stays OPEN when its condition clears (counted until acknowledged), an older active result is discarded, the same open finding is updated (no duplicate), acknowledgement closes it and recomputes the summary, an uninterrupted condition stays acknowledged, a disappearance-then-reappearance after acknowledgement opens a NEW finding; unavailable = no coverage; audit pages only when contiguous; audit findings are historical');
 
   // ── 6. degraded timers: 2 h → sticky finding; repair clears the condition; reappearance → a NEW timer and finding ─────
   {

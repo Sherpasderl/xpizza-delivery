@@ -84,6 +84,17 @@ Acknowledgement and the summary update are one transaction, so the next summary 
 
 The recovery steps were rehearsed on the emulators through the real publish path (`test/c2b-integrity.emulator.test.js`).
 
+### Known cause: an operator re-add of a deleted or used name (certified restaurant)
+
+An operator publish (`tools/publish-version.js`, or `publishVersion` directly) of a draft that RE-ADDS a deleted name, or reuses a used name on another object, writes a version marked `identity_certified` with that object UNSTAMPED. That is a real anomaly ("certified but a stamp is broken"), so the monitor opens `coverage_broken` with `unstamped` = the number of re-added objects, and a new one at every later generation that still carries them. The merchant portal cannot produce this: it refuses a client-supplied key for a new product.
+
+What to do — do NOT just acknowledge:
+1. Confirm it: the active version's `menu_items` / `extras` without `display.identity_id` are exactly the re-added names.
+2. Re-certify the restaurant with the bootstrap CLI (pause the monitor job first, see below): `node tools/bootstrap-identity.js --rid=<rid> --project xpizza-delivery` (dry run: review the stamping plan, then add `--apply`), or roll back to the last version the monitor reported `ok`.
+3. After the next monitor run shows the active binding `ok`, acknowledge each `coverage_broken` finding with what you did (the findings stay open until then — they are sticky by design).
+
+The writer behaviour itself (it should refuse or stamp such a re-add) is logged as a D4 follow-up for main; c2b only reports it.
+
 ## Bootstrap / migration CLIs
 
 `tools/bootstrap-identity.js` has no publish lease. Pause the monitor job first, run it, then resume:
@@ -111,13 +122,14 @@ Every activation/certification CLI (`publish-version.js`, `rollback-version.js`,
      ```
    - It is accepted only if the pointer is unchanged since the record, or every generation since then has evidence. A gap is REFUSED; stop and report.
 4. **Record each restaurant's `publishedited` POST-200 latency baseline** (for the passive guard).
-5. **GATE.** Before resuming the job:
-   - the §6a portal-latency alarms are INSTALLED and ACCEPTED;
+5. **GATE.** Before resuming the job (the job stays PAUSED for all of this — `install` and `accept-portal` need no heartbeat):
+   - ALL alert metrics + policies are INSTALLED (`install`: metrics first, then policies; idempotent). The integrity alerts are NOT yet armed — that needs a live heartbeat, so it is step 8;
+   - the §6a portal-latency alarms are ACCEPTED;
    - every portal function's baseline is recorded:
      ```bash
      node tools/setup-identity-alerts.js --project xpizza-delivery --channel <verified email channel> thresholds
      node tools/setup-identity-alerts.js --project xpizza-delivery --channel <…> plan
-     node tools/setup-identity-alerts.js --project xpizza-delivery --channel <…> apply
+     node tools/setup-identity-alerts.js --project xpizza-delivery --channel <…> install
      node tools/setup-identity-alerts.js --project xpizza-delivery --channel <…> accept-portal <function>     # each of the five
      ```
 6. **Resume the job.** The PASSIVE GUARD is active for the next 10 organic publishes:
@@ -126,9 +138,13 @@ Every activation/certification CLI (`publish-version.js`, `rollback-version.js`,
 7. **First runs.** Every enumerated merchant must be covered, with ZERO violations; any violation means stop and investigate. Expected:
    - **x_pizza:** `pre_boundary` until its next organic publish, then `ok`.
    - **la_musa:** `uncertified`.
-8. **Arm and accept the integrity alerts:**
+8. **Arm and accept the integrity alerts** (the job is now RESUMED):
+   - Run `arm`. It refuses unless the job is ENABLED; it waits (≤ 30 min) for a heartbeat METRIC POINT ingested after the absence policy's last change (a raw log line is not enough), then runs the REVISION-TRANSITION acceptance: it prints `firebase deploy --only functions:verifyIdentityIntegrity --project xpizza-delivery` — redeploy the UNCHANGED function — and passes only when a heartbeat arrives from the NEW revision, the service-level series has no 45-min gap, and you confirm NO absence email arrived (an unanswered prompt is a failure at its bound, never a hang):
+     ```bash
+     node tools/setup-identity-alerts.js --project xpizza-delivery --channel <…> arm
+     ```
    - Run `accept-integrity`.
-   - Run `accept-absence`. It pauses the job itself and RESUMES it, and it prints the manual resume command first.
+   - Run `accept-absence`. It prints the manual resume command first, pauses the job, drains the in-flight run and re-reads the last ingested heartbeat (the absence clock starts there), then asks — each prompt bounded — until an INDEPENDENT 80-min deadline. It ALWAYS resumes the job (also after an error; retried) and verifies it is ENABLED. Pass = the absence email within 45 + 25 min of that last heartbeat.
    - Run the acknowledgement path on the emulator: `npm run test:c2b-integrity`.
    - Then the 48 h observation.
 

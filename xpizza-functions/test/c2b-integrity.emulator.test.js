@@ -240,63 +240,120 @@ const evidence = async (rid) => (await db.collection('restaurants').doc(rid).col
       await backfillIdentities(db, R, await getRestaurantMenu(db, R), { captured: await getActivePointer(db, R) });
       assert.strictEqual((await F.bootstrap(R)).stamped, true, 'premise: certified');
     }
+    // codex build r1 P2-8: the REAL monitor runs after EACH completed transition — Check A judges every intermediate active version
+    // (its stamps + registry bindings), not only the state after the final rollback
+    const after = [];
+    const checkAfter = async (rid, label) => {
+      await run1(rid);
+      const node = await F.nodeOf(rid); const ptr = await getActivePointer(db, rid);
+      const bad = (await open(rid)).filter((k) => !k.startsWith('unattested') && k !== 'history_unknown');
+      assert.deepStrictEqual([node.active.generation, node.active.state, node.summary.open_violations, bad], [ptr.generation, 'ok', 0, []],
+        `${label}: Check A on generation ${ptr.generation} → ok, no violation (${JSON.stringify(node.active)} ${JSON.stringify(await open(rid))} ${JSON.stringify(Object.values(node.findings || {}).filter((f) => f.status === 'open').map((f) => [f.kind, f.detail]))})`);
+      after.push(`${label}@g${ptr.generation}`);
+    };
     const idOf = (src, key) => { const it = src.items.find((x) => x.key === key); return it && it.display && it.display.identity_id; };
     const order = (src) => { src.structure.item_order = src.items.map((x) => x.key || x.ref); return src; };
     let T = 0; const tmpRef = () => `tmp:c2b00000-${String(T += 1).padStart(4, '0')}`;
     const add = (src, name) => { src.items.push({ ref: tmpRef(), price: 555, display: { cat: 'ny', name, price: 555, desc: 'nuevo' } }); return src; };
     const del = (src, loaded, i) => { const [g] = src.items.splice(i, 1); src.deleted_ids = [...(src.deleted_ids || []), idOf({ items: [g] }, g.key)].filter(Boolean); src.deleted_ids_loaded_base = loaded; return g; };
-    await F.portalSaveAndPublish(R, (src) => { src.items[0].price += 1; src.items[0].display.price = src.items[0].price; return src; }, 'legit-price');
-    let gone; await F.portalSaveAndPublish(R, (src, loaded) => { gone = del(src, loaded, src.items.length - 1); return order(src); }, 'legit-delete');
-    await F.portalSaveAndPublish(R, (src) => order(add(src, 'Producto C2B')), 'legit-add');
-    let renamed; await F.portalSaveAndPublish(R, (src, loaded) => { renamed = del(src, loaded, src.items.length - 2); return order(src); }, 'legit-rename-delete');
-    await F.portalSaveAndPublish(R, (src) => order(add(src, `${renamed.display.name} Nueva`)), 'legit-rename-add');
+    await F.portalSaveAndPublish(R, (src) => { src.items[0].price += 1; src.items[0].display.price = src.items[0].price; return src; }, 'legit-price'); await checkAfter(R, 'legit-price');
+    let gone; await F.portalSaveAndPublish(R, (src, loaded) => { gone = del(src, loaded, src.items.length - 1); return order(src); }, 'legit-delete'); await checkAfter(R, 'legit-delete');
+    await F.portalSaveAndPublish(R, (src) => order(add(src, 'Producto C2B')), 'legit-add'); await checkAfter(R, 'legit-add');
+    let renamed; await F.portalSaveAndPublish(R, (src, loaded) => { renamed = del(src, loaded, src.items.length - 2); return order(src); }, 'legit-rename-delete'); await checkAfter(R, 'legit-rename-delete');
+    await F.portalSaveAndPublish(R, (src) => order(add(src, `${renamed.display.name} Nueva`)), 'legit-rename-add'); await checkAfter(R, 'legit-rename-add');
     // the OLD shapes are refused AT SAVE: a client-chosen key for a new product (rename in place / recreate by re-adding the row)
     const oldRename = await F.portalSave(R, (src) => { const it = src.items[1]; src.items[1] = { ...it, key: `${it.key} Renamed`, display: { ...it.display, name: `${it.key} Renamed` } }; delete src.items[1].display.identity_id; return order(src); });
     const oldRecreate = await F.portalSave(R, (src) => { const back = JSON.parse(JSON.stringify(gone)); delete back.display.identity_id; src.items.push(back); return order(src); });
     assert.deepStrictEqual([[oldRename.status, oldRename.body.error], [oldRecreate.status, oldRecreate.body.error]], [[400, 'client_supplied_key'], [400, 'client_supplied_key']],
       `main's add-only rule: ${JSON.stringify([oldRename.body, oldRecreate.body])}`);
-    await F.portalSaveAndPublish(R, (src) => src, 'legit-unchanged');
+    await F.portalSaveAndPublish(R, (src) => src, 'legit-unchanged'); await checkAfter(R, 'legit-unchanged');
     const live = (await F.candidateFromSource(R)).items.map((i) => i.key);
     assert.ok(live.includes('Producto C2B') && live.includes(`${renamed.display.name} Nueva`) && !live.includes(gone.key) && !live.includes(renamed.key), `premise: the lifecycle happened ${JSON.stringify(live)}`);
     await F.rollback(R, v1);                         // the registry moved since v1 (delete, add, rename)
-    await run1(R);
+    await checkAfter(R, 'legit-rollback');
+    assert.strictEqual(after.length, 7, `the monitor judged every transition: ${after.join(' ')}`);
     const node = await F.nodeOf(R);
     assert.deepStrictEqual([node.summary.open_violations, (await open(R)).filter((k) => !k.startsWith('unattested') && k !== 'history_unknown')], [0, []], `no violation: ${JSON.stringify(await open(R))}`);
     await F.seed('la_musa'); await F.publish('la_musa', 'lm');
     await run1('la_musa');
     assert.deepStrictEqual([(await F.nodeOf('la_musa')).active.state, await open('la_musa')], ['uncertified', []]);
-    ok('legitimate operations through the merchant\'s REAL path on main\'s ADD-ONLY portal (editCatalogCore → publishEditedCore, with the add-product io) → NO violation: a price edit, a delete, an ADD by server allocation, a rename as delete + add, an unchanged republish, then a rollback across all of them with the registry moved; the old rename / recreate shapes are REFUSED at save (client_supplied_key); La Musa uncertified → state uncertified, no finding');
+    ok('legitimate operations through the merchant\'s REAL path on main\'s ADD-ONLY portal (editCatalogCore → publishEditedCore, with the add-product io) → NO violation: a price edit, a delete, an ADD by server allocation, a rename as delete + add, an unchanged republish, then a rollback across all of them with the registry moved — the monitor run + asserted (Check A ok, no violation) after EACH of the 7 transitions; the old rename / recreate shapes are REFUSED at save (client_supplied_key); La Musa uncertified → state uncertified, no finding');
   }
 
-  // ── 11b. the OPERATOR path can still RECREATE a deleted name and REUSE a used one: publishVersion (catalog/catalog-publish.js,
-  //         unchanged by add-product A) carries no add-product gate, and tools/publish-version.js gates only store == code parity —
-  //         an operator code change + seed + publish. Driven here through the same core over a direct draft edit, after a portal
-  //         delete → the real monitor raises NO false alarm (advisor ruling 2026-10-10) ───────────────────────────────────────────
+  // ── 11b. the OPERATOR path RECREATES a deleted name / REUSES a used one — and the writer CERTIFIES a version with the re-added
+  //         object UNSTAMPED. publishVersion (catalog/catalog-publish.js, unchanged by add-product A) carries no add-product gate,
+  //         and tools/publish-version.js gates only store == code parity. "Certified but a stamp is broken" is the anomaly the
+  //         D4-P1 discriminator exists to separate (catalog-publish.js:1207–1214), so §2.4 coverage_broken is a TRUE POSITIVE
+  //         (advisor ruling 2026-10-10, after codex build r1 P2-8 exposed it; the writer behaviour is a D4 follow-up for main).
+  //         The monitor runs after EACH transition and is asserted against what the writer actually produced. ───────────────
   {
     const R = 'synth_legit';
     const v1 = await F.merchant(R);
     await db.collection('restaurants').doc(R).set({ pricing_key_mode: 'name' }, { merge: true });
     await F.publish(R, 'op-certified');
+    const after = [];
+    const viol = (node) => Object.values(node.findings || {}).filter((f) => f.status === 'open' && f.class === 'violation');
+    // run the REAL monitor, then assert Check A on THIS generation: its state and the open violations (kind + condition + unstamped)
+    const checkAfter = async (rid, label, state, want) => {
+      await run1(rid);
+      const node = await F.nodeOf(rid); const ptr = await getActivePointer(db, rid);
+      const got = viol(node).map((f) => [f.kind, f.condition, f.detail.generation, f.detail.unstamped]).sort((a, b) => a[2] - b[2]);
+      assert.deepStrictEqual([node.active.generation, node.active.state, node.summary.open_violations, got], [ptr.generation, state, want.length, want],
+        `${label}: Check A on generation ${ptr.generation} (${JSON.stringify(node.active)})`);
+      after.push(`${label}@g${ptr.generation}:${state}`);
+      return ptr.generation;
+    };
+    const g2 = await checkAfter(R, 'op-certified', 'ok', []);
     const idOf = (src, key) => { const it = src.items.find((x) => x.key === key); return it && it.display && it.display.identity_id; };
     const reorder = (src) => { src.structure.item_order = src.items.map((x) => x.key); return src; };
     let gone; let victim;
     await F.portalSaveAndPublish(R, (src, loaded) => { gone = src.items.splice(2, 1)[0]; src.deleted_ids = [...(src.deleted_ids || []), idOf({ items: [gone] }, gone.key)].filter(Boolean); src.deleted_ids_loaded_base = loaded; return reorder(src); }, 'op-delete-1');
+    await checkAfter(R, 'op-delete-1', 'ok', []);
     await F.portalSaveAndPublish(R, (src, loaded) => { const v = src.items.splice(1, 1)[0]; victim = v.key; src.deleted_ids = [...(src.deleted_ids || []), idOf({ items: [v] }, v.key)].filter(Boolean); src.deleted_ids_loaded_base = loaded; return reorder(src); }, 'op-delete-2');
-    {  // operator RECREATE: the deleted row itself comes back (no identity stamp; the registry still holds its key)
+    await checkAfter(R, 'op-delete-2', 'ok', []);
+    let g5;
+    {  // operator RECREATE: the deleted row comes back (no identity stamp; the registry still holds its key)
       const { sourceRefOf } = require('../catalog/source-store');
       const src = (await sourceRefOf(db, R).get()).data(); const back = JSON.parse(JSON.stringify(gone)); delete back.display.identity_id;
       src.items.push(back); await sourceRefOf(db, R).set(reorder(src));
       await F.publish(R, 'op-recreate');
+      const v = (await getActivePointer(db, R)).version;
+      const rec = (await F.versionsColOf(R).doc(v).get()).data();
+      const unstamped = (await F.versionsColOf(R).doc(v).collection('menu_items').get()).docs.filter((d) => !(d.data().display && d.data().display.identity_id)).map((d) => d.data().key);
+      assert.deepStrictEqual([rec.identity_certified, unstamped], [true, [gone.key]], 'premise (the writer anomaly): the version is CERTIFIED with the recreated object UNSTAMPED');
+      g5 = (await getActivePointer(db, R)).generation;
+      await checkAfter(R, 'op-recreate', 'violation', [['coverage_broken', 'present', g5, 1]]);
     }
     await F.addDish(R, victim); await F.publish(R, 'op-reuse');     // operator REUSE: a used name on a DIFFERENT object (new display id)
+    const g6 = g5 + 1;
+    await checkAfter(R, 'op-reuse', 'violation', [['coverage_broken', 'cleared', g5, 1], ['coverage_broken', 'present', g6, 2]]);
     await F.publish(R, 'op-unchanged');
-    const live = (await F.candidateFromSource(R)).items.map((i) => i.key);
-    assert.ok(live.includes(gone.key) && live.includes(victim), `premise: recreated + reused ${JSON.stringify(live)}`);
+    await checkAfter(R, 'op-unchanged', 'violation', [['coverage_broken', 'cleared', g5, 1], ['coverage_broken', 'cleared', g6, 2], ['coverage_broken', 'present', g6 + 1, 2]]);
     await F.rollback(R, v1);
-    await run1(R);
+    // the active binding is ok again; the three findings are STICKY — cleared, still open and alerted until acknowledged
+    await checkAfter(R, 'op-rollback', 'ok', [['coverage_broken', 'cleared', g5, 1], ['coverage_broken', 'cleared', g6, 2], ['coverage_broken', 'cleared', g6 + 1, 2]]);
+    assert.strictEqual(after.length, 7, `the monitor judged every transition: ${after.join(' ')}`);
+    assert.ok(g2 === 2, 'premise: certified at g2');
+    await ackAll(R, 'operator re-add of deleted/used names: re-certified (rolled back); writer anomaly logged as a D4 follow-up');
+    const r = await run1(R);
+    assert.deepStrictEqual([(await F.nodeOf(R)).summary.open_violations, r.lines[0].open_violations], [0, 0], 'acknowledged with the tool → summary 0');
+    ok(`the OPERATOR path (publishVersion over a direct draft edit): a recreate and a reuse publish CERTIFIED versions with the re-added objects UNSTAMPED — the writer anomaly D4-P1's discriminator separates — and the monitor, run after EACH of the 7 transitions, flags exactly that: coverage_broken {unstamped 1} at the recreate, {unstamped 2} at the reuse and the unchanged republish (state violation), ok again after the rollback with the findings sticky (cleared, open) until acknowledged with the tool → 0 (${after.join(' ')})`);
+  }
+
+  // ── 11c. a MALFORMED stamp ('bad/id') on the live version: the check COMPLETES and classifies it (codex build r1 P2-6) ──
+  {
+    const R = 'synth_badstamp';
+    const v = await F.merchant(R);
+    const [d0] = (await items(R, v)).filter((d) => d.data().display && d.data().display.identity_id);
+    await d0.ref.update({ 'display.identity_id': 'bad/id' });
+    const r = await run1(R);
     const node = await F.nodeOf(R);
-    assert.deepStrictEqual([node.summary.open_violations, (await open(R)).filter((k) => !k.startsWith('unattested') && k !== 'history_unknown')], [0, []], `no violation: ${JSON.stringify(await open(R))}`);
-    ok('the OPERATOR path (publishVersion over a direct draft edit — no add-product gate; the CLI gates only store == code parity) still RECREATES a deleted name and REUSES a used one: after two portal deletes, a recreate, a reuse on a new object, an unchanged republish and a rollback, the real monitor raises NO violation');
+    assert.deepStrictEqual(r.results.map((x) => x.outcome), ['checked'], `the check completed (never a thrown / backed-off check): ${JSON.stringify(r.results)}`);
+    const kinds = await open(R);
+    assert.ok(kinds.includes('registry_disagrees') && kinds.includes('stamps_changed'), `classified as violations: ${JSON.stringify(kinds)}`);
+    const rd = Object.values(node.findings).find((f) => f.kind === 'registry_disagrees');
+    assert.deepStrictEqual([node.active.state, rd.detail.invalid_stamps, node.coverage.failures || 0], ['violation', 1, 0]);
+    ok('a malformed stamp "bad/id" on the live version → the check COMPLETES (no thrown registry path, no backoff) and opens registry_disagrees (invalid_stamps 1) + stamps_changed → state violation');
   }
 
   // ── 12. reducer on the real path: a crash before LOGGING re-logs the same counts; a crash before COMMIT loses nothing ──

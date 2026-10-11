@@ -85,6 +85,34 @@ function monitorRun(input) {
     ok(`monitor-process RSS during the long-value and escape-heavy 400-object checks: ${Object.entries(peaks).map(([k, v]) => `${k}: ${v}`).join('; ')} — increment ≤ 130 MiB (the plan's arithmetic), total < 512 MiB (advisor ruling R2)`);
   }
 
+  // ── 3. WORST CASE for retention (codex build r1 P1-1): 400 objects whose values sit AT and FAR PAST the §5 pair budget ──────
+  //    (a) at the edge: 400 × ~10,000-byte keys ≈ 4.0 MB raw (just under 4 MiB) — every pair retained, the digest built, the
+  //        registry judged batch by batch (keys > 1,125 bytes have no valid key-row id → judged without a read);
+  //    (b) far past it: 400 × ~40,000-byte keys ≈ 16 MB raw — reading STOPS at the first pair past the budget →
+  //        unavailable{oversized_values}, nothing more retained, the registry never read.
+  //    Both in the monitor's own fresh process: increment ≤ 130 MiB, total < 512 MiB (R2).
+  {
+    const out = {};
+    for (const [label, R, bytes] of [['at the budget (400 × ~10 KB keys)', 'synth_cap_edge', 10000], ['far past it (400 × ~40 KB keys)', 'synth_cap_over', 40000]]) {
+      await F.merchant(R, { dishes: 400 });
+      const p = await require('../catalog/catalog-firestore').getActivePointer(db, R);
+      const docs = (await F.versionsColOf(R).doc(p.version).collection('menu_items').get()).docs;
+      const w = db.bulkWriter();
+      docs.forEach((d, i) => { w.update(d.ref, { key: `${String(i).padStart(4, '0')}${'v'.repeat(bytes)}` }); });
+      await w.close();
+      const r = monitorRun({ rids: [R] }); const inc = r.peakRss - r.baseRss;
+      const chk = r.checks.find((c) => c.rid === R) || {};
+      out[label] = { outcome: r.results[0].outcome, state: chk.state, reason: r.results[0].reason || chk.reason, mib: `baseline ${Math.round(r.baseRss / MiB)} + increment ${Math.round(inc / MiB)} = total ${Math.round(r.peakRss / MiB)} MiB`, reads: r.reads };
+      assert.ok(inc <= 130 * MiB, `${label}: the monitor's own increment ${Math.round(inc / MiB)} MiB ≤ 130 MiB`);
+      assert.ok(r.peakRss < 512 * MiB, `${label}: total ${Math.round(r.peakRss / MiB)} MiB < 512 MiB`);
+    }
+    const edge = out['at the budget (400 × ~10 KB keys)']; const over = out['far past it (400 × ~40 KB keys)'];
+    assert.deepStrictEqual([edge.outcome, edge.state], ['checked', 'violation'], `at the budget: judged (the edited keys break the binding) ${JSON.stringify(edge)}`);
+    assert.deepStrictEqual([over.outcome, over.reason], ['unavailable', 'oversized_values'], `past the budget: unavailable{oversized_values} ${JSON.stringify(over)}`);
+    assert.ok(over.reads < edge.reads, `past the budget the read STOPS early (${over.reads} vs ${edge.reads} reads)`);
+    ok(`WORST-CASE retention: ${Object.entries(out).map(([k, v]) => `${k}: ${v.outcome}${v.state ? `/${v.state}` : ''}${v.reason ? `{${v.reason}}` : ''}, ${v.reads} reads, ${v.mib}`).join('; ')} — increment ≤ 130 MiB, total < 512 MiB (R2)`);
+  }
+
   console.log(`     envelope: ${JSON.stringify(runs.map(({ run, ms, summaryAt, reads, checked, peakMiB }) => ({ run, s: Math.round(ms / 1000), summary_s: Math.round(summaryAt / 1000), reads, checked: checked.length, peakMiB })))}`);
   FINISHED = true;
   console.log(`c2b-capacity: OK (${n})`);
