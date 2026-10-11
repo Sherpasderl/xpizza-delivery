@@ -69,6 +69,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── the recorder (the d4b-charge-trace recipe): every RTDB + Firestore call the handler issues, in order ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -77,7 +80,7 @@ function patchChain(obj, names, describe) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return Q.track(orig.apply(this, a), nm); };   // R1b: in-flight counted
     }
   }
 }
@@ -160,7 +163,7 @@ async function traced(c, rid, setupState) {
   const pre = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};
   REC = [];
   const r = await c.request(rid, setupState);
-  await wait(300);   // a fire-and-forget write the handler issued lands inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const after = await tree();
   const post_ = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};

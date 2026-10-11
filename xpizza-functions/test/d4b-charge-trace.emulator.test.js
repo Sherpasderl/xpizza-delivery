@@ -62,6 +62,9 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('d4b-charg
 
 // ── the recorder: patch the RTDB Reference/Query and Firestore reference/query/transaction prototypes ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -70,7 +73,7 @@ function patchChain(obj, names, describe) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return Q.track(orig.apply(this, a), nm); };   // R1b: in-flight counted
     }
   }
 }
@@ -150,7 +153,7 @@ async function traced(rid, oid, uid, phone) {
   await rtdb.ref('rate_limits').remove();   // every test request is 127.0.0.1 — the per-IP limit is reset between charges (test env only)
   REC = [];
   const r = await post(app.chargeOnlineOrder, bodyFor(rid, oid, phone), { 'x-firebase-id-token': uid });
-  await wait(300);   // let any fire-and-forget write the handler issued land inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   const subs = [];

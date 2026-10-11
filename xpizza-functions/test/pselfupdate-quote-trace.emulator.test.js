@@ -65,6 +65,9 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pselfupda
 
 // ── the recorder: patch the RTDB Reference/Query and Firestore reference/query/transaction prototypes ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -73,7 +76,7 @@ function patchChain(obj, names, describe) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return Q.track(orig.apply(this, a), nm); };   // R1b: in-flight counted
     }
   }
 }
@@ -157,7 +160,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   const r = kind === 'redeem'
     ? await post(app.quoteRedemption, { restaurant_id: rid, items: b.items, redeem: b.redeem }, { 'x-firebase-id-token': uid })
     : await post(app.quoteOrder, { restaurant_id: rid, items: b.items }, {});
-  await wait(300);   // let any fire-and-forget write the handler issued land inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   const subs = [];
@@ -214,7 +217,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     for (let i = 0; i < 10; i += 1) {
       REC = [];
       await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {});
-      await wait(300);
+      await Q.quiescent();   // R1b: was wait(300) — this loop counts the recorded Firestore calls
       const fsCalls = REC.filter((e) => e.db === 'fs').length; REC = null;
       if (!fsCalls) break;
       assert.ok(i < 9, `${rid}: the instance never settled`);
@@ -260,7 +263,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       await rtdb.ref('rate_limits').remove();
       { const wb2 = bodyFor('x_pizza', 'w', '1', { redeem: true });   // the SAME path as the checked request, so ITS caches refresh too
         await post(app.quoteRedemption, { restaurant_id: 'x_pizza', items: wb2.items, redeem: wb2.redeem }, { 'x-firebase-id-token': 'u_trace_x_pizza' }); }
-      await wait(300);
+      await Q.quiescent();   // R1b: was wait(300)
       CLOCK_OFFSET += FLOOR_TTL_MS + 1500;   // 31.5 s: past the floor's 30 s; inside the 45 s context / gate-pointer TTLs and the 60 s verifier
       const t = await traced('x_pizza', 'qtrace_unused_oid', 'u_trace_x_pizza', '99000001', { kind: 'redeem' });
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
