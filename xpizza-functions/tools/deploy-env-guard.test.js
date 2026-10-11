@@ -170,37 +170,58 @@ try {
     }
     ok('no value is printed on ANY exit path (parse error — count + line number only, forbidden key, unresolvable CLI, clean pass), each with a planted secret; an EARLIER non-firebase-tools `firebase` on PATH FAILS CLOSED instead of skipping to the real CLI later on PATH, and so does a first `firebase` whose NEAREST package is not firebase-tools (never an outer one)');
   }
-  // 10. codex r6 — ONE error boundary: an unexpected error prints a FIXED message + the error's code/name only; and an
-  //     EMPTY PATH entry is the cwd (a real candidate)
+  // 10. codex r6/r7 — the error CLASS is closed: one boundary (allowlisted code only, written straight to fd 2), hard-exit
+  //     process handlers prepended at module top, exit 0 only on a clean main(); and an EMPTY PATH entry is the cwd.
+  //     Every case runs as a REAL subprocess and reads its REAL stderr.
   {
-    const SECRET = 'xyzzy-PLANTED-SECRET-r6-41c2';
-    const capture = (opts) => { const o = []; const e = []; const code = G.main({ out: (m) => o.push(m), err: (m) => e.push(m), ...opts }); return { code, text: `${o.join('\n')}\n${e.join('\n')}` }; };
-    // (a) an injected parser throws an Error whose MESSAGE carries the secret
-    const root = tree({ '.env': `A=1\n` });
-    const thrown = capture({ argv: ['node', 'g', '--root', root], env: { GCLOUD_PROJECT: 'proj-x' }, parserName: 'injected', keys: () => { const e = new Error(`boom near ${SECRET}`); e.code = 'EINJECTED'; throw e; } });
-    assert.strictEqual(thrown.code, 1, '🔴 an unexpected parser error did not block the deploy');
-    assert.match(thrown.text, /deploy-env-guard: internal error while checking \.env; deploy BLOCKED \(EINJECTED\)/, 'a FIXED message: the file + the error code only');
-    assert.ok(!thrown.text.includes(SECRET), '🔴 the internal-error path printed the error MESSAGE (it carried the secret)');
-    const noCode = capture({ argv: ['node', 'g', '--root', root], env: { GCLOUD_PROJECT: 'proj-x' }, parserName: 'injected', keys: () => { throw new TypeError(`bad ${SECRET}`); } });
-    assert.ok(noCode.code === 1 && /deploy BLOCKED \(TypeError\)/.test(noCode.text) && !noCode.text.includes(SECRET), '🔴 a code-less error leaked its message or did not block');
-    // (b) a PERMISSION error reading a dotenv file (the real CLI, a real unreadable file)
+    const SECRET = 'xyzzy-PLANTED-SECRET-r7-5d1e';
+    const GUARD = path.join(__dirname, 'deploy-env-guard.js');
+    const root = tree({ '.env': 'A=1\n' });
+    const sub = (args, opts = {}) => spawnSync(process.execPath, args, { encoding: 'utf8', env: { ...process.env, GCLOUD_PROJECT: 'proj-x', ...(opts.env || {}) }, cwd: opts.cwd });
+    const noLeak = (r, label) => assert.ok(!`${r.stdout}${r.stderr}`.includes(SECRET), `🔴 ${label}: the secret was printed`);
+    const viaMain = (keysSrc, errSrc = '(m) => console.error(m)') => sub(['-e', `const G = require(${JSON.stringify(GUARD)}); process.exit(G.main({ argv: ['node', 'g', '--root', ${JSON.stringify(root)}], env: { GCLOUD_PROJECT: 'proj-x' }, parserName: 'injected', keys: ${keysSrc}, err: ${errSrc} }))`]);
+    // (a) the parser throws: message, code and name carry the secret — only an ALLOWLISTED code or "(unexpected)" appears
+    let r = viaMain(`() => { const e = new Error('boom ${SECRET}'); e.code = 'EINJECTED'; throw e; }`);
+    assert.ok(r.status === 1 && /internal error while checking \.env; deploy BLOCKED \(EINJECTED\)/.test(r.stderr), `allowlisted code shown\n${r.stderr}`); noLeak(r, 'message');
+    r = viaMain(`() => { const e = new Error('x'); e.code = '${SECRET}'; e.name = '${SECRET}'; throw e; }`);
+    assert.ok(r.status === 1 && /deploy BLOCKED \(unexpected\)/.test(r.stderr), `🔴 a non-allowlisted code was not reduced to "(unexpected)"\n${r.stderr}`); noLeak(r, 'err.code / err.name');
+    // (b) a THROWING err() writer cannot escape the boundary: the fixed line still reaches fd 2, exit 1
+    r = viaMain(`() => { throw new TypeError('t ${SECRET}'); }`, `() => { throw new Error('writer ${SECRET}'); }`);
+    assert.ok(r.status === 1 && /deploy BLOCKED \(unexpected\)/.test(r.stderr), `🔴 a throwing err() writer escaped the boundary (exit ${r.status})\n${r.stderr}`); noLeak(r, 'throwing writer');
+    // (c) the REAL CLI with fault injection by preload: a setImmediate throw, a rejected promise under
+    //     --unhandled-rejections=warn, and a pre-existing uncaughtException listener that swallows — each exit 1, no secret
+    const inj = (src) => { const f = path.join(fs.mkdtempSync(path.join(tmp, 'inj-')), 'inject.js'); fs.writeFileSync(f, src); return f; };
+    const cases = [
+      ['setImmediate throw', [], `setImmediate(() => { throw new Error('${SECRET}'); });`],
+      ['rejected promise under --unhandled-rejections=warn', ['--unhandled-rejections=warn'], `Promise.reject(new Error('${SECRET}'));`],
+      ['a pre-existing SWALLOWING uncaughtException listener', [], `process.on('uncaughtException', () => {}); setImmediate(() => { throw new Error('${SECRET}'); });`],
+      // only a PREPENDED handler beats a listener that EXITS 0 (an appended one never runs): the ordering is what this pins
+      ['a pre-existing uncaughtException listener that EXITS 0', [], `process.on('uncaughtException', () => process.exit(0)); setImmediate(() => { throw new Error('${SECRET}'); });`],
+    ];
+    for (const [label, flags, src] of cases) {
+      r = sub([...flags, '-r', inj(src), GUARD, '--root', root]);
+      assert.strictEqual(r.status, 1, `🔴 ${label}: the guard did not hard-fail (exit ${r.status})\n${r.stderr}`);
+      assert.match(r.stderr, /deploy-env-guard: internal error; deploy BLOCKED/, `${label}: the fixed line`);
+      noLeak(r, label);
+    }
+    // (d) a REAL permission-denied .env through the real CLI
     const locked = tree({ '.env': `TOKEN=${SECRET}\n` });
     fs.chmodSync(path.join(locked, '.env'), 0o000);
     try {
-      const r = spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', locked], { encoding: 'utf8', env: { ...process.env, GCLOUD_PROJECT: 'proj-x' } });
-      if (process.getuid && process.getuid() !== 0) {
-        assert.strictEqual(r.status, 1, `🔴 an unreadable .env did not block (exit ${r.status})`);
-        assert.match(r.stderr, /internal error while checking \.env; deploy BLOCKED \(EACCES\)/);
-      }
-      assert.ok(!`${r.stdout}${r.stderr}`.includes(SECRET), '🔴 the permission-error path printed a value');
+      r = sub([GUARD, '--root', locked]);
+      if (process.getuid && process.getuid() !== 0) assert.ok(r.status === 1 && /internal error while checking \.env; deploy BLOCKED \(EACCES\)/.test(r.stderr), `🔴 an unreadable .env did not block\n${r.stderr}`);
+      noLeak(r, 'permission error');
     } finally { fs.chmodSync(path.join(locked, '.env'), 0o644); }
-    // (c) an EMPTY PATH entry means the cwd: a non-firebase-tools `firebase` THERE decides, though /usr/local/bin has the real one
+    // (e) an EMPTY PATH entry means the cwd: a non-firebase-tools `firebase` THERE decides, though /usr/local/bin has the real one
     const cwdDir = fs.mkdtempSync(path.join(tmp, 'cwd-'));
     fs.writeFileSync(path.join(cwdDir, 'firebase'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    const r2 = spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', root], { cwd: cwdDir, encoding: 'utf8', env: { ...process.env, PATH: `${path.delimiter}/usr/local/bin`, GCLOUD_PROJECT: 'proj-x' } });
-    assert.strictEqual(r2.status, 1, `🔴 an EMPTY PATH entry (the cwd) was dropped — the cwd wrapper did not decide (exit ${r2.status})`);
-    assert.match(r2.stderr, /the FIRST `firebase` on PATH is missing, or is not inside a firebase-tools package/);
-    ok('one error boundary: an injected parser error (message carrying a secret) and a real permission-denied .env each BLOCK with a fixed "internal error while checking <file>; deploy BLOCKED (<code>)" — never the message or stack; an EMPTY PATH entry is the cwd, so a cwd `firebase` wrapper decides (fail closed)');
+    r = sub([GUARD, '--root', root], { cwd: cwdDir, env: { PATH: `${path.delimiter}/usr/local/bin` } });
+    assert.strictEqual(r.status, 1, `🔴 an EMPTY PATH entry (the cwd) was dropped — the cwd wrapper did not decide (exit ${r.status})`);
+    assert.match(r.stderr, /the FIRST `firebase` on PATH is missing, or is not inside a firebase-tools package/);
+    // (f) a clean run still exits 0
+    r = sub([GUARD, '--root', root]);
+    assert.strictEqual(r.status, 0, `a clean run exits 0 (${r.stderr})`);
+    ok('the error class is closed — only an allowlisted errno code or "(unexpected)" is printed (a secret in message / code / name never is); a throwing err() writer still yields the fixed line + exit 1; a setImmediate throw, a rejection under --unhandled-rejections=warn and a pre-existing swallowing listener each HARD-exit 1 with the fixed line; a real permission-denied .env blocks (EACCES); an empty PATH entry is the cwd; a clean run exits 0');
   }
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log(`\ndeploy-env-guard: OK (${n})`);

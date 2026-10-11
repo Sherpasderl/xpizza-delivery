@@ -11220,22 +11220,6 @@
     ]
   },
   {
-    "id": "r1-35",
-    "slice": "r1",
-    "file": "tools/deploy-env-guard.js",
-    "from": "    err(`\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\\n`);",
-    "to": "    err(`\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id}) ${e && e.message}\\n`);",
-    "label": "the internal-error boundary prints the error message (dotenv content can leak)",
-    "kills_with": [
-      "printed the error MESSAGE",
-      "leaked its message"
-    ],
-    "command": [
-      "node",
-      "tools/deploy-env-guard.test.js"
-    ]
-  },
-  {
     "id": "r1-36",
     "slice": "r1",
     "file": "tools/deploy-env-guard.js",
@@ -11243,6 +11227,61 @@
     "to": ".split(path.delimiter).filter(Boolean)) {",
     "label": "an empty PATH entry (the cwd) is dropped from firebase resolution",
     "kills_with": "an EMPTY PATH entry (the cwd) was dropped",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-35",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    const id = (e && typeof e.code === 'string' && SAFE_CODES.has(e.code)) ? e.code : 'unexpected';",
+    "to": "    const id = (e && (e.code || e.name)) || 'unexpected';",
+    "label": "the boundary prints err.code / err.name verbatim (an arbitrary string can carry a secret)",
+    "kills_with": [
+      "a non-allowlisted code was not reduced",
+      "err.code / err.name: the secret was printed"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-37",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "  process.prependListener('uncaughtException', hardFail);",
+    "to": "  process.on('uncaughtException', hardFail);",
+    "label": "the hard-fail handler is appended, so a pre-existing listener that exits 0 runs first",
+    "kills_with": "a pre-existing uncaughtException listener that EXITS 0: the guard did not hard-fail",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-38",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "  process.prependListener('unhandledRejection', hardFail);",
+    "to": "",
+    "label": "no unhandledRejection handler (--unhandled-rejections=warn turns a failure into exit 0)",
+    "kills_with": "rejected promise under --unhandled-rejections=warn: the guard did not hard-fail",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-39",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    try { fs.writeSync(2, `\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\\n`); } catch { /* fd 2 gone */ }",
+    "to": "    err(`\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\\n`);",
+    "label": "the boundary writes through the injectable err() (a throwing writer escapes it)",
+    "kills_with": "a throwing err() writer escaped the boundary",
     "command": [
       "node",
       "tools/deploy-env-guard.test.js"

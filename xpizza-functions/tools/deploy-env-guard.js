@@ -1,5 +1,14 @@
 #!/usr/bin/env node
 'use strict';
+/* 🔴 FIRST, before anything else runs (codex r7): as the CLI, ANY uncaught exception or unhandled rejection writes ONE
+   fixed line straight to fd 2 and HARD-exits 1 — prepended, so a pre-existing listener that swallows, or a
+   --unhandled-rejections=warn flag, can never turn a failure into a passing deploy, and no error text (which can carry
+   dotenv content) is ever printed. Only when run as the CLI: a test that require()s this module keeps its own handlers. */
+if (require.main === module) {
+  const hardFail = () => { try { require('fs').writeSync(2, '\n🔴 deploy-env-guard: internal error; deploy BLOCKED\n'); } catch { /* nothing to do */ } process.exit(1); };
+  process.prependListener('uncaughtException', hardFail);
+  process.prependListener('unhandledRejection', hardFail);
+}
 /* PRE-DEPLOY INVARIANT (codex R1-build ruling): the functions DEPLOY environment carries NO emulator signal.
  *
  * lib/admin.js enters its emulator branch on FUNCTIONS_EMULATOR === "true" or any non-empty emulator host var. In
@@ -123,6 +132,7 @@ function violations(root = ROOT, project = null, { keys: keysFn = keysOf, onFile
    error reading a dotenv file, anything) prints a FIXED message naming the file being checked and the error's code /
    name ONLY — never its message or stack, which can carry dotenv content — and blocks the deploy (exit 1).
    Injectable (parser, output) so the boundary is tested in-process. Returns the exit code. */
+const SAFE_CODES = new Set(['EACCES', 'ENOENT', 'EISDIR', 'EPERM', 'EMFILE', 'ENOTDIR', 'ELOOP', 'EUNPARSEABLE', 'EINJECTED']);
 function main({ argv = process.argv, env = process.env, keys = null, parserName = null, out = (m) => console.log(m), err = (m) => console.error(m) } = {}) {
   let current = '(setup)';
   try {
@@ -148,12 +158,17 @@ function main({ argv = process.argv, env = process.env, keys = null, parserName 
     out(`deploy-env-guard: OK (${scope}; parsed with ${name}) — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);
     return 0;
   } catch (e) {
-    const id = String((e && (e.code || e.name)) || 'unknown').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown';
-    err(`\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\n`);
+    /* codex r7: the suffix is an ALLOWLISTED errno code or the literal "unexpected" — never err.code / err.name verbatim
+       (both are arbitrary strings) — and it is written STRAIGHT to fd 2, not through err(): a throwing writer cannot
+       escape the boundary. The file name is ours (a deploy-env path we chose), never content. */
+    const id = (e && typeof e.code === 'string' && SAFE_CODES.has(e.code)) ? e.code : 'unexpected';
+    try { fs.writeSync(2, `\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\n`); } catch { /* fd 2 gone */ }
     return 1;
   }
 }
 
 module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations, resolveFirebaseTools, main, parserName: () => parser().name };
 if (require.main !== module) return;
-process.exitCode = main();
+// exit 0 ONLY when main() returned exactly 0; every other outcome is 1 (codex r7)
+const rc = main();
+process.exitCode = rc === 0 ? 0 : 1;
