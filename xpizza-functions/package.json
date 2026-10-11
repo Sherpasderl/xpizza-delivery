@@ -18,7 +18,8 @@
     "@firebase/rules-unit-testing": "^4.0.0",
     "acorn": "^8.18.0",
     "dotenv": "^16.4.5",
-    "jsdom": "^30.0.1"
+    "jsdom": "^30.0.1",
+    "parse5": "8.0.1"
   },
   "private": true,
   "scripts": {

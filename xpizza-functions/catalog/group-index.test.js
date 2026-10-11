@@ -123,12 +123,22 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
         assert.strictEqual(both({ html: `<template><template></template>${TAG}</template>`, mod: MOD }), false, '🔴 codex r2 verbatim: the tag inside a template that nests another → off');
         assert.strictEqual(both({ html: `<html><textarea>${TAG}</textarea></html>`, mod: MOD }), false, 'the tag only inside a <textarea> → off');
         assert.strictEqual(both({ html: `<html><template>x</template>${TAG}</html>`, mod: MOD }), true, 'premise kept: a real tag AFTER a template → on');
+        // codex PB-2 r3 — inert markup only the real HTML parser gets right (parse5, WHATWG): "</template>" inside a comment,
+        // an attribute value or a textarea within a template; and the inert containers iframe / noembed / plaintext; an SVG <script>
+        assert.strictEqual(both({ html: `<template><!-- </template> -->${TAG}</template>`, mod: MOD }), false, '🔴 codex r3 verbatim: "</template>" inside a comment within the template → off');
+        assert.strictEqual(both({ html: `<template><div title="</template>"></div>${TAG}</template>`, mod: MOD }), false, '🔴 codex r3: "</template>" inside an attribute value within the template → off');
+        assert.strictEqual(both({ html: `<template><textarea></template></textarea>${TAG}</template>`, mod: MOD }), false, '🔴 codex r3: "</template>" inside a textarea within the template → off');
+        for (const box of ['iframe', 'noembed', 'noframes', 'noscript', 'xmp', 'title']) assert.strictEqual(both({ html: `<html><${box}>${TAG}</${box}></html>`, mod: MOD }), false, `🔴 the tag only inside <${box}> (inert text) → off`);
+        assert.strictEqual(both({ html: `<html><plaintext>${TAG}`, mod: MOD }), false, '🔴 the tag after <plaintext> (everything after is text) → off');
+        assert.strictEqual(both({ html: `<html><svg>${TAG}</svg></html>`, mod: MOD }), false, 'an SVG-namespace <script> is not the HTML loader → off');
+        assert.strictEqual(both({ html: '<html><script src="form-group-picker.js" type="text/plain"></script></html>', mod: MOD }), false, 'a non-JS type → off (only the exact loader counts)');
+        assert.strictEqual(both({ html: '<html><SCRIPT src="form-group-picker.js"></SCRIPT></html>', mod: MOD }), true, 'premise: an upper-case tag IS an active script element (the parser decides, as a browser) → on');
         assert.strictEqual(both({ html: `<html><!-- ${TAG} -->${TAG}</html>`, mod: '// the picker\nconst GROUP_PICKER_V1 = 1;\n' }), true, 'premise kept: a real tag + a real declaration, beside comments → on');
       } finally { rmSync(tmp, { recursive: true, force: true }); }
     }
     const src = readFileSync(join(__dirname, 'platform-groups.js'), 'utf8');
     assert.ok(!/restaurant|rid\b|x_pizza|la_musa/i.test(src.replace(/\/\/.*$/gm, '')), 'no brand anywhere in the switch module');
-    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; 15 near-misses each off, incl. codex\'s commented-out tag and declaration, a template\'s contents and an attribute value), authoring OFF; a malformed render artifact throws; no brand appears in the module');
+    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; near-misses each off, decided by the WHATWG parser (parse5): codex r1–r3 inputs, template contents, attribute values, comments, inert containers, SVG), authoring OFF; a malformed render artifact throws; no brand appears in the module');
   }
   console.log(`\ngroup-index: OK (${n})`);
 })().catch((e) => { console.error('group-index FAILED:', e); process.exit(1); });
