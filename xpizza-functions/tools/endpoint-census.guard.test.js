@@ -72,6 +72,7 @@ const D = {
   [F('lib/emulator-endpoint.js')]: 'lib: the validator itself', [F('deploy/emu-ns.js')]: 'lib: emuDatabaseURL → validateRtdbUrl (strict)',
   [F('test/_emulator-required.js')]: 'lib: the suite/harness guard', [F('tools/emu-mixed-guard.js')]: 'lib: the CLI mixed-signal guard',
   [F('tools/require-project.js')]: 'lib: project guard + mixed-signal guard', [F('tools/emulator-run.js')]: 'lib: the launcher',
+  [F('tools/emu-cmd-wrapper.js')]: 'lib: the marked suite wrapper — spawned only by the launcher; reads the run\'s own Firestore host to load its rules (emu-alloc.test cell 10 + the real proof)',
   [F('index.js')]: 'lib: the deployed entry — its Admin app is lib/admin.js (guarded)', [F('portal/functions.js')]: 'lib: the deployed portal entry — lib/admin.js',
   [F('portal/reset-draft.js')]: 'lib: deployed portal module — lib/admin.js',
   [F('cors-preflight.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
