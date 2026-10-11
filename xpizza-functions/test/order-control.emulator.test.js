@@ -484,7 +484,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const off = results[key];
       const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
       assert.ok(off && on, `${L}: ran on both sides`);
-      const offOps = FILL.strip(NO(off.ops), rid, off, `${L} [render-OFF side]`); const onOps = FILL.strip(NO(on.ops), rid, on, L);
+      const offOps = NO(FILL.strip(off.ops, rid, off, `${L} [render-OFF side]`, { ignore: isTestOp })); const onOps = NO(FILL.strip(on.ops, rid, on, L, { ignore: isTestOp }));
       const reward = c.path === 'card' && isRewardCase(c);
       if (steady && BOUND.has(c.name)) {
         const ref = results[`${REUSE_REF} | ${state} | ${rid}`];

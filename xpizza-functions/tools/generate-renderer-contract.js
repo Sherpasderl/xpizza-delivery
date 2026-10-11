@@ -152,10 +152,39 @@ const GROUP_PICKER_FILE = 'form-group-picker.js';
 const GROUP_PICKER_TAG = `<script src="${GROUP_PICKER_FILE}"></script>`;
 // The picker's own choice badge (form-group-picker.js isRecommended / RECOMMENDED_LABEL "Recomendada"), one for every brand.
 const CHOICE_BADGES = Object.freeze(['recommended']);
+/* codex PB-2 r1 P2-5 — ACTIVE markup and EXECUTABLE code only, never raw text.
+   activeHtml: the page with every HTML comment removed (an unterminated `<!--` runs to the end, as in a browser) and the
+   bodies of inline <script>, <template>, <noscript> and <textarea> emptied (text there never loads a module) — so only a
+   real element counts as the tag. */
+function activeHtml(html) {
+  return String(html)
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+    .replace(/(<(script|template|noscript|textarea)\b[^>]*>)[\s\S]*?(<\/\2\s*>)/gi, (m, open, tag, close) => (/\bsrc\s*=/i.test(open) ? m : open + close));
+}
+/* codeOnly: the module with every comment and every string / template-literal BODY blanked (newlines kept), by a small
+   scanner — so a declaration that is commented out, or that merely appears inside a string, is not a declaration. */
+function codeOnly(src) {
+  let out = ''; let i = 0; const n = src.length;
+  const blank = (t) => t.replace(/[^\n]/g, ' ');
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+    if (c === '/' && d === '/') { const j = src.indexOf('\n', i); const e = j === -1 ? n : j; out += blank(src.slice(i, e)); i = e; continue; }
+    if (c === '/' && d === '*') { const j = src.indexOf('*/', i + 2); const e = j === -1 ? n : j + 2; out += blank(src.slice(i, e)); i = e; continue; }
+    if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1;
+      while (j < n && src[j] !== c) { if (src[j] === '\\') j += 1; else if (c !== '`' && src[j] === '\n') break; j += 1; }
+      const e = Math.min(n, j + 1); out += c + blank(src.slice(i + 1, e - 1)) + (e - 1 > i ? src[e - 1] : ''); i = e; continue;
+    }
+    out += c; i += 1;
+  }
+  return out;
+}
+// the declaration as a STATEMENT: at the start of a line or after a statement boundary, in code (not a comment / string)
+const GROUP_PICKER_DECL = /(?:^|[;{}])[ \t]*const GROUP_PICKER_V1 = 1;/m;
 function formShipsPicker(rid, root) {
-  if (formSource(rid, root).split(GROUP_PICKER_TAG).length !== 2) return false;
+  if (activeHtml(formSource(rid, root)).split(GROUP_PICKER_TAG).length !== 2) return false;
   const mod = formSiblingSource(rid, GROUP_PICKER_FILE, root);
-  return typeof mod === 'string' && GROUP_PICKER_MARKER.test(mod);
+  return typeof mod === 'string' && GROUP_PICKER_MARKER.test(mod) && GROUP_PICKER_DECL.test(codeOnly(mod));
 }
 function deriveRender(root) { return BRANDS.every((rid) => formShipsPicker(rid, root)); }
 const RENDER_PLATFORM = (render) => `'use strict';
@@ -173,4 +202,4 @@ function writePlatformRender(target) {
 
 if (require.main === module) { console.log(`wrote ${writeContract()}`); console.log(`wrote ${writeFallbackGroups()}`); console.log(`wrote ${writePlatformRender()}`); }
 module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS, renderedCategoriesOf,
-  deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, formShipsPicker, CHOICE_BADGES, RENDER_PLATFORM, writePlatformRender };
+  deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, formShipsPicker, activeHtml, codeOnly, CHOICE_BADGES, RENDER_PLATFORM, writePlatformRender };

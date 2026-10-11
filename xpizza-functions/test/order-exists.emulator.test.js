@@ -387,7 +387,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
           // per-instance cache refills, in whichever request crosses a TTL — on either side, unrelated to render — are set
           // aside on both sides: the client floor's read (30 s, as the d4b / quote companions do) and the catalog caches'
           // fill traffic (test/_render-delta.js makeCacheFill, bounded by wall time)
-          const noFill = (r, side) => FILL.strip(r.ops.filter((e) => !CTL.isFloorRead(e)), rid, r, `${L}${side}`);
+          const noFill = (r, side) => FILL.strip(r.ops, rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits' });
           const offOps = RD.normOps(noFill(off, ' [render-OFF side]')); const onOps = RD.normOps(noFill(on, ''));
           if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
           else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);

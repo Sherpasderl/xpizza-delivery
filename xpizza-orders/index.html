@@ -519,6 +519,10 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .detail-variant-row.sel{border-color:var(--charcoal)}
 .detail-variant-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--border2);flex:none}
 .detail-variant-row.sel .detail-variant-radio{border-color:var(--charcoal);box-shadow:inset 0 0 0 5px var(--charcoal)}
+/* 1D add-product B (codex PB-2 r1 P2-6): each choice row's native radio — focusable, visually hidden; the row shows keyboard focus */
+.detail-variant-row{position:relative}
+.detail-variant-row .choice-radio{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.detail-variant-row:focus-within{outline:2px solid currentColor;outline-offset:2px}
 .choice-line{display:flex;align-items:center;gap:8px}
 .choice-line .detail-extras-name{display:inline}
 .choice-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:var(--gold-lt);color:var(--gold-dk);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
@@ -1796,6 +1800,9 @@ const findMenuExtra = (k) => EXTRAS.find(e => e.id === k) || null;
 // lets a customer clear a line whose dish is gone (setQtyByKey updates, and REFUSES to create).
 function cartSync(id){
   const n = qty[id] || 0;
+  /* 1D add-product B — THE QUANTITY WRITE POINT: a bare launcher never gains quantity, whatever control asked (its choice
+     is the line). A decrease still passes, so a restored launcher line can be removed. */
+  if (n > CART.qtyOf(String(id)) && itemIsLauncher(findMenuItem(id))) { qty[id] = CART.qtyOf(String(id)); return; }
   const rec = findMenuItem(id);
   if (n > 0 && rec) CART.setQty(rec, n); else CART.setQtyByKey(String(id), n);
   // 🔴 qty FOLLOWS THE CART, it does not merely feed it. Without this line the two can disagree, and
@@ -1814,7 +1821,9 @@ function cartLines(){
   /* The availability predicate is the form's OWN isSoldOut — the same one the tiles and the add-guard
      use, so a line cannot be blocked on screen and orderable in the cart, or the reverse. Passed rather
      than imported: form-cart.js has no business knowing there is an availability feed. */
-  return CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } })
+  /* 1D add-product B: a bare LAUNCHER line (saved before its group, or a dish that became one while in the cart) is
+     BLOCKED with reason 'choice' — the shared rule (form-group-picker.js markLauncherLines). */
+  return GroupPicker.markLauncherLines(CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } }), VARIANT_ITEMS)
     .map((l, i) => ({ l, r: pos.has(l.key) ? pos.get(l.key) : MENU.length + i }))
     .sort((a, b) => a.r - b.r).map((x) => x.l);
 }
@@ -1878,6 +1887,15 @@ function cartRestore(stashedCart){
       reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));
     const err = document.getElementById('err3') || document.getElementById('err1');
     if (err) { err.textContent = 'No pudimos recuperar tu pedido anterior. Armalo de nuevo, por favor.'; err.style.display = 'block'; }
+  }
+  /* 1D add-product B (rev 6 §0d.1): a restored line naming a bare LAUNCHER (saved before its group) is never resubmitted
+     bare. It stays VISIBLE and BLOCKING, like every restored line the live menu no longer agrees with: cartLines() marks
+     it 'choice', so the send gate and buildOrder refuse it, and every announcement (here, the self-update's review when
+     the menu settles, the send gate) tells the customer to choose again. Payment return and self-update both arrive here. */
+  const bare = GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS);
+  if (bare.length) {
+    console.warn('cart_restore_launcher_blocked', JSON.stringify({ keys: bare }));
+    announceCartConflicts(cartConflicts());
   }
   // qty follows the cart here too — one rule, every writer. Rebuilt from MENU first so every rendered
   // card has an entry, then overlaid with what the cart actually holds (including a line whose dish the
@@ -1999,7 +2017,10 @@ function announceCartConflicts(conflicts){
        that helps is removing it. Split only when EVERY blocked line is sold out; a mixed cart keeps the
        general wording rather than asserting a reason that is wrong for some of the lines. */
     const soldOut = conflicts.filter(l => l.unresolved === 'unavailable');
-    err.textContent = (soldOut.length === conflicts.length && soldOut.length)
+    const choose = conflicts.filter(l => l.unresolved === 'choice');   // 1D add-product B: the customer chooses again
+    err.textContent = (choose.length === conflicts.length && choose.length)
+      ? GroupPicker.reChooseText(choose.map(l => ({ key: l.key, name: (l.record && l.record.name) || l.key })), VARIANT_ITEMS)
+      : (soldOut.length === conflicts.length && soldOut.length)
       ? 'Agotado: ' + names.join(', ') + '. Quitá ' + (names.length > 1 ? 'esos productos' : 'ese producto') + ' para continuar.'
       : 'Algunos productos de tu carrito cambiaron: ' + names.join(', ') + '. Revisalos antes de continuar.';
     err.style.display = 'block';
@@ -2597,6 +2618,8 @@ function genOrderId(){
 function wireMenuDelegate(){
   if (window.__menuDelegateWired) return;
   window.__menuDelegateWired = true;
+  // 1D add-product B (codex PB-2 r1 P2-6): the choice radios' keyboard — Space / arrows (change) and Enter choose
+  GroupPicker.wireChoiceKeys(document, function(raw){ const d = MENU.find(function(x){ return String(x.id) === String(raw); }); if (d) selectVariant(d.id); });
   document.addEventListener('click', function(ev){
     const actEl = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
     if (!actEl) return;
@@ -4087,6 +4110,11 @@ var __orderNetAtBuild = null;   // 1C T8 — the displayed net that backs a degr
 function buildOrder(){
   const _conflicts = cartConflicts();
   if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }
+  /* 1D add-product B — THE SEND BOUNDARY: no body is built while the RAW cart (not its resolution) holds a bare launcher. */
+  if(GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS).length){
+    console.warn('cart_blocked_build_launcher', JSON.stringify({ keys: GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS) }));
+    return false;
+  }
   // Guarded like every other call into this module: a signature that cannot be computed means the
   // body simply travels token-less (grace / the unsigned floor), which is the safe direction.
   try{ __orderSigAtBuild = confirmQuoteCartSig(); }catch(_){ __orderSigAtBuild = null; }   // 1C T7 revise — stamped with THIS body's cart+reward
@@ -5178,12 +5206,15 @@ function renderLauncherModal(pizza) {
   html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
   html += `<div class="detail-extras-list">` + GroupPicker.choiceRows(cfg, MENU, stagedVariantId).map(r =>
     `<div class="detail-variant-row${r.selected ? ' sel' : ''}" data-act="variant" data-id="${safeText(r.id)}">`
+    + GroupPicker.choiceInputHtml(r, pizza.id, safeText)
     + `<div class="choice-line"><span class="detail-extras-name">${escapeHtml(r.choice)}</span>`
     + (r.recommended ? `<span class="choice-badge">${escapeHtml(GroupPicker.RECOMMENDED_LABEL)}</span>` : '') + `</div>`
     + (r.delta !== null ? `<span class="choice-delta">+L ${safeText(r.delta)}</span>` : '')
     + `<span class="detail-variant-radio"></span></div>`).join('') + `</div>`;
   html += `<div style="height:24px"></div>`;
+  const choiceFocus = GroupPicker.choiceHasFocus(document);   // codex PB-2 r1 P2-6: a keyboard choice keeps its focus
   document.getElementById('detail-scroll').innerHTML = html;
+  GroupPicker.refocusChoice(document, choiceFocus);
   if (stagedVariantId === null) document.getElementById('detail-scroll').scrollTop = 0;   // a fresh open; a choice tap keeps the scroll
   updateDetailCta();
 }

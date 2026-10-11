@@ -54,7 +54,10 @@ async function captureLaMusa() {
 // finds nothing throws, so this can never silently become identity):
 //   (a) the cheapest choice row shows no amount (was "L 307");
 //   (b) the disabled prompt is derived from the label: "Elegí una proteína" → "Elegí tu proteína";
-//   (c) the selected CTA reads "Agregar · L {choice + staged extras}" (the amount markup is unchanged).
+//   (c) the selected CTA reads "Agregar · L {choice + staged extras}" (the amount markup is unchanged);
+//   (d) (codex PB-2 r1 P2-6, advisor-directed) each choice row gains, as its FIRST child, its native radio — one group name,
+//       the row's choice as its value, its accessible name read from the row's OWN visible text (name · tag · amount),
+//       checked iff the row is selected. Derived here from the frozen golden row, never from the form's helper.
 const once = (str, from, to, where) => {
   const n = str.split(from).length - 1;
   if (n !== 1) throw new Error(`STEP2 ${where}: expected exactly one ${JSON.stringify(from)}, found ${n}`);
@@ -65,6 +68,18 @@ const STEP2 = (golden) => {
   for (const [k, st] of Object.entries(g)) {
     if (!st || typeof st.scroll !== 'string') continue;
     st.scroll = once(st.scroll, '\n      <span class="detail-extras-price">L 307</span>', '', `${k} (a)`);
+    let rows = 0;
+    st.scroll = st.scroll.replace(/<div class="detail-variant-row( sel)?" data-act="variant" data-id="([^"]+)">([\s\S]*?)<span class="detail-variant-radio"><\/span>/g, (m, sel, id, inner) => {
+      rows += 1;
+      const name = (inner.match(/<span class="detail-extras-name">([^<]*)<\/span>/) || [])[1];
+      const tag = (inner.match(/<span class="detail-variant-badge">([^<]*)<\/span>/) || [])[1];
+      const amt = (inner.match(/<span class="detail-extras-price">(\+L [0-9]+)<\/span>/) || [])[1];
+      if (!name) throw new Error(`STEP2 ${k} (d): a choice row without its name`);
+      const label = name + (tag ? ' · ' + tag : '') + (amt ? ' · ' + amt : '');
+      const input = `<input type="radio" class="choice-radio" name="choice-noodle_01" value="${id}" aria-label="${label}"${sel ? ' checked=""' : ''}>`;   // as the DOM serializes it (innerHTML)
+      return m.replace(`data-id="${id}">`, `data-id="${id}">${input}`);
+    });
+    if (st.scroll.includes('detail-variant-row') && rows !== 3) throw new Error(`STEP2 ${k} (d): expected the 3 Pad Thai choice rows, found ${rows}`);
     if (st.cta.html === '<span>Elegí una proteína</span>') st.cta.html = '<span>Elegí tu proteína</span>';           // (b)
     else if (st.cta.html.startsWith('<span>Agregar al carrito</span>')) st.cta.html = once(st.cta.html, '<span>Agregar al carrito</span>', '<span>Agregar</span>', `${k} (c)`);
   }
@@ -89,7 +104,7 @@ if (CAPTURE) {
   };
   for (const k of Object.keys(want)) assert.deepStrictEqual(got[k], want[k], `🔴 la_musa picker state "${k}" changed beyond §0d.3's permitted differences — ${firstDiff(got[k], want[k], k)}`);
   assert.deepStrictEqual(Object.keys(got).sort(), Object.keys(want).sort(), 'the same states');
-  ok(`la_musa picker DOM: ${Object.keys(want).length} states equal the golden (step 1 byte-identical; step 2 = only the §0d.3 differences)`);
+  ok(`la_musa picker DOM: ${Object.keys(want).length} states equal the golden (step 1 byte-identical; step 2 = only the §0d.3 differences (a)–(c) + the per-row native radio (d))`);
 }
 closeAll();
 console.log('\ngroup-picker-golden: OK');

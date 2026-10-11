@@ -172,6 +172,8 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const soldOutById = () => false, registerOutsideClick = () => {}, refreshCardExtrasIndicator = () => {};
     const updateDetailModal = () => {}, updateDetailCta = () => {}, updateTotal = () => {}, updateCart = () => {};
     const refreshPickupGate = () => {}, itemIsLauncher = () => false;
+    // 1D add-product B: the REAL shared group rules (cartLines / cartRestore / buildOrder ask them); no groups in this menu
+    const GroupPicker = ctx.GroupPicker, VARIANT_ITEMS = {};
     // Collaborators the REAL buildOrder / processPixelPay / restoreOrderForm call. All inert: this suite
     // is about which paths the cart gate covers, not about rendering or networking.
     const redeemAdjustedTotal = () => calcTotal();
@@ -253,7 +255,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
              optionControl: ${dir === 'xpizza-orders' ? '(eid, pid) => toggleDetailExtra(eid, pid, 0)' : '(eid, pid, d) => chgDetailExtra(eid, pid, d === undefined ? 1 : d)'},
              liveMenu: () => MENU, setMenu: (m, e) => { MENU = m; if (e) EXTRAS = e; } };
   `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices, fetchCalls,
-       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa', plan, stages,
+       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa', plan, stages, GroupPicker: require(`./${dir}/form-group-picker.js`),
        get onFetch() { return ctlRef.onFetch; },
        getStash: () => stash, setStash: (v) => { stash = v; } });
   const ctl = { plan, setPlan: (p) => { plan.length = 0; plan.push(...p); }, onFetch: (fn) => { ctlRef.onFetch = fn; } };

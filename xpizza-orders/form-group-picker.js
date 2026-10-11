@@ -109,6 +109,50 @@ function soldOutWithParent(item, menu, ownSoldOut) {
   return !!(parent && ownSoldOut(parent));
 }
 
+/* ── A BARE LAUNCHER IS NEVER A CART LINE (rev 6 §0d.1 / §0d.3) — only its chosen choice is. A launcher line can still
+   arrive: a cart saved before its group (payment return, self-update reload) or a dish that became a launcher while it
+   sat in the cart. Every such line is BLOCKED with reason 'choice', so the send gate and buildOrder refuse it, and the
+   customer is told to choose again — the same rule, the same words, on every form. */
+function markLauncherLines(lines, variantItems) {
+  return lines.map(l => (isLauncher({ id: l.key }, variantItems) ? Object.assign({}, l, { unresolved: "choice", blocked: true }) : l));
+}
+function launcherKeys(keys, variantItems) { return keys.filter(k => isLauncher({ id: k }, variantItems)); }
+// `names`: [{ key, name }] — a cart key IS the variant map's key (both are the id as a string), so the label reads directly
+function reChooseText(names, variantItems) {
+  return names.map(n => {
+    const cfg = variantItems[n.key];
+    const label = cfg && cfg.label ? String(cfg.label).toLocaleLowerCase("es") : "opción";
+    return "Elegí de nuevo tu " + label + " para " + n.name + ".";
+  }).join(" ");
+}
+
+/* ── KEYBOARD (codex PB-2 r1 P2-6) — each choice row carries a NATIVE radio: one group name per launcher, the checked state,
+   an accessible name (the choice, its tag, its amount). It is visually hidden inside the row (the mock's look is the
+   row's own radio dot), and focusable, so Tab reaches the group, the arrows move the choice, Space and Enter choose,
+   and the commit button then enables. The pointer path is unchanged (the row's own click). One implementation, every
+   form. `esc` is the form's text escaper. */
+const CHOICE_INPUT_CLASS = "choice-radio";
+function choiceInputHtml(r, launcherId, esc) {
+  const name = r.choice + (r.recommended ? " · " + RECOMMENDED_LABEL : "") + (r.delta !== null ? " · +L " + r.delta : "");
+  return '<input type="radio" class="' + CHOICE_INPUT_CLASS + '" name="choice-' + esc(String(launcherId)) + '" value="' + esc(String(r.id))
+    + '" aria-label="' + esc(name) + '"' + (r.selected ? " checked" : "") + ">";
+}
+// a choice re-render replaces the row markup; a keyboard user's focus returns to the checked radio (else the arrows stop)
+function choiceHasFocus(doc) { const a = doc.activeElement; return !!(a && a.classList && a.classList.contains(CHOICE_INPUT_CLASS)); }
+function refocusChoice(doc, hadFocus) {
+  if (!hadFocus) return;
+  const el = doc.querySelector("input." + CHOICE_INPUT_CLASS + ":checked") || doc.querySelector("input." + CHOICE_INPUT_CLASS);
+  if (el) el.focus();
+}
+// attached once at boot: `onChoose(rawValue)` — the form resolves the value to its dish id (its own id types)
+function wireChoiceKeys(doc, onChoose) {
+  if (doc.__choiceKeysWired) return;
+  doc.__choiceKeysWired = true;
+  const isChoice = t => !!(t && t.classList && t.classList.contains(CHOICE_INPUT_CLASS));
+  doc.addEventListener("change", ev => { if (isChoice(ev.target) && ev.target.checked) onChoose(ev.target.value); });
+  doc.addEventListener("keydown", ev => { if (isChoice(ev.target) && ev.key === "Enter") { ev.preventDefault(); onChoose(ev.target.value); } });
+}
+
 /* What the commit button may do for an open launcher:
    { kind: 'choose' }            nothing chosen yet — disabled
    { kind: 'soldout' }           the chosen choice is sold out — disabled
@@ -126,6 +170,7 @@ function ctaDecision(opts) {
 }
 
 const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
-  promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision };
+  promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision,
+  markLauncherLines, launcherKeys, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }

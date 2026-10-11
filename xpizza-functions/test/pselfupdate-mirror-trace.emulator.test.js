@@ -60,6 +60,11 @@ const realHC = require('../pixelpay-hosted-charge');
 let FAIL_CLASSIFY = false;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
+// 1D add-product B (PB-2, advisor ruling (A) extended to this suite at the gate): the frozen ba29282 trace is the render-OFF
+// path — render is PINNED off for it (test/_render-pin.js, before index.js, in BOTH phases: the capture child re-runs this
+// file); the render-ON companion below records the same requests with it on and asserts the exact delta
+const RP = require('./_render-pin');
+const RD = require('./_render-delta');
 const app = require('../index.js');
 const CTL = require('./_order-control-trace');
 const admin = require('firebase-admin');
@@ -305,6 +310,34 @@ async function capturePhase() {
       c_quote_mirror_refresh: quoteMoney(c.json), d_cash_mirror_refresh: await orderMoney(`mcash_${rid}_b`),
     };
   }
+  // ── RENDER-ON COMPANION (current code only): each request recorded render-OFF then render-ON in the SAME cache state —
+  // warmed (the switch warm before each cash side) and REFRESH (the controlled clock advanced past every TTL before EACH
+  // side). The orchestrator asserts ON == OFF + exactly the declared delta.
+  let companion = null;
+  if (!CAPTURE) {
+    companion = {};
+    let P = 0;
+    const side = async (on, rid, kind, refresh) => {
+      if (refresh) CLOCK_OFFSET += 61000;
+      else {   // warmed: an unrecorded request of the same kind, same render, right before — absorbs any due refill
+        P += 1;
+        await RP.withRender(on, () => traced(rid, kind === 'cash' ? `mronw_${rid}_${P}` : 'qtrace_unused_oid', `u_trace_${rid}`, `9957${String(P).padStart(4, '0')}`, { kind }));
+      }
+      if (kind === 'cash') await CTL.controlWarm(rtdb, rid);
+      await wait(2500);   // as the golden's own settle before its first recorded request (x_pizza's identity transaction is due again)
+      P += 1;
+      const t = await RP.withRender(on, () => traced(rid, kind === 'cash' ? `mron_${rid}_${P}` : 'qtrace_unused_oid', `u_trace_${rid}`, `9956${String(P).padStart(4, '0')}`, { kind }));
+      const money = kind === 'quote' ? Object.fromEntries(Object.entries(t.json || {}).filter(([, v]) => typeof v === 'number').sort()) : null;
+      return { status: t.status, trace: RD.normOps(t.trace), money };
+    };
+    for (const rid of ['x_pizza', 'la_musa']) {
+      companion[rid] = {};
+      for (const refresh of [false, true]) for (const kind of ['quote', 'cash']) {
+        const off = await side(false, rid, kind, refresh); const on = await side(true, rid, kind, refresh);
+        companion[rid][`${kind}_${refresh ? 'refresh' : 'warm'}`] = { off, on };
+      }
+    }
+  }
   let floorOn = null;
   if (process.env.PSU_MIRROR_FLOOR === '1') {
     // floor ON on the mirror route → the SAME typed 426 as the live route, zero mutation (current code only)
@@ -325,7 +358,7 @@ async function capturePhase() {
     }
     await rtdb.ref('platform_config/client_floor/orders').remove();
   }
-  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, money, premises, unhandled: globalThis.__UNHANDLED || [] }));
+  fsys.writeFileSync(process.env.PSU_MIRROR_OUT, JSON.stringify({ out, floorOn, money, premises, companion, unhandled: globalThis.__UNHANDLED || [] }));
 }
 
 (async () => {
@@ -343,7 +376,8 @@ async function capturePhase() {
   delete env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
   try { execFileSync('node', [__filename], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 900000, killSignal: 'SIGKILL' }); }
   catch (e) { console.error(String(e.stdout || '').slice(-1500) + String(e.stderr || '').slice(-3000)); throw new Error(`capture phase failed (${e.status === null ? 'TIMEOUT' : e.status})`); }
-  const { out, floorOn, unhandled, money, premises } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
+  const { out, floorOn, unhandled, money, premises, companion } = JSON.parse(fsys.readFileSync(outFile, 'utf8'));
+  if (process.env.PSU_COMPANION_DUMP) fsys.writeFileSync(process.env.PSU_COMPANION_DUMP, JSON.stringify(companion, null, 1));
   const assertPremises = () => { for (const [okay, msg] of premises) assert.ok(okay, msg); };
   const undocumented = (unhandled || []).filter((u) => !u.documented);
   if (undocumented.length) throw new Error(`🔴 ${undocumented.length} UNDOCUMENTED unhandled rejection(s) on the mirror route — only the documented 14 UNAVAILABLE / ECONNREFUSED 127.0.0.1:1 signature is tolerated:\n${undocumented.map((u) => `${u.message}\n${u.stack}`).join('\n---\n')}`);
@@ -379,6 +413,33 @@ async function capturePhase() {
       const rest = CTL.withoutControlRead(out[rid][k], rid, opts);
       assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get, +${opts.expected} switch read)`);
+    }
+    // ── RENDER-ON COMPANION (1D add-product B, PB-2): ON == OFF + exactly the declared delta, the OFF side recorded in the SAME
+    // cache state. On the mirror route Firestore is down, so the gate pointer is never cached: EVERY render-ON quote adds the
+    // gate's pointer read (quoteOrder → GI.groupIssues → gateReader().intakeGatesFor; it fails and falls back to the static
+    // sets, never throws — catalog/menu-gates.js), at the END; createOrder (no reward) adds nothing. The client floor's read
+    // (30 s TTL, on either side) is set aside exactly: ≤ 1 per request, only `rtdb get platform_config/client_floor/orders`.
+    {
+      const GATE = (rid) => [{ db: 'fs', op: 'get', path: `restaurants/${rid}/meta/active_version` },
+        { db: 'fs', op: 'getAll', paths: [`restaurants/${rid}/meta/active_version`], raw_order: 'ascending', count: 1 }];
+      const noFloor = (t, L) => {
+        const f = t.filter(isFloorRead);
+        assert.ok(f.length <= 1 && f.every((e) => e.op === 'get'), `🔴 ${L}: the floor calls are not exactly ≤ 1 rtdb get (${JSON.stringify(f)})`);
+        return t.filter((e) => !isFloorRead(e));
+      };
+      let pairs = 0;
+      for (const rid of ['x_pizza', 'la_musa']) for (const [name, { off, on }] of Object.entries(companion[rid])) {
+        const L = `${rid} ${name} (render ON)`;
+        assert.ok(off.status === 200 && on.status === 200, `${L}: premise — both sides 200 (${off.status} / ${on.status})`);
+        const a = noFloor(off.trace, `${L} [render-OFF side]`), b = noFloor(on.trace, L);
+        if (name.startsWith('quote')) {
+          assert.deepStrictEqual(on.money, off.money, `🔴 ${L}: the quote's money equals the render-OFF quote`);
+          assert.deepStrictEqual(b, [...a, ...GATE(rid)], `🔴 ${L}: the render-ON trace is not the render-OFF trace + exactly the gate pointer read, at the end`);
+        } else assert.deepStrictEqual(b, a, `🔴 ${L}: the render-ON trace must equal the render-OFF one`);
+        pairs += 1;
+      }
+      assert.strictEqual(pairs, 8, 'premise: 2 restaurants × {quote, cash} × {warm, refresh}');
+      console.log(`  ✓ render-ON companion (shipped render: ${RP.SHIPPED}; the golden above ran PINNED off): ${pairs} pairs — every quote = the render-OFF trace + exactly the gate pointer read at the end (same money); every cash order byte-equal`);
     }
     for (const [rid, other] of [['x_pizza', 'la_musa'], ['la_musa', 'x_pizza']]) CTL.assertOtherRidRefused(out[rid].d_cash_mirror_refresh, rid, other, ctlOpts(rid, 'd_cash_mirror_refresh'));
     console.log('  ✓ sensitivity: a switch read on the OTHER restaurant\'s path fails each restaurant\'s guard');
