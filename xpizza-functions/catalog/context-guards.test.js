@@ -27,9 +27,9 @@ try {
   const C2A = /[ \t]*\/\* c2a-evidence:begin \*\/[\s\S]*?\/\* c2a-evidence:end \*\/\n?/g;
   const C2A_BLOCKS = { 'catalog-publish.js': 8 };
   /* 1D add-product B (codex PB-1 r3 P2-2): the publish-time "no NEW dish↔extra key overlap" check is admitted the same way —
-     EXACTLY 3 delimited blocks (its require, the function, the one call in publishVersion); nothing else may change. */
+     EXACTLY 4 delimited blocks (its require, the function, the call in publishVersion, and — codex r4 — the under-lease baseline agreement); nothing else may change. */
   const PB1 = /[ \t]*\/\* pb1-key-overlap:begin \*\/[\s\S]*?\/\* pb1-key-overlap:end \*\/\n?/g;
-  const PB1_BLOCKS = { 'catalog-publish.js': 3 };
+  const PB1_BLOCKS = { 'catalog-publish.js': 4 };
   const shaBase = (f) => {
     const src = fsys.readFileSync(path.join(__dirname, f), 'utf8');
     if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(fsys.readFileSync(path.join(__dirname, f))).digest('hex');
@@ -57,7 +57,7 @@ try {
     assert.notStrictEqual(src.replace(PB1, ''), src, 'non-vacuity: the PB-1 blocks are present and removed');
     /* codex PB-1 r4: the excluded PB-1 blocks are reviewed exceptions, so their CONTENTS are pinned too — an edit INSIDE a
        block (invisible to the baseline pin above) fails here. Re-pin only with a reviewed change to the block text. */
-    const PB1_CONTENT = 'fad391fc125b25cfbfe79941655a7e6681ddf0b28a463ef20d1668013c02314c';
+    const PB1_CONTENT = '75213f60a29367aeda5b411c7304f86e0ee290a22c2b23d778e9221582a93a6e';
     const pbText = (s) => (s.match(PB1) || []).join('');
     assert.strictEqual(crypto.createHash('sha256').update(pbText(src)).digest('hex'), PB1_CONTENT, '🔴 catalog-publish.js: the text INSIDE the pb1-key-overlap blocks changed — a reviewed exception was edited');
     const inside = src.replace("e.code = 'publish_refused_key_overlap';", "e.code = 'publish_refused_key_overlaP';");
@@ -65,7 +65,7 @@ try {
     assert.strictEqual(crypto.createHash('sha256').update(inside.replace(C2A, '').replace(PB1, '')).digest('hex'), FROZEN['catalog-publish.js'], 'premise: the baseline pin alone cannot see an edit inside a block');
     assert.notStrictEqual(crypto.createHash('sha256').update(pbText(inside)).digest('hex'), PB1_CONTENT, 'sensitivity: an edit INSIDE a PB-1 block is detected by the content pin');
   }
-  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks + the 3 PB-1 key-overlap blocks, whose contents are pinned too; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
+  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks + the 4 PB-1 key-overlap blocks, whose contents are pinned too; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
 
   // The writer writes ONLY the context path; nothing in D4-a writes the legacy mirror or active_snapshot.
   const NEW = ['context-fk.js', 'policy-primitive.js', 'catalog-context.js', 'catalog-verifier.js', 'context-writer.js', 'context-source.js'];

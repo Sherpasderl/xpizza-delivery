@@ -142,8 +142,8 @@ async function wipe() {
     // and rollback: A = the version WITH the overlap (the shadow, published first), B = the clean one published after it.
     //   1. the candidate's expectation is captured as B;  2. roll back to A;  3. the candidate's overlap check runs;
     //   4. B is restored before the candidate takes its lease;  5. the flip (live === expected B) would land the overlap.
-    // Checked against the pre-lease pointer (A, where the overlap exists) it passes and lands over B; checked against
-    // expected.activeVersionId (B, immutable) it is refused before the lease — by construction.
+    // The pre-lease check judges against A (where the overlap exists) and passes; under the lease the active version is B,
+    // so the baseline agreement refuses BEFORE the candidate is written (no version doc, nothing flipped).
     const A = shadowPtr.version; const B = clean.version;
     const expectation = { activeVersionId: B };                                                                         // 1
     await realPublish.rollbackVersion(fs, rid, A, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: B } });   // 2
@@ -156,10 +156,15 @@ async function wipe() {
       };
       const v = Reflect.get(t, prop, t); return typeof v === 'function' ? v.bind(t) : v;
     } });
+    const versionsBefore = (await fs.collection(`restaurants/${rid}/versions`).get()).size;
     await assert.rejects(realPublish.publishVersion(interleave, rid, { ...shadowInput, source_sha: 'apc-r4' }, { mirror: makeRtdbMirror(rtdb), expected: expectation }),   // 3 + 5
-      (e) => e.code === 'publish_refused_key_overlap' && JSON.stringify(e.keys) === '["rice_white"]', '🔴 codex r4 interleaving: the overlap is judged against expected.activeVersionId (B), never the pre-lease pointer (A)');
-    assert.strictEqual(restoredB, false, 'refused BEFORE the lease (step 4 never reached)');
-    assert.strictEqual((await getActivePointer(fs, rid)).version, A, 'nothing flipped');
+      (e) => e.code === 'publish_refused_overlap_baseline_moved', '🔴 codex r4 interleaving: an overlap judged against A is never written over B');
+    assert.strictEqual(restoredB, true, 'premise: step 4 really ran (B restored as the candidate took its lease)');
+    assert.strictEqual((await getActivePointer(fs, rid)).version, B, 'nothing flipped — B stays active');
+    assert.strictEqual((await fs.collection(`restaurants/${rid}/versions`).get()).size, versionsBefore, 'no candidate version was written');
+    // the same candidate straight over B is refused as a NEW overlap (codex's control)
+    await assert.rejects(realPublish.publishVersion(fs, rid, { ...shadowInput, source_sha: 'apc-r4-direct' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: B } }),
+      (e) => e.code === 'publish_refused_key_overlap', 'control: directly over B the overlap is new');
     // x_pizza: today's catalog has two EXISTING overlaps (Pepperoni, Prosciutto) — it must stay publishable over itself
     const xp = 'x_pizza';
     await sourceRefOf(fs, xp).set(canonicalize(buildSourceFromCode(xp)));
@@ -171,7 +176,7 @@ async function wipe() {
     await realPublish.publishVersion(fs, xp, { ...xIn, source_sha: 'apc-x2' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: x1.version } });
     assert.notStrictEqual((await getActivePointer(fs, xp)).version, x1.version, 'x_pizza\'s republish with its existing overlaps flipped');
   }
-  ok('the direct publishVersion path: a NEW dish↔extra key overlap is refused (publish_refused_key_overlap, pointer unchanged), judged against expected.activeVersionId even across codex r4\'s rollback interleaving; an existing overlap — the shadow over itself, x_pizza\'s Pepperoni / Prosciutto — stays publishable');
+  ok('the direct publishVersion path: a NEW dish↔extra key overlap is refused (publish_refused_key_overlap, pointer unchanged), and never written over a different active version than it was judged against (codex r4\'s rollback interleaving); an existing overlap — the shadow over itself, x_pizza\'s Pepperoni / Prosciutto — stays publishable');
 
   FINISHED = true;
   console.log(`\nadd-product-groups-collision: OK (${n})`);

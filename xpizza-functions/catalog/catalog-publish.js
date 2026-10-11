@@ -1484,15 +1484,19 @@ async function assertDraftPartition(db, rid, input) {
    (a dish AND an extra both under that key) is refused, so existing overlaps (x_pizza's Pepperoni / Prosciutto) stay
    publishable. Reads NOTHING unless the candidate has an overlap; then only those keys' docs in the active version, in
    parallel. A first publish (no active version) has no baseline and nothing redeemed against it — accepted.
-   🔴 AGAINST expected.activeVersionId — the version the flip's CAS REQUIRES to be live (live === expected, in its own
-   transaction) — not a pointer read before the lease. Versions are create-only and immutable, so reading that version's
-   docs here is the same as reading them at the flip: TOCTOU-free by construction, an A→B→A pointer move included.
-   (No `expected` → flipPointer refuses the publish anyway.)
+   🔴 BOUND TO THE ACTIVATION BASELINE (codex PB-1 r4). It runs before the lease, against the pointer the partition law
+   read; it returns the version it judged against, and publishVersion requires that version to still be the one read
+   UNDER the lease (baselineAtBuild — which the flip's generation check then binds to) before anything is written. So an
+   unstamped rollback interleaving (validated over A, restored to B before the lease) is refused, without a new read.
+   Stamped publishes are already bound the same way by the stamp fence (stamp_fence_resolved_elsewhere). Judging
+   against expected.activeVersionId instead was rejected: publishes that deliberately carry a stale expectation to
+   abort AT THE FLIP (the d4p1 claim / mint-atomic cells) would be refused early, changing which refusal they meet.
    (A delimited block: catalog-publish.js is byte-pinned by context-guards.test.js; see its PB-1 allowance.) */
 async function assertNoNewKeyOverlap(db, rid, input, activeVersionId) {
   const { menuTable, extraTable } = normalizeInputs({ items: input && input.items, extras: input && input.extras, extraRecords: input && input.extraRecords });
   const overlaps = Object.keys(extraTable || {}).filter((k) => Object.prototype.hasOwnProperty.call(menuTable || {}, k));
-  if (!overlaps.length || !activeVersionId) return;
+  if (!overlaps.length) return null;
+  if (!activeVersionId) return { version: null };
   const vref = versionsColOf(db, rid).doc(activeVersionId);
   const snaps = await Promise.all(overlaps.flatMap((k) => [vref.collection('menu_items').doc(overlapDocId(k)).get(), vref.collection('extras').doc(overlapDocId(k)).get()]));
   const had = (snap, k) => !!snap && snap.exists && (snap.data() || {}).key === k;
@@ -1503,6 +1507,7 @@ async function assertNoNewKeyOverlap(db, rid, input, activeVersionId) {
     e.keys = fresh;
     throw e;
   }
+  return { version: activeVersionId };
 }
 /* pb1-key-overlap:end */
 async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {
@@ -1551,7 +1556,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
      stays as the early, cheap refusal that keeps a doomed publish from taking the lease at all. */
   const { stamps: draftStamps, baseline: partitionBaseline, carried: partitionCarried,
     unidentified: partitionUnidentified, claimIds: partitionClaimIds } = await assertDraftPartition(db, rid, input);
-  /* pb1-key-overlap:begin */ await assertNoNewKeyOverlap(db, rid, input, expected && expected.activeVersionId); /* pb1-key-overlap:end */
+  /* pb1-key-overlap:begin */ const overlapJudgedAgainst = await assertNoNewKeyOverlap(db, rid, input, partitionBaseline && partitionBaseline.version); /* pb1-key-overlap:end */
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.
@@ -1564,6 +1569,13 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
        re-reads the live generation in its own transaction and requires equality, so this capture is
        the claim and that comparison is the check. */
     const baselineAtBuild = await getActivePointer(db, rid);
+    /* pb1-key-overlap:begin */
+    if (overlapJudgedAgainst && !draftStamps && overlapJudgedAgainst.version !== ((baselineAtBuild && baselineAtBuild.version) || null)) {
+      const e = new Error(`publish_refused_overlap_baseline_moved: ${rid} — the dish↔extra overlap was judged against ${JSON.stringify(overlapJudgedAgainst.version)} but ${JSON.stringify((baselineAtBuild && baselineAtBuild.version) || null)} is active under the lease; nothing written — re-read and retry`);
+      e.code = 'publish_refused_overlap_baseline_moved';
+      throw e;
+    }
+    /* pb1-key-overlap:end */
     const { versionId, descriptor, seq, menuTable, extraTable } = await writeVersion(
       db, rid, { ...input, stamps: draftStamps, baseline: baselineAtBuild, stampsResolvedAgainst: partitionBaseline }, nowServer);
     // VERIFY by re-reading via the REAL reader path (proves counts + BOTH hashes + structure BEFORE the flip).
