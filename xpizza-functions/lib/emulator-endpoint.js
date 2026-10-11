@@ -47,10 +47,11 @@ class EmulatorEndpointError extends Error {
 
 const present = (v) => v !== undefined && v !== null && v !== '';
 
-/* Emulator mode. Any non-empty FUNCTIONS_EMULATOR counts (a "1" or "false" is a signal too — it is refused below
-   rather than silently treated as production). */
+/* Emulator mode = FUNCTIONS_EMULATOR exactly "true" (Firebase's own flag for discovery/workers) or ANY non-empty emulator
+   host var. Codex R1-build ruling (PRODUCTION): any other FUNCTIONS_EMULATOR value — a deployed "false", say — is NOT a
+   signal and takes the production path; it must never make a production cold start throw. */
 function hasEmulatorSignal(env) {
-  return present(env.FUNCTIONS_EMULATOR) || present(env[HOST_VAR.firestore]) || present(env[FIRESTORE_ALIAS])
+  return env.FUNCTIONS_EMULATOR === 'true' || present(env[HOST_VAR.firestore]) || present(env[FIRESTORE_ALIAS])
     || present(env[HOST_VAR.database]) || present(env[HUB_VAR]);
 }
 
@@ -85,11 +86,8 @@ function checkBand(service, varName, raw, offset) {
 /* The full §c.1 check over a process environment. Throws EmulatorEndpointError; returns a description of the run.
    Callers that are NOT in emulator mode must not call this (lib/admin.js only calls it inside its emulator branch;
    the dev harnesses call it unconditionally, so a missing signal refuses there). */
-function validateEmulatorEnv(env, { ns } = {}) {
+function validateEmulatorEnv(env, { ns, lenient = false } = {}) {
   if (!hasEmulatorSignal(env)) throw new EmulatorEndpointError('no emulator signal (no FUNCTIONS_EMULATOR, no host vars) — this process would run against PRODUCTION');
-  if (present(env.FUNCTIONS_EMULATOR) && env.FUNCTIONS_EMULATOR !== 'true') {
-    throw new EmulatorEndpointError(`FUNCTIONS_EMULATOR=${JSON.stringify(env.FUNCTIONS_EMULATOR)} — only "true" is a valid emulator signal`);
-  }
   const offset = readOffset(env);
   const started = listVar(env, SERVICES_VAR);
   const dead = listVar(env, DEAD_VAR);
@@ -107,7 +105,7 @@ function validateEmulatorEnv(env, { ns } = {}) {
       throw new EmulatorEndpointError(`${varName} is not set while other emulator signals are — a half-configured process would send ${svc} to PRODUCTION`);
     }
     if (raw === NULL_ENDPOINT) {
-      if (started.has(svc) && !dead.has(svc)) {
+      if (!lenient && started.has(svc) && !dead.has(svc)) {
         throw new EmulatorEndpointError(`${varName}=${NULL_ENDPOINT} (NULL) but this run STARTED ${svc} — a service cannot be both real and null`);
       }
       nulls.push(svc);
@@ -116,7 +114,7 @@ function validateEmulatorEnv(env, { ns } = {}) {
     }
     if (dead.has(svc)) throw new EmulatorEndpointError(`${DEAD_VAR} declares ${svc} dead but ${varName}=${raw} is not the NULL endpoint`);
     checkBand(svc, varName, raw, offset);
-    if (started.size && !started.has(svc)) {
+    if (!lenient && started.size && !started.has(svc)) {
       throw new EmulatorEndpointError(`${varName}=${raw} names a ${svc} emulator this run did NOT start (${SERVICES_VAR}=${[...started].join(',')}) — that is someone else's`);
     }
     endpoints[svc] = raw;

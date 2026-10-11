@@ -147,6 +147,8 @@ function requireProject(opts = {}) {
     console.error('project_guard_refused: nothing was read and nothing was written.\n');
     process.exit(2);
   }
+  // R1 (codex R1-build P1-1): emulator variables present but not ONE coherent local run ⇒ refuse (mixed signals).
+  require('./emu-mixed-guard')('require-project');
   console.log(`project: ${projectId}  (stated explicitly and matched against .firebaserc)`);
   return projectId;
 }

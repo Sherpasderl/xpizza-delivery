@@ -79,6 +79,8 @@ async function main() {
     for (const rid of RESTAURANT_IDS) existingByRid[rid] = new Set(); // assume empty for the demonstration
   } else {
     const require = createRequire(import.meta.url);
+    // R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod).
+    require('./tools/emu-mixed-guard')('seed-kitchen-staff');
     const admin = require('firebase-admin');
     admin.initializeApp({ credential: admin.credential.applicationDefault(), databaseURL: DB_URL });
     db = admin.database();

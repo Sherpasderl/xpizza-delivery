@@ -58,7 +58,9 @@ const refuses = (env, re, label) => {
     const inlineVars = [...guardLine.matchAll(/process\.env\.([A-Z_]+)/g)].map((m) => m[1]).sort();
     assert.deepStrictEqual(inlineVars, ['FIREBASE_DATABASE_EMULATOR_HOST', 'FIREBASE_EMULATOR_HUB', 'FIREBASE_FIRESTORE_EMULATOR_ADDRESS', 'FIRESTORE_EMULATOR_HOST', 'FUNCTIONS_EMULATOR'],
       '🔴 lib/admin.js\'s inline signal list drifted from the validator\'s');
-    for (const v of inlineVars) assert.ok(hasEmulatorSignal({ [v]: 'x' }), `🔴 the validator does not treat ${v} as a signal but lib/admin.js does`);
+    for (const v of inlineVars) assert.ok(hasEmulatorSignal({ [v]: v === 'FUNCTIONS_EMULATOR' ? 'true' : 'x' }), `🔴 the validator does not treat ${v} as a signal but lib/admin.js does`);
+    assert.match(guardLine, /process\.env\.FUNCTIONS_EMULATOR === 'true'/, '🔴 lib/admin.js treats a FUNCTIONS_EMULATOR other than exactly "true" as a signal — a deployed "false" would throw');
+    assert.ok(!hasEmulatorSignal({ FUNCTIONS_EMULATOR: 'false' }) && !hasEmulatorSignal({ FUNCTIONS_EMULATOR: '1' }), '🔴 the validator treats a non-"true" FUNCTIONS_EMULATOR as a signal');
     assert.ok(!hasEmulatorSignal({}), 'premise — no vars, no signal');
     assert.match(guardLine, /require\('\.\/emulator-endpoint'\)\.guardEmulatorProcess\(\);\n\n$/, '🔴 the guard must run BEFORE the init and only inside the signal branch');
     ok('lib/admin.js ends with the ORIGINAL prod init (once); the R1 guard is a signal-gated prefix whose var list equals the validator\'s');
@@ -77,7 +79,17 @@ const refuses = (env, re, label) => {
     // duplicate-app behaviour preserved: a second default init still throws exactly as firebase-admin does
     const d = node(`require('./lib/admin'); try { require('firebase-admin/app').initializeApp({}); console.log('NO-THROW'); } catch (e) { console.log(e.code || e.message); }`, {});
     assert.match(d.stdout, /app\/duplicate-app/, '🔴 duplicate-app behaviour changed');
-    ok('no signal ⇒ prod: lib/emulator-endpoint.js never loaded (zero extra cold-start work), [DEFAULT] app with the prod URL, duplicate-app still throws');
+    /* 🔴 PRODUCTION (codex R1-build ruling): a deployed FUNCTIONS_EMULATOR that is not exactly "true" is NOT a signal —
+       it must take the production path, never throw. Driven through the REAL lib/admin.js for each such value. */
+    for (const v of ['false', '0', '1', 'TRUE', 'yes', ' true']) {
+      const r2 = node(`require('./lib/admin');
+        const loaded = Object.keys(require.cache).some((k) => k.endsWith('/lib/emulator-endpoint.js'));
+        console.log(JSON.stringify({ loaded, url: require('firebase-admin/app').getApp().options.databaseURL }));`, { FUNCTIONS_EMULATOR: v });
+      assert.strictEqual(r2.status, 0, `🔴 FUNCTIONS_EMULATOR=${JSON.stringify(v)} made the production import THROW:\n${r2.stderr}`);
+      assert.deepStrictEqual(JSON.parse(r2.stdout.trim().split('\n').pop()), { loaded: false, url: 'https://xpizza-delivery-default-rtdb.firebaseio.com' },
+        `🔴 FUNCTIONS_EMULATOR=${JSON.stringify(v)} did not take the unchanged production path`);
+    }
+    ok('no signal ⇒ prod: lib/emulator-endpoint.js never loaded (zero extra cold-start work), [DEFAULT] app with the prod URL, duplicate-app still throws; FUNCTIONS_EMULATOR=false/0/1/TRUE/yes/" true" each take the PROD path and do not throw');
   }
 
   // ── 3. P2-3 + discovery: the shapes Firebase really produces validate ───────────────────────────────
@@ -108,7 +120,6 @@ const refuses = (env, re, label) => {
       [{ FUNCTIONS_EMULATOR: 'true', FIRESTORE_EMULATOR_HOST: FS }, /FIREBASE_DATABASE_EMULATOR_HOST is not set/, 'flag + Firestore, no RTDB'],
       [{ FUNCTIONS_EMULATOR: 'true', FIREBASE_DATABASE_EMULATOR_HOST: DB }, /FIRESTORE_EMULATOR_HOST is not set/, 'flag + RTDB, no Firestore'],
       [{ FIRESTORE_EMULATOR_HOST: FS, FIREBASE_DATABASE_EMULATOR_HOST: DB, FIREBASE_FIRESTORE_EMULATOR_ADDRESS: lo(P.firestore + 10) }, /disagrees/, 'alias disagrees with primary'],
-      [{ FUNCTIONS_EMULATOR: '1', FIRESTORE_EMULATOR_HOST: FS, FIREBASE_DATABASE_EMULATOR_HOST: DB }, /only "true"/, 'FUNCTIONS_EMULATOR not "true"'],
       [{}, /no emulator signal/, 'no signal at all (validator called directly)'],
     ];
     for (const [env, re, label] of cases) refuses(env, re, label);
