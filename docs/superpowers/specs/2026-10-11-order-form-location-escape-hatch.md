@@ -59,6 +59,16 @@ Still byte-identical across both forms (JS block diff-clean; only `--gold-ring`/
 
 Still byte-identical across both forms (JS block 74 lines, diff-clean). Happy path untouched.
 
+## REVISE round 3 (re-gate on 0819172 — PRODUCTION CODE BLESSED; 3 test-vacuity fixes only)
+
+The re-gate confirmed the production form fix is clean (both races closed, no `__locPicking` lockout, happy path byte-identical, all invariants intact). Production JS left EXACTLY as-is; only `order-form-location-escape.test.js` changed:
+
+1. **Concurrency test was structurally skippable.** The invocation-count asserts sat after `await pick2`; if serialization were removed, `pick2` would await an unresolved details fetch and Node could exit 0 before the asserts ran. Fix: assert the counts SYNCHRONOUSLY right after calling the 2nd pick, THEN `await pick2`. Proven non-vacuous by mutation (removing `locPickPred`'s `if(__locPicking) return` makes the 2nd pick invoke a details fetch → the sync assert fails).
+2. **Moved-pin recovery now proven in-context.** Replaced the fresh-harness positive control with a SUBSEQUENT pick through the SAME harness after the moved-pin cancel — asserts its details invocation + placement, proving `__locPicking` was released on the cancel path.
+3. **Resumed search now settled.** After the pick, the resumed request is resolved and the rendered rows asserted (not left pending).
+
+Test now 30/30; all three guards (unconditional-clear, debounce-cancel/suppress, pick-serialize) proven non-vacuous by mutation. No production change, so the forms remain byte-identical to the already-green 0819172.
+
 ## Separate (surfaced to owner — NOT in this diff)
 
 Telemetry (#3) transmits `client_user_agent`/`client_referrer` but the server does NOT persist them (`createOrder` / `create-order-build.js` writes only known fields), so Phase-1 telemetry currently measures nothing — even "later". Delivering its purpose needs a small additive functions change (persist the 2 fields onto the order node) with its own gate + deploy. Held as an owner call; the transmission code is correct, it just has no sink yet. See memory [[phase1-telemetry-no-server-sink]].

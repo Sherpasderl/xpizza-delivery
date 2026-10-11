@@ -264,9 +264,13 @@ function fakePred(main, la, ln) {
       const h = makeRaceCtx(brand);
       const fp = fakePred('Mall A', 15.49, -88.03), fp2 = fakePred('Other', 1, 2);
       const pick = h.ctx.locPickPred(fp.p, 'Mall A');
-      const pick2 = h.ctx.locPickPred(fp2.p, 'Other'); await pick2; // serialized → ignored
+      const pick2 = h.ctx.locPickPred(fp2.p, 'Other'); // serialized → must NOT act
+      // Assert SYNCHRONOUSLY, before awaiting pick2: if the serialization guard were removed, fp2 would
+      // start an unresolved details fetch and `await pick2` would hang — Node could exit 0 before any
+      // assertion ran (vacuous pass). Checking the counts here catches a missing guard immediately.
       assert.strictEqual(fp.calls.n, 1, `[${brand}] first pick invoked the details fetch once`);
       assert.strictEqual(fp2.calls.n, 0, `[${brand}] the concurrent 2nd pick invoked NO details fetch (serialized)`);
+      await pick2; // serialized → resolves at the guard
       fp.reject(); await pick;
       assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a rejected pick places no pin`);
       const fp3 = fakePred('Mall B', 15.5, -88.1);
@@ -299,8 +303,10 @@ function fakePred(main, la, ln) {
       fp.resolve(); await pick;
       assert.deepStrictEqual(h.placePinCalls, [[15.4, -88.0, false]], `[${brand}] the pick still places its pin`);
       h.ctx.locSearchInput('again'); h.fireTimers(); await flush(); // search resumes after the pick
-      assert.strictEqual(h.state.pending.length, 1, `[${brand}] search resumes (new fetch) after the pick settles`);
-      ok(`${brand}: #2 pick cancels the debounce + suppresses mid-pick search, then resumes`);
+      assert.strictEqual(h.state.pending.length, 1, `[${brand}] search resumes (a new fetch) after the pick settles`);
+      h.state.pending[0].res({ suggestions: [sg('Again A'), sg('Again B')] }); await flush();
+      assert.ok(h.preds.children.length === 2 && h.preds.textContent.includes('Again A'), `[${brand}] the resumed search actually renders results`);
+      ok(`${brand}: #2 pick cancels the debounce + suppresses mid-pick search, then resumes + renders`);
     }
     // #2 — a late details response must NOT clobber a point the customer set meanwhile; positive control.
     {
@@ -310,11 +316,15 @@ function fakePred(main, la, ln) {
       h.ctx.lat = 15.70; h.ctx.lng = -88.20;           // a map tap moved the pin while fetching
       fp.resolve(); await pick;
       assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a late details response does NOT overwrite a pin set meanwhile`);
-      const h2 = makeRaceCtx(brand, { lat: 15.50, lng: -88.00 });
+      // Prove the lock RELEASED after the moved-pin cancel: a SUBSEQUENT pick through the SAME harness
+      // works (invokes details once + places its pin). If __locPicking weren't cleared on the cancel
+      // path, this pick would be blocked and place nothing.
       const fp2 = fakePred('Place Y', 16.1, -89.1);
-      const pick2 = h2.ctx.locPickPred(fp2.p, 'Place Y'); fp2.resolve(); await pick2; // nothing moved
-      assert.deepStrictEqual(h2.placePinCalls, [[16.1, -89.1, false]], `[${brand}] a normal pick (nothing moved) places the pin`);
-      ok(`${brand}: #2 pin-moved-meanwhile guard holds (with a passing positive control)`);
+      const pick2 = h.ctx.locPickPred(fp2.p, 'Place Y'); // ctx.lat/lng now 15.70/-88.20; nothing moves during this fetch
+      fp2.resolve(); await pick2;
+      assert.strictEqual(fp2.calls.n, 1, `[${brand}] the subsequent pick invoked its details fetch (lock released)`);
+      assert.deepStrictEqual(h.placePinCalls, [[16.1, -89.1, false]], `[${brand}] …and placed its pin (same harness)`);
+      ok(`${brand}: #2 pin-moved-meanwhile guard holds + lock releases (subsequent pick works, same harness)`);
     }
   }
 
