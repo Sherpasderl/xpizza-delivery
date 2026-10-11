@@ -133,6 +133,9 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
         assert.strictEqual(both({ html: `<html><svg>${TAG}</svg></html>`, mod: MOD }), false, 'an SVG-namespace <script> is not the HTML loader → off');
         assert.strictEqual(both({ html: '<html><script src="form-group-picker.js" type="text/plain"></script></html>', mod: MOD }), false, 'a non-JS type → off (only the exact loader counts)');
         assert.strictEqual(both({ html: '<html><SCRIPT src="form-group-picker.js"></SCRIPT></html>', mod: MOD }), true, 'premise: an upper-case tag IS an active script element (the parser decides, as a browser) → on');
+        // codex r4 — a script never CLOSED never executes (WHATWG): left open at EOF, and the self-closing form (HTML ignores `/>`)
+        assert.strictEqual(both({ html: '<html><body><script src="form-group-picker.js">', mod: MOD }), false, '🔴 codex r4: an UNCLOSED loader at EOF → off');
+        assert.strictEqual(both({ html: '<html><body><script src="form-group-picker.js"/>', mod: MOD }), false, '🔴 codex r4: a self-closing `/>` loader at EOF → off');
         assert.strictEqual(both({ html: `<html><!-- ${TAG} -->${TAG}</html>`, mod: '// the picker\nconst GROUP_PICKER_V1 = 1;\n' }), true, 'premise kept: a real tag + a real declaration, beside comments → on');
       } finally { rmSync(tmp, { recursive: true, force: true }); }
     }

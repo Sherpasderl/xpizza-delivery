@@ -173,12 +173,15 @@ function activeScripts(html) {
       walk(c);   // a <template>'s childNodes are empty — its contents sit in c.content, which is NOT walked
     }
   };
-  walk(parse(String(html), { scriptingEnabled: true }));
+  walk(parse(String(html), { scriptingEnabled: true, sourceCodeLocationInfo: true }));
   return out;
 }
 // the picker is LOADED iff exactly ONE active script element is exactly <script src="form-group-picker.js"></script>:
-// its only attribute is that src (a type / defer / module variant is not the shipped loader) and it has no inline body
-const isPickerLoader = (el) => el.attrs.length === 1 && el.attrs[0].name === 'src' && el.attrs[0].value === GROUP_PICKER_FILE && el.childNodes.length === 0;
+// its only attribute is that src (a type / defer / module variant is not the shipped loader), it has no inline body, and
+// it is CLOSED by an explicit </script> in the source (codex r4: a script left open at EOF — or written self-closing `/>`,
+// which HTML ignores — never executes; parse5 still builds the element, so its source location must show the end tag)
+const isPickerLoader = (el) => el.attrs.length === 1 && el.attrs[0].name === 'src' && el.attrs[0].value === GROUP_PICKER_FILE
+  && el.childNodes.length === 0 && !!(el.sourceCodeLocation && el.sourceCodeLocation.endTag);
 const loadsPicker = (html) => activeScripts(html).filter(isPickerLoader).length === 1;
 /* codeOnly: the module with every comment and every string / template-literal BODY blanked (newlines kept), by a small
    scanner — so a declaration that is commented out, or that merely appears inside a string, is not a declaration. */
