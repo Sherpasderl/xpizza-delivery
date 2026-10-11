@@ -214,10 +214,12 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
     const mk = () => {
       const c = { units: 0 };
       const ref = (p) => ({ path: p, child: (k) => ref(`${p}/${k}`), get: async () => { c.units += 1; return { val: () => null }; },
-        transaction: () => { c.units += 1; return Promise.reject(new Error('commit refused')); } });   // EVERY commit fails → fail() records again
+        transaction: () => { c.units += 1; c.tx = (c.tx || 0) + 1; if (c.tx % 2 === 0) c.txFailRecords = (c.txFailRecords || 0) + 1; return Promise.reject(new Error('commit refused')); } });   // EVERY commit fails → fail() records again
+      // the checks COMPLETE their reads (an absent pointer → no_active_version; the growth count answers 0), so each one reaches its
+      // MAIN commit — which fails — and then fail() issues the failure record: two transactions per check
       const db = { runTransaction: async (fn) => fn({ getAll: async (...a) => { const refs = a.filter((x) => x && x.path); c.units += refs.length; return refs.map(() => ({ exists: false, data: () => undefined, readTime: READ, updateTime: READ })); },
-        get: async () => { c.units += 1; return { exists: false, data: () => undefined, readTime: READ }; } }),
-      collection: (x) => ({ doc: (d) => ({ path: `${x}/${d}`, collection: (y) => ({ doc: (e) => ({ path: `${x}/${d}/${y}/${e}`, collection: () => ({}) }) }) }) }) };
+        get: async (q) => { c.units += 1; return q && q.isCount ? { data: () => ({ count: 0 }) } : { exists: false, data: () => undefined, readTime: READ }; } }),
+      collection: (x) => ({ doc: (d) => ({ path: `${x}/${d}`, collection: (y) => ({ doc: (e) => ({ path: `${x}/${d}/${y}/${e}`, collection: () => ({}) }), limit: () => ({ count: () => ({ isCount: true }) }) }) }) }) };
       return { c, rtdb: { ref }, db };
     };
     const ids = Array.from({ length: 6 }, (_, i) => `rid_${String.fromCharCode(97 + i)}`);
@@ -229,6 +231,7 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
       assert.ok(h.c.units <= cap, `cap ${cap}: ${h.c.units} units ISSUED > the cap`);
       assert.ok(h.c.units <= out.reads, `cap ${cap}: ${h.c.units} issued ≤ ${out.reads} reserved (every issued read was reserved first)`);
       if (h.c.units > worst.issued) worst = { cap, issued: h.c.units };
+      if (cap === 90) assert.ok(h.c.txFailRecords >= 1, `premise: the failure-record transaction ran after a failed main commit (${JSON.stringify(h.c)})`);
     }
     // cap 1: the enumeration's maximum does not fit → NOTHING is listed (never "1 reserved, 20 listed")
     const h = mk(); let listed = 0;

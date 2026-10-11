@@ -58,6 +58,7 @@ ok(`the row: identical timings, but ONE no-work ON child in block 3 → valid fa
   const mixed = ev([[0, 'open', 'o1'], [30, 'close', 'o1', 'checked'], [31, 'open', 'x'], [60, 'close', 'x', 'checked']]);
   assert.deepStrictEqual([qualifySample([5, 10], mixed, same), qualifySample([5, 10], mixed, other), qualifySample([40, 45], mixed, other), qualifySample([25, 35], mixed, same)],
     [false, true, false, false], 'same/other honoured; a sample spanning another restaurant\'s check does not qualify a same row');
+  assert.strictEqual(qualifySample([25, 35], mixed, other), false, 'a sample spanning THIS restaurant\'s check does not qualify an other row');
   // a close for a restaurant with no open check is ignored (never fabricates an interval)
   assert.deepStrictEqual(ev([[5, 'close', 'x', 'checked']]), []);
 }
