@@ -103,10 +103,10 @@ try {
   }
   // 7. codex r3 P2-3 — parsed with firebase-tools' OWN dotenv semantics, and SCOPED to what this deploy loads
   {
-    assert.ok(G.PARSER && /firebase-tools|dotenv/.test(G.PARSER.name), 'a real dotenv parser is in use');
+    assert.match(G.parserName(), /^firebase-tools functions\/env\.js parse \(/, 'the parser is the DEPLOYING firebase-tools\' own parse (no fallback)');
     // (a) a multiline QUOTED value whose text contains a forbidden name is a VALUE, not a key
     const ml = tree({ '.env': 'CONFIG_TEXT="first line\nFIRESTORE_EMULATOR_HOST=127.0.0.1:8080\nlast line"\nOTHER=1\n' });
-    assert.deepStrictEqual(G.violations(ml, 'proj-x').bad, [], `🔴 a multiline quoted value was read as a key (parser: ${G.PARSER.name})`);
+    assert.deepStrictEqual(G.violations(ml, 'proj-x').bad, [], `🔴 a multiline quoted value was read as a key (parser: ${G.parserName()})`);
     const ml2 = tree({ '.env': 'CONFIG_TEXT="a\nb"\nFIRESTORE_EMULATOR_HOST=127.0.0.1:8080\n' });
     assert.deepStrictEqual(G.violations(ml2, 'proj-x').bad, ['.env: FIRESTORE_EMULATOR_HOST'], '…while a real key after it is still caught');
     // (b) an UNSELECTED project's alias file does not block this deploy; it does block a deploy TO that project
@@ -116,7 +116,18 @@ try {
     assert.deepStrictEqual(G.violations(st, null).bad, ['.env.staging: FIREBASE_EMULATOR_HUB'], 'with NO known target every file is checked (fail-safe)');
     const msg = spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', st], { encoding: 'utf8', env: { ...process.env, GCLOUD_PROJECT: '' } });
     assert.ok(msg.status === 1 && /NO target project known — checked EVERY project and alias/.test(msg.stderr), 'and it SAYS it checked everything');
-    ok(`parsed with ${G.PARSER.name}: a multiline quoted value containing a forbidden name is a value, not a key; scoped to the target — a forbidden key in an unselected .env.staging does not block a proj-x deploy but blocks a proj-s deploy; no known target ⇒ every file checked, and the message says so`);
+    ok(`parsed with ${G.parserName()}: a multiline quoted value containing a forbidden name is a value, not a key; scoped to the target — a forbidden key in an unselected .env.staging does not block a proj-x deploy but blocks a proj-s deploy; no known target ⇒ every file checked, and the message says so`);
+  }
+  // 8. codex r4 P1-2 — codex's input, and NO fallback parser: unresolvable ⇒ the deploy is BLOCKED
+  {
+    // firebase-tools' parseStrict does NOT treat backticks as a multiline quote: the embedded line IS a key at deploy
+    const bt = tree({ '.env': 'CONFIG_TEXT=`first\nFIRESTORE_EMULATOR_HOST=127.0.0.1:8080\nLAST=last`\n' });
+    assert.deepStrictEqual(G.violations(bt, 'proj-x').bad, ['.env: FIRESTORE_EMULATOR_HOST'], '🔴 codex\'s backtick input: the FIRESTORE_EMULATOR_HOST line the deploy WOULD load was missed');
+    // the deploying CLI cannot be resolved (no `firebase` on PATH) ⇒ exit 1, says the deploy is blocked and how to fix
+    const noCli = spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', bt], { encoding: 'utf8', env: { ...process.env, PATH: '/usr/bin:/bin', GCLOUD_PROJECT: 'proj-x' } });
+    assert.strictEqual(noCli.status, 1, `🔴 with no resolvable firebase-tools the guard did not FAIL CLOSED (exit ${noCli.status})`);
+    assert.match(noCli.stderr, /deploy is BLOCKED[\s\S]*npm i -g firebase-tools/, 'it says the deploy is blocked and how to fix it');
+    ok('codex\'s backtick input: the embedded FIRESTORE_EMULATOR_HOST (a key under the deploy\'s own parser) is caught; with no resolvable firebase-tools the guard FAILS CLOSED (exit 1: deploy blocked, how to fix) — there is no fallback parser');
   }
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log(`\ndeploy-env-guard: OK (${n})`);

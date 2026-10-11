@@ -186,7 +186,7 @@ function scanSlot(slot, { tables, isAlive = pidAlive } = {}) {
     return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `ps scan failed: ${(e && (e.code || e.message)) || e}` }], orphans: [], live: [] };
   }
   const a = analyzeTables(t, isAlive, slot);
-  if (!a.stable) return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `slot ${slot}'s marked population changed between snapshots (${a.diff.slice(0, 4).join(', ')}) — not admitted this sweep` }], orphans: [], live: [] };
+  if (!a.stable) return { occupied: false, incomplete: true, unstable: true, unreadable: [{ pid: 0, why: `slot ${slot}'s marked population changed between snapshots (${a.diff.slice(0, 4).join(', ')}) — not admitted this sweep` }], orphans: [], live: [] };
   return classifyScan(a.union, slot, { isAlive });
 }
 // ONE pid, fresh — the identity check made immediately before a signal. null = not listed (gone) or unreadable scan.
@@ -336,6 +336,7 @@ async function acquireSlot(opts) {
   /* CANCELLATION (codex R1-build P2-7): an aborted signal stops the queue at the next check — before a bind, and out of
      a sleep — with code ECANCELLED; nothing is held when it throws. DEADLINE (P2-8): checked before EVERY slot, not once
      per full sweep, so a slow scan cannot carry the queue far past it. */
+  const uncertain = new Set();     // admission-local: slots seen UNSTABLE in this call
   const cancelled = () => { const e = new Error('emu-alloc: cancelled while queued'); e.code = 'ECANCELLED'; return e; };
   const overdue = () => { const w = now() - t0; if (w > deadlineMs) throw new Error(`emu-alloc: no free slot after ${(w / 1000).toFixed(0)}s (deadline ${deadlineMs / 1000}s) — all ${slots} slots busy`); };
   const pause = (ms) => new Promise((res, rej) => {
@@ -345,7 +346,10 @@ async function acquireSlot(opts) {
     if (signal) { onAbort = () => rej(cancelled()); signal.addEventListener('abort', onAbort, { once: true }); }
   });
   for (;;) {
-    const order = pin != null ? [pin] : shuffle([...Array(slots).keys()].filter((x) => !exclude.has(x)), random);
+    /* STICKY FOR THE WHOLE ADMISSION (codex r4 P1-1): a slot whose population was UNSTABLE in any scan of THIS call is
+       never admitted again in this call — not on a later sweep after queueing either (a redacted child left behind by a
+       handoff looks "quiet" on the next look). Only a NEW acquireSlot() call reconsiders it. */
+    const order = pin != null ? [pin] : shuffle([...Array(slots).keys()].filter((x) => !exclude.has(x) && !uncertain.has(x)), random);
     let lastReason = null;
     for (const slot of order) {
       if (signal && signal.aborted) throw cancelled();
@@ -353,6 +357,7 @@ async function acquireSlot(opts) {
       const server = await bind(base + slot);      // reject (non-EADDRINUSE) propagates — surfaced loudly
       if (!server) { lastReason = `slot ${slot} sentinel held by another run`; continue; }
       const sc = await scan(slot);
+      if (sc.unstable) uncertain.add(slot);
       if (sc.occupied || sc.incomplete) {
         await closeServer(server);
         lastReason = `slot ${slot} QUARANTINED — ${sc.incomplete

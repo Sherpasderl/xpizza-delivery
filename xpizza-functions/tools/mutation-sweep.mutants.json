@@ -11149,13 +11149,42 @@
     "id": "r1-30",
     "slice": "r1",
     "file": "tools/deploy-env-guard.js",
-    "from": "const keysOf = (text) => {\n  if (!PARSER)",
-    "to": "const keysOf = (text) => String(text).split(/\\r?\\n/).map((l) => /^\\s*(?:export\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=/.exec(l)).filter(Boolean).map((x) => x[1]);\nconst keysOfUnused = (text) => {\n  if (!PARSER)",
-    "label": "a line regex instead of firebase-tools' dotenv parser (a multiline value's text read as a key)",
-    "kills_with": "a multiline quoted value was read as a key",
+    "from": "const keysOf = (text) => parser().keys(String(text));",
+    "to": "const keysOf = (text) => Object.keys(require('dotenv').parse(String(text)));",
+    "label": "the deploy guard parses with dotenv instead of the deploying firebase-tools' parseStrict (codex's backtick input is missed)",
+    "kills_with": [
+      "the FIRESTORE_EMULATOR_HOST line the deploy WOULD load was missed",
+      "it fails LOUD, naming the file and key"
+    ],
     "command": [
       "node",
       "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-31",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "  if (!PARSER) PARSER = resolveFirebaseTools();",
+    "to": "  if (!PARSER) PARSER = resolveFirebaseTools() || { name: 'dotenv fallback', keys: (t) => Object.keys(require('dotenv').parse(t)) };",
+    "label": "an unresolvable firebase-tools silently falls back to another parser (no fail-closed)",
+    "kills_with": "the guard did not FAIL CLOSED",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-32",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (sc.unstable) uncertain.add(slot);\n",
+    "to": "",
+    "label": "an unstable slot is reconsidered on the next sweep of the SAME admission (a queued call admits the handoff slot)",
+    "kills_with": "the SAME admission admitted the handoff slot on a later sweep",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
     ]
   }
 ]

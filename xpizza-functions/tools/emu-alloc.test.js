@@ -125,6 +125,20 @@ const childEnv = (extra = {}) => {
       scan: (slot) => { ATTEMPT.push(slot); return slot === 0 ? A.scanSlot(5, { tables: scanSeq.shift() || thenQuiet, isAlive: (pid) => pid === 4103 }) : { occupied: false, incomplete: false, orphans: [], unreadable: [] }; },
       random: () => 0.99, sleep: async () => {}, deadlineMs: 1000 });
     assert.strictEqual(got.slot, 1, `🔴 the doubtful slot was admitted in the same admission (got ${got.slot}, scanned ${ATTEMPT})`);
+    // codex r4 P1-1 — a SATURATED pool: the only slot's handoff is unstable, the call QUEUES, and on the next sweep only
+    // the redacted child remains ("quiet"). The SAME acquireSlot() call must NOT admit it — it waits out its deadline.
+    {
+      let clk = 0; const scans = [];
+      const seq = [redactedHandoff, thenQuiet, thenQuiet, thenQuiet];
+      await assert.rejects(() => A.acquireSlot({ slots: 1, base: 0, bind: async () => ({ close: (cb) => cb && cb() }), probeBand: async () => true,
+        scan: (slot) => { scans.push(slot); return A.scanSlot(5, { tables: seq.shift() || thenQuiet, isAlive: (pid) => pid === 4103 }); },
+        now: () => clk, sleep: async () => { clk += 1000; }, random: () => 0, deadlineMs: 4500 }), /no free slot after/, '🔴 the SAME admission admitted the handoff slot on a later sweep (saturated pool)');
+      assert.deepStrictEqual(scans, [0], `the uncertain slot was never re-scanned in that admission (scans: ${scans})`);
+      // a NEW admission reconsiders it (sticky per call, not forever)
+      const fresh = await A.acquireSlot({ slots: 1, base: 0, bind: async () => ({ close: (cb) => cb && cb() }), probeBand: async () => true,
+        scan: () => A.scanSlot(5, { tables: thenQuiet, isAlive: () => false }), sleep: async () => {}, deadlineMs: 1000 });
+      assert.strictEqual(fresh.slot, 0, 'a NEW admission call reconsiders the slot');
+    }
     // per-SLOT: another slot's handoff does not make THIS slot doubtful
     assert.strictEqual(A.scanSlot(6, { tables: handoff, isAlive: alive }).incomplete, false, '🔴 a handoff on slot 5 made slot 6 incomplete (every run start would block every slot)');
     // an UNMARKED birth between snapshots (the machine's constant churn) does NOT destabilise the scan
@@ -473,13 +487,16 @@ const childEnv = (extra = {}) => {
       let exited = false; wExit.then(() => { exited = true; });
       while (!exited) {
         const sc = A.scanSlot(SLOT);
-        if (!exited) samples.push({ occupied: sc.occupied, wrapperOrphan: sc.orphans.some((o) => o.pid === w.pid) });
+        if (!exited) samples.push({ occupied: sc.occupied, incomplete: sc.incomplete, wrapperOrphan: sc.orphans.some((o) => o.pid === w.pid) });
         await sleep(150);
       }
       const code = await wExit;
       assert.ok(samples.length >= 3, `premise — the chain ran on after the supervisor died (${samples.length} samples)`);
       // the last sample may race the wrapper's own exit; every sample taken while it was alive must show quarantine
-      assert.ok(samples.slice(0, -1).every((x) => x.occupied && x.wrapperOrphan), `🔴 while the dead supervisor's chain ran, the slot was NOT continuously quarantined with the wrapper visible: ${JSON.stringify(samples)}`);
+      // quarantined = OCCUPIED (stable look: the wrapper visible as an orphan) or INCOMPLETE (a step started/exited between
+      // the two -E views — the sticky-uncertainty rule); never "free" while the chain runs
+      assert.ok(samples.slice(0, -1).every((x) => (x.occupied && x.wrapperOrphan) || x.incomplete), `🔴 while the dead supervisor's chain ran, the slot was NOT continuously quarantined: ${JSON.stringify(samples)}`);
+      assert.ok(samples.some((x) => x.occupied && x.wrapperOrphan), 'and the marked wrapper was seen as a visible orphan');
       assert.strictEqual(code, 0, 'the chain completed');
       assert.strictEqual(fs.readFileSync(flag, 'utf8'), marker, 'step 2 ran under the wrapper with the run marker (visible, not a shell)');
       let after = A.scanSlot(SLOT);

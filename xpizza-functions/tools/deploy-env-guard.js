@@ -26,21 +26,48 @@ const FORBIDDEN = new Set([
   'XPIZZA_EMU_RUN', 'XPIZZA_EMU_OFFSET', 'XPIZZA_EMU_SERVICES', 'XPIZZA_EMU_DEAD', 'XPIZZA_EMU_FS_RULES', 'XPIZZA_EMU_STARTED_FILE',
 ]);
 
-/* PARSE EXACTLY AS FIREBASE-TOOLS DOES (codex r3 P2-3a): the installed CLI's own functions/env.js parse() when it can be
-   found, else the dotenv package's parse (same multiline-quote handling). A line-regex would misread a multiline quoted
-   value (CONFIG_TEXT="…\nFIRESTORE_EMULATOR_HOST=x…") as a key. */
-function cliParser() {
-  for (const root of ['/usr/local/lib/node_modules/firebase-tools', '/opt/homebrew/lib/node_modules/firebase-tools']) {
-    try { const E = require(path.join(root, 'lib', 'functions', 'env.js')); if (typeof E.parse === 'function') return { name: 'firebase-tools functions/env.js parse', keys: (t) => Object.keys(E.parse(t).envs || {}) }; } catch { /* not here */ }
+/* PARSE WITH THE FIREBASE-TOOLS THAT WILL DEPLOY — NO FALLBACK (codex r4 P1-2). Deploy loads each dotenv file with
+   firebase-tools' functions/env.js parseStrict (loadUserEnvs). Any other parser can disagree: measured, dotenv.parse
+   reads a backtick "multiline" as ONE value and MISSES an embedded FIRESTORE_EMULATOR_HOST line that parseStrict
+   returns as a key. So the parser is resolved the way the deploy resolves the CLI — the `firebase` executable on PATH,
+   realpath'd to its firebase-tools package — and if it cannot be resolved the guard FAILS CLOSED (deploy blocked). */
+function resolveFirebaseTools(env = process.env) {
+  const dirs = String(env.PATH || '').split(path.delimiter).filter(Boolean);
+  for (const d of dirs) {
+    const bin = path.join(d, 'firebase');
+    let real;
+    try { real = fs.realpathSync(bin); } catch { continue; }
+    for (let dir = path.dirname(real); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      const pj = path.join(dir, 'package.json');
+      if (!fs.existsSync(pj)) continue;
+      let name = null; try { name = JSON.parse(fs.readFileSync(pj, 'utf8')).name; } catch { /* unreadable */ }
+      if (name !== 'firebase-tools') continue;
+      const envJs = path.join(dir, 'lib', 'functions', 'env.js');
+      /* parseStrict = parse() + reserved-key validation; it THROWS on a reserved key (e.g. any FIREBASE_* name), which would
+         hide WHICH keys are there. So the keys come from the same CLI's parse() — identical parsing — and a parse ERROR
+         is itself blocking (parseStrict would refuse that file at deploy too). */
+      try {
+        const E = require(envJs);
+        if (typeof E.parse === 'function' && typeof E.parseStrict === 'function') {
+          return { root: dir, name: `firebase-tools functions/env.js parse (${dir})`, keys: (t) => { const r = E.parse(t); if (r.errors && r.errors.length) { const e = new Error(`unparseable line(s) ${r.errors.join(',')} — the deploy's parseStrict would refuse this file too`); e.code = 'EUNPARSEABLE'; throw e; } return Object.keys(r.envs || {}); } };
+        }
+      } catch { /* broken install */ }
+      break;
+    }
   }
-  try { const dotenv = require('dotenv'); return { name: 'dotenv.parse', keys: (t) => Object.keys(dotenv.parse(t)) }; } catch { /* not installed */ }
   return null;
 }
-const PARSER = cliParser();
-const keysOf = (text) => {
-  if (!PARSER) throw new Error('deploy-env-guard: neither firebase-tools nor dotenv is available to parse the deploy env — refusing rather than guessing');
-  return PARSER.keys(String(text));
+let PARSER = null;
+const parser = () => {
+  if (!PARSER) PARSER = resolveFirebaseTools();
+  if (!PARSER) {
+    const e = new Error('cannot resolve the firebase-tools that deploys (no `firebase` on PATH whose package provides lib/functions/env.js parse/parseStrict) — the deploy env cannot be read with the deploy\'s own parser, so the deploy is BLOCKED. Fix: install firebase-tools (npm i -g firebase-tools) so `firebase` is on PATH, then re-run.');
+    e.code = 'ENOPARSER';
+    throw e;
+  }
+  return PARSER;
 };
+const keysOf = (text) => parser().keys(String(text));
 
 /* SCOPE (codex r3 P2-3b): what THIS deploy loads — `.env`, `.env.<target project>`, and `.env.<alias>` for every alias
    that maps to the target (a superset of the one alias firebase-tools selected; the predeploy hook is given the target
@@ -67,21 +94,25 @@ function violations(root = ROOT, project = null) {
   for (const f of deployEnvFiles(root, project)) {
     if (!fs.existsSync(f)) continue;
     checked.push(path.relative(root, f) || path.basename(f));
-    for (const k of keysOf(fs.readFileSync(f, 'utf8'))) if (FORBIDDEN.has(k)) bad.push(`${path.relative(root, f)}: ${k}`);
+    let keys;
+    try { keys = keysOf(fs.readFileSync(f, 'utf8')); } catch (e) { if (e.code === 'EUNPARSEABLE') { bad.push(`${path.relative(root, f)}: ${e.message}`); continue; } throw e; }
+    for (const k of keys) if (FORBIDDEN.has(k)) bad.push(`${path.relative(root, f)}: ${k}`);
   }
   return { checked, bad };
 }
 
-module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations, PARSER };
+module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations, resolveFirebaseTools, parserName: () => parser().name };
 if (require.main !== module) return;
+let PARSER_NAME;
+try { PARSER_NAME = parser().name; } catch (e) { console.error(`\n🔴 DEPLOY ENV GUARD — ${e.message}\n`); process.exit(1); }
 const ri = process.argv.indexOf('--root');
 const pi = process.argv.indexOf('--project');
 const target = (pi > -1 ? process.argv[pi + 1] : null) || process.env.GCLOUD_PROJECT || null;   // the predeploy hook is given GCLOUD_PROJECT
 const { checked, bad } = violations(ri > -1 ? path.resolve(process.argv[ri + 1]) : ROOT, target);
 const scope = target ? `target project ${target}` : 'NO target project known — checked EVERY project and alias (fail-safe)';
 if (bad.length) {
-  console.error(`\n🔴 DEPLOY ENV GUARD — emulator signal(s) in the functions deploy env (${scope}; parsed with ${PARSER.name}):\n   ${bad.join('\n   ')}`);
+  console.error(`\n🔴 DEPLOY ENV GUARD — emulator signal(s) in the functions deploy env (${scope}; parsed with ${PARSER_NAME}):\n   ${bad.join('\n   ')}`);
   console.error('   lib/admin.js would enter its emulator branch in production. Remove them before deploying.\n');
   process.exit(1);
 }
-console.log(`deploy-env-guard: OK (${scope}; parsed with ${PARSER.name}) — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);
+console.log(`deploy-env-guard: OK (${scope}; parsed with ${PARSER_NAME}) — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);
