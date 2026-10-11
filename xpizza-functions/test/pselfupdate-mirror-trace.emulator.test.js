@@ -90,7 +90,7 @@ let REC = null;
 // recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
 const Q = require('./_quiescence').makeQuiescence();
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
-function patchChain(obj, names, describe) {
+function patchChain(obj, names, describe, isFs = true) {   // R1b: which store — known per patched prototype (the one RTDB patch passes false)
   const done = new Set();
   for (let p = Object.getPrototypeOf(obj); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
     for (const nm of names) {
@@ -104,7 +104,7 @@ function patchChain(obj, names, describe) {
         /* R1b: in-flight counted — EXCEPT a Firestore call in the CAPTURE phase, where Firestore is DELIBERATELY dead
            (127.0.0.1:1): the route under test stops waiting for those calls (their retries settle ~46 s later), so
            waiting on them would measure the dead backend, not the handler. RTDB — the live store here — is tracked. */
-        if (process.env.PSU_MIRROR_PHASE === 'capture' && d && d.db === 'fs') return out;
+        if (process.env.PSU_MIRROR_PHASE === 'capture' && isFs) return out;
         return Q.track(out, nm);
       };
     }
@@ -121,7 +121,7 @@ patchChain(rtdb.ref('x'), ['get', 'once', 'set', 'update', 'remove', 'transactio
   const e = { db: 'rtdb', op: nm, path: rtdbPath(self.ref || self) };
   if (nm === 'update' || nm === 'set' || (nm === 'push' && a.length)) Object.assign(e, writeShape(a[0]));
   return e;
-});
+}, false);
 const fsDescribe = (self, nm, a) => ({ db: 'fs', op: nm, path: self.path !== undefined ? self.path : (self._queryOptions ? `${self._queryOptions.parentPath.relativeName}/${self._queryOptions.collectionId}?query` : '?'),
   ...((nm === 'set' || nm === 'update' || nm === 'create' || nm === 'add') ? writeShape(a[0]) : {}) });
 // EVERY document argument of a getAll, in order, with multiplicity (a trailing ReadOptions object is not a document)
