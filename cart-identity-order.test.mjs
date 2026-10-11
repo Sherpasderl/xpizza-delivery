@@ -163,6 +163,8 @@ const ORDER_GOLDEN = {
       "scheduled_for": null,
       "payment_status": "confirmed",
       "timestamp": "<frozen>",
+      "client_user_agent": "<env>",
+      "client_referrer": "<env>",
       "razon_social": "",
       "rtn_cliente": "",
       "expected_net_cents": 71900
@@ -203,6 +205,8 @@ const ORDER_GOLDEN = {
       "scheduled_for": null,
       "payment_status": "pending",
       "timestamp": "<frozen>",
+      "client_user_agent": "<env>",
+      "client_referrer": "<env>",
       "razon_social": "",
       "rtn_cliente": "",
       "expected_net_cents": 71900
@@ -248,6 +252,8 @@ const ORDER_GOLDEN = {
       "scheduled_for": null,
       "payment_status": "confirmed",
       "timestamp": "<frozen>",
+      "client_user_agent": "<env>",
+      "client_referrer": "<env>",
       "customer_email": "cliente@test.hn",
       "razon_social": "",
       "rtn_cliente": "",
@@ -292,6 +298,8 @@ const ORDER_GOLDEN = {
       "scheduled_for": null,
       "payment_status": "pending",
       "timestamp": "<frozen>",
+      "client_user_agent": "<env>",
+      "client_referrer": "<env>",
       "customer_email": "cliente@test.hn",
       "razon_social": "",
       "rtn_cliente": "",
@@ -423,10 +431,26 @@ const payload = (s) => s.sent.createOrder || s.sent.charge;
       for (const o of [a, b]) {
         assert.ok(o.order_id && o.timestamp, `${dir}/${method}: premise — both nonces are present before being frozen`);
       }
+      /* 🔴 THE TWO TELEMETRY FIELDS ARE ENVIRONMENT-DERIVED, NOT ORDER CONTENT — frozen below like the
+         nonces, for the same reason and with the same guard. client_user_agent / client_referrer carry
+         navigator.userAgent and document.referrer verbatim (Phase-1 in-app-webview GPS diagnostics;
+         nothing reads them yet). Their value is the runtime's, not the cart's or identity's, and baking a
+         jsdom version string into the golden would assert nothing and break on a jsdom bump. So each is
+         pinned here to its OWN window's LIVE value — which fails if the field went constant, blank or
+         missing (the one thing the golden can't cover) — then frozen so the body comparison stays about
+         the order. referrer is legitimately '' (direct nav / a stripping webview), so it's matched by
+         equality to the live value, never by truthiness. */
+      for (const [o, src] of [[a, A], [b, B]]) {
+        assert.strictEqual(o.client_user_agent, src.w.navigator.userAgent,
+          `${dir}/${method}: client_user_agent carries the live navigator.userAgent`);
+        assert.strictEqual(o.client_referrer, src.w.document.referrer,
+          `${dir}/${method}: client_referrer carries the live document.referrer`);
+      }
       /* 🔴 BOTH ORDERS AGAINST THE COMPLETE GOLDEN — which subsumes the a-vs-b equality that used to
          stand here and could not fail for a field both sides got wrong. Pinning each side to the same
          literal proves they agree AND that what they agree on is right. */
       const normalized = (o) => ({ ...o, order_id: '<frozen>', timestamp: '<frozen>',
+        client_user_agent: '<env>', client_referrer: '<env>',
         items: withoutIdentity(o.items) });
       assert.deepStrictEqual(normalized(a), ORDER_GOLDEN[dir][method],
         `${dir}/${method}: 🔴 the id-bearing order does not match the COMPLETE frozen golden — every field is in here, enumerated or not`);

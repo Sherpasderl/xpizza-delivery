@@ -42,6 +42,8 @@
   --gold:     #A8814E;      /* bronze — hoisin-glazed warmth, not amber */
   --gold-lt:  #E8D9C2;
   --gold-dk:  #6E5530;
+  --gold-ring:rgba(168,129,78,.14);  /* additive: location-search focus ring (= --gold @14%) */
+  --pred-hot: #FBF6EE;               /* additive: highlighted first prediction row */
   --red:      #B61218;      /* musa-red, from logo wordmark */
   --green:    #2D5447;      /* jade — Asian-coded success */
   --green-bg: #E6EFE9;
@@ -837,6 +839,24 @@ textarea{resize:none;height:80px;line-height:1.4}
 .loc-card b{color:var(--charcoal);font-weight:700}
 .loc-card.confirmed{border-color:#A8D8BA;background:var(--green-bg)}
 .loc-card.confirmed b{color:var(--green)}
+/* ── Fail-state address search (location escape hatch) ──────────────────────────────────────
+   Rendered ONLY when updateLocInfo(fallback=true) — i.e. when navigator.geolocation failed (common
+   inside in-app webviews). On the GPS-OK happy path #loc-search-wrap stays display:none, so this is
+   byte-identical to today. Our own dropdown (not Google's widget) for brand parity; selecting a
+   prediction reuses placePin(...,false) — the SAME write path as GPS/drag, no new one. */
+.loc-search-wrap{padding:14px 16px 2px}
+.loc-search{display:flex;align-items:center;gap:10px;width:100%;padding:13px 14px;border:1.5px solid var(--border2);border-radius:10px;background:var(--cream)}
+.loc-search:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-ring)}
+.loc-search > svg{flex:none;color:var(--muted)}
+.loc-search input{border:0;background:transparent;outline:none;font-family:var(--sans);font-size:16px;color:var(--charcoal);width:100%}
+.loc-search input::placeholder{color:var(--muted)}
+.loc-preds{margin:6px 16px 0;border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden}
+.loc-pred{display:flex;gap:11px;align-items:flex-start;padding:11px 13px;border-bottom:1px solid var(--border);cursor:pointer}
+.loc-pred:last-child{border-bottom:0}
+.loc-pred.hot{background:var(--pred-hot)}
+.loc-pred > svg{flex:none;margin-top:1px;color:var(--gold)}
+.loc-pred .t{font-size:14px;font-weight:500;color:var(--charcoal);line-height:1.3}
+.loc-pred .s{font-size:12px;color:var(--muted);margin-top:1px}
 .map-btns{padding:0 16px}
 
 /* ── Payment ── */
@@ -1369,6 +1389,15 @@ textarea{resize:none;height:80px;line-height:1.4}
 
 <!-- ── STAGE 2: Location + Payment ── -->
 <div class="stage" id="s2">
+  <!-- Location escape hatch (Phase 1): fail-state address search. display:none on the GPS-OK happy
+       path; revealed only by updateLocInfo(fallback=true). Selecting a prediction reuses placePin(). -->
+  <div class="loc-search-wrap" id="loc-search-wrap" style="display:none">
+    <div class="loc-search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input type="text" id="loc-search-input" autocomplete="off" aria-label="Buscar dirección o referencia" placeholder="Buscá tu dirección o un punto de referencia" oninput="locSearchInput(this.value)"/>
+    </div>
+    <div class="loc-preds" id="loc-preds" style="display:none"></div>
+  </div>
   <div style="position:relative;cursor:pointer" onclick="openFullscreenMap()">
     <div id="map" style="height:220px;pointer-events:none"></div>
     <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
@@ -4048,10 +4077,91 @@ function updateLocInfo(la,ln,fallback){
   const el=document.getElementById('locinfo');
   el.className='loc-card'+(fallback?'':' confirmed');
   el.innerHTML=fallback
-    ?'<b>Ubicación aproximada</b><br/>No pudimos detectar tu GPS. Mové el pin al lugar exacto.'
+    ?'<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Ubicación aproximada</b><br/>No detectamos tu GPS. Buscá arriba, o tocá el mapa para abrir el ajuste.'
     :`<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
+  // Location escape hatch (Phase 1): reveal the address search ONLY in the GPS-fail state; hide (and
+  // clear) it the moment a real point is placed (prediction pick / map tap / drag → fallback=false).
+  // The GPS-OK happy path never enters the fallback branch, so #loc-search-wrap stays display:none.
+  const search=document.getElementById('loc-search-wrap');
+  if(search) search.style.display=fallback?'block':'none';
+  if(!fallback){ const preds=document.getElementById('loc-preds'); if(preds){ preds.style.display='none'; preds.innerHTML=''; } }
+  // In fail state only, point the existing map hint at the fullscreen editor (tap opens it — no inline
+  // placement). Untouched on the happy path, so the chip stays byte-identical there.
+  if(fallback){ const hint=document.getElementById('map-tap-hint'); if(hint) hint.textContent='Tocá el mapa para ajustarlo'; }
   // Update delivery zone status — fires on every pin position change.
   checkDeliveryRadius(la, ln);
+}
+
+/* ── Location escape hatch (Phase 1): fail-state address search ──────────────────────────────
+   Rendered only in the GPS-fail state (see updateLocInfo). Uses the Places library already loaded
+   for the map; renders OUR OWN dropdown (brand parity, not Google's widget). Selecting a prediction
+   reuses placePin(lat,lng,false) — the SAME write path as GPS/drag, so no new order/write path and
+   the card flips to the green confirmed state + runs checkDeliveryRadius. Fails QUIET: if Places
+   errors or returns nothing, the map tap→fullscreen editor still works. Search is scoped to THIS
+   restaurant's delivery zone (RESTAURANT_LAT/LNG + DELIVERY_RADIUS_KM, padded) so a customer can't
+   pin another city — brand-agnostic, derived from the same constants the zone check uses. */
+let __locSessToken=null, __locSearchTimer=null;
+function locSearchBounds(){
+  const padKm=DELIVERY_RADIUS_KM*1.4;
+  const dLat=padKm/111.32;
+  const dLng=padKm/(111.32*Math.cos(RESTAURANT_LAT*Math.PI/180));
+  return {south:RESTAURANT_LAT-dLat,north:RESTAURANT_LAT+dLat,west:RESTAURANT_LNG-dLng,east:RESTAURANT_LNG+dLng};
+}
+function locSearchInput(v){
+  const q=(v||'').trim();
+  const preds=document.getElementById('loc-preds');
+  clearTimeout(__locSearchTimer);
+  if(q.length<3){ if(preds){ preds.style.display='none'; preds.innerHTML=''; } return; }
+  __locSearchTimer=setTimeout(function(){ locFetchPreds(q); },250);
+}
+async function locFetchPreds(q){
+  if(!(window.google&&google.maps&&google.maps.places&&google.maps.places.AutocompleteSuggestion)) return;
+  try{
+    if(!__locSessToken) __locSessToken=new google.maps.places.AutocompleteSessionToken();
+    const {suggestions}=await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input:q, language:'es', includedRegionCodes:['hn'],
+      locationRestriction:locSearchBounds(), sessionToken:__locSessToken,
+    });
+    locRenderPreds(suggestions||[]);
+  }catch(e){ /* quiet — the map tap→fullscreen editor still works */ }
+}
+function locRenderPreds(suggestions){
+  const preds=document.getElementById('loc-preds');
+  if(!preds) return;
+  preds.innerHTML='';
+  const rows=suggestions.filter(function(s){return s.placePrediction;}).slice(0,5);
+  if(!rows.length){ preds.style.display='none'; return; }
+  rows.forEach(function(s,i){
+    const p=s.placePrediction;
+    const main=(p.mainText&&p.mainText.text)||(p.text&&p.text.text)||'';
+    const sec=(p.secondaryText&&p.secondaryText.text)||'';
+    const row=document.createElement('div');
+    row.className='loc-pred'+(i===0?' hot':'');
+    // Trusted static icon markup; prediction TEXT is set via textContent (never innerHTML) so an
+    // attacker-controlled place name can't inject markup.
+    row.innerHTML='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+    const box=document.createElement('div');
+    const t=document.createElement('div'); t.className='t'; t.textContent=main;
+    box.appendChild(t);
+    if(sec){ const sd=document.createElement('div'); sd.className='s'; sd.textContent=sec; box.appendChild(sd); }
+    row.appendChild(box);
+    row.addEventListener('click',function(){ locPickPred(p,main); });
+    preds.appendChild(row);
+  });
+  preds.style.display='';
+}
+async function locPickPred(p,label){
+  try{
+    const place=p.toPlace();
+    await place.fetchFields({fields:['location']});
+    __locSessToken=null; // a details fetch closes the autocomplete billing session
+    const preds=document.getElementById('loc-preds');
+    if(preds){ preds.style.display='none'; preds.innerHTML=''; }
+    const input=document.getElementById('loc-search-input');
+    if(input&&label) input.value=label;
+    const loc=place.location;
+    if(loc&&typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
+  }catch(e){ /* quiet */ }
 }
 
 /* ── Stage 2 → 3 ── */
@@ -4372,6 +4482,8 @@ function buildOrder(){
     scheduled_for: window.__scheduledFor || null,
     payment_status: 'pending',
     timestamp: new Date().toISOString(),
+    client_user_agent: navigator.userAgent,   // telemetry (invisible; nothing reads these yet) — diagnose in-app-webview GPS failures (Phase 1)
+    client_referrer: document.referrer,
   };
   // Email (PixelPay payer email for online): send the customer's if valid, else a La Musa fallback so
   // the server never substitutes X. Pizza's default. Mirrors the server's email regex (index.js:813).
