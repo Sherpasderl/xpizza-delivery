@@ -468,7 +468,10 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const fsAsyncPath = ['/usr/local/lib/node_modules/firebase-tools/lib/fsAsync.js'].find((p) => fs.existsSync(p));
     if (fsAsyncPath) {
       const d = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-ignore-'));
-      const names = ['.env.local', '.env.local~', '.env.local.bak', '.env.local.tmp', '.env.bak', '.env~', '.env.x.bak', 'index.js'];
+      // + EVERY dotenv variant (`.env.*`, advisor ruling): deploy reads .env.<projectId>/.env.<alias> from the SOURCE DIR
+      // (functions/env.js loadUserEnvs) and ships them as environmentVariables, never from the archive — so none of them,
+      // nor a stray secrets backup, belongs in the upload (deploy-env-guard.test proves the loading half).
+      const names = ['.env.local', '.env.local~', '.env.local.bak', '.env.local.tmp', '.env.bak', '.env~', '.env.x.bak', '.env.xpizza-delivery', '.env.default', '.env.stale-backup-260710', 'index.js'];
       for (const f of names) fs.writeFileSync(path.join(d, f), 'x');
       const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(fsAsyncPath)}).readdirRecursive({ path: ${JSON.stringify(d)}, ignore: ${JSON.stringify(ignore)} }).then((fl) => require('fs').writeFileSync(${JSON.stringify(path.join(d, 'out.json'))}, JSON.stringify(fl.map((x) => require('path').basename(x.name)))))`], { encoding: 'utf8', timeout: 30000 });
       assert.strictEqual(r.status, 0, r.stderr);
@@ -476,7 +479,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       fs.rmSync(d, { recursive: true, force: true });
       assert.deepStrictEqual(uploaded, ['index.js'], `🔴 a local env file / backup would ride into the deploy archive: ${uploaded.join(', ')}`);
     }
-    ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore; .env.local and its backups (~, .bak, .tmp) are excluded by the installed CLI\'s own archive walker while index.js is kept');
+    ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore; .env.local and its backups (~, .bak, .tmp) and EVERY .env.* variant (incl. .env.<projectId> and a stray secrets backup) are excluded by the installed CLI\'s own archive walker while index.js is kept');
   }
 
   // ── 10b. 🔴 THE REFUSAL PREDICATE ITSELF, BEFORE ANYTHING RELIES ON IT ──────────────────────

@@ -10979,5 +10979,18 @@
       "node",
       "tools/emulator-ports.guard.test.js"
     ]
+  },
+  {
+    "id": "r1-18",
+    "slice": "r1",
+    "file": "firebase.json",
+    "from": "        \".env.*\",\n",
+    "to": "",
+    "label": "a .env.<projectId> file or a stray secrets backup rides into the deploy archive",
+    "kills_with": "a local env file / backup would ride into the deploy archive",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
+    ]
   }
 ]

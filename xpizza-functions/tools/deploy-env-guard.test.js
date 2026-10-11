@@ -52,5 +52,25 @@ try {
     assert.strictEqual(here.status, 0, `🔴 THIS checkout's functions deploy env carries an emulator signal:\n${here.stderr}`);
     ok(`no value is ever printed; this checkout's deploy env is clean (${here.stdout.trim()})`);
   }
+  // 5. functions.ignore excludes `.env.*` from the ARCHIVE — the deploy still LOADS them, from the source dir: driven
+  //    through the installed CLI's own loadUserEnvs (what deploy/functions/prepare.js calls), over a real temp dir
+  {
+    const envJs = '/usr/local/lib/node_modules/firebase-tools/lib/functions/env.js';
+    if (fs.existsSync(envJs)) {
+      // the CLI refuses .env.<projectId> AND .env.<alias> together, so each is driven on its own
+      const load = (files, alias) => {
+        const d = tree(files);
+        const out = path.join(d, 'loaded.json');
+        const r = spawnSync(process.execPath, ['-e', `const E=require(${JSON.stringify(envJs)}); require('fs').writeFileSync(${JSON.stringify(out)}, JSON.stringify(Object.keys(E.loadUserEnvs({ functionsSource: ${JSON.stringify(d)}, projectId: 'proj-x', projectAlias: ${JSON.stringify(alias)}, isEmulator: false })).sort()))`], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return JSON.parse(fs.readFileSync(out, 'utf8'));
+      };
+      assert.deepStrictEqual(load({ '.env': 'A_KEY=1\n', '.env.proj-x': 'B_KEY=2\n' }, 'default'), ['A_KEY', 'B_KEY'], '🔴 deploy no longer loads .env + .env.<projectId> from the source dir');
+      assert.deepStrictEqual(load({ '.env': 'A_KEY=1\n', '.env.staging': 'C_KEY=3\n' }, 'staging'), ['A_KEY', 'C_KEY'], '🔴 deploy no longer loads .env.<alias> from the source dir');
+      const fb = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'firebase.json'), 'utf8'));
+      assert.ok(fb.functions[0].ignore.includes('.env.*'), 'premise — the archive ignores .env.*');
+      ok('deploy LOADS .env, .env.<projectId>, .env.<alias> from the source dir (installed CLI loadUserEnvs) — independent of functions.ignore, which keeps every .env.* OUT of the uploaded archive');
+    }
+  }
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log(`\ndeploy-env-guard: OK (${n})`);
