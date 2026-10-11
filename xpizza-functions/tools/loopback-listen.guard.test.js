@@ -36,11 +36,18 @@ const shadowProbe = (listenArgs) => new Promise((resolve, reject) => {
 (async () => {
   // 1. PREMISE — the wildcard server IS shadowed by another process; the explicit 127.0.0.1 server is NOT
   {
-    const wild = await shadowProbe([0]);
-    assert.deepStrictEqual([wild.msg, wild.body], ['B-LISTENING', 'B'], `premise — on this machine a listen(0) server is shadowed by another process's 127.0.0.1 bind (${JSON.stringify(wild)})`);
+    // the SHADOWING reproduction is macOS behaviour (SO_REUSEADDR lets a specific bind sit beside a wildcard one); other
+    // kernels may refuse that second bind, which is not a failure of isolation — so it is asserted on darwin only
+    let premise = 'skipped (not macOS)';
+    if (process.platform === 'darwin') {
+      const wild = await shadowProbe([0]);
+      assert.deepStrictEqual([wild.msg, wild.body], ['B-LISTENING', 'B'], `premise — on this machine a listen(0) server is shadowed by another process's 127.0.0.1 bind (${JSON.stringify(wild)})`);
+      premise = 'reproduced';
+    }
+    // EVERY platform: a 127.0.0.1-bound server is exclusive and receives its own fetch
     const pinned = await shadowProbe([0, '127.0.0.1']);
     assert.ok(/^B-REFUSED/.test(pinned.msg) && pinned.body === 'A', `🔴 a 127.0.0.1-bound test server was shadowed: ${JSON.stringify(pinned)}`);
-    ok('premise, on two real processes: a listen(0) WILDCARD test server is shadowed — another process binds 127.0.0.1 on its port and receives its fetch; a server bound to 127.0.0.1 is exclusive (the second bind is refused) and receives its own fetch');
+    ok(`on two real processes: a server bound to 127.0.0.1 is exclusive (the second bind is refused) and receives its own fetch; the wildcard-shadowing premise (macOS): ${premise}`);
   }
   // 2. every test-side ephemeral server binds 127.0.0.1 explicitly
   {
