@@ -391,6 +391,9 @@ const childEnv = (extra = {}) => {
       const kf = path.join(require('os').tmpdir(), `emu-alloc-kid-${process.pid}`);
       try { process.kill(Number(fs.readFileSync(kf, 'utf8')), 'SIGKILL'); } catch { /* none / gone */ }
       fs.rmSync(kf, { force: true });
+      // and EVERY process still marked with this cell's fake (dead) supervisor — whatever a failing or MUTATED reap left
+      // behind (a mutation sweep runs this cell against a deliberately broken reaper)
+      try { for (const r of A.readUnionTable()) { const m = r.readable && A.markerIn(r.env); if (m && m.pid === dead.pid) { try { process.kill(r.pid, 'SIGKILL'); } catch { /* gone */ } } } } catch { /* best effort */ }
       await A.closeServer(lock);
     }
     ok('emu-reap: fresh per-pid validation (live supervisor / reused target / changed marker / vanished → skipped; reused SUPERVISOR pid → still an orphan); on real processes in ONE group it kills only the orphan, leaves the co-grouped live run, reaches the death barrier, refuses a held sentinel, reports an EPERM pid UNCONFIRMED (exit 1), and reaps a marked descendant spawned DURING the reap');
