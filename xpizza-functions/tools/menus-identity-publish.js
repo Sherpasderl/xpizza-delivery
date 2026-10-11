@@ -14,9 +14,11 @@ const { RTDB_URL } = require('../catalog/mirror-rtdb');
 const PROJECT_ID = requireProject();      // FIRST: states the project (the repo's own), as every connecting tool must
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
-  console.error('menus-identity-publish: REFUSING — D4-b publishes menus_identity on the EMULATORS only (production publication is D4-c).');
+  console.error('\n🔴 REFUSED — menus-identity-publish: D4-b publishes menus_identity on the EMULATORS only (production publication is D4-c).');
   process.exit(2);
 }
+// R1 (codex R1-build P1-1): "both set" is not enough — strict loopback, THIS run's slot, both services REAL, aliases agree.
+require('../test/_emulator-required')('firestore', 'database');
 // The emulator host variables (required above) route BOTH clients to the emulators; RTDB_URL only names the namespace.
 admin.initializeApp({ projectId: PROJECT_ID, databaseURL: RTDB_URL });
 const db = admin.firestore();

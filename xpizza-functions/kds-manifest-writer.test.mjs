@@ -1,6 +1,6 @@
 // 1D add-product PHASE A §0b.3 — the KDS manifest writer, against the REAL RTDB emulator (never a fake).
 //   node --test kds-manifest-writer.test.mjs
-// Self-hosting: without FIREBASE_DATABASE_EMULATOR_HOST it re-runs itself under tools/emulator-run.js.
+// Self-hosting: with NO emulator signal at all it re-runs itself under tools/emulator-run.js.
 //
 // 🔴 THE INTERLEAVING IS FORCED, ACROSS PROCESSES. Writer A (gen 11) runs in its own process and is held INSIDE
 // its transaction callback, after reading, by a file barrier (the SDK calls the callback synchronously, so an
@@ -21,13 +21,17 @@ const NS = 'demo-xpizza';
 const CELLS = []; const test = (name, fn) => CELLS.push([name, fn]);
 let cells = 0; const ok = (l) => console.log(`  ✓ ${++cells} ${l}`);   // counted by tools/count-marks (node:test's own reporter is not)
 
-if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
+// R1 (codex R1-build P1-1): self-launch ONLY when there is NO emulator signal at all. Any signal — even a lone Firestore
+// host — goes to the strict validator below, which refuses a half-configured or foreign environment (never re-launches).
+if (!require('./lib/emulator-endpoint').hasEmulatorSignal(process.env)) {
   const env = { ...process.env }; delete env.NODE_OPTIONS;
   const r = spawnSync('node', [join(HERE, 'tools', 'emulator-run.js'), '--only', 'database', '--project', NS, 'node kds-manifest-writer.test.mjs'],
     { cwd: HERE, stdio: 'inherit', env });
   process.exit(r.status === null ? 1 : r.status);
 }
 
+// R1: under the runner, validate THIS run's endpoints (strict loopback, exact slot) before any client exists.
+require('./test/_emulator-required')('database');
 const admin = require('firebase-admin');
 const { writeKdsManifest, nextMenus } = require('./catalog/kds-manifest');
 const { catalogSnapshot } = require('./catalog/generate-form-bundle');

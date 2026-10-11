@@ -24,6 +24,8 @@ const { computePushReachable } = require('../driver-push');
 
 const APPLY = process.argv.includes('--apply');
 
+// R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod).
+require('../tools/emu-mixed-guard')('backfill-driver-push');
 initializeApp({ databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' });
 
 (async () => {

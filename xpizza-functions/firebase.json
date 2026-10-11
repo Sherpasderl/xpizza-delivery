@@ -17,6 +17,9 @@
     {
       "source": ".",
       "codebase": "default",
+      "predeploy": [
+        "node \"$RESOURCE_DIR/tools/deploy-env-guard.js\" --root \"$RESOURCE_DIR\""
+      ],
       "runtime": "nodejs22",
       "ignore": [
         "node_modules",
@@ -25,6 +28,14 @@
         "firebase-debug.*.log",
         ".env",
         ".env.example",
+        ".env.local",
+        ".env.local.*",
+        ".env.local~",
+        ".env.bak",
+        ".env~",
+        ".env.*.bak",
+        ".env.*~",
+        ".env.*",
         "README.md",
         ".firebase",
         "firebase.emulator.*.json",

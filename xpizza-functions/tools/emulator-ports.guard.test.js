@@ -319,26 +319,39 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   }
 
   // ── 4. 🔴 A BOUND PORT REFUSES; IT DOES NOT ATTACH ──────────────────────────────────────────
-  /* The load-bearing cell. Everything else is arrangement; this is the behaviour that turns a silent
-     cross-checkout read into a loud stop. Uses the top slot so it cannot disturb a default-port
-     emulator belonging to anyone else. */
+  /* The load-bearing cell. R1: an UNPINNED run simply skips a slot whose band is bound (another run's, or an
+     un-sentinelled listener) — it never attaches. A PINNED run (XPIZZA_EMU_PORT_OFFSET) goes through the same
+     arbitration and, the pinned slot being unavailable, REFUSES loudly with exit 3 naming the port. The slot is
+     chosen DYNAMICALLY among slots that are free right now (sentinel AND band), so this cell cannot collide with a
+     real run holding a fixed slot — the old fixed top slot was exactly that hazard once slots became shared. */
   {
-    const OFF = (SLOTS - 1) * 10;
-    const port = planPorts(OFF).firestore;
-    const squatter = net.createServer();
-    await new Promise((res, rej) => { squatter.once('error', rej); squatter.listen(port, '127.0.0.1', res); });
-    try {
-      const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'firestore', '--project', 'demo-xpizza', 'node -e "process.exit(0)"'],
-        { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: String(OFF) } });
-      assert.strictEqual(r.status, 3,
-        `🔴 a bound port did not refuse (exit ${r.status}) — the run either attached to whatever is listening or started anyway`);
-      assert.match(r.stderr, /REFUSED TO START/, 'the refusal is loud');
-      assert.match(r.stderr, new RegExp(`127\\.0\\.0\\.1:${port}`), 'the refusal names the port that is taken');
-      assert.doesNotMatch(r.stdout || '', /Running script/, '🔴 the suite command ran despite the refusal');
-    } finally {
-      await new Promise((res) => squatter.close(res));
+    const { SENTINEL_BASE } = require('./emu-alloc');
+    let done = false;
+    for (let s = SLOTS - 1; s >= 0 && !done; s--) {
+      const port = planPorts(s * 10).firestore;
+      const sentinelFree = await new Promise((res) => { const t = net.createServer(); t.once('error', () => res(false)); t.listen(SENTINEL_BASE + s, '127.0.0.1', () => t.close(() => res(true))); });
+      if (!sentinelFree) continue;
+      const squatter = net.createServer();
+      const bound = await new Promise((res) => { squatter.once('error', () => res(false)); squatter.listen(port, '127.0.0.1', () => res(true)); });
+      if (!bound) continue;                                   // a real run holds this band — try another slot
+      try {
+        const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'firestore', '--project', 'demo-xpizza', 'node test/emu-isolation.proof.js noop'],
+          { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: String(s * 10) } });
+        // Refused for a reason OTHER than our squatter (another live run's sentinel, a transient quarantine / incomplete
+        // scan from other sessions' processes): this cell is about the band refusal, so try another slot.
+        if (r.status === 3 && !/sentinel free but a band port is busy/.test(r.stderr)) continue;
+        assert.strictEqual(r.status, 3,
+          `🔴 a bound port did not refuse (exit ${r.status}) — the run either attached to whatever is listening or started anyway\n${r.stderr}`);
+        assert.match(r.stderr, /REFUSED TO START/, 'the refusal is loud');
+        assert.match(r.stderr, new RegExp(`127\\.0\\.0\\.1:${port}`), 'the refusal names the port that is taken');
+        assert.doesNotMatch(r.stdout || '', /Running script/, '🔴 the suite command ran despite the refusal');
+        done = true;
+      } finally {
+        await new Promise((res) => squatter.close(res));
+      }
     }
-    ok('a bound port REFUSES with exit 3 and names the port — it never attaches, and the suite command does not run');
+    assert.ok(done, 'premise — some slot was free to squat');
+    ok('a bound band port makes a PINNED run REFUSE with exit 3 naming the port — it never attaches, and the suite command does not run');
   }
 
   // ── 5. A MALFORMED OVERRIDE FAILS CLOSED ────────────────────────────────────────────────────
@@ -433,7 +446,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     assert.deepStrictEqual(SERVICE_LISTENERS.functions, ['functions', 'eventarc', 'tasks'],
       '🔴 functions no longer declares its extra listeners — Eventarc and Cloud Tasks would start unbanded');
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'functions', '--project', 'demo-xpizza', 'node -e "process.exit(0)"'],
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'emulator-run.js'), '--only', 'functions', '--project', 'demo-xpizza', 'node test/emu-isolation.proof.js noop'],
       { cwd: ROOT, encoding: 'utf8', env: { ...process.env, XPIZZA_EMU_PORT_OFFSET: '0', PATH: '/nonexistent' } });
     for (const svc of ['hub', 'logging', 'functions', 'eventarc', 'tasks']) {
       assert.match(r.stderr, new RegExp(`${svc} \\d+`), `🔴 ${svc} is not in the preflight set — it would take a shared default port`);
@@ -450,7 +463,23 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const ignore = (fb.functions && fb.functions[0] && fb.functions[0].ignore) || [];
     assert.ok(ignore.includes('firebase.emulator.*.json'),
       '🔴 functions.ignore does not exclude the generated emulator config — a stray would be uploaded with a deploy');
-    ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore');
+    /* R1 (codex R1-build P2-8): .env.local and its backup / editor-temp shapes stay OUT of the deploy archive — driven
+       through the INSTALLED CLI's own archive walker (fsAsync.readdirRecursive, what prepareFunctionsUpload uses). */
+    const fsAsyncPath = ['/usr/local/lib/node_modules/firebase-tools/lib/fsAsync.js'].find((p) => fs.existsSync(p));
+    if (fsAsyncPath) {
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), 'archive-ignore-'));
+      // + EVERY dotenv variant (`.env.*`, advisor ruling): deploy reads .env.<projectId>/.env.<alias> from the SOURCE DIR
+      // (functions/env.js loadUserEnvs) and ships them as environmentVariables, never from the archive — so none of them,
+      // nor a stray secrets backup, belongs in the upload (deploy-env-guard.test proves the loading half).
+      const names = ['.env.local', '.env.local~', '.env.local.bak', '.env.local.tmp', '.env.bak', '.env~', '.env.x.bak', '.env.xpizza-delivery', '.env.default', '.env.stale-backup-260710', 'index.js'];
+      for (const f of names) fs.writeFileSync(path.join(d, f), 'x');
+      const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(fsAsyncPath)}).readdirRecursive({ path: ${JSON.stringify(d)}, ignore: ${JSON.stringify(ignore)} }).then((fl) => require('fs').writeFileSync(${JSON.stringify(path.join(d, 'out.json'))}, JSON.stringify(fl.map((x) => require('path').basename(x.name)))))`], { encoding: 'utf8', timeout: 30000 });
+      assert.strictEqual(r.status, 0, r.stderr);
+      const uploaded = JSON.parse(fs.readFileSync(path.join(d, 'out.json'), 'utf8')).filter((x) => x !== 'out.json').sort();
+      fs.rmSync(d, { recursive: true, force: true });
+      assert.deepStrictEqual(uploaded, ['index.js'], `🔴 a local env file / backup would ride into the deploy archive: ${uploaded.join(', ')}`);
+    }
+    ok('the generated config is excluded from the deploy archive by functions.ignore, not only by .gitignore; .env.local and its backups (~, .bak, .tmp) and EVERY .env.* variant (incl. .env.<projectId> and a stray secrets backup) are excluded by the installed CLI\'s own archive walker while index.js is kept');
   }
 
   // ── 10b. 🔴 THE REFUSAL PREDICATE ITSELF, BEFORE ANYTHING RELIES ON IT ──────────────────────
@@ -897,14 +926,23 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   {
     const parent = { PATH: '/usr/bin', FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080', FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:9000', FIREBASE_EMULATOR_HUB: '127.0.0.1:4400', PUBSUB_EMULATOR_HOST: '127.0.0.1:8085' };
     const dbOnly = childEnv(['database'], parent);
-    assert.strictEqual(dbOnly.FIRESTORE_EMULATOR_HOST, undefined,
-      '🔴 an inherited FIRESTORE_EMULATOR_HOST survived a database-only run — the suite can read a foreign Firestore and pass');
+    /* R1: the unstarted data service is not merely cleared — it is set to the NULL endpoint (127.0.0.1:1), so a
+       stray client fails fast instead of reaching PRODUCTION, and lib/admin.js sees a fully-configured process. */
+    assert.strictEqual(dbOnly.FIRESTORE_EMULATOR_HOST, '127.0.0.1:1',
+      '🔴 an inherited FIRESTORE_EMULATOR_HOST survived a database-only run (or the unstarted service was left ABSENT, i.e. production) — the suite can read a foreign Firestore and pass');
+    assert.strictEqual(dbOnly.FIREBASE_FIRESTORE_EMULATOR_ADDRESS, undefined, 'the Firestore alias is cleared, not left naming a foreign emulator');
+    const fsOnly = childEnv(['firestore'], parent);
+    assert.strictEqual(fsOnly.FIREBASE_DATABASE_EMULATOR_HOST, '127.0.0.1:1', '🔴 a firestore-only run left the RTDB host absent or foreign');
+    const stale = childEnv(['database'], { ...parent, XPIZZA_EMU_RUN: '1:2:a1b2c3d4e5f60718:3', XPIZZA_EMU_OFFSET: '10', XPIZZA_EMU_SERVICES: 'firestore', XPIZZA_EMU_DEAD: 'database' });
+    for (const k of ['XPIZZA_EMU_RUN', 'XPIZZA_EMU_OFFSET', 'XPIZZA_EMU_SERVICES', 'XPIZZA_EMU_DEAD']) assert.strictEqual(stale[k], undefined, `🔴 an inherited ${k} survived — it would name someone else's run`);
+    const cfgd = childEnv(['database'], { ...parent, FIREBASE_CONFIG: '{"projectId":"xpizza-delivery","databaseURL":"https://xpizza-delivery-default-rtdb.firebaseio.com"}' });
+    assert.strictEqual(cfgd.FIREBASE_CONFIG, undefined, '🔴 an inherited (production-valued) FIREBASE_CONFIG survived into the run');
     assert.strictEqual(dbOnly.FIREBASE_DATABASE_EMULATOR_HOST, '127.0.0.1:9000', 'the served service keeps its var (firebase overwrites it with the real port)');
     assert.strictEqual(dbOnly.PUBSUB_EMULATOR_HOST, undefined, 'an unserved service\'s var is cleared too');
     assert.strictEqual(dbOnly.PATH, '/usr/bin', 'the rest of the environment is untouched');
     const both = childEnv(['firestore', 'database'], parent);
     assert.strictEqual(both.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8080', 'a served service keeps its var');
-    ok('host vars for services the run does not start are CLEARED, so an inherited value can never be used');
+    ok('host vars for services the run does not start are CLEARED (data services → the NULL endpoint), inherited run identity is dropped — an inherited value can never be used');
   }
 
   // ── 13. THE GATE LIST IS ENUMERATED, NEVER HAND-KEPT — AND IT IS EVERY TEST SCRIPT ─────────
@@ -1082,7 +1120,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       assert.strictEqual((injected.match(/-r \/abs/g) || []).length, nodes,
         `🔴 ${name}: ${nodes} node invocations but only ${(injected.match(/-r \/abs/g) || []).length} preloaded — the rest would be NOT MEASURED`);
     }
-    ok(`all ${routed} routed scripts receive the counter in every node invocation, chained ones included`);
+    // R1 (P1-2): every routed command must also PARSE into a `node …` && chain — that is what the marked wrapper runs
+    const { parseChain } = require('./emulator-run.js');
+    for (const [name, body] of Object.entries(pkg.scripts || {})) {
+      if (!/emulator-run\.js/.test(body)) continue;
+      const m = body.match(/"([^"]+)"\s*$/);
+      assert.doesNotThrow(() => parseChain(injectCounter(m[1], C, '/abs/tools/emu-null-guard.js')), `🔴 ${name}: its command does not parse into a node && chain — the marked wrapper would refuse it`);
+    }
+    ok(`all ${routed} routed scripts receive the counter in every node invocation, chained ones included, and each parses into a node && chain for the marked wrapper`);
   }
 
   // ── 14d. 🔴 THE GATE'S OWN MAIN PATH IS EXECUTED, NOT JUST ITS FUNCTIONS ────────────────────
@@ -1116,71 +1161,28 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     ok(`driver-diag emits one mark per test (${marks}), not one summary line standing for all of them`);
   }
 
-  // ── 14e. 🔴 THE SETTLE WAIT: ENGAGES, TIMES OUT LOUDLY, AND RECORDS ITSELF ──────────────────
-  /* Ports take ~300ms to release after an emulator suite, so a following suite can start while the
-     previous emulator still holds one — an observed hazard here, which once produced a false DRIFTED
-     sweep result. The branches are driven with an injected prober rather than real sockets, because
-     the timeout path cannot otherwise be reached in a test.
-     🔴 IT WAS BUILT AS A FIX FOR THE identity-registry FLAKE AND IT IS NOT ONE — it engaged on every
-     transition and the flake occurred anyway with all ports confirmed free. These cells assert the
-     port-collision guard, which is what it actually is. */
+  // ── 14e. R1: THE SETTLE WAIT IS GONE; INDIRECT LAUNCHERS STREAM ─────────────────────────────────
+  /* The gate's settle wait was removed (its job is the launcher's sentinel-held teardown: see tools/emu-alloc.test.js
+     and the R1 two-gate proof). What remains for the gate is STREAMING: a suite that reaches the launcher — directly
+     or through a test file that self-launches it — has its admission heartbeats teed live. */
   {
-    const { settleAfter, SETTLE_POLL_MS } = require('./gate-all.js');
-    const band = { database: 9140, hub: 4540 };
-
-    // …engages while a port is held, and stops as soon as it clears.
-    {
-      let clock = 0; let polls = 0;
-      const stats = { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 };
-      const waited = settleAfter('prev', 'next', {
-        band, stats, timeoutMs: 30000,
-        now: () => clock,
-        sleep: () => { clock += SETTLE_POLL_MS; polls += 1; },
-        isFree: (port) => !(port === 9140 && polls < 3),
-        onRefuse: () => { throw new Error('refused when it should have waited'); },
-      });
-      assert.strictEqual(waited, 3 * SETTLE_POLL_MS, `🔴 it did not wait for the held port to clear (waited ${waited}ms)`);
-      assert.strictEqual(stats.engagements, 1, '🔴 an engagement was not recorded — a silent wait is indistinguishable from no wait');
-      assert.strictEqual(stats.maxWaitMs, 3 * SETTLE_POLL_MS, 'and the maximum is what the summary reports');
-    }
-
-    // …returns immediately when nothing is held, and records NOTHING, so "never engaged" stays true.
-    {
-      const stats = { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 };
-      let clock = 0;
-      const waited = settleAfter('prev', 'next', {
-        band, stats, timeoutMs: 30000, now: () => clock,
-        sleep: () => { clock += SETTLE_POLL_MS; }, isFree: () => true,
-        onRefuse: () => { throw new Error('refused on a clear band'); },
-      });
-      assert.strictEqual(waited, 0, 'a clear band is not waited on');
-      assert.strictEqual(stats.engagements, 0,
-        '🔴 a no-op was recorded as an engagement — the figures would suggest a guard that is doing work it is not');
-    }
-
-    /* 🔴 ON TIMEOUT IT REFUSES; IT MUST NEVER FALL THROUGH. Falling through starts the next suite into
-       exactly the condition this removes, while printing nothing — so the hazard returns looking
-       identical and the wait has hidden its own evidence. */
-    {
-      let clock = 0; let refusedWith = null;
-      const realErr = console.error; const lines = [];
-      console.error = (...a) => lines.push(String(a[0]));
-      try {
-        settleAfter('test:previous-suite', 'test:next-suite', {
-          band, stats: { engagements: 0, maxWaitMs: 0, totalWaitMs: 0 }, timeoutMs: 500,
-          now: () => clock, sleep: () => { clock += SETTLE_POLL_MS; },
-          isFree: () => false,
-          onRefuse: (code) => { refusedWith = code; return code; },
-        });
-      } finally { console.error = realErr; }
-      assert.strictEqual(refusedWith, 2, '🔴 the settle wait FELL THROUGH on timeout — it would start the suite into the condition it exists to remove');
-      const said = lines.join('\n');
-      assert.match(said, /GATE REFUSED/, 'it refuses by name');
-      assert.match(said, /test:previous-suite/, 'names the suite that held the port');
-      assert.match(said, /test:next-suite/, 'names the suite that was about to run');
-      assert.match(said, /127\.0\.0\.1:9140/, 'and names the port');
-    }
-    ok('the settle wait engages and records it, no-ops silently on a clear band, and REFUSES by name on timeout rather than falling through');
+    const g = require('./gate-all.js');
+    assert.strictEqual(g.settleAfter, undefined, '🔴 the settle wait is back — the launcher owns band release now');
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    assert.ok(g.reachesLauncher(pkg.scripts['test:kds-manifest-writer']), '🔴 the INDIRECT launcher (test:kds-manifest-writer → node --test → emulator-run.js) is not classified, so its heartbeats would not stream');
+    assert.ok(g.reachesLauncher(pkg.scripts['test:pickup-ready']), 'a direct launcher is classified');
+    assert.ok(!g.reachesLauncher(pkg.scripts['test:portal']), 'a script that never reaches the launcher is not');
+    /* P2-5 — THE ADVERSE-CHUNK REPRODUCTION (codex: 12 → 0). Through the REAL collector + countCells. */
+    const teed = [];
+    const col = g.makeCollector({ tee: (l) => teed.push(l) });
+    col.feed('out', '  ✓ 1 x\n##CELLS 12');
+    col.feed('err', 'emulator-run: a diagnostic\n');
+    col.feed('out', '\n##CELLS 0\n');
+    assert.strictEqual(g.countCells(col.text()), 12, '🔴 interleaved stdout/stderr chunks lost a ##CELLS trailer (the 12 → 0 reproduction)');
+    const merged = '  ✓ 1 x\n##CELLS 12' + 'emulator-run: a diagnostic\n' + '\n##CELLS 0\n';
+    assert.strictEqual(g.countCells(merged), 0, 'premise — merging the chunks in arrival order DOES lose the 12 (what the fix prevents)');
+    assert.deepStrictEqual(teed, ['emulator-run: a diagnostic'], 'the tee still streams the launcher line live');
+    ok('the gate has no settle wait; direct AND indirect launchers (test:kds-manifest-writer) are classified for live heartbeat streaming; stdout/stderr are captured SEPARATELY so an adverse chunk interleaving keeps ##CELLS 12 (merged arrival order would read 0)');
   }
 
   // ── 15. THE CLEARED-VAR LIST COVERS WHAT THE INSTALLED CLI CAN ACTUALLY EXPORT ─────────────
@@ -1236,10 +1238,15 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const dbOnly = childEnv(['database'], { PATH: '/usr/bin' });
     assert.strictEqual(dbOnly.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, undefined,
       'runs that start no functions are left alone');
-    const operator = childEnv(['functions'], { PATH: '/usr/bin', FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH: '/some/real/path' });
-    assert.strictEqual(operator.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '/some/real/path',
-      'an operator who set it deliberately is not overridden');
-    ok('a functions run discovers via manifest and opens no port; a deliberate operator value is preserved');
+    /* R1 (codex R1-build P1-4): an INHERITED path is OVERRIDDEN — two runs inheriting the SAME path get DISTINCT dirs. */
+    const runA = { slot: 3, pid: 41001, nonce: 'a1b2c3d4e5f60718', start: 1 };
+    const runB = { slot: 4, pid: 41002, nonce: 'b1b2c3d4e5f60718', start: 1 };
+    const shared = { PATH: '/usr/bin', FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH: '/some/shared/path' };
+    const ea = childEnv(['functions'], shared, runA); const eb = childEnv(['functions'], shared, runB);
+    assert.notStrictEqual(ea.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '/some/shared/path', '🔴 an inherited discovery path was kept — two worktrees would share functions.yaml');
+    assert.notStrictEqual(ea.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, eb.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, '🔴 two runs with the same inherited path got the SAME discovery dir');
+    assert.strictEqual(ea.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH, path.join(os.tmpdir(), `${DISCOVERY_PREFIX}41001`), 'derived from the run');
+    ok('a functions run discovers via manifest and opens no port; an INHERITED discovery path is overridden — two runs inheriting the same path get distinct per-run dirs');
   }
 
   console.log(`emulator-ports guard: OK (${n})`);

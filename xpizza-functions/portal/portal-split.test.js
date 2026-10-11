@@ -446,7 +446,18 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       "const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)\n",
       "const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() });\n",
     ];
-    const skeletonPre = AP_LINES.reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
+    // R1 emulator isolation adds EXACTLY one block to lib/admin.js's skeleton, ABOVE the (byte-unchanged, fold-restored)
+    // init: the emulator-signal guard. Same treatment as the add-product lines — removed once, the rest must still hash
+    // to the pre-slice pin. The block's own content is pinned by tools/emulator-endpoint.test.js (exact text).
+    const R1_LINES = [
+      "// R1 emulator isolation (PLAN-emulator-isolation §b.6): an emulator signal (FUNCTIONS_EMULATOR exactly \"true\", or a\n"
+      + "// non-empty emulator host var) ⇒ validate this run's endpoints first, and refuse (throw) a half-configured or foreign\n"
+      + "// one rather than let the init below reach production. Any other FUNCTIONS_EMULATOR value is NOT a signal (a deployed\n"
+      + "// \"false\" takes the production path). Required ONLY on this branch; with no signal nothing extra loads.\n"
+      + "if (process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS\n"
+      + "  || process.env.FIREBASE_DATABASE_EMULATOR_HOST || process.env.FIREBASE_EMULATOR_HUB) require('./emulator-endpoint').guardEmulatorProcess();\n\n",
+    ];
+    const skeletonPre = [...AP_LINES, ...R1_LINES].reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
     assert.strictEqual(sha(skeletonPre), SKELETON, `🔴 the split's non-moved text changed (headers / imports / exports / the wrap loop / the wrapper): ${sha(skeletonPre)}`);
     assert.notStrictEqual(sha(skeleton), SKELETON, '(the add-product lines are really there)');
     assert.notStrictEqual(sha(skeletonPre.replace("exports[name] = withPreflightMaxAge(exports[name]);", 'void 0;')), SKELETON, 'sensitivity: dropping the wrap is caught');

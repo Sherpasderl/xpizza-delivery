@@ -173,6 +173,10 @@ function inventoryViolations({ root, tracked, loadCJSON }) {
     let j;
     try { j = loadCJSON(abs); parsed++; }
     catch (e) {
+      /* R1 (PLAN §b.9): a TRANSIENT config can vanish between the listing and the read — another worktree's run is
+         never in this tree, but THIS checkout's own run may be tearing down. Only that exact name, only when it is
+         really gone now; an existing transient still parses or fails closed like any other config. */
+      if (TRANSIENT.test(rel) && !fs.existsSync(abs)) continue;
       const text = fs.readFileSync(abs, 'latin1');
       if (isConfigName(rel)) violations.push(`${rel}: an UNPARSEABLE firebase config — fail closed (${String(e.message).split('\n').filter(Boolean).pop().slice(0, 80)})`);
       else if (/firestore/i.test(text)) violations.push(`${rel}: unparseable JSON mentioning "firestore" — fail closed`);
@@ -251,7 +255,19 @@ const { loadCJSON } = require(path.join(CLI_LIB, 'loadCJSON'));
     assert(check(r8).some((v) => /firebase\.emulator\.4242\.json declares firestore "indexes"/.test(v)), '…and fails if it declares indexes');
     fs.writeFileSync(path.join(r8, 'xpizza-functions', 'firebase.emulator.json'), '{}');
     assert(check(r8).some((v) => /ON DISK/.test(v)), 'a look-alike without the pid is NOT the transient name');
-    ok('regressions: untracked root, nested untracked, PARENT-dir (the real CLI honours it), commented settings (CLI loadCJSON), unparseable firebase config + firestore JSON fail closed; transient emulator config allowed by exact name, still checked');
+    // R1: a transient that VANISHES between the listing and the read (this checkout's run tearing down) is not a
+    // violation — the real loadCJSON is called AFTER the file is removed, so the ENOENT is the CLI's own.
+    const r9 = mkRepo(path.join(tmp, 'r9', 'repo'));
+    const tr = path.join(r9, 'xpizza-functions', 'firebase.emulator.5151.json');
+    fs.copyFileSync(path.join(r9, 'xpizza-functions', 'firebase.json'), tr);
+    const vanishing = (abs) => { if (abs === tr) fs.unlinkSync(tr); return loadCJSON(abs); };
+    assert.deepStrictEqual(inventoryViolations({ root: r9, tracked: [], loadCJSON: vanishing }).violations, [], '🔴 a transient that vanished mid-inventory failed the inventory');
+    const notTransient = path.join(r9, 'xpizza-functions', 'firebase.json');
+    const vanishingReal = (abs) => { if (abs === notTransient) { fs.unlinkSync(notTransient); } return loadCJSON(abs); };
+    let closed = false;
+    try { closed = inventoryViolations({ root: r9, tracked: [], loadCJSON: vanishingReal }).violations.length > 0; } catch (e) { closed = e && e.code === 'ENOENT'; }
+    assert(closed, '…while a NON-transient config vanishing mid-read still fails closed (a violation or a thrown ENOENT, never a clean pass)');
+    ok('regressions: untracked root, nested untracked, PARENT-dir (the real CLI honours it), commented settings (CLI loadCJSON), unparseable firebase config + firestore JSON fail closed; transient emulator config allowed by exact name, still checked, and tolerated if it vanishes mid-inventory (a non-transient vanishing still fails closed)');
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 }
 

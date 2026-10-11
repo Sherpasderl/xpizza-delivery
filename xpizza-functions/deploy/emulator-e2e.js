@@ -4,7 +4,7 @@
  * (B) Emulator end-to-end — the byte-identical proof. RUNS IN A JAVA/EMULATOR ENV ONLY, one mode
  * per `emulators:exec` so each scenario gets a COLD getIdentity cache (the 30s warm cache would
  * otherwise mask a seed-state change within a session):
- *   firebase emulators:exec --only functions,database --project demo-xpizza "node deploy/emulator-e2e.js <mode>"
+ *   node tools/emulator-run.js --only functions,database --project demo-xpizza "node deploy/emulator-e2e.js <mode>"
  *   modes: cash | reject <expectedStatus> | pending | la_musa   env: GCLOUD_PROJECT, MAKE_SECRET, CREATEORDER_URL
  *
  * - cash    (seed active): drive createOrder for cash_delivery + cash_pickup, assert byte-identical to
@@ -24,6 +24,9 @@
  * socket guard was removed — wrong process, and it broke the e2e's own admin connection.)
  * Online-materialized byte-identical is covered by materialize-snapshot.test.js + confirm-active-recheck.test.js.
  */
+// R1 (PLAN-emulator-isolation §c.1, codex r5 P1-A): validate BOTH emulator services and CREATEORDER_URL before any
+// client or HTTP call — a prod Functions URL or a missing signal refuses here, not after the first POST.
+require('../test/_emulator-required').harness(['firestore', 'database'], { functionsUrls: [process.env.CREATEORDER_URL] });
 const assert = require('assert');
 const admin = require('firebase-admin');
 const { emuDatabaseURL } = require('./emu-ns');
