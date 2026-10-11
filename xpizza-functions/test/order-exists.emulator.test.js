@@ -69,6 +69,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── the recorder (the d4b-charge-trace recipe): every RTDB + Firestore call the handler issues, in order ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
+const CTL = require('./_order-control-trace');
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -77,7 +81,7 @@ function patchChain(obj, names, describe) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return Q.track(orig.apply(this, a), nm); };   // R1b: in-flight counted
     }
   }
 }
@@ -121,7 +125,7 @@ async function seed(rid) {
 function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
@@ -158,9 +162,13 @@ const tree = async () => leaves((await rtdb.ref().get()).val() || {});
 async function traced(c, rid, setupState) {
   const before = await tree();
   const pre = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};
+  // R1b: the pause-switch reader cache (10 s from read initiation) put in a KNOWN state — WARM — with the recorder OFF,
+  // right before the request. It was left to timing: the case's setup warmed it, and under load setup + the tree read
+  // outran the 10 s TTL, so the handler re-read order_control/<rid>/current — one call the pre-c4 golden never had.
+  await CTL.controlWarm(rtdb, rid);
   REC = [];
   const r = await c.request(rid, setupState);
-  await wait(300);   // a fire-and-forget write the handler issued lands inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const after = await tree();
   const post_ = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};

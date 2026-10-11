@@ -47,7 +47,7 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
 function post(handler, body) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` }, body: JSON.stringify(body) });

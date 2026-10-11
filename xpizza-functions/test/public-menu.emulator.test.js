@@ -59,7 +59,7 @@ const identityFor = (rid, active) => ({
   const app = express();
   app.all('*', (req, res) => getPublicMenu(req, res));
   const server = http.createServer(app);
-  await new Promise((r) => server.listen(0, r));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const get = (path, headers = {}) => fetch(`${base}${path}`, { headers });
 

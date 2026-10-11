@@ -783,6 +783,16 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       `🔴 dns.lookup was not recorded, and it is labelled system(getaddrinfo) rather than a chosen server so a failure says which it was (${look.verdict.why})`);
     assert.ok(!refusedAsOneCleanProcess(look.r, look.verdict), '🔴 a suite that resolved a name before refusing counted as clean');
 
+    // …but a lookup of an IP LITERAL never reaches getaddrinfo (Node returns the literal) — server.listen(0, '127.0.0.1')
+    // makes exactly that call, so a loopback-pinned test server is clean; a HOSTNAME (even 'localhost') is still a contact.
+    const lit = runObserved([w('lookup-literal.js',
+      "const dns = require('dns');\n"
+      + "dns.lookup('127.0.0.1', () => dns.promises.lookup('::1').then(() => { const s = require('http').createServer().listen(0, '127.0.0.1', () => s.close(() => { " + BANNER.trim() + " })); }));\n")]);
+    assert.ok(refusedAsOneCleanProcess(lit.r, lit.verdict), `🔴 a lookup of an IP LITERAL (incl. a 127.0.0.1-pinned listen) was counted as a contact (${lit.verdict.why})`);
+    const named = runObserved([w('lookup-localhost.js',
+      "require('dns').lookup('localhost', () => { console.error('\\n🔴 REFUSED — a foreign host.'); process.exit(1); });\n")]);
+    assert.ok(named.verdict.records.some((x) => x.connects.some((c) => c.startsWith('dns:system'))), `🔴 a lookup of a HOSTNAME ('localhost') was not recorded (${named.verdict.why})`);
+
     /* module.register — and the DIAGNOSIS matters as much as the verdict here. Before this hook the case
        was already rejected, but as a "record write was lost" MISMATCH: the loader thread appended a CONNECT
        the main thread's counter never saw. That is a true rejection with a false cause, and it would send

@@ -86,15 +86,27 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pselfupda
 
 // ── the recorder: patch the RTDB Reference/Query and Firestore reference/query/transaction prototypes ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
-function patchChain(obj, names, describe) {
+function patchChain(obj, names, describe, isFs = true) {   // R1b: which store — known per patched prototype (the one RTDB patch passes false)
   const done = new Set();
   for (let p = Object.getPrototypeOf(obj); p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
     for (const nm of names) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) {
+        const d = REC ? describe(this, nm, a) : null;
+        if (d) REC.push(d);
+        const out = orig.apply(this, a);
+        /* R1b: in-flight counted — EXCEPT a Firestore call in the CAPTURE phase, where Firestore is DELIBERATELY dead
+           (127.0.0.1:1): the route under test stops waiting for those calls (their retries settle ~46 s later), so
+           waiting on them would measure the dead backend, not the handler. RTDB — the live store here — is tracked. */
+        if (process.env.PSU_MIRROR_PHASE === 'capture' && isFs) return out;
+        return Q.track(out, nm);
+      };
     }
   }
 }
@@ -109,7 +121,7 @@ patchChain(rtdb.ref('x'), ['get', 'once', 'set', 'update', 'remove', 'transactio
   const e = { db: 'rtdb', op: nm, path: rtdbPath(self.ref || self) };
   if (nm === 'update' || nm === 'set' || (nm === 'push' && a.length)) Object.assign(e, writeShape(a[0]));
   return e;
-});
+}, false);
 const fsDescribe = (self, nm, a) => ({ db: 'fs', op: nm, path: self.path !== undefined ? self.path : (self._queryOptions ? `${self._queryOptions.parentPath.relativeName}/${self._queryOptions.collectionId}?query` : '?'),
   ...((nm === 'set' || nm === 'update' || nm === 'create' || nm === 'add') ? writeShape(a[0]) : {}) });
 // EVERY document argument of a getAll, in order, with multiplicity (a trailing ReadOptions object is not a document)
@@ -145,12 +157,17 @@ async function seedPreP1(rid) {
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
   await asPreP1(rid, res.versionId);
 }
+/* R1b: the server binds 127.0.0.1 (exclusive — see tools/loopback-listen.guard.test.js), so the socket peer is
+   '127.0.0.1'; the FROZEN golden was captured on a wildcard server, whose IPv4 peer is '::ffff:127.0.0.1'. The handlers
+   key their per-IP rate limit on the left-most X-Forwarded-For first (index.js clientIp), so the golden's client identity
+   is pinned EXPLICITLY here instead of depending on the socket family. */
+const GOLDEN_CLIENT_IP = '::ffff:127.0.0.1';
 function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
+        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-forwarded-for': GOLDEN_CLIENT_IP, ...headers }, body: JSON.stringify(body) });
         const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
         s.close(() => resolve({ status: res.status, json: j, text: t }));
       } catch (e) { s.close(() => reject(e)); }
@@ -180,7 +197,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     : kind === 'redeem'
       ? await post(app.quoteRedemption, { restaurant_id: rid, items: b.items, redeem: b.redeem }, { 'x-firebase-id-token': uid })
       : await post(app.quoteOrder, { restaurant_id: rid, items: b.items }, {});
-  await wait(300);   // let any fire-and-forget write the handler issued land inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   const subs = [];
@@ -281,6 +298,9 @@ async function capturePhase() {
       return Object.fromEntries(Object.entries(flat).sort());
     };
     money[rid] = {
+      // R1b: the response behind each money row travels WITH it, so a money mismatch names what answered (status + body) —
+      // the capture's out.json lives in the run's own TMPDIR, swept when the run ends, so the assertion is the evidence
+      __resp: Object.fromEntries([['a_quote_mirror', a], ['b_cash_mirror', b], ['c_quote_mirror_refresh', c], ['d_cash_mirror_refresh', d]].map(([k, v]) => [k, `${v.status} ${JSON.stringify(v.json).slice(0, 400)}`])),
       a_quote_mirror: quoteMoney(a.json), b_cash_mirror: await orderMoney(`mcash_${rid}_a`),
       c_quote_mirror_refresh: quoteMoney(c.json), d_cash_mirror_refresh: await orderMoney(`mcash_${rid}_b`),
     };
@@ -338,7 +358,7 @@ async function capturePhase() {
     const MONEY_GOLDEN = JSON.parse(fsys.readFileSync(path.join(__dirname, '..', 'catalog', 'pselfupdate-mirror-money.golden.json'), 'utf8'));
     for (const rid of Object.keys(MONEY_GOLDEN)) for (const k of Object.keys(MONEY_GOLDEN[rid])) {
       assert.ok(Object.keys(MONEY_GOLDEN[rid][k]).length > 0, `non-vacuity: ${rid} ${k} froze money fields`);
-      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals`);
+      assert.deepStrictEqual(money[rid][k], MONEY_GOLDEN[rid][k], `🔴 ${rid} ${k}: the MIRROR-route money differs from the frozen ba29282 literals — response: ${money[rid].__resp[k]}`);
       console.log(`  ✓ ${rid} ${k}: money identical to ba29282 (${Object.entries(MONEY_GOLDEN[rid][k]).map(([f, v]) => `${f}=${v}`).join(', ').slice(0, 110)})`);
     }
     assertPremises();

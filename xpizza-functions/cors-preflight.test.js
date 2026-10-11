@@ -22,7 +22,7 @@ const CLIENT_HEADERS = 'content-type,x-client-app,x-client-deployment,x-client-b
 
 function preflight(handler, origin) {
   return new Promise((resolve, reject) => {
-    const s = http.createServer((req, res) => handler(req, res)).listen(0, async () => {
+    const s = http.createServer((req, res) => handler(req, res)).listen(0, '127.0.0.1', async () => {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': CLIENT_HEADERS } });
         const out = { status: r.status, allowOrigin: r.headers.get('access-control-allow-origin'), allowHeaders: (r.headers.get('access-control-allow-headers') || '').toLowerCase() };

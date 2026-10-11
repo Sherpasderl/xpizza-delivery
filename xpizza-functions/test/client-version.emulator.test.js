@@ -39,7 +39,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('client-ve
 function post(body, ip = '10.0.0.1', method = 'POST') {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(app.reportClientVersion);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method, headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': ip }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}

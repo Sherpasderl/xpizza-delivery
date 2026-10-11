@@ -30,7 +30,7 @@ const db = getDatabase();
 function post(handler, { token, body }) {
   return new Promise((resolve, reject) => {
     const wrapped = express(); wrapped.use(express.json()); wrapped.use(handler);
-    const server = http.createServer(wrapped).listen(0, async () => {
+    const server = http.createServer(wrapped).listen(0, '127.0.0.1', async () => {
       try {
         const { port } = server.address();
         const res = await fetch(`http://127.0.0.1:${port}/`, {

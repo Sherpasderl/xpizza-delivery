@@ -89,7 +89,7 @@ async function seedPreP1(rid, { dataFrom = rid } = {}) {
 function post(handler, body, method = 'POST', query = '', headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const res = await fetch(`http://127.0.0.1:${s.address().port}/${query}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
         const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
