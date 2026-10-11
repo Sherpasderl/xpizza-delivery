@@ -17,7 +17,7 @@ const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
 const { getRestaurantDocs } = require('../catalog/catalog-firestore');
 const { readSource } = require('../catalog/source-store');   // portal 2a
 const { buildCatalogV2 } = require('../catalog/form-menu-source');
-const { buildSourceCandidate } = require('../catalog/candidate-validate');   // codex build r1 #4: extras priced from the source
+const { buildSourceCandidate, assertBuiltValid } = require('../catalog/candidate-validate');   // codex build r1 #4: extras priced from the source; validated as publish validates
 const { assertStoreCodeParity, assertStoreMatchesActive } = require('../catalog/publish-parity');
 const { buildTablesFromDocs } = require('../catalog/catalog-transform');
 const { previewVersion } = require('../catalog/catalog-publish');                 // portal 2b-1
@@ -81,6 +81,10 @@ async function activeBuiltOf(rid) {
       throw e;
     }
     const { inputs, built: storeRaw } = buildSourceCandidate(rid, source);
+    // add-product B (deferred A codex-closure SHOULD-FIX): the store-built candidate is validated EXACTLY as publish
+    // validates it. A store that builds but could never publish is a failure here, not a parity question.
+    try { assertBuiltValid(rid, storeRaw, `${rid} (verify)`); }
+    catch (e) { bad++; console.error(String(e && e.message)); continue; }
     const storeBuilt = { ...storeRaw, extras: inputs.extras };
     if (VS_ACTIVE) {
       try {

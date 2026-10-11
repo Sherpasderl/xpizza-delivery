@@ -196,10 +196,17 @@ const allocated = (rid, adds) => alloc(rid, withFresh(rid, SRC[rid], adds)).sour
   const notDrawn = allocated(rid, [{ ref: T1, name: 'Drawn Probe' }]);
   throwsCode(() => A.compareToActive({ draftBuilt: build(rid, notDrawn), activeBuilt: build(rid, SRC[rid]), draftAuthored: authored(notDrawn), renderedCategories: ['individual'] }), 'category_not_renderable', 'ny not in the drawn set');
   throwsCode(() => A.compareToActive({ draftBuilt: build(rid, notDrawn), activeBuilt: build(rid, SRC[rid]), draftAuthored: authored(notDrawn), renderedCategories: [] }), 'category_not_renderable', 'an empty contract → nothing is addable');
-  const ch = allocated(rid, [{ ref: T1, name: 'Choice Probe', extra: { choice: 'Roja' } }]);
-  throwsCode(() => cmp(rid, ch), 'choices_not_supported_yet', 'a choice on a new product');
-  const lm = alloc('la_musa', withFresh('la_musa', SRC.la_musa, [{ ref: T1, name: 'Variant Probe', extra: { variantOf: Object.keys(SRC.la_musa.structure.variant_items)[0] } }])).source;
-  throwsCode(() => cmp('la_musa', lm), 'choices_not_supported_yet', 'variantOf on a new product');
+  // 1D add-product B: ALLOCATION refuses a choice / variantOf on a new row first (authoring off, every brand), naming the tmp ref
+  for (const [r, extra, why] of [[rid, { choice: 'Roja' }, 'a choice on a new product'],
+    ['la_musa', { variantOf: Object.keys(SRC.la_musa.structure.variant_items)[0] }, 'variantOf (an existing launcher) on a new product']]) {
+    assert.throws(() => alloc(r, withFresh(r, SRC[r], [{ ref: T1, name: 'Choice Probe', extra }])),
+      (e) => e instanceof A.AddProductError && e.code === 'choices_not_supported_yet' && e.ref === T1 && e.field === 'choices', why);
+  }
+  // …and the COMPARATOR still refuses one that reached it (planted after a clean allocation), on both brands
+  const ch = allocated(rid, [{ ref: T1, name: 'Choice Probe' }]); ch.items.at(-1).display.choice = 'Roja';
+  throwsCode(() => cmp(rid, ch), 'choices_not_supported_yet', 'a choice on a new product (comparator)');
+  const lm = allocated('la_musa', [{ ref: T1, name: 'Variant Probe' }]); lm.items.at(-1).display.variantOf = Object.keys(SRC.la_musa.structure.variant_items)[0];
+  throwsCode(() => cmp('la_musa', lm), 'choices_not_supported_yet', 'variantOf on a new product (comparator)');
   const st = allocated(rid, [{ ref: T1, name: 'Stamp Probe' }]); st.items.at(-1).display.identity_id = 'x';
   throwsCode(() => cmp(rid, st), 'client_supplied_key', 'a stamp on a new product');
   ok('additions: only to a DRAWN category (contract; empty contract → none); no choices / variantOf (Phase B); no identity stamp');

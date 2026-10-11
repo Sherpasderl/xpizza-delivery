@@ -57,17 +57,6 @@ function buildSourceFromCode(restaurantId) {
   const structure = { schema_version: 1, item_order: items.map((i) => i.key) };
   if (restaurantId === 'la_musa') {
     structure.categories = readLiteral(src, 'CATEGORIES');
-    // The form literal carries a basePrice alongside the variant ids. It is STRIPPED: "desde" is
-    // DERIVED at emission from the variants themselves, and an authored copy is only a second number
-    // that can disagree with them — silently, because nothing about a stale "desde L 307" looks wrong.
-    const authoredVariants = readLiteral(src, 'VARIANT_ITEMS', '{', '}');
-    if (authoredVariants) {
-      structure.variant_items = {};
-      for (const [k, spec] of Object.entries(authoredVariants)) {
-        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars
-        structure.variant_items[k] = rest;
-      }
-    }
   } else {
     // x_pizza has no CATEGORIES literal, so the store is AUTHORED to exactly what the text path
     // derives (first appearance in MENU). From here the portal owns them; at cutover the two agree,
@@ -77,6 +66,21 @@ function buildSourceFromCode(restaurantId) {
     structure.categories = order.map((id) => ({ id }));
     structure.pickup_only_cats = readLiteral(src, 'PICKUP_ONLY_CATS');
     structure.weekend_only_cats = readLiteral(src, 'WEEKEND_ONLY_CATS');
+  }
+  // 1D add-product B (rev 6, UNIFORM): required-choice groups for EVERY brand, outside the brand branches — right after
+  // them, so la_musa's key order (categories → variant_items → …) is exactly today's. Only an UNDECLARED literal means
+  // "no groups" (the key stays absent); a declared one that will not parse still throws. basePrice is STRIPPED:
+  // "desde" is DERIVED at emission, and an authored copy is a second number that can drift from the variants.
+  {
+    let authoredVariants = null;
+    try { authoredVariants = readLiteral(src, 'VARIANT_ITEMS', '{', '}'); } catch (e) { if (!/^form_literal_not_found:/.test(String(e && e.message))) throw e; }
+    if (authoredVariants) {
+      structure.variant_items = {};
+      for (const [k, spec] of Object.entries(authoredVariants)) {
+        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars
+        structure.variant_items[k] = rest;
+      }
+    }
   }
 
   // 2a Task 6 — redemption eligibility becomes catalog data. Derived from the code allowlists through

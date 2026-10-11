@@ -303,6 +303,9 @@ function validateSource(source, rid) {
     tags: { required: false, type: 'string_array', unique: true, sink: 'identifier_list' },
     variantOf: { required: false, type: 'id_ref' },
     choice: { required: false, type: 'string', nonEmpty: true, sink: 'body' },
+    // 1D add-product B (rev 6, §0b.7): the ONE "no extras" representation, stamped on a launcher and every variant.
+    // Absent = today's behaviour; the only authored value is 'none'.
+    extras_policy: { required: false, type: 'string', enum: ['none'] },
   };
   const uiIds = new Map();
   for (const it of source.items) {
@@ -486,6 +489,8 @@ function validateSource(source, rid) {
       const VARIANT_RULES = {
         label: { required: true, type: 'string', nonEmpty: true, sink: 'body' },
         variantIds: { required: true, type: 'array' },
+        // 1D add-product B (§0b.7): an optional authored prompt (the picker derives "Elegí tu {label}" otherwise)
+        prompt: { required: false, type: 'string', nonEmpty: true, sink: 'body' },
       };
       for (const [f, rule] of Object.entries(VARIANT_RULES)) checkField(spec && spec[f], rule, `${rid}/variant ${launcherId}`, f);
 
@@ -522,6 +527,30 @@ function validateSource(source, rid) {
           fail(`${rid} — variant ${v} points at launcher ${String(parent)} but is listed by ${launcherId} (bad parent)`);
         }
       }
+      // ── 1D add-product B (rev 6, UNIFORM): the GROUP rules, identical for every brand and every group (today's Pad
+      //    Thai satisfies each). A group the renderer could not present truthfully is refused here, at SAVE and PUBLISH.
+      const launcher = byUiId.get(String(launcherId));
+      const members = ids.map((v) => byUiId.get(String(v))).filter(Boolean);
+      if (members.length < 2) fail(`${rid} — variant launcher ${launcherId} offers ${members.length} choice(s); a required choice needs at least 2`);
+      const seenChoice = new Set();
+      for (const m of members) {
+        const ch = m.display.choice;
+        if (typeof ch !== 'string' || !ch.trim()) fail(`${rid}/${m.key} — a variant of ${launcherId} carries no choice label`);
+        const folded = ch.trim().toLowerCase();
+        if (seenChoice.has(folded)) fail(`${rid}/${m.key} — the choice "${ch}" appears twice in ${launcherId}`);
+        seenChoice.add(folded);
+        // category inheritance: a variant can never escape its launcher's restrictions (weekend / redemption / exposure)
+        if (m.display.cat !== launcher.display.cat || (m.display.subcat ?? null) !== (launcher.display.subcat ?? null)) {
+          fail(`${rid}/${m.key} — a variant must share its launcher's category/subcategory (${launcher.display.cat}${launcher.display.subcat ? '/' + launcher.display.subcat : ''})`);
+        }
+        // the full pricing / fulfilment name: "{launcher name} - {choice}" (the short choice label is for the picker)
+        if (m.display.name !== `${launcher.display.name} - ${ch}`) {
+          fail(`${rid}/${m.key} — a variant's name must be "${launcher.display.name} - ${ch}" (got ${JSON.stringify(m.display.name)})`);
+        }
+      }
+      // ONE "no extras" decision per group: the launcher and every variant carry the same extras_policy (or none)
+      const pol = (it) => (it.display.extras_policy === undefined ? null : it.display.extras_policy);
+      if (members.some((m) => pol(m) !== pol(launcher))) fail(`${rid} — variant launcher ${launcherId}: extras_policy must be the same on the launcher and every variant`);
     }
     // ...and the other direction, checked UNCONDITIONALLY. This used to sit inside `if (variant_items)`,
     // so deleting the whole map made every variant in the menu orphaned and validated cleanly.

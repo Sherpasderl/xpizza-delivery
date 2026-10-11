@@ -103,7 +103,9 @@ function classifyItems(incoming, activeKeys) {
 // (display-safety checkValue for that field's sink), so a new product's unusable name / description is refused HERE,
 // field-mapped to its row, instead of surfacing as an unattributed invalid_source. Default: no opinion (the
 // validator that runs after allocation still refuses — this only names the field).
-function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null }) {
+// authoring — the ONE platform authoring switch (catalog/platform-groups.js, §0c.7). Off ⇒ a new required-choice group is
+// refused for EVERY brand (choices_not_supported_yet); on ⇒ a group arrives as ONE atomic unit (see allocateGroups).
+function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, registryHasKey, fieldProblem = () => null, authoring = false }) {
   const source = JSON.parse(JSON.stringify(incoming));
   const activeKeys = new Set((activeItems || []).map((it) => it.key));
   const storedByKey = new Map(((stored && stored.items) || []).filter((it) => isObj(it) && typeof it.key === 'string').map((it) => [it.key, it]));
@@ -134,6 +136,8 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     if (!isObj(item.display)) refuse('addition_malformed', 'a new product needs its display fields', { ref: item.ref, field: 'display' });
     if (own(item.display, 'id')) refuse('client_supplied_key', 'a new product must not carry an id — the server allocates it', { ref: item.ref, field: 'id' });
     if (own(item.display, 'identity_id')) refuse('client_supplied_key', 'a new product must not carry an identity stamp', { ref: item.ref, field: 'identity_id' });
+    // 1D add-product B: a group VARIANT's name is DERIVED ("{launcher} - {choice}", allocateGroups); its own checks run there
+    if (isGroupVariant(item)) continue;
     if (typeof item.display.name !== 'string' || !tidyName(item.display.name)) refuse('name_required', 'a new product needs a name', { ref: item.ref, field: 'name' });
     for (const f of ['name', 'desc']) {
       const v = item.display[f];
@@ -155,6 +159,10 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     }
   }
 
+  // 1D add-product B (rev 6): required-choice GROUPS — validated as one unit and their derived fields set, BEFORE allocation
+  // (a variant's key derives from its full name). Refused for every brand while the authoring switch is off.
+  const group = prepareGroups(source, fresh, { authoring, fieldProblem });
+
   // Allocate.
   const numericIds = [];
   for (const it of [...(activeItems || []), ...((stored && stored.items) || []), ...source.items]) {
@@ -168,6 +176,7 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
   // refused save stored nothing). Every refusal from here on names BOTH, so the portal opens the row it actually
   // has, and never an existing product that happens to share the key.
   const at = (key) => { for (const [r, k] of refToKey) if (k === key) return { key, ref: r }; return { key }; };
+  const refToId = new Map();   // 1D add-product B: tmp ref → DISPLAY id (the namespace variantOf / variant_items use)
   for (const { item } of fresh) {
     const name = tidyName(item.display.name);
     let key; let id;
@@ -177,11 +186,14 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
       id = key;
     }
     refToKey.set(item.ref, key);
+    refToId.set(item.ref, id);
     delete item.ref;
     item.key = key;
     item.display = { ...item.display, name, id };
     allocatedNow.push(key);
   }
+  // 1D add-product B (§0b.2): the DISPLAY-id namespace, rewritten atomically and separately from the pricing keys below.
+  if (group.units.length) rewriteGroupRefs(source, refToId);
 
   // item_order: every temporary reference appears exactly once and becomes its key.
   const order = (source.structure && Array.isArray(source.structure.item_order)) ? source.structure.item_order : null;
@@ -206,27 +218,153 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     ...(activeItems || []).filter((it) => !(isObj(self) && it.key === self.key)),
   ];
   const extraNames = (source.extras || []).map((e) => (isObj(e) && isObj(e.display) ? e.display.name : null)).filter((n) => typeof n === 'string');
+  // codex PB-1 r1 P2-4: an OPTION's name is derived from its choice, so a name refusal on it points at the choice input
+  const nameField = (item) => (isGroupVariant(item) ? 'choice' : 'name');
+  /* codex PB-1 r2 (defence in depth): a NEW dish may not take a KEY an existing extra already uses. The identity registry keeps
+     dish and extra namespaces apart, so nothing else refuses it — yet the reward calculator resolves a key DISH-first, so the
+     new dish would silently re-point every reward that names the extra (la_musa: "Rice White" → rice_white = "Arroz Blanco").
+     Additions only; pre-existing overlaps (x_pizza's dish and extra both named "Pepperoni") are untouched. */
+  const extraKeys = new Set((source.extras || []).map((e) => (isObj(e) ? e.key : null)).filter((k) => typeof k === 'string'));
   for (const add of additions) {
     const n = normalizeName(add.display.name);
     for (const o of others(add)) {
       if (isObj(o) && isObj(o.display) && typeof o.display.name === 'string' && normalizeName(o.display.name) === n) {
-        refuse('name_taken', `"${add.display.name}" is already on your menu`, { ...at(add.key), field: 'name' });
+        refuse('name_taken', `"${add.display.name}" is already on your menu`, { ...at(add.key), field: nameField(add) });
       }
-      if (isObj(o) && o.key === add.key) refuse('key_taken', `the identifier for "${add.display.name}" is already used`, { ...at(add.key), field: 'name' });
+      if (isObj(o) && o.key === add.key) refuse('key_taken', `the identifier for "${add.display.name}" is already used`, { ...at(add.key), field: nameField(add) });
       if (isObj(o) && isObj(o.display) && o.display.id !== undefined && String(o.display.id) === String(add.display.id)) {
         refuse('id_taken', `the id ${add.display.id} is already used`, { ...at(add.key), field: 'id' });
       }
     }
-    if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { ...at(add.key), field: 'name' });
+    if (extraNames.some((x) => normalizeName(x) === n)) refuse('name_taken', `"${add.display.name}" is already an option (extra) on your menu`, { ...at(add.key), field: nameField(add) });
+    if (extraKeys.has(add.key)) refuse('key_taken', `the identifier for "${add.display.name}" is already used by an option (extra) on your menu`, { ...at(add.key), field: nameField(add) });
   }
   // A name (key) used before — a registry key row exists — is refused: today it would silently inherit that
   // identity, and the merchant would be publishing a "new" product that carries an old one's history.
+  const addedByKey = new Map(additions.map((a) => [a.key, a]));
   for (const key of allocatedNow) {
-    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: 'name' });
+    if (registryHasKey(key)) refuse('name_previously_used', 'Ese nombre ya existió en tu menú — usá otro nombre.', { ...at(key), field: nameField(addedByKey.get(key)) });
   }
 
   return { source, hwm: keyMode === 'name' ? next : (Number.isInteger(hwm) ? hwm : null), additions: additions.map((a) => ({ key: a.key, name: a.display.name })), allocatedNow,
     refs: Object.fromEntries([...refToKey].map(([r, k]) => [k, r])) };
+}
+
+// ONE derivation of an option's full name — used by prepareGroups (which sets it) and by prospectiveAdditionNames (which the
+// SAVE handler queries the registry with BEFORE allocation), so the two can never disagree.
+const optionName = (launcherName, choice) => `${tidyName(String(launcherName))} - ${tidyName(String(choice))}`;
+
+/* codex PB-1 r1 P2-4 — the names every FRESH addition WILL carry, options included (derived "{launcher} - {choice}" when the
+   request omits them, which the supported shape does). Pure; tolerant of malformed input (allocation refuses it later). */
+function prospectiveAdditionNames(source) {
+  const items = isObj(source) && Array.isArray(source.items) ? source.items : [];
+  const fresh = items.filter((it) => isObj(it) && own(it, 'ref') && isObj(it.display));
+  const byRef = new Map(fresh.map((it) => [it.ref, it]));
+  const out = [];
+  for (const it of fresh) {
+    const d = it.display;
+    if (typeof d.name === 'string' && tidyName(d.name)) { out.push(tidyName(d.name)); continue; }
+    const parent = typeof d.variantOf === 'string' ? byRef.get(d.variantOf) : null;
+    if (parent && isObj(parent.display) && typeof parent.display.name === 'string' && typeof d.choice === 'string' && tidyName(d.choice)) {
+      out.push(optionName(parent.display.name, d.choice));
+    }
+  }
+  return out;
+}
+
+/* ── 1D add-product B (rev 6, UNIFORM) — REQUIRED-CHOICE GROUPS, AS ONE ATOMIC UNIT ─────────────────────────────
+   A new group arrives as a LAUNCHER row and N VARIANT rows, all with tmp refs, and a `variant_items` entry keyed by the
+   launcher's tmp ref listing the variants' tmp refs. The server owns everything derivable: each variant's name
+   ("{launcher name} - {choice}"), its category/subcategory and extras_policy (the launcher's), and the launcher's stored
+   price (min of the choices — legacy, NON-chargeable, §0d.2). A client value that CONTRADICTS a derived one is refused,
+   never overwritten. Choices can never be added to an existing product, and every refusal names the tmp ref the portal
+   holds and the field. Off the authoring switch, any group in an edit is refused for every brand. */
+const isGroupVariant = (item) => isObj(item) && isObj(item.display) && (own(item.display, 'variantOf') || own(item.display, 'choice'));
+
+function prepareGroups(source, fresh, { authoring, fieldProblem }) {
+  const vi = isObj(source.structure) && isObj(source.structure.variant_items) ? source.structure.variant_items : null;
+  const tmpLaunchers = vi ? Object.keys(vi).filter((k) => k.startsWith('tmp:')) : [];
+  const freshVariants = fresh.map(({ item }) => item).filter(isGroupVariant);
+  if (!tmpLaunchers.length && !freshVariants.length) return { units: [] };
+  if (!authoring) {
+    const ref = (freshVariants[0] && freshVariants[0].ref) || tmpLaunchers[0];
+    refuse('choices_not_supported_yet', 'products with a required choice are not available yet', { ref, field: 'choices' });
+  }
+  const byRef = new Map(fresh.map(({ item }) => [item.ref, item]));
+  const claimed = new Map();   // variant ref → launcher ref
+  const units = [];
+  for (const lRef of tmpLaunchers) {
+    const launcher = byRef.get(lRef);
+    const spec = vi[lRef];
+    if (!launcher || isGroupVariant(launcher)) refuse('addition_malformed', `the choice group ${lRef} has no new product to belong to`, { ref: lRef, field: 'choices' });
+    if (!isObj(spec) || !Array.isArray(spec.variantIds)) refuse('addition_malformed', 'a choice group needs its list of options', { ref: lRef, field: 'choices' });
+    const label = typeof spec.label === 'string' ? tidyName(spec.label) : '';
+    if (!label) refuse('label_required', 'a choice group needs a name (e.g. "Salsa")', { ref: lRef, field: 'label' });
+    const lWhy = fieldProblem('label', label);
+    if (lWhy) refuse('text_unsafe', `the group name ${lWhy}`, { ref: lRef, field: 'label' });
+    spec.label = label;
+    if (own(spec, 'prompt')) {
+      const pWhy = typeof spec.prompt === 'string' && spec.prompt.trim() ? fieldProblem('prompt', spec.prompt) : 'must not be blank';
+      if (pWhy) refuse('text_unsafe', `the prompt ${pWhy}`, { ref: lRef, field: 'prompt' });
+    }
+    if (spec.variantIds.length < 2) refuse('choices_too_few', 'a required choice needs at least 2 options', { ref: lRef, field: 'choices' });
+    const lName = tidyName(launcher.display.name);
+    const policy = own(launcher.display, 'extras_policy') ? launcher.display.extras_policy : undefined;
+    if (policy !== undefined && policy !== 'none') refuse('addition_malformed', 'the only "extras" setting a group may carry is "none"', { ref: lRef, field: 'extras_policy' });
+    const seen = new Set();
+    const prices = [];
+    for (const vRef of spec.variantIds) {
+      const v = typeof vRef === 'string' ? byRef.get(vRef) : null;
+      if (!v || !isGroupVariant(v) || String(v.display.variantOf) !== lRef) refuse('addition_malformed', `option ${JSON.stringify(vRef)} is not a new option of this group`, { ref: lRef, field: 'choices' });
+      if (claimed.has(vRef)) refuse('addition_malformed', `option ${vRef} belongs to two groups`, { ref: vRef, field: 'choices' });
+      claimed.set(vRef, lRef);
+      const choice = typeof v.display.choice === 'string' ? tidyName(v.display.choice) : '';
+      if (!choice) refuse('choice_label_required', 'every option needs a name', { ref: vRef, field: 'choice' });
+      const cWhy = fieldProblem('choice', choice);
+      if (cWhy) refuse('text_unsafe', `the option ${cWhy}`, { ref: vRef, field: 'choice' });
+      const folded = normalizeName(choice);
+      if (seen.has(folded)) refuse('choice_duplicate', `"${choice}" appears twice in this group`, { ref: vRef, field: 'choice' });
+      seen.add(folded);
+      const name = optionName(lName, choice);
+      if (own(v.display, 'name') && tidyName(String(v.display.name)) !== name) refuse('addition_malformed', `an option's name is derived ("${name}")`, { ref: vRef, field: 'name' });
+      const nWhy = fieldProblem('name', name);
+      if (nWhy) refuse('text_unsafe', `the option's full name "${name}" ${nWhy}`, { ref: vRef, field: 'choice' });
+      for (const f of ['cat', 'subcat']) {
+        if (own(v.display, f) && v.display[f] !== launcher.display[f]) refuse('addition_malformed', `an option inherits its product's ${f}`, { ref: vRef, field: f });
+      }
+      if (own(v.display, 'extras_policy') && v.display.extras_policy !== policy) refuse('addition_malformed', 'an option inherits its group\'s extras setting', { ref: vRef, field: 'extras_policy' });
+      // the derived fields, set by the server
+      v.display = { ...without(v.display, ['name', 'cat', 'subcat', 'extras_policy']), name, cat: launcher.display.cat,
+        ...(own(launcher.display, 'subcat') ? { subcat: launcher.display.subcat } : {}), ...(policy !== undefined ? { extras_policy: policy } : {}), choice };
+      if (Number.isInteger(v.price) && v.price > 0) prices.push(v.price);
+    }
+    // the launcher's stored price: min of the choices — display / legacy only, never charged (§0d.2)
+    if (prices.length === spec.variantIds.length) { launcher.price = Math.min(...prices); launcher.display = { ...launcher.display, price: launcher.price }; }
+    units.push({ launcher: lRef, variants: spec.variantIds.slice() });
+  }
+  for (const v of freshVariants) {
+    if (claimed.has(v.ref)) continue;
+    const target = v.display.variantOf;
+    // pointing at an EXISTING product: adding a choice to a product that already exists is not an add-only change
+    refuse(typeof target === 'string' && target.startsWith('tmp:') ? 'addition_malformed' : 'choices_not_supported_yet',
+      typeof target === 'string' && target.startsWith('tmp:') ? `option ${v.ref} names a group that is not in this edit` : 'options cannot be added to a product that already exists',
+      { ref: v.ref, field: 'choices' });
+  }
+  return { units };
+}
+
+// tmp refs → DISPLAY ids in variantOf, the variant_items keys and variantIds (key order of the map preserved).
+function rewriteGroupRefs(source, refToId) {
+  const map = (r) => (typeof r === 'string' && refToId.has(r) ? refToId.get(r) : r);
+  for (const it of source.items) {
+    if (isObj(it) && isObj(it.display) && own(it.display, 'variantOf')) it.display = { ...it.display, variantOf: map(it.display.variantOf) };
+  }
+  const vi = source.structure.variant_items;
+  const out = {};
+  for (const [k, spec] of Object.entries(vi)) {
+    out[String(map(k))] = isObj(spec) && Array.isArray(spec.variantIds) ? { ...spec, variantIds: spec.variantIds.map(map) } : spec;
+  }
+  source.structure.variant_items = out;
 }
 
 /* ── THE STRUCTURAL COMPARISON ─────────────────────────────────────────────────────────────────────────────
@@ -246,7 +384,7 @@ const ALWAYS_COMPARED = ['categories', 'variant_items', 'pickup_only_cats', 'wee
 const COMPARED_WHEN_AUTHORED = ['extra_categories', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
 
-function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null }) {
+function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false }) {
   const active = new Map(activeBuilt.items.map((it) => [it.key, it]));
   const draft = new Map(draftBuilt.items.map((it) => [it.key, it]));
   const declared = deletedIds instanceof Set ? deletedIds : new Set(Array.isArray(deletedIds) ? deletedIds : []);
@@ -270,16 +408,31 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
 
   const additions = draftBuilt.items.filter((it) => !active.has(it.key));
   if (additions.length > MAX_ADDITIONS) refuse('too_many_additions', `at most ${MAX_ADDITIONS} new products per publish (this edit has ${additions.length})`);
-  const variantClaims = new Set();
+  // 1D add-product B (rev 6): the variant map. Every ACTIVE entry (e.g. Pad Thai) is frozen; a NEW entry is a whole new
+  // group — its launcher AND every option are additions — and only while the platform authoring switch is on. Choices
+  // can never be added to (or claimed by) an existing product.
   const vmap = isObj(draftBuilt.structure.variant_items) ? draftBuilt.structure.variant_items : {};
+  const amap = isObj(activeBuilt.structure.variant_items) ? activeBuilt.structure.variant_items : {};
+  const additionIds = new Set(additions.map((it) => String(it.display && it.display.id)));
+  const keyOfId = new Map(draftBuilt.items.map((it) => [String(it.display && it.display.id), it.key]));
+  for (const [launcher, spec] of Object.entries(amap)) {
+    if (!sameJson(vmap[launcher], spec)) refuse('structure_changed', `the existing choice group of ${JSON.stringify(keyOfId.get(String(launcher)) || launcher)} cannot change here`, { field: 'variant_items' });
+  }
+  const unitClaims = new Set();   // display ids that belong to a NEW, whole group
   for (const [launcher, spec] of Object.entries(vmap)) {
-    variantClaims.add(String(launcher));
-    for (const v of (isObj(spec) && Array.isArray(spec.variantIds) ? spec.variantIds : [])) variantClaims.add(String(v));
+    if (own(amap, launcher)) continue;
+    const ids = isObj(spec) && Array.isArray(spec.variantIds) ? spec.variantIds.map(String) : [];
+    const lKey = keyOfId.get(String(launcher));
+    if (!authoring) refuse('choices_not_supported_yet', 'products with a required choice are not available yet', { key: lKey || null, field: 'choices' });
+    if (!additionIds.has(String(launcher)) || ids.some((v) => !additionIds.has(v))) {
+      refuse('choices_not_supported_yet', 'options cannot be added to a product that already exists', { key: lKey || null, field: 'choices' });
+    }
+    unitClaims.add(String(launcher)); for (const v of ids) unitClaims.add(v);
   }
   const drawn = new Set(renderedCategories || []);
   for (const it of additions) {
     const d = it.display || {};
-    if (own(d, 'variantOf') || own(d, 'choice') || variantClaims.has(String(d.id)) || variantClaims.has(it.key)) {
+    if ((own(d, 'variantOf') || own(d, 'choice')) && !unitClaims.has(String(d.id))) {
       refuse('choices_not_supported_yet', 'products with a required choice are not available yet', { key: it.key, field: 'choices' });
     }
     if (own(d, 'identity_id')) refuse('client_supplied_key', 'a new product must not carry an identity stamp', { key: it.key, field: 'identity_id' });
@@ -303,7 +456,7 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     refuse('item_order_changed', 'existing products cannot be reordered here; new products go at the end', { field: 'item_order' });
   }
   const authored = draftAuthored instanceof Set ? draftAuthored : new Set(draftAuthored || []);
-  for (const f of [...ALWAYS_COMPARED, ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x))]) {
+  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x))]) {   // variant_items: above
     if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
   }
   return { additions: additions.map((it) => it.key), removals };
@@ -311,14 +464,19 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
 
 // The authored structure fields of a source must be the same set as the stored draft's: dropping one would
 // silently hand it back to code-derived defaults, which the comparison above deliberately does not police.
-function assertSameAuthoredFields(incomingStructure, storedStructure) {
-  const a = Object.keys(incomingStructure || {}).sort();
-  const b = Object.keys(storedStructure || {}).sort();
+// 1D add-product B (§0b.2) — ONE narrow exception: `variant_items` may APPEAR (a first group) or DISAPPEAR (the last
+// unpublished group removed, back to today's ABSENT shape) only while the ACTIVE catalog has no variant map at all — so
+// every entry is an unpublished addition, which compareToActive validates as whole new groups. Any other authored field
+// added or dropped is refused exactly as before.
+function assertSameAuthoredFields(incomingStructure, storedStructure, { activeHasVariantItems = true } = {}) {
+  const exempt = (k) => !activeHasVariantItems && k === 'variant_items';
+  const a = Object.keys(incomingStructure || {}).filter((k) => !exempt(k)).sort();
+  const b = Object.keys(storedStructure || {}).filter((k) => !exempt(k)).sort();
   if (!sameJson(a, b)) refuse('structure_changed', `the menu's structure fields cannot be added or removed here (${a.join(',')} vs ${b.join(',')})`, { field: 'structure' });
 }
 
 module.exports = {
   MAX_ADDITIONS, TMP_RE, AddProductError, normalizeName, tidyName, slugify, sameJson,
-  resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields,
+  resolveKeyMode, classifyItems, allocateAdditions, compareToActive, assertSameAuthoredFields, isGroupVariant, optionName, prospectiveAdditionNames,
   ALWAYS_COMPARED, COMPARED_WHEN_AUTHORED,
 };

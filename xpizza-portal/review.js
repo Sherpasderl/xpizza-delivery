@@ -517,6 +517,19 @@ const PANELS = {
   text_unsafe: { icon: 'warn', title: 'Ese nombre lleva caracteres que no se pueden usar',
     detail: 'El nombre de un producto no puede llevar comillas ni apóstrofos, ni los signos < y >. Cambialo para poder guardarlo.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' } },
+  // 1D add-product B — required-choice groups: every refusal reopens the product at the field the server named
+  label_required: { icon: 'warn', title: 'Falta el nombre de la elección',
+    detail: 'Cada elección necesita un nombre, por ejemplo "Salsa".',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Agregar el nombre' } },
+  choice_label_required: { icon: 'warn', title: 'Falta el nombre de una opción',
+    detail: 'Cada opción de la elección necesita un nombre.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Agregar el nombre' } },
+  choice_duplicate: { icon: 'warn', title: 'Esa opción está repetida',
+    detail: 'Dos opciones de la misma elección tienen el mismo nombre. Cambiale el nombre a una de ellas.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Corregir la opción' } },
+  choices_too_few: { icon: 'warn', title: 'Faltan opciones',
+    detail: 'Una elección necesita al menos 2 opciones para que el cliente pueda elegir.',
+    action: { id: PUBLISH_ACTIONS.FIX, label: 'Agregar opción' } },
   subcat_invalid: { icon: 'warn', title: 'Falta la subsección',
     detail: 'Esa sección se divide en subsecciones. Elegí en cuál va el producto nuevo.',
     action: { id: PUBLISH_ACTIONS.FIX, label: 'Elegir la subsección' } },
@@ -608,6 +621,18 @@ export function outcomeFor(err, op = 'publish') {
     base.title = 'La descripción lleva caracteres que no se pueden usar';
     base.detail = 'La descripción de un producto no puede llevar los signos < y >. Cambiala para poder guardarlo.';
     base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Corregir la descripción' };
+  }
+  // 1D add-product B: an OPTION's name becomes part of the product name ("Producto - Opción"), so it follows the name's
+  // rule (no quotes or apostrophes, no < >); the group name and prompt are plain text (only < > are forbidden).
+  if (code === 'text_unsafe' && base.field === 'choice') {
+    base.title = 'Esa opción lleva caracteres que no se pueden usar';
+    base.detail = 'El nombre de una opción no puede llevar comillas ni apóstrofos, ni los signos < y >. Cambialo para poder guardarlo.';
+    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Corregir la opción' };
+  }
+  if (code === 'text_unsafe' && (base.field === 'label' || base.field === 'prompt')) {
+    base.title = 'El nombre de la elección lleva caracteres que no se pueden usar';
+    base.detail = 'El nombre de una elección no puede llevar los signos < y >. Cambialo para poder guardarlo.';
+    base.action = { id: PUBLISH_ACTIONS.FIX, label: 'Corregir el nombre' };
   }
   // not_owner on a draft that ADDS products is about adding, not the factura
   if (code === 'not_owner' && b && typeof b.detail === 'string' && /add products/.test(b.detail)) {

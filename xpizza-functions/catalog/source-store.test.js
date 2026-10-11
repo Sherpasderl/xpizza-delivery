@@ -913,6 +913,17 @@ const GOOD = () => ({
     ["validateSource :: side === 'deny'", 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ['validateSource :: !extraCatSet.has(v) && !extraKeys.has(v)', 'post-type', 'membership, asked after the value has been typed'],
     ['readSource :: !snap || !snap.exists', 'post-type', 'a negated check over an already-typed value'],
+    // ── 1D add-product B (rev 6, UNIFORM): the group rules, the same for every brand ──
+    ['validateSource :: members.length < 2', 'post-type', 'a count over an already-typed collection (the resolved members of a validated variant list)'],
+    ["validateSource :: typeof ch !== 'string' || !ch.trim()", 'shape', 'this predicate IS the type test for a variant\'s choice label'],
+    ['validateSource :: seenChoice.has(folded)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: m.display.cat !== launcher.display.cat || (m.display.subcat ?? null) !== (launcher.display.subcat ?? null)', 'not-a-presence-test', 'a business comparison: does the variant share its launcher\'s category / subcategory'],
+    ['validateSource :: m.display.subcat', 'not-a-presence-test', 'the ?? operand normalises an absent subcategory to null for the comparison; it decides no requiredness'],
+    ['validateSource :: launcher.display.subcat', 'not-a-presence-test', 'the ?? operand normalises an absent subcategory to null for the comparison; it decides no requiredness'],
+    ['validateSource :: launcher.display.subcat #2', 'not-a-presence-test', 'formats the refusal message only (a "/subcat" suffix); it gates no validation'],
+    ['validateSource :: m.display.name !== `${launcher.display.name} - ${ch}`', 'not-a-presence-test', 'a business comparison: the variant\'s full name is "{launcher name} - {choice}"'],
+    ['validateSource :: it.display.extras_policy === undefined', 'post-type', 'absence normalised to "no policy" for the consistency comparison; the value itself was typed by DISPLAY_RULES'],
+    ['validateSource :: members.some((m) => pol(m) !== pol(launcher))', 'not-a-presence-test', 'a business comparison: one extras_policy across the launcher and every variant'],
   ];
   const RULED = new Map(RULINGS.map(([k, kind, why]) => [k, { kind, why }]));
 
@@ -924,7 +935,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 145, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 155, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -938,7 +949,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 19, 'post-type': 64, shape: 46, 'not-a-presence-test': 16 },
+  assert.deepStrictEqual(counts, { requiredness: 19, 'post-type': 67, shape: 47, 'not-a-presence-test': 22 },   // add-product B: +10 group rules
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

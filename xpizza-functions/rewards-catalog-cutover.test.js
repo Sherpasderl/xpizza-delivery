@@ -237,7 +237,8 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     const IDX = require('fs').readFileSync(require('path').join(__dirname, 'index.js'), 'utf8');
     // 2c inserted the fail-closed guard between the resolver and the core call, widening this window.
     // The property is unchanged: quoteRedemption resolves the guarded tables and passes THOSE along.
-    assert.ok(/const quoteTables = await resolvePricingTables\(restaurantId\)[\s\S]{0,800}?quoteRedemptionCore\(db, \{[^)]*tables: quoteTables/.test(IDX),
+    // 1D add-product B inserted the group check (render capability only) before the core call, widening it again (800 → 1600).
+    assert.ok(/const quoteTables = await resolvePricingTables\(restaurantId\)[\s\S]{0,1600}?quoteRedemptionCore\(db, \{[^)]*tables: quoteTables/.test(IDX),
       'quoteRedemption must resolve the guarded tables and pass them to quoteRedemptionCore');
     ok('quote↔order parity: both quote computeServerTotal calls and the quote seam price from the guarded tables');
   }

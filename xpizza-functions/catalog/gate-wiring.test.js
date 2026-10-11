@@ -67,7 +67,9 @@ const CODE = SRC.split('\n').map((l) => l.replace(/^\s*\/\/.*$/, '')).join('\n')
   // 1D add-product A §0b.1: both sites now resolve ONE intake snapshot (the weekend set + the known-key membership)
   // from the gate reader, per request, and take the weekend set from THAT snapshot. intakeGatesFor's weekend answer is
   // weekendOnlyKeysFor's, path for path (catalog/menu-gates.test.js pins the equivalence).
-  const awaits = [...CODE.matchAll(/const intakeGates = await gateReader\(\)\.intakeGatesFor\(restaurantId\);\n(?:[^\n]*\n){0,12}?\s*const weekendKeys = intakeGates\.weekend;/g)];
+  // 1D add-product B: the group rules read the SAME `intakeGates` between the two lines, so the window widened (12 → 32);
+  // the property is unchanged — one snapshot, resolved per request, the weekend set taken from it.
+  const awaits = [...CODE.matchAll(/const intakeGates = await gateReader\(\)\.intakeGatesFor\(restaurantId\);\n(?:[^\n]*\n){0,32}?\s*const weekendKeys = intakeGates\.weekend;/g)];
   assert.strictEqual(awaits.length, 2, 'both sites must RESOLVE the set from the gate reader, not reuse a stale local');
   assert.strictEqual([...CODE.matchAll(/gateReader\(\)\.weekendOnlyKeysFor\(/g)].length, 0, 'no intake site reads the weekend set separately from the membership');
   ok('both intake sites resolve the catalog set and pass it (neither is left on the static 3-arg form)');

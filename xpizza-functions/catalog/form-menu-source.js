@@ -206,16 +206,6 @@ function buildCatalogV2(restaurantId, opts = {}) {
   };
   if (restaurantId === 'la_musa') {
     structure.categories = fd ? fd.categories : readLiteral(src, 'CATEGORIES');                 // id/name/subcats/layout, in order
-    // launcher → variant ids. The form literal also carries a basePrice; it is STRIPPED here, because
-    // "desde" is derived at emission and an authored copy is only something to drift.
-    const authoredVariants = fd ? fd.variant_items : readLiteral(src, 'VARIANT_ITEMS', '{', '}');
-    if (authoredVariants) {
-      structure.variant_items = {};
-      for (const [k, spec] of Object.entries(authoredVariants)) {
-        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars
-        structure.variant_items[k] = rest;
-      }
-    }
     const hasPhoto = new Set(fd ? (fd.has_photo || []) : readSetLiteral(src, 'HAS_PHOTO'));
     for (const it of items) it.has_photo = hasPhoto.has(it.key);            // per-item; the Set regenerates from these
   } else {
@@ -235,6 +225,24 @@ function buildCatalogV2(restaurantId, opts = {}) {
     }
     structure.pickup_only_cats = fd ? fd.pickup_only_cats : readLiteral(src, 'PICKUP_ONLY_CATS');
     structure.weekend_only_cats = fd ? fd.weekend_only_cats : readLiteral(src, 'WEEKEND_ONLY_CATS');
+  }
+  // ── 1D add-product B (rev 6, UNIFORM): required-choice groups for EVERY brand — outside the brand branches. ──
+  // launcher → variant ids, from the store when it authored them, else the form literal (absent ⇒ no groups, and the
+  // key stays ABSENT — never `{}`). The literal's basePrice is STRIPPED: "desde" is derived at emission and an
+  // authored copy is only something to drift. Placed right after the branches so la_musa's structure key order
+  // (categories → variant_items → badges …) is exactly today's.
+  {
+    // ABSENT vs MALFORMED: only a literal the form does not DECLARE means "no groups" (x_pizza's form has none); a declared
+    // literal that will not parse still throws, exactly as before — a silently-dropped map would vanish every launcher.
+    const declaredLiteral = (name) => { try { return readLiteral(src, name, '{', '}'); } catch (e) { if (/^form_literal_not_found:/.test(String(e && e.message))) return null; throw e; } };
+    const authoredVariants = fd ? fd.variant_items : declaredLiteral('VARIANT_ITEMS');
+    if (authoredVariants) {
+      structure.variant_items = {};
+      for (const [k, spec] of Object.entries(authoredVariants)) {
+        const { basePrice, ...rest } = spec;      // eslint-disable-line no-unused-vars
+        structure.variant_items[k] = rest;
+      }
+    }
   }
   // 2a Task 6 — redemption eligibility. The order forms carry no literal for this (it lives in
   // rewards-redeem-config.js), so BOTH paths derive it from that code authority: the store path so the
@@ -353,8 +361,11 @@ function rebuildFormMenu(restaurantId, items, structure, extras) {
       return rec.display;
     }),
   };
-  if (restaurantId === 'la_musa') {
-    out.categories = structure.categories;
+  // 1D add-product B (rev 6, UNIFORM): categories, then the groups, for EVERY brand — before the brand-specific tail,
+  // so la_musa's body order (categories → variant_items → has_photo) is exactly today's and x_pizza's is unchanged
+  // while it has no groups.
+  out.categories = structure.categories;
+  if (Object.prototype.hasOwnProperty.call(structure, 'variant_items') && structure.variant_items) {
     // THE COMPAT ALIAS. 1A ships before 1B, and the live form reads variant_items[...].basePrice for
     // its "desde" and its per-choice delta maths (la-musa-orders/index.html:1974, 2165, 4136, 4144).
     // Emitting only a new field would render "desde L undefined" and wrong deltas on a form nobody has
@@ -364,12 +375,11 @@ function rebuildFormMenu(restaurantId, items, structure, extras) {
     // Emitted by the SAME resolver the READER uses, so the bundle's variants and the reader's
     // variants cannot say different things about the same version — the parity gate compares two
     // outputs of one function rather than two implementations that happen to agree today.
-    if (Object.prototype.hasOwnProperty.call(structure, 'variant_items') && structure.variant_items) {
-      out.variant_items = resolveVariants(items, structure);
-    }
+    out.variant_items = resolveVariants(items, structure);
+  }
+  if (restaurantId === 'la_musa') {
     out.has_photo = order.filter((k) => byKey.get(k).has_photo).sort();
   } else {
-    out.categories = structure.categories;
     out.pickup_only_cats = structure.pickup_only_cats;
     out.weekend_only_cats = structure.weekend_only_cats;
   }

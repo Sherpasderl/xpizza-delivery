@@ -18,8 +18,9 @@ const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 try {
-  // ── 1. ZERO DIFF on every module c2b imports (the integration base 4e2a710's bytes; source-store.js moved there in add-product A —
-  //    rendererContract only; the one export c2b uses, sourceRefOf, is unchanged — the other nine are identical at 37dcf43 and 4e2a710) ──────────────────────────────────────────────────────
+  // ── 1. ZERO DIFF on every module c2b imports (the integration base ccc4fcf's bytes). Moved since 37dcf43, never by c2b: source-store.js
+  //    (add-product A rendererContract; PB-1 additions only — the one export c2b uses, sourceRefOf, is unchanged) and catalog-publish.js
+  //    (PB-1: one delimited pb1-key-overlap block — a dish↔extra key-overlap refusal; nothing c2b reads). The other eight are identical ──────────────────────────────────────────────────────
   const PINS = {
     'catalog/identity-evidence.js': '8ce3fc7090059e742ddb6dd183c2231d299cb8c279b9142b4501a204c37d9b59',
     'catalog/evidence-encoding.js': '65cd313deaf3b2cbad07f1ad62a6301c1d10d826ecb91fa26d9fc929ebf1ea91',
@@ -27,14 +28,14 @@ try {
     'catalog/identity-record-writer.js': '7b684fd258b277ccfe2dc9c6ea0f5673fc9416c4d1eed9f55c5a3f180baa6cf7',
     'catalog/restaurant-registry.js': '7e4a44cefb510e5224d30cced3312b5d771bc61f46eed5f62b5a555d3f667131',
     'catalog/catalog-firestore.js': '7cefff4a0b1d18bf801b91ab310c59ddcb2ada539d4a5b0fed6c98f029f044c0',
-    'catalog/source-store.js': '48bd5cf46115ca6ec07cdb2650bff07a2efe3bf7e056688ade9b1222ea3187b6',
+    'catalog/source-store.js': '78a2e7a8edf8c5f90b541db53717138c0a4a19015af87f39d5e096b6987a19d8',
     'catalog/identity-registry.js': '20f85f4f407b972996097b7251385fe624372d5bc58da0fd3d2fc8391c8da594',
-    'catalog/catalog-publish.js': '6aa44befd3467cfd3d9e3cb2c543e421edf2beee749973a620eb9f6484ce877f',
+    'catalog/catalog-publish.js': '483446e372001e4955efc128ad0ba1a1f86045b7512710b988245d8857e1be24',
     'catalog/identity-bootstrap.js': 'acc732fe02ed81e8b2131ac936f581f2df96645ca7f98aa94574f3ee25f05e79',
   };
   for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(read(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
   assert.notStrictEqual(sha(`${read('catalog/catalog-verifier.js')} `), PINS['catalog/catalog-verifier.js'], 'sensitivity');
-  ok(`zero diff: the ${Object.keys(PINS).length} existing modules c2b imports (evidence, encoding, verifier, c1 gates, registry, pointer reader, source store, identity registry, publisher, bootstrap) are byte-identical to the integration base 4e2a710`);
+  ok(`zero diff: the ${Object.keys(PINS).length} existing modules c2b imports (evidence, encoding, verifier, c1 gates, registry, pointer reader, source store, identity registry, publisher, bootstrap) are byte-identical to the integration base ccc4fcf`);
 
   // ── 2. read-only on catalog data; the only write is its own RTDB node ──────────────────────────────────────────────
   {

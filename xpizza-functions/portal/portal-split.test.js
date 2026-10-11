@@ -37,6 +37,7 @@ const { unapplyD4c5 } = require('../tools/d4c5-inverse');
 const { unapplyD4c4 } = require('../tools/d4c4-inverse');
 const { unapplyD4c2b } = require('../tools/d4c2b-inverse');
 const { unapplyAddProductFold } = require('../tools/addproduct-inverse');
+const { unapplyAddProductB } = require('../tools/addproduct-b-inverse');   // 1D add-product B: reversed FIRST (it landed on top of A)
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
@@ -59,7 +60,9 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/identity-stampmap.js', 'catalog/identity-verdict.js', 'catalog/identity-writer.js',
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
   'catalog/mirror-rtdb.js',
-  'catalog/owner-index.js', 'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
+  'catalog/owner-index.js',
+  'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
+  'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
   'factura/eligibility.js',                 // usesPlatformFactura (getEditableCatalog's fiscal capability) — pure
   'index.js',                               // the entry: only its early branch runs
@@ -387,9 +390,9 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // D4-c5 P1: the order_exists slice's eight index.js hunks are reversed ON TOP of the fold (tools/d4c5-inverse.js), so this
     // parent pin composes with the later slice and still proves nothing else changed. D4-c4: the order-control slice's
     // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5.
-    // 1D add-product A: its hunks (index.js + the moved blocks) are reversed before that — it landed on top of D4-c4.
-    // D4-c2b: the monitor's ONE delimited, byte-pinned block (tools/d4c2b-inverse.js) is reversed FIRST — it landed on top of add-product A.
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyD4c2b(foldPortalSplit(root)))));
+    // 1D add-product A: its hunks (index.js + the moved blocks) are reversed before that — it landed on top of D4-c4; add-product B's
+    // before A's (it landed on top of A); D4-c2b's ONE delimited, byte-pinned block FIRST (it landed on top of add-product B).
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyD4c2b(foldPortalSplit(root))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
