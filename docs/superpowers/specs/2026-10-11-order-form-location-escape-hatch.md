@@ -1,6 +1,6 @@
 # Order-form location escape hatch (Phase 1) — spec + handback
 
-**Date:** 2026-10-11 · **Surface:** `la-musa-orders/index.html` + `xpizza-orders/index.html` (customer order forms; Netlify git-CD from main). **Base:** `origin/main` @ `59fd064`. **Branch:** `feat/order-form-location-escape-hatch`.
+**Date:** 2026-10-11 · **Surface:** `la-musa-orders/index.html` + `xpizza-orders/index.html` (customer order forms; Netlify git-CD from main). **Base:** REBASED onto `origin/main` @ `ccc4fcf` (was 59fd064; PB-1 Add-Product Phase B landed). **Branch:** `feat/order-form-location-escape-hatch`.
 
 Client-only (two static forms). **No** server / functions / RTDB / money / pricing / factura change. Additive; the GPS-OK happy path is byte-identical to today (the hard owner constraint).
 
@@ -68,6 +68,20 @@ The re-gate confirmed the production form fix is clean (both races closed, no `_
 3. **Resumed search now settled.** After the pick, the resumed request is resolved and the rendered rows asserted (not left pending).
 
 Test now 30/30; all three guards (unconditional-clear, debounce-cancel/suppress, pick-serialize) proven non-vacuous by mutation. No production change, so the forms remain byte-identical to the already-green 0819172.
+
+## REVISE round 4 (REBASE onto real main ccc4fcf — 2 codex P1 found against PB-1; both fixed)
+
+origin/main had moved to `ccc4fcf` (PB-1 Add-Product Phase B server code, dormant). A full review on the REAL main found 2 P1 blockers the earlier isolated gate (off stale 59fd064, stubbed submit) missed. Rebased (package.json test-chain resolved as a union — 265 steps) and fixed both, diff kept tight to the location code:
+
+1. **P1-1 🔴 checkout could submit the fallback coords mid-pick.** `locPickPred` awaits `place.fetchFields` with `__locPicking=true`, but `processPayment` never checked it — a Confirmar tap during the details fetch shipped the pre-pick default 15.5003,-88.025. FIX: `locPickPred` sets `__locPickPromise` (resolved in `finally`, every exit); `processPayment` awaits it at the top of its try so checkout waits for the pin to settle. Null on the GPS-OK path → byte-identical. Confined to the search flow. See memory [[client-interaction-guard-misses-submit-path]].
+2. **P1-2 🔴 telemetry fields fail-closed PB-1's reward fast path.** `catalog/charge-inputs.js` `chargeInputsFingerprint` returns null on ANY unclassified body field; `client_user_agent`/`client_referrer` are unclassified → their presence nulled the fingerprint, disabling reward bound-checkout reuse (and they persist nowhere). FIX: REMOVED both fields from `buildOrder` in both forms; reverted the cart-identity-order golden + the harness referrer param. Telemetry re-scoped as a future slice (persist + classify together). See memories [[order-field-must-be-classified-in-charge-inputs]], [[phase1-telemetry-no-server-sink]].
+
+New tests (both wired into the chain, union-by-count → 265):
+- `charge-inputs-form-bodies.guard.test.mjs` — captures the REAL createOrder/chargeOnlineOrder/quote bodies from both forms and asserts `chargeInputsFingerprint` is non-null; FAILS if any new form field is unclassified (stops a P1-2 repeat). 2/2.
+- `location-pick-submit-sync.test.mjs` — drives the REAL `processPayment` on both forms, cash AND card, with a HELD details promise: asserts nothing is submitted during the pick, then that createOrder/chargeOnlineOrder carry the PICKED lat/lng, not the fallback. 8/8.
+- `order-form-location-escape.test.js` — telemetry assertions removed (now 28). cart-identity-order + form-harness reverted to main (no telemetry).
+
+Observation (NOT this feature; pre-existing, flagged to the advisor): X.Pizza `placePin` has an UNGUARDED `document.getElementById('btnConfirm').disabled=false` and no element with that id exists — it throws (swallowed in the async geolocation callback) on every pin placement. Out of scope here (placePin byte-unchanged); worth a separate fix.
 
 ## Separate (surfaced to owner — NOT in this diff)
 

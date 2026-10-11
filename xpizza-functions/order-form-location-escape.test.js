@@ -1,6 +1,6 @@
 'use strict';
 // Order-form location escape hatch (Phase 1), BOTH forms — Option A (owner ruling 2026-10-11):
-// fail-state address SEARCH (#2) + UA/referrer telemetry (#3). The spec'd inline tap-to-place
+// the fail-state address SEARCH. The spec'd inline tap-to-place
 // listener was DROPPED: the inline #map is pointer-events:none and its wrapper is
 // onclick="openFullscreenMap()", so a `gmap` 'click' never fires — it was inert dead code. The
 // repositioning path stays the EXISTING fullscreen center-pin editor (happy path untouched).
@@ -17,8 +17,9 @@
 //       placePin→confirmed chain is RUN, not asserted structurally;
 //   (d) placePin's body is byte-UNCHANGED vs origin/main (selecting a prediction reuses it — no new
 //       write path);
-//   (e) TELEMETRY (#3) — client_user_agent + client_referrer in the submit object literal;
-//   (f) PARITY — the search machinery (CSS + HTML + JS) is byte-identical across both forms.
+//   (e) PARITY — the search machinery (CSS + HTML + JS) is byte-identical across both forms.
+// (Telemetry fields were REMOVED — codex P1-2: they null PB-1's chargeInputsFingerprint; re-scoped as a
+//  separate future slice that persists + classifies them together. The charge-inputs guard test enforces it.)
 // Run: node order-form-location-escape.test.js
 const assert = require('assert');
 const vm = require('vm');
@@ -181,11 +182,6 @@ function fakePred(main, la, ln) {
     assert.strictEqual(preds.style.display, 'none', `[${brand}] predictions cleared on confirm`);
     ok(`${brand}: #2 confirmed state hides search + shows the green card (full fallback→pick→confirmed chain run)`);
 
-    // (e) telemetry fields in the submit object literal
-    assert.ok(src.includes('client_user_agent: navigator.userAgent') && src.includes('client_referrer: document.referrer'),
-      `[${brand}] submit carries client_user_agent + client_referrer`);
-    ok(`${brand}: #3 telemetry fields present in the submit payload`);
-
     searchHtml[brand] = sliceBlock(src, SEARCH_HTML_START, SEARCH_HTML_END);
     css[brand] = sliceBlock(src, CSS_START, CSS_END);
   }
@@ -199,7 +195,7 @@ function fakePred(main, la, ln) {
   }
   ok('placePin body unchanged vs origin/main in both forms (prediction pick reuses it)');
 
-  // (f) PARITY — the search machinery (JS block, search HTML, CSS block) is byte-identical across both forms.
+  // (e) PARITY — the search machinery (JS block, search HTML, CSS block) is byte-identical across both forms.
   assert.strictEqual(blocks.x_pizza, blocks.la_musa, 'updateLocInfo + escape-hatch JS block byte-identical across both forms');
   assert.strictEqual(searchHtml.x_pizza, searchHtml.la_musa, 'fail-state search-box HTML byte-identical across both forms');
   assert.strictEqual(css.x_pizza, css.la_musa, 'search CSS block byte-identical across both forms');
