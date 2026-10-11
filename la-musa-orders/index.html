@@ -42,6 +42,8 @@
   --gold:     #A8814E;      /* bronze — hoisin-glazed warmth, not amber */
   --gold-lt:  #E8D9C2;
   --gold-dk:  #6E5530;
+  --gold-ring:rgba(168,129,78,.14);  /* additive: location-search focus ring (= --gold @14%) */
+  --pred-hot: #FBF6EE;               /* additive: highlighted first prediction row */
   --red:      #B61218;      /* musa-red, from logo wordmark */
   --green:    #2D5447;      /* jade — Asian-coded success */
   --green-bg: #E6EFE9;
@@ -837,6 +839,24 @@ textarea{resize:none;height:80px;line-height:1.4}
 .loc-card b{color:var(--charcoal);font-weight:700}
 .loc-card.confirmed{border-color:#A8D8BA;background:var(--green-bg)}
 .loc-card.confirmed b{color:var(--green)}
+/* ── Fail-state address search (location escape hatch) ──────────────────────────────────────
+   Rendered ONLY when updateLocInfo(fallback=true) — i.e. when navigator.geolocation failed (common
+   inside in-app webviews). On the GPS-OK happy path #loc-search-wrap stays display:none, so this is
+   byte-identical to today. Our own dropdown (not Google's widget) for brand parity; selecting a
+   prediction reuses placePin(...,false) — the SAME write path as GPS/drag, no new one. */
+.loc-search-wrap{padding:14px 16px 2px}
+.loc-search{display:flex;align-items:center;gap:10px;width:100%;padding:13px 14px;border:1.5px solid var(--border2);border-radius:10px;background:var(--cream)}
+.loc-search:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-ring)}
+.loc-search > svg{flex:none;color:var(--muted)}
+.loc-search input{border:0;background:transparent;outline:none;font-family:var(--sans);font-size:16px;color:var(--charcoal);width:100%}
+.loc-search input::placeholder{color:var(--muted)}
+.loc-preds{margin:6px 16px 0;border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden}
+.loc-pred{display:flex;gap:11px;align-items:flex-start;padding:11px 13px;border-bottom:1px solid var(--border);cursor:pointer}
+.loc-pred:last-child{border-bottom:0}
+.loc-pred.hot{background:var(--pred-hot)}
+.loc-pred > svg{flex:none;margin-top:1px;color:var(--gold)}
+.loc-pred .t{font-size:14px;font-weight:700;color:var(--charcoal);line-height:1.3}
+.loc-pred .s{font-size:12px;color:var(--muted);margin-top:1px}
 .map-btns{padding:0 16px}
 
 /* ── Payment ── */
@@ -1369,6 +1389,15 @@ textarea{resize:none;height:80px;line-height:1.4}
 
 <!-- ── STAGE 2: Location + Payment ── -->
 <div class="stage" id="s2">
+  <!-- Location escape hatch (Phase 1): fail-state address search. display:none on the GPS-OK happy
+       path; revealed only by updateLocInfo(fallback=true). Selecting a prediction reuses placePin(). -->
+  <div class="loc-search-wrap" id="loc-search-wrap" style="display:none">
+    <div class="loc-search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input type="text" id="loc-search-input" autocomplete="off" aria-label="Buscar dirección o referencia" placeholder="Buscá tu dirección o un punto de referencia" oninput="locSearchInput(this.value)"/>
+    </div>
+    <div class="loc-preds" id="loc-preds" style="display:none"></div>
+  </div>
   <div style="position:relative;cursor:pointer" onclick="openFullscreenMap()">
     <div id="map" style="height:220px;pointer-events:none"></div>
     <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
@@ -4048,10 +4077,121 @@ function updateLocInfo(la,ln,fallback){
   const el=document.getElementById('locinfo');
   el.className='loc-card'+(fallback?'':' confirmed');
   el.innerHTML=fallback
-    ?'<b>Ubicación aproximada</b><br/>No pudimos detectar tu GPS. Mové el pin al lugar exacto.'
+    ?'<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Ubicación aproximada</b><br/>No detectamos tu GPS. Buscá arriba, o tocá el mapa para abrir el ajuste.'
     :`<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
+  // Location escape hatch (Phase 1): reveal the address search ONLY in the GPS-fail state; hide (and
+  // clear) it the moment a real point is placed (prediction pick / map tap / drag → fallback=false).
+  // The GPS-OK happy path never enters the fallback branch, so #loc-search-wrap stays display:none.
+  const search=document.getElementById('loc-search-wrap');
+  if(search) search.style.display=fallback?'block':'none';
+  if(!fallback){ const preds=document.getElementById('loc-preds'); if(preds){ preds.style.display='none'; preds.innerHTML=''; } }
+  // A real location is now confirmed (fallback===false) — reached by EVERY valid fix path: a search pick
+  // (placePin→here), a marker DRAG (dragend→here), the FULLSCREEN editor (closeFullscreenMap→here) and a
+  // GPS success. Clear any prior pick-failure refusal so checkout is never forever-refused after a recovery.
+  if(!fallback && typeof __locPickFailed!=='undefined') __locPickFailed=false;
+  // In fail state only, point the existing map hint at the fullscreen editor (tap opens it — no inline
+  // placement). Untouched on the happy path, so the chip stays byte-identical there.
+  if(fallback){ const hint=document.getElementById('map-tap-hint'); if(hint) hint.textContent='Tocá el mapa para ajustarlo'; }
   // Update delivery zone status — fires on every pin position change.
   checkDeliveryRadius(la, ln);
+}
+
+/* ── Location escape hatch (Phase 1): fail-state address search ──────────────────────────────
+   Rendered only in the GPS-fail state (see updateLocInfo). Uses the Places library already loaded
+   for the map; renders OUR OWN dropdown (brand parity, not Google's widget). Selecting a prediction
+   reuses placePin(lat,lng,false) — the SAME write path as GPS/drag, so no new order/write path and
+   the card flips to the green confirmed state + runs checkDeliveryRadius. Fails QUIET: if Places
+   errors or returns nothing, the map tap→fullscreen editor still works. Search is scoped to THIS
+   restaurant's delivery zone (RESTAURANT_LAT/LNG + DELIVERY_RADIUS_KM, padded) so a customer can't
+   pin another city — brand-agnostic, derived from the same constants the zone check uses. */
+let __locSessToken=null, __locSearchTimer=null, __locReqSeq=0, __locPicking=false, __locPickPromise=null, __locPickDone=null, __locPickFailed=false;
+function locHidePreds(){ const p=document.getElementById('loc-preds'); if(p){ p.style.display='none'; p.innerHTML=''; } }
+function locSearchBounds(){
+  const padKm=DELIVERY_RADIUS_KM*1.4;
+  const dLat=padKm/111.32;
+  const dLng=padKm/(111.32*Math.cos(RESTAURANT_LAT*Math.PI/180));
+  return {south:RESTAURANT_LAT-dLat,north:RESTAURANT_LAT+dLat,west:RESTAURANT_LNG-dLng,east:RESTAURANT_LNG+dLng};
+}
+function locSearchInput(v){
+  if(__locPicking) return;              // a selection is resolving — ignore typing so no search runs mid-pick
+  const q=(v||'').trim();
+  clearTimeout(__locSearchTimer);
+  __locReqSeq++;                        // any input change supersedes an in-flight prediction response
+  locHidePreds();                       // and clear the on-screen rows NOW, so a stale result isn't clickable through the next debounce+fetch
+  if(q.length<3){ return; }
+  __locSearchTimer=setTimeout(function(){ locFetchPreds(q); },250);
+}
+async function locFetchPreds(q){
+  const seq=++__locReqSeq;              // this request's generation
+  if(!(window.google&&google.maps&&google.maps.places&&google.maps.places.AutocompleteSuggestion)){ if(seq===__locReqSeq) locHidePreds(); return; }
+  try{
+    if(!__locSessToken) __locSessToken=new google.maps.places.AutocompleteSessionToken();
+    const {suggestions}=await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input:q, language:'es', includedRegionCodes:['hn'],
+      locationRestriction:locSearchBounds(), sessionToken:__locSessToken,
+    });
+    if(seq!==__locReqSeq) return;       // a newer input superseded this response — never let an older/late result repopulate
+    locRenderPreds(suggestions||[]);
+  }catch(e){ if(seq===__locReqSeq) locHidePreds(); }  // on error/unavailable: CLEAR — never leave stale rows visible + selectable
+}
+function locRenderPreds(suggestions){
+  const preds=document.getElementById('loc-preds');
+  if(!preds) return;
+  preds.innerHTML='';
+  const rows=suggestions.filter(function(s){return s.placePrediction;}).slice(0,5);
+  if(!rows.length){ preds.style.display='none'; return; }
+  rows.forEach(function(s,i){
+    const p=s.placePrediction;
+    const main=(p.mainText&&p.mainText.text)||(p.text&&p.text.text)||'';
+    const sec=(p.secondaryText&&p.secondaryText.text)||'';
+    const row=document.createElement('div');
+    row.className='loc-pred'+(i===0?' hot':'');
+    // Trusted static icon markup; prediction TEXT is set via textContent (never innerHTML) so an
+    // attacker-controlled place name can't inject markup.
+    row.innerHTML='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+    const box=document.createElement('div');
+    const t=document.createElement('div'); t.className='t'; t.textContent=main;
+    box.appendChild(t);
+    if(sec){ const sd=document.createElement('div'); sd.className='s'; sd.textContent=sec; box.appendChild(sd); }
+    row.appendChild(box);
+    row.addEventListener('click',function(){ locPickPred(p,main); });
+    preds.appendChild(row);
+  });
+  preds.style.display='';
+}
+async function locPickPred(p,label){
+  if(__locPicking) return;              // serialize: ignore a second pick while a details fetch is in flight
+  __locPicking=true;
+  __locPickFailed=false;                 // fresh attempt — don't carry a prior pick's failure into this one
+  __locPickPromise=new Promise(function(r){ __locPickDone=r; });  // checkout (processPayment) awaits this so a Confirmar tap mid-pick submits the PICKED coords, not the pre-pick fallback
+  clearTimeout(__locSearchTimer);        // cancel any queued debounce so a late fetch can't repopulate during this selection
+  __locReqSeq++;                         // dismiss the dropdown + invalidate any pending prediction response
+  const beforeLat=(typeof lat!=='undefined')?lat:null, beforeLng=(typeof lng!=='undefined')?lng:null;
+  locHidePreds();
+  const input=document.getElementById('loc-search-input');
+  if(input&&label) input.value=label;
+  try{
+    const place=p.toPlace();
+    // BOUND the details fetch: a hung socket (flaky webview — the case this feature targets) must not lock
+    // the selection or checkout forever. Race it against a timeout; a LATE result for a timed-out pick is
+    // discarded here (never wired to placePin), so it can't move the pin or become a later submit's coords.
+    const ms=(typeof window!=='undefined' && window.__LOC_PICK_TIMEOUT_MS) || 8000;
+    let timer; const timeout=new Promise(function(r){ timer=setTimeout(function(){ r('__timeout'); }, ms); });
+    const outcome=await Promise.race([ place.fetchFields({fields:['location']}).then(function(){ return '__ok'; }, function(){ return '__err'; }), timeout ]);
+    clearTimeout(timer);
+    // "still at the pre-pick point": no valid placement (editor / drag / GPS / another pick) happened while
+    // this pick was in flight. A STALE pick's failure must not re-refuse — nor clobber — a point the customer
+    // has since confirmed. (beforeLat/beforeLng = the coords when THIS pick started.)
+    const stillStart=(typeof lat==='undefined') || (lat===beforeLat && lng===beforeLng);
+    const loc=(outcome==='__ok') ? place.location : null;
+    if(outcome!=='__ok' || !loc || typeof loc.lat!=='function'){   // timeout / reject / resolved with NO location → a FAILED pick (never place; don't ship the fallback)
+      if(stillStart) __locPickFailed=true;   // mark failed ONLY if nothing valid was placed meanwhile (else it's already confirmed — don't re-refuse)
+      return;
+    }
+    if(!stillStart) return;   // the customer placed a point meanwhile (editor / drag / GPS) — it's confirmed; a late pick must not clobber it
+    if(typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
+  }catch(e){ if((typeof lat==='undefined') || (lat===beforeLat && lng===beforeLng)) __locPickFailed=true; }
+  finally{ __locSessToken=null; __locPicking=false; if(__locPickDone){ __locPickDone(); __locPickDone=null; } __locPickPromise=null; }  // retire the session token + release the checkout waiter on ANY outcome (fetchFields ends the session, incl. on reject)
 }
 
 /* ── Stage 2 → 3 ── */
@@ -4123,6 +4263,24 @@ async function processPayment(){
   window.__cqRequoted = false;                  // 1C T8: …and exactly ONE silent re-quote+resend on a stale quote
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
   try {
+  // Location escape hatch (Phase 1): if a fail-state address pick is resolving, WAIT (BOUNDED) for it so the
+  // order carries the PICKED coords, not the pre-pick fallback. __locPickPromise is null on the GPS-OK happy
+  // path → no wait, no message (byte-identical). The outer race is pure defense so a never-released waiter
+  // (should not happen — locPickPred bounds + releases in finally) can't lock checkout.
+  if(typeof __locPickPromise!=='undefined' && __locPickPromise){
+    const _capMs=(typeof window!=='undefined' && window.__LOC_PICK_CAP_MS) || 10000;
+    let _capped=false;
+    try { _capped = await Promise.race([ __locPickPromise.then(function(){ return false; }), new Promise(function(r){ setTimeout(function(){ r(true); }, _capMs); }) ]); } catch(_){ _capped=false; }
+    if(_capped && typeof __locPickFailed!=='undefined') __locPickFailed=true;  // outer cap won (waiter never released — should not happen; locPickPred bounds + releases in finally) → FAIL CLOSED
+  }
+  // If that pick hung/errored (or the cap tripped), REFUSE — never silently ship the fallback coords. Do
+  // NOT clear the flag here: a second Confirmar with no correction STAYS refused. It clears only when a real
+  // location is confirmed via updateLocInfo(false) (search pick / marker drag / fullscreen editor / GPS).
+  if(typeof __locPickFailed!=='undefined' && __locPickFailed){
+    const _e3=document.getElementById('err3'); if(_e3){ _e3.style.display='block'; _e3.textContent='No pudimos ubicar esa dirección. Elegila de nuevo o ajustá el mapa.'; }
+    const _sw=document.getElementById('loc-search-wrap'); if(_sw) _sw.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
   // saved (defense-in-depth beyond the hidden-payment UI). Guest / complete-profile / pickup → no-op;
   // fail-open (never blocks a real order on an account-logic error).
