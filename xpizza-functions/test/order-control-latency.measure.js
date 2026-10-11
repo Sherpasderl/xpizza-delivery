@@ -123,7 +123,7 @@ async function child(dir, cs, mode) {
   let seq = 0;
   const body = (oid, method) => ({ restaurant_id: 'x_pizza', order_id: oid, customer_name: 'Lat', customer_phone: `97${String(Date.now() % 1e6).padStart(6, '0')}${seq % 10}`, customer_email: 'l@x.com', items_text: `1x ${it.display.name}`, order_type: 'pickup', payment_method: method, items: [{ name: it.display.name, qty: 1, price: it.price, extras: [] }] });
   const handler = cs === 'createOrder_fresh' ? app.createOrder : app.chargeOnlineOrder;
-  const srv = await new Promise((r) => { const w = express(); w.use(express.json()); w.use(handler); const s = http.createServer(w).listen(0, () => r(s)); });
+  const srv = await new Promise((r) => { const w = express(); w.use(express.json()); w.use(handler); const s = http.createServer(w).listen(0, '127.0.0.1', () => r(s)); });
   const url = `http://127.0.0.1:${srv.address().port}/`;
   const reuseOid = `lat_reuse_${process.pid}`;
   // every request carries its own phone (seq), so the per-phone limit (4 / 10 min) never refuses a sample; the charge

@@ -126,7 +126,7 @@ function post(handler, body) {
     const wrapped = express();
     wrapped.use(express.json());
     wrapped.use(handler);
-    const server = http.createServer(wrapped).listen(0, async () => {
+    const server = http.createServer(wrapped).listen(0, '127.0.0.1', async () => {
       const t0 = Date.now();
       try {
         const { port } = server.address();
