@@ -60,6 +60,7 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // the render-ON companion re-runs the cases with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
+const FILL = RD.makeCacheFill(['x_pizza', 'la_musa']);   // from before the first recorded request: its wall-time budget covers the whole run
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -469,23 +470,13 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   //   • a reward order is written with its charge-input fingerprint (index.js: charge_inputs_fp) → + that one path when
   //     the request wrote the order's binding;
   //   • everything else — every cash case, every card case without a reward — byte-equal to the render-OFF run.
-  // THE CATALOG CACHE REFRESH: the per-instance catalog (pointer + version) is TTL-cached and reloads on its own clock — a
-  // leading block of Firestore reads before the request's first RTDB call, landing in whichever request crosses the TTL
-  // (or the process's first, which loads the whole version and certifies it in its own transaction). Like the floor's
-  // cached read (isCacheRefresh), it is set aside on BOTH sides — only that shape: a LEADING block of get / getAll under
-  // restaurants/<this rid>/meta/active_version or …/versions/<v>/…, and the load's runTransaction. No render-gated call
-  // can hide there: the probe is RTDB, and the charge's render-gated gate read follows a failed preparation.
+  // THE CATALOG CACHE FILL: the per-instance catalog caches (context, gate pointer, verifier) re-read on their own TTLs, in
+  // whichever request crosses one — a leading block (with the cold load's runTransaction) or a gate-pointer re-read later
+  // in the request. Like the floor's cached read (isCacheRefresh), it is set aside on BOTH sides, bounded by wall time:
+  // test/_render-delta.js makeCacheFill (why render adds none of it, and the sensitivity).
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
     const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o)));
-    const inCatalog = (rid) => (p) => p === `restaurants/${rid}/meta/active_version` || p === `restaurants/${rid}/versions/<v>` || p.startsWith(`restaurants/${rid}/versions/<v>/`);
-    const isCatalogRead = (rid) => (o) => o.db === 'fs' && (o.op === 'runTransaction'
-      || ((o.op === 'get' || o.op === 'getAll') && [o.path, ...(o.paths || [])].filter((p) => typeof p === 'string').every(inCatalog(rid))));
-    const withoutCatalogRefresh = (ops, rid, L) => {
-      let i = 0; while (i < ops.length && ops[i].db === 'fs') i += 1;
-      assert.ok(ops.slice(0, i).every(isCatalogRead(rid)), `🔴 ${L}: a leading Firestore block that is not the catalog cache refresh (${JSON.stringify(ops.slice(0, i))})`);
-      return ops.slice(i);
-    };
     const REUSE_REF = 'card REUSE of a live checkout holding a reward (the hold stays)';
     const BOUND = new Set([REUSE_REF, 'RACE with a REUSED reward hold (kept)']);
     const compare = (pass, key, on, c, steady) => {
@@ -493,7 +484,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const off = results[key];
       const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
       assert.ok(off && on, `${L}: ran on both sides`);
-      const offOps = withoutCatalogRefresh(NO(off.ops), rid, `${L} [render-OFF side]`); const onOps = withoutCatalogRefresh(NO(on.ops), rid, L);
+      const offOps = FILL.strip(NO(off.ops), rid, off, `${L} [render-OFF side]`); const onOps = FILL.strip(NO(on.ops), rid, on, L);
       const reward = c.path === 'card' && isRewardCase(c);
       if (steady && BOUND.has(c.name)) {
         const ref = results[`${REUSE_REF} | ${state} | ${rid}`];
@@ -533,6 +524,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       });
     }
     check(() => assert.ok(companion.probed > 0 && companion.bound > 0 && companion.mut === 16, `render-ON companion: premise — the probe, the bound reuse and all 16 mutant cells exercised (${JSON.stringify(companion)})`));
+    check(() => { companion.fill = FILL.assertBounded('render-ON companion'); });
   }
 
   // the scheduled holds (candidate)
@@ -640,7 +632,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   }
   if (!FAILS.length) ok(`${CAPTURE ? 'BASELINE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (${CASES.length} cases + the scheduled sweep × ${Object.keys(STATES).length} switch states × both restaurants)` +
     (CAPTURE ? ' — the switch node is inert at e1aeb3f; every state behaves as today' : ` — ${tally.same} UNCHANGED (status, body, headers, call sequence minus ONLY the control read, changed paths == baseline; the existing-order / :839 answers read NO switch); ${tally.refused} REFUSED with the exact 423 / 503 (+ Retry-After 2), nothing written, reward holds as planned — where the baseline admitted`));
-  if (!CAPTURE && !FAILS.length) ok(`render-ON companion (shipped render: ${RP.SHIPPED}; the baseline cells ran PINNED off): ${companion.on} cases with render ON + ${companion.ont} reward cases issued with render OFF, retried ON — cash and non-reward card byte-equal to the render-OFF run; ${companion.probed} reward card requests = the render-OFF trace + exactly the bound-reuse probe after the customer check (own hold reserved+released on every refused hold-release race, §0b.4); ${companion.bound} live render-ON reward checkouts answered by the bound reuse — the render-OFF reuse's status + body, read-only, the probe then nothing; MUTANT (drift at bound-reuse's classify): all ${companion.mut} refused hold-release races RED`);
+  if (!CAPTURE && !FAILS.length) ok(`render-ON companion (shipped render: ${RP.SHIPPED}; the baseline cells ran PINNED off): ${companion.on} cases with render ON + ${companion.ont} reward cases issued with render OFF, retried ON — cash and non-reward card byte-equal to the render-OFF run; ${companion.probed} reward card requests = the render-OFF trace + exactly the bound-reuse probe after the customer check (own hold reserved+released on every refused hold-release race, §0b.4); ${companion.bound} live render-ON reward checkouts answered by the bound reuse — the render-OFF reuse's status + body, read-only, the probe then nothing; MUTANT (drift at bound-reuse's classify): all ${companion.mut} refused hold-release races RED; catalog cache fill set aside on ${JSON.stringify(companion.fill.seen)} recorded requests (wall-time budget ${companion.fill.budget} per restaurant)`);
   if (!CAPTURE && !FAILS.length) ok('scheduled: PAUSED / UNKNOWN hold with control_held {at, cause} (deduplicated), no materialization; AUTO-RESUME at until with no writer → released, marker cleared; an expired slot → today\'s block; a manual release refused (423 / 503 + Retry-After) changing NOTHING; a stale releasing claim held; a THIRD synthetic restaurant held and released through the same seam');
 
   // ── composition with both brands' real pages ────────────────────────────────────────────────────────────────────

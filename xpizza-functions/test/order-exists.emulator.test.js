@@ -46,6 +46,7 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // render-ON companion below re-runs every case with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
+const FILL = RD.makeCacheFill(['x_pizza', 'la_musa']);   // from before the first recorded request: its wall-time budget covers the whole run
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -371,7 +372,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   // body, changed paths, call sequence — except a card request carrying a reward (its render-OFF trace touches the
   // customer's reward balance), which gains exactly the bound-reuse probe's order read right after the customer check:
   // none of these orders carries a bound charge-input fingerprint, so the probe stops there and the current path runs.
-  let probed = 0;
+  let probed = 0; let fill = null;
   if (!CAPTURE) {
     const carriesReward = (r, rid) => r.ops.some((e) => e.db === 'rtdb' && e.path === `user_rewards/<uid>/${rid}`);
     for (const c of CASES.filter((x) => !x.floor)) {
@@ -383,19 +384,24 @@ async function pageSends(dir, c, firstStatus, firstBody) {
           assert.strictEqual(on.status, off.status, `🔴 ${L}: status (${off.status} → ${on.status})`);
           assert.deepStrictEqual(on.body, off.body, `🔴 ${L}: body`);
           assert.deepStrictEqual(on.changed.map(RD.contentHash), off.changed.map(RD.contentHash), `🔴 ${L}: the changed-path set`);
-          const offOps = RD.normOps(off.ops); const onOps = RD.normOps(on.ops);
+          // per-instance cache refills, in whichever request crosses a TTL — on either side, unrelated to render — are set
+          // aside on both sides: the client floor's read (30 s, as the d4b / quote companions do) and the catalog caches'
+          // fill traffic (test/_render-delta.js makeCacheFill, bounded by wall time)
+          const noFill = (r, side) => FILL.strip(r.ops.filter((e) => !CTL.isFloorRead(e)), rid, r, `${L}${side}`);
+          const offOps = RD.normOps(noFill(off, ' [render-OFF side]')); const onOps = RD.normOps(noFill(on, ''));
           if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
           else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);
         });
       }
     }
     check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
+    check(() => { fill = FILL.assertBounded('render-ON companion'); });
   }
   const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;
   if (!caseFails) ok(`${CAPTURE ? 'BASE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (both restaurants) — ${kinds('refusal')} covered refusals, ${kinds('terminal')} terminal-safe controls, ${kinds('control')} success / read-failure controls` +
     (CAPTURE ? ' — every refusal answers today\'s self-heal literal' : ' — status, ordered RTDB+Firestore call sequence and changed-path set EQUAL the base on every case; only the refusals\' body changed, to EXACTLY {error:"order_exists", reason ∈ enum, detail, order_id}; terminal-safe and controls byte-identical'));
-  if (!caseFails && !CAPTURE) ok(`render-ON companion: ${Object.keys(onResults).length} cases re-run with render ON (setup + request) — status, body and changed paths equal the render-OFF run; the call sequence equal too, except the ${probed} card request(s) carrying a reward: + exactly the bound-reuse probe's order read after the customer check (shipped render: ${RP.SHIPPED}; the base cells ran PINNED off)`);
+  if (!caseFails && !CAPTURE) ok(`render-ON companion: ${Object.keys(onResults).length} cases re-run with render ON (setup + request) — status, body and changed paths equal the render-OFF run; the call sequence equal too, except the ${probed} card request(s) carrying a reward: + exactly the bound-reuse probe's order read after the customer check (shipped render: ${RP.SHIPPED}; the base cells ran PINNED off); client-floor read + catalog cache fill set aside on both sides — fill on ${JSON.stringify(fill && fill.seen)} recorded requests (wall-time budget ${fill && fill.budget} per restaurant)`);
 
   const sends = await Promise.all(pageChecks.map((x) => x.p));
   await wait(1500 + 3000 + 300);   // every retry timer a page could have armed has run out

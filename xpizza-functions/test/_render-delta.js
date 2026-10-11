@@ -47,8 +47,42 @@ function assertShortCircuit(off, on, at, ops, label) {
   assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF prefix + exactly the probe ${JSON.stringify(ops)}, ending there`);
 }
 
+// ── CACHE-FILL traffic, set aside on BOTH sides of a companion pair (not render) ─────────────────────────────────────
+// The per-instance catalog caches (the catalog context, the gate pointer, the verifier: TTLs 45 / 45 / 60 s) re-read
+// restaurants/<rid>/meta/active_version | versions/<v>/… in whichever request crosses their TTL — on either side of a
+// pair; a cold context load adds its runTransaction to the request's LEADING Firestore block. Render adds none of it in
+// createOrder / chargeOnlineOrder: the charge's render-gated gate read (prepFailureRefusal) is served from the snapshot
+// the request already took (redeemEligibleFor), as quoteRedemption shows; the refresh delta itself is proved in the quote
+// suite on a controlled clock. SENSITIVITY: a cache refills at most once per TTL, so the requests carrying fill traffic
+// are bounded by wall time — per restaurant, 3 caches × (⌊elapsed / 30 s⌋ + 1); a read issued on every request exceeds it.
+const { performance } = require('perf_hooks');
+function makeCacheFill(rids) {
+  const t0 = performance.now();
+  const carriers = new Map(rids.map((r) => [r, new Set()]));
+  const fillPath = (rid) => new RegExp(`^restaurants/${rid}/(meta/active_version|versions/[^/]+(/.*)?)$`);
+  const isFillRead = (rid) => { const re = fillPath(rid); return (o) => o.db === 'fs' && (o.op === 'get' || o.op === 'getAll') && (() => {
+    const ps = [o.path, ...(o.paths || [])].filter((x) => typeof x === 'string'); return ps.length > 0 && ps.every((x) => re.test(x)); })(); };
+  // → the trace without its fill traffic; `id` names the recorded request (counted once however often it is compared)
+  function strip(trace, rid, id, label) {
+    const fill = isFillRead(rid);
+    let i = 0; while (i < trace.length && trace[i].db === 'fs') i += 1;
+    const lead = trace.slice(0, i);
+    assert.ok(lead.every((o) => fill(o) || o.op === 'runTransaction'), `🔴 ${label}: a leading Firestore block that is not the catalog cache fill (${JSON.stringify(lead)})`);
+    const rest = trace.slice(i); const kept = rest.filter((o) => !fill(o));
+    if (i > 0 || kept.length !== rest.length) carriers.get(rid).add(id);
+    return kept;
+  }
+  function assertBounded(label) {
+    const budget = 3 * (Math.floor((performance.now() - t0) / 30000) + 1);
+    const seen = Object.fromEntries([...carriers].map(([r, s]) => [r, s.size]));
+    for (const [r, n] of Object.entries(seen)) assert.ok(n <= budget, `🔴 ${label}: ${n} ${r} requests carried catalog fill traffic — more than its caches can refill in this run (${budget}): a per-request read, not a TTL`);
+    return { seen, budget };
+  }
+  return { strip, assertBounded };
+}
+
 // the duplicate-order guard's content key hashes the phone; companion cells use their own phones
 const contentHash = (s) => String(s).replace(/(recent_order_content\/[^/]+\/)[0-9a-f]{32}/g, '$1<content>');
 const normOps = (ops) => ops.map((e) => (typeof e.path === 'string' ? { ...e, path: contentHash(e.path) } : e));
 
-module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, contentHash, normOps };
+module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, makeCacheFill, contentHash, normOps };
