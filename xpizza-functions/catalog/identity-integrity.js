@@ -17,6 +17,7 @@
 const { finalDigestOfVersion, finalTupleBytes, FINAL_FRAME_BYTES, activationDocId, certificationDocId } = require('./identity-evidence');
 const { H } = require('./evidence-encoding');
 const { judgePair } = require('./catalog-verifier');
+const { validIdShape, encodeKey } = require('./identity-registry');   // what Firestore requires of a document id (the registry read)
 
 const KINDS = Object.freeze(['dish', 'extra']);
 const CLASS_OF = Object.freeze({
@@ -82,16 +83,25 @@ function certificationSchema(docId, d) {
 // A finding as the classifier reports it: its CONDITION KEY (what it is about) is stable across runs; the reducer adds identity.
 const finding = (kind, subject, detail = {}) => ({ kind, class: CLASS_OF[kind], cond: H(`${kind}|${subject}`), subject, detail });
 
-/* ── §5 the retained-pair budgets, counted BEFORE the digest buffer is built ─────────────────────────────────────────── */
+/* ── §5 the retained-pair budgets, counted BEFORE the digest buffer is built ───────────────────────────────────────────
+   INCREMENTAL (codex build r1 P1-1): the monitor admits each pair AS ITS PAGE IS REDUCED and stops reading the moment either
+   budget is exceeded — the retained set never grows past the budget, and the result is unavailable{oversized_values}. */
+function createPairBudget() {
+  let raw = 0; let encoded = FINAL_FRAME_BYTES; let n = 0;
+  return {
+    admit(p) {   // → true while both budgets hold (including this pair)
+      raw += Buffer.byteLength(String(p.kind)) + Buffer.byteLength(String(p.key)) + Buffer.byteLength(String(p.id)) + Buffer.byteLength(String(p.docId));
+      encoded += finalTupleBytes({ k: p.kind, c: p.id, n: p.key, o: p.docId }) + (n ? 1 : 0);
+      n += 1;
+      return raw <= PAIR_RAW_BUDGET && encoded <= PAIR_ENCODED_BUDGET;
+    },
+    state: () => ({ raw, encoded, pairs: n }),
+  };
+}
 function pairBudget(pairs) {
-  let raw = 0; let encoded = FINAL_FRAME_BYTES;
-  for (let i = 0; i < pairs.length; i += 1) {
-    const p = pairs[i];
-    raw += Buffer.byteLength(String(p.kind)) + Buffer.byteLength(String(p.key)) + Buffer.byteLength(String(p.id)) + Buffer.byteLength(String(p.docId));
-    encoded += finalTupleBytes({ k: p.kind, c: p.id, n: p.key, o: p.docId }) + (i ? 1 : 0);
-    if (raw > PAIR_RAW_BUDGET || encoded > PAIR_ENCODED_BUDGET) return { ok: false, raw, encoded };
-  }
-  return { ok: true, raw, encoded };
+  const b = createPairBudget();
+  for (const p of pairs) if (!b.admit(p)) return { ok: false, ...b.state() };
+  return { ok: true, ...b.state() };
 }
 // c2a's recomputation over the retained pairs — ONLY through the export (as the version docs it reads would present them)
 const asDoc = (p) => ({ id: p.docId, data: () => ({ key: p.key, display: { identity_id: p.id } }) });
@@ -120,6 +130,9 @@ function classifyActive(obs, boundary) {
     findings.push(finding('active_version_missing', subj, { generation: gen }));
     return { state: 'violation', findings, degradedPairs: [], coverage: true };
   }
+  // §5: the monitor stopped reading when the retained pairs passed the budgets → the binding cannot be judged: unavailable,
+  // NEVER a violation, not coverage (codex build r1 P1-1 — decided while reading, before the registry is read)
+  if (obs.objects.oversized_values) return { state: 'unavailable', reason: 'oversized_values', findings: [], degradedPairs: [], coverage: false };
   // 1. schemas, separately; association to THIS pointer
   let activation = null; let stop = false;
   if (obs.activation) {
@@ -140,7 +153,8 @@ function classifyActive(obs, boundary) {
     certs.push(c.data);
   }
   // 5. registry — independent of the binding judgement (it runs even when the evidence is unusable)
-  const reg = judgeRegistry(obs);
+  // (the monitor judges the registry batch by batch and keeps only the verdicts — obs.registry; a direct caller passes rows)
+  const reg = obs.registry ? registryFindings(gen, obs.registry) : judgeRegistry(obs);
   findings.push(...reg.findings);
   if (stop) return { state: 'violation', findings, degradedPairs: reg.degradedPairs, coverage: true };
   // 2. the EFFECTIVE binding record, selected before any count/digest check
@@ -180,16 +194,30 @@ function coverageOf(objects, finalCount) {
 
 // registry: judgePair per stamped pair; missing_key_row ONLY → degraded for that pair; any other rejection → registry_disagrees
 const pairKey = (p) => H(`${p.kind}|${p.key}|${p.id}`);
-function judgeRegistry(obs) {
-  const findings = []; const degradedPairs = []; const disagree = [];
-  for (const p of obs.objects.pairs) {
-    const r = judgePair(obs.rid, { kind: p.kind, legacyKey: p.key, canonicalId: p.id }, obs.rows || {});
+// which stamped pairs CAN be looked up: a stamp that is not a valid document id ('bad/id', '..', '__x__', > 200 chars), or a legacy
+// key whose encoded key-row id passes Firestore's 1,500-byte document-id limit (a key > 1,125 bytes), is never turned into a
+// registry path (codex build r1 P2-6 — Firestore would reject the read, or address ANOTHER document): no such row can exist
+const MAX_DOC_ID_BYTES = 1500;
+const addressable = (p) => validIdShape(p.id) && typeof p.key === 'string' && p.key.length > 0 && Buffer.byteLength(encodeKey(p.key)) <= MAX_DOC_ID_BYTES;
+// ONE batch of pairs against the rows read for exactly those pairs → verdicts only (the rows are then released by the caller)
+function judgeRegistryChunk(rid, pairs, rows) {
+  const degraded = []; const disagree = []; let invalid = 0;
+  for (const p of pairs) {
+    if (!addressable(p)) { disagree.push(pairKey(p)); invalid += 1; continue; }   // a malformed stamp cannot agree with any registry row
+    const r = judgePair(rid, { kind: p.kind, legacyKey: p.key, canonicalId: p.id }, rows || {});
     if (!r) continue;
-    if (r.reason === 'missing_key_row') degradedPairs.push(pairKey(p));
+    if (r.reason === 'missing_key_row') degraded.push(pairKey(p));
     else disagree.push(pairKey(p));
   }
-  if (disagree.length) findings.push(finding('registry_disagrees', `g${obs.pointer.generation}|${disagree.slice().sort().join(',')}`, { generation: obs.pointer.generation, pairs: disagree.length }));
-  return { findings, degradedPairs: degradedPairs.sort() };
+  return { degraded, disagree, invalid };
+}
+function registryFindings(gen, { degraded, disagree, invalid = 0 }) {
+  const findings = [];
+  if (disagree.length) findings.push(finding('registry_disagrees', `g${gen}|${disagree.slice().sort().join(',')}`, { generation: gen, pairs: disagree.length, ...(invalid ? { invalid_stamps: invalid } : {}) }));
+  return { findings, degradedPairs: degraded.slice().sort() };
+}
+function judgeRegistry(obs) {
+  return registryFindings(obs.pointer.generation, judgeRegistryChunk(obs.rid, obs.objects.pairs, obs.rows || {}));
 }
 
 /* ── §3 CHECK B — one generation of the dense audit ───────────────────────────────────────────────────────────────────
@@ -219,6 +247,7 @@ function classifyRollbackOrigin(g, d, origin) {
 
 module.exports = {
   KINDS, CLASS_OF, MAX_OBJECTS, MAX_CERTIFICATIONS, PAIR_RAW_BUDGET, PAIR_ENCODED_BUDGET,
-  activationSchema, certificationSchema, classifyActive, classifyAuditEntry, classifyRollbackOrigin, coverageOf, judgeRegistry, pairBudget,
+  activationSchema, certificationSchema, classifyActive, classifyAuditEntry, classifyRollbackOrigin, coverageOf, judgeRegistry, judgeRegistryChunk,
+  registryFindings, addressable, pairBudget, createPairBudget,
   recomputeFinal, pairKey, finding,
 };

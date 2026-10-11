@@ -5,7 +5,10 @@
 //
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <notificationChannel name> thresholds
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> plan                      (default; dry run)
-//   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> apply
+//   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> install                  (metrics → policies; the job may be PAUSED)
+//   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> arm                      (AFTER resume: a heartbeat METRIC POINT
+//                                                                                                            ingested after the policy change + the
+//                                                                                                            §6 revision-transition acceptance)
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-integrity         (§6 acceptance 1)
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-absence           (§6 acceptance 2)
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-portal <function> (§6a acceptance)
@@ -84,7 +87,8 @@ async function plan(api, project, channel, thresholds) {
   const [im, ip] = await Promise.all([api.listMetrics(), api.listPolicies()]);
   return { metrics, policies, metricDiff: A.diffMetrics(metrics, im), policyDiff: A.diffPolicies(policies, ip) };
 }
-// ARMING ORDER (§6): metrics → policies; only what differs is written
+// INSTALL (§6 arming order, first half): metrics → policies; only what differs is written. Needs NO heartbeat — the rollout installs
+// and accepts the portal alarms while the scheduler job is still PAUSED (§10; codex build r1 P1-4). Arming is the separate `arm`.
 async function apply(api, p) {
   const done = [];
   for (const d of p.metricDiff) {
@@ -108,7 +112,103 @@ async function realResource(api, project, service, logSuffix) {
   return { resource: e.resource, logName: e.logName };
 }
 
-module.exports = { makeApi, computeThresholds, plan, apply, realResource, JOB };
+/* ── bounded primitives (codex build r1 P1-5): every API call, prompt and wait has a deadline ──────────────────────────── */
+function bounded(p, ms, label) {
+  let t = null;
+  return Promise.race([Promise.resolve(p), new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error(`${label}_timeout`), { timeout: true })), Math.max(0, ms)); })])
+    .finally(() => clearTimeout(t));
+}
+// every method of the API, raced against `ms`
+const boundedApi = (api, ms) => new Proxy(api, { get: (t, k) => (typeof t[k] === 'function' ? (...a) => bounded(t[k](...a), ms, `api_${String(k)}`) : t[k]) });
+// a prompt that gives up at `ms` → null (unanswered), closing it if it can be cancelled; it never blocks a deadline
+const askBounded = (ask, q, ms) => { const p = ask(q); return bounded(p, ms, 'prompt').catch((e) => { if (e && e.timeout) { if (p && typeof p.cancel === 'function') p.cancel(); return null; } throw e; }); };
+
+const HB_POLICY = 'D4-c2b identity integrity: heartbeat absent 45 min';
+const heartbeatSeries = (api, fromMs, toMs) => api.timeSeries(`metric.type="${A.metricType(A.SPEC.integrity.heartbeat_metric)}" AND resource.type="cloud_run_revision"`,
+  A.SPEC.integrity.heartbeat_policy.aggregations[0], fromMs, toMs);
+const positivePointAfter = (series, tMs) => series.some((x) => (x.points || []).some((pt) => Number((pt.value && pt.value.int64Value) || 0) > 0
+  && Date.parse((pt.interval && pt.interval.endTime) || 0) >= tMs));
+
+/* ARM (§6, after the job is RESUMED; codex build r1 P1-4): (1) the job is ENABLED; (2) a heartbeat METRIC POINT — not merely a raw log
+   entry — was ingested AFTER the absence policy's last change; (3) the REVISION TRANSITION acceptance: the owner redeploys the
+   unchanged function, a heartbeat arrives from the NEW revision, and the service-level series shows no 45-min gap (no absence
+   incident), which the owner confirms. Every wait and prompt is bounded. */
+async function arm({ api, region, project, now = Date.now, sleep, ask, log = console.log, waitMs = 30 * MIN, pollMs = MIN, transitionMs = 90 * MIN, askMs = 15 * MIN }) {
+  const job = await api.getJob(region);
+  if (job.state !== 'ENABLED') throw new Error(`the job is ${job.state} — resume it first (arming verifies a LIVE heartbeat)`);
+  const pol = (await api.listPolicies()).find((x) => x.displayName === HB_POLICY);
+  if (!pol) throw new Error('the heartbeat absence policy is not installed — run install first');
+  const tPolicy = Date.parse((pol.mutationRecord && pol.mutationRecord.mutateTime) || (pol.creationRecord && pol.creationRecord.mutateTime) || 0);
+  if (!(tPolicy > 0)) throw new Error('cannot read the heartbeat policy\'s last change time');
+  const until = now() + waitMs;
+  for (;;) {
+    if (positivePointAfter(await heartbeatSeries(api, tPolicy, now()), tPolicy)) break;
+    if (now() >= until) throw new Error(`no heartbeat METRIC POINT ingested after the policy change (${new Date(tPolicy).toISOString()}) within ${Math.round(waitMs / MIN)} min — NOT armed`);
+    await sleep(Math.min(pollMs, Math.max(0, until - now())));
+  }
+  log(`  ✓ armed: a heartbeat metric point was ingested after the policy change at ${new Date(tPolicy).toISOString()}`);
+  // the revision transition (§6 acceptance): redeploy the UNCHANGED function → a heartbeat from the new revision, no absence incident
+  const [last] = await api.listEntries(A.heartbeatFilter(), { pageSize: 1, maxPages: 1 });
+  if (!last) throw new Error('no heartbeat log entry to take the current revision from');
+  const rev0 = last.resource.labels.revision_name; const t0 = now();
+  log(`  current revision ${rev0}. NOW redeploy the UNCHANGED function:\n    firebase deploy --only functions:verifyIdentityIntegrity --project ${project}`);
+  const tEnd = t0 + transitionMs; let seen = null;
+  while (!seen) {
+    const [e] = await api.listEntries(`${A.heartbeatFilter()} AND resource.labels.revision_name!="${rev0}" AND timestamp>="${new Date(t0).toISOString()}"`, { pageSize: 1, maxPages: 1 });
+    if (e) seen = e; else { if (now() >= tEnd) throw new Error(`no heartbeat from a new revision within ${Math.round(transitionMs / MIN)} min`); await sleep(Math.min(pollMs, Math.max(0, tEnd - now()))); }
+  }
+  log(`  ✓ heartbeat from the new revision ${seen.resource.labels.revision_name} at ${seen.timestamp}`);
+  // the service-level series across the transition: never a 45-min gap between positive points
+  const pts = (await heartbeatSeries(api, t0 - 45 * MIN, now())).flatMap((x) => (x.points || []).filter((pt) => Number((pt.value && pt.value.int64Value) || 0) > 0)
+    .map((pt) => Date.parse(pt.interval.endTime))).sort((a, b) => a - b);
+  for (let i = 1; i < pts.length; i += 1) if (pts[i] - pts[i - 1] >= 45 * MIN) throw new Error('the service-level heartbeat series has a ≥ 45-min gap across the revision transition');
+  const answer = await askBounded(ask, '  Did an ABSENCE incident email arrive during the redeploy? (expected NO)', askMs);
+  if (answer === null) throw new Error('the owner did not confirm (no answer) — revision-transition acceptance NOT passed');
+  if (answer) throw new Error('an absence incident opened on a revision transition');
+  log('  ✓ revision-transition acceptance PASSED (no absence incident; series continuous across revisions)');
+  return { armedAfter: tPolicy, revisions: [rev0, seen.resource.labels.revision_name] };
+}
+
+/* §6 acceptance (2) ABSENCE (codex build r1 P1-5): pause → drain the in-flight invocation → REFRESH the last ingested heartbeat →
+   wait for the absence email until an INDEPENDENT deadline (each prompt bounded by what is left) → ALWAYS resume (finally; bounded,
+   retried) and VERIFY the job is ENABLED. A thrown error after the pause still resumes. */
+async function acceptAbsence({ api, region, now = Date.now, sleep, ask, log = console.log, drainMs = 6 * MIN, totalMs = 80 * MIN, passMs = 70 * MIN, askMs = 5 * MIN, resumeTries = 3 }) {
+  const [first] = await api.listEntries(A.heartbeatFilter(), { pageSize: 1, maxPages: 1 });
+  if (!first) throw new Error('no heartbeat ingested yet');
+  log(`  last ingested heartbeat (before the pause): ${first.timestamp}`);
+  log(`  MANUAL RESUME if this tool dies: gcloud scheduler jobs resume firebase-schedule-verifyIdentityIntegrity-${region} --location ${region}`);
+  let ok = false; let failure = null; let paused = false;
+  try {
+    await api.pauseJob(region); paused = true;
+    log('  job paused; draining any in-flight invocation…');
+    await sleep(drainMs);
+    // the in-flight run may have emitted one more heartbeat: the absence clock starts at the LAST ingested one
+    const [last] = await api.listEntries(A.heartbeatFilter(), { pageSize: 1, maxPages: 1 });
+    const t0 = Date.parse((last || first).timestamp);
+    log(`  last ingested heartbeat (after draining): ${(last || first).timestamp}`);
+    const deadline = t0 + totalMs;
+    while (now() < deadline) {
+      const a = await askBounded(ask, `  (${Math.round((now() - t0) / MIN)} min since the last heartbeat) Has the ABSENCE email arrived?`, Math.min(askMs, Math.max(1, deadline - now())));
+      if (a === true) { ok = now() - t0 <= passMs; break; }
+      if (now() < deadline && a === false) await sleep(Math.min(askMs, Math.max(0, deadline - now())));
+    }
+  } catch (e) { failure = e; } finally {
+    if (paused) {
+      let state = null;
+      for (let i = 0; i < resumeTries && state !== 'ENABLED'; i += 1) {
+        try { await api.resumeJob(region); state = (await api.getJob(region)).state; } catch (e) { log(`  resume attempt ${i + 1} failed: ${e && e.message}`); }
+      }
+      log(`  job resumed: state ${state}`);
+      if (state !== 'ENABLED') failure = failure || new Error('the job is NOT enabled — resume it with the command above');
+    }
+  }
+  if (failure) throw failure;
+  if (!ok) throw new Error('no absence email within 45 + 25 min of the last ingested heartbeat');
+  log('  ✓ acceptance (2) PASSED');
+  return { ok };
+}
+
+module.exports = { makeApi, computeThresholds, plan, apply, install: apply, arm, acceptAbsence, bounded, boundedApi, askBounded, realResource, JOB, HB_POLICY };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);
@@ -120,8 +220,9 @@ if (require.main === module) {
   const mode = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && ['--project', '--channel'].includes(argv[i - 1])))[0] || 'plan';
   const { GoogleAuth } = require('google-auth-library');
   const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
-  const api = makeApi(PROJECT_ID, { token: async () => { const t = await (await auth.getClient()).getAccessToken(); return t.token || t; } });
-  const ask = (q) => new Promise((res) => { const rl = readline.createInterface({ input: process.stdin, output: process.stdout }); rl.question(`${q} [y/N] `, (a) => { rl.close(); res(/^y/i.test(a)); }); });
+  const api = boundedApi(makeApi(PROJECT_ID, { token: async () => { const t = await (await auth.getClient()).getAccessToken(); return t.token || t; } }), 2 * MIN);   // every API call bounded
+  // a prompt that can be CANCELLED (askBounded closes it at its deadline, so an unanswered prompt never holds the process)
+  const ask = (q) => { let rl; const p = new Promise((res) => { rl = readline.createInterface({ input: process.stdin, output: process.stdout }); rl.question(`${q} [y/N] `, (a) => { rl.close(); res(/^y/i.test(a)); }); }); p.cancel = () => { try { rl.close(); } catch (_) {} }; return p; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const region = A.SPEC.region;
   (async () => {
@@ -133,19 +234,13 @@ if (require.main === module) {
     for (const d of p.metricDiff) console.log(`  metric ${d.action.padEnd(9)} ${d.name}`);
     for (const d of p.policyDiff) console.log(`  policy ${d.action.padEnd(9)} ${d.displayName}`);
     if (mode === 'plan') { console.log('(dry run — run `apply` to write)'); process.exit(0); }
-    if (mode === 'apply') {
+    if (mode === 'install' || mode === 'apply') {
       const done = await apply(api, p);
       console.log(done.length ? done.map((x) => `  ✓ ${x}`).join('\n') : '  nothing to change (idempotent)');
-      // arming check (§6): a heartbeat point ingested AFTER the policy change
-      const t0 = Date.now(); console.log('  waiting for a heartbeat ingested after the change (≤ 20 min)…');
-      for (;;) {
-        const hb = await api.listEntries(`${A.heartbeatFilter()} AND timestamp>="${new Date(t0).toISOString()}"`, { pageSize: 1, maxPages: 1 });
-        if (hb.length) { console.log(`  ✓ armed: heartbeat at ${hb[0].timestamp}`); break; }
-        if (Date.now() - t0 > 20 * MIN) { console.error('  ✗ no heartbeat within 20 min — NOT armed; check the job'); process.exit(1); }
-        await sleep(60 * 1000);
-      }
+      console.log('  installed — NOT YET ARMED. After the job is resumed (§10), run: … arm');
       process.exit(0);
     }
+    if (mode === 'arm') { await arm({ api, region, project: PROJECT_ID, sleep, ask }); process.exit(0); }
     if (mode === 'accept-integrity') {
       // (1) the SAME emitter serialises the line; it must match the INSTALLED filter before anything is written
       const line = S.summaryLine('_acceptance', { coverage: {}, summary: { open_violations: 1, open_gaps: 0, open_degraded: 0 } }, Date.now());
@@ -170,21 +265,7 @@ if (require.main === module) {
       console.log(`  ✓ acceptance (1) PASSED in ${Math.round((Date.now() - start) / MIN)} min`);
       process.exit(0);
     }
-    if (mode === 'accept-absence') {
-      const [last] = await api.listEntries(A.heartbeatFilter(), { pageSize: 1, maxPages: 1 });
-      if (!last) throw new Error('no heartbeat ingested yet');
-      console.log(`  last ingested heartbeat: ${last.timestamp}`);
-      console.log(`  MANUAL RESUME if this tool dies: gcloud scheduler jobs resume firebase-schedule-verifyIdentityIntegrity-${region} --location ${region} --project ${PROJECT_ID}`);
-      await api.pauseJob(region); console.log('  job paused; waiting for any in-flight run to finish (identity_integrity_run in logs)…');
-      await sleep(6 * MIN);
-      const t0 = Date.parse(last.timestamp); let ok = false;
-      while (Date.now() - t0 < 80 * MIN) { if (await ask(`  (${Math.round((Date.now() - t0) / MIN)} min since the last heartbeat) Has the ABSENCE email arrived?`)) { ok = Date.now() - t0 <= 70 * MIN; break; } await sleep(5 * MIN); }
-      await api.resumeJob(region); const job = await api.getJob(region);
-      console.log(`  job resumed: state ${job.state}`);
-      if (job.state !== 'ENABLED') throw new Error('the job is NOT enabled — resume it with the command above');
-      if (!ok) throw new Error('no absence email within 45 + 25 min of the last ingested heartbeat');
-      console.log('  ✓ acceptance (2) PASSED'); process.exit(0);
-    }
+    if (mode === 'accept-absence') { await acceptAbsence({ api, region, sleep, ask }); process.exit(0); }
     if (mode === 'accept-portal') {
       const fname = argv[argv.indexOf('accept-portal') + 1];
       const f = A.SPEC.portal.functions.find((x) => x.name === fname);

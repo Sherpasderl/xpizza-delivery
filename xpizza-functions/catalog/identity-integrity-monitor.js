@@ -43,6 +43,7 @@ const LIST_DEADLINE_MS = 10000;
 const QUIET_MS = 10 * 60 * 1000;
 const OBJECT_PAGE = 25;
 const REGISTRY_BATCH = 10;
+const PAIRS_PER_BATCH = Math.floor(REGISTRY_BATCH / 3);   // readSetOf: ≤ 3 paths per pair → ≤ 9 per getAll
 const AUDIT_PAGE = 20;
 const CERT_READ_LIMIT = C.MAX_CERTIFICATIONS + 1;
 const COUNT_LIMIT = C.MAX_OBJECTS + 1;
@@ -133,7 +134,7 @@ async function observeActive(gdb, rid, budget) {
     const recData = rec.exists ? (rec.data() || {}) : null;
     const actData = act.exists ? (act.data() || {}) : null;
     const obs = { rid, obs_t, pointer: { version, generation }, record: { exists: rec.exists, certified: !!recData && recData.identity_certified === true },
-      activation: act.exists ? { id: act.id, data: actData } : null, certifications: [], objects: { count: 0, pairs: [], unstamped: [] }, rows: {} };
+      activation: act.exists ? { id: act.id, data: actData } : null, certifications: [], objects: { count: 0, pairs: [], unstamped: [] } };
     if (!rec.exists) return obs;
     budget.reserve(CERT_READ_LIMIT, 'certifications'); await budget.pace(CERT_READ_LIMIT);
     const pre = `c${G20(generation)}_`;
@@ -146,8 +147,13 @@ async function observeActive(gdb, rid, budget) {
     for (const [kind, sub] of [['dish', 'menu_items'], ['extra', 'extras']]) counts[kind] = (await tx.get(vref.collection(sub).limit(COUNT_LIMIT).count())).data().count;
     obs.objects.count = counts.dish + counts.extra;
     if (obs.objects.count > C.MAX_OBJECTS) throw new OversizedDeferral('oversized');
-    // objects in pages of 25 (mask key + display.identity_id) → pairs; each page released after reduction
+    // objects in pages of 25 (mask key + display.identity_id) → pairs; each page released after reduction. Every pair is admitted
+    // to the §5 budgets AS IT IS RETAINED: the moment either is exceeded, reading stops and the check is unavailable{oversized_values}
+    // (codex build r1 P1-1 — nothing past the budget is ever held, and the registry is not read)
+    const pb = C.createPairBudget();
+    let oversized = false;
     for (const [kind, sub] of [['dish', 'menu_items'], ['extra', 'extras']]) {
+      if (oversized) break;
       let after = null;
       for (;;) {
         budget.reserve(OBJECT_PAGE, 'objects'); await budget.pace(OBJECT_PAGE);
@@ -156,21 +162,34 @@ async function observeActive(gdb, rid, budget) {
         const page = await tx.get(q);
         for (const d of page.docs) {
           const data = d.data() || {}; const id = data.display && data.display.identity_id;
-          if (typeof data.key === 'string' && data.key && typeof id === 'string' && id) obs.objects.pairs.push({ kind, key: data.key, id, docId: d.id });
-          else obs.objects.unstamped.push({ kind, docId: d.id });
+          if (typeof data.key === 'string' && data.key && typeof id === 'string' && id) {
+            const pair = { kind, key: data.key, id, docId: d.id };
+            if (!pb.admit(pair)) { oversized = true; break; }
+            obs.objects.pairs.push(pair);
+          } else obs.objects.unstamped.push({ kind, docId: d.id });
         }
-        if (page.docs.length < OBJECT_PAGE) break;
+        if (oversized || page.docs.length < OBJECT_PAGE) break;
         after = page.docs[page.docs.length - 1].id;
       }
     }
-    // registry rows: readSetOf (3 paths per pair), getAll in batches of 10 with field masks
-    const paths = readSetOf(rid, obs.objects.pairs.map((p) => ({ kind: p.kind, canonicalId: p.id, legacyKey: p.key })));
-    for (let i = 0; i < paths.length; i += REGISTRY_BATCH) {
-      const batch = paths.slice(i, i + REGISTRY_BATCH);
-      budget.reserve(batch.length, 'registry'); await budget.pace(batch.length);
-      const snaps = await tx.getAll(...batch.map((p) => gdb.doc(p)), { fieldMask: [...new Set([...ID_MASK, ...KEY_MASK])] });
-      snaps.forEach((s, j) => { if (s.exists) obs.rows[batch[j]] = s.data(); });
+    if (oversized) { obs.objects = { count: obs.objects.count, oversized_values: true, pairs: [], unstamped: [] }; return obs; }
+    // registry: PAIRS_PER_BATCH pairs at a time → their readSetOf paths (3 per pair, ≤ 10) in ONE masked getAll → judged → the
+    // rows RELEASED; only the verdicts (pair hashes) are kept (codex build r1 P1-1). A pair that cannot be addressed (a stamp that
+    // is not a valid document id, a legacy key too long for a key-row id) never becomes a path (P2-6): judged registry_disagrees.
+    const reg = { degraded: [], disagree: [], invalid: 0 };
+    for (let i = 0; i < obs.objects.pairs.length; i += PAIRS_PER_BATCH) {
+      const chunk = obs.objects.pairs.slice(i, i + PAIRS_PER_BATCH);
+      const paths = readSetOf(rid, chunk.filter(C.addressable).map((p) => ({ kind: p.kind, canonicalId: p.id, legacyKey: p.key })));
+      const rows = {};
+      if (paths.length) {
+        budget.reserve(paths.length, 'registry'); await budget.pace(paths.length);
+        const snaps = await tx.getAll(...paths.map((p) => gdb.doc(p)), { fieldMask: [...new Set([...ID_MASK, ...KEY_MASK])] });
+        snaps.forEach((sn, j) => { if (sn.exists) rows[paths[j]] = sn.data(); });
+      }
+      const v = C.judgeRegistryChunk(rid, chunk, rows);
+      reg.degraded.push(...v.degraded); reg.disagree.push(...v.disagree); reg.invalid += v.invalid;
     }
+    obs.registry = reg;
     // origin: only when no effective binding record exists at this generation (§2.3)
     const vid = H(String(version));
     const validCert = obs.certifications.some((c) => C.certificationSchema(c.id, c.data).ok && c.data.vid === vid && c.data.observed_generation === generation);
@@ -228,9 +247,11 @@ async function evidenceCount(gdb, rid, budget) {
 function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log = (k, d) => { try { console.log(JSON.stringify({ ...d, event: d.event || k })); } catch (_) {} },
   runId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` } = {}) {
   const nodeRef = (h, rid) => h.ref(`${INTEGRITY_PATH}/${rid}`);
-  // the compact children (coverage + summary) — two small gets, each bounded
-  const viewOf = async (rid) => {
-    const get = (k) => race(rtdb.ref(`${INTEGRITY_PATH}/${rid}/${k}`).get(), READ_OP_MS, 'integrity_view');
+  // the compact children (coverage + summary) — two small gets, gated + bounded by the PHASE deadline `dl` (codex build r1 P1-2)
+  const viewOf = async (rid, dl, readOpMs = READ_OP_MS) => {
+    if (dl.stopped()) throw new Error('integrity_view_deadline');
+    const g = gateIo(rtdb, dl, 'integrity_view');
+    const get = (k) => race(g.ref(`${INTEGRITY_PATH}/${rid}/${k}`).get(), Math.min(readOpMs, dl.remaining()), 'integrity_view');
     const [cov, sum] = await Promise.all([get('coverage'), get('summary')]);
     return { rid, coverage: cov.val() || {}, summary: sum.val() || null };
   };
@@ -255,6 +276,8 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     // restaurant's whole remaining work allowance (25 s, §5), never by the single-read limit
     const boundedStage = (thunk, label) => boundedWork(work, thunk, work.remaining(), label);
     const result = { rid };
+    // the ONE commit this check ends with (whichever path) is an RTDB transaction — its read is reserved FIRST (codex build r1 P1-2)
+    try { budget.reserve(1, 'commit'); } catch (e) { return { rid, outcome: 'deferred_budget', reason: e.message }; }
     let pre;
     try { pre = await bounded(() => precheck(gdb, rid, budget, quietMs), 'precheck'); } catch (e) { return fail(rid, stop, e, 'precheck'); }
     if (pre.active) {
@@ -324,41 +347,60 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     return { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason };
   }
 
-  // the run: enumerate → read every node's compact children → oldest-first → per-restaurant checks → summaries + heartbeat
-  async function run({ listIds, runBudgetMs = RUN_BUDGET_MS, restaurantMs = RESTAURANT_ALLOWANCE_MS, readCap = RUN_READ_CAP, perSecond = READS_PER_SECOND, quietMs = QUIET_MS } = {}) {
+  /* the run: enumerate → read every node's compact children → oldest-first → per-restaurant checks → summaries + heartbeat.
+     ONE run deadline (codex build r1 P1-2): every phase is gated + raced against it — restaurant WORK (enumeration, views, the
+     first-enumeration records, the checks) ends at runBudgetMs; the summaries keep summaryReserveMs after it, never less. EVERY
+     read is reserved before it is issued: the enumeration (1 up front, then one per enumerated restaurant), the summaries'
+     2 per restaurant RESERVED UP FRONT (restaurant work can never consume them), the views, the first-enumeration records and
+     each check's commit. A stalled operation is abandoned at its phase deadline (the run moves on; the next run redoes it). */
+  async function run({ listIds, runBudgetMs = RUN_BUDGET_MS, restaurantMs = RESTAURANT_ALLOWANCE_MS, readCap = RUN_READ_CAP, perSecond = READS_PER_SECOND,
+    quietMs = QUIET_MS, summaryReserveMs = SUMMARY_RESERVE_MS, readOpMs = READ_OP_MS } = {}) {
     const id = runId();
     const budget = createReadBudget({ cap: readCap, perSecond, now, sleep });
+    const work = makeDeadline(runBudgetMs, now);
     let ids; let enumeratedOk = true;
     try {
-      ids = sanitize(await boundedWork(makeDeadline(LIST_DEADLINE_MS, now), () => listIds(), LIST_DEADLINE_MS, 'integrity_list')).slice().sort();
-    } catch (e) { log('identity_integrity_run', { ok: false, error: String((e && e.message) || e).slice(0, 160) }); return { ok: false, results: [] }; }
-    const run = makeDeadline(runBudgetMs, now);
+      budget.reserve(1, 'enumerate');
+      ids = sanitize(await boundedWork(work, () => listIds(), Math.min(LIST_DEADLINE_MS, readOpMs), 'integrity_list')).slice().sort();
+    } catch (e) {
+      log('identity_integrity_run', { ok: false, error: String((e && e.message) || e).slice(0, 160), reads: budget.used() });
+      return { ok: false, results: [], reads: budget.used(), pacing: budget.log };
+    }
+    let summaryReserved = true;
+    try { budget.reserve(Math.max(0, ids.length - 1), 'enumerate'); budget.reserve(2 * ids.length, 'summaries'); } catch (_) { summaryReserved = false; enumeratedOk = false; }
     const views = [];
-    for (const rid of ids) {
-      try { budget.reserve(2, 'views'); } catch (_) { enumeratedOk = false; break; }
-      try { views.push(await viewOf(rid)); } catch (_) { views.push({ rid, coverage: {}, summary: null }); }
+    if (summaryReserved) {
+      for (const rid of ids) {
+        if (work.stopped()) { enumeratedOk = false; break; }
+        try { budget.reserve(2, 'views'); } catch (_) { enumeratedOk = false; break; }
+        try { views.push(await viewOf(rid, work, readOpMs)); } catch (_) { views.push({ rid, coverage: {}, summary: null }); }
+      }
     }
     // every enumerated restaurant gets its first_enumerated_at recorded, even one this run never reaches (§6 missing coverage)
     for (const v of views) {
       if (v.coverage && v.coverage.first_enumerated_at) continue;
+      if (work.stopped()) break;
+      try { budget.reserve(1, 'enumerated'); } catch (_) { break; }
       try {
-        const g = makeDeadline(READ_OP_MS, now);
-        await gateIo(rtdb, g, 'integrity_enumerated').ref(`${INTEGRITY_PATH}/${v.rid}`).transaction((cur) => S.withSize(S.enumerated(cur, { obs_t: S.fromMs(now()) })), undefined, false);
+        const record = gateIo(rtdb, work, 'integrity_enumerated').ref(`${INTEGRITY_PATH}/${v.rid}`).transaction((cur) => S.withSize(S.enumerated(cur, { obs_t: S.fromMs(now()) })), undefined, false);
+        await race(record, Math.min(readOpMs, work.remaining()), 'integrity_enumerated');
       } catch (_) { /* recorded next run */ }
     }
     const results = [];
     for (const rid of S.scheduleOrder(views, now())) {
-      if (run.stopped()) { results.push({ rid, outcome: 'not_reached' }); continue; }
-      const ms = Math.min(restaurantMs, run.remaining());
+      if (work.stopped()) { results.push({ rid, outcome: 'not_reached' }); continue; }
+      const ms = Math.min(restaurantMs, work.remaining());
       const stop = makeDeadline(ms, now);
       results.push(await race(checkRestaurant(rid, stop, budget, id, { quietMs }), ms + 1000, 'integrity_restaurant').catch((e) => ({ rid, outcome: 'failed', reason: String((e && e.message) || e).slice(0, 120) })));
     }
-    // summaries for EVERY enumerated restaurant, processed or not (§6) — the compact children only
+    // summaries for EVERY enumerated restaurant, processed or not (§6) — the compact children only, within the summary reserve
+    const sum = makeDeadline(summaryReserveMs, now);
     let anyStale = false;
     const lines = [];
     for (const rid of ids) {
       let view;
-      try { view = await viewOf(rid); } catch (_) { view = { coverage: {}, summary: null, unread: true }; }
+      if (!summaryReserved || sum.stopped()) view = { coverage: {}, summary: null, unread: true };
+      else { try { view = await viewOf(rid, sum, readOpMs); } catch (_) { view = { coverage: {}, summary: null, unread: true }; } }
       const line = S.summaryLine(rid, view, now());
       if (view.unread) { line.stale = 1; line.stale_reasons = ['state_unreadable']; }
       if (line.stale) anyStale = true;
@@ -376,6 +418,6 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
 module.exports = {
   createIdentityIntegrityMonitor, createReadBudget, precheck, observeActive, observeAudit, evidenceCount, originOf, originOfVid,
   INTEGRITY_PATH, INTEGRITY_SCHEDULE, INTEGRITY_TIMEOUT_S, INTEGRITY_MEMORY, RUN_READ_CAP, READS_PER_SECOND, RESTAURANT_ALLOWANCE_MS,
-  SUMMARY_RESERVE_MS, RUN_BUDGET_MS, QUIET_MS, OBJECT_PAGE, REGISTRY_BATCH, AUDIT_PAGE, CERT_READ_LIMIT, COUNT_LIMIT, GROWTH_LIMIT, READ_ONLY,
+  SUMMARY_RESERVE_MS, RUN_BUDGET_MS, QUIET_MS, OBJECT_PAGE, REGISTRY_BATCH, PAIRS_PER_BATCH, AUDIT_PAGE, CERT_READ_LIMIT, COUNT_LIMIT, GROWTH_LIMIT, READ_ONLY,
   BudgetDeferral, OversizedDeferral,
 };

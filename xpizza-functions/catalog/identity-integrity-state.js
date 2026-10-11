@@ -5,8 +5,9 @@
 
    🔴 FINDINGS ARE STICKY UNTIL THE OWNER ACKNOWLEDGES THEM (owner option A). A finding, once recorded, stays `open`; if its
    condition later disappears it records `condition: cleared` + `cleared_obs_t` and STILL counts toward the alert. Only
-   `ack()` (tools/ack-identity-finding.js) closes it. A condition that reappears after acknowledgement opens a NEW finding
-   (its id includes the new first observation). `summary` is recomputed from the open findings in EVERY commit, so a crash
+   `ack()` (tools/ack-identity-finding.js) closes it. An acknowledged EPISODE lasts while its condition stays present: further
+   observations of the same, uninterrupted condition update it and stay acknowledged (codex build r1 P2-7). Only a condition
+   that DISAPPEARS (condition: cleared) and then reappears opens a NEW finding (its id includes the new first observation). `summary` is recomputed from the open findings in EVERY commit, so a crash
    between commit and logging only delays an alert, never loses it.
 
    obs_t: the observation's server time at FULL precision, as a fixed-width string "SSSSSSSSSSSS.NNNNNNNNN" (lexicographic
@@ -48,12 +49,18 @@ function base(node) {
 
 // ── findings ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 const openByCond = (n, cond) => Object.entries(n.findings).find(([, f]) => f.cond === cond && f.status === 'open');
+// the CURRENT episode of a condition: its open finding, else an acknowledged one whose condition never cleared since
+const episodeByCond = (n, cond) => openByCond(n, cond)
+  || Object.entries(n.findings).find(([, f]) => f.cond === cond && f.status === 'acknowledged' && f.condition === 'present');
+// a finding whose condition can still clear (open, or an acknowledged episode still present)
+const clearable = (f) => (f.status === 'open' || f.status === 'acknowledged') && f.condition === 'present';
 // upsert ONE classifier finding observed at obs_t with the given scope
 function observe(n, f, obs_t, scope) {
-  const hit = openByCond(n, f.cond);
+  const hit = episodeByCond(n, f.cond);
   if (hit) {
     const [, rec] = hit;
-    rec.last_obs_t = obs_t; rec.condition = 'present'; delete rec.cleared_obs_t;
+    rec.last_obs_t = obs_t;
+    if (rec.status === 'open') { rec.condition = 'present'; delete rec.cleared_obs_t; }   // an acknowledged episode stays acknowledged
     return hit[0];
   }
   const id = H(`${f.cond}|${obs_t}`);
@@ -84,7 +91,7 @@ function applyActive(node, result, { obs_t, generation }) {
   // findings of THIS observation; every other open ACTIVE-scope finding no longer holds → condition cleared (stays open)
   const seen = new Set(result.findings.map((f) => observe(n, f, obs_t, 'active')));
   for (const [id, f] of Object.entries(n.findings)) {
-    if (f.status === 'open' && f.scope === 'active' && !seen.has(id) && f.condition === 'present') { f.condition = 'cleared'; f.cleared_obs_t = obs_t; }
+    if (clearable(f) && f.scope === 'active' && !seen.has(id)) { f.condition = 'cleared'; f.cleared_obs_t = obs_t; }
   }
   // degraded timers: open on first sight, close when a newer complete observation shows the pair clean or absent
   const now = new Set(result.degradedPairs);
@@ -93,8 +100,8 @@ function applyActive(node, result, { obs_t, generation }) {
     const cond = H(`degraded|${p}|${since}`);
     if (!now.has(p)) {
       delete n.timers[p];
-      const hit = openByCond(n, cond);
-      if (hit && hit[1].condition === 'present') { hit[1].condition = 'cleared'; hit[1].cleared_obs_t = obs_t; }
+      const hit = episodeByCond(n, cond);
+      if (hit && clearable(hit[1])) { hit[1].condition = 'cleared'; hit[1].cleared_obs_t = obs_t; }
       continue;
     }
     if (obsMs(obs_t) - obsMs(since) > DEGRADED_ALERT_MS) {

@@ -5,7 +5,15 @@
 const ST = require('./_latency-stats');
 const BARS = Object.freeze({ relMax: 0.10, absMaxMs: 150, medMaxMs: 5 });
 const r1 = (v) => +v.toFixed(1);
-const childValid = (c, cond, SAMPLES) => c.digest && c.digest.mismatches === 0 && c.digest.start_ok === true && c.errors === 0 && c.ms.length === SAMPLES && (cond === 'on' ? c.monitor.overlapped === SAMPLES && c.monitor.runs > 0 : c.monitor.runs === 0);
+/* a child is VALID only if: its state digests all matched; 0 operation errors; exactly SAMPLES samples; and —
+   ON (codex build r1 P1-3): EVERY sample QUALIFIED (it intersected a monitor CHECK interval — consecutive instrumented monitor reads
+   of one restaurant — on the row's prescribed restaurant set), the monitor COMPLETED checks (checked > 0) and READ (reads > 0), and
+   NO monitor run failed (errors 0) — a child whose monitor did no work, or only overlapped a run's interval, is REJECTED;
+   OFF: the monitor never ran. */
+const childValid = (c, cond, SAMPLES) => !!c.digest && c.digest.mismatches === 0 && c.digest.start_ok === true && c.errors === 0 && Array.isArray(c.ms) && c.ms.length === SAMPLES
+  && (cond === 'on'
+    ? c.monitor.runs > 0 && c.monitor.qualified === SAMPLES && c.monitor.checked > 0 && c.monitor.reads > 0 && c.monitor.errors === 0
+    : c.monitor.runs === 0);
 
 function verdictRow(row, R, SAMPLES) {
   const abBlocks = R.ab.map((b) => ({ x: b.off.ms, y: b.on.ms }));
@@ -19,7 +27,7 @@ function verdictRow(row, R, SAMPLES) {
   return { row: row.key, overlap: row.overlap, off_p95: r1(pooled.x_p95), on_p95: r1(pooled.y_p95), p95_delta_ms: r1(pooled.delta_ms), p95_delta_pct: r1(pooled.delta_rel * 100),
     paired_median_delta_ms: r1(paired), paired_median_ci95: ST.bootstrapCI(abBlocks).map(r1), block_median_deltas: ST.blockMedianDeltas(abBlocks).map(r1),
     aa_noise_p95_pct: r1(noise.noise_p95 * 100), aa_noise_median_ms: r1(noise.noise_med),
-    attempts: att, errors: err, monitor: { runs: sum(R.ab, (b) => b.on.monitor.runs), reads: sum(R.ab, (b) => b.on.monitor.reads), checked: sum(R.ab, (b) => b.on.monitor.checked) },
+    attempts: att, errors: err, monitor: { runs: sum(R.ab, (b) => b.on.monitor.runs), reads: sum(R.ab, (b) => b.on.monitor.reads), checked: sum(R.ab, (b) => b.on.monitor.checked), errors: sum(R.ab, (b) => b.on.monitor.errors || 0), qualified: sum(R.ab, (b) => b.on.monitor.qualified || 0) },
     ab_first: R.ab.map((b) => b.first), aa_first: R.aa.map((b) => b.first), blocks: R.ab.map((b) => b.k), valid, verdict: v.verdict, cost: v.cost, quality: v.quality, values: v.values };
 }
 
