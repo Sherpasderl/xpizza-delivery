@@ -24,7 +24,8 @@ const runCli = (env, tool, ...args) => {
 };
 const cli = (tool, ...args) => runCli(process.env, tool, ...args);
 // the registry (Firestore) UNREACHABLE: a dead emulator port — RTDB stays on the real emulator
-const cliNoRegistry = (tool, ...args) => runCli({ ...process.env, FIRESTORE_EMULATOR_HOST: '127.0.0.1:1' }, tool, ...args);
+// R1: the Firestore ALIAS goes dead with the primary — a disagreeing pair is refused as mixed signals (tools/emu-mixed-guard.js)
+const cliNoRegistry = (tool, ...args) => runCli({ ...process.env, FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', FIREBASE_FIRESTORE_EMULATOR_ADDRESS: '127.0.0.1:1' }, tool, ...args);
 const tree = async () => JSON.stringify((await rtdb.ref().get()).val());
 const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitchen`).get()).val();
 
@@ -133,7 +134,7 @@ const kf = async (rid) => (await rtdb.ref(`restaurants/${rid}/client_floor/kitch
 
   // ── codex CP1 r2 B2: a fractional --hours is refused BEFORE any database access ──
   {
-    const deadDb = { ...process.env, FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1', FIRESTORE_EMULATOR_HOST: '127.0.0.1:1' };
+    const deadDb = { ...process.env, FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1', FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', FIREBASE_FIRESTORE_EMULATOR_ADDRESS: '127.0.0.1:1' };
     before = await tree();
     const t0 = Date.now();
     r = runCli(deadDb, 'client-version-report.js', '--hours', '1.5', '--logs');
