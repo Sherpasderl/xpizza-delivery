@@ -46,7 +46,6 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // render-ON companion below re-runs every case with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
-const CTL = require('./_order-control-trace');
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -298,19 +297,18 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   const results = {};
   const onResults = {};   // the render-ON companion (its own map: the base comparison below sees exactly the base's cases)
   let ci = 0;
-  const runCase = async (c, into = results, on = false) => {
+  const runCase = async (c, into = results) => {
     for (const rid of ['x_pizza', 'la_musa']) {
       ci += 1;
       const oid = `oe_${String(ci).padStart(3, '0')}_${rid}`;
       const ph = phoneFor();
       await c.setup(rid, oid, ph);
-      if (on) await CTL.controlWarm(rtdb, rid);   // the switch cache WARM (not left to its TTL): a refresh is no render delta
       into[`${c.name} | ${rid}`] = await traced({ ...c, oid }, rid, { oid, ph });
     }
   };
   for (const c of CASES.filter((x) => !x.floor)) await runCase(c);
   // RENDER-ON COMPANION: every (non-floor) case again with render ON — setup AND request, the steady state after the flip
-  await RP.withRender(true, async () => { for (const c of CASES.filter((x) => !x.floor)) await runCase(c, onResults, true); });
+  await RP.withRender(true, async () => { for (const c of CASES.filter((x) => !x.floor)) await runCase(c, onResults); });   // traced() warms the switch cache (R1b) for both passes
   // phase 2 — the client floor ON (it stays on; the page compositions below never reach a handler)
   await rtdb.ref('platform_config/client_floor/orders').set(FLOOR);
   await wait(require('../client-floor').FLOOR_TTL_MS + 1500);

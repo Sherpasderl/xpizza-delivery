@@ -291,7 +291,6 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       const GATE_READ = (rid) => [{ db: 'fs', op: 'get', path: `restaurants/${rid}/meta/active_version` },
         { db: 'fs', op: 'getAll', paths: [`restaurants/${rid}/meta/active_version`], raw_order: 'ascending', count: 1 }];
       const noFloor = (t) => t.trace.filter((e) => !isFloorRead(e));
-      const quiet = () => wait(300);   // R1b (fix/trace-quiescence): becomes Q.quiescent() when PB-2 rebases onto it, as the golden block's settle
       const side = async (on, rid, kind, refresh) => {
         if (refresh) CLOCK_OFFSET += 61000;   // past the verifier's 60 s, the context's 45 s, the gate pointer's 45 s, the floor's 30 s
         await rtdb.ref('rate_limits').remove();
@@ -310,7 +309,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
           for (let i = 0; i < 10; i += 1) {
             REC = [];
             await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {});
-            await quiet();
+            await Q.quiescent();   // R1b: as the golden block's settle — this loop counts the recorded Firestore calls
             const fsCalls = REC.filter((e) => e.db === 'fs').length; REC = null;
             if (!fsCalls) break;
             assert.ok(i < 9, `${rid}: the instance never settled (render ON)`);
