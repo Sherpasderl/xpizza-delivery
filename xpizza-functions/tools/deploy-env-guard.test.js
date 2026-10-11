@@ -170,5 +170,37 @@ try {
     }
     ok('no value is printed on ANY exit path (parse error — count + line number only, forbidden key, unresolvable CLI, clean pass), each with a planted secret; an EARLIER non-firebase-tools `firebase` on PATH FAILS CLOSED instead of skipping to the real CLI later on PATH, and so does a first `firebase` whose NEAREST package is not firebase-tools (never an outer one)');
   }
+  // 10. codex r6 — ONE error boundary: an unexpected error prints a FIXED message + the error's code/name only; and an
+  //     EMPTY PATH entry is the cwd (a real candidate)
+  {
+    const SECRET = 'xyzzy-PLANTED-SECRET-r6-41c2';
+    const capture = (opts) => { const o = []; const e = []; const code = G.main({ out: (m) => o.push(m), err: (m) => e.push(m), ...opts }); return { code, text: `${o.join('\n')}\n${e.join('\n')}` }; };
+    // (a) an injected parser throws an Error whose MESSAGE carries the secret
+    const root = tree({ '.env': `A=1\n` });
+    const thrown = capture({ argv: ['node', 'g', '--root', root], env: { GCLOUD_PROJECT: 'proj-x' }, parserName: 'injected', keys: () => { const e = new Error(`boom near ${SECRET}`); e.code = 'EINJECTED'; throw e; } });
+    assert.strictEqual(thrown.code, 1, '🔴 an unexpected parser error did not block the deploy');
+    assert.match(thrown.text, /deploy-env-guard: internal error while checking \.env; deploy BLOCKED \(EINJECTED\)/, 'a FIXED message: the file + the error code only');
+    assert.ok(!thrown.text.includes(SECRET), '🔴 the internal-error path printed the error MESSAGE (it carried the secret)');
+    const noCode = capture({ argv: ['node', 'g', '--root', root], env: { GCLOUD_PROJECT: 'proj-x' }, parserName: 'injected', keys: () => { throw new TypeError(`bad ${SECRET}`); } });
+    assert.ok(noCode.code === 1 && /deploy BLOCKED \(TypeError\)/.test(noCode.text) && !noCode.text.includes(SECRET), '🔴 a code-less error leaked its message or did not block');
+    // (b) a PERMISSION error reading a dotenv file (the real CLI, a real unreadable file)
+    const locked = tree({ '.env': `TOKEN=${SECRET}\n` });
+    fs.chmodSync(path.join(locked, '.env'), 0o000);
+    try {
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', locked], { encoding: 'utf8', env: { ...process.env, GCLOUD_PROJECT: 'proj-x' } });
+      if (process.getuid && process.getuid() !== 0) {
+        assert.strictEqual(r.status, 1, `🔴 an unreadable .env did not block (exit ${r.status})`);
+        assert.match(r.stderr, /internal error while checking \.env; deploy BLOCKED \(EACCES\)/);
+      }
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(SECRET), '🔴 the permission-error path printed a value');
+    } finally { fs.chmodSync(path.join(locked, '.env'), 0o644); }
+    // (c) an EMPTY PATH entry means the cwd: a non-firebase-tools `firebase` THERE decides, though /usr/local/bin has the real one
+    const cwdDir = fs.mkdtempSync(path.join(tmp, 'cwd-'));
+    fs.writeFileSync(path.join(cwdDir, 'firebase'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    const r2 = spawnSync(process.execPath, [path.join(__dirname, 'deploy-env-guard.js'), '--root', root], { cwd: cwdDir, encoding: 'utf8', env: { ...process.env, PATH: `${path.delimiter}/usr/local/bin`, GCLOUD_PROJECT: 'proj-x' } });
+    assert.strictEqual(r2.status, 1, `🔴 an EMPTY PATH entry (the cwd) was dropped — the cwd wrapper did not decide (exit ${r2.status})`);
+    assert.match(r2.stderr, /the FIRST `firebase` on PATH is missing, or is not inside a firebase-tools package/);
+    ok('one error boundary: an injected parser error (message carrying a secret) and a real permission-denied .env each BLOCK with a fixed "internal error while checking <file>; deploy BLOCKED (<code>)" — never the message or stack; an EMPTY PATH entry is the cwd, so a cwd `firebase` wrapper decides (fail closed)');
+  }
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 console.log(`\ndeploy-env-guard: OK (${n})`);

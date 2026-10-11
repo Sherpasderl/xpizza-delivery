@@ -11218,5 +11218,34 @@
       "node",
       "tools/deploy-env-guard.test.js"
     ]
+  },
+  {
+    "id": "r1-35",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    err(`\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\\n`);",
+    "to": "    err(`\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id}) ${e && e.message}\\n`);",
+    "label": "the internal-error boundary prints the error message (dotenv content can leak)",
+    "kills_with": [
+      "printed the error MESSAGE",
+      "leaked its message"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-36",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": ".split(path.delimiter).map((x) => (x === '' ? '.' : x))) {",
+    "to": ".split(path.delimiter).filter(Boolean)) {",
+    "label": "an empty PATH entry (the cwd) is dropped from firebase resolution",
+    "kills_with": "an EMPTY PATH entry (the cwd) was dropped",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
   }
 ]

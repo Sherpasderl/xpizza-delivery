@@ -35,7 +35,8 @@ function resolveFirebaseTools(env = process.env) {
   /* The FIRST executable `firebase` on PATH is the one the deploy runs (codex r5 P2) — never skip past it to a later
      candidate: if its realpath is not inside a firebase-tools package with functions/env.js, FAIL CLOSED (return null). */
   let first = null;
-  for (const d of String(env.PATH || '').split(path.delimiter).filter(Boolean)) {
+  // an EMPTY PATH entry means the CURRENT DIRECTORY (POSIX execvp) — it is a real candidate, never dropped (codex r6 P2)
+  for (const d of String(env.PATH || '').split(path.delimiter).map((x) => (x === '' ? '.' : x))) {
     const bin = path.join(d, 'firebase');
     try { const st = fs.statSync(bin); if (!st.isFile()) continue; fs.accessSync(bin, fs.constants.X_OK); first = bin; break; } catch { /* not here */ }
   }
@@ -104,30 +105,55 @@ function deployEnvFiles(root = ROOT, project = null) {
   return out;
 }
 
-function violations(root = ROOT, project = null) {
+function violations(root = ROOT, project = null, { keys: keysFn = keysOf, onFile = () => {} } = {}) {
   const checked = []; const bad = [];
   for (const f of deployEnvFiles(root, project)) {
     if (!fs.existsSync(f)) continue;
-    checked.push(path.relative(root, f) || path.basename(f));
+    const rel = path.relative(root, f) || path.basename(f);
+    onFile(rel);
+    checked.push(rel);
     let keys;
-    try { keys = keysOf(fs.readFileSync(f, 'utf8')); } catch (e) { if (e.code === 'EUNPARSEABLE') { bad.push(`${path.relative(root, f)}: ${e.message}`); continue; } throw e; }
+    try { keys = keysFn(fs.readFileSync(f, 'utf8')); } catch (e) { if (e.code === 'EUNPARSEABLE') { bad.push(`${rel}: ${e.message}`); continue; } throw e; }
     for (const k of keys) if (FORBIDDEN.has(k)) bad.push(`${path.relative(root, f)}: ${k}`);
   }
   return { checked, bad };
 }
 
-module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations, resolveFirebaseTools, parserName: () => parser().name };
-if (require.main !== module) return;
-let PARSER_NAME;
-try { PARSER_NAME = parser().name; } catch (e) { console.error(`\n🔴 DEPLOY ENV GUARD — ${e.message}\n`); process.exit(1); }
-const ri = process.argv.indexOf('--root');
-const pi = process.argv.indexOf('--project');
-const target = (pi > -1 ? process.argv[pi + 1] : null) || process.env.GCLOUD_PROJECT || null;   // the predeploy hook is given GCLOUD_PROJECT
-const { checked, bad } = violations(ri > -1 ? path.resolve(process.argv[ri + 1]) : ROOT, target);
-const scope = target ? `target project ${target}` : 'NO target project known — checked EVERY project and alias (fail-safe)';
-if (bad.length) {
-  console.error(`\n🔴 DEPLOY ENV GUARD — emulator signal(s) in the functions deploy env (${scope}; parsed with ${PARSER_NAME}):\n   ${bad.join('\n   ')}`);
-  console.error('   lib/admin.js would enter its emulator branch in production. Remove them before deploying.\n');
-  process.exit(1);
+/* main() — the CLI, behind ONE error BOUNDARY (codex r6 P1): any unexpected error (a parser exception, a permission
+   error reading a dotenv file, anything) prints a FIXED message naming the file being checked and the error's code /
+   name ONLY — never its message or stack, which can carry dotenv content — and blocks the deploy (exit 1).
+   Injectable (parser, output) so the boundary is tested in-process. Returns the exit code. */
+function main({ argv = process.argv, env = process.env, keys = null, parserName = null, out = (m) => console.log(m), err = (m) => console.error(m) } = {}) {
+  let current = '(setup)';
+  try {
+    let name = parserName;
+    let keysFn = keys;
+    if (!keysFn) {
+      try { const P = parser(); keysFn = P.keys; name = P.name; } catch (e) {
+        if (e.code === 'ENOPARSER') { err(`\n🔴 DEPLOY ENV GUARD — ${e.message}\n`); return 1; }
+        throw e;
+      }
+    }
+    const ri = argv.indexOf('--root');
+    const pi = argv.indexOf('--project');
+    const target = (pi > -1 ? argv[pi + 1] : null) || env.GCLOUD_PROJECT || null;   // the predeploy hook is given GCLOUD_PROJECT
+    const { checked, bad } = violations(ri > -1 ? path.resolve(argv[ri + 1]) : ROOT, target, { keys: keysFn, onFile: (f) => { current = f; } });
+    current = '(report)';
+    const scope = target ? `target project ${target}` : 'NO target project known — checked EVERY project and alias (fail-safe)';
+    if (bad.length) {
+      err(`\n🔴 DEPLOY ENV GUARD — emulator signal(s) in the functions deploy env (${scope}; parsed with ${name}):\n   ${bad.join('\n   ')}`);
+      err('   lib/admin.js would enter its emulator branch in production. Remove them before deploying.\n');
+      return 1;
+    }
+    out(`deploy-env-guard: OK (${scope}; parsed with ${name}) — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);
+    return 0;
+  } catch (e) {
+    const id = String((e && (e.code || e.name)) || 'unknown').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40) || 'unknown';
+    err(`\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\n`);
+    return 1;
+  }
 }
-console.log(`deploy-env-guard: OK (${scope}; parsed with ${PARSER_NAME}) — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);
+
+module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations, resolveFirebaseTools, main, parserName: () => parser().name };
+if (require.main !== module) return;
+process.exitCode = main();
