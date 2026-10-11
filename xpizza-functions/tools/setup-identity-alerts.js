@@ -10,7 +10,9 @@
 //                                                                                                            ingested after the policy change + the
 //                                                                                                            §6 revision-transition acceptance)
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-integrity         (§6 acceptance 1)
-//   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-absence           (§6 acceptance 2)
+//   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-absence           (§6 acceptance 2 — GUIDED MANUAL:
+//                                                                                                            the OWNER pauses/resumes; the tool only
+//                                                                                                            reads the scheduler state)
 //   node tools/setup-identity-alerts.js --project xpizza-delivery --channel <name> accept-portal <function> (§6a acceptance)
 //
 // The bodies are built ONLY from tools/identity-alerts.json (tools/identity-alerts-core.js); thresholds by the plan's rule over the
@@ -58,8 +60,8 @@ function makeApi(project, { fetchImpl = fetch, token } = {}) {
       'interval.startTime': new Date(startMs).toISOString(), 'interval.endTime': new Date(endMs).toISOString(),
       'aggregation.alignmentPeriod': aggregation.alignmentPeriod, 'aggregation.perSeriesAligner': aggregation.perSeriesAligner,
       'aggregation.crossSeriesReducer': aggregation.crossSeriesReducer, ...(aggregation.groupByFields || []).reduce((o, f, i) => ({ ...o, [`aggregation.groupByFields[${i}]`]: f }), {}) })}`)).timeSeries || [],
-    pauseJob: (region) => call('POST', `${SCHEDULER}/${JOB(project, region)}:pause`, {}),
-    resumeJob: (region) => call('POST', `${SCHEDULER}/${JOB(project, region)}:resume`, {}),
+    // READ-ONLY on the scheduler (advisor ruling, codex build r3 P1-A / P1-3): this tool never pauses or resumes the job — only
+    // the OWNER changes scheduler state, so an incident pause is never overridden and no request of ours can land late
     getJob: (region) => call('GET', `${SCHEDULER}/${JOB(project, region)}`),
   };
 }
@@ -179,46 +181,56 @@ async function arm({ api, region, project, now = Date.now, sleep, ask, log = con
   return { armedAfter: tPolicy, revisions: [rev0, seen.resource.labels.revision_name] };
 }
 
-/* §6 acceptance (2) ABSENCE (codex build r1 P1-5): pause → drain the in-flight invocation → REFRESH the last ingested heartbeat →
-   wait for the absence email until an INDEPENDENT deadline (each prompt bounded by what is left) → ALWAYS resume (finally; bounded,
-   retried) and VERIFY the job is ENABLED. A thrown error after the pause still resumes. */
-async function acceptAbsence({ api, region, now = Date.now, sleep, ask, log = console.log, drainMs = 6 * MIN, totalMs = 80 * MIN, passMs = 70 * MIN, askMs = 5 * MIN, resumeTries = 3 }) {
+/* §6 acceptance (2) ABSENCE — a GUIDED MANUAL step (advisor ruling on codex build r3 P1-A + P1-3). The tool NEVER changes the
+   scheduler: the OWNER pauses and resumes it with the printed gcloud commands, and the tool only READS the job's state to verify.
+     1. the job must be ENABLED at the start (else REFUSED — never start from a paused or unknown scheduler, e.g. an incident pause);
+     2. print the exact pause command; wait (bounded) and VERIFY the state reads PAUSED;
+     3. drain the in-flight invocation; the absence clock starts at the LAST ingested heartbeat, re-read after draining;
+     4. wait for the absence email until an INDEPENDENT deadline (each prompt bounded);
+     5. print the exact resume command; wait (bounded) and VERIFY ENABLED.
+   On a timeout or an error it never resumes on its own: it prints the CURRENT state and the resume command, loudly, and fails. */
+const schedulerCmd = (verb, region, project) => `gcloud scheduler jobs ${verb} firebase-schedule-verifyIdentityIntegrity-${region} --location ${region}${project ? ` --project ${project}` : ''}`;
+async function acceptAbsence({ api, region, project, now = Date.now, sleep, ask, log = console.log, drainMs = 6 * MIN, totalMs = 80 * MIN, passMs = 70 * MIN, askMs = 5 * MIN,
+  pauseWaitMs = 15 * MIN, resumeWaitMs = 15 * MIN, pollMs = 30 * 1000 }) {
+  const stateNow = async () => { try { return (await api.getJob(region)).state || 'UNKNOWN'; } catch (e) { return `UNKNOWN (${(e && e.message) || e})`; } };
+  const waitFor = async (want, ms) => {
+    const until = now() + ms; let st = await stateNow();
+    while (st !== want && now() < until) { await sleep(Math.min(pollMs, Math.max(0, until - now()))); st = await stateNow(); }
+    return st;
+  };
+  const loud = async (why) => {
+    const st = await stateNow();
+    log(`\n  ‼ ${why}\n  ‼ SCHEDULER STATE NOW: ${st}\n  ‼ If it is not ENABLED, the OWNER resumes it:\n      ${schedulerCmd('resume', region, project)}\n`);
+  };
+  const start = await stateNow();
+  if (start !== 'ENABLED') throw new Error(`REFUSED — the job is ${start}; absence acceptance starts only from ENABLED (it never touches a paused job — e.g. an incident pause)`);
   const [first] = await api.listEntries(A.heartbeatFilter(), { pageSize: 1, maxPages: 1 });
   if (!first) throw new Error('no heartbeat ingested yet');
-  log(`  last ingested heartbeat (before the pause): ${first.timestamp}`);
-  log(`  MANUAL RESUME if this tool dies: gcloud scheduler jobs resume firebase-schedule-verifyIdentityIntegrity-${region} --location ${region}`);
-  let ok = false; let failure = null; let pauseIssued = false;
+  log(`  last ingested heartbeat: ${first.timestamp}`);
+  let ok = false;
   try {
-    // cleanup responsibility is taken BEFORE the pause is issued (codex build r2 P1-A): a pause the server APPLIED whose response
-    // was lost (timeout) must still be resumed — so from here on the job is treated as possibly paused
-    pauseIssued = true;
-    await api.pauseJob(region);
-    log('  job paused; draining any in-flight invocation…');
+    log(`  OWNER: pause the job now (this tool never does):\n      ${schedulerCmd('pause', region, project)}`);
+    const paused = await waitFor('PAUSED', pauseWaitMs);
+    if (paused !== 'PAUSED') throw new Error(`the job did not read PAUSED within ${Math.round(pauseWaitMs / MIN)} min (state ${paused})`);
+    log('  ✓ verified PAUSED; draining any in-flight invocation…');
     await sleep(drainMs);
-    // the in-flight run may have emitted one more heartbeat: the absence clock starts at the LAST ingested one
     const [last] = await api.listEntries(A.heartbeatFilter(), { pageSize: 1, maxPages: 1 });
     const t0 = Date.parse((last || first).timestamp);
-    log(`  last ingested heartbeat (after draining): ${(last || first).timestamp}`);
+    log(`  last ingested heartbeat (after draining): ${(last || first).timestamp} — the absence clock starts there`);
     const deadline = t0 + totalMs;
     while (now() < deadline) {
       const a = await askBounded(ask, `  (${Math.round((now() - t0) / MIN)} min since the last heartbeat) Has the ABSENCE email arrived?`, Math.min(askMs, Math.max(1, deadline - now())));
       if (a === true) { ok = now() - t0 <= passMs; break; }
       if (now() < deadline && a === false) await sleep(Math.min(askMs, Math.max(0, deadline - now())));
     }
-  } catch (e) { failure = e; } finally {
-    if (pauseIssued) {
-      // RECONCILE from the job's actual state: resume unless it is verifiably ENABLED (paused OR unknown → resume), retried, verified
-      let state = null;
-      for (let i = 0; i < resumeTries && state !== 'ENABLED'; i += 1) {
-        try { state = (await api.getJob(region)).state; } catch (e) { state = null; log(`  state read ${i + 1} failed: ${e && e.message}`); }
-        if (state === 'ENABLED') break;
-        try { await api.resumeJob(region); state = (await api.getJob(region)).state; } catch (e) { state = null; log(`  resume attempt ${i + 1} failed: ${e && e.message}`); }
-      }
-      log(`  job state after cleanup: ${state}`);
-      if (state !== 'ENABLED') failure = failure || new Error('the job is NOT enabled — resume it with the command above');
-    }
+    log(`  OWNER: resume the job now:\n      ${schedulerCmd('resume', region, project)}`);
+    const resumed = await waitFor('ENABLED', resumeWaitMs);
+    if (resumed !== 'ENABLED') throw new Error(`the job did not read ENABLED within ${Math.round(resumeWaitMs / MIN)} min (state ${resumed})`);
+    log('  ✓ verified ENABLED');
+  } catch (e) {
+    await loud(`absence acceptance STOPPED: ${(e && e.message) || e}`);
+    throw e;
   }
-  if (failure) throw failure;
   if (!ok) throw new Error('no absence email within 45 + 25 min of the last ingested heartbeat');
   log('  ✓ acceptance (2) PASSED');
   return { ok };
@@ -281,7 +293,7 @@ if (require.main === module) {
       console.log(`  ✓ acceptance (1) PASSED in ${Math.round((Date.now() - start) / MIN)} min`);
       process.exit(0);
     }
-    if (mode === 'accept-absence') { await acceptAbsence({ api, region, sleep, ask }); process.exit(0); }
+    if (mode === 'accept-absence') { await acceptAbsence({ api, region, project: PROJECT_ID, sleep, ask }); process.exit(0); }
     if (mode === 'accept-portal') {
       const fname = argv[argv.indexOf('accept-portal') + 1];
       const f = A.SPEC.portal.functions.find((x) => x.name === fname);

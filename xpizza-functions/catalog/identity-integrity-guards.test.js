@@ -75,7 +75,8 @@ try {
     const idx = read('index.js');
     const block = idx.slice(idx.indexOf('/* d4c2b:begin */'), idx.indexOf('/* d4c2b:end */'));
     assert.ok(/maxInstances: 1, concurrency: 1, retryCount: 0/.test(block), 'one instance, one concurrent invocation, NO platform retry');
-    assert.ok(/exports\.verifyIdentityIntegrity = onSchedule\(/.test(block) && /makeFirestoreRegistryReader\(getFirestore\(\)\)/.test(block), 'scheduled; restaurants only from the registry reader');
+    assert.ok(/exports\.verifyIdentityIntegrity = onSchedule\(/.test(block) && /IIM\.makeBoundedRegistryReader\(getFirestore\(\)\)/.test(block) && !/makeFirestoreRegistryReader/.test(block),
+      'scheduled; restaurants only from the monitor\'s BOUNDED registry reader (a limited query, never an unrestricted listDocuments — codex build r3 P1-C)');
     assert.ok(!/x_pizza|la_musa/.test(block));
     const M = require('./identity-integrity-monitor');
     assert.deepStrictEqual([M.INTEGRITY_SCHEDULE, M.INTEGRITY_TIMEOUT_S, M.INTEGRITY_MEMORY, M.READS_PER_SECOND, M.RUN_READ_CAP, M.RESTAURANT_ALLOWANCE_MS, M.SUMMARY_RESERVE_MS],

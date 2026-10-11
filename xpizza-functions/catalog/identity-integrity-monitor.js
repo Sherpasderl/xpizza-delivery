@@ -40,9 +40,14 @@ const RUN_BUDGET_MS = (INTEGRITY_TIMEOUT_S * 1000) - SUMMARY_RESERVE_MS - 20000;
 const COMMIT_RESERVE_MS = 5000;
 const READ_OP_MS = 10000;
 const LIST_DEADLINE_MS = 10000;
-// the enumeration's MAXIMUM cost (one read per listed restaurant) is reserved BEFORE listing — the registry reader cannot be paged,
-// so the bound is enforced by reserving it up front and treating more restaurants than this as an incomplete enumeration
+// the enumeration is BOUNDED AT THE FETCH (codex build r3 P1-C ruling): ONE limited query of at most ENUMERATION_MAX + 1 restaurant
+// documents (the +1 detects overflow), whose cost is reserved EXACTLY before it is issued — never an unrestricted listDocuments()
 const ENUMERATION_MAX = 200;
+// the monitor's OWN registry reader: a limited, field-less query (`select()` → ids only). It sees the restaurant DOCUMENTS; a
+// restaurant must therefore have its `restaurants/{rid}` document (every onboarded brand does — the profile with pricing_key_mode)
+function makeBoundedRegistryReader(db) {
+  return async ({ limit }) => (await db.collection('restaurants').select().limit(limit).get()).docs.map((d) => d.id);
+}
 const QUIET_MS = 10 * 60 * 1000;
 const OBJECT_PAGE = 25;
 const REGISTRY_BATCH = 10;
@@ -371,12 +376,14 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     const work = makeDeadline(runBudgetMs, now);
     let ids; let enumeratedOk = true; let listed = 0;
     try {
-      budget.reserve(enumerationMax, 'enumerate');   // the MAXIMUM, before listing (codex build r2 P1-C)
-      const raw = await boundedWork(work, () => listIds(), Math.min(LIST_DEADLINE_MS, readOpMs), 'integrity_list');
-      listed = Array.isArray(raw) ? raw.length : 0;
+      const limit = enumerationMax + 1;   // +1 detects overflow
+      budget.reserve(limit, 'enumerate');   // EXACTLY the limited query's maximum cost, before it is issued
+      const raw = await boundedWork(work, () => listIds({ limit }), Math.min(LIST_DEADLINE_MS, readOpMs), 'integrity_list');
+      if (!Array.isArray(raw) || raw.length > limit) throw new Error(`integrity_list: the reader returned ${Array.isArray(raw) ? raw.length : typeof raw} ids for a limit of ${limit} — unbounded`);
+      listed = raw.length;
       ids = sanitize(raw).slice().sort();
-      if (listed > enumerationMax) { enumeratedOk = false; ids = ids.slice(0, enumerationMax); log('identity_integrity_enumeration_truncated', { listed, max: enumerationMax }); }
-      budget.release(enumerationMax - Math.max(1, Math.min(listed, enumerationMax)));   // the actual cost: one per listed restaurant (≥ 1)
+      if (listed > enumerationMax) { enumeratedOk = false; ids = ids.slice(0, enumerationMax); log('identity_integrity_enumeration_truncated', { listed: `> ${enumerationMax}`, max: enumerationMax }); }
+      budget.release(limit - Math.max(1, listed));   // the actual cost: one per returned document (≥ 1)
     } catch (e) {
       log('identity_integrity_run', { ok: false, error: String((e && e.message) || e).slice(0, 160), reads: budget.used() });
       return { ok: false, results: [], reads: budget.used(), reservedByStage: budget.byStage(), pacing: budget.log };
@@ -431,7 +438,7 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
 }
 
 module.exports = {
-  createIdentityIntegrityMonitor, createReadBudget, precheck, observeActive, observeAudit, evidenceCount, originOf, originOfVid,
+  createIdentityIntegrityMonitor, createReadBudget, makeBoundedRegistryReader, precheck, observeActive, observeAudit, evidenceCount, originOf, originOfVid,
   INTEGRITY_PATH, INTEGRITY_SCHEDULE, INTEGRITY_TIMEOUT_S, INTEGRITY_MEMORY, RUN_READ_CAP, READS_PER_SECOND, RESTAURANT_ALLOWANCE_MS,
   SUMMARY_RESERVE_MS, RUN_BUDGET_MS, QUIET_MS, OBJECT_PAGE, REGISTRY_BATCH, PAIRS_PER_BATCH, AUDIT_PAGE, CERT_READ_LIMIT, COUNT_LIMIT, GROWTH_LIMIT, READ_ONLY,
   BudgetDeferral, OversizedDeferral, ENUMERATION_MAX,

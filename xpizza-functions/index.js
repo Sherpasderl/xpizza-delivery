@@ -2558,7 +2558,8 @@ exports.verifyIdentityIntegrity = onSchedule(
     maxInstances: 1, concurrency: 1, retryCount: 0 },
   async () => {
     try {
-      await IIM.createIdentityIntegrityMonitor({ db: getFirestore(), rtdb: getDatabase() }).run({ listIds: makeFirestoreRegistryReader(getFirestore()) });
+      // the monitor's OWN bounded reader: one limited query, its cost reserved before it is issued (never an unrestricted listDocuments)
+      await IIM.createIdentityIntegrityMonitor({ db: getFirestore(), rtdb: getDatabase() }).run({ listIds: IIM.makeBoundedRegistryReader(getFirestore()) });
     } catch (e) {
       console.error('identity_integrity_failed', (e && e.message) || String(e));
     }

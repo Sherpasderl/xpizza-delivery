@@ -246,9 +246,42 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
     const h2 = mk(); const lines = [];
     const m2 = M.createIdentityIntegrityMonitor({ db: h2.db, rtdb: h2.rtdb, log: (k) => lines.push(k) });
     const many = Array.from({ length: 30 }, (_, i) => `rid_${String(i).padStart(2, '0')}m`);
-    const o2 = await within(m2.run({ listIds: async () => many, enumerationMax: 12, readCap: 1000, readOpMs: 50, runBudgetMs: 2000, summaryReserveMs: 1000 }), 8000, 'truncated');
+    const o2 = await within(m2.run({ listIds: async ({ limit }) => many.slice(0, limit), enumerationMax: 12, readCap: 1000, readOpMs: 50, runBudgetMs: 2000, summaryReserveMs: 1000 }), 8000, 'truncated');
     assert.deepStrictEqual([o2.ids.length, lines.includes('identity_integrity_enumeration_truncated'), lines.includes('identity_integrity_heartbeat')], [12, true, false]);
     ok(`P1-C: across 15 caps (0…90) with EVERY commit failing (so each check also records its failure), the ISSUED units never exceed the cap nor the reservations (worst: ${worst.issued} issued at cap ${worst.cap}); cap 1 → the enumeration is never issued; more restaurants than its reserved maximum → truncated, incomplete, no heartbeat`);
+  }
+
+  // ── 9. codex build r3 P1-C ruling: the enumeration is BOUNDED AT THE FETCH — one limited query (max + 1), reserved exactly ──
+  {
+    const mkReg = (total) => {
+      const c = { units: 0, queries: [] };
+      const db = { collection: (name) => ({ select: () => ({ limit: (k) => ({ get: async () => {
+        c.queries.push([name, k]); const docs = Array.from({ length: Math.min(k, total) }, (_, i) => ({ id: `rid_${String(i).padStart(4, '0')}` }));
+        c.units += Math.max(1, docs.length); return { docs };
+      } }) }) }) };
+      return { c, reader: M.makeBoundedRegistryReader(db) };
+    };
+    const quietRtdb = { ref: (p) => ({ child: () => quietRtdb.ref(p), get: async () => ({ val: () => null }), transaction: async () => ({ committed: true }) }) };
+    const deadDb = { runTransaction: async () => { throw new Error('down'); }, collection: () => ({ doc: () => ({ collection: () => ({}) }) }) };
+    // 201 restaurants, max 200: ONE query with limit 201; units issued (201) ≤ reserved (201); overflow detected → truncated, no heartbeat
+    let { c, reader } = mkReg(201); const lines = [];
+    const m = M.createIdentityIntegrityMonitor({ db: deadDb, rtdb: quietRtdb, log: (k) => lines.push(k) });
+    const o = await within(m.run({ listIds: reader, readCap: 15000, runBudgetMs: 400, restaurantMs: 5, summaryReserveMs: 400, readOpMs: 50 }), 15000, '201 restaurants');
+    assert.deepStrictEqual(c.queries, [['restaurants', M.ENUMERATION_MAX + 1]], 'ONE limited query: the maximum + 1 (never an unrestricted listing)');
+    assert.ok(c.units <= o.reservedByStage.enumerate && o.reservedByStage.enumerate === M.ENUMERATION_MAX + 1, `listed units ${c.units} ≤ reserved ${o.reservedByStage.enumerate}`);
+    assert.deepStrictEqual([o.ids.length, lines.includes('identity_integrity_enumeration_truncated'), lines.includes('identity_integrity_heartbeat')], [M.ENUMERATION_MAX, true, false], 'overflow (201 > 200) detected → truncated, no heartbeat');
+    // exactly 200 → no overflow
+    ({ c, reader } = mkReg(200)); const l2 = [];
+    const o200 = await within(M.createIdentityIntegrityMonitor({ db: deadDb, rtdb: quietRtdb, log: (k) => l2.push(k) }).run({ listIds: reader, readCap: 15000, runBudgetMs: 400, restaurantMs: 5, summaryReserveMs: 400, readOpMs: 50 }), 15000, '200');
+    assert.deepStrictEqual([o200.ids.length, l2.includes('identity_integrity_enumeration_truncated')], [200, false], '200 restaurants: complete');
+    // cap 200 < the limited query's 201 → it is never issued
+    ({ c, reader } = mkReg(201));
+    const o0 = await M.createIdentityIntegrityMonitor({ db: deadDb, rtdb: quietRtdb, log: () => {} }).run({ listIds: reader, readCap: 200 });
+    assert.deepStrictEqual([o0.ok, c.queries.length, c.units], [false, 0, 0], 'cap 200 → the 201-document query is never issued');
+    // a reader that ignores the limit is REFUSED (never silently truncated after over-reading)
+    const o3 = await M.createIdentityIntegrityMonitor({ db: deadDb, rtdb: quietRtdb, log: () => {} }).run({ listIds: async () => Array.from({ length: 300 }, (_, i) => `rid_${i}z`), readCap: 15000 });
+    assert.strictEqual(o3.ok, false, 'an unbounded reader is refused');
+    ok(`P1-C (bounded at the fetch): 201 restaurants → ONE query limit ${M.ENUMERATION_MAX + 1}, listed units ≤ the exact reservation, overflow detected → truncated + no heartbeat; 200 → complete; cap 200 → never issued; a reader that ignores the limit → refused`);
   }
 
   FINISHED = true;

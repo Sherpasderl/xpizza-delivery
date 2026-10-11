@@ -173,60 +173,71 @@ setTimeout(() => { console.error('identity-alerts FAILED: the suite did not fini
   }
   ok('P1-4: install needs no heartbeat (the job stays PAUSED); arm refuses a paused job, and arms only on a heartbeat METRIC POINT ingested after the policy change (a raw log entry, or an older point, is NOT armed); the revision-transition acceptance needs a heartbeat from the NEW revision, no 45-min series gap and the owner\'s bounded confirmation');
 
-  // ── 7. P1-5: ABSENCE acceptance always RESUMES — at its independent deadline when nobody answers, and after a thrown error ──
+  // ── 7. ABSENCE acceptance is a GUIDED MANUAL step (advisor ruling on codex build r3 P1-A + P1-3): the tool NEVER mutates the
+  //       scheduler — the owner pauses / resumes with the printed commands; the tool only READS the state to verify ─────────────
   {
-    const mk = (over = {}) => {
-      const st = { state: 'ENABLED', paused: 0, resumed: 0, gets: 0, failResume: 0 };
-      const hb = { timestamp: new Date(Date.now()).toISOString() };
-      const api = {
-        listEntries: async () => [hb], pauseJob: async () => { st.paused += 1; st.state = 'PAUSED'; },
-        resumeJob: async () => { st.resumed += 1; if (st.failResume > 0) { st.failResume -= 1; throw new Error('503'); } st.state = 'ENABLED'; },
-        getJob: async () => { st.gets += 1; return { state: st.state }; }, ...over(st),
-      };
+    // (a) STATIC: the tool's code has no scheduler mutation at all — no pause / resume method, no :pause / :resume endpoint
+    const src = require('fs').readFileSync(require('path').join(__dirname, 'setup-identity-alerts.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    const code = src.replace(/`gcloud scheduler jobs \$\{verb\}[^`]*`/g, '');   // the printed OWNER command template is text, not a call
+    assert.ok(!/pauseJob|resumeJob|:pause\b|:resume\b/.test(code), 'the tool contains NO scheduler mutation (pause/resume API)');
+    assert.ok(/pauseJob/.test('x.pauseJob('), 'sensitivity: the pattern matches a call');
+    const T2 = T;
+    const lines = []; const log = (l) => lines.push(String(l));
+    // a fake scheduler the OWNER drives; the API object has NO mutation method, and any call to one would throw
+    const mk = (script = {}) => {
+      const st = { state: script.start || 'ENABLED', gets: 0 };
+      const api = new Proxy({
+        getJob: async () => { st.gets += 1; if (script.onGet) script.onGet(st); return { state: st.state }; },
+        listEntries: async () => { if (script.entriesThrow && st.gets > 1) throw new Error('logging down'); return [{ timestamp: new Date(Date.now()).toISOString() }]; },
+      }, { get: (t, k) => { if (typeof k === 'string' && /pause|resume|patch|update|delete/i.test(k)) throw new Error(`scheduler mutation attempted: ${k}`); return t[k]; } });
       return { st, api };
     };
-    const lim = { region: 'r', log: () => {}, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 20))), drainMs: 10, totalMs: 300, passMs: 250, askMs: 60 };
-    // nobody ever answers: the prompt is bounded, the deadline is re-evaluated, the job is RESUMED and verified, the result is a FAIL
-    let { st, api } = mk(() => ({}));
+    const lim = { region: 'r', project: 'p', log, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 15))), drainMs: 5, totalMs: 300, passMs: 250, askMs: 60, pauseWaitMs: 200, resumeWaitMs: 200, pollMs: 10 };
+    // (b) REFUSED unless ENABLED at the start (an incident pause is never touched)
+    for (const start of ['PAUSED', 'UNKNOWN']) {
+      const { api } = mk({ start });
+      await assert.rejects(() => T2.acceptAbsence({ ...lim, api, ask: async () => true }), /REFUSED — the job is/, `start ${start} → refused`);
+    }
+    // (c) the happy path: the OWNER pauses (after a couple of polls), the email arrives, the OWNER resumes — the tool only read
+    let { st, api } = mk({ onGet: (x) => { if (x.gets === 3) x.state = 'PAUSED'; if (x.resumeAt && x.gets >= x.resumeAt) x.state = 'ENABLED'; } });
+    let asked = 0;
+    const ask = async () => { asked += 1; st.resumeAt = st.gets + 2; return true; };
+    lines.length = 0;
+    const r = await T2.acceptAbsence({ ...lim, api, ask });
+    assert.ok(r.ok && asked === 1 && st.state === 'ENABLED', 'passes with the owner pausing and resuming');
+    assert.ok(lines.some((l) => /gcloud scheduler jobs pause firebase-schedule-verifyIdentityIntegrity-r --location r --project p/.test(l))
+      && lines.some((l) => /gcloud scheduler jobs resume firebase-schedule-verifyIdentityIntegrity-r --location r --project p/.test(l)), 'both exact commands printed');
+    // (d) the owner never pauses → times out → the resume command is printed LOUDLY, non-zero (a rejection)
+    ({ st, api } = mk());
+    lines.length = 0;
+    await assert.rejects(() => T2.acceptAbsence({ ...lim, api, ask: async () => true }), /did not read PAUSED/);
+    assert.ok(lines.some((l) => /SCHEDULER STATE NOW: ENABLED/.test(l) && /gcloud scheduler jobs resume/.test(l)), 'the current state + the resume command, loudly');
+    // (e) the owner never resumes → the tool does NOT resume: it fails, printing PAUSED and the resume command
+    ({ st, api } = mk({ onGet: (x) => { if (x.gets === 2) x.state = 'PAUSED'; } }));
+    lines.length = 0;
+    await assert.rejects(() => T2.acceptAbsence({ ...lim, api, ask: async () => true }), /did not read ENABLED/);
+    assert.ok(st.state === 'PAUSED' && lines.some((l) => /SCHEDULER STATE NOW: PAUSED/.test(l) && /gcloud scheduler jobs resume/.test(l)), 'left as the owner left it — reported, never overridden');
+    // (f) an exception mid-way → state + resume command printed, rejected; still zero mutations (the Proxy would have thrown)
+    ({ st, api } = mk({ onGet: (x) => { if (x.gets === 2) x.state = 'PAUSED'; }, entriesThrow: true }));
+    lines.length = 0;
+    await assert.rejects(() => T2.acceptAbsence({ ...lim, api, ask: async () => true }), /logging down/);
+    assert.ok(lines.some((l) => /SCHEDULER STATE NOW: PAUSED/.test(l)), 'an error prints the state and the resume command');
+    // (g) nobody answers the email prompt → bounded; the owner resumes → a FAIL (no email), never a hang
+    ({ st, api } = mk({ onGet: (x) => { if (x.gets === 2) x.state = 'PAUSED'; if (x.gets > 6) x.state = 'ENABLED'; } }));
     const t0 = Date.now();
-    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: () => new Promise(() => {}) }), /no absence email/);
-    assert.deepStrictEqual([st.paused, st.resumed >= 1, st.state], [1, true, 'ENABLED'], 'resumed at the deadline although the prompt was never answered');
-    assert.ok(Date.now() - t0 < 2000, 'within its independent deadline');
-    // an exception AFTER the pause (the post-drain heartbeat refresh throws) → still resumed, the error surfaces
-    let n2 = 0;
-    ({ st, api } = mk(() => ({ listEntries: async () => { n2 += 1; if (n2 > 1) throw new Error('logging down'); return [{ timestamp: new Date().toISOString() }]; } })));
-    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /logging down/);
-    assert.deepStrictEqual([st.paused, st.resumed, st.state], [1, 1, 'ENABLED'], 'an exception after the pause still resumes');
-    // a failing resume is RETRIED, and the job state is VERIFIED
-    ({ st, api } = mk(() => ({})));
-    st.failResume = 2;
-    const ok7 = await T.acceptAbsence({ ...lim, api, ask: async () => true });
-    assert.deepStrictEqual([ok7.ok, st.resumed, st.state], [true, 3, 'ENABLED'], 'resume retried until ENABLED');
-    ({ st, api } = mk(() => ({ resumeJob: async () => { throw new Error('denied'); } })));
-    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /NOT enabled/, 'a resume that never takes is reported, never silent');
-    // codex build r2 P1-A: the server APPLIES the pause but its response is lost (timeout) → the job is still reconciled and RESUMED
-    ({ st, api } = mk((x) => ({ pauseJob: async () => { x.paused += 1; x.state = 'PAUSED'; throw Object.assign(new Error('api_pauseJob_timeout'), { timeout: true }); } })));
-    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /api_pauseJob_timeout/);
-    assert.deepStrictEqual([st.paused, st.resumed, st.state], [1, 1, 'ENABLED'], 'a pause applied with a lost response is still resumed');
-    // the pause never applied (it failed before reaching the server) → the state reads ENABLED → nothing to resume, the error surfaces
-    ({ st, api } = mk(() => ({ pauseJob: async () => { throw new Error('403'); } })));
-    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /403/);
-    assert.deepStrictEqual([st.resumed, st.state], [0, 'ENABLED'], 'a pause that never applied needs no resume (state verified ENABLED)');
-    // the state read itself fails (unknown) → resume anyway, verified
-    let g = 0;
-    ({ st, api } = mk((x) => ({ getJob: async () => { g += 1; if (g === 1) throw new Error('503'); return { state: x.state }; } })));
-    await T.acceptAbsence({ ...lim, api, ask: async () => true });
-    assert.deepStrictEqual([st.resumed >= 1, st.state], [true, 'ENABLED'], 'an UNKNOWN state is resumed');
-    // the absence clock starts at the heartbeat re-read AFTER draining (the in-flight run may have emitted a later one)
+    await assert.rejects(() => T2.acceptAbsence({ ...lim, api, ask: () => new Promise(() => {}) }), /no absence email/);
+    assert.ok(Date.now() - t0 < 3000, 'bounded');
+    // (h) the refreshed heartbeat: the clock starts at the one re-read after draining
     let reads = 0;
-    ({ st, api } = mk(() => ({ listEntries: async () => { reads += 1; return [{ timestamp: new Date(reads === 1 ? Date.now() - 1000 : Date.now()).toISOString() }]; } })));
-    const ref7 = await T.acceptAbsence({ ...lim, api, ask: async () => true });
-    assert.strictEqual(ref7.ok, true, 'passes against the REFRESHED last heartbeat (the pre-pause one is 1 s old, past the 250 ms pass bound)');
-    // every API call can be bounded
+    ({ st, api } = mk({ onGet: (x) => { if (x.gets === 2) x.state = 'PAUSED'; if (x.gets > 3) x.state = 'ENABLED'; } }));
+    const api2 = { getJob: api.getJob, listEntries: async () => { reads += 1; return [{ timestamp: new Date(reads === 1 ? Date.now() - 1000 : Date.now()).toISOString() }]; } };
+    assert.strictEqual((await T2.acceptAbsence({ ...lim, api: api2, ask: async () => true })).ok, true, 'measured from the REFRESHED last heartbeat');
+    // every API call stays boundable
     const slow = T.boundedApi({ getJob: () => new Promise(() => {}) }, 30);
     await assert.rejects(() => slow.getJob('r'), /api_getJob_timeout/);
   }
-  ok('P1-5: absence acceptance always resumes — nobody answers → resumed and verified at the INDEPENDENT deadline (a FAIL, never a hang); an exception after the pause → resumed; a failing resume retried until ENABLED, a resume that never takes reported; every API call boundable');
+  ok('absence acceptance is a GUIDED MANUAL step: the tool has NO scheduler mutation in its code (static) and never calls one (a mutating call would throw); it REFUSES unless ENABLED at start; it prints the exact pause / resume commands and only VERIFIES state; the owner never pausing or never resuming → it fails, printing the current state and the resume command loudly, never overriding; an error mid-way does the same; an unanswered prompt is bounded; the clock starts at the refreshed heartbeat');
 
   FINISHED = true;
   console.log(`identity-alerts: OK (${n})`);

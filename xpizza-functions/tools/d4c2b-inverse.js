@@ -12,7 +12,7 @@ const END = '/* d4c2b:end */';
 const BLOCK = /\/\* d4c2b:begin \*\/\n[\s\S]*?\/\* d4c2b:end \*\/\n/g;
 // The block's EXACT bytes are pinned (as the D4-c4 / D4-c5 inverses pin their hunks' text): an edit INSIDE the block is detected
 // too, never folded away silently. Changing the block means changing this pin, in review.
-const BLOCK_SHA256 = 'de3b9310e08161bf358a517be0dfc22c1df58a3064905e8f01f403bdb141aaca';
+const BLOCK_SHA256 = 'e812cf78cbcb94ed5200ef1da7244e6f21ed07940ffb892c54b47a63c86e3560';
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 function unapplyD4c2b(src) {
