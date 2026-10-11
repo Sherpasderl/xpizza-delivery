@@ -95,6 +95,14 @@ What to do — do NOT just acknowledge:
 
 The writer behaviour itself (it should refuse or stamp such a re-add) is logged as a D4 follow-up for main; c2b only reports it.
 
+## Growth limit: 200 restaurants per run (enumeration)
+
+The monitor enumerates restaurants with ONE limited query of at most 201 restaurant documents. Its cost is reserved before it is issued, and the 201st document only detects overflow. Above 200 restaurants:
+- **What happens:** every run checks and summarizes only the first 200 restaurant ids (in sorted order). It logs `identity_integrity_enumeration_truncated` (`listed: "> 200"`), and the enumeration counts as INCOMPLETE, so the run emits NO heartbeat. Restaurants past the first 200 get no checks and no summary lines.
+- **How you hear about it:** the heartbeat absence alert (45 min) opens and stays open. Check the logs for `identity_integrity_enumeration_truncated`.
+- **What to do:** coverage past 200 needs a follow-up slice — raise `ENUMERATION_MAX` (if the run's read and time budget allow), or page the enumeration across runs. Until it lands, the restaurants past the first 200 are unmonitored. Do not acknowledge the absence alert as a false alarm.
+- **Onboarding checklist:** when onboarding a restaurant, count the restaurant documents. **If there are more than 150 restaurants, schedule the pagination slice.**
+
 ## Bootstrap / migration CLIs
 
 `tools/bootstrap-identity.js` has no publish lease. Pause the monitor job first, run it, then resume:
@@ -144,7 +152,16 @@ Every activation/certification CLI (`publish-version.js`, `rollback-version.js`,
      node tools/setup-identity-alerts.js --project xpizza-delivery --channel <…> arm
      ```
    - Run `accept-integrity`.
-   - Run `accept-absence`. It prints the manual resume command first, pauses the job, drains the in-flight run and re-reads the last ingested heartbeat (the absence clock starts there), then asks — each prompt bounded — until an INDEPENDENT 80-min deadline. It ALWAYS resumes the job (also after an error; retried) and verifies it is ENABLED. Pass = the absence email within 45 + 25 min of that last heartbeat.
+   - Run `accept-absence` — a GUIDED MANUAL step. The tool NEVER pauses or resumes the job itself; YOU do, with the commands it prints, and it only READS the scheduler state to verify:
+     1. It REFUSES unless the job is ENABLED at the start, so an incident pause or a bootstrap pause is never touched.
+     2. It prints the pause command: run it. It verifies the state reads PAUSED (≤ 15 min).
+     3. It drains the in-flight run and re-reads the last ingested heartbeat; the absence clock starts there.
+     4. It asks, each prompt bounded, until 80 min after that heartbeat. Pass = the absence email within 45 + 25 min.
+     5. It prints the resume command: run it. It verifies ENABLED (≤ 15 min).
+     On a timeout or an error it STOPS without changing anything and prints the CURRENT state plus the resume command. If the state is not ENABLED, resume the job yourself:
+     ```bash
+     gcloud scheduler jobs resume firebase-schedule-verifyIdentityIntegrity-us-central1 --location us-central1 --project xpizza-delivery
+     ```
    - Run the acknowledgement path on the emulator: `npm run test:c2b-integrity`.
    - Then the 48 h observation.
 
