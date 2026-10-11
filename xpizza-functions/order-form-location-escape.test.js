@@ -294,10 +294,10 @@ function fakePred(main, la, ln) {
       const fp = fakePred('Chosen', 15.4, -88.0);
       const pick = h.ctx.locPickPred(fp.p, 'Chosen'); // must clearTimeout the pending debounce
       h.ctx.locSearchInput('typing during pick');   // suppressed while __locPicking
-      h.fireTimers(); await flush();                 // fire any timers — nothing should fetch
+      fp.resolve(); await pick;                      // details resolve IN TIME → the pick wins the bounded race and places
+      assert.deepStrictEqual(h.placePinCalls, [[15.4, -88.0, false]], `[${brand}] the pick places its pin`);
+      h.fireTimers(); await flush();                 // the cancelled debounce + the now-settled pick-timeout fire into the void — no fetch
       assert.strictEqual(h.state.pending.length, 0, `[${brand}] no prediction fetch ran during the selection (debounce cancelled + typing suppressed)`);
-      fp.resolve(); await pick;
-      assert.deepStrictEqual(h.placePinCalls, [[15.4, -88.0, false]], `[${brand}] the pick still places its pin`);
       h.ctx.locSearchInput('again'); h.fireTimers(); await flush(); // search resumes after the pick
       assert.strictEqual(h.state.pending.length, 1, `[${brand}] search resumes (a new fetch) after the pick settles`);
       h.state.pending[0].res({ suggestions: [sg('Again A'), sg('Again B')] }); await flush();

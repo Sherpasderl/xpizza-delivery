@@ -94,17 +94,83 @@ async function run(dir, { card }) {
   hp.resolve();
   await settle(); await settle(); await settle();
   assert.strictEqual(searchWrap.style.display, 'none', `${dir}: the pick confirmed the location (search hidden)`);
-  const body = card ? (sent.charge || sent.createOrder) : sent.createOrder;
-  assert.ok(body, `${dir}/${card ? 'card' : 'cash'}: an order body was submitted after the pick settled`);
+  // cash → createOrder; card (hosted) → chargeOnlineOrder (the hosted-card flow does NOT issue a client
+  // createOrder). Assert the RIGHT endpoint INDEPENDENTLY (not either/or), carrying the PICKED coords.
+  const wanted = card ? 'chargeOnlineOrder' : 'createOrder';
+  const body = card ? sent.charge : sent.createOrder;
+  assert.ok(body, `${dir}/${card ? 'card' : 'cash'}: ${wanted} was submitted after the pick settled`);
   assert.ok(Math.abs(body.lat - PICKED.lat) < 1e-6 && Math.abs(body.lng - PICKED.lng) < 1e-6,
-    `${dir}/${card ? 'card' : 'cash'}: 🔴 the submitted order carries the PICKED lat/lng (${body.lat},${body.lng}), not the fallback (${FALLBACK.lat},${FALLBACK.lng})`);
+    `${dir}/${card ? 'card' : 'cash'}: 🔴 ${wanted} carries the PICKED lat/lng (${body.lat},${body.lng}), not the fallback (${FALLBACK.lat},${FALLBACK.lng})`);
   assert.ok(!(Math.abs(body.lat - FALLBACK.lat) < 1e-6 && Math.abs(body.lng - FALLBACK.lng) < 1e-6),
     `${dir}/${card ? 'card' : 'cash'}: the submitted coords are NOT the fallback`);
-  ok(`${dir}/${card ? 'card' : 'cash'}: after the pick settles, the order carries the PICKED coords (not the fallback)`);
+  ok(`${dir}/${card ? 'card' : 'cash'}: after the pick settles, ${wanted} carries the PICKED coords (not the fallback)`);
+}
+
+// P1 (new): a HUNG details fetch must not lock checkout AND must not silently ship the fallback. The bounded
+// wait elapses → the pick is abandoned (card stays "aproximada") → processPayment REFUSES with a message and
+// calls NO createOrder/chargeOnlineOrder. Then a LATE result (arriving after the timeout) must not move the
+// pin or become a later submit's coords.
+async function runTimeout(dir) {
+  const w = loadForm(dir);
+  const sent = {};
+  w.__respond = (url, init) => {
+    const u = String(url); const body = init && init.body ? JSON.parse(init.body) : null;
+    if (u.includes('createOrder')) sent.createOrder = body;
+    else if (u.includes('chargeOnlineOrder')) sent.charge = body;
+    else if (u.includes('quoteOrder')) sent.quote = body;
+    return new Promise(() => {});
+  };
+  installMaps(w);
+  w.__LOC_PICK_TIMEOUT_MS = 20; // make the bounded pending-pick wait fire fast in-test
+  const prepared = w.liveMenuPrepare(BRAND[dir].menu(w));
+  w.liveMenuGlobalSet('MENU', prepared.MENU); w.liveMenuGlobalSet('EXTRAS', prepared.EXTRAS);
+  await settle();
+  const dish = prepared.MENU.find((d) => d.price > 0); w.chg(dish.id, 2); await settle();
+  if (prepared.EXTRAS[0]) { w.toggleDetailExtra(prepared.EXTRAS[0].id, dish.id, 0); await settle(); }
+  const g = (id) => w.document.getElementById(id);
+  for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432'], ['cemail', 'cliente@test.hn'], ['notes', '']]) if (g(id)) g(id).value = v;
+  if (typeof w.setOrderType === 'function') w.setOrderType('delivery');
+  w.__scheduledFor = Date.now() + 2 * 3600 * 1000;
+  const det = g('address-details'); if (det) det.value = 'Col. Palmira, portón negro';
+  if (typeof w.selectPay === 'function') w.selectPay('cash');
+  if (!w.document.getElementById('btnConfirm')) { const b = w.document.createElement('button'); b.id = 'btnConfirm'; w.document.body.appendChild(b); }
+  w.initMap(); await settle();
+  const searchWrap = w.document.getElementById('loc-search-wrap');
+  const card = w.document.getElementById('locinfo');
+  assert.strictEqual(searchWrap && searchWrap.style.display, 'block', `${dir}: premise — fallback state (search shown)`);
+
+  // a pick whose details fetch NEVER settles
+  const hp = heldPred();
+  const pickP = w.locPickPred(hp.p, 'Picked Place'); if (pickP && pickP.catch) pickP.catch(() => {});
+  // tap Confirmar while it's in flight, then let the bounded wait elapse
+  const payP = w.processPayment(); if (payP && payP.catch) payP.catch(() => {});
+  await new Promise((r) => setTimeout(r, 60)); // > the 20ms bound
+  await settle(); await settle();
+  assert.ok(!sent.createOrder && !sent.charge,
+    `${dir}: 🔴 a hung pick must NOT submit — checkout refused, no createOrder/chargeOnlineOrder (fallback must not ship)`);
+  assert.ok(!/confirmed/.test(card.className) && /aproximada/.test(card.innerHTML),
+    `${dir}: the card stays "aproximada" after a hung pick (never flips to confirmed)`);
+  const e3 = w.document.getElementById('err3');
+  assert.ok(e3 && /No pudimos ubicar/.test(e3.textContent) && e3.style.display !== 'none',
+    `${dir}: the customer is told the pick failed (re-pick / use the map)`);
+  ok(`${dir}: a hung pick → checkout REFUSES (no submit, card stays aproximada, message shown) — not locked, not fallback`);
+
+  // a LATE result for the abandoned pick must not move the pin, nor feed a later submit
+  hp.resolve(); await settle(); await settle();
+  assert.strictEqual(searchWrap.style.display, 'block',
+    `${dir}: a late result for the timed-out pick does NOT confirm/place (still "aproximada", search open)`);
+  // a subsequent CLEAN pick then works and submits ITS coords (not the abandoned one's)
+  const hp2 = heldPred(); const pick2 = w.locPickPred(hp2.p, 'Second Place'); if (pick2 && pick2.catch) pick2.catch(() => {});
+  hp2.resolve(); await settle(); await settle();
+  const payP2 = w.processPayment(); if (payP2 && payP2.catch) payP2.catch(() => {});
+  await settle(); await settle();
+  assert.ok(sent.createOrder && Math.abs(sent.createOrder.lat - PICKED.lat) < 1e-6,
+    `${dir}: a subsequent clean pick submits ITS coords — the abandoned pick's late result never interfered`);
+  ok(`${dir}: late result post-timeout is inert; a subsequent pick submits cleanly`);
 }
 
 (async () => {
-  for (const dir of DIRS) { await run(dir, { card: false }); await run(dir, { card: true }); }
+  for (const dir of DIRS) { await run(dir, { card: false }); await run(dir, { card: true }); await runTimeout(dir); }
   console.log(`\nlocation-pick-submit-sync: ${count()} passed`);
   closeAll();
 })().catch((e) => { console.error('location-pick-submit-sync FAILED:', (e && e.stack) || e); closeAll(); process.exit(1); });

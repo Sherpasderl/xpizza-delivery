@@ -4100,7 +4100,7 @@ function updateLocInfo(la,ln,fallback){
    errors or returns nothing, the map tap→fullscreen editor still works. Search is scoped to THIS
    restaurant's delivery zone (RESTAURANT_LAT/LNG + DELIVERY_RADIUS_KM, padded) so a customer can't
    pin another city — brand-agnostic, derived from the same constants the zone check uses. */
-let __locSessToken=null, __locSearchTimer=null, __locReqSeq=0, __locPicking=false, __locPickPromise=null, __locPickDone=null;
+let __locSessToken=null, __locSearchTimer=null, __locReqSeq=0, __locPicking=false, __locPickPromise=null, __locPickDone=null, __locPickFailed=false;
 function locHidePreds(){ const p=document.getElementById('loc-preds'); if(p){ p.style.display='none'; p.innerHTML=''; } }
 function locSearchBounds(){
   const padKm=DELIVERY_RADIUS_KM*1.4;
@@ -4167,13 +4167,20 @@ async function locPickPred(p,label){
   if(input&&label) input.value=label;
   try{
     const place=p.toPlace();
-    await place.fetchFields({fields:['location']});
+    // BOUND the details fetch: a hung socket (flaky webview — the case this feature targets) must not lock
+    // the selection or checkout forever. Race it against a timeout; a LATE result for a timed-out pick is
+    // discarded here (never wired to placePin), so it can't move the pin or become a later submit's coords.
+    const ms=(typeof window!=='undefined' && window.__LOC_PICK_TIMEOUT_MS) || 8000;
+    let timer; const timeout=new Promise(function(r){ timer=setTimeout(function(){ r('__timeout'); }, ms); });
+    const outcome=await Promise.race([ place.fetchFields({fields:['location']}).then(function(){ return '__ok'; }, function(){ return '__err'; }), timeout ]);
+    clearTimeout(timer);
+    if(outcome!=='__ok'){ __locPickFailed=true; return; }  // timed out / errored → ABANDON: don't place, stay "aproximada", flag the refusal so checkout won't ship the fallback
     // Don't clobber a point the customer set WHILE this details fetch was in flight (a map tap / drag
     // moved lat/lng). A late details response must never overwrite a newer, deliberate placement.
     if(typeof lat!=='undefined' && (lat!==beforeLat||lng!==beforeLng)) return;
     const loc=place.location;
     if(loc&&typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
-  }catch(e){ /* quiet */ }
+  }catch(e){ __locPickFailed=true; }
   finally{ __locSessToken=null; __locPicking=false; if(__locPickDone){ __locPickDone(); __locPickDone=null; } __locPickPromise=null; }  // retire the session token + release the checkout waiter on ANY outcome (fetchFields ends the session, incl. on reject)
 }
 
@@ -4246,10 +4253,21 @@ async function processPayment(){
   window.__cqRequoted = false;                  // 1C T8: …and exactly ONE silent re-quote+resend on a stale quote
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
   try {
-  // Location escape hatch (Phase 1): if a fail-state address pick is still resolving its details fetch,
-  // WAIT for it to settle so the order carries the PICKED coords, not the pre-pick fallback. __locPickPromise
-  // is null on the GPS-OK happy path → no-op there (byte-identical). The btn-pay disable above covers the wait.
-  if(typeof __locPickPromise!=='undefined' && __locPickPromise){ try { await __locPickPromise; } catch(_){} }
+  // Location escape hatch (Phase 1): if a fail-state address pick is resolving, WAIT (BOUNDED) for it so the
+  // order carries the PICKED coords, not the pre-pick fallback. __locPickPromise is null on the GPS-OK happy
+  // path → no wait, no message (byte-identical). The outer race is pure defense so a never-released waiter
+  // (should not happen — locPickPred bounds + releases in finally) can't lock checkout.
+  if(typeof __locPickPromise!=='undefined' && __locPickPromise){
+    try { await Promise.race([__locPickPromise, new Promise(function(r){ setTimeout(r, 10000); })]); } catch(_){}
+  }
+  // If that pick hung/errored, REFUSE the submit — do NOT silently ship the fallback coords. Guide the
+  // customer to re-pick or use the map; the card stays "aproximada" (placePin never ran).
+  if(typeof __locPickFailed!=='undefined' && __locPickFailed){
+    __locPickFailed=false;
+    const _e3=document.getElementById('err3'); if(_e3){ _e3.style.display='block'; _e3.textContent='No pudimos ubicar esa dirección. Elegila de nuevo o ajustá el mapa.'; }
+    const _sw=document.getElementById('loc-search-wrap'); if(_sw) _sw.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
   // saved (defense-in-depth beyond the hidden-payment UI). Guest / complete-profile / pickup → no-op;
   // fail-open (never blocks a real order on an account-logic error).

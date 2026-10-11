@@ -46,21 +46,21 @@ async function capture(dir, { card }) {
   for (const dir of DIRS) {
     const cash = await capture(dir, { card: false });
     const card = await capture(dir, { card: true });
-    const bodies = {
+    // The three real money-path bodies that MUST fingerprint — each REQUIRED to be captured (not skipped),
+    // so a missing capture can't let the guard pass vacuously. (quoteOrder rides the card path.)
+    const required = {
       'createOrder (cash)': cash.createOrder,
-      'createOrder (card)': card.createOrder,
-      'chargeOnlineOrder': card.charge,
-      'quoteOrder': card.quote,
+      'chargeOnlineOrder (card)': card.charge,
+      'quoteOrder (card)': card.quote,
     };
-    for (const [name, body] of Object.entries(bodies)) {
-      if (body === undefined) continue; // a path that this form legitimately doesn't send is not a failure
+    for (const [name, body] of Object.entries(required)) {
+      assert.ok(body && typeof body === 'object',
+        `${dir}: premise — a REAL ${name} body must be captured (got ${body === undefined ? 'undefined' : typeof body}); the guard can't fingerprint what was never sent`);
       const fp = chargeInputsFingerprint(body);
       assert.ok(typeof fp === 'string' && fp.length === 64,
         `${dir}: ${name} → chargeInputsFingerprint returned ${fp === null ? 'NULL' : JSON.stringify(fp)}. A real form body carries a field that charge-inputs.js does not classify (CHARGE_INPUT_FIELDS / NON_CHARGE_FIELDS / UNREAD_FORM_FIELDS) — its presence nulls the fingerprint and disables PB-1 reward bound-reuse. Classify the new field (this is exactly how the Phase-1 telemetry P1 slipped in).`);
     }
-    // premise: at least the two createOrder bodies and the card charge+quote were actually captured
-    assert.ok(cash.createOrder && card.charge, `${dir}: premise — real createOrder + chargeOnlineOrder bodies were sent`);
-    ok(`${dir}: every real submit/charge/quote body fingerprints non-null (no unclassified form field)`);
+    ok(`${dir}: real createOrder + chargeOnlineOrder + quoteOrder bodies all fingerprint non-null (no unclassified form field)`);
   }
   console.log(`\ncharge-inputs-form-bodies.guard: ${count()} passed`);
   closeAll();
