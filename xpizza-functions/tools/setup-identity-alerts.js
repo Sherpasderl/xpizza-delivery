@@ -158,9 +158,19 @@ async function arm({ api, region, project, now = Date.now, sleep, ask, log = con
     if (e) seen = e; else { if (now() >= tEnd) throw new Error(`no heartbeat from a new revision within ${Math.round(transitionMs / MIN)} min`); await sleep(Math.min(pollMs, Math.max(0, tEnd - now()))); }
   }
   log(`  ✓ heartbeat from the new revision ${seen.resource.labels.revision_name} at ${seen.timestamp}`);
-  // the service-level series across the transition: never a 45-min gap between positive points
-  const pts = (await heartbeatSeries(api, t0 - 45 * MIN, now())).flatMap((x) => (x.points || []).filter((pt) => Number((pt.value && pt.value.int64Value) || 0) > 0)
-    .map((pt) => Date.parse(pt.interval.endTime))).sort((a, b) => a - b);
+  /* the service-level series ACROSS the transition (codex build r2 P2-D): ingested positive points must exist on BOTH sides of the
+     new revision's first heartbeat — the last point at/before it and a point after it (waited for, bounded: ingestion lags) — and no
+     two consecutive points from t0 − 45 min to the last one may be ≥ 45 min apart. An empty or one-sided series never passes. */
+  const tNew = Date.parse(seen.timestamp);
+  const positives = async () => (await heartbeatSeries(api, t0 - 45 * MIN, now())).flatMap((x) => (x.points || []).filter((pt) => Number((pt.value && pt.value.int64Value) || 0) > 0)
+    .map((pt) => Date.parse(pt.interval.endTime))).filter(Number.isFinite).sort((a, b) => a - b);
+  let pts = await positives();
+  const pEnd = now() + waitMs;
+  while (!pts.some((t) => t > tNew)) {
+    if (now() >= pEnd) throw new Error(`no ingested heartbeat METRIC POINT after the new revision's first heartbeat (${seen.timestamp}) within ${Math.round(waitMs / MIN)} min — continuity NOT shown`);
+    await sleep(Math.min(pollMs, Math.max(0, pEnd - now()))); pts = await positives();
+  }
+  if (!pts.some((t) => t <= tNew)) throw new Error('no ingested heartbeat METRIC POINT before the revision transition — continuity NOT shown');
   for (let i = 1; i < pts.length; i += 1) if (pts[i] - pts[i - 1] >= 45 * MIN) throw new Error('the service-level heartbeat series has a ≥ 45-min gap across the revision transition');
   const answer = await askBounded(ask, '  Did an ABSENCE incident email arrive during the redeploy? (expected NO)', askMs);
   if (answer === null) throw new Error('the owner did not confirm (no answer) — revision-transition acceptance NOT passed');
@@ -177,9 +187,12 @@ async function acceptAbsence({ api, region, now = Date.now, sleep, ask, log = co
   if (!first) throw new Error('no heartbeat ingested yet');
   log(`  last ingested heartbeat (before the pause): ${first.timestamp}`);
   log(`  MANUAL RESUME if this tool dies: gcloud scheduler jobs resume firebase-schedule-verifyIdentityIntegrity-${region} --location ${region}`);
-  let ok = false; let failure = null; let paused = false;
+  let ok = false; let failure = null; let pauseIssued = false;
   try {
-    await api.pauseJob(region); paused = true;
+    // cleanup responsibility is taken BEFORE the pause is issued (codex build r2 P1-A): a pause the server APPLIED whose response
+    // was lost (timeout) must still be resumed — so from here on the job is treated as possibly paused
+    pauseIssued = true;
+    await api.pauseJob(region);
     log('  job paused; draining any in-flight invocation…');
     await sleep(drainMs);
     // the in-flight run may have emitted one more heartbeat: the absence clock starts at the LAST ingested one
@@ -193,12 +206,15 @@ async function acceptAbsence({ api, region, now = Date.now, sleep, ask, log = co
       if (now() < deadline && a === false) await sleep(Math.min(askMs, Math.max(0, deadline - now())));
     }
   } catch (e) { failure = e; } finally {
-    if (paused) {
+    if (pauseIssued) {
+      // RECONCILE from the job's actual state: resume unless it is verifiably ENABLED (paused OR unknown → resume), retried, verified
       let state = null;
       for (let i = 0; i < resumeTries && state !== 'ENABLED'; i += 1) {
-        try { await api.resumeJob(region); state = (await api.getJob(region)).state; } catch (e) { log(`  resume attempt ${i + 1} failed: ${e && e.message}`); }
+        try { state = (await api.getJob(region)).state; } catch (e) { state = null; log(`  state read ${i + 1} failed: ${e && e.message}`); }
+        if (state === 'ENABLED') break;
+        try { await api.resumeJob(region); state = (await api.getJob(region)).state; } catch (e) { state = null; log(`  resume attempt ${i + 1} failed: ${e && e.message}`); }
       }
-      log(`  job resumed: state ${state}`);
+      log(`  job state after cleanup: ${state}`);
       if (state !== 'ENABLED') failure = failure || new Error('the job is NOT enabled — resume it with the command above');
     }
   }

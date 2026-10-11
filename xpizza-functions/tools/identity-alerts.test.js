@@ -154,6 +154,18 @@ setTimeout(() => { console.error('identity-alerts FAILED: the suite did not fini
       { timestamp: new Date(clock + 1).toISOString(), resource: { labels: { revision_name: 'rev-2' } }, match: (f) => /revision_name!="rev-1"/.test(f) }];
     const r = await T.arm({ ...base, ask: async () => false });
     assert.deepStrictEqual(r.revisions, ['rev-1', 'rev-2'], 'armed, then the revision transition passed');
+    // codex build r2 P2-D: an EMPTY transition series, or one with points on only ONE side of the new revision, never passes
+    const tNew = clock + 1;   // the new revision's heartbeat timestamp (entries[1])
+    const ser = (mins) => [{ points: mins.map((m) => ({ value: { int64Value: '1' }, interval: { endTime: new Date(tPol + m * 60000).toISOString() } })) }];
+    let calls = 0;
+    api.timeSeries = async () => { calls += 1; return calls === 1 ? ser([5]) : []; };   // armed by one point, then the transition series is EMPTY
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /no ingested heartbeat METRIC POINT after the new revision/, 'an empty transition series fails');
+    calls = 0; api.timeSeries = async () => { calls += 1; return calls === 1 ? ser([5]) : ser([5]); };   // points only BEFORE the transition
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /after the new revision/, 'points only before the transition fail');
+    const after = Math.ceil((tNew - tPol) / 60000) + 10;
+    calls = 0; api.timeSeries = async () => { calls += 1; return calls === 1 ? ser([after]) : ser([after]); };   // points only AFTER it
+    await assert.rejects(() => T.arm({ ...base, ask: async () => false }), /before the revision transition/, 'points only after the transition fail');
+    api.timeSeries = async () => st.series;
     await assert.rejects(() => T.arm({ ...base, ask: () => new Promise(() => {}) }), /did not confirm/, 'an UNANSWERED confirmation is a failure at its bound, never a hang');
     await assert.rejects(() => T.arm({ ...base, ask: async () => true }), /absence incident opened on a revision transition/);
     st.series = [{ points: [0, 50].map((m) => ({ value: { int64Value: '1' }, interval: { endTime: new Date(tPol + m * 60000).toISOString() } })) }];
@@ -192,6 +204,19 @@ setTimeout(() => { console.error('identity-alerts FAILED: the suite did not fini
     assert.deepStrictEqual([ok7.ok, st.resumed, st.state], [true, 3, 'ENABLED'], 'resume retried until ENABLED');
     ({ st, api } = mk(() => ({ resumeJob: async () => { throw new Error('denied'); } })));
     await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /NOT enabled/, 'a resume that never takes is reported, never silent');
+    // codex build r2 P1-A: the server APPLIES the pause but its response is lost (timeout) → the job is still reconciled and RESUMED
+    ({ st, api } = mk((x) => ({ pauseJob: async () => { x.paused += 1; x.state = 'PAUSED'; throw Object.assign(new Error('api_pauseJob_timeout'), { timeout: true }); } })));
+    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /api_pauseJob_timeout/);
+    assert.deepStrictEqual([st.paused, st.resumed, st.state], [1, 1, 'ENABLED'], 'a pause applied with a lost response is still resumed');
+    // the pause never applied (it failed before reaching the server) → the state reads ENABLED → nothing to resume, the error surfaces
+    ({ st, api } = mk(() => ({ pauseJob: async () => { throw new Error('403'); } })));
+    await assert.rejects(() => T.acceptAbsence({ ...lim, api, ask: async () => true }), /403/);
+    assert.deepStrictEqual([st.resumed, st.state], [0, 'ENABLED'], 'a pause that never applied needs no resume (state verified ENABLED)');
+    // the state read itself fails (unknown) → resume anyway, verified
+    let g = 0;
+    ({ st, api } = mk((x) => ({ getJob: async () => { g += 1; if (g === 1) throw new Error('503'); return { state: x.state }; } })));
+    await T.acceptAbsence({ ...lim, api, ask: async () => true });
+    assert.deepStrictEqual([st.resumed >= 1, st.state], [true, 'ENABLED'], 'an UNKNOWN state is resumed');
     // the absence clock starts at the heartbeat re-read AFTER draining (the in-flight run may have emitted a later one)
     let reads = 0;
     ({ st, api } = mk(() => ({ listEntries: async () => { reads += 1; return [{ timestamp: new Date(reads === 1 ? Date.now() - 1000 : Date.now()).toISOString() }]; } })));

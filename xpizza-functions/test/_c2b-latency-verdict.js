@@ -6,14 +6,37 @@ const ST = require('./_latency-stats');
 const BARS = Object.freeze({ relMax: 0.10, absMaxMs: 150, medMaxMs: 5 });
 const r1 = (v) => +v.toFixed(1);
 /* a child is VALID only if: its state digests all matched; 0 operation errors; exactly SAMPLES samples; and —
-   ON (codex build r1 P1-3): EVERY sample QUALIFIED (it intersected a monitor CHECK interval — consecutive instrumented monitor reads
-   of one restaurant — on the row's prescribed restaurant set), the monitor COMPLETED checks (checked > 0) and READ (reads > 0), and
+   ON (codex build r1 P1-3, r2 P1-B): EVERY sample QUALIFIED (qualifySample: it intersected a COMPLETED 'checked' identity check on the
+   row's prescribed restaurant set — actual check boundaries, never merged), the monitor COMPLETED checks (checked > 0) and READ (reads > 0), and
    NO monitor run failed (errors 0) — a child whose monitor did no work, or only overlapped a run's interval, is REJECTED;
    OFF: the monitor never ran. */
 const childValid = (c, cond, SAMPLES) => !!c.digest && c.digest.mismatches === 0 && c.digest.start_ok === true && c.errors === 0 && Array.isArray(c.ms) && c.ms.length === SAMPLES
   && (cond === 'on'
     ? c.monitor.runs > 0 && c.monitor.qualified === SAMPLES && c.monitor.checked > 0 && c.monitor.reads > 0 && c.monitor.errors === 0
     : c.monitor.runs === 0);
+
+/* ── ON-sample QUALIFICATION from the monitor's ACTUAL check boundaries (codex build r2 P1-B) ──────────────────────────────────
+   A check OPENS when the monitor issues its precheck (the getAll that includes meta/publish_lock) for a restaurant, and CLOSES at the
+   monitor's own identity_integrity_check log line for that restaurant, which carries the OUTCOME. Checks are NEVER merged — not
+   across checks of the same restaurant, not across runs. A sample QUALIFIES iff it intersects a COMPLETED check whose outcome is
+   'checked' on the row's prescribed set: 'same' → this restaurant only; 'other' → the others only; 'same+others' → any target. A
+   deferred precheck (merchant active), a failed or budget-deferred check, and the idle time between checks never qualify. */
+function checksFrom(events) {   // events: [{ t, kind: 'open'|'close', rid, outcome? }] in time order → [{ rid, a, b, outcome }]
+  const out = []; const open = new Map();
+  for (const e of events) {
+    if (e.kind === 'open') { const c = { rid: e.rid, a: e.t, b: null, outcome: null }; out.push(c); open.set(e.rid, c); }
+    else if (e.kind === 'close') { const c = open.get(e.rid); if (c && c.b === null) { c.b = e.t; c.outcome = e.outcome; open.delete(e.rid); } }
+  }
+  return out;
+}
+function qualifySample([t0, t1], checks, { overlap, rid, targets, others }) {
+  const hit = checks.filter((c) => c.b !== null && c.outcome === 'checked' && c.a <= t1 && c.b >= t0);
+  if (!hit.length) return false;
+  const rids = [...new Set(hit.map((c) => c.rid))];
+  if (overlap === 'same') return rids.includes(rid) && rids.every((r) => r === rid);
+  if (overlap === 'other') return !rids.includes(rid) && rids.some((r) => others.includes(r));
+  return rids.some((r) => targets.includes(r));
+}
 
 function verdictRow(row, R, SAMPLES) {
   const abBlocks = R.ab.map((b) => ({ x: b.off.ms, y: b.on.ms }));
@@ -31,4 +54,4 @@ function verdictRow(row, R, SAMPLES) {
     ab_first: R.ab.map((b) => b.first), aa_first: R.aa.map((b) => b.first), blocks: R.ab.map((b) => b.k), valid, verdict: v.verdict, cost: v.cost, quality: v.quality, values: v.values };
 }
 
-module.exports = { verdictRow, childValid, BARS };
+module.exports = { verdictRow, childValid, checksFrom, qualifySample, BARS };

@@ -40,6 +40,9 @@ const RUN_BUDGET_MS = (INTEGRITY_TIMEOUT_S * 1000) - SUMMARY_RESERVE_MS - 20000;
 const COMMIT_RESERVE_MS = 5000;
 const READ_OP_MS = 10000;
 const LIST_DEADLINE_MS = 10000;
+// the enumeration's MAXIMUM cost (one read per listed restaurant) is reserved BEFORE listing — the registry reader cannot be paged,
+// so the bound is enforced by reserving it up front and treating more restaurants than this as an incomplete enumeration
+const ENUMERATION_MAX = 200;
 const QUIET_MS = 10 * 60 * 1000;
 const OBJECT_PAGE = 25;
 const REGISTRY_BATCH = 10;
@@ -76,6 +79,8 @@ function createReadBudget({ cap = RUN_READ_CAP, perSecond = READS_PER_SECOND, no
         await sleep(Math.max(1, window[0][0] + 1000 - t));
       }
     },
+    // an UNUSED part of an up-front reservation (the enumeration's maximum) is returned once the actual cost is known
+    release(n) { used = Math.max(0, used - Math.max(0, n)); },
     used: () => used,
     log,
   };
@@ -257,7 +262,8 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
   };
 
   // ONE RTDB transaction on the restaurant's node: the reducer steps in order, then the size record
-  async function commit(rid, gate, steps) {
+  async function commit(rid, gate, steps, reserve = null) {
+    if (reserve) reserve();   // the transaction's read is reserved BEFORE it is issued (codex build r2 P1-C) — a BudgetDeferral throws here
     const g = gateIo(rtdb, gate, 'integrity_commit');
     let out = {};
     const res = await nodeRef(g, rid).transaction((cur) => {
@@ -276,12 +282,15 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     // restaurant's whole remaining work allowance (25 s, §5), never by the single-read limit
     const boundedStage = (thunk, label) => boundedWork(work, thunk, work.remaining(), label);
     const result = { rid };
-    // the ONE commit this check ends with (whichever path) is an RTDB transaction — its read is reserved FIRST (codex build r1 P1-2)
-    try { budget.reserve(1, 'commit'); } catch (e) { return { rid, outcome: 'deferred_budget', reason: e.message }; }
+    // the commit this check ends with is an RTDB transaction: ONE is reserved FIRST (codex build r1 P1-2); any FURTHER attempt — the
+    // failure record after a failed commit — reserves its own read before it is issued (codex build r2 P1-C)
+    let commitTokens = 0;
+    try { budget.reserve(1, 'commit'); commitTokens = 1; } catch (e) { return { rid, outcome: 'deferred_budget', reason: e.message }; }
+    const reserveCommit = () => { if (commitTokens > 0) { commitTokens -= 1; return; } budget.reserve(1, 'commit'); };
     let pre;
-    try { pre = await bounded(() => precheck(gdb, rid, budget, quietMs), 'precheck'); } catch (e) { return fail(rid, stop, e, 'precheck'); }
+    try { pre = await bounded(() => precheck(gdb, rid, budget, quietMs), 'precheck'); } catch (e) { return fail(rid, stop, e, 'precheck', reserveCommit); }
     if (pre.active) {
-      await commit(rid, stop, [(n) => S.enumerated(n, { obs_t: pre.obs_t }), (n) => S.deferActive(n, { obs_t: pre.obs_t, runId: run })]);
+      await commit(rid, stop, [(n) => S.enumerated(n, { obs_t: pre.obs_t }), (n) => S.deferActive(n, { obs_t: pre.obs_t, runId: run })], reserveCommit);
       log('identity_integrity_check', { rid, outcome: 'deferred_merchant_active', why: pre.why });
       return { ...result, outcome: 'deferred_merchant_active' };
     }
@@ -292,7 +301,7 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
       const gr = gateIo(rtdb, work, 'integrity_node');
       const [bSnap, aSnap] = await bounded(() => Promise.all([nodeRef(gr, rid).child('boundary').get(), nodeRef(gr, rid).child('audited_through').get()]), 'node_read');
       boundary = bSnap.val(); through0 = aSnap.val();
-    } catch (e) { return fail(rid, stop, e, 'node'); }
+    } catch (e) { return fail(rid, stop, e, 'node', reserveCommit); }
     let active; let audit = null; let count = null; let onboarded = null;
     try {
       const obs = await boundedStage(() => observeActive(gdb, rid, budget), 'check_active');
@@ -314,11 +323,11 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     } catch (e) {
       if (e && e.oversized) {
         const obs_t = active && active.obs_t;
-        await commit(rid, stop, [(n) => S.enumerated(n, { obs_t: obs_t || S.fromMs(now()) }), (n) => S.deferFailure(n, { nowMs: now(), reason: `unavailable_${e.oversized}` })]);
+        await commit(rid, stop, [(n) => S.enumerated(n, { obs_t: obs_t || S.fromMs(now()) }), (n) => S.deferFailure(n, { nowMs: now(), reason: `unavailable_${e.oversized}` })], reserveCommit);
         log('identity_integrity_check', { rid, outcome: 'unavailable', reason: e.oversized });
         return { ...result, outcome: 'unavailable', reason: e.oversized };
       }
-      return fail(rid, stop, e, 'check');
+      return fail(rid, stop, e, 'check', reserveCommit);
     }
     const steps = [(n) => S.enumerated(n, { obs_t: active.obs_t || active.obs.obs_t })];
     if (onboarded) steps.push((n) => S.setBoundary(n, onboarded));
@@ -331,7 +340,7 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     if (audit) steps.push((n, out) => { const r = S.applyAuditPage(n, audit); out.auditApplied = r.applied; return r; });
     steps.push((n) => { const x = JSON.parse(JSON.stringify(n || {})); x.coverage = x.coverage || {}; x.coverage.evidence_count = count; return x; });
     let c;
-    try { c = await commit(rid, stop, steps); } catch (e) { return fail(rid, stop, e, 'commit'); }
+    try { c = await commit(rid, stop, steps, reserveCommit); } catch (e) { return fail(rid, stop, e, 'commit', reserveCommit); }
     const state = active.none ? 'no_active_version' : active.result.state;
     log('identity_integrity_check', { rid, outcome: c.committed ? 'checked' : 'commit_not_settled', state, generation: active.none ? 0 : active.obs.pointer.generation,
       findings: active.none ? 0 : active.result.findings.length, audit: audit ? { from: audit.start, to: audit.end, findings: audit.findings.length } : null,
@@ -339,10 +348,10 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
     return { ...result, outcome: 'checked', state, committed: c.committed, applied: c.out };
   }
 
-  async function fail(rid, stop, e, stage) {
+  async function fail(rid, stop, e, stage, reserve = null) {
     const reason = e && e.budgetDeferral ? e.message : (e && e.workDeadline ? 'budget_exhausted' : `${stage}_failed`);
     // (first_enumerated_at is recorded by run() for EVERY enumerated restaurant, so one that always fails still goes stale)
-    try { await commit(rid, stop, [(n) => S.deferFailure(n, { nowMs: now(), reason })]); } catch (_) { /* the next run retries */ }
+    try { await commit(rid, stop, [(n) => S.deferFailure(n, { nowMs: now(), reason })], reserve); } catch (_) { /* no budget for it, or it failed: the next run retries */ }
     log('identity_integrity_check', { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason, error: String((e && e.message) || e).slice(0, 160) });
     return { rid, outcome: e && (e.budgetDeferral || e.workDeadline) ? 'deferred_budget' : 'failed', reason };
   }
@@ -354,20 +363,24 @@ function createIdentityIntegrityMonitor({ db, rtdb, now = Date.now, sleep, log =
      2 per restaurant RESERVED UP FRONT (restaurant work can never consume them), the views, the first-enumeration records and
      each check's commit. A stalled operation is abandoned at its phase deadline (the run moves on; the next run redoes it). */
   async function run({ listIds, runBudgetMs = RUN_BUDGET_MS, restaurantMs = RESTAURANT_ALLOWANCE_MS, readCap = RUN_READ_CAP, perSecond = READS_PER_SECOND,
-    quietMs = QUIET_MS, summaryReserveMs = SUMMARY_RESERVE_MS, readOpMs = READ_OP_MS } = {}) {
+    quietMs = QUIET_MS, summaryReserveMs = SUMMARY_RESERVE_MS, readOpMs = READ_OP_MS, enumerationMax = ENUMERATION_MAX } = {}) {
     const id = runId();
     const budget = createReadBudget({ cap: readCap, perSecond, now, sleep });
     const work = makeDeadline(runBudgetMs, now);
-    let ids; let enumeratedOk = true;
+    let ids; let enumeratedOk = true; let listed = 0;
     try {
-      budget.reserve(1, 'enumerate');
-      ids = sanitize(await boundedWork(work, () => listIds(), Math.min(LIST_DEADLINE_MS, readOpMs), 'integrity_list')).slice().sort();
+      budget.reserve(enumerationMax, 'enumerate');   // the MAXIMUM, before listing (codex build r2 P1-C)
+      const raw = await boundedWork(work, () => listIds(), Math.min(LIST_DEADLINE_MS, readOpMs), 'integrity_list');
+      listed = Array.isArray(raw) ? raw.length : 0;
+      ids = sanitize(raw).slice().sort();
+      if (listed > enumerationMax) { enumeratedOk = false; ids = ids.slice(0, enumerationMax); log('identity_integrity_enumeration_truncated', { listed, max: enumerationMax }); }
+      budget.release(enumerationMax - Math.max(1, Math.min(listed, enumerationMax)));   // the actual cost: one per listed restaurant (≥ 1)
     } catch (e) {
       log('identity_integrity_run', { ok: false, error: String((e && e.message) || e).slice(0, 160), reads: budget.used() });
       return { ok: false, results: [], reads: budget.used(), pacing: budget.log };
     }
     let summaryReserved = true;
-    try { budget.reserve(Math.max(0, ids.length - 1), 'enumerate'); budget.reserve(2 * ids.length, 'summaries'); } catch (_) { summaryReserved = false; enumeratedOk = false; }
+    try { budget.reserve(2 * ids.length, 'summaries'); } catch (_) { summaryReserved = false; enumeratedOk = false; }
     const views = [];
     if (summaryReserved) {
       for (const rid of ids) {
@@ -419,5 +432,5 @@ module.exports = {
   createIdentityIntegrityMonitor, createReadBudget, precheck, observeActive, observeAudit, evidenceCount, originOf, originOfVid,
   INTEGRITY_PATH, INTEGRITY_SCHEDULE, INTEGRITY_TIMEOUT_S, INTEGRITY_MEMORY, RUN_READ_CAP, READS_PER_SECOND, RESTAURANT_ALLOWANCE_MS,
   SUMMARY_RESERVE_MS, RUN_BUDGET_MS, QUIET_MS, OBJECT_PAGE, REGISTRY_BATCH, PAIRS_PER_BATCH, AUDIT_PAGE, CERT_READ_LIMIT, COUNT_LIMIT, GROWTH_LIMIT, READ_ONLY,
-  BudgetDeferral, OversizedDeferral,
+  BudgetDeferral, OversizedDeferral, ENUMERATION_MAX,
 };

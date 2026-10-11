@@ -165,7 +165,7 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
     const lines = [];
     const m = M.createIdentityIntegrityMonitor({ db, rtdb: fakeRtdb({}, calls), log: (k) => lines.push(k) });
     const ids = ['rid_a', 'rid_b', 'rid_c'];
-    const out = await m.run({ listIds: async () => ids, readCap: ids.length + 2 * ids.length });   // enumeration (N) + summaries (2N), nothing else
+    const out = await m.run({ listIds: async () => ids, readCap: ids.length + 2 * ids.length, enumerationMax: ids.length });   // enumeration (N, its max reserved up front) + summaries (2N), nothing else
     assert.deepStrictEqual([out.ok, out.results.length, out.lines.length, calls.rtdbGets, calls.rtdbTx, calls.db], [true, 0, 3, 6, 0, 0],
       `only the reserved summary reads happen: ${JSON.stringify(calls)}`);
     assert.ok(!lines.includes('identity_integrity_heartbeat'), 'no heartbeat (the run could not enumerate coverage)');
@@ -205,6 +205,43 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
     assert.ok(out.ok && out.lines.length === ids.length && out.lines.every((l) => l.stale === 1), 'a line for EVERY restaurant (unreadable → stale)');
     assert.ok(ms < 450, `the summaries stopped at their reserve, not after ${ids.length} sequential timeouts (${ms} ms; unbounded ≥ ${ids.length * 100} ms)`);
     ok(`P1-2: every RTDB get STALLS — the views end at the work deadline and the summaries at their own reserve inside the run (${ms} ms for ${ids.length} restaurants, all lines emitted stale), never one timeout per restaurant`);
+  }
+
+  // ── 8. codex build r2 P1-C: the cap holds for EVERY ISSUED read, across failure paths — the failure record after a failed commit
+  //       reserves its own read; the enumeration's maximum is reserved BEFORE listing ───────────────────────────────────────────
+  {
+    // instrumented handles: every issued unit counted — a listed restaurant, an RTDB get, an RTDB transaction, a Firestore read
+    const mk = () => {
+      const c = { units: 0 };
+      const ref = (p) => ({ path: p, child: (k) => ref(`${p}/${k}`), get: async () => { c.units += 1; return { val: () => null }; },
+        transaction: () => { c.units += 1; return Promise.reject(new Error('commit refused')); } });   // EVERY commit fails → fail() records again
+      const db = { runTransaction: async (fn) => fn({ getAll: async (...a) => { const refs = a.filter((x) => x && x.path); c.units += refs.length; return refs.map(() => ({ exists: false, data: () => undefined, readTime: READ, updateTime: READ })); },
+        get: async () => { c.units += 1; return { exists: false, data: () => undefined, readTime: READ }; } }),
+      collection: (x) => ({ doc: (d) => ({ path: `${x}/${d}`, collection: (y) => ({ doc: (e) => ({ path: `${x}/${d}/${y}/${e}`, collection: () => ({}) }) }) }) }) };
+      return { c, rtdb: { ref }, db };
+    };
+    const ids = Array.from({ length: 6 }, (_, i) => `rid_${String.fromCharCode(97 + i)}`);
+    let worst = { cap: -1, issued: -1 };
+    for (const cap of [0, 1, 2, 5, 9, 13, 18, 21, 25, 29, 33, 34, 40, 60, 90]) {
+      const h = mk();
+      const m = M.createIdentityIntegrityMonitor({ db: h.db, rtdb: h.rtdb, log: () => {} });
+      const out = await within(m.run({ listIds: async () => { h.c.units += ids.length; return ids; }, readCap: cap, enumerationMax: 10, quietMs: 0, readOpMs: 50, runBudgetMs: 3000, summaryReserveMs: 1000 }), 8000, `cap ${cap}`);
+      assert.ok(h.c.units <= cap, `cap ${cap}: ${h.c.units} units ISSUED > the cap`);
+      assert.ok(h.c.units <= out.reads, `cap ${cap}: ${h.c.units} issued ≤ ${out.reads} reserved (every issued read was reserved first)`);
+      if (h.c.units > worst.issued) worst = { cap, issued: h.c.units };
+    }
+    // cap 1: the enumeration's maximum does not fit → NOTHING is listed (never "1 reserved, 20 listed")
+    const h = mk(); let listed = 0;
+    const m1 = M.createIdentityIntegrityMonitor({ db: h.db, rtdb: h.rtdb, log: () => {} });
+    const o1 = await m1.run({ listIds: async () => { listed += 20; return Array.from({ length: 20 }, (_, i) => `rid_${i}x`); }, readCap: 1 });
+    assert.deepStrictEqual([o1.ok, listed, h.c.units], [false, 0, 0], 'cap 1 → the enumeration is never issued');
+    // more restaurants than the maximum → truncated, the enumeration is INCOMPLETE (no heartbeat), never over the reservation
+    const h2 = mk(); const lines = [];
+    const m2 = M.createIdentityIntegrityMonitor({ db: h2.db, rtdb: h2.rtdb, log: (k) => lines.push(k) });
+    const many = Array.from({ length: 30 }, (_, i) => `rid_${String(i).padStart(2, '0')}m`);
+    const o2 = await within(m2.run({ listIds: async () => many, enumerationMax: 12, readCap: 1000, readOpMs: 50, runBudgetMs: 2000, summaryReserveMs: 1000 }), 8000, 'truncated');
+    assert.deepStrictEqual([o2.ids.length, lines.includes('identity_integrity_enumeration_truncated'), lines.includes('identity_integrity_heartbeat')], [12, true, false]);
+    ok(`P1-C: across 15 caps (0…90) with EVERY commit failing (so each check also records its failure), the ISSUED units never exceed the cap nor the reservations (worst: ${worst.issued} issued at cap ${worst.cap}); cap 1 → the enumeration is never issued; more restaurants than its reserved maximum → truncated, incomplete, no heartbeat`);
   }
 
   FINISHED = true;

@@ -217,6 +217,7 @@ async function child(rowKey, cond) {
       if ((k === 'get' || k === 'getAll') && typeof v === 'function') {
         return async (...a) => {
           const e = [Date.now(), Infinity, ridsOf(a), 0]; monReads.push(e);
+          if (k === 'getAll' && a.some((x) => /\/meta\/publish_lock$/.test(pathOf(x)))) checkEvents.push({ t: e[0], kind: 'open', rid: e[2][0] });
           try { const res = await v.apply(t, a); e[3] = Array.isArray(res) ? res.length : (res && res.docs ? res.docs.length : 1); return res; } finally { e[1] = Date.now(); }
         };
       }
@@ -230,10 +231,11 @@ async function child(rowKey, cond) {
   };
   // the prescribed overlap: 'same' → reads of THIS restaurant only; 'other' → reads of the other restaurants, never this one;
   // 'same+others' → reads of any target
-  const qualifies = (rids) => (row.overlap === 'same' ? rids.includes(row.rid) && rids.every((r) => r === row.rid)
-    : row.overlap === 'other' ? !rids.includes(row.rid) && rids.some((r) => OTHERS.includes(r)) : rids.some((r) => targets.includes(r)));
+  // ACTUAL check boundaries (codex build r2 P1-B): a check OPENS at its precheck getAll (it includes meta/publish_lock) and CLOSES at
+  // the monitor's identity_integrity_check line for that restaurant, with the outcome (test/_c2b-latency-verdict.js checksFrom)
+  const checkEvents = [];
   if (cond === 'on') {
-    const m = createIdentityIntegrityMonitor({ db: instrumented(db), rtdb, log: () => {} });
+    const m = createIdentityIntegrityMonitor({ db: instrumented(db), rtdb, log: (k, d) => { if (k === 'identity_integrity_check' && d) checkEvents.push({ t: Date.now(), kind: 'close', rid: d.rid, outcome: d.outcome }); } });
     loop = (async () => {
       while (!stop) {
         const t0 = Date.now(); mon.current = t0;
@@ -350,28 +352,17 @@ async function child(rowKey, cond) {
     if (cond === 'on') windows.push([t0, t1]);
   }
   stop = true; if (loop) await loop;
-  /* QUALIFICATION, judged once the monitor has stopped (its intervals are then final). The monitor checks ONE restaurant at a time,
-     so its instrumented reads form CHECK INTERVALS: consecutive reads of the same restaurant, [first read issued, last read done]
-     (the paced gaps between a check's reads are inside its interval — that IS the monitor's load at max pacing). A sample is
-     QUALIFIED iff it intersects a check interval of a prescribed restaurant (and, for 'other', of none but the others). */
-  const checks = [];
-  for (const e of monReads.slice().sort((x, y) => x[0] - y[0])) {
-    const rid = e[2].length === 1 ? e[2][0] : e[2].join('+'); const end = Number.isFinite(e[1]) ? e[1] : Date.now();
-    const cur = checks[checks.length - 1];
-    if (cur && cur.rid === rid) { cur.b = Math.max(cur.b, end); cur.reads += Math.max(1, e[3]); } else checks.push({ rid, a: e[0], b: end, reads: Math.max(1, e[3]) });
-  }
-  let qualified = 0; const perSample = [];
-  for (const [t0, t1] of windows) {
-    const hit = checks.filter((c) => c.a <= t1 && c.b >= t0);
-    const rids = [...new Set(hit.map((c) => c.rid))];
-    perSample.push(hit.reduce((x, c) => x + c.reads, 0));
-    if (hit.length && qualifies(rids)) qualified += 1;
-  }
+  // QUALIFICATION, judged once the monitor has stopped (every check then closed), from the ACTUAL check boundaries — never merged
+  const { checksFrom, qualifySample } = require('./_c2b-latency-verdict');
+  const checks = checksFrom(checkEvents);
+  const spec = { overlap: row.overlap, rid: row.rid, targets, others: OTHERS };
+  let qualified = 0;
+  for (const w of windows) if (qualifySample(w, checks, spec)) qualified += 1;
+  const outcomesOfChecks = checks.reduce((o, c) => { o[c.outcome || 'open'] = (o[c.outcome || 'open'] || 0) + 1; return o; }, {});
   // leave the seeded state behind for the next child (and prove it)
   await restore(); if (digest.start_ok && !digest.mismatches) await verify('child end');
   console.log = origLog;
   origLog(JSON.stringify({ row: rowKey, cond, ms, attempts, errors, statuses, digest, timing: tm, monitor: { runs: mon.runs, reads: mon.reads, checked: mon.checked, errors: mon.errors, outcomes: mon.outcomes, overlapped, qualified,
-    fs_reads: monReads.reduce((x, e) => x + Math.max(1, e[3]), 0), check_intervals: checks.length,
-    reads_of_overlapping_checks: { min: perSample.length ? Math.min(...perSample) : 0, max: perSample.length ? Math.max(...perSample) : 0 } } }));
+    fs_reads: monReads.reduce((x, e) => x + Math.max(1, e[3]), 0), checks: checks.length, check_outcomes: outcomesOfChecks } }));
   process.exit(0);
 }
