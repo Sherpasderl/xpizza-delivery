@@ -849,7 +849,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 .loc-pred:last-child{border-bottom:0}
 .loc-pred.hot{background:var(--pred-hot)}
 .loc-pred > svg{flex:none;margin-top:1px;color:var(--gold)}
-.loc-pred .t{font-size:14px;font-weight:500;color:var(--charcoal);line-height:1.3}
+.loc-pred .t{font-size:14px;font-weight:700;color:var(--charcoal);line-height:1.3}
 .loc-pred .s{font-size:12px;color:var(--muted);margin-top:1px}
 .map-btns{padding:0 16px}
 
@@ -3579,7 +3579,8 @@ function updateLocInfo(la,ln,fallback){
    errors or returns nothing, the map tap→fullscreen editor still works. Search is scoped to THIS
    restaurant's delivery zone (RESTAURANT_LAT/LNG + DELIVERY_RADIUS_KM, padded) so a customer can't
    pin another city — brand-agnostic, derived from the same constants the zone check uses. */
-let __locSessToken=null, __locSearchTimer=null;
+let __locSessToken=null, __locSearchTimer=null, __locReqSeq=0, __locPicking=false;
+function locHidePreds(){ const p=document.getElementById('loc-preds'); if(p){ p.style.display='none'; p.innerHTML=''; } }
 function locSearchBounds(){
   const padKm=DELIVERY_RADIUS_KM*1.4;
   const dLat=padKm/111.32;
@@ -3588,21 +3589,23 @@ function locSearchBounds(){
 }
 function locSearchInput(v){
   const q=(v||'').trim();
-  const preds=document.getElementById('loc-preds');
   clearTimeout(__locSearchTimer);
-  if(q.length<3){ if(preds){ preds.style.display='none'; preds.innerHTML=''; } return; }
+  __locReqSeq++;                        // any input change supersedes an in-flight prediction response
+  if(q.length<3){ locHidePreds(); return; }
   __locSearchTimer=setTimeout(function(){ locFetchPreds(q); },250);
 }
 async function locFetchPreds(q){
-  if(!(window.google&&google.maps&&google.maps.places&&google.maps.places.AutocompleteSuggestion)) return;
+  const seq=++__locReqSeq;              // this request's generation
+  if(!(window.google&&google.maps&&google.maps.places&&google.maps.places.AutocompleteSuggestion)){ if(seq===__locReqSeq) locHidePreds(); return; }
   try{
     if(!__locSessToken) __locSessToken=new google.maps.places.AutocompleteSessionToken();
     const {suggestions}=await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
       input:q, language:'es', includedRegionCodes:['hn'],
       locationRestriction:locSearchBounds(), sessionToken:__locSessToken,
     });
+    if(seq!==__locReqSeq) return;       // a newer input superseded this response — never let an older/late result repopulate
     locRenderPreds(suggestions||[]);
-  }catch(e){ /* quiet — the map tap→fullscreen editor still works */ }
+  }catch(e){ if(seq===__locReqSeq) locHidePreds(); }  // on error/unavailable: CLEAR — never leave stale rows visible + selectable
 }
 function locRenderPreds(suggestions){
   const preds=document.getElementById('loc-preds');
@@ -3630,17 +3633,23 @@ function locRenderPreds(suggestions){
   preds.style.display='';
 }
 async function locPickPred(p,label){
+  if(__locPicking) return;              // serialize: ignore a second pick while a details fetch is in flight
+  __locPicking=true;
+  __locReqSeq++;                         // dismiss the dropdown + invalidate any pending prediction response
+  const beforeLat=(typeof lat!=='undefined')?lat:null, beforeLng=(typeof lng!=='undefined')?lng:null;
+  locHidePreds();
+  const input=document.getElementById('loc-search-input');
+  if(input&&label) input.value=label;
   try{
     const place=p.toPlace();
     await place.fetchFields({fields:['location']});
-    __locSessToken=null; // a details fetch closes the autocomplete billing session
-    const preds=document.getElementById('loc-preds');
-    if(preds){ preds.style.display='none'; preds.innerHTML=''; }
-    const input=document.getElementById('loc-search-input');
-    if(input&&label) input.value=label;
+    // Don't clobber a point the customer set WHILE this details fetch was in flight (a map tap / drag
+    // moved lat/lng). A late details response must never overwrite a newer, deliberate placement.
+    if(typeof lat!=='undefined' && (lat!==beforeLat||lng!==beforeLng)) return;
     const loc=place.location;
     if(loc&&typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
   }catch(e){ /* quiet */ }
+  finally{ __locSessToken=null; __locPicking=false; }  // retire the session token on ANY outcome — fetchFields ends the session (incl. on reject)
 }
 
 /* ── Stage 2 → 3 ── */

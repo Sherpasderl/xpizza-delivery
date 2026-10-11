@@ -42,6 +42,19 @@ Search box above the map (cream bg, 1.5px `--border2`, gold `:focus-within` ring
 
 Universal "confirmá tu ubicación" gate; center-fixed-pin redesign; making the inline map directly interactive; forcing users out of the webview. (Phase 2 may revisit the pin redesign per the telemetry.)
 
+## REVISE round 1 (codex gate on 1f3a2ac — hard gate PASSED; these contained to the new async search)
+
+1. **Stale/race on predictions (🔴).** Added a monotonic request-generation guard (`__locReqSeq`): every input change and every new fetch bumps it; a response renders only if its captured generation is still current, so a late/out-of-order older response can never repopulate over a newer query. Old rows are now CLEARED on every error AND Places-unavailable path (`locHidePreds()` in the `catch` and the unavailable branch) — a stale, wrong result can no longer stay visible + selectable.
+2. **Selection + token lifecycle (🔴).** `locPickPred` now: serializes (`__locPicking` guard — a second pick mid-flight is ignored); retires the session token in `finally` (any outcome, including a rejected `fetchFields` — Google ends the session on a details fetch); and refuses to clobber a point the customer set WHILE the details fetch was in flight (captures lat/lng before `await`, bails if they moved — a map tap/drag wins over a late pick).
+3. **Tests.** `order-form-location-escape.test.js` now 22/22 — adds runtime race coverage (populate-then-clear-on-reject, populate-then-clear-on-unavailable, late/out-of-order response ignored, token-retired-on-reject, concurrent-pick serialized, pin-moved-meanwhile guard + positive control), driven through the REAL sliced source with a hand-controlled mock Places. `cart-identity-order.test.mjs` now loads the form with a NON-EMPTY referrer (`https://l.instagram.com/`) so the `client_referrer === document.referrer` assertion is non-vacuous (a hardcoded `''` would now fail); `form-harness.mjs` gained an optional `referrer` param (additive; default behavior unchanged for all other callers).
+4. **Minor fidelity.** Prediction title `.loc-pred .t` weight 500 → 700 (bold) to match the mockup.
+
+Still byte-identical across both forms (JS block diff-clean; only `--gold-ring`/`--pred-hot` values differ). Happy path untouched.
+
+## Separate (surfaced to owner — NOT in this diff)
+
+Telemetry (#3) transmits `client_user_agent`/`client_referrer` but the server does NOT persist them (`createOrder` / `create-order-build.js` writes only known fields), so Phase-1 telemetry currently measures nothing — even "later". Delivering its purpose needs a small additive functions change (persist the 2 fields onto the order node) with its own gate + deploy. Held as an owner call; the transmission code is correct, it just has no sink yet. See memory [[phase1-telemetry-no-server-sink]].
+
 ## Handback
 
 Executor built + ran non-codex tests + self-reviewed. Branch `feat/order-form-location-escape-hatch` off `origin/main` 59fd064. → advisor runs the single codex gate (fidelity-to-mockup + no-regression).

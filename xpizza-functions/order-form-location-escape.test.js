@@ -71,6 +71,45 @@ const SEARCH_HTML_END = '<div style="position:relative;cursor:pointer" onclick="
 const CSS_START = '/* ── Fail-state address search (location escape hatch)';
 const CSS_END = '.loc-pred .s{';
 
+// ── Race-coverage harness: build a fresh DOM + vm context from a form's real escape-hatch JS, with a
+// MOCK Places whose autocomplete + session-token calls we drive by hand (resolve/reject on demand). This
+// is how the stale/late/reject/selection races are exercised at RUNTIME against the actual source.
+function makeRaceCtx(brand, seed) {
+  seed = seed || {};
+  const src = readFileSync(FORM[brand], 'utf8');
+  const block = sliceBlock(src, BLOCK_START, BLOCK_END);
+  const dom = new JSDOM(src, { runScripts: 'outside-only' });
+  const doc = dom.window.document;
+  const state = { pending: [], tokenCount: 0 };
+  const places = {
+    AutocompleteSessionToken: function () { state.tokenCount++; },
+    AutocompleteSuggestion: { fetchAutocompleteSuggestions: function () { return new Promise(function (res, rej) { state.pending.push({ res, rej }); }); } },
+  };
+  const google = { maps: { places } };
+  const win = { google };
+  const placePinCalls = [];
+  const ctx = {
+    document: doc, console, window: win, google,
+    checkDeliveryRadius: () => {}, placePin: (la, ln, fb) => placePinCalls.push([la, ln, fb]),
+    setTimeout: () => 0, clearTimeout: () => {},
+    // locSearchBounds() reads these form-scope constants (the real forms define them at top level);
+    // values are irrelevant here (the mock ignores locationRestriction) but must be finite numbers.
+    DELIVERY_RADIUS_KM: 9.66, RESTAURANT_LAT: 15.5, RESTAURANT_LNG: -88.0,
+  };
+  if ('lat' in seed) ctx.lat = seed.lat;
+  if ('lng' in seed) ctx.lng = seed.lng;
+  vm.runInNewContext(block, ctx);
+  return { ctx, doc, preds: doc.getElementById('loc-preds'), placePinCalls, state, win };
+}
+// one autocomplete suggestion in the real shape locRenderPreds reads
+function sg(main) { return { placePrediction: { mainText: { text: main }, text: { text: main }, secondaryText: { text: 'SPS' }, toPlace: () => ({ location: { lat: () => 15.4, lng: () => -88.0 }, fetchFields: async () => {} }) } }; }
+// a prediction whose details fetch (place.fetchFields) we resolve/reject on demand
+function fakePred(main, la, ln) {
+  let res, rej;
+  const place = { location: { lat: () => la, lng: () => ln }, fetchFields: () => new Promise((rs, rj) => { res = () => rs(); rej = () => rj(new Error('fetchFields failed')); }) };
+  return { p: { mainText: { text: main }, text: { text: main }, toPlace: () => place }, resolve: () => res(), reject: () => rej() };
+}
+
 (async () => {
   const blocks = {}, searchHtml = {}, css = {};
 
@@ -160,6 +199,68 @@ const CSS_END = '.loc-pred .s{';
   assert.strictEqual(searchHtml.x_pizza, searchHtml.la_musa, 'fail-state search-box HTML byte-identical across both forms');
   assert.strictEqual(css.x_pizza, css.la_musa, 'search CSS block byte-identical across both forms');
   ok('both forms carry byte-identical search machinery (JS + HTML + CSS; only brand token values differ)');
+
+  // ── ASYNC RACE COVERAGE (both forms) — the REVISE findings, run as real transitions ─────────────
+  for (const brand of Object.keys(FORM)) {
+    // #1a — rows render, THEN a later reject AND a later Places-unavailable each CLEAR the stale rows
+    // (a customer must never be able to pick a wrong, stale result — the exact failure we're fixing).
+    {
+      const h = makeRaceCtx(brand);
+      const f1 = h.ctx.locFetchPreds('mall'); h.state.pending[0].res({ suggestions: [sg('Mall A'), sg('Mall B')] }); await f1;
+      assert.ok(h.preds.children.length === 2 && h.preds.style.display !== 'none', `[${brand}] predictions populated (precondition for the clear)`);
+      const f2 = h.ctx.locFetchPreds('mallz'); h.state.pending[1].rej(new Error('down')); await f2;
+      assert.ok(h.preds.children.length === 0 && h.preds.style.display === 'none', `[${brand}] a REJECTED next request clears the stale rows`);
+      const f3 = h.ctx.locFetchPreds('mall'); h.state.pending[2].res({ suggestions: [sg('Mall A')] }); await f3;
+      assert.strictEqual(h.preds.children.length, 1, `[${brand}] predictions re-populated`);
+      delete h.win.google.maps.places.AutocompleteSuggestion; // Places becomes unavailable mid-session
+      const f4 = h.ctx.locFetchPreds('mallq'); await f4;
+      assert.ok(h.preds.children.length === 0 && h.preds.style.display === 'none', `[${brand}] a Places-UNAVAILABLE next request clears the stale rows`);
+      ok(`${brand}: #1a stale rows cleared on reject AND on Places-unavailable (populated first, then cleared)`);
+    }
+    // #1b — a late / out-of-order OLDER response never repopulates over the newest query
+    {
+      const h = makeRaceCtx(brand);
+      const fa = h.ctx.locFetchPreds('a'); // generation 1
+      const fb = h.ctx.locFetchPreds('b'); // generation 2 (newer)
+      h.state.pending[0].res({ suggestions: [sg('STALE-A')] }); await fa; // older resolves LATE
+      assert.strictEqual(h.preds.children.length, 0, `[${brand}] a late OLDER response is ignored`);
+      h.state.pending[1].res({ suggestions: [sg('FRESH-B')] }); await fb;
+      assert.ok(h.preds.textContent.includes('FRESH-B') && !h.preds.textContent.includes('STALE-A'), `[${brand}] only the newest query's results render`);
+      ok(`${brand}: #1b newest-query generation guard — late/out-of-order responses never win`);
+    }
+    // #2 — the session token is retired on a REJECTED details fetch (next fetch opens a NEW session),
+    // and a second pick while one is in flight is ignored (serialized).
+    {
+      const h = makeRaceCtx(brand);
+      const f1 = h.ctx.locFetchPreds('mall'); h.state.pending[0].res({ suggestions: [sg('Mall A')] }); await f1;
+      assert.strictEqual(h.state.tokenCount, 1, `[${brand}] one session token opened for the first fetch`);
+      const fp = fakePred('Mall A', 15.49, -88.03);
+      const pick = h.ctx.locPickPred(fp.p, 'Mall A');
+      const pick2 = h.ctx.locPickPred(fakePred('Other', 1, 2).p, 'Other'); // a 2nd pick mid-flight
+      await pick2; // serialized → returns without acting
+      fp.reject(); await pick;
+      assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a rejected pick places no pin; the concurrent 2nd pick was ignored`);
+      const f2 = h.ctx.locFetchPreds('mallz'); h.state.pending[h.state.pending.length - 1].res({ suggestions: [sg('Z')] }); await f2;
+      assert.strictEqual(h.state.tokenCount, 2, `[${brand}] token retired on reject → the next fetch opens a NEW session`);
+      ok(`${brand}: #2 session token retired on reject + concurrent selection serialized`);
+    }
+    // #2 — a late details response must NOT clobber a point the customer set meanwhile (map tap/drag);
+    // positive control: with nothing moved, the pick does place the pin.
+    {
+      const h = makeRaceCtx(brand, { lat: 15.50, lng: -88.00 });
+      const fp = fakePred('Place X', 16.0, -89.0);
+      const pick = h.ctx.locPickPred(fp.p, 'Place X'); // captures beforeLat=15.50
+      h.ctx.lat = 15.70; h.ctx.lng = -88.20;           // a map tap moved the pin while fetching
+      fp.resolve(); await pick;
+      assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a late details response does NOT overwrite a pin set meanwhile`);
+      const h2 = makeRaceCtx(brand, { lat: 15.50, lng: -88.00 });
+      const fp2 = fakePred('Place Y', 16.1, -89.1);
+      const pick2 = h2.ctx.locPickPred(fp2.p, 'Place Y'); // nothing moves
+      fp2.resolve(); await pick2;
+      assert.deepStrictEqual(h2.placePinCalls, [[16.1, -89.1, false]], `[${brand}] a normal pick (nothing moved) places the pin`);
+      ok(`${brand}: #2 pin-moved-meanwhile guard holds (with a passing positive control)`);
+    }
+  }
 
   console.log(`\norder-form-location-escape.test.js: ${n} passed`);
 })().catch((e) => { console.error('order-form-location-escape FAILED:', e && e.stack || e); process.exit(1); });

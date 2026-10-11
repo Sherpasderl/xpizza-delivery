@@ -40,7 +40,9 @@ function bodyFor(dir, w, withIds) {
    format, not a read-back of a stored document. Nothing here proves Firestore wrote it; what it proves
    is that nothing carrying an id value was ever sent, which is the claim D2 needs. */
 async function submitted(dir, { withIds, card = false }) {
-  const w = loadForm(dir);
+  // Non-empty referrer fixture so the client_referrer telemetry assertion is NON-VACUOUS — a hardcoded
+  // '' in the form would fail `=== document.referrer` here (it no longer matches the env value).
+  const w = loadForm(dir, { referrer: 'https://l.instagram.com/' });
   const sent = {};
   w.__respond = (url, init) => {
     const u = String(url);
