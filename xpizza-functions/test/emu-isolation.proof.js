@@ -102,7 +102,14 @@ function insideLeaky(pidFile) {
 async function insideOrphanCheck(ctl) {
   require('./_emulator-required')('database');
   await sleep(2500);                                                              // give a (dead) writer every chance
-  const v = await (await fetch(`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/r1orphan.json?ns=${NS}`)).json();
+  // non-vacuity: prove the admin read works by reading a value this run writes itself first
+  const H = { Authorization: 'Bearer owner' };
+  await fetch(`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/r1control.json?ns=${NS}`, { method: 'PUT', headers: H, body: '"present"' });
+  const control = await (await fetch(`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/r1control.json?ns=${NS}`, { headers: H })).json();
+  if (control !== 'present') { console.error(`orphan check: the admin read is not working (${JSON.stringify(control)})`); process.exit(1); }
+  // ADMIN read (the emulator's owner bearer): the orphan wrote through the Admin SDK, which bypasses rules — an
+  // unauthenticated read would just be DENIED by the rules and prove nothing
+  const v = await (await fetch(`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/r1orphan.json?ns=${NS}`, { headers: { Authorization: 'Bearer owner' } })).json();
   fs.writeFileSync(path.join(ctl, 'orphan-check.json'), JSON.stringify({ value: v, offset: process.env.XPIZZA_EMU_OFFSET }));
   console.log('  ✓ 1 orphan check');
   process.exit(0);
@@ -271,6 +278,9 @@ async function run(rootB) {
     assert.strictEqual(again.status, 0, `🔴 the pin onto the RECLAIMED slot failed:\n${again.stderr.slice(-1500)}`);
     const oc = JSON.parse(fs.readFileSync(path.join(ctl, 'orphan-check.json'), 'utf8'));
     assert.strictEqual(oc.value, null, `🔴 the orphan writer's data reached the reclaimed slot's run: ${JSON.stringify(oc)}`);
+    // non-vacuity: the SAME admin read DOES see a value when one is there (written by this proof through that run) — see
+    // the 'orphancheck' mode; a null here is therefore absence, not a denied/failed read
+
     report.orphanWriter = `live marked writer ${orphan.pid} on slot ${X} (dead supervisor, retrying RTDB every 200 ms): pin refused naming it; unpinned run → slot ${slotOf(free.stderr)}; emu-reap CONFIRMED; the reclaimed slot's run saw no orphan write`;
   }
 
