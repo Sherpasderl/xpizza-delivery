@@ -34,14 +34,43 @@ function refuseAnySignal(who, env = process.env) {
 }
 
 const ARMED = Symbol.for('xpizza.emu.clientRecheck');
-/* Re-run refuseMixedSignals at EVERY data-client construction (firestore / database), on the live process.env. */
-function armClientRecheck(who, adminApp = require('firebase-admin/app')) {
-  const proto = EE.firebaseAppPrototype(adminApp);
-  if (!proto || proto[ARMED]) return false;
+const internalsChanged = (who, detail) => {
+  console.error(`\n🔴 REFUSED — ${who}: firebase-admin internals changed; the emulator-safety hook can't arm (${detail}).`);
+  console.error('   This tool re-checks emulator settings at every Firestore / RTDB client construction through');
+  console.error('   FirebaseApp.getOrInitService. Without that hook a later .env could mix emulator and production. Refusing.\n');
+  process.exit(2);
+};
+/* Re-run refuseMixedSignals at EVERY data-client construction (firestore / database), on the live process.env.
+   FAIL CLOSED (codex r3 P2-2): the hook relies on a private firebase-admin method, so at arm time it (1) asserts the
+   method exists and (2) SELF-TESTS that BOTH accessors really route through it, on a throwaway app (inert credential,
+   a dead loopback database URL — nothing is contacted); either failing refuses the CLI with a clear message. */
+function armClientRecheck(who, { adminApp = require('firebase-admin/app'), accessors } = {}) {
+  let proto;
+  try { proto = EE.firebaseAppPrototype(adminApp); } catch (e) { return internalsChanged(who, `no FirebaseApp prototype: ${e && e.message}`); }
+  if (!proto || typeof proto.getOrInitService !== 'function') return internalsChanged(who, 'FirebaseApp.getOrInitService is not a function');
+  if (proto[ARMED]) return true;
+  const acc = accessors || { firestore: require('firebase-admin/firestore').getFirestore, database: require('firebase-admin/database').getDatabase };
+  const seen = new Set();
   const inner = proto.getOrInitService;
-  proto.getOrInitService = function recheckedGetOrInitService(name, init) {
-    if (name === 'firestore' || name === 'database') refuseMixedSignals(`${who} (re-checked at ${name} client construction)`);
-    return inner.call(this, name, init);
+  proto.getOrInitService = function selfTest(name, init) { seen.add(name); return inner.call(this, name, init); };
+  const name = `__xpizza_recheck_selftest_${process.pid}_${Date.now()}`;
+  let app = null;
+  try {
+    app = adminApp.initializeApp({ projectId: 'demo-recheck-selftest', databaseURL: 'http://127.0.0.1:1/?ns=demo-recheck-selftest', credential: { getAccessToken: async () => ({ access_token: 'unused', expires_in: 0 }) } }, name);
+    // Routing is what is tested, not construction: Firestore refuses to BUILD a client without a service-account / ADC
+    // credential (it throws inside the init callback, i.e. AFTER routing through getOrInitService). A throw from an
+    // accessor is therefore tolerated; only "never reached getOrInitService" fails.
+    for (const k of ['firestore', 'database']) { try { acc[k](app); } catch { /* construction refused after routing — fine */ } }
+  } catch (e) {
+    proto.getOrInitService = inner;
+    return internalsChanged(who, `self-test threw: ${e && e.message}`);
+  } finally {
+    if (app) { try { adminApp.deleteApp(app).catch(() => {}); } catch { /* best effort */ } }
+  }
+  if (!seen.has('firestore') || !seen.has('database')) { proto.getOrInitService = inner; return internalsChanged(who, `accessors did not route through getOrInitService (saw: ${[...seen].join(',') || 'nothing'})`); }
+  proto.getOrInitService = function recheckedGetOrInitService(nm, init) {
+    if (nm === 'firestore' || nm === 'database') refuseMixedSignals(`${who} (re-checked at ${nm} client construction)`);
+    return inner.call(this, nm, init);
   };
   proto[ARMED] = true;
   return true;

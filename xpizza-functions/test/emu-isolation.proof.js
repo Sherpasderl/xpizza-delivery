@@ -63,6 +63,11 @@ async function inside(ctl, tag, peer) {
   const nonce = A.parseMarker(process.env[A.RUN_VAR]).nonce;
   const t = A.readPsTables();
   const mine = A.joinScans(t.plain, t.withEnv).filter((r) => r.readable && (A.markerIn(r.env) || {}).nonce === nonce);
+  // codex r3 (b): the wrapper (this step's parent) must be a DIRECT child of the firebase CLI node process — no shell between
+  const psRow = (pid) => require('child_process').execFileSync('/bin/ps', ['-ww', '-o', 'ppid=,args=', '-p', String(pid)], { encoding: 'utf8', env: A.PS_ENV }).trim();
+  const wrapperRow = psRow(process.ppid);
+  const cliPid = Number(wrapperRow.split(/\s+/)[0]);
+  out.launchChain = { wrapper: wrapperRow.replace(/^\d+\s+/, '').slice(0, 80), parentOfWrapper: psRow(cliPid).replace(/^\d+\s+/, '').slice(0, 120) };
   out.marked = mine.map((r) => (/\bjava\b|\/java /.test(r.argv) ? 'java' : /firebase/.test(r.argv) ? 'firebase-cli' : /emu-cmd-wrapper/.test(r.argv) ? 'wrapper' : 'node'));
   admin.initializeApp({ projectId: PROJECT, databaseURL: `http://${dbHost}?ns=${NS}` });
   const fsd = admin.firestore(); const db = admin.database();
@@ -206,9 +211,11 @@ async function run(rootB) {
       assert.ok(x.fsPublicRead === 404 || x.fsPublicRead === 200, `🔴 Firestore public read denied (${x.fsPublicRead})`);
       assert.strictEqual(x.fsDenyRead, 403); assert.strictEqual(x.fsDenyWrite, 403);
       assert.strictEqual(x.dbPublicRead, 200); assert.ok([401, 403].includes(x.dbDenyRead)); assert.ok([401, 403].includes(x.dbDenyWrite));
+      assert.match(R.launchChain.wrapper, /emu-cmd-wrapper\.js/, `🔴 the step's parent is not the marked wrapper: ${JSON.stringify(R.launchChain)}`);
+      assert.match(R.launchChain.parentOfWrapper, /firebase.*emulators:exec/, `🔴 the wrapper's parent is NOT the firebase CLI (a shell survives between them): ${JSON.stringify(R.launchChain)}`);
       assert.ok(R.marked.filter((k) => k === 'java').length >= 2 && R.marked.includes('wrapper'), `🔴 the run's JVMs / wrapper do not carry its marker: ${JSON.stringify(R.marked)}`);
     }
-    report.rules = { A: A.rules, B: B.rules }; report.marked = { A: A.marked, B: B.marked };
+    report.rules = { A: A.rules, B: B.rules }; report.marked = { A: A.marked, B: B.marked }; report.launchChain = A.launchChain;
     assert.strictEqual(c.status, 4, `🔴 a second run in A's checkout was not refused (exit ${c.status})\n${c.stderr}`);
     report.sameCheckout = 'C in A\'s checkout while A live: refused exit 4';
     assert.ok(release, 'premise — the watcher saw A\'s sentinel free');

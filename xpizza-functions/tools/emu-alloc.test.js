@@ -109,21 +109,28 @@ const childEnv = (extra = {}) => {
     const alive = (pid) => pid === 4102;                          // P exited; C lives on and keeps writing
     // codex's exact sequence: -E sees P; plain sees C (P has exited); -E again sees C
     const handoff = { withEnv: [P()], plain: [C(false)], withEnv2: [C()] };
-    const stableAfter = { withEnv: [C()], plain: [C(false)], withEnv2: [C()] };
-    const r1 = A.scanSlot(5, { tables: [handoff, stableAfter], isAlive: alive });
-    assert.ok(r1.occupied && r1.orphans.some((o) => o.pid === 4102), `🔴 the handoff child C was not classified — the slot would be silently admitted: ${JSON.stringify(r1)}`);
-    // the UNION alone, even on a single triple, must already see C (the two-snapshot read missed it)
-    const one = A.analyzeTables(handoff, alive);
-    assert.ok(!one.stable && one.union.some((r) => r.pid === 4102), '🔴 the union of both -E views does not contain the handoff child');
-    // a population that NEVER settles ⇒ INCOMPLETE after the bounded tries (never a silent admit)
-    const churn = { withEnv: [P()], plain: [], withEnv2: [] };
-    const r2 = A.scanSlot(5, { tables: [churn, churn, churn], isAlive: () => false });
-    assert.strictEqual(r2.incomplete, true, `🔴 a population that changed on every try was not INCOMPLETE: ${JSON.stringify(r2)}`);
-    assert.match(r2.unreadable[0].why, /changed between snapshots 3×/);
+    const r1 = A.scanSlot(5, { tables: handoff, isAlive: alive });
+    assert.ok(r1.incomplete && !r1.occupied, `🔴 a slot whose marked population changed between snapshots was not INCOMPLETE: ${JSON.stringify(r1)}`);
+    // the UNION of both -E views contains C (a two-snapshot read missed it entirely)
+    assert.ok(A.analyzeTables(handoff, alive, 5).union.some((r) => r.pid === 4102), '🔴 the union of both -E views does not contain the handoff child');
+    // codex r3: P hands off to a platform-REDACTED child (ps shows it with NO env): first triple unstable (P vanishes),
+    // the NEXT triple is "stable" with nothing marked. STICKY: the slot is not admitted in this admission at all.
+    const R = L(4103, 'S', T2, '/bin/sh -c sleep 100');
+    const redactedHandoff = { withEnv: [P(), R], plain: [R], withEnv2: [R] };
+    const thenQuiet = { withEnv: [R], plain: [R], withEnv2: [R] };
+    assert.strictEqual(A.scanSlot(5, { tables: [redactedHandoff, thenQuiet], isAlive: (pid) => pid === 4103 }).incomplete, true, '🔴 the redacted-child handoff slot was admitted');
+    const ATTEMPT = []; const scanSeq = [redactedHandoff, thenQuiet];
+    // through acquireSlot: the doubtful slot is skipped and ANOTHER slot is taken in the same admission
+    const got = await A.acquireSlot({ slots: 2, base: 0, bind: async () => ({ close: (cb) => cb && cb() }), probeBand: async () => true,
+      scan: (slot) => { ATTEMPT.push(slot); return slot === 0 ? A.scanSlot(5, { tables: scanSeq.shift() || thenQuiet, isAlive: (pid) => pid === 4103 }) : { occupied: false, incomplete: false, orphans: [], unreadable: [] }; },
+      random: () => 0.99, sleep: async () => {}, deadlineMs: 1000 });
+    assert.strictEqual(got.slot, 1, `🔴 the doubtful slot was admitted in the same admission (got ${got.slot}, scanned ${ATTEMPT})`);
+    // per-SLOT: another slot's handoff does not make THIS slot doubtful
+    assert.strictEqual(A.scanSlot(6, { tables: handoff, isAlive: alive }).incomplete, false, '🔴 a handoff on slot 5 made slot 6 incomplete (every run start would block every slot)');
     // an UNMARKED birth between snapshots (the machine's constant churn) does NOT destabilise the scan
-    const birth = { withEnv: [L(7, 'S', T0, 'node x.js'), L(7, 'S', T0, 'node x.js')].slice(0, 1), plain: [L(7, 'S', T0, 'node x.js')], withEnv2: [L(7, 'S', T0, 'node x.js'), L(8, 'S', T0, 'node other.js HOME=/h')] };
-    assert.ok(A.analyzeTables(birth, () => true).stable, '🔴 an unmarked process born between snapshots made the scan unstable (every busy machine would quarantine)');
-    ok('snapshot handoff: codex\'s sequence (P in -E, only C in plain, C in -E again) classifies C as an orphan — never a silent admit; the union alone contains C; a population that changes on every try is INCOMPLETE after 3; an unmarked birth between snapshots does not destabilise');
+    const birth = { withEnv: [L(7, 'S', T0, 'node x.js')], plain: [L(7, 'S', T0, 'node x.js')], withEnv2: [L(7, 'S', T0, 'node x.js'), L(8, 'S', T0, 'node other.js HOME=/h')] };
+    assert.ok(A.analyzeTables(birth, () => true, 5).stable, '🔴 an unmarked process born between snapshots made the scan unstable (every busy machine would quarantine)');
+    ok('snapshot handoff: a slot whose marked population changes between the two -E views is INCOMPLETE (sticky: codex\'s redacted-child handoff — unstable, then "stable" with nothing marked — is NOT admitted, and acquireSlot takes another slot in the same admission); the union contains a visible handoff child; stability is per-slot; an unmarked birth does not destabilise');
   }
 
   // ── 4. P1-B ON THIS MACHINE: a normal process table admits a free slot ─────────────────────────────
@@ -454,7 +461,7 @@ const childEnv = (extra = {}) => {
     const flag = path.join(require('os').tmpdir(), `emu-wrap-step2-${process.pid}`);
     fs.rmSync(flag, { force: true });
     // step 1 EXITS 0 on SIGTERM (a well-behaved suite), so only the wrapper's own stop rule can keep step 2 from starting
-    const steps = [['node', '-e', "process.on('SIGTERM',()=>process.exit(0));setTimeout(()=>{},2500)"], ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(flag)}, String(process.env.${A.RUN_VAR}))`]];
+    const steps = [['node', '-e', "process.on('SIGTERM',()=>process.exit(0));setTimeout(()=>{},6000)"], ['node', '-e', `require('fs').writeFileSync(${JSON.stringify(flag)}, String(process.env.${A.RUN_VAR}))`]];
     const marker = A.formatMarker({ slot: SLOT, pid: sup.pid, nonce: A.newNonce(), start: supStart });
     const w = spawn(process.execPath, [WRAP, encode(steps)], { env: childEnv({ [A.RUN_VAR]: marker }), stdio: 'ignore' });
     const wExit = new Promise((r2) => w.once('exit', (c) => r2(c)));
@@ -489,6 +496,16 @@ const childEnv = (extra = {}) => {
       // a step killed by ANY signal yields the shell-equivalent 128+N (SIGABRT → 134), not a fixed 129
       const ab = require('child_process').spawnSync(process.execPath, [WRAP, encode([['node', '-e', "process.kill(process.pid, 'SIGABRT')"]])], { encoding: 'utf8', env: childEnv() });
       assert.strictEqual(ab.status, 128 + require('os').constants.signals.SIGABRT, `🔴 a SIGABRT step mapped to ${ab.status}, not 128+SIGABRT`);
+      // codex r3 (b): spawned EXACTLY as firebase-tools runs a script (`spawn(cmd, { shell: true })` → /bin/sh -c), the
+      // single simple wrapper command EXECS — the shell's pid IS the node wrapper; no redacted shell survives above it
+      {
+        const cs = spawn(`node ${WRAP} ${encode([['node', '-e', 'setTimeout(()=>{},1500)']])}`, { shell: true, stdio: 'ignore', env: childEnv() });
+        await sleep(700);
+        const row = require('child_process').execFileSync('/bin/ps', ['-o', 'ppid=,comm=', '-p', String(cs.pid)], { encoding: 'utf8', env: A.PS_ENV }).trim().split(/\s+/);
+        await new Promise((r2) => cs.once('exit', r2));
+        assert.strictEqual(Number(row[0]), process.pid, 'the shell:true child is a direct child of the spawner');
+        assert.ok(/node$/.test(row[1]), `🔴 /bin/sh -c did NOT exec into the wrapper — a redacted shell survives between the CLI and it (${row.join(' ')})`);
+      }
       // a non-node step is refused by the payload decoder itself
       const bad = require('child_process').spawnSync(process.execPath, [WRAP, encode([['sh', '-c', 'true']])], { encoding: 'utf8', env: childEnv() });
       assert.strictEqual(bad.status, 2, '🔴 the wrapper ran a non-node step');
@@ -497,7 +514,7 @@ const childEnv = (extra = {}) => {
       fs.rmSync(flag, { force: true });
       await A.closeServer(lock);
     }
-    ok('marked wrapper: with the supervisor SIGKILLed MID-CHAIN, every scan while the chain ran showed the slot occupied with the wrapper as a visible orphan (quarantined); after it, the slot is free; a later step runs under the marked wrapper (no shell); SIGTERM is forwarded and stops the chain; a non-node step is refused');
+    ok('marked wrapper: with the supervisor SIGKILLed MID-CHAIN, every scan while the chain ran showed the slot occupied with the wrapper as a visible orphan (quarantined); after it, the slot is free; a later step runs under the marked wrapper (no shell); SIGTERM is forwarded and stops the chain; SIGABRT maps to 128+SIGABRT; /bin/sh -c EXECS into the wrapper (no surviving shell); a non-node step is refused');
   }
 
   console.log(`\nemu-alloc: OK (${n})`);

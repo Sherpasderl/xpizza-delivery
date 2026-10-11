@@ -336,6 +336,11 @@ try { STEPS = parseChain(INNER); } catch (e) {
 const WRAPPER = path.join(ROOT, 'tools', 'emu-cmd-wrapper.js');
 if (/\s/.test(WRAPPER)) { console.error(`emulator-run: 🔴 the checkout path contains whitespace (${WRAPPER}) — refusing`); process.exit(2); }
 const WRAPPED = `node ${WRAPPER} ${require('./emu-cmd-wrapper').encode(STEPS)}`;
+/* codex r3 (b): firebase-tools runs this through `/bin/sh -c` (spawn shell:true). On this Mac /bin/sh is bash, and
+   `bash -c` with ONE SIMPLE COMMAND execs straight into it (measured: the shell's pid BECOMES the node wrapper) — so no
+   platform-redacted shell survives between the CLI and the marked wrapper. That holds only while the command stays a
+   single simple command: no operators, quotes, globs or expansions. Asserted, not assumed. */
+if (!/^node \/[^\s'"`$;&|<>*?()]+ [A-Za-z0-9_-]+$/.test(WRAPPED)) { console.error(`emulator-run: 🔴 the wrapped command is not a single simple command (${WRAPPED.slice(0, 120)}) — a shell could survive it`); process.exit(2); }
 const MAX_ATTEMPTS = 3;
 
 (async () => {

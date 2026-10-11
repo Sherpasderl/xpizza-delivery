@@ -26,16 +26,35 @@ const FORBIDDEN = new Set([
   'XPIZZA_EMU_RUN', 'XPIZZA_EMU_OFFSET', 'XPIZZA_EMU_SERVICES', 'XPIZZA_EMU_DEAD', 'XPIZZA_EMU_FS_RULES', 'XPIZZA_EMU_STARTED_FILE',
 ]);
 
-const KEY = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
-const keysOf = (text) => String(text).split(/\r?\n/).map((l) => KEY.exec(l)).filter(Boolean).map((m) => m[1]);
+/* PARSE EXACTLY AS FIREBASE-TOOLS DOES (codex r3 P2-3a): the installed CLI's own functions/env.js parse() when it can be
+   found, else the dotenv package's parse (same multiline-quote handling). A line-regex would misread a multiline quoted
+   value (CONFIG_TEXT="…\nFIRESTORE_EMULATOR_HOST=x…") as a key. */
+function cliParser() {
+  for (const root of ['/usr/local/lib/node_modules/firebase-tools', '/opt/homebrew/lib/node_modules/firebase-tools']) {
+    try { const E = require(path.join(root, 'lib', 'functions', 'env.js')); if (typeof E.parse === 'function') return { name: 'firebase-tools functions/env.js parse', keys: (t) => Object.keys(E.parse(t).envs || {}) }; } catch { /* not here */ }
+  }
+  try { const dotenv = require('dotenv'); return { name: 'dotenv.parse', keys: (t) => Object.keys(dotenv.parse(t)) }; } catch { /* not installed */ }
+  return null;
+}
+const PARSER = cliParser();
+const keysOf = (text) => {
+  if (!PARSER) throw new Error('deploy-env-guard: neither firebase-tools nor dotenv is available to parse the deploy env — refusing rather than guessing');
+  return PARSER.keys(String(text));
+};
 
-function deployEnvFiles(root = ROOT) {
+/* SCOPE (codex r3 P2-3b): what THIS deploy loads — `.env`, `.env.<target project>`, and `.env.<alias>` for every alias
+   that maps to the target (a superset of the one alias firebase-tools selected; the predeploy hook is given the target
+   as GCLOUD_PROJECT but not the alias). With NO known target, every project's and alias's file is checked and the
+   message says so (fail-safe). An unselected project's file (e.g. a staging alias) never blocks this deploy. */
+function deployEnvFiles(root = ROOT, project = null) {
   const rcPath = [path.join(root, '.firebaserc'), path.join(root, '..', '.firebaserc')].find((p) => fs.existsSync(p));
   const rc = rcPath ? JSON.parse(fs.readFileSync(rcPath, 'utf8')) : { projects: {} };
   const names = new Set(['.env']);
-  // EVERY alias, INCLUDING `default`: firebase-tools selects the `default` alias for a bare deploy (command.js:231) and
-  // functions/env.js:152 then loads `.env.default` (codex r2 P1-3) — excluding it left that file unchecked.
-  for (const [alias, id] of Object.entries(rc.projects || {})) { names.add(`.env.${id}`); names.add(`.env.${alias}`); }
+  for (const [alias, id] of Object.entries(rc.projects || {})) {
+    if (project && id !== project) continue;
+    names.add(`.env.${id}`); names.add(`.env.${alias}`);   // EVERY alias incl. `default` (command.js:231 / env.js:152)
+  }
+  if (project) names.add(`.env.${project}`);
   const fb = JSON.parse(fs.readFileSync(path.join(root, 'firebase.json'), 'utf8'));
   const sources = [].concat(fb.functions || []).map((f) => path.resolve(root, f.source || '.'));
   const out = [];
@@ -43,9 +62,9 @@ function deployEnvFiles(root = ROOT) {
   return out;
 }
 
-function violations(root = ROOT) {
+function violations(root = ROOT, project = null) {
   const checked = []; const bad = [];
-  for (const f of deployEnvFiles(root)) {
+  for (const f of deployEnvFiles(root, project)) {
     if (!fs.existsSync(f)) continue;
     checked.push(path.relative(root, f) || path.basename(f));
     for (const k of keysOf(fs.readFileSync(f, 'utf8'))) if (FORBIDDEN.has(k)) bad.push(`${path.relative(root, f)}: ${k}`);
@@ -53,13 +72,16 @@ function violations(root = ROOT) {
   return { checked, bad };
 }
 
-module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations };
+module.exports = { FORBIDDEN, keysOf, deployEnvFiles, violations, PARSER };
 if (require.main !== module) return;
 const ri = process.argv.indexOf('--root');
-const { checked, bad } = violations(ri > -1 ? path.resolve(process.argv[ri + 1]) : ROOT);
+const pi = process.argv.indexOf('--project');
+const target = (pi > -1 ? process.argv[pi + 1] : null) || process.env.GCLOUD_PROJECT || null;   // the predeploy hook is given GCLOUD_PROJECT
+const { checked, bad } = violations(ri > -1 ? path.resolve(process.argv[ri + 1]) : ROOT, target);
+const scope = target ? `target project ${target}` : 'NO target project known — checked EVERY project and alias (fail-safe)';
 if (bad.length) {
-  console.error(`\n🔴 DEPLOY ENV GUARD — emulator signal(s) in the functions deploy env:\n   ${bad.join('\n   ')}`);
+  console.error(`\n🔴 DEPLOY ENV GUARD — emulator signal(s) in the functions deploy env (${scope}; parsed with ${PARSER.name}):\n   ${bad.join('\n   ')}`);
   console.error('   lib/admin.js would enter its emulator branch in production. Remove them before deploying.\n');
   process.exit(1);
 }
-console.log(`deploy-env-guard: OK — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);
+console.log(`deploy-env-guard: OK (${scope}; parsed with ${PARSER.name}) — ${checked.length ? checked.join(', ') : 'no deploy env files present'} carry no emulator signal`);

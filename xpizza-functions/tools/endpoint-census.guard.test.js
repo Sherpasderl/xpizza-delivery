@@ -196,6 +196,18 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
     }
     ok('the latency child (index.js loaded under inherited env, as portal-speed-proof spawns it) refuses half-configured and foreign signals in lib/admin.js before any client');
   }
+  // 6. codex r3 P2-2 — the client-construction hook FAILS CLOSED if firebase-admin's internals change
+  {
+    const run = (code) => observe(['-e', code], {});
+    const realArm = run("console.log('ARMED', require('./tools/emu-mixed-guard').armClientRecheck('t'))");
+    assert.match(realArm.r.stdout, /ARMED true/, `the hook arms on the installed firebase-admin\n${realArm.r.stderr}`);
+    assert.deepStrictEqual([realArm.connects, realArm.spawns], [[], []], '🔴 arming (its self-test app) contacted or launched something');
+    const renamed = run("require('./tools/emu-mixed-guard').armClientRecheck('t', { adminApp: { initializeApp: () => Object.create({ getOrInitServiceRenamed() {} }), deleteApp: async () => {} } }); console.log('NOT REFUSED')");
+    assert.ok(renamed.r.status === 2 && /internals changed; the emulator-safety hook can't arm \(FirebaseApp\.getOrInitService is not a function\)/.test(renamed.r.stderr) && !/NOT REFUSED/.test(renamed.r.stdout), `🔴 a RENAMED initializer did not refuse the CLI\n${renamed.r.stderr}`);
+    const unrouted = run("require('./tools/emu-mixed-guard').armClientRecheck('t', { accessors: { firestore: () => {}, database: () => {} } }); console.log('NOT REFUSED')");
+    assert.ok(unrouted.r.status === 2 && /did not route through getOrInitService/.test(unrouted.r.stderr), `🔴 accessors that bypass getOrInitService did not refuse the CLI\n${unrouted.r.stderr}`);
+    ok('the client-construction hook arms on the installed firebase-admin with zero contact and zero launches; a renamed initializer or accessors that bypass getOrInitService each REFUSE the CLI (exit 2, "firebase-admin internals changed")');
+  }
   console.log(`\nendpoint-census: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('ENDPOINT CENSUS FAILED:', e && e.stack || e); process.exit(1); });

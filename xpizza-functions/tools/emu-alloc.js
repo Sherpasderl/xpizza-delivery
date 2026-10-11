@@ -25,6 +25,14 @@
  *     a run starts that CAN hold one — the firebase CLI, the emulator JVMs, the suite, the functions workers — is
  *     node or java, both non-platform and readable (the guard spawns marked node/java/sh and asserts exactly
  *     this). Any listener on a band, whatever its binary, is caught by the band probe regardless.
+ *   · OUR LAUNCH TREE HOLDS NO PERSISTENT REDACTED LAUNCHER (codex r3): the CLI's `/bin/sh -c` execs into the marked
+ *     node wrapper (bash's single-simple-command exec, measured and asserted on a real run), and the wrapper runs the
+ *     chain itself — no shell. A slot whose marked population changes between the two -E views is STICKY-incomplete
+ *     for that admission (a marked parent handing off to an invisible child cannot be admitted on a later quiet look).
+ *   · RESIDUAL, ACCEPTED (codex r3 (c)): a platform-redacted process that is NOT a descendant of a visible marked process
+ *     — e.g. a shell spawned by a suite's own execSync, orphaned when the supervisor dies abruptly — cannot be
+ *     attributed to a slot. Bounded: such suite shells are short-lived, hold no band (a band listener is caught by the
+ *     band probe whatever its binary), and carry no long-lived connection. Accepted alongside the same-second PID reuse.
  */
 const net = require('net');
 const crypto = require('crypto');
@@ -132,7 +140,7 @@ function readPsTables(uid = process.getuid()) {
    separated: if its raw text carries a run marker it is kept as a MARKED row (conservative — it may be a handoff
    child); otherwise it is an unmarked transient (any of the machine's constant process churn) and is dropped —
    counting those would make every scan "unstable" on a busy machine. Genuinely unreadable live rows are kept. */
-function viewOf(plain, withEnv, isAlive) {
+function viewOf(plain, withEnv, isAlive, slot = null) {
   const rows = [];
   for (const r of joinScans(plain, withEnv)) {
     if (!r.readable && r.why === 'absent from the plain scan') {
@@ -146,13 +154,13 @@ function viewOf(plain, withEnv, isAlive) {
     if (isZombie(r.state)) continue;
     if (!r.readable) { if (isAlive(r.pid)) sig.add(`${r.pid}:${r.start}:U`); continue; }
     const mk = markerIn(r.env);
-    if (mk) sig.add(`${r.pid}:${r.start}:${mk.nonce}`);
+    if (mk && (slot === null || mk.slot === slot)) sig.add(`${r.pid}:${r.start}:${mk.nonce}`);   // per-SLOT: another slot's churn is not this slot's doubt
   }
   return { rows, sig };
 }
-function analyzeTables(t, isAlive = pidAlive) {
-  const a = viewOf(t.plain, t.withEnv, isAlive);
-  const b = viewOf(t.plain, t.withEnv2 || t.withEnv, isAlive);
+function analyzeTables(t, isAlive = pidAlive, slot = null) {
+  const a = viewOf(t.plain, t.withEnv, isAlive, slot);
+  const b = viewOf(t.plain, t.withEnv2 || t.withEnv, isAlive, slot);
   const stable = a.sig.size === b.sig.size && [...a.sig].every((x) => b.sig.has(x));
   const byKey = new Map();
   for (const r of [...a.rows, ...b.rows]) {                     // the UNION: a pid in either view is classified
@@ -165,23 +173,21 @@ function analyzeTables(t, isAlive = pidAlive) {
 // one UNION table (termination routines re-enumerate every iteration, so one snapshot triple per call is enough)
 function readUnionTable() { return analyzeTables(readPsTables()).union; }
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); } };
-const SCAN_TRIES = 3;
-/* Classify `slot` over a STABLE population: the marked/unreadable set of the two -E views must agree; otherwise re-scan
-   (bounded); still unstable ⇒ INCOMPLETE ⇒ quarantine. `tables` may be one snapshot triple or a list of them (tests). */
-function scanSlot(slot, { tables, isAlive = pidAlive, tries = SCAN_TRIES } = {}) {
-  const queue = Array.isArray(tables) ? tables.slice() : (tables ? [tables] : null);
-  let lastDiff = [];
-  for (let i = 0; i < (queue ? queue.length : tries); i++) {
-    let t;
-    try { t = queue ? queue[i] : readPsTables(); } catch (e) {
-      // a failed / timed-out scan proves nothing about the slot ⇒ INCOMPLETE ⇒ quarantine (unverifiable ⇒ refuse)
-      return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `ps scan failed: ${(e && (e.code || e.message)) || e}` }], orphans: [], live: [] };
-    }
-    const a = analyzeTables(t, isAlive);
-    if (a.stable) return classifyScan(a.union, slot, { isAlive });
-    lastDiff = a.diff;
+/* STICKY UNCERTAINTY (codex R1-build r3). The slot's marked population (markers naming THIS slot, plus any unreadable
+   live row) must be identical in both -E views of ONE snapshot triple. If it is not, the slot is INCOMPLETE for this
+   admission — even a later stable look is NOT trusted: codex's case is a marked parent P that hands off to a
+   platform-REDACTED child C (invisible to ps) and exits; the next look is "stable" with nothing marked, while C lives.
+   The slot is skipped now and reconsidered only on a LATER sweep (acquireSlot moves on / re-queues). Per-slot, so a run
+   starting on another slot never makes this one doubtful. `tables` may be one triple or a list (tests: first used). */
+function scanSlot(slot, { tables, isAlive = pidAlive } = {}) {
+  let t;
+  try { t = Array.isArray(tables) ? tables[0] : (tables || readPsTables()); } catch (e) {
+    // a failed / timed-out scan proves nothing about the slot ⇒ INCOMPLETE ⇒ quarantine (unverifiable ⇒ refuse)
+    return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `ps scan failed: ${(e && (e.code || e.message)) || e}` }], orphans: [], live: [] };
   }
-  return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `marked process population changed between snapshots ${queue ? queue.length : tries}× (${lastDiff.slice(0, 4).join(', ')})` }], orphans: [], live: [] };
+  const a = analyzeTables(t, isAlive, slot);
+  if (!a.stable) return { occupied: false, incomplete: true, unreadable: [{ pid: 0, why: `slot ${slot}'s marked population changed between snapshots (${a.diff.slice(0, 4).join(', ')}) — not admitted this sweep` }], orphans: [], live: [] };
+  return classifyScan(a.union, slot, { isAlive });
 }
 // ONE pid, fresh — the identity check made immediately before a signal. null = not listed (gone) or unreadable scan.
 function readPsRow(pid) {
@@ -372,6 +378,6 @@ module.exports = {
   SLOTS, SENTINEL_BASE, FIXTURE_SENTINEL_BASE, RUN_VAR, OFFSET_VAR, PS_ENV,
   sentinelPort, newNonce, formatMarker, parseMarker,
   parsePsLine, isZombie, isFallback, markerIn, joinScans, classifyScan,
-  readPsTables, readPsRow, pidAlive, scanSlot, ownStart, terminateMarked, PS_TIMEOUT_MS, analyzeTables, readUnionTable, SCAN_TRIES,
+  readPsTables, readPsRow, pidAlive, scanSlot, ownStart, terminateMarked, PS_TIMEOUT_MS, analyzeTables, readUnionTable,
   bindSentinel, closeServer, probePort, PROBE_HOSTS, shuffle, acquireSlot,
 };
