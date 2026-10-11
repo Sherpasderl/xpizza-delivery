@@ -154,12 +154,12 @@ const charge = async (rid, oid, method, key, price, name = key) => {
     for (const [fx, prices] of Object.entries(FIXTURES)) {
       const launcher = stored.find((i) => i.display.name === NAMES[fx]);
       const keys = [launcher.key, ...CHOICES.map((c) => stored.find((i) => i.display.name === `${NAMES[fx]} - ${c}`).key)];   // [launcher, Roja, Vodka, Combinada]
-      const vodka = keys[2];
-      const card = await charge(rid, `apm_card_${rid}_${fx}`, 'online', vodka, prices[1]);
+      const vodka = keys[2]; const vodkaName = `${NAMES[fx]} - Salsa Vodka`;   // la_musa's form sends the dish's display name
+      const card = await charge(rid, `apm_card_${rid}_${fx}`, 'online', vodka, prices[1], vodkaName);
       assert.strictEqual(card.status, 200, `${rid}/${fx} card: ${card.text.slice(0, 240)}`);
       const pend = await order(`apm_card_${rid}_${fx}`);
       assert.strictEqual(pend.total_cents, prices[1] * 100, `🔴 ${rid}/${fx}: the PENDING card order is priced at the choice (L ${prices[1]}), never the launcher minimum (L ${Math.min(...prices)})`);
-      const cash = await charge(rid, `apm_cash_${rid}_${fx}`, 'cash', vodka, prices[1]);
+      const cash = await charge(rid, `apm_cash_${rid}_${fx}`, 'cash', vodka, prices[1], vodkaName);
       assert.strictEqual(cash.status, 200, `${rid}/${fx} cash: ${cash.text.slice(0, 240)}`);
       const placed = await order(`apm_cash_${rid}_${fx}`);
       assert.strictEqual(Number(placed.total), prices[1], `🔴 ${rid}/${fx}: the PLACED cash order's total is the choice's price`);
@@ -177,7 +177,7 @@ const charge = async (rid, oid, method, key, price, name = key) => {
       assert.ok(cb.code === 200 && mat.payment_status === 'confirmed', `${rid}/${fx}: the paid callback materializes the card order — ${JSON.stringify(cb).slice(0, 160)}`);
       assert.strictEqual(mat.total_cents, combCents, `🔴 ${rid}/${fx}: the MATERIALIZED card order is the choice's price (L ${prices[2]})`);
       const cash2 = await order(`apm_cash_${rid}_${fx}`);
-      for (const [label, o, nm, cents] of [['materialized card', mat, combName, combCents], ['placed cash', cash2, `${NAMES[fx]} - Salsa Vodka`, prices[1] * 100]]) {
+      for (const [label, o, nm, cents] of [['materialized card', mat, combName, combCents], ['placed cash', cash2, vodkaName, prices[1] * 100]]) {
         const lines = linesOf(o);
         assert.deepStrictEqual(lines.map((l) => [l.name, l.qty, l.cents]), [[nm, 1, cents]], `🔴 ${rid}/${fx} ${label}: summary_lines store the choice's NAME and its cents`);
         const sum = emptySummary();
