@@ -10,6 +10,8 @@
 //   • publishEdited additionally reads the active pointer + version after the flip (the KDS manifest sync);
 //   • getEditableCatalog's body gains `renderedCategories` + `restaurantName`, and it reads the active version (the
 //     draft assessment); an invalid stored draft's 503 gains `draft_unpublishable` + `sourceUpdateTime`.
+//   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
+//     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
 require('./_emulator-required')('firestore', 'database');
 
@@ -166,7 +168,9 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     // declared: publish's KDS-sync reads; getEditableCatalog's assessment reads; the save path reads the active catalog
     // (and, on a refusal that used to precede every read, the stored draft) BEFORE deciding
     const isSourceRead = (x) => /^get restaurants\/[^/]+\/meta\/source$/.test(x);
-    const allowExtra = ((/publish/.test(c.name) && c.status === 200) || /getEditableCatalog|stale save/.test(c.name)) ? left.every(isKdsSyncRead)
+    const isOverlapBaselineRead = (x) => /^get restaurants\/[^/]+\/versions\/<v>\/(menu_items|extras)\/[0-9a-f]{20}$/.test(x);
+    const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x))
+      : /getEditableCatalog|stale save/.test(c.name) ? left.every(isKdsSyncRead)
       : /invalid source/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isSourceRead(x)) : left.length === 0;
     assert.ok(allowExtra, `${c.name}: undeclared extra calls ${JSON.stringify(left)}`);
     if (left.length) declared.calls.push(`${c.name}: +${left.length} read(s)`);

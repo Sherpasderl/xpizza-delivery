@@ -110,6 +110,12 @@ const node86 = (key) => ({ [availKey(key)]: { available: false } });
       'without the shadowing dish, rice_white is the EXTRA and stays a legitimate reward');
     assert.deepStrictEqual(await GI.groupIssues({ caps: ON, gates: SNAP.la_musa, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['rice_white'] }), { unclassifiable: true },
       'no namespace resolver supplied → a reward is unclassifiable (fail closed)');
+    // codex PB-1 r3 NOTE — tables that cannot be RESOLVED fail closed (no resolver), never the union-membership fallback
+    assert.strictEqual(GI.rewardNamespaceIn('la_musa', tablesOf('x_pizza', BUILT.x_pizza)), null, 'a restaurant-mismatched table (resolvePriceTables THROWS) → no resolver');
+    assert.strictEqual(GI.rewardNamespaceIn('la_musa', { restaurantId: 'la_musa', menu: null, extras: {} }), null, 'tables without a dish table → no resolver');
+    assert.deepStrictEqual(await GI.groupIssues({ caps: ON, gates: SNAP.la_musa, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['rice_white'],
+      rewardNamespace: GI.rewardNamespaceIn('la_musa', tablesOf('x_pizza', BUILT.x_pizza)) }), { unclassifiable: true },
+      '🔴 a THROWN table resolution → the reward is unclassifiable (menu_updating), not admitted by union membership');
     ok('rewards are classified by the same snapshot: an unknown reward key (incl. a portal launcher under the read-failure fallback) or a snapshot without extra membership is unclassifiable; known extras and choices stay legitimate');
   }
   {
@@ -123,6 +129,23 @@ const node86 = (key) => ({ [availKey(key)]: { available: false } });
       const failed = await GIs({ caps: ON, gates: SNAP[rid], items: [LINE[rid](VAR[rid])], restaurantId: rid, readAvailability: async () => { throw new Error('rtdb down'); } });
       assert.strictEqual(failed, null, `${rid}: an availability READ FAILURE blocks nothing (today's fail-open)`);
     }
+    // codex PB-1 r3 P2-1 — parent availability follows the reward's RESOLVED namespace: a newer gate catalog carries a dish
+    // VARIANT keyed rice_white (the extra "Arroz Blanco"'s key) under a launcher rice_combo, while the pricing tables still
+    // resolve rice_white to the EXTRA — which is what the calculator redeems. The launcher 86'd must not refuse that extra.
+    const shadowV = buildCatalogV2('la_musa');
+    shadowV.items.push({ key: 'rice_combo', price: 600, display: { id: 'rice_combo', cat: 'rice', name: 'Rice Combo', price: 600 } });
+    shadowV.items.push({ key: 'rice_white', price: 600, display: { id: 'rice_white', cat: 'rice', name: 'Rice Combo - White', price: 600, variantOf: 'rice_combo', choice: 'White' } });
+    shadowV.items.push({ key: 'rice_combo_b', price: 650, display: { id: 'rice_combo_b', cat: 'rice', name: 'Rice Combo - B', price: 650, variantOf: 'rice_combo', choice: 'B' } });
+    shadowV.structure.variant_items = { ...shadowV.structure.variant_items, rice_combo: { label: 'Opción', variantIds: ['rice_white', 'rice_combo_b'] } };
+    const gV = await createGateReader({ getMenu: async () => shadowV, getVersionId: async () => 'v-shadowV' }).intakeGatesFor('la_musa');
+    assert.strictEqual(gV.groups.parentOf.get('rice_white'), 'rice_combo', 'premise: the newer snapshot indexes rice_white as a dish VARIANT');
+    assert.strictEqual(NS.la_musa('rice_white'), 'extra', 'premise: the pricing tables resolve rice_white to the EXTRA');
+    assert.strictEqual(await GI.groupIssues({ caps: ON, gates: gV, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['rice_white'],
+      rewardNamespace: NS.la_musa, readAvailability: async () => node86('rice_combo') }), null,
+      '🔴 codex r3 repro: an EXTRA reward is never blocked by a same-key dish variant\'s 86\'d launcher (no false item_unavailable)');
+    assert.deepStrictEqual((await GI.groupIssues({ caps: ON, gates: gV, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', rewardKeys: ['rice_white'],
+      rewardNamespace: GI.rewardNamespaceIn('la_musa', tablesOf('la_musa', shadowV)), readAvailability: async () => node86('rice_combo') })).parentBlocked, ['rice_white'],
+      'sensitivity: once the tables resolve rice_white to the DISH variant, its 86\'d launcher blocks it');
     let reads = 0;
     await GIs({ caps: ON, gates: SNAP.la_musa, items: [LINE.la_musa(PLAIN.la_musa)], restaurantId: 'la_musa', readAvailability: async () => { reads += 1; return {}; } });
     assert.strictEqual(reads, 0, 'no variant in the order → no availability read at all');

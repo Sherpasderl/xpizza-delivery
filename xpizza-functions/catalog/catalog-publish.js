@@ -28,6 +28,7 @@
 const crypto = require('crypto');
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { catalogDocsForRestaurant } = require('./seed-catalog-core');
+/* pb1-key-overlap:begin */ const { docId: overlapDocId } = require('./seed-catalog-core'); /* pb1-key-overlap:end */
 const { integrityDescriptor } = require('./catalog-integrity');
 const { readVersionDocs } = require('./catalog-firestore');
 const { contentHash } = require('./content-hash');
@@ -1475,6 +1476,31 @@ async function assertDraftPartition(db, rid, input) {
   return { stamps, baseline: p, carried, unidentified, claimIds };
 }
 
+/* pb1-key-overlap:begin */
+/* ── codex PB-1 r3 P2-2 — NO NEW DISH↔EXTRA KEY OVERLAP, ON EVERY PUBLISH PATH ───────────────────────────────
+   The portal allocator refuses a new dish/option key equal to an existing extra key (key_taken), but a direct/operator
+   publish never runs the allocator. The reward calculator resolves a key DISH-first, so a newly overlapping dish silently
+   re-points every reward that names the extra. ADDITION-SCOPED: only an overlap the ACTIVE catalog did not already have
+   (a dish AND an extra both under that key) is refused, so existing overlaps (x_pizza's Pepperoni / Prosciutto) stay
+   publishable. Reads NOTHING unless the candidate has an overlap; then only those keys' docs in the active version, in
+   parallel. A first publish (no active version) has no baseline and nothing redeemed against it — accepted.
+   (A delimited block: catalog-publish.js is byte-pinned by context-guards.test.js; see its PB-1 allowance.) */
+async function assertNoNewKeyOverlap(db, rid, input, activeVersionId) {
+  const { menuTable, extraTable } = normalizeInputs({ items: input && input.items, extras: input && input.extras, extraRecords: input && input.extraRecords });
+  const overlaps = Object.keys(extraTable || {}).filter((k) => Object.prototype.hasOwnProperty.call(menuTable || {}, k));
+  if (!overlaps.length || !activeVersionId) return;
+  const vref = versionsColOf(db, rid).doc(activeVersionId);
+  const snaps = await Promise.all(overlaps.flatMap((k) => [vref.collection('menu_items').doc(overlapDocId(k)).get(), vref.collection('extras').doc(overlapDocId(k)).get()]));
+  const had = (snap, k) => !!snap && snap.exists && (snap.data() || {}).key === k;
+  const fresh = overlaps.filter((k, i) => !(had(snaps[2 * i], k) && had(snaps[2 * i + 1], k)));
+  if (fresh.length) {
+    const e = new Error(`publish_refused_key_overlap: ${rid} — ${fresh.map((k) => JSON.stringify(k)).join(', ')} would be BOTH a dish and an extra key, which the active catalog does not have`);
+    e.code = 'publish_refused_key_overlap';
+    e.keys = fresh;
+    throw e;
+  }
+}
+/* pb1-key-overlap:end */
 async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) {
   // PRE-PUBLISH, before the lease and before a single write: an invalid candidate must not become an
   // immutable version at all. Doing it here rather than in each caller is the point — publishVersion
@@ -1521,6 +1547,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
      stays as the early, cheap refusal that keeps a doomed publish from taking the lease at all. */
   const { stamps: draftStamps, baseline: partitionBaseline, carried: partitionCarried,
     unidentified: partitionUnidentified, claimIds: partitionClaimIds } = await assertDraftPartition(db, rid, input);
+  /* pb1-key-overlap:begin */ await assertNoNewKeyOverlap(db, rid, input, partitionBaseline && partitionBaseline.version); /* pb1-key-overlap:end */
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.

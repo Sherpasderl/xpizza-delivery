@@ -26,6 +26,10 @@ try {
      them may change. The other four files stay pinned whole. */
   const C2A = /[ \t]*\/\* c2a-evidence:begin \*\/[\s\S]*?\/\* c2a-evidence:end \*\/\n?/g;
   const C2A_BLOCKS = { 'catalog-publish.js': 8 };
+  /* 1D add-product B (codex PB-1 r3 P2-2): the publish-time "no NEW dish↔extra key overlap" check is admitted the same way —
+     EXACTLY 3 delimited blocks (its require, the function, the one call in publishVersion); nothing else may change. */
+  const PB1 = /[ \t]*\/\* pb1-key-overlap:begin \*\/[\s\S]*?\/\* pb1-key-overlap:end \*\/\n?/g;
+  const PB1_BLOCKS = { 'catalog-publish.js': 3 };
   const shaBase = (f) => {
     const src = fsys.readFileSync(path.join(__dirname, f), 'utf8');
     if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(fsys.readFileSync(path.join(__dirname, f))).digest('hex');
@@ -33,7 +37,10 @@ try {
     const ends = (src.match(/\/\* c2a-evidence:end \*\//g) || []).length;
     assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins} begin delimiters`);
     assert.strictEqual(ends, begins, `🔴 ${f}: unbalanced c2a delimiters`);
-    return crypto.createHash('sha256').update(src.replace(C2A, '')).digest('hex');
+    const pb = (src.match(/\/\* pb1-key-overlap:begin \*\//g) || []).length;
+    assert.strictEqual(pb, PB1_BLOCKS[f] || 0, `🔴 ${f}: expected exactly ${PB1_BLOCKS[f] || 0} pb1-key-overlap blocks, found ${pb}`);
+    assert.strictEqual((src.match(/\/\* pb1-key-overlap:end \*\//g) || []).length, pb, `🔴 ${f}: unbalanced pb1-key-overlap delimiters`);
+    return crypto.createHash('sha256').update(src.replace(C2A, '').replace(PB1, '')).digest('hex');
   };
   for (const [f, want] of Object.entries(FROZEN)) {
     assert.strictEqual(shaBase(f), want, `🔴 ${f} changed — D4-a must not modify it (plan rev 9 steps 8-9); c2a may only ADD delimited blocks`);
@@ -45,10 +52,11 @@ try {
     const src = fsys.readFileSync(path.join(__dirname, 'catalog-publish.js'), 'utf8');
     const planted = src.replace('async function releaseLease(', 'async function releaseLeasE(');
     assert.notStrictEqual(planted, src, 'sensitivity premise: the plant changed the file');
-    assert.notStrictEqual(crypto.createHash('sha256').update(planted.replace(C2A, '')).digest('hex'), FROZEN['catalog-publish.js'], 'a one-byte change OUTSIDE the c2a blocks is detected');
+    assert.notStrictEqual(crypto.createHash('sha256').update(planted.replace(C2A, '').replace(PB1, '')).digest('hex'), FROZEN['catalog-publish.js'], 'a one-byte change OUTSIDE the c2a / PB-1 blocks is detected');
     assert.notStrictEqual(src.replace(C2A, ''), src, 'non-vacuity: the c2a blocks are present and removed');
+    assert.notStrictEqual(src.replace(PB1, ''), src, 'non-vacuity: the PB-1 blocks are present and removed');
   }
-  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
+  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks + the 3 PB-1 key-overlap blocks; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
 
   // The writer writes ONLY the context path; nothing in D4-a writes the legacy mirror or active_snapshot.
   const NEW = ['context-fk.js', 'policy-primitive.js', 'catalog-context.js', 'catalog-verifier.js', 'context-writer.js', 'context-source.js'];

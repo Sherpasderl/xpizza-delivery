@@ -41,10 +41,13 @@ function rewardKeysOf(redeem) {
    shadows an existing extra (la_musa "Rice White" → rice_white, the key of the extra "Arroz Blanco") can never be admitted
    by that extra's membership. → (key) → 'dish' | 'extra' | null (priced in neither). */
 function rewardNamespaceIn(restaurantId, tables) {
-  let t = null;
-  try { t = resolvePriceTables(restaurantId, tables); } catch (_) { t = null; }
+  /* codex PB-1 r3 NOTE — tables that cannot be RESOLVED (resolvePriceTables throws, e.g. a restaurant mismatch, or yields no
+     dish table) give NO resolver, so a reward is unclassifiable (menu_updating) — never the union-membership fallback. */
+  let t;
+  try { t = resolvePriceTables(restaurantId, tables); } catch (_) { return null; }
+  if (!t || !t.menu || typeof t.menu !== 'object') return null;
   const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
-  return (key) => (t && has(t.menu, key) ? 'dish' : t && has(t.extraPrices, key) ? 'extra' : null);
+  return (key) => (has(t.menu, key) ? 'dish' : has(t.extraPrices, key) ? 'extra' : null);
 }
 
 async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], readAvailability = null, rewardNamespace = null }) {
@@ -72,7 +75,7 @@ async function groupIssues({ caps, gates, items, restaurantId, rewardKeys = [], 
   // parent-or-variant: one availability read, only when some line or reward has a launcher
   const parentBlocked = [];
   const variantLines = lines.filter((l) => parentOf.has(l.key));
-  const variantRewards = rewardKeys.filter((k) => parentOf.has(k));
+  const variantRewards = rewardKeys.filter((k) => parentOf.has(k) && nsOf(k) !== 'extra');   // codex PB-1 r3 P2-1: an EXTRA reward is never a dish variant
   if ((variantLines.length || variantRewards.length) && typeof readAvailability === 'function') {
     let node = null;
     try { node = await readAvailability(); } catch (e) { node = null; }   // fail-open, exactly as today

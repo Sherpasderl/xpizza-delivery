@@ -2,11 +2,14 @@
 // 1D add-product PHASE B (codex PB-1 r2 P1) — a DISH KEY THAT SHADOWS AN EXTRA, through the REAL createOrder /
 // chargeOnlineOrder / quoteRedemption handlers on the emulator (part of `npm run test:add-product`).
 //   la_musa carries a group "Rice White" whose launcher key is rice_white — the key of the extra "Arroz Blanco". (The
-//   allocator now refuses to mint such a key — defence in depth — so the catalog is published directly, as a pre-existing
-//   or externally authored state would be.) The reward calculator resolves rice_white DISH-first, so:
+//   allocator refuses to mint such a key, and since codex PB-1 r3 P2-2 publishVersion refuses a NEW overlap too, so the
+//   catalog is the restaurant's FIRST version — an overlap that predates the check, with no baseline to be new against.)
+//   The reward calculator resolves rice_white DISH-first, so:
 //   • the gate POINTER read FAILING (the code fallback snapshot: rice_white known only as an extra) → the reward is
 //     UNCLASSIFIABLE → 503 menu_updating on cash AND a fresh card, quoteRedemption answers menu_updating — never accepted;
 //   • a HEALTHY gate snapshot → the reward is the bare LAUNCHER → 409 choice_required (cash, fresh card, quote).
+// codex PB-1 r3 P2-2, through the REAL publishVersion: a NEW dish↔extra overlap (relative to the active catalog) is refused
+//   with the pointer unchanged; an EXISTING one — the shadow over itself, x_pizza's Pepperoni / Prosciutto — stays publishable.
 // A fresh process, so the handlers' pricing reader first reads la_musa AFTER this catalog is published.
 require('./_emulator-required')('database', 'firestore');
 
@@ -77,12 +80,10 @@ async function wipe() {
   await wipe();
   const rid = 'la_musa';
   await sourceRefOf(fs, rid).set(canonicalize(buildSourceFromCode(rid)));
-  const { input } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'apc-seed' });
-  await realPublish.publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
   await rtdb.ref(`restaurants/${rid}/identity`).set({ name: rid, phone: '+504', active: true, hub_lat: 14.1, hub_lng: -87.2, delivery_radius_km: 8, version: 1, hours: HOURS });
   await rtdb.ref('config/redemption_enabled').set(true);
   await rtdb.ref(`user_rewards/u_la_musa/${rid}`).set({ balance: 100000, reserved: 0 });
-  // the shadowing group, published as-is (rice category is redeem-eligible today)
+  // the shadowing group (rice category is redeem-eligible today)
   const src = canonicalize(buildSourceFromCode(rid));
   const disp = (id, name, price, extra = {}) => ({ id, cat: 'rice', name, price, ...extra });
   src.items.push({ key: 'rice_white', price: 600, display: disp('rice_white', 'Rice White', 600) });
@@ -92,9 +93,13 @@ async function wipe() {
   src.structure.variant_items = { ...src.structure.variant_items, rice_white: { label: 'Opción', variantIds: ['rice_white_a', 'rice_white_b'] } };
   const { inputs, built } = buildSourceCandidate(rid, src);
   assert.ok(built.items.some((i) => i.key === 'rice_white') && built.extras.some((e) => e.key === 'rice_white'), 'premise: rice_white is BOTH a dish (the launcher) and an extra');
-  const active = await getActivePointer(fs, rid);
-  await realPublish.publishVersion(fs, rid, { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 'apc' },
-    { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: active.version } });
+  const shadowInput = { items: built.items, structure: built.structure, extras: inputs.extras, extraRecords: built.extras, source_sha: 'apc' };
+  // the FIRST version: no active catalog, so no baseline the overlap could be new against
+  await realPublish.publishVersion(fs, rid, shadowInput, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: null } });
+  // the SAME overlap again, over itself: it already exists in the active catalog → publishable (addition-scoped)
+  const first = await getActivePointer(fs, rid);
+  await realPublish.publishVersion(fs, rid, { ...shadowInput, source_sha: 'apc-again' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: first.version } });
+  assert.notStrictEqual((await getActivePointer(fs, rid)).version, first.version, 'the overlap-preserving republish flipped');
 
   // ── the gate POINTER read failing: the code fallback snapshot knows rice_white only as an extra ──
   {
@@ -121,6 +126,30 @@ async function wipe() {
     assert.deepStrictEqual([q.status, q.json && q.json.error], [409, 'choice_required'], `🔴 quoteRedemption: choice_required — ${q.text.slice(0, 200)}`);
   }
   ok('a healthy gate snapshot: the shadowing key is classified as the DISH — the bare launcher reward is refused (choice_required) on cash, a fresh card and the quote');
+
+  // ── codex PB-1 r3 P2-2: the DIRECT publish path refuses a NEW overlap, and keeps existing ones ──
+  {
+    // la_musa back to today's catalog (removing an overlap is always fine)…
+    const { input: today } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'apc-today' });
+    const shadowPtr = await getActivePointer(fs, rid);
+    await realPublish.publishVersion(fs, rid, today, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: shadowPtr.version } });
+    const clean = await getActivePointer(fs, rid);
+    // …then the shadow again: rice_white is now a NEW dish↔extra overlap relative to the active catalog
+    await assert.rejects(realPublish.publishVersion(fs, rid, { ...shadowInput, source_sha: 'apc-new' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: clean.version } }),
+      (e) => e.code === 'publish_refused_key_overlap' && JSON.stringify(e.keys) === '["rice_white"]', '🔴 a NEW dish↔extra overlap is refused by the direct publisher');
+    assert.strictEqual((await getActivePointer(fs, rid)).version, clean.version, 'the pointer never moved');
+    // x_pizza: today's catalog has two EXISTING overlaps (Pepperoni, Prosciutto) — it must stay publishable over itself
+    const xp = 'x_pizza';
+    await sourceRefOf(fs, xp).set(canonicalize(buildSourceFromCode(xp)));
+    const { input: xIn } = buildPublishCandidate(xp, { activeVersionId: null }, { source_sha: 'apc-x1' });
+    const xKeys = new Set(xIn.items.map((i) => i.key));
+    assert.deepStrictEqual(Object.keys(xIn.extras).filter((k) => xKeys.has(k)).sort(), ['Pepperoni', 'Prosciutto'], 'premise: x_pizza\'s two pre-existing dish↔extra overlaps');
+    await realPublish.publishVersion(fs, xp, xIn, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: null } });
+    const x1 = await getActivePointer(fs, xp);
+    await realPublish.publishVersion(fs, xp, { ...xIn, source_sha: 'apc-x2' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: x1.version } });
+    assert.notStrictEqual((await getActivePointer(fs, xp)).version, x1.version, 'x_pizza\'s republish with its existing overlaps flipped');
+  }
+  ok('the direct publishVersion path: a NEW dish↔extra key overlap is refused (publish_refused_key_overlap, pointer unchanged); an existing overlap — the shadow over itself, x_pizza\'s Pepperoni / Prosciutto — stays publishable');
 
   FINISHED = true;
   console.log(`\nadd-product-groups-collision: OK (${n})`);
