@@ -491,31 +491,28 @@ async function runOnce(excluded, deadlineMs) {
       process.removeListener('exit', cleanFiles);
       log(`teardown complete — slot ${slot}: own processes ${leftovers.length ? 'UNCONFIRMED' : 'confirmed down'}, band ${busy.length ? 'NOT released' : 'released'}; releasing the sentinel`);
       await ALLOC.closeServer(sentinel);
-      return code;
+      return { code, busy, confirmed: !leftovers.length };
     })();
     return tornDown;
   };
 
   return new Promise((resolve) => {
     STATE.phase = 'running';
-    STATE.teardown = (code) => teardown(code).then((c) => process.exit(c));
-    let contention = null;
-    const scan = (d) => {
-      const t = String(d);
-      const m = /(Could not start [^\n]*port taken[^\n]*|EADDRINUSE[^\n]*|address already in use[^\n]*)/i.exec(t);
-      if (m && !contention) contention = m[1].trim().slice(0, 160);
-    };
-    /* The CLI's output is TEED (byte-for-byte to our own streams) while it is scanned for a startup port refusal. */
-    const child = spawn('firebase', ['emulators:exec', '--config', generated, '--project', PROJECT, '--only', services.join(','), WRAPPED], { stdio: ['inherit', 'pipe', 'pipe'], cwd: ROOT, env });
+    STATE.teardown = (code) => teardown(code).then((t) => process.exit(t.code));
+    /* 🔴 stdio is INHERITED, never piped through this process (measured in the R1 window): with the CLI's output piped
+       here, a SIGKILLed supervisor broke the CLI's pipes, the CLI died WITHOUT shutting its emulators down, and a
+       detached JVM was orphaned (the slot stayed quarantined — safe, but leaked). Inherited, the CLI and the marked
+       chain outlive a dead supervisor and shut down cleanly. So startup contention is decided from evidence that needs
+       no output: the CLI failed BEFORE the suite started (no started-file), and — after THIS run's processes are
+       confirmed down — a band port is STILL held: a foreign listener took our band. That is the re-slot condition. */
+    const child = spawn('firebase', ['emulators:exec', '--config', generated, '--project', PROJECT, '--only', services.join(','), WRAPPED], { stdio: 'inherit', cwd: ROOT, env });
     STATE.child = child;
-    child.stdout.on('data', (d) => { process.stdout.write(d); scan(d); });
-    child.stderr.on('data', (d) => { process.stderr.write(d); scan(d); });
-    child.on('error', (e) => { console.error(`emulator-run: could not launch firebase — ${e && e.message}`); teardown(1).then((c) => resolve({ code: c, slot })); });
+    child.on('error', (e) => { console.error(`emulator-run: could not launch firebase — ${e && e.message}`); teardown(1).then((t) => resolve({ code: t.code, slot })); });
     child.on('exit', (code, signal) => {
       // The suite's own exit code is the result. A wrapper that swallowed it would turn a red suite green.
       const exitCode = STATE.signalled ? 130 : (signal ? 1 : (code === null ? 1 : code));
       const started = fs.existsSync(startedFile);
-      teardown(exitCode).then((c) => resolve({ code: c, slot, reslot: exitCode !== 0 && !started && !!contention && !STATE.signalled, why: contention }));
+      teardown(exitCode).then((t) => resolve({ code: t.code, slot, reslot: exitCode !== 0 && !started && !STATE.signalled && t.confirmed && t.busy.length > 0, why: `band port(s) held by a foreign listener: ${t.busy.join(', ')}` }));
     });
   });
 }
