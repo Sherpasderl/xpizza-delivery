@@ -51,6 +51,14 @@ Universal "confirmá tu ubicación" gate; center-fixed-pin redesign; making the 
 
 Still byte-identical across both forms (JS block diff-clean; only `--gold-ring`/`--pred-hot` values differ). Happy path untouched.
 
+## REVISE round 2 (re-gate on c2dc3ff — hard gate re-proven; two residual races closed)
+
+1. **Already-rendered rows stayed clickable during the next query (🔴).** Bumping `__locReqSeq` invalidated the pending RESPONSE but left the on-screen rows (and their click handlers) live through the next debounce+fetch. Fix: `locSearchInput` now calls `locHidePreds()` on EVERY input change (not only below threshold), so a stale row can't be clicked while the next query resolves.
+2. **Debounce survived a pick / searches ran during the details fetch (🔴).** Fix: `locPickPred` now `clearTimeout(__locSearchTimer)` on accept (cancels a queued debounce), and `locSearchInput` returns early while `__locPicking` is true (no search mid-selection); the session resumes after the `finally` settles (fresh token).
+3. **Tests hardened.** `order-form-location-escape.test.js` now 30/30 with a CONTROLLABLE debounce timer (the stub now captures + fires callbacks, so the debounce path is actually exercised) and a details-fetch invocation counter: adds unconditional-clear-on-query-change, below-threshold invalidation, both response orderings (older-last AND newest-first/older-late), exactly-one-details-invocation + recovery-after-reject, and pick-cancels-debounce + no-search-during-pick. Non-vacuity proven by mutation: removing the unconditional clear fails the #1 case; removing the debounce-cancel/suppress fails the #2 case.
+
+Still byte-identical across both forms (JS block 74 lines, diff-clean). Happy path untouched.
+
 ## Separate (surfaced to owner — NOT in this diff)
 
 Telemetry (#3) transmits `client_user_agent`/`client_referrer` but the server does NOT persist them (`createOrder` / `create-order-build.js` writes only known fields), so Phase-1 telemetry currently measures nothing — even "later". Delivering its purpose needs a small additive functions change (persist the 2 fields onto the order node) with its own gate + deploy. Held as an owner call; the transmission code is correct, it just has no sink yet. See memory [[phase1-telemetry-no-server-sink]].

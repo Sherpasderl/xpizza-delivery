@@ -4109,10 +4109,12 @@ function locSearchBounds(){
   return {south:RESTAURANT_LAT-dLat,north:RESTAURANT_LAT+dLat,west:RESTAURANT_LNG-dLng,east:RESTAURANT_LNG+dLng};
 }
 function locSearchInput(v){
+  if(__locPicking) return;              // a selection is resolving — ignore typing so no search runs mid-pick
   const q=(v||'').trim();
   clearTimeout(__locSearchTimer);
   __locReqSeq++;                        // any input change supersedes an in-flight prediction response
-  if(q.length<3){ locHidePreds(); return; }
+  locHidePreds();                       // and clear the on-screen rows NOW, so a stale result isn't clickable through the next debounce+fetch
+  if(q.length<3){ return; }
   __locSearchTimer=setTimeout(function(){ locFetchPreds(q); },250);
 }
 async function locFetchPreds(q){
@@ -4156,6 +4158,7 @@ function locRenderPreds(suggestions){
 async function locPickPred(p,label){
   if(__locPicking) return;              // serialize: ignore a second pick while a details fetch is in flight
   __locPicking=true;
+  clearTimeout(__locSearchTimer);        // cancel any queued debounce so a late fetch can't repopulate during this selection
   __locReqSeq++;                         // dismiss the dropdown + invalidate any pending prediction response
   const beforeLat=(typeof lat!=='undefined')?lat:null, beforeLng=(typeof lng!=='undefined')?lng:null;
   locHidePreds();

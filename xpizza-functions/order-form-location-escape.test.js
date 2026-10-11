@@ -88,10 +88,14 @@ function makeRaceCtx(brand, seed) {
   const google = { maps: { places } };
   const win = { google };
   const placePinCalls = [];
+  // CONTROLLABLE debounce timer: locSearchInput schedules via setTimeout; we capture the callback and
+  // fire it on demand (fireTimers) so the debounce→fetch path is actually exercised. clearTimeout nulls it.
+  const timers = [];
   const ctx = {
     document: doc, console, window: win, google,
     checkDeliveryRadius: () => {}, placePin: (la, ln, fb) => placePinCalls.push([la, ln, fb]),
-    setTimeout: () => 0, clearTimeout: () => {},
+    setTimeout: (fn) => { timers.push(fn); return timers.length; },
+    clearTimeout: (id) => { if (id > 0) timers[id - 1] = null; },
     // locSearchBounds() reads these form-scope constants (the real forms define them at top level);
     // values are irrelevant here (the mock ignores locationRestriction) but must be finite numbers.
     DELIVERY_RADIUS_KM: 9.66, RESTAURANT_LAT: 15.5, RESTAURANT_LNG: -88.0,
@@ -99,15 +103,16 @@ function makeRaceCtx(brand, seed) {
   if ('lat' in seed) ctx.lat = seed.lat;
   if ('lng' in seed) ctx.lng = seed.lng;
   vm.runInNewContext(block, ctx);
-  return { ctx, doc, preds: doc.getElementById('loc-preds'), placePinCalls, state, win };
+  const fireTimers = () => { const t = timers.slice(); for (let i = 0; i < t.length; i++) { if (t[i]) { timers[i] = null; t[i](); } } };
+  return { ctx, doc, preds: doc.getElementById('loc-preds'), placePinCalls, state, win, fireTimers };
 }
 // one autocomplete suggestion in the real shape locRenderPreds reads
 function sg(main) { return { placePrediction: { mainText: { text: main }, text: { text: main }, secondaryText: { text: 'SPS' }, toPlace: () => ({ location: { lat: () => 15.4, lng: () => -88.0 }, fetchFields: async () => {} }) } }; }
-// a prediction whose details fetch (place.fetchFields) we resolve/reject on demand
+// a prediction whose details fetch (place.fetchFields) we resolve/reject on demand; counts invocations
 function fakePred(main, la, ln) {
-  let res, rej;
-  const place = { location: { lat: () => la, lng: () => ln }, fetchFields: () => new Promise((rs, rj) => { res = () => rs(); rej = () => rj(new Error('fetchFields failed')); }) };
-  return { p: { mainText: { text: main }, text: { text: main }, toPlace: () => place }, resolve: () => res(), reject: () => rej() };
+  let res, rej; const calls = { n: 0 };
+  const place = { location: { lat: () => la, lng: () => ln }, fetchFields: () => { calls.n++; return new Promise((rs, rj) => { res = () => rs(); rej = () => rj(new Error('fetchFields failed')); }); } };
+  return { p: { mainText: { text: main }, text: { text: main }, toPlace: () => place }, resolve: () => res(), reject: () => rej(), calls };
 }
 
 (async () => {
@@ -200,52 +205,104 @@ function fakePred(main, la, ln) {
   assert.strictEqual(css.x_pizza, css.la_musa, 'search CSS block byte-identical across both forms');
   ok('both forms carry byte-identical search machinery (JS + HTML + CSS; only brand token values differ)');
 
-  // ── ASYNC RACE COVERAGE (both forms) — the REVISE findings, run as real transitions ─────────────
+  // ── ASYNC RACE COVERAGE (both forms) — the REVISE findings, run as real transitions. Each case is
+  // built to FAIL without the specific guard it covers (not vacuous). ───────────────────────────────
+  const flush = () => new Promise((r) => setImmediate(r));
   for (const brand of Object.keys(FORM)) {
-    // #1a — rows render, THEN a later reject AND a later Places-unavailable each CLEAR the stale rows
-    // (a customer must never be able to pick a wrong, stale result — the exact failure we're fixing).
+    // #1a — rows render, THEN a later reject AND a later Places-unavailable each CLEAR the stale rows.
     {
       const h = makeRaceCtx(brand);
       const f1 = h.ctx.locFetchPreds('mall'); h.state.pending[0].res({ suggestions: [sg('Mall A'), sg('Mall B')] }); await f1;
-      assert.ok(h.preds.children.length === 2 && h.preds.style.display !== 'none', `[${brand}] predictions populated (precondition for the clear)`);
+      assert.ok(h.preds.children.length === 2 && h.preds.style.display !== 'none', `[${brand}] predictions populated (precondition)`);
       const f2 = h.ctx.locFetchPreds('mallz'); h.state.pending[1].rej(new Error('down')); await f2;
       assert.ok(h.preds.children.length === 0 && h.preds.style.display === 'none', `[${brand}] a REJECTED next request clears the stale rows`);
       const f3 = h.ctx.locFetchPreds('mall'); h.state.pending[2].res({ suggestions: [sg('Mall A')] }); await f3;
       assert.strictEqual(h.preds.children.length, 1, `[${brand}] predictions re-populated`);
-      delete h.win.google.maps.places.AutocompleteSuggestion; // Places becomes unavailable mid-session
+      delete h.win.google.maps.places.AutocompleteSuggestion; // Places becomes unavailable
       const f4 = h.ctx.locFetchPreds('mallq'); await f4;
       assert.ok(h.preds.children.length === 0 && h.preds.style.display === 'none', `[${brand}] a Places-UNAVAILABLE next request clears the stale rows`);
-      ok(`${brand}: #1a stale rows cleared on reject AND on Places-unavailable (populated first, then cleared)`);
+      ok(`${brand}: #1a stale rows cleared on reject AND on Places-unavailable`);
     }
-    // #1b — a late / out-of-order OLDER response never repopulates over the newest query
+    // #1-NEW — typing a NEW query (≥3 chars) CLEARS the already-rendered rows IMMEDIATELY, so they are
+    // not clickable through the next debounce+fetch (would FAIL without the unconditional locHidePreds).
     {
       const h = makeRaceCtx(brand);
-      const fa = h.ctx.locFetchPreds('a'); // generation 1
-      const fb = h.ctx.locFetchPreds('b'); // generation 2 (newer)
-      h.state.pending[0].res({ suggestions: [sg('STALE-A')] }); await fa; // older resolves LATE
+      const f = h.ctx.locFetchPreds('mall'); h.state.pending[0].res({ suggestions: [sg('Mall A'), sg('Mall B')] }); await f;
+      assert.strictEqual(h.preds.children.length, 2, `[${brand}] rows rendered`);
+      h.ctx.locSearchInput('mallzzz');  // a new query, still above threshold
+      assert.ok(h.preds.children.length === 0 && h.preds.style.display === 'none', `[${brand}] typing a new query clears the on-screen rows at once (not left clickable)`);
+      ok(`${brand}: #1 unconditional clear on every input change`);
+    }
+    // #1b — a late / out-of-order OLDER response never repopulates over the newest query — BOTH orderings.
+    {
+      const h = makeRaceCtx(brand);
+      const fa = h.ctx.locFetchPreds('a'); const fb = h.ctx.locFetchPreds('b'); // gen 1, gen 2 (newest)
+      h.state.pending[0].res({ suggestions: [sg('STALE-A')] }); await fa; // older resolves (late)
       assert.strictEqual(h.preds.children.length, 0, `[${brand}] a late OLDER response is ignored`);
       h.state.pending[1].res({ suggestions: [sg('FRESH-B')] }); await fb;
-      assert.ok(h.preds.textContent.includes('FRESH-B') && !h.preds.textContent.includes('STALE-A'), `[${brand}] only the newest query's results render`);
-      ok(`${brand}: #1b newest-query generation guard — late/out-of-order responses never win`);
+      assert.ok(h.preds.textContent.includes('FRESH-B') && !h.preds.textContent.includes('STALE-A'), `[${brand}] only the newest query renders`);
+      // other ordering: newest resolves FIRST, then the older one late — must not overwrite
+      const h2 = makeRaceCtx(brand);
+      const ga = h2.ctx.locFetchPreds('a'); const gb = h2.ctx.locFetchPreds('b');
+      h2.state.pending[1].res({ suggestions: [sg('FRESH-B')] }); await gb;
+      h2.state.pending[0].res({ suggestions: [sg('STALE-A')] }); await ga;
+      assert.ok(h2.preds.textContent.includes('FRESH-B') && !h2.preds.textContent.includes('STALE-A'), `[${brand}] a late OLDER response does not overwrite the already-shown newest`);
+      ok(`${brand}: #1b newest-query generation guard holds in both response orderings`);
     }
-    // #2 — the session token is retired on a REJECTED details fetch (next fetch opens a NEW session),
-    // and a second pick while one is in flight is ignored (serialized).
+    // #1-threshold — a response for a query that has since dropped below threshold is discarded.
+    {
+      const h = makeRaceCtx(brand);
+      const f = h.ctx.locFetchPreds('mall'); // gen 1, pending
+      h.ctx.locSearchInput('m');             // drops below threshold → bumps gen + hides
+      h.state.pending[0].res({ suggestions: [sg('LATE')] }); await f;
+      assert.strictEqual(h.preds.children.length, 0, `[${brand}] a response is discarded once its query fell below threshold`);
+      ok(`${brand}: #1 below-threshold invalidation`);
+    }
+    // #2 — concurrent picks serialized: EXACTLY ONE details fetch + ONE placement; a 2nd pick mid-flight
+    // is ignored; and after a rejected pick a subsequent pick works (lock released).
+    {
+      const h = makeRaceCtx(brand);
+      const fp = fakePred('Mall A', 15.49, -88.03), fp2 = fakePred('Other', 1, 2);
+      const pick = h.ctx.locPickPred(fp.p, 'Mall A');
+      const pick2 = h.ctx.locPickPred(fp2.p, 'Other'); await pick2; // serialized → ignored
+      assert.strictEqual(fp.calls.n, 1, `[${brand}] first pick invoked the details fetch once`);
+      assert.strictEqual(fp2.calls.n, 0, `[${brand}] the concurrent 2nd pick invoked NO details fetch (serialized)`);
+      fp.reject(); await pick;
+      assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a rejected pick places no pin`);
+      const fp3 = fakePred('Mall B', 15.5, -88.1);
+      const pick3 = h.ctx.locPickPred(fp3.p, 'Mall B'); fp3.resolve(); await pick3;
+      assert.deepStrictEqual(h.placePinCalls, [[15.5, -88.1, false]], `[${brand}] a subsequent pick works after the reject (lock released)`);
+      ok(`${brand}: #2 selection serialized — exactly one details fetch + placement, recovers after reject`);
+    }
+    // #2 — the session token is retired on a REJECTED details fetch (next fetch opens a NEW session).
     {
       const h = makeRaceCtx(brand);
       const f1 = h.ctx.locFetchPreds('mall'); h.state.pending[0].res({ suggestions: [sg('Mall A')] }); await f1;
-      assert.strictEqual(h.state.tokenCount, 1, `[${brand}] one session token opened for the first fetch`);
+      assert.strictEqual(h.state.tokenCount, 1, `[${brand}] one session token for the first fetch`);
       const fp = fakePred('Mall A', 15.49, -88.03);
-      const pick = h.ctx.locPickPred(fp.p, 'Mall A');
-      const pick2 = h.ctx.locPickPred(fakePred('Other', 1, 2).p, 'Other'); // a 2nd pick mid-flight
-      await pick2; // serialized → returns without acting
-      fp.reject(); await pick;
-      assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a rejected pick places no pin; the concurrent 2nd pick was ignored`);
+      const pick = h.ctx.locPickPred(fp.p, 'Mall A'); fp.reject(); await pick;
       const f2 = h.ctx.locFetchPreds('mallz'); h.state.pending[h.state.pending.length - 1].res({ suggestions: [sg('Z')] }); await f2;
-      assert.strictEqual(h.state.tokenCount, 2, `[${brand}] token retired on reject → the next fetch opens a NEW session`);
-      ok(`${brand}: #2 session token retired on reject + concurrent selection serialized`);
+      assert.strictEqual(h.state.tokenCount, 2, `[${brand}] token retired on reject → next fetch opens a NEW session`);
+      ok(`${brand}: #2 session token retired on reject`);
     }
-    // #2 — a late details response must NOT clobber a point the customer set meanwhile (map tap/drag);
-    // positive control: with nothing moved, the pick does place the pin.
+    // #2-NEW — a pick CANCELS the pending debounce and NO search runs during the selection (fires the
+    // controllable timer to prove it): would FAIL without clearTimeout(__locSearchTimer) + the
+    // __locPicking suppression in locSearchInput. Then search resumes after the pick settles.
+    {
+      const h = makeRaceCtx(brand);
+      h.ctx.locSearchInput('mall');                 // schedules a debounce (not yet fired)
+      const fp = fakePred('Chosen', 15.4, -88.0);
+      const pick = h.ctx.locPickPred(fp.p, 'Chosen'); // must clearTimeout the pending debounce
+      h.ctx.locSearchInput('typing during pick');   // suppressed while __locPicking
+      h.fireTimers(); await flush();                 // fire any timers — nothing should fetch
+      assert.strictEqual(h.state.pending.length, 0, `[${brand}] no prediction fetch ran during the selection (debounce cancelled + typing suppressed)`);
+      fp.resolve(); await pick;
+      assert.deepStrictEqual(h.placePinCalls, [[15.4, -88.0, false]], `[${brand}] the pick still places its pin`);
+      h.ctx.locSearchInput('again'); h.fireTimers(); await flush(); // search resumes after the pick
+      assert.strictEqual(h.state.pending.length, 1, `[${brand}] search resumes (new fetch) after the pick settles`);
+      ok(`${brand}: #2 pick cancels the debounce + suppresses mid-pick search, then resumes`);
+    }
+    // #2 — a late details response must NOT clobber a point the customer set meanwhile; positive control.
     {
       const h = makeRaceCtx(brand, { lat: 15.50, lng: -88.00 });
       const fp = fakePred('Place X', 16.0, -89.0);
@@ -255,8 +312,7 @@ function fakePred(main, la, ln) {
       assert.deepStrictEqual(h.placePinCalls, [], `[${brand}] a late details response does NOT overwrite a pin set meanwhile`);
       const h2 = makeRaceCtx(brand, { lat: 15.50, lng: -88.00 });
       const fp2 = fakePred('Place Y', 16.1, -89.1);
-      const pick2 = h2.ctx.locPickPred(fp2.p, 'Place Y'); // nothing moves
-      fp2.resolve(); await pick2;
+      const pick2 = h2.ctx.locPickPred(fp2.p, 'Place Y'); fp2.resolve(); await pick2; // nothing moved
       assert.deepStrictEqual(h2.placePinCalls, [[16.1, -89.1, false]], `[${brand}] a normal pick (nothing moved) places the pin`);
       ok(`${brand}: #2 pin-moved-meanwhile guard holds (with a passing positive control)`);
     }
