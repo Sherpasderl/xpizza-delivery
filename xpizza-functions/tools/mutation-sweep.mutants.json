@@ -10846,5 +10846,18 @@
       "node",
       "tools/emu-alloc.test.js"
     ]
+  },
+  {
+    "id": "r1-08",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "const PROBE_HOSTS = ['127.0.0.1', '0.0.0.0', '::'];",
+    "to": "const PROBE_HOSTS = ['127.0.0.1'];",
+    "label": "the band probe checks loopback only and misses a wildcard listener (AirPlay *:5000)",
+    "kills_with": "wildcard listener was probed FREE",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
   }
 ]

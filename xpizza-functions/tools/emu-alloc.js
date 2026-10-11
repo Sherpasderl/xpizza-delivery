@@ -150,13 +150,31 @@ function bindSentinel(port, host = '127.0.0.1') {
 }
 const closeServer = (srv) => new Promise((res) => { if (!srv) return res(); try { srv.close(() => res()); } catch { res(); } });
 
-// A bind probe for one band port (free = we could listen on it, then released).
-const probePort = (port, host = '127.0.0.1') => new Promise((resolve) => {
+/* A bind probe for one band port: free = listenable on 127.0.0.1 AND on both wildcards.
+   🔴 LOOPBACK ALONE IS NOT ENOUGH ON macOS (measured in the R1 two-gate proof): ControlCenter (AirPlay Receiver) holds
+   `*:5000`, yet macOS still lets 127.0.0.1:5000 be bound, so a loopback-only probe said FREE — while firebase-tools
+   decides availability with `lsof -i :PORT -sTCP:LISTEN` (portUtils.js checkListenable, darwin), which sees the
+   wildcard listener and refuses: "Could not start Logging Emulator, port taken." Slot 20's logging port is 5000;
+   exactly the three suites that drew slot 20 failed. Probing the wildcards too makes the probe at least as strict as
+   the CLI, so such a slot is SKIPPED at admission instead of failing the suite. An address family the host does not
+   support (EADDRNOTAVAIL / EAFNOSUPPORT for '::') cannot hold a listener and is not a reason to refuse. */
+const probeOne = (port, host) => new Promise((resolve) => {
   const srv = net.createServer();
-  srv.once('error', (e) => resolve(e && e.code === 'EADDRINUSE' ? 'in-use' : `error:${(e && e.code) || e}`));
+  srv.once('error', (e) => {
+    const code = e && e.code;
+    resolve(code === 'EADDRINUSE' || code === 'EACCES' ? 'in-use' : (code === 'EADDRNOTAVAIL' || code === 'EAFNOSUPPORT') && host === '::' ? 'free' : `error:${code || e}`);
+  });
   srv.once('listening', () => srv.close(() => resolve('free')));
-  srv.listen({ port, host, exclusive: true });
+  srv.listen({ port, host, exclusive: true, ...(host === '::' ? { ipv6Only: true } : {}) });
 });
+const PROBE_HOSTS = ['127.0.0.1', '0.0.0.0', '::'];
+async function probePort(port, hosts = PROBE_HOSTS) {
+  for (const h of hosts) {
+    const st = await probeOne(port, h);
+    if (st !== 'free') return h === '127.0.0.1' ? st : `${st} (${h})`;
+  }
+  return 'free';
+}
 
 function shuffle(arr, random = Math.random) {
   const a = arr.slice();
@@ -214,5 +232,5 @@ module.exports = {
   sentinelPort, newNonce, formatMarker, parseMarker,
   parsePsLine, isZombie, isFallback, markerIn, joinScans, classifyScan,
   readPsTables, pidAlive, scanSlot, ownStart,
-  bindSentinel, closeServer, probePort, shuffle, acquireSlot,
+  bindSentinel, closeServer, probePort, PROBE_HOSTS, shuffle, acquireSlot,
 };

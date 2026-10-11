@@ -188,17 +188,37 @@ const childEnv = (extra = {}) => {
     for (let i = 0; i < 20 && !rebound; i++) { rebound = await A.bindSentinel(port); if (!rebound) await sleep(100); }
     assert.ok(rebound, '🔴 the sentinel stayed held after its owner was SIGKILLed — a crashed run would leak its slot forever');
     await A.closeServer(rebound);
+    // 🔴 a WILDCARD listener (AirPlay's *:5000 shape) makes the band probe say IN-USE, although 127.0.0.1 alone is bindable
+    const wild = net.createServer();
+    await new Promise((res) => wild.listen({ port, host: '0.0.0.0' }, res));
+    try {
+      assert.notStrictEqual(await A.probePort(port), 'free', '🔴 a *:port wildcard listener was probed FREE — the CLI (lsof) would then refuse the port: the slot-20 / AirPlay failure');
+      assert.strictEqual(await A.probePort(port, ['127.0.0.1']), 'free', 'premise — loopback ALONE is still bindable beside a wildcard listener on macOS (why the wildcards are probed)');
+    } finally { await new Promise((res) => wild.close(res)); }
+    assert.strictEqual(await A.probePort(port), 'free', 'and a genuinely free port probes free on all three addresses');
     // a non-contention error is SURFACED, never read as "unavailable"
     await assert.rejects(() => A.bindSentinel(port, '203.0.113.7'), (e) => e && e.code !== 'EADDRINUSE', '🔴 a non-EADDRINUSE bind error was swallowed');
-    ok(`sentinel on real sockets (fixture ${A.FIXTURE_SENTINEL_BASE}-${A.FIXTURE_SENTINEL_BASE + A.SLOTS - 1}, disjoint from the real pool, every band and 8000-8079): exclusive, incidental connections destroyed, re-bindable after close AND after SIGKILL of its holder, non-contention errors surfaced`);
+    ok(`sentinel on real sockets (fixture ${A.FIXTURE_SENTINEL_BASE}-${A.FIXTURE_SENTINEL_BASE + A.SLOTS - 1}, disjoint from the real pool, every band and 8000-8079): exclusive, incidental connections destroyed, re-bindable after close AND after SIGKILL of its holder, non-contention errors surfaced; the band probe sees a WILDCARD listener (the AirPlay *:5000 shape) that loopback alone misses`);
   }
 
   // ── 7. ARBITRATION over the fixture range: skip-taken, concurrent-never-same, queue→deadline, pin ────
   {
     const SL = 6;
     const freeScan = () => ({ occupied: false, incomplete: false, orphans: [], unreadable: [] });
-    const base = A.FIXTURE_SENTINEL_BASE + 30;     // fixture sub-range 6470-6475
-    const deps = (o = {}) => ({ slots: SL, base, bind: A.bindSentinel, scan: freeScan, probeBand: async () => true, sleep: (ms) => sleep(Math.min(ms, 20)), waitMs: 10, jitterMs: 5, ...o });
+    /* PRIVATE REAL PORTS: SL ports the OS hands out as free (ephemeral range), mapped to slot indices 0..SL-1. Two gates
+       run this file concurrently (the R1 two-gate proof); on a shared fixed sub-range one copy's allocator could take
+       the slot the other copy's queued waiter was waiting for — a cross-copy deadlock (observed). Real sockets still,
+       so exclusivity is the kernel's, not a stub's. */
+    const PORTS = [];
+    for (let i = 0; i < SL; i++) {
+      const t = net.createServer();
+      await new Promise((res) => t.listen({ port: 0, host: '127.0.0.1', exclusive: true }, res));
+      PORTS.push(t.address().port);
+      await new Promise((res) => t.close(res));
+    }
+    const base = 0;
+    const bindMapped = (p) => A.bindSentinel(PORTS[p - base]);
+    const deps = (o = {}) => ({ slots: SL, base, bind: bindMapped, scan: freeScan, probeBand: async () => true, sleep: (ms) => sleep(Math.min(ms, 20)), waitMs: 10, jitterMs: 5, ...o });
     // concurrent allocators never share a slot, and saturation is reached exactly at SL
     const got = await Promise.all([...Array(SL)].map(() => A.acquireSlot(deps())));
     assert.strictEqual(new Set(got.map((g) => g.slot)).size, SL, `🔴 ${SL} concurrent allocators did not get ${SL} distinct slots: ${got.map((g) => g.slot)}`);
@@ -215,7 +235,7 @@ const childEnv = (extra = {}) => {
     await assert.rejects(() => A.acquireSlot(deps({ now: () => clock, sleep: async () => { clock += 1000; }, deadlineMs: 5000 })), /no free slot after/, '🔴 saturation never refused');
     for (const g of [...got, late]) await A.closeServer(g.server);
     // pin: same arbitration, never queues
-    const held = await A.bindSentinel(base + 1);
+    const held = await bindMapped(base + 1);
     assert.deepStrictEqual((await A.acquireSlot(deps({ pin: 1 }))).slot, null, '🔴 a pin onto a held sentinel did not report unavailable');
     await A.closeServer(held);
     const pinned = await A.acquireSlot(deps({ pin: 1 }));
@@ -226,10 +246,10 @@ const childEnv = (extra = {}) => {
     const busy = await A.acquireSlot(deps({ pin: 1, probeBand: async () => false }));
     assert.strictEqual(busy.slot, null, '🔴 a pin bypassed the band probe');
     // quarantine and band-busy release the sentinel (no leak) — the slot is bindable straight after
-    const after = await A.bindSentinel(base + 1); assert.ok(after, '🔴 a quarantined / band-busy pin leaked its sentinel'); await A.closeServer(after);
+    const after = await bindMapped(base + 1); assert.ok(after, '🔴 a quarantined / band-busy pin leaked its sentinel'); await A.closeServer(after);
     // a non-EADDRINUSE bind error propagates out of acquireSlot
     await assert.rejects(() => A.acquireSlot(deps({ bind: async () => { const e = new Error('boom'); e.code = 'EACCES'; throw e; } })), /boom/);
-    ok(`arbitration (fixture ${base}-${base + SL - 1}): ${SL} concurrent allocators get ${SL} distinct slots; the next QUEUES with a heartbeat and takes the slot that frees; saturation refuses at the deadline; a pin goes through sentinel + quarantine + band probe and never queues; refusals release the sentinel; bind errors surface`);
+    ok(`arbitration (${SL} private real ports ${PORTS.join(',')}): ${SL} concurrent allocators get ${SL} distinct slots; the next QUEUES with a heartbeat and takes the slot that frees; saturation refuses at the deadline; a pin goes through sentinel + quarantine + band probe and never queues; refusals release the sentinel; bind errors surface`);
   }
 
   // ── 8. emu-reap: individual, fresh-validated signals; a live run (even co-grouped) is NEVER signalled ─
@@ -247,7 +267,20 @@ const childEnv = (extra = {}) => {
 
     // INTEGRATION on real processes, in ONE process group (the launching shell's): an orphan of a dead supervisor and
     // a child of a LIVE supervisor on the same slot. Uses slot 39 marks and the fixture sentinel for the reaper.
-    const SLOT = 39;
+    /* CONCURRENCY-SAFE (two gates run this file at once): the chosen slot is LOCKED for the whole cell by holding its
+       fixture sentinel, so no concurrent copy can pick it (a shared slot let one copy's reaper legitimately kill the
+       other copy's orphan — observed). The reaper itself works through a PRIVATE ephemeral sentinel; the "held sentinel
+       ⇒ refuse" case is then driven against the real lock. */
+    let SLOT = null; let lock = null;
+    for (const s2 of [...Array(A.SLOTS).keys()].sort(() => Math.random() - 0.5)) {
+      lock = await A.bindSentinel(A.sentinelPort(s2, A.FIXTURE_SENTINEL_BASE));
+      if (lock) { SLOT = s2; break; }
+    }
+    assert.ok(SLOT !== null, 'premise — a free fixture slot exists');
+    const eph = net.createServer();
+    await new Promise((res) => eph.listen({ port: 0, host: '127.0.0.1', exclusive: true }, res));
+    const REAP_BASE = eph.address().port - SLOT;
+    await new Promise((res) => eph.close(res));
     const dead = spawn(process.execPath, ['-e', '0'], { env: childEnv() });
     await new Promise((res) => dead.once('exit', res));                      // a supervisor pid that no longer exists
     const liveSup = spawn(process.execPath, ['-e', 'setTimeout(()=>{},20000)'], { env: childEnv(), stdio: 'ignore' });
@@ -259,7 +292,7 @@ const childEnv = (extra = {}) => {
       await sleep(500);
       const lines = [];
       const kills = [];
-      const res = await reap(SLOT, { sentinelBase: A.FIXTURE_SENTINEL_BASE, log: (m) => lines.push(m), kill: (pid, sig) => { kills.push([pid, sig]); process.kill(pid, sig); } });
+      const res = await reap(SLOT, { sentinelBase: REAP_BASE, log: (m) => lines.push(m), kill: (pid, sig) => { kills.push([pid, sig]); process.kill(pid, sig); } });
       assert.ok(kills.every(([pid]) => pid === orphan.pid), `🔴 emu-reap signalled something other than the orphan: ${JSON.stringify(kills)} (orphan ${orphan.pid}, live child ${liveChild.pid})`);
       assert.ok(kills.some(([pid]) => pid === orphan.pid), `the orphan was signalled (${lines.join(' | ')})`);
       assert.strictEqual(res.left.length, 0, 'confirmed-death barrier reached');
@@ -269,19 +302,18 @@ const childEnv = (extra = {}) => {
       assert.ok(A.pidAlive(liveChild.pid) && liveChild.exitCode === null, '🔴 the co-grouped LIVE run\'s process was killed');
       assert.ok(lines.some((l) => /LIVE supervisor/.test(l)), 'and the reaper reported the live run it left alone');
       // a held sentinel = a live run owns the slot ⇒ refuse
-      const hold = await A.bindSentinel(A.sentinelPort(SLOT, A.FIXTURE_SENTINEL_BASE));
-      const refused = await reap(SLOT, { sentinelBase: A.FIXTURE_SENTINEL_BASE, log: () => {} });
-      await A.closeServer(hold);
+      const refused = await reap(SLOT, { sentinelBase: A.FIXTURE_SENTINEL_BASE, log: () => {} });   // our LOCK holds it
       assert.strictEqual(refused.code, 3, '🔴 emu-reap worked a slot whose sentinel is held by a live run');
       // EPERM ⇒ left alone and reported
       const o2 = spawn(process.execPath, ['-e', 'setTimeout(()=>{},20000)'], { env: childEnv({ [A.RUN_VAR]: A.formatMarker({ slot: SLOT, pid: dead.pid, nonce: A.newNonce(), start: 1 }) }), stdio: 'ignore' });
       await sleep(400);
       const elog = [];
-      await reap(SLOT, { sentinelBase: A.FIXTURE_SENTINEL_BASE, log: (m) => elog.push(m), kill: () => { const e = new Error('EPERM'); e.code = 'EPERM'; throw e; } });
+      await reap(SLOT, { sentinelBase: REAP_BASE, log: (m) => elog.push(m), kill: () => { const e = new Error('EPERM'); e.code = 'EPERM'; throw e; } });
       assert.ok(elog.some((l) => /EPERM/.test(l)) && A.pidAlive(o2.pid), '🔴 EPERM was not treated as alive-and-left');
       o2.kill('SIGKILL');
     } finally {
       for (const p of [liveSup, orphan, liveChild]) { try { p.kill('SIGKILL'); } catch { /* gone */ } }
+      await A.closeServer(lock);
     }
     ok('emu-reap: fresh per-pid validation (live supervisor / reused target / changed marker / vanished → skipped; reused SUPERVISOR pid → still an orphan); on real processes in ONE group it kills only the orphan, leaves the co-grouped live run, reaches the death barrier, refuses a held sentinel, and leaves an EPERM pid');
   }
