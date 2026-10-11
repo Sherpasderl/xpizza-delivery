@@ -1484,6 +1484,10 @@ async function assertDraftPartition(db, rid, input) {
    (a dish AND an extra both under that key) is refused, so existing overlaps (x_pizza's Pepperoni / Prosciutto) stay
    publishable. Reads NOTHING unless the candidate has an overlap; then only those keys' docs in the active version, in
    parallel. A first publish (no active version) has no baseline and nothing redeemed against it — accepted.
+   🔴 AGAINST expected.activeVersionId — the version the flip's CAS REQUIRES to be live (live === expected, in its own
+   transaction) — not a pointer read before the lease. Versions are create-only and immutable, so reading that version's
+   docs here is the same as reading them at the flip: TOCTOU-free by construction, an A→B→A pointer move included.
+   (No `expected` → flipPointer refuses the publish anyway.)
    (A delimited block: catalog-publish.js is byte-pinned by context-guards.test.js; see its PB-1 allowance.) */
 async function assertNoNewKeyOverlap(db, rid, input, activeVersionId) {
   const { menuTable, extraTable } = normalizeInputs({ items: input && input.items, extras: input && input.extras, extraRecords: input && input.extraRecords });
@@ -1547,7 +1551,7 @@ async function publishVersion(db, rid, input, { mirror, alarm, expected } = {}) 
      stays as the early, cheap refusal that keeps a doomed publish from taking the lease at all. */
   const { stamps: draftStamps, baseline: partitionBaseline, carried: partitionCarried,
     unidentified: partitionUnidentified, claimIds: partitionClaimIds } = await assertDraftPartition(db, rid, input);
-  /* pb1-key-overlap:begin */ await assertNoNewKeyOverlap(db, rid, input, partitionBaseline && partitionBaseline.version); /* pb1-key-overlap:end */
+  /* pb1-key-overlap:begin */ await assertNoNewKeyOverlap(db, rid, input, expected && expected.activeVersionId); /* pb1-key-overlap:end */
 
   const token = await acquireLease(db, rid);
   // Captured inside the lease, USED outside it — see the preserve-on-write note in the finally below.

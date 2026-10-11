@@ -55,8 +55,17 @@ try {
     assert.notStrictEqual(crypto.createHash('sha256').update(planted.replace(C2A, '').replace(PB1, '')).digest('hex'), FROZEN['catalog-publish.js'], 'a one-byte change OUTSIDE the c2a / PB-1 blocks is detected');
     assert.notStrictEqual(src.replace(C2A, ''), src, 'non-vacuity: the c2a blocks are present and removed');
     assert.notStrictEqual(src.replace(PB1, ''), src, 'non-vacuity: the PB-1 blocks are present and removed');
+    /* codex PB-1 r4: the excluded PB-1 blocks are reviewed exceptions, so their CONTENTS are pinned too — an edit INSIDE a
+       block (invisible to the baseline pin above) fails here. Re-pin only with a reviewed change to the block text. */
+    const PB1_CONTENT = 'fad391fc125b25cfbfe79941655a7e6681ddf0b28a463ef20d1668013c02314c';
+    const pbText = (s) => (s.match(PB1) || []).join('');
+    assert.strictEqual(crypto.createHash('sha256').update(pbText(src)).digest('hex'), PB1_CONTENT, '🔴 catalog-publish.js: the text INSIDE the pb1-key-overlap blocks changed — a reviewed exception was edited');
+    const inside = src.replace("e.code = 'publish_refused_key_overlap';", "e.code = 'publish_refused_key_overlaP';");
+    assert.notStrictEqual(inside, src, 'sensitivity premise: the plant is inside a PB-1 block');
+    assert.strictEqual(crypto.createHash('sha256').update(inside.replace(C2A, '').replace(PB1, '')).digest('hex'), FROZEN['catalog-publish.js'], 'premise: the baseline pin alone cannot see an edit inside a block');
+    assert.notStrictEqual(crypto.createHash('sha256').update(pbText(inside)).digest('hex'), PB1_CONTENT, 'sensitivity: an edit INSIDE a PB-1 block is detected by the content pin');
   }
-  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks + the 3 PB-1 key-overlap blocks; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
+  ok(`${Object.keys(FROZEN).length} files byte-identical to main 06353c7 (catalog-publish.js = baseline + exactly the 8 delimited c2a blocks + the 3 PB-1 key-overlap blocks, whose contents are pinned too; the legacy mirror, the pricing caches, the ladder, the pricing reader whole); a one-byte change outside the blocks is detected`);
 
   // The writer writes ONLY the context path; nothing in D4-a writes the legacy mirror or active_snapshot.
   const NEW = ['context-fk.js', 'policy-primitive.js', 'catalog-context.js', 'catalog-verifier.js', 'context-writer.js', 'context-source.js'];

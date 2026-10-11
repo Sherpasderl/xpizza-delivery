@@ -138,6 +138,28 @@ async function wipe() {
     await assert.rejects(realPublish.publishVersion(fs, rid, { ...shadowInput, source_sha: 'apc-new' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: clean.version } }),
       (e) => e.code === 'publish_refused_key_overlap' && JSON.stringify(e.keys) === '["rice_white"]', '🔴 a NEW dish↔extra overlap is refused by the direct publisher');
     assert.strictEqual((await getActivePointer(fs, rid)).version, clean.version, 'the pointer never moved');
+    // codex PB-1 r4's EXACT interleaving (an unstamped rollback between the check and the lease), through the real publisher
+    // and rollback: A = the version WITH the overlap (the shadow, published first), B = the clean one published after it.
+    //   1. the candidate's expectation is captured as B;  2. roll back to A;  3. the candidate's overlap check runs;
+    //   4. B is restored before the candidate takes its lease;  5. the flip (live === expected B) would land the overlap.
+    // Checked against the pre-lease pointer (A, where the overlap exists) it passes and lands over B; checked against
+    // expected.activeVersionId (B, immutable) it is refused before the lease — by construction.
+    const A = shadowPtr.version; const B = clean.version;
+    const expectation = { activeVersionId: B };                                                                         // 1
+    await realPublish.rollbackVersion(fs, rid, A, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: B } });   // 2
+    assert.strictEqual((await getActivePointer(fs, rid)).version, A, 'premise: rolled back to A (the overlap version)');
+    let restoredB = false;
+    const interleave = new Proxy(fs, { get(t, prop) {
+      if (prop === 'runTransaction') return async (...a) => {   // 4: the publish's first transaction is its lease
+        if (!restoredB) { restoredB = true; await realPublish.rollbackVersion(fs, rid, B, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: A } }); }
+        return t.runTransaction(...a);
+      };
+      const v = Reflect.get(t, prop, t); return typeof v === 'function' ? v.bind(t) : v;
+    } });
+    await assert.rejects(realPublish.publishVersion(interleave, rid, { ...shadowInput, source_sha: 'apc-r4' }, { mirror: makeRtdbMirror(rtdb), expected: expectation }),   // 3 + 5
+      (e) => e.code === 'publish_refused_key_overlap' && JSON.stringify(e.keys) === '["rice_white"]', '🔴 codex r4 interleaving: the overlap is judged against expected.activeVersionId (B), never the pre-lease pointer (A)');
+    assert.strictEqual(restoredB, false, 'refused BEFORE the lease (step 4 never reached)');
+    assert.strictEqual((await getActivePointer(fs, rid)).version, A, 'nothing flipped');
     // x_pizza: today's catalog has two EXISTING overlaps (Pepperoni, Prosciutto) — it must stay publishable over itself
     const xp = 'x_pizza';
     await sourceRefOf(fs, xp).set(canonicalize(buildSourceFromCode(xp)));
@@ -149,7 +171,7 @@ async function wipe() {
     await realPublish.publishVersion(fs, xp, { ...xIn, source_sha: 'apc-x2' }, { mirror: makeRtdbMirror(rtdb), expected: { activeVersionId: x1.version } });
     assert.notStrictEqual((await getActivePointer(fs, xp)).version, x1.version, 'x_pizza\'s republish with its existing overlaps flipped');
   }
-  ok('the direct publishVersion path: a NEW dish↔extra key overlap is refused (publish_refused_key_overlap, pointer unchanged); an existing overlap — the shadow over itself, x_pizza\'s Pepperoni / Prosciutto — stays publishable');
+  ok('the direct publishVersion path: a NEW dish↔extra key overlap is refused (publish_refused_key_overlap, pointer unchanged), judged against expected.activeVersionId even across codex r4\'s rollback interleaving; an existing overlap — the shadow over itself, x_pizza\'s Pepperoni / Prosciutto — stays publishable');
 
   FINISHED = true;
   console.log(`\nadd-product-groups-collision: OK (${n})`);
