@@ -388,15 +388,18 @@ const evidence = async (rid) => (await db.collection('restaurants').doc(rid).col
     const A1 = 'synth_sch_a'; const B1 = 'synth_sch_b';
     await F.merchant(A1); await F.merchant(B1);
     const rA = await run1(A1); later(1); await run1(B1);                        // A checked before B → A is older
-    // the cap fits the two node views of each restaurant + ONE full check of A (its measured cost), not B's first stage
-    const cap = 4 + (rA.reads - 2) + 2;
-    r = await (async () => { later(16); return F.runFor([A1, B1], { readCap: cap }); })();
+    // the cap (codex build r2 P1-C accounting: the enumeration's maximum reserved before listing, then released to its actual cost):
+    // the 2-restaurant run's enumeration (2) + summaries (4) + views (4) + ONE full check of A (its measured cost: A's single run
+    // minus its enumeration 1 + summaries 2 + views 2) + B's commit reservation (1) + 2 — less than B's 3-read precheck
+    const costA = rA.reads - (1 + 2 + 2);
+    const cap = 2 + 4 + 4 + costA + 1 + 2;
+    r = await (async () => { later(16); return F.runFor([A1, B1], { readCap: cap, enumerationMax: 2 }); })();
     assert.deepStrictEqual(r.results.map((x) => `${x.rid}:${x.outcome}`), [`${A1}:checked`, `${B1}:deferred_budget`], 'oldest first; the next one deferred at a stage boundary');
     const nb = await F.nodeOf(B1);
     assert.ok(nb.coverage.failures === 1 && nb.coverage.retry_after > clock);
     // anti-starvation: once B's backoff expires its coverage is the OLDEST, so it goes FIRST and A is the one deferred
     later(31);
-    r = await F.runFor([A1, B1], { readCap: cap });
+    r = await F.runFor([A1, B1], { readCap: cap, enumerationMax: 2 });
     assert.deepStrictEqual(r.results.map((x) => `${x.rid}:${x.outcome}`), [`${B1}:checked`, `${A1}:deferred_budget`], 'oldest coverage first: one slow/expensive restaurant cannot starve another');
     // a FAILING restaurant (a malformed pointer: every check fails) is backed off, yet still emits its line every run; once its
     // first enumeration is > 45 min old with no coverage it is STALE and the heartbeat is suppressed
