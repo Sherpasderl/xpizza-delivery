@@ -5834,8 +5834,16 @@ function registerOutsideClick(id){
   if(window[key]) document.removeEventListener('click',window[key]);
   // Wait a tick so the current click doesn't immediately trigger it
   setTimeout(()=>{
-    window[key]=function(){
+    window[key]=function(e){
       const controls=document.getElementById('qty-controls-'+id);
+      // Only a GENUINE OUTSIDE click collapses the stepper to the badge. A tap on THIS id's +/- controls
+      // (inside its .qty-overlay) must keep it EXPANDED while the customer adds items. The data-stop
+      // delegated handler blocks the card->modal open but does NOT stopPropagation (the inline
+      // onclick="event.stopPropagation()" the safe-render refactor replaced used to stop them), so an
+      // inside tap still reaches this document listener - guard by target containment, and keep the
+      // listener registered on an inside tap so a later OUTSIDE tap still collapses.
+      const overlay=controls && controls.closest('.qty-overlay');
+      if(e && overlay && e.target && overlay.contains(e.target)) return;
       const badge=document.getElementById('qty-badge-'+id);
       const badgeNum=document.getElementById('qty-badge-num-'+id);
       if(controls) controls.classList.remove('visible');
