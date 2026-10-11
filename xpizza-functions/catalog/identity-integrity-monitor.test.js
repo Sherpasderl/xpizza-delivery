@@ -14,6 +14,8 @@ const { readSetOf } = require('./catalog-verifier');
 const { activationDocId, G20 } = require('./identity-evidence');
 const { H } = require('./evidence-encoding');
 
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('identity-integrity-monitor FAILED: exited without completing (a promise never settled)'); process.exitCode = 1; } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ID = FieldPath.documentId();
 const READ = { seconds: 1_800_000_000, nanoseconds: 0, toMillis: () => 1_800_000_000_000 };
@@ -205,5 +207,6 @@ setTimeout(() => { console.error('identity-integrity-monitor FAILED: the suite d
     ok(`P1-2: every RTDB get STALLS — the views end at the work deadline and the summaries at their own reserve inside the run (${ms} ms for ${ids.length} restaurants, all lines emitted stale), never one timeout per restaurant`);
   }
 
+  FINISHED = true;
   console.log(`identity-integrity-monitor: OK (${n})`);
 })().catch((e) => { console.error('identity-integrity-monitor FAILED:', e); process.exit(1); });

@@ -7,6 +7,8 @@ const A = require('./identity-alerts-core');
 const T = require('./setup-identity-alerts');
 const S = require('../catalog/identity-integrity-state');
 
+let FINISHED = false;
+process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('identity-alerts FAILED: exited without completing (a promise never settled)'); process.exitCode = 1; } });
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const CH = 'projects/p/notificationChannels/1';
 const THR = { getMyRestaurants: 3, getEditableCatalog: 3, editCatalog: 4, publishEdited: 3, getSalesStats: 5 };
@@ -201,5 +203,6 @@ setTimeout(() => { console.error('identity-alerts FAILED: the suite did not fini
   }
   ok('P1-5: absence acceptance always resumes — nobody answers → resumed and verified at the INDEPENDENT deadline (a FAIL, never a hang); an exception after the pause → resumed; a failing resume retried until ENABLED, a resume that never takes reported; every API call boundable');
 
+  FINISHED = true;
   console.log(`identity-alerts: OK (${n})`);
 })().catch((e) => { console.error('identity-alerts FAILED:', e); process.exit(1); });
