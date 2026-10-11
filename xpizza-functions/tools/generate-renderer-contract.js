@@ -149,18 +149,69 @@ function writeFallbackGroups(target) {
 // stay off, because a form that cannot render a group must never meet a server that refuses its launcher.
 const GROUP_PICKER_MARKER = /\bconst GROUP_PICKER_V1 = 1;/;
 const GROUP_PICKER_FILE = 'form-group-picker.js';
-const GROUP_PICKER_TAG = `<script src="${GROUP_PICKER_FILE}"></script>`;
 // The picker's own choice badge (form-group-picker.js isRecommended / RECOMMENDED_LABEL "Recomendada"), one for every brand.
 const CHOICE_BADGES = Object.freeze(['recommended']);
-/* codex PB-2 r1 P2-5 — ACTIVE markup and EXECUTABLE code only, never raw text.
-   activeHtml: the page with every HTML comment removed (an unterminated `<!--` runs to the end, as in a browser) and the
-   bodies of inline <script>, <template>, <noscript> and <textarea> emptied (text there never loads a module) — so only a
-   real element counts as the tag. */
-function activeHtml(html) {
-  return String(html)
-    .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
-    .replace(/(<(script|template|noscript|textarea)\b[^>]*>)[\s\S]*?(<\/\2\s*>)/gi, (m, open, tag, close) => (/\bsrc\s*=/i.test(open) ? m : open + close));
+/* codex PB-2 r1 P2-5 / r2 P2-2 — ACTIVE elements and EXECUTABLE code only, never raw text.
+   activeScripts: a small HTML TOKENIZER (not a regex over the text). It walks real markup and returns every script
+   ELEMENT that a browser would run, as { open, content } (the exact open-tag text and its inline body). Inert text never
+   yields an element:
+   • comments `<!-- … -->` (an unterminated one runs to the end, as in a browser), `<!DOCTYPE …>`, `<? … >`, end tags;
+   • ATTRIBUTE VALUES (quoted or unquoted) — a `<script …>` inside an attribute is part of that value;
+   • RAW-TEXT bodies — script, style, textarea, title, xmp, noscript — up to their own end tag;
+   • <template> CONTENTS — an inert fragment, skipped to its matching end tag (nested templates counted). */
+const RAW_TEXT = new Set(['script', 'style', 'textarea', 'title', 'xmp', 'noscript']);
+function activeScripts(html) {
+  const src = String(html); const n = src.length; const out = [];
+  const lower = src.toLowerCase();
+  // one start/end tag at `i` (src[i] === '<') → { name, end, close } or null (a bare '<' is text)
+  const readTag = (i) => {
+    let k = i + 1; const close = src[k] === '/'; if (close) k += 1;
+    const m = /^[a-zA-Z][a-zA-Z0-9-]*/.exec(src.slice(k, k + 64)); if (!m) return null;
+    const name = m[0].toLowerCase(); k += m[0].length;
+    while (k < n && src[k] !== '>') {                                  // attributes: names, and values skipped whole
+      const c = src[k];
+      if (c === '"' || c === "'") { const e = src.indexOf(c, k + 1); k = e === -1 ? n : e + 1; continue; }
+      if (c === '=') {
+        k += 1; while (k < n && /\s/.test(src[k])) k += 1;
+        if (src[k] === '"' || src[k] === "'") { const q = src[k]; const e = src.indexOf(q, k + 1); k = e === -1 ? n : e + 1; }
+        else while (k < n && !/[\s>]/.test(src[k])) k += 1;           // an unquoted value ends at space or '>'
+        continue;
+      }
+      k += 1;
+    }
+    return { name, close, end: Math.min(n, k + 1) };
+  };
+  const endTagAt = (name, from) => { const re = new RegExp(`</${name}[\\s/>]`, 'g'); re.lastIndex = from; const m = re.exec(lower); return m ? m.index : -1; };
+  let i = 0;
+  while (i < n) {
+    const lt = src.indexOf('<', i); if (lt === -1) break;
+    if (src.startsWith('<!--', lt)) { const e = src.indexOf('-->', lt + 4); i = e === -1 ? n : e + 3; continue; }
+    if (src[lt + 1] === '!' || src[lt + 1] === '?') { const e = src.indexOf('>', lt); i = e === -1 ? n : e + 1; continue; }
+    const t = readTag(lt);
+    if (!t) { i = lt + 1; continue; }
+    i = t.end;
+    if (t.close) continue;
+    if (t.name === 'template') {                                       // inert contents: skip to the MATCHING </template>
+      let depth = 1; let k = i;
+      while (depth > 0) {
+        const o = lower.indexOf('<template', k); const c = endTagAt('template', k);
+        if (c === -1) { k = n; break; }
+        if (o !== -1 && o < c && /[\s/>]/.test(lower[o + 9] || '')) { depth += 1; k = o + 9; } else { depth -= 1; k = c + 11; }
+      }
+      i = depth > 0 ? n : (src.indexOf('>', k - 1) + 1 || n);
+      continue;
+    }
+    if (RAW_TEXT.has(t.name)) {
+      const e = endTagAt(t.name, i); const bodyEnd = e === -1 ? n : e;
+      if (t.name === 'script') out.push({ open: src.slice(lt, t.end), content: src.slice(i, bodyEnd) });
+      i = e === -1 ? n : (src.indexOf('>', e) + 1 || n);
+    }
+  }
+  return out;
 }
+const GROUP_PICKER_OPEN = `<script src="${GROUP_PICKER_FILE}">`;
+// the picker is LOADED iff exactly ONE active script element is exactly `<script src="form-group-picker.js"></script>`
+const loadsPicker = (html) => activeScripts(html).filter((x) => x.open === GROUP_PICKER_OPEN && x.content === '').length === 1;
 /* codeOnly: the module with every comment and every string / template-literal BODY blanked (newlines kept), by a small
    scanner — so a declaration that is commented out, or that merely appears inside a string, is not a declaration. */
 function codeOnly(src) {
@@ -182,7 +233,7 @@ function codeOnly(src) {
 // the declaration as a STATEMENT: at the start of a line or after a statement boundary, in code (not a comment / string)
 const GROUP_PICKER_DECL = /(?:^|[;{}])[ \t]*const GROUP_PICKER_V1 = 1;/m;
 function formShipsPicker(rid, root) {
-  if (activeHtml(formSource(rid, root)).split(GROUP_PICKER_TAG).length !== 2) return false;
+  if (!loadsPicker(formSource(rid, root))) return false;
   const mod = formSiblingSource(rid, GROUP_PICKER_FILE, root);
   return typeof mod === 'string' && GROUP_PICKER_MARKER.test(mod) && GROUP_PICKER_DECL.test(codeOnly(mod));
 }
@@ -202,4 +253,4 @@ function writePlatformRender(target) {
 
 if (require.main === module) { console.log(`wrote ${writeContract()}`); console.log(`wrote ${writeFallbackGroups()}`); console.log(`wrote ${writePlatformRender()}`); }
 module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS, renderedCategoriesOf,
-  deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, formShipsPicker, activeHtml, codeOnly, CHOICE_BADGES, RENDER_PLATFORM, writePlatformRender };
+  deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, formShipsPicker, activeScripts, codeOnly, CHOICE_BADGES, RENDER_PLATFORM, writePlatformRender };

@@ -117,12 +117,18 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
         assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: '/*\nconst GROUP_PICKER_V1 = 1;\n*/\n' }), false, 'the declaration only in a block comment → off');
         assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: 'const s = "const GROUP_PICKER_V1 = 1;";\n' }), false, 'the declaration only inside a string → off');
         assert.strictEqual(both({ html: `<html><script>var t = '${TAG}';</script></html>`, mod: MOD }), false, 'the tag only inside an inline script\'s text → off');
+        // codex PB-2 r2 P2-2 — inert MARKUP that is not an element: a <template>'s contents, a tag inside an attribute value
+        assert.strictEqual(both({ html: `<html><template>${TAG}</template></html>`, mod: MOD }), false, '🔴 the tag only inside a <template> (inert contents) → off');
+        assert.strictEqual(both({ html: `<div data-example='${TAG}'></div>`, mod: MOD }), false, '🔴 codex r2 verbatim: the tag only inside an attribute value → off');
+        assert.strictEqual(both({ html: `<template><template></template>${TAG}</template>`, mod: MOD }), false, '🔴 codex r2 verbatim: the tag inside a template that nests another → off');
+        assert.strictEqual(both({ html: `<html><textarea>${TAG}</textarea></html>`, mod: MOD }), false, 'the tag only inside a <textarea> → off');
+        assert.strictEqual(both({ html: `<html><template>x</template>${TAG}</html>`, mod: MOD }), true, 'premise kept: a real tag AFTER a template → on');
         assert.strictEqual(both({ html: `<html><!-- ${TAG} -->${TAG}</html>`, mod: '// the picker\nconst GROUP_PICKER_V1 = 1;\n' }), true, 'premise kept: a real tag + a real declaration, beside comments → on');
       } finally { rmSync(tmp, { recursive: true, force: true }); }
     }
     const src = readFileSync(join(__dirname, 'platform-groups.js'), 'utf8');
     assert.ok(!/restaurant|rid\b|x_pizza|la_musa/i.test(src.replace(/\/\/.*$/gm, '')), 'no brand anywhere in the switch module');
-    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; 11 near-misses each off, incl. codex\'s commented-out tag and declaration), authoring OFF; a malformed render artifact throws; no brand appears in the module');
+    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; 15 near-misses each off, incl. codex\'s commented-out tag and declaration, a template\'s contents and an attribute value), authoring OFF; a malformed render artifact throws; no brand appears in the module');
   }
   console.log(`\ngroup-index: OK (${n})`);
 })().catch((e) => { console.error('group-index FAILED:', e); process.exit(1); });

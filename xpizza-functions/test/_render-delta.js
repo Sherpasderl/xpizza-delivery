@@ -62,7 +62,11 @@ function assertShortCircuit(off, on, at, ops, label) {
 // Firestore block may only be EXACTLY one GATE re-read, and only if the request used no GATE yet; every other Firestore
 // call — any extra read, a second transaction, a write — stays IN the comparison, so it shows. SENSITIVITY (wall time): a
 // cache refills at most once per TTL, so per restaurant GATE and CTX each refill at most ⌊elapsed / 30 s⌋ + 1 times
-// and COLD at most once. (R1c replaces this with a real warm hook.)
+// and COLD at most once.
+// ⚠ DOCUMENTED RESIDUAL (codex PB-2 r2 P2-1, advisor-accepted): this recognises a refill by its SHAPE and bounds how often
+// it occurs; it does not prove the refill was DUE (the cache had expired), and the COLD load's transaction is opaque to the
+// recorder (its internals are not recorded). Real cache-state control — a test hook or a controlled clock for these
+// caches — comes with R1c (order-control determinism), which REPLACES makeCacheFill.
 const { performance } = require('perf_hooks');
 const FLOOR_PATH = 'platform_config/client_floor/orders';
 const isFloorOp = (o) => o && o.db === 'rtdb' && typeof o.path === 'string' && o.path.startsWith('platform_config/client_floor');
