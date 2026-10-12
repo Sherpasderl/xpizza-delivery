@@ -26,6 +26,9 @@ stub('../catalog/menu-gates', (r) => ({ ...r, createGateReader: (...a) => { cons
 let DRIFT = null;
 stub('../pixelpay-hosted-charge', (r) => ({ ...r, classifyHostedAttempt: async (...a) => { const c = await r.classifyHostedAttempt(...a); if (DRIFT) await DRIFT(a[1]); return c; } }));
 
+// the weekend-only gate reads a CONTROLLED day (Saturday by default): x_pizza's group lives in the weekend-only "ny" section,
+// so against the real clock this suite was green Fri–Sun and red Mon–Thu. The rule itself stays real (test/_weekend-clock.js).
+const WC = require('./_weekend-clock');
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -115,6 +118,23 @@ async function wipe() {
     }
     ok('render OFF: nothing changes — a bare launcher is accepted and priced as today, on both brands');
   }
+  // the clock is controlled, the RULE is not: on a Honduras MONDAY the same x_pizza dish is refused weekend_only — cash
+  // and card, before any write — and La Musa (no weekend-only section) is untouched
+  {
+    Object.assign(CAPS, { render: false });
+    assert.strictEqual(WC.setDay('monday'), 1, 'the gate now reads a Monday');
+    for (const [method, oid] of [['cash', 'apg_wk_cash'], ['online', 'apg_wk_card']]) {
+      const before = WC.calls.length;
+      const r = await send('x_pizza', oid, method, [line('x_pizza', G.x_pizza.launcher, 624)]);
+      assert.deepStrictEqual([r.status, r.json && r.json.error, r.json && r.json.item], [400, 'weekend_only', G.x_pizza.launcher], `🔴 ${method} on a Monday: weekend_only — ${r.text.slice(0, 160)}`);
+      assert.ok(WC.calls.slice(before).some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 1 && c.result === G.x_pizza.launcher), `${method}: the REAL rule ran on the handler's "now", read as Monday`);
+      assert.strictEqual(await order(oid), null, `${method}: nothing written`);
+    }
+    const lm = await send('la_musa', 'apg_wk_lm', 'cash', [line('la_musa', G.la_musa.launcher, 414)]);
+    assert.strictEqual(lm.status, 200, `la_musa on a Monday: no weekend-only section, accepted — ${lm.text.slice(0, 160)}`);
+    assert.strictEqual(WC.setDay('saturday'), 6);
+  }
+  ok('the weekend_only rule still fires on a weekday (cash + card, before any write); the controlled clock only picks the day');
   // codex PB-1 r2 P2-a — a FAILED redemption preparation (no verified customer → login_required) with render OFF returns at
   // once with ZERO gate reads; with render ON the precedence check makes exactly one
   {
@@ -290,6 +310,7 @@ async function wipe() {
   }
   ok('bound reuse (render ON): a choice-reward checkout resumes its URL — answered by the bound fast path (probe + reuse branch write-free: no rate-limit footprint) with no second hold — untouched and after a whole-dish 86, a re-price and an eligibility change; different options or fee input reach the current path; an expired one rotates through current enforcement (reward_unavailable); a fresh launcher reward whose preparation fails answers choice_required');
 
+  assert.ok(WC.calls.some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 6), 'premise: the x_pizza orders above met the REAL weekend gate, on the controlled Saturday');
   FINISHED = true;
   console.log(`\nadd-product-groups-intake: OK (${n})`);
   process.exit(0);
