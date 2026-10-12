@@ -79,7 +79,7 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
   }
   {
     const pg = require('./platform-groups');
-    assert.deepStrictEqual(pg.groupCapabilities(), { render: true, authoring: false }, 'PB-2 (§0b.3(b)/(c)): render is ON — both forms ship the picker; authoring stays OFF until the portal (§0b.3(e))');
+    assert.deepStrictEqual(pg.groupCapabilities(), { render: true, authoring: true }, 'PB-2 (§0b.3(b)/(c)): render is ON — both forms ship the picker; PB-3 flip (§0b.3(e)): authoring is ON — the portal that authors groups is live');
     for (const bad of [{}, { render: 'yes' }, null, { render: 1 }]) {
       assert.throws(() => pg.parseRender(bad), /platform_groups_malformed/, `a malformed render artifact (${JSON.stringify(bad)}) is refused, never read as on`);
     }
@@ -141,7 +141,7 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
     }
     const src = readFileSync(join(__dirname, 'platform-groups.js'), 'utf8');
     assert.ok(!/restaurant|rid\b|x_pizza|la_musa/i.test(src.replace(/\/\/.*$/gm, '')), 'no brand anywhere in the switch module');
-    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; near-misses each off, decided by the WHATWG parser (parse5): codex r1–r3 inputs, template contents, attribute values, comments, inert containers, SVG), authoring OFF; a malformed render artifact throws; no brand appears in the module');
+    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; near-misses each off, decided by the WHATWG parser (parse5): codex r1–r3 inputs, template contents, attribute values, comments, inert containers, SVG), authoring ON (the PB-3 flip); a malformed render artifact throws; no brand appears in the module');
   }
   console.log(`\ngroup-index: OK (${n})`);
 })().catch((e) => { console.error('group-index FAILED:', e); process.exit(1); });

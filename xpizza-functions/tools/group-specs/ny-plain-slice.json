@@ -1,0 +1,14 @@
+{
+  "launcher": {
+    "name": "NY Plain Slice",
+    "cat": "ny",
+    "desc": "La clásica NY Plain Slice - 6 slices, queso mozzarella, salsa de tu elección.",
+    "extras_policy": "none"
+  },
+  "label": "Salsa",
+  "choices": [
+    { "choice": "Salsa Roja", "price": 624 },
+    { "choice": "Salsa Vodka", "price": 624 },
+    { "choice": "Combinada", "price": 624, "tags": ["recommended"] }
+  ]
+}

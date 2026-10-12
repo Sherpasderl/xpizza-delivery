@@ -18,7 +18,8 @@ const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = b
     const added = A.allocateAdditions({ incoming: (() => { const s = clone(SRC.x_pizza); s.items.push({ ref: 'tmp:cccccccc-0001', price: 500, display: { cat: 'ny', name: 'Drift Probe', price: 500 } }); s.structure.item_order.push('tmp:cccccccc-0001'); return s; })(),
       stored: SRC.x_pizza, activeItems: SRC.x_pizza.items, keyMode: 'name', hwm: null, registryHasKey: () => false }).source;
     const drifted = clone(SRC.la_musa); drifted.items[0].display.name += ' X';
-    // a WELL-FORMED group (add-product B's uniform rules need ≥ 2 choices) on a draft — not authorable yet, so it is drift
+    // a WELL-FORMED group (add-product B's uniform rules need ≥ 2 choices) on a draft — authorable since the PB-3 flip, so it is
+    // an unpublished ADDITION (the report runs the same check a save does), never drift
     const poisoned = clone(SRC.x_pizza); poisoned.items.push({ key: 'Launcher', price: 500, display: { id: 99, cat: 'ny', name: 'Launcher', price: 500 } },
       { key: 'Launcher - Roja', price: 500, display: { id: 100, cat: 'ny', name: 'Launcher - Roja', price: 500, variantOf: 99, choice: 'Roja' } },
       { key: 'Launcher - Blanca', price: 500, display: { id: 101, cat: 'ny', name: 'Launcher - Blanca', price: 500, variantOf: 99, choice: 'Blanca' } });
@@ -41,13 +42,13 @@ const activeOf = (rid, src) => { const i = sourceToBuildInputs(src); const b = b
     const brandRows = await driftReport({ rids: ['x_pizza'], readSource: async () => added, readActive: async () => actives.x_pizza });
     assert.deepStrictEqual(brandRows[0], { rid: 'x_pizza', status: 'publishable', additions: ['Drift Probe'], removals: [] }, 'an unpublished ADDITION is not drift');
     const poisonRows = await driftReport({ rids: ['x_pizza'], readSource: async () => poisoned, readActive: async () => actives.x_pizza });
-    assert.strictEqual(poisonRows[0].status, 'drift', 'the poisoned (variant) x_pizza draft is reported');
-    assert.ok(['choices_not_supported_yet', 'draft_unbuildable'].includes(poisonRows[0].code), poisonRows[0].code);
+    assert.strictEqual(poisonRows[0].status, 'publishable', 'authoring ON: a well-formed new group is an unpublished addition, not drift');
+    assert.deepStrictEqual(poisonRows[0].additions.slice().sort(), ['Launcher', 'Launcher - Blanca', 'Launcher - Roja'], 'every row of the group is listed as an addition');
     const singleRows = await driftReport({ rids: ['x_pizza'], readSource: async () => single, readActive: async () => actives.x_pizza });
     assert.deepStrictEqual([singleRows[0].status, singleRows[0].code], ['drift', 'invalid_source'], 'a single-choice group is refused by the uniform group rules (≥ 2 choices)');
     assert.match(singleRows[0].detail, /at least 2/);
     void asBrand;
-    ok('rows: publishable (no change / an unpublished addition), drift (a La Musa rename; the poisoned variant draft), no_source, no_active, unreadable');
+    ok('rows: publishable (no change / an unpublished addition / a well-formed new group), drift (a La Musa rename; a single-choice group), no_source, no_active, unreadable');
   }
   {
     const writes = [];

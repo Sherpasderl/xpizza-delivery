@@ -65,7 +65,7 @@ const D = {
   [F('tools/portal-speed-proof.js')]: 'latency-parent',
   // operator CLIs — tools/require-project.js runs the mixed-signal guard (driven: mixed ⇒ refuse)
   ...Object.fromEntries(['backfill-identities', 'backfill-snapshot', 'bootstrap-identity', 'client-floor', 'client-version-report',
-    'draft-drift-report', 'identity-display-name', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
+    'draft-drift-report', 'identity-display-name', 'verify-first-group', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
     'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
     'ack-identity-finding', 'record-evidence-boundary'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
@@ -90,6 +90,7 @@ const D = {
   [F('stats/stats-job.test.js')]: 'unit: initializeApp appears in a source string under test', [F('catalog/project-guard.test.js')]: 'unit: drives require-project refusals (no data I/O)',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
+  [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('pselfupdate-client.test.js')]: 'unit: injected fetch, no network', [F('pselfupdate-wrapper-lint.test.js')]: 'unit: lints source text',
   'order-control-client.test.mjs': 'unit: injected fetch, no network',

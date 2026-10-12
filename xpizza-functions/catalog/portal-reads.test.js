@@ -497,7 +497,7 @@ const TWO = {
     for (const rid of ['x_pizza', 'la_musa']) {
       const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(seeded(rid)) }, gqFor(rid));
       assert.strictEqual(r.status, 200, `${rid}: loads`);
-      assert.strictEqual(r.body.groupAuthoring, false, `${rid}: the SHIPPED switch is off (§0b.3(e): flipped only after the portal deploy)`);
+      assert.strictEqual(r.body.groupAuthoring, true, `${rid}: the SHIPPED switch is ON (§0b.3(e): flipped after the PB-3 portal deploy)`);
       assert.deepStrictEqual(r.body.choiceBadges, [...rendererContract(rid).choiceBadges], `${rid}: the badges the brand's picker draws on an option`);
       assert.ok(r.body.choiceBadges.includes('recommended'), `${rid}: both forms ship the picker, so both can show Recomendada (uniform)`);
     }
