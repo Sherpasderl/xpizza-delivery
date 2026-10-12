@@ -71,6 +71,7 @@
     "test:r3-p0-adapter": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-adapter.emulator.test.js\"",
     "test:r3-p0-pages": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node --experimental-vm-modules contract/p0-pages.emulator.test.js\"",
     "test:r3-p0-forms": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-forms.emulator.test.mjs\"",
+    "test:r3-p0-observations": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node --experimental-vm-modules contract/p0-observations.emulator.test.js\"",
     "test:r3-p0-scheduler": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-scheduler.emulator.test.js\"",
     "test:order-exists": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/order-exists.emulator.test.js\"",
     "test:client-floor-http": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-floor-http.emulator.test.js\"",

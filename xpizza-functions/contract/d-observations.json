@@ -1,0 +1,95 @@
+{
+ "base": "2cb5a1c",
+ "writer": {
+  "ob_card": {
+   "payment_method": "card_delivery",
+   "items_text": "1x Carnivora (L340) | 1x Crispy Bacon (L337)",
+   "summary_lines": [
+    {
+     "cents": 34000,
+     "name": "Carnivora",
+     "qty": 1
+    },
+    {
+     "cents": 33700,
+     "name": "Crispy Bacon",
+     "qty": 1
+    }
+   ],
+   "order_type": "delivery"
+  },
+  "ob_empty": {
+   "payment_method": "",
+   "items_text": "1x Carnivora (L340)",
+   "summary_lines": [
+    {
+     "cents": 34000,
+     "name": "Carnivora",
+     "qty": 1
+    }
+   ],
+   "order_type": "delivery"
+  },
+  "ob_text": {
+   "payment_method": "cash",
+   "items_text": "TEXTO DEL CLIENTE",
+   "summary_lines": [
+    {
+     "cents": 34000,
+     "name": "Carnivora",
+     "qty": 1
+    }
+   ],
+   "order_type": "delivery"
+  },
+  "ob_lm": {
+   "payment_method": "cash",
+   "items_text": "1x Sichuan Spicy Wonton (L223)",
+   "summary_lines": [
+    {
+     "cents": 22300,
+     "name": "Sichuan Spicy Wonton",
+     "qty": 1
+    }
+   ],
+   "order_type": "pickup"
+  }
+ },
+ "readers": {
+  "R2": {
+   "card_delivery": "#CARD Obs Card 0:00 1x Carnivora (L340) | 1x Crispy Bacon (L337) Pagado online Asignar Ver detalle",
+   "empty": "#MPTY Obs Empty 0:00 1x Carnivora (L340) Pagado online Asignar Ver detalle",
+   "text": "#TEXT Obs Text 0:00 TEXTO DEL CLIENTE Efectivo · L340 Asignar Ver detalle Repartidores0 en turno En turno 0 Sin repartidores en turno Fuera de turno 0 Ninguno f"
+  },
+  "R3": {
+   "payLines": [
+    "Tarjeta · pagado",
+    "Tarjeta · pagado",
+    "Efectivo · paga exacto",
+    "Efectivo · paga exacto"
+   ]
+  },
+  "R7": {
+   "card_delivery": "12-oct, 10:09 a. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 10:09 a. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Personalizado Del al Aplicar Resumen del período 4 Pedidos 0 En",
+   "empty": "12-oct, 10:09 a. m. Obs Emptyob_empty Entrega Nuevo — L340 12-oct, 10:09 a. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 10:09 a. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Pers",
+   "rawCardDelivery": true
+  },
+  "R1": {
+   "card": " Obs TextDelivery 00:01ob_text Empezar TEXTO DEL CLIENTE Priorizar ",
+   "showsClientText": true,
+   "showsPricedName": false
+  },
+  "R8": {
+   "la_musa_pickup": "an Spicy WontonL223 Recoger en X. Pizza Total: L223 Actualizando en tiempo real Guardalo para reorde",
+   "persistedAddressShort": "Recoger en X. Pizza"
+  }
+ },
+ "verdict": {
+  "D1": "CONFIRMED (runtime): dispatch chip shows \"Pagado online\" for card_delivery AND for ''",
+  "D2": "CONFIRMED (runtime): lite paymentLine includes \"Tarjeta · pagado\" ([\"Tarjeta · pagado\",\"Tarjeta · pagado\",\"Efectivo · paga exacto\",\"Efectivo · paga exacto\"])",
+  "D6": "CONFIRMED (runtime): dashboard prints raw \"card_delivery\"",
+  "D12": "CONFIRMED (writer + tracker): la_musa pickup address_short = \"Recoger en X. Pizza\"",
+  "D13_KDS": "CONFIRMED (runtime): KDS shows the CLIENT items_text, not the priced line",
+  "S14": "CONFIRMED (runtime): 'efectivo' → payment_method '' persisted (HTTP 200)"
+ }
+}
