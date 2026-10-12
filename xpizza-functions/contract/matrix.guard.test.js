@@ -60,7 +60,7 @@ const r9 = doc.cells.filter((c) => c.R === 'R9' && c.fact === 'PLACE' && c.statu
 const r9ready = r9.find((c) => c.S === 'S2' && c.lp === 'ready');
 assert.ok(r9ready && r9ready.kind === 'agreement' && r9ready.outputs.includes('R3:R9:PLACE:@xpizza-functions/whatsapp.js#tplPickupReady'), FAIL('R9:PLACE pickup-ready does not assert the displayed pickup location (tplPickupReady)'));
 assert.ok(r9.filter((c) => c.kind === 'not-in-source').every((c) => c.S !== 'S2' || c.lp === 'completed'), FAIL('an R9:PLACE pickup cell stating the location was classified absent'));
-assert.ok(doc.planReconciliation.length && doc.planReconciliation.every((u) => doc.cells.some((c) => c.kind === 'not-in-source' && c.group === u.group)) && doc.counts.byKind['not-in-source'] === doc.cells.filter((c) => c.kind === 'not-in-source').length, FAIL('not-in-source cells are not reported apart from agreement'));
+assert.ok(doc.planReconciliation.length && doc.planReconciliation.every((u) => /^dropped 2026-10-12, advisor/.test(u.ruling || '')) && doc.planReconciliation.every((u) => doc.cells.some((c) => c.kind === 'not-in-source' && c.group === u.group)) && doc.counts.byKind['not-in-source'] === doc.cells.filter((c) => c.kind === 'not-in-source').length, FAIL('not-in-source cells are not reported apart from agreement'));
 ok(`R9:PLACE split: pickup new / ready assert the displayed location (tplPickupReceived / tplPickupReady); delivery + pickup-completed are not-in-source; ${doc.counts.byKind['not-in-source']} not-in-source cells are their own kind, ${doc.planReconciliation.length} parts listed for PLAN reconciliation before P1`);
 
 // codex's counter-example: an execution mapping where every required R2:MONEY cell runs the group's FIRST site and the
@@ -84,6 +84,7 @@ const neg = [
   ['a site-less group without a disposition', (s) => { delete s.unsitedFacts['R6:MONEY']; }, /R6:MONEY: \d+ required cell\(s\) with NO census site/],
   ['a disposition naming a function that does not exist', (s) => { s.unsitedFacts['R6:MONEY'].outputs = ['xpizza-functions/staff-push.js#formatMoneyLine']; }, /does not exist in source/],
   ['an absence reader without reviewed absenceOutputs', (s) => { delete s.absenceOutputs.R1; }, /absence cell R3:R1:ABSENT:.* no reviewed absenceOutputs\.R1/],
+  ['a not-in-source part without the reconciliation ruling', (s) => { delete s.unsitedFacts['R6:MONEY'].ruling; }, /R6:MONEY: not-in-source without a PLAN-reconciliation ruling/],
   ['a split whose parts overlap', (s) => { s.unsitedFacts['R9:PLACE'].split[3].when = {}; }, /R9:PLACE: cell .* matches 2 part/],
   ['a split that leaves cells unmatched', (s) => { s.unsitedFacts['R9:PLACE'].split.pop(); }, /R9:PLACE: cell .* matches 0 part/],
   ['a disposition for a group that HAS sites', (s) => { s.unsitedFacts['R2:MONEY'] = { kind: 'output', outputs: ['xpizza-functions/staff-push.js#formatNewOrder'], reason: 'r' }; }, /unsitedFacts\.R2:MONEY is stale/],

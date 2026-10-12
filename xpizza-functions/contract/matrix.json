@@ -11089,6 +11089,7 @@
   {
    "group": "R5:PLACE",
    "kind": "not-in-source",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/index.js#notifyDriverOnAssignment",
     "xpizza-functions/index.js#notifyDriverOnCancellation"
@@ -11103,6 +11104,7 @@
   {
    "group": "R5:FULFIL",
    "kind": "not-in-source",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/index.js#notifyDriverOnAssignment",
     "xpizza-functions/index.js#notifyDriverOnCancellation"
@@ -11117,6 +11119,7 @@
   {
    "group": "R6:MONEY",
    "kind": "not-in-source",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/staff-push.js#formatNewOrder",
     "xpizza-functions/staff-push.js#formatGrouped"
@@ -11182,6 +11185,7 @@
     ]
    },
    "kind": "not-in-source",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/whatsapp.js#tplDelivered"
    ],
@@ -11200,6 +11204,7 @@
     ]
    },
    "kind": "not-in-source",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/whatsapp.js#tplOrderReceived",
     "xpizza-functions/whatsapp.js#tplPreparing",
@@ -11391,6 +11396,7 @@
  "planReconciliation": [
   {
    "group": "R5:PLACE",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/index.js#notifyDriverOnAssignment",
     "xpizza-functions/index.js#notifyDriverOnCancellation"
@@ -11400,6 +11406,7 @@
   },
   {
    "group": "R5:FULFIL",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/index.js#notifyDriverOnAssignment",
     "xpizza-functions/index.js#notifyDriverOnCancellation"
@@ -11409,6 +11416,7 @@
   },
   {
    "group": "R6:MONEY",
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/staff-push.js#formatNewOrder",
     "xpizza-functions/staff-push.js#formatGrouped"
@@ -11426,6 +11434,7 @@
      "completed"
     ]
    },
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/whatsapp.js#tplDelivered"
    ],
@@ -11439,6 +11448,7 @@
      "delivery"
     ]
    },
+   "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work",
    "outputs": [
     "xpizza-functions/whatsapp.js#tplOrderReceived",
     "xpizza-functions/whatsapp.js#tplPreparing",

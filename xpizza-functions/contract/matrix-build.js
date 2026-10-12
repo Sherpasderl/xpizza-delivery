@@ -137,6 +137,8 @@ function build(spec) {
     parts.forEach((pt, i) => {
       if (!['output', 'not-in-source'].includes(pt.kind) || !pt.reason || !(pt.outputs || []).length) { problems.push(`unsitedFacts.${g}${d.split ? `.split[${i}]` : ''}: needs kind output|not-in-source, outputs and a reason`); bad = true; }
       for (const ref of pt.outputs || []) if (!outputExists(ref)) problems.push(`unsitedFacts.${g}: output ${ref} does not exist in source`);
+      // advisor ruling 2026-10-12: a not-in-source part is a RECONCILED PLAN fact — it must carry the ruling
+      if (pt.kind === 'not-in-source' && !(pt.ruling && String(pt.ruling).trim())) { problems.push(`unsitedFacts.${g}${d.split ? `.split[${i}]` : ''}: not-in-source without a PLAN-reconciliation ruling`); bad = true; }
     });
     if (bad) continue;
     const per = parts.map(() => []);
@@ -150,7 +152,7 @@ function build(spec) {
       if (pt.kind === 'not-in-source') c.kind = 'not-in-source';
     }
     parts.forEach((pt, i) => { if (!per[i].length) problems.push(`unsitedFacts.${g}${d.split ? `.split[${i}]` : ''} matches no cell (stale)`); });
-    parts.forEach((pt, i) => unsited.push({ group: g, ...(d.split ? { part: i, when: pt.when } : {}), kind: pt.kind, outputs: pt.outputs, assertions: pt.outputs.map((ref) => `R3:${R}:${fact}:${pt.kind === 'not-in-source' ? '!' : '@'}${ref}`), reason: pt.reason, requiredCells: per[i].filter((c) => c.status === 'required').length }));
+    parts.forEach((pt, i) => unsited.push({ group: g, ...(d.split ? { part: i, when: pt.when } : {}), kind: pt.kind, ...(pt.ruling ? { ruling: pt.ruling } : {}), outputs: pt.outputs, assertions: pt.outputs.map((ref) => `R3:${R}:${fact}:${pt.kind === 'not-in-source' ? '!' : '@'}${ref}`), reason: pt.reason, requiredCells: per[i].filter((c) => c.status === 'required').length }));
   }
   for (const g of Object.keys(US)) if (g !== '_doc' && !cellsOf[g]) problems.push(`unsitedFacts.${g} names a group with no cells (stale)`);
   // codex r4 P1-3: ABSENCE cells carry designated assertions too — the reviewed output(s) that must NOT show the order
@@ -182,7 +184,7 @@ function build(spec) {
       unsited,
       // codex r4 P1-4: PLAN facts the named outputs do NOT display — reported apart from agreement; each must be reconciled
       // with the PLAN (fact removed, or the product fixed) by an advisor ruling BEFORE P1 executes the matrix
-      planReconciliation: unsited.filter((u) => u.kind === 'not-in-source').map((u) => ({ group: u.group, ...(u.when ? { when: u.when } : {}), outputs: u.outputs, reason: u.reason, requiredCells: u.requiredCells })),
+      planReconciliation: unsited.filter((u) => u.kind === 'not-in-source').map((u) => ({ group: u.group, ...(u.when ? { when: u.when } : {}), ruling: u.ruling, outputs: u.outputs, reason: u.reason, requiredCells: u.requiredCells })),
       deltas,
       cells,
     },
