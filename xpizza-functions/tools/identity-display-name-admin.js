@@ -5,30 +5,31 @@
 // restaurants/{rid}/identity/display_name is the brand as customers see it ("X. Pizza", whose config `name` is "X Pizza").
 // It is OPTIONAL: absent, the pickup line uses `name`. The plan:
 //   • refuses a value the reader would ignore (blank, padded, or longer than BRAND_MAX) — what is written is what is shown;
-//   • refuses a restaurant with no routable identity (no `name`): it never creates a partial identity node;
+//   • refuses a restaurant whose identity is not ROUTING-VALID (restaurant-config's isRoutingValid — the exact shape intake
+//     requires): it never writes into, or creates, a partial identity node;
 //   • writes ONE path and reads it back.
 const { brandText, BRAND_MAX, pickupLabel } = require('../pickup-label');
+const { isRoutingValid } = require('../restaurant-config');
 
 const pathOf = (rid) => `restaurants/${rid}/identity/display_name`;
 const RID = /^[a-z0-9_]{1,40}$/;
 
-async function readIdentityNames(rtdb, rid) {
-  const base = `restaurants/${rid}/identity`;
-  const [name, display] = await Promise.all([rtdb.ref(`${base}/name`).once('value'), rtdb.ref(pathOf(rid)).once('value')]);
-  return { name: name.val(), display_name: display.val() };
+// the whole identity node (small: names, hub, hours, flags) — the plan judges its routing-valid shape
+async function readIdentity(rtdb, rid) {
+  return (await rtdb.ref(`restaurants/${rid}/identity`).once('value')).val();
 }
 
 // → { ok, error } | { ok, row: { path, from, to }, label: { before, after } }
 function planDisplayName({ op, rid, value, current }) {
   if (typeof rid !== 'string' || !RID.test(rid)) return { ok: false, error: `not a restaurant id: ${JSON.stringify(rid)}` };
   if (op !== 'set' && op !== 'delete') return { ok: false, error: `unknown op ${op}` };
-  if (!current || typeof current.name !== 'string' || !current.name.trim()) return { ok: false, error: `${rid} has no identity name — refusing to write into a non-routable identity` };
+  if (!isRoutingValid(current)) return { ok: false, error: `${rid}'s identity is not routing-valid (missing or malformed) — refusing to write into it` };
   let to = null;
   if (op === 'set') {
     if (typeof value !== 'string' || brandText(value) !== value) return { ok: false, error: `display name must be 1–${BRAND_MAX} characters with no leading/trailing spaces (got ${JSON.stringify(value)})` };
     to = value;
   }
-  const from = current.display_name === undefined ? null : current.display_name;
+  const from = current.display_name === undefined ? null : current.display_name;   // null when absent
   return {
     ok: true,
     row: { path: pathOf(rid), from, to },
@@ -42,4 +43,4 @@ async function applyDisplayName(rtdb, plan) {
   return { ok: back === plan.row.to, back };
 }
 
-module.exports = { readIdentityNames, planDisplayName, applyDisplayName, pathOf };
+module.exports = { readIdentity, planDisplayName, applyDisplayName, pathOf };

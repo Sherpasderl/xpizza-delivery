@@ -96,7 +96,7 @@ async function seedScheduled(id, over = {}) {
     await db.ref('/').set(null);
     await db.ref(`restaurants/${rid}/identity`).set({ hours: HOURS, ...identity });
     await seedScheduled(id, { extra: { restaurant_id: rid, restaurant_name: null, restaurant_display_name: null, ...snap } });
-    const r = await REL.releaseOne(deps, { orderId: id, now: NOW, claimId: `c${id}` });
+    const r = await REL.releaseOne({ ...deps }, { orderId: id, now: NOW, claimId: `c${id}` });   // each case is its own sweep run
     assert.strictEqual(r.released, true, `${id}: released`);
     return (await val(`order_tracking/${(await val(`orders/${id}`)).tracking_token}`)).address_short;
   };
@@ -110,6 +110,23 @@ async function seedScheduled(id, over = {}) {
   ];
   for (const [id, rid, snap, identity, want, why] of cases) assert.strictEqual(await release(id, rid, snap, identity), want, `${id} ${rid}: ${why}`);
   ok('10: R3-FIX D12 — a released pickup names its OWN restaurant (x_pizza, la_musa, a synthetic third): snapshot display → live display → snapshot name → live name → neutral; never a literal, never the fallback');
+
+  // ── 11. R3-FIX D12 (codex r1 note): ONE live brand read per restaurant per sweep RUN (one deps object), not per order ──
+  {
+    await db.ref('/').set(null);
+    await db.ref('restaurants/x_pizza/identity').set({ hours: HOURS, name: 'X Pizza', display_name: 'X. Pizza' });
+    let reads = 0;
+    const counting = { ref: (p) => { if (/^restaurants\/[^/]+\/identity\/(display_name|name)$/.test(String(p))) reads += 1; return db.ref(p); } };
+    const run = { ...deps, db: counting };   // ONE sweep run = ONE deps object
+    for (const id of ['M1', 'M2', 'M3']) await seedScheduled(id, { extra: { restaurant_name: 'X Pizza' } });
+    for (const id of ['M1', 'M2', 'M3']) assert.strictEqual((await REL.releaseOne(run, { orderId: id, now: NOW, claimId: `c${id}` })).released, true);
+    assert.strictEqual(reads, 2, `🔴 three pickups in one run → ONE display_name + ONE name read (got ${reads})`);
+    for (const id of ['M1', 'M2', 'M3']) assert.strictEqual((await val(`order_tracking/${(await val(`orders/${id}`)).tracking_token}`)).address_short, 'Recoger en X. Pizza');
+    await seedScheduled('M4', { extra: { restaurant_name: 'X Pizza' } });
+    await REL.releaseOne({ ...deps, db: counting }, { orderId: 'M4', now: NOW, claimId: 'cM4' });
+    assert.strictEqual(reads, 4, 'a NEW run (new deps) reads the live identity again — the memo never outlives a run');
+  }
+  ok('11: R3-FIX D12 — the live brand is read ONCE per restaurant per sweep run (memoized on the run\'s deps), fresh on the next run');
 
   console.log(`\n${n} passed`);
   process.exit(0);

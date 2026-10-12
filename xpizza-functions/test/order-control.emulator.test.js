@@ -132,14 +132,30 @@ const isCacheRefresh = (o) => o.db === 'rtdb' && /^platform_config\/client_floor
 // release's hours read. checkD12 asserts that shape where it is due and its absence everywhere else; only then are they
 // stripped, so nothing else can hide behind the declaration.
 const isD12Read = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^/]+\/identity\/(display_name|name)$/.test(o.path);
+// codex D12 r1 P2-2: a REFUSED request (paused / unavailable / race / a refused scheduled release) makes NO brand read either
+function assertNoD12(key, ops) {
+  assert.deepStrictEqual(ops.filter(isD12Read).map((o) => o.path), [], `🔴 ${key}: an identity brand read where D12 makes none`);
+}
 function checkD12(key, ops, goldenOps) {
   const rid = key.split(' | ')[2];
   const found = ops.filter(isD12Read).map((o) => o.path);
   const released = /^SCHEDULED/.test(key) && goldenOps.some((o) => o.op === 'update' && Array.isArray(o.keys) && o.keys.some((k) => /^order_tracking\//.test(k)));
-  if (!released) { assert.deepStrictEqual(found, [], `🔴 ${key}: an identity brand read where D12 makes none`); return; }
+  if (!released) { assertNoD12(key, ops); return; }
   assert.deepStrictEqual(found, [`restaurants/${rid}/identity/display_name`, `restaurants/${rid}/identity/name`], `🔴 ${key}: D12's release reads — exactly display_name then name, for THIS restaurant`);
   const at = ops.findIndex(isD12Read);
   assert.strictEqual(ops[at - 1] && ops[at - 1].path, `restaurants/${rid}/identity/hours`, `🔴 ${key}: D12's reads follow the release's hours read`);
+}
+// sensitivity (pure): a planted brand read on a REFUSED request, and a wrong shape on a release, are each caught
+{
+  const brand = (rid, f) => ({ db: 'rtdb', op: 'once', path: `restaurants/${rid}/identity/${f}` });
+  const hours = { db: 'rtdb', op: 'once', path: 'restaurants/x_pizza/identity/hours' };
+  const relGold = [{ op: 'update', keys: ['order_tracking/<tracking_token>'] }];
+  assert.throws(() => assertNoD12('cash | paused | x_pizza', [brand('x_pizza', 'name')]), /makes none/, 'sensitivity: a brand read planted on a refused request');
+  assert.doesNotThrow(() => checkD12('SCHEDULED sweep release | open | x_pizza', [hours, brand('x_pizza', 'display_name'), brand('x_pizza', 'name')], relGold));
+  for (const bad of [[hours, brand('x_pizza', 'display_name')], [hours, brand('x_pizza', 'display_name'), brand('x_pizza', 'name'), brand('x_pizza', 'name')],
+    [hours, brand('x_pizza', 'name'), brand('x_pizza', 'display_name')], [hours, brand('la_musa', 'display_name'), brand('la_musa', 'name')], [brand('x_pizza', 'display_name'), brand('x_pizza', 'name'), hours]]) {
+    assert.throws(() => checkD12('SCHEDULED sweep release | open | x_pizza', bad, relGold), /D12's/, 'sensitivity: a missing / extra / reordered / foreign / misplaced release read');
+  }
 }
 
 const onceProto = (() => { let p = Object.getPrototypeOf(rtdb.ref('x')); while (p && !Object.prototype.hasOwnProperty.call(p, 'once')) p = Object.getPrototypeOf(p); return p; })();
@@ -459,6 +475,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         return;
       }
       // REFUSED — the baseline admitted it
+      assertNoD12(key, r.ops);   // codex D12 r1 P2-2: refused requests (incl. a refused scheduled release) make NO brand read
       const kind = c.expect === 'classify_failed' ? 'unavailable' : KIND[state];
       const want = kind === 'paused' ? { status: 423, body: PAUSED_BODY, ra: null } : { status: 503, body: UNAV_BODY, ra: '2' };
       if (c.expect === 'scheduled') return;   // asserted below

@@ -82,12 +82,12 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "scheduled-release-core.js",
-  "now": "const { buildMaterializeUpdates } = require('./materialize');\nconst { readLiveBrand } = require('./pickup-label');   // R3-FIX D12\nconst S = require('./scheduled-orders');\n",
+  "now": "const { buildMaterializeUpdates } = require('./materialize');\nconst { readLiveBrand } = require('./pickup-label');   // R3-FIX D12\n// R3-FIX D12 (codex r1 note): the sweep releases due orders ONE AT A TIME with ONE deps object per run, so a restaurant's\n// live brand is read ONCE per run (memoized on that deps object) — never a bounded read per order, accumulating.\nconst brandMemo = new WeakMap();\nfunction liveBrandFor(deps, db, rid) {\n  let m = brandMemo.get(deps);\n  if (!m) { m = new Map(); brandMemo.set(deps, m); }\n  if (!m.has(rid)) m.set(rid, readLiveBrand(db, rid));\n  return m.get(rid);\n}\nconst S = require('./scheduled-orders');\n",
   "was": "const { buildMaterializeUpdates } = require('./materialize');\nconst S = require('./scheduled-orders');\n"
  },
  {
   "file": "scheduled-release-core.js",
-  "now": "  const restaurant = deps.restaurantFallback || { lat: order.hub_lat, lng: order.hub_lng, name: order.restaurant_name, phone: order.restaurant_phone };\n  // R3-FIX D12: an order without a display-name snapshot (scheduled before it existed) names its brand from the LIVE identity\n  const liveIdentity = order.order_type === 'pickup' && !order.restaurant_display_name ? await readLiveBrand(db, rid) : null;\n  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method, liveIdentity });\n  delete updates[`orders/${orderId}/charged_at`];\n",
+  "now": "  const restaurant = deps.restaurantFallback || { lat: order.hub_lat, lng: order.hub_lng, name: order.restaurant_name, phone: order.restaurant_phone };\n  // R3-FIX D12: an order without a display-name snapshot (scheduled before it existed) names its brand from the LIVE identity\n  const liveIdentity = order.order_type === 'pickup' && !order.restaurant_display_name ? await liveBrandFor(deps, db, rid) : null;\n  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method, liveIdentity });\n  delete updates[`orders/${orderId}/charged_at`];\n",
   "was": "  const restaurant = deps.restaurantFallback || { lat: order.hub_lat, lng: order.hub_lng, name: order.restaurant_name, phone: order.restaurant_phone };\n  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method });\n  delete updates[`orders/${orderId}/charged_at`];\n"
  }
 ]);
