@@ -1,0 +1,237 @@
+{
+  "_doc": "R3 §3a — THE REVIEWED MAPPING over contract/census.js's inventory. Ordered rules, FIRST MATCH wins; every site must match exactly one rule (unmatched = RED). A rule maps to an R-site (PLAN §3) or EXEMPTS with a reason. P0 status: PROPOSED by the executor, for advisor review before P1 — the reasons are the review surface. Server-side readers are the send-boundary payload builders (push, WhatsApp, factura, stats, Sheets); every other functions file is a writer / validator / infrastructure and is exempted as such, by file, with its count visible in census.json.",
+  "surfaces": [
+    {
+      "rule": "kds",
+      "file": "^xpizza-kitchen/",
+      "map": "R1"
+    },
+    {
+      "rule": "dispatch",
+      "file": "^xpizza-dispatch/",
+      "map": "R2"
+    },
+    {
+      "rule": "dispatch-lite",
+      "file": "^xpizza-dispatch-mobile/",
+      "map": "R3"
+    },
+    {
+      "rule": "driver",
+      "file": "^xpizza-driver/",
+      "map": "R4"
+    },
+    {
+      "rule": "dashboard",
+      "file": "^xpizza-dashboard/",
+      "map": "R7"
+    },
+    {
+      "rule": "tracker",
+      "file": "^xpizza-track/",
+      "map": "R8"
+    },
+    {
+      "rule": "factura-printer",
+      "file": "^xpizza-factura/(src|tools)/|^xpizza-factura/(preview|print_agent)\\.js$",
+      "map": "R10"
+    },
+    {
+      "rule": "factura-setup",
+      "file": "^xpizza-factura/",
+      "exempt": "factura printer setup / seed scripts (operator tools, not order readers)"
+    },
+    {
+      "rule": "portal-ventas",
+      "file": "^xpizza-portal/ventas(-logic)?\\.js$",
+      "map": "R11"
+    },
+    {
+      "rule": "portal-other",
+      "file": "^xpizza-portal/",
+      "exempt": "portal catalog authoring / auth / shell — reads catalog items, not persisted orders"
+    },
+    {
+      "rule": "form-cart",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "fn": "^(updateCart|updateCartReviewBody|renderCartReview)",
+      "map": "R13"
+    },
+    {
+      "rule": "form-pay-step",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "fn": "^(renderStage2Summary|updatePixelPayAmount|renderTender|renderChange)",
+      "map": "R14"
+    },
+    {
+      "rule": "form-confirmation",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "fn": "^(showSuccess|successTotalCents)",
+      "map": "R15"
+    },
+    {
+      "rule": "form-return",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "fn": "^(handlePaymentReturn|applyPollState)",
+      "map": "R16"
+    },
+    {
+      "rule": "form-account",
+      "file": "^(xpizza-orders|la-musa-orders)/account\\.js$",
+      "fn": "^(renderOrdersPane|parseOrderItems)",
+      "map": "R17"
+    },
+    {
+      "rule": "form-account-claim",
+      "file": "^(xpizza-orders|la-musa-orders)/account\\.js$",
+      "fn": "^renderConfirmCard",
+      "map": "R17"
+    },
+    {
+      "rule": "form-reorder",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "fn": "^(reorderFromEntry|applyReorderToCart)",
+      "map": "R18"
+    },
+    {
+      "rule": "form-group-picker",
+      "file": "^(xpizza-orders|la-musa-orders)/form-group-picker\\.js$",
+      "map": "R19"
+    },
+    {
+      "rule": "form-account-profile",
+      "file": "^(xpizza-orders|la-musa-orders)/account\\.js$",
+      "fn": "^onOrderConfirmed",
+      "exempt": "saves the just-confirmed order's address to the customer's profile from the CLIENT copy (a profile writer), not a persisted-order read"
+    },
+    {
+      "rule": "form-composer",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "fn": "^(buildOrder|redeemCartItems|submitOrder|processPixelPay|orderIdForThisCart)",
+      "exempt": "client order COMPOSER — the writer of the order body, covered as the WRITER (S1..S17 submit through it)"
+    },
+    {
+      "rule": "form-internals",
+      "file": "^(xpizza-orders|la-musa-orders)/",
+      "exempt": "form internals: live menu / cart / availability state (fixture intent and catalog), not persisted-order reads — the form's order readers are R13–R19 above"
+    },
+    {
+      "rule": "driver-push",
+      "file": "^xpizza-functions/(index|driver-push)\\.js$",
+      "fn": "^(notifyDriverOnAssignment|notifyDriverOnCancellation|sendDriverPush)",
+      "map": "R5"
+    },
+    {
+      "rule": "driver-push-file",
+      "file": "^xpizza-functions/driver-push\\.js$",
+      "map": "R5"
+    },
+    {
+      "rule": "staff-push",
+      "file": "^xpizza-functions/index\\.js$",
+      "fn": "^(notifyStaffOnNewOrder|flushStaffPushQueue)",
+      "map": "R6"
+    },
+    {
+      "rule": "staff-push-file",
+      "file": "^xpizza-functions/staff-push\\.js$",
+      "map": "R6"
+    },
+    {
+      "rule": "whatsapp",
+      "file": "^xpizza-functions/index\\.js$",
+      "fn": "^(sendOrderStatusNotifications|notifyPreparing|notifyPickupReady|onIncomingWhatsApp|sendPaidAfterCloseRefund)",
+      "map": "R9"
+    },
+    {
+      "rule": "whatsapp-files",
+      "file": "^xpizza-functions/(whatsapp[^/]*|cancel-notify|notify-[^/]*|whatsapp-templates[^/]*)\\.js$",
+      "map": "R9"
+    },
+    {
+      "rule": "factura",
+      "file": "^xpizza-functions/index\\.js$",
+      "fn": "^(allocateFacturaOnSale|voidFacturaOnCancel)",
+      "map": "R10"
+    },
+    {
+      "rule": "factura-files",
+      "file": "^xpizza-functions/factura/",
+      "map": "R10"
+    },
+    {
+      "rule": "stats",
+      "file": "^xpizza-functions/index\\.js$",
+      "fn": "^rollupDailyStats",
+      "map": "R11"
+    },
+    {
+      "rule": "stats-files",
+      "file": "^xpizza-functions/stats/",
+      "map": "R11"
+    },
+    {
+      "rule": "stats-portal-fn",
+      "file": "^xpizza-functions/portal/functions\\.js$",
+      "fn": "^getSalesStats",
+      "map": "R11"
+    },
+    {
+      "rule": "sheets",
+      "file": "^xpizza-functions/index\\.js$",
+      "fn": "^onOrderCancelled",
+      "map": "R12"
+    },
+    {
+      "rule": "server-writers",
+      "file": "^xpizza-functions/",
+      "exempt": "server WRITER / validator / pricing / catalog / scheduling infrastructure — the persisted evidence R3 asserts readers against (§1); its outputs are covered as writers, its reads are not reader surfaces"
+    }
+  ],
+  "explicitProjections": [
+    {
+      "scope": "xpizza-kitchen",
+      "alias": "estado",
+      "field": "status",
+      "reason": "mapFirebaseOrderToCard assigns the local `estado` in if/else branches on o.status (xpizza-kitchen/index.html), then projects `estado: estado` — data flow a bounded syntactic rule cannot see (§3a: explicit mapping)"
+    }
+  ],
+  "projectionPremise": {
+    "xpizza-kitchen": [
+      "pedido",
+      "estado",
+      "maps"
+    ]
+  },
+  "sentinelExemptions": [
+    {
+      "key": "customer_email",
+      "reason": "the customer's contact field (persisted on the order since launch) — not an order-email SENDER; §1's 'no order email' stands"
+    },
+    {
+      "key": "merchant_email",
+      "reason": "PixelPay merchant configuration (pixelpay-config.js) — not an order field"
+    }
+  ],
+  "timerReview": {
+    "xpizza-functions/index.js:chargeOnlineApp.all>anon:setTimeout": {
+      "class": "io-deadline",
+      "reason": "1500 ms guest-attribution deadline (index.js 'deadline → guest; never delay/fail a payment') — REAL"
+    },
+    "xpizza-functions/index.js:sleep>anon:setTimeout": {
+      "class": "sleep-body",
+      "reason": "the body of sleep() itself (index.js); virtualized only when called from a reviewed application-sleep site (§2b.5)"
+    },
+    "xpizza-functions/catalog/identity-record-writer.js:withTimer>anon:setTimeout": {
+      "class": "io-deadline",
+      "reason": "withTimer: the identity-record write deadline — REAL"
+    },
+    "xpizza-functions/catalog/identity-record-writer.js:race>anon:setTimeout": {
+      "class": "io-deadline",
+      "reason": "race(): a labelled read/write timeout — REAL"
+    }
+  },
+  "clockReview": {
+    "_default": "rule-proposed classes are accepted for P0 and listed for advisor review; per-site overrides go here as `file:fn:line-free-key → class`"
+  }
+}
