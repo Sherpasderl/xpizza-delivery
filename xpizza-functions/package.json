@@ -67,6 +67,7 @@
     "test:client-version": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-version.emulator.test.js\"",
     "test:pselfupdate-createorder-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pselfupdate-createorder-trace.emulator.test.js\"",
     "test:r3-p0-gate": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-gate.emulator.test.js\"",
+    "test:r3-p0-third-brand": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-third-brand.emulator.test.js\"",
     "test:r3-p0-scheduler": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-scheduler.emulator.test.js\"",
     "test:order-exists": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/order-exists.emulator.test.js\"",
     "test:client-floor-http": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-floor-http.emulator.test.js\"",
