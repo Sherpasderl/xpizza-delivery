@@ -17,8 +17,13 @@ const dupCells = doc.cells.map((c) => c.cell).filter((c, i, a) => a.indexOf(c) !
 assert.deepStrictEqual(dupCells.slice(0, 5), [], FAIL(`duplicate cell identities: ${dupCells.slice(0, 5).join(', ')}`));
 const asr = doc.outputs.flatMap((o) => o.assertions); const dupA = asr.filter((a, i, x) => x.indexOf(a) !== i);
 assert.deepStrictEqual(dupA.slice(0, 5), [], FAIL(`duplicate output assertion ids: ${dupA.slice(0, 5).join(', ')}`));
-assert.ok(doc.siteObligations.every((o) => o.assertion === `R3:${o.R}:${o.fact}:@${o.output}`), FAIL('a site obligation without its own designated (R, fact, output) assertion'));
-ok(`${doc.counts.siteObligations} per-site obligations → ${doc.counts.outputAssertions} designated assertions over ${doc.counts.outputs} outputs (each independently implemented read has its own); cells unique; no open delta`);
+assert.ok(doc.siteObligations.every((o) => o.assertion === `R3:${o.R}:${o.fact}:#${o.site}`), FAIL('a site obligation without its own per-SITE designated assertion'));
+const dupSite = doc.siteObligations.map((o) => o.assertion).filter((a, i, x) => x.indexOf(a) !== i);
+assert.deepStrictEqual(dupSite.slice(0, 5), [], FAIL(`two obligations share an assertion: ${dupSite.slice(0, 5).join(', ')}`));
+const reqGroups = new Set(doc.cells.filter((c) => c.status === 'required' && c.group).map((c) => c.group));
+const orphan = Object.keys(doc.groups).filter((g) => !reqGroups.has(g));
+assert.deepStrictEqual(orphan, [], FAIL(`site-assertion groups with no required cell to execute in: ${orphan.join(', ')}`));
+ok(`${doc.counts.siteObligations} per-SITE designated assertions (every independently implemented read / branch its own) across ${doc.counts.groups} (R, fact) groups, each group joined to required cells; cells unique; no open delta`);
 const norm = (d) => JSON.stringify(d);
 const committed = JSON.parse(fs.readFileSync(OUT, 'utf8'));
 assert.ok(norm(committed) === norm(doc), FAIL('matrix.json differs from the generated document (cells, metadata, obligations, outputs or GAP report) — review, then node contract/matrix-build.js --write'));

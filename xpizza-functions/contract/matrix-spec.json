@@ -112,7 +112,8 @@
     "S10": {
       "lps": [
         "stranded",
-        "materialized"
+        "materialized",
+        "escalated"
       ],
       "fulfil": "delivery",
       "pay": "online"
@@ -689,8 +690,8 @@
   "gaps": [
     {
       "scenario": "S10",
-      "lp": "stranded",
-      "reason": "sweepStalePending's age-gated escalation branches use hard-coded 15 / 10 / 20-minute thresholds (index.js) — no production config surface (§11.2 ruling): GAP unless real time is practical. The immediate paid-strand re-drive (LP materialized) IS executed."
+      "lp": "escalated",
+      "reason": "ONLY the age-gated ESCALATION branches of sweepStalePending (hard-coded 15 / 10 / 20-minute thresholds, index.js) — no production config surface (§11.2 ruling): GAP unless real time is practical. The STRANDED (captured, not yet materialized) state and the immediate re-drive (materialized) need no elapsed age (production attempts recovery at once, index.js:2669) and are REQUIRED cells (codex r2 P1-5)."
     },
     {
       "scenario": "S11",
