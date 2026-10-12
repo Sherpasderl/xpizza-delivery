@@ -70,7 +70,7 @@ function expandUnder(baseSegs, tSegs, ...trees) {
   return [...out.keys()];
 }
 
-function createScheduler({ admin, triggers, run = new Set(), log = () => {} }) {
+function createScheduler({ admin, triggers, run = new Set(), log = () => {}, tap = null }) {
   const db = admin.database();
   const sites = sleepSites();
   if (!sites.def) throw new Error('scheduler: function sleep() not found in index.js — §2b.5 premise');
@@ -209,8 +209,9 @@ function createScheduler({ admin, triggers, run = new Set(), log = () => {} }) {
           if (!fires) continue;
           const rec = { export: x.trig.name, kind: x.trig.kind, path: x.path, params: x.params, transition: tid, run: run.has(x.trig.name) };
           state.records.push(rec); tr.fires.push(rec);
+          const event = x.trig.kind === 'created' ? { data: a, params: x.params } : { data: { before: b || (await snapshotNull(x.path)), after: a }, params: x.params };
+          if (tap) tap(rec, event);                                    // acceptance cells inspect the formed event
           if (rec.run) {
-            const event = x.trig.kind === 'created' ? { data: a, params: x.params } : { data: { before: b || (await snapshotNull(x.path)), after: a }, params: x.params };
             state.queued += 1;
             // queued, then started on the next tick OUTSIDE the writer's context (a trigger runs in its own invocation)
             ALS.exit(() => setImmediate(() => { state.queued -= 1; invoke(x.trig.name, event, { origin: 'fanout', transition: tid }); }));
