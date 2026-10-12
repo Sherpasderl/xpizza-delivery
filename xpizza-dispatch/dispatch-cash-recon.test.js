@@ -176,6 +176,21 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
     assert.match(cashEl.innerHTML, /Efectivo final \(1\)/, 'step 3: a VALID snapshot recovers to totals');
     assert.match(cashEl.innerHTML, /L 500/, 'step 3: recovered total');
   }
+  // (j) ALL CATEGORIES present — every line renders and the needs-action lines (review, then unresolved) come
+  //     FIRST (importance order, codex r2). The real no-clip LAYOUT is verified in Chrome by dispatch-cashbar-layout.test.js.
+  {
+    const r = run({
+      a: { s: C({ cash_owed: 500, provisional: false }) },
+      b: { s: C({ cash_owed: 300, provisional: true, unresolved_count: 2 }) },
+      c: { s: C({ cash_owed: 180 }) },                                       // legacy
+      d: { s: C({ cash_owed: 90, provisional: true, needs_dispatch_review: true }) },
+    });
+    for (const label of ['Requiere reconciliación manual', 'Sin resolver', 'Efectivo final', 'Provisional', 'Heredado', 'Cuadres pendientes', 'Reconciliar'])
+      assert.ok(r.html.includes(label), `all-categories: "${label}" present`);
+    assert.ok(r.html.indexOf('Requiere reconciliación manual') < r.html.indexOf('Efectivo final'), 'review line is ordered BEFORE final (importance order)');
+    assert.ok(r.html.indexOf('Sin resolver') < r.html.indexOf('Efectivo final'), 'unresolved is ordered before final');
+    assert.ok(r.html.indexOf('Reconciliar') > r.html.indexOf('Cuadres pendientes'), 'Reconciliar is last');
+  }
   // freshness: the recon subscription still refreshes the bar's pending count.
   assert.match(html, /renderReconciliationSection\(\);\s*setTabBadge\('tab-caja-n'[^\n]*\n\s*renderCashBar\(\);/, 'recon subscription calls renderCashBar() to refresh the pending count');
   // the subscription is wired with an ERROR handler → error state (never a silent L0 on permission failure).

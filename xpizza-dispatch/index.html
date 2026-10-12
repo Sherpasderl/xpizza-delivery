@@ -2103,7 +2103,12 @@
   /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
   /* D3: cash/cuadre bar — mockup horizontal layout (figures + divider + Reconciliar link). Display + link only. */
   /* F3: cash/cuadre bar is now the Repartidores panel FOOTER (mockup .cashbar) — pinned below the scrolling roster. */
-  .cash-bar { flex: none; display: flex; align-items: center; gap: 10px; background: var(--surface); border-top: 1px solid var(--border-soft); padding: 11px 14px; margin: 0; }
+  /* flex-wrap so that when many cuadre categories are present (final/provisional/Heredado/unresolved/review + pending +
+     Reconciliar) every line + the reconcile control stay VISIBLE in the fixed-width rail (342px, overflow:hidden) —
+     the row wraps to extra lines instead of clipping. The footer is flex:none, so it grows vertically and the
+     scrolling roster above absorbs it. */
+  .cash-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; background: var(--surface); border-top: 1px solid var(--border-soft); padding: 11px 14px; margin: 0; }
+  .cash-bar .cash-recon-btn { flex: none; margin-left: auto; }   /* keep the reconcile control intact + pushed to the row end */
   .cash-bar .ci { display: flex; flex-direction: column; line-height: 1.25; }
   .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 13px; color: var(--text); }
   .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
@@ -3962,13 +3967,16 @@ function renderCashBar(cash) {
       if (u > 0) { unresolvedCount += u; unresolvedDetail.push(`${who}: ${u}`); }
     }
     const L = (n) => 'L ' + n.toLocaleString('es-HN');
-    const parts = [`<div class="ci"><b>${escapeHtml(L(finalTotal))}</b><span>Efectivo final (${finalCount})</span></div>`];
-    if (provCount > 0)    parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(L(provTotal))}</b><span>Provisional (${provCount})</span></div>`);
-    if (legacyCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci cash-legacy"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);   // SUBORDINATE line (dim) — unverified pre-2.5.0, never a verified-final figure, never merged into a grand total
-    if (unresolvedCount > 0) parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(String(unresolvedCount))}</b><span title="${escapeHtml(unresolvedDetail.join(' · '))}">Sin resolver</span></div>`);
-    if (escapeCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci cash-escape"><b>${escapeHtml(String(escapeCount))}</b><span>Requiere reconciliación manual</span></div>`);
-    parts.push(pendingHtml, reconBtnHtml);
-    el.innerHTML = parts.join('');
+    // ORDER BY IMPORTANCE (codex r2): the needs-action lines (review, then unresolved) lead, so if the rail is
+    // narrow the LEAST important figures wrap last — never the manual-review warning. Segments carry NO leading
+    // divider; join inserts them. flex-wrap keeps every segment + Reconciliar visible (the .cash-bar wraps).
+    const segs = [];
+    if (escapeCount > 0)     segs.push(`<div class="ci cash-escape"><b>${escapeHtml(String(escapeCount))}</b><span>Requiere reconciliación manual</span></div>`);
+    if (unresolvedCount > 0) segs.push(`<div class="ci cash-prov"><b>${escapeHtml(String(unresolvedCount))}</b><span title="${escapeHtml(unresolvedDetail.join(' · '))}">Sin resolver</span></div>`);
+    segs.push(`<div class="ci"><b>${escapeHtml(L(finalTotal))}</b><span>Efectivo final (${finalCount})</span></div>`);
+    if (provCount > 0)       segs.push(`<div class="ci cash-prov"><b>${escapeHtml(L(provTotal))}</b><span>Provisional (${provCount})</span></div>`);
+    if (legacyCount > 0)     segs.push(`<div class="ci cash-legacy"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);   // SUBORDINATE (dim) — unverified pre-2.5.0, never a verified-final figure, never merged into a grand total
+    el.innerHTML = segs.join('<div class="cash-div"></div>') + pendingHtml + reconBtnHtml;
   }
 
   // Reconciliar → the shipped reconciliation panel (Caja rtab). Navigation only; no cuadre math/write here.
