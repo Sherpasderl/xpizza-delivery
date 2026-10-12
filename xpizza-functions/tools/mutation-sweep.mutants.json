@@ -11333,13 +11333,15 @@
     "label": "the hook stops putting the LIVE gate pointer singleton on the virtual clock",
     "kills_with": [
       "R1C-CLOCK wall",
-      "R1C-CLOCK steady"
+      "R1C-CLOCK steady",
+      "the call sequence must equal the render-OFF one"
     ],
     "command": [
       "npm",
       "run",
       "test:order-exists"
-    ]
+    ],
+    "why": "timing decides WHERE the real-clock refill (45 s TTL) first lands: inside a render-ON companion request (R1c keeps every GATE / CTX refill IN, so the companion's call-sequence equality catches it and the suite throws before the sensitivity block) or at the steady/wall sensitivity request. Both are the property."
   },
   {
     "id": "r1c-03",
@@ -11350,13 +11352,15 @@
     "label": "the hook stops holding the LIVE context record TTL (it refills on wall time again)",
     "kills_with": [
       "R1C-CLOCK wall",
-      "R1C-CLOCK steady"
+      "R1C-CLOCK steady",
+      "the call sequence must equal the render-OFF one"
     ],
     "command": [
       "npm",
       "run",
       "test:order-exists"
-    ]
+    ],
+    "why": "timing decides WHERE the real-clock refill (45 s TTL) first lands: inside a render-ON companion request (R1c keeps every GATE / CTX refill IN, so the companion's call-sequence equality catches it and the suite throws before the sensitivity block) or at the steady/wall sensitivity request. Both are the property."
   },
   {
     "id": "r1c-04",
