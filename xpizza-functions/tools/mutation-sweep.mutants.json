@@ -11564,13 +11564,14 @@
     "id": "r3p0-06",
     "slice": "r3p0",
     "file": "contract/page-harness.js",
-    "from": "  const isIdle = (cbSrc) => IDLE.some((e) => cbSrc.startsWith(e.callback.replace(/\\s+/g, ' ').trim()));",
-    "to": "  const isIdle = (cbSrc) => true;",
+    "from": "    const ent = idleEntry(kind, delay, cb); const idle = !!ent;",
+    "to": "    const ent = IDLE[0] || { at: 'any', callback: 'any' }; const idle = true;",
     "label": "every timer counts as idle (codex r3 P1-2: a retry / unreviewed interval would no longer block settling)",
     "kills_with": [
       "settle() certified an unfinished render",
       "a finite 3-retry sequence was certified settled early",
-      "a NON-allowlisted interval did not block"
+      "a NON-allowlisted interval did not block",
+      "a 700 ms + 700 ms transition was certified unfinished"
     ],
     "command": [
       "node",
@@ -11651,6 +11652,37 @@
     "command": [
       "node",
       "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-12",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "  const idleEntry = (kind, delay, cbSrc) => { const h = idleSha(cbSrc); return IDLE.find((e) => e.kind === (kind === 'i' ? 'interval' : 'timeout') && e.delay === delay && e.cbHash === h); };",
+    "to": "  const idleEntry = (kind, delay, cbSrc) => { return IDLE.find((e) => e.kind === (kind === 'i' ? 'interval' : 'timeout')); };",
+    "label": "an idle entry matches by kind only — a changed callback / delay keeps its exemption (codex r4 P1-2)",
+    "kills_with": [
+      "updateClock with an ADDED WRITE kept its exemption"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-13",
+    "slice": "r3p0",
+    "file": "contract/idle-timers.js",
+    "from": "    if (hits[0].closureHash !== e.closureHash) { stale.push",
+    "to": "    if (false) { stale.push",
+    "label": "a changed HELPER of an idle callback keeps the exemption (codex r4 P1-2)",
+    "kills_with": [
+      "a HELPER of updateClock changes"
+    ],
+    "command": [
+      "node",
+      "contract/idle-timers.guard.test.js"
     ]
   }
 ]

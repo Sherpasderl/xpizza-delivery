@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
+const { resolveEntries, sha: idleSha } = require('./idle-timers');
 
 const REPO = path.join(__dirname, '..', '..');
 const FIREBASE_CDN = /^https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/(firebase-[a-z-]+)\.js$/;
@@ -43,10 +44,14 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });
     else pending.delete(key);
   };
-  // codex r3 P1-2: NO inference. EVERY application timer (setTimeout, any delay, and setInterval) BLOCKS settling unless its
-  // call site is on the REVIEWED idle allowlist (contract/idle-timers.json: page dir + function + reason — e.g. a clock
-  // tick). A RUNNING callback — allowlisted or not — is ALWAYS awaited through its returned promise.
-  const IDLE = (idleTimers || (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'idle-timers.json'), 'utf8'))[dir] || []; } catch (_) { return []; } })());
+  // codex r3 P1-2: NO inference. EVERY application timer (setTimeout, any delay, and setInterval) BLOCKS settling unless it
+  // matches the REVIEWED idle allowlist (contract/idle-timers.json). A RUNNING callback — allowlisted or not — is ALWAYS
+  // awaited through its returned promise.
+  // codex r4 P1-2: an entry binds the reviewed SOURCE, not a name — exempt only on an exact (kind, delay, sha256 of the
+  // callback's full normalized source) match of an entry whose callback + helper closure are UNCHANGED in the page's
+  // current source (contract/idle-timers.js resolveEntries); a changed body / helper / delay → not exempt → blocks.
+  let IDLE = idleTimers; let staleIdle = [];
+  if (!IDLE) { try { const r = resolveEntries(dir); IDLE = r.active; staleIdle = r.stale.map((x) => `${x.entry.at} ${x.entry.callback.slice(0, 50)} — ${x.why}`); } catch (_) { IDLE = []; } }
   const timerInfo = new Map(); let seqT = 0;
   const siteOf = () => {
     const fr = (String(new Error().stack).split('\n').slice(3, 4)[0] || '').trim();
@@ -54,11 +59,11 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     return { fn: m ? m[1] : '<anonymous>', frame: fr };
   };
   const norm = (f) => (typeof f === 'function' ? String(f) : '').replace(/\s+/g, ' ').trim();
-  const isIdle = (cbSrc) => IDLE.some((e) => cbSrc.startsWith(e.callback.replace(/\s+/g, ' ').trim()));
+  const idleEntry = (kind, delay, cbSrc) => { const h = idleSha(cbSrc); return IDLE.find((e) => e.kind === (kind === 'i' ? 'interval' : 'timeout') && e.delay === delay && e.cbHash === h); };
   const idleHits = new Set();
   const track = (kind, site, delay, fn) => {
     const key = `${kind}${++seqT}`; const cb = norm(fn);
-    const idle = isIdle(cb); if (idle) idleHits.add(IDLE.find((e) => cb.startsWith(e.callback.replace(/\s+/g, ' ').trim())).callback);
+    const ent = idleEntry(kind, delay, cb); const idle = !!ent; if (idle) idleHits.add(`${ent.at || ''} ${(ent.callback || '').slice(0, 60)}`.trim());
     timerInfo.set(key, { kind, site, delay, idle, cb: cb.slice(0, 90) }); if (!idle) pending.add(key); return key;
   };
   const runTracked = (fn, x, what) => {   // the callback's own execution + its returned promise are ALWAYS awaited
@@ -163,7 +168,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     }
     return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, pendingSites, idleSites, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, pendingSites, idleSites, staleIdle, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

@@ -2,7 +2,12 @@
 // R3 §5a — the PAGE HARNESS's own acceptance (codex r1 P1-5). Static (jsdom only, no emulator, no Firebase).
 // Run: node --experimental-vm-modules contract/page-harness.test.js
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const { bootPage } = require('./page-harness');
+const { sha, norm, loadEntries } = require('./idle-timers');
+// a test's own reviewed entry: bound exactly as the allowlist binds (kind + delay + sha256 of the callback's full source)
+const bound = (kind, delay, fnSrc) => ({ kind, delay, cbHash: sha(norm(fnSrc)), callback: norm(fnSrc).slice(0, 40), reason: 'test' });
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FAIL = (m) => `🔴 R3-HARNESS ${m}`;
@@ -64,8 +69,9 @@ const page = (body) => `<!doctype html><html><head></head><body><div id="app"></
   }
   // codex r3 P1-2 (b): a RECURRING callback suspended on an unresolved promise — even an ALLOWLISTED idle one — is never "settled"
   {
-    const html = page(`setInterval(async function idleTick() { await new Promise(() => {}); }, 100);`);
-    const p = await bootPage('xpizza-functions', { html, idleTimers: [{ callback: 'async function idleTick()', reason: 'test: allowlisted, but its RUNNING callback must still be awaited' }] });
+    const tick = 'async function idleTick() { await new Promise(() => {}); }';
+    const html = page(`setInterval(${tick}, 100);`);
+    const p = await bootPage('xpizza-functions', { html, idleTimers: [bound('interval', 100, tick)] });
     await new Promise((r) => setTimeout(r, 250));
     const settled = await p.settle(600);
     assert.strictEqual(settled, false, FAIL('a running (suspended) callback of an allowlisted interval was ignored'));
@@ -74,14 +80,36 @@ const page = (body) => `<!doctype html><html><head></head><body><div id="app"></
   }
   // the allowlist is the ONLY way an idle timer passes: allowlisted → settles; the same interval NOT allowlisted → never settles
   {
-    const html = page(`setInterval(function clockTick() { document.title = String(Date.now()); }, 300); setTimeout(() => { document.getElementById('app').textContent = 'done'; }, 200);`);
-    const a = await bootPage('xpizza-functions', { html, idleTimers: [{ callback: 'function clockTick()', reason: 'test clock' }] });
+    const clock = 'function clockTick() { document.title = String(Date.now()); }';
+    const html = page(`setInterval(${clock}, 300); setTimeout(() => { document.getElementById('app').textContent = 'done'; }, 200);`);
+    const a = await bootPage('xpizza-functions', { html, idleTimers: [bound('interval', 300, clock)] });
     const sa = await a.settle(3000); const done = a.doc.getElementById('app').textContent; const idle = a.idleSites(); a.close();
     const b = await bootPage('xpizza-functions', { html, idleTimers: [] });
     const sb = await b.settle(800); const blocking = b.pendingSites(); b.close();
     assert.ok(sa && done === 'done' && idle.length === 1, FAIL(`the allowlisted clock interval blocked settling (${JSON.stringify({ sa, done, idle })})`));
     assert.ok(!sb && blocking.some((x) => /clockTick/.test(x)), FAIL(`a NON-allowlisted interval did not block (${JSON.stringify({ sb, blocking })})`));
     ok('allowlisted clock interval: settles after the 200 ms transition; the same interval NOT allowlisted: never settles, reported as blocking');
+  }
+  // codex r4 P1-2: an entry binds the reviewed SOURCE. With the REAL kitchen allowlist: the reviewed updateClock (its exact
+  // source, from xpizza-kitchen/index.html) is idle; the same name with ONE added write is NOT (it blocks, and its later
+  // write cannot land after a "settled"); a changed delay is not either.
+  {
+    const kitchen = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-kitchen', 'index.html'), 'utf8');
+    const i0 = kitchen.indexOf('function updateClock()'); let d = 0; let i1 = kitchen.indexOf('{', i0);
+    for (; i1 < kitchen.length; i1++) { if (kitchen[i1] === '{') d++; else if (kitchen[i1] === '}' && --d === 0) break; }
+    const reviewed = kitchen.slice(i0, i1 + 1);
+    const entry = loadEntries('xpizza-kitchen').find((e) => e.callback.startsWith('function updateClock()'));
+    assert.ok(entry && entry.cbHash === sha(norm(reviewed)), FAIL('premise — the reviewed updateClock source no longer matches its allowlist entry'));
+    const wrote = reviewed.replace('{', '{ window.__wrote = (window.__wrote || 0) + 1; ');
+    const run = async (fnSrc, delay) => {
+      const p = await bootPage('xpizza-kitchen', { html: page(`window.renderScheduled = () => {}; ${fnSrc}\nsetInterval(updateClock, ${delay}); setTimeout(() => { document.getElementById('app').textContent = 'done'; }, 150);`) });
+      const settled = await p.settle(1500); const r = { settled, wrote: p.win.__wrote || 0, idle: p.idleSites(), blocking: p.pendingSites().filter((x) => /updateClock/.test(x)) }; p.close(); return r;
+    };
+    const a = await run(reviewed, 1000); const b = await run(wrote, 1000); const c = await run(reviewed, 900);
+    assert.ok(a.settled && a.idle.length === 1, FAIL(`the REVIEWED updateClock (real allowlist) blocked settling (${JSON.stringify(a)})`));
+    assert.ok(!b.settled && b.blocking.length === 1, FAIL(`updateClock with an ADDED WRITE kept its exemption (${JSON.stringify(b)})`));
+    assert.ok(!c.settled && c.blocking.length === 1, FAIL(`updateClock at a CHANGED delay kept its exemption (${JSON.stringify(c)})`));
+    ok(`real kitchen allowlist: the reviewed updateClock is idle; the same name + one added write BLOCKS (settle false, reported); a changed delay BLOCKS — exemption bound to source + kind + delay, not a name`);
   }
   console.log(`\nr3-page-harness: OK (${n})`);
   process.exit(0);
