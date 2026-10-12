@@ -150,7 +150,8 @@ function body(rid, oid, name, method, { lines = 1, itemsText = null, type = 'del
     S14: `CONFIRMED (runtime): 'efectivo' → payment_method '' persisted (HTTP 200)`,
   };
   OBS.verdict = verdict;
-  fs.writeFileSync(path.join(__dirname, 'd-observations.json'), JSON.stringify(OBS, null, 1) + '\n');
+  // the reviewed record is committed; a normal run writes to the temp dir (R3_WRITE_OBS=1 refreshes the committed one)
+  fs.writeFileSync(process.env.R3_WRITE_OBS === '1' ? path.join(__dirname, 'd-observations.json') : path.join(require('os').tmpdir(), 'r3-d-observations.json'), JSON.stringify(OBS, null, 1) + '\n');
   for (const [k, v] of Object.entries(verdict)) console.log(`  ${k}: ${v}`);
   ok(`observed reader outputs for D1, D2, D6, D12, D13 (KDS) and S14 → contract/d-observations.json`);
   S.assertClean();

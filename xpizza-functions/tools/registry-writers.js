@@ -260,6 +260,9 @@ function enumerate() {
      because the harnesses are not named *.test.js and the first version therefore counted them. */
   const prod = files.filter((f) => !/\.test\.(js|mjs)$/.test(f)
     && !/(^|\/)test\//.test(path.relative(ROOT, f))
+    /* R3: contract/ is the writer→reader contract HARNESS (test code, like test/): its third-brand fixture calls
+       publishVersion, which is not a production publish path. Excluded by directory for the same reason. */
+    && !/(^|\/)contract\//.test(path.relative(ROOT, f))
     && !/\/tools\/registry-writers\.js$/.test(f));
   const scanned = prod.map(scanFile);
   const writes = scanned.flatMap((s) => s.writes);
