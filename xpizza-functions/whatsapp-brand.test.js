@@ -42,12 +42,36 @@ const reader = (calls, ids = ID) => async (rid) => { calls.push(rid); return ids
       [w.tplPreparing({ customerName: 'Ana', etaMinutes: 20, orderType: 'pickup', trackingToken: 'T', restaurantId: rid }), `Estamos preparando tu pedido en ${brand} —`],
       [w.tplOtp({ code: '123456' }), `Tu código de ${brand} es 123456. Vence en 5 minutos. No lo compartas.`],
     ];
-    for (const [m] of msgs) { assert.ok(w.isDeferred(m), `${rid}: a deferred message`); assert.ok(await w.sendMessage(PHONE, m, rid, { readBrand: reader(calls) }), `${rid}: sent`); }
+    // the OTP is SYNC-ONLY (codex r2): its brand comes from an identity already in hand (the peek), never a read
+    for (const [m] of msgs) { assert.ok(w.isDeferred(m), `${rid}: a deferred message`); assert.ok(await w.sendMessage(PHONE, m, rid, { readBrand: reader(calls), peekBrand: (r) => ID[r] || null }), `${rid}: sent`); }
     msgs.forEach(([, want], i) => assert.ok(sent[i].body.includes(want), `${rid}: "${want}" in ${JSON.stringify(sent[i].body)}`));
-    assert.deepStrictEqual(calls, msgs.map(() => rid), `${rid}: the brand was read for THIS restaurant`);
+    assert.deepStrictEqual(calls, msgs.slice(0, -1).map(() => rid), `${rid}: the brand was read for THIS restaurant — for every template but the OTP`);
     if (rid !== 'x_pizza') assert.ok(sent.every((s) => !/X\.? ?Pizza/.test(s.body)), `🔴 ${rid}: never "X. Pizza"`);
   }
-  ok('the REAL sendMessage resolves the brand first, then renders: 7 templates (incl. the OTP) × x_pizza "X. Pizza" (today\'s text), la_musa, a third "Sushi Sur HN"');
+  ok('the REAL sendMessage resolves the brand first, then renders: 7 templates (incl. the OTP, from an identity in hand) × x_pizza "X. Pizza" (today\'s text), la_musa, a third "Sushi Sur HN"');
+
+  // ── codex r2: a LOGIN CODE never waits on branding — a HUNG identity read does not delay the OTP POST ──
+  {
+    sent.length = 0; let readStarted = 0;
+    const hung = () => { readStarted += 1; return new Promise(() => {}); };   // never resolves
+    const t0 = Date.now();
+    const r = await w.sendMessage(PHONE, w.tplOtp({ code: '424242' }), 'x_pizza', { readBrand: hung, peekBrand: () => null });
+    const ms = Date.now() - t0;
+    assert.ok(r && sent.length === 1, 'the OTP was sent');
+    assert.ok(ms < 50, `🔴 the OTP POST is immediate under a hung identity read (${ms} ms)`);
+    assert.strictEqual(sent[0].body, 'Tu código es 424242. Vence en 5 minutos. No lo compartas.', 'neutral copy when no brand is in hand');
+    assert.strictEqual(readStarted, 0, 'the OTP never even STARTS an identity read');
+    // an identity already in hand brands it, still without any read
+    sent.length = 0;
+    await w.sendMessage(PHONE, w.tplOtp({ code: '424242' }), 'x_pizza', { readBrand: hung, peekBrand: () => ({ name: 'X Pizza', display_name: 'X. Pizza' }) });
+    assert.strictEqual(sent[0].body, 'Tu código de X. Pizza es 424242. Vence en 5 minutos. No lo compartas.');
+    assert.strictEqual(readStarted, 0);
+    // a non-OTP template still uses the (bounded) live read — the OTP rule is scoped to login codes
+    sent.length = 0;
+    await w.sendMessage(PHONE, w.tplPickupReady({ trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza', { readBrand: async () => ID.x_pizza, peekBrand: () => null });
+    assert.ok(sent[0].body.includes('pasar por X. Pizza'));
+  }
+  ok('codex r2: the OTP never awaits branding — a HUNG identity read: sent immediately, neutral "Tu código es …", no read started; an identity in hand brands it; other templates keep the live read');
 
   // ── 2. neutral copy: nothing names the restaurant (null / failed / blank / unshowable) ──
   const neutral = [

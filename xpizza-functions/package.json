@@ -75,6 +75,7 @@
     "test:predictor": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/ready-time-predict.emulator.test.js\"",
     "test:scheduled-release": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/scheduled-release.emulator.test.js\"",
     "measure:identity-fence": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/measure-identity-fence.js\"",
+    "test:otp-brand": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/otp-brand.emulator.test.js\"",
     "test:pickup-label": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pickup-label.emulator.test.js\"",
     "test:resolve-manual": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/resolve-manual.emulator.test.js\"",
     "deploy:rules": "npm run check:rules && firebase deploy --only database",

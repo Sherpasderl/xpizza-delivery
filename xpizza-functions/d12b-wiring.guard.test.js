@@ -16,7 +16,7 @@ const { HUNKS, FILES, unapplyD12b, unapplyD12bIndex } = require('./tools/d12b-in
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const BASE = 'acd606e';
+const BASE = '5055cb9';   // the D12b parent (rebased from acd606e; the pinned files are identical in both)
 const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
 
 // ── 1. the inverse ──

@@ -2,7 +2,7 @@
 // D12b (brand display name) — the slice's INVERSE: its exact hunks in modules older slices PIN byte-for-byte
 // (order-control-wiring: materialize vs e1aeb3f; identity-record-guards: create-order-build by sha; d12-wiring: both, via
 // the D12 inverse). Those guards apply unapplyD12b FIRST (newest first), then D12's, so any byte outside the hunks still
-// fails them. d12b-wiring.guard.test.js proves this inverse reproduces the D12b base (acd606e) byte-for-byte.
+// fails them. d12b-wiring.guard.test.js proves this inverse reproduces the D12b base (5055cb9; identical to acd606e for these files) byte-for-byte.
 const HUNKS = Object.freeze([
  {
   "file": "create-order-build.js",
@@ -50,7 +50,7 @@ const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
 
 // ── index.js: ONE delimited block (requestOtp's message — codex D12b r1 P2-2) ──────────────────────────────────────────────
 // The block's EXACT bytes are pinned (an edit inside it is detected); unapplyD12bIndex swaps it back for the ORIGINAL two lines,
-// so unapplyD12bIndex(index.js) === acd606e:index.js byte-for-byte (d12b-wiring.guard). Every index.js fold guard applies it
+// so unapplyD12bIndex(index.js) === 5055cb9:index.js byte-for-byte (d12b-wiring.guard). Every index.js fold guard applies it
 // FIRST (D12b is the newest index.js slice), before D4-c2b's block.
 const crypto = require('crypto');
 const INDEX_BEGIN = '/* d12b:begin */';

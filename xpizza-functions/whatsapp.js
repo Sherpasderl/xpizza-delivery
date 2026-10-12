@@ -56,6 +56,18 @@ const isDeferred = (m) => !!m && typeof m === 'object' && MINTED.has(m);
 function defaultReadBrand(restaurantId) {
   try { return readLiveBrand(require('firebase-admin/database').getDatabase(), restaurantId); } catch (_) { return Promise.resolve(null); }
 }
+// codex D12b r2: a LOGIN CODE never waits on branding. For the sync-only templates the brand is used only when it is already
+// in hand — this instance's restaurant-config identity cache (no I/O) — else the neutral wording, immediately.
+const SYNC_ONLY = new Set(['otp']);
+function defaultPeekBrand(restaurantId) {
+  const c = require('./restaurant-config')._cache.get(restaurantId);
+  return c && c.identity ? { display_name: c.identity.display_name, name: c.identity.name } : null;
+}
+function peekBrand(restaurantId, { peekBrand: peek = defaultPeekBrand } = {}) {
+  let live = null;
+  try { live = peek(restaurantId); } catch (_) { live = null; }
+  return brandOf(live && live.display_name, live && live.name);
+}
 async function resolveBrand(restaurantId, { readBrand = defaultReadBrand } = {}) {
   let live = null;
   try { live = await readBrand(restaurantId); } catch (_) { live = null; }
@@ -138,7 +150,9 @@ async function sendMessage(toPhone, body, restaurantId = 'x_pizza', deps = {}) {
   if (!normalized) {
     return null;
   }
-  if (isDeferred(body)) body = renderTemplate(body, await resolveBrand(restaurantId, deps));   // D12b: brand first, then render
+  if (isDeferred(body)) {   // D12b: brand first, then render — sync-only templates (the OTP) never await a read
+    body = renderTemplate(body, SYNC_ONLY.has(body.name) ? peekBrand(restaurantId, deps) : await resolveBrand(restaurantId, deps));
+  }
   if (!body || typeof body !== 'string') {
     console.warn('whatsapp: empty/invalid body, skipping send');
     return null;
