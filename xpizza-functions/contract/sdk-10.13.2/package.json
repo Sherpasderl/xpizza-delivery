@@ -1,0 +1,6 @@
+{
+  "name": "r3-client-sdk-10.13.2",
+  "private": true,
+  "description": "R3 adapter acceptance: the EXACT client SDK production's pages load from the CDN (firebase 10.13.2), installed self-contained so @firebase/app and @firebase/database pair exactly as shipped. Provisioned by contract/p0-adapter.emulator.test.js (npm ci) — node_modules is not committed.",
+  "dependencies": { "firebase": "10.13.2" }
+}

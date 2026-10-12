@@ -10,51 +10,63 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const admin = require('firebase-admin');
 require('../index.js');   // the default Admin app, configured exactly as the suites see it
 const { createFirebaseHost, appFor } = require('./rtdb-adapter');
-// the comparison CLIENT SDK: default = the repo's firebase (11.10.0, transitive); R3_CLIENT_SDK_DIR=<dir with
-// node_modules/firebase> pins another — the evidence run uses 10.13.2, the version production's pages load from the CDN
+// the comparison CLIENT SDKs — BOTH, every run (codex r2 P2): the repo's firebase 11.10.0 (transitive) AND firebase 10.13.2,
+// the version production's pages load from the CDN. 10.13.2 lives SELF-CONTAINED in contract/sdk-10.13.2 (its own pinned
+// package-lock, so @firebase/app and @firebase/database pair exactly as shipped — inside the shared tree npm dedupes them
+// apart). It is PROVISIONED here (npm ci) when absent; a failure to provision is RED, never a skip.
 const path = require('path');
-const SDK_DIR = process.env.R3_CLIENT_SDK_DIR ? path.join(process.env.R3_CLIENT_SDK_DIR, 'node_modules') : null;
-const sdkReq = (m) => require(SDK_DIR ? require.resolve(m, { paths: [SDK_DIR] }) : m);
-const SDK_VERSION = require(SDK_DIR ? path.join(SDK_DIR, 'firebase', 'package.json') : 'firebase/package.json').version;
-const { initializeApp: cInit } = sdkReq('firebase/app');
-const CDB = sdkReq('firebase/database');
+const { spawnSync } = require('child_process');
+const SDK10 = path.join(__dirname, 'sdk-10.13.2');
+const SDK10_NM = path.join(SDK10, 'node_modules');
+if (!require('fs').existsSync(path.join(SDK10_NM, 'firebase', 'package.json'))) {
+  const env = { ...process.env }; delete env.NODE_OPTIONS;                       // hermetic child (no gate preload)
+  const r = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: SDK10, encoding: 'utf8', env });
+  if (r.status !== 0) throw new Error(`🔴 R3-P0:SDK10 could not provision firebase 10.13.2 in contract/sdk-10.13.2 (npm ci exit ${r.status}): ${(r.stderr || '').slice(-400)}`);
+}
+const fromSdk10 = (m) => require(require.resolve(m, { paths: [SDK10_NM] }));
+const SDKS = [
+  { key: 'v11', ns: 'r3cmp11', version: require('firebase/package.json').version, app: require('firebase/app'), db: require('firebase/database') },
+  { key: 'v10', ns: 'r3cmp10', version: fromSdk10('firebase/package.json').version, app: fromSdk10('firebase/app'), db: fromSdk10('firebase/database') },
+];
+if (SDKS[1].version !== '10.13.2') throw new Error(`premise — the pinned production SDK is ${SDKS[1].version}, not 10.13.2`);
 
-let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+let n = 0; const okOuter = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FAIL = (cell, msg) => `🔴 R3-P0:${cell} ${msg}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const NS = 'r3cmp';
-const URLNS = `https://${NS}.firebaseio.com`;
 const [EH, EP] = String(process.env.FIREBASE_DATABASE_EMULATOR_HOST).split(':');
 
-// the three parties: the ADAPTER (a page), the real CLIENT SDK, and a WRITER (a separate Admin connection)
-const page = createFirebaseHost({ pageId: 'adapter', options: { databaseURL: URLNS } });
-const A = page.modules['firebase-database'];
-const adb = A.getDatabase();
-const capp = cInit({ projectId: 'demo-xpizza', databaseURL: URLNS }, 'r3-client');
-const cdb = CDB.getDatabase(capp);
-CDB.connectDatabaseEmulator(cdb, EH, Number(EP));
-const writer = appFor('r3-writer-cmp', { databaseURL: URLNS }).database();
+async function runSuite(sdk) {
+  const ok = (l) => okOuter(`[firebase ${sdk.version}] ${l}`);
+  const NS = sdk.ns; const URLNS = `https://${NS}.firebaseio.com`;
+  const CDB = sdk.db; const cInit = sdk.app.initializeApp;
+  // the three parties: the ADAPTER (a page), the real CLIENT SDK, and a WRITER (a separate Admin connection)
+  const page = createFirebaseHost({ pageId: `adapter-${sdk.key}`, options: { databaseURL: URLNS } });
+  const A = page.modules['firebase-database'];
+  const adb = A.getDatabase();
+  const capp = cInit({ projectId: 'demo-xpizza', databaseURL: URLNS }, `r3-client-${sdk.key}`);
+  const cdb = CDB.getDatabase(capp);
+  CDB.connectDatabaseEmulator(cdb, EH, Number(EP));
+  const writer = appFor(`r3-writer-cmp-${sdk.key}`, { databaseURL: URLNS }).database();
 
-// identical subscription on both sides → event logs
-function both(path, cons, kinds) {
-  const logs = { adapter: [], client: [] };
-  const aq = cons.length ? A.query(A.ref(adb, path), ...cons.map(([t, ...a]) => A[t](...a))) : A.ref(adb, path);
-  const cq = cons.length ? CDB.query(CDB.ref(cdb, path), ...cons.map(([t, ...a]) => CDB[t](...a))) : CDB.ref(cdb, path);
-  const unsubs = [];
-  for (const k of kinds) {
-    const fn = { value: 'onValue', child_added: 'onChildAdded', child_changed: 'onChildChanged', child_removed: 'onChildRemoved' }[k];
-    unsubs.push(A[fn](aq, (s) => logs.adapter.push(k === 'value' ? [k, s.exists() ? JSON.stringify(s.val()) : null] : [k, s.key, JSON.stringify(s.val())])));
-    unsubs.push(CDB[fn](cq, (s) => logs.client.push(k === 'value' ? [k, s.exists() ? JSON.stringify(s.val()) : null] : [k, s.key, JSON.stringify(s.val())])));
+  // identical subscription on both sides → event logs
+  function both(path, cons, kinds) {
+    const logs = { adapter: [], client: [] };
+    const aq = cons.length ? A.query(A.ref(adb, path), ...cons.map(([t, ...a]) => A[t](...a))) : A.ref(adb, path);
+    const cq = cons.length ? CDB.query(CDB.ref(cdb, path), ...cons.map(([t, ...a]) => CDB[t](...a))) : CDB.ref(cdb, path);
+    const unsubs = [];
+    for (const k of kinds) {
+      const fn = { value: 'onValue', child_added: 'onChildAdded', child_changed: 'onChildChanged', child_removed: 'onChildRemoved' }[k];
+      unsubs.push(A[fn](aq, (s) => logs.adapter.push(k === 'value' ? [k, s.exists() ? JSON.stringify(s.val()) : null] : [k, s.key, JSON.stringify(s.val())])));
+      unsubs.push(CDB[fn](cq, (s) => logs.client.push(k === 'value' ? [k, s.exists() ? JSON.stringify(s.val()) : null] : [k, s.key, JSON.stringify(s.val())])));
+    }
+    return { logs, off: () => unsubs.forEach((u) => u()) };
   }
-  return { logs, off: () => unsubs.forEach((u) => u()) };
-}
-async function settleEq(logs, label, ms = 3000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) { if (logs.adapter.length && JSON.stringify(logs.adapter) === JSON.stringify(logs.client)) { await sleep(150); if (JSON.stringify(logs.adapter) === JSON.stringify(logs.client)) return; } await sleep(30); }
-  assert.deepStrictEqual(logs.adapter, logs.client, FAIL(label, 'the adapter\'s callback trace differs from the real client SDK\'s'));
-}
+  async function settleEq(logs, label, ms = 3000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (logs.adapter.length && JSON.stringify(logs.adapter) === JSON.stringify(logs.client)) { await sleep(150); if (JSON.stringify(logs.adapter) === JSON.stringify(logs.client)) return; } await sleep(30); }
+    assert.deepStrictEqual(logs.adapter, logs.client, FAIL(label, 'the adapter\'s callback trace differs from the real client SDK\'s'));
+  }
 
-(async () => {
   await writer.ref().set(null);
 
   // AD3 + AD1 + AD2: initial delivery, query-window ENTRY / EXIT, deletion
@@ -102,6 +114,18 @@ async function settleEq(logs, label, ms = 3000) {
     assert.ok(hits[0] === before[0] && hits[1] > before[1] && hits[2] > before[2], FAIL('OFF1', `deliveries after off: ${JSON.stringify({ before, hits })}`));
     A.off(qA); A.off(qB);
     ok('OFF1 off(query A, "value", cb1): only cb1 stops — cb2 on A and cb3 on the unfiltered query keep delivering');
+  }
+
+  // OFF2 (codex r2 P2): off() with an EQUIVALENT query built in the reversed constraint order stops the listener (SDK equality)
+  {
+    let hits = 0; const cb = () => { hits += 1; };
+    A.onValue(A.query(A.ref(adb, 'offe'), A.orderByChild('k'), A.equalTo(1)), cb);
+    await writer.ref('offe/x').set({ k: 1 }); await page.barrier();
+    A.off(A.query(A.ref(adb, 'offe'), A.equalTo(1), A.orderByChild('k')), 'value', cb);
+    const before = hits;
+    await writer.ref('offe/y').set({ k: 1 }); await page.barrier(); await sleep(150);
+    assert.strictEqual(hits, before, FAIL('OFF2', `off() with an equivalent (reversed-order) query left the listener active (${hits - before} extra)`));
+    ok('OFF2 off() with an EQUIVALENT query (reversed constraint order) stops the listener — query equality, not construction order');
   }
 
   // AD5 forEach ordering by the query key
@@ -193,7 +217,11 @@ async function settleEq(logs, label, ms = 3000) {
   }
 
   await page.close();
-  console.log(`\nclient SDK compared: firebase ${SDK_VERSION}`);
+}
+
+(async () => {
+  for (const sdk of SDKS) await runSuite(sdk);
+  console.log(`\nclient SDKs compared: ${SDKS.map((x) => `firebase ${x.version}`).join(' AND ')}`);
   console.log(`r3-p0-adapter: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-p0-adapter FAILED:', e && e.stack || e); process.exit(1); });

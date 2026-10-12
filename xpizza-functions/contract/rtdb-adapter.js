@@ -66,7 +66,7 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   function subscribe(kind, q, cb, cancelCb, opts) {
     const a = adminOf(q);
     if (!a) throw new Error('r3-adapter: subscribe on a non-ref');
-    const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true, cb };
+    const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true, cb, aq: a };
     subs.push(rec);
     // an exception thrown by the PAGE's callback is the page's error (a browser reports it and keeps running): recorded in
     // callbackErrors — which every page cell asserts empty — never rethrown into the SDK's event loop
@@ -87,8 +87,10 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   // modular off(query, eventType?, callback?) — codex r1 P2: matches the QUERY (path + constraints), the event type when
   // given, and the page's CALLBACK identity when given; another query or callback on the same path keeps its listener
   function off(q, eventType, cb) {
-    const d = describe(q) || {};
-    const sameQuery = (s) => s.path === d.path && JSON.stringify(s.constraints || []) === JSON.stringify(d.constraints || []);
+    // codex r2 P2: SDK query EQUALITY (the Admin Query's isEqual) — the same normalization both client SDKs apply,
+    // so an equivalent query built in another constraint order matches
+    const target = adminOf(q);
+    const sameQuery = (s) => !!(target && s.aq && s.aq.isEqual(target));
     for (const s of subs) if (s.active && sameQuery(s) && (!eventType || s.kind === eventType) && (!cb || s.cb === cb)) s.off();
   }
 
