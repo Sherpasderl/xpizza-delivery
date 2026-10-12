@@ -73,6 +73,10 @@ const XPD = {
   subscribeMenuManifest(rid, cb) { XPD._manifestRid = rid; XPD._manifestCb = cb; return () => { XPD._manifestUnsub = true; }; },
   subscribeItemAvailability(rid, cb) { XPD._flagsRid = rid; XPD._flagsCb = cb; return () => { XPD._flagsUnsub = true; }; },
   setItemAvailability(rid, rawKey, available, uid) { availCalls.push({ rid, rawKey, available, uid }); return new Promise((res, rej) => { resolveAvail = () => res(); rejectAvail = () => rej(new Error('denied')); }); },
+  // KDS cancelados cross-device ack — drive via XPD._cancelAcksCb; write/remove are spied in `calls`.
+  subscribeCancelAcks(cb) { XPD._cancelAcksCb = cb; cb({}); return () => { XPD._cancelAcksUnsub = true; }; },
+  writeCancelAck(id) { calls.push({ fn: 'writeCancelAck', id }); return Promise.resolve(); },
+  removeCancelAck(id) { calls.push({ fn: 'removeCancelAck', id }); return Promise.resolve(); },
 };
 
 // ── globals the module touches at top level ──
@@ -100,9 +104,23 @@ globalThis.__XPD = XPD;
 //    reads. Load the REAL avail-key.js (UMD-lite → sets globalThis.availKey) so the panel keys match prod. ──
 await import('data:text/javascript,' + encodeURIComponent(readFileSync(new URL('./avail-key.js', import.meta.url), 'utf8')));
 assert.equal(typeof globalThis.availKey, 'function', 'avail-key.js classic-script global loaded (window.availKey)');
+// window.availabilityReducer — the OTHER classic <script src="availability-reducer.js"> global the module's
+// isItemOff() reads (the shared any_false reducer). The smoke was missing this load (pre-existing gap), which
+// tripped the availability section before it could reach the rest; load the REAL file so the globals match prod.
+await import('data:text/javascript,' + encodeURIComponent(readFileSync(new URL('./availability-reducer.js', import.meta.url), 'utf8')));
+assert.equal(typeof globalThis.availabilityReducer?.decide, 'function', 'availability-reducer.js classic-script global loaded (window.availabilityReducer)');
 
 // ── load + rewrite the inline module ──
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+
+// FULL CLASSIFIER-SET WIRING (advisor gate check): the server cancel-ack must be consulted EVERYWHERE the
+// local completedSet bump is — opState, bandClass, locallyBumped (deriveTab/completedTabVisible live in
+// card-model.js, covered by card-model.test.mjs). opState + locallyBumped are ALSO runtime-proven by the
+// device-B render below; bandClass's completed-band HTML short-circuits on op, so pin its wiring here.
+assert.ok(html.includes("if (completedSet.has(o.id) || cancelAcks[o.id] || o.estado === KDS_STATUS.ARCHIVADO) return 'completed';"), 'opState consults cancelAcks');
+assert.ok(html.includes('const completed = completedSet.has(order.id) || cancelAcks[order.id] || order.estado === KDS_STATUS.ARCHIVADO;'), 'bandClass consults cancelAcks');
+assert.ok(html.includes('const locallyBumped = (completedSet.has(id) || cancelAcks[id]) && order.estado !== KDS_STATUS.ARCHIVADO;'), 'locallyBumped consults cancelAcks');
+ok('full classifier set wired: opState + bandClass + locallyBumped consult (completedSet || cancelAcks)');
 let mod = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 mod = mod
   .replace(/import\s*\{\s*initializeApp\s*\}\s*from\s*['"][^'"]+['"];?/, '')
@@ -186,10 +204,11 @@ XPD._ordersCb({ 'PZX-1': { ...ORDER, status: 'ready' } });
 calls.length = 0;
 window.recall('PZX-1');
 await new Promise((r) => setImmediate(r));
-assert.equal(calls.length, 0, 'recall performs NO setOrderStatus');
+assert.equal(calls.filter(c => c.status !== undefined).length, 0, 'recall performs NO setOrderStatus');
+assert.ok(calls.some(c => c.fn === 'removeCancelAck' && c.id === 'PZX-1'), 'recall clears the server cancel-ack (symmetric un-archive) — not a /orders write');
 assert.equal(getEl('count-open').textContent, 1, 'recall returns the ticket to Open (local)');
 assert.equal(getEl('count-completed').textContent, 0, 'no longer completed');
-ok('recall → local un-bump, ZERO status write (never reverts ready)');
+ok('recall → local un-bump + removeCancelAck, ZERO status write (never reverts ready)');
 
 // ── toggleItem + prioritize → LOCAL only, ZERO status write ──
 calls.length = 0;
@@ -348,7 +367,7 @@ assert.ok(compHtml.includes(`recall('PZX-REC')`) && compHtml.includes('recall-bt
 assert.ok(!compHtml.includes(`recall('PZX-DEL')`), 'server-delivered card → NO "Recuperar Ticket" button (recall would be a no-op)');
 calls.length = 0;
 window.recall('PZX-DEL'); await tick();
-assert.equal(calls.length, 0, 'recall on a server-delivered non-member performs NO status write (local no-op, never reverts status)');
+assert.equal(calls.filter(c => c.status !== undefined).length, 0, 'recall on a server-delivered non-member performs NO status write (local no-op, never reverts status)');
 ok('Recuperar Ticket gated to locally-bumped cards; server-delivered → no button + recall is a local no-op');
 
 // ══ Tile-Fill chevron expander — FULL render (measure-based; no count-slice); toggle writes NO status ══
@@ -559,7 +578,7 @@ ok('DELIVERY completion → purely local blue→green→bump beat, ZERO extra st
   assert.deepEqual(calls, [], 'Entregado shows the blue beat; the completed write is deferred');
   window.recall('PZX-RCB'); await tick();      // RECALL mid-beat → clears completionSeq before the timer fires
   flushTimers();   // blue-beat timer runs → recall-guard sees completionSeq cleared → issues NO write
-  assert.deepEqual(calls, [], 'a recall during the Entregado pre-write delay issues NO status:completed write (invariant #3)');
+  assert.equal(calls.filter(c => c.status !== undefined).length, 0, 'a recall during the Entregado pre-write delay issues NO status:completed write (invariant #3)');
   assert.equal(Number(getEl('count-completed').textContent), compBeforeRCB, 'the recalled ticket is NOT bumped to Completados (no phantom complete)');
   ok('recall during the Entregado beat abandons the completion — ZERO completed write (invariant #3)');
 }
@@ -582,6 +601,86 @@ ok('DELIVERY completion → purely local blue→green→bump beat, ZERO extra st
   assert.ok(getEl('ticket-grid').innerHTML.includes('card-PZX-FC'), 'the card stays rendered in the Open pool');
   assert.ok(getEl('ticket-grid').innerHTML.includes(`dismissWrite('PZX-FC')`) && getEl('ticket-grid').innerHTML.includes('No se pudo completar'), 'shows the dismissable "No se pudo completar" skip strip');
   ok('fail-closed: an Entregado completed write that ownership-skips → NO bump, skip strip, card stays Open (invariant #1)');
+}
+
+// ══ KDS cancelados cross-device ack — the 2-device fix, through the REAL module wiring ══
+{
+  const tick = () => new Promise((r) => setImmediate(r));
+  // A fresh CANCELLED order starts in OPEN (stop-cooking) until archived — today's behavior.
+  const C = { order_id: 'PZX-C', status: 'cancelled', customer_name: 'Dani', items_text: '1x Napoli', created_at: Date.now(), order_type: 'delivery' };
+  XPD._ordersCb({ 'PZX-C': C }); XPD._cancelAcksCb({}); await tick();
+  assert.equal(getEl('count-open').textContent, 1, 'a fresh cancelled order starts in OPEN (stop-cooking)');
+  assert.equal(getEl('count-completed').textContent, 0, 'not completed until archived');
+
+  // Archivar on THIS device → writes the server ack + optimistic local move to Completados, NO /orders write.
+  calls.length = 0;
+  window.archiveCancel('PZX-C'); await tick();
+  assert.ok(calls.some(c => c.fn === 'writeCancelAck' && c.id === 'PZX-C'), 'archiveCancel writes the server cancel-ack (cross-device truth)');
+  assert.equal(calls.filter(c => c.status !== undefined).length, 0, 'archiveCancel performs NO /orders status write');
+  assert.equal(getEl('count-open').textContent, 0, 'archived cancelado leaves Open');
+  assert.equal(getEl('count-completed').textContent, 1, 'archived cancelado is in Completados');
+  ok('archiveCancel → writeCancelAck + local move to Completados (no status write)');
+
+  // DEVICE-B: a cancelled order archived on ANOTHER device — only the SERVER ACK arrives here (no local bump).
+  //   It must classify to Completados, NOT resurface in Open (the bug being fixed).
+  const D = { order_id: 'PZX-D', status: 'cancelled', customer_name: 'Eli', items_text: '1x Funghi', created_at: Date.now(), order_type: 'delivery' };
+  XPD._ordersCb({ 'PZX-D': D });                                  // fresh snapshot — NO local completedSet bump for D
+  XPD._cancelAcksCb({ 'PZX-D': { at: Date.now(), by: 'other-device' } });
+  await tick();
+  assert.equal(getEl('count-open').textContent, 0, 'device-B: a server-acked cancelado does NOT resurface in Open (the fix)');
+  assert.equal(getEl('count-completed').textContent, 1, 'device-B: the server ack alone classifies it to Completados');
+  ok('cancel-ack: device-B server ack alone → Completados (no local bump) — the 2-device fix');
+
+  // device-B rendering: the acked card shows in Completados with COMPLETED treatment + a "Recuperar" button.
+  // The recall button is gated `op === 'completed' && locallyBumped`, so this one assertion proves BOTH the
+  // opState completed-term AND the locallyBumped cancelAck-term fire on the non-acking device (no local bump).
+  window.setTab('completed'); await tick();
+  const compB = getEl('ticket-grid').innerHTML;
+  assert.ok(compB.includes('card-PZX-D'), 'device-B: the acked cancelado renders in the Completados tab');
+  assert.ok(compB.includes(`recall('PZX-D')`) && compB.includes('recall-btn'), 'device-B: shows "Recuperar" (opState=completed + locallyBumped via the ack, no local completedSet member)');
+  window.setTab('open'); await tick();
+  ok('cancel-ack: device-B renders completed + "Recuperar" (opState + locallyBumped cancelAck terms fire at runtime)');
+
+  // Recall on device B → removeCancelAck (symmetric). The local completedSet never had it; removing the ack
+  //   (echoed back as an empty map) is what returns it to Open across devices.
+  calls.length = 0;
+  window.recall('PZX-D'); await tick();
+  assert.ok(calls.some(c => c.fn === 'removeCancelAck' && c.id === 'PZX-D'), 'recall removes the server cancel-ack (symmetric un-archive)');
+  assert.equal(calls.filter(c => c.status !== undefined).length, 0, 'recall performs NO /orders status write');
+  XPD._cancelAcksCb({});                                          // server echo: the ack is gone
+  await tick();
+  assert.equal(getEl('count-open').textContent, 1, 'after the ack-removal echo, the cancelado returns to Open cross-device');
+  assert.equal(getEl('count-completed').textContent, 0, 'no longer completed once the ack is cleared');
+  ok('cancel-ack: recall → removeCancelAck → (echo) back to Open (symmetric cross-device round-trip)');
+}
+
+// ══ ACKING-DEVICE CONVERGENCE (codex REVISE — the dual-overlay gap) ══
+// Device A archives → BOTH a local completedSet bump (optimistic) AND the server ack. When ANOTHER device
+// recalls, the server ack is removed; A's subscription must RECONCILE away A's now-stale LOCAL bump so A
+// converges back to Open too (not just device B). Also: the optimistic bump must survive until A's own write
+// echoes, and the reconcile must PURGE localStorage so a reopen can't resurrect Completed.
+{
+  const tick = () => new Promise((r) => setImmediate(r));
+  const X = { order_id: 'PZX-X', status: 'cancelled', customer_name: 'Fede', items_text: '1x Cuatro Quesos', created_at: Date.now(), order_type: 'delivery' };
+  XPD._ordersCb({ 'PZX-X': X }); await tick();
+  // A archives → optimistic local bump + writeCancelAck (pending; not yet echoed)
+  calls.length = 0;
+  window.archiveCancel('PZX-X'); await tick();
+  assert.ok(calls.some(c => c.fn === 'writeCancelAck' && c.id === 'PZX-X'), 'A: Archivar writes the ack');
+  assert.equal(getEl('count-completed').textContent, 1, 'A: optimistic move to Completados is instant (ack not yet echoed)');
+  // a pre-echo render (orders refresh) must NOT wipe the optimistic bump — the pendingAcks guard
+  XPD._ordersCb({ 'PZX-X': X }); await tick();
+  assert.equal(getEl('count-completed').textContent, 1, 'A: a render BEFORE the echo preserves the optimistic bump (pendingAcks guard — the instant move stays instant)');
+  // the echo confirms the ack → pending cleared, the bump is now ack-backed
+  XPD._cancelAcksCb({ 'PZX-X': { at: Date.now(), by: 'A' } }); await tick();
+  assert.equal(getEl('count-completed').textContent, 1, 'A: still archived after the echo (now ack-backed)');
+  // ANOTHER device recalls → the server ack is REMOVED → A must reconcile its stale local bump → back to Open
+  XPD._cancelAcksCb({}); await tick();
+  assert.equal(getEl('count-open').textContent, 1, 'A CONVERGES: the stale local bump is reconciled away once the server ack is gone (the fix — not just device B)');
+  assert.equal(getEl('count-completed').textContent, 0, 'A: no longer shows Completed after the cross-device recall');
+  // reopen-safety: the reconcile also PURGED the bump from localStorage, so a close+reopen cannot resurrect it
+  assert.ok(!JSON.parse(store['xpizza_kds_completed'] || '[]').includes('PZX-X'), 'A: the stale bump is purged from localStorage too → cannot resurrect Completed on reopen');
+  ok('cancel-ack: ACKING device converges to Open on a cross-device recall + localStorage purged (dual-overlay reconcile, reopen-safe)');
 }
 
 console.log(`kds-smoke: OK (${n} cases)`);

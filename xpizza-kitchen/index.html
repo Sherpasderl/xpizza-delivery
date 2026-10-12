@@ -1642,6 +1642,12 @@ applyKdsBrand();
 // Durable: ids the cook has bumped to the Completed tab (survives reload). Migrated from the Phase-1
 // localState store, where the operational-terminal value was 'Archivado'.
 const completedSet = new Set(JSON.parse(localStorage.getItem('xpizza_kds_completed') || '[]'));
+// cancelAcks — the SHARED SERVER truth for archived cancelados: { orderId: {at,by} }, from kds_cancel_acks
+// (subscribed in the init). A cancelled order has no server terminal flag, so this is what makes "Archivar"
+// sync across a 2-device kitchen (vs the per-device completedSet overlay). Populated live; {} until the sub fires.
+let cancelAcks = {};
+let cancelAcksLoaded = false;   // true once the kds_cancel_acks sub has delivered the authoritative server state — gates the reconcile so a local bump is never dropped before we know the server's acks (incl. on load)
+const pendingAcks = new Set();  // orderIds whose writeCancelAck (this device's Archivar) hasn't echoed back yet — their optimistic completedSet bump is preserved until the echo confirms (so the instant move still feels instant)
 (function migrateLegacyCompleted() {
   try {
     const legacy = JSON.parse(localStorage.getItem('xpizza_orders') || '{}');
@@ -1734,7 +1740,7 @@ const LOCAL_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
      write the visual FREEZES at the pre-tap state (`from`) — the card must NOT look advanced until the
      write resolves. Otherwise it's the canonical estado. */
 function opState(o) {
-  if (completedSet.has(o.id) || o.estado === KDS_STATUS.ARCHIVADO) return 'completed';
+  if (completedSet.has(o.id) || cancelAcks[o.id] || o.estado === KDS_STATUS.ARCHIVADO) return 'completed';
   if (o.estado === KDS_STATUS.CANCELADO) return 'cancelado';
   if (o.estado === KDS_STATUS.LISTO) return 'listo';
   if (o.estado === KDS_STATUS.PREP) return 'prep';
@@ -1789,7 +1795,7 @@ const AGING = { warnMin: 8, lateMin: 15 };
 //   completed > completing > cancelado > listo > scheduled-pre-slot > aging(fresh/warn/late). anchorIso
 //   is the released_at||created_at anchor (agingAnchorMs). `status` is the effective KDS status string.
 function bandClass(order, status, anchorIso) {
-  const completed = completedSet.has(order.id) || order.estado === KDS_STATUS.ARCHIVADO;
+  const completed = completedSet.has(order.id) || cancelAcks[order.id] || order.estado === KDS_STATUS.ARCHIVADO;
   return bandClassPure({
     completed,
     completing: completionSeq[order.id] === 'completing',
@@ -2044,7 +2050,8 @@ function renderTicket(order) {
   // ── Recuperar Ticket (fix #2) — full-width in the body (never clipped by the card's overflow:hidden),
   //    and ONLY on a LOCALLY-bumped card that is NOT server-archivado/delivered. Recall is local-only and
   //    never reverts /orders.status, so a server-delivered order can't be recalled — no button there. ──
-  const locallyBumped = completedSet.has(id) && order.estado !== KDS_STATUS.ARCHIVADO;
+  // completedSet (local bump) OR cancelAcks (server cancel-ack, so Recuperar shows on the NON-acking device too)
+  const locallyBumped = (completedSet.has(id) || cancelAcks[id]) && order.estado !== KDS_STATUS.ARCHIVADO;
   if (op === 'completed' && locallyBumped && !seqStage) {
     body += `<button class="recall-btn" onclick="recall('${id}')"><svg viewBox="0 0 24 24"><use href="#i-refresh"/></svg> Recuperar Ticket</button>`;
   }
@@ -2365,6 +2372,8 @@ function updateHeaderRing(card, id) {
 // Recall — KDS-LOCAL un-bump back to Open. NO /orders.status write (never reverts `ready`).
 function recall(id) {
   completedSet.delete(id);
+  pendingAcks.delete(id);     // drop any in-flight archive ack for this id (recall supersedes a just-fired Archivar)
+  XPD.removeCancelAck(id).catch((e) => console.warn('removeCancelAck failed', e));   // symmetric: clear the server ack so un-archive propagates cross-device (else the ack re-completes it)
   delete completionSeq[id];   // abort any in-flight completion beat
   delete completedStamp[id];  // clear the frozen stamp
   if (stateLog[id]) stateLog[id]['Recuperado'] = new Date().toISOString();
@@ -2380,7 +2389,10 @@ function prioritize(id) {
 
 // Archive a cancelled ticket — LOCAL bump to Completed (acknowledge stop-cooking). NO status write.
 function archiveCancel(id) {
-  completedSet.add(id);
+  completedSet.add(id);                                 // instant optimistic overlay on THIS device
+  pendingAcks.add(id);                                  // guard the optimistic bump until the write echoes back (reconcile won't drop it meanwhile)
+  XPD.writeCancelAck(id)                                // durable cross-device server truth
+    .catch((e) => { pendingAcks.delete(id); console.warn('writeCancelAck failed', e); renderCurrentTab(); });   // write failed → let the reconcile revert the optimistic bump (nothing persisted server-side)
   completedStamp[id] = new Date().toISOString();
   if (!stateLog[id]) stateLog[id] = {};
   stateLog[id]['Archivado'] = new Date().toISOString();
@@ -2626,7 +2638,7 @@ let allOrders = [];
 
 // The Open pool — FIFO (oldest-first), prioritized cards jumped to the front (pure orderForTab).
 function openPool() {
-  const open = lastOrders.filter(o => deriveTab(o, completedSet) === 'open');
+  const open = lastOrders.filter(o => deriveTab(o, completedSet, cancelAcks) === 'open');
   return orderForTab(open, 'open', prioritized);
 }
 
@@ -2648,15 +2660,36 @@ function paintOffPageLate() {
   else lateEl.classList.add('hidden');
 }
 
+// CONVERGENCE RECONCILE (codex REVISE): the local completedSet bump is only THIS device's optimistic overlay
+// for a cancel Archivar. The AUTHORITATIVE archived state is the server ack (cancelAcks). If a CANCELLED order
+// this device locally-bumped no longer has a server ack — another device recalled it, or a reopen loads a
+// stale localStorage bump whose ack is already gone — drop the local bump so the card converges back to Open
+// on EVERY device (incl. the original acking one). SCOPED to cancelados keyed on ack-absence (NOT a blanket
+// purge — delivered/listo bumps carry no ack and are untouched); never acts before the authoritative acks are
+// loaded, nor on an id whose own Archivar write is still in flight (the optimistic move stays instant).
+function reconcileCancelBumps(orders) {
+  if (!cancelAcksLoaded) return;
+  let changed = false;
+  for (const id of [...completedSet]) {
+    if (cancelAcks[id] || pendingAcks.has(id)) continue;               // server ack present, or our write in flight → keep
+    const o = orders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+    if (o && o.estado === KDS_STATUS.CANCELADO) {                      // cancelled only — the only bumps an ack governs
+      completedSet.delete(id); delete completedStamp[id]; changed = true;
+    }
+  }
+  if (changed) saveState();
+}
+
 function render(orders) {
   lastOrders = orders;
   orders.forEach(o => { if (!allOrders.find(a => a.id === o.id)) allOrders.push(o); });
+  reconcileCancelBumps(orders);   // converge any now-stale local cancel bumps to the server-ack truth BEFORE the tab split
 
   const open = openPool();
   // Completados = this session's local bumps + server-completed within the recent window (render filter),
   // ordered newest-first (per-tab sort). Open is FIFO (oldest-first) via openPool → orderForTab.
   const nowMs = Date.now();
-  const completed = orderForTab(orders.filter(o => completedTabVisible(o, completedSet, nowMs, RECENT_COMPLETED_MS)), 'completed');
+  const completed = orderForTab(orders.filter(o => completedTabVisible(o, completedSet, cancelAcks, nowMs, RECENT_COMPLETED_MS)), 'completed');
   document.getElementById('count-open').textContent = open.length;
   document.getElementById('count-completed').textContent = completed.length;
 
@@ -2948,6 +2981,7 @@ setInterval(tickElapsed, 1000);
    Filters to active orders that haven't been delivered/cancelled.
    Maps Firebase order shape to the kitchen card shape. */
 let firebaseUnsubscribe = null;
+let cancelAcksUnsubscribe = null;
 
 // Programados (view-only) state: the latest scheduled/held set + the selected day (local UI state).
 let schedUnsubscribe = null;
@@ -2957,7 +2991,16 @@ let schedSelectedDay = null;   // selected dayKey (null → default to the first
 function startOrdersSubscription() {
   if (firebaseUnsubscribe) firebaseUnsubscribe();
   if (schedUnsubscribe) schedUnsubscribe();
+  if (cancelAcksUnsubscribe) cancelAcksUnsubscribe();
   window.__readyNudge?.teardown?.();   // teardown before (re)subscribing (restart path)
+  // KDS cancelados cross-device ack: the shared server truth for archived cancelados. Keep it live alongside
+  // the orders sub; a change re-renders so an Archivar/Recuperar on ANY device moves the ticket on ALL devices.
+  cancelAcksUnsubscribe = XPD.subscribeCancelAcks((m) => {
+    cancelAcks = m || {};
+    cancelAcksLoaded = true;                                  // we now hold the AUTHORITATIVE server acks
+    for (const id of Object.keys(cancelAcks)) pendingAcks.delete(id);   // our pending Archivar is confirmed by its own echo
+    renderCurrentTab();                                       // render() reconciles any now-stale local cancel bumps (e.g. another device recalled)
+  });
   // Programados: read-only second onValue on the same /orders ref (reuses the sync; no new network read).
   // Keeps the scheduled set in memory, drives the calendar-glyph accent cue live, and re-renders the
   // screen if it's open. Never writes.
@@ -2990,7 +3033,7 @@ function startOrdersSubscription() {
     // Render the FULL live set — render() splits Open vs Completed by deriveTab (completed = locally
     // bumped OR delivered). checkForNewOrders still fires on the Open pool only.
     render(visibleOrders);
-    checkForNewOrders(visibleOrders.filter(o => deriveTab(o, completedSet) === 'open'));
+    checkForNewOrders(visibleOrders.filter(o => deriveTab(o, completedSet, cancelAcks) === 'open'));
     // Phase-1 Step 2 nudge — fed the canonical RAW ordersById AFTER render; try/caught so a nudge bug
     // can never take down the live KDS render (optional chaining guards absence, try/catch guards throw).
     try { window.__readyNudge?.onOrders(ordersById); } catch (e) { console.warn('nudge onOrders failed', e); }
@@ -3381,6 +3424,7 @@ $signoutBtn.addEventListener('click', async () => {
     firebaseUnsubscribe = null;
   }
   if (schedUnsubscribe) { schedUnsubscribe(); schedUnsubscribe = null; }
+  if (cancelAcksUnsubscribe) { cancelAcksUnsubscribe(); cancelAcksUnsubscribe = null; }
   window.__readyNudge?.teardown?.();   // signout path
   await XPD.signOutUser();
   // onAuth handler will trigger the login screen
@@ -3393,6 +3437,7 @@ XPD.onAuth(async (user) => {
       firebaseUnsubscribe = null;
     }
     if (schedUnsubscribe) { schedUnsubscribe(); schedUnsubscribe = null; }
+  if (cancelAcksUnsubscribe) { cancelAcksUnsubscribe(); cancelAcksUnsubscribe = null; }
     window.__readyNudge?.teardown?.();   // !user auth-state path
     teardownAvailPanel();
     stopKitchenFloorWatch();

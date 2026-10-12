@@ -131,6 +131,17 @@
       }
     },
 
+    "kds_cancel_acks": {
+      ".read": "auth != null && root.child('kitchen').child(auth.uid).exists()",
+      "$order_id": {
+        ".write": "auth != null && root.child('kitchen').child(auth.uid).exists()",
+        ".validate": "newData.hasChild('at')",
+        "at": { ".validate": "newData.isNumber() || newData.isString()" },
+        "by": { ".validate": "newData.isString()" },
+        "$other": { ".validate": false }
+      }
+    },
+
     "driver_cash": {
       "$driver_id": {
         ".read": "auth != null && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists())",

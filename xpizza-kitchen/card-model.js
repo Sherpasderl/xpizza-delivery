@@ -65,10 +65,11 @@ export const isLocalOnlyAction = (action) => actionStatusWrite(action) === null;
 // Cancelado, which stays visible in Open with stop-cooking treatment until acknowledged/archived).
 // NOTE: scheduled/releasing/pending_payment never reach here — filterLiveOrders (order-filter.js) drops
 // them upstream from the SINGLE subscription that feeds BOTH tabs.
-export function deriveTab(o, completedSet) {
+export function deriveTab(o, completedSet, cancelAcks) {
   if (!o) return 'open';
   if (o.estado === KDS_STATUS.ARCHIVADO) return 'completed';
   if (completedSet && completedSet.has(o.id)) return 'completed';
+  if (cancelAcks && cancelAcks[o.id]) return 'completed';   // cross-device cancel-archive ack (durable server truth) — the 2-device fix
   return 'open';
 }
 
@@ -85,10 +86,11 @@ function toMs(v) {
 // created_at: a server terminal time (`o.completed_at` ← delivered_at/ready_at, already on the /orders
 // record — no new read) when present, else the created/released anchor as a best-effort fallback. A future
 // anchor is clamped to `nowMs` (clock-skew guard) so a bad timestamp can't hide a real card. Pure + golden.
-export function completedTabVisible(o, completedSet, nowMs, recentMs, skewToleranceMs = 5 * 60 * 1000) {
+export function completedTabVisible(o, completedSet, cancelAcks, nowMs, recentMs, skewToleranceMs = 5 * 60 * 1000) {
   if (!o) return false;
-  if (deriveTab(o, completedSet) !== 'completed') return false;   // must be a completed card at all
+  if (deriveTab(o, completedSet, cancelAcks) !== 'completed') return false;   // must be a completed card at all
   if (completedSet && completedSet.has(o.id)) return true;        // this session's local bump: always shown
+  if (cancelAcks && cancelAcks[o.id]) return true;               // server cancel-ack = durable truth → always shown (bounded by the live feed)
   let anchor = toMs(o.completed_at) ?? toMs(o.hora) ?? toMs(o.released_at) ?? toMs(o.created_at);
   if (anchor == null || anchor <= 0) return false;
   if (anchor > nowMs + skewToleranceMs) anchor = nowMs;           // future-clamp (skew guard)
