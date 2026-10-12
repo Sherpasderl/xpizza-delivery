@@ -3931,7 +3931,7 @@ function renderCashBar(cash) {
         const c = shift && shift.cuadre;
         if (!c || !Number.isFinite(c.closed_at) || c.closed_at < startMs) continue; // today's closed cuadres only
         const owed = Number(c.cash_owed) || 0;
-        if (c.source === 'escape_hatch' && c.needs_dispatch_review === true) {       // escape-hatch → needs MANUAL reconciliation (stands out); not double-counted
+        if (c.needs_dispatch_review === true) {                                      // Admin-flagged "needs dispatch review" (escape-hatch path, always provisional) — keyed on the FLAG, not the source; DISTINCT from ordinary provisional and NEVER summed as a clean final
           escapeCount++;
         } else if (c.provisional === true) {                                         // PROVISIONAL (legacy-provisional and/or unresolved present)
           provCount++; provTotal += owed;

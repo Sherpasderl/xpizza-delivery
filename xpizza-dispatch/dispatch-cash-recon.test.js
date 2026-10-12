@@ -102,13 +102,19 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
     assert.match(r.html, /Provisional \(1\)/, 'provisional count 1');
     assert.match(r.html, /L 120/, 'provisional total 120');
   }
-  // (d) ESCAPE-HATCH — stands out as "requiere reconciliación manual", NOT double-counted as final/provisional.
+  // (d) NEEDS DISPATCH REVIEW — a cuadre Admin-flagged needs_dispatch_review:true (escape-hatch path, always
+  //     provisional) stands out as "requiere reconciliación manual", keyed on the FLAG (not the source), DISTINCT
+  //     from an ordinary provisional cuadre, and NEVER summed as a clean final. (2f r3.)
   {
-    const r = run({ dA: { s1: C({ cash_owed: 90, provisional: true, source: 'escape_hatch', needs_dispatch_review: true }) } });
-    assert.match(r.html, /cash-escape/, 'escape-hatch line present (accent style)');
-    assert.match(r.html, /Requiere reconciliación manual/, 'escape-hatch label');
-    assert.match(r.html, /Efectivo final \(0\)/, 'escape-hatch not counted as final');
-    assert.doesNotMatch(r.html, /Provisional \(/, 'escape-hatch not double-counted as provisional');
+    const r = run({ dA: { s1: C({ cash_owed: 90, provisional: true, needs_dispatch_review: true, source: 'escape_hatch' }) } });
+    assert.match(r.html, /cash-escape/, 'needs-review line present (accent style)');
+    assert.match(r.html, /Requiere reconciliación manual/, 'needs-review label');
+    assert.match(r.html, /Efectivo final \(0\)/, 'needs-review NOT summed as a clean final');
+    assert.doesNotMatch(r.html, /Provisional \(/, 'needs-review NOT double-counted as an ordinary provisional');
+    // keyed on the FLAG, not the source: needs_dispatch_review:true with NO `source` → still the review bucket.
+    const r2 = run({ dB: { s1: C({ cash_owed: 40, provisional: true, needs_dispatch_review: true }) } });
+    assert.match(r2.html, /Requiere reconciliación manual/, 'review bucket keyed on needs_dispatch_review (no source needed)');
+    assert.doesNotMatch(r2.html, /Provisional \(/, 'a flag-only review record is not counted as ordinary provisional');
   }
   // (e) LEGACY — pre-feature record (NO provisional/metadata): must not crash; shown on its OWN SUBORDINATE
   //     "Heredado" line (dim, cash-legacy) so unverified pre-2.5.0 cash can NEVER read as a verified-final figure,

@@ -2,21 +2,22 @@
  * Authenticated-subscription coverage for the DISPATCH cash bar's /driver_cash read (driver-cuadre slice §8).
  *
  * Run against the Firebase RTDB emulator (from xpizza-functions/):
- *   node tools/emulator-run.js --only database "node test/driver-cash-subscription.emulator.test.js"
+ *   npm run test:driver-cash-subscription
+ *     = node tools/emulator-run.js --only database "node test/driver-cash-subscription.emulator.test.js"
  *
- * Two things, against 2f's REAL /driver_cash rules:
- *   A. GRANT MATRIX — the reads the dispatch cash bar performs are authorized for a dispatcher and DENIED for
- *      everyone else: the parent /driver_cash read (dispatcher only; driver/customer/unauth/customer-token-with-
- *      dispatcher-uid all denied) + the per-driver child read (own driver / dispatcher allowed; other driver /
- *      customer denied). (2f's rules slice owns the full write/validate matrix; this is the READ grants the
- *      dispatch reader depends on.)
- *   B. SUBSCRIPTION WIRE — a value listener with an error callback (exactly what subscribeToDriverCash uses) FIRES
- *      onData for a dispatcher and fires the ERROR callback (not silence) for a denied context. This is why the
- *      cash bar can render an explicit error state instead of a silent L0 when the read is denied.
+ * The UNIQUE dispatch-side concern: the dispatch cash bar subscribes to the /driver_cash PARENT, and must render
+ * an explicit error (never a silent L0) when that read is denied. So this proves:
+ *   A. SMOKE (one parent allow/deny pair) — a dispatcher CAN read the /driver_cash parent; a plain driver CANNOT.
+ *      (2f's driver-cuadre-rules emulator test owns the FULL grant matrix — child reads, customer/unauth/mixed-role
+ *      denials, writes/validates. This keeps only the smoke pair the dispatch reader directly depends on.)
+ *   B. SUBSCRIPTION WIRE — a value listener with an error callback (the exact shape subscribeToDriverCash uses)
+ *      FIRES onData for a dispatcher and fires the ERROR callback (not silence/timeout) for a denied context. That
+ *      error callback is what lets the cash bar render its explicit error state instead of a silent L0.
  *
- * Rules source: prefer the local xpizza-reference/database.rules.json once it carries the /driver_cash parent
- * .read (post-merge); pre-merge, fall back to 2f's commit 3f37c79 (advisor/cuadre-3f37c79) — the authoritative
- * grants for this slice (advisor-directed). Coordinate with xpizza-delivery-2f only if the READ grants move.
+ * RULES SOURCE: ONLY the rules file in THIS tree (xpizza-reference/database.rules.json). This test ships WITH the
+ * driver-cuadre rules (deploy order: rules -> driver-shift fns -> dispatch -> driver app), so it is green only once
+ * integrated with that branch. If the tree's rules lack the /driver_cash parent grant it FAILS LOUDLY — it never
+ * silently tests another commit's rules.
  *
  * Plain-node style (no jest) to match the repo's existing emulator tests.
  */
@@ -24,28 +25,23 @@ require('./_emulator-required')('database');
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const assert = require('assert');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 
-// ── Load 2f's /driver_cash rules (local-preferred, 3f37c79-fallback) ──
+// Read ONLY this tree's rules, so the test always verifies what ships with it. Fail loudly if the /driver_cash
+// parent grant isn't present yet (expected until integrated with the cuadre branch — they deploy together).
 function loadRules() {
-  const localPath = path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json');
-  try {
-    const local = fs.readFileSync(localPath, 'utf8');
-    const dc = JSON.parse(local).rules && JSON.parse(local).rules.driver_cash;
-    if (dc && typeof dc['.read'] === 'string' && dc['.read'].includes('dispatchers')) {
-      console.log('  (rules: local xpizza-reference/database.rules.json — carries the /driver_cash parent .read)');
-      return local;
-    }
-  } catch (_) { /* fall through to 2f's commit */ }
-  console.log('  (rules: git show 3f37c79:xpizza-reference/database.rules.json — 2f advisor/cuadre-3f37c79)');
-  return execSync('git show 3f37c79:xpizza-reference/database.rules.json', { cwd: __dirname, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  const rules = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference', 'database.rules.json'), 'utf8');
+  const dc = (JSON.parse(rules).rules || {}).driver_cash;
+  assert.ok(
+    dc && typeof dc['.read'] === 'string' && dc['.read'].includes('dispatchers'),
+    "xpizza-reference/database.rules.json lacks the /driver_cash parent .read grant — this test ships WITH the " +
+    "driver-cuadre rules (2f's slice) and is green only once integrated with that branch (they deploy together).");
+  return rules;
 }
 
-const DISP = 'disp-uid';        // a dispatcher (seeded into /dispatchers)
-const DRV = 'drv-uid';          // authenticated driver, NOT a dispatcher
-const OTHER = 'other-drv-uid';  // a different driver
-const CUST = 'cust-uid';        // a customer-claim token
+const DISP = 'disp-uid';   // a dispatcher (seeded into /dispatchers)
+const DRV = 'drv-uid';     // authenticated driver, NOT a dispatcher
 
 let n = 0;
 const ok = async (label, pr) => { await assertSucceeds(pr); console.log(`  ✓ ${++n} ${label}`); };
@@ -65,10 +61,8 @@ function subscribeOnce(db, p, timeoutMs = 4000) {
 }
 
 (async () => {
-  const assert = require('assert');
-
-  // Faithfulness guard: the REAL reader uses a value listener on 'driver_cash' WITH an error callback — so the
-  // wire exercised below matches production (not a hand-rolled shape). [test-must-originate-from-real-writer]
+  // Faithfulness guard: the REAL reader uses a value listener on 'driver_cash' WITH an error callback — so the wire
+  // exercised below matches production (not a hand-rolled shape). [test-must-originate-from-real-writer]
   const readerSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-dispatch', 'xpizza-delivery.js'), 'utf8');
   const sub = readerSrc.slice(readerSrc.indexOf('export function subscribeToDriverCash'), readerSrc.indexOf('export function subscribeToScheduledOrders'));
   assert.ok(/ref\(db,\s*'driver_cash'\)/.test(sub), "reader reads 'driver_cash'");
@@ -82,26 +76,15 @@ function subscribeOnce(db, p, timeoutMs = 4000) {
     const db = ctx.database();
     await db.ref('dispatchers/' + DISP).set(true);
     await db.ref(`driver_cash/${DRV}/s1/cuadre`).set({ cash_owed: 100, cash_order_count: 1, closed_at: Date.now(), provisional: false });
-    await db.ref(`driver_cash/${OTHER}/s1/cuadre`).set({ cash_owed: 50, cash_order_count: 1, closed_at: Date.now(), provisional: true });
   });
 
-  const dispDb = env.authenticatedContext(DISP).database();                       // dispatcher
-  const drvDb = env.authenticatedContext(DRV).database();                         // plain driver
-  const custDb = env.authenticatedContext(CUST, { customer: true }).database();   // customer-claim token
-  const dispCustDb = env.authenticatedContext(DISP, { customer: true }).database(); // dispatcher UID but customer token
-  const anonDb = env.unauthenticatedContext().database();                         // unauthenticated
+  const dispDb = env.authenticatedContext(DISP).database();   // dispatcher
+  const drvDb = env.authenticatedContext(DRV).database();     // plain driver (not a dispatcher)
   const get = (db, p) => db.ref(p).get();
 
-  // ── A. GRANT MATRIX ──────────────────────────────────────────────────────────────────────────────
-  await ok('A: DISPATCHER reads the /driver_cash PARENT (the cash bar subscription)', get(dispDb, 'driver_cash'));
+  // ── A. SMOKE — one parent allow/deny pair (2f's rules test owns the full matrix) ──────────────────
+  await ok('A: DISPATCHER reads the /driver_cash PARENT (the cash-bar subscription)', get(dispDb, 'driver_cash'));
   await no('A: a plain driver CANNOT read the /driver_cash parent', get(drvDb, 'driver_cash'));
-  await no('A: a customer-claim token CANNOT read the parent', get(custDb, 'driver_cash'));
-  await no('A: a customer token WITH a dispatcher uid CANNOT read the parent (customer !== true)', get(dispCustDb, 'driver_cash'));
-  await no('A: unauthenticated CANNOT read the parent', get(anonDb, 'driver_cash'));
-  await ok('A: a driver reads their OWN child', get(drvDb, `driver_cash/${DRV}`));
-  await no('A: a driver CANNOT read ANOTHER driver\'s child', get(drvDb, `driver_cash/${OTHER}`));
-  await ok('A: a dispatcher reads any driver\'s child', get(dispDb, `driver_cash/${OTHER}`));
-  await no('A: a customer-claim token CANNOT read a child (absolute customer exclusion)', get(custDb, `driver_cash/${DRV}`));
 
   // ── B. SUBSCRIPTION WIRE — onData for a dispatcher; the ERROR callback for a denied context ────────
   const dispSub = await subscribeOnce(dispDb, 'driver_cash');
