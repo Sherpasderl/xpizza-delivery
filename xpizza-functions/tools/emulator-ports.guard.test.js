@@ -885,7 +885,9 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
      is really required, really invoked, and really validating. The refusal happens before any
      emulator connection, so this needs no emulator and costs milliseconds per suite. */
   {
-    const files = fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.emulator.test.js'));
+    // R3: the contract suites (contract/*.emulator.test.{js,mjs}) are emulator suites too and are driven the same way
+    const files = [...fs.readdirSync(path.join(ROOT, 'test')).filter((f) => f.endsWith('.emulator.test.js')).map((f) => `test/${f}`),
+      ...(fs.existsSync(path.join(ROOT, 'contract')) ? fs.readdirSync(path.join(ROOT, 'contract')).filter((f) => /\.emulator\.test\.m?js$/.test(f)).map((f) => `contract/${f}`) : [])];
     assert.ok(files.length >= 43, `premise — the emulator suites are on disk (${files.length})`);
     /* 🔴 THE PRELOAD GOES IN VIA NODE_OPTIONS, NOT `-r`, BECAUSE `-r` STOPS AT THE PROCESS BOUNDARY.
        A suite that spawns a CHILD node process which connects, then prints its own banner and exits 1,
@@ -907,7 +909,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
          process tree can never be read as another's, and injects the preload through NODE_OPTIONS
          APPENDED to whatever is already there — gate-all puts `--require count-marks.js` in it when it
          runs this file, and clobbering that would silently disable the cell counter for all 49. */
-      const { r, verdict } = runObserved([path.join(ROOT, 'test', f)], hostile);
+      const { r, verdict } = runObserved([path.join(ROOT, f)], hostile);
       if (!refusedAsOneCleanProcess(r, verdict)) {
         accepted.push(`${f} (exit ${r.status}, signal ${r.signal}) — ${verdict.why}`);
       }
@@ -920,7 +922,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     const named = new Set();
     for (const v of Object.values(pkg.scripts || {})) {
       if (!/emulator-run\.js/.test(v)) continue;
-      for (const m of String(v).matchAll(/test\/([A-Za-z0-9._-]+\.js)/g)) named.add(m[1]);
+      for (const m of String(v).matchAll(/((?:test|contract)\/[A-Za-z0-9._-]+\.m?js)/g)) named.add(m[1]);
     }
     const orphans = files.filter((f) => !named.has(f));
     assert.deepStrictEqual(orphans, [],

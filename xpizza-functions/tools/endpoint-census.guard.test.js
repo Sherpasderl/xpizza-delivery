@@ -49,7 +49,7 @@ function discover() {
 
 // ── dispositions ───────────────────────────────────────────────────────────────────────────────────────────────────
 const F = (r) => `xpizza-functions/${r}`;
-const SUITE = /^xpizza-functions\/test\/[^/]+\.emulator\.test\.m?js$/;   // driven by emulator-ports.guard cell "all N emulator suites REFUSE"
+const SUITE = /^xpizza-functions\/(test|contract)\/[^/]+\.emulator\.test\.m?js$/;   // driven by emulator-ports.guard cell "all N emulator suites REFUSE" (contract/ = R3)
 const D = {
   // emulator-only harnesses — strict validator before any client (driven below: no signal / foreign / half-configured)
   [F('test/d4p1-capture-order-control.js')]: 'harness', [F('deploy/emulator-e2e.js')]: 'harness', [F('deploy/config-read-probe.js')]: 'harness',
@@ -96,6 +96,10 @@ const D = {
   'order-control-client.test.mjs': 'unit: injected fetch, no network',
   [F('tools/emulator-endpoint.test.js')]: 'test of this guard family', [F('tools/emulator-ports.guard.test.js')]: 'test of this guard family',
   [F('tools/deploy-env-guard.test.js')]: 'test of this guard family', [F('tools/endpoint-census.guard.test.js')]: 'this file',
+  // R3 contract HARNESS modules — loaded only by contract/*.emulator.test.* suites, which refuse before any client (driven above)
+  [F('contract/scheduler.js')]: 'lib: R3 harness (scheduler) — loaded only by contract suites, after their emulator guard',
+  [F('contract/rtdb-adapter.js')]: 'lib: R3 harness (staff-page Firebase adapter on Admin) — loaded only by contract suites, after their emulator guard',
+  [F('contract/form-router.js')]: 'lib: R3 harness (in-process HTTP to the real handlers on 127.0.0.1) — loaded only by contract suites, after their emulator guard',
   'scripts/backfill-pickup-completion.mjs': 'prod-only root script, RTDB ONLY: no second service to mix; an inherited RTDB host var can only redirect AWAY from production',
 };
 
