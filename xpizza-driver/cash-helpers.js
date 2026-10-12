@@ -46,6 +46,79 @@ export function isCashPayment(pm) {
 // The one warning the driver ever sees when there is no safe amount to collect.
 export const COLLECT_WARN_TEXT = 'Pago no confirmado — consultá a despacho';
 
+// Shown for EVERY blocked clock-out (missing shift identity, a persistently-rejected cuadre, or no server ack):
+// the driver can't self-close, so route them to dispatch, which has an operational exit ("Sacar de turno") and
+// reconciles the cash by hand. Retry stays available wherever a retry control exists (codex core r1 P2-1).
+export const BLOCKED_CLOSE_TEXT = 'No se pudo cerrar el turno. Contactá a despacho para cerrar el turno y reconciliar el efectivo.';
+
+// The approved guidance when a DUAL-ROLE account (a driver who is ALSO a dispatcher) tries to complete a
+// delivery: the stamp rules intentionally reject it (r1 P2-2). Shown ONLY with confirmed dispatcher membership.
+export const DUAL_ROLE_COMPLETE_TEXT = 'Entregá desde una cuenta de repartidor; contactá a despacho.';
+// Neutral guidance for a PERMISSION_DENIED on an ORDINARY driver — the realistic cause is the delivery was
+// reassigned away (or auth lapsed), NOT a dual-role account (codex r2: the dual-role mapping was too broad).
+export const REASSIGNED_COMPLETE_TEXT = 'No se pudo completar la entrega. Puede que el pedido haya sido reasignado — contactá a despacho.';
+
+/**
+ * Map a completeTask failure to a driver-facing message. completeTask's own human Spanish refusals (cancelled /
+ * task-gone) pass through. A rules PERMISSION_DENIED means the stamp write was rejected: the dual-role guidance
+ * applies ONLY when the acting account is CONFIRMED to be a dispatcher (`isDispatcher === true`, from reading
+ * /dispatchers/{uid}); otherwise it is the ordinary reassigned/auth-lapse case → neutral guidance. Anything else
+ * → a generic retry line. `isDispatcher` is fail-safe false (unknown ⇒ neutral, never a wrong account-switch nag).
+ */
+export function completeErrorText(err, isDispatcher) {
+  const s = String((err && (err.message || err.code)) || '');
+  if (/ya no existe|cancelad/i.test(s)) return s.replace(/^Error:\s*/i, '');
+  if (/permission.?denied/i.test(s)) return isDispatcher === true ? DUAL_ROLE_COMPLETE_TEXT : REASSIGNED_COMPLETE_TEXT;
+  return 'No se pudo marcar como entregado — reintentá.';
+}
+
+/** True iff this completeTask failure is a rules PERMISSION_DENIED — the ONLY error whose message depends on the
+ *  acting account's dispatcher role. Every other failure (cancelled / task-gone / generic) is classified by
+ *  completeErrorText alone, so the caller can skip the role read entirely for them. */
+export function isPermissionDenied(err) {
+  return /permission.?denied/i.test(String((err && (err.message || err.code)) || ''));
+}
+
+// How long the role lookup may run before the delivery slider's recovery is allowed to proceed anyway (codex core
+// r3 P1). A dispatcher-role read is advisory copy only — it must NEVER hold the slider's reset hostage.
+export const ROLE_LOOKUP_TIMEOUT_MS = 2000;
+
+/**
+ * Resolve the driver-facing message for a FAILED completion, bounding the one read it may need (codex core r3).
+ *
+ * The dual-role vs. neutral distinction needs the acting account's /dispatchers membership, but that read must
+ * never freeze the slider: so this
+ *   - skips the read for any NON-permission-denied error (cancelled / task-gone / generic) — they don't use the role;
+ *   - skips the read when the session changed mid-completion (`currentUid !== actingUid`) — the role evidence would
+ *     belong to a DIFFERENT account than the one whose completion failed (r3 P2) → neutral;
+ *   - otherwise races `lookupDispatcher(actingUid)` against a `timeoutMs` deadline; a timeout, a throw, or anything
+ *     not strictly `true` ⇒ neutral (fail-safe false).
+ * It always settles within `timeoutMs`, so the caller's catch can always reset the slider.
+ *
+ * @param {*} err                      the completeTask rejection
+ * @param {string} actingUid           uid captured BEFORE completion started
+ * @param {string} currentUid          uid of the session AT catch time
+ * @param {(uid:string)=>Promise<boolean>} lookupDispatcher  reads /dispatchers/{uid}
+ * @param {number} [timeoutMs]         lookup deadline (default ROLE_LOOKUP_TIMEOUT_MS)
+ * @returns {Promise<string>}
+ */
+export async function resolveCompleteErrorMessage(err, actingUid, currentUid, lookupDispatcher, timeoutMs) {
+  if (!isPermissionDenied(err)) return completeErrorText(err, false);
+  // A session switch mid-completion → the role we'd read is the new account's, not the one that failed. Neutral.
+  if (!actingUid || !currentUid || currentUid !== actingUid) return completeErrorText(err, false);
+  const ms = typeof timeoutMs === 'number' ? timeoutMs : ROLE_LOOKUP_TIMEOUT_MS;
+  let dispatcher = false;
+  try {
+    dispatcher = await Promise.race([
+      Promise.resolve(typeof lookupDispatcher === 'function' ? lookupDispatcher(actingUid) : false),
+      new Promise((resolve) => setTimeout(() => resolve(false), ms)),
+    ]);
+  } catch (_) {
+    dispatcher = false;
+  }
+  return completeErrorText(err, dispatcher === true);
+}
+
 /**
  * THE single source of truth for "what, if anything, does the driver collect for this order?".
  * Pure; keyed only on server-written truth (functions ALLOWED_PAYMENT_METHODS = cash|card_delivery|online,
@@ -124,30 +197,101 @@ export function queuePayHtml(order, esc) {
 }
 
 /**
- * Shift cash + delivery totals from the RTDB task/order maps. Counts only the driver's own delivery tasks
- * that completed at/after `sinceMs`. Derives every money figure from collectionFor so it can never disagree
- * with what the driver was shown per-order:
- *   totalCollected — Σ order.total the driver actually collects at the door (cash + card_delivery). Online-paid
- *                    and free are NOT "collected" (fixes the cuadre mislabel); paid-online is reported separately.
- *   cashOwed       — Σ order.total for cash / legacy efectivo (byte-identical to before: the cash to hand in).
- *   paidOnlineTotal/paidOnlineCount — already-paid online orders, surfaced as a distinct line, never as collected.
- * Returns { deliveries, totalCollected, cashOwed, cashOrderCount, paidOnlineTotal, paidOnlineCount }.
+ * A shift's deliveries for `uid`, from the DURABLE order attribution — NOT the live /tasks subscription.
+ * Since 97fe1dd the server deletes both task legs the instant an order goes delivered/completed, so the old
+ * task-iterating source read empty. The money-grade source is the identity captured IN the completion batch:
+ * `orders/<id>/delivered_by_driver_uid` (rules: assigned driver, self, once, on the delivered transition), with
+ * the async `delivered_by_uid` as a BOUNDED legacy fallback (only for orders delivered before the cutover).
+ *
+ * Classifies each order delivered at/after `sinceMs` into, for THIS driver:
+ *   resolved          — delivered_by_driver_uid === uid (money-grade).
+ *   legacyProvisional — no primary stamp, delivered BEFORE the cutover, delivered_by_uid === uid (provisional evidence).
+ *   pending           — no primary stamp, delivered AFTER the cutover, delivered_by_uid === uid (UNRESOLVED; never counted).
+ * `cutoverMs == null` means "confirmed-absent" → pre-cutover mode (everything legacy is provisional, nothing pending).
+ * An order with NEITHER identity (delivered by nobody-we-can-name) is in no driver's list. A later-cancelled order
+ * keeps its delivered_at and so stays in scope (the driver physically collected the cash; refunds are office-side).
  */
-export function computeShiftCash(allTasks, allOrders, uid, sinceMs) {
+export function shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs) {
+  const resolved = [], legacyProvisional = [], pending = [];
+  for (const id in (ordersMap || {})) {
+    const o = ordersMap[id];
+    const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;
+    if (at == null || at < sinceMs) continue;
+    const stamp = o.delivered_by_driver_uid, legacy = o.delivered_by_uid;
+    if (stamp === uid) { resolved.push({ orderId: id, order: o, at }); continue; }   // money-grade
+    if (stamp != null) continue;                                                     // authoritatively someone else
+    const preCutover = (cutoverMs == null) || (at < cutoverMs);
+    if (preCutover) { if (legacy === uid) legacyProvisional.push({ orderId: id, order: o, at }); }
+    else { if (legacy === uid) pending.push(id); }                                   // post-cutover, no stamp ⇒ unresolved
+  }
+  return { resolved, legacyProvisional, pending };
+}
+
+/**
+ * Shift cash + delivery totals from the driver's attributed orders (via shiftDeliveries). Every money figure
+ * is derived from collectionFor so the cuadre can never disagree with what the driver was shown per-order:
+ *   totalCollected — Σ order.total the driver actually collects at the door (cash + card_delivery).
+ *   cashOwed       — Σ order.total for cash / legacy efectivo (the cash to hand in).
+ *   paidOnlineTotal/paidOnlineCount — already-paid online orders, reported separately, never collected.
+ * Cash counts resolved + legacyProvisional. `provisional` is true when any evidence is non-money-grade (legacy or
+ * unresolved) — the cuadre must then be persisted + shown as provisional, never as an ordinary final number.
+ * Returns the figures plus { provisional, legacy_provisional_count/ids, unresolved_count/ids }.
+ */
+export function computeShiftCash(ordersMap, uid, sinceMs, cutoverMs) {
+  const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);
   let deliveries = 0, totalCollected = 0, cashOwed = 0, cashOrderCount = 0, paidOnlineTotal = 0, paidOnlineCount = 0;
-  const tasks = allTasks || {};
-  const orders = allOrders || {};
-  for (const id of Object.keys(tasks)) {
-    const t = tasks[id];
-    if (!t || t.type !== 'delivery' || t.assigned_driver_id !== uid) continue;
-    if (t.status !== 'completed' || !t.completed_at || t.completed_at < sinceMs) continue;
+  for (const { order } of resolved.concat(legacyProvisional)) {
     deliveries++;
-    const o = orders[t.order_id];
-    const total = o && typeof o.total === 'number' ? o.total : 0;
-    const c = collectionFor(o || {});
+    const total = typeof order.total === 'number' ? order.total : 0;
+    const c = collectionFor(order);
     if (c.collect) totalCollected += total;                 // cash + card_delivery actually collected at the door
     if (c.owed) { cashOwed += total; cashOrderCount++; }    // cash to hand to the office (isCashPayment && !free_order)
     if (c.kind === 'paid_online') { paidOnlineTotal += total; paidOnlineCount++; }  // already paid — reported, never collected
   }
-  return { deliveries, totalCollected, cashOwed, cashOrderCount, paidOnlineTotal, paidOnlineCount };
+  return {
+    deliveries, totalCollected, cashOwed, cashOrderCount, paidOnlineTotal, paidOnlineCount,
+    provisional: legacyProvisional.length > 0 || pending.length > 0,
+    legacy_provisional_count: legacyProvisional.length,
+    legacy_provisional_ids: legacyProvisional.map((d) => d.orderId),
+    unresolved_count: pending.length,
+    unresolved_ids: pending.slice(),
+  };
+}
+
+/**
+ * Shift identity is MANDATORY to record a cuadre. A missing driver/shift id used to make recordCuadre
+ * silently resolve WITHOUT writing — a web cuadre no-op'd yet looked finalized (part of the L0 money loss).
+ * Returns a human message (Spanish, driver-facing) when an id is missing, else null. recordCuadre throws on
+ * a non-null result; pure + node-tested so the invariant can't silently regress. See [[shiftDeliveries]].
+ */
+export function shiftIdentityError(driverId, shiftId) {
+  if (!driverId) return 'No se pudo identificar al repartidor — reintentá el cierre.';
+  if (!shiftId) return 'No se pudo identificar el turno — reintentá el cierre.';
+  return null;
+}
+
+/**
+ * The EXACT field map written to driver_cash/<uid>/<shift>/cuadre (minus closed_at, which must be the
+ * server timestamp supplied by the Firebase wrapper). Takes a computeShiftCash result directly and maps its
+ * camelCase figures (cashOwed/cashOrderCount) onto the STORED snake_case schema (cash_owed/cash_order_count)
+ * the dispatch reader already consumes. RTDB update() does NOT clear omitted fields, so a clean
+ * (non-provisional) cuadre MUST explicitly carry the reset values — else a provisional figure from an earlier
+ * attempt on the same shift lingers. Empty id lists are written as null (RTDB drops empty arrays, and null
+ * positively clears any prior value). Pure so the reset discipline is node-tested.
+ */
+export function cuadreRecordPayload(cuadre) {
+  const c = cuadre || {};
+  const num = (v) => (typeof v === 'number' ? v : 0);
+  const lp = Array.isArray(c.legacy_provisional_ids) ? c.legacy_provisional_ids : [];
+  const un = Array.isArray(c.unresolved_ids) ? c.unresolved_ids : [];
+  return {
+    cash_owed: num(c.cashOwed != null ? c.cashOwed : c.cash_owed),              // computeShiftCash → stored schema
+    cash_order_count: num(c.cashOrderCount != null ? c.cashOrderCount : c.cash_order_count),
+    provisional: !!c.provisional,
+    legacy_provisional_count: num(c.legacy_provisional_count),
+    legacy_provisional_ids: lp.length ? lp.slice() : null,
+    unresolved_count: num(c.unresolved_count),
+    unresolved_ids: un.length ? un.slice() : null,
+    close_op_id: c.close_op_id != null ? c.close_op_id : null,
+  };
 }

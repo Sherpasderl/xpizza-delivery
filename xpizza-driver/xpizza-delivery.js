@@ -33,8 +33,12 @@ import {
   serverTimestamp,
   off
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js';
 import { stackedTasksToAccept } from './stacking-helpers.js';
 import { getIngestToken } from './native-location.js';   // add-only: per-shift token for the diag sink
+import { shiftIdentityError, cuadreRecordPayload } from './cash-helpers.js';   // pure cuadre id-guard + write payload (reset discipline)
+
+const FUNCTIONS_REGION = 'us-central1';   // matches native-location.js — the callables live in us-central1
 
 // ============================================================
 // CONSTANTS
@@ -48,39 +52,10 @@ export const RESTAURANT = {
   phone: '+50497952893'
 };
 
-export const DRIVER_STATUS = {
-  OFF_SHIFT: 'off_shift',
-  AVAILABLE: 'available',
-  ASSIGNED: 'assigned',
-  AT_RESTAURANT: 'at_restaurant',
-  EN_ROUTE_DELIVERY: 'en_route_delivery',
-  RETURNING: 'returning',
-  ON_BREAK: 'on_break'
-};
-
-export const TASK_STATUS = {
-  PENDING: 'pending',
-  ASSIGNED: 'assigned',
-  ACCEPTED: 'accepted',
-  IN_PROGRESS: 'in_progress',
-  COMPLETED: 'completed',
-  CANCELLED: 'cancelled'
-};
-
-export const TASK_TYPE = {
-  PICKUP: 'pickup',
-  DELIVERY: 'delivery'
-};
-
-export const ORDER_STATUS = {
-  PENDING_PAYMENT: 'pending_payment',   // online order awaiting payment — NOT operationally live
-  NEW: 'new',
-  PREPARING: 'preparing',
-  READY: 'ready',
-  OUT_FOR_DELIVERY: 'out_for_delivery',
-  DELIVERED: 'delivered',
-  CANCELLED: 'cancelled'
-};
+// Delivery/task/driver enums + the completeTask writer live in a PURE module (no remote imports) so the
+// money-grade writer can be unit- and emulator-tested directly. Imported here and re-exported for API stability.
+import { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS, buildCompleteTaskUpdates } from './driver-complete.js';
+export { DRIVER_STATUS, TASK_STATUS, TASK_TYPE, ORDER_STATUS };
 
 // Payment axis (online orders) — orthogonal to order.status; never cross-tested.
 export const PAYMENT_STATUS = {
@@ -256,6 +231,40 @@ export async function isKitchen(uid) {
 // DRIVER OPERATIONS
 // ============================================================
 
+/**
+ * Subscribe to the owner-set money-grade cutover (config/driver_identity_cutover, ms). Driver-readable
+ * (config .read = non-customer auth). The callback receives the numeric ms value, or null when the key is
+ * absent (confirmed-absent ⇒ pre-cutover provisional mode). Used to classify legacy vs unresolved deliveries.
+ */
+export function subscribeToIdentityCutover(callback) {
+  return onValue(ref(db, 'config/driver_identity_cutover'), (snap) => {
+    const v = snap.val();
+    callback(typeof v === 'number' ? v : null);
+  });
+}
+
+/**
+ * Telemetry: record the running app version on the driver's profile so the owner can verify ≥2.5.0 adoption
+ * before setting the cutover. Written AFTER ensureDriverProfile (the owner grant needs the profile's name
+ * first). Best-effort — a failure here must never block sign-in.
+ */
+export async function setDriverAppVersion(uid, version) {
+  if (!uid || !version) return;
+  try { await update(ref(db, `drivers/${uid}`), { app_version: version }); }
+  catch (e) { console.warn('setDriverAppVersion failed (non-fatal)', e); }
+}
+
+/**
+ * Is the acting account a dispatcher? Reads /dispatchers/{uid} (a driver may read it for itself under the rules).
+ * Used only on a completeTask PERMISSION_DENIED to tell a dual-role account apart from an ordinary reassigned
+ * driver (codex r2). FAIL-SAFE: any read error → false, so an ordinary driver never gets the account-switch nag.
+ */
+export async function isActingDispatcher(uid) {
+  if (!uid) return false;
+  try { return (await get(ref(db, `dispatchers/${uid}`))).exists(); }
+  catch (e) { return false; }
+}
+
 export async function ensureDriverProfile(uid, name, phone) {
   // Create profile if missing; idempotent
   const driverRef = ref(db, `drivers/${uid}`);
@@ -275,34 +284,47 @@ export async function ensureDriverProfile(uid, name, phone) {
   }
 }
 
+/**
+ * Web/PWA clock-in. Routes through the SAME server callable the native path uses (startDriverShift, with
+ * platform 'pwa') instead of a bare RTDB write, so a web shift gets a server-minted `current_shift_id` —
+ * without it the clock-out cuadre had no shift to write under and silently no-op'd (part of the L0 loss).
+ * The callable also sets location_source:'pwa' and clears the hub snapshot (parity with native); it mints
+ * NO ingest token for web callers. Returns the fresh shift_id (also lands in RTDB → picked up by the
+ * drivers subscription). Throws on a failed server clock-in so the caller reverts the optimistic on-shift.
+ */
 export async function startShift(driverId) {
-  await update(ref(db, `drivers/${driverId}`), {
-    active: true,
-    status: DRIVER_STATUS.AVAILABLE,
-    shift_started_at: serverTimestamp(),
-    last_ping: serverTimestamp(),
-    current_task_id: null
-  });
+  const call = httpsCallable(getFunctions(app, FUNCTIONS_REGION), 'startDriverShift');
+  const res = await call({ platform: 'pwa' });
+  return (res && res.data && res.data.shift_id) || null;
 }
 
+/**
+ * Web/PWA clock-out. Routes through the EXISTING, unmodified endDriverShift callable (parity with native) so the
+ * shift id, hub snapshot and ingest token are cleared server-side — the prior bare RTDB web write left
+ * current_shift_id/hub set after a web shift ended. The callable returns { ok: true } (or throws); throwing
+ * reverts the optimistic off-shift in finalizeEndShift. (The emergency escape close is a separate future slice.)
+ */
 export async function endShift(driverId) {
-  await update(ref(db, `drivers/${driverId}`), {
-    active: false,
-    status: DRIVER_STATUS.OFF_SHIFT,
-    shift_ended_at: serverTimestamp()
-  });
+  const res = await httpsCallable(getFunctions(app, FUNCTIONS_REGION), 'endDriverShift')({});
+  return (res && res.data) || {};
 }
 
 /**
  * Record the clock-out cash cuadre (the driver↔office handoff artifact).
- * cash_owed = Σ order.total for efectivo deliveries this shift (server-truth, no
- * driver-entered figure). Path: /driver_cash/{uid}/{shift_id}/cuadre.
+ * cash_owed = Σ order.total for cash deliveries this shift, derived by computeShiftCash from the DURABLE
+ * order attribution (server-truth, no driver-entered figure). Path: /driver_cash/{uid}/{shift_id}/cuadre.
+ *
+ * REJECTS (throws) on a missing driver/shift id — the previous silent `return` made a web cuadre no-op yet
+ * look finalized, the root of the all-L0 loss. The confirm handler surfaces the rejection and keeps the
+ * driver on shift. Writes the full provisional metadata with EXPLICIT resets (cuadreRecordPayload) so a
+ * clean cuadre positively clears any provisional fields left by an earlier attempt on the same shift.
+ * Returns the acked write promise — callers MUST await it; only a server ack may finalize clock-out.
  */
-export async function recordCuadre(driverId, shiftId, { cash_owed, cash_order_count }) {
-  if (!driverId || !shiftId) return;
+export async function recordCuadre(driverId, shiftId, cuadre) {
+  const idError = shiftIdentityError(driverId, shiftId);
+  if (idError) throw new Error(idError);
   await update(ref(db, `driver_cash/${driverId}/${shiftId}/cuadre`), {
-    cash_owed,
-    cash_order_count,
+    ...cuadreRecordPayload(cuadre),
     closed_at: serverTimestamp()
   });
 }
@@ -534,66 +556,21 @@ export async function markTaskInProgress(driverId, taskId) {
 }
 
 /**
- * Complete a task. For DELIVERY tasks: marks order delivered, transitions
- * driver state. With stacking support: if the driver has another delivery
- * task in 'accepted' state queued behind this one, they keep delivering
- * (current_task_id stays pointing at the next delivery, status stays
- * en_route_delivery). Only when ALL deliveries are done does the driver
- * transition to 'returning'.
+ * Complete a task. For DELIVERY tasks: marks order delivered, transitions driver state (see
+ * buildCompleteTaskUpdates). With stacking support: if the driver has another delivery task in 'accepted'
+ * state queued behind this one, they keep delivering; only when ALL deliveries are done do they return.
  */
 export async function completeTask(driverId, taskId) {
   const taskSnap = await get(ref(db, `tasks/${taskId}`));
   const task = taskSnap.val();
   if (!task) throw new Error('Esta tarea ya no existe');
-  // Refuse if cancelled — without this guard, swiping "¡Entregado!" on a
-  // cancelled delivery would resurrect the cancellation by setting the
-  // order to DELIVERED. Same bug class as acceptTask + pickupComplete.
-  if (task.status === TASK_STATUS.CANCELLED) {
-    throw new Error('Este pedido fue cancelado');
+  if (task.status === TASK_STATUS.CANCELLED) throw new Error('Este pedido fue cancelado');
+  // Only a delivery needs the stacking scan over /tasks.
+  let allTasks = {};
+  if (task.type === TASK_TYPE.DELIVERY) {
+    allTasks = (await get(ref(db, 'tasks'))).val() || {};
   }
-
-  const updates = {};
-  updates[`tasks/${taskId}/status`] = TASK_STATUS.COMPLETED;
-  updates[`tasks/${taskId}/completed_at`] = serverTimestamp();
-
-  if (task && task.type === TASK_TYPE.DELIVERY) {
-    if (task.order_id) {
-      updates[`orders/${task.order_id}/status`] = ORDER_STATUS.DELIVERED;
-      updates[`orders/${task.order_id}/delivered_at`] = serverTimestamp();
-    }
-
-    // Look for the next queued delivery for this driver — a delivery task
-    // that's already 'accepted' (stacked) but not completed/cancelled.
-    const allTasksSnap = await get(ref(db, 'tasks'));
-    const allTasks = allTasksSnap.val() || {};
-    let nextDeliveryId = null;
-    let earliestCreated = Infinity;
-    for (const [tid, t] of Object.entries(allTasks)) {
-      if (tid === taskId) continue;
-      if (!t || t.assigned_driver_id !== driverId) continue;
-      if (t.type !== TASK_TYPE.DELIVERY) continue;
-      if (t.status !== TASK_STATUS.ACCEPTED && t.status !== TASK_STATUS.IN_PROGRESS) continue;
-      const created = t.created_at || 0;
-      if (created < earliestCreated) {
-        earliestCreated = created;
-        nextDeliveryId = tid;
-      }
-    }
-
-    if (nextDeliveryId) {
-      // Stacked: promote next delivery to current, keep en_route_delivery state
-      updates[`drivers/${driverId}/current_task_id`] = nextDeliveryId;
-      // status stays en_route_delivery — driver still has pizza to deliver
-    } else {
-      // No stacked deliveries — driver returns to restaurant
-      updates[`drivers/${driverId}/current_task_id`] = null;
-      updates[`drivers/${driverId}/status`] = DRIVER_STATUS.RETURNING;
-    }
-  }
-  // Note: pickup completion is normally handled by pickupComplete() which
-  // also accepts the linked delivery task. Direct completeTask on a pickup
-  // is unusual but supported — just clears the pickup status without touching driver.
-
+  const updates = buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now: serverTimestamp() });
   await update(ref(db), updates);
 }
 
