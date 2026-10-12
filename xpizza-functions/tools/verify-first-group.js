@@ -7,19 +7,19 @@
 //
 // Reads the LIVE active catalog, public menu and KDS manifest through production's own readers
 // (tools/verify-first-group-core.js) and prints every check. Exit 0 = all pass, 1 = any fails, 2 = bad arguments.
-// 🔴 WRITES NOTHING: the Firestore and RTDB handles are wrapped so every write method throws.
+// 🔴 WRITES NOTHING: the production readers receive a restricted READ-ONLY adapter (read operations only, no writable handle).
 // --project must be the explicit FLAG (an inherited GOOGLE_CLOUD_PROJECT is refused), checked before any client exists.
 const fs = require('fs');
 const admin = require('firebase-admin');
 const { requireProject } = require('./require-project');
 const PROJECT_ID = requireProject({ requireFlag: true });
 const { RTDB_URL } = require('../catalog/mirror-rtdb');
-const { verifyFirstGroup, validateSpec } = require('./verify-first-group-core');
+const { verifyFirstGroup, validateSpec, validRid } = require('./verify-first-group-core');
 
 const argOf = (name) => { const i = process.argv.indexOf(name); return i > -1 ? process.argv[i + 1] : undefined; };
 const rid = argOf('--rid'); const specPath = argOf('--spec');
 const usage = (why) => { console.error(`verify-first-group: ${why}\nusage: verify-first-group.js --project <id> --rid <rid> --spec <file.json>`); process.exit(2); };
-if (!rid || !/^[a-z0-9_]{1,40}$/.test(rid)) usage('a valid --rid is required');
+if (!validRid(rid)) usage('a valid --rid is required (production\'s restaurant-id shape)');
 if (!specPath) usage('--spec <file.json> is required');
 let spec;
 try { spec = JSON.parse(fs.readFileSync(specPath, 'utf8')); } catch (e) { usage(`cannot read the spec: ${e.message}`); }

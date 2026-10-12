@@ -25,7 +25,7 @@ const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
 const { catalogSnapshot } = require('../catalog/generate-form-bundle');
 const { backfillIdentities } = require('../catalog/identity-backfill');
 const { groupCapabilities } = require('../catalog/platform-groups');
-const { verifyFirstGroup, readOnly } = require('../tools/verify-first-group-core');
+const { verifyFirstGroup } = require('../tools/verify-first-group-core');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
@@ -106,17 +106,24 @@ async function expectFail(rid, sp, pattern, why) {
   assert.strictEqual(pb.status, 200, `publish: ${JSON.stringify(pb.body).slice(0, 300)}`);
 
   // ── 1. positive, both brands, and ZERO writes ──
-  const snapshot = async () => JSON.stringify({ rtdb: (await rtdb.ref().get()).val(),
-    fs: await Promise.all(['x_pizza', 'la_musa'].map(async (r) => [(await getActivePointer(db, r)), (await db.collection('restaurants').doc(r).collection('versions').get()).size])) });
+  // codex r1 P1-1: EVERYTHING — every Firestore document at every depth (path, data, update time) and the whole RTDB tree
+  const allDocs = async () => {
+    const out = [];
+    const walkCol = async (col) => { for (const d of await col.listDocuments()) { const sn = await d.get(); out.push([d.path, sn.exists ? sn.data() : null, sn.exists ? String(sn.updateTime.toMillis()) + ':' + sn.updateTime.nanoseconds : null]); for (const sub of await d.listCollections()) await walkCol(sub); } };
+    for (const c of await db.listCollections()) await walkCol(c);
+    return out.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  };
+  const snapshot = async () => JSON.stringify({ rtdb: (await rtdb.ref().get()).val(), fs: await allDocs() });
   const before = await snapshot();
   const x = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY });
   assert.ok(x.ok, `🔴 the owner's NY Plain Slice verifies (failing: ${JSON.stringify(failed(x))})`);
   assert.ok(x.checks.length >= 25 && ['catalog', 'public', 'kds'].every((s) => x.checks.some((c) => c.surface === s)), 'premise: all three surfaces were checked');
   const lm = await verifyFirstGroup({ fs: db, rtdb, rid: 'la_musa', spec: spec('la_musa.pad-thai.json') });
   assert.ok(lm.ok, `🔴 La Musa's published Pad Thai verifies against ITS spec (failing: ${JSON.stringify(failed(lm))})`);
-  assert.strictEqual(await snapshot(), before, '🔴 a verification run writes NOTHING (RTDB + the active pointers + version counts byte-identical)');
-  assert.throws(() => readOnly(rtdb).ref('x').set(1), /read-only/); assert.throws(() => readOnly(db).collection('a').doc('b').set({}), /read-only/);
-  ok(`positive: x_pizza's NY Plain Slice (${x.checks.length} checks: catalog, public menu, KDS) and La Musa's Pad Thai (its own spec) — brand-agnostic; a run writes nothing; every write path throws`);
+  const after = await snapshot();
+  assert.ok(JSON.parse(after).fs.length > 50, 'premise: the snapshot really covers the documents (registry, pointers, versions, items, identity…)');
+  assert.strictEqual(after, before, '🔴 a verification run writes NOTHING (EVERY Firestore document — data + update time — and the whole RTDB tree byte-identical)');
+  ok(`positive: x_pizza's NY Plain Slice (${x.checks.length} checks: catalog, public menu incl. served dishes, KDS, pointer unchanged) and La Musa's Pad Thai (its own spec) — brand-agnostic; a run writes NOTHING anywhere (every Firestore doc + RTDB)`);
 
   // ── 2. negative cells: each FAILS on the check it is about ──
   { const s = clone(NY); s.choices[1].price = 650; await expectFail('x_pizza', s, /Salsa Vodka: price L 650/, 'a wrong choice price'); }
@@ -136,12 +143,28 @@ async function expectFail(rid, sp, pattern, why) {
     const r = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY, _buildPublicMenu: tamper(fn) });
     assert.ok(!r.ok && failed(r).some((f) => re.test(f)) && failed(r).every((f) => f.startsWith('[public]')), `🔴 ${why} that disagrees fails ONLY the public check (got ${JSON.stringify(failed(r))})`);
   }
+  // codex r1 P1-2: the served DISHES — removed, a served price, a served tag, an extra served choice — each fails the public checks
+  const tamperDishes = (fn) => async (...a) => { const pm = await buildPublicMenu(...a); const b = JSON.parse(JSON.stringify(pm.body)); b.dishes = fn(b.dishes); return { ...pm, body: b }; };
+  const isUnit = (x) => x.name === NY.launcher.name || String(x.variantOf) === lid;
+  for (const [fn, re, why] of [
+    [(ds) => ds.filter((x) => !isUnit(x)), /\[public\] the served product/, 'the group\'s dishes removed from the served menu'],
+    [(ds) => ds.map((x) => (x.name === `${NY.launcher.name} - Salsa Vodka` ? { ...x, price: 999 } : x)), /\[public\] served Salsa Vodka/, 'a served choice at 999'],
+    [(ds) => ds.map((x) => (x.name === `${NY.launcher.name} - Salsa Roja` ? { ...x, tags: ['recommended'] } : x)), /\[public\] served Salsa Roja/, 'a wrong served tag'],
+    [(ds) => [...ds, { ...ds.find((x) => x.name === `${NY.launcher.name} - Combinada`), id: 9999, name: `${NY.launcher.name} - Extra`, choice: 'Extra' }], /\[public\] the served menu has no other choice/, 'an extra served choice'],
+  ]) {
+    const r = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY, _buildPublicMenu: tamperDishes(fn) });
+    assert.ok(!r.ok && failed(r).some((f) => re.test(f)) && failed(r).every((f) => f.startsWith('[public]')), `🔴 ${why}: fails the public check (got ${JSON.stringify(failed(r))})`);
+  }
+  // codex r1 P1-3: a served menu from ANOTHER version (its seq) fails provenance
+  { const r = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY, _buildPublicMenu: async (...a) => ({ ...(await buildPublicMenu(...a)), seq: -1 }) });
+    assert.ok(!r.ok && failed(r).some((f) => /served menu is the captured active version/.test(f)), `🔴 a served menu of another version fails (got ${JSON.stringify(failed(r))})`); }
   // a catalog whose choice price and display price disagree (the validators never publish one) fails that choice's price check
   {
     const tampered = async (...a) => { const p = await previewVersion(...a); const items = p.items.map((i) => (i.display && i.display.name === `${NY.launcher.name} - Salsa Vodka` ? { ...i, display: { ...i.display, price: 999 } } : i)); return { ...p, items }; };
     const r = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY, _previewVersion: tampered });
     assert.ok(!r.ok && failed(r).some((f) => /Salsa Vodka: price L 624/.test(f)), `🔴 a display price that disagrees with the charged price fails (got ${JSON.stringify(failed(r))})`);
   }
+  ok('codex r1 P1-2/P1-3: served dishes removed / a served price / a served tag / an extra served choice, and a served menu of another version — each fails the public checks');
   ok('negative: wrong choice price, wrong product price, extra tag, missing tag, wrong order, wrong label, wrong extras policy, absent product — each FAILS on its own check; a SERVED menu that disagrees (label / "desde" / order) fails the public checks alone');
 
   // ── 3. the KDS manifest: the shipped shape is exactly whole-dish row + one row per choice, in order ──
@@ -155,13 +178,16 @@ async function expectFail(rid, sp, pattern, why) {
   await expectFail('x_pizza', NY, /whole-dish row \+ one row per choice/, 'a choice row is missing'); await restore();
   await rtdb.ref('menus/x_pizza').set([...rows, { key: 'NY Plain Slice - Extra', label: 'NY Plain Slice - Extra', category: 'ny' }]);
   await expectFail('x_pizza', NY, /whole-dish row \+ one row per choice/, 'a stray row for the product'); await restore();
+  // codex r1 P2-4: a stray row labelled EXACTLY the product, under another key
+  await rtdb.ref('menus/x_pizza').set([...rows, { key: 'ny_plain_slice_dup', label: NY.launcher.name, category: 'ny' }]);
+  await expectFail('x_pizza', NY, /whole-dish row \+ one row per choice/, 'a stray row labelled exactly the product'); await restore();
   { const sw = rows.slice(); const [a, b] = [unitIdx[1], unitIdx[2]]; [sw[a], sw[b]] = [sw[b], sw[a]]; await rtdb.ref('menus/x_pizza').set(sw); }
   await expectFail('x_pizza', NY, /whole-dish row \+ one row per choice/, 'the rows out of order'); await restore();
   const meta = (await rtdb.ref('menus/_meta/x_pizza').get()).val();
   await rtdb.ref('menus/_meta/x_pizza/version_id').set('v-stale');
-  await expectFail('x_pizza', NY, /manifest belongs to the ACTIVE version/, 'a manifest of another version'); await rtdb.ref('menus/_meta/x_pizza').set(meta);
+  await expectFail('x_pizza', NY, /manifest belongs to the captured active version/, 'a manifest of another version'); await rtdb.ref('menus/_meta/x_pizza').set(meta);
   assert.ok((await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY })).ok, 'restored → passes again');
-  ok('KDS: the whole-dish row missing, a choice row missing, a stray row, rows out of order, a manifest of another version — each FAILS; restored → passes');
+  ok('KDS: the whole-dish row missing, a choice row missing, a stray row, a stray row labelled EXACTLY the product (another key), rows out of order, a manifest of another version — each FAILS; restored → passes');
 
   // ── 5. a SECOND group on the same brand (the owner's 12" Plain Slice): same label "Salsa", the same three choice names,
   //       a different section — authored + published by the REAL editor/handlers; BOTH verify, and production's group index
@@ -197,6 +223,29 @@ async function expectFail(rid, sp, pattern, why) {
     assert.strictEqual(labels, 2, 'two groups may share the label "Salsa"');
   }
   ok('a SECOND group on the same brand (12" Plain Slice: same label, same 3 choice names, another section): saved + published by the real handlers; BOTH specs verify; the group index maps each "{product} - {choice}" to its own product');
+
+  // ── codex r1 P1-3: a publish RACING the run (between the reads and the final pointer re-read) → "catalog changed" ──
+  {
+    const race = async () => {
+      const dr = E.createDraft(await draft('x_pizza'));
+      const any = E.draftSource(dr).items.find((i) => i.key && !i.display.variantOf && i.display.name !== NY.launcher.name && i.display.name !== 'Plain Slice' && Number.isInteger(i.price));
+      E.setItemPrice(dr, any.key, String(any.price + 1));
+      const s3 = await save('x_pizza', E.draftSource(dr)); assert.strictEqual(s3.status, 200, `race save ${JSON.stringify(s3.body).slice(0, 200)}`);
+      const p3 = await publish('x_pizza', s3); assert.strictEqual(p3.status, 200, `race publish ${JSON.stringify(p3.body).slice(0, 200)}`);
+    };
+    const r = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY, _onRead: race });
+    assert.ok(!r.ok && failed(r).some((f) => /catalog changed during verification, re-run/.test(f)), `🔴 a publish during the run fails with "re-run" (got ${JSON.stringify(failed(r))})`);
+    const again = await verifyFirstGroup({ fs: db, rtdb, rid: 'x_pizza', spec: NY });
+    assert.ok(again.ok, `re-run after the publish settles → passes (${JSON.stringify(failed(again))})`);
+  }
+  ok('codex r1 P1-3: a real publish racing the run → FAILS "catalog changed during verification, re-run"; the re-run passes');
+
+  // ── codex r1 P2-5: production's rid shape — a hyphenated rid is a VALID argument (not refused as a spec error) ──
+  { const r = await verifyFirstGroup({ fs: db, rtdb, rid: 'r3-synth', spec: NY });
+    assert.ok(!r.ok && !r.checks.some((c) => c.surface === 'spec') && failed(r).some((f) => /an active version exists/.test(f)), `a hyphenated rid is read (no catalog there), not refused (got ${JSON.stringify(failed(r))})`);
+    const bad = await verifyFirstGroup({ fs: db, rtdb, rid: '../x', spec: NY });
+    assert.ok(!bad.ok && bad.checks.some((c) => c.surface === 'spec' && /not a restaurant id/.test(c.what))); }
+  ok('codex r1 P2-5: rids follow production\'s RID_RE — "r3-synth" is read (absent catalog fails honestly), "../x" is refused before any read');
 
   // ── 4. an invalid spec is refused before any read ──
   const bad = await verifyFirstGroup({ fs: null, rtdb: null, rid: 'x_pizza', spec: { launcher: { name: 'X' }, label: '', choices: [{ choice: 'A', price: 0 }] } });
