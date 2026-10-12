@@ -1147,13 +1147,13 @@
 import * as XPD from './xpizza-delivery.js?v=20';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, collectionFor, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 
 // ============================================================
 // System version (bumped each release)
 // ============================================================
-const SYSTEM_VERSION = '2.4.8';
+const SYSTEM_VERSION = '2.5.0';
 document.querySelectorAll('[data-version-display]').forEach(el => {
   el.textContent = `v${SYSTEM_VERSION} · driver`;
 });
@@ -1229,6 +1229,19 @@ let driverState = null;
 let optimisticShift = null;
 let allTasks = {};
 let allOrders = {};
+// Cuadre readiness: the clock-out cash must never be computed before the orders feed AND the money-grade
+// cutover config have both loaded, or the receipt would show a false L0 (the whole bug). ordersLoaded flips
+// on the first /orders emission; cutoverLoaded on the first config read (value may legitimately be null =
+// confirmed-absent ⇒ pre-cutover provisional mode).
+let ordersLoaded = false;
+let cutoverLoaded = false;
+let driverIdentityCutoverMs = null;
+// In-flight completeTask writes (so clock-out can wait for them to settle before computing cash — a rejected
+// completion must not bank its optimistically-stamped cash). And the authoritative closing-operation
+// generation: a new confirm bumps it, superseding any prior in-flight close for exactly-once finalization.
+const pendingCompletions = new Set();
+let closeGen = 0;
+let closeInFlight = false;
 let wakeLock = null;
 let watchId = null;
 let lastUpdateAt = 0;
@@ -1289,6 +1302,9 @@ async function boot() {
     // Ensure driver profile exists (creates one with email-based name if missing)
     const guessName = user.email.split('@')[0].replace(/[^a-zA-Z]/g, '') || 'Driver';
     await XPD.ensureDriverProfile(user.uid, guessName);
+    // Telemetry: stamp the running app version AFTER the profile exists (the owner grant needs the name
+    // first), so the owner can confirm ≥2.5.0 adoption before setting the money-grade cutover. Best-effort.
+    XPD.setDriverAppVersion(user.uid, SYSTEM_VERSION);
 
     // Native (Capacitor) build: auto-register for FCM. The web PWA uses the
     // "enable notifications" button (web-push) instead — see enableNotifications.
@@ -1326,7 +1342,15 @@ function subscribeToFirebase() {
   });
   XPD.subscribeToOrders((orders) => {
     allOrders = orders || {};
+    ordersLoaded = true;
     render();
+    refreshOpenCashSurfaces();
+  });
+  XPD.subscribeToIdentityCutover((ms) => {
+    driverIdentityCutoverMs = ms;   // number, or null (confirmed-absent ⇒ pre-cutover provisional mode)
+    cutoverLoaded = true;
+    render();                       // P2-6: a cutover can reclassify legacy cash → refresh idle "Efectivo hoy" too
+    refreshOpenCashSurfaces();
   });
   startCountdownTick();
 }
@@ -1554,15 +1578,84 @@ async function handleStartShift() {
 // confirm() dialog. handleEndShift just shows it; the buttons drive the rest.
 async function handleEndShift() {
   if (!currentUser) return;
+  // Fresh close intent: supersede any zombie in-flight op and clear the refresh guard before showing.
+  closeGen++; closeInFlight = false;
   showCuadre();
 }
 
+// The current shift's money-grade identity for the cuadre. A web shift now mints current_shift_id via the
+// startDriverShift callable; a shift active across the 2.5.0 upgrade may lack one (legacy) — then the cuadre
+// cannot be recorded under a shift and we must say so rather than silently write/clock-out into the void.
+function shiftIdentity() {
+  const hasId = !!(driverState && driverState.current_shift_id);
+  const start = (driverState && typeof driverState.shift_started_at === 'number') ? driverState.shift_started_at : null;
+  return { valid: hasId && start != null, shiftId: hasId ? driverState.current_shift_id : null, start };
+}
+
+// P2-5: when orders or the cutover change, re-render whichever cash surface is open so the displayed figure
+// always equals what a confirm would record. NEVER while a close is in flight — the amount being saved must
+// not shift under the driver mid-operation (and re-rendering would reset the in-progress confirm button).
+function refreshOpenCashSurfaces() {
+  if (closeInFlight) return;
+  if ($('cuadre-screen').classList.contains('open')) showCuadre();
+  if ($('history-modal').classList.contains('shown')) renderHistoryModal();
+}
+
 function showCuadre() {
-  const shiftStart = (driverState && typeof driverState.shift_started_at === 'number')
-    ? driverState.shift_started_at : todayMidnightMs();
-  const cash = computeShiftCash(allTasks, allOrders, currentUser.uid, shiftStart);
+  const screen = $('cuadre-screen');
   const now = new Date();
   const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
+  const ident = shiftIdentity();
+
+  // READINESS GATE (plan §5): never compute cash before the orders feed AND the cutover config have loaded,
+  // and never without a valid shift identity. Show "cargando…" instead of a false L0; the subscriptions
+  // re-call showCuadre as they arrive. A loaded-but-identity-less shift (legacy, pre-2.5.0) is a distinct,
+  // explicit state — not cargando — because it will not resolve on its own.
+  if (!ordersLoaded || !cutoverLoaded) {
+    screen._ident = null;
+    $('cuadre-receipt').innerHTML = `
+      <div class="rc-title">Cierre de turno</div>
+      <div class="rc-date">${dateStr}</div>
+      <hr class="dash">
+      <div class="rc-note">Cargando el resumen del turno…</div>
+      <button class="rc-back" id="cuadre-back">Volver</button>`;
+    screen.classList.add('open');
+    return;
+  }
+  if (!ident.valid) {
+    // No valid shift identity (e.g. a shift active across the 2.5.0 upgrade with no current_shift_id). The core
+    // cuadre needs a shift id to record under; the driver ends + restarts the shift so the next close records
+    // correctly. (The emergency close for an unidentified shift is a separate future slice.)
+    screen._ident = null;
+    $('cuadre-receipt').innerHTML = `
+      <div class="rc-title">Cierre de turno</div>
+      <div class="rc-date">${dateStr}</div>
+      <hr class="dash">
+      <div class="rc-note">No se pudo identificar este turno. Terminá el turno y volvé a iniciarlo para que el cuadre se registre correctamente; si persiste, contactá a despacho.</div>
+      <button class="rc-back" id="cuadre-back">Volver</button>`;
+    screen.classList.add('open');
+    return;
+  }
+
+  screen._ident = ident;
+  renderCuadreReceipt({ uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start });
+  screen.classList.add('open');
+}
+
+// THE single source for the receipt: compute the cash from the CURRENT settled orders, render it,
+// and stash it on the screen as `_cash` + `_bound`. The confirm/escape actions submit screen._cash — so what is
+// DISPLAYED is exactly what is SUBMITTED, every render. Returns the computed cash.
+function renderCuadreReceipt(bound) {
+  const screen = $('cuadre-screen');
+  const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);
+  screen._cash = cash;
+  screen._bound = bound;
+  const now = new Date();
+  const dateStr = `Hoy · ${now.toLocaleTimeString('es-HN', { hour: 'numeric', minute: '2-digit' })}`;
+  const provisionalNote = cash.provisional
+    ? `<div class="rc-row rc-muted"><span class="l">Entregas por confirmar</span><span class="v">${cash.legacy_provisional_count + cash.unresolved_count}</span></div>
+       <div class="rc-note">Algunas entregas aún no están confirmadas por el servidor; el cuadre se marcará como provisional.</div>`
+    : '';
   $('cuadre-receipt').innerHTML = `
     <div class="rc-title">Cierre de turno</div>
     <div class="rc-date">${dateStr}</div>
@@ -1571,27 +1664,29 @@ function showCuadre() {
     <div class="rc-row"><span class="l">Total cobrado</span><span class="v">L ${cash.totalCollected.toLocaleString('es-HN')}</span></div>
     ${cash.paidOnlineTotal > 0 ? `<div class="rc-row rc-muted"><span class="l">Pagado en línea</span><span class="v">L ${cash.paidOnlineTotal.toLocaleString('es-HN')}</span></div>` : ''}
     <div class="rc-row"><span class="l">Pedidos en efectivo</span><span class="v">${cash.cashOrderCount}</span></div>
+    ${provisionalNote}
     <hr class="dash">
     <div class="rc-big"><div class="l">Efectivo a entregar</div><div class="v"><span>L</span> ${cash.cashOwed.toLocaleString('es-HN')}</div></div>
     <div class="rc-note">Mostrá esta pantalla a quien recibe el efectivo.</div>
     <button class="rc-confirm" id="cuadre-confirm">Confirmar entrega de efectivo</button>
     <button class="rc-back" id="cuadre-back">Volver</button>`;
-  $('cuadre-screen')._cash = cash;
-  $('cuadre-screen').classList.add('open');
+  return cash;
 }
 
 async function finalizeEndShift() {
   try {
-    await cleanupShift();                       // inside the try — a throw here must also revert, not strand
-    if (isNative()) {
-      // Native: revoke the ingest token server-side, then stop background GPS.
-      await stopNativeTracking(XPD.getAuthInstance().app);
-    } else {
-      await XPD.endShift(currentUser.uid);
-    }
+    // Clock out via the server (the existing endDriverShift callable, which returns { ok: true } or throws), and
+    // stop tracking ONLY after it succeeds: cleanupShift (kills the PWA GPS watch) and the native FGS stop both
+    // run after a successful call, so a failed close never leaves active:true with no location.
+    const res = isNative()
+      ? await stopNativeTracking(XPD.getAuthInstance().app)
+      : await XPD.endShift(currentUser.uid);
+    if (res && res.ok === false) throw new Error('clock-out not ok');   // defensive; the live callable throws on failure
+    await cleanupShift();
     toast('Turno terminado');
   } catch (e) {
-    // End failed — driver is still on shift server-side; revert the optimistic off-shift screen.
+    // End failed — the driver is still on shift server-side; revert the optimistic off-shift screen. Tracking was
+    // never stopped (we call the server before cleanupShift), so no stranded active-but-untracked state.
     optimisticShift = null;
     render();
     toast('Error al terminar turno', 'error');
@@ -1657,33 +1752,104 @@ $('vuelto-sheet').addEventListener('click', (e) => {
   if (e.target.id === 'vuelto-sheet' || e.target.id === 'vuelto-done') $('vuelto-sheet').classList.remove('open');
 });
 
-// Cuadre screen: Volver cancels, Confirmar writes the record then ends the shift
+// Clock-out REQUIRES a server-acknowledged cuadre (plan §5). No fire-and-forget, no offline-proceed: the web
+// RTDB SDK does not persist pending writes across an app kill, so a write that never acks must NOT finalize
+// the shift. Acked → clock out. Rejected/timeout → stay on shift, surface the error, let the driver retry.
+const CUADRE_ACK_TIMEOUT_MS = 12000;        // UI feedback window; outcome UNKNOWN past this (never "offline accepted")
+const COMPLETION_SETTLE_TIMEOUT_MS = 12000; // bound on waiting for in-flight completeTask writes to settle
+
+function makeOpId() {
+  return (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `op_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+// Bind a close to (uid, shift_id, shift_started_at). After EVERY await, the live state must still match this
+// or finalization is aborted — an ack for shift s1 must never close a now-current shift s2 (codex P1-3).
+function identityMatches(bound) {
+  const cur = shiftIdentity();
+  return !!(currentUser && cur.valid && cur.shiftId === bound.shiftId && cur.start === bound.start && currentUser.uid === bound.uid);
+}
+function reEnableConfirm() {
+  const b = $('cuadre-confirm');
+  if (b) { b.disabled = false; b.textContent = 'Confirmar entrega de efectivo'; }
+}
+
+// Cuadre screen: Volver cancels, Confirmar records a SERVER-ACKED cuadre THEN ends the shift.
 $('cuadre-screen').addEventListener('click', async (e) => {
-  if (e.target.id === 'cuadre-back') { $('cuadre-screen').classList.remove('open'); return; }
-  if (e.target.id === 'cuadre-confirm') {
-    // Hold the shift-transition lock from here THROUGH finalizeEndShift so the (now visible) off-shift
-    // start toggle can't interleave a clock-in mid-clock-out. shiftBusy was released when the cuadre opened.
-    if (shiftBusy) return;
+  // Volver — and backing out supersedes any in-flight close so a late ack can't finalize a shift the driver
+  // chose to stay on.
+  if (e.target.id === 'cuadre-back') { closeGen++; closeInFlight = false; $('cuadre-screen').classList.remove('open'); return; }
+  if (e.target.id !== 'cuadre-confirm') return;
+  const btn = e.target;
+  if (btn.disabled) return;
+  btn.disabled = true;
+
+  // Re-validate identity now; bind the whole operation to it.
+  const ident = shiftIdentity();
+  const openedUnder = $('cuadre-screen')._ident;
+  if (!ident.valid || !openedUnder || openedUnder.shiftId !== ident.shiftId) {
+    toast('El turno cambió — volvé a abrir el cierre', 'error');
+    $('cuadre-screen').classList.remove('open');
+    return;
+  }
+  const bound = { uid: currentUser.uid, shiftId: ident.shiftId, start: ident.start };
+  // A fresh generation supersedes any still-in-flight prior attempt immediately (exactly-once finalize).
+  const myGen = ++closeGen;
+  const isLatest = () => myGen === closeGen;
+  closeInFlight = true;   // block surface refresh for the whole operation (incl. the settle wait below)
+
+  // P1-2: wait (bounded) for any in-flight completeTask writes to SETTLE before computing. A completion can
+  // optimistically stamp an order locally then be REJECTED server-side (e.g. reassigned); its rejection rolls
+  // back the optimistic order, so recomputing from allOrders only AFTER settlement can't bank rejected cash.
+  if (pendingCompletions.size) {
+    btn.textContent = 'Guardando…';
+    const settled = await Promise.race([
+      Promise.allSettled([...pendingCompletions]).then(() => true),
+      new Promise((r) => setTimeout(() => r(false), COMPLETION_SETTLE_TIMEOUT_MS)),
+    ]);
+    if (!isLatest()) return;                                   // superseded by a newer confirm while waiting (it owns closeInFlight)
+    if (!settled) { closeInFlight = false; toast('Sin conexión — no se pudo cerrar el turno. Reintentá.', 'error'); refreshOpenCashSurfaces(); return; }   // P2-6: catch up the receipt to any settlement/rollback suppressed during the wait
+  }
+  // P1-3: the shift may have changed while we waited — re-validate before touching money.
+  if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }
+
+  // RECOMPUTE + REDISPLAY together from the now-settled orders (codex r3 E): renderCuadreReceipt rewrites the
+  // receipt AND stashes screen._cash, and we submit that exact value — so what is DISPLAYED is what is SUBMITTED
+  // (a completion rollback during the settle wait can't leave the shown amount ahead of the recorded one).
+  const cash = renderCuadreReceipt(bound);
+  const closeOpId = makeOpId();
+  const btn2 = $('cuadre-confirm'); if (btn2) { btn2.disabled = true; btn2.textContent = 'Guardando…'; }   // re-render replaced the button
+
+  // ONE authoritative closing operation. Its outcome — whether it acks in-time or LATE (after the UI timeout)
+  // — is handled exactly once, HERE, and only while this attempt is still the latest (not superseded by a
+  // retry) AND the bound identity still holds. finalize runs under shiftBusy so the (briefly re-exposed)
+  // start toggle can't interleave a clock-in mid-clock-out.
+  const p = XPD.recordCuadre(bound.uid, bound.shiftId, { ...cash, close_op_id: closeOpId });
+  p.then(async () => {
+    if (!isLatest()) return;                                   // a newer attempt owns the close now
+    closeInFlight = false;
+    if (!identityMatches(bound)) { toast('El turno cambió — no se cerró el turno.', 'error'); reEnableConfirm(); return; }
     shiftBusy = true;
-    const btn = e.target;
-    btn.disabled = true;
     try {
-      const cash = $('cuadre-screen')._cash || {};
-      // Best-effort cash record — do NOT await: an offline RTDB write's promise never resolves (Firebase
-      // queues it), which would freeze the clock-out on this button. Fire-and-forget so the clock-out
-      // proceeds (and then fails gracefully via endDriverShift if offline); it syncs when back online.
-      if (driverState && driverState.current_shift_id) {
-        XPD.recordCuadre(currentUser.uid, driverState.current_shift_id, {
-          cash_owed: cash.cashOwed || 0,
-          cash_order_count: cash.cashOrderCount || 0
-        }).catch(err => console.warn('cuadre write failed (continuing clock-out):', err));
-      }
       $('cuadre-screen').classList.remove('open');
-      optimisticShift = false; render();   // optimistic: show the off-shift screen immediately
-      await finalizeEndShift();
-    } finally {
-      shiftBusy = false;
-    }
+      optimisticShift = false; render();
+      await finalizeEndShift();                 // ordinary clock-out via the existing endDriverShift callable
+    } finally { shiftBusy = false; }
+  }).catch((err) => {
+    if (!isLatest()) return;
+    closeInFlight = false;
+    // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Stay on
+    // shift and surface it (this also surfaces a LATE rejection after the timeout message); the driver retries.
+    console.warn('recordCuadre rejected (staying on shift):', err);
+    toast('No se pudo guardar el cuadre — reintentá.', 'error');
+    refreshOpenCashSurfaces();                 // re-render from settled orders so a retry submits the current amount
+    reEnableConfirm();
+  });
+
+  // UI-only: if no ack within the window, tell the driver to retry. We do NOT finalize or discard the op here
+  // — the observer above still owns its late outcome (unless a retry supersedes it).
+  const raced = await Promise.race([p.then(() => 'acked', () => 'failed'), new Promise((r) => setTimeout(() => r('timeout'), CUADRE_ACK_TIMEOUT_MS))]);
+  if (raced === 'timeout' && isLatest()) {
+    toast('Sin conexión — no se pudo cerrar el turno. Reintentá.', 'error');
+    reEnableConfirm();   // allow a retry; a late ack of THIS op (if not superseded) still finalizes via the observer
   }
 });
 
@@ -1806,35 +1972,19 @@ function closeHistoryModal() {
 }
 
 function renderHistoryModal() {
-  // "Today" boundary: local midnight in the driver's timezone
+  // "Today" boundary: local midnight in the driver's timezone.
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayMs = todayStart.getTime();
 
-  // Find delivery tasks completed by this driver today.
-  // The data flow: a delivery task gets `completed_at` when the driver
-  // marks it delivered (set in SDK completeTask). We match against the
-  // driver's tasks rather than orders because the order has
-  // delivered_at but the driver might not be the one who triggered that
-  // (e.g. dispatcher cancellation flow). Tasks are the source of truth.
-  const myDeliveries = [];
-  for (const taskId of Object.keys(allTasks)) {
-    const t = allTasks[taskId];
-    if (!t) continue;
-    if (t.type !== 'delivery') continue;
-    if (t.assigned_driver_id !== currentUser.uid) continue;
-    if (t.status !== 'completed') continue;
-    if (!t.completed_at || t.completed_at < todayMs) continue;
-    myDeliveries.push({ task: t, taskId });
-  }
+  // Money-grade source: the driver's attributed orders (delivered_by_driver_uid), NOT the delivery tasks
+  // the server deletes on the delivered edge. resolved + legacyProvisional are this driver's deliveries;
+  // `at` is order.delivered_at. (Pending/unresolved are excluded — not attributable to this driver yet.)
+  const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);
+  const myDeliveries = resolved.concat(legacyProvisional).sort((a, b) => b.at - a.at);   // newest first
 
-  // Sort newest first
-  myDeliveries.sort((a, b) => b.task.completed_at - a.task.completed_at);
-
-  // Compute totals from the linked order (task doesn't have $ amount)
   let totalLempiras = 0;
-  myDeliveries.forEach(({ task }) => {
-    const order = allOrders[task.order_id];
+  myDeliveries.forEach(({ order }) => {
     if (order && typeof order.total === 'number') totalLempiras += order.total;
   });
 
@@ -1847,13 +1997,13 @@ function renderHistoryModal() {
     return;
   }
 
-  list.innerHTML = myDeliveries.map(({ task }) => {
-    const order = allOrders[task.order_id] || {};
-    const time = new Date(task.completed_at);
+  list.innerHTML = myDeliveries.map(({ order, at }) => {
+    const o = order || {};
+    const time = new Date(at);
     const hh = String(time.getHours()).padStart(2, '0');
     const mm = String(time.getMinutes()).padStart(2, '0');
-    const name = order.recipient_name || task.recipient_name || 'Cliente';
-    const total = typeof order.total === 'number' ? `L${order.total.toFixed(0)}` : '—';
+    const name = o.customer_name || 'Cliente';
+    const total = typeof o.total === 'number' ? `L${o.total.toFixed(0)}` : '—';
     return `
       <div class="history-item">
         <div class="history-item-time">${hh}:${mm}</div>
@@ -2126,18 +2276,13 @@ function attachIncomingBannerHandlers(o) {
 function todayMidnightMs(){ const d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
 function syncIdleStats(){
   if (!currentUser) return;
-  const today = todayMidnightMs(); let count=0, cash=0;
-  for (const id of Object.keys(allTasks||{})) {
-    const t = allTasks[id];
-    if (!t || t.type!=='delivery' || t.assigned_driver_id!==currentUser.uid) continue;
-    if (t.status!=='completed' || !t.completed_at || t.completed_at < today) continue;
-    count++;
-    const o = (allOrders||{})[t.order_id];
-    if (o && typeof o.total==='number' && collectionFor(o).owed) cash += o.total;
-  }
+  // Same money-grade source as the cuadre: the durable order attribution, NOT the (now-deleted) delivery
+  // tasks. Today = local midnight. collectionFor drives the cash so the idle "Efectivo hoy" can never
+  // disagree with the clock-out cuadre.
+  const cash = computeShiftCash(allOrders, currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs);
   const elD = $('stat-deliveries'), elC = $('stat-cash');
-  if (elD) elD.textContent = String(count);
-  if (elC) elC.textContent = `L ${cash.toLocaleString('es-HN')}`;
+  if (elD) elD.textContent = String(cash.deliveries);
+  if (elC) elC.textContent = `L ${cash.cashOwed.toLocaleString('es-HN')}`;
 }
 
 function renderIdleState() {
@@ -2330,7 +2475,12 @@ function attachActiveCardHandlers(o) {
   }
   if ($('btn-delivered')) {
     attachSlideConfirm('btn-delivered', async () => {
-      await XPD.completeTask(currentUser.uid, o.deliveryTask.id);
+      // Track the completion write so a clock-out in progress waits for it to SETTLE before computing cash
+      // (a rejected completion must not bank its optimistically-stamped delivery). finally-deregisters.
+      const p = XPD.completeTask(currentUser.uid, o.deliveryTask.id);
+      pendingCompletions.add(p);
+      p.finally(() => pendingCompletions.delete(p));
+      await p;
       toast('¡Entregado!', 'success');
     });
   }

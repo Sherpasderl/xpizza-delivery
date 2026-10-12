@@ -57,7 +57,9 @@
       ".read": "auth != null && auth.token.customer !== true",
       ".indexOn": ["status", "created_at", "order_type"],
       "$order_id": {
-        ".write": "auth != null && root.child('dispatchers').child(auth.uid).exists()",
+        ".write": "auth != null && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()",
+
+        ".validate": "(root.child('dispatchers').child(auth.uid).exists() && auth.token.customer !== true) || !data.child('delivered_by_driver_uid').exists() || newData.child('delivered_by_driver_uid').val() === data.child('delivered_by_driver_uid').val()",
 
         "status": {
           ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending'))"
@@ -67,6 +69,10 @@
         },
         "delivered_at": {
           ".write": "auth != null && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid)"
+        },
+        "delivered_by_driver_uid": {
+          ".write": "auth != null && auth.token.customer !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid)",
+          ".validate": "auth.token.customer !== true && ((root.child('dispatchers').child(auth.uid).exists() && data.exists()) || (!root.child('dispatchers').child(auth.uid).exists() && !data.exists() && newData.val() === auth.uid && newData.val() === root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() && root.child('orders').child($order_id).child('status').val() !== 'delivered' && newData.parent().child('status').val() === 'delivered'))"
         }
       }
     },
@@ -127,15 +133,20 @@
     },
 
     "driver_cash": {
+      ".read": "auth != null && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()",
       "$driver_id": {
-        ".read": "auth != null && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists())",
-        ".write": "auth != null && auth.uid === $driver_id",
+        ".read": "auth != null && auth.token.customer !== true && (auth.uid === $driver_id || root.child('dispatchers').child(auth.uid).exists())",
         "$shift_id": {
           "cuadre": {
+            ".write": "auth != null && auth.uid === $driver_id",
             ".validate": "newData.hasChildren(['cash_owed','cash_order_count','closed_at'])",
             "cash_owed": { ".validate": "newData.isNumber()" },
             "cash_order_count": { ".validate": "newData.isNumber()" },
-            "closed_at": { ".validate": "newData.isNumber()" }
+            "closed_at": { ".validate": "newData.isNumber()" },
+            "provisional": { ".validate": "newData.isBoolean()" },
+            "legacy_provisional_count": { ".validate": "newData.isNumber()" },
+            "unresolved_count": { ".validate": "newData.isNumber()" },
+            "close_op_id": { ".validate": "newData.isString()" }
           }
         }
       }

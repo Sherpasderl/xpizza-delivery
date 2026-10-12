@@ -1,6 +1,6 @@
 // Pure cash-helper tests — run: `node cash-helpers.test.js` (no framework, repo idiom).
 import assert from 'node:assert/strict';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, isCashPayment, collectionFor, COLLECT_WARN_TEXT, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 import { createRequire } from 'node:module';
 
 let passed = 0;
@@ -36,64 +36,162 @@ t('isCashPayment: ["cash"] array → false (no coercion)', () => assert.equal(is
 t('isCashPayment: {} object → false', () => assert.equal(isCashPayment({}), false));
 t('isCashPayment: {toString:()=>"cash"} → false (no coercion)', () => assert.equal(isCashPayment({ toString() { return 'cash'; } }), false));
 
-// ---------- computeShiftCash(allTasks, allOrders, uid, sinceMs) ----------
-// The platform writes payment_method: 'cash' | 'card_delivery' | 'online'
-// (functions ALLOWED_PAYMENT_METHODS). 'efectivo' is only a legacy alias. Cash owed
-// must count 'cash' (+ legacy 'efectivo'), and MUST NOT count 'card_delivery'/'online'.
-const SINCE = 1000;
-const allTasks = {
-  d1: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'o1' }, // cash, today
-  d2: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 3000, order_id: 'o2' }, // card_delivery, today
-  d3: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 500,  order_id: 'o3' }, // cash, BEFORE since
-  d4: { type: 'delivery', assigned_driver_id: 'other', status: 'completed', completed_at: 2500, order_id: 'o4' }, // other driver
-  d5: { type: 'delivery', assigned_driver_id: 'me', status: 'in_progress', completed_at: null, order_id: 'o5' }, // not completed
-  p1: { type: 'pickup', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'o1' }, // not a delivery
-  d6: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 4000, order_id: 'o6' }, // 'Cash' (case), today
-  d7: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 4100, order_id: 'o7' }, // legacy 'efectivo', today
-  d8: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 4200, order_id: 'o8' }, // online, today
-  d9: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 4300, order_id: 'o9' }, // '  cash  ' (trim), today
-};
+// ---------- shiftDeliveries / computeShiftCash(ordersMap, uid, sinceMs, cutoverMs) ----------
+// Source change (97fe1dd): the server deletes both task legs on the delivered/completed edge, so the
+// old task-iterating source read EMPTY → all cuadres L0. The money-grade source is the identity captured
+// IN the completion batch: orders/<id>/delivered_by_driver_uid. shiftDeliveries classifies each delivered
+// order (at/after sinceMs) for THIS driver into resolved (stamped === uid) / legacyProvisional (no stamp,
+// pre-cutover, legacy delivered_by_uid === uid) / pending (no stamp, post-cutover, legacy === uid). Cash is
+// collectionFor over resolved + legacyProvisional; the platform writes payment_method 'cash'|'card_delivery'
+// |'online' ('efectivo' legacy alias) — cash owed counts 'cash'(+'efectivo'), never 'card_delivery'/'online'.
+const SINCE = 1000, CUTOVER = 5000;
+// All stamped by 'me' (money-grade), delivered at/after SINCE unless noted. delivered_at is a number (RTDB
+// serverTimestamp resolves to ms on read); subscribeToOrders keeps delivered orders (filterLiveOrders only
+// drops PENDING_PAYMENT/scheduled/releasing), so these are exactly the shapes the cuadre reads from allOrders.
 const allOrders = {
-  o1: { total: 370, payment_method: 'cash' },          // real platform value
-  o2: { total: 500, payment_method: 'card_delivery' }, // NOT cash
-  o3: { total: 999, payment_method: 'cash' },
-  o4: { total: 800, payment_method: 'cash' },
-  o6: { total: 646, payment_method: 'Cash' },          // case-insensitive
-  o7: { total: 200, payment_method: 'efectivo' },      // legacy alias (back-compat)
-  o8: { total: 900, payment_method: 'online' },        // NOT cash
-  o9: { total: 100, payment_method: '  cash  ' },      // trims whitespace
+  o1: { total: 370, payment_method: 'cash',          delivered_by_driver_uid: 'me', delivered_at: 2000 }, // cash
+  o2: { total: 500, payment_method: 'card_delivery', delivered_by_driver_uid: 'me', delivered_at: 3000 }, // card (collect, not owed)
+  o3: { total: 999, payment_method: 'cash',          delivered_by_driver_uid: 'me', delivered_at: 500  }, // BEFORE since → excluded
+  o4: { total: 800, payment_method: 'cash',          delivered_by_driver_uid: 'other', delivered_at: 2500 }, // other driver
+  o5: { total: 123, payment_method: 'cash',          delivered_by_driver_uid: 'me' },                     // no delivered_at → not delivered
+  o6: { total: 646, payment_method: 'Cash',          delivered_by_driver_uid: 'me', delivered_at: 4000 }, // case-insensitive
+  o7: { total: 200, payment_method: 'efectivo',      delivered_by_driver_uid: 'me', delivered_at: 4100 }, // legacy alias
+  o8: { total: 900, payment_method: 'online',        delivered_by_driver_uid: 'me', delivered_at: 4200 }, // online, unconfirmed → warning
+  o9: { total: 100, payment_method: '  cash  ',      delivered_by_driver_uid: 'me', delivered_at: 4300 }, // trims whitespace
 };
-t('shiftCash: cash = cash/legacy-efectivo only, never card_delivery/online', () => {
-  const r = computeShiftCash(allTasks, allOrders, 'me', SINCE);
-  assert.equal(r.deliveries, 6);                       // d1,d2,d6,d7,d8,d9
-  // #6 fix: "Total cobrado" = what the driver actually collects at the door (cash + card_delivery).
-  // o8 is online (no payment_status → unconfirmed → warning), so it is NOT counted as collected — and
-  // it never was cash-owed either.
+t('shiftCash: cash = cash/legacy-efectivo only, never card_delivery/online (orders source)', () => {
+  const r = computeShiftCash(allOrders, 'me', SINCE, CUTOVER);
+  assert.equal(r.deliveries, 6);                       // o1,o2,o6,o7,o8,o9 (o3 before since, o4 other driver, o5 not delivered)
+  // "Total cobrado" = what the driver actually collects at the door (cash + card_delivery). o8 is online
+  // (no payment_status → unconfirmed → warning), so it is NOT counted as collected — and never cash-owed.
   assert.equal(r.totalCollected, 370 + 500 + 646 + 200 + 100);
-  assert.equal(r.cashOwed, 370 + 646 + 200 + 100);     // cash + Cash + efectivo(legacy) + '  cash  '  (unchanged)
+  assert.equal(r.cashOwed, 370 + 646 + 200 + 100);     // cash + Cash + efectivo(legacy) + '  cash  '
   assert.equal(r.cashOrderCount, 4);                   // excludes card_delivery(o2) + online(o8)
   assert.equal(r.paidOnlineTotal, 0);                  // o8 online is UNCONFIRMED → warning, not paid-online
+  assert.equal(r.provisional, false);                  // every delivery is money-grade (stamped)
 });
-t('shiftCash: empty input → zeros', () => {
-  const r = computeShiftCash({}, {}, 'me', SINCE);
-  assert.deepEqual(r, { deliveries: 0, totalCollected: 0, cashOwed: 0, cashOrderCount: 0, paidOnlineTotal: 0, paidOnlineCount: 0 });
+t('shiftCash: empty input → zeros + not provisional (explicit reset metadata)', () => {
+  const r = computeShiftCash({}, 'me', SINCE, CUTOVER);
+  assert.deepEqual(r, {
+    deliveries: 0, totalCollected: 0, cashOwed: 0, cashOrderCount: 0, paidOnlineTotal: 0, paidOnlineCount: 0,
+    provisional: false, legacy_provisional_count: 0, legacy_provisional_ids: [], unresolved_count: 0, unresolved_ids: [],
+  });
 });
 // A fully-comped rewards redemption places the order as payment_method:'cash' + free_order:true
 // (total $0). It must NOT count as a cash-collection order — no phantom +1 in the cuadre.
 t('shiftCash: free_order cash order EXCLUDED from cashOwed + cashOrderCount (still a delivery)', () => {
-  const tasks  = { fd: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'fo' } };
-  const orders = { fo: { total: 0, payment_method: 'cash', free_order: true } };
-  const r = computeShiftCash(tasks, orders, 'me', SINCE);
-  assert.equal(r.deliveries, 1);       // it IS a completed delivery
+  const orders = { fo: { total: 0, payment_method: 'cash', free_order: true, delivered_by_driver_uid: 'me', delivered_at: 2000 } };
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
+  assert.equal(r.deliveries, 1);       // it IS a delivered order
   assert.equal(r.cashOwed, 0);         // nothing to collect
   assert.equal(r.cashOrderCount, 0);   // NOT a cash order → no phantom +1
 });
-t('shiftCash: normal cash order still counts (free_order absent) — byte-identical', () => {
-  const tasks  = { nd: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'no' } };
-  const orders = { no: { total: 370, payment_method: 'cash' } };
-  const r = computeShiftCash(tasks, orders, 'me', SINCE);
+t('shiftCash: normal cash order still counts (free_order absent)', () => {
+  const orders = { no: { total: 370, payment_method: 'cash', delivered_by_driver_uid: 'me', delivered_at: 2000 } };
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
   assert.equal(r.cashOwed, 370);
   assert.equal(r.cashOrderCount, 1);
+});
+// ---------- shiftDeliveries: resolved / legacyProvisional / pending ----------
+t('shiftDeliveries: classifies resolved / legacyProvisional / pending by stamp + cutover', () => {
+  const orders = {
+    res:    { total: 100, payment_method: 'cash', delivered_by_driver_uid: 'me', delivered_at: 2000 },  // money-grade
+    lp:     { total: 200, payment_method: 'cash', delivered_by_uid: 'me',        delivered_at: 3000 },  // no stamp, pre-cutover
+    pend:   { total: 300, payment_method: 'cash', delivered_by_uid: 'me',        delivered_at: 6000 },  // no stamp, post-cutover
+    other:  { total: 1,   payment_method: 'cash', delivered_by_driver_uid: 'x',  delivered_at: 2500 },  // authoritatively someone else
+    nobody: { total: 1,   payment_method: 'cash',                                delivered_at: 2600 },  // neither identity → no one's
+    before: { total: 1,   payment_method: 'cash', delivered_by_driver_uid: 'me', delivered_at: 500  },  // before since
+  };
+  const d = shiftDeliveries(orders, 'me', SINCE, CUTOVER);
+  assert.deepEqual(d.resolved.map((x) => x.orderId), ['res']);
+  assert.deepEqual(d.legacyProvisional.map((x) => x.orderId), ['lp']);
+  assert.deepEqual(d.pending, ['pend']);
+});
+t('shiftDeliveries: a stamp by ANOTHER driver is never claimed via the legacy field', () => {
+  // stamped 'x' but legacy delivered_by_uid 'me' — the money-grade stamp wins; 'me' gets nothing.
+  const orders = { o: { total: 1, payment_method: 'cash', delivered_by_driver_uid: 'x', delivered_by_uid: 'me', delivered_at: 2000 } };
+  const d = shiftDeliveries(orders, 'me', SINCE, CUTOVER);
+  assert.deepEqual(d.resolved, []);
+  assert.deepEqual(d.legacyProvisional, []);
+  assert.deepEqual(d.pending, []);
+});
+t('shiftDeliveries: cutover absent (null) ⇒ pre-cutover mode — legacy is provisional, never pending', () => {
+  const orders = { lp: { total: 200, payment_method: 'cash', delivered_by_uid: 'me', delivered_at: 9999 } };
+  const d = shiftDeliveries(orders, 'me', SINCE, null);
+  assert.deepEqual(d.legacyProvisional.map((x) => x.orderId), ['lp']);
+  assert.deepEqual(d.pending, []);
+});
+t('computeShiftCash: legacyProvisional cash IS counted + flags provisional with ids', () => {
+  const orders = { lp: { total: 200, payment_method: 'cash', delivered_by_uid: 'me', delivered_at: 3000 } };
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
+  assert.equal(r.cashOwed, 200);                 // provisional evidence is still counted
+  assert.equal(r.cashOrderCount, 1);
+  assert.equal(r.provisional, true);
+  assert.equal(r.legacy_provisional_count, 1);
+  assert.deepEqual(r.legacy_provisional_ids, ['lp']);
+  assert.equal(r.unresolved_count, 0);
+  assert.deepEqual(r.unresolved_ids, []);
+});
+t('computeShiftCash: post-cutover no-stamp is pending — NOT counted, but flags provisional', () => {
+  const orders = { pd: { total: 300, payment_method: 'cash', delivered_by_uid: 'me', delivered_at: 6000 } };
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
+  assert.equal(r.cashOwed, 0);                   // unresolved ⇒ never counted
+  assert.equal(r.deliveries, 0);
+  assert.equal(r.provisional, true);
+  assert.equal(r.unresolved_count, 1);
+  assert.deepEqual(r.unresolved_ids, ['pd']);
+  assert.equal(r.legacy_provisional_count, 0);
+});
+
+// ---------- shiftIdentityError — recordCuadre's reject-on-missing-id guard ----------
+t('shiftIdentityError: both ids present → null (no error)', () => {
+  assert.equal(shiftIdentityError('uid', 'shift'), null);
+});
+t('shiftIdentityError: missing driver id → message (recordCuadre throws, stays on shift)', () => {
+  for (const bad of [null, undefined, '', 0, false]) {
+    assert.equal(typeof shiftIdentityError(bad, 'shift'), 'string');
+  }
+});
+t('shiftIdentityError: present driver + missing shift id → message', () => {
+  for (const bad of [null, undefined, '', 0, false]) {
+    assert.equal(typeof shiftIdentityError('uid', bad), 'string');
+  }
+});
+
+// ---------- cuadreRecordPayload — EXPLICIT reset discipline (update() never clears omitted fields) ----------
+t('cuadreRecordPayload: clean cuadre writes provisional:false + null id lists (positive reset)', () => {
+  const p = cuadreRecordPayload(computeShiftCash({ o: { total: 370, payment_method: 'cash', delivered_by_driver_uid: 'me', delivered_at: 2000 } }, 'me', SINCE, CUTOVER));
+  assert.equal(p.cash_owed, 370);
+  assert.equal(p.cash_order_count, 1);
+  assert.equal(p.provisional, false);
+  assert.equal(p.legacy_provisional_count, 0);
+  assert.equal(p.legacy_provisional_ids, null);   // null, NOT [] — RTDB drops empty arrays; null clears prior
+  assert.equal(p.unresolved_count, 0);
+  assert.equal(p.unresolved_ids, null);
+  assert.equal(p.close_op_id, null);
+  assert.ok(!('closed_at' in p));                 // the server timestamp is the Firebase wrapper's job
+});
+t('cuadreRecordPayload: provisional cuadre carries the id lists + flag', () => {
+  const p = cuadreRecordPayload(computeShiftCash({
+    lp: { total: 200, payment_method: 'cash', delivered_by_uid: 'me', delivered_at: 3000 },
+    pd: { total: 300, payment_method: 'cash', delivered_by_uid: 'me', delivered_at: 6000 },
+  }, 'me', SINCE, CUTOVER));
+  assert.equal(p.provisional, true);
+  assert.equal(p.legacy_provisional_count, 1);
+  assert.deepEqual(p.legacy_provisional_ids, ['lp']);
+  assert.equal(p.unresolved_count, 1);
+  assert.deepEqual(p.unresolved_ids, ['pd']);
+});
+t('cuadreRecordPayload: close_op_id passes through for exactly-once supersession', () => {
+  const p = cuadreRecordPayload({ cash_owed: 1, close_op_id: 'op-123' });
+  assert.equal(p.close_op_id, 'op-123');
+});
+t('cuadreRecordPayload: garbage/empty input → safe zeroed payload (never throws)', () => {
+  assert.deepEqual(cuadreRecordPayload(null), {
+    cash_owed: 0, cash_order_count: 0, provisional: false,
+    legacy_provisional_count: 0, legacy_provisional_ids: null,
+    unresolved_count: 0, unresolved_ids: null, close_op_id: null,
+  });
 });
 
 // ---------- collectionFor(order) — THE single source of truth ----------
@@ -130,9 +228,8 @@ t('collectionFor: paid/warning/free carry amount 0 (no phantom collect)', () => 
 });
 
 t('shiftCash: online+confirmed EXCLUDED from Total cobrado, surfaced as paidOnline', () => {
-  const tasks  = { od: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'oo' } };
-  const orders = { oo: { total: 900, payment_method: 'online', payment_status: 'confirmed' } };
-  const r = computeShiftCash(tasks, orders, 'me', SINCE);
+  const orders = { oo: { total: 900, payment_method: 'online', payment_status: 'confirmed', delivered_by_driver_uid: 'me', delivered_at: 2000 } };
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
   assert.equal(r.deliveries, 1);
   assert.equal(r.totalCollected, 0);      // paid online → NOT "collected" by the driver
   assert.equal(r.cashOwed, 0);            // never cash owed
@@ -141,9 +238,8 @@ t('shiftCash: online+confirmed EXCLUDED from Total cobrado, surfaced as paidOnli
   assert.equal(r.paidOnlineCount, 1);
 });
 t('shiftCash: card_delivery counts as collected but NOT cash owed', () => {
-  const tasks  = { cd: { type: 'delivery', assigned_driver_id: 'me', status: 'completed', completed_at: 2000, order_id: 'co' } };
-  const orders = { co: { total: 500, payment_method: 'card_delivery' } };
-  const r = computeShiftCash(tasks, orders, 'me', SINCE);
+  const orders = { co: { total: 500, payment_method: 'card_delivery', delivered_by_driver_uid: 'me', delivered_at: 2000 } };
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
   assert.equal(r.totalCollected, 500);
   assert.equal(r.cashOwed, 0);
   assert.equal(r.cashOrderCount, 0);
@@ -252,6 +348,32 @@ for (const [label, ord] of [['online pending', onlinePending], ['unknown/empty m
     assert.ok(queuePayHtml(ord, escapeHtml).includes('>Revisar<'));
   });
 }
+
+// REAL-WRITER computeShiftCash: stamp the actual server-written order nodes (from buildCreateOrderUpdates /
+// the materialize writer) with the delivery identity the cuadre reads, and run them through computeShiftCash.
+// This proves the cuadre consumes the EXACT shape the server writes — not a hand-built fixture that could
+// drift from the writer (see test-must-originate-from-real-writer). cash+card collected; online-confirmed
+// reported-not-collected; online-pending + '' → warning (never cash); free → delivery but not owed.
+t('shiftCash: real-writer order nodes — cash owed, card collected, online-paid reported, warnings never owed', () => {
+  const stamp = (order, at) => ({ ...order, delivered_by_driver_uid: 'me', delivered_at: at });
+  const orders = {
+    c1: stamp(cashOrder, 2000),
+    c2: stamp(cardOrder, 2100),
+    fr: stamp(freeOrder, 2200),
+    op: stamp(onlinePaid, 2300),
+    opd: stamp(onlinePending, 2400),
+    un: stamp(unknownMethod, 2500),
+  };
+  const cashTotal = Number(cashOrder.total), cardTotal = Number(cardOrder.total), onlineTotal = Number(onlinePaid.total);
+  const r = computeShiftCash(orders, 'me', SINCE, CUTOVER);
+  assert.equal(r.deliveries, 6);                       // every stamped order is a delivery
+  assert.equal(r.cashOwed, cashTotal);                 // only the real cash node is owed (free excluded)
+  assert.equal(r.cashOrderCount, 1);
+  assert.equal(r.totalCollected, cashTotal + cardTotal);   // cash + card collected at the door
+  assert.equal(r.paidOnlineTotal, onlineTotal);        // online-confirmed reported separately
+  assert.equal(r.paidOnlineCount, 1);
+  assert.equal(r.provisional, false);                  // all money-grade
+});
 
 // brand-agnostic: identical render for x_pizza and la_musa (driver UI is shared).
 t('brand-agnostic: la_musa renders identically to x_pizza', () => {

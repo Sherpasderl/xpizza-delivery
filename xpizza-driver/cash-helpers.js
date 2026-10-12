@@ -124,30 +124,101 @@ export function queuePayHtml(order, esc) {
 }
 
 /**
- * Shift cash + delivery totals from the RTDB task/order maps. Counts only the driver's own delivery tasks
- * that completed at/after `sinceMs`. Derives every money figure from collectionFor so it can never disagree
- * with what the driver was shown per-order:
- *   totalCollected — Σ order.total the driver actually collects at the door (cash + card_delivery). Online-paid
- *                    and free are NOT "collected" (fixes the cuadre mislabel); paid-online is reported separately.
- *   cashOwed       — Σ order.total for cash / legacy efectivo (byte-identical to before: the cash to hand in).
- *   paidOnlineTotal/paidOnlineCount — already-paid online orders, surfaced as a distinct line, never as collected.
- * Returns { deliveries, totalCollected, cashOwed, cashOrderCount, paidOnlineTotal, paidOnlineCount }.
+ * A shift's deliveries for `uid`, from the DURABLE order attribution — NOT the live /tasks subscription.
+ * Since 97fe1dd the server deletes both task legs the instant an order goes delivered/completed, so the old
+ * task-iterating source read empty. The money-grade source is the identity captured IN the completion batch:
+ * `orders/<id>/delivered_by_driver_uid` (rules: assigned driver, self, once, on the delivered transition), with
+ * the async `delivered_by_uid` as a BOUNDED legacy fallback (only for orders delivered before the cutover).
+ *
+ * Classifies each order delivered at/after `sinceMs` into, for THIS driver:
+ *   resolved          — delivered_by_driver_uid === uid (money-grade).
+ *   legacyProvisional — no primary stamp, delivered BEFORE the cutover, delivered_by_uid === uid (provisional evidence).
+ *   pending           — no primary stamp, delivered AFTER the cutover, delivered_by_uid === uid (UNRESOLVED; never counted).
+ * `cutoverMs == null` means "confirmed-absent" → pre-cutover mode (everything legacy is provisional, nothing pending).
+ * An order with NEITHER identity (delivered by nobody-we-can-name) is in no driver's list. A later-cancelled order
+ * keeps its delivered_at and so stays in scope (the driver physically collected the cash; refunds are office-side).
  */
-export function computeShiftCash(allTasks, allOrders, uid, sinceMs) {
+export function shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs) {
+  const resolved = [], legacyProvisional = [], pending = [];
+  for (const id in (ordersMap || {})) {
+    const o = ordersMap[id];
+    const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;
+    if (at == null || at < sinceMs) continue;
+    const stamp = o.delivered_by_driver_uid, legacy = o.delivered_by_uid;
+    if (stamp === uid) { resolved.push({ orderId: id, order: o, at }); continue; }   // money-grade
+    if (stamp != null) continue;                                                     // authoritatively someone else
+    const preCutover = (cutoverMs == null) || (at < cutoverMs);
+    if (preCutover) { if (legacy === uid) legacyProvisional.push({ orderId: id, order: o, at }); }
+    else { if (legacy === uid) pending.push(id); }                                   // post-cutover, no stamp ⇒ unresolved
+  }
+  return { resolved, legacyProvisional, pending };
+}
+
+/**
+ * Shift cash + delivery totals from the driver's attributed orders (via shiftDeliveries). Every money figure
+ * is derived from collectionFor so the cuadre can never disagree with what the driver was shown per-order:
+ *   totalCollected — Σ order.total the driver actually collects at the door (cash + card_delivery).
+ *   cashOwed       — Σ order.total for cash / legacy efectivo (the cash to hand in).
+ *   paidOnlineTotal/paidOnlineCount — already-paid online orders, reported separately, never collected.
+ * Cash counts resolved + legacyProvisional. `provisional` is true when any evidence is non-money-grade (legacy or
+ * unresolved) — the cuadre must then be persisted + shown as provisional, never as an ordinary final number.
+ * Returns the figures plus { provisional, legacy_provisional_count/ids, unresolved_count/ids }.
+ */
+export function computeShiftCash(ordersMap, uid, sinceMs, cutoverMs) {
+  const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);
   let deliveries = 0, totalCollected = 0, cashOwed = 0, cashOrderCount = 0, paidOnlineTotal = 0, paidOnlineCount = 0;
-  const tasks = allTasks || {};
-  const orders = allOrders || {};
-  for (const id of Object.keys(tasks)) {
-    const t = tasks[id];
-    if (!t || t.type !== 'delivery' || t.assigned_driver_id !== uid) continue;
-    if (t.status !== 'completed' || !t.completed_at || t.completed_at < sinceMs) continue;
+  for (const { order } of resolved.concat(legacyProvisional)) {
     deliveries++;
-    const o = orders[t.order_id];
-    const total = o && typeof o.total === 'number' ? o.total : 0;
-    const c = collectionFor(o || {});
+    const total = typeof order.total === 'number' ? order.total : 0;
+    const c = collectionFor(order);
     if (c.collect) totalCollected += total;                 // cash + card_delivery actually collected at the door
     if (c.owed) { cashOwed += total; cashOrderCount++; }    // cash to hand to the office (isCashPayment && !free_order)
     if (c.kind === 'paid_online') { paidOnlineTotal += total; paidOnlineCount++; }  // already paid — reported, never collected
   }
-  return { deliveries, totalCollected, cashOwed, cashOrderCount, paidOnlineTotal, paidOnlineCount };
+  return {
+    deliveries, totalCollected, cashOwed, cashOrderCount, paidOnlineTotal, paidOnlineCount,
+    provisional: legacyProvisional.length > 0 || pending.length > 0,
+    legacy_provisional_count: legacyProvisional.length,
+    legacy_provisional_ids: legacyProvisional.map((d) => d.orderId),
+    unresolved_count: pending.length,
+    unresolved_ids: pending.slice(),
+  };
+}
+
+/**
+ * Shift identity is MANDATORY to record a cuadre. A missing driver/shift id used to make recordCuadre
+ * silently resolve WITHOUT writing — a web cuadre no-op'd yet looked finalized (part of the L0 money loss).
+ * Returns a human message (Spanish, driver-facing) when an id is missing, else null. recordCuadre throws on
+ * a non-null result; pure + node-tested so the invariant can't silently regress. See [[shiftDeliveries]].
+ */
+export function shiftIdentityError(driverId, shiftId) {
+  if (!driverId) return 'No se pudo identificar al repartidor — reintentá el cierre.';
+  if (!shiftId) return 'No se pudo identificar el turno — reintentá el cierre.';
+  return null;
+}
+
+/**
+ * The EXACT field map written to driver_cash/<uid>/<shift>/cuadre (minus closed_at, which must be the
+ * server timestamp supplied by the Firebase wrapper). Takes a computeShiftCash result directly and maps its
+ * camelCase figures (cashOwed/cashOrderCount) onto the STORED snake_case schema (cash_owed/cash_order_count)
+ * the dispatch reader already consumes. RTDB update() does NOT clear omitted fields, so a clean
+ * (non-provisional) cuadre MUST explicitly carry the reset values — else a provisional figure from an earlier
+ * attempt on the same shift lingers. Empty id lists are written as null (RTDB drops empty arrays, and null
+ * positively clears any prior value). Pure so the reset discipline is node-tested.
+ */
+export function cuadreRecordPayload(cuadre) {
+  const c = cuadre || {};
+  const num = (v) => (typeof v === 'number' ? v : 0);
+  const lp = Array.isArray(c.legacy_provisional_ids) ? c.legacy_provisional_ids : [];
+  const un = Array.isArray(c.unresolved_ids) ? c.unresolved_ids : [];
+  return {
+    cash_owed: num(c.cashOwed != null ? c.cashOwed : c.cash_owed),              // computeShiftCash → stored schema
+    cash_order_count: num(c.cashOrderCount != null ? c.cashOrderCount : c.cash_order_count),
+    provisional: !!c.provisional,
+    legacy_provisional_count: num(c.legacy_provisional_count),
+    legacy_provisional_ids: lp.length ? lp.slice() : null,
+    unresolved_count: num(c.unresolved_count),
+    unresolved_ids: un.length ? un.slice() : null,
+    close_op_id: c.close_op_id != null ? c.close_op_id : null,
+  };
 }
