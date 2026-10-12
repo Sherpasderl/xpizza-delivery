@@ -10,7 +10,7 @@
 //   • publishEdited additionally reads the active pointer + version after the flip (the KDS manifest sync);
 //   • getEditableCatalog's body gains `renderedCategories` + `restaurantName`, and it reads the active version (the
 //     draft assessment); an invalid stored draft's 503 gains `draft_unpublishable` + `sourceUpdateTime`.
-//   • (PB-3) getEditableCatalog's body gains `groupAuthoring` (the platform switch, OFF as shipped) + `choiceBadges` (the
+//   • (PB-3) getEditableCatalog's body gains `groupAuthoring` (the platform switch, ON since the PB-3 flip) + `choiceBadges` (the
 //     brand's renderer contract); both are code-derived, no read;
 //   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
 //     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
@@ -168,7 +168,7 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
       // and the badges are exactly the brand's contract (no brand literal here).
       if (c.status === 200) {
         const rid = c.name.split(':')[0];
-        assert.strictEqual(body.groupAuthoring, false, `${c.name}: groupAuthoring is the shipped switch (OFF)`);
+        assert.strictEqual(body.groupAuthoring, true, `${c.name}: groupAuthoring is the shipped switch (ON since the PB-3 flip)`);
         assert.deepStrictEqual(body.choiceBadges, [...require('../catalog/source-store').rendererContract(rid).choiceBadges], `${c.name}: choiceBadges = the brand's contract`);
       }
       delete body.groupAuthoring; delete body.choiceBadges;

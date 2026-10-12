@@ -13,7 +13,7 @@
 //
 // FAIL-CLOSED: a present-but-malformed render artifact throws at read (a switch that cannot be read is not "on").
 // ---------------------------------------------------------------------------
-const AUTHORING = false;   // §0b.3(e): flipped ONLY with/after the PB-3 portal deploy
+const AUTHORING = true;    // §0b.3(e): flipped AFTER the PB-3 portal deploy (2cb5a1c live: 5 portal functions + the portal)
 
 // The artifact's shape, judged on its own (pure — the reader below only supplies it).
 function parseRender(mod) {
