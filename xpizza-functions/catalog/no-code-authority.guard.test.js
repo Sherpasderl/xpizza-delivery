@@ -287,8 +287,6 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
     'xpizza-driver/stacking-helpers.test.js',
     'xpizza-factura/src/print-recovery.test.js',
     'xpizza-kitchen/avail-write.test.mjs',
-    'xpizza-kitchen/card-model.test.mjs',
-    'xpizza-kitchen/kds-smoke.test.mjs',
     'xpizza-kitchen/order-filter.test.mjs',
     'xpizza-kitchen/rail-count.test.mjs',
     'xpizza-kitchen/ready-nudge.test.mjs',
