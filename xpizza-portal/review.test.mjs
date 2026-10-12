@@ -1133,3 +1133,59 @@ test('add-product B: text_unsafe on a group speaks per field — an OPTION follo
     assert.deepStrictEqual([o.generic, o.action.id], [false, PUBLISH_ACTIONS.FIX], `${code}: a designed FIX panel`);
   }
 });
+
+// ── 1D add-product B — a new product with a REQUIRED CHOICE in the review and the seal ──────────────────────────────────
+// The server lists the product AND each option as additions (its diff); the screen nests the options under the product
+// (arrangement only — every server row still renders once) and the seal lists every OPTION as the factura line it is.
+const GROUP_DIFF = (prices = [624, 644, 654]) => ({ added: [
+  { surface: 'item', key: 'NY Plain Slice', price: Math.min(...prices) },
+  { surface: 'item', key: 'NY Plain Slice - Salsa Roja', price: prices[0] },
+  { surface: 'item', key: 'NY Plain Slice - Salsa Vodka', price: prices[1] },
+  { surface: 'item', key: 'NY Plain Slice - Combinada', price: prices[2] },
+], removed: [], renamed: [], changed: [], largeChangeSet: [] });
+const GROUP_DESCRIBE = (x) => ({
+  'NY Plain Slice': { name: 'NY Plain Slice', section: 'NY 18"', rules: ['Solo fines de semana'], choice: { label: 'Salsa', extrasNone: true } },
+  'NY Plain Slice - Salsa Roja': { option: true, parent: 'NY Plain Slice', name: 'Salsa Roja', fullName: 'NY Plain Slice - Salsa Roja', recommended: false },
+  'NY Plain Slice - Salsa Vodka': { option: true, parent: 'NY Plain Slice', name: 'Salsa Vodka', fullName: 'NY Plain Slice - Salsa Vodka', recommended: false },
+  'NY Plain Slice - Combinada': { option: true, parent: 'NY Plain Slice', name: 'Combinada', fullName: 'NY Plain Slice - Combinada', recommended: true },
+}[x && x.key] || null);
+const rowsWith = (root, cls) => walk(root).filter((n) => typeof n.className === 'string' && n.className.split(/\s+/).includes(cls));
+
+test('🔴 review (add-product B): the options sit UNDER their product; every server row renders exactly once; the price is the order page\'s', () => {
+  const root = fakeDom();
+  renderReview(root, reviewModel(GROUP_DIFF()), { describe: GROUP_DESCRIBE });
+  const keys = rowsWith(root, 'brow').map((r) => r.dataset.k);
+  assert.deepStrictEqual(keys, ['item::NY Plain Slice', 'item::NY Plain Slice - Salsa Roja', 'item::NY Plain Slice - Salsa Vodka', 'item::NY Plain Slice - Combinada'], 'each server row once, the product first');
+  assert.deepStrictEqual(rowsWith(root, 'sub').map((r) => r.dataset.k).length, 3, 'the three options are nested rows');
+  const t = textOf(root);
+  assert.ok(t.includes('Elección requerida: Salsa · el cliente elige 1 · Sin extras'), t);
+  assert.ok(t.includes('desde L624'), 'unequal options → "desde L {min}", from the SERVER’s option prices');
+  assert.ok(t.includes('Recomendada'), 'the recommended option is tagged');
+  assert.ok(textOf(rowsWith(root, 'mglabel')[0]).includes('4'), 'the header counts what the server listed');
+  const eq = fakeDom(); renderReview(eq, reviewModel(GROUP_DIFF([624, 624, 624])), { describe: GROUP_DESCRIBE });
+  assert.ok(textOf(eq).includes('L624') && !textOf(eq).includes('desde'), 'equal options → "L {price}"');
+  // an option whose product is NOT in the list stays a row of its own (nothing vanishes)
+  const orphan = GROUP_DIFF(); orphan.added.shift();
+  const o = fakeDom(); renderReview(o, reviewModel(orphan), { describe: GROUP_DESCRIBE });
+  assert.strictEqual(rowsWith(o, 'brow').length, 3, 'all three still render');
+  assert.strictEqual(rowsWith(o, 'sub').length, 0, '...as rows of their own');
+});
+
+test('🔴 seal (add-product B): every OPTION is a factura line, by its full name and price; the product has none; the signature counts products and options', () => {
+  const m = attestationModel(GROUP_DIFF(), { usesPlatformFactura: true });
+  assert.strictEqual(m.hasZero, false);
+  const root = fakeDom();
+  renderAttestation(root, m, () => {}, { describe: GROUP_DESCRIBE });
+  const t = textOf(root);
+  assert.ok(t.includes('Vas a agregar 1 producto nuevo. La factura imprimirá cada opción con su precio:'), t);
+  for (const [n, p] of [['NY Plain Slice - Salsa Roja', 624], ['NY Plain Slice - Salsa Vodka', 644], ['NY Plain Slice - Combinada', 654]]) {
+    const row = rowsWith(root, 'seachg').find((r) => textOf(r).includes(n));
+    assert.ok(row && textOf(row).includes(`L${p}`), `${n} at L${p}`);
+  }
+  const head = rowsWith(root, 'seachg').find((r) => textOf(r).trim().startsWith('NY Plain Slice') && !textOf(r).includes(' - '));
+  assert.ok(head && !/L\d/.test(textOf(head)), 'the product itself carries no factura price');
+  assert.ok(t.includes('1 producto nuevo y sus 3 opciones con sus precios en la factura fiscal.'), 'one signature covers the product and each option');
+  // a zero-priced option blocks the publish like any other priced line
+  const z = attestationModel(GROUP_DIFF([624, 0, 654]), { usesPlatformFactura: true });
+  assert.strictEqual(canPublish(z, true), false);
+});

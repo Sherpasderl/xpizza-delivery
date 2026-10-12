@@ -62,8 +62,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "fa5424049d7aafb2dc7c5e3039474841c9ab8baad0059b12edac4ceb303230e2",
-   "bytes": 62961
+   "sha256": "7f6550b55c99abb67bdbe19b02fb15cf71ea146bb4b3b922bd87ca528e9c3b3d",
+   "bytes": 64482
   }
  },
  "diff_aid": {
@@ -209,6 +209,12 @@
     ".bchip.rem",
     "color",
     "var(--red-text)"
+   ],
+   [
+    "",
+    ".bchoice",
+    "color",
+    "var(--mute)"
    ],
    [
     "",
@@ -938,6 +944,12 @@
    ],
    [
     "",
+    ".mgflag",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
     ".mglabel .mgn",
     "color",
     "var(--mute)"
@@ -959,6 +971,18 @@
     ".mgmain",
     "color",
     "inherit"
+   ],
+   [
+    "",
+    ".mgname-in",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".mgname-in",
+    "color",
+    "var(--ink)"
    ],
    [
     "",
@@ -1571,6 +1595,36 @@
     ".receipt p",
     "color",
     "var(--mute)"
+   ],
+   [
+    "",
+    ".recpill",
+    "background",
+    "transparent"
+   ],
+   [
+    "",
+    ".recpill",
+    "color",
+    "var(--mute)"
+   ],
+   [
+    "",
+    ".recpill.recpill-on",
+    "background",
+    "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".recpill.recpill-on",
+    "border-color",
+    "var(--gold-line)"
+   ],
+   [
+    "",
+    ".recpill.recpill-on",
+    "color",
+    "var(--gold)"
    ],
    [
     "",

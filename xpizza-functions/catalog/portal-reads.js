@@ -21,6 +21,7 @@
 const { readOwnerRestaurants } = require('./owner-index');
 const { sourceRefOf, validateSource, rendererContract } = require('./source-store');
 const { assessDraft } = require('./draft-assess');   // 1D add-product A
+const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the ONE platform authoring switch (no brand)
 const { usesPlatformFactura } = require('../factura/eligibility');   // 2b-2b: the fiscal capability, server-owned
 // The EXISTING codec from the 2b-1 write path, imported rather than reimplemented. `sourceUpdateTime`
 // is what a later slice hands straight back to editCatalog as `baseSourceUpdateTime`, and Firestore
@@ -149,6 +150,14 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
      An assessment that cannot be made (the live read failed) is simply omitted: the editor still loads. */
   let renderedCategories = [];
   try { renderedCategories = rendererContract(rid).renderedCategories; } catch (_) { renderedCategories = []; }
+  /* 1D add-product B (§0b.3(e), §0c.7) — may the drawer OFFER "Elección requerida"? The SAME platform constant editCatalog
+     and publishEdited enforce, so the portal never shows a control the server would refuse (off ⇒ the Phase A drawer,
+     unchanged). choiceBadges: the badges this brand's picker draws on an option (e.g. "recommended"), from the generated
+     renderer contract — data, never a brand literal. Both fail CLOSED (off / none) when they cannot be read. */
+  let groupAuthoring = false;
+  try { groupAuthoring = groupCapabilities().authoring === true; } catch (_) { groupAuthoring = false; }
+  let choiceBadges = [];
+  try { choiceBadges = [...rendererContract(rid).choiceBadges]; } catch (_) { choiceBadges = []; }
   let restaurantName = rid;
   try { restaurantName = await displayName(db, rid); } catch (_) { restaurantName = rid; }
   let draftUnpublishable = null;
@@ -167,6 +176,8 @@ async function getEditableCatalogCore({ db, fsdb, authorize, readActiveVersionId
 
   return reply(200, {
     renderedCategories,
+    groupAuthoring,
+    choiceBadges,
     restaurantName,
     ...(draftUnpublishable ? { draft_unpublishable: draftUnpublishable } : {}),
     ...(pendingAdditions ? { pendingAdditions } : {}),

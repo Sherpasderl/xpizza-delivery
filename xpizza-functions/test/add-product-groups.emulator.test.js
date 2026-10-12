@@ -157,6 +157,69 @@ async function wipe() {
   }
   ok('la_musa’s Pad Thai group: its map is frozen and no option can be added to it, while a per-choice price edit still saves');
 
+  // ── 4. PB-3 COMPOSED: the source the REAL portal editor builds (xpizza-portal/editor.js, its own mutators — never a
+  //       hand-built fixture) through the real save → the real assessment a reload runs → publish → the active catalog ──
+  {
+    const { pathToFileURL } = require('url');
+    const path = require('path');
+    const E = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-portal', 'editor.js')).href);
+    const { assessDraft } = require('../catalog/draft-assess');   // judged by the same (stubbed) platform switch
+    const R = (k) => `tmp:pb3-${k}-0000-0000`;
+    for (const rid of ['x_pizza', 'la_musa']) {
+      await wipe(); await seedBrand(rid);
+      Object.assign(CAPS, { render: true, authoring: true });
+      const loaded = await draft(rid);
+      const d = E.createDraft(loaded);
+      E.addProduct(d, { ref: R('l'), cat: CAT[rid] });
+      E.setAddition(d, R('l'), 'name', 'NY Plain Slice'); E.setAddition(d, R('l'), 'desc', 'La clásica'); E.setAddition(d, R('l'), 'price', '624');
+      E.setRequiredChoice(d, R('l'), true, [R('a'), R('b')]);
+      E.setGroupLabel(d, R('l'), 'Salsa');
+      E.setChoiceName(d, R('a'), 'Salsa Roja'); E.setChoiceName(d, R('b'), 'Salsa Vodka');
+      E.addChoice(d, R('l'), R('c')); E.setChoiceName(d, R('c'), 'Combinada'); E.setChoiceRecommended(d, R('c'), true);
+      E.setGroupExtrasNone(d, R('l'), true);
+      E.setChoicePrice(d, R('b'), '644'); E.setChoicePrice(d, R('c'), '654');
+      assert.ok(E.isPublishable(d), `${rid}: premise — the editor holds a complete group`);
+      const sv = await save(rid, E.draftSource(d));
+      assert.strictEqual(sv.status, 200, `${rid} save of the EDITOR's document: ${JSON.stringify(sv.body).slice(0, 300)}`);
+      E.adopt(d, sv.body.source);
+      const stored = await draft(rid);
+      const added = stored.items.slice(-4);
+      assert.deepStrictEqual(added.map((i) => i.display.name), ['NY Plain Slice', 'NY Plain Slice - Salsa Roja', 'NY Plain Slice - Salsa Vodka', 'NY Plain Slice - Combinada'], `${rid}: names derived by the server`);
+      assert.deepStrictEqual(added.map((i) => i.price), [624, 624, 644, 654], `${rid}: per-option prices; the launcher = the cheapest (non-chargeable)`);
+      assert.deepStrictEqual(added[3].display.tags, ['recommended'], `${rid}: Recomendada stored on the option`);
+      assert.ok(added.every((i) => i.display.extras_policy === 'none'), `${rid}: "sin extras" on the launcher and every option`);
+      // the editor, after adopting the server's canonical source: ONE pending product; the options sit under it
+      const listed = new Set(sv.body.diff.added.filter((a) => a.surface === 'item').map((a) => a.key));
+      assert.strictEqual(E.pendingChanges(d).length, 1, `${rid}: the adopted group is one pending change`);
+      assert.deepStrictEqual(E.choiceGroup(d, added[0].key).options.map((o) => o.key), added.slice(1).map((o) => o.key), `${rid}: the editor finds the group by DISPLAY ids after adoption`);
+      assert.ok(added.slice(1).every((o) => E.isNewGroupOption(d, o, listed)), `${rid}: each option is folded under its new product`);
+      // the reload's assessment of the SAVED draft (getEditableCatalog) — publishable, every unit row a pending addition
+      const a = assessDraft(rid, stored, await readActiveBuilt(rid)());
+      assert.strictEqual(a.publishable, true, `${rid}: 🔴 a saved, unpublished group reloads as publishable (${a.code || ''} ${a.detail || ''})`);
+      assert.deepStrictEqual(a.additions.slice().sort(), added.map((i) => i.key).sort(), `${rid}: and lists every row of the unit`);
+      // a price edit on the SAVED group through the ONE group mutator, then publish
+      E.setGroupPrice(d, added[0].key, '630', listed);
+      const sv2 = await save(rid, E.draftSource(d));
+      assert.strictEqual(sv2.status, 200, `${rid} re-save: ${JSON.stringify(sv2.body).slice(0, 300)}`);
+      const p = await publish(rid, sv2);
+      assert.strictEqual(p.status, 200, `${rid} publish: ${JSON.stringify(p.body).slice(0, 300)}`);
+      const active = await previewVersion(db, rid, await getActiveVersionId(db, rid));
+      assert.deepStrictEqual(added.map((i) => active.items.find((x) => x.key === i.key).price), [630, 630, 630, 630], `${rid}: the group price went live on every option`);
+      const pm = await buildPublicMenu(db, rid, { known: new Set([rid]), isActive: async () => true });
+      const spec = pm.body.variant_items && pm.body.variant_items[String(added[0].display.id)];
+      assert.ok(spec && spec.label === 'Salsa' && spec.basePrice === 630, `${rid}: the public menu serves the group ("desde" derived)`);
+      // "Ninguna" composes too: a group switched on then off saves as a PLAIN product — the map exactly as it was
+      const d2 = E.createDraft(await draft(rid));
+      E.addProduct(d2, { ref: R('m'), cat: CAT[rid] }); E.setAddition(d2, R('m'), 'name', 'Otra Slice'); E.setAddition(d2, R('m'), 'price', '500');
+      E.setRequiredChoice(d2, R('m'), true, [R('n'), R('o')]); E.setRequiredChoice(d2, R('m'), false);
+      const before = JSON.stringify((await draft(rid)).structure.variant_items);
+      const sv3 = await save(rid, E.draftSource(d2));
+      assert.strictEqual(sv3.status, 200, `${rid} Ninguna save: ${JSON.stringify(sv3.body).slice(0, 300)}`);
+      assert.strictEqual(JSON.stringify((await draft(rid)).structure.variant_items), before, `${rid}: zero residue in the stored map`);
+    }
+    ok('PB-3 composed, BOTH brands: the REAL portal editor\'s document saves (derived names, per-option prices, Recomendada, sin extras), adopts as ONE pending product, reloads as publishable, takes the ONE group price mutator, publishes and is served; "Ninguna" saves a plain product with the map untouched');
+  }
+
   FINISHED = true;
   console.log(`\nadd-product-groups(emulator): OK (${n})`);
   process.exit(0);

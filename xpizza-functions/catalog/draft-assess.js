@@ -9,6 +9,7 @@
 const { validateSource, rendererContract } = require('./source-store');
 const { buildSourceCandidate, assertBuiltValid } = require('./candidate-validate');
 const AP = require('./add-product');
+const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the SAME authoring switch a save is judged by
 
 // activeRes: { built: {items, structure}, extraRecords } (readActiveBuilt's shape)
 function assessDraft(rid, source, activeRes) {
@@ -29,6 +30,9 @@ function assessDraft(rid, source, activeRes) {
       draftAuthored: Object.keys(source.structure || {}),
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: source.deleted_ids && Array.isArray(source.deleted_ids.ids) ? source.deleted_ids.ids : [],
+      // 1D add-product B (PB-3): judged by the switch the save was judged by — without it a SAVED, unpublished group read as
+      // choices_not_supported_yet once authoring is on, and the reloaded editor offered "Volver al menú publicado" instead
+      authoring: groupCapabilities().authoring,
     });
     return { publishable: true, additions: r.additions, removals: r.removals };
   } catch (e) {

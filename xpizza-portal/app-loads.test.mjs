@@ -2023,3 +2023,144 @@ test('🔴 r1: a world that ends while the post-publish reload is held drops tha
   assert.strictEqual(app.state.draft.canEdit(), true, 'and editable — nothing is left locked by the dropped reload');
   assert.strictEqual(byId.get('pubback').disabled, false, 'and "Listo" is not left disabled');
 });
+
+// ── 1D add-product B — "Elección requerida" in the real drawer (the real app.js / editor / render / review; fetch stubbed) ──
+const GROUP_LOAD = (extra = {}) => ADD_LOAD({ groupAuthoring: true, choiceBadges: ['recommended'], ...extra });
+const q = (byId, sel) => byId.get('drawer').querySelectorAll(sel);
+const inputBy = (byId, label) => q(byId, 'input').find((i) => i.attrs['aria-label'] === label);
+async function setVal(n, v, ev = 'input') { n.value = v; await fire(n, ev); }
+async function choose(n) { n.checked = true; await fire(n, 'change'); }
+// add "NY Plain Slice" at 624 and fill its group exactly as the approved mock shows
+async function addPlainSlice(byId, app) {
+  const ref = await addAndFill(byId, app, { name: 'NY Plain Slice', price: '624' });
+  const radios = q(byId, 'input').filter((i) => i.type === 'radio');
+  assert.strictEqual(radios.length, 2, 'Ninguna | the choice');
+  assert.strictEqual(radios[0].checked, true, 'a new product starts with Ninguna');
+  await choose(radios[1]);
+  await setVal(q(byId, '.mgname-in')[0], 'Salsa');
+  let names = q(byId, '.moname');
+  assert.strictEqual(names.length, 2, 'two options to start');
+  await setVal(names[0], 'Salsa Roja'); await setVal(names[1], 'Salsa Vodka');
+  await fire(q(byId, '.mgadd')[0]);
+  names = q(byId, '.moname');
+  await setVal(names[2], 'Combinada');
+  await fire(q(byId, '.recpill')[2]);
+  const extras = q(byId, '.mgflag-extras')[0].children.find((c) => c.type === 'checkbox');
+  extras.checked = true; await fire(extras, 'change');
+  return ref;
+}
+
+test('🔴 add-product B: with the platform switch OFF the drawer is exactly Phase A — no "Elección requerida"', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  assert.strictEqual(q(byId, '.modblock').length, 0, 'absent — not disabled — while the server says authoring is off');
+  assert.strictEqual(app.state.groupAuthoring, false);
+});
+
+test('🔴 add-product B: RECOMENDADA appears only where the brand’s picker draws it (the contract’s choiceBadges)', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD({ choiceBadges: [] }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app, { name: 'NY Plain Slice', price: '624' });
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[1]);
+  assert.strictEqual(q(byId, '.moname').length, 2, 'premise: the group is open with its options');
+  assert.strictEqual(q(byId, '.recpill').length, 0, '🔴 no pill for a brand whose contract has no badge');
+});
+
+test('🔴 add-product B: the group is built in the drawer, sent in the SERVER’s shape, folded in the list, nested in the review', async () => {
+  const byId = installDom();
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return GROUP_LOAD();
+    if (fn === 'editCatalog') {
+      // the server allocates: keys by name, display ids, variantOf / variant_items rewritten to display ids, names derived
+      const canon = JSON.parse(JSON.stringify(calls.at(-1).body.source));
+      const Lref = canon.items.find((i) => i.ref && !('variantOf' in i.display)).ref;
+      const idOf = new Map([[Lref, 2]]);
+      const keyOf = new Map([[Lref, 'NY Plain Slice']]);
+      canon.items.filter((i) => i.ref && 'variantOf' in i.display).forEach((v, k) => { idOf.set(v.ref, 3 + k); keyOf.set(v.ref, `NY Plain Slice - ${v.display.choice}`); });
+      for (const i of canon.items) {
+        if (!i.ref) continue;
+        const r = i.ref; delete i.ref; i.key = keyOf.get(r);
+        i.display = { ...i.display, id: idOf.get(r), name: keyOf.get(r), cat: 'c' };
+        if ('variantOf' in i.display) i.display.variantOf = 2;
+      }
+      canon.structure.item_order = canon.structure.item_order.map((k) => keyOf.get(k) || k);
+      const spec = canon.structure.variant_items[Lref];
+      canon.structure.variant_items = { 2: { ...spec, variantIds: spec.variantIds.map((r) => idOf.get(r)) } };
+      return okJson({ token: 'ET', updateTime: 'T2', source: canon, diff: { added: canon.items.filter((i) => i.display.id >= 2).map((i) => ({ surface: 'item', key: i.key, price: i.price })), removed: [], renamed: [], changed: [], largeChangeSet: [] } });
+    }
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  assert.strictEqual(pendingCountOf(app), 1, 'ONE pending change: a product with its choice, not 1 + 3');
+  const rows = byId.get('detail').querySelectorAll('.irow');
+  assert.strictEqual(rows.length, 2, 'the list shows Pizza and the new product — its options are folded under it');
+  assert.ok(byId.get('detail').querySelectorAll('.ochip').some((c) => c.children.some((t) => t.textContent === 'Salsa')), 'with its group as a chip');
+
+  await fire(byId.get('review'));
+  const sent = calls.find((c) => c.fn === 'editCatalog').body.source;
+  const opts = sent.items.filter((i) => i.display && i.display.variantOf === ref);
+  assert.deepStrictEqual(sent.items.find((i) => i.ref === ref), { ref, price: 624, display: { cat: 'c', name: 'NY Plain Slice', price: 624, extras_policy: 'none' } }, '🔴 the product: a REF, its price, "sin extras"');
+  assert.deepStrictEqual(opts.map((o) => [o.price, o.display.choice, o.display.tags]), [[624, 'Salsa Roja', undefined], [624, 'Salsa Vodka', undefined], [624, 'Combinada', ['recommended']]], '🔴 each option a priced row, Combinada recommended');
+  assert.ok(opts.every((o) => /^tmp:/.test(o.ref) && !('key' in o) && !('name' in o.display) && !('cat' in o.display)), 'refs only; the server derives names and sections');
+  assert.deepStrictEqual(sent.structure.variant_items, { [ref]: { label: 'Salsa', variantIds: opts.map((o) => o.ref) } });
+  // adopted: the review nests the three options under the product
+  assert.ok(app.state.additionKeys.has('NY Plain Slice - Combinada'), 'the saved options are known additions');
+  assert.strictEqual(byId.get('mbody').querySelectorAll('.sub').length, 3, 'the review nests the three options');
+  assert.strictEqual(byId.get('detail').querySelectorAll('.irow').length, 2, 'and the list still folds them after adoption');
+});
+
+test('🔴 add-product B: unequal prices — the product price is DERIVED and refuses typing; "Mismo precio" sets every option at once; Ninguna leaves nothing', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  const items = () => app.state.draft.state.items;
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '644');
+  await setVal(inputBy(byId, 'Precio de Salsa Roja'), '700');
+  await setVal(inputBy(byId, 'Precio de Combinada'), '680');
+  const product = () => items().find((i) => i.ref === ref);
+  assert.strictEqual(product().price, 644, 'the product follows its cheapest option');
+  const listPrice = byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === `item::${ref}`);
+  assert.strictEqual(listPrice && listPrice.textContent, 'desde L644', '🔴 the list prices it as the order page will: "desde" the cheapest');
+  assert.strictEqual(app.state.samePrice.get(ref), false, 'editing one option turned "Mismo precio" off');
+  const price = inputBy(byId, 'Precio');
+  assert.strictEqual([price.readOnly, price.value].join('|'), 'true|644', 'the product price is shown read-only, derived');
+  await setVal(price, '1');
+  assert.deepStrictEqual([product().price, price.value], [644, '644'], '🔴 typing into the derived price changes nothing');
+  const same = q(byId, '.mgflag-same')[0].children.find((c) => c.type === 'checkbox');
+  same.checked = true; await fire(same, 'change');
+  assert.deepStrictEqual(items().filter((i) => i.display.variantOf === ref).map((i) => i.price), [644, 644, 644], '"Mismo precio" ON sets every option to the product price (one mutator)');
+  await setVal(inputBy(byId, 'Precio'), '630');
+  assert.deepStrictEqual([product().price, ...items().filter((i) => i.display.variantOf === ref).map((i) => i.price)], [630, 630, 630, 630], 'and the product price now sets them all');
+  assert.strictEqual(pendingCountOf(app), 1);
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[0]);
+  assert.deepStrictEqual(items().filter((i) => i.ref).map((i) => i.ref), [ref], '🔴 Ninguna: only the product remains');
+  assert.ok(!('variant_items' in app.state.draft.state.structure) && !('extras_policy' in product().display), 'no map, no "sin extras" — zero residue');
+  assert.strictEqual(q(byId, '.mgbody').length, 0);
+});
+
+test('🔴 add-product B: a refusal the server names on an OPTION opens its PRODUCT’s drawer with the message under that option', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  const optRef = app.state.draft.state.items.filter((i) => i.display.variantOf === ref)[1].ref;
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'choice_duplicate', detail: '"Salsa Vodka" appears twice in this group', ref: optRef, field: 'choice' }) : GROUP_LOAD()));
+  await fire(byId.get('review'));
+  await fire(byId.get('mbody').querySelectorAll('button')[0]);
+  assert.strictEqual(app.state.drawerKey, ref, 'the PRODUCT’s drawer, not a drawer of the option');
+  const errs = q(byId, '.ferr');
+  assert.strictEqual(errs.length, 1);
+  assert.match(errs[0].textContent, /mismo nombre/, 'the portal’s own words for the server’s code');
+  assert.strictEqual(q(byId, '.moname').length, 3, 'everything the owner typed is kept');
+});
