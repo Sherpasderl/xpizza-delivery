@@ -317,10 +317,12 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
   // fulfillment). Idempotent: already-materialized returned above, and the marker is written in the
   // same atomic update, so re-entry can't re-alert. X. Pizza always active -> no alert.
   let inactiveRid = null;
+  let liveIdentity = null;   // R3-FIX D12: the SAME read names the brand on the pickup line (no extra I/O)
   if (deps.getIdentity) {
     const rid = order.restaurant_id || 'x_pizza';
     try {
-      if ((await deps.getIdentity(db, rid)).active === false) inactiveRid = rid;
+      liveIdentity = await deps.getIdentity(db, rid);
+      if (liveIdentity.active === false) inactiveRid = rid;
     } catch (_) {
       inactiveRid = rid; // config unavailable post-capture: still materialize, flag for review
     }
@@ -334,7 +336,8 @@ async function confirmAndMaterialize(deps, { orderId, attemptId, now, trackingTo
     now,
     restaurant,
     paymentReference: paymentReference || order.payment_reference || null,
-    paymentMethod: 'online'
+    paymentMethod: 'online',
+    liveIdentity,
   });
   if (inactiveRid) updates[`orders/${orderId}/inactive_materialize_alerted_at`] = now;
   await db.ref().update(updates);

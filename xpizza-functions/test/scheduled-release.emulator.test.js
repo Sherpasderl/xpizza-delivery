@@ -90,6 +90,27 @@ async function seedScheduled(id, over = {}) {
   const r9 = await REL.recoverStaleReleasing(deps, { orderId: 'R9', now: NOW, claimId: 'c9' });
   assert.strictEqual(r9.recovered, false); assert.strictEqual((await val('orders/R9')).status, 'releasing'); ok('9: fresh releasing (<5m) → not recovered (in-flight protected)');
 
+  // ── 10. R3-FIX D12: the released pickup line names THIS restaurant from its own config — x_pizza, la_musa and a synthetic
+  //        third — never a literal, and never deps.restaurantFallback (whose name here is "X. Pizza") ──
+  const release = async (id, rid, snap, identity) => {
+    await db.ref('/').set(null);
+    await db.ref(`restaurants/${rid}/identity`).set({ hours: HOURS, ...identity });
+    await seedScheduled(id, { extra: { restaurant_id: rid, restaurant_name: null, restaurant_display_name: null, ...snap } });
+    const r = await REL.releaseOne(deps, { orderId: id, now: NOW, claimId: `c${id}` });
+    assert.strictEqual(r.released, true, `${id}: released`);
+    return (await val(`order_tracking/${(await val(`orders/${id}`)).tracking_token}`)).address_short;
+  };
+  const cases = [
+    ['D1', 'x_pizza', { restaurant_name: 'X Pizza', restaurant_display_name: 'X. Pizza' }, { name: 'X Pizza' }, 'Recoger en X. Pizza', 'its own display-name snapshot'],
+    ['D2', 'x_pizza', { restaurant_name: 'X Pizza' }, { name: 'X Pizza', display_name: 'X. Pizza' }, 'Recoger en X. Pizza', 'scheduled BEFORE D12 → the LIVE display name, never "X Pizza"'],
+    ['D3', 'la_musa', { restaurant_name: 'La Musa' }, { name: 'La Musa' }, 'Recoger en La Musa', 'la_musa by its name'],
+    ['D4', 'la_musa', {}, { name: 'La Musa' }, 'Recoger en La Musa', 'no snapshot at all → the LIVE name, never the fallback\'s "X. Pizza"'],
+    ['D5', 'r3_synth', { restaurant_name: 'Sushi Sur' }, { name: 'Sushi Sur' }, 'Recoger en Sushi Sur', 'a synthetic THIRD restaurant'],
+    ['D6', 'r3_synth', {}, {}, 'Recoger en el restaurante', 'nothing to name it by → neutral'],
+  ];
+  for (const [id, rid, snap, identity, want, why] of cases) assert.strictEqual(await release(id, rid, snap, identity), want, `${id} ${rid}: ${why}`);
+  ok('10: R3-FIX D12 — a released pickup names its OWN restaurant (x_pizza, la_musa, a synthetic third): snapshot display → live display → snapshot name → live name → neutral; never a literal, never the fallback');
+
   console.log(`\n${n} passed`);
   process.exit(0);
 })().catch((e) => { console.error('F-MATRIX FAILED:', e); process.exit(1); });

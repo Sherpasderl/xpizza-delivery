@@ -11,11 +11,12 @@
  * Pure (no db / no I/O): returns a `{ "path": value }` map for one atomic `.update()`.
  * `now` is injected (ServerValue.TIMESTAMP in prod, a number in tests).
  */
+const { pickupLabel } = require('./pickup-label');   // R3-FIX D12
 
 // Build the live-order updates. For online confirms `order` is the existing
 // pending_payment record (already holds customer/items/total/address); we PATCH the
 // order's status/payment fields (not overwrite the node) and ADD tasks + tracking.
-function buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference = null, paymentMethod = null }) {
+function buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference = null, paymentMethod = null, liveIdentity = null }) {
   if (!orderId || !order) throw new Error('buildMaterializeUpdates: orderId and order are required');
   const orderType = order.order_type;
   const method = paymentMethod || order.payment_method || null;
@@ -108,9 +109,12 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   }
 
   // Public tracking record (safe-to-expose subset only).
+  // R3-FIX D12: the pickup line names THIS restaurant — the order's own config snapshot first, then the caller's LIVE
+  // identity (an order created before the display-name snapshot existed), never the x_pizza-only RESTAURANT fallback
+  const live = liveIdentity && typeof liveIdentity === 'object' ? liveIdentity : {};
   const addressShort = orderType === 'delivery'
     ? String(order.address_detected || '').split(',')[0].trim()
-    : 'Recoger en X. Pizza';
+    : pickupLabel(order.restaurant_display_name, live.display_name, order.restaurant_name, live.name);
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,

@@ -62,7 +62,7 @@ const D = {
   [F('tools/portal-speed-proof.js')]: 'latency-parent',
   // operator CLIs — tools/require-project.js runs the mixed-signal guard (driven: mixed ⇒ refuse)
   ...Object.fromEntries(['backfill-identities', 'backfill-snapshot', 'bootstrap-identity', 'client-floor', 'client-version-report',
-    'draft-drift-report', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
+    'draft-drift-report', 'identity-display-name', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
     'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',

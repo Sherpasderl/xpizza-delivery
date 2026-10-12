@@ -1,6 +1,7 @@
 'use strict';
 
-const { normalizeReorderItems } = require('./reorder-normalize');   // P3 — menu-allowlisted reorder recipe
+const { normalizeReorderItems } = require('./reorder-normalize');
+const { pickupLabel } = require('./pickup-label');   // R3-FIX D12   // P3 — menu-allowlisted reorder recipe
 
 /**
  * Pure builder for createOrder's atomic write (cash / non-online intake). Mirrors
@@ -50,6 +51,7 @@ function buildCreateOrderUpdates({
     hub_lng: hubSnap.hub_lng,
     restaurant_name: hubSnap.restaurant_name,
     restaurant_phone: hubSnap.restaurant_phone,
+    ...(hubSnap.restaurant_display_name ? { restaurant_display_name: hubSnap.restaurant_display_name } : {}),   // R3-FIX D12
     factura_status: 'not_due',
     cash_tendered_cents: cashTenderedCents,
     ...(freeOrder ? { free_order: true } : {}),   // A1: a redemption zeroed the total — nothing to collect (driver/accounting honor this)
@@ -113,9 +115,10 @@ function buildCreateOrderUpdates({
     };
   }
 
+  // R3-FIX D12: the pickup line names THIS restaurant, from its own config snapshot — never a brand literal
   const addressShort = orderType === 'delivery'
     ? fields.address_detected.split(',')[0].trim()
-    : 'Recoger en X. Pizza';
+    : pickupLabel(hubSnap.restaurant_display_name, hubSnap.restaurant_name);
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,

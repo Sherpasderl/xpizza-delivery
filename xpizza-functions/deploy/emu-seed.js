@@ -17,7 +17,7 @@ const { emuDatabaseURL } = require('./emu-ns');
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: emuDatabaseURL() });
 
 const VALID = {
-  name: 'X Pizza', hub_lat: 15.507489753573818, hub_lng: -88.0398486953722, phone: '+50497952893',
+  name: 'X Pizza', display_name: 'X. Pizza', hub_lat: 15.507489753573818, hub_lng: -88.0398486953722, phone: '+50497952893',
   whatsapp_instance: 'instance170156', whatsapp_enabled: true, delivery_radius_km: 7,
   hours: {
     sun: { open: true, start: '12:00', end: '19:45' }, mon: { open: true, start: '12:00', end: '19:45' },

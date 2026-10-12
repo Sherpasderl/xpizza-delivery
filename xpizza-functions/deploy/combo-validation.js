@@ -13,8 +13,19 @@
  */
 const assert = require('assert');
 
-const HUB = { hub_lat: 15.507489753573818, hub_lng: -88.0398486953722, restaurant_name: 'X Pizza', restaurant_phone: '+50497952893' };
+// R3-FIX D12: x_pizza's identity carries display_name "X. Pizza" (the brand as customers see it; its config `name` is
+// "X Pizza"), seeded by the owner BEFORE the D12 deploy — so the snapshot gains it and the AUDITED pickup line below stays
+// exactly "Recoger en X. Pizza". restaurant_display_name is the one OPTIONAL snapshot key (present only when configured).
+const HUB = { hub_lat: 15.507489753573818, hub_lng: -88.0398486953722, restaurant_name: 'X Pizza', restaurant_phone: '+50497952893', restaurant_display_name: 'X. Pizza' };
 const SNAP_KEYS = ['hub_lat', 'hub_lng', 'restaurant_name', 'restaurant_phone'];
+const OPTIONAL_SNAP_KEYS = ['restaurant_display_name'];
+// the snapshot keys a combo's order carries: the required four + whichever optional ones its snapshot configures
+const snapKeysOf = (combo) => {
+  const ks = Object.keys(combo.snapshot);
+  for (const k of SNAP_KEYS) assert.ok(ks.includes(k), `combo snapshot lacks required ${k}`);
+  for (const k of ks) assert.ok(SNAP_KEYS.includes(k) || OPTIONAL_SNAP_KEYS.includes(k), `combo snapshot has unknown key ${k}`);
+  return ks;
+};
 
 const COMBOS = {
   cash_delivery: {
@@ -66,7 +77,8 @@ function assertComboOutput(updates, combo) {
   assert.ok(order, `${orderKey} missing from output`);
   const stripped = { ...order };
   const snap = {};
-  for (const k of SNAP_KEYS) { snap[k] = stripped[k]; delete stripped[k]; }
+  for (const k of [...SNAP_KEYS, ...OPTIONAL_SNAP_KEYS]) { if (k in stripped) { snap[k] = stripped[k]; delete stripped[k]; } }
+  assert.deepStrictEqual(Object.keys(snap).sort(), snapKeysOf(combo).sort(), 'order: hub snapshot keys wrong');
   assert.deepStrictEqual(stripped, combo.pre3b[orderKey], 'order: existing fields drifted or a non-snapshot field was added');
   assert.deepStrictEqual(snap, combo.snapshot, 'order: hub snapshot wrong');
   for (const [k, v] of Object.entries(combo.pre3b)) {
@@ -94,11 +106,11 @@ function assertComboShape(updates, combo, { orderId, trackingToken }) {
     // RTDB drops null-valued keys on write, so the live read-back lacks them — mirror that in the
     // expected key-set (the audited shape keeps e.g. assigned_driver_id:null) before comparing.
     const normKeys = Object.keys(stripNulls(comboRec));
-    const expectKeys = (isOrder ? [...normKeys, ...SNAP_KEYS] : normKeys).sort();
+    const expectKeys = (isOrder ? [...normKeys, ...snapKeysOf(combo)] : normKeys).sort();
     assert.deepStrictEqual(Object.keys(live).sort(), expectKeys, `${subPath(comboKey)}: field-key-set drift vs audited shape`);
     if (isOrder) {
       const snap = {};
-      for (const k of SNAP_KEYS) snap[k] = live[k];
+      for (const k of snapKeysOf(combo)) snap[k] = live[k];
       assert.deepStrictEqual(snap, combo.snapshot, `${subPath(comboKey)}: snapshot != HUB constant`);
     }
   }
@@ -110,4 +122,4 @@ function combosHash() {
   return require('crypto').createHash('sha256').update(JSON.stringify(COMBOS)).digest('hex');
 }
 
-module.exports = { HUB, COMBOS, SNAP_KEYS, stripNulls, assertComboOutput, assertComboShape, combosHash };
+module.exports = { HUB, COMBOS, SNAP_KEYS, OPTIONAL_SNAP_KEYS, stripNulls, assertComboOutput, assertComboShape, combosHash };

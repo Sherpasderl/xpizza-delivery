@@ -363,8 +363,44 @@ const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
     const r = await confirmOnlinePayment(baseDeps(db, client), { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 8000, trackingToken: 'TOK9' });
     assert.strictEqual(r.outcome, 'confirmed');
     assert.strictEqual(db.getAt('tasks/PZX-1_pickup'), null, 'pickup orders get no driver tasks');
-    assert.strictEqual(db.getAt('order_tracking/TOK9').address_short, 'Recoger en X. Pizza');
-    ok('pickup order → confirmed, no tasks, pickup tracking copy');
+    // R3-FIX D12: a pre-3b order (no hub snapshot) and no identity reader → the NEUTRAL line, never index.js's x_pizza-only
+    // RESTAURANT constant ("X Pizza")
+    assert.strictEqual(db.getAt('order_tracking/TOK9').address_short, 'Recoger en el restaurante');
+    ok('pickup order → confirmed, no tasks, pickup tracking copy (no brand to name → neutral, never the x_pizza constant)');
+  }
+
+  // 9b. R3-FIX D12 — the pickup line names THIS restaurant from its own config, on every brand (x_pizza, la_musa, and a
+  // synthetic third — two brands could hide a literal): the order's display-name snapshot first, then the confirm's LIVE
+  // identity (the same read the active-recheck already makes), then the snapshot name, then the live name.
+  {
+    const OPEN = { open: true, start: '00:00', end: '24:00' };
+    const HOURS = { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN };
+    const confirmPickup = async (rid, snap, live, tok) => {
+      const init = pendingOrder({ type: 'pickup' });
+      Object.assign(init.orders['PZX-1'], { restaurant_id: rid }, snap);
+      const db = makeDb(init);
+      let reads = 0;
+      const deps = { ...baseDeps(db, mkClient()), ...(live ? { getIdentity: async (_db, r) => { reads += 1; assert.strictEqual(r, rid); return { active: true, hours: HOURS, ...live }; } } : {}) };
+      const r = await confirmOnlinePayment(deps, { orderId: 'PZX-1', paymentUuid: 'S-uuid', now: 8000, trackingToken: tok });
+      assert.strictEqual(r.outcome, 'confirmed', `${rid}: confirmed`);
+      return { line: db.getAt(`order_tracking/${tok}`).address_short, order: db.getAt('orders/PZX-1'), reads };
+    };
+    const cases = [
+      ['x_pizza', { restaurant_name: 'X Pizza', restaurant_display_name: 'X. Pizza' }, { name: 'X Pizza', display_name: 'Otro' }, 'Recoger en X. Pizza', 'the order\'s own display-name snapshot wins'],
+      ['x_pizza', { restaurant_name: 'X Pizza' }, { name: 'X Pizza', display_name: 'X. Pizza' }, 'Recoger en X. Pizza', 'an order placed before D12: the LIVE display name (never "X Pizza")'],
+      ['la_musa', { restaurant_name: 'La Musa' }, { name: 'La Musa' }, 'Recoger en La Musa', 'no display name configured: its name'],
+      ['la_musa', {}, { name: 'La Musa' }, 'Recoger en La Musa', 'a pre-3b order: the live name — never the x_pizza constant'],
+      ['r3_synth', { restaurant_name: 'Sushi Sur' }, null, 'Recoger en Sushi Sur', 'a THIRD restaurant, from its snapshot alone'],
+      ['r3_synth', { restaurant_name: 'Sushi Sur' }, { name: 'Sushi Sur', display_name: '   ' }, 'Recoger en Sushi Sur', 'a blank display name is treated as absent'],
+    ];
+    for (const [rid, snap, live, want, why] of cases) {
+      const { line, reads } = await confirmPickup(rid, snap, live, `TOK9_${rid}_${Object.keys(snap).length}`);
+      assert.strictEqual(line, want, `${rid}: ${why}`);
+      assert.ok(!live || reads >= 1, `${rid}: premise — the confirm's identity read ran`);
+    }
+    const { line: noTrace } = await confirmPickup('la_musa', { restaurant_name: 'La Musa' }, null, 'TOK9_lm_x');
+    assert.ok(!/X\.? ?Pizza/.test(noTrace), '🔴 La Musa never reads "X Pizza" / "X. Pizza"');
+    ok('R3-FIX D12: the pickup line names THIS restaurant (x_pizza, la_musa, a synthetic third) — snapshot display → live display → snapshot name → live name → neutral; never a literal');
   }
 
   // 10. Capture 412 + getStatus NOT paid (declined auth's uuid) → capture_failed.

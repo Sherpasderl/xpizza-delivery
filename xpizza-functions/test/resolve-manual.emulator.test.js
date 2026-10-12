@@ -484,6 +484,30 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
     ok('unscheduled manual-materialize while OPEN → materializes to new (unchanged)');
   }
 
+  // R3-FIX D12 — a manually materialized PICKUP names its OWN restaurant from config (x_pizza, la_musa, a synthetic third):
+  // snapshot display → live display (RTDB identity) → snapshot name → live name → neutral. Never deps.restaurant — this
+  // suite's RESTAURANT constant is x_pizza's "X Pizza", exactly the fallback the bug would have shown La Musa.
+  {
+    const cases = [
+      ['x_pizza', { restaurant_name: 'X Pizza', restaurant_display_name: 'X. Pizza' }, { name: 'X Pizza' }, 'Recoger en X. Pizza'],
+      ['x_pizza', { restaurant_name: 'X Pizza' }, { name: 'X Pizza', display_name: 'X. Pizza' }, 'Recoger en X. Pizza'],
+      ['la_musa', { restaurant_name: 'La Musa' }, { name: 'La Musa' }, 'Recoger en La Musa'],
+      ['la_musa', {}, { name: 'La Musa' }, 'Recoger en La Musa'],
+      ['r3_synth', { restaurant_name: 'Sushi Sur' }, {}, 'Recoger en Sushi Sur'],
+      ['r3_synth', {}, {}, 'Recoger en el restaurante'],
+    ];
+    for (const [rid, snap, identity, want] of cases) {
+      await clearAll();
+      await db.ref(`restaurants/${rid}/identity`).set({ hours: ALL_OPEN, ...identity });
+      await seed({ restaurant_id: rid, customer_phone: '50488887777', ...snap }, { payment_uuid: 'S-1', status: 'captured', capture_verified: true });
+      const r = await resolveManualReconciliationCore(mkDeps(clientVoid({ ok: true }), undefined, ALL_OPEN).deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
+      assert.strictEqual(r.body.outcome, 'materialized', `${rid}: premise — materialized`);
+      const tok = (await oVal()).tracking_token;
+      assert.strictEqual((await db.ref(`order_tracking/${tok}`).once('value')).val().address_short, want, `${rid} ${JSON.stringify(snap)}: ${want}`);
+    }
+    ok('R3-FIX D12: manual materialize of a pickup names its OWN restaurant (x_pizza, la_musa, a synthetic third); never the x_pizza constant');
+  }
+
   console.log(`\nresolve-manual.emulator: OK (${n} scenarios)`);
   process.exit(0);
 })().catch((e) => { console.error('resolve-manual.emulator: FAIL\n', e && e.stack || e); process.exit(1); });

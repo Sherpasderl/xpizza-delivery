@@ -20,6 +20,7 @@
  * next sweep retries; once OPEN (resume or an expired `until`) today's path runs and clears the marker.
  */
 const { buildMaterializeUpdates } = require('./materialize');
+const { readLiveBrand } = require('./pickup-label');   // R3-FIX D12
 const S = require('./scheduled-orders');
 const { releaseHold } = require('./order-control-state');
 
@@ -78,7 +79,9 @@ async function finalizeRelease(deps, orderId, order, now) {
   // 'confirmed' re-set is idempotent; cash has no online block so this is a no-op).
   const trackingToken = deps.genToken();
   const restaurant = deps.restaurantFallback || { lat: order.hub_lat, lng: order.hub_lng, name: order.restaurant_name, phone: order.restaurant_phone };
-  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method });
+  // R3-FIX D12: an order without a display-name snapshot (scheduled before it existed) names its brand from the LIVE identity
+  const liveIdentity = order.order_type === 'pickup' && !order.restaurant_display_name ? await readLiveBrand(db, rid) : null;
+  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method, liveIdentity });
   delete updates[`orders/${orderId}/charged_at`];
   updates[`orders/${orderId}/release_claim_id`] = null;
   updates[`orders/${orderId}/releasing_since`] = null;
