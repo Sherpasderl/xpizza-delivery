@@ -60,7 +60,12 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // the render-ON companion re-runs the cases with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
-const FILL = RD.makeCacheFill(['x_pizza', 'la_musa']);   // from before the first recorded request: its wall-time budget covers the whole run
+// R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
+// this run unless the test advances it, so the only catalog traffic set aside is the COLD load (test/_render-delta.js
+// makeColdOnly); a GATE / CTX re-read stays in every comparison. Replaces R1b's wall-time-bounded makeCacheFill.
+const CLOCK = require('./_catalog-clock').install();
+const FILL = RD.makeColdOnly(['x_pizza', 'la_musa'], CLOCK);
+const COLD_OF = new WeakMap();   // recorded result → the rids its request cold-loaded (CLOCK.coldSince)   // from before the first recorded request: the floor's wall-time budget covers the whole run
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -207,10 +212,12 @@ async function traced(oid, rid, request) {
   const before = await tree();
   const pre = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   FAIL_PREFIX = prevFail;
+  const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await request();
   await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
+  const cold = CLOCK.coldSince(mark);
   FAIL_PREFIX = null;
   const after = await tree();
   const post_ = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
@@ -227,7 +234,9 @@ async function traced(oid, rid, request) {
   const changed = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k)).map(norm).sort();
   const body = r.json ? JSON.parse(norm(JSON.stringify(r.json)).replace(/https:\/\/pay\.test\/[^"]+/g, '<checkout_url>')) : null;
   if (body) for (const k of ['poll_token', 'tracking_token', 'attempt_id']) if (typeof body[k] === 'string') body[k] = `<${k}>`;
-  return { status: r.status, body, headers: r.headers || {}, ops, changed, raw: r.json };
+  const out = { status: r.status, body, headers: r.headers || {}, ops, changed, raw: r.json };
+  COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
+  return out;
 }
 
 // ── the cases ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -470,10 +479,10 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   //   • a reward order is written with its charge-input fingerprint (index.js: charge_inputs_fp) → + that one path when
   //     the request wrote the order's binding;
   //   • everything else — every cash case, every card case without a reward — byte-equal to the render-OFF run.
-  // THE CATALOG CACHE FILL: the per-instance catalog caches (context, gate pointer, verifier) re-read on their own TTLs, in
-  // whichever request crosses one — a leading block (with the cold load's runTransaction) or a gate-pointer re-read later
-  // in the request. Like the floor's cached read (isCacheRefresh), it is set aside on BOTH sides, bounded by wall time:
-  // test/_render-delta.js makeCacheFill (why render adds none of it, and the sensitivity).
+  // THE CATALOG CACHE TRAFFIC: under the R1c catalog clock (installed before index.js) no catalog cache refills inside this
+  // run, so the only catalog traffic set aside — on BOTH sides, like the floor's cached read (isCacheRefresh) — is the
+  // process's ONE COLD load per restaurant, leading the first request that met it (test/_render-delta.js makeColdOnly).
+  // A GATE / CTX re-read is never set aside: it stays in the comparison and shows.
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
     const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o)));
@@ -484,7 +493,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
       const off = results[key];
       const L = `${key} (render ON${steady ? '' : ', issued with render OFF'})`;
       assert.ok(off && on, `${L}: ran on both sides`);
-      const offOps = NO(FILL.strip(off.ops, rid, off, `${L} [render-OFF side]`, { ignore: isTestOp })); const onOps = NO(FILL.strip(on.ops, rid, on, L, { ignore: isTestOp }));
+      const offOps = NO(FILL.strip(off.ops, rid, off, `${L} [render-OFF side]`, { ignore: isTestOp, cold: COLD_OF.get(off) })); const onOps = NO(FILL.strip(on.ops, rid, on, L, { ignore: isTestOp, cold: COLD_OF.get(on) }));
       const reward = c.path === 'card' && isRewardCase(c);
       if (steady && BOUND.has(c.name)) {
         const ref = results[`${REUSE_REF} | ${state} | ${rid}`];

@@ -465,6 +465,16 @@ const childEnv = (extra = {}) => {
 
   // ── 10. THE MARKED WRAPPER (P1-2): a dead supervisor's chain keeps its slot QUARANTINED until the chain is gone ──────
   {
+    // R1c: wait (bounded) until no COMPLETE scan of the slot shows a process carrying `nonce`; foreign rows are reported,
+    // never counted. → { ok, ours, foreign, after } (exit delivery is async, and a scan is INCOMPLETE while the slot's
+    // marked population changes between its two -E views — a later scan decides)
+    const chainGone = async (slot, nonce, { tries = 100, gap = 100 } = {}) => {
+      const split = (sc) => { const all = [...sc.orphans, ...sc.live]; return { ours: all.filter((x) => x.nonce === nonce), foreign: all.filter((x) => x.nonce !== nonce) }; };
+      let after = A.scanSlot(slot);
+      for (let i = 0; i < tries && (after.incomplete || split(after).ours.length); i++) { await sleep(gap); after = A.scanSlot(slot); }
+      const { ours, foreign } = split(after);
+      return { ok: !after.incomplete && ours.length === 0, ours, foreign, after };
+    };
     const WRAP = path.join(__dirname, 'emu-cmd-wrapper.js');
     const { encode } = require('./emu-cmd-wrapper');
     let SLOT = null; let lock = null;
@@ -499,9 +509,44 @@ const childEnv = (extra = {}) => {
       assert.ok(samples.some((x) => x.occupied && x.wrapperOrphan), 'and the marked wrapper was seen as a visible orphan');
       assert.strictEqual(code, 0, 'the chain completed');
       assert.strictEqual(fs.readFileSync(flag, 'utf8'), marker, 'step 2 ran under the wrapper with the run marker (visible, not a shell)');
-      let after = A.scanSlot(SLOT);
-      for (let i = 0; i < 50 && after.occupied; i++) { await sleep(100); after = A.scanSlot(SLOT); }   // exit delivery is async
-      assert.ok(!after.occupied, `once the wrapper and its chain are gone, the slot is free (still marked: ${JSON.stringify([...after.orphans, ...after.live])})`);
+      // R1c — the claim is about THIS chain: the rows carrying THIS cell's marker NONCE. A marker's slot is an index in
+      // 0..SLOTS-1 whichever sentinel pool reserved it, and this cell holds only the FIXTURE sentinel (6440+SLOT), never the
+      // real one (6400+SLOT): another session's live emulator run on the same index puts ITS marked processes in
+      // scanSlot(SLOT). That was the "slot still marked" flake (one failure mid-chain in a busy session, green alone twice).
+      // Foreign rows never make this cell red; when there are none, the full slot-free claim is asserted as before.
+      const nonce = A.parseMarker(marker).nonce;
+      const gone = await chainGone(SLOT, nonce);
+      assert.ok(gone.ok, `🔴 once the wrapper and its chain are gone, none of THIS chain's marked processes remain (still: ${JSON.stringify(gone.ours)}${gone.after.incomplete ? '; the scan stayed INCOMPLETE' : ''})`);
+      if (!gone.foreign.length) assert.ok(!gone.after.occupied, `once the wrapper and its chain are gone, the slot is free (still marked: ${JSON.stringify([...gone.after.orphans, ...gone.after.live])})`);
+      else console.log(`  (slot ${SLOT} also carries another run's marked processes ${JSON.stringify(gone.foreign)} — this chain's claim asserted, the slot-level one skipped)`);
+      // REPRODUCTION — a FOREIGN live marked process on the same slot index (another run's: its own supervisor, its own
+      // nonce): the old check (the slot not occupied) fails on it; the nonce-scoped one does not
+      {
+        const fsup = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { env: childEnv(), stdio: 'ignore' });
+        let fproc = null;
+        try {
+          await sleep(300);
+          const fStart = A.parsePsLine(require('child_process').execFileSync('/bin/ps', ['-p', String(fsup.pid), '-o', 'pid=,state=,lstart=,args='], { encoding: 'utf8', env: A.PS_ENV }).trim()).start;
+          const fMarker = A.formatMarker({ slot: SLOT, pid: fsup.pid, nonce: A.newNonce(), start: fStart });
+          fproc = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { env: childEnv({ [A.RUN_VAR]: fMarker }), stdio: 'ignore' });
+          let seen = null;
+          for (let i = 0; i < 50; i++) { await sleep(100); seen = A.scanSlot(SLOT); if (!seen.incomplete && seen.live.some((x) => x.pid === fproc.pid)) break; }
+          assert.ok(seen.live.some((x) => x.pid === fproc.pid), `premise — the planted foreign process is visible as LIVE on slot ${SLOT} (${JSON.stringify(seen)})`);
+          assert.ok(seen.occupied, 'reproduction — the OLD check (the slot not occupied) would have failed here');
+          const g2 = await chainGone(SLOT, nonce);
+          assert.ok(g2.ok && g2.foreign.some((x) => x.pid === fproc.pid), `🔴 the nonce-scoped check was turned red by ANOTHER run's marked process (${JSON.stringify(g2)})`);
+        } finally { for (const p of [fproc, fsup]) { try { p && p.kill('SIGKILL'); } catch { /* gone */ } } }
+      }
+      // SENSITIVITY — a leftover process carrying THIS chain's marker IS caught (the scope did not blind the check)
+      {
+        const left = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { env: childEnv({ [A.RUN_VAR]: marker }), stdio: 'ignore' });
+        try {
+          await sleep(300);
+          const g3 = await chainGone(SLOT, nonce, { tries: 10 });
+          assert.ok(!g3.ok && g3.ours.some((x) => x.pid === left.pid), `🔴 a live process carrying THIS chain's marker was NOT caught (${JSON.stringify(g3)})`);
+        } finally { try { left.kill('SIGKILL'); } catch { /* gone */ } }
+        await new Promise((r2) => (left.exitCode !== null || left.signalCode !== null ? r2() : left.once('exit', r2)));
+      }
       // SIGTERM is FORWARDED to the running step, and no later step starts
       fs.rmSync(flag, { force: true });
       const w2 = spawn(process.execPath, [WRAP, encode(steps)], { env: childEnv({ [A.RUN_VAR]: marker }), stdio: 'ignore' });
@@ -531,7 +576,7 @@ const childEnv = (extra = {}) => {
       fs.rmSync(flag, { force: true });
       await A.closeServer(lock);
     }
-    ok('marked wrapper: with the supervisor SIGKILLed MID-CHAIN, every scan while the chain ran showed the slot occupied with the wrapper as a visible orphan (quarantined); after it, the slot is free; a later step runs under the marked wrapper (no shell); SIGTERM is forwarded and stops the chain; SIGABRT maps to 128+SIGABRT; /bin/sh -c EXECS into the wrapper (no surviving shell); a non-node step is refused');
+    ok('marked wrapper: with the supervisor SIGKILLed MID-CHAIN, every scan while the chain ran showed the slot occupied with the wrapper as a visible orphan (quarantined); after it, none of THIS chain\'s marked processes remain (nonce-scoped: a foreign run\'s marked process on the same slot index — the reproduced flake — never turns it red, and a leftover carrying this chain\'s marker is caught); a later step runs under the marked wrapper (no shell); SIGTERM is forwarded and stops the chain; SIGABRT maps to 128+SIGABRT; /bin/sh -c EXECS into the wrapper (no surviving shell); a non-node step is refused');
   }
 
   console.log(`\nemu-alloc: OK (${n})`);
