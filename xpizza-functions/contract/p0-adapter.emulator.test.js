@@ -15,14 +15,10 @@ const { createFirebaseHost, appFor } = require('./rtdb-adapter');
 // package-lock, so @firebase/app and @firebase/database pair exactly as shipped — inside the shared tree npm dedupes them
 // apart). It is PROVISIONED here (npm ci) when absent; a failure to provision is RED, never a skip.
 const path = require('path');
-const { spawnSync } = require('child_process');
 const SDK10 = path.join(__dirname, 'sdk-10.13.2');
 const SDK10_NM = path.join(SDK10, 'node_modules');
-if (!require('fs').existsSync(path.join(SDK10_NM, 'firebase', 'package.json'))) {
-  const env = { ...process.env }; delete env.NODE_OPTIONS;                       // hermetic child (no gate preload)
-  const r = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: SDK10, encoding: 'utf8', env });
-  if (r.status !== 0) throw new Error(`🔴 R3-P0:SDK10 could not provision firebase 10.13.2 in contract/sdk-10.13.2 (npm ci exit ${r.status}): ${(r.stderr || '').slice(-400)}`);
-}
+// npm contained in the repository: local cache + logs, inherited npm config dropped (codex r3 P2) — contract/sdk-provision.js
+require('./sdk-provision').provision(SDK10);
 const fromSdk10 = (m) => require(require.resolve(m, { paths: [SDK10_NM] }));
 const SDKS = [
   { key: 'v11', ns: 'r3cmp11', version: require('firebase/package.json').version, app: require('firebase/app'), db: require('firebase/database') },

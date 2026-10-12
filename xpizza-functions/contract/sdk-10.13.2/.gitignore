@@ -1,0 +1,3 @@
+# npm contained in the repository (contract/sdk-provision.js) — never committed
+.npm-cache/
+.npm-logs/
