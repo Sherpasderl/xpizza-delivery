@@ -164,11 +164,11 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
     const descs = ['MessageChannel', 'BroadcastChannel', 'Worker', 'SharedWorker'].map((k) => Object.getOwnPropertyDescriptor(p0.win, k));
     const settled0 = await p0.settle(); p0.close();
     assert.ok(descs.every((d) => d && d.configurable === false && typeof d.get === 'function' && typeof d.set === 'function') && settled0 === true, FAIL('the channel accessors are not installed non-configurable (or a clean page no longer settles)'));
-    class FakeWorker { constructor() { setImmediate(() => this.onmessage && this.onmessage({ data: 'go' })); } }
+    // (the installer lives in PAGE code — a harness option may not hand a channel in; contract/harness-capabilities.guard)
     let red = 0;
     for (let i = 0; i < 5; i++) {
       const log = [];
-      const p = await bootPage('xpizza-functions', { html: page(`setTimeout(() => { window.__install(); const w = new Worker('x.js'); w.onmessage = () => fetch('/write'); }, 100);`), fetchImpl: slowFetch(log), beforeScripts: (w) => { w.__install = () => { w.Worker = FakeWorker; }; } });
+      const p = await bootPage('xpizza-functions', { html: page(`setTimeout(() => { try { window.Worker = class { constructor() { setTimeout(() => this.onmessage && this.onmessage({}), 0); } }; const w = new Worker('x.js'); w.onmessage = () => fetch('/write'); } catch (_) {} }, 100);`), fetchImpl: slowFetch(log) });
       const settled = await p.settle(); const why = p.errors.find((e) => /assignment of Worker .*FAIL CLOSED/.test(e)); p.close();
       if (settled === false && why) red += 1;
     }
@@ -178,6 +178,9 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
       ['Reflect.defineProperty', `setTimeout(() => { Reflect.defineProperty(window, 'BroadcastChannel', { value: function () {} }); }, 50);`, /Reflect\.defineProperty of BroadcastChannel/],
       ['feature detection', `setTimeout(() => { try { if (typeof SharedWorker !== 'undefined') {} } catch (_) {} }, 50);`, /access of SharedWorker/],
       ['nested frame', `const f = document.createElement('iframe'); document.body.appendChild(f); setTimeout(() => { try { f.contentWindow.Worker = function () {}; } catch (_) {} }, 50);`, /of Worker .*FAIL CLOSED/],
+      // codex r8 narrow check: a frame created AFTER boot (inside a timer, mid-settle), reached by window[i] (no getter)
+      ['fresh frame (created mid-settle, window[0])', `setTimeout(() => { const f = document.createElement('iframe'); document.body.appendChild(f); try { window[0].Worker = function () {}; } catch (_) {} }, 50);`, /assignment of Worker .*FAIL CLOSED/],
+      ['nested fresh frame (frame in a frame, created mid-settle)', `setTimeout(() => { const f = document.createElement('iframe'); document.body.appendChild(f); const d = window[0].document; const g = d.createElement('iframe'); d.body.appendChild(g); try { window[0][0].MessageChannel = function () {}; } catch (_) {} }, 50);`, /assignment of MessageChannel .*FAIL CLOSED/],
     ];
     for (const [label, code, re] of routes) {
       const p = await bootPage('xpizza-functions', { html: page(code) });

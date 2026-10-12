@@ -11846,19 +11846,51 @@
     ]
   },
   {
-    "id": "r3p0-30",
+    "id": "r3p0-31",
     "slice": "r3p0",
     "file": "contract/page-harness.js",
-    "from": "    const refused = () => { guardFrames(); return channelAttempts.length > 0; };   // any channel attempt, ever → never settled",
-    "to": "    const refused = () => { return channelAttempts.length > 0; };   // any channel attempt, ever → never settled",
-    "label": "nested frames' windows are not guarded (codex r8 P1)",
+    "from": "    const hardened = function (...a) { const w = orig.apply(this, a); for (const pg of OPEN_PAGES) pg.harden(w._globalProxy || w); return w; };",
+    "to": "    const hardened = function (...a) { return orig.apply(this, a); };",
+    "label": "frame windows are not hardened at creation — a fresh frame reached by window[i] keeps a usable channel (codex r8 narrow check)",
     "kills_with": [
-      "route \"nested frame\" did not fail closed"
+      "route \"fresh frame (created mid-settle, window[0])\" did not fail closed"
     ],
     "command": [
       "node",
       "--experimental-vm-modules",
       "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-32",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "      if (OPEN_PAGES.size && /^(node:)?worker_threads$/.test(String(request))) {",
+    "to": "      if (false) {",
+    "label": "worker_threads may be loaded while a page is open (codex r8 narrow check: the 'node' installer route)",
+    "kills_with": [
+      "worker_threads loaded while a page was open"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/harness-capabilities.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-33",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "  const leaked = NODE_GLOBALS.filter((k) => typeof win[k] !== 'undefined');",
+    "to": "  const leaked = [];",
+    "label": "a Node global handed to the page realm is accepted",
+    "kills_with": [
+      "a Node global handed to the page realm did not refuse the boot"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/harness-capabilities.guard.test.js"
     ]
   }
 ]

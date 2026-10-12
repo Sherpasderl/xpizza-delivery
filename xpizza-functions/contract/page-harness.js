@@ -31,6 +31,33 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const REPO = path.join(__dirname, '..', '..');
 const FIREBASE_CDN = /^https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/(firebase-[a-z-]+)\.js$/;
 
+// codex r8 narrow check — the harness is the ONLY capability provider. (1) Every window jsdom creates while a page is open
+// — a frame created at any time, nested at any depth, reachable by contentWindow, contentDocument or window[i] — is
+// hardened AT CREATION (jsdom builds every frame window through browser/Window.createWindow, looked up at call time).
+// (2) worker_threads may not be loaded while a page is open (a Node Worker handed in by the harness would be an
+// unvirtualizable task source). (3) No Node global may reach the page realm (bootPage refuses to boot).
+const OPEN_PAGES = new Set();
+const NODE_GLOBALS = ['require', 'process', 'module', 'exports', 'Buffer', 'global', 'setImmediate', 'clearImmediate', '__dirname', '__filename'];
+{
+  const WindowModule = require('jsdom/lib/jsdom/browser/Window');
+  const orig = WindowModule.createWindow;
+  if (!orig.__r3hardened) {
+    const hardened = function (...a) { const w = orig.apply(this, a); for (const pg of OPEN_PAGES) pg.harden(w._globalProxy || w); return w; };
+    hardened.__r3hardened = true; WindowModule.createWindow = hardened;
+  }
+  const Module = require('module'); const load = Module._load;
+  if (!load.__r3hardened) {
+    const guardedLoad = function (request, ...a) {
+      if (OPEN_PAGES.size && /^(node:)?worker_threads$/.test(String(request))) {
+        for (const pg of OPEN_PAGES) pg.attempt('worker_threads', 'require() while a page is open');
+        throw new Error('r3-page: worker_threads may not be loaded while a page is open — the harness is the only capability provider (FAIL CLOSED)');
+      }
+      return load.call(this, request, ...a);
+    };
+    guardedLoad.__r3hardened = true; Module._load = guardedLoad;
+  }
+}
+
 if (typeof vm.SourceTextModule !== 'function') {
   throw new Error('page-harness: vm.SourceTextModule is unavailable — run with node --experimental-vm-modules');
 }
@@ -111,6 +138,9 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     R.defineProperty = function (o, k, d) { if (o === w && UNVIRTUALIZED.includes(String(k))) { attempt(String(k), 'Reflect.defineProperty'); return false; } return rdp.call(this, o, k, d); };
   };
   guardWindow(win);
+  const pageRec = { harden: (w) => { try { guardWindow(w); } catch (e) { attempt('frame window', `hardening failed (${e && e.message})`); } }, attempt: (k, how) => attempt(k, how) };
+  OPEN_PAGES.add(pageRec);
+  // belt-and-braces: creation-time hardening (createWindow hook) already covers every frame — r3p0-31 is its mutant
   const guardFrames = () => { for (const f of win.document.querySelectorAll('iframe')) { try { guardWindow(f.contentWindow); } catch (_) { /* detached */ } } };
   const fire = (t) => {
     if (t.every) t.due = Math.max(t.due + Math.max(t.delay, 4), now()); else timers.delete(t.id);   // browsers clamp a 0 ms interval
@@ -134,6 +164,9 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   win.addEventListener('error', (e) => errors.push(`window error: ${e && (e.error && e.error.stack || e.message)}`));
   win.addEventListener('unhandledrejection', (e) => errors.push(`unhandled rejection: ${e && e.reason && (e.reason.stack || e.reason)}`));
   if (beforeScripts) beforeScripts(win);
+  // no Node global may reach the page realm — page code runs in jsdom with only what the harness provides
+  const leaked = NODE_GLOBALS.filter((k) => typeof win[k] !== 'undefined');
+  if (leaked.length) { OPEN_PAGES.delete(pageRec); win.close(); throw new Error(`r3-page: Node global(s) ${leaked.join(', ')} exposed to the page realm — the harness is the only capability provider (REFUSED)`); }
   // a promise rejected inside the page's realm and never handled surfaces as a Node-process rejection: attribute it to
   // THIS page (while it is open) instead of letting it crash the suite unrecorded
   const onRejection = (reason) => { errors.push(`unhandled rejection: ${reason && (reason.stack || reason)}`); };
@@ -221,7 +254,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
       fire(next);
     }
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow }, close: () => { timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow }, close: () => { OPEN_PAGES.delete(pageRec); timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };
