@@ -3900,16 +3900,18 @@ async function confirmCancelOrder(orderId) {
 let lastDriverCash = {};
 let driverCashError = null;   // set when the /driver_cash subscription ERRORS (permission/other) → explicit error state, NEVER L0
 // renderCashBar(cash):
-//   • a normal snapshot object → new driver_cash data (clears any prior error)
-//   • { __error: true, code } → a subscription/PERMISSION failure → render an explicit error (NEVER L0, so a
-//       dispatcher never mistakes "couldn't read the cuadres" for "no cash owed")
+//   • a normal snapshot object → new driver_cash data (clears a prior error ONLY if every today-closed record is VALID)
+//   • { __error: true, code } → a subscription/PERMISSION failure → render an explicit error (NEVER L0)
 //   • undefined → refresh only (keep the last snapshot + error state; the recon tick calls this to refresh the
 //       "Cuadres pendientes" PAYMENT count, which stays SEPARATE from the driver-cash cuadres below)
-// DISPLAY + "Reconciliar" link ONLY — no DB write, no cuadre math beyond summing already-closed cuadres. All
-// cuadre field reads are guarded so a LEGACY record (pre-feature: no `provisional`/metadata fields) never crashes.
+// DISPLAY + "Reconciliar" link ONLY — no DB write. Every today-closed record is VALIDATED before any total is
+// published or any error is cleared: malformed/partial money (cash_owed not a finite number ≥ 0, mistyped
+// count/boolean fields) is NEVER rendered as a verified L0 and never throws — it surfaces an explicit
+// "registro de caja inválido" error with driver/shift. Type-check BEFORE any Number() on untrusted input
+// (Number({toString:'x'}) would throw). An invalid/partial snapshot does NOT clear a prior subscription error.
 function renderCashBar(cash) {
   if (cash && cash.__error === true) driverCashError = cash;                        // subscription/permission failure
-  else if (cash !== undefined) { lastDriverCash = cash || {}; driverCashError = null; }   // fresh data clears the error
+  else if (cash !== undefined) lastDriverCash = cash || {};                         // store the latest snapshot — validate BEFORE clearing an error / publishing totals
   const el = $('cash-bar');
   if (!el) return;
 
@@ -3917,34 +3919,49 @@ function renderCashBar(cash) {
   const pendingHtml = `<div class="cash-div"></div><div class="ci"><b>${escapeHtml(String(pending))}</b><span>Cuadres pendientes</span></div>`;
   const reconBtnHtml = `<button class="cash-recon-btn" id="cash-recon-btn" type="button">Reconciliar</button>`;
 
+  // Scan today's closed cuadres: split VALID rows from MALFORMED ones (type-checked, so no throw on hostile input).
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const startMs = dayStart.getTime();
+  const nn = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;           // a non-negative finite number
+  const rows = []; const invalid = [];
+  for (const [uid, shifts] of Object.entries(lastDriverCash || {})) {
+    if (!shifts || typeof shifts !== 'object') continue;
+    for (const [shiftId, shift] of Object.entries(shifts)) {
+      const c = shift && shift.cuadre;
+      if (!c || typeof c !== 'object' || !Number.isFinite(c.closed_at) || c.closed_at < startMs) continue;   // today's closed cuadres only
+      const who = `${String(uid).slice(0, 6)}/${String(shiftId).slice(0, 8)}`;
+      const valid = nn(c.cash_owed) && nn(c.cash_order_count)                        // money + count MUST be finite numbers ≥ 0
+        && (c.unresolved_count === undefined || nn(c.unresolved_count))
+        && (c.legacy_provisional_count === undefined || nn(c.legacy_provisional_count))
+        && (c.provisional === undefined || typeof c.provisional === 'boolean')       // absence = legacy; present must be boolean
+        && (c.needs_dispatch_review === undefined || typeof c.needs_dispatch_review === 'boolean');
+      if (valid) rows.push({ c, who }); else invalid.push(who);
+    }
+  }
+  // A VALID data snapshot clears a prior subscription error; a partial/INVALID one does NOT (it would otherwise
+  // flip the explicit error to a misleading L0).
+  if (cash !== undefined && !(cash && cash.__error === true) && invalid.length === 0) driverCashError = null;
+
   if (driverCashError) {
-    // A read/permission failure must be VISIBLE, never a silent L0.
     el.innerHTML = `<div class="ci cash-error"><b>—</b><span>Error al leer cuadres · reintentá</span></div>${pendingHtml}${reconBtnHtml}`;
+  } else if (invalid.length > 0) {
+    // Malformed/partial money → explicit error (with driver/shift), NEVER a verified L0.
+    const detail = invalid[0] + (invalid.length > 1 ? ` (+${invalid.length - 1})` : '');
+    el.innerHTML = `<div class="ci cash-error"><b>—</b><span>Registro de caja inválido · ${escapeHtml(detail)} · revisar</span></div>${pendingHtml}${reconBtnHtml}`;
   } else {
-    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-    const startMs = dayStart.getTime();
     let finalTotal = 0, finalCount = 0, provTotal = 0, provCount = 0, legacyTotal = 0, legacyCount = 0;
     let escapeCount = 0, unresolvedCount = 0;
     const unresolvedDetail = [];                                                    // "uid/shift: n" per driver-shift with unresolved orders
-    for (const [uid, shifts] of Object.entries(lastDriverCash || {})) {
-      for (const [shiftId, shift] of Object.entries(shifts || {})) {
-        const c = shift && shift.cuadre;
-        if (!c || !Number.isFinite(c.closed_at) || c.closed_at < startMs) continue; // today's closed cuadres only
-        const owed = Number(c.cash_owed) || 0;
-        if (c.needs_dispatch_review === true) {                                      // Admin-flagged "needs dispatch review" (escape-hatch path, always provisional) — keyed on the FLAG, not the source; DISTINCT from ordinary provisional and NEVER summed as a clean final
-          escapeCount++;
-        } else if (c.provisional === true) {                                         // PROVISIONAL (legacy-provisional and/or unresolved present)
-          provCount++; provTotal += owed;
-        } else if (c.provisional === false) {                                        // FINAL — money-grade attributed
-          finalCount++; finalTotal += owed;
-        } else {                                                                     // LEGACY pre-feature record (no `provisional`): show as before, never crash
-          legacyCount++; legacyTotal += owed;
-        }
-        const u = Number(c.unresolved_count) || 0;                                   // unresolved orders → count + driver/shift detail
-        if (u > 0) { unresolvedCount += u; unresolvedDetail.push(`${String(uid).slice(0, 6)}/${String(shiftId).slice(0, 8)}: ${u}`); }
-      }
+    for (const { c, who } of rows) {
+      const owed = c.cash_owed;                                                      // validated: finite number ≥ 0
+      if (c.needs_dispatch_review === true) escapeCount++;                           // Admin-flagged review (keyed on the FLAG) — DISTINCT, never a clean final
+      else if (c.provisional === true) { provCount++; provTotal += owed; }           // PROVISIONAL
+      else if (c.provisional === false) { finalCount++; finalTotal += owed; }        // FINAL — money-grade attributed
+      else { legacyCount++; legacyTotal += owed; }                                   // LEGACY pre-feature record (no `provisional`) → Heredado
+      const u = (c.unresolved_count === undefined) ? 0 : c.unresolved_count;         // validated
+      if (u > 0) { unresolvedCount += u; unresolvedDetail.push(`${who}: ${u}`); }
     }
-    const L = (n) => 'L ' + Number(n).toLocaleString('es-HN');
+    const L = (n) => 'L ' + n.toLocaleString('es-HN');
     const parts = [`<div class="ci"><b>${escapeHtml(L(finalTotal))}</b><span>Efectivo final (${finalCount})</span></div>`];
     if (provCount > 0)    parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(L(provTotal))}</b><span>Provisional (${provCount})</span></div>`);
     if (legacyCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci cash-legacy"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);   // SUBORDINATE line (dim) — unverified pre-2.5.0, never a verified-final figure, never merged into a grand total

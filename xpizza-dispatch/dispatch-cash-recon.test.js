@@ -74,7 +74,7 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
     fn(cash);
     return { html: cashEl.innerHTML, reconBtn, rtabClicks: () => rtabClicked };
   }
-  const C = (o) => ({ cuadre: { closed_at: today, ...o } });   // a today-closed cuadre fixture
+  const C = (o) => ({ cuadre: { closed_at: today, cash_order_count: 1, ...o } });   // a today-closed cuadre fixture (schema-required count defaulted; override to test a bad count)
 
   // (a) FINAL-only — provisional:false records sum into "Efectivo final".
   {
@@ -143,6 +143,38 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
     assert.match(r.html, /Reconciliar/, 'Reconciliar link present');
     r.reconBtn.dispatch('click', {});
     assert.strictEqual(r.rtabClicks(), 1, 'Reconciliar activates the Caja rtab (navigation only)');
+  }
+  // (h) MALFORMED money → explicit "registro de caja inválido" error (with driver/shift), NEVER a verified L0,
+  //     and NEVER a throw — incl. an object cash_owed where Number({toString:'x'}) would TypeError. (codex P1)
+  for (const bad of [
+    { cash_owed: 'oops' },                          // string
+    { cash_owed: null },                            // null
+    { provisional: false },                         // missing cash_owed
+    { cash_owed: { toString: 'x' } },               // object → Number() would throw
+    { cash_owed: -5 },                              // negative
+    { cash_owed: 100, cash_order_count: 'nope' },   // mistyped count (schema-required field)
+    { cash_owed: 100, provisional: 'yes' },         // mistyped boolean
+  ]) {
+    let threw = false, r;
+    try { r = run({ dA: { s1: C({ provisional: false, ...bad }) } }); } catch (_) { threw = true; }
+    assert.ok(!threw, `malformed record ${JSON.stringify(bad)} must NOT throw`);
+    assert.match(r.html, /Registro de caja inválido/, `malformed record ${JSON.stringify(bad)} → explicit invalid error`);
+    assert.doesNotMatch(r.html, /Efectivo final|L 0\b/, `malformed record ${JSON.stringify(bad)} → NEVER a verified L0 / cash figure`);
+  }
+  // (i) ERROR → INVALID/partial snapshot does NOT clear the error; a VALID snapshot recovers. (codex P1)
+  {
+    const cashEl = { innerHTML: '' };
+    const els = { 'cash-bar': cashEl, 'cash-recon-btn': { addEventListener() {} } };
+    const fn = new Function('$', 'document', 'reconciliationOrders', 'escapeHtml',
+      `let lastDriverCash={},driverCashError=null;\n${src}\nreturn renderCashBar;`)((id) => els[id] || null, { querySelector: () => null }, {}, (s) => String(s));
+    fn({ __error: true, code: 'PERMISSION_DENIED' });
+    assert.match(cashEl.innerHTML, /Error al leer cuadres/, 'step 1: subscription error shown');
+    fn({ dA: { s1: C({ cash_owed: 'oops', provisional: false }) } });   // partial/invalid snapshot after the error
+    assert.doesNotMatch(cashEl.innerHTML, /Efectivo final/, 'step 2: an invalid snapshot does NOT recover to a misleading final figure');
+    assert.match(cashEl.innerHTML, /Error al leer cuadres|Registro de caja inválido/, 'step 2: still an explicit error (not L0)');
+    fn({ dB: { s1: C({ cash_owed: 500, cash_order_count: 3, provisional: false }) } });   // valid snapshot
+    assert.match(cashEl.innerHTML, /Efectivo final \(1\)/, 'step 3: a VALID snapshot recovers to totals');
+    assert.match(cashEl.innerHTML, /L 500/, 'step 3: recovered total');
   }
   // freshness: the recon subscription still refreshes the bar's pending count.
   assert.match(html, /renderReconciliationSection\(\);\s*setTabBadge\('tab-caja-n'[^\n]*\n\s*renderCashBar\(\);/, 'recon subscription calls renderCashBar() to refresh the pending count');
