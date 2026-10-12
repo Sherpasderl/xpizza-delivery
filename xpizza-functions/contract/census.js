@@ -51,7 +51,8 @@ const FIELD_FACTS = {
   cash_owed: ['CASH'], redemption: ['REWARD'], earn_preview: ['REWARD'], factura_status: ['FACTELIG'],
 };
 const FIELDS = new Set(Object.keys(FIELD_FACTS));
-const SENTINEL = /^(tip|tips|tip_[a-z_]*|delivery_fee[a-z_]*|[a-z_]*_email)$/;
+// tip / delivery fee / order email — snake AND camel case (codex r1 P1-1: `tipAmount` stayed green)
+const SENTINEL = /^(tips?|tip_[a-z0-9_]*|tip[A-Z]\w*|delivery_?fee\w*|deliveryFee\w*|service_?charge\w*|serviceCharge\w*|[a-z0-9_]*_email|[a-z]+Email)$/;
 const ORDERISH = /^(order|orders|o|ord|snap|val|data|after|before|order_?[a-z]*)$/i;
 
 const rel = (abs) => path.relative(REPO, abs).split(path.sep).join('/');
@@ -149,8 +150,21 @@ function directField(v, al) {
 // projection scope: a page's inline scripts + local modules share one scope; a functions file is its own scope
 const scopeOf = (u) => (u.kind === 'fn' ? u.file : u.scope);
 
-function census({ explicit = [] } = {}) {
-  const units = sources();
+// a path expression → its static shape: literals kept, every dynamic part '*' (null = not a path we can see)
+function staticPath(n) {
+  if (!n) return null;
+  if (n.type === 'Literal' && typeof n.value === 'string') return n.value;
+  if (n.type === 'TemplateLiteral') return n.quasis.map((q, i) => q.value.cooked + (i < n.expressions.length ? '*' : '')).join('');
+  if (n.type === 'BinaryExpression' && n.operator === '+') { const a = staticPath(n.left); const b = staticPath(n.right); return (a === null ? '*' : a) + (b === null ? '*' : b); }
+  return null;
+}
+const normPath = (p) => String(p).replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+const WRITE_METHODS = new Set(['set', 'update', 'push', 'setWithPriority', 'transaction']);
+// send boundaries (the server-side readers): callee name → R-site
+const SEND = { sendMessage: 'R9', sendScheduledSlotClosed: 'R9', sendPaidAfterCloseRefund: 'R9', sendDriverPush: 'R5', sendStaffPush: 'R6', batchUpdate: 'R12', append: 'R12' };
+
+function census({ explicit = [], extraUnits = [] } = {}) {
+  const units = [...sources(), ...extraUnits];
   const parsed = units.map((u) => ({ u, ast: parseUnit(u) }));
   // ── projections, per scope, fixpoint ≤ 3 ──
   const aliases = new Map();   // scope → Map(alias → field)
@@ -188,7 +202,7 @@ function census({ explicit = [] } = {}) {
     const al = aliases.get(scopeOf(u)) || new Map();
     const add = (fn, field, viaAlias, node, kind) => {
       const k = `${u.file}#${fn}#${field}`; const ord = counters.get(k) || 0; counters.set(k, ord + 1);
-      sites.push({ id: `${k}#${ord}`, file: u.file, scope: u.scope, fn, field, ...(viaAlias ? { alias: viaAlias } : {}), kind, line: node.loc.start.line + u.lineOffset, facts: FIELD_FACTS[field] });
+      sites.push({ id: `${k}#${ord}`, file: u.file, scope: u.scope, fn, field, ...(viaAlias ? { alias: viaAlias } : {}), kind, line: node.loc.start.line + u.lineOffset, facts: FIELD_FACTS[field], _pos: node.start });
     };
     walk(ast, (node, fn, parent) => {
       if (node.type === 'MemberExpression') {
@@ -209,17 +223,174 @@ function census({ explicit = [] } = {}) {
         }
       }
       if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && node.callee.object.type === 'Identifier' && node.callee.object.name === 'Object'
-          && ['entries', 'keys', 'values'].includes(node.callee.property.name) && node.arguments[0] && node.arguments[0].type === 'Identifier' && ORDERISH.test(node.arguments[0].name)) {
-        opaque.push({ file: u.file, fn, base: node.arguments[0].name, line: node.loc.start.line + u.lineOffset, how: `Object.${node.callee.property.name}` });
+          && ['entries', 'keys', 'values', 'assign'].includes(node.callee.property.name)) {
+        for (const a of node.arguments) if (a && a.type === 'Identifier' && ORDERISH.test(a.name)) opaque.push({ file: u.file, fn, base: a.name, line: node.loc.start.line + u.lineOffset, how: `Object.${node.callee.property.name}` });
+      }
+      // codex r1 P1-1: a SPREAD of an order value ({...order}) reads every field — opaque, needs a mapping
+      if (node.type === 'SpreadElement' && node.argument.type === 'Identifier' && ORDERISH.test(node.argument.name)) {
+        opaque.push({ file: u.file, fn, base: node.argument.name, line: node.loc.start.line + u.lineOffset, how: 'spread' });
       }
     });
   }
+  const sentinel0 = [];
+  // ── WRITE INVENTORY (codex r1 P1-1): every field written onto orders/<id>, from AST ──────────────────────────────────
+  // sources: ref(...)/child(...) chains (through same-file variables) + set/update/push; multipath update keys;
+  // `updates[`orders/${id}…`] = …` assignments; template / concatenated paths; one-hop object literals and
+  // same-name builder returns. A spread or a non-static key in an order write is an OPAQUE WRITE (needs a decision).
+  const writes = []; const opaqueWrites = [];
+  const fnUnits = parsed.filter((x) => x.u.kind === 'fn');
+  const returnsByName = new Map();
+  for (const { ast } of fnUnits) {
+    // a function's returned object(s): `return {…}`, or `return x` where x is a same-function object literal
+    const localObj = new Map();
+    walk(ast, (node, fn) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init && node.init.type === 'ObjectExpression') localObj.set(`${fn}::${node.id.name}`, node.init); });
+    walk(ast, (node, fn) => {
+      if (node.type !== 'ReturnStatement' || !node.argument) return;
+      const o = node.argument.type === 'ObjectExpression' ? node.argument : (node.argument.type === 'Identifier' ? localObj.get(`${fn}::${node.argument.name}`) : null);
+      if (o) { const l = returnsByName.get(fn) || []; l.push(o); returnsByName.set(fn, l); }
+    });
+  }
+  for (const { u, ast } of fnUnits) {
+    const inits = new Map();
+    walk(ast, (node) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init) { const l = inits.get(node.id.name) || []; l.push(node.init); inits.set(node.id.name, l); } });
+    const refPathOf = (n, depth = 0) => {
+      if (!n || depth > 4) return null;
+      if (n.type === 'Identifier') { for (const i of inits.get(n.name) || []) { const r = refPathOf(i, depth + 1); if (r !== null) return r; } return null; }
+      if (n.type === 'AwaitExpression') return refPathOf(n.argument, depth + 1);
+      if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed) {
+        const m = n.callee.property.name;
+        if (m === 'ref') return n.arguments.length ? (staticPath(n.arguments[0]) === null ? null : normPath(staticPath(n.arguments[0]))) : '';
+        if (m === 'child') { const b = refPathOf(n.callee.object, depth + 1); const c = staticPath(n.arguments[0]); return b === null ? null : normPath(`${b}/${c === null ? '*' : c}`); }   // a dynamic child(id) is a '*' segment
+      }
+      return null;
+    };
+    const objOf = (n, depth = 0) => {
+      if (!n || depth > 3) return [];
+      if (n.type === 'ObjectExpression') return [n];
+      if (n.type === 'Identifier') return (inits.get(n.name) || []).flatMap((i) => objOf(i, depth + 1));
+      if (n.type === 'AwaitExpression') return objOf(n.argument, depth + 1);
+      if (n.type === 'ConditionalExpression') return [...objOf(n.consequent, depth + 1), ...objOf(n.alternate, depth + 1)];
+      if (n.type === 'LogicalExpression') return [...objOf(n.left, depth + 1), ...objOf(n.right, depth + 1)];
+      if (n.type === 'CallExpression') { const nm = n.callee.type === 'Identifier' ? n.callee.name : (n.callee.type === 'MemberExpression' && !n.callee.computed ? n.callee.property.name : null); return nm ? (returnsByName.get(nm) || []) : []; }
+      return [];
+    };
+    // attributed to the WRITE CALL / assignment being analysed (a builder's object may live in another file)
+    let AT = null;
+    const record = (fn, field, how, node) => writes.push({ file: u.file, fn, field, how, line: (AT || node).loc.start.line });
+    const opaqueW = (fn, how, node, detail) => opaqueWrites.push({ file: u.file, fn, how, line: (AT || node).loc.start.line, ...(detail ? { detail } : {}) });
+    const objFields = (fn, objs, node, how) => {
+      for (const o of objs) for (const p of o.properties) {
+        if (p.type === 'SpreadElement') {   // resolved where it can be: a literal, a conditional branch, a variable, a builder's return
+          const inner = objOf(p.argument);
+          if (inner.length) objFields(fn, inner, p, `${how}/spread`); else opaqueW(fn, 'spread-in-order-write', p, p.argument.type === 'Identifier' ? p.argument.name : u.code.slice(p.argument.start, p.argument.end).slice(0, 60));
+          continue;
+        }
+        if (p.computed) { const sp = staticPath(p.key); if (sp && !sp.includes('*') && !sp.includes('/')) record(fn, sp, how, p); else if (sp && sp.includes('/')) pathWrite(fn, sp, p.value, p, `${how}/multipath`); else opaqueW(fn, 'computed-key-in-order-write', p); continue; }
+        const k = p.key && (p.key.name || p.key.value); if (typeof k === 'string') record(fn, k, how, p);
+      }
+    };
+    // a write at a full path: orders → nothing; orders/<id> → the value object's keys; orders/<id>/<f>… → f
+    function pathWrite(fn, full, value, node, how) {
+      const segs = normPath(full).split('/');
+      if (segs[0] !== 'orders' || segs.length < 2) return;
+      if (segs.length === 2) { const objs = objOf(value); if (objs.length) objFields(fn, objs, node, how); else opaqueW(fn, 'opaque-order-object', node); return; }
+      if (segs[2] === '*' || segs[2] === '') opaqueW(fn, 'dynamic-field-segment', node, full); else record(fn, segs[2], how, node);
+    }
+    walk(ast, (node, fn) => {
+      if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed && WRITE_METHODS.has(node.callee.property.name)) {
+        AT = node;
+        const base = refPathOf(node.callee.object);
+        if (base === null) return;
+        const m = node.callee.property.name; const v = node.arguments[0];
+        const updObjs = m === 'update' && v ? (v.type === 'ObjectExpression' ? [v] : objOf(v)) : [];
+        if (m === 'update' && updObjs.length) {
+          for (const p of updObjs.flatMap((o) => o.properties)) {
+            if (p.type === 'SpreadElement') {   // a conditional / variable spread inside a multipath update: its keys are paths under base
+              const inner = objOf(p.argument);
+              if (inner.length) { for (const o of inner) for (const q of o.properties) { if (q.type === 'SpreadElement' || q.computed) continue; const k = q.key && (q.key.name || q.key.value); if (typeof k === 'string') pathWrite(fn, `${base}/${k}`, q.value, q, 'update/spread'); } }
+              else if (normPath(base).startsWith('orders')) opaqueW(fn, 'spread-in-order-write', p, u.code.slice(p.argument.start, p.argument.end).slice(0, 60));
+              continue;
+            }
+            const key = p.computed ? staticPath(p.key) : (p.key.name || p.key.value);
+            if (key === null || key === undefined) { if (normPath(base).startsWith('orders')) opaqueW(fn, 'computed-key-in-order-write', p); continue; }
+            pathWrite(fn, `${base}/${key}`, p.value, p, 'update');
+          }
+          return;
+        }
+        if (m === 'transaction') {
+          if (normPath(base).split('/')[0] !== 'orders') return;
+          const segs = normPath(base).split('/');
+          if (segs.length >= 3 && segs[2] !== '*') { record(fn, segs[2], 'transaction', node); return; }
+          // the updater on the ORDER node: its new fields = object-literal keys built from the current value (a spread of
+          // the param / a local copy is the existing order, not new fields) + `x.f = …` assignments on the param or a local
+          const upd = v && /Function/.test(v.type) ? v : null;
+          if (!upd) { opaqueW(fn, 'transaction-on-order', node, base); return; }
+          // an updater that DELEGATES (`(cur) => C.claimDecision(cur, …)`): the helper's returned object(s)
+          const delegate = upd.body.type === 'CallExpression' ? upd.body : null;
+          if (delegate) {
+            const nm = delegate.callee.type === 'Identifier' ? delegate.callee.name : (delegate.callee.type === 'MemberExpression' && !delegate.callee.computed ? delegate.callee.property.name : null);
+            const objs = nm ? (returnsByName.get(nm) || []) : [];
+            let n2 = 0;
+            for (const o of objs) for (const q of o.properties) { if (q.type === 'SpreadElement' || q.computed) continue; const k = q.key && (q.key.name || q.key.value); if (typeof k === 'string') { record(fn, k, `transaction-delegate:${nm}`, q); n2 += 1; } }
+            if (!n2) opaqueW(fn, 'transaction-on-order', node, `delegates to ${nm}`);
+            return;
+          }
+          const param = upd.params[0] && upd.params[0].type === 'Identifier' ? upd.params[0].name : null;
+          const locals = new Set(param ? [param] : []); let found = 0;
+          walk(upd.body, (x) => {
+            if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier' && x.init && x.init.type === 'ObjectExpression') locals.add(x.id.name);
+            if (x.type === 'ObjectExpression') for (const q of x.properties) { if (q.type === 'SpreadElement' || q.computed) continue; const k = q.key && (q.key.name || q.key.value); if (typeof k === 'string') { record(fn, k, 'transaction-updater', q); found += 1; } }
+          });
+          walk(upd.body, (x) => {
+            if (x.type === 'AssignmentExpression' && x.left.type === 'MemberExpression' && !x.left.computed && x.left.object.type === 'Identifier' && locals.has(x.left.object.name)) { record(fn, x.left.property.name, 'transaction-updater', x); found += 1; }
+          });
+          if (!found) opaqueW(fn, 'transaction-on-order', node, base);
+          return;
+        }
+        pathWrite(fn, m === 'push' ? `${base}/*` : base, v, node, m);
+      }
+      if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression' && node.left.computed) {
+        AT = node;
+        const key = staticPath(node.left.property);
+        if (key && normPath(key).startsWith('orders/')) pathWrite(fn, key, node.right, node, 'multipath-assign');
+      }
+    });
+  }
+  for (const w of writes) if (SENTINEL.test(w.field)) sentinel0.push({ file: w.file, fn: w.fn, key: w.field, line: w.line, how: `write:${w.how}` });
+
+  // ── SEND-BOUNDARY marking (codex r1 P1-2): a read that feeds a send call is a READER site ──────────────────────────
+  for (const { u, ast } of fnUnits) {
+    const ranges = []; const fnRanges = new Map(); const initsByFn = new Map();
+    walk(ast, (node, fn, parent) => {
+      if (/Function/.test(node.type)) { const nm = (node.id && node.id.name) || (parent && parent.type === 'VariableDeclarator' && parent.id.name); if (nm) fnRanges.set(nm, [node.start, node.end]); }
+      if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init) { const k = `${fn}::${node.id.name}`; (initsByFn.get(k) || initsByFn.set(k, []).get(k)).push([node.init.start, node.init.end]); }
+      if (node.type === 'AssignmentExpression' && node.left.type === 'Identifier') { const k = `${fn}::${node.left.name}`; (initsByFn.get(k) || initsByFn.set(k, []).get(k)).push([node.right.start, node.right.end]); }
+    });
+    walk(ast, (node, fn) => {
+      if (node.type !== 'CallExpression') return;
+      const nm = node.callee.type === 'Identifier' ? node.callee.name : (node.callee.type === 'MemberExpression' && !node.callee.computed ? node.callee.property.name : null);
+      const R = nm && SEND[nm];
+      if (!R) return;
+      if ((nm === 'append' || nm === 'batchUpdate') && !/sheets|values/.test(u.code.slice(node.callee.start, node.callee.end))) return;
+      for (const a of node.arguments) {
+        ranges.push([a.start, a.end, R]);
+        walk(a, (x) => {
+          if (x.type === 'Identifier') for (const r of initsByFn.get(`${fn}::${x.name}`) || []) ranges.push([r[0], r[1], R]);
+          if (x.type === 'CallExpression' && x.callee.type === 'Identifier' && fnRanges.has(x.callee.name)) { const r = fnRanges.get(x.callee.name); ranges.push([r[0], r[1], R]); }
+        });
+      }
+    });
+    for (const s of sites) if (s.file === u.file && s._pos !== undefined) { const hit = ranges.find((r) => s._pos >= r[0] && s._pos < r[1]); if (hit) s.send = hit[2]; }
+  }
+  for (const s of sites) delete s._pos;
+
   // ── write sentinel + timers + clocks (functions only) ──
-  const sentinel = []; const timers = []; const clocks = [];
+  const sentinel = sentinel0; const timers = []; const clocks = [];
   for (const { u, ast } of parsed.filter((x) => x.u.kind === 'fn')) {
     walk(ast, (node, fn, parent) => {
       if (node.type === 'Property' && !node.computed) { const k = node.key && (node.key.name || node.key.value); if (typeof k === 'string' && SENTINEL.test(k)) sentinel.push({ file: u.file, fn, key: k, line: node.loc.start.line, how: 'object-key' }); }
-      if (node.type === 'Literal' && typeof node.value === 'string' && /orders\/.+\/([a-z_]+)$/.test(node.value)) { const seg = /\/([a-z_]+)$/.exec(node.value)[1]; if (SENTINEL.test(seg)) sentinel.push({ file: u.file, fn, key: seg, line: node.loc.start.line, how: 'path' }); }
+      { const sp = (node.type === 'Literal' && typeof node.value === 'string') || node.type === 'TemplateLiteral' ? staticPath(node) : null;   // literal AND template paths
+        const m = sp && /orders\/[^/]+\/([A-Za-z0-9_]+)$/.exec(sp); if (m && SENTINEL.test(m[1])) sentinel.push({ file: u.file, fn, key: m[1], line: node.loc.start.line, how: 'path' }); }
       if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && ['setTimeout', 'setInterval', 'sleep'].includes(node.callee.name)) {
         const delay = node.callee.name === 'sleep' ? node.arguments[0] : node.arguments[1];
         const dsrc = delay ? u.code.slice(delay.start, delay.end).slice(0, 60) : '';
@@ -242,7 +413,7 @@ function census({ explicit = [] } = {}) {
       }
     });
   }
-  return { units: units.length, sites, opaque, projections, sentinel, timers, clocks };
+  return { units: units.length, sites, opaque, projections, sentinel, timers, clocks, writes, opaqueWrites };
 }
 
 module.exports = { census, FIELD_FACTS, READER_DIRS, sources };

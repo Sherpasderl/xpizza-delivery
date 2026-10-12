@@ -47,11 +47,6 @@
       "map": "R11"
     },
     {
-      "rule": "portal-other",
-      "file": "^xpizza-portal/",
-      "exempt": "portal catalog authoring / auth / shell — reads catalog items, not persisted orders"
-    },
-    {
       "rule": "form-cart",
       "file": "^(xpizza-orders|la-musa-orders)/",
       "fn": "^(updateCart|updateCartReviewBody|renderCartReview)",
@@ -88,6 +83,12 @@
       "map": "R17"
     },
     {
+      "rule": "form-reorder-recipe",
+      "file": "^(xpizza-orders|la-musa-orders)/account\\.js$",
+      "fn": "^canonicalRecipeToLegacy",
+      "map": "R18"
+    },
+    {
       "rule": "form-reorder",
       "file": "^(xpizza-orders|la-musa-orders)/",
       "fn": "^(reorderFromEntry|applyReorderToCart)",
@@ -109,83 +110,6 @@
       "file": "^(xpizza-orders|la-musa-orders)/",
       "fn": "^(buildOrder|redeemCartItems|submitOrder|processPixelPay|orderIdForThisCart)",
       "exempt": "client order COMPOSER — the writer of the order body, covered as the WRITER (S1..S17 submit through it)"
-    },
-    {
-      "rule": "form-internals",
-      "file": "^(xpizza-orders|la-musa-orders)/",
-      "exempt": "form internals: live menu / cart / availability state (fixture intent and catalog), not persisted-order reads — the form's order readers are R13–R19 above"
-    },
-    {
-      "rule": "driver-push",
-      "file": "^xpizza-functions/(index|driver-push)\\.js$",
-      "fn": "^(notifyDriverOnAssignment|notifyDriverOnCancellation|sendDriverPush)",
-      "map": "R5"
-    },
-    {
-      "rule": "driver-push-file",
-      "file": "^xpizza-functions/driver-push\\.js$",
-      "map": "R5"
-    },
-    {
-      "rule": "staff-push",
-      "file": "^xpizza-functions/index\\.js$",
-      "fn": "^(notifyStaffOnNewOrder|flushStaffPushQueue)",
-      "map": "R6"
-    },
-    {
-      "rule": "staff-push-file",
-      "file": "^xpizza-functions/staff-push\\.js$",
-      "map": "R6"
-    },
-    {
-      "rule": "whatsapp",
-      "file": "^xpizza-functions/index\\.js$",
-      "fn": "^(sendOrderStatusNotifications|notifyPreparing|notifyPickupReady|onIncomingWhatsApp|sendPaidAfterCloseRefund)",
-      "map": "R9"
-    },
-    {
-      "rule": "whatsapp-files",
-      "file": "^xpizza-functions/(whatsapp[^/]*|cancel-notify|notify-[^/]*|whatsapp-templates[^/]*)\\.js$",
-      "map": "R9"
-    },
-    {
-      "rule": "factura",
-      "file": "^xpizza-functions/index\\.js$",
-      "fn": "^(allocateFacturaOnSale|voidFacturaOnCancel)",
-      "map": "R10"
-    },
-    {
-      "rule": "factura-files",
-      "file": "^xpizza-functions/factura/",
-      "map": "R10"
-    },
-    {
-      "rule": "stats",
-      "file": "^xpizza-functions/index\\.js$",
-      "fn": "^rollupDailyStats",
-      "map": "R11"
-    },
-    {
-      "rule": "stats-files",
-      "file": "^xpizza-functions/stats/",
-      "map": "R11"
-    },
-    {
-      "rule": "stats-portal-fn",
-      "file": "^xpizza-functions/portal/functions\\.js$",
-      "fn": "^getSalesStats",
-      "map": "R11"
-    },
-    {
-      "rule": "sheets",
-      "file": "^xpizza-functions/index\\.js$",
-      "fn": "^onOrderCancelled",
-      "map": "R12"
-    },
-    {
-      "rule": "server-writers",
-      "file": "^xpizza-functions/",
-      "exempt": "server WRITER / validator / pricing / catalog / scheduling infrastructure — the persisted evidence R3 asserts readers against (§1); its outputs are covered as writers, its reads are not reader surfaces"
     }
   ],
   "explicitProjections": [
@@ -233,5 +157,941 @@
   },
   "clockReview": {
     "_default": "rule-proposed classes are accepted for P0 and listed for advisor review; per-site overrides go here as `file:fn:line-free-key → class`"
-  }
+  },
+  "serverReaders": {
+    "order-received.js": "R9",
+    "paid-after-close-notify.js": "R9",
+    "cancel-notify.js": "R9",
+    "whatsapp.js": "R9",
+    "whatsapp_inbound.js": "R9",
+    "staff-push.js": "R6",
+    "tracking-mirror.js": "R8",
+    "payment-poll-state.js": "R16",
+    "claim-order.js": "R17",
+    "claim-prefill.js": "R17",
+    "factura/build-record.js": "R10",
+    "factura/eligibility.js": "R10",
+    "factura/factura-helpers.js": "R10",
+    "stats/stats-api.js": "R11",
+    "stats/stats-build.js": "R11",
+    "stats/stats-classify.js": "R11",
+    "stats/stats-gen.js": "R11",
+    "stats/stats-job.js": "R11",
+    "stats/stats-time.js": "R11",
+    "portal/functions.js#getSalesStats": "R11",
+    "index.js#notifyDriverOnAssignment": "R5",
+    "index.js#sendDriverPush": "R5",
+    "index.js#onAcceptedFresh": "R5",
+    "index.js#notifyStaffOnNewOrder": "R6",
+    "index.js#fanoutStaffPush": "R6",
+    "index.js#fanoutStaffPush>anon": "R6",
+    "index.js#sendStaffPush": "R6",
+    "index.js#send": "R6",
+    "index.js#sendOrderStatusNotifications": "R9",
+    "index.js#notifyPreparing": "R9",
+    "index.js#notifyPickupReady": "R9",
+    "index.js#onIncomingWhatsApp": "R9",
+    "index.js#onIncomingWhatsApp>anon": "R9",
+    "index.js#sendScheduledSlotClosed": "R9",
+    "index.js#sendPaidAfterCloseRefund": "R9",
+    "index.js#allocateFacturaOnSale": "R10",
+    "index.js#voidFacturaOnCancel": "R10",
+    "index.js#onOrderCancelled": "R12",
+    "index.js#paymentStatus": "R16",
+    "index.js#claimOrder": "R17",
+    "index.js#claimPrefill": "R17",
+    "index.js#mirrorStatusToHistory": "R17",
+    "index.js#clearTrackerMirrorOnDone": "R8"
+  },
+  "serverCategories": {
+    "intake": "order INTAKE writer / validator (createOrder, chargeOnlineOrder, quotes, pricing, classification, display number) — produces the persisted evidence (§1) the readers are asserted against; its outputs are covered as writers",
+    "payment": "payment / refund / reconciliation LIFECYCLE writer (PixelPay charge / confirm / webhook / cancel, materialize, cancel, manual resolve, sweeps) — persisted F-PAYLIFE evidence, covered as writers (S5–S10)",
+    "catalog": "catalog / identity / publish / exposure infrastructure — reads catalog items and versions, not persisted orders",
+    "rewards": "rewards LEDGER writer (earn / reserve / redeem) — persisted F-REWARD evidence, covered as a writer",
+    "scheduling": "scheduled-order hold / release WRITER (S11) — persisted F-SCHED evidence",
+    "dispatch": "assignment / driver location / attribution / task retention WRITER — persisted F-DRIVER / task evidence (S1, S1t, S1a, S13)",
+    "readytime": "ready-time predictor / quality — shadow model, no customer or staff surface",
+    "infra": "client floor / version / health / auth (OTP, account deletion) / rate-limit / alert-pruning infrastructure — no order fact displayed",
+    "fixtures": "test FIXTURE module (required only by *.test.js) — not production",
+    "seed": "operator seed / publish script — not an order reader"
+  },
+  "serverFunctions": {
+    "alert-prune.js#alertOrderIds": "infra",
+    "alert-prune.js#orderStillFlagged": "infra",
+    "assign-hub.js#resolveAssignHub": "dispatch",
+    "availability-reset.js#resetRestaurant": "infra",
+    "availability-reset.js#resetRestaurant>anon": "infra",
+    "cancel-order-core.js#cancelOrderCore": "payment",
+    "cancel-order-core.js#cleanupTasksAndDriver": "payment",
+    "cancel-order-core.js#finalize": "payment",
+    "cancel-order-core.js#retryRewardLedgerRepair": "payment",
+    "cancel-order.js#cancelledDecision": "payment",
+    "cancel-order.js#claimDecision": "payment",
+    "cancel-order.js#gate": "payment",
+    "cancel-order.js#isAlreadyReversed": "payment",
+    "cancel-order.js#isReconcilerRetryable": "payment",
+    "cancel-order.js#reversedPaymentStatus": "payment",
+    "cancel-order.js#shouldVoid": "payment",
+    "catalog/add-product-io.js#syncKds": "catalog",
+    "catalog/add-product.js#allocateAdditions": "catalog",
+    "catalog/add-product.js#classifyItems": "catalog",
+    "catalog/add-product.js#compareToActive": "catalog",
+    "catalog/add-product.js#constructor": "catalog",
+    "catalog/add-product.js#others": "catalog",
+    "catalog/add-product.js#prospectiveAdditionNames": "catalog",
+    "catalog/add-product.js#rewriteGroupRefs": "catalog",
+    "catalog/bound-reuse.js#probeBoundReuse": "catalog",
+    "catalog/candidate-validate.js#assertBuiltValid": "catalog",
+    "catalog/candidate-validate.js#candidateSource": "catalog",
+    "catalog/canonical-binding.js#canonicalOrderFingerprint": "catalog",
+    "catalog/canonical-binding.js#canonicalRecipeLines": "catalog",
+    "catalog/canonical-binding.js#canonicalReservationFields": "catalog",
+    "catalog/canonical-binding.js#canonicalReward": "catalog",
+    "catalog/catalog-context.js#buildContext": "catalog",
+    "catalog/catalog-context.js#kindComplete": "catalog",
+    "catalog/catalog-edit.js#gateFlagsOf": "catalog",
+    "catalog/catalog-edit.js#itemsByKey": "catalog",
+    "catalog/catalog-firestore.js#readPointerSnap": "catalog",
+    "catalog/catalog-menu.js#buildMenu": "catalog",
+    "catalog/catalog-menu.js#readFlatMenu>anon": "catalog",
+    "catalog/catalog-menu.js#readVersionMenu>anon": "catalog",
+    "catalog/catalog-menu.js#versionIdentity": "catalog",
+    "catalog/catalog-publish.js#activationVerdict": "catalog",
+    "catalog/catalog-publish.js#assertNoNewKeyOverlap": "catalog",
+    "catalog/catalog-publish.js#enrich>anon": "catalog",
+    "catalog/catalog-publish.js#flipPointer": "catalog",
+    "catalog/catalog-publish.js#flipPointer>anon": "catalog",
+    "catalog/catalog-publish.js#normalizeInputs": "catalog",
+    "catalog/catalog-publish.js#previewVersion": "catalog",
+    "catalog/catalog-publish.js#publishVersion": "catalog",
+    "catalog/catalog-publish.js#rebase>anon": "catalog",
+    "catalog/catalog-publish.js#verifyVersionStructure": "catalog",
+    "catalog/catalog-publish.js#writeVersion": "catalog",
+    "catalog/catalog-verifier.js#judgePair": "catalog",
+    "catalog/content-hash.js#servedPayload": "catalog",
+    "catalog/context-source.js#build>anon": "catalog",
+    "catalog/context-writer.js#fullWrite": "catalog",
+    "catalog/context-writer.js#persistedNode": "catalog",
+    "catalog/context-writer.js#rawFromNode": "catalog",
+    "catalog/draft-assess.js#assessDraft": "catalog",
+    "catalog/edit-catalog-handler.js#editCatalogCore": "catalog",
+    "catalog/edit-catalog-handler.js#refusal": "catalog",
+    "catalog/evidence-encoding.js#read": "catalog",
+    "catalog/exposure-source.js#deriveExposure": "catalog",
+    "catalog/generate-form-bundle.js#catalogSnapshot": "catalog",
+    "catalog/generate-form-bundle.js#generateFormBundle": "catalog",
+    "catalog/generate-form-bundle.js#generateKdsManifest": "catalog",
+    "catalog/group-index.js#groupIndexFrom": "catalog",
+    "catalog/group-intake.js#groupIssues": "catalog",
+    "catalog/group-intake.js#rewardKeysOf": "catalog",
+    "catalog/identity-backfill.js#liveKeys": "catalog",
+    "catalog/identity-bootstrap.js#bootstrapIdentityStamps": "catalog",
+    "catalog/identity-bootstrap.js#bootstrapIdentityStamps>anon": "catalog",
+    "catalog/identity-bootstrap.js#enrich>anon": "catalog",
+    "catalog/identity-bootstrap.js#resolveKind": "catalog",
+    "catalog/identity-bootstrap.js#resolveKind>anon": "catalog",
+    "catalog/identity-bootstrap.js#retireOrphanFenced>anon": "catalog",
+    "catalog/identity-derive.js#derivePlan": "catalog",
+    "catalog/identity-destination.js#destinationVerdict>anon": "catalog",
+    "catalog/identity-evidence.js#withAt": "catalog",
+    "catalog/identity-fixture.js#get>anon": "fixtures",
+    "catalog/identity-fixture.js#runTransaction>anon": "fixtures",
+    "catalog/identity-manifest.js#buildIdentityManifest": "catalog",
+    "catalog/identity-manifest.js#divergenceReport": "catalog",
+    "catalog/identity-plan.js#verifyPlan": "catalog",
+    "catalog/identity-reconcile.js#reconcileOnRollback": "catalog",
+    "catalog/identity-record.js#buildIdentityRecord": "catalog",
+    "catalog/identity-record.js#sameKeys": "catalog",
+    "catalog/identity-record.js#validateRecord": "catalog",
+    "catalog/identity-registry.js#ensureIdentity>anon": "catalog",
+    "catalog/identity-registry.js#retireIdentity>anon": "catalog",
+    "catalog/identity-registry.js#worker": "catalog",
+    "catalog/identity-restore.js#restoreIdentity>anon": "catalog",
+    "catalog/identity-stampmap.js#stampVerdict": "catalog",
+    "catalog/identity-stampmap.js#walkDraftIdentities": "catalog",
+    "catalog/identity-sweep.js#sweepIdentityIntegrity>anon": "catalog",
+    "catalog/menu-gates.js#gatesFor": "catalog",
+    "catalog/owner-index.js#readOwnerRestaurants": "catalog",
+    "catalog/owner-index.js#readOwnerRestaurants>anon": "catalog",
+    "catalog/policy-primitive.js#dishesInCats": "catalog",
+    "catalog/policy-primitive.js#redeemRule": "catalog",
+    "catalog/portal-reads.js#getEditableCatalogCore": "catalog",
+    "catalog/public-menu.js#fromSource": "catalog",
+    "catalog/publish-edited-handler.js#publishEditedCore": "catalog",
+    "catalog/publish-parity.js#catalogDescriptor": "catalog",
+    "catalog/redeem-source.js#assertRedeemAllowMatchesToday": "catalog",
+    "catalog/redeem-source.js#attachRedeemFields": "catalog",
+    "catalog/reset-draft.js#resetDraftToLiveCore": "catalog",
+    "catalog/source-store.js#sourceToBuildInputs": "catalog",
+    "catalog/source-store.js#validateSource": "catalog",
+    "client-floor.js#liveCheckoutProbe": "infra",
+    "client-floor.js#updateRequired": "infra",
+    "client-version.js#handleReport": "infra",
+    "compute-server-net.js#computeServerNet": "intake",
+    "create-order-build.js#attachCustomerAttribution": "intake",
+    "create-order-build.js#buildCreateOrderUpdates": "intake",
+    "createorder-classify.js#classifyExistingOrder": "intake",
+    "createorder-classify.js#computeCanonicalIncomingFingerprint": "intake",
+    "createorder-classify.js#computeIncomingFingerprint": "intake",
+    "driver-attribution.js#shouldBackstopAttribution": "dispatch",
+    "driver-diag.js#<top>>anon": "dispatch",
+    "driver-freshness.js#isOnShift": "dispatch",
+    "driver-ingest.js#coordsMatchHub": "dispatch",
+    "driver-ingest.js#driverHasSameHubAccepted": "dispatch",
+    "driver-ingest.js#geofenceTransition": "dispatch",
+    "driver-ingest.js#hubFromPickupTask": "dispatch",
+    "driver-ingest.js#resolveHubFromTask": "dispatch",
+    "driver-ingest.js#resolvePickupHub": "dispatch",
+    "driver-ingest.js#selectIngestPoints>anon": "dispatch",
+    "hosted-charge-flow.js#resolveHostedAttemptAction": "payment",
+    "index.js#<top>": "infra",
+    "index.js#allocateDisplayNumberOnSale": "intake",
+    "index.js#autoAssignOnOrderCreate": "dispatch",
+    "index.js#badRequest": "intake",
+    "index.js#cancelPaidOrder": "payment",
+    "index.js#chargeOnlineApp.all": "intake",
+    "index.js#chargeOnlineApp.all>anon": "intake",
+    "index.js#chargeOnlineApp.use": "intake",
+    "index.js#confirmOnlineApp.all": "intake",
+    "index.js#confirmOnlineApp.use": "intake",
+    "index.js#createOrderApp.all": "intake",
+    "index.js#createOrderApp.use": "intake",
+    "index.js#deleteAccount": "infra",
+    "index.js#deleteTasksOnOrderTerminal": "dispatch",
+    "index.js#earnRewardsOnCompletion": "rewards",
+    "index.js#getPublicMenu": "intake",
+    "index.js#healthz": "infra",
+    "index.js#ingestDriverLocation": "dispatch",
+    "index.js#logOrderLifecycle": "readytime",
+    "index.js#logReadyTimeActual": "readytime",
+    "index.js#materializeOnConfirm": "payment",
+    "index.js#monitorAssignmentTimeout": "dispatch",
+    "index.js#pickEligibleDriver": "dispatch",
+    "index.js#pixelPayWebhook": "payment",
+    "index.js#predictReadyTimeOnNew": "readytime",
+    "index.js#pricingUnavailable": "intake",
+    "index.js#quoteOrder": "intake",
+    "index.js#quoteRedemption": "intake",
+    "index.js#reassertAssignable": "dispatch",
+    "index.js#reconcilePayments": "payment",
+    "index.js#refundReconciler": "payment",
+    "index.js#releaseRewardHold": "rewards",
+    "index.js#releaseScheduledOrder": "scheduling",
+    "index.js#reportClientVersion": "infra",
+    "index.js#requestOtp": "infra",
+    "index.js#resolveManualReconciliation": "payment",
+    "index.js#retentionSweepTasks": "dispatch",
+    "index.js#sendJson": "intake",
+    "index.js#sweepPendingOrders": "payment",
+    "index.js#sweepStalePending": "payment",
+    "index.js#sweepStuckOrders": "infra",
+    "index.js#unauthorized": "intake",
+    "index.js#validateOrderPayload": "intake",
+    "index.js#verifyOtp": "infra",
+    "index.js#verifyOtp>anon": "infra",
+    "manual-resolve.js#claimDecision": "payment",
+    "manual-resolve.js#claimLanded": "payment",
+    "manual-resolve.js#hasCapturedMoneyEvidence": "payment",
+    "manual-resolve.js#recoveryDecision": "payment",
+    "materialize-guard.js#duplicateSiblingDecision": "payment",
+    "materialize-guard.js#holdIfClosedAtMaterialize": "payment",
+    "materialize-guard.js#holdIfClosedAtMaterialize>anon": "payment",
+    "materialize-guard.js#holdIfDuplicateSibling": "payment",
+    "materialize-guard.js#holdIfDuplicateSibling>anon": "payment",
+    "materialize-guard.js#needsPaidAfterCloseRefund": "payment",
+    "materialize-guard.js#parkForManualRefund>anon": "payment",
+    "materialize-guard.js#recoverRefundingDecision": "payment",
+    "materialize.js#buildMaterializeUpdates": "payment",
+    "menu-pricing.js#summaryLines": "catalog",
+    "n2-paid-strand-decision.js#isPaidStranded": "payment",
+    "n2-paid-strand-decision.js#postRedrivePaidStrand": "payment",
+    "order-control.js#respond": "intake",
+    "order-display-number.js#displayNumberEligible": "intake",
+    "order-exists.js#isTerminalSafe": "intake",
+    "order-lifecycle.js#countDriverSupply": "dispatch",
+    "order-lifecycle.js#countKitchenLoadAhead": "dispatch",
+    "pixelpay-cancel.js#voidOrRefund": "payment",
+    "pixelpay-cancel.js#voidOrRefund>anon": "payment",
+    "pixelpay-charge.js#acquireOnlineAttempt": "payment",
+    "pixelpay-charge.js#acquireOnlineAttempt>anon": "payment",
+    "pixelpay-client.js#interpretStatus": "payment",
+    "pixelpay-client.js#ppPost": "payment",
+    "pixelpay-confirm.js#confirmAndMaterialize": "payment",
+    "pixelpay-confirm.js#confirmAndMaterialize>anon": "payment",
+    "pixelpay-confirm.js#confirmOnlinePayment": "payment",
+    "pixelpay-confirm.js#confirmOnlinePayment>anon": "payment",
+    "pixelpay-hosted-charge.js#acquireHostedAttempt": "payment",
+    "pixelpay-hosted-charge.js#acquireHostedAttempt>anon": "payment",
+    "pixelpay-hosted-charge.js#classifyFromOrder": "payment",
+    "pixelpay-hosted-webhook.js#handleHostedCallback": "payment",
+    "pixelpay-hosted.js#createHostedCharge": "payment",
+    "pixelpay-webhook.js#classifySweepCandidate": "payment",
+    "pixelpay-webhook.js#extractWebhookNudge": "payment",
+    "platform-manifest.js#deriveCorsLists": "infra",
+    "portal/functions.js#editCatalog": "catalog",
+    "portal/functions.js#getEditableCatalog": "catalog",
+    "portal/functions.js#getMyRestaurants": "catalog",
+    "portal/functions.js#publishEdited": "catalog",
+    "portal/functions.js#readActiveBuiltForEdit": "catalog",
+    "portal/reset-draft.js#<top>>anon": "catalog",
+    "publish-menus.mjs#main": "catalog",
+    "publish-menus.mjs#runStep": "catalog",
+    "quote-issue.js#issueQuoteInner": "intake",
+    "ready-time-eligibility.js#assertNonzeroEligibleCounts>anon": "readytime",
+    "ready-time-eligibility.js#nonLabelExclusions": "readytime",
+    "ready-time-features.js#extractCreationFeatures": "readytime",
+    "ready-time-graduation.js#buildGraduationRows": "readytime",
+    "ready-time-graduation.js#computeGraduation": "readytime",
+    "ready-time-graduation.js#computeGraduation>anon": "readytime",
+    "ready-time-graduation.js#coverageByCoarse": "readytime",
+    "ready-time-predict-core.js#runLabelAndUpdate": "readytime",
+    "ready-time-predict-core.js#runPrediction": "readytime",
+    "ready-time-quality-run.js#canonRow": "readytime",
+    "ready-time-quality-run.js#isFreshAuthoritativeRun": "readytime",
+    "ready-time-quality-run.js#main": "readytime",
+    "ready-time-quality-run.js#readJoin": "readytime",
+    "ready-time-quality.js#computeQualityMetrics": "readytime",
+    "resolve-manual.js#confirmAndMaterializeFromManualClaim": "payment",
+    "resolve-manual.js#confirmAndMaterializeFromManualClaim>anon": "payment",
+    "resolve-manual.js#recoverStaleResolve>anon": "payment",
+    "resolve-manual.js#releaseClaim>anon": "payment",
+    "resolve-manual.js#resolveManualReconciliationCore": "payment",
+    "resolve-manual.js#resolveManualReconciliationCore>anon": "payment",
+    "restaurant-config.js#hubSnapshot": "infra",
+    "restaurant-config.js#isRoutingValid": "infra",
+    "retention-sweep.js#runRetentionSweep": "dispatch",
+    "rewards-core.js#computeEarn": "rewards",
+    "rewards-core.js#earnPreview": "rewards",
+    "rewards-earn.js#creditEarnForOrder": "rewards",
+    "rewards-earn.js#reverseEarnForOrder": "rewards",
+    "rewards-redeem-intake.js#canonicalBinding": "rewards",
+    "rewards-redeem-intake.js#nameMapFrom": "rewards",
+    "rewards-redeem-intake.js#prepareRedemption": "rewards",
+    "rewards-redeem-intake.js#quoteRedemptionCore": "rewards",
+    "rewards-redeem-intake.js#resolveRedemptionForOrder": "rewards",
+    "rewards-redeem-pricing.js#applyLaMusa": "rewards",
+    "rewards-redeem-pricing.js#applyRedemptionToPricing": "rewards",
+    "rewards-redeem-pricing.js#applyXPizza": "rewards",
+    "rewards-redeem.js#computeLaMusa": "rewards",
+    "rewards-redeem.js#computeRedemption": "rewards",
+    "rewards-reserve.js#alertIfUndercollateralized": "rewards",
+    "rewards-reserve.js#attachAttempt": "rewards",
+    "rewards-reserve.js#consumeEligible": "rewards",
+    "rewards-reserve.js#consumeRedemption": "rewards",
+    "rewards-reserve.js#definitivelyNotCaptured": "rewards",
+    "rewards-reserve.js#markHeldPaid": "rewards",
+    "rewards-reserve.js#releaseRedemption": "rewards",
+    "rewards-reserve.js#reserveRedemption": "rewards",
+    "rewards-reserve.js#reverseRedemptionForOrder": "rewards",
+    "rewards-reserve.js#reverseRedemptionForRefund": "rewards",
+    "rewards-reserve.js#runTransition": "rewards",
+    "rewards-reserve.js#settleRedemptionAtConfirm": "rewards",
+    "rewards-reserve.js#sweepConsumeRecovery": "rewards",
+    "rewards-reserve.js#sweepStaleReservations": "rewards",
+    "scheduled-orders.js#fingerprintExtra": "scheduling",
+    "scheduled-orders.js#releaseDecision": "scheduling",
+    "scheduled-orders.js#releaseTimeValid": "scheduling",
+    "scheduled-orders.js#scheduledOverdue": "scheduling",
+    "scheduled-release-core.js#claimForRelease": "scheduling",
+    "scheduled-release-core.js#claimForRelease>anon": "scheduling",
+    "scheduled-release-core.js#finalizeRelease": "scheduling",
+    "scheduled-release-core.js#recoverStaleReleasing>anon": "scheduling",
+    "seed_identity.js#assertIdentityShape": "seed",
+    "stats/stats-fixtures.js#applyPatch": "fixtures",
+    "stats/stats-fixtures.js#cancel": "fixtures",
+    "stats/stats-fixtures.js#cashOrder": "fixtures",
+    "stats/stats-fixtures.js#createArgs": "fixtures",
+    "stats/stats-fixtures.js#deliver": "fixtures",
+    "stats/stats-fixtures.js#holdConfirmed": "fixtures",
+    "stats/stats-fixtures.js#kds": "fixtures",
+    "stats/stats-fixtures.js#materialize": "fixtures",
+    "stats/stats-fixtures.js#onlinePending": "fixtures",
+    "stats/stats-fixtures.js#pickup": "fixtures",
+    "stats/stats-fixtures.js#scheduledCashOrder": "fixtures",
+    "stats/stats-rtdb-fake.js#once": "fixtures",
+    "sweep-pending.js#activeOrderCount": "payment",
+    "sweep-pending.js#sweepDecision": "payment",
+    "tasks-retention.js#confirmTaskDelete": "dispatch",
+    "tasks-retention.js#tasksToDelete": "dispatch",
+    "token-gate.js#gateConfirmedNet": "intake",
+    "token-gate.js#gateInputFromRequest": "intake",
+    "token-gate.js#unsignedFloor": "intake"
+  },
+  "pageFunctionExemptions": {
+    "xpizza-orders/account.js#rewardsSubscribe": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#getRedeemQuoteTotalCents": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#redeemDishes": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#restoreRedeem": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#redeemQuoteFetch": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#rkCommit": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#runClaimConfirm": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#onclick": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#claimAddressPayload": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#openLoginSheet": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#sendCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#verifyCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#renderOrdersPane>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#reorderFromEntry": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#saveAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#pickDefaultAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#restoredDeliveryAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#initDeliveryStep": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#shouldRecoverDeliveryStep": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#loadCardMap": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#renderConfirmCard": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#saveEditedAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#shouldOfferPrimarySave": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#refreshSaveToggle>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#onOrderConfirmed": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#selectSavedAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#selectSavedAddress>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#openAcctFullscreenMap>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#openAcctFullscreenMap": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#closeAcctFullscreenMap": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#saveCreateProfilePane": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#confirmNewAddressForOrder": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#applyCreateProfileAddressUI": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#saveCreateProfile": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#establishCheckoutFromAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#reducedFlowInvariantOk": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#selectSavedAddressForOrder": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/form-live-menu.js#refresh": "live menu / cart / quote client state (fixture intent + catalog), not persisted-order reads",
+    "xpizza-orders/order-self-update.js#restoreSnapshot": "self-update reload: restores the CLIENT form snapshot, not persisted-order reads",
+    "xpizza-orders/sherpa-client.js#sfetch>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#requestServerQuote>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#successTotalCents": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#initMap": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#placePin>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#openFullscreenMap>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#closeFullscreenMap": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#locPickPred": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#processPayment": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#processPixelPay": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#applyPollState": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#handlePaymentReturn": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#restoreOrderForm": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#submitOrder": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#showSuccess": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#showSuccess>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#updateDetailCta": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#handleProfileClaim": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/account.js#rewardsSubscribe": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#getRedeemQuoteTotalCents": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#redeemDishes": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#restoreRedeem": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#redeemQuoteFetch": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#rkCommit": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#runClaimConfirm": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#onclick": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#claimAddressPayload": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#openLoginSheet": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#sendCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#verifyCode": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#renderOrdersPane>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#reorderFromEntry": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#saveAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#pickDefaultAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#restoredDeliveryAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#initDeliveryStep": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#shouldRecoverDeliveryStep": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#loadCardMap": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#renderConfirmCard": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#saveEditedAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#shouldOfferPrimarySave": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#refreshSaveToggle>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#onOrderConfirmed": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#selectSavedAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#selectSavedAddress>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#openAcctFullscreenMap>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#openAcctFullscreenMap": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#closeAcctFullscreenMap": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#saveCreateProfilePane": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#confirmNewAddressForOrder": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#applyCreateProfileAddressUI": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#saveCreateProfile": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#establishCheckoutFromAddress": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#reducedFlowInvariantOk": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#selectSavedAddressForOrder": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/form-live-menu.js#refresh": "live menu / cart / quote client state (fixture intent + catalog), not persisted-order reads",
+    "la-musa-orders/order-self-update.js#restoreSnapshot": "self-update reload: restores the CLIENT form snapshot, not persisted-order reads",
+    "la-musa-orders/sherpa-client.js#sfetch>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#applyRedeemQuoteToTotals": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#requestServerQuote>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#successTotalCents": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#initMap": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#placePin>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#openFullscreenMap>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#closeFullscreenMap": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#locPickPred": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#processPayment": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#processPixelPay": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#applyPollState": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#handlePaymentReturn": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#restoreOrderForm": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#submitOrder": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#showSuccess": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#showSuccess>anon": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#updateDetailCta": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#handleProfileClaim": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-portal/api.js#readResponse": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/api.js#readTextResponse": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#repaintFromDraft>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#describeAddition": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#onAddProduct": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#renderDrawer": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#renderAddDrawer>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#choiceBlock>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/app.js#showOutcome>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/editor.js#rowsOf": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/editor.js#addProduct": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/editor.js#adopt": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/editor.js#addChoice": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/editor.js#productsUsingGroup": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/render.js#groupByCategory": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/render.js#renderRail": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/render.js#renderDetail": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/review.js#renderReview": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/review.js#attestationModel": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/review.js#serverAnswered": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/sherpa-client.js#sfetch>anon": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-portal/ventas-logic.js#viewModel": "portal catalog authoring / auth / shell — catalog items, not persisted orders",
+    "xpizza-orders/account.js#renderOrdersPane": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/account.js#canonicalRecipeToLegacy>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "xpizza-orders/index.html<script@2>#pizzaExtrasTotal": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "la-musa-orders/account.js#renderOrdersPane": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/account.js#canonicalRecipeToLegacy>anon": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
+    "la-musa-orders/index.html<script@2>#pizzaExtrasTotal": "form page internals — menu / cart / checkout UI state (fixture intent), not persisted-order reads",
+    "xpizza-portal/ventas-harness.mjs#constructor": "portal TEST harness (ventas-harness.mjs) — not production"
+  },
+  "writtenFields": {
+    "active_attempt_id": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "blocked_reason": {
+      "class": "fact",
+      "facts": [
+        "PAYLIFE"
+      ]
+    },
+    "cancel_claim_id": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "cancel_reason": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "cancelled_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "cancelled_by": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "cash_tendered_cents": {
+      "class": "fact",
+      "facts": [
+        "TENDER"
+      ]
+    },
+    "charged_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "closed_from_blocked_reason": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "control_held": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "created_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "customer_name": {
+      "class": "identity",
+      "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
+    },
+    "customer_phone": {
+      "class": "identity",
+      "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
+    },
+    "customer_uid": {
+      "class": "identity",
+      "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
+    },
+    "delivered_by_name": {
+      "class": "fact",
+      "facts": [
+        "DRIVER"
+      ]
+    },
+    "delivered_by_uid": {
+      "class": "fact",
+      "facts": [
+        "DRIVER"
+      ]
+    },
+    "delivery_task_id": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "display_number": {
+      "class": "fact",
+      "facts": [
+        "NUM"
+      ]
+    },
+    "driver_location": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "duplicate_held_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "earn_preview": {
+      "class": "fact",
+      "facts": [
+        "REWARD"
+      ]
+    },
+    "factura_items": {
+      "class": "fact",
+      "facts": [
+        "ITEMS",
+        "BREAKDOWN"
+      ]
+    },
+    "factura_status": {
+      "class": "fact",
+      "facts": [
+        "FACTELIG"
+      ]
+    },
+    "free_order": {
+      "class": "fact",
+      "facts": [
+        "COLLECT"
+      ]
+    },
+    "fulfilled_offline_at": {
+      "class": "fact",
+      "facts": [
+        "DRIVER"
+      ]
+    },
+    "hub_lat": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
+    "hub_lng": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
+    "inactive_materialize_alerted_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "is_active_drop": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "items": {
+      "class": "fact",
+      "facts": [
+        "ITEMS"
+      ]
+    },
+    "items_text": {
+      "class": "fact",
+      "facts": [
+        "ITEMS"
+      ]
+    },
+    "manual_refund_required_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "materialized_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "notes": {
+      "class": "free-text",
+      "reason": "customer free text echoed as entered — PROPOSED non-fact; flag: shown on KDS / driver (advisor: make it a fact?)"
+    },
+    "order_id": {
+      "class": "fact",
+      "facts": [
+        "NUM"
+      ]
+    },
+    "order_received_notified_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "order_received_send_unresolved_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "order_type": {
+      "class": "fact",
+      "facts": [
+        "FULFIL"
+      ]
+    },
+    "paid_after_close_refund_send_unresolved_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "paid_after_close_refund_sent_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "paid_after_close_refund_unsendable_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "paid_after_close_refund_unsendable_reason": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "paid_during_resolve": {
+      "class": "lifecycle",
+      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
+    },
+    "paid_strand_seen_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "payment_fingerprint": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "payment_method": {
+      "class": "fact",
+      "facts": [
+        "COLLECT",
+        "PAYLIFE",
+        "ACCT",
+        "FACTELIG"
+      ]
+    },
+    "payment_reference": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "payment_status": {
+      "class": "fact",
+      "facts": [
+        "COLLECT",
+        "PAYLIFE",
+        "ACCT",
+        "FACTELIG"
+      ]
+    },
+    "pickup_task_id": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "quote": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "razon_social": {
+      "class": "fiscal",
+      "reason": "factura buyer identity (RTN / razón social) — PROPOSED non-fact; flag: printed on the factura (R10)"
+    },
+    "refund_ref": {
+      "class": "fact",
+      "facts": [
+        "PAYLIFE"
+      ]
+    },
+    "refunded_at": {
+      "class": "fact",
+      "facts": [
+        "PAYLIFE"
+      ]
+    },
+    "refunding_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "release_at": {
+      "class": "fact",
+      "facts": [
+        "SCHED"
+      ]
+    },
+    "release_claim_id": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "released_at": {
+      "class": "fact",
+      "facts": [
+        "SCHED"
+      ]
+    },
+    "releasing_since": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "resolution": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "resolved_by": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "resolving_action": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "resolving_claim_id": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "resolving_claimed_at": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "resolving_phase": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "restaurant_id": {
+      "class": "fact",
+      "facts": [
+        "BRAND"
+      ]
+    },
+    "restaurant_name": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
+    "restaurant_phone": {
+      "class": "identity",
+      "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
+    },
+    "rtn_cliente": {
+      "class": "fiscal",
+      "reason": "factura buyer identity (RTN / razón social) — PROPOSED non-fact; flag: printed on the factura (R10)"
+    },
+    "scheduled_blocked": {
+      "class": "fact",
+      "facts": [
+        "SCHED"
+      ]
+    },
+    "scheduled_confirmed_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "scheduled_for": {
+      "class": "fact",
+      "facts": [
+        "SCHED"
+      ]
+    },
+    "scheduled_slot_closed_notified_at": {
+      "class": "stamp",
+      "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "sibling_order_id": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "side_effect_started_at": {
+      "class": "claim",
+      "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "status": {
+      "class": "fact",
+      "facts": [
+        "STATUS",
+        "PAYLIFE",
+        "ACCT",
+        "FACTELIG"
+      ]
+    },
+    "subtotal_cents": {
+      "class": "fact",
+      "facts": [
+        "BREAKDOWN"
+      ]
+    },
+    "summary_lines": {
+      "class": "fact",
+      "facts": [
+        "ITEMS",
+        "MONEY"
+      ]
+    },
+    "tax_cents": {
+      "class": "fact",
+      "facts": [
+        "BREAKDOWN"
+      ]
+    },
+    "total": {
+      "class": "fact",
+      "facts": [
+        "MONEY",
+        "COLLECT",
+        "CASH"
+      ]
+    },
+    "total_cents": {
+      "class": "fact",
+      "facts": [
+        "MONEY",
+        "COLLECT",
+        "CASH"
+      ]
+    },
+    "tracking_token": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    }
+  },
+  "opaqueWriteResolutions": [
+    {
+      "file": "xpizza-functions/create-order-build.js",
+      "fn": "buildCreateOrderUpdates",
+      "how": "spread-in-order-write",
+      "detail": "priceBreakdown",
+      "fields": [
+        "total_cents",
+        "subtotal_cents",
+        "tax_cents"
+      ],
+      "reason": "the `priceBreakdown` PARAMETER is orderBreakdownCents(...)'s { total_cents, subtotal_cents, tax_cents } (order-money.js) — passed in by createOrder"
+    },
+    {
+      "file": "xpizza-functions/index.js",
+      "fn": "createOrderApp.all",
+      "how": "opaque-order-object",
+      "fields": [
+        "status",
+        "scheduled_for",
+        "release_at"
+      ],
+      "reason": "heldUpdates = buildScheduledOrderRecord(...) (create-order-build.js:142-152): buildCreateOrderUpdates' order record (inventoried there) + status / scheduled_for / release_at"
+    }
+  ]
 }
