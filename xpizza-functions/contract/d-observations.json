@@ -1,5 +1,6 @@
 {
- "base": "2cb5a1c",
+ "head": "f5e85fd",
+ "base": "239632b",
  "writer": {
   "ob_card": {
    "payment_method": "card_delivery",
@@ -70,8 +71,8 @@
    ]
   },
   "R7": {
-   "card_delivery": "12-oct, 05:39 p. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 05:39 p. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Personalizado Del al Aplicar Resumen del período 4 Pedidos 0 En",
-   "empty": "12-oct, 05:39 p. m. Obs Emptyob_empty Entrega Nuevo — L340 12-oct, 05:39 p. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 05:39 p. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Pers",
+   "card_delivery": "12-oct, 05:48 p. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 05:48 p. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Personalizado Del al Aplicar Resumen del período 4 Pedidos 0 En",
+   "empty": "12-oct, 05:48 p. m. Obs Emptyob_empty Entrega Nuevo — L340 12-oct, 05:48 p. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 05:48 p. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Pers",
    "rawCardDelivery": true
   },
   "R1": {
