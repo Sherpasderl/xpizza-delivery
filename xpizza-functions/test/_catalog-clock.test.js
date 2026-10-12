@@ -8,8 +8,12 @@ const { spawnSync } = require('child_process');
 const CELL = process.argv[2];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const REAL_NOW = Date.now.bind(Date);
-// wall time jumping ahead WITHOUT the virtual clock moving: the hooked caches must not notice
-const jumpWallClock = (ms) => { Date.now = () => REAL_NOW() + ms; };
+// wall time jumping ahead WITHOUT the virtual clock moving: the hooked caches must not notice. The offset Date.now is
+// installed NOW, before any factory is built — a factory default (`now = Date.now`) captures the function at construction,
+// so reassigning Date.now later would move nothing an UNHOOKED reader sees and the wall checks would be vacuous (r1c-01).
+let WALL_OFFSET = 0;
+Date.now = () => REAL_NOW() + WALL_OFFSET;
+const jumpWallClock = (ms) => { WALL_OFFSET += ms; };
 
 const CELLS = {
   // the PRICING pointer (catalog.js, 45 s): frozen under wall time, refilled exactly at the virtual TTL

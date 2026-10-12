@@ -11331,7 +11331,10 @@
     "from": "  ['catalog/menu-gates', 'createGateReader', { nowMs: 'virtual' }],",
     "to": "  ['catalog/menu-gates', 'createGateReader', {}],",
     "label": "the hook stops putting the LIVE gate pointer singleton on the virtual clock",
-    "kills_with": "R1C-CLOCK wall",
+    "kills_with": [
+      "R1C-CLOCK wall",
+      "R1C-CLOCK steady"
+    ],
     "command": [
       "npm",
       "run",
@@ -11345,7 +11348,10 @@
     "from": "  ['catalog/context-source', 'createContextSource', { recordTtlMs: 'hold' }],",
     "to": "  ['catalog/context-source', 'createContextSource', {}],",
     "label": "the hook stops holding the LIVE context record TTL (it refills on wall time again)",
-    "kills_with": "R1C-CLOCK wall",
+    "kills_with": [
+      "R1C-CLOCK wall",
+      "R1C-CLOCK steady"
+    ],
     "command": [
       "npm",
       "run",
@@ -11357,8 +11363,8 @@
     "slice": "r1c",
     "file": "test/_render-delta.js",
     "from": "    if (!matchAt(ops, 0, cold)) return ops;   // everything stays IN, including any GATE / CTX refill (it cannot be due)",
-    "to": "    if (matchAt(ops, 0, refillShapes(rid).GATE)) return ops.slice(refillShapes(rid).GATE.length);\n    if (!matchAt(ops, 0, cold)) return ops;",
-    "label": "makeColdOnly loosened: a leading GATE re-read is set aside again (as makeCacheFill did)",
+    "to": "    if (!matchAt(ops, 0, cold)) return matchAt(ops, 0, refillShapes(rid).GATE) ? ops.slice(refillShapes(rid).GATE.length) : ops;",
+    "label": "makeColdOnly loosened: a leading GATE re-read (not part of a COLD load) is set aside again (as makeCacheFill did)",
     "kills_with": "a leading GATE re-read stays IN",
     "command": [
       "node",

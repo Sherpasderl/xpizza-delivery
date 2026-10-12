@@ -440,7 +440,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     const catalogOps = (r) => r.ops.filter((o) => o.db === 'fs');
     const P = 'restaurants/x_pizza/meta/active_version';
     const steady = await once();
-    assert.deepStrictEqual(catalogOps(steady), [], `R1c premise — a steady-state request reads no catalog document (${JSON.stringify(catalogOps(steady))})`);
+    assert.deepStrictEqual(catalogOps(steady), [], `🔴 R1C-CLOCK steady: a steady-state request read a catalog document — a cache refilled on the wall time the suite took so far (${JSON.stringify(catalogOps(steady))})`);
     const wall = await once(() => { WALL_OFFSET += 61000; });
     assert.deepStrictEqual(catalogOps(wall), [], `🔴 R1C-CLOCK wall: the wall clock moved 61 s (catalog clock still) and a catalog cache refilled — real time still drives it: ${JSON.stringify(catalogOps(wall))}`);
     const adv = await once(() => CLOCK.advance(45000));
