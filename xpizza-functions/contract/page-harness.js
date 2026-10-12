@@ -43,19 +43,35 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });
     else pending.delete(key);
   };
-  const wrapTimer = (name, clear) => {
-    const real = win[name].bind(win); const realClear = win[clear].bind(win);
-    win[name] = (fn, ms, ...a) => {
-      const short = name === 'setTimeout' && Number(ms || 0) <= 500;
-      let id;
-      const run = (...x) => { let r; try { r = fn(...x); } catch (e) { errors.push(`timer: ${e && e.stack || e}`); pending.delete(id); return undefined; } finish(id, r, 'timer'); return r; };
-      id = real(typeof fn === 'function' ? run : fn, ms, ...a);
-      if (short) pending.add(id);
-      return id;
+  // codex r2 P1-3: EVERY application setTimeout is tracked (the KDS completion beat is 700 ms + 700 ms). Rules:
+  //  · a timer due within HORIZON_MS blocks settling until its callback AND its returned promise finish;
+  //  · a call site that RE-ARMS itself from inside its own callback is a periodic tick (clock / poll) → not blocking;
+  //  · a timer due beyond HORIZON_MS is reported in longTimers() (a cell that depends on it must advance / await it);
+  //  · setInterval is periodic by definition → reported, never blocking.
+  const HORIZON_MS = 10000;
+  const periodicSites = new Set(); const timerInfo = new Map(); const intervals = [];
+  let runningSite = null;
+  const siteOf = () => { const fr = String(new Error().stack).split('\n').slice(3, 4)[0] || ''; return fr.trim(); };
+  const realST = win.setTimeout.bind(win); const realCT = win.clearTimeout.bind(win);
+  win.setTimeout = (fn, ms, ...a) => {
+    const delay = Number(ms || 0); const site = siteOf();
+    if (runningSite && runningSite === site) periodicSites.add(site);          // re-armed from its own callback
+    let id;
+    const run = (...x) => {
+      const prev = runningSite; runningSite = site;
+      let r; try { r = fn(...x); } catch (e) { errors.push(`timer: ${e && e.stack || e}`); runningSite = prev; pending.delete(id); timerInfo.delete(id); return undefined; }
+      runningSite = prev; timerInfo.delete(id); finish(id, r, 'timer'); return r;
     };
-    win[clear] = (id) => { pending.delete(id); return realClear(id); };
+    id = realST(typeof fn === 'function' ? run : fn, ms, ...a);
+    timerInfo.set(id, { site, delay, due: Date.now() + delay });
+    if (delay <= HORIZON_MS && !periodicSites.has(site)) pending.add(id);
+    return id;
   };
-  wrapTimer('setTimeout', 'clearTimeout');
+  win.clearTimeout = (id) => { pending.delete(id); timerInfo.delete(id); return realCT(id); };
+  const realSI = win.setInterval.bind(win);
+  win.setInterval = (fn, ms, ...a) => { const id = realSI(fn, ms, ...a); intervals.push({ id, ms: Number(ms || 0), site: siteOf() }); return id; };
+  // a timer whose site turned out PERIODIC after it was armed stops blocking
+  const reclassify = () => { for (const [id, t] of timerInfo) if (periodicSites.has(t.site)) pending.delete(id); };
   const rawRaf = win.requestAnimationFrame.bind(win);
   win.requestAnimationFrame = (fn) => { let id; id = rawRaf((t) => { let r; try { r = fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); pending.delete(`raf${id}`); return; } finish(`raf${id}`, r, 'raf'); }); pending.add(`raf${id}`); return id; };
   win.matchMedia = win.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
@@ -124,7 +140,8 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
 
   // settled = no pending short timer / frame (incl. their async continuations) AND no adapter work in flight (subscription
   // callbacks that returned a promise, outstanding reads / writes), for 3 consecutive polls. Callers ASSERT it returned true.
-  const inflight = () => pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
+  const inflight = () => { reclassify(); return pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0); };
+  const longTimers = () => [...timerInfo.values()].filter((t) => t.delay > HORIZON_MS && !periodicSites.has(t.site));
   async function settle(capMs = settleMs) {
     const t0 = Date.now(); let quiet = 0;
     while (Date.now() - t0 < capMs) {
@@ -133,7 +150,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     }
     return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, longTimers, periodic: () => [...periodicSites], intervals: () => intervals.slice(), close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

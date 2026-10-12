@@ -46,6 +46,23 @@ const page = (body) => `<!doctype html><html><head></head><body><div id="app"></
     p.close();
     ok('an animation-frame async render: settle() waits for its continuation');
   }
+  // codex r2 P1-3: an application TRANSITION longer than 500 ms (the KDS completion: write after 700 ms, render after 700 ms)
+  {
+    const p = await bootPage('xpizza-functions', { html: page(`setTimeout(async () => { await Promise.resolve(); window.__wrote = 1; setTimeout(() => { document.getElementById('app').textContent = 'archived'; }, 700); }, 700);`) });
+    const t0 = Date.now(); const settled = await p.settle(5000);
+    assert.ok(settled && p.win.__wrote === 1 && p.doc.getElementById('app').textContent === 'archived' && Date.now() - t0 >= 1350, FAIL(`a 700 ms + 700 ms transition was certified unfinished (${JSON.stringify({ settled, wrote: p.win.__wrote, ms: Date.now() - t0 })})`));
+    p.close();
+    ok(`a 700 ms write + 700 ms render transition (the KDS completion shape): settle() waited for both (${Date.now() - t0} ms)`);
+  }
+  // a periodic tick (re-armed from its own callback) does not block settling; a beyond-horizon timer is REPORTED
+  {
+    const p = await bootPage('xpizza-functions', { html: page(`(function tick(){ setTimeout(tick, 1000); })(); setTimeout(() => { document.getElementById('app').textContent = 'done'; }, 300); setTimeout(() => {}, 60000); setInterval(() => {}, 500);`) });
+    const settled = await p.settle(4000);
+    assert.ok(settled && p.doc.getElementById('app').textContent === 'done', FAIL('a periodic tick blocked settling (or the transition was skipped)'));
+    assert.ok(p.periodic().length === 1 && p.longTimers().length === 1 && p.intervals().length === 1, FAIL(`periodic / long / interval reporting (${JSON.stringify({ periodic: p.periodic().length, long: p.longTimers().length, intervals: p.intervals().length })})`));
+    p.close();
+    ok('a self-re-arming 1 s tick is recognized as periodic (not blocking); the 300 ms transition is awaited; a 60 s timer and a setInterval are REPORTED, not ignored');
+  }
   console.log(`\nr3-page-harness: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-page-harness FAILED:', e && e.stack || e); process.exit(1); });
