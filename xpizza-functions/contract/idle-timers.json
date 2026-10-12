@@ -1,0 +1,26 @@
+{
+  "_doc": "R3 §5a — the REVIEWED idle periodic timers per page (codex r3 P1-2). Only these may stay pending while a page counts as SETTLED. Key = the timer CALLBACK's source prefix (whitespace-normalized): stable across unrelated edits, and a changed callback must be re-reviewed. Each is DISPLAY-ONLY over data the page already holds — none writes or changes an order fact. Everything else blocks settling; a running callback is always awaited.",
+  "xpizza-kitchen": [
+    { "callback": "function applyNudges()", "reason": "ready-nudge pass: toggles the nudge-overdue CSS class + an optional beep from timestamps already held (xpizza-kitchen/index.html ~1515); no write" },
+    { "callback": "function updateClock()", "reason": "header clock + minute-boundary re-render of the scheduled view (index.html ~1752); no write" },
+    { "callback": "function tickElapsed()", "reason": "elapsed-time chips + late flags on existing cards (index.html ~2931); no write" }
+  ],
+  "xpizza-dispatch": [
+    { "callback": "function renderLivenessPip()", "reason": "the board-liveness pip (index.html ~2922); no write" },
+    { "callback": "function renderPauseBanner()", "reason": "display-only pause banner re-evaluated against the server-corrected clock (index.html ~2935, its own comment: 'with no write')" },
+    { "callback": "() => { renderSidebar(); updateDriverMarkers(); }", "reason": "5 s re-render of the sidebar + driver markers from held data (startRenderTick, index.html ~3427); no write" },
+    { "callback": "() => { document.querySelectorAll('[data-aging]')", "reason": "aging timers recomputed in place from each row's baseline (index.html ~5854); no write" }
+  ],
+  "xpizza-dispatch-mobile": [
+    { "callback": "() => { renderLive(); if (tab === 'pedidos') renderBoard();", "reason": "20 s re-render of the live strip / board from held data (index.html ~555); no write" }
+  ],
+  "xpizza-driver": [
+    { "callback": "() => { if (driverState?.active) renderStatusBar(); }", "reason": "30 s status-bar refresh (startKeepAlive, index.html ~1891); no write" },
+    { "callback": "() => { if (document.visibilityState === 'visible' && driverState?.active) pingNativeLocation(); }", "reason": "native-only foreground ping; pingNativeLocation is a no-op on this path (native-location.js:103)" },
+    { "callback": "() => { const chips = document.querySelectorAll('.accept-countdown[data-deadline]');", "reason": "accept-countdown chip text from the persisted deadline (startCountdownTick, index.html ~2351); no write" }
+  ],
+  "xpizza-dashboard": [
+    { "callback": "() => { renderHoy(); renderRevision(); }", "reason": "60 s re-render of the Hoy / Revisión panes from held data (index.html ~855); no write" }
+  ],
+  "xpizza-track": []
+}

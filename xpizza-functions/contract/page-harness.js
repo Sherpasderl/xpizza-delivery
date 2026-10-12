@@ -24,7 +24,7 @@ if (typeof vm.SourceTextModule !== 'function') {
   throw new Error('page-harness: vm.SourceTextModule is unavailable — run with node --experimental-vm-modules');
 }
 
-async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 4000, html: htmlOverride = null } = {}) {
+async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 4000, html: htmlOverride = null, idleTimers = null } = {}) {
   const pageDir = path.join(REPO, dir);
   const html = htmlOverride !== null ? htmlOverride : fs.readFileSync(path.join(pageDir, 'index.html'), 'utf8');   // htmlOverride: the harness's own acceptance pages
   const errors = []; const consoleErrors = []; const skipped = []; const refused = [];
@@ -43,35 +43,49 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });
     else pending.delete(key);
   };
-  // codex r2 P1-3: EVERY application setTimeout is tracked (the KDS completion beat is 700 ms + 700 ms). Rules:
-  //  · a timer due within HORIZON_MS blocks settling until its callback AND its returned promise finish;
-  //  · a call site that RE-ARMS itself from inside its own callback is a periodic tick (clock / poll) → not blocking;
-  //  · a timer due beyond HORIZON_MS is reported in longTimers() (a cell that depends on it must advance / await it);
-  //  · setInterval is periodic by definition → reported, never blocking.
-  const HORIZON_MS = 10000;
-  const periodicSites = new Set(); const timerInfo = new Map(); const intervals = [];
-  let runningSite = null;
-  const siteOf = () => { const fr = String(new Error().stack).split('\n').slice(3, 4)[0] || ''; return fr.trim(); };
-  const realST = win.setTimeout.bind(win); const realCT = win.clearTimeout.bind(win);
-  win.setTimeout = (fn, ms, ...a) => {
-    const delay = Number(ms || 0); const site = siteOf();
-    if (runningSite && runningSite === site) periodicSites.add(site);          // re-armed from its own callback
-    let id;
-    const run = (...x) => {
-      const prev = runningSite; runningSite = site;
-      let r; try { r = fn(...x); } catch (e) { errors.push(`timer: ${e && e.stack || e}`); runningSite = prev; pending.delete(id); timerInfo.delete(id); return undefined; }
-      runningSite = prev; timerInfo.delete(id); finish(id, r, 'timer'); return r;
-    };
-    id = realST(typeof fn === 'function' ? run : fn, ms, ...a);
-    timerInfo.set(id, { site, delay, due: Date.now() + delay });
-    if (delay <= HORIZON_MS && !periodicSites.has(site)) pending.add(id);
-    return id;
+  // codex r3 P1-2: NO inference. EVERY application timer (setTimeout, any delay, and setInterval) BLOCKS settling unless its
+  // call site is on the REVIEWED idle allowlist (contract/idle-timers.json: page dir + function + reason — e.g. a clock
+  // tick). A RUNNING callback — allowlisted or not — is ALWAYS awaited through its returned promise.
+  const IDLE = (idleTimers || (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'idle-timers.json'), 'utf8'))[dir] || []; } catch (_) { return []; } })());
+  const timerInfo = new Map(); let seqT = 0;
+  const siteOf = () => {
+    const fr = (String(new Error().stack).split('\n').slice(3, 4)[0] || '').trim();
+    const m = /^at (?:async )?([^\s(]+) \(/.exec(fr);
+    return { fn: m ? m[1] : '<anonymous>', frame: fr };
   };
-  win.clearTimeout = (id) => { pending.delete(id); timerInfo.delete(id); return realCT(id); };
-  const realSI = win.setInterval.bind(win);
-  win.setInterval = (fn, ms, ...a) => { const id = realSI(fn, ms, ...a); intervals.push({ id, ms: Number(ms || 0), site: siteOf() }); return id; };
-  // a timer whose site turned out PERIODIC after it was armed stops blocking
-  const reclassify = () => { for (const [id, t] of timerInfo) if (periodicSites.has(t.site)) pending.delete(id); };
+  const norm = (f) => (typeof f === 'function' ? String(f) : '').replace(/\s+/g, ' ').trim();
+  const isIdle = (cbSrc) => IDLE.some((e) => cbSrc.startsWith(e.callback.replace(/\s+/g, ' ').trim()));
+  const idleHits = new Set();
+  const track = (kind, site, delay, fn) => {
+    const key = `${kind}${++seqT}`; const cb = norm(fn);
+    const idle = isIdle(cb); if (idle) idleHits.add(IDLE.find((e) => cb.startsWith(e.callback.replace(/\s+/g, ' ').trim())).callback);
+    timerInfo.set(key, { kind, site, delay, idle, cb: cb.slice(0, 90) }); if (!idle) pending.add(key); return key;
+  };
+  const runTracked = (fn, x, what) => {   // the callback's own execution + its returned promise are ALWAYS awaited
+    const ek = `exec${++seqT}`; pending.add(ek);
+    let r; try { r = fn(...x); } catch (e) { errors.push(`${what}: ${e && e.stack || e}`); pending.delete(ek); return undefined; }
+    finish(ek, r, what); return r;
+  };
+  const realST = win.setTimeout.bind(win); const realCT = win.clearTimeout.bind(win);
+  const tKey = new Map();
+  win.setTimeout = (fn, ms, ...a) => {
+    const site = siteOf(); let id;
+    const key = track('t', site, Number(ms || 0), fn);
+    id = realST(typeof fn === 'function' ? (...x) => { pending.delete(key); timerInfo.delete(key); return runTracked(fn, x, 'timer'); } : fn, ms, ...a);
+    tKey.set(id, key); return id;
+  };
+  win.clearTimeout = (id) => { const k = tKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); } return realCT(id); };
+  const realSI = win.setInterval.bind(win); const realCI = win.clearInterval.bind(win);
+  const iKey = new Map();
+  win.setInterval = (fn, ms, ...a) => {
+    const site = siteOf(); const key = track('i', site, Number(ms || 0), fn);
+    const id = realSI(typeof fn === 'function' ? (...x) => runTracked(fn, x, 'interval') : fn, ms, ...a);
+    iKey.set(id, key); return id;
+  };
+  win.clearInterval = (id) => { const k = iKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); } return realCI(id); };
+  // the timers currently BLOCKING (for diagnostics / an allowlist review), and the idle ones the allowlist let through
+  const pendingSites = () => [...timerInfo.entries()].filter(([k]) => pending.has(k)).map(([, t]) => `${t.kind === 'i' ? 'interval' : 'timeout'} ${t.delay}ms — callback: ${t.cb} (${t.site.frame.replace(/^at /, '').slice(0, 120)})`);
+  const idleSites = () => [...idleHits];
   const rawRaf = win.requestAnimationFrame.bind(win);
   win.requestAnimationFrame = (fn) => { let id; id = rawRaf((t) => { let r; try { r = fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); pending.delete(`raf${id}`); return; } finish(`raf${id}`, r, 'raf'); }); pending.add(`raf${id}`); return id; };
   win.matchMedia = win.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
@@ -140,8 +154,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
 
   // settled = no pending short timer / frame (incl. their async continuations) AND no adapter work in flight (subscription
   // callbacks that returned a promise, outstanding reads / writes), for 3 consecutive polls. Callers ASSERT it returned true.
-  const inflight = () => { reclassify(); return pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0); };
-  const longTimers = () => [...timerInfo.values()].filter((t) => t.delay > HORIZON_MS && !periodicSites.has(t.site));
+  const inflight = () => pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
   async function settle(capMs = settleMs) {
     const t0 = Date.now(); let quiet = 0;
     while (Date.now() - t0 < capMs) {
@@ -150,7 +163,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     }
     return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, longTimers, periodic: () => [...periodicSites], intervals: () => intervals.slice(), close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, pendingSites, idleSites, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

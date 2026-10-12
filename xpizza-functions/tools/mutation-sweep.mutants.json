@@ -11507,7 +11507,8 @@
     "label": "settle() forgets a timer's async continuation (codex r1 P1-5: certifies an unfinished render)",
     "kills_with": [
       "settle() certified an unfinished render",
-      "settle() returned true with a render still pending"
+      "settle() returned true with a render still pending",
+      "a running (suspended) callback of an allowlisted interval was ignored"
     ],
     "command": [
       "node",
@@ -11557,6 +11558,23 @@
     "command": [
       "node",
       "contract/census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-06",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "  const isIdle = (cbSrc) => IDLE.some((e) => cbSrc.startsWith(e.callback.replace(/\\s+/g, ' ').trim()));",
+    "to": "  const isIdle = (cbSrc) => true;",
+    "label": "every timer counts as idle (codex r3 P1-2: a retry / unreviewed interval would no longer block settling)",
+    "kills_with": [
+      "a finite 3-retry sequence was certified settled early",
+      "a NON-allowlisted interval did not block"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
     ]
   }
 ]

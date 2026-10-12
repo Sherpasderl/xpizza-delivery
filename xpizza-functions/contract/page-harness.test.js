@@ -54,14 +54,34 @@ const page = (body) => `<!doctype html><html><head></head><body><div id="app"></
     p.close();
     ok(`a 700 ms write + 700 ms render transition (the KDS completion shape): settle() waited for both (${Date.now() - t0} ms)`);
   }
-  // a periodic tick (re-armed from its own callback) does not block settling; a beyond-horizon timer is REPORTED
+  // codex r3 P1-2 (a): a FINITE retry sequence (3 attempts, 200 ms, re-armed from the same site) is NOT periodic — it blocks
   {
-    const p = await bootPage('xpizza-functions', { html: page(`(function tick(){ setTimeout(tick, 1000); })(); setTimeout(() => { document.getElementById('app').textContent = 'done'; }, 300); setTimeout(() => {}, 60000); setInterval(() => {}, 500);`) });
-    const settled = await p.settle(4000);
-    assert.ok(settled && p.doc.getElementById('app').textContent === 'done', FAIL('a periodic tick blocked settling (or the transition was skipped)'));
-    assert.ok(p.periodic().length === 1 && p.longTimers().length === 1 && p.intervals().length === 1, FAIL(`periodic / long / interval reporting (${JSON.stringify({ periodic: p.periodic().length, long: p.longTimers().length, intervals: p.intervals().length })})`));
+    const p = await bootPage('xpizza-functions', { html: page(`let tries = 0; (function attempt(){ tries++; window.__tries = tries; if (tries < 3) setTimeout(attempt, 200); else window.__wrote = true; })();`) });
+    const settled = await p.settle(3000);
+    assert.ok(settled && p.win.__tries === 3 && p.win.__wrote === true, FAIL(`a finite 3-retry sequence was certified settled early (${JSON.stringify({ settled, tries: p.win.__tries, wrote: p.win.__wrote })})`));
     p.close();
-    ok('a self-re-arming 1 s tick is recognized as periodic (not blocking); the 300 ms transition is awaited; a 60 s timer and a setInterval are REPORTED, not ignored');
+    ok('a finite 3-attempt retry (200 ms, same site): settle() waited for the last attempt and its write — no inferred periodicity');
+  }
+  // codex r3 P1-2 (b): a RECURRING callback suspended on an unresolved promise — even an ALLOWLISTED idle one — is never "settled"
+  {
+    const html = page(`setInterval(async function idleTick() { await new Promise(() => {}); }, 100);`);
+    const p = await bootPage('xpizza-functions', { html, idleTimers: [{ callback: 'async function idleTick()', reason: 'test: allowlisted, but its RUNNING callback must still be awaited' }] });
+    await new Promise((r) => setTimeout(r, 250));
+    const settled = await p.settle(600);
+    assert.strictEqual(settled, false, FAIL('a running (suspended) callback of an allowlisted interval was ignored'));
+    p.close();
+    ok('an allowlisted interval whose RUNNING callback is suspended on a promise: settle() returns false — a running callback is always awaited');
+  }
+  // the allowlist is the ONLY way an idle timer passes: allowlisted → settles; the same interval NOT allowlisted → never settles
+  {
+    const html = page(`setInterval(function clockTick() { document.title = String(Date.now()); }, 300); setTimeout(() => { document.getElementById('app').textContent = 'done'; }, 200);`);
+    const a = await bootPage('xpizza-functions', { html, idleTimers: [{ callback: 'function clockTick()', reason: 'test clock' }] });
+    const sa = await a.settle(3000); const done = a.doc.getElementById('app').textContent; const idle = a.idleSites(); a.close();
+    const b = await bootPage('xpizza-functions', { html, idleTimers: [] });
+    const sb = await b.settle(800); const blocking = b.pendingSites(); b.close();
+    assert.ok(sa && done === 'done' && idle.length === 1, FAIL(`the allowlisted clock interval blocked settling (${JSON.stringify({ sa, done, idle })})`));
+    assert.ok(!sb && blocking.some((x) => /clockTick/.test(x)), FAIL(`a NON-allowlisted interval did not block (${JSON.stringify({ sb, blocking })})`));
+    ok('allowlisted clock interval: settles after the 200 ms transition; the same interval NOT allowlisted: never settles, reported as blocking');
   }
   console.log(`\nr3-page-harness: OK (${n})`);
   process.exit(0);
