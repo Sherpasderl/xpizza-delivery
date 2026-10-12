@@ -19,6 +19,11 @@
  *     uses a fresh process (or mirror-trace's global Date.now offset, which this hook does not affect).
  * Each wrapper REFUSES a caller that already passes the option it injects (the hook would silently override production
  * wiring) and counts its constructions, so a suite proves the live singletons were built through it (built()).
+ *
+ * OBSERVED (codex R1c P2): the wrapper also wraps — never replaces — the caller's own data source for the two reads whose
+ * occurrence a trace suite must attribute: the pricing reader's FULL load (`getRestaurantDocs(rid)` = the COLD load) and
+ * the registry's list (`listIds()`). Each call is appended to loads() as { kind, rid, n }. A suite marks loads().length
+ * before a recorded request and reads the slice after it: THAT request cold-loaded those rids — a fact, not a shape.
  */
 const path = require('path');
 
@@ -28,9 +33,9 @@ const HOLD_MS = 24 * 3600 * 1000;   // longer than any suite: a held TTL never e
 
 // [module, factory, { option: 'virtual' | 'hold' }]
 const HOOKS = [
-  ['catalog/catalog', 'createCatalogReader', { now: 'virtual' }],
+  ['catalog/catalog', 'createCatalogReader', { now: 'virtual' }, { getRestaurantDocs: 'cold' }],
   ['catalog/menu-gates', 'createGateReader', { nowMs: 'virtual' }],
-  ['catalog/restaurant-registry', 'createRestaurantRegistry', { now: 'virtual' }],
+  ['catalog/restaurant-registry', 'createRestaurantRegistry', { now: 'virtual' }, { listIds: 'registry' }],
   ['catalog/context-source', 'createContextSource', { recordTtlMs: 'hold' }],
   ['catalog/catalog-verifier', 'createCatalogVerifier', { ttlMs: 'hold' }],
 ];
@@ -43,7 +48,8 @@ function install({ start = Date.now() } = {}) {
   let v = start;
   const now = () => v;
   const built = {};
-  for (const [rel, name, inject] of HOOKS) {
+  const log = [];
+  for (const [rel, name, inject, observe = {}] of HOOKS) {
     const mod = require(path.join(FN, rel));
     const real = mod[name];
     if (typeof real !== 'function') throw new Error(`catalog-clock: ${rel}.${name} is not a function — the hook list is stale`);
@@ -53,13 +59,22 @@ function install({ start = Date.now() } = {}) {
         if (opts && opts[k] !== undefined) throw new Error(`catalog-clock: ${name} was passed '${k}' by its caller — the hook would override production wiring (re-check R1c)`);
       }
       built[name] = (built[name] || 0) + 1;
-      return real.call(this, { ...(opts || {}), ...add });
+      const seen = {};
+      for (const [k, kind] of Object.entries(observe)) {
+        const src = opts && opts[k];
+        if (typeof src !== 'function') continue;   // absent → nothing observed → a suite's cold attribution fails CLOSED
+        seen[k] = function observed(...a) { log.push({ kind, rid: kind === 'cold' ? a[0] : null, n: log.length }); return src.apply(this, a); };
+      }
+      return real.call(this, { ...(opts || {}), ...seen, ...add });
     };
   }
   installed = {
     now,
     advance(ms) { if (!(Number.isFinite(ms) && ms >= 0)) throw new Error(`catalog-clock: advance(${ms})`); v += ms; },
     built: () => ({ ...built }),
+    loads: () => log.map((x) => ({ ...x })),
+    // the rids whose COLD (full) load ran since `mark` (= loads().length taken before the request)
+    coldSince: (mark) => log.slice(mark).filter((x) => x.kind === 'cold').map((x) => x.rid),
     // the singletons a request has used were built THROUGH the hook (else the clock controls nothing)
     assertBuilt(names, label = 'catalog-clock') {
       for (const n of names) {

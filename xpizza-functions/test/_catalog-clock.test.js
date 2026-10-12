@@ -83,6 +83,27 @@ const CELLS = {
     assert.strictEqual(seen.createContextSource.db, 'D', 'the caller\'s options pass through');
     return 'context source + verifier: TTL held for the run, NO clock injected (their read deadlines stay on real time)';
   },
+  // OBSERVED loads (codex R1c P2): the caller's own full-load / list sources are wrapped, not replaced — each call logged
+  async observesLoads() {
+    const C = require('./_catalog-clock').install();
+    const { createCatalogReader } = require('../catalog/catalog');
+    const { createRestaurantRegistry } = require('../catalog/restaurant-registry');
+    let docs = 0;
+    const r = createCatalogReader({ getRestaurantDocs: async (rid) => { docs += 1; return { versionId: `v-${rid}`, seq: 1, itemDocs: [], extraDocs: [] }; }, getActiveVersionId: async (rid) => `v-${rid}` });
+    const m0 = C.loads().length;
+    await r.getTables('x_pizza');
+    assert.deepStrictEqual(C.coldSince(m0), ['x_pizza'], '🔴 the first (COLD) load of x_pizza was not observed');
+    const m1 = C.loads().length;
+    await r.getTables('x_pizza');
+    assert.deepStrictEqual(C.coldSince(m1), [], '🔴 a WARM call was observed as a cold load');
+    await r.getTables('la_musa');
+    assert.deepStrictEqual(C.coldSince(m1), ['la_musa'], 'each restaurant\'s cold load is attributed to its rid');
+    assert.strictEqual(docs, 2, 'the caller\'s own source still ran (wrapped, not replaced)');
+    const reg = createRestaurantRegistry({ listIds: async () => ['r3_synthetic'] });
+    reg.known(); await sleep(20);
+    assert.deepStrictEqual(C.loads().filter((x) => x.kind === 'registry').length, 1, '🔴 the registry list read was not observed');
+    return 'observed loads: a COLD load is attributed to its rid (a warm call is not); the registry list read is logged; the caller\'s sources still run';
+  },
   // a caller that already passes the option is REFUSED (the hook would silently override production wiring)
   async refusesOverride() {
     require('./_catalog-clock').install();

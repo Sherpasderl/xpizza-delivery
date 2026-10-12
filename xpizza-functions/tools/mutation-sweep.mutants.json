@@ -11315,8 +11315,8 @@
     "id": "r1c-01",
     "slice": "r1c",
     "file": "test/_catalog-clock.js",
-    "from": "  ['catalog/catalog', 'createCatalogReader', { now: 'virtual' }],",
-    "to": "  ['catalog/catalog', 'createCatalogReader', {}],",
+    "from": "  ['catalog/catalog', 'createCatalogReader', { now: 'virtual' }, { getRestaurantDocs: 'cold' }],",
+    "to": "  ['catalog/catalog', 'createCatalogReader', {}, { getRestaurantDocs: 'cold' }],",
     "label": "the hook stops putting the pricing pointer on the virtual clock (it keeps the wall clock)",
     "kills_with": "real time still drives it",
     "command": [
@@ -11362,8 +11362,8 @@
     "id": "r1c-04",
     "slice": "r1c",
     "file": "test/_render-delta.js",
-    "from": "    if (!matchAt(ops, 0, cold)) return ops;   // everything stays IN, including any GATE / CTX refill (it cannot be due)",
-    "to": "    if (!matchAt(ops, 0, cold)) return matchAt(ops, 0, refillShapes(rid).GATE) ? ops.slice(refillShapes(rid).GATE.length) : ops;",
+    "from": "    if (!wasCold) return ops;   // NOT a cold request: everything stays IN — a COLD-shaped block, any GATE / CTX refill",
+    "to": "    if (!wasCold) return matchAt(ops, 0, refillShapes(rid).GATE) ? ops.slice(refillShapes(rid).GATE.length) : ops;",
     "label": "makeColdOnly loosened: a leading GATE re-read (not part of a COLD load) is set aside again (as makeCacheFill did)",
     "kills_with": "a leading GATE re-read stays IN",
     "command": [
@@ -11408,6 +11408,63 @@
     "command": [
       "node",
       "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1c-08",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "stripRequest(trace.slice(pre), rid, id, label, cold.includes(rid))];",
+    "to": "stripRequest(trace.slice(pre), rid, id, label, matchAt(trace.slice(pre).filter((o) => !isFloorOp(o)), 0, refillShapes(rid).COLD))];",
+    "label": "makeColdOnly decides COLD by SHAPE again (codex R1c P2 loophole: a warm request's COLD-shaped ops are set aside)",
+    "kills_with": "31 ON-only COLD-shaped ops in a WARM request were set aside",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-09",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier', 'createRestaurantRegistry'];",
+    "to": "const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier'];",
+    "label": "the registry is dropped from the singletons proved built through the hook (codex R1c P2)",
+    "kills_with": "CLOCKED must name EVERY hooked factory",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-10",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/restaurant-registry', 'createRestaurantRegistry', { now: 'virtual' }, { listIds: 'registry' }],",
+    "to": "  ['catalog/restaurant-registry', 'createRestaurantRegistry', {}, { listIds: 'registry' }],",
+    "label": "the hook stops putting the LIVE registry on the virtual clock (it refreshes on wall time again)",
+    "kills_with": [
+      "R1C-CLOCK wall",
+      "R1C-CLOCK steady",
+      "R1C-REGISTRY"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:order-exists"
+    ]
+  },
+  {
+    "id": "r1c-11",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "rid: kind === 'cold' ? a[0] : null",
+    "to": "rid: null",
+    "label": "the load observer stops attributing a COLD load to its restaurant",
+    "kills_with": "the first (COLD) load of x_pizza was not observed",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
     ]
   }
 ]

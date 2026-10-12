@@ -85,25 +85,30 @@ const sameOp = (o, want) => o.db === 'fs' && JSON.stringify(shapeOf(o)) === JSON
 const matchAt = (ops, i, shape) => i + shape.length <= ops.length && shape.every((w, k) => sameOp(ops[i + k], w));
 // `clock` = the installed catalog clock (test/_catalog-clock.js install()). assertBounded proves the live singletons were
 // built through it — without that, "no GATE / CTX can be due" is an assumption, not a fact.
-const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier'];
+const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier', 'createRestaurantRegistry'];
 function makeColdOnly(rids, clock) {
   if (!clock || typeof clock.assertBuilt !== 'function') throw new Error('makeColdOnly: pass the installed catalog clock (test/_catalog-clock.js) — without it a GATE / CTX refill can still be due');
   const t0 = performance.now();
   const seen = new Map(rids.map((r) => [r, { COLD: new Set(), FLOOR: new Set() }]));
-  // → the trace without the COLD load (if it leads) and the floor read. `id` names the recorded request (counted once
-  //   however often it is compared). `ignore`: test-issued calls recorded BEFORE the handler's first (e.g. the suite's
-  //   rate-limit reset) — passed through untouched, they do not start the request.
-  function strip(trace, rid, id, label, { ignore = () => false } = {}) {
+  // → the trace without the COLD load and the floor read. `id` names the recorded request (counted once however often it
+  //   is compared). `cold` (REQUIRED): the rids THIS request cold-loaded, from the clock's observed loads
+  //   (clock.coldSince(mark), mark taken right before the request). COLD is set aside ONLY for such a request — never
+  //   by shape alone: a request whose cache was warmed by its setup (or by an earlier request) and that still carries a
+  //   COLD-shaped block keeps it IN, and it shows (codex R1c P2: 31 ON-only ops compared equal under shape matching).
+  //   `ignore`: test-issued calls recorded BEFORE the handler's first (e.g. the suite's rate-limit reset).
+  function strip(trace, rid, id, label, { ignore = () => false, cold } = {}) {
+    if (!Array.isArray(cold)) throw new Error(`makeColdOnly.strip(${label}): pass { cold } — the rids this request cold-loaded (clock.coldSince(mark))`);
     let pre = 0; while (pre < trace.length && ignore(trace[pre])) pre += 1;
-    return [...trace.slice(0, pre), ...stripRequest(trace.slice(pre), rid, id, label)];
+    return [...trace.slice(0, pre), ...stripRequest(trace.slice(pre), rid, id, label, cold.includes(rid))];
   }
-  function stripRequest(trace, rid, id, label) {
+  function stripRequest(trace, rid, id, label, wasCold) {
     const floors = trace.filter(isFloorOp);
     assert.ok(floors.length <= 1 && floors.every((o) => o.op === 'get' && o.path === FLOOR_PATH), `🔴 ${label}: the client-floor calls are not exactly ≤ 1 { rtdb get ${FLOOR_PATH} } (${JSON.stringify(floors)})`);
     if (floors.length) seen.get(rid).FLOOR.add(id);
     const ops = trace.filter((o) => !isFloorOp(o));
     const cold = refillShapes(rid).COLD;
-    if (!matchAt(ops, 0, cold)) return ops;   // everything stays IN, including any GATE / CTX refill (it cannot be due)
+    if (!wasCold) return ops;   // NOT a cold request: everything stays IN — a COLD-shaped block, any GATE / CTX refill
+    assert.ok(matchAt(ops, 0, cold), `🔴 ${label}: this request cold-loaded ${rid} but its trace does not LEAD with the COLD load shape — the shape is stale or the load moved (${JSON.stringify(ops.slice(0, 3))}…)`);
     const s = seen.get(rid).COLD;
     assert.ok(s.size === 0 || s.has(id), `🔴 ${label}: a SECOND COLD catalog load for ${rid} — under the catalog clock it happens once per process`);
     s.add(id);
