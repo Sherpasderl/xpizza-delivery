@@ -36,13 +36,26 @@ const DEFAULT_COUNTRY_CODE = '504';
 // `${TRACKING_BASE}/${token}`. Update once xpizzatrack.netlify.app is live.
 const TRACKING_BASE = 'https://xpizzatrack.netlify.app';
 
-// Customer-facing brand/display name per restaurant (D1). NOT identity.name ('X Pizza' ≠ the brand
-// 'X. Pizza' — seed_identity.js:25 tracks the brand separately). Pure presentation copy, so a code
-// map (no config-plane machinery). brandFor defaults to 'X. Pizza' → x_pizza/legacy/unknown render
-// the existing literal byte-for-byte.
-const BRAND_BY_RESTAURANT = { x_pizza: 'X. Pizza', la_musa: 'La Musa' };
-function brandFor(restaurantId) {
-  return BRAND_BY_RESTAURANT[restaurantId] || 'X. Pizza';
+// D12b — the customer-facing brand comes from the restaurant's OWN config (restaurants/{rid}/identity: display_name, else
+// name — the same resolution as the tracker's pickup line), never a per-brand literal map. The templates are pure and
+// synchronous, so they emit a PLACEHOLDER (private-use code points, never typed by a person); sendMessage — already async,
+// already given the restaurant — resolves it from the live identity just before the send (D12's bounded, fail-soft read).
+// When nothing names the restaurant the copy stays neutral: "el restaurante", or "tu pedido" where the brand is the object
+// of "disfrutes" (tplDelivered) — never another brand's name.
+const BRAND_TOKEN = '\uE000brand\uE000';
+const BRAND_OR_MEAL_TOKEN = '\uE000brand-or-meal\uE000';
+const NEUTRAL = { [BRAND_TOKEN]: 'el restaurante', [BRAND_OR_MEAL_TOKEN]: 'tu pedido' };
+const { brandOf, readLiveBrand } = require('./pickup-label');
+function defaultReadBrand(restaurantId) {
+  try { return readLiveBrand(require('firebase-admin/database').getDatabase(), restaurantId); } catch (_) { return Promise.resolve(null); }
+}
+// → the body with every placeholder replaced (unchanged, and NO read, when it carries none)
+async function resolveBrandTokens(body, restaurantId, { readBrand = defaultReadBrand } = {}) {
+  if (typeof body !== 'string' || !(body.includes(BRAND_TOKEN) || body.includes(BRAND_OR_MEAL_TOKEN))) return body;
+  let live = null;
+  try { live = await readBrand(restaurantId); } catch (_) { live = null; }
+  const brand = brandOf(live && live.display_name, live && live.name);
+  return body.split(BRAND_TOKEN).join(brand || NEUTRAL[BRAND_TOKEN]).split(BRAND_OR_MEAL_TOKEN).join(brand || NEUTRAL[BRAND_OR_MEAL_TOKEN]);
 }
 
 // Per-restaurant customer-facing food copy (E1). x_pizza values are the EXACT current literals →
@@ -104,7 +117,7 @@ function normalizePhone(raw) {
 /**
  * Send a WhatsApp message via UltraMsg. Returns null on failure (never throws).
  */
-async function sendMessage(toPhone, body, restaurantId = 'x_pizza') {
+async function sendMessage(toPhone, body, restaurantId = 'x_pizza', deps = {}) {
   const cfg = resolveWhatsappConfig(restaurantId);
   if (!cfg || !cfg.apiBase || !cfg.token) {
     console.warn(`whatsapp: no UltraMsg config for restaurant '${restaurantId}', skipping send`);
@@ -118,6 +131,7 @@ async function sendMessage(toPhone, body, restaurantId = 'x_pizza') {
     console.warn('whatsapp: empty/invalid body, skipping send');
     return null;
   }
+  body = await resolveBrandTokens(body, restaurantId, deps);   // D12b: the brand, from this restaurant's own config
 
   try {
     const params = new URLSearchParams({
@@ -234,7 +248,7 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
-    `Recibimos tu pedido en ${brandFor(restaurantId)} ✅`,
+    `Recibimos tu pedido en ${BRAND_TOKEN} ✅`,
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     `💰 Total: L${total}`,
@@ -259,7 +273,7 @@ function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
-    `Recibimos tu pedido en ${brandFor(restaurantId)} ✅`,
+    `Recibimos tu pedido en ${BRAND_TOKEN} ✅`,
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     `💰 Total: L${total}`,
@@ -300,7 +314,7 @@ function tplDelivered({ customerName, restaurantId }) {
   return [
     `✅ ¡Entregado!`,
     ``,
-    `Esperamos que disfrutes ${brandFor(restaurantId)}${customerName ? ', ' + customerName : ''}.`,
+    `Esperamos que disfrutes ${BRAND_OR_MEAL_TOKEN}${customerName ? ', ' + customerName : ''}.`,
     ``,
     `¿Algún problema con tu pedido? Responde a este mensaje y te ayudamos.`
   ].join('\n');
@@ -308,7 +322,7 @@ function tplDelivered({ customerName, restaurantId }) {
 
 function tplCancelled({ orderId, restaurantId }) {
   return [
-    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''} en ${brandFor(restaurantId)} fue cancelado.`,
+    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''} en ${BRAND_TOKEN} fue cancelado.`,
     ``,
     `Si pagaste por adelantado, te contactaremos pronto sobre el reembolso.`,
     ``,
@@ -324,7 +338,7 @@ function tplPickupReady({ customerName, trackingToken, restaurantId }) {
   const lines = [
     `${itemsEmojiFor(restaurantId)} ¡Tu pedido está listo para recoger!`,
     ``,
-    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Ya puedes pasar por ${brandFor(restaurantId)} a recogerlo. 🏪`
+    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Ya puedes pasar por ${BRAND_TOKEN} a recogerlo. 🏪`
   ];
   if (trackingToken) {
     lines.push(``, `Detalles:`, trackingUrl(trackingToken, restaurantId));
@@ -354,7 +368,7 @@ function tplPreparing({ customerName, etaMinutes, orderType, trackingToken, rest
   const lines = [
     `👨‍🍳 ¡Manos a la obra!`,
     ``,
-    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Estamos preparando tu pedido en ${brandFor(restaurantId)} — ${readiness}`
+    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Estamos preparando tu pedido en ${BRAND_TOKEN} — ${readiness}`
   ];
   if (trackingToken) {
     lines.push(``, `Sigue tu pedido:`, trackingUrl(trackingToken, restaurantId));
@@ -369,7 +383,9 @@ module.exports = {
   isEnabled,
   isEnabledForRestaurant,
   resolveWhatsappConfig,
-  brandFor,
+  resolveBrandTokens,
+  BRAND_TOKEN,
+  BRAND_OR_MEAL_TOKEN,
   itemsEmojiFor,
   readyLineFor,
   trackingUrl,

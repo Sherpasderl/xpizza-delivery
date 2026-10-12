@@ -273,9 +273,14 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
   // ── 9. tplPickupReady per-restaurant snapshot (brand + link / no-link) ──
   {
-    const xp = whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'x_pizza' });
+    // D12b: the template carries the brand PLACEHOLDER; sendMessage resolves it from the restaurant's identity
+    // (display_name → name) — resolved here through the same function, with each brand's identity
+    const brandOf = (id) => ({ readBrand: async () => id });
+    const xpT = whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'x_pizza' });
+    assert.ok(xpT.includes(whatsapp.BRAND_TOKEN) && !xpT.includes('X. Pizza'), 'x_pizza template: the placeholder, no literal');
+    const xp = await whatsapp.resolveBrandTokens(xpT, 'x_pizza', brandOf({ name: 'X Pizza', display_name: 'X. Pizza' }));
     assert.ok(xp.includes('X. Pizza') && xp.includes('🍕') && xp.includes('https://xpizzatrack.netlify.app/TOK'), 'x_pizza brand+emoji+link');
-    const lm = whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'la_musa' });
+    const lm = await whatsapp.resolveBrandTokens(whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'la_musa' }), 'la_musa', brandOf({ name: 'La Musa' }));
     assert.ok(lm.includes('La Musa') && lm.includes('🍜') && lm.includes('https://track.lamusa.hn/TOK'), 'la_musa brand+emoji+own-base link');
     const noLink = whatsapp.tplPickupReady({ customerName: 'María', trackingToken: null, restaurantId: 'x_pizza' });
     assert.ok(!noLink.includes('http') && noLink.includes('listo para recoger'), 'no token → no link, core message intact');

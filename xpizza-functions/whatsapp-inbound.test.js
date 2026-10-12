@@ -33,8 +33,8 @@ assert.strictEqual(isUnrecognizedRestaurantParam('LA_MUSA'), true); ok('unrecogn
 assert.strictEqual(isUnrecognizedRestaurantParam(['la_musa']), true); ok('unrecognized: non-string → true');
 
 // ── config integrity — x_pizza is exact-current-except-URL; la_musa is its own ──
-assert.deepStrictEqual(X, { orderFormUrl: 'https://orders.xpizza.hn', trackingBase: 'https://xpizzatrack.netlify.app', restaurantName: 'X. Pizza', ackEmoji: '🍕' }); ok('x_pizza config (order-form → orders.xpizza.hn; tracker/name/emoji unchanged)');
-assert.deepStrictEqual(L, { orderFormUrl: 'https://orders.lamusa.hn', trackingBase: 'https://track.lamusa.hn', restaurantName: 'La Musa', ackEmoji: '🍜' }); ok('la_musa config (orders.lamusa.hn / track.lamusa.hn / La Musa / 🍜)');
+assert.deepStrictEqual(X, { orderFormUrl: 'https://orders.xpizza.hn', trackingBase: 'https://xpizzatrack.netlify.app', ackEmoji: '🍕' });   // D12b: no brand name here (identity.display_name) ok('x_pizza config (order-form → orders.xpizza.hn; tracker/name/emoji unchanged)');
+assert.deepStrictEqual(L, { orderFormUrl: 'https://orders.lamusa.hn', trackingBase: 'https://track.lamusa.hn', ackEmoji: '🍜' });   // D12b: no brand name here ok('la_musa config (orders.lamusa.hn / track.lamusa.hn / La Musa / 🍜)');
 assert.strictEqual(configFor('nope'), X); ok('configFor(unknown) → x_pizza');
 
 // ── x_pizza templates — BYTE-IDENTICAL to today except the order-form URL ──

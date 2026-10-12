@@ -106,8 +106,11 @@ try {
     const C2A_BLOCKS = { 'catalog/identity-bootstrap.js': 3 };
     // R3-FIX D12 landed later: its exact inverse (tools/d12-inverse.js, proven by d12-wiring.guard) is reversed first
     const { unapplyD12, FILES: D12_FILES } = require('../tools/d12-inverse');
+    // D12b landed on top of D12: its exact inverse is reversed FIRST (newest first)
+    const { unapplyD12b, FILES: D12B_FILES } = require('../tools/d12b-inverse');
+    const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, read(f)) : read(f));
     const baseOf = (f) => {
-      const src = D12_FILES.includes(f) ? unapplyD12(f, read(f)) : read(f);
+      const src = D12_FILES.includes(f) ? unapplyD12(f, pinRead(f)) : pinRead(f);
       if (!C2A_BLOCKS[f]) return src;
       const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
       assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins}`);

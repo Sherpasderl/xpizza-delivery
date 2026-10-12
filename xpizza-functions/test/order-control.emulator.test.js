@@ -136,6 +136,21 @@ const isD12Read = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^
 function assertNoD12(key, ops) {
   assert.deepStrictEqual(ops.filter(isD12Read).map((o) => o.path), [], `🔴 ${key}: an identity brand read where D12 makes none`);
 }
+// D12b (DECLARED, exact): a request that writes a tracking record now also writes the additive public
+// order_tracking.restaurant_display_name — exactly ONE extra changed path, and only where the baseline wrote that record
+// (its order_tracking/<tracking_token>/restaurant_id). Every other case's changed-path set is byte-identical.
+const D12B_TRACK = 'order_tracking/<tracking_token>/restaurant_display_name';
+function expectedChangedD12b(goldenChanged) {
+  const wroteTracking = goldenChanged.includes('order_tracking/<tracking_token>/restaurant_id');
+  return wroteTracking ? [...goldenChanged, D12B_TRACK].sort() : goldenChanged;
+}
+// sensitivity (pure): the declaration admits exactly that one path, only where the tracking record was written
+{
+  const g = ['order_tracking/<tracking_token>/order_id', 'order_tracking/<tracking_token>/restaurant_id', 'orders/<oid>/status'];
+  assert.deepStrictEqual(expectedChangedD12b(g), [...g, D12B_TRACK].sort());
+  assert.deepStrictEqual(expectedChangedD12b(['orders/<oid>/status']), ['orders/<oid>/status'], 'no tracking record → no extra path');
+  assert.notDeepStrictEqual([...g, D12B_TRACK, 'order_tracking/<tracking_token>/other'].sort(), expectedChangedD12b(g), 'a second extra path is NOT admitted');
+}
 function checkD12(key, ops, goldenOps) {
   const rid = key.split(' | ')[2];
   const found = ops.filter(isD12Read).map((o) => o.path);
@@ -467,7 +482,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.deepStrictEqual(r.headers, g.headers, `🔴 ${key}: headers changed`);
         checkD12(key, r.ops, g.ops);
         assert.deepStrictEqual(stripControl(r.ops), goldOps(g.ops), `🔴 ${key}: the call sequence changed beyond the control read`);
-        assert.deepStrictEqual(r.changed, g.changed, `🔴 ${key}: the changed-path set changed`);
+        assert.deepStrictEqual(r.changed, expectedChangedD12b(g.changed), `🔴 ${key}: the changed-path set changed (beyond D12b's declared tracking field)`);
         const reads = r.ops.filter(isControlRead);
         if (c.noControlRead) assert.strictEqual(reads.length, 0, `🔴 ${key}: an existing-order / :839 answer must read NO switch (§0.5)`);
         else assert.ok(reads.every((o) => o.op === 'once' && /^order_control\/[^/]+\/current$/.test(o.path)), `${key}: only reads of order_control/<rid>/current`);

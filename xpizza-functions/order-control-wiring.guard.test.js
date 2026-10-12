@@ -92,9 +92,12 @@ for (const f of CAPTURED) {
 // R3-FIX D12 landed later and adds the pickup-label hunks to some of these modules: its exact inverse
 // (tools/d12-inverse.js, proven by d12-wiring.guard) is reversed FIRST, so any byte OUTSIDE those hunks still fails here.
 const { unapplyD12, FILES: D12_FILES } = require('./tools/d12-inverse');
+// D12b (brand display name) landed on top of D12: its exact inverse is reversed FIRST (newest first)
+const { unapplyD12b, FILES: D12B_FILES } = require('./tools/d12b-inverse');
+const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, read(f)) : read(f));
 const pinned = [...CAPTURED, 'restaurant-config.js', 'scheduled-orders.js', 'createorder-classify.js', 'order-exists.js'].filter((f) => fs.existsSync(path.join(__dirname, f)));
 const diffed = pinned.filter((f) => {
-  const now = D12_FILES.includes(f) ? unapplyD12(f, read(f)) : read(f);
+  const now = D12_FILES.includes(f) ? unapplyD12(f, pinRead(f)) : pinRead(f);
   return now !== execFileSync('git', ['show', `e1aeb3f:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
 }).join('\n');
 assert.strictEqual(diffed, '', `🔴 pinned modules changed vs e1aeb3f: ${diffed}`);

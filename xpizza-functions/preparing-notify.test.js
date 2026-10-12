@@ -45,7 +45,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.ok(p.includes('preparando'), `[${rid}] pickup: says preparando`);
   assert.ok(p.includes('~20 min'), `[${rid}] pickup: interpolates the ETA`);
   assert.ok(/listo para recoger/i.test(p), `[${rid}] pickup: readiness-for-pickup wording`);
-  assert.ok(p.includes(whatsapp.brandFor(rid)) || p.includes(whatsapp.itemsEmojiFor(rid)), `[${rid}] pickup: brand-scoped chrome`);
+  assert.ok(p.includes(whatsapp.BRAND_TOKEN) || p.includes(whatsapp.itemsEmojiFor(rid)), `[${rid}] pickup: brand-scoped chrome (D12b: the brand placeholder, resolved at send)`);
   assert.ok(p.includes(whatsapp.trackingUrl('TK1', rid)), `[${rid}] pickup: tracking link when token present`);
   // NOT a dispatch/arrival promise
   assert.ok(!/sale hacia vos|en camino en ~|llega en ~|llegada/i.test(p), `[${rid}] pickup: no dispatch/arrival promise`);

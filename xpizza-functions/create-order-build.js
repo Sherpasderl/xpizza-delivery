@@ -1,7 +1,7 @@
 'use strict';
 
 const { normalizeReorderItems } = require('./reorder-normalize');
-const { pickupLabel } = require('./pickup-label');   // R3-FIX D12   // P3 — menu-allowlisted reorder recipe
+const { pickupLabel, brandOf } = require('./pickup-label');   // R3-FIX D12 (+ D12b brandOf)   // P3 — menu-allowlisted reorder recipe
 
 /**
  * Pure builder for createOrder's atomic write (cash / non-online intake). Mirrors
@@ -119,10 +119,14 @@ function buildCreateOrderUpdates({
   const addressShort = orderType === 'delivery'
     ? fields.address_detected.split(',')[0].trim()
     : pickupLabel(hubSnap.restaurant_display_name, hubSnap.restaurant_name);
+  // D12b: the brand as customers see it, on the PUBLIC tracking record (the tracker cannot read identity) — the SAME
+  // resolution as the pickup line; absent when nothing names the restaurant (the tracker then uses neutral copy)
+  const trackBrand = brandOf(hubSnap.restaurant_display_name, hubSnap.restaurant_name);
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,
     restaurant_id: restaurantId,   // D2: only order_tracking is public-readable — lets the tracker brand per restaurant
+    ...(trackBrand ? { restaurant_display_name: trackBrand } : {}),   // D12b
     customer_name: fields.customer_name,
     items_text: fields.items_text,
     total: total,

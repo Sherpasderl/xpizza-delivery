@@ -44,17 +44,15 @@ assert.equal(w.isSendConfirmed({ sent: 'false' }), false); ok('isSendConfirmed(s
 // ── trackingUrl (x_pizza) ──
 assert.equal(w.trackingUrl('TOK', 'x_pizza'), `${X_TRACK}/TOK`); ok('trackingUrl x_pizza → constant base');
 
-// ── brandFor + template bodies (D1): x_pizza BYTE-IDENTICAL, la_musa branded ──
-assert.equal(w.brandFor('x_pizza'), 'X. Pizza'); ok('brandFor x_pizza = "X. Pizza"');
-assert.equal(w.brandFor('la_musa'), 'La Musa'); ok('brandFor la_musa = "La Musa"');
-assert.equal(w.brandFor(undefined), 'X. Pizza'); ok('brandFor default = "X. Pizza" (legacy/unknown)');
+// ── D12b: template bodies carry the brand PLACEHOLDER; sendMessage resolves it from the restaurant's own config ──
+// (the resolved copy, per brand, is asserted in whatsapp-brand.test.js — x_pizza byte-identical once display_name is seeded)
 const ord = (rid) => w.tplOrderReceived({ customerName: 'Ana', total: 299, itemsText: 'X', trackingToken: 'T', restaurantId: rid });
-assert.ok(ord('x_pizza').includes('Recibimos tu pedido en X. Pizza ✅')); ok('tplOrderReceived x_pizza body byte-identical ("X. Pizza")');
-assert.ok(ord('la_musa').includes('Recibimos tu pedido en La Musa ✅')); ok('tplOrderReceived la_musa body branded ("La Musa")');
-assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes('disfrutes X. Pizza, Ana.')); ok('tplDelivered x_pizza — brand, no "tu"');
-assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }).includes('disfrutes La Musa, Ana.')); ok('tplDelivered la_musa — brand, no "tu"');
-assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'x_pizza' }).includes('pedido #PZX-1 en X. Pizza fue cancelado')); ok('tplCancelled x_pizza — brand line added');
-assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }).includes('pedido #PZX-1 en La Musa fue cancelado')); ok('tplCancelled la_musa — brand line added');
+for (const rid of ['x_pizza', 'la_musa', 'r3_synth']) {
+  assert.ok(ord(rid).includes(`Recibimos tu pedido en ${w.BRAND_TOKEN} ✅`)); assert.ok(!/X\.? ?Pizza|La Musa/.test(ord(rid)), `${rid}: no brand literal in the template`);
+}
+ok('tplOrderReceived: the brand is a placeholder (resolved at send), no brand literal, on every restaurant');
+assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes(`disfrutes ${w.BRAND_OR_MEAL_TOKEN}, Ana.`)); ok('tplDelivered — the brand-or-meal placeholder (neutral: "tu pedido")');
+assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }).includes(`pedido #PZX-1 en ${w.BRAND_TOKEN} fue cancelado`)); ok('tplCancelled — the brand placeholder');
 
 // ── E1: food-noun copy — x_pizza BYTE-IDENTICAL, la_musa branded ──
 assert.equal(w.itemsEmojiFor('x_pizza'), '🍕'); ok('itemsEmojiFor x_pizza = 🍕');

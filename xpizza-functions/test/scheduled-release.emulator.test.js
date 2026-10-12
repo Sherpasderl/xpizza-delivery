@@ -98,7 +98,11 @@ async function seedScheduled(id, over = {}) {
     await seedScheduled(id, { extra: { restaurant_id: rid, restaurant_name: null, restaurant_display_name: null, ...snap } });
     const r = await REL.releaseOne({ ...deps }, { orderId: id, now: NOW, claimId: `c${id}` });   // each case is its own sweep run
     assert.strictEqual(r.released, true, `${id}: released`);
-    return (await val(`order_tracking/${(await val(`orders/${id}`)).tracking_token}`)).address_short;
+    const trk = await val(`order_tracking/${(await val(`orders/${id}`)).tracking_token}`);
+    // D12b: the public record's brand is the pickup line's brand — present iff the line names one
+    const named = trk.address_short.startsWith('Recoger en ') && trk.address_short !== 'Recoger en el restaurante' ? trk.address_short.slice('Recoger en '.length) : undefined;
+    assert.strictEqual(trk.restaurant_display_name, named, `${id}: order_tracking.restaurant_display_name follows the pickup line's brand`);
+    return trk.address_short;
   };
   const cases = [
     ['D1', 'x_pizza', { restaurant_name: 'X Pizza', restaurant_display_name: 'X. Pizza' }, { name: 'X Pizza' }, 'Recoger en X. Pizza', 'its own display-name snapshot'],

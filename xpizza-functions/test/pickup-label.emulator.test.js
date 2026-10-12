@@ -54,7 +54,8 @@ async function pickup(rid, oid) {
     customer_email: 'p@example.com', items_text: `1x ${it.name}`, order_type: 'pickup', pickup_time: 'standard', payment_method: 'cash', items: [it] });
   assert.strictEqual(r.status, 200, `${rid} ${oid}: createOrder — ${r.text.slice(0, 200)}`);
   const order = (await rtdb.ref(`orders/${oid}`).get()).val();
-  return { order, line: (await rtdb.ref(`order_tracking/${order.tracking_token}`).get()).val().address_short };
+  const tracking = (await rtdb.ref(`order_tracking/${order.tracking_token}`).get()).val();
+  return { order, tracking, line: tracking.address_short };
 }
 async function wipe() {
   assert.match(rtdb.ref().toString(), /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d+\//, '🔴 refusing to wipe a non-emulator RTDB');
@@ -79,16 +80,19 @@ const setIdentity = async (rid, extra = {}) => {
   const before = await pickup('x_pizza', 'pl_x_before');
   assert.strictEqual(before.line, 'Recoger en X Pizza', 'x_pizza before the seed: its config name (the OWNER step comes first)');
   assert.ok(!('restaurant_display_name' in before.order), 'no display name configured → no snapshot key');
+  assert.strictEqual(before.tracking.restaurant_display_name, 'X Pizza', 'D12b: the public record carries the brand the pickup line names (the config name, pre-seed)');
 
   await setIdentity('x_pizza', { display_name: 'X. Pizza' });
   const after = await pickup('x_pizza', 'pl_x_after');
   assert.strictEqual(after.line, 'Recoger en X. Pizza', '🔴 x_pizza after the seed: exactly today\'s text, now from config');
   assert.strictEqual(after.order.restaurant_display_name, 'X. Pizza', 'the order carries the snapshot');
+  assert.strictEqual(after.tracking.restaurant_display_name, 'X. Pizza', 'D12b: the PUBLIC tracking record carries "X. Pizza" for the tracker banner');
   ok('x_pizza through the REAL createOrder: "Recoger en X Pizza" before the owner\'s display-name seed, "Recoger en X. Pizza" (today\'s text) after it');
 
   await setIdentity('la_musa');
   const lm = await pickup('la_musa', 'pl_lm');
   assert.strictEqual(lm.line, 'Recoger en La Musa', '🔴 La Musa names La Musa (it read "Recoger en X. Pizza")');
+  assert.strictEqual(lm.tracking.restaurant_display_name, 'La Musa', 'D12b: the PUBLIC tracking record names La Musa');
   assert.ok(!/X\.? ?Pizza/.test(JSON.stringify(lm.order)) && !('restaurant_display_name' in lm.order), 'no trace of the other brand; no display name → no snapshot key');
   ok('la_musa through the REAL createOrder: "Recoger en La Musa" (the D12 bug), no X. Pizza anywhere on the order');
 
