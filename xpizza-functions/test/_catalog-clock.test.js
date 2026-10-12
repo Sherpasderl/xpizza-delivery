@@ -139,14 +139,28 @@ const CELLS = {
 if (CELL) {
   CELLS[CELL]().then((label) => { console.log(`CELL-OK ${label}`); }).catch((e) => { console.error(e && e.stack || e); process.exit(1); });
 } else {
-  // children must not inherit the gate's count-marks preload (it would corrupt their stdout)
-  const NODE_OPTIONS = (process.env.NODE_OPTIONS || '').split(/\s+/).filter((x, i, a) => x && !/count-marks/.test(x) && !(x === '-r' && /count-marks/.test(a[i + 1] || ''))).join(' ');
+  // HERMETIC child env: the cells need none of the parent's NODE_OPTIONS, so it is DROPPED, never parsed. The gate runs
+  // every suite under NODE_OPTIONS="--require <abs>/tools/count-marks.js"; token-filtering that (R1c's first version kept
+  // only the short `-r <path>` pair in mind) left a dangling `--require` and every child died at startup.
+  const childEnv = (env) => { const e = { ...env }; delete e.NODE_OPTIONS; return e; };
+  const runCell = (name, env) => spawnSync(process.execPath, [__filename, name], { encoding: 'utf8', env: childEnv(env), cwd: path.join(__dirname, '..') });
   let n = 0;
   for (const name of Object.keys(CELLS)) {
-    const r = spawnSync(process.execPath, [__filename, name], { encoding: 'utf8', env: { ...process.env, NODE_OPTIONS }, cwd: path.join(__dirname, '..') });
+    const r = runCell(name, process.env);
     const line = (r.stdout || '').split('\n').find((l) => l.startsWith('CELL-OK '));
     assert.ok(r.status === 0 && line, `🔴 cell ${name} failed:\n${r.stdout}\n${r.stderr}`);
     console.log(`  ✓ ${++n} ${line.slice('CELL-OK '.length)}`);
+  }
+  // the gate's inherited preload, in every spelling: a cell spawned through childEnv still boots and passes
+  {
+    const CM = path.join(__dirname, '..', 'tools', 'count-marks.js');
+    assert.ok(require('fs').existsSync(CM), 'premise — tools/count-marks.js exists (the gate preload)');
+    const shapes = [`--require ${CM}`, `-r ${CM}`, `--require=${CM}`, `--max-old-space-size=4096 --require ${CM}`];
+    for (const NODE_OPTIONS of shapes) {
+      const r = runCell('assertBuilt', { ...process.env, NODE_OPTIONS });
+      assert.ok(r.status === 0 && /CELL-OK /.test(r.stdout || ''), `🔴 a cell spawned under the inherited gate preload NODE_OPTIONS="${NODE_OPTIONS}" did not boot:\n${r.stdout}\n${r.stderr}`);
+    }
+    console.log(`  ✓ ${++n} hermetic child env: a cell spawned under the gate's inherited count-marks preload (${shapes.length} spellings, incl. --require <abs>) boots and passes`);
   }
   console.log(`\ncatalog-clock: OK (${n})`);
 }

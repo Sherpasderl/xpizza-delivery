@@ -11470,5 +11470,18 @@
       "node",
       "test/_catalog-clock.test.js"
     ]
+  },
+  {
+    "id": "r1c-12",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.test.js",
+    "from": "const childEnv = (env) => { const e = { ...env }; delete e.NODE_OPTIONS; return e; };",
+    "to": "const childEnv = (env) => { const e = { ...env }; e.NODE_OPTIONS = (e.NODE_OPTIONS || '').split(/\\s+/).filter((x, i, a) => x && !/count-marks/.test(x) && !(x === '-r' && /count-marks/.test(a[i + 1] || ''))).join(' '); return e; };",
+    "label": "the cell runner token-filters NODE_OPTIONS again (R1c's first version: a gate `--require <abs>` preload leaves a dangling --require)",
+    "kills_with": "did not boot",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
+    ]
   }
 ]
