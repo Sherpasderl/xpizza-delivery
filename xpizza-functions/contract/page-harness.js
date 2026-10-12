@@ -19,7 +19,8 @@
  *    SEMANTICS (stated): true = nothing due within the horizon AND nothing TRACKED in flight. It is NOT global quiescence:
  *    an UNRETURNED continuation awaiting a timer beyond the horizon is not tracked (true); a RETURNED promise awaiting it is
  *    (false at the real-time cap). Queued-task sources the harness cannot virtualize (MessageChannel, BroadcastChannel,
- *    Worker, SharedWorker) FAIL CLOSED: if the window exposes one, bootPage throws.
+ *    Worker, SharedWorker) are REMOVED: non-configurable throwing accessors on the window and every nested frame's window;
+ *    any get / set / define attempt — at any time, mid-settle included — is a recorded page error and settle() is false.
  *
  * bootPage() never edits a page file: every rewrite is on the import graph (specifier → module), not on source text.
  */
@@ -89,8 +90,28 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     Object.defineProperty(win, 'onmessage', { configurable: true, get: () => onmsg, set: (f) => { if (onmsg) win.removeEventListener('message', onmsg); onmsg = typeof f === 'function' ? f : null; if (onmsg) win.addEventListener('message', onmsg); } });
   }
   // FAIL CLOSED: a queued-task source the harness cannot virtualize must not exist silently
+  // codex r8 P1 — the hazard is REMOVED, not checked for: each unvirtualizable queued-task source is a NON-CONFIGURABLE
+  // accessor on the window (and on every nested frame's window) that THROWS on get and on set, and every define attempt
+  // through Object.defineProperty / defineProperties / Reflect.defineProperty is refused AND recorded. Any attempt — at any
+  // moment, mid-settle included — is a page error and makes settle() false (re-checked every loop and at the success return).
   const UNVIRTUALIZED = ['MessageChannel', 'BroadcastChannel', 'Worker', 'SharedWorker'];
-  for (const k of UNVIRTUALIZED) if (typeof win[k] !== 'undefined') throw new Error(`r3-page: the window exposes ${k} — a queued-task source settle() cannot virtualize; virtualize it before use (FAIL CLOSED)`);
+  const channelAttempts = [];
+  const attempt = (k, how) => { const m = `r3-page: ${how} of ${k} — a queued-task source settle() cannot virtualize (FAIL CLOSED)`; channelAttempts.push(m); errors.push(m); return m; };
+  const guarded = new WeakSet();
+  const guardWindow = (w) => {
+    if (!w || guarded.has(w)) return; guarded.add(w);
+    for (const k of UNVIRTUALIZED) {
+      if (Object.prototype.hasOwnProperty.call(w, k) || typeof w[k] !== 'undefined') attempt(k, 'pre-existing exposure');
+      Object.defineProperty(w, k, { configurable: false, enumerable: false, get() { throw new Error(attempt(k, 'access')); }, set() { throw new Error(attempt(k, 'assignment')); } });
+    }
+    const O = w.Object; const R = w.Reflect;
+    const dp = O.defineProperty; const dps = O.defineProperties; const rdp = R.defineProperty;
+    O.defineProperty = function (o, k, d) { if ((o === w || o === w.globalThis) && UNVIRTUALIZED.includes(String(k))) throw new w.TypeError(attempt(String(k), 'defineProperty')); return dp.call(this, o, k, d); };
+    O.defineProperties = function (o, ds) { if (o === w) for (const k of Object.keys(ds || {})) if (UNVIRTUALIZED.includes(k)) throw new w.TypeError(attempt(k, 'defineProperties')); return dps.call(this, o, ds); };
+    R.defineProperty = function (o, k, d) { if (o === w && UNVIRTUALIZED.includes(String(k))) { attempt(String(k), 'Reflect.defineProperty'); return false; } return rdp.call(this, o, k, d); };
+  };
+  guardWindow(win);
+  const guardFrames = () => { for (const f of win.document.querySelectorAll('iframe')) { try { guardWindow(f.contentWindow); } catch (_) { /* detached */ } } };
   const fire = (t) => {
     if (t.every) t.due = Math.max(t.due + Math.max(t.delay, 4), now()); else timers.delete(t.id);   // browsers clamp a 0 ms interval
     if (typeof t.fn !== 'function') { try { vm.runInContext(String(t.fn), ctx); } catch (e) { errors.push(`timer (string): ${e && e.stack || e}`); } return; }
@@ -184,16 +205,16 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   // are stuck → wait, false at the cap. false also if the page schedules without end inside the horizon (> maxFirings).
   async function settle(horizon = horizonMs, { capMs = settleMs, maxFirings = 20000 } = {}) {
     const t0 = realNow(); const limit = now() + horizon; let fired = 0;
-    const unsupported = UNVIRTUALIZED.filter((k) => typeof win[k] !== 'undefined');   // FAIL CLOSED (also if added after boot)
-    if (unsupported.length) { errors.push(`settle: the page window exposes ${unsupported.join(', ')} — queued-task sources settle() cannot virtualize (FAIL CLOSED)`); return false; }
+    const refused = () => { guardFrames(); return channelAttempts.length > 0; };   // any channel attempt, ever → never settled
     for (;;) {
+      if (refused()) return false;
       for (let i = 0; i < 3; i++) await turn();          // drain the microtask queue: continuations a timer resolved run now
       if (ioInflight() > 0) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
       let next = null;
       for (const t of timers.values()) if (t.due <= limit && (!next || t.due < next.due || (t.due === next.due && t.id < next.id))) next = t;
       if (!next) {
         if (contInflight()) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
-        await turn(); await turn(); if (inflight() === 0 && ![...timers.values()].some((t) => t.due <= limit)) return true; continue;
+        await turn(); await turn(); if (inflight() === 0 && ![...timers.values()].some((t) => t.due <= limit)) return !refused(); continue;
       }
       if (++fired > maxFirings) { errors.push(`settle: more than ${maxFirings} timer firings within a ${horizon} ms horizon — the page schedules without end`); return false; }
       if (next.due > vnow) vnow = next.due;

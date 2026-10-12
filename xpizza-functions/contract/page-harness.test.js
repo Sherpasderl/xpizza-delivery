@@ -155,16 +155,36 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
     assert.strictEqual(sq, false, FAIL('an async event listener\'s unfinished work was not tracked'));
     ok('an event listener\'s returned promise is tracked: an async click handler that never resolves → settle() false');
   }
-  // FAIL CLOSED: a queued-task source the harness cannot virtualize (MessageChannel / BroadcastChannel / Worker /
-  // SharedWorker) → settle() is false with the reason; stock jsdom exposes none (asserted)
+  // codex r8 P1 — the unvirtualizable queued-task sources are REMOVED, not checked for: non-configurable accessors that
+  // throw on get / set, define attempts refused and recorded. Codex's probe: a page TIMER installs a Worker MID-SETTLE
+  // (an installer supplied by beforeScripts, as codex did) → a recorded page error, settle() false — 5/5; plus the
+  // defineProperty / Reflect.defineProperty / feature-detection routes and a nested frame
   {
     const p0 = await bootPage('xpizza-functions', { html: page('') });
-    const none = ['MessageChannel', 'BroadcastChannel', 'Worker', 'SharedWorker'].filter((k) => typeof p0.win[k] !== 'undefined'); p0.close();
-    const p = await bootPage('xpizza-functions', { html: page(`window.__late = 1;`) });
-    p.win.MessageChannel = function MessageChannel() {};
-    const settled = await p.settle(); const why = p.errors.find((e) => /cannot virtualize/.test(e)); p.close();
-    assert.ok(none.length === 0 && settled === false && why, FAIL(`an unvirtualizable queued-task source did not fail closed (${JSON.stringify({ none, settled, why })})`));
-    ok('fail closed: stock jsdom exposes no MessageChannel / BroadcastChannel / Worker / SharedWorker; if a window has one, settle() is false with the reason');
+    const descs = ['MessageChannel', 'BroadcastChannel', 'Worker', 'SharedWorker'].map((k) => Object.getOwnPropertyDescriptor(p0.win, k));
+    const settled0 = await p0.settle(); p0.close();
+    assert.ok(descs.every((d) => d && d.configurable === false && typeof d.get === 'function' && typeof d.set === 'function') && settled0 === true, FAIL('the channel accessors are not installed non-configurable (or a clean page no longer settles)'));
+    class FakeWorker { constructor() { setImmediate(() => this.onmessage && this.onmessage({ data: 'go' })); } }
+    let red = 0;
+    for (let i = 0; i < 5; i++) {
+      const log = [];
+      const p = await bootPage('xpizza-functions', { html: page(`setTimeout(() => { window.__install(); const w = new Worker('x.js'); w.onmessage = () => fetch('/write'); }, 100);`), fetchImpl: slowFetch(log), beforeScripts: (w) => { w.__install = () => { w.Worker = FakeWorker; }; } });
+      const settled = await p.settle(); const why = p.errors.find((e) => /assignment of Worker .*FAIL CLOSED/.test(e)); p.close();
+      if (settled === false && why) red += 1;
+    }
+    assert.strictEqual(red, 5, FAIL(`codex's mid-settle Worker install did not fail closed in ${5 - red}/5 runs`));
+    const routes = [
+      ['defineProperty', `setTimeout(() => { try { Object.defineProperty(window, 'MessageChannel', { value: function () {} }); } catch (_) {} }, 50);`, /defineProperty of MessageChannel/],
+      ['Reflect.defineProperty', `setTimeout(() => { Reflect.defineProperty(window, 'BroadcastChannel', { value: function () {} }); }, 50);`, /Reflect\.defineProperty of BroadcastChannel/],
+      ['feature detection', `setTimeout(() => { try { if (typeof SharedWorker !== 'undefined') {} } catch (_) {} }, 50);`, /access of SharedWorker/],
+      ['nested frame', `const f = document.createElement('iframe'); document.body.appendChild(f); setTimeout(() => { try { f.contentWindow.Worker = function () {}; } catch (_) {} }, 50);`, /of Worker .*FAIL CLOSED/],
+    ];
+    for (const [label, code, re] of routes) {
+      const p = await bootPage('xpizza-functions', { html: page(code) });
+      const settled = await p.settle(); const why = p.errors.find((e) => re.test(e)); p.close();
+      assert.ok(settled === false && why, FAIL(`route "${label}" did not fail closed (${JSON.stringify({ settled, why })})`));
+    }
+    ok(`unvirtualizable channels REMOVED: non-configurable throwing accessors; codex's mid-settle Worker install (a page timer) → recorded error, settle() false 5/5; routes refused even when the page catches: ${routes.map((r) => r[0]).join(', ')}`);
   }
   // codex r7 P1-3: CLOCK DOMAINS — timers virtual, wall clock real. Codex's probe: the REAL driver startCountdownTick()
   // against a deadline 60 s ahead; after 7 default settles (70 s of virtual timer time) the chip still matches the server

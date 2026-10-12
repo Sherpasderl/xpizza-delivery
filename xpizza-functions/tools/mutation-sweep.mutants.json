@@ -11833,11 +11833,27 @@
     "id": "r3p0-29",
     "slice": "r3p0",
     "file": "contract/page-harness.js",
-    "from": "    if (unsupported.length) {",
-    "to": "    if (false) {",
-    "label": "an unvirtualizable queued-task source no longer fails closed",
+    "from": "  const attempt = (k, how) => { const m = `r3-page: ${how} of ${k} — a queued-task source settle() cannot virtualize (FAIL CLOSED)`; channelAttempts.push(m); errors.push(m); return m; };",
+    "to": "  const attempt = (k, how) => { const m = `r3-page: ${how} of ${k} — a queued-task source settle() cannot virtualize (FAIL CLOSED)`; errors.push(m); return m; };",
+    "label": "a channel attempt (mid-settle Worker install) is not recorded — settle() could certify (codex r8 P1)",
     "kills_with": [
-      "an unvirtualizable queued-task source did not fail closed"
+      "codex's mid-settle Worker install did not fail closed"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-30",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "    const refused = () => { guardFrames(); return channelAttempts.length > 0; };   // any channel attempt, ever → never settled",
+    "to": "    const refused = () => { return channelAttempts.length > 0; };   // any channel attempt, ever → never settled",
+    "label": "nested frames' windows are not guarded (codex r8 P1)",
+    "kills_with": [
+      "route \"nested frame\" did not fail closed"
     ],
     "command": [
       "node",
