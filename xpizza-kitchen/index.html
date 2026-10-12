@@ -1646,6 +1646,8 @@ const completedSet = new Set(JSON.parse(localStorage.getItem('xpizza_kds_complet
 // (subscribed in the init). A cancelled order has no server terminal flag, so this is what makes "Archivar"
 // sync across a 2-device kitchen (vs the per-device completedSet overlay). Populated live; {} until the sub fires.
 let cancelAcks = {};
+let cancelAcksLoaded = false;   // true once the kds_cancel_acks sub has delivered the authoritative server state — gates the reconcile so a local bump is never dropped before we know the server's acks (incl. on load)
+const pendingAcks = new Set();  // orderIds whose writeCancelAck (this device's Archivar) hasn't echoed back yet — their optimistic completedSet bump is preserved until the echo confirms (so the instant move still feels instant)
 (function migrateLegacyCompleted() {
   try {
     const legacy = JSON.parse(localStorage.getItem('xpizza_orders') || '{}');
@@ -2370,6 +2372,7 @@ function updateHeaderRing(card, id) {
 // Recall — KDS-LOCAL un-bump back to Open. NO /orders.status write (never reverts `ready`).
 function recall(id) {
   completedSet.delete(id);
+  pendingAcks.delete(id);     // drop any in-flight archive ack for this id (recall supersedes a just-fired Archivar)
   XPD.removeCancelAck(id).catch((e) => console.warn('removeCancelAck failed', e));   // symmetric: clear the server ack so un-archive propagates cross-device (else the ack re-completes it)
   delete completionSeq[id];   // abort any in-flight completion beat
   delete completedStamp[id];  // clear the frozen stamp
@@ -2387,7 +2390,9 @@ function prioritize(id) {
 // Archive a cancelled ticket — LOCAL bump to Completed (acknowledge stop-cooking). NO status write.
 function archiveCancel(id) {
   completedSet.add(id);                                 // instant optimistic overlay on THIS device
-  XPD.writeCancelAck(id).catch((e) => console.warn('writeCancelAck failed', e));   // durable cross-device server truth
+  pendingAcks.add(id);                                  // guard the optimistic bump until the write echoes back (reconcile won't drop it meanwhile)
+  XPD.writeCancelAck(id)                                // durable cross-device server truth
+    .catch((e) => { pendingAcks.delete(id); console.warn('writeCancelAck failed', e); renderCurrentTab(); });   // write failed → let the reconcile revert the optimistic bump (nothing persisted server-side)
   completedStamp[id] = new Date().toISOString();
   if (!stateLog[id]) stateLog[id] = {};
   stateLog[id]['Archivado'] = new Date().toISOString();
@@ -2655,9 +2660,30 @@ function paintOffPageLate() {
   else lateEl.classList.add('hidden');
 }
 
+// CONVERGENCE RECONCILE (codex REVISE): the local completedSet bump is only THIS device's optimistic overlay
+// for a cancel Archivar. The AUTHORITATIVE archived state is the server ack (cancelAcks). If a CANCELLED order
+// this device locally-bumped no longer has a server ack — another device recalled it, or a reopen loads a
+// stale localStorage bump whose ack is already gone — drop the local bump so the card converges back to Open
+// on EVERY device (incl. the original acking one). SCOPED to cancelados keyed on ack-absence (NOT a blanket
+// purge — delivered/listo bumps carry no ack and are untouched); never acts before the authoritative acks are
+// loaded, nor on an id whose own Archivar write is still in flight (the optimistic move stays instant).
+function reconcileCancelBumps(orders) {
+  if (!cancelAcksLoaded) return;
+  let changed = false;
+  for (const id of [...completedSet]) {
+    if (cancelAcks[id] || pendingAcks.has(id)) continue;               // server ack present, or our write in flight → keep
+    const o = orders.find(x => x.id === id) || allOrders.find(x => x.id === id);
+    if (o && o.estado === KDS_STATUS.CANCELADO) {                      // cancelled only — the only bumps an ack governs
+      completedSet.delete(id); delete completedStamp[id]; changed = true;
+    }
+  }
+  if (changed) saveState();
+}
+
 function render(orders) {
   lastOrders = orders;
   orders.forEach(o => { if (!allOrders.find(a => a.id === o.id)) allOrders.push(o); });
+  reconcileCancelBumps(orders);   // converge any now-stale local cancel bumps to the server-ack truth BEFORE the tab split
 
   const open = openPool();
   // Completados = this session's local bumps + server-completed within the recent window (render filter),
@@ -2969,7 +2995,12 @@ function startOrdersSubscription() {
   window.__readyNudge?.teardown?.();   // teardown before (re)subscribing (restart path)
   // KDS cancelados cross-device ack: the shared server truth for archived cancelados. Keep it live alongside
   // the orders sub; a change re-renders so an Archivar/Recuperar on ANY device moves the ticket on ALL devices.
-  cancelAcksUnsubscribe = XPD.subscribeCancelAcks((m) => { cancelAcks = m || {}; renderCurrentTab(); });
+  cancelAcksUnsubscribe = XPD.subscribeCancelAcks((m) => {
+    cancelAcks = m || {};
+    cancelAcksLoaded = true;                                  // we now hold the AUTHORITATIVE server acks
+    for (const id of Object.keys(cancelAcks)) pendingAcks.delete(id);   // our pending Archivar is confirmed by its own echo
+    renderCurrentTab();                                       // render() reconciles any now-stale local cancel bumps (e.g. another device recalled)
+  });
   // Programados: read-only second onValue on the same /orders ref (reuses the sync; no new network read).
   // Keeps the scheduled set in memory, drives the calendar-glyph accent cue live, and re-renders the
   // screen if it's open. Never writes.

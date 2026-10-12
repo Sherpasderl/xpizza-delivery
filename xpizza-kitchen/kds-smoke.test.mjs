@@ -654,4 +654,33 @@ ok('DELIVERY completion → purely local blue→green→bump beat, ZERO extra st
   ok('cancel-ack: recall → removeCancelAck → (echo) back to Open (symmetric cross-device round-trip)');
 }
 
+// ══ ACKING-DEVICE CONVERGENCE (codex REVISE — the dual-overlay gap) ══
+// Device A archives → BOTH a local completedSet bump (optimistic) AND the server ack. When ANOTHER device
+// recalls, the server ack is removed; A's subscription must RECONCILE away A's now-stale LOCAL bump so A
+// converges back to Open too (not just device B). Also: the optimistic bump must survive until A's own write
+// echoes, and the reconcile must PURGE localStorage so a reopen can't resurrect Completed.
+{
+  const tick = () => new Promise((r) => setImmediate(r));
+  const X = { order_id: 'PZX-X', status: 'cancelled', customer_name: 'Fede', items_text: '1x Cuatro Quesos', created_at: Date.now(), order_type: 'delivery' };
+  XPD._ordersCb({ 'PZX-X': X }); await tick();
+  // A archives → optimistic local bump + writeCancelAck (pending; not yet echoed)
+  calls.length = 0;
+  window.archiveCancel('PZX-X'); await tick();
+  assert.ok(calls.some(c => c.fn === 'writeCancelAck' && c.id === 'PZX-X'), 'A: Archivar writes the ack');
+  assert.equal(getEl('count-completed').textContent, 1, 'A: optimistic move to Completados is instant (ack not yet echoed)');
+  // a pre-echo render (orders refresh) must NOT wipe the optimistic bump — the pendingAcks guard
+  XPD._ordersCb({ 'PZX-X': X }); await tick();
+  assert.equal(getEl('count-completed').textContent, 1, 'A: a render BEFORE the echo preserves the optimistic bump (pendingAcks guard — the instant move stays instant)');
+  // the echo confirms the ack → pending cleared, the bump is now ack-backed
+  XPD._cancelAcksCb({ 'PZX-X': { at: Date.now(), by: 'A' } }); await tick();
+  assert.equal(getEl('count-completed').textContent, 1, 'A: still archived after the echo (now ack-backed)');
+  // ANOTHER device recalls → the server ack is REMOVED → A must reconcile its stale local bump → back to Open
+  XPD._cancelAcksCb({}); await tick();
+  assert.equal(getEl('count-open').textContent, 1, 'A CONVERGES: the stale local bump is reconciled away once the server ack is gone (the fix — not just device B)');
+  assert.equal(getEl('count-completed').textContent, 0, 'A: no longer shows Completed after the cross-device recall');
+  // reopen-safety: the reconcile also PURGED the bump from localStorage, so a close+reopen cannot resurrect it
+  assert.ok(!JSON.parse(store['xpizza_kds_completed'] || '[]').includes('PZX-X'), 'A: the stale bump is purged from localStorage too → cannot resurrect Completed on reopen');
+  ok('cancel-ack: ACKING device converges to Open on a cross-device recall + localStorage purged (dual-overlay reconcile, reopen-safe)');
+}
+
 console.log(`kds-smoke: OK (${n} cases)`);
