@@ -73,6 +73,24 @@ const reader = (calls, ids = ID) => async (rid) => { calls.push(rid); return ids
   }
   ok('codex r2: the OTP never awaits branding — a HUNG identity read: sent immediately, neutral "Tu código es …", no read started; an identity in hand brands it; other templates keep the live read');
 
+  // ── codex r3: the OTP's peek accepts only a FRESH restaurant-config cache entry (the DEFAULT peek, the real cache) ──
+  {
+    const { _cache, TTL_MS } = require('./restaurant-config');
+    let reads = 0; const hung = () => { reads += 1; return new Promise(() => {}); };
+    const otp = async () => { sent.length = 0; await w.sendMessage(PHONE, w.tplOtp({ code: '111111' }), 'r3_fresh', { readBrand: hung }); return sent[0].body; };
+    const entry = (fetched_at) => _cache.set('r3_fresh', { identity: { name: 'Old Name', display_name: 'Sushi Sur HN' }, fetched_at, version: 1 });
+    entry(Date.now());
+    assert.strictEqual(await otp(), 'Tu código de Sushi Sur HN es 111111. Vence en 5 minutos. No lo compartas.', 'a FRESH entry brands the OTP');
+    for (const [fa, why] of [[Date.now() - TTL_MS - 1, 'stale (older than the TTL)'], [Date.now() - 24 * 3600e3, 'a day old (a renamed brand)'], [undefined, 'no fetched_at'], ['soon', 'a non-numeric fetched_at'], [Date.now() + 60e3, 'a future fetched_at']]) {
+      entry(fa);
+      assert.strictEqual(await otp(), 'Tu código es 111111. Vence en 5 minutos. No lo compartas.', `🔴 ${why} → neutral`);
+    }
+    _cache.delete('r3_fresh');
+    assert.strictEqual(await otp(), 'Tu código es 111111. Vence en 5 minutos. No lo compartas.', 'no entry → neutral');
+    assert.strictEqual(reads, 0, 'zero reads in every case');
+  }
+  ok('codex r3: the OTP peek accepts only a FRESH cache entry (within restaurant-config TTL_MS) — stale / day-old / missing / non-numeric / future fetched_at → neutral; zero reads');
+
   // ── 2. neutral copy: nothing names the restaurant (null / failed / blank / unshowable) ──
   const neutral = [
     [w.tplOrderReceived({ customerName: 'Ana', total: 1, itemsText: 'X', trackingToken: 'T', restaurantId: 'la_musa' }), 'Recibimos tu pedido ✅'],

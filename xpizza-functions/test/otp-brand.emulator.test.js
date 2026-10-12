@@ -81,6 +81,16 @@ function post(handler, body) {
   assert.strictEqual(liveReads, 0, 'still no read');
   ok('an identity already in this instance\'s cache brands the OTP ("Tu código de X. Pizza es …") — still without any read');
 
+  // ── 3. codex r3: a STALE cache entry (older than restaurant-config's TTL — e.g. before a rename) does NOT brand it ──
+  const { TTL_MS } = require('../restaurant-config');
+  const e = identityCache.get('x_pizza');
+  identityCache.set('x_pizza', { ...e, identity: { ...e.identity, display_name: 'Old Brand' }, fetched_at: Date.now() - TTL_MS - 1 });
+  const r3 = await post(app.requestOtp, { phone: '+50499990003', restaurant_id: 'x_pizza' });
+  assert.strictEqual(r3.status, 200, r3.text);
+  assert.match(posts[2].body, /^Tu código es \d{6}\. Vence en 5 minutos\. No lo compartas\.$/, `a stale entry → neutral, never "Old Brand": ${posts[2].body}`);
+  assert.strictEqual(liveReads, 0, 'zero reads');
+  ok('a STALE cache entry (older than the TTL, here naming an old brand) → neutral copy, zero reads');
+
   FINISHED = true;
   console.log(`\notp-brand(emulator): OK (${n})`);
   process.exit(0);

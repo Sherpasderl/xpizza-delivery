@@ -59,9 +59,13 @@ function defaultReadBrand(restaurantId) {
 // codex D12b r2: a LOGIN CODE never waits on branding. For the sync-only templates the brand is used only when it is already
 // in hand — this instance's restaurant-config identity cache (no I/O) — else the neutral wording, immediately.
 const SYNC_ONLY = new Set(['otp']);
-function defaultPeekBrand(restaurantId) {
-  const c = require('./restaurant-config')._cache.get(restaurantId);
-  return c && c.identity ? { display_name: c.identity.display_name, name: c.identity.name } : null;
+// codex D12b r3: only a FRESH cache entry counts (within restaurant-config's own TTL, with a valid fetched_at) — a stale one
+// could name a brand that was renamed since; it is treated as nothing in hand (neutral), still with no read.
+function defaultPeekBrand(restaurantId, now = Date.now()) {
+  const { _cache, TTL_MS } = require('./restaurant-config');
+  const c = _cache.get(restaurantId);
+  if (!c || !c.identity || !Number.isFinite(c.fetched_at) || !Number.isFinite(TTL_MS) || now - c.fetched_at >= TTL_MS || now < c.fetched_at) return null;
+  return { display_name: c.identity.display_name, name: c.identity.name };
 }
 function peekBrand(restaurantId, { peekBrand: peek = defaultPeekBrand } = {}) {
   let live = null;
@@ -430,6 +434,7 @@ module.exports = {
   renderTemplate,
   resolveBrand,
   isDeferred,
+  defaultPeekBrand,
   itemsEmojiFor,
   readyLineFor,
   trackingUrl,
