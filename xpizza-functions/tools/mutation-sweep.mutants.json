@@ -11497,5 +11497,59 @@
       "node",
       "tools/emulator-ports.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p0-02",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "    if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });\n    else pending.delete(key);",
+    "to": "    pending.delete(key);",
+    "label": "settle() forgets a timer's async continuation (codex r1 P1-5: certifies an unfinished render)",
+    "kills_with": "settle() certified an unfinished render",
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-03",
+    "slice": "r3p0",
+    "file": "contract/rtdb-adapter.js",
+    "from": "(!cb || s.cb === cb)",
+    "to": "true",
+    "label": "adapter off() ignores callback identity (codex r1 P2)",
+    "kills_with": "off(A, value, cb1) must stop only cb1",
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-adapter"
+    ]
+  },
+  {
+    "id": "r3p0-04",
+    "slice": "r3p0",
+    "file": "contract/version-witness.js",
+    "from": "      const versionId = extra.fallback ? null : (call.menuFor !== undefined ? call.menuFor : (call.fetched !== undefined ? call.fetched : (call.startPointer !== undefined ? call.startPointer : null)));",
+    "to": "      const versionId = extra.fallback ? null : (lastPointer.has(call.rid) ? lastPointer.get(call.rid) : null);",
+    "label": "the gate witness reads the SHARED per-rid pointer at completion again (codex r1 P1-6's defect)",
+    "kills_with": "completed after B selected V2) attributed",
+    "command": [
+      "node",
+      "contract/version-witness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-05",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "        if (key && normPath(key).startsWith('orders/')) pathWrite(fn, key, node.right, node, 'multipath-assign');",
+    "to": "        if (false) pathWrite(fn, key, node.right, node, 'multipath-assign');",
+    "label": "the write inventory stops seeing `updates[`orders/${id}`] = …` multipath assignments (codex r1 P1-1)",
+    "kills_with": "R3-CENSUS",
+    "command": [
+      "node",
+      "contract/census.guard.test.js"
+    ]
   }
 ]
