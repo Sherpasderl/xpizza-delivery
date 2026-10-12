@@ -11747,5 +11747,102 @@
       "run",
       "test:r3-p0-pages"
     ]
+  },
+  {
+    "id": "r3p0-24",
+    "slice": "r3p0",
+    "file": "contract/rtdb-adapter.js",
+    "from": "    push: (r, v) => { const t = adminOf(r).push(v); const w = wrapRef(t); if (v !== undefined) { track(Promise.resolve(t).then(() => undefined)); w.then = (a, b) => t.then((x) => wrapRef(x)).then(a, b); w.catch = (b) => t.catch(b); } return w; },",
+    "to": "    push: (r, v) => { const t = adminOf(r).push(v); const w = wrapRef(t); if (v !== undefined) { w.then = (a, b) => t.then((x) => wrapRef(x)).then(a, b); w.catch = (b) => t.catch(b); } return w; },",
+    "label": "push(value)'s acknowledgement untracked (codex r7 P1-2)",
+    "kills_with": [
+      "an unawaited push(value) from a timer was not acknowledged"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-pages"
+    ]
+  },
+  {
+    "id": "r3p0-25",
+    "slice": "r3p0",
+    "file": "contract/rtdb-adapter.js",
+    "from": "      track(new Promise((resolve) => setTimeout(() => {",
+    "to": "      (new Promise((resolve) => setTimeout(() => {",
+    "label": "the initial auth delivery untracked (codex r7 P1-2)",
+    "kills_with": [
+      "the initial auth delivery (+ its callback's work) was not awaited"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-pages"
+    ]
+  },
+  {
+    "id": "r3p0-26",
+    "slice": "r3p0",
+    "file": "contract/rtdb-adapter.js",
+    "from": "      if (r && typeof r.then === 'function') trackCont(r.then(undefined, (e) => { callbackErrors.push({ sub: rec.id, path: rec.path, error: `async: ${String(e && e.stack || e).slice(0, 600)}` }); }));",
+    "to": "      if (r && typeof r.then === 'function') track(r.then(undefined, (e) => { callbackErrors.push({ sub: rec.id, path: rec.path, error: `async: ${String(e && e.stack || e).slice(0, 600)}` }); }));",
+    "label": "a subscription callback's continuation counted as REAL I/O — its page timer never fires (codex r7 P2 deadlock)",
+    "kills_with": [
+      "an async onValue callback awaiting a page timer deadlocked",
+      "the real order is rendered after the barrier"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-pages"
+    ]
+  },
+  {
+    "id": "r3p0-27",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "  win.postMessage = (data, targetOrigin) => {",
+    "to": "  win.__unusedPostMessage = (data, targetOrigin) => {",
+    "label": "window.postMessage left to jsdom's own (unvirtualized) task queue (codex r7 P1-1)",
+    "kills_with": [
+      "codex's postMessage probe: the write was not awaited"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-28",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "    const wrap = (l) => { if (typeof l !== 'function') return l; if (!wrapped.has(l)) wrapped.set(l, function (ev) { return runTracked((e) => l.call(this, e), [ev], `listener ${ev && ev.type}`); }); return wrapped.get(l); };",
+    "to": "    const wrap = (l) => l;",
+    "label": "event listeners' returned promises untracked",
+    "kills_with": [
+      "an async event listener's unfinished work was not tracked"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-29",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "    if (unsupported.length) {",
+    "to": "    if (false) {",
+    "label": "an unvirtualizable queued-task source no longer fails closed",
+    "kills_with": [
+      "an unvirtualizable queued-task source did not fail closed"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
   }
 ]

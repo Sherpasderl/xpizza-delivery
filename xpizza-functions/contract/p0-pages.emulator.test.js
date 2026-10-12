@@ -133,7 +133,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
       assert.ok(p.evaluated.includes('inline module') || p.evaluated.some((x) => /module/.test(x)), FAIL(cell, `${dir}: its module script ran (${JSON.stringify(p.evaluated)})`));
       for (const w of wantSubs) assert.ok(paths.has(w), FAIL(cell, `${dir}: subscription on ${w} opened (${[...paths].join(', ')})`));
       assert.strictEqual(settled, true, FAIL(cell, `${dir}: rendering never SETTLED after the barrier (in flight: ${p.inflight()}; timers due within the horizon:\n    ${p.dueSites().join('\n    ')})`));
-      SKEW[dir] = p.clock.skewMs();
+      SKEW[dir] = p.clock.virtualMs();
       const got = host.subs.filter((x) => ORDER_ROOTS.test(x.path)).map((x) => `${x.kind}:${x.path}${(x.constraints || []).length ? JSON.stringify(x.constraints) : ''}`).sort();
       assert.deepStrictEqual(got, [...wantQueries].sort(), FAIL(cell, `${dir}: the order-data QUERIES differ from the reviewed set`));
       assert.ok(host.subs.every((s) => !s.error), FAIL(cell, `${dir}: a subscription was cancelled (${JSON.stringify(host.subs.filter((s) => s.error))})`));
@@ -144,7 +144,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   }
   console.log(`\nP0-OBS ${JSON.stringify(OBS)}`);
   S.assertClean(['monitorAssignmentTimeout']);
-  console.log(`  virtual time advanced by settle() per page (ms; every timer due within the 10 s horizon fired as normal code): ${JSON.stringify(SKEW)}`);
+  console.log(`  virtual TIMER time advanced by settle() per page (ms; every timer due within the 10 s horizon fired as normal code; wall clock real): ${JSON.stringify(SKEW)}`);
 
   // codex r6 P1-2: a ROUTED CALLABLE invoked from a page timer is tracked work (the REAL adapter): settle() awaits its
   // handler — the effect is visible before settle() returns
@@ -158,6 +158,42 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
       assert.ok(settled && done === 1 && p.doc.getElementById('app').textContent === 'called:probe', FAIL('CALL', `a page timer's routed callable was not awaited (${JSON.stringify({ settled, done, text: p.doc.getElementById('app').textContent })})`));
     } finally { p.close(); await host.close(); }
     ok('codex r6 P1-2: a page timer invoking a routed callable (real adapter): the handler ran AND its result rendered before settle() returned');
+  }
+  // codex r7 P1-2 / P2 on the REAL adapter: an UNAWAITED push(value) from a page timer, the INITIAL auth delivery (+ the
+  // work its callback returns), and an async onValue callback awaiting a page timer — each complete before settle() is true
+  const CDN = (m) => `https://www.gstatic.com/firebasejs/10.13.2/firebase-${m}.js`;
+  {
+    const host = createFirebaseHost({ pageId: 'PUSH', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
+    const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getDatabase, ref, push } from '${CDN('database')}'; const db = getDatabase(); setTimeout(() => { push(ref(db, '__r3probe/pushes'), { total: 100 }); }, 1000);</script></body></html>`;
+    const p = await bootPage('xpizza-kitchen', { host, html });
+    try {
+      const settled = await p.settle();
+      const landed = (await rtdb.ref('__r3probe/pushes').get()).numChildren();
+      assert.ok(settled && landed === 1 && host.ioInflight() === 0, FAIL('PUSH', `an unawaited push(value) from a timer was not acknowledged before settle() returned (${JSON.stringify({ settled, landed, io: host.ioInflight() })})`));
+    } finally { p.close(); await host.close(); }
+    ok('codex r7 P1-2: an UNAWAITED push(ref, {total: 100}) from a page timer — acknowledged (in the database) before settle() returned');
+  }
+  {
+    let good = 0;
+    for (let i = 0; i < 10; i++) {
+      const host = createFirebaseHost({ pageId: `AUTH${i}`, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
+      const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getAuth, onAuthStateChanged } from '${CDN('auth')}'; onAuthStateChanged(getAuth(), async (u) => { document.getElementById('app').textContent = 'auth:' + (u && u.uid); await new Promise((r) => setTimeout(r, 50)); document.getElementById('app').textContent += ':done'; });</script></body></html>`;
+      const p = await bootPage('xpizza-kitchen', { host, html });
+      try { const settled = await p.settle(); if (settled && p.doc.getElementById('app').textContent === `auth:${STAFF}:done`) good += 1; } finally { p.close(); await host.close(); }
+    }
+    assert.strictEqual(good, 10, FAIL('AUTH', `the initial auth delivery (+ its callback's work) was not awaited in ${10 - good}/10 runs (settle() immediately after boot — no subscription polling, no barrier)`));
+    ok('codex r7 P1-2: the INITIAL onAuthStateChanged delivery and the work its callback returns (a 50 ms page timer) — awaited 10/10, settle() called immediately after boot');
+  }
+  {
+    await rtdb.ref('__r3probe/async_cb').set({ v: 7 });
+    const host = createFirebaseHost({ pageId: 'ASYNCCB', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
+    const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getDatabase, ref, onValue } from '${CDN('database')}'; onValue(ref(getDatabase(), '__r3probe/async_cb'), async (s) => { await new Promise((r) => setTimeout(r, 30)); document.getElementById('app').textContent = 'v:' + s.val().v; });</script></body></html>`;
+    const p = await bootPage('xpizza-kitchen', { host, html });
+    try {
+      const settled = await p.settle();
+      assert.ok(settled && p.doc.getElementById('app').textContent === 'v:7', FAIL('ASYNCCB', `an async onValue callback awaiting a page timer deadlocked (${JSON.stringify({ settled, text: p.doc.getElementById('app').textContent })})`));
+    } finally { p.close(); await host.close(); }
+    ok('codex r7 P2: an async onValue callback awaiting a 30 ms page timer — the timer fires (a continuation, not I/O) and the render completes');
   }
   console.log(`\nr3-p0-pages: OK (${n})`);
   process.exit(0);

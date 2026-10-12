@@ -8,12 +8,18 @@
  *    → a SyntheticModule over the adapter's exports; any OTHER remote URL → REFUSED (reported, never silently stubbed);
  *  · remote CLASSIC scripts (maps SDKs, fonts) are not executed; each is reported in `skipped` so a page that needed one
  *    shows as a GAP rather than passing;
- *  · VIRTUAL TIME (codex r6 / advisor structural call): the page's setTimeout / setInterval / requestAnimationFrame / Date /
- *    performance.now run on a virtual clock — nothing fires on real time. settle(horizonMs) drains the microtask queue,
- *    then fires every timer due within the horizon (periodic ones included, as normal code), awaiting ALL resulting work:
- *    each callback's returned promise, fetch / XHR, and the adapter's reads / writes / callables (host.inflight()). It
- *    returns true only when nothing is due within the horizon and nothing is in flight. There is NO exemption: a display
- *    clock simply runs and does nothing; anything that writes is a normal, awaited effect.
+ *  · VIRTUAL TIMERS, REAL WALL CLOCK (codex r6 structural call; r7 clock-domain ruling): the page's setTimeout /
+ *    setInterval / requestAnimationFrame / requestIdleCallback and its QUEUED TASKS (window.postMessage) run on the
+ *    harness's own task queue against a VIRTUAL timer clock — nothing fires on real time. Date / performance.now stay REAL,
+ *    so browser time stays coherent with server timestamps (countdowns / age-outs behave as in production); a cell that
+ *    needs elapsed wall time uses the server-side scheduler control explicitly.
+ *    settle(horizonMs) drains microtasks; waits (real time) while REAL I/O is in flight; else runs the next task / timer
+ *    due within the horizon, awaiting its returned work (and every event listener's returned promise). There is NO
+ *    exemption: a display clock simply runs; anything that writes is a normal, awaited effect.
+ *    SEMANTICS (stated): true = nothing due within the horizon AND nothing TRACKED in flight. It is NOT global quiescence:
+ *    an UNRETURNED continuation awaiting a timer beyond the horizon is not tracked (true); a RETURNED promise awaiting it is
+ *    (false at the real-time cap). Queued-task sources the harness cannot virtualize (MessageChannel, BroadcastChannel,
+ *    Worker, SharedWorker) FAIL CLOSED: if the window exposes one, bootPage throws.
  *
  * bootPage() never edits a page file: every rewrite is on the import graph (specifier → module), not on source text.
  */
@@ -40,8 +46,8 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const ctx = dom.getInternalVMContext();
 
   // ── VIRTUAL TIME ──
-  const RealDate = win.Date; const realNow = () => RealDate.now();
-  let offset = 0; const now = () => realNow() + offset;    // browser time = real time + the virtual time advanced by settle()
+  const realNow = () => Date.now();                          // the harness's (and the page's) REAL wall clock
+  let vnow = 0; const now = () => vnow;                       // the VIRTUAL timer clock — advanced only by settle()
   const pending = new Set(); let seqT = 0;
   // work in flight: a key stays in `pending` until the callback AND the promise it returned (an async render) finish
   const finish = (key, r, what) => {
@@ -67,16 +73,28 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   win.setInterval = (fn, ms, ...a) => addTimer('interval', fn, ms, a, true);
   win.clearTimeout = (id) => { timers.delete(id); };
   win.clearInterval = (id) => { timers.delete(id); };
-  const t0v = now();
   win.requestAnimationFrame = (fn) => addTimer('raf', fn, 16, null, false);
   win.cancelAnimationFrame = (id) => { timers.delete(id); };
-  class VDate extends RealDate { constructor(...a) { if (a.length) super(...a); else super(now()); } static now() { return now(); } }
-  win.Date = VDate;
-  try { Object.defineProperty(win.performance, 'now', { value: () => now() - t0v, configurable: true }); } catch (_) { /* jsdom without performance */ }
+  win.requestIdleCallback = (fn) => addTimer('idle', () => fn({ didTimeout: false, timeRemaining: () => 50 }), 1, [], false);
+  win.cancelIdleCallback = (id) => { timers.delete(id); };
+  // codex r7 P1-1: QUEUED TASKS are virtualized too — window.postMessage is delivered through this task queue (a 0 ms
+  // task), so settle() runs it and awaits the listeners' work; a chain of messages is a chain of tasks
+  win.postMessage = (data, targetOrigin) => { addTimer('message', () => { win.dispatchEvent(new win.MessageEvent('message', { data, origin: win.location.origin, source: win })); }, 0, [], false); };
+  // every EVENT LISTENER's returned promise (an async handler) is tracked work
+  { const wrapped = new WeakMap(); const ET = win.EventTarget.prototype; const add = ET.addEventListener; const rem = ET.removeEventListener;
+    const wrap = (l) => { if (typeof l !== 'function') return l; if (!wrapped.has(l)) wrapped.set(l, function (ev) { return runTracked((e) => l.call(this, e), [ev], `listener ${ev && ev.type}`); }); return wrapped.get(l); };
+    ET.addEventListener = function (type, l, o) { return add.call(this, type, wrap(l), o); };
+    ET.removeEventListener = function (type, l, o) { return rem.call(this, type, (typeof l === 'function' && wrapped.get(l)) || l, o); };
+    let onmsg = null;
+    Object.defineProperty(win, 'onmessage', { configurable: true, get: () => onmsg, set: (f) => { if (onmsg) win.removeEventListener('message', onmsg); onmsg = typeof f === 'function' ? f : null; if (onmsg) win.addEventListener('message', onmsg); } });
+  }
+  // FAIL CLOSED: a queued-task source the harness cannot virtualize must not exist silently
+  const UNVIRTUALIZED = ['MessageChannel', 'BroadcastChannel', 'Worker', 'SharedWorker'];
+  for (const k of UNVIRTUALIZED) if (typeof win[k] !== 'undefined') throw new Error(`r3-page: the window exposes ${k} — a queued-task source settle() cannot virtualize; virtualize it before use (FAIL CLOSED)`);
   const fire = (t) => {
     if (t.every) t.due = Math.max(t.due + Math.max(t.delay, 4), now()); else timers.delete(t.id);   // browsers clamp a 0 ms interval
     if (typeof t.fn !== 'function') { try { vm.runInContext(String(t.fn), ctx); } catch (e) { errors.push(`timer (string): ${e && e.stack || e}`); } return; }
-    runTracked(t.fn, t.kind === 'raf' ? [now() - t0v] : t.args, t.kind);
+    runTracked(t.fn, t.kind === 'raf' ? [win.performance.now()] : t.args, t.kind);
   };
   // the timers currently scheduled (diagnostics): due within `withinMs` of now
   const dueSites = (withinMs = horizonMs) => [...timers.values()].filter((t) => t.due <= now() + withinMs).map((t) => `${t.kind} ${t.delay}ms due +${Math.max(0, t.due - now())}ms — ${t.cb} (${t.site})`);
@@ -151,8 +169,13 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
 
   // in flight = page work (timer / frame callbacks and the promises they returned, fetch, XHR) + the adapter's (subscription
   // callbacks that returned a promise, outstanding reads / writes / callables)
-  const ioInflight = () => io.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
-  const inflight = () => pending.size + ioInflight();
+  // host: REAL I/O (ioInflight) vs page continuations (contInflight — callbacks' returned promises, which may await a
+  // virtual timer); a host without the split counts all as I/O
+  const hostIo = () => (host ? (typeof host.ioInflight === 'function' ? host.ioInflight() : (typeof host.inflight === 'function' ? host.inflight() : 0)) : 0);
+  const hostCont = () => (host && typeof host.contInflight === 'function' ? host.contInflight() : 0);
+  const ioInflight = () => io.size + hostIo();
+  const contInflight = () => pending.size + hostCont();
+  const inflight = () => contInflight() + ioInflight();
   const turn = () => new Promise((r) => setImmediate(r));
   // settle(horizonMs): fire every timer due within the horizon (virtual time jumps to each due time), awaiting all resulting
   // work; true only when nothing is due within the horizon AND nothing is in flight. Order: drain microtasks; while REAL I/O
@@ -161,21 +184,23 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   // are stuck → wait, false at the cap. false also if the page schedules without end inside the horizon (> maxFirings).
   async function settle(horizon = horizonMs, { capMs = settleMs, maxFirings = 20000 } = {}) {
     const t0 = realNow(); const limit = now() + horizon; let fired = 0;
+    const unsupported = UNVIRTUALIZED.filter((k) => typeof win[k] !== 'undefined');   // FAIL CLOSED (also if added after boot)
+    if (unsupported.length) { errors.push(`settle: the page window exposes ${unsupported.join(', ')} — queued-task sources settle() cannot virtualize (FAIL CLOSED)`); return false; }
     for (;;) {
       for (let i = 0; i < 3; i++) await turn();          // drain the microtask queue: continuations a timer resolved run now
       if (ioInflight() > 0) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
       let next = null;
       for (const t of timers.values()) if (t.due <= limit && (!next || t.due < next.due || (t.due === next.due && t.id < next.id))) next = t;
       if (!next) {
-        if (pending.size) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
+        if (contInflight()) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
         await turn(); await turn(); if (inflight() === 0 && ![...timers.values()].some((t) => t.due <= limit)) return true; continue;
       }
       if (++fired > maxFirings) { errors.push(`settle: more than ${maxFirings} timer firings within a ${horizon} ms horizon — the page schedules without end`); return false; }
-      if (next.due > now()) offset += next.due - now();
+      if (next.due > vnow) vnow = next.due;
       fire(next);
     }
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { now, skewMs: () => offset }, close: () => { timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow }, close: () => { timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

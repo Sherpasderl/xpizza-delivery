@@ -64,10 +64,11 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
   // the KDS completion shape (write after 700 ms, render after another 700 ms) is reached within the horizon — virtually
   {
     const p = await bootPage('xpizza-functions', { html: page(`window.__t0 = Date.now(); setTimeout(async () => { await Promise.resolve(); window.__wrote = 1; setTimeout(() => { document.getElementById('app').textContent = 'archived'; window.__t2 = Date.now(); }, 700); }, 700);`) });
-    const t0 = Date.now(); const settled = await p.settle(); const real = Date.now() - t0; const virt = p.win.__t2 - p.win.__t0;   // the PAGE's own clock
+    const t0 = Date.now(); const settled = await p.settle(); const real = Date.now() - t0; const virt = p.clock.virtualMs(); const wall = p.win.__t2 - p.win.__t0;
     assert.ok(settled && p.win.__wrote === 1 && p.doc.getElementById('app').textContent === 'archived' && virt >= 1400, FAIL(`a 700 ms + 700 ms transition was certified unfinished (${JSON.stringify({ settled, wrote: p.win.__wrote, virt })})`));
+    assert.ok(wall < 1000, FAIL(`the page's WALL clock advanced with the virtual timers (${wall} ms) — Date must stay real (codex r7 P1-3)`));
     p.close();
-    ok(`a 700 ms write + 700 ms render transition (the KDS completion shape): settle() fired both on virtual time (${virt} ms of browser time, ${real} ms real)`);
+    ok(`a 700 ms write + 700 ms render transition (the KDS completion shape): both timers fired on the VIRTUAL timer clock (${virt} ms) while the page's wall clock stayed real (${wall} ms; ${real} ms real)`);
   }
   // a FINITE retry sequence (3 attempts, 200 ms) runs to its last attempt
   {
@@ -130,6 +131,65 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
     assert.ok(settled && writes.length === 2 && writes[0][0] === 'orders/probe', FAIL(`a tick's SDK write was not awaited (${JSON.stringify({ settled, writes })})`));
     p.close();
     ok(`a periodic tick's SDK write (update(ref(db, 'orders/probe'))): both firings in the 10 s horizon (${writes.length}) LANDED before settle() returned`);
+  }
+  // codex r7 P1-1: QUEUED TASKS — window.postMessage is delivered through the harness's task queue and its listeners'
+  // work is awaited. Codex's probe (25 runs) and the chained-message probe
+  {
+    let all = 0;
+    for (let i = 0; i < 25; i++) {
+      const log = [];
+      const p = await bootPage('xpizza-functions', { html: page(`addEventListener('message', () => fetch('/write')); setTimeout(() => postMessage('go', '*'), 0);`), fetchImpl: slowFetch(log) });
+      const settled = await p.settle(); const hit = log.find((x) => x.u === '/write'); p.close();
+      if (settled && hit && hit.done) all += 1;
+    }
+    assert.strictEqual(all, 25, FAIL(`codex's postMessage probe: the write was not awaited in ${25 - all}/25 runs`));
+    const log = [];
+    const p = await bootPage('xpizza-functions', { html: page(`let hops = 0; window.onmessage = async (e) => { hops++; if (hops < 5) { postMessage('hop' + hops, '*'); return; } await new Promise((r) => setTimeout(r, 250)); await fetch('/chained'); document.getElementById('app').textContent = 'hops:' + hops; }; setTimeout(() => postMessage('hop0', '*'), 0);`), fetchImpl: slowFetch(log) });
+    const settled = await p.settle(); const hit = log.find((x) => x.u === '/chained');
+    assert.ok(settled && hit && hit.done && p.doc.getElementById('app').textContent === 'hops:5', FAIL(`the chained-message probe was not awaited (${JSON.stringify({ settled, hit, text: p.doc.getElementById('app').textContent })})`));
+    p.close();
+    ok(`queued tasks are virtualized: codex's postMessage → listener → fetch probe awaited 25/25; a 5-hop message chain whose async onmessage awaits a timer then writes — awaited and rendered`);
+    // an EVENT LISTENER's returned promise is tracked: an async click handler that never resolves → never "settled"
+    const q = await bootPage('xpizza-functions', { html: page(`document.getElementById('app').addEventListener('click', async () => { await new Promise(() => {}); }); setTimeout(() => document.getElementById('app').click(), 0);`) });
+    const sq = await q.settle(1000, { capMs: 400 }); q.close();
+    assert.strictEqual(sq, false, FAIL('an async event listener\'s unfinished work was not tracked'));
+    ok('an event listener\'s returned promise is tracked: an async click handler that never resolves → settle() false');
+  }
+  // FAIL CLOSED: a queued-task source the harness cannot virtualize (MessageChannel / BroadcastChannel / Worker /
+  // SharedWorker) → settle() is false with the reason; stock jsdom exposes none (asserted)
+  {
+    const p0 = await bootPage('xpizza-functions', { html: page('') });
+    const none = ['MessageChannel', 'BroadcastChannel', 'Worker', 'SharedWorker'].filter((k) => typeof p0.win[k] !== 'undefined'); p0.close();
+    const p = await bootPage('xpizza-functions', { html: page(`window.__late = 1;`) });
+    p.win.MessageChannel = function MessageChannel() {};
+    const settled = await p.settle(); const why = p.errors.find((e) => /cannot virtualize/.test(e)); p.close();
+    assert.ok(none.length === 0 && settled === false && why, FAIL(`an unvirtualizable queued-task source did not fail closed (${JSON.stringify({ none, settled, why })})`));
+    ok('fail closed: stock jsdom exposes no MessageChannel / BroadcastChannel / Worker / SharedWorker; if a window has one, settle() is false with the reason');
+  }
+  // codex r7 P1-3: CLOCK DOMAINS — timers virtual, wall clock real. Codex's probe: the REAL driver startCountdownTick()
+  // against a deadline 60 s ahead; after 7 default settles (70 s of virtual timer time) the chip still matches the server
+  // remaining (~60 s), not 0 s
+  {
+    const drv = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-driver', 'index.html'), 'utf8');
+    const j0 = drv.indexOf('function startCountdownTick()'); let dd = 0; let j1 = drv.indexOf('{', j0);
+    for (; j1 < drv.length; j1++) { if (drv[j1] === '{') dd++; else if (drv[j1] === '}' && --dd === 0) break; }
+    const deadline = Date.now() + 60000;
+    const p = await bootPage('xpizza-driver', { html: `<!doctype html><html><body><span class="accept-countdown" data-deadline="${deadline}"></span><script>let countdownTickInterval = null; ${drv.slice(j0, j1 + 1)}\nstartCountdownTick();</script></body></html>` });
+    for (let i = 0; i < 7; i++) assert.ok(await p.settle(), FAIL('countdown page did not settle'));
+    const shown = parseInt(p.doc.querySelector('.accept-countdown').textContent, 10); const server = Math.ceil((deadline - Date.now()) / 1000); const virt = p.clock.virtualMs(); p.close();
+    assert.ok(virt >= 69000 && Math.abs(shown - server) <= 1 && shown >= 58, FAIL(`the driver countdown diverged from the server remaining (${JSON.stringify({ shown, server, virt })})`));
+    ok(`clock domains: the REAL driver countdown after 7 settles (${virt} ms of virtual timer time) shows ${shown}s — the server remaining is ${server}s (wall clock real; no skew)`);
+  }
+  // the HORIZON semantics, stated and pinned: true = nothing due within the horizon AND nothing TRACKED in flight — not
+  // global quiescence. An UNRETURNED continuation awaiting a timer BEYOND the horizon is not tracked → true; the same wait
+  // RETURNED from the callback is tracked → false at the real-time cap; a horizon that reaches the timer → true, and done
+  {
+    const un = await bootPage('xpizza-functions', { html: page(`setTimeout(() => { new Promise((r) => setTimeout(r, 20000)).then(() => { window.__late = 1; }); }, 0);`) });
+    const a = await un.settle(); const lateA = !!un.win.__late; un.close();
+    const re = await bootPage('xpizza-functions', { html: page(`setTimeout(() => new Promise((r) => setTimeout(r, 20000)).then(() => { window.__late = 1; }), 0);`) });
+    const b2 = await re.settle(10000, { capMs: 400 }); const c = await re.settle(30000); const lateC = !!re.win.__late; re.close();
+    assert.ok(a === true && !lateA && b2 === false && c === true && lateC, FAIL(`horizon semantics (${JSON.stringify({ a, lateA, b2, c, lateC })})`));
+    ok('horizon semantics pinned: an UNRETURNED wait beyond the horizon → true (not tracked); RETURNED → false at the cap; a 30 s horizon reaches it → true and done');
   }
   console.log(`\nr3-page-harness: OK (${n})`);
   process.exit(0);

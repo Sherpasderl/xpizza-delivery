@@ -31,9 +31,13 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   const app = appFor(`r3-${pageId}`, options);
   const db = app.database();
   const subs = []; let seq = 0; const getCalls = []; const callbackErrors = [];
-  // codex r1 P1-5: adapter work IN FLIGHT — a page callback that returned a promise, an outstanding read / write
-  let pendingWork = 0;
-  const track = (p) => { if (!p || typeof p.then !== 'function') return p; pendingWork += 1; const done = () => { pendingWork -= 1; }; p.then(done, done); return p; };
+  // adapter work IN FLIGHT, in two kinds (codex r7 P2): REAL I/O — outstanding reads / writes / pushes / transactions /
+  // callables, a listen awaiting its initial data, the initial auth delivery — and PAGE CONTINUATIONS — the promise a page
+  // callback returned (it may await a page timer, which only the harness's virtual clock can fire). settle() waits for
+  // I/O in real time, and fires virtual timers while only continuations are pending.
+  let ioWork = 0; let contWork = 0;
+  const track = (p) => { if (!p || typeof p.then !== 'function') return p; ioWork += 1; const done = () => { ioWork -= 1; }; p.then(done, done); return p; };
+  const trackCont = (p) => { if (!p || typeof p.then !== 'function') return p; contWork += 1; const done = () => { contWork -= 1; }; p.then(done, done); return p; };
   const SV = admin.database.ServerValue;
 
   // ── snapshots / refs (modular shapes over Admin compat objects) ──
@@ -73,7 +77,7 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
     const guard = (fn) => {
       let r;
       try { r = fn(); } catch (e) { callbackErrors.push({ sub: rec.id, path: rec.path, error: String(e && e.stack || e).slice(0, 600) }); return; }
-      if (r && typeof r.then === 'function') track(r.then(undefined, (e) => { callbackErrors.push({ sub: rec.id, path: rec.path, error: `async: ${String(e && e.stack || e).slice(0, 600)}` }); }));
+      if (r && typeof r.then === 'function') trackCont(r.then(undefined, (e) => { callbackErrors.push({ sub: rec.id, path: rec.path, error: `async: ${String(e && e.stack || e).slice(0, 600)}` }); }));
     };
     const handler = kind === 'value'
       ? (s) => { rec.delivered += 1; rec.lastSeq = ++seq; guard(() => cb(wrapSnap(s))); }
@@ -117,7 +121,8 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
     set: (r, v) => track(adminOf(r).set(v)),
     update: (r, v) => track(adminOf(r).update(v)),
     remove: (r) => track(adminOf(r).remove()),
-    push: (r, v) => { const t = adminOf(r).push(v); const w = wrapRef(t); if (v !== undefined) { w.then = (a, b) => t.then((x) => wrapRef(x)).then(a, b); w.catch = (b) => t.catch(b); } return w; },
+    // codex r7 P1-2: push(value)'s ACKNOWLEDGEMENT is tracked I/O (an unawaited push from a timer still holds settle())
+    push: (r, v) => { const t = adminOf(r).push(v); const w = wrapRef(t); if (v !== undefined) { track(Promise.resolve(t).then(() => undefined)); w.then = (a, b) => t.then((x) => wrapRef(x)).then(a, b); w.catch = (b) => t.catch(b); } return w; },
     runTransaction: (r, fn, opts) => track((async () => { const res = await adminOf(r).transaction(fn, undefined, opts && opts.applyLocally !== undefined ? opts.applyLocally : true); return { committed: res.committed, snapshot: wrapSnap(res.snapshot), toJSON: () => ({ committed: res.committed }) }; })()),
     serverTimestamp: () => SV.TIMESTAMP,
     increment: (n) => SV.increment(n),
@@ -128,7 +133,15 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   const authObj = { currentUser: authUser };
   const auth = {
     getAuth: () => authObj,
-    onAuthStateChanged: (_a, cb) => { setTimeout(() => cb(authObj.currentUser), 0); return () => {}; },
+    // codex r7 P1-2: the INITIAL auth delivery is tracked I/O until the callback ran; the work it returns is a continuation
+    onAuthStateChanged: (_a, cb) => {
+      track(new Promise((resolve) => setTimeout(() => {
+        try { const r = cb(authObj.currentUser); if (r && typeof r.then === 'function') trackCont(r.then(undefined, (e) => { callbackErrors.push({ sub: 'auth', path: 'auth', error: `async: ${String(e && e.stack || e).slice(0, 600)}` }); })); }
+        catch (e) { callbackErrors.push({ sub: 'auth', path: 'auth', error: String(e && e.stack || e).slice(0, 600) }); }
+        resolve();
+      }, 0)));
+      return () => {};
+    },
     signInWithEmailAndPassword: async () => { authObj.currentUser = authUser; return { user: authUser }; },
     signOut: async () => { authObj.currentUser = null; },
     getIdToken: async (u) => (u || authUser).getIdToken(),
@@ -160,7 +173,7 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   async function close() { for (const s of subs) s.off && s.off(); bref.off(); await app.delete(); }
 
   return { pageId, db, modules: { 'firebase-app': appMod, 'firebase-database': database, 'firebase-auth': auth, 'firebase-functions': functions },
-    subs, getCalls, callbackErrors, barrier, seq: () => seq, inflight: () => pendingWork, close };
+    subs, getCalls, callbackErrors, barrier, seq: () => seq, inflight: () => ioWork + contWork, ioInflight: () => ioWork, contInflight: () => contWork, close };
 }
 
 module.exports = { createFirebaseHost, appFor };
