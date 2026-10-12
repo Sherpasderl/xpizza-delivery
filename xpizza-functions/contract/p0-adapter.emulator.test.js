@@ -90,6 +90,9 @@ async function runSuite(sdk) {
   // AD4 unsubscribe stops delivery
   {
     const s = both('u', [], ['value']);
+    // both sides' INITIAL delivery first: a write racing the subscriptions' registration gives one connection the
+    // initial null and the other the already-written value — registration timing, not SDK semantics
+    for (let i = 0; i < 100 && !(s.logs.adapter.length && s.logs.client.length); i += 1) await sleep(20);
     await writer.ref('u/x').set(1); await settleEq(s.logs, 'AD4');
     const before = { a: s.logs.adapter.length, c: s.logs.client.length };
     s.off();
