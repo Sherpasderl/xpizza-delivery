@@ -604,6 +604,24 @@ export function subscribeItemAvailability(rid, callback) {
   return onValue(ref(db, `restaurants/${rid}/item_availability`), (snap) => callback(snap.val() || {}));
 }
 
+// ── KDS cancelados cross-device archive ack (additive; KDS 2-device fix) ──
+// A cancelled order carries NO server terminal flag (unlike delivered→'Archivado'), so the per-device
+// localStorage "Archivar" ack never synced → cancelados returned to Abiertos on reopen on a 2-device kitchen.
+// kds_cancel_acks/{orderId} = { at, by } is the shared SERVER truth. Kitchen-role read+write only (RTDB rule).
+// Never touches /orders (the "KDS writes ONLY status via setOrderStatus" invariant is preserved).
+export function subscribeCancelAcks(callback) {
+  return onValue(ref(db, 'kds_cancel_acks'), (snap) => callback(snap.val() || {}));
+}
+// Archive ack — the acking device also keeps its local completedSet overlay (instant optimistic move).
+export function writeCancelAck(orderId) {
+  const uid = (auth && auth.currentUser && auth.currentUser.uid) || null;
+  return set(ref(db, `kds_cancel_acks/${orderId}`), { at: serverTimestamp(), by: uid });
+}
+// Recall — remove the ack so an un-archive propagates across devices (else the ack re-completes it).
+export function removeCancelAck(orderId) {
+  return remove(ref(db, `kds_cancel_acks/${orderId}`));
+}
+
 /**
  * Dispatcher alerts: things the dispatcher needs to be notified about
  * (e.g., auto-assign couldn't find a driver). Each alert is a record

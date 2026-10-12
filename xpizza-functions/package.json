@@ -62,6 +62,7 @@
     "test:add-product": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/add-product.emulator.test.js && node test/add-product-golden.emulator.test.js && node test/add-product-intake.emulator.test.js && node test/extra-price-edit.emulator.test.js && node test/add-product-groups.emulator.test.js && node test/add-product-groups-intake.emulator.test.js && node test/add-product-groups-matrix.emulator.test.js && node test/add-product-groups-collision.emulator.test.js\"",
     "test:kds-manifest-writer": "node --test kds-manifest-writer.test.mjs",
     "test:kitchen-staff-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
+    "test:kds-cancel-acks": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kds-cancel-acks-rules.emulator.test.js\"",
     "test:client-version": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-version.emulator.test.js\"",
     "test:pselfupdate-createorder-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pselfupdate-createorder-trace.emulator.test.js\"",
     "test:order-exists": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/order-exists.emulator.test.js\"",

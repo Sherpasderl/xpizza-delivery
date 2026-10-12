@@ -98,6 +98,32 @@ ok('CONTRACT no-timeline-write: the write set is CLOSED to {null, preparing, rea
   assert.equal(deriveTab({ id: 'ready', estado: KDS_STATUS.LISTO }, completed), 'open');          ok('deriveTab: ready (LISTO) not-bumped → OPEN (ready pickup stays active until Entregado)');
 }
 
+// ── KDS cancel-ack (2-device fix): a cancelled order with a SERVER ack (kds_cancel_acks) classifies and
+//    shows EXACTLY like today's local completedSet bump — durable + shared across devices. Parity invariant:
+//    wherever completedSet.has(id) is consulted, (completedSet.has(id) || cancelAcks[id]) is consulted. ──
+{
+  const acks = { acked: { at: 1, by: 'u' } };
+  // deriveTab: cancelled + ack → completed; cancelled + no ack → open (today's stop-cooking behavior)
+  assert.equal(deriveTab({ id: 'acked', estado: KDS_STATUS.CANCELADO }, new Set(), acks), 'completed'); ok('cancel-ack: cancelled + server ack → completed (the 2-device fix)');
+  assert.equal(deriveTab({ id: 'noack', estado: KDS_STATUS.CANCELADO }, new Set(), acks), 'open');       ok('cancel-ack: cancelled + NO ack → open (unchanged)');
+  // PARITY: an acked order classifies identically to a local completedSet bump
+  assert.equal(deriveTab({ id: 'acked', estado: KDS_STATUS.CANCELADO }, new Set(), acks),
+               deriveTab({ id: 'lb', estado: KDS_STATUS.CANCELADO }, new Set(['lb']), {}),               'deriveTab ack==bump'); ok('cancel-ack: deriveTab parity with the local completedSet bump');
+  // NO-REGRESSION: delivered/listo never depend on cancelAcks
+  assert.equal(deriveTab({ id: 'del', estado: KDS_STATUS.ARCHIVADO }, new Set(), {}), 'completed'); ok('cancel-ack: delivered (Archivado) unchanged under empty acks');
+  assert.equal(deriveTab({ id: 'rdy', estado: KDS_STATUS.LISTO }, new Set(), acks), 'open');        ok('cancel-ack: a LISTO order is unaffected by an unrelated acks map');
+
+  // completedTabVisible: an acked cancelled order is ALWAYS shown (parity with a local bump — even ancient);
+  //   a no-ack cancelled order is not completed-visible at all (deriveTab→open).
+  const now = 1_000_000_000, WIN = 60_000;
+  const ancientCancel = { id: 'acked', estado: KDS_STATUS.CANCELADO, created_at: now - 10 * 24 * 3600_000 };
+  assert.equal(completedTabVisible(ancientCancel, new Set(), acks, now, WIN), true); ok('cancel-ack: completedTabVisible ack → ALWAYS shown (no recency gate, parity with bump)');
+  assert.equal(completedTabVisible({ ...ancientCancel, id: 'noack' }, new Set(), {}, now, WIN), false); ok('cancel-ack: completedTabVisible no-ack cancelled → not shown');
+  // PARITY confirm (the advisor's gate check): ack visibility === local-bump visibility for the SAME ancient order.
+  assert.equal(completedTabVisible(ancientCancel, new Set(), acks, now, WIN),
+               completedTabVisible({ ...ancientCancel, id: 'lb' }, new Set(['lb']), {}, now, WIN)); ok('cancel-ack: completedTabVisible parity with the local bump (both always-shown)');
+}
+
 // ── paginate: clamps, slices, derives counts ──
 {
   const list = Array.from({ length: 25 }, (_, i) => ({ id: 'o' + i }));
@@ -134,16 +160,16 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   const set = new Set(['LOCAL-1']);
   // (a) this session's local bump → always shown (even if its anchor is ancient)
   const localBump = { id: 'LOCAL-1', estado: KDS_STATUS.LISTO, hora: new Date(now - 100 * HR).toISOString() };
-  assert.equal(completedTabVisible(localBump, set, now, WIN), true, 'local-bumped completed → shown regardless of age');
+  assert.equal(completedTabVisible(localBump, set, {}, now, WIN), true, 'local-bumped completed → shown regardless of age');
   // (b) a server-delivered order completed TODAY/recent → shown
   const recentDelivered = { id: 'SRV-NEW', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 2 * HR).toISOString() };
-  assert.equal(completedTabVisible(recentDelivered, set, now, WIN), true, 'recent server-delivered → shown');
+  assert.equal(completedTabVisible(recentDelivered, set, {}, now, WIN), true, 'recent server-delivered → shown');
   // (c) an OLD server-delivered order (outside the window) → EXCLUDED (this is the endless-scroll fix)
   const oldDelivered = { id: 'SRV-OLD', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 100 * HR).toISOString() };
-  assert.equal(completedTabVisible(oldDelivered, set, now, WIN), false, 'old server-delivered → EXCLUDED from the tab');
+  assert.equal(completedTabVisible(oldDelivered, set, {}, now, WIN), false, 'old server-delivered → EXCLUDED from the tab');
   // (d) a non-completed (open) order → never in the completed tab
   const openOrder = { id: 'OPEN-1', estado: KDS_STATUS.PREP, hora: new Date(now).toISOString() };
-  assert.equal(completedTabVisible(openOrder, set, now, WIN), false, 'an open order is never completed-tab-visible');
+  assert.equal(completedTabVisible(openOrder, set, {}, now, WIN), false, 'an open order is never completed-tab-visible');
   ok('completedTabVisible: session bump always + recent server-completed shown; OLD delivered excluded');
 }
 
@@ -202,16 +228,16 @@ assert.equal(countOffPage([], new Set()), 0);                   ok('countOffPage
   const set = new Set();
   // completed_at recent but created (hora) ancient → SHOWN (keys on completion time, not created_at).
   const doneRecent = { id: 'd1', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 100 * HR).toISOString(), completed_at: new Date(now - 1 * HR).toISOString() };
-  assert.equal(completedTabVisible(doneRecent, set, now, WIN), true, 'recent completed_at (ancient created) → shown');
+  assert.equal(completedTabVisible(doneRecent, set, {}, now, WIN), true, 'recent completed_at (ancient created) → shown');
   // completed_at ancient but created (hora) recent → EXCLUDED (keys on completion time, ignores fresh created).
   const doneOld = { id: 'd2', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 1 * HR).toISOString(), completed_at: new Date(now - 100 * HR).toISOString() };
-  assert.equal(completedTabVisible(doneOld, set, now, WIN), false, 'ancient completed_at (fresh created) → EXCLUDED');
+  assert.equal(completedTabVisible(doneOld, set, {}, now, WIN), false, 'ancient completed_at (fresh created) → EXCLUDED');
   // future completed_at (clock skew) → clamped to now → treated as recent → shown.
   const doneFuture = { id: 'd3', estado: KDS_STATUS.ARCHIVADO, hora: null, completed_at: new Date(now + 60 * 60 * 1000).toISOString() };
-  assert.equal(completedTabVisible(doneFuture, set, now, WIN), true, 'future completed_at → clamped to now (skew guard) → shown');
+  assert.equal(completedTabVisible(doneFuture, set, {}, now, WIN), true, 'future completed_at → clamped to now (skew guard) → shown');
   // no completed_at → falls back to the hora anchor (recent → shown).
   const noStamp = { id: 'd4', estado: KDS_STATUS.ARCHIVADO, hora: new Date(now - 2 * HR).toISOString() };
-  assert.equal(completedTabVisible(noStamp, set, now, WIN), true, 'no completed_at → falls back to hora anchor');
+  assert.equal(completedTabVisible(noStamp, set, {}, now, WIN), true, 'no completed_at → falls back to hora anchor');
   ok('#5 completedTabVisible: recency anchored on completed_at (+ hora fallback) + future-clamp');
 }
 
