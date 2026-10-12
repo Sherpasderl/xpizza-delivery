@@ -34,6 +34,12 @@ for (const [name, code, re] of [
   ['root-unresolved-payload', "createOrderApp.all(async (req, res) => { await rtdb.ref().update(buildNewMoneyPayload()); });", /opaque order write unresolved: .*unresolved-root-write .*buildNewMoneyPayload/],
   ['root-computed-key', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ [newOrderPath]: { ['service_charge_cents']: 900 } }); });", /opaque order write unresolved: .*computed-key-at-root .*newOrderPath/],
   ['root-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...newMoneyUpdates }); });", /opaque order write unresolved: .*spread-at-root .*newMoneyUpdates/],
+  // codex r4 P1-1: NESTED spreads at the root / orders (the rule applies recursively, at every depth)
+  ['root-nested-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...newMoneyUpdates } }); });", /opaque order write unresolved: .*spread-at-root .*newMoneyUpdates/],
+  ['root-spread-computed-key', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ [newOrderPath]: { ['service_charge_cents']: 900 } } }); });", /opaque order write unresolved: .*computed-key-at-root .*newOrderPath/],
+  ['root-triple-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...{ ...newMoneyUpdates } } }); });", /opaque order write unresolved: .*spread-at-root .*newMoneyUpdates/],
+  ['root-nested-resolved-field', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...{ ['orders/probe/surcharge_cents']: 900 } } }); });", /NEW order field written: 'surcharge_cents'/],
+  ['orders-nested-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').update({ ...{ ...newMoneyUpdates } }); });", /opaque order write unresolved: .*spread-in-order-write .*newMoneyUpdates/],
   ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));

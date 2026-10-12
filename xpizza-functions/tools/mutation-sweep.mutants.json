@@ -11637,5 +11637,20 @@
       "node",
       "contract/census.negative.test.js"
     ]
+  },
+  {
+    "id": "r3p0-11",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "                else if (guarded) opaqueW(fn, nb === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));",
+    "to": "                else if (guarded && sd === 0) opaqueW(fn, nb === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));",
+    "label": "an unresolved spread NESTED inside a resolved spread under the root / orders is silently accepted (codex r4 P1-1)",
+    "kills_with": [
+      "root-nested-spread"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
   }
 ]

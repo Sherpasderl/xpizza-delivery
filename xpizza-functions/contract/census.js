@@ -302,18 +302,23 @@ function census({ explicit = [], extraUnits = [] } = {}) {
         const objs = objOf(value);
         // codex r3 P1-1: an UNRESOLVED payload at the root or /orders can carry any order field → opaque (RED unless bound)
         if (!objs.length) { opaqueW(fn, segs.length === 0 ? 'unresolved-root-write' : 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }
-        for (const o of objs) for (const q of o.properties) {
-          if (q.type === 'SpreadElement') {   // a spread at root / orders: resolved through its object, else opaque
-            const inner = objOf(q.argument);
-            if (!inner.length) { opaqueW(fn, segs.length === 0 ? 'spread-at-root' : 'spread-above-orders', q, srcOf(q.argument)); continue; }
-            for (const o2 of inner) for (const q2 of o2.properties) { if (q2.type === 'SpreadElement') { opaqueW(fn, 'spread-at-root', q2, srcOf(q2.argument)); continue; } const k2 = q2.computed ? staticPath(q2.key) : (q2.key && (q2.key.name || q2.key.value)); if (k2 === null || k2 === undefined) { opaqueW(fn, 'computed-key-at-root', q2, srcOf(q2.key)); continue; } if (segs.length === 0 && !String(k2).startsWith('orders')) continue; pathWrite(fn, `${p}/${k2}`, q2.value, q2, `${how}/above/spread`, depth + 1); }
-            continue;
+        // codex r4 P1-1: spreads are followed RECURSIVELY (a spread of a spread of …) — an unresolved spread or a
+        // non-static key at ANY depth under the root / orders is opaque
+        const above = (props, sd, h) => {
+          for (const q of props) {
+            if (q.type === 'SpreadElement') {
+              const inner = sd < 6 ? objOf(q.argument) : [];
+              if (!inner.length) { opaqueW(fn, segs.length === 0 ? 'spread-at-root' : 'spread-above-orders', q, srcOf(q.argument)); continue; }
+              above(inner.flatMap((o) => o.properties), sd + 1, `${h}/spread`);
+              continue;
+            }
+            const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
+            if (k === null || k === undefined) { opaqueW(fn, segs.length === 0 ? 'computed-key-at-root' : 'computed-key-above-orders', q, srcOf(q.key)); continue; }
+            if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree
+            pathWrite(fn, `${p}/${k}`, q.value, q, h, depth + 1);
           }
-          const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
-          if (k === null || k === undefined) { opaqueW(fn, segs.length === 0 ? 'computed-key-at-root' : 'computed-key-above-orders', q, srcOf(q.key)); continue; }
-          if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree
-          pathWrite(fn, `${p}/${k}`, q.value, q, `${how}/above`, depth + 1);
-        }
+        };
+        above(objs.flatMap((o) => o.properties), 0, `${how}/above`);
         return;
       }
       if (segs[0] !== 'orders') return;
@@ -328,25 +333,24 @@ function census({ explicit = [], extraUnits = [] } = {}) {
         const m = node.callee.property.name; const v = node.arguments[0];
         const updObjs = m === 'update' && v ? (v.type === 'ObjectExpression' ? [v] : objOf(v)) : [];
         if (m === 'update' && updObjs.length) {
-          for (const p of updObjs.flatMap((o) => o.properties)) {
-            if (p.type === 'SpreadElement') {   // a conditional / variable spread inside a multipath update: its keys are paths under base
-              const inner = objOf(p.argument);
-              if (inner.length) {
-                for (const o of inner) for (const q of o.properties) {
-                  if (q.type === 'SpreadElement') { if (normPath(base).startsWith('orders')) opaqueW(fn, 'spread-in-order-write', q, srcOf(q.argument)); continue; }
-                  // codex r2 P1-1: a COMPUTED key inside an update spread is resolved, or opaque — never skipped
-                  const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
-                  if (k === null || k === undefined) { if (normPath(base).startsWith('orders')) opaqueW(fn, 'computed-key-in-order-write', q, srcOf(q.key)); continue; }
-                  pathWrite(fn, `${base}/${k}`, q.value, q, 'update/spread');
-                }
+          // codex r4 P1-1: ONE recursive rule for every depth — a spread (conditional / variable / literal / builder) is
+          // resolved through its object(s) and its keys are paths under base; an unresolved spread or a non-static key
+          // at ANY depth under the root or /orders is an opaque write (RED unless bound), never skipped
+          const nb = normPath(base); const guarded = nb === '' || nb.startsWith('orders');
+          const upd = (props, sd, how) => {
+            for (const p of props) {
+              if (p.type === 'SpreadElement') {
+                const inner = sd < 6 ? objOf(p.argument) : [];
+                if (inner.length) upd(inner.flatMap((o) => o.properties), sd + 1, 'update/spread');
+                else if (guarded) opaqueW(fn, nb === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));
+                continue;
               }
-              else if (normPath(base) === '' || normPath(base).startsWith('orders')) opaqueW(fn, normPath(base) === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));
-              continue;
+              const key = p.computed ? staticPath(p.key) : (p.key && (p.key.name || p.key.value));
+              if (key === null || key === undefined) { if (guarded) opaqueW(fn, nb === '' ? 'computed-key-at-root' : 'computed-key-in-order-write', p, srcOf(p.key)); continue; }
+              pathWrite(fn, `${base}/${key}`, p.value, p, how);
             }
-            const key = p.computed ? staticPath(p.key) : (p.key.name || p.key.value);
-            if (key === null || key === undefined) { if (normPath(base) === '' || normPath(base).startsWith('orders')) opaqueW(fn, normPath(base) === '' ? 'computed-key-at-root' : 'computed-key-in-order-write', p, srcOf(p.key)); continue; }
-            pathWrite(fn, `${base}/${key}`, p.value, p, 'update');
-          }
+          };
+          upd(updObjs.flatMap((o) => o.properties), 0, 'update');
           return;
         }
         if (m === 'transaction') {
