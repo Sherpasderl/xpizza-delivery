@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const stripComments = require('./tools/strip-comments');
-const { HUNKS, FILES, unapplyD12b } = require('./tools/d12b-inverse');
+const { HUNKS, FILES, unapplyD12b, unapplyD12bIndex } = require('./tools/d12b-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
@@ -32,6 +32,19 @@ for (const f of FILES) assert.strictEqual(unapplyD12b(f, read(f)), baseOf(f), `�
   assert.throws(() => unapplyD12b(f, src + h.now), /occurs 2 times/, 'a duplicated hunk is detected');
 }
 ok(`PROOF: unapplyD12b → ${BASE} byte-for-byte for ${FILES.length} modules (${HUNKS.length} hunks, each once); a byte inside/outside a hunk and a duplicated hunk are each detected`);
+
+// ── 1b. index.js (codex D12b r1 P2-2): ONE delimited, byte-pinned block — requestOtp's message ──
+{
+  const real = read('index.js');
+  const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+  assert.notStrictEqual(unapplyD12bIndex(real), real, 'non-vacuity: the d12b block is present and swapped back');
+  assert.strictEqual(unapplyD12bIndex(real), baseIdx, `🔴 index.js minus the d12b block is not ${BASE}:index.js`);
+  assert.throws(() => unapplyD12bIndex(real.replace('whatsapp.tplOtp({ code })', 'whatsapp.tplOtp({ code: 1 })')), /pinned bytes/, 'an edit INSIDE the block');
+  assert.throws(() => unapplyD12bIndex(real.replace('exports.verifyOtp', '/* d12b:begin */\n/* d12b:end */\nexports.verifyOtp')), /exactly one/, 'a second block');
+  assert.throws(() => unapplyD12bIndex(real.replace('/* d12b:end */', '')), /exactly one/, 'a missing delimiter');
+  assert.notStrictEqual(unapplyD12bIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), baseIdx, 'a byte OUTSIDE the block survives (the base pin catches it)');
+}
+ok(`index.js: unapplyD12bIndex → ${BASE}:index.js byte-for-byte; an edit inside, a second block, a missing delimiter and a byte outside are each caught`);
 
 // ── 2. the tracking brand = the pickup line's brand ──
 const cob = stripComments(read('create-order-build.js')); const mat = stripComments(read('materialize.js'));

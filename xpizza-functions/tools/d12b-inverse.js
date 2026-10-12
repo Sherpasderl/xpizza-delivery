@@ -47,4 +47,23 @@ function unapplyD12b(file, src) {
   return out;
 }
 const FILES = Object.freeze([...new Set(HUNKS.map((h) => h.file))]);
-module.exports = { HUNKS, FILES, unapplyD12b };
+
+// ── index.js: ONE delimited block (requestOtp's message — codex D12b r1 P2-2) ──────────────────────────────────────────────
+// The block's EXACT bytes are pinned (an edit inside it is detected); unapplyD12bIndex swaps it back for the ORIGINAL two lines,
+// so unapplyD12bIndex(index.js) === acd606e:index.js byte-for-byte (d12b-wiring.guard). Every index.js fold guard applies it
+// FIRST (D12b is the newest index.js slice), before D4-c2b's block.
+const crypto = require('crypto');
+const INDEX_BEGIN = '/* d12b:begin */';
+const INDEX_END = '/* d12b:end */';
+const INDEX_BLOCK = /[ \t]*\/\* d12b:begin \*\/\n[\s\S]*?\/\* d12b:end \*\/\n/g;
+const INDEX_BLOCK_SHA256 = '288d8eafd9fecdc2157676d2529ab6e7a113d2e15e23db19f289509ec4b92ca8';
+const INDEX_ORIGINAL = "      const brand = restaurantId === 'la_musa' ? 'La Musa' : 'X. Pizza';\n      await whatsapp.sendMessage(phone, `Tu código de ${brand} es ${code}. Vence en 5 minutos. No lo compartas.`, restaurantId);\n";
+function unapplyD12bIndex(src) {
+  const begins = src.split(INDEX_BEGIN).length - 1; const ends = src.split(INDEX_END).length - 1;
+  const blocks = src.match(INDEX_BLOCK) || [];
+  if (begins !== 1 || ends !== 1 || blocks.length !== 1) throw new Error(`d12b-inverse: expected exactly one d12b index.js block (begin ${begins}, end ${ends}, blocks ${blocks.length})`);
+  if (crypto.createHash('sha256').update(blocks[0]).digest('hex') !== INDEX_BLOCK_SHA256) throw new Error('d12b-inverse: the d12b index.js block differs from its pinned bytes');
+  return src.replace(INDEX_BLOCK, () => INDEX_ORIGINAL);
+}
+
+module.exports = { HUNKS, FILES, unapplyD12b, unapplyD12bIndex, INDEX_BEGIN, INDEX_END, INDEX_BLOCK_SHA256 };

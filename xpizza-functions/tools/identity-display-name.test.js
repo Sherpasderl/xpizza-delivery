@@ -24,6 +24,8 @@ function fakeRtdb(init = {}) {
   assert.deepStrictEqual(p, { ok: true, row: { path: 'restaurants/x_pizza/identity/display_name', from: null, to: 'X. Pizza' }, label: { before: 'Recoger en X Pizza', after: 'Recoger en X. Pizza' } });
   assert.deepStrictEqual(planDisplayName({ op: 'delete', rid: 'x_pizza', current: { ...X, display_name: 'X. Pizza' } }).row, { path: 'restaurants/x_pizza/identity/display_name', from: 'X. Pizza', to: null });
   for (const bad of ['', '   ', ' X. Pizza', 'X. Pizza ', 'x'.repeat(61), 7, null]) assert.strictEqual(planDisplayName({ op: 'set', rid: 'x_pizza', value: bad, current: X }).ok, false, `refuses ${JSON.stringify(bad)}`);
+  // codex D12b r1 P2-1: private-use code points (a marker) and control characters are refused — never stored as a brand
+  for (const bad of ['X. Pizza\uE000brand\uE000', '\uE000', 'X\u0007Pizza', 'X\u0085', 'X\uDB80\uDC00']) assert.match(planDisplayName({ op: 'set', rid: 'x_pizza', value: bad, current: X }).error || '', /display name must be/, `refuses ${JSON.stringify(bad)}`);
   for (const bad of [null, { name: 'Sushi' }, { ...X, hub_lat: 'oops' }, { ...X, active: 'yes' }, { ...X, name: '' }]) {
     assert.match(planDisplayName({ op: 'set', rid: 'r3', value: 'Sushi', current: bad }).error || '', /not routing-valid/, `never into a non-routing-valid identity ${JSON.stringify(bad && Object.keys(bad).length)}`);
   }

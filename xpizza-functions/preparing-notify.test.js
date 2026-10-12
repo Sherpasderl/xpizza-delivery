@@ -36,8 +36,11 @@ assert.strictEqual(RP.length, 1, 'resolvePrepEtaMin takes ONLY the config value 
 ok('resolvePrepEtaMin is brand-blind (single arg)');
 
 // ── tplPreparing: readiness wording, copy varies by order_type, both brands ──
-const TP = whatsapp.tplPreparing;
-assert.strictEqual(typeof TP, 'function', 'tplPreparing exported');
+assert.strictEqual(typeof whatsapp.tplPreparing, 'function', 'tplPreparing exported');
+// D12b: tplPreparing returns a DEFERRED message; sendMessage renders it with the brand resolved from config — rendered here
+// with each brand's resolved name
+const BRANDS = { x_pizza: 'X. Pizza', la_musa: 'La Musa' };
+const TP = (args) => whatsapp.renderTemplate(whatsapp.tplPreparing(args), BRANDS[args.restaurantId]);
 
 for (const rid of ['x_pizza', 'la_musa']) {
   // pickup
@@ -45,7 +48,7 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.ok(p.includes('preparando'), `[${rid}] pickup: says preparando`);
   assert.ok(p.includes('~20 min'), `[${rid}] pickup: interpolates the ETA`);
   assert.ok(/listo para recoger/i.test(p), `[${rid}] pickup: readiness-for-pickup wording`);
-  assert.ok(p.includes(whatsapp.BRAND_TOKEN) || p.includes(whatsapp.itemsEmojiFor(rid)), `[${rid}] pickup: brand-scoped chrome (D12b: the brand placeholder, resolved at send)`);
+  assert.ok(p.includes(BRANDS[rid]) || p.includes(whatsapp.itemsEmojiFor(rid)), `[${rid}] pickup: brand-scoped chrome (D12b: the brand from config, rendered)`);
   assert.ok(p.includes(whatsapp.trackingUrl('TK1', rid)), `[${rid}] pickup: tracking link when token present`);
   // NOT a dispatch/arrival promise
   assert.ok(!/sale hacia vos|en camino en ~|llega en ~|llegada/i.test(p), `[${rid}] pickup: no dispatch/arrival promise`);

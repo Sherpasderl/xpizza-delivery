@@ -4,7 +4,8 @@
 //
 // restaurants/{rid}/identity/display_name is the brand as customers see it ("X. Pizza", whose config `name` is "X Pizza").
 // It is OPTIONAL: absent, the pickup line uses `name`. The plan:
-//   • refuses a value the reader would ignore (blank, padded, or longer than BRAND_MAX) — what is written is what is shown;
+//   • refuses a value the reader would ignore (blank, padded, longer than BRAND_MAX, or carrying control / private-use characters)
+//     — what is written is what is shown;
 //   • refuses a restaurant whose identity is not ROUTING-VALID (restaurant-config's isRoutingValid — the exact shape intake
 //     requires): it never writes into, or creates, a partial identity node;
 //   • writes ONE path and reads it back.

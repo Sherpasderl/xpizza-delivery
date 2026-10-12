@@ -1,8 +1,10 @@
 'use strict';
 // D12b — WhatsApp names the restaurant from its OWN config (restaurants/{rid}/identity: display_name → name → neutral),
-// through the REAL sendMessage: the template's placeholder is resolved before the POST, for x_pizza (byte-identical to the
-// old literal once display_name is seeded), la_musa and a synthetic THIRD restaurant; a failed read sends NEUTRAL copy,
-// never another brand; a body without a placeholder sends unchanged with NO identity read; the placeholder never leaks.
+// through the REAL sendMessage. A branded template is a DEFERRED message: sendMessage resolves the brand FIRST and then
+// renders the template with `brand` as an argument (codex D12b r1 P2-1) — no text substitution ever runs over customer data.
+// Covered: x_pizza (byte-identical to the old literal once display_name is seeded), la_musa, a synthetic THIRD restaurant;
+// neutral copy when nothing names the restaurant; customer text carrying marker-like strings is sent VERBATIM; a configured
+// marker never becomes a brand; plain strings are sent unchanged with no read; a look-alike object is refused; the OTP.
 const assert = require('assert');
 const path = require('path');
 
@@ -19,65 +21,101 @@ delete require.cache[require.resolve('./whatsapp')];
 const w = require('./whatsapp');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const PHONE = '+50499998888';
 const ID = {
   x_pizza: { name: 'X Pizza', display_name: 'X. Pizza' },   // the post-seed identity (owner step, RUNBOOK-D12)
   la_musa: { name: 'La Musa', display_name: null },
   r3_synth: { name: 'Sushi Sur', display_name: 'Sushi Sur HN' },
 };
-const reader = (calls) => async (rid) => { calls.push(rid); return ID[rid] || null; };
+const reader = (calls, ids = ID) => async (rid) => { calls.push(rid); return ids[rid] || null; };
 
 (async () => {
+  // ── 1. every branded template, three restaurants, through the REAL send ──
   for (const [rid, brand] of [['x_pizza', 'X. Pizza'], ['la_musa', 'La Musa'], ['r3_synth', 'Sushi Sur HN']]) {
     sent.length = 0; const calls = [];
     const msgs = [
       [w.tplOrderReceived({ customerName: 'Ana', total: 299, itemsText: 'X', trackingToken: 'T', restaurantId: rid }), `Recibimos tu pedido en ${brand} ✅`],
+      [w.tplPickupReceived({ customerName: 'Ana', total: 299, itemsText: 'X', pickupTime: 'standard', trackingToken: 'T', restaurantId: rid }), `Recibimos tu pedido en ${brand} ✅`],
       [w.tplPickupReady({ customerName: 'Ana', trackingToken: 'T', restaurantId: rid }), `Ya puedes pasar por ${brand} a recogerlo.`],
       [w.tplDelivered({ customerName: 'Ana', restaurantId: rid }), `Esperamos que disfrutes ${brand}, Ana.`],
       [w.tplCancelled({ orderId: 'P-1', restaurantId: rid }), `pedido #P-1 en ${brand} fue cancelado.`],
-      [w.tplPreparing({ customerName: 'Ana', etaMinutes: 20, orderType: 'pickup', trackingToken: 'T', restaurantId: rid }), `Estamos preparando tu pedido en ${brand}`],
+      [w.tplPreparing({ customerName: 'Ana', etaMinutes: 20, orderType: 'pickup', trackingToken: 'T', restaurantId: rid }), `Estamos preparando tu pedido en ${brand} —`],
+      [w.tplOtp({ code: '123456' }), `Tu código de ${brand} es 123456. Vence en 5 minutos. No lo compartas.`],
     ];
-    for (const [body] of msgs) assert.ok(await w.sendMessage('+50499998888', body, rid, { readBrand: reader(calls) }), `${rid}: sent`);
+    for (const [m] of msgs) { assert.ok(w.isDeferred(m), `${rid}: a deferred message`); assert.ok(await w.sendMessage(PHONE, m, rid, { readBrand: reader(calls) }), `${rid}: sent`); }
     msgs.forEach(([, want], i) => assert.ok(sent[i].body.includes(want), `${rid}: "${want}" in ${JSON.stringify(sent[i].body)}`));
-    assert.ok(sent.every((s) => !s.body.includes('')), `${rid}: no placeholder ever reaches the wire`);
     assert.deepStrictEqual(calls, msgs.map(() => rid), `${rid}: the brand was read for THIS restaurant`);
     if (rid !== 'x_pizza') assert.ok(sent.every((s) => !/X\.? ?Pizza/.test(s.body)), `🔴 ${rid}: never "X. Pizza"`);
   }
-  ok('the REAL sendMessage resolves the brand from each restaurant\'s config before the POST: x_pizza "X. Pizza" (today\'s text), la_musa "La Musa", a third "Sushi Sur HN"; no placeholder reaches the wire');
+  ok('the REAL sendMessage resolves the brand first, then renders: 7 templates (incl. the OTP) × x_pizza "X. Pizza" (today\'s text), la_musa, a third "Sushi Sur HN"');
 
-  // no display_name configured → the config name; a failed / null read → NEUTRAL copy (never another brand)
-  sent.length = 0;
-  await w.sendMessage('+50499998888', w.tplPickupReady({ trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza', { readBrand: async () => ({ name: 'X Pizza' }) });
-  assert.ok(sent[0].body.includes('pasar por X Pizza a recogerlo'), 'before the owner seed: the config name (why the seed comes first)');
-  for (const readBrand of [async () => null, async () => { throw new Error('down'); }, async () => ({ name: '  ', display_name: '' })]) {
+  // ── 2. neutral copy: nothing names the restaurant (null / failed / blank / unshowable) ──
+  const neutral = [
+    [w.tplOrderReceived({ customerName: 'Ana', total: 1, itemsText: 'X', trackingToken: 'T', restaurantId: 'la_musa' }), 'Recibimos tu pedido ✅'],
+    [w.tplPickupReady({ trackingToken: 'T', restaurantId: 'la_musa' }), 'Ya puedes pasar por el restaurante a recogerlo.'],
+    [w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }), 'Esperamos que disfrutes tu pedido, Ana.'],
+    [w.tplCancelled({ orderId: 'P-1', restaurantId: 'la_musa' }), 'pedido #P-1 fue cancelado.'],
+    [w.tplPreparing({ etaMinutes: 20, orderType: 'pickup', trackingToken: 'T', restaurantId: 'la_musa' }), 'Estamos preparando tu pedido —'],
+    [w.tplOtp({ code: '654321' }), 'Tu código es 654321. Vence en 5 minutos. No lo compartas.'],
+  ];
+  for (const readBrand of [async () => null, async () => { throw new Error('down'); }, async () => ({ name: '  ', display_name: '' }), async () => ({ name: 'Ab', display_name: '\u0007' })]) {
     sent.length = 0;
-    await w.sendMessage('+50499998888', w.tplPickupReady({ trackingToken: 'T', restaurantId: 'la_musa' }), 'la_musa', { readBrand });
-    await w.sendMessage('+50499998888', w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }), 'la_musa', { readBrand });
-    assert.ok(sent[0].body.includes('pasar por el restaurante a recogerlo') && sent[1].body.includes('disfrutes tu pedido, Ana.'), `neutral copy: ${JSON.stringify(sent.map((s) => s.body))}`);
+    for (const [m] of neutral) await w.sendMessage(PHONE, m, 'la_musa', { readBrand });
+    neutral.forEach(([, want], i) => assert.ok(sent[i].body.includes(want), `neutral "${want}" in ${JSON.stringify(sent[i].body)}`));
     assert.ok(sent.every((s) => !/X\.? ?Pizza|La Musa/.test(s.body)), '🔴 no brand is guessed');
   }
-  ok('display_name absent → the config name; a null / failed / blank read → NEUTRAL copy ("el restaurante", "tu pedido") — never another brand');
-
-  // a body WITHOUT a placeholder (an inbound reply, a locked owner sentence) is sent unchanged and reads nothing
-  sent.length = 0; const calls = [];
-  const plain = 'Recibimos tu pago. Lastimosamente el pedido se recibió fuera de horario.';
-  await w.sendMessage('+50499998888', plain, 'x_pizza', { readBrand: reader(calls) });
-  assert.deepStrictEqual([sent[0].body, calls], [plain, []], 'unchanged, and NO identity read');
-  ok('a body without a placeholder is sent byte-unchanged with no identity read');
-
-  // the default reader is the bounded, fail-soft live read (no Admin app here → it fails soft → neutral, never a throw)
   sent.length = 0;
-  await w.sendMessage('+50499998888', w.tplPickupReady({ trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza');
+  await w.sendMessage(PHONE, w.tplPickupReady({ trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza', { readBrand: async () => ({ name: 'X Pizza' }) });
+  assert.ok(sent[0].body.includes('pasar por X Pizza a recogerlo'), 'no display_name → the config name (why the owner seed comes first)');
+  ok('nothing names the restaurant (null / failed / blank / unshowable) → each template\'s NEUTRAL wording, never another brand; no display_name → the config name');
+
+  // ── 3. codex r1 P2-1: customer text is NEVER rewritten — marker-like strings reach the wire verbatim ──
+  for (const evil of ['Ana brand', 'brand', '{{brand}}', 'brand-or-meal', '${brand}']) {
+    sent.length = 0;
+    await w.sendMessage(PHONE, w.tplPickupReady({ customerName: evil, trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza', { readBrand: reader([]) });
+    await w.sendMessage(PHONE, w.tplOrderReceived({ customerName: evil, itemsText: `Pizza (notas: ${evil})`, total: 1, trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza', { readBrand: reader([]) });
+    assert.ok(sent[0].body.includes(`¡Hola ${evil}! 👋 Ya puedes pasar por X. Pizza`), `the name "${evil}" is sent verbatim: ${JSON.stringify(sent[0].body)}`);
+    assert.ok(sent[1].body.includes(`¡Hola ${evil}!`) && sent[1].body.includes(`Pizza (notas: ${evil})`), `name + notes verbatim: ${JSON.stringify(sent[1].body)}`);
+    assert.strictEqual((sent[0].body.match(/X\. Pizza/g) || []).length, 1, 'the brand appears exactly once (where the template puts it)');
+  }
+  // an inbound reply / any plain string — even one carrying a marker — is sent unchanged with NO identity read
+  for (const plain of ['Recibimos tu pago. Lastimosamente el pedido se recibió fuera de horario.', 'eco: brand {{brand}} brand']) {
+    sent.length = 0; const calls = [];
+    await w.sendMessage(PHONE, plain, 'x_pizza', { readBrand: reader(calls) });
+    assert.deepStrictEqual([sent[0].body, calls], [plain, []], `plain "${plain.slice(0, 30)}…" unchanged, and NO read`);
+  }
+  // a configured display_name carrying a marker / control char is NOT a brand (the config name is used; nothing leaks)
+  sent.length = 0;
+  await w.sendMessage(PHONE, w.tplPickupReady({ trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza', { readBrand: async () => ({ name: 'X Pizza', display_name: 'X. Pizzabrand' }) });
+  assert.ok(sent[0].body.includes('pasar por X Pizza a recogerlo') && !sent[0].body.includes(''), `a configured marker is never a brand, never on the wire: ${JSON.stringify(sent[0].body)}`);
+  ok('codex r1 P2-1: customer names / notes carrying "brand", private-use markers, {{brand}}, ${brand} are sent VERBATIM; plain strings (inbound) unchanged with no read; a configured marker is never a brand and never reaches the wire');
+
+  // ── 4. only messages MINTED by this module are rendered — a look-alike object is refused, not rendered ──
+  sent.length = 0;
+  const fake = Object.freeze({ name: 'otp', args: Object.freeze({ code: '000000' }) });
+  assert.strictEqual(w.isDeferred(fake), false);
+  assert.strictEqual(await w.sendMessage(PHONE, fake, 'x_pizza', { readBrand: reader([]) }), null, 'refused (an invalid body)');
+  assert.strictEqual(sent.length, 0, 'nothing sent');
+  assert.throws(() => w.renderTemplate(fake, 'X'), /minted/);
+  ok('a look-alike { name, args } object is not a minted message: refused, nothing sent');
+
+  // ── 5. the default reader: fails SOFT without an Admin app (neutral, the send still happens) ──
+  sent.length = 0;
+  await w.sendMessage(PHONE, w.tplPickupReady({ trackingToken: 'T', restaurantId: 'x_pizza' }), 'x_pizza');
   assert.ok(sent[0].body.includes('pasar por el restaurante a recogerlo'), `default reader without an Admin app → neutral (${sent[0].body})`);
   ok('the default reader fails SOFT (no Admin app → neutral copy, the send still happens)');
 
-  // no brand literal survives in the WhatsApp modules (code, not comments)
-  const strip = require('./tools/strip-comments');
+  // ── 6. no brand literal survives in the WhatsApp modules or the OTP block (code, not comments) ──
+  const fs = require('fs'); const strip = require('./tools/strip-comments');
   for (const f of ['whatsapp.js', 'whatsapp_inbound.js']) {
-    const code = strip(require('fs').readFileSync(path.join(__dirname, f), 'utf8'));
+    const code = strip(fs.readFileSync(path.join(__dirname, f), 'utf8'));
     assert.ok(!/X\.? ?Pizza|La Musa/.test(code), `🔴 ${f} carries a brand-name literal`);
-    assert.ok(!/BRAND_BY_RESTAURANT|restaurantName\s*:/.test(code), `🔴 ${f}: the per-brand name map is gone`);
+    assert.ok(!/BRAND_BY_RESTAURANT|restaurantName\s*:|\\uE000/.test(code), `🔴 ${f}: the name map / placeholder machinery is gone`);
   }
-  ok('no brand-name literal and no per-brand name map in whatsapp.js / whatsapp_inbound.js');
+  const idx = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  const otp = idx.slice(idx.indexOf('/* d12b:begin */'), idx.indexOf('/* d12b:end */'));
+  assert.ok(otp.includes('whatsapp.tplOtp({ code })') && !/X\.? ?Pizza|La Musa|la_musa/.test(otp), '🔴 the OTP message is the config-branded template, no literal');
+  ok('no brand-name literal, no name map and no placeholder machinery in whatsapp.js / whatsapp_inbound.js; the OTP block uses tplOtp');
 
   console.log(`\nwhatsapp-brand: OK (${n})`);
 })().catch((e) => { console.error('whatsapp-brand FAILED:', e); process.exit(1); });

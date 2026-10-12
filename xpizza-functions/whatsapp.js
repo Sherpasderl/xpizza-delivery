@@ -37,25 +37,36 @@ const DEFAULT_COUNTRY_CODE = '504';
 const TRACKING_BASE = 'https://xpizzatrack.netlify.app';
 
 // D12b — the customer-facing brand comes from the restaurant's OWN config (restaurants/{rid}/identity: display_name, else
-// name — the same resolution as the tracker's pickup line), never a per-brand literal map. The templates are pure and
-// synchronous, so they emit a PLACEHOLDER (private-use code points, never typed by a person); sendMessage — already async,
-// already given the restaurant — resolves it from the live identity just before the send (D12's bounded, fail-soft read).
-// When nothing names the restaurant the copy stays neutral: "el restaurante", or "tu pedido" where the brand is the object
-// of "disfrutes" (tplDelivered) — never another brand's name.
-const BRAND_TOKEN = '\uE000brand\uE000';
-const BRAND_OR_MEAL_TOKEN = '\uE000brand-or-meal\uE000';
-const NEUTRAL = { [BRAND_TOKEN]: 'el restaurante', [BRAND_OR_MEAL_TOKEN]: 'tu pedido' };
+// name — the same resolution as the tracker's pickup line), never a per-brand literal map. A branded template is a DEFERRED
+// message (codex D12b r1 P2-1): tplX(args) returns a minted, frozen { name, args }; sendMessage — already async, already
+// given the restaurant — resolves the brand and only THEN renders the template with `brand` as an explicit ARGUMENT. No
+// text substitution ever runs over customer data (names, notes, inbound replies), so nothing a customer types, and no
+// configured value, can be rewritten into a brand or leak a marker. When nothing names the restaurant each template uses
+// its own neutral wording — never another brand's name. Plain strings are sent exactly as given, with no identity read.
 const { brandOf, readLiveBrand } = require('./pickup-label');
+const MINTED = new WeakSet();   // only messages minted by this module's tplX are rendered — a look-alike object is not
+function defer(name, args) {
+  const m = Object.freeze({ name, args: Object.freeze({ ...args }) });
+  MINTED.add(m);
+  return m;
+}
+const isDeferred = (m) => !!m && typeof m === 'object' && MINTED.has(m);
+// The default reader: D12b's bounded, fail-soft live read of the identity's two names (two leaf reads per branded message —
+// fine at this volume; no memo, so a fresh display_name is used at once).
 function defaultReadBrand(restaurantId) {
   try { return readLiveBrand(require('firebase-admin/database').getDatabase(), restaurantId); } catch (_) { return Promise.resolve(null); }
 }
-// → the body with every placeholder replaced (unchanged, and NO read, when it carries none)
-async function resolveBrandTokens(body, restaurantId, { readBrand = defaultReadBrand } = {}) {
-  if (typeof body !== 'string' || !(body.includes(BRAND_TOKEN) || body.includes(BRAND_OR_MEAL_TOKEN))) return body;
+async function resolveBrand(restaurantId, { readBrand = defaultReadBrand } = {}) {
   let live = null;
   try { live = await readBrand(restaurantId); } catch (_) { live = null; }
-  const brand = brandOf(live && live.display_name, live && live.name);
-  return body.split(BRAND_TOKEN).join(brand || NEUTRAL[BRAND_TOKEN]).split(BRAND_OR_MEAL_TOKEN).join(brand || NEUTRAL[BRAND_OR_MEAL_TOKEN]);
+  return brandOf(live && live.display_name, live && live.name);   // the brand, or null → the template's neutral wording
+}
+// render a minted deferred message with a resolved brand (null → neutral wording); throws on anything else
+function renderTemplate(msg, brand) {
+  if (!isDeferred(msg)) throw new Error('whatsapp: renderTemplate needs a message minted by a tpl* function');
+  const r = RENDERERS[msg.name];
+  if (typeof r !== 'function') throw new Error(`whatsapp: unknown template ${msg.name}`);
+  return r({ ...msg.args, brand: brand || null });
 }
 
 // Per-restaurant customer-facing food copy (E1). x_pizza values are the EXACT current literals →
@@ -127,11 +138,11 @@ async function sendMessage(toPhone, body, restaurantId = 'x_pizza', deps = {}) {
   if (!normalized) {
     return null;
   }
+  if (isDeferred(body)) body = renderTemplate(body, await resolveBrand(restaurantId, deps));   // D12b: brand first, then render
   if (!body || typeof body !== 'string') {
     console.warn('whatsapp: empty/invalid body, skipping send');
     return null;
   }
-  body = await resolveBrandTokens(body, restaurantId, deps);   // D12b: the brand, from this restaurant's own config
 
   try {
     const params = new URLSearchParams({
@@ -244,11 +255,11 @@ function trackingUrl(token, restaurantId = 'x_pizza') {
   return `${base}/${token}`;
 }
 
-function tplOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId }) {
+function renderOrderReceived({ customerName, orderId, itemsText, total, trackingToken, restaurantId, brand }) {
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
-    `Recibimos tu pedido en ${BRAND_TOKEN} ✅`,
+    brand ? `Recibimos tu pedido en ${brand} ✅` : 'Recibimos tu pedido ✅',
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     `💰 Total: L${total}`,
@@ -266,14 +277,14 @@ function tplOrderReceived({ customerName, orderId, itemsText, total, trackingTok
 // pickupTime is either the literal string 'standard' (= ASAP, ~20 min) or
 // a human-readable label like '6:00 PM–6:20 PM' selected by the customer
 // from the schedule sheet on the order form.
-function tplPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId }) {
+function renderPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId, brand }) {
   const timeLine = pickupTime === 'standard'
     ? 'Estará listo en aproximadamente 20 minutos.'
     : `Hora de recogida: ${pickupTime}`;
   return [
     `¡Hola ${customerName || ''}! 👋`,
     ``,
-    `Recibimos tu pedido en ${BRAND_TOKEN} ✅`,
+    brand ? `Recibimos tu pedido en ${brand} ✅` : 'Recibimos tu pedido ✅',
     ``,
     `${itemsEmojiFor(restaurantId)} ${itemsText || ''}`,
     `💰 Total: L${total}`,
@@ -310,19 +321,19 @@ function tplOutForDelivery({ driverName, etaMinutes, trackingToken, restaurantId
   ].join('\n');
 }
 
-function tplDelivered({ customerName, restaurantId }) {
+function renderDelivered({ customerName, restaurantId, brand }) {
   return [
     `✅ ¡Entregado!`,
     ``,
-    `Esperamos que disfrutes ${BRAND_OR_MEAL_TOKEN}${customerName ? ', ' + customerName : ''}.`,
+    `Esperamos que disfrutes ${brand || 'tu pedido'}${customerName ? ', ' + customerName : ''}.`,
     ``,
     `¿Algún problema con tu pedido? Responde a este mensaje y te ayudamos.`
   ].join('\n');
 }
 
-function tplCancelled({ orderId, restaurantId }) {
+function renderCancelled({ orderId, restaurantId, brand }) {
   return [
-    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''} en ${BRAND_TOKEN} fue cancelado.`,
+    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''}${brand ? ' en ' + brand : ''} fue cancelado.`,
     ``,
     `Si pagaste por adelantado, te contactaremos pronto sobre el reembolso.`,
     ``,
@@ -334,11 +345,11 @@ function tplCancelled({ orderId, restaurantId }) {
 // (the kitchen "Listo" tap), AT MOST ONCE per order. Per-restaurant brand/emoji/link resolve via
 // resolveWhatsappConfig. The tracking link is INCLUDED when a token is present and OMITTED otherwise
 // (never build a URL from an absent/bad token) — the core "listo para recoger" message still sends.
-function tplPickupReady({ customerName, trackingToken, restaurantId }) {
+function renderPickupReady({ customerName, trackingToken, restaurantId, brand }) {
   const lines = [
     `${itemsEmojiFor(restaurantId)} ¡Tu pedido está listo para recoger!`,
     ``,
-    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Ya puedes pasar por ${BRAND_TOKEN} a recogerlo. 🏪`
+    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Ya puedes pasar por ${brand || 'el restaurante'} a recogerlo. 🏪`
   ];
   if (trackingToken) {
     lines.push(``, `Detalles:`, trackingUrl(trackingToken, restaurantId));
@@ -361,14 +372,14 @@ function resolvePrepEtaMin(value) {
 // "Empezar"), AT MOST ONCE per order. READINESS wording only — a prep-stage ETA cannot promise dispatch, so
 // delivery points to the later "va en camino" instead of an arrival/departure time. Tracking link included
 // when a token is present, OMITTED otherwise (never build a URL from an absent token) — like tplPickupReady.
-function tplPreparing({ customerName, etaMinutes, orderType, trackingToken, restaurantId }) {
+function renderPreparing({ customerName, etaMinutes, orderType, trackingToken, restaurantId, brand }) {
   const readiness = orderType === 'pickup'
     ? `estará listo para recoger en ~${etaMinutes} min.`
     : `estará listo en ~${etaMinutes} min. Te avisamos apenas salga en camino.`;
   const lines = [
     `👨‍🍳 ¡Manos a la obra!`,
     ``,
-    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Estamos preparando tu pedido en ${BRAND_TOKEN} — ${readiness}`
+    `${customerName ? '¡Hola ' + customerName + '! 👋 ' : ''}Estamos preparando tu pedido${brand ? ' en ' + brand : ''} — ${readiness}`
   ];
   if (trackingToken) {
     lines.push(``, `Sigue tu pedido:`, trackingUrl(trackingToken, restaurantId));
@@ -377,15 +388,34 @@ function tplPreparing({ customerName, etaMinutes, orderType, trackingToken, rest
   return lines.join('\n');
 }
 
+// One-time code (requestOtp). codex D12b r1 P2-2: the brand comes from config like every other message.
+function renderOtp({ code, brand }) {
+  return `Tu código${brand ? ' de ' + brand : ''} es ${code}. Vence en 5 minutos. No lo compartas.`;
+}
+
+const RENDERERS = Object.freeze({
+  orderReceived: renderOrderReceived, pickupReceived: renderPickupReceived, delivered: renderDelivered,
+  cancelled: renderCancelled, pickupReady: renderPickupReady, preparing: renderPreparing, otp: renderOtp,
+});
+// the PUBLIC templates: each returns a deferred message that sendMessage renders after resolving the brand
+const tplOrderReceived = (args) => defer('orderReceived', args);
+const tplPickupReceived = (args) => defer('pickupReceived', args);
+const tplDelivered = (args) => defer('delivered', args);
+const tplCancelled = (args) => defer('cancelled', args);
+const tplPickupReady = (args) => defer('pickupReady', args);
+const tplPreparing = (args) => defer('preparing', args);
+const tplOtp = (args) => defer('otp', args);
+
 module.exports = {
   sendMessage,
   isSendConfirmed,
   isEnabled,
   isEnabledForRestaurant,
   resolveWhatsappConfig,
-  resolveBrandTokens,
-  BRAND_TOKEN,
-  BRAND_OR_MEAL_TOKEN,
+  tplOtp,
+  renderTemplate,
+  resolveBrand,
+  isDeferred,
   itemsEmojiFor,
   readyLineFor,
   trackingUrl,

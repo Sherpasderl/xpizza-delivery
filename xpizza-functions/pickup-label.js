@@ -9,10 +9,12 @@
 const BRAND_MAX = 60;
 const READ_TIMEOUT_MS = 1500;
 
+// codex D12b r1 P2-1: control characters and private-use code points are never a brand (refused by the owner CLI, absent here)
+const UNSHOWABLE = /[\u0000-\u001F\u007F-\u009F\uE000-\uF8FF]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/;
 function brandText(v) {
   if (typeof v !== 'string') return null;
   const t = v.trim();
-  return t && t.length <= BRAND_MAX ? t : null;
+  return t && t.length <= BRAND_MAX && !UNSHOWABLE.test(t) ? t : null;
 }
 
 // candidates, most preferred first: the first usable one IS the brand (or null when none is usable). D12b: the same

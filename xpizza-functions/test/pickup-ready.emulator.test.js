@@ -43,7 +43,10 @@ const db = getDatabase();
 let sends = [];
 let sendMode = 'ok';
 whatsapp.sendMessage = async (phone, body, restaurantId) => {
-  sends.push({ phone, body, restaurantId });
+  // D12b: a branded template arrives DEFERRED; record what the real sendMessage sends — rendered with the brand this
+  // restaurant's config resolves to — and that it was deferred (the brand is resolved at send, never baked in)
+  const deferred = whatsapp.isDeferred(body);
+  sends.push({ phone, deferred, body: deferred ? whatsapp.renderTemplate(body, { x_pizza: 'X. Pizza', la_musa: 'La Musa' }[restaurantId] || null) : body, restaurantId });
   if (sendMode === 'throw') throw new Error('injected provider failure');
   if (sendMode === 'null') return null;
   return { id: 'MSG-' + sends.length };
@@ -273,16 +276,15 @@ let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
   // ── 9. tplPickupReady per-restaurant snapshot (brand + link / no-link) ──
   {
-    // D12b: the template carries the brand PLACEHOLDER; sendMessage resolves it from the restaurant's identity
-    // (display_name → name) — resolved here through the same function, with each brand's identity
-    const brandOf = (id) => ({ readBrand: async () => id });
+    // D12b: tplPickupReady returns a DEFERRED message; sendMessage renders it after resolving the brand from config —
+    // rendered here with each brand's resolved name
     const xpT = whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'x_pizza' });
-    assert.ok(xpT.includes(whatsapp.BRAND_TOKEN) && !xpT.includes('X. Pizza'), 'x_pizza template: the placeholder, no literal');
-    const xp = await whatsapp.resolveBrandTokens(xpT, 'x_pizza', brandOf({ name: 'X Pizza', display_name: 'X. Pizza' }));
+    assert.ok(whatsapp.isDeferred(xpT) && !/X\.? ?Pizza/.test(JSON.stringify(xpT)), 'x_pizza template: deferred, no literal');
+    const xp = whatsapp.renderTemplate(xpT, 'X. Pizza');
     assert.ok(xp.includes('X. Pizza') && xp.includes('🍕') && xp.includes('https://xpizzatrack.netlify.app/TOK'), 'x_pizza brand+emoji+link');
-    const lm = await whatsapp.resolveBrandTokens(whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'la_musa' }), 'la_musa', brandOf({ name: 'La Musa' }));
+    const lm = whatsapp.renderTemplate(whatsapp.tplPickupReady({ customerName: 'María', trackingToken: 'TOK', restaurantId: 'la_musa' }), 'La Musa');
     assert.ok(lm.includes('La Musa') && lm.includes('🍜') && lm.includes('https://track.lamusa.hn/TOK'), 'la_musa brand+emoji+own-base link');
-    const noLink = whatsapp.tplPickupReady({ customerName: 'María', trackingToken: null, restaurantId: 'x_pizza' });
+    const noLink = whatsapp.renderTemplate(whatsapp.tplPickupReady({ customerName: 'María', trackingToken: null, restaurantId: 'x_pizza' }), 'X. Pizza');
     assert.ok(!noLink.includes('http') && noLink.includes('listo para recoger'), 'no token → no link, core message intact');
     ok('tplPickupReady snapshot: per-restaurant brand + link / no-link');
   }
