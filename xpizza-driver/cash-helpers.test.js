@@ -1,10 +1,13 @@
 // Pure cash-helper tests — run: `node cash-helpers.test.js` (no framework, repo idiom).
 import assert from 'node:assert/strict';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, BLOCKED_CLOSE_TEXT, DUAL_ROLE_COMPLETE_TEXT, REASSIGNED_COMPLETE_TEXT, completeErrorText, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, BLOCKED_CLOSE_TEXT, DUAL_ROLE_COMPLETE_TEXT, REASSIGNED_COMPLETE_TEXT, completeErrorText, isPermissionDenied, resolveCompleteErrorMessage, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 import { createRequire } from 'node:module';
 
 let passed = 0;
 function t(name, fn) { fn(); passed++; }
+// Async cells (resolveCompleteErrorMessage is async): collected here and awaited before the final count prints.
+const asyncTests = [];
+function at(name, fn) { asyncTests.push(fn); }
 
 // ---------- computeVuelto(total, tendered) ----------
 t('vuelto: tendered > total', () => assert.equal(computeVuelto(370, 500), 130));
@@ -270,6 +273,66 @@ t('completeErrorText: completeTask human refusals pass through regardless of rol
 t('completeErrorText: anything else → a generic retry line (never the raw error)', () =>
   assert.equal(completeErrorText(new Error('network glitch xyz'), false), 'No se pudo marcar como entregado — reintentá.'));
 
+// ---------- isPermissionDenied(err) ----------
+t('isPermissionDenied: true for PERMISSION_DENIED (message or code), false otherwise', () => {
+  assert.equal(isPermissionDenied(new Error('PERMISSION_DENIED: Permission denied')), true);
+  assert.equal(isPermissionDenied({ code: 'permission-denied' }), true);
+  assert.equal(isPermissionDenied(new Error('Este pedido fue cancelado')), false);
+  assert.equal(isPermissionDenied(new Error('network glitch')), false);
+  assert.equal(isPermissionDenied(null), false);
+});
+
+// ---------- resolveCompleteErrorMessage(err, actingUid, currentUid, lookupDispatcher, timeoutMs) ----------
+// Codex core r3: the role read must be bounded, permission-denied-only, and same-account-only; otherwise neutral.
+const pdErr = () => new Error('PERMISSION_DENIED: Permission denied');
+const neverSettles = () => new Promise(() => {});          // a hung /dispatchers read
+const hungLookup = () => { let n = 0; const f = () => { n++; return neverSettles(); }; f.calls = () => n; return f; };
+
+at('resolveCompleteErrorMessage: permission-denied + same uid + confirmed dispatcher → DUAL-ROLE', async () => {
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', async () => true, 50);
+  assert.equal(msg, DUAL_ROLE_COMPLETE_TEXT);
+});
+at('resolveCompleteErrorMessage: permission-denied + same uid + NOT a dispatcher → NEUTRAL', async () => {
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', async () => false, 50);
+  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);
+});
+at('resolveCompleteErrorMessage: a HUNG role read settles NEUTRAL within the bound (P1 — slider never frozen)', async () => {
+  const lk = hungLookup();
+  const started = Date.now();
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', lk, 40);
+  const elapsed = Date.now() - started;
+  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);           // timeout → fail-safe neutral
+  assert.ok(lk.calls() === 1, 'the lookup WAS attempted (and bounded), not skipped');
+  assert.ok(elapsed < 1000, `settled within the bound, took ${elapsed}ms`);  // generous CI margin over the 40ms deadline
+});
+at('resolveCompleteErrorMessage: session switched mid-completion → NEUTRAL, lookup NOT called (P2)', async () => {
+  const lk = hungLookup();
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'dispatcherB', lk, 40);
+  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);
+  assert.equal(lk.calls(), 0, 'no role read when the acting account is no longer current');
+});
+at('resolveCompleteErrorMessage: lost auth (null current uid) → NEUTRAL, lookup NOT called', async () => {
+  const lk = hungLookup();
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', null, lk, 40);
+  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);
+  assert.equal(lk.calls(), 0);
+});
+at('resolveCompleteErrorMessage: NON-permission errors skip the read entirely (cancelled / task-gone / generic)', async () => {
+  const lk = hungLookup();
+  assert.equal(await resolveCompleteErrorMessage(new Error('Este pedido fue cancelado'), 'driverA', 'driverA', lk, 40), 'Este pedido fue cancelado');
+  assert.equal(await resolveCompleteErrorMessage(new Error('Esta tarea ya no existe'), 'driverA', 'driverA', lk, 40), 'Esta tarea ya no existe');
+  assert.equal(await resolveCompleteErrorMessage(new Error('network glitch'), 'driverA', 'driverA', lk, 40), 'No se pudo marcar como entregado — reintentá.');
+  assert.equal(lk.calls(), 0, 'never reads /dispatchers for a non-permission error');
+});
+at('resolveCompleteErrorMessage: a THROWING role read → NEUTRAL (fail-safe false)', async () => {
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', async () => { throw new Error('read blew up'); }, 40);
+  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);
+});
+at('resolveCompleteErrorMessage: only STRICT true → dual-role (a truthy non-true resolves NEUTRAL)', async () => {
+  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', async () => 'yes', 40);
+  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);
+});
+
 // ============================================================================
 // RENDER + GOLDEN (folded in; same assertions as before). Order shapes ORIGINATE from the real server
 // writers (buildCreateOrderUpdates / buildMaterializeUpdates), then flow through the REAL render code
@@ -406,5 +469,8 @@ t('brand-agnostic: la_musa renders identically to x_pizza', () => {
     assert.equal(queuePayHtml(lm, escapeHtml), queuePayHtml(xp, escapeHtml));
   }
 });
+
+// Run the async cells, then report. A rejection here surfaces as a non-zero exit (unhandled rejection).
+for (const fn of asyncTests) { await fn(); passed++; }
 
 console.log(`✓ cash-helpers: ${passed} tests passed`);

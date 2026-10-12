@@ -1147,7 +1147,7 @@
 import * as XPD from './xpizza-delivery.js?v=20';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml, BLOCKED_CLOSE_TEXT, completeErrorText } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml, BLOCKED_CLOSE_TEXT, resolveCompleteErrorMessage } from './cash-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 
 // ============================================================
@@ -2475,20 +2475,24 @@ function attachActiveCardHandlers(o) {
   }
   if ($('btn-delivered')) {
     attachSlideConfirm('btn-delivered', async () => {
+      // Capture the acting uid BEFORE completion starts: the error-path role mapping must attribute the role to
+      // the account that actually ran the completion, not whatever account is current if the session changed
+      // mid-write (codex core r3 P2).
+      const actingUid = currentUser.uid;
       // Track the completion write so a clock-out in progress waits for it to SETTLE before computing cash
       // (a rejected completion must not bank its optimistically-stamped delivery). finally-deregisters.
-      const p = XPD.completeTask(currentUser.uid, o.deliveryTask.id);
+      const p = XPD.completeTask(actingUid, o.deliveryTask.id);
       pendingCompletions.add(p);
       p.finally(() => pendingCompletions.delete(p));
       try {
         await p;
       } catch (err) {
         // Map the error to driver-facing guidance instead of the raw SDK text (slider shows _userMessage, resets
-        // for retry). A PERMISSION_DENIED is the dual-role case ONLY if the acting uid is a dispatcher (r2); for
-        // an ordinary driver it's a reassigned/auth-lapse → neutral. The /dispatchers read happens only here (error path).
-        let dispatcher = false;
-        try { dispatcher = await XPD.isActingDispatcher(currentUser.uid); } catch (_) { /* fail-safe → neutral */ }
-        err._userMessage = completeErrorText(err, dispatcher);
+        // for retry). The dual-role vs. neutral distinction needs a /dispatchers read, but that read is BOUNDED
+        // and only happens for a PERMISSION_DENIED on the SAME account — so a hung read can never hold the slider
+        // (codex core r3 P1): it always settles within ROLE_LOOKUP_TIMEOUT_MS, then we rethrow so the slider resets.
+        err._userMessage = await resolveCompleteErrorMessage(
+          err, actingUid, currentUser && currentUser.uid, XPD.isActingDispatcher);
         throw err;
       }
       toast('¡Entregado!', 'success');

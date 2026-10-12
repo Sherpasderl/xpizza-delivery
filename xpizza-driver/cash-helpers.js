@@ -72,6 +72,53 @@ export function completeErrorText(err, isDispatcher) {
   return 'No se pudo marcar como entregado — reintentá.';
 }
 
+/** True iff this completeTask failure is a rules PERMISSION_DENIED — the ONLY error whose message depends on the
+ *  acting account's dispatcher role. Every other failure (cancelled / task-gone / generic) is classified by
+ *  completeErrorText alone, so the caller can skip the role read entirely for them. */
+export function isPermissionDenied(err) {
+  return /permission.?denied/i.test(String((err && (err.message || err.code)) || ''));
+}
+
+// How long the role lookup may run before the delivery slider's recovery is allowed to proceed anyway (codex core
+// r3 P1). A dispatcher-role read is advisory copy only — it must NEVER hold the slider's reset hostage.
+export const ROLE_LOOKUP_TIMEOUT_MS = 2000;
+
+/**
+ * Resolve the driver-facing message for a FAILED completion, bounding the one read it may need (codex core r3).
+ *
+ * The dual-role vs. neutral distinction needs the acting account's /dispatchers membership, but that read must
+ * never freeze the slider: so this
+ *   - skips the read for any NON-permission-denied error (cancelled / task-gone / generic) — they don't use the role;
+ *   - skips the read when the session changed mid-completion (`currentUid !== actingUid`) — the role evidence would
+ *     belong to a DIFFERENT account than the one whose completion failed (r3 P2) → neutral;
+ *   - otherwise races `lookupDispatcher(actingUid)` against a `timeoutMs` deadline; a timeout, a throw, or anything
+ *     not strictly `true` ⇒ neutral (fail-safe false).
+ * It always settles within `timeoutMs`, so the caller's catch can always reset the slider.
+ *
+ * @param {*} err                      the completeTask rejection
+ * @param {string} actingUid           uid captured BEFORE completion started
+ * @param {string} currentUid          uid of the session AT catch time
+ * @param {(uid:string)=>Promise<boolean>} lookupDispatcher  reads /dispatchers/{uid}
+ * @param {number} [timeoutMs]         lookup deadline (default ROLE_LOOKUP_TIMEOUT_MS)
+ * @returns {Promise<string>}
+ */
+export async function resolveCompleteErrorMessage(err, actingUid, currentUid, lookupDispatcher, timeoutMs) {
+  if (!isPermissionDenied(err)) return completeErrorText(err, false);
+  // A session switch mid-completion → the role we'd read is the new account's, not the one that failed. Neutral.
+  if (!actingUid || !currentUid || currentUid !== actingUid) return completeErrorText(err, false);
+  const ms = typeof timeoutMs === 'number' ? timeoutMs : ROLE_LOOKUP_TIMEOUT_MS;
+  let dispatcher = false;
+  try {
+    dispatcher = await Promise.race([
+      Promise.resolve(typeof lookupDispatcher === 'function' ? lookupDispatcher(actingUid) : false),
+      new Promise((resolve) => setTimeout(() => resolve(false), ms)),
+    ]);
+  } catch (_) {
+    dispatcher = false;
+  }
+  return completeErrorText(err, dispatcher === true);
+}
+
 /**
  * THE single source of truth for "what, if anything, does the driver collect for this order?".
  * Pure; keyed only on server-written truth (functions ALLOWED_PAYMENT_METHODS = cash|card_delivery|online,
