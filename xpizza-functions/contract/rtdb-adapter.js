@@ -30,7 +30,7 @@ function appFor(name, options = null) {
 function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff_r3', email: 'staff@r3.test' }, claims = {}, callables = {}, fixture = (fn) => fn(), log = () => {}, options = null } = {}) {
   const app = appFor(`r3-${pageId}`, options);
   const db = app.database();
-  const subs = []; let seq = 0; const getCalls = [];
+  const subs = []; let seq = 0; const getCalls = []; const callbackErrors = [];
   const SV = admin.database.ServerValue;
 
   // ── snapshots / refs (modular shapes over Admin compat objects) ──
@@ -65,9 +65,12 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
     if (!a) throw new Error('r3-adapter: subscribe on a non-ref');
     const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true };
     subs.push(rec);
+    // an exception thrown by the PAGE's callback is the page's error (a browser reports it and keeps running): recorded in
+    // callbackErrors — which every page cell asserts empty — never rethrown into the SDK's event loop
+    const guard = (fn) => { try { fn(); } catch (e) { callbackErrors.push({ sub: rec.id, path: rec.path, error: String(e && e.stack || e).slice(0, 600) }); } };
     const handler = kind === 'value'
-      ? (s) => { rec.delivered += 1; rec.lastSeq = ++seq; cb(wrapSnap(s)); }
-      : (s, prev) => { rec.delivered += 1; rec.lastSeq = ++seq; cb(wrapSnap(s), prev === undefined ? null : prev); };
+      ? (s) => { rec.delivered += 1; rec.lastSeq = ++seq; guard(() => cb(wrapSnap(s))); }
+      : (s, prev) => { rec.delivered += 1; rec.lastSeq = ++seq; guard(() => cb(wrapSnap(s), prev === undefined ? null : prev)); };
     const err = (e) => { rec.error = String(e && e.message || e); if (cancelCb) cancelCb(e); };
     if (opts && opts.onlyOnce) a.once(kind, handler, err);
     else a.on(kind, handler, err);
@@ -139,7 +142,7 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   async function close() { for (const s of subs) s.off && s.off(); bref.off(); await app.delete(); }
 
   return { pageId, db, modules: { 'firebase-app': appMod, 'firebase-database': database, 'firebase-auth': auth, 'firebase-functions': functions },
-    subs, getCalls, barrier, seq: () => seq, close };
+    subs, getCalls, callbackErrors, barrier, seq: () => seq, close };
 }
 
 module.exports = { createFirebaseHost, appFor };

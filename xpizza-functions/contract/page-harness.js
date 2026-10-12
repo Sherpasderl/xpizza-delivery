@@ -62,6 +62,10 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   win.addEventListener('error', (e) => errors.push(`window error: ${e && (e.error && e.error.stack || e.message)}`));
   win.addEventListener('unhandledrejection', (e) => errors.push(`unhandled rejection: ${e && e.reason && (e.reason.stack || e.reason)}`));
   if (beforeScripts) beforeScripts(win);
+  // a promise rejected inside the page's realm and never handled surfaces as a Node-process rejection: attribute it to
+  // THIS page (while it is open) instead of letting it crash the suite unrecorded
+  const onRejection = (reason) => { errors.push(`unhandled rejection: ${reason && (reason.stack || reason)}`); };
+  process.on('unhandledRejection', onRejection);
 
   // ── the module graph ──
   const cache = new Map();
@@ -120,7 +124,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     }
     return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, close: () => win.close() };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

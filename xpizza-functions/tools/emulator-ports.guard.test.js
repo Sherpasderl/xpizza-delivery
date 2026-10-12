@@ -1113,6 +1113,11 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual(injectCounter('node test/a.emulator.test.js', C), `node -r ${C} test/a.emulator.test.js`,
       'the ordinary single-suite shape is preloaded');
 
+    // R3: node FLAGS before the file are kept and the file is still preloaded (contract page harness)
+    assert.strictEqual(injectCounter('node --experimental-vm-modules contract/p.emulator.test.js', C), `node --experimental-vm-modules -r ${C} contract/p.emulator.test.js`,
+      '🔴 a `node --flag <file>` suite was not preloaded (it would run uncounted)');
+    assert.strictEqual(injectCounter('node --max-old-space-size=4096 --experimental-vm-modules t.js && node u.js', C), `node --max-old-space-size=4096 --experimental-vm-modules -r ${C} t.js && node -r ${C} u.js`,
+      'flags with values, several flags, and a chain');
     const chained = injectCounter('node test/a.js && node test/b.js && node test/c.js', C);
     assert.strictEqual((chained.match(/-r \/abs/g) || []).length, 3,
       '🔴 a chained script preloaded only some of its suites — the rest report no count at all');
@@ -1126,7 +1131,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
       const m = body.match(/"([^"]+)"\s*$/);
       assert.ok(m, `🔴 routed script ${name} has no quoted inner command, so nothing can be injected into it`);
       const injected = injectCounter(m[1], C);
-      const nodes = (m[1].match(/\bnode\s+[\w./-]+\.(?:js|mjs)\b/g) || []).length;
+      const nodes = (m[1].match(/\bnode\s+(?:--[a-z][a-z0-9-]*(?:=[^\s"']+)?\s+)*[\w./-]+\.(?:js|mjs)\b/g) || []).length;   // R3: flags allowed
       assert.strictEqual((injected.match(/-r \/abs/g) || []).length, nodes,
         `🔴 ${name}: ${nodes} node invocations but only ${(injected.match(/-r \/abs/g) || []).length} preloaded — the rest would be NOT MEASURED`);
     }

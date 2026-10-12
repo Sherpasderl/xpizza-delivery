@@ -142,8 +142,12 @@ const discoveryDirFor = (pid) => path.join(os.tmpdir(), `${DISCOVERY_PREFIX}${pi
    test:rewards:emulator runs six suites joined by `&&` inside the single command string — so a
    `^node ` prefix would preload only the first and the other five would report nothing. Exported so
    that property is DRIVEN rather than asserted by reading: it is the shape the review asked about. */
+// R3 (2026-10-12): node FLAGS may sit between `node` and the file (`node --experimental-vm-modules <file>`, needed by the
+// contract page harness's vm.SourceTextModule). A flag is `--name` or `--name=value` (no quotes, no spaces); it is kept
+// in place, ahead of the injected preloads. Every `node [flags] <file>` invocation is still anchored on its file.
+const NODE_INVOCATION = /\bnode\s+((?:--[a-z][a-z0-9-]*(?:=[^\s"']+)?\s+)*)(?=[\w./-]+\.(?:js|mjs)\b)/g;
 const injectCounter = (command, counter, ...more) =>
-  String(command).replace(/\bnode\s+(?=[\w./-]+\.(?:js|mjs)\b)/g, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);
+  String(command).replace(NODE_INVOCATION, (_, flags) => `node ${flags}${[counter, ...more].map((p) => `-r ${p} `).join('')}`);
 
 /* Per-run TMPDIR: the CLI writes its hub locator to `${os.tmpdir()}/hub-<project>.json` (hub.js:25) and WARNS AND
    LEAVES it when a live one exists — so two same-project runs sharing a TMPDIR fight over one locator. Each run gets
@@ -201,7 +205,7 @@ function parseChain(command) {
   return steps;
 }
 
-module.exports = { planPorts, pinFromEnv, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, TMP_PREFIX, injectCounter, servicesFor, bandListeners, parseChain };
+module.exports = { planPorts, pinFromEnv, SLOTS, ROOT, SERVICE_LISTENERS, ALL_HOST_ENV, HOST_ENV, childEnv, discoveryDirFor, DISCOVERY_PREFIX, TMP_PREFIX, injectCounter, NODE_INVOCATION, servicesFor, bandListeners, parseChain };
 if (require.main !== module) return;
 
 
