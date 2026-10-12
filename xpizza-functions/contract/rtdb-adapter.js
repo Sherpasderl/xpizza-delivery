@@ -81,6 +81,11 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
     const err = (e) => { rec.error = String(e && e.message || e); if (cancelCb) cancelCb(e); };
     if (opts && opts.onlyOnce) a.once(kind, handler, err);
     else a.on(kind, handler, err);
+    // a listen is OUTSTANDING I/O until its INITIAL data has been delivered (virtual-time settle(): a subscription waiting
+    // for its first snapshot must hold settling). once('value') on the same query, registered AFTER the page's listener,
+    // resolves only after the SDK delivered the initial child events / value to it (Firebase orders child events before
+    // value, and same-event listeners in registration order); a cancelled listen (rules) settles it too.
+    track(a.once('value').then(() => undefined, () => undefined));
     rec.off = () => { if (rec.active) { a.off(kind, handler); rec.active = false; } };
     return rec.off;
   }

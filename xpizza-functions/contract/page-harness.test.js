@@ -63,11 +63,11 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
   }
   // the KDS completion shape (write after 700 ms, render after another 700 ms) is reached within the horizon — virtually
   {
-    const p = await bootPage('xpizza-functions', { html: page(`setTimeout(async () => { await Promise.resolve(); window.__wrote = 1; setTimeout(() => { document.getElementById('app').textContent = 'archived'; }, 700); }, 700);`) });
-    const t0 = Date.now(); const settled = await p.settle(); const real = Date.now() - t0;
-    assert.ok(settled && p.win.__wrote === 1 && p.doc.getElementById('app').textContent === 'archived' && p.clock.skewMs() >= 1400, FAIL(`a 700 ms + 700 ms transition was certified unfinished (${JSON.stringify({ settled, wrote: p.win.__wrote, skew: p.clock.skewMs() })})`));
+    const p = await bootPage('xpizza-functions', { html: page(`window.__t0 = Date.now(); setTimeout(async () => { await Promise.resolve(); window.__wrote = 1; setTimeout(() => { document.getElementById('app').textContent = 'archived'; window.__t2 = Date.now(); }, 700); }, 700);`) });
+    const t0 = Date.now(); const settled = await p.settle(); const real = Date.now() - t0; const virt = p.win.__t2 - p.win.__t0;   // the PAGE's own clock
+    assert.ok(settled && p.win.__wrote === 1 && p.doc.getElementById('app').textContent === 'archived' && virt >= 1400, FAIL(`a 700 ms + 700 ms transition was certified unfinished (${JSON.stringify({ settled, wrote: p.win.__wrote, virt })})`));
     p.close();
-    ok(`a 700 ms write + 700 ms render transition (the KDS completion shape): settle() fired both on virtual time (${p.clock.skewMs()} ms virtual, ${real} ms real)`);
+    ok(`a 700 ms write + 700 ms render transition (the KDS completion shape): settle() fired both on virtual time (${virt} ms of browser time, ${real} ms real)`);
   }
   // a FINITE retry sequence (3 attempts, 200 ms) runs to its last attempt
   {

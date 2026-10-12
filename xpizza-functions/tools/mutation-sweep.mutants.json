@@ -11731,5 +11731,21 @@
       "run",
       "test:r3-p0-pages"
     ]
+  },
+  {
+    "id": "r3p0-23",
+    "slice": "r3p0",
+    "file": "contract/rtdb-adapter.js",
+    "from": "    track(a.once('value').then(() => undefined, () => undefined));",
+    "to": "    void 0;",
+    "label": "a listen awaiting its INITIAL snapshot is not in flight — virtual-time settle() certifies the tracker before its first render",
+    "kills_with": [
+      "the real order is rendered after the barrier"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p0-pages"
+    ]
   }
 ]
