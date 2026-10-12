@@ -24,6 +24,11 @@ const b = html.indexOf(END, a);
 assert.ok(b !== -1, 'slice END present (render close found)');
 const slice = html.slice(a, b);   // a valid function body (render\'s own `    }` excluded)
 
+// Pull the REAL fmtTime helper so the executed render uses it (not a test re-implementation).
+const fa = html.indexOf('function fmtTime(');
+assert.ok(fa !== -1, 'fmtTime helper present');
+const fmtTimeSrc = html.slice(fa, html.indexOf('\n    }', fa) + '\n    }'.length);
+
 const OWNER_WAITING = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
 assert.ok(!html.includes('está terminando una entrega que queda en camino'), 'superseded stacked copy gone');
 
@@ -62,7 +67,7 @@ function render(data) {
   // eslint-disable-next-line no-new-func
   const fn = new Function('data', 'document', 'hideDriverMap', 'refreshDriverEta', 'updateDriverMap',
     'computeEta', 'requestAnimationFrame',
-    `let etaIsActive = false; ${slice}; return etaIsActive;`);
+    `${fmtTimeSrc}\nlet etaIsActive = false; ${slice}; return etaIsActive;`);
   // Early-return branches (cancelled / pickup) return undefined; normalize to the boolean etaIsActive they left.
   const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, computeEta, requestAnimationFrame) ?? false;
   const segbar = reg['segbar'] || mkEl('segbar');
@@ -133,13 +138,16 @@ r = render({ status: 'out_for_delivery' });
 assert.deepEqual(segClasses(r), ['done', 'done', 'active', 'pending', 'pending']); ok('OFD no-driver: seg3 active');
 assert.equal(r.title, 'Tu pedido va en camino'); assert.ok(!r.avatarShown); assert.equal(r.calls.updateDriverMap, 0); ok('OFD no-driver: no avatar, no map');
 
-// DELIVERED
-r = render({ status: 'delivered' });
+// DELIVERED (Delta 2: warm phrase + " · Entregado " + lowercase am/pm time via the shared fmtTime)
+r = render({ status: 'delivered', delivered_at: new Date(2026, 0, 1, 14, 5).getTime() });
 assert.deepEqual(segClasses(r), ['done', 'done', 'done', 'done', 'done']); ok('delivered: all 5 green');
-assert.equal(r.title, '¡Pedido entregado!'); assert.ok(r.titleSuccess); assert.equal(r.sub, 'Gracias por tu pedido. ¡Buen provecho!'); ok('delivered: headline + sub + success');
+assert.equal(r.title, '¡Pedido entregado!'); assert.ok(r.titleSuccess); ok('delivered: title "¡Pedido entregado!" + success');
+assert.equal(r.sub, '¡Buen provecho! · Entregado 2:05 pm'); ok('delivered: "¡Buen provecho! · Entregado 2:05 pm" (warm + lowercase time)');
 assert.equal(r.liveHidden, true); ok('delivered: live-updates line hidden (terminal)');
-r = render({ status: 'completed' });
-assert.deepEqual(segClasses(r), ['done', 'done', 'done', 'done', 'done']); ok('completed: all 5 green (same as delivered)');
+r = render({ status: 'delivered' });   // no delivered_at → warm phrase alone (no dangling "· Entregado")
+assert.equal(r.sub, '¡Buen provecho!'); ok('delivered (no time): "¡Buen provecho!" alone');
+r = render({ status: 'completed', delivered_at: new Date(2026, 0, 1, 14, 5).getTime() });
+assert.deepEqual(segClasses(r), ['done', 'done', 'done', 'done', 'done']); assert.equal(r.sub, '¡Buen provecho! · Entregado 2:05 pm'); ok('completed: same as delivered (incl. timestamp)');
 
 // CANCELLED (unchanged copy)
 r = render({ status: 'cancelled' });

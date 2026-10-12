@@ -513,6 +513,17 @@
       return null;
     }
 
+    // Shared 12-hour clock formatter for delivered/recogido timestamps. Returns "7:17 PM" by default (today's
+    // pickup-delivered copy — kept byte-equivalent); lower=true → lowercase "7:17 pm" (the delivery delivered sub).
+    function fmtTime(ts, lower) {
+      const t = new Date(ts);
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      const h12 = (t.getHours() % 12) || 12;
+      let ap = t.getHours() >= 12 ? 'PM' : 'AM';
+      if (lower) ap = ap.toLowerCase();
+      return `${h12}:${mm} ${ap}`;
+    }
+
     // Per-restaurant branding (D2 mechanism, E2 real palette). x_pizza / legacy / absent restaurant_id
     // → NO override (the static X. Pizza branding stays byte-identical, zero risk). la_musa → its name +
     // the real musa-red palette, sourced from the La Musa order form (la-musa-orders/index.html) so the
@@ -693,12 +704,8 @@
             subEl.textContent = `Pasá por ${brandName(data.restaurant_id)} a recogerlo`;
           } else {
             titleEl.textContent = '¡Gracias por tu compra!';
-            subEl.textContent = 'Recogido';
-            if (data.delivered_at) {   // preserve today's pickup-delivered timestamp
-              const t = new Date(data.delivered_at), mm = String(t.getMinutes()).padStart(2, '0');
-              const hh = t.getHours(), ampm = hh >= 12 ? 'PM' : 'AM', h12 = (hh % 12) || 12;
-              subEl.textContent = `Recogido a las ${h12}:${mm} ${ampm}`;
-            }
+            // today's pickup-delivered copy, byte-equivalent — now via the shared fmtTime (uppercase default)
+            subEl.textContent = data.delivered_at ? `Recogido a las ${fmtTime(data.delivered_at)}` : 'Recogido';
           }
           document.getElementById('updated-text').classList.add('hidden');
         } else if (status === 'preparing') {
@@ -775,7 +782,8 @@
         paintSegbar(['done', 'done', 'done', 'done', 'done']);
         titleEl.className = 'stitle success';
         titleEl.textContent = '¡Pedido entregado!';
-        subEl.textContent = 'Gracias por tu pedido. ¡Buen provecho!';
+        // Delta 2 (owner): warm phrase + " · Entregado " + lowercase am/pm time (shared fmtTime); no time → warm phrase alone.
+        subEl.textContent = data.delivered_at ? `¡Buen provecho! · Entregado ${fmtTime(data.delivered_at, true)}` : '¡Buen provecho!';
         document.getElementById('updated-text').classList.add('hidden');
       } else {
         // unknown status — assume just received
