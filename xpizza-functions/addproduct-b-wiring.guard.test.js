@@ -17,12 +17,16 @@ const { unapplyStackedTracker } = require('./tools/stacked-tracker-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const idx = unapplyStackedTracker(read('index.js'));
+// D4-c2b landed on top of the stacked-tracker slice (main 2cb5a1c): its one delimited index.js block (tools/d4c2b-inverse.js,
+// advisor ruling N1) is reversed FIRST, then the stacked-tracker inverse, before add-product B's proof.
+const idx = unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js')));
 const BASE = execFileSync('git', ['show', '4e2a710:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 assert.strictEqual(unapplyAddProductB(idx), BASE, '🔴 index.js minus the add-product B hunks is not 4e2a710:index.js — something beyond the stated seams changed');
 assert.ok(INDEX_HUNKS.length >= 6, `the hunks are enumerated (${INDEX_HUNKS.length})`);
+{ let folds; try { folds = unapplyAddProductB(read('index.js')) === BASE; } catch (_) { folds = false; }
+  assert.ok(!folds, 'non-vacuity: without the D4-c2b inverse the real index.js does NOT fold back (its block is present)'); }
 {
   const [now] = INDEX_HUNKS[2];
   const at = idx.indexOf(now) + Math.floor(now.length / 2);

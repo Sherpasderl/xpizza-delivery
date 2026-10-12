@@ -16,7 +16,8 @@ const { unapplyStackedTracker, INDEX_HUNKS } = require('./tools/stacked-tracker-
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const idx = read('index.js');
+// D4-c2b landed on top of this slice (main 2cb5a1c): its one delimited block (tools/d4c2b-inverse.js) is reversed FIRST.
+const idx = require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js'));
 const BASE = execFileSync('git', ['show', 'ebc8564:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── (i) proof: the fold reconstructs the baseline ──

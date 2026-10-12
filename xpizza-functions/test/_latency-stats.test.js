@@ -75,4 +75,59 @@ ok('medians: a child\'s samples → the upper middle; over blocks → the mean o
   assert.deepStrictEqual(Object.keys(V({}).checks), ['p95_abs', 'p95_rel', 'median', 'counts', 'valid']);
   ok('verdict = ALL of: p95 Δ ≤ +50 ms; p95 Δ ≤ max(10 %, A/A noise_p95); paired median Δ ≤ max(5 ms, A/A noise_median); errors + attempts equal; valid — inclusive bounds');
 }
+{
+  const aa = [
+    { x: [100, 100], y: [110, 110] }, { x: [100, 100], y: [95, 95] }, { x: [200, 200], y: [140, 140] },
+    { x: [100, 100], y: [100, 100] }, { x: [50, 50], y: [40, 40] }, { x: [100, 100], y: [102, 102] },
+  ];
+  assert.deepStrictEqual(S.aaNoiseMax(aa), { noise_p95: 0.30, noise_med: 60 }, 'the LARGEST absolute block Δ (a NEGATIVE Δ here)');
+  // K ≠ 6: a nearest-rank quantile over 30 blocks would be the 29th value — v2 is the max, whatever K is
+  const many = Array.from({ length: 30 }, (_, i) => ({ x: [100], y: [100 + (i === 7 ? 40 : 1)] }));
+  assert.deepStrictEqual(S.aaNoiseMax(many), { noise_p95: 0.40, noise_med: 40 }, 'one outlier block among 30 still sets the noise');
+  assert.notStrictEqual(S.aaNoise(many).noise_p95, 0.40, '(the v1 quantile would not see it — why v2 says "largest")');
+  assert.throws(() => S.aaNoiseMax([]), /no A\/A blocks/);
+  ok('v2 A/A noise: the largest |block relative p95 Δ| and the largest |block median Δ| over ALL blocks, for any K; empty → refused');
+}
+{
+  const bars = { relMax: 0.10, absMaxMs: 50, medMaxMs: 5 };
+  const inv = { counts: true, timeouts: true };
+  const V = (o = {}) => S.verdictV2({ pooled: { delta_ms: 10, delta_rel: 0.05 }, paired: 3, noise: { noise_p95: 0.08, noise_med: 2 }, invariants: inv, valid: true, bars, ...o });
+  assert.strictEqual(V().verdict, 'PASS');
+  assert.strictEqual(V({ pooled: { delta_ms: 50, delta_rel: 0.10 }, paired: 5, noise: { noise_p95: 0.20, noise_med: 5 } }).verdict, 'PASS', 'every bound inclusive (incl. adequacy 2X and M)');
+  // cost failures, adequate → FAIL
+  assert.strictEqual(V({ pooled: { delta_ms: 50.1, delta_rel: 0.01 } }).verdict, 'FAIL', '> Y ms');
+  assert.strictEqual(V({ pooled: { delta_ms: 12, delta_rel: 0.101 } }).verdict, 'FAIL', '> X %');
+  assert.strictEqual(V({ paired: 5.1 }).verdict, 'FAIL', '> M');
+  assert.strictEqual(V({ invariants: { counts: false, timeouts: true } }).verdict, 'FAIL', 'an invariant broken');
+  assert.strictEqual(V({ invariants: { counts: true, timeouts: 'yes' } }).verdict, 'FAIL', 'an invariant must be exactly true');
+  assert.strictEqual(V({ valid: false }).verdict, 'FAIL', 'an invalid row never passes');
+  // 🔴 NOISE NEVER WIDENS A BAR (codex r1 on the protocol): the v1 rule would PASS these
+  assert.strictEqual(V({ pooled: { delta_ms: 12, delta_rel: 0.15 }, noise: { noise_p95: 0.18, noise_med: 2 } }).verdict, 'FAIL', 'Δ 15 % with A/A 18 %: still > X → FAIL (v1 passed it)');
+  assert.strictEqual(V({ paired: 4.9, noise: { noise_p95: 0.08, noise_med: 5 } }).verdict, 'PASS');
+  // inadequate measurement → INCONCLUSIVE, whatever the cost says, and every value reported
+  const i1 = V({ noise: { noise_p95: 0.201, noise_med: 2 } });
+  assert.strictEqual(i1.verdict, 'INCONCLUSIVE', 'noise_p95 > 2X'); assert.strictEqual(i1.costOk, true);
+  const i2 = V({ noise: { noise_p95: 0.08, noise_med: 5.1 }, paired: 9 });
+  assert.strictEqual(i2.verdict, 'INCONCLUSIVE', 'noise_med > M — even with a cost failure'); assert.strictEqual(i2.costOk, false); assert.strictEqual(i2.cost.median, false);
+  assert.deepStrictEqual(i2.values, { p95_delta_ms: 10, p95_delta_rel: 0.05, paired_median_ms: 9, noise_p95: 0.08, noise_med: 5.1 });
+  // the bars are PARAMETERS — a stricter plan (X 5 %, Y 20 ms, M 2 ms) judges the SAME data differently
+  const strict = V({ bars: { relMax: 0.05, absMaxMs: 20, medMaxMs: 2 }, noise: { noise_p95: 0.08, noise_med: 1 } });
+  assert.strictEqual(strict.verdict, 'FAIL'); assert.deepStrictEqual([strict.cost.p95_rel, strict.cost.median], [true, false]);
+  assert.strictEqual(V({ bars: { relMax: 0.05, absMaxMs: 20, medMaxMs: 5 }, pooled: { delta_ms: 10, delta_rel: 0.05 } }).verdict, 'PASS');
+  // between the strict and the default bars, the parameters decide (a hardcoded X / Y would not)
+  const sb = { relMax: 0.05, absMaxMs: 20, medMaxMs: 5 };
+  assert.strictEqual(V({ bars: sb, pooled: { delta_ms: 10, delta_rel: 0.07 }, noise: { noise_p95: 0.08, noise_med: 2 } }).cost.p95_rel, false, '7 % > a 5 % X');
+  assert.strictEqual(V({ bars: sb, pooled: { delta_ms: 30, delta_rel: 0.03 }, noise: { noise_p95: 0.08, noise_med: 2 } }).cost.p95_abs, false, '30 ms > a 20 ms Y');
+  const lb = { relMax: 0.20, absMaxMs: 80, medMaxMs: 5 };
+  assert.strictEqual(V({ bars: lb, pooled: { delta_ms: 60, delta_rel: 0.15 } }).verdict, 'PASS', 'a looser plan (20 %, 80 ms) passes 15 % / 60 ms');
+  // the REPORTED median check is against M alone, even when the A/A median noise is above M (INCONCLUSIVE)
+  const i3 = V({ paired: 5.05, noise: { noise_p95: 0.08, noise_med: 5.1 } });
+  assert.strictEqual(i3.verdict, 'INCONCLUSIVE'); assert.strictEqual(i3.cost.median, false, '5.05 ms > M = 5 is reported as a cost failure, never widened to the 5.1 ms noise');
+  for (const b of [undefined, {}, { relMax: 0.1, absMaxMs: 50 }, { relMax: 0, absMaxMs: 50, medMaxMs: 5 }, { relMax: '0.1', absMaxMs: 50, medMaxMs: 5 }, { relMax: 0.1, absMaxMs: NaN, medMaxMs: 5 }]) {
+    assert.throws(() => V({ bars: b }), /bar /, `bars ${JSON.stringify(b)} refused`);
+  }
+  assert.throws(() => V({ invariants: {} }), /no invariants/); assert.throws(() => V({ invariants: null }), /no invariants/);
+  assert.deepStrictEqual(Object.keys(V().cost), ['p95_abs', 'p95_rel', 'median', 'inv_counts', 'inv_timeouts', 'valid']);
+  ok('verdictV2 (LATENCY-PROTOCOL v2 §3): fixed PARAMETER bars; A/A noise only grades ADEQUACY (≤ 2X, ≤ M) and never widens a bar; PASS / FAIL / INCONCLUSIVE with every value reported; bad bars or no invariants refused');
+}
 console.log(`\nlatency-stats: OK (${n})`);

@@ -1,0 +1,18 @@
+{
+  "decision": "DECISIONS 2026-10-09 \"c2b N2 BOUNDARY\" — advisor read-only observation after c2a's publishEdited (publishedited-00015-tap) went ready",
+  "after_ready": "2026-10-09T18:03:03Z",
+  "recorded_at": "2026-10-09T18:07:48Z",
+  "identity_evidence_empty_at_record": true,
+  "restaurants": {
+    "x_pizza": {
+      "version": "v-1789524734429-5c9fd7550ce7",
+      "updateTime": "2026-09-16T02:12:15.069785Z",
+      "pointer": { "version": "v-1789524734429-5c9fd7550ce7" }
+    },
+    "la_musa": {
+      "version": "v-1789524898965-5b40d1357e92",
+      "updateTime": "2026-09-16T02:14:59.664413Z",
+      "pointer": { "version": "v-1789524898965-5b40d1357e92" }
+    }
+  }
+}

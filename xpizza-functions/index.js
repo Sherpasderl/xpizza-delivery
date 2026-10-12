@@ -2546,6 +2546,26 @@ exports.claimOrder = onRequest(
 // (or a stuck capturing claim) past the confirm TTL; abandons ones with no usable
 // payment_uuid past the abandon TTL (the PixelPay auth has expired — no money moved,
 // a *missed order* not a *lost charge*). See PAYMENT-PLAN §G + classifySweepCandidate.
+/* d4c2b:begin */
+/* 1D D4-c2b — THE IDENTITY INTEGRITY MONITOR (PLAN-D4c2b rev 14): alert-only, off every request path. Every 15 min it
+   checks each enumerated restaurant's ACTIVE binding against c2a's evidence and audits every activation generation since the
+   boundary, in read-only transactions, paced and budgeted; its only writes are catalog_integrity/{rid} (RTDB). Own
+   instance (maxInstances 1, concurrency 1), NO platform retry (the next run is the retry), 512 MiB, 300 s. This block is
+   additive; tools/d4c2b-inverse.js removes exactly it (the index.js guards fold it away before comparing). */
+const IIM = require('./catalog/identity-integrity-monitor');
+exports.verifyIdentityIntegrity = onSchedule(
+  { schedule: IIM.INTEGRITY_SCHEDULE, region: 'us-central1', timeoutSeconds: IIM.INTEGRITY_TIMEOUT_S, memory: IIM.INTEGRITY_MEMORY,
+    maxInstances: 1, concurrency: 1, retryCount: 0 },
+  async () => {
+    try {
+      // the monitor's OWN bounded reader: one limited query, its cost reserved before it is issued (never an unrestricted listDocuments)
+      await IIM.createIdentityIntegrityMonitor({ db: getFirestore(), rtdb: getDatabase() }).run({ listIds: IIM.makeBoundedRegistryReader(getFirestore()) });
+    } catch (e) {
+      console.error('identity_integrity_failed', (e && e.message) || String(e));
+    }
+  },
+);
+/* d4c2b:end */
 /* ── 1D D4 — THE REGISTRY INTEGRITY SWEEP ────────────────────────────────────────────────────
    The durable half of the self-heal. The writer guard in ensureIdentity repairs an orphan that a
    write happens to touch; this reaches the ones nothing touches — an object served id-less generates

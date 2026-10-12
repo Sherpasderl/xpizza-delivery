@@ -32,11 +32,27 @@ try {
     const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
     // D4-c5 P1: the order_exists slice's eight index.js hunks reversed on top of the fold (tools/d4c5-inverse.js);
     // D4-c4: the order-control slice's hunks (tools/d4c4-inverse.js) reversed first — it landed on top of D4-c5
-    // 1D add-product A: its hunks (tools/addproduct-inverse.js, index.js + the moved blocks) reversed FIRST — it landed on top of D4-c4
+    // 1D add-product A: its hunks (tools/addproduct-inverse.js, index.js + the moved blocks) reversed before D4-c4 — it landed on top of D4-c4
     // 1D add-product B: its index.js hunks (tools/addproduct-b-inverse.js) reversed before A's — it landed on top of A
-    // Stacked-tracker landed on top of PB-2 → its inverse (tools/stacked-tracker-inverse.js) is reversed FIRST, on the folded tree.
-    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProductFold(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(require('../tools/portal-split').foldPortalSplit())))));
+    // Stacked-tracker landed on top of PB-2 → its inverse (tools/stacked-tracker-inverse.js) is reversed on the folded tree before B's;
+    // D4-c2b: the monitor's ONE delimited, byte-pinned block (tools/d4c2b-inverse.js) reversed FIRST — it landed on top of the stacked-tracker slice
+    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProductFold(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(require('../tools/d4c2b-inverse').unapplyD4c2b(require('../tools/portal-split').foldPortalSplit()))))));
     assert.strictEqual(sha(idx), PARENT_INDEX, '🔴 index.js + the portal split do not fold back to the integration parent bb37684 — something beyond the mechanical move changed');
+    {   // D4-c2b inverse: non-vacuity (the block is present and removed) + sensitivity (an edit inside it, a second or a missing
+        // block, and a byte OUTSIDE it are each caught)
+      const { unapplyD4c2b } = require('../tools/d4c2b-inverse');
+      const real = read('index.js');
+      assert.notStrictEqual(unapplyD4c2b(real), real, 'non-vacuity: the d4c2b block is present and removed');
+      // PROOF (i): the block is the ONLY change c2b makes to index.js — its inverse is the integration base's index.js byte-for-byte
+      const C2B_BASE = '2cb5a1c';   // the re-merge integration base (origin/main after R1/R1b/PB-2/stacked-tracker/R1c/PB-3)
+      assert.strictEqual(unapplyD4c2b(real), require('child_process').execFileSync('git', ['show', `${C2B_BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 }), `🔴 index.js minus the d4c2b block is not ${C2B_BASE}:index.js`);
+      assert.throws(() => unapplyD4c2b(real.replace('retryCount: 0 }', 'retryCount: 1 }')), /pinned bytes/, 'an edit INSIDE the block is caught');
+      assert.throws(() => unapplyD4c2b(real.replace('exports.sweepStalePending', '/* d4c2b:begin */\n/* d4c2b:end */\nexports.sweepStalePending')), /exactly one/, 'a second block is caught');
+      assert.throws(() => unapplyD4c2b(real.replace('/* d4c2b:begin */', '')), /exactly one/, 'a missing delimiter is caught');
+      const outside = real.replace('exports.sweepStalePending', 'exports.sweepStalePendinG');
+      const fold = (src) => require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProduct(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(unapplyD4c2b(src))))));
+      assert.notStrictEqual(sha(fold(outside)), sha(fold(real)), 'a byte OUTSIDE the block survives the inverse (the parent pin catches it)');
+    }
     const cut = (s, startMarker, endMarker) => {
       const a = s.indexOf(startMarker); const b = s.indexOf(endMarker, a);
       assert.ok(a > 0 && b > a, `markers present: ${startMarker.slice(0, 40)}`);
@@ -188,7 +204,10 @@ try {
     const importers = walk(ROOT).filter((f) => !/\.test\.|test\//.test(path.relative(ROOT, f)))
       .filter((f) => /require\(['"][./]*(catalog\/)?identity-record(-writer|-verifier)?['"]\)/.test(fsys.readFileSync(f, 'utf8')))
       .map((f) => path.relative(ROOT, f)).sort();
-    assert.deepStrictEqual(importers, ['catalog/identity-record-verifier.js', 'catalog/identity-record-writer.js', 'index.js'], '🔴 only the background invokers import the identity modules');
+    // 1D D4-c2b (PLAN-D4c2b rev 14 §0, §5): the identity INTEGRITY monitor imports c1's gate primitives (gateIo / boundedWork /
+    // workDeadline / makeDeadline / race) from identity-record-writer.js — import only, never edit. It is itself a BACKGROUND
+    // module (one scheduled export, index.js's d4c2b block), so "not on the request path" still holds.
+    assert.deepStrictEqual(importers, ['catalog/identity-integrity-monitor.js', 'catalog/identity-record-verifier.js', 'catalog/identity-record-writer.js', 'index.js'], '🔴 only the background invokers import the identity modules');
     const idxCode = strip(idx);
     for (const [call, want] of [['identityWriter().', 2], ['identityVerifier().', 1]]) {
       const all = idxCode.split(call).length - 1;
