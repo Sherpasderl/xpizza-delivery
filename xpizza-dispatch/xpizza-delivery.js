@@ -524,11 +524,18 @@ export function subscribeToTasks(callback) {
   return onValue(tasksRef, (snap) => callback(snap.val() || {}));
 }
 
-// Read-only: driver_cash/{driverId}/{shiftId}/cuadre/{cash_owed,cash_order_count,closed_at}
-// (dispatcher-readable per database.rules.json). Cash bar aggregation only — never written.
-export function subscribeToDriverCash(callback) {
+// Read-only: driver_cash/{driverId}/{shiftId}/cuadre/{cash_owed,cash_order_count,closed_at,provisional,…}
+// (dispatcher-readable per the /driver_cash parent .read grant in database.rules.json). Cash bar aggregation only,
+// never written. `onError` is REQUIRED for correctness: if the parent .read is denied (permission) or the read
+// otherwise fails, onValue's success callback NEVER fires — without an error callback the bar would sit at its last
+// value (or an empty L0), hiding the failure. onError lets the caller render an explicit error state instead.
+export function subscribeToDriverCash(callback, onError) {
   const cashRef = ref(db, 'driver_cash');
-  return onValue(cashRef, (snap) => callback(snap.val() || {}));
+  return onValue(
+    cashRef,
+    (snap) => callback(snap.val() || {}),
+    (err) => { if (onError) onError(err); },
+  );
 }
 
 // Read-only: HELD scheduled/releasing orders — these are excluded from the live feed by

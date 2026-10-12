@@ -46,7 +46,9 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Cash/cuadre bar — EXECUTED: display + Reconciliar link only, no write; Reconciliar activates the Caja rtab.
+// 2. Cash/cuadre bar — DRIVER-CUADRE breakdown driven through the REAL renderCashBar (extracted + executed):
+//    final vs provisional vs legacy vs escape-hatch, unresolved detail, and an explicit ERROR state (never L0).
+//    DISPLAY-only: no DB write; Reconciliar activates the Caja rtab; pending stays SEPARATE from driver cuadres.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const src = fnSrc(html, 'renderCashBar');
@@ -55,30 +57,87 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   assert.doesNotMatch(src, /\.ref\(|\bfirebase\b|database\(|\bsubscribe/i, 'cash bar performs no write/subscription');
   assert.doesNotMatch(src, /XPD\.(set|update|write|create|delete|save|resolve|cancel|refund|assign)\w*\(/i, 'cash bar makes no money/assign call');
 
-  // execute it against a shim
-  let rtabClicked = 0;
-  const cashEl = { innerHTML: '' };
-  const reconBtn = { _l: {}, addEventListener(t, fn) { (this._l[t] || (this._l[t] = [])).push(fn); }, dispatch(t, e) { (this._l[t] || []).forEach(fn => fn(e)); } };
-  const caja = { classList: { contains: () => false }, click() { rtabClicked++; } };
-  const els = { 'cash-bar': cashEl, 'cash-recon-btn': reconBtn };
-  const $ = (id) => els[id] || null;
-  const doc = { querySelector: (sel) => (sel.includes('data-tab="caja"') ? caja : null) };
-  const reconciliationOrders = { o1: {}, o2: {}, o3: {} };     // 3 pending → "Cuadres pendientes"
-  const esc = (s) => String(s);
-  const cash = { drvA: { s1: { cuadre: { closed_at: Date.now(), cash_owed: 500 } } }, drvB: { s1: { cuadre: { closed_at: Date.now(), cash_owed: 240 } } } };
-  const renderCashBar = new Function('$', 'document', 'reconciliationOrders', 'escapeHtml', `${src}\nreturn renderCashBar;`)($, doc, reconciliationOrders, esc);
-  renderCashBar(cash);
-  assert.match(cashEl.innerHTML, /Efectivo del turno/, 'shows the shift-cash label');
-  assert.match(cashEl.innerHTML, /L 740/, 'sums the already-closed cuadres (read-only): 500 + 240');
-  assert.match(cashEl.innerHTML, /Cuadres pendientes/, 'shows the pending-reconciliation label');
-  assert.match(cashEl.innerHTML, /<b>3<\/b>/, 'pending count read from reconciliationOrders (3)');
-  assert.match(cashEl.innerHTML, /Reconciliar/, 'shows the Reconciliar link');
-  // Reconciliar → activates the existing Caja rtab
-  reconBtn.dispatch('click', {});
-  assert.strictEqual(rtabClicked, 1, 'Reconciliar activates the existing Caja rtab (navigation only)');
-  // freshness: the recon subscription refreshes the cash bar's pending count
+  const today = Date.now();
+  // Execute the REAL renderer against a shim. lastDriverCash/driverCashError are module-level in index.html, so
+  // inject fresh lexical bindings per run for isolation. Returns { html, reconBtn, rtabClicks }.
+  function run(cash, reconOrders = {}) {
+    let rtabClicked = 0;
+    const cashEl = { innerHTML: '' };
+    const reconBtn = { _l: {}, addEventListener(t, fn) { (this._l[t] || (this._l[t] = [])).push(fn); }, dispatch(t, e) { (this._l[t] || []).forEach(fn => fn(e)); } };
+    const caja = { classList: { contains: () => false }, click() { rtabClicked++; } };
+    const els = { 'cash-bar': cashEl, 'cash-recon-btn': reconBtn };
+    const $ = (id) => els[id] || null;
+    const doc = { querySelector: (sel) => (sel.includes('data-tab="caja"') ? caja : null) };
+    const esc = (s) => String(s);
+    const fn = new Function('$', 'document', 'reconciliationOrders', 'escapeHtml',
+      `let lastDriverCash={},driverCashError=null;\n${src}\nreturn renderCashBar;`)($, doc, reconOrders, esc);
+    fn(cash);
+    return { html: cashEl.innerHTML, reconBtn, rtabClicks: () => rtabClicked };
+  }
+  const C = (o) => ({ cuadre: { closed_at: today, ...o } });   // a today-closed cuadre fixture
+
+  // (a) FINAL-only — provisional:false records sum into "Efectivo final".
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) }, dB: { s1: C({ cash_owed: 240, provisional: false }) } });
+    assert.match(r.html, /Efectivo final \(2\)/, 'final count = 2');
+    assert.match(r.html, /L 740/, 'final total = 500 + 240');
+    assert.doesNotMatch(r.html, /Provisional \(/, 'no provisional line when there are none');
+  }
+  // (b) PROVISIONAL-only — its own warn-styled line; the final line stays at a real L0 (NOT an error); unresolved shown.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 300, provisional: true, unresolved_count: 2, unresolved_ids: ['o1', 'o2'] }) } });
+    assert.match(r.html, /cash-prov/, 'provisional line present (warn style)');
+    assert.match(r.html, /Provisional \(1\)/, 'provisional count = 1');
+    assert.match(r.html, /L 300/, 'provisional total');
+    assert.match(r.html, /Efectivo final \(0\)/, 'final line present at a REAL 0 (not an error)');
+    assert.match(r.html, /Sin resolver/, 'unresolved line shown');
+    assert.match(r.html, /<b>2<\/b>/, 'unresolved count = 2');
+    assert.match(r.html, /title="[^"]*: 2"/, 'unresolved driver/shift detail in the title');
+  }
+  // (c) MIXED — final + provisional bucketed independently.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) }, dB: { s1: C({ cash_owed: 120, provisional: true, unresolved_count: 1 }) } });
+    assert.match(r.html, /Efectivo final \(1\)/, 'final count 1');
+    assert.match(r.html, /L 500/, 'final total 500');
+    assert.match(r.html, /Provisional \(1\)/, 'provisional count 1');
+    assert.match(r.html, /L 120/, 'provisional total 120');
+  }
+  // (d) ESCAPE-HATCH — stands out as "requiere reconciliación manual", NOT double-counted as final/provisional.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 90, provisional: true, source: 'escape_hatch', needs_dispatch_review: true }) } });
+    assert.match(r.html, /cash-escape/, 'escape-hatch line present (accent style)');
+    assert.match(r.html, /Requiere reconciliación manual/, 'escape-hatch label');
+    assert.match(r.html, /Efectivo final \(0\)/, 'escape-hatch not counted as final');
+    assert.doesNotMatch(r.html, /Provisional \(/, 'escape-hatch not double-counted as provisional');
+  }
+  // (e) LEGACY — a pre-feature record (NO provisional/metadata fields) must not crash; shown as "Heredado" (as before).
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 180 }) } });
+    assert.match(r.html, /Heredado \(1\)/, 'legacy record shown as Heredado');
+    assert.match(r.html, /L 180/, 'legacy cash shown (display as before)');
+    assert.match(r.html, /Efectivo final \(0\)/, 'legacy not mislabeled as final');
+  }
+  // (f) ERROR STATE — a subscription/permission failure renders an explicit error, NEVER an L0.
+  {
+    const r = run({ __error: true, code: 'PERMISSION_DENIED' });
+    assert.match(r.html, /cash-error/, 'error line present');
+    assert.match(r.html, /Error al leer cuadres/, 'explicit error message');
+    assert.doesNotMatch(r.html, /Efectivo final|Efectivo del turno|L 0\b/, 'NEVER renders a cash figure / L0 on error');
+  }
+  // (g) Reconciliar → Caja rtab (navigation only); the pending count is SEPARATE from driver cuadres.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) } }, { o1: {}, o2: {}, o3: {} });
+    assert.match(r.html, /Cuadres pendientes/, 'payment-recon pending label present');
+    assert.match(r.html, /<b>3<\/b>/, 'pending count from reconciliationOrders (3) — SEPARATE from cuadres');
+    assert.match(r.html, /Reconciliar/, 'Reconciliar link present');
+    r.reconBtn.dispatch('click', {});
+    assert.strictEqual(r.rtabClicks(), 1, 'Reconciliar activates the Caja rtab (navigation only)');
+  }
+  // freshness: the recon subscription still refreshes the bar's pending count.
   assert.match(html, /renderReconciliationSection\(\);\s*setTabBadge\('tab-caja-n'[^\n]*\n\s*renderCashBar\(\);/, 'recon subscription calls renderCashBar() to refresh the pending count');
-  ok('cash bar: display + Reconciliar→Caja rtab, no write; reads cash total + pending recon count; refreshed on recon updates');
+  // the subscription is wired with an ERROR handler → error state (never a silent L0 on permission failure).
+  assert.match(html, /subscribeToDriverCash\(renderCashBar,\s*\(err\)\s*=>\s*renderCashBar\(\{\s*__error:\s*true/, 'subscribeToDriverCash wired with an error handler → explicit error state');
+  ok('cash bar: final/provisional/legacy/escape-hatch split + unresolved detail + explicit error (never L0); Reconciliar→Caja; pending stays separate');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

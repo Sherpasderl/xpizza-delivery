@@ -2107,6 +2107,10 @@
   .cash-bar .ci { display: flex; flex-direction: column; line-height: 1.25; }
   .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 13px; color: var(--text); }
   .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
+  /* driver-cuadre breakdown: provisional/unresolved = warn (needs care); escape-hatch + read error = accent (stands out). */
+  .cash-bar .ci.cash-prov b { color: var(--warn); }
+  .cash-bar .ci.cash-escape b, .cash-bar .ci.cash-escape span { color: var(--accent); font-weight: 600; }
+  .cash-bar .ci.cash-error b, .cash-bar .ci.cash-error span { color: var(--accent); }
   .cash-div { width: 1px; height: 26px; background: var(--border-soft); flex: none; }
   .cash-recon-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
   .cash-recon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--hair-2); }
@@ -2963,7 +2967,9 @@ function subscribeAll() {
     renderSidebar();
     updateCustomerMarkers();
   });
-  XPD.subscribeToDriverCash(renderCashBar);   // read-only cash bar (today's closed cuadres)
+  // read-only cash bar (today's closed cuadres); the error cb renders an explicit error state (never a silent L0)
+  // if the /driver_cash parent .read is denied or the read fails.
+  XPD.subscribeToDriverCash(renderCashBar, (err) => renderCashBar({ __error: true, code: err && err.code }));
   // D4-c4 "Pausar pedidos" — read-only: the pause banner (the parent node enumerates every restaurant) + its clock
   XPD.subscribeToOrderControl((nodes) => {
     orderControlNodes = nodes; orderControlStatus = 'ok';
@@ -3890,28 +3896,62 @@ async function confirmCancelOrder(orderId) {
 // NO write. The reconciliation panel (Caja rtab) owns the resolve logic. `cash` comes from subscribeToDriverCash;
 // the recon subscription calls this with no arg to refresh the pending count, so the last cash snapshot is cached.
 let lastDriverCash = {};
+let driverCashError = null;   // set when the /driver_cash subscription ERRORS (permission/other) → explicit error state, NEVER L0
+// renderCashBar(cash):
+//   • a normal snapshot object → new driver_cash data (clears any prior error)
+//   • { __error: true, code } → a subscription/PERMISSION failure → render an explicit error (NEVER L0, so a
+//       dispatcher never mistakes "couldn't read the cuadres" for "no cash owed")
+//   • undefined → refresh only (keep the last snapshot + error state; the recon tick calls this to refresh the
+//       "Cuadres pendientes" PAYMENT count, which stays SEPARATE from the driver-cash cuadres below)
+// DISPLAY + "Reconciliar" link ONLY — no DB write, no cuadre math beyond summing already-closed cuadres. All
+// cuadre field reads are guarded so a LEGACY record (pre-feature: no `provisional`/metadata fields) never crashes.
 function renderCashBar(cash) {
-  if (cash !== undefined) lastDriverCash = cash || {};
+  if (cash && cash.__error === true) driverCashError = cash;                        // subscription/permission failure
+  else if (cash !== undefined) { lastDriverCash = cash || {}; driverCashError = null; }   // fresh data clears the error
   const el = $('cash-bar');
   if (!el) return;
-  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
-  const startMs = dayStart.getTime();
-  let total = 0;
-  for (const shifts of Object.values(lastDriverCash || {})) {
-    for (const shift of Object.values(shifts || {})) {
-      const c = shift && shift.cuadre;
-      if (c && Number.isFinite(c.closed_at) && c.closed_at >= startMs) {
-        total += Number(c.cash_owed) || 0;
+
+  const pending = Object.keys(reconciliationOrders || {}).length;                   // PAYMENT reconciliations — SEPARATE concern, kept distinct from driver cuadres
+  const pendingHtml = `<div class="cash-div"></div><div class="ci"><b>${escapeHtml(String(pending))}</b><span>Cuadres pendientes</span></div>`;
+  const reconBtnHtml = `<button class="cash-recon-btn" id="cash-recon-btn" type="button">Reconciliar</button>`;
+
+  if (driverCashError) {
+    // A read/permission failure must be VISIBLE, never a silent L0.
+    el.innerHTML = `<div class="ci cash-error"><b>—</b><span>Error al leer cuadres · reintentá</span></div>${pendingHtml}${reconBtnHtml}`;
+  } else {
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const startMs = dayStart.getTime();
+    let finalTotal = 0, finalCount = 0, provTotal = 0, provCount = 0, legacyTotal = 0, legacyCount = 0;
+    let escapeCount = 0, unresolvedCount = 0;
+    const unresolvedDetail = [];                                                    // "uid/shift: n" per driver-shift with unresolved orders
+    for (const [uid, shifts] of Object.entries(lastDriverCash || {})) {
+      for (const [shiftId, shift] of Object.entries(shifts || {})) {
+        const c = shift && shift.cuadre;
+        if (!c || !Number.isFinite(c.closed_at) || c.closed_at < startMs) continue; // today's closed cuadres only
+        const owed = Number(c.cash_owed) || 0;
+        if (c.source === 'escape_hatch' && c.needs_dispatch_review === true) {       // escape-hatch → needs MANUAL reconciliation (stands out); not double-counted
+          escapeCount++;
+        } else if (c.provisional === true) {                                         // PROVISIONAL (legacy-provisional and/or unresolved present)
+          provCount++; provTotal += owed;
+        } else if (c.provisional === false) {                                        // FINAL — money-grade attributed
+          finalCount++; finalTotal += owed;
+        } else {                                                                     // LEGACY pre-feature record (no `provisional`): show as before, never crash
+          legacyCount++; legacyTotal += owed;
+        }
+        const u = Number(c.unresolved_count) || 0;                                   // unresolved orders → count + driver/shift detail
+        if (u > 0) { unresolvedCount += u; unresolvedDetail.push(`${String(uid).slice(0, 6)}/${String(shiftId).slice(0, 8)}: ${u}`); }
       }
     }
+    const L = (n) => 'L ' + Number(n).toLocaleString('es-HN');
+    const parts = [`<div class="ci"><b>${escapeHtml(L(finalTotal))}</b><span>Efectivo final (${finalCount})</span></div>`];
+    if (provCount > 0)    parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(L(provTotal))}</b><span>Provisional (${provCount})</span></div>`);
+    if (legacyCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);
+    if (unresolvedCount > 0) parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(String(unresolvedCount))}</b><span title="${escapeHtml(unresolvedDetail.join(' · '))}">Sin resolver</span></div>`);
+    if (escapeCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci cash-escape"><b>${escapeHtml(String(escapeCount))}</b><span>Requiere reconciliación manual</span></div>`);
+    parts.push(pendingHtml, reconBtnHtml);
+    el.innerHTML = parts.join('');
   }
-  const pending = Object.keys(reconciliationOrders || {}).length;   // read-only — pending payment reconciliations
-  el.innerHTML = `
-    <div class="ci"><b>L ${escapeHtml(total.toLocaleString('es-HN'))}</b><span>Efectivo del turno</span></div>
-    <div class="cash-div"></div>
-    <div class="ci"><b>${escapeHtml(String(pending))}</b><span>Cuadres pendientes</span></div>
-    <button class="cash-recon-btn" id="cash-recon-btn" type="button">Reconciliar</button>
-  `;
+
   // Reconciliar → the shipped reconciliation panel (Caja rtab). Navigation only; no cuadre math/write here.
   const btn = $('cash-recon-btn');
   if (btn) btn.addEventListener('click', () => {
