@@ -46,6 +46,27 @@ export function isCashPayment(pm) {
 // The one warning the driver ever sees when there is no safe amount to collect.
 export const COLLECT_WARN_TEXT = 'Pago no confirmado — consultá a despacho';
 
+// Shown for EVERY blocked clock-out (missing shift identity, a persistently-rejected cuadre, or no server ack):
+// the driver can't self-close, so route them to dispatch, which has an operational exit ("Sacar de turno") and
+// reconciles the cash by hand. Retry stays available wherever a retry control exists (codex core r1 P2-1).
+export const BLOCKED_CLOSE_TEXT = 'No se pudo cerrar el turno. Contactá a despacho para cerrar el turno y reconciliar el efectivo.';
+
+// The approved guidance when a DUAL-ROLE account (a driver who is also a dispatcher) tries to complete a
+// delivery: the stamp rules intentionally reject it, so the raw PERMISSION_DENIED is mapped to this (r1 P2-2).
+export const DUAL_ROLE_COMPLETE_TEXT = 'Entregá desde una cuenta de repartidor; contactá a despacho.';
+
+/**
+ * Map a completeTask failure to a driver-facing message. A rules PERMISSION_DENIED on an assigned driver's own
+ * delivery means the dual-role rejection (never a transient) → the dual-role guidance. completeTask's own human
+ * Spanish refusals (cancelled / task-gone) pass through; anything else → a generic retry line.
+ */
+export function completeErrorText(err) {
+  const s = String((err && (err.message || err.code)) || '');
+  if (/permission.?denied/i.test(s)) return DUAL_ROLE_COMPLETE_TEXT;
+  if (/ya no existe|cancelad/i.test(s)) return s.replace(/^Error:\s*/i, '');
+  return 'No se pudo marcar como entregado — reintentá.';
+}
+
 /**
  * THE single source of truth for "what, if anything, does the driver collect for this order?".
  * Pure; keyed only on server-written truth (functions ALLOWED_PAYMENT_METHODS = cash|card_delivery|online,

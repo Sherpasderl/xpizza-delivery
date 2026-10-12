@@ -1,6 +1,6 @@
 // Pure cash-helper tests — run: `node cash-helpers.test.js` (no framework, repo idiom).
 import assert from 'node:assert/strict';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, BLOCKED_CLOSE_TEXT, DUAL_ROLE_COMPLETE_TEXT, completeErrorText, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 import { createRequire } from 'node:module';
 
 let passed = 0;
@@ -247,6 +247,22 @@ t('shiftCash: card_delivery counts as collected but NOT cash owed', () => {
 
 // Pin the exact driver-facing warning copy (owner/advisor-specified) so a literal change is caught.
 t('warn text is exactly the spec string', () => assert.equal(COLLECT_WARN_TEXT, 'Pago no confirmado — consultá a despacho'));
+
+// codex core r1 P2 copy (approved strings — a literal change is caught).
+t('blocked-close text routes to dispatch for close + reconcile (every blocked state)', () =>
+  assert.equal(BLOCKED_CLOSE_TEXT, 'No se pudo cerrar el turno. Contactá a despacho para cerrar el turno y reconciliar el efectivo.'));
+t('dual-role complete text is the approved guidance', () =>
+  assert.equal(DUAL_ROLE_COMPLETE_TEXT, 'Entregá desde una cuenta de repartidor; contactá a despacho.'));
+t('completeErrorText: a rules PERMISSION_DENIED → the dual-role guidance (not the raw SDK error)', () => {
+  assert.equal(completeErrorText(new Error('PERMISSION_DENIED: Permission denied')), DUAL_ROLE_COMPLETE_TEXT);
+  assert.equal(completeErrorText({ code: 'permission-denied' }), DUAL_ROLE_COMPLETE_TEXT);
+});
+t('completeErrorText: completeTask human refusals pass through (cancelled / task-gone)', () => {
+  assert.equal(completeErrorText(new Error('Este pedido fue cancelado')), 'Este pedido fue cancelado');
+  assert.equal(completeErrorText(new Error('Esta tarea ya no existe')), 'Esta tarea ya no existe');
+});
+t('completeErrorText: anything else → a generic retry line (never the raw error)', () =>
+  assert.equal(completeErrorText(new Error('network glitch xyz')), 'No se pudo marcar como entregado — reintentá.'));
 
 // ============================================================================
 // RENDER + GOLDEN (folded in; same assertions as before). Order shapes ORIGINATE from the real server

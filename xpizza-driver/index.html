@@ -1147,7 +1147,7 @@
 import * as XPD from './xpizza-delivery.js?v=20';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml, BLOCKED_CLOSE_TEXT, completeErrorText } from './cash-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 
 // ============================================================
@@ -1631,7 +1631,7 @@ function showCuadre() {
       <div class="rc-title">Cierre de turno</div>
       <div class="rc-date">${dateStr}</div>
       <hr class="dash">
-      <div class="rc-note">No se pudo identificar este turno. Terminá el turno y volvé a iniciarlo para que el cuadre se registre correctamente; si persiste, contactá a despacho.</div>
+      <div class="rc-note">${BLOCKED_CLOSE_TEXT}</div>
       <button class="rc-back" id="cuadre-back">Volver</button>`;
     screen.classList.add('open');
     return;
@@ -1806,7 +1806,7 @@ $('cuadre-screen').addEventListener('click', async (e) => {
       new Promise((r) => setTimeout(() => r(false), COMPLETION_SETTLE_TIMEOUT_MS)),
     ]);
     if (!isLatest()) return;                                   // superseded by a newer confirm while waiting (it owns closeInFlight)
-    if (!settled) { closeInFlight = false; toast('Sin conexión — no se pudo cerrar el turno. Reintentá.', 'error'); refreshOpenCashSurfaces(); return; }   // P2-6: catch up the receipt to any settlement/rollback suppressed during the wait
+    if (!settled) { closeInFlight = false; toast(BLOCKED_CLOSE_TEXT, 'error'); refreshOpenCashSurfaces(); return; }   // P2-6 catch-up; retry stays available (confirm re-rendered)
   }
   // P1-3: the shift may have changed while we waited — re-validate before touching money.
   if (!identityMatches(bound)) { closeInFlight = false; toast('El turno cambió — volvé a abrir el cierre', 'error'); $('cuadre-screen').classList.remove('open'); return; }
@@ -1839,7 +1839,7 @@ $('cuadre-screen').addEventListener('click', async (e) => {
     // Server REJECTED (permission/validation/other) — never clock out; the cuadre is the whole point. Stay on
     // shift and surface it (this also surfaces a LATE rejection after the timeout message); the driver retries.
     console.warn('recordCuadre rejected (staying on shift):', err);
-    toast('No se pudo guardar el cuadre — reintentá.', 'error');
+    toast(BLOCKED_CLOSE_TEXT, 'error');        // retry stays available (button re-enabled below); dispatch is the exit
     refreshOpenCashSurfaces();                 // re-render from settled orders so a retry submits the current amount
     reEnableConfirm();
   });
@@ -1848,8 +1848,8 @@ $('cuadre-screen').addEventListener('click', async (e) => {
   // — the observer above still owns its late outcome (unless a retry supersedes it).
   const raced = await Promise.race([p.then(() => 'acked', () => 'failed'), new Promise((r) => setTimeout(() => r('timeout'), CUADRE_ACK_TIMEOUT_MS))]);
   if (raced === 'timeout' && isLatest()) {
-    toast('Sin conexión — no se pudo cerrar el turno. Reintentá.', 'error');
-    reEnableConfirm();   // allow a retry; a late ack of THIS op (if not superseded) still finalizes via the observer
+    toast(BLOCKED_CLOSE_TEXT, 'error');   // no ack yet; retry stays available, dispatch is the exit; a late ack of THIS op still finalizes via the observer
+    reEnableConfirm();
   }
 });
 
@@ -2480,7 +2480,14 @@ function attachActiveCardHandlers(o) {
       const p = XPD.completeTask(currentUser.uid, o.deliveryTask.id);
       pendingCompletions.add(p);
       p.finally(() => pendingCompletions.delete(p));
-      await p;
+      try {
+        await p;
+      } catch (err) {
+        // Map the rules PERMISSION_DENIED (a dual-role account completing) to the approved guidance instead of
+        // the raw SDK error; the slider shows _userMessage and resets for a retry (r1 P2-2).
+        err._userMessage = completeErrorText(err);
+        throw err;
+      }
       toast('¡Entregado!', 'success');
     });
   }
@@ -2594,7 +2601,7 @@ function attachSlideConfirm(elementId, onConfirm) {
         el.classList.remove('completed');
         thumb.style.left = '';
         fill.style.width = '';
-        toast('Error: ' + (err?.message || err), 'error');
+        toast(err && err._userMessage ? err._userMessage : 'Error: ' + (err?.message || err), 'error');
       }
     } else {
       reset();
