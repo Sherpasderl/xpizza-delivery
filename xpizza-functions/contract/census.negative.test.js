@@ -45,6 +45,8 @@ for (const [name, code, re] of [
   ['orders-transaction', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').transaction((all) => all); });", /opaque order write unresolved: .*transaction-above-orders/],
   ['root-transaction-slash', "createOrderApp.all(async (req, res) => { await rtdb.ref('/').transaction(fixUp); });", /opaque order write unresolved: .*transaction-at-root .*fixUp/],
   ['modular-root-transaction', "createOrderApp.all(async (req, res) => { await runTransaction(ref(db), (root) => root); });", /opaque order write unresolved: .*transaction-at-root/],
+  // codex rebase-r1 P1 (generalized): an UNREGISTERED identity field on a CASH read (a function that reads an amount)
+  ['unregistered-identity-on-cash-read', "function shiftCashProbe(o, uid) { return o.delivered_by_courier_uid === uid ? o.total : 0; }", /unregistered field read on a money path: 'delivered_by_courier_uid'/],
   ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));

@@ -48,7 +48,10 @@ const FIELD_FACTS = {
   restaurant_name: ['PLACE'], address_short: ['PLACE'], restaurant_id: ['BRAND'],
   restaurant_display_name: ['PLACE', 'BRAND'],   // D12b (reviewed at the rebase onto 445d85d): the snapshotted display name — pickup PLACE + brand label
   display_number: ['NUM'], order_id: ['NUM'],
-  delivered_by_uid: ['DRIVER'], delivered_by_name: ['DRIVER'], delivered_at: ['DRIVER', 'CASH'], fulfilled_offline_at: ['DRIVER'],
+  delivered_by_uid: ['DRIVER'], delivered_by_name: ['DRIVER'],
+  // driver-cuadre core: the money-grade identity that decides whose cash enters a shift (codex rebase-r1 P1)
+  delivered_by_driver_uid: ['DRIVER', 'CASH'],
+  delivered_at: ['DRIVER', 'CASH'], fulfilled_offline_at: ['DRIVER'],
   cash_owed: ['CASH'], redemption: ['REWARD'], earn_preview: ['REWARD'], factura_status: ['FACTELIG'],
 };
 const FIELDS = new Set(Object.keys(FIELD_FACTS));
@@ -198,7 +201,7 @@ function census({ explicit = [], extraUnits = [] } = {}) {
     if (round >= 3) break;
   }
   // ── sites ──
-  const sites = []; const opaque = []; const counters = new Map();
+  const sites = []; const opaque = []; const counters = new Map(); const unknownReads = [];
   for (const { u, ast } of parsed) {
     const al = aliases.get(scopeOf(u)) || new Map();
     const add = (fn, field, viaAlias, node, kind) => {
@@ -211,6 +214,7 @@ function census({ explicit = [], extraUnits = [] } = {}) {
         const f = propName(node);
         if (f && FIELDS.has(f)) add(fn, f, null, node, node.computed ? 'computed' : 'member');
         else if (f && al.has(f)) add(fn, al.get(f), f, node, 'projection');
+        else if (f && !node.computed && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && !(parent && parent.type === 'CallExpression' && parent.callee === node)) unknownReads.push({ file: u.file, fn, field: f, base: node.object.name, line: node.loc.start.line + u.lineOffset });
         else if (node.computed && !f && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && node.property.type !== 'NumericLiteral' && !(node.property.type === 'Literal' && typeof node.property.value === 'number')) {
           opaque.push({ file: u.file, fn, base: node.object.name, line: node.loc.start.line + u.lineOffset, how: 'computed' });
         }
@@ -458,7 +462,7 @@ function census({ explicit = [], extraUnits = [] } = {}) {
       }
     });
   }
-  return { units: units.length, sites, opaque, projections, sentinel, timers, clocks, writes, opaqueWrites };
+  return { units: units.length, sites, opaque, projections, sentinel, timers, clocks, writes, opaqueWrites, unknownReads };
 }
 
 module.exports = { census, FIELD_FACTS, READER_DIRS, sources };

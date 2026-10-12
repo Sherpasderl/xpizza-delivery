@@ -11892,5 +11892,36 @@
       "--experimental-vm-modules",
       "contract/harness-capabilities.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p0-34",
+    "slice": "r3p0",
+    "file": "contract/census-build.js",
+    "from": "  for (const x of moneyPathReads) if (!Object.prototype.hasOwnProperty.call(NF, x.field) || x.field === '_doc') problems.push(",
+    "to": "  for (const x of moneyPathReads) if (false && !Object.prototype.hasOwnProperty.call(NF, x.field) || x.field === '_doc') problems.push(",
+    "label": "an unregistered field read on a money path passes silently (codex rebase-r1 P1)",
+    "kills_with": [
+      "unregistered-identity-on-cash-read: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-35",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "  delivered_by_driver_uid: ['DRIVER', 'CASH'],",
+    "to": "",
+    "label": "the money-grade driver identity delivered_by_driver_uid is unregistered again (codex rebase-r1 P1)",
+    "kills_with": [
+      "unregistered field read on a money path: 'delivered_by_driver_uid'",
+      "the code's read sites differ from the reviewed census"
+    ],
+    "command": [
+      "node",
+      "contract/census.guard.test.js"
+    ]
   }
 ]

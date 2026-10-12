@@ -93,7 +93,8 @@ function body(rid, oid, name, method, { lines = 1, itemsText = null, type = 'del
   assert.strictEqual(persisted.ob_empty.payment_method, '', FAIL('S14', `premise — the real writer persisted payment_method '' for 'efectivo' (${JSON.stringify(persisted.ob_empty.payment_method)})`));
   ok(`real writers: card_delivery (2 lines), 'efectivo' → persisted '' (S14 confirmed at runtime), items_text ≠ priced items, la_musa pickup — all HTTP 200`);
 
-  const OBS = { base: '2cb5a1c', writer: Object.fromEntries(Object.entries(persisted).map(([k, o]) => [k, { payment_method: o.payment_method, items_text: o.items_text, summary_lines: o.summary_lines, address_short: o.address_short, order_type: o.order_type }])), readers: {} };
+  // codex rebase-r1 P2: provenance DERIVED from git metadata (fs only), never hard-coded
+  const OBS = { ...require('./git-provenance').provenance(), writer: Object.fromEntries(Object.entries(persisted).map(([k, o]) => [k, { payment_method: o.payment_method, items_text: o.items_text, summary_lines: o.summary_lines, address_short: o.address_short, order_type: o.order_type }])), readers: {} };
   const boot = async (cell, dir, url) => {
     const host = createFirebaseHost({ pageId: `obs${cell}`, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
     const p = await bootPage(dir, { host, url, beforeScripts: (w) => { installGoogleMaps(w); } });
