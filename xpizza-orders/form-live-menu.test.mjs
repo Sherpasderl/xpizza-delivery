@@ -328,3 +328,62 @@ test('a validator that THROWS is a refusal, not an exception escaping the coordi
   assert.strictEqual(live.state().source, 'bundle', 'and the bundle is retained');
   assert.match(live.state().lastError, /snapshot refused/, '...with a reason a developer can act on');
 });
+
+// ── 1D add-product B (rev 6 §2) — RE-FETCH ON RETURN TO VIEW, rate-limited ─────────────────────────────────────────────
+function fakeDoc() {
+  const listeners = new Set();
+  return {
+    visibilityState: 'visible',
+    addEventListener: (type, fn) => { if (type === 'visibilitychange') listeners.add(fn); },
+    removeEventListener: (type, fn) => { if (type === 'visibilitychange') listeners.delete(fn); },
+    fire(state) { this.visibilityState = state; for (const fn of [...listeners]) fn(); },
+    count: () => listeners.size,
+  };
+}
+
+test('watchVisibility: a return to view re-fetches — never while hidden, at most once per interval since ANY attempt', async () => {
+  const lab = fetchLab();
+  let t = 1_000_000;
+  const live = createLiveMenu({ url: '/m', fetchImpl: lab.impl, adapter: adapterFor('x'), onApply: () => {}, now: () => t });
+  live.start();                                                     // the boot fetch is an attempt too
+  assert.strictEqual(lab.calls.length, 1);
+  const doc = fakeDoc();
+  const detach = live.watchVisibility(doc, { minIntervalMs: 60000 });
+  t += 120_000; doc.fire('hidden');
+  assert.strictEqual(lab.calls.length, 1, 'going hidden fetches nothing — even long after the last attempt');
+  t -= 120_000;
+  t += 59_999; doc.fire('visible');
+  assert.strictEqual(lab.calls.length, 1, 'back within 60 s of the boot fetch → no request (rate-limited)');
+  t += 1; doc.fire('visible');
+  assert.strictEqual(lab.calls.length, 2, 'back after 60 s → one re-fetch');
+  doc.fire('visible');
+  assert.strictEqual(lab.calls.length, 2, 'an immediate second return is rate-limited by that re-fetch');
+  t += 60_000; detach(); doc.fire('visible');
+  assert.strictEqual(lab.calls.length, 2, 'detached → nothing');
+  assert.strictEqual(doc.count(), 0, 'the listener is removed');
+});
+
+test('watchVisibility: the re-fetch IS refresh() — a stale boot answer still loses to it; the default interval is 60 s', async () => {
+  const lab = fetchLab();
+  let t = 0;
+  const applied = [];
+  const live = createLiveMenu({ url: '/m', fetchImpl: lab.impl, adapter: adapterFor('x'), onApply: (s) => applied.push(s.dishes[0].name), now: () => t });
+  live.start();                                                     // boot request #0, slow
+  const doc = fakeDoc();
+  live.watchVisibility(doc);                                        // default interval
+  t = 59_999; doc.fire('visible');
+  assert.strictEqual(lab.calls.length, 1, 'default interval: 60 s');
+  t = 60_000; doc.fire('visible');                                  // request #1, the newer one
+  lab.reply(1, 200, envelope('x', [{ id: 1, name: 'NEW', price: 1 }]), { etag: '"b"' });
+  await new Promise((r) => setTimeout(r, 0));
+  lab.reply(0, 200, envelope('x', [{ id: 1, name: 'OLD', price: 1 }]), { etag: '"a"' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepStrictEqual(applied, ['NEW'], 'the older boot answer landing last never applies');
+  assert.strictEqual(live.state().etag, '"b"');
+});
+
+test('watchVisibility: no document → an inert detach (Node, a worker, a broken page)', () => {
+  const live = createLiveMenu({ url: '/m', fetchImpl: () => new Promise(() => {}), adapter: adapterFor('x') });
+  assert.strictEqual(typeof live.watchVisibility(null), 'function');
+  assert.strictEqual(typeof live.watchVisibility({}), 'function');
+});

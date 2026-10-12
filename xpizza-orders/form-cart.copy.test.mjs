@@ -66,9 +66,11 @@ test('the conflict gate sits at every path to a charge — structural census, bo
     // COUNTS use the comment-stripped source; PLACEMENT assertions below read `raw`, because where a
     // gate sits is a fact about the code as written — and two of those patterns deliberately anchor on
     // the comment that marks the gate.
-    // Exactly four sites: the definition, the SEND gate, and the two entry gates.
-    assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 4,
-      `${dir}: expected 4 cartConflicts() sites — definition, refuseConflictedSend, buildOrder, submitOrder`);
+    // Exactly five sites: the definition, the SEND gate, the two entry gates — and cartRestore's announcement (1D
+    // add-product B: a restored bare-launcher line is announced at once; a NOTICE, not a gate — the gates above refuse it).
+    assert.strictEqual((html.match(/cartConflicts\(\)/g) || []).length, 5,
+      `${dir}: expected 5 cartConflicts() sites — definition, refuseConflictedSend, buildOrder, submitOrder, cartRestore's announcement`);
+    assert.ok(/\nfunction cartRestore\(stashedCart\)\{[\s\S]*?announceCartConflicts\(cartConflicts\(\)\);[\s\S]*?\n\}\n/.test(raw), `${dir}: the fifth site is cartRestore's announcement`);
 
     // 🔴 THE SEND GATE, INSIDE THE RETRY LOOP, with nothing between the check and the fetch. The retry
     // re-sends createOrder without rebuilding the order, so a gate before the loop does not cover it.

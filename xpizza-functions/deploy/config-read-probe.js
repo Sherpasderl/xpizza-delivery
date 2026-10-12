@@ -15,7 +15,23 @@
  * mutation. ZERO customer/fiscal/payment state — proven by the post-probe absence read below.
  *
  * Env: CREATEORDER_URL, INTAKE_SECRET, PROBE_STAMP (high-entropy), FB_DATABASE_URL, GOOGLE_APPLICATION_CREDENTIALS.
+ *
+ * R1 (PLAN-emulator-isolation §c.1) — TWO MODES, NEVER INFERRED FROM ABSENCE:
+ *   · EMULATOR mode = any emulator signal present: the run's endpoints AND CREATEORDER_URL are validated BEFORE the
+ *     first fetch (a prod Functions URL is refused while the emulator vars are set — non-vacuous, guard-tested).
+ *   · PROD mode = the explicit opt-in PROBE_TARGET=prod, and then NO emulator signal may be present.
+ *   Neither ⇒ refuse. A missing variable is never a reason to talk to production.
  */
+const EE = require('../lib/emulator-endpoint');
+const EMULATOR_MODE = EE.hasEmulatorSignal(process.env);
+if (process.env.PROBE_TARGET === 'prod') {
+  if (EMULATOR_MODE) { console.error('\n🔴 REFUSED — PROBE_TARGET=prod with emulator variables set: mixed signals, refusing both.\n'); process.exit(2); }
+} else if (EMULATOR_MODE) {
+  require('../test/_emulator-required').harness(['database'], { functionsUrls: [process.env.CREATEORDER_URL] });
+} else {
+  console.error('\n🔴 REFUSED — no emulator signal and no PROBE_TARGET=prod opt-in. Production is never the default.\n');
+  process.exit(2);
+}
 const admin = require('firebase-admin');
 const { assertSafeProbe, assertProbeResponse, PROBE_PREFIX } = require('./probe-guard');
 
@@ -65,7 +81,7 @@ function probePayload(stamp) {
   // C#2 — empirical zero-state proof: nothing was written for the probe id. (order_tracking is
   // token-keyed and rate-limit is bucket-keyed; both are written strictly AFTER the zone-check 400,
   // so their absence follows from orders/{id} being absent — the deterministic keys below are the proof.)
-  const EMU = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+  const EMU = EMULATOR_MODE;
   const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
   admin.initializeApp(
     EMU

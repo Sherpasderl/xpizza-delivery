@@ -1191,6 +1191,15 @@ for (const dir of Object.keys(BRAND)) {
       const vi = w.liveMenuGlobalGet('VARIANT_ITEMS');
       const lk = Object.keys(vi)[0];
       m.variant_items = { [lk]: { ...vi[lk], label: payload('label') } };
+    } else {
+      /* 1D add-product B: x_pizza now draws groups too — a served group whose LAUNCHER (its card AND its picker), label and
+         choices are hostile, so the launcher card's own template and the x_pizza picker are on this walk (ids stay valid). */
+      m.dishes = m.dishes.concat([
+        { id: 900, cat: 'ny', name: payload('launcher'), price: 624, desc: payload('ldesc'), emoji: payload('emoji'), color: HOSTILE_COLOR },
+        { id: 901, cat: 'ny', name: payload('vname1'), price: 624, variantOf: 900, choice: payload('choice') },
+        { id: 902, cat: 'ny', name: payload('vname2'), price: 650, variantOf: 900, choice: payload('choice2') },
+      ]);
+      m.variant_items = { 900: { label: payload('label'), basePrice: 624, variantIds: [901, 902] } };
     }
     await serve(w, envelope(B.rid, m));
     assert.strictEqual(w.liveMenuGlobalGet('MENU')[0].name, m.dishes[0].name,
@@ -1235,6 +1244,8 @@ for (const dir of Object.keys(BRAND)) {
     grids.forEach((g, i) => visit(g, 'card-grid#' + i, null));
     assert.ok(grids.some((g) => g && g.textContent.includes(MARK + 'name')),
       `${dir}: non-vacuity — the hostile dish NAME was rendered on one of the card grids`);
+    if (dir === 'xpizza-orders') assert.ok(grids.some((g) => g && g.textContent.includes(MARK + 'launcher')),
+      `${dir}: non-vacuity — the hostile LAUNCHER card was rendered on a grid`);
     // 2. the ordinary detail modal
     w.openDetailModal(first.id);
     visit(w.document.getElementById('detail-scroll'), 'detail-modal', 'emoji');
@@ -1265,8 +1276,8 @@ for (const dir of Object.keys(BRAND)) {
     w.buildOrder();
     w.showSuccess();
     visit(w.document.getElementById('s5'), 'receipt', 'name');
-    // 7. la_musa's launcher modal and its subcategory headings
-    if (dir === 'la-musa-orders') {
+    // 7. the launcher modal (both brands draw groups — 1D add-product B), and la_musa's subcategory headings
+    {
       const launcher = w.liveMenuGlobalGet('MENU').find((d) => w.itemIsLauncher(d));
       if (launcher) {
         w.openDetailModal(launcher.id);
@@ -1278,7 +1289,8 @@ for (const dir of Object.keys(BRAND)) {
           `${dir}/launcher-modal: non-vacuity — and each variant's CHOICE was rendered here, as text`);
         w.closeDetailModal();
       }
-      visit(w.document.getElementById('menu-sections'), 'subcategory-headings', 'subcat');
+      assert.ok(launcher, `${dir}: non-vacuity — a launcher was on this walk`);
+      if (dir === 'la-musa-orders') visit(w.document.getElementById('menu-sections'), 'subcategory-headings', 'subcat');
     }
     assert.ok(reached.length >= 5, `${dir}: non-vacuity — every surface was actually visited (${reached.join(', ')})`);
     ok(`${dir}: a hostile catalog is inert on ${reached.length} render paths (${reached.join(', ')})`);
@@ -1835,17 +1847,24 @@ for (const dir of Object.keys(BRAND)) {
        served block applied or was dropped on the floor. The supplied block therefore carries a value
        the literal does not have, and that value is what is read back — and read back off the SCREEN as
        well, because a global nobody renders is not evidence the customer saw a working launcher. */
+    /* 1D add-product B (rev 6 §0d.2): the displayed "desde" is DERIVED from the choices' own prices — an authored
+       basePrice is legacy data and is never shown. So the value read back off the screen is the supplied LABEL
+       (which the literal does not have), and the stale basePrice the block also carries must NOT be what shows. */
     {
       const m = B.menu(w);
       const distinct = cfg.basePrice + 7;
-      m.variant_items = { [launcherKey]: { ...cfg, basePrice: distinct } };
+      const distinctLabel = `${cfg.label} Servida`;
+      m.variant_items = { [launcherKey]: { ...cfg, label: distinctLabel, basePrice: distinct } };
       await serve(w, envelope(B.rid, m));
-      assert.strictEqual(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey].basePrice, distinct,
+      assert.strictEqual(w.liveMenuGlobalGet('VARIANT_ITEMS')[launcherKey].label, distinctLabel,
         `${dir}: non-vacuity — the SUPPLIED block applied, not the page's own literal`);
       w.openDetailModal(launcherKey);
       const modal = w.document.getElementById('detail-scroll');
-      assert.ok(modal.textContent.includes('desde L ' + distinct),
-        `${dir}: non-vacuity — and the applied basePrice is what the launcher shows`);
+      assert.ok(modal.textContent.includes(distinctLabel),
+        `${dir}: non-vacuity — and the applied block is what the launcher shows`);
+      const minChoice = Math.min(...cfg.variantIds.map((vid) => m.dishes.find((d) => d.id === vid).price));
+      assert.ok(modal.textContent.includes('desde L ' + minChoice) && !modal.textContent.includes('desde L ' + distinct),
+        `${dir}: the "desde" is the cheapest CHOICE (L ${minChoice}), never the authored basePrice (L ${distinct})`);
       const rows = modal.querySelectorAll('.detail-variant-row');
       assert.strictEqual(rows.length, cfg.variantIds.length,
         `${dir}: 🔴 the launcher renders one row per variant — never a required group with no choices (got ${rows.length})`);

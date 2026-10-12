@@ -208,7 +208,7 @@ const okJson = (body) => ({ ok: true, status: 200, json: async () => body });
 
 // What the merchant's own editor believes is outstanding. Zero after a reload of a SAVED draft — which
 // is the whole reason #7-B exists — so tests that turn on that state assert it as a premise.
-const pendingCountOf = (app) => pendingChanges(app.state.draft).length;
+const pendingCountOf = (app) => pendingChanges(app.state.draft, app.state.additionKeys).length;   // what the bar counts
 
 // Two items, so a listener retained from one drawer can be fired while another is open — the
 // mis-target the drawerKey read at dispatch time made possible.
@@ -2022,4 +2022,235 @@ test('🔴 r1: a world that ends while the post-publish reload is held drops tha
   assert.strictEqual(app.state.draft.state.items.length, 2, 'La Musa’s draft is untouched');
   assert.strictEqual(app.state.draft.canEdit(), true, 'and editable — nothing is left locked by the dropped reload');
   assert.strictEqual(byId.get('pubback').disabled, false, 'and "Listo" is not left disabled');
+});
+
+// ── 1D add-product B — "Elección requerida" in the real drawer (the real app.js / editor / render / review; fetch stubbed) ──
+const GROUP_LOAD = (extra = {}) => ADD_LOAD({ groupAuthoring: true, choiceBadges: ['recommended'], ...extra });
+const q = (byId, sel) => byId.get('drawer').querySelectorAll(sel);
+const inputBy = (byId, label) => q(byId, 'input').find((i) => i.attrs['aria-label'] === label);
+async function setVal(n, v, ev = 'input') { n.value = v; await fire(n, ev); }
+async function choose(n) { n.checked = true; await fire(n, 'change'); }
+// add "NY Plain Slice" at 624 and fill its group exactly as the approved mock shows
+async function addPlainSlice(byId, app) {
+  const ref = await addAndFill(byId, app, { name: 'NY Plain Slice', price: '624' });
+  const radios = q(byId, 'input').filter((i) => i.type === 'radio');
+  assert.strictEqual(radios.length, 2, 'Ninguna | the choice');
+  assert.strictEqual(radios[0].checked, true, 'a new product starts with Ninguna');
+  await choose(radios[1]);
+  await setVal(q(byId, '.mgname-in')[0], 'Salsa');
+  let names = q(byId, '.moname');
+  assert.strictEqual(names.length, 2, 'two options to start');
+  await setVal(names[0], 'Salsa Roja'); await setVal(names[1], 'Salsa Vodka');
+  await fire(q(byId, '.mgadd')[0]);
+  names = q(byId, '.moname');
+  await setVal(names[2], 'Combinada');
+  await fire(q(byId, '.recpill')[2]);
+  const extras = q(byId, '.mgflag-extras')[0].children.find((c) => c.type === 'checkbox');
+  extras.checked = true; await fire(extras, 'change');
+  return ref;
+}
+
+test('🔴 add-product B: with the platform switch OFF the drawer is exactly Phase A — no "Elección requerida"', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? ADD_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app);
+  assert.strictEqual(q(byId, '.modblock').length, 0, 'absent — not disabled — while the server says authoring is off');
+  assert.strictEqual(app.state.groupAuthoring, false);
+});
+
+test('🔴 add-product B: RECOMENDADA appears only where the brand’s picker draws it (the contract’s choiceBadges)', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD({ choiceBadges: [] }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addAndFill(byId, app, { name: 'NY Plain Slice', price: '624' });
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[1]);
+  assert.strictEqual(q(byId, '.moname').length, 2, 'premise: the group is open with its options');
+  assert.strictEqual(q(byId, '.recpill').length, 0, '🔴 no pill for a brand whose contract has no badge');
+});
+
+test('🔴 add-product B: the group is built in the drawer, sent in the SERVER’s shape, folded in the list, nested in the review', async () => {
+  const byId = installDom();
+  const calls = installFetch((fn) => {
+    if (fn === 'getEditableCatalog') return GROUP_LOAD();
+    if (fn === 'editCatalog') {
+      // the server allocates: keys by name, display ids, variantOf / variant_items rewritten to display ids, names derived
+      const canon = JSON.parse(JSON.stringify(calls.at(-1).body.source));
+      const Lref = canon.items.find((i) => i.ref && !('variantOf' in i.display)).ref;
+      const idOf = new Map([[Lref, 2]]);
+      const keyOf = new Map([[Lref, 'NY Plain Slice']]);
+      canon.items.filter((i) => i.ref && 'variantOf' in i.display).forEach((v, k) => { idOf.set(v.ref, 3 + k); keyOf.set(v.ref, `NY Plain Slice - ${v.display.choice}`); });
+      for (const i of canon.items) {
+        if (!i.ref) continue;
+        const r = i.ref; delete i.ref; i.key = keyOf.get(r);
+        i.display = { ...i.display, id: idOf.get(r), name: keyOf.get(r), cat: 'c' };
+        if ('variantOf' in i.display) i.display.variantOf = 2;
+      }
+      canon.structure.item_order = canon.structure.item_order.map((k) => keyOf.get(k) || k);
+      const spec = canon.structure.variant_items[Lref];
+      canon.structure.variant_items = { 2: { ...spec, variantIds: spec.variantIds.map((r) => idOf.get(r)) } };
+      return okJson({ token: 'ET', updateTime: 'T2', source: canon, diff: { added: canon.items.filter((i) => i.display.id >= 2).map((i) => ({ surface: 'item', key: i.key, price: i.price })), removed: [], renamed: [], changed: [], largeChangeSet: [] } });
+    }
+    return okJson({ versionId: 'v2' });
+  });
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  assert.strictEqual(pendingCountOf(app), 1, 'ONE pending change: a product with its choice, not 1 + 3');
+  const rows = byId.get('detail').querySelectorAll('.irow');
+  assert.strictEqual(rows.length, 2, 'the list shows Pizza and the new product — its options are folded under it');
+  assert.ok(byId.get('detail').querySelectorAll('.ochip').some((c) => c.children.some((t) => t.textContent === 'Salsa')), 'with its group as a chip');
+
+  await fire(byId.get('review'));
+  const sent = calls.find((c) => c.fn === 'editCatalog').body.source;
+  const opts = sent.items.filter((i) => i.display && i.display.variantOf === ref);
+  assert.deepStrictEqual(sent.items.find((i) => i.ref === ref), { ref, price: 624, display: { cat: 'c', name: 'NY Plain Slice', price: 624, extras_policy: 'none' } }, '🔴 the product: a REF, its price, "sin extras"');
+  assert.deepStrictEqual(opts.map((o) => [o.price, o.display.choice, o.display.tags]), [[624, 'Salsa Roja', undefined], [624, 'Salsa Vodka', undefined], [624, 'Combinada', ['recommended']]], '🔴 each option a priced row, Combinada recommended');
+  assert.ok(opts.every((o) => /^tmp:/.test(o.ref) && !('key' in o) && !('name' in o.display) && !('cat' in o.display)), 'refs only; the server derives names and sections');
+  assert.deepStrictEqual(sent.structure.variant_items, { [ref]: { label: 'Salsa', variantIds: opts.map((o) => o.ref) } });
+  // adopted: the review nests the three options under the product
+  assert.ok(app.state.additionKeys.has('NY Plain Slice - Combinada'), 'the saved options are known additions');
+  assert.strictEqual(byId.get('mbody').querySelectorAll('.sub').length, 3, 'the review nests the three options');
+  assert.strictEqual(byId.get('detail').querySelectorAll('.irow').length, 2, 'and the list still folds them after adoption');
+});
+
+test('🔴 add-product B: unequal prices — the product price is DERIVED and refuses typing; "Mismo precio" sets every option at once; Ninguna leaves nothing', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  const items = () => app.state.draft.state.items;
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '644');
+  await setVal(inputBy(byId, 'Precio de Salsa Roja'), '700');
+  await setVal(inputBy(byId, 'Precio de Combinada'), '680');
+  const product = () => items().find((i) => i.ref === ref);
+  assert.strictEqual(product().price, 644, 'the product follows its cheapest option');
+  const listPrice = byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === `item::${ref}`);
+  assert.strictEqual(listPrice && listPrice.textContent, 'desde L644', '🔴 the list prices it as the order page will: "desde" the cheapest');
+  assert.strictEqual(app.state.samePrice.get(ref), false, 'editing one option turned "Mismo precio" off');
+  const price = inputBy(byId, 'Precio');
+  assert.strictEqual([price.readOnly, price.value].join('|'), 'true|644', 'the product price is shown read-only, derived');
+  await setVal(price, '1');
+  assert.deepStrictEqual([product().price, price.value], [644, '644'], '🔴 typing into the derived price changes nothing');
+  const same = q(byId, '.mgflag-same')[0].children.find((c) => c.type === 'checkbox');
+  same.checked = true; await fire(same, 'change');
+  assert.deepStrictEqual(items().filter((i) => i.display.variantOf === ref).map((i) => i.price), [644, 644, 644], '"Mismo precio" ON sets every option to the product price (one mutator)');
+  await setVal(inputBy(byId, 'Precio'), '630');
+  assert.deepStrictEqual([product().price, ...items().filter((i) => i.display.variantOf === ref).map((i) => i.price)], [630, 630, 630, 630], 'and the product price now sets them all');
+  assert.strictEqual(pendingCountOf(app), 1);
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[0]);
+  assert.deepStrictEqual(items().filter((i) => i.ref).map((i) => i.ref), [ref], '🔴 Ninguna: only the product remains');
+  assert.ok(!('variant_items' in app.state.draft.state.structure) && !('extras_policy' in product().display), 'no map, no "sin extras" — zero residue');
+  assert.strictEqual(q(byId, '.mgbody').length, 0);
+});
+
+test('🔴 add-product B: a refusal the server names on an OPTION opens its PRODUCT’s drawer with the message under that option', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  const optRef = app.state.draft.state.items.filter((i) => i.display.variantOf === ref)[1].ref;
+  installFetch((fn) => (fn === 'editCatalog'
+    ? refusal(400, { error: 'choice_duplicate', detail: '"Salsa Vodka" appears twice in this group', ref: optRef, field: 'choice' }) : GROUP_LOAD()));
+  await fire(byId.get('review'));
+  await fire(byId.get('mbody').querySelectorAll('button')[0]);
+  assert.strictEqual(app.state.drawerKey, ref, 'the PRODUCT’s drawer, not a drawer of the option');
+  const errs = q(byId, '.ferr');
+  assert.strictEqual(errs.length, 1);
+  assert.match(errs[0].textContent, /mismo nombre/, 'the portal’s own words for the server’s code');
+  assert.strictEqual(q(byId, '.moname').length, 3, 'everything the owner typed is kept');
+});
+
+// ── codex PB-3 P2-1 / P2-2 / P2-4 — a SAVED group's Ninguna, held option text across rebuilds, focus after a rebuild ──
+const SAVED_KEYS = ['NY Plain Slice', 'NY Plain Slice - Salsa Roja', 'NY Plain Slice - Salsa Vodka'];
+const SAVED_GROUP_SRC = () => {
+  const s = ADD_SRC();
+  s.items.push({ key: 'NY Plain Slice', price: 624, display: { id: 2, cat: 'c', name: 'NY Plain Slice', price: 624, extras_policy: 'none' } },
+    { key: SAVED_KEYS[1], price: 624, display: { id: 3, cat: 'c', name: SAVED_KEYS[1], price: 624, variantOf: 2, choice: 'Salsa Roja' } },
+    { key: SAVED_KEYS[2], price: 624, display: { id: 4, cat: 'c', name: SAVED_KEYS[2], price: 624, variantOf: 2, choice: 'Salsa Vodka' } });
+  s.structure.item_order.push(...SAVED_KEYS);
+  s.structure.variant_items = { 2: { label: 'Salsa', variantIds: [3, 4] } };
+  return s;
+};
+
+test('🔴 P2-1: "Ninguna" works on a SAVED, unpublished group — the product stays; its fixed controls STAY disabled through a lock cycle', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD({ source: SAVED_GROUP_SRC(), pendingAdditions: SAVED_KEYS }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  app.openDrawer('NY Plain Slice');
+  const radios = () => q(byId, 'input').filter((i) => i.type === 'radio');
+  assert.deepStrictEqual(radios().map((r) => [r.checked, r.disabled]), [[false, false], [true, true]], 'Ninguna is offered; the group radio (a saved structure) is not');
+  // a price edit hands the drawer back through the busy/idle toggle, which re-enables every control — but not these
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '650');
+  assert.deepStrictEqual([radios()[1].disabled, ...q(byId, '.recpill').map((b) => b.disabled), q(byId, '.mgflag-extras')[0].children.find((c) => c.type === 'checkbox').disabled], [true, true, true, true], '🔴 the fixed controls stay disabled after the drawer is handed back');
+  assert.strictEqual(pendingCountOf(app), 1, 'one option’s price on a saved group: ONE change');
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '624');
+  await choose(radios()[0]);
+  const items = app.state.draft.state.items;
+  assert.deepStrictEqual(items.map((i) => i.key), ['Pizza', 'NY Plain Slice'], '🔴 the options are gone, the product stays');
+  assert.ok(!('variant_items' in app.state.draft.state.structure) && !('extras_policy' in items[1].display), 'no map, no "sin extras" — zero residue');
+  assert.strictEqual(pendingCountOf(app), 1, 'ONE pending change: the choice was removed');
+  assert.strictEqual(q(byId, '.modblock').length, 0, 'a saved product cannot gain a group again, so the block is gone');
+  assert.strictEqual(document.activeElement, inputBy(byId, 'Precio'), 'focus lands on the product’s price (the block it was in is gone)');
+});
+
+test('🔴 P2-2: held option text survives every rebuild — Recomendada, fold, Agregar opción, reopen — and yields to a real price', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  const ref = await addPlainSlice(byId, app);
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '12x');
+  const vodka = () => inputBy(byId, 'Precio de Salsa Vodka').value;
+  await fire(q(byId, '.recpill')[0]); assert.strictEqual(vodka(), '12x', 'Recomendada');
+  await fire(q(byId, '.mgchev')[0]); await fire(q(byId, '.mgchev')[0]); assert.strictEqual(vodka(), '12x', 'fold / unfold');
+  await fire(q(byId, '.mgadd')[0]); assert.strictEqual(vodka(), '12x', 'Agregar opción');
+  app.openDrawer(ref); assert.strictEqual(vodka(), '12x', 'reopen');
+  assert.ok(!app.state.draft.state.items.find((i) => i.display.choice === 'Salsa Vodka').price, 'premise: the draft holds no price for it (publishing stays blocked)');
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '650'); app.openDrawer(ref);
+  assert.strictEqual(vodka(), '650', 'a real price replaces the held text');
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), 'abc');
+  const same = q(byId, '.mgflag-same')[0].children.find((c) => c.type === 'checkbox'); same.checked = true; await fire(same, 'change');
+  assert.strictEqual(vodka(), '624', '"Mismo precio" sets it — the held text does not come back');
+  await setVal(inputBy(byId, 'Precio'), '9z'); app.openDrawer(ref);
+  assert.strictEqual(inputBy(byId, 'Precio').value, '9z', 'the shared price field holds its text too');
+  // every option without a price, then "Mismo precio" with no product price: ONE blank price for all — no stale text
+  const off = q(byId, '.mgflag-same')[0].children.find((c) => c.type === 'checkbox'); off.checked = false; await fire(off, 'change');
+  for (const [i, t] of [['Salsa Roja', 'x1'], ['Salsa Vodka', 'x2'], ['Combinada', 'x3']]) await setVal(inputBy(byId, `Precio de ${i}`), t);
+  const on = q(byId, '.mgflag-same')[0].children.find((c) => c.type === 'checkbox'); on.checked = true; await fire(on, 'change');
+  assert.deepStrictEqual(['Salsa Roja', 'Salsa Vodka', 'Combinada'].map((c) => inputBy(byId, `Precio de ${c}`).value), ['', '', ''], '🔴 "Mismo precio" over an empty product price clears every option’s held text');
+  // and a PLAIN product (Ninguna) keeps its own held price text through a rebuild
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[0]);
+  await setVal(inputBy(byId, 'Precio'), '7q'); app.openDrawer(ref);
+  assert.strictEqual(inputBy(byId, 'Precio').value, '7q', '🔴 a plain product’s price field holds its text through a rebuild');
+});
+
+test('🔴 P2-4: after a rebuild, focus is on the replacement control (or the sensible next one)', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addPlainSlice(byId, app);
+  const pill = q(byId, '.recpill')[1]; pill.focus(); await fire(pill);
+  assert.strictEqual(document.activeElement, q(byId, '.recpill')[1], 'Recomendada: the NEW pill for the same option');
+  assert.notStrictEqual(document.activeElement, pill, 'premise: the drawer really was rebuilt');
+  await fire(q(byId, '.mgadd')[0]);
+  const names = q(byId, '.moname');
+  assert.strictEqual([names.length, document.activeElement === names[3]].join('|'), '4|true', 'Agregar opción: the new option’s name');
+  await fire(q(byId, '.model')[1]);
+  assert.strictEqual(document.activeElement && document.activeElement.value, 'Combinada', '× : the next option’s name');
+  await fire(q(byId, '.model')[2]);
+  assert.strictEqual(document.activeElement && document.activeElement.value, 'Combinada', '× on the last: the previous option’s name');
+  await fire(q(byId, '.mgchev')[0]);
+  assert.strictEqual(document.activeElement, q(byId, '.mgchev')[0], 'fold: the chevron');
+  await fire(q(byId, '.mgchev')[0]);
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[0]);
+  assert.strictEqual(document.activeElement, q(byId, 'input').filter((i) => i.type === 'radio')[0], 'Ninguna: the Ninguna radio');
+  await choose(q(byId, 'input').filter((i) => i.type === 'radio')[1]);
+  assert.strictEqual(document.activeElement, q(byId, '.mgname-in')[0], 'a group: straight into its name');
 });

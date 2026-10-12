@@ -779,6 +779,10 @@ const GOOD = () => ({
     ["rendererContract :: Object.prototype.hasOwnProperty.call(entry, 'renderedCategories')", 'requiredness', 'own-property presence of renderedCategories; absent means NOTHING is known to render (additions refused), never "anything renders"'],
     ["rendererContract :: !Array.isArray(entry.renderedCategories) || entry.renderedCategories.some((c) => typeof c !== 'string' || !c)", 'shape', 'this predicate IS the type test for renderedCategories (an array of non-empty strings)'],
     ["rendererContract :: typeof c !== 'string'", 'shape', 'the element type test inside the renderedCategories shape check'],
+    // 1D add-product B (advisor ruling 2026-10-10): choiceBadges, mirroring renderedCategories
+    ["rendererContract :: Object.prototype.hasOwnProperty.call(entry, 'choiceBadges')", 'requiredness', 'own-property presence of choiceBadges; absent means the picker draws NO choice badge (fail closed), never "any badge"'],
+    ["rendererContract :: !Array.isArray(entry.choiceBadges) || entry.choiceBadges.some((b) => typeof b !== 'string' || !b)", 'shape', 'this predicate IS the type test for choiceBadges (an array of non-empty strings)'],
+    ["rendererContract :: typeof b !== 'string'", 'shape', 'the element type test inside the choiceBadges shape check'],
     ["<module> :: typeof v === 'string'", 'shape', 'this predicate IS the type test'],
     ["<module> :: typeof v === 'number' && Number.isFinite(v)", 'shape', 'this predicate IS the type test'],
     ['<module> :: isPositiveInt(v)', 'shape', 'this predicate IS the type test'],
@@ -865,7 +869,9 @@ const GOOD = () => ({
     ['validateSource :: st.badges !== undefined #2', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
     ['validateSource :: !contract.badges.has(k)', 'post-type', 'membership, asked after the value has been typed'],
     ['validateSource :: Array.isArray(it.display.tags)', 'shape', 'this predicate IS the type test'],
-    ['validateSource :: !badgeKeys.has(t)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: contract.choiceBadges', 'post-type', 'a field of the already-validated contract record (rendererContract always returns a Set); the fallback only covers a hand-built contract'],
+    ['validateSource :: !badgeKeys.has(t) && !(isChoice && choiceBadgeKeys.has(t))', 'post-type', 'membership of a typed tag in the card badges, or — for a choice — in the choice badges'],
+    ['validateSource :: isChoice', 'post-type', 'is the item a choice: variantOf was typed (id_ref) and its membership validated above; absent means "not a choice", the only reading'],
     ['validateSource :: e.display', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: Array.isArray(extraCats) #3', 'shape', 'this predicate IS the type test'],
     ['validateSource :: !usedExtraCats.has(c)', 'post-type', 'membership, asked after the value has been typed'],
@@ -935,7 +941,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 155, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 160, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -949,7 +955,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 19, 'post-type': 67, shape: 47, 'not-a-presence-test': 22 },   // add-product B: +10 group rules
+  assert.deepStrictEqual(counts, { requiredness: 20, 'post-type': 69, shape: 49, 'not-a-presence-test': 22 },   // add-product B: +10 group rules; +5 choiceBadges (net)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

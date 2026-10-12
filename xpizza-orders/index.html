@@ -39,6 +39,8 @@
   --gold:     #B8860B;
   --gold-lt:  #F5E6C0;
   --gold-dk:  #7A5A08;
+  --gold-ring:rgba(184,134,11,.14);  /* additive: location-search focus ring (= --gold @14%) */
+  --pred-hot: #FAF7F2;               /* additive: highlighted first prediction row */
   --red:      #C8321A;
   --green:    #2A6A42;
   --green-bg: #EAF4EF;
@@ -510,6 +512,22 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 }
 .detail-cta:active{opacity:.92}
 .detail-cta-divider{opacity:.5}
+/* 1D add-product B — the required-choice picker, exactly the approved mock (xpizza-plainslice-mock/APPROVED-*). The mock's
+   disabled-CTA look is scoped to the picker's button so no existing CTA changes. */
+.detail-req{color:var(--red);font-weight:700;font-size:.85em}
+.detail-variant-row{display:flex;justify-content:space-between;align-items:center;padding:14px 14px;border:1.5px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:#fff}
+.detail-variant-row.sel{border-color:var(--charcoal)}
+.detail-variant-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--border2);flex:none}
+.detail-variant-row.sel .detail-variant-radio{border-color:var(--charcoal);box-shadow:inset 0 0 0 5px var(--charcoal)}
+/* 1D add-product B (codex PB-2 r1 P2-6): each choice row's native radio — focusable, visually hidden; the row shows keyboard focus */
+.detail-variant-row{position:relative}
+.detail-variant-row .choice-radio{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.detail-variant-row:focus-within{outline:2px solid currentColor;outline-offset:2px}
+.choice-line{display:flex;align-items:center;gap:8px}
+.choice-line .detail-extras-name{display:inline}
+.choice-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:var(--gold-lt);color:var(--gold-dk);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
+.choice-delta{font-size:14px;color:#5A4F47;font-weight:500;margin-left:auto;margin-right:14px;white-space:nowrap}
+.detail-cta.detail-cta--group[disabled]{background:#cfcbc4;color:#fff;cursor:not-allowed}
 
 /* Pill state: morphs from the full-width button into a centered cart
    pill (matching main menu .cart-bar). Shows whole cart total. */
@@ -831,6 +849,27 @@ textarea{resize:none;height:80px;line-height:1.4}
 .loc-card b{color:var(--charcoal);font-weight:700}
 .loc-card.confirmed{border-color:#A8D8BA;background:var(--green-bg)}
 .loc-card.confirmed b{color:var(--green)}
+/* ── Fail-state address search (location escape hatch) ──────────────────────────────────────
+   Rendered ONLY when updateLocInfo(fallback=true) — i.e. when navigator.geolocation failed (common
+   inside in-app webviews). On the GPS-OK happy path #loc-search-wrap stays display:none, so this is
+   byte-identical to today. Our own dropdown (not Google's widget) for brand parity; selecting a
+   prediction reuses placePin(...,false) — the SAME write path as GPS/drag, no new one. */
+/* Option C: a white PILL floating inside the top of the map (fail-state only; #loc-search-wrap is
+   display:none on the GPS-OK happy path). The pill is an absolute child of .loc-map-stack, over the tiles. */
+.loc-map-stack{position:relative}
+.loc-search-wrap{position:absolute;left:14px;right:14px;top:12px;z-index:2;background:#fff;border-radius:22px;box-shadow:0 6px 16px -6px rgba(30,27,24,.4)}
+.loc-search-wrap:focus-within{box-shadow:0 6px 16px -6px rgba(30,27,24,.4),0 0 0 3px var(--gold-ring)}
+.loc-search{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:0;border-radius:22px;background:#fff}
+.loc-search > svg{flex:none;color:var(--muted)}
+.loc-search input{border:0;background:transparent;outline:none;font-family:var(--sans);font-size:16px;color:var(--charcoal);width:100%}
+.loc-search input::placeholder{color:var(--muted)}
+.loc-preds{position:absolute;left:0;right:0;top:100%;margin-top:6px;border:1px solid var(--border);border-radius:12px;background:#fff;overflow:hidden;box-shadow:0 6px 16px -6px rgba(30,27,24,.4);z-index:2}
+.loc-pred{display:flex;gap:11px;align-items:flex-start;padding:11px 13px;border-bottom:1px solid var(--border);cursor:pointer}
+.loc-pred:last-child{border-bottom:0}
+.loc-pred.hot{background:var(--pred-hot)}
+.loc-pred > svg{flex:none;margin-top:1px;color:var(--gold)}
+.loc-pred .t{font-size:14px;font-weight:700;color:var(--charcoal);line-height:1.3}
+.loc-pred .s{font-size:12px;color:var(--muted);margin-top:1px}
 .map-btns{padding:0 16px}
 
 /* ── Payment ── */
@@ -1204,10 +1243,24 @@ textarea{resize:none;height:80px;line-height:1.4}
 
 <!-- ── STAGE 2: Location + Payment ── -->
 <div class="stage" id="s2">
-  <div style="position:relative;cursor:pointer" onclick="openFullscreenMap()">
-    <div id="map" style="height:220px;pointer-events:none"></div>
-    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
-      <div style="background:rgba(0,0,0,0.55);color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;backdrop-filter:blur(2px)" id="map-tap-hint">Toca para ajustar tu ubicación</div>
+  <!-- Location escape hatch (Phase 1): fail-state address search. display:none on the GPS-OK happy
+       path; revealed only by updateLocInfo(fallback=true). Selecting a prediction reuses placePin(). -->
+  <!-- Option C: the fail-state search is a PILL floating inside the top of the map. It is an absolute
+       SIBLING of the map wrapper within .loc-map-stack (position:relative), so tapping the pill does NOT
+       bubble to the wrapper's openFullscreenMap onclick; the map below the pill stays tap-to-fullscreen. -->
+  <div class="loc-map-stack">
+    <div class="loc-search-wrap" id="loc-search-wrap" style="display:none">
+      <div class="loc-search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <input type="text" id="loc-search-input" autocomplete="off" aria-label="Buscar dirección o referencia" placeholder="Buscá dirección o referencia" oninput="locSearchInput(this.value)"/>
+      </div>
+      <div class="loc-preds" id="loc-preds" style="display:none"></div>
+    </div>
+    <div style="position:relative;cursor:pointer" onclick="openFullscreenMap()">
+      <div id="map" style="height:220px;pointer-events:none"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+        <div style="background:rgba(0,0,0,0.55);color:#fff;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 16px;border-radius:20px;backdrop-filter:blur(2px)" id="map-tap-hint">Toca para ajustar tu ubicación</div>
+      </div>
     </div>
   </div>
   <div class="container" style="padding:0 0 100px">
@@ -1417,6 +1470,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <!-- 1D D4-b · availabilityReducer — the ONE 86 decision rule (window.availabilityReducer); shared byte-identical across KDS/forms/server -->
 <script src="availability-reducer.js"></script>
 <script src="form-safe-render.js"></script>
+<script src="form-group-picker.js"></script>
 <script src="form-confirm-quote.js"></script>
 <script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
@@ -1552,6 +1606,16 @@ function _legacyCartForSig(items) {
   });
 }
 let MENU = _okDishes(_BUNDLE.dishes) ? _BUNDLE.dishes : FALLBACK_MENU;   // 1D D2 — un-stripped: the id rides into the cart
+/* 1D add-product B — REQUIRED-CHOICE GROUPS, the shared picker's model (form-group-picker.js): a LAUNCHER dish, its priced
+   VARIANT dishes (`variantOf`, `choice`) and this map. Absent ⇒ no groups — today's form, unchanged. A bundled map the
+   shared rule refuses is dropped WHOLE (never half-read), and the grid then hides every dish of a group it cannot draw
+   (see gridDishes), so an unreadable map can never surface a bare launcher as an ordinary dish. */
+let VARIANT_ITEMS = (function(){
+  if (_BUNDLE.variant_items === undefined) return {};
+  try { GroupPicker.validateVariantBlock(_BUNDLE.variant_items, MENU, 'bundle'); return _BUNDLE.variant_items; }
+  catch (e) { try { console.warn('[groups] bundled variant_items refused:', e && e.message); } catch(_){} return {}; }
+})();
+function itemIsLauncher(p) { return GroupPicker.isLauncher(p, VARIANT_ITEMS); }
 
 
 const MIN_ORDER = 250;
@@ -1736,6 +1800,9 @@ const findMenuExtra = (k) => EXTRAS.find(e => e.id === k) || null;
 // lets a customer clear a line whose dish is gone (setQtyByKey updates, and REFUSES to create).
 function cartSync(id){
   const n = qty[id] || 0;
+  /* 1D add-product B — THE QUANTITY WRITE POINT: a bare launcher never gains quantity, whatever control asked (its choice
+     is the line). A decrease still passes, so a restored launcher line can be removed. */
+  if (n > CART.qtyOf(String(id)) && itemIsLauncher(findMenuItem(id))) { qty[id] = CART.qtyOf(String(id)); return; }
   const rec = findMenuItem(id);
   if (n > 0 && rec) CART.setQty(rec, n); else CART.setQtyByKey(String(id), n);
   // 🔴 qty FOLLOWS THE CART, it does not merely feed it. Without this line the two can disagree, and
@@ -1754,7 +1821,9 @@ function cartLines(){
   /* The availability predicate is the form's OWN isSoldOut — the same one the tiles and the add-guard
      use, so a line cannot be blocked on screen and orderable in the cart, or the reverse. Passed rather
      than imported: form-cart.js has no business knowing there is an availability feed. */
-  return CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } })
+  /* 1D add-product B: a bare LAUNCHER line (saved before its group, or a dish that became one while in the cart) is
+     BLOCKED with reason 'choice' — the shared rule (form-group-picker.js markLauncherLines). */
+  return GroupPicker.markLauncherLines(CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } }), VARIANT_ITEMS)
     .map((l, i) => ({ l, r: pos.has(l.key) ? pos.get(l.key) : MENU.length + i }))
     .sort((a, b) => a.r - b.r).map((x) => x.l);
 }
@@ -1818,6 +1887,15 @@ function cartRestore(stashedCart){
       reason: 'stash_unreadable_agreed_prices_unverifiable', keys: Object.keys(qty).filter((k) => (qty[k] || 0) > 0) }));
     const err = document.getElementById('err3') || document.getElementById('err1');
     if (err) { err.textContent = 'No pudimos recuperar tu pedido anterior. Armalo de nuevo, por favor.'; err.style.display = 'block'; }
+  }
+  /* 1D add-product B (rev 6 §0d.1): a restored line naming a bare LAUNCHER (saved before its group) is never resubmitted
+     bare. It stays VISIBLE and BLOCKING, like every restored line the live menu no longer agrees with: cartLines() marks
+     it 'choice', so the send gate and buildOrder refuse it, and every announcement (here, the self-update's review when
+     the menu settles, the send gate) tells the customer to choose again. Payment return and self-update both arrive here. */
+  const bare = GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS);
+  if (bare.length) {
+    console.warn('cart_restore_launcher_blocked', JSON.stringify({ keys: bare }));
+    announceCartConflicts(cartConflicts());
   }
   // qty follows the cart here too — one rule, every writer. Rebuilt from MENU first so every rendered
   // card has an entry, then overlaid with what the cart actually holds (including a line whose dish the
@@ -1939,7 +2017,10 @@ function announceCartConflicts(conflicts){
        that helps is removing it. Split only when EVERY blocked line is sold out; a mixed cart keeps the
        general wording rather than asserting a reason that is wrong for some of the lines. */
     const soldOut = conflicts.filter(l => l.unresolved === 'unavailable');
-    err.textContent = (soldOut.length === conflicts.length && soldOut.length)
+    const choose = conflicts.filter(l => l.unresolved === 'choice');   // 1D add-product B: the customer chooses again
+    err.textContent = (choose.length === conflicts.length && choose.length)
+      ? GroupPicker.reChooseText(choose.map(l => ({ key: l.key, name: (l.record && l.record.name) || l.key })), VARIANT_ITEMS)
+      : (soldOut.length === conflicts.length && soldOut.length)
       ? 'Agotado: ' + names.join(', ') + '. Quitá ' + (names.length > 1 ? 'esos productos' : 'ese producto') + ' para continuar.'
       : 'Algunos productos de tu carrito cambiaron: ' + names.join(', ') + '. Revisalos antes de continuar.';
     err.style.display = 'block';
@@ -1978,14 +2059,15 @@ function liveMenuPriceVersion(){
   } catch (_) { return null; }
 }
 try { window.__LIVE_MENU_PRICE_VERSION = liveMenuPriceVersion; } catch (_) {}
-const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS'];
+const LIVE_MENU_GLOBALS = ['MENU', 'EXTRAS', 'PICKUP_ONLY_CATS', 'WEEKEND_ONLY_CATS', 'VARIANT_ITEMS'];
 function liveMenuGlobalGet(n){
-  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : WEEKEND_ONLY_CATS;
+  return n === 'MENU' ? MENU : n === 'EXTRAS' ? EXTRAS : n === 'PICKUP_ONLY_CATS' ? PICKUP_ONLY_CATS : n === 'VARIANT_ITEMS' ? VARIANT_ITEMS : WEEKEND_ONLY_CATS;
 }
 function liveMenuGlobalSet(n, v){
   if (n === 'MENU') MENU = v;
   else if (n === 'EXTRAS') EXTRAS = v;
   else if (n === 'PICKUP_ONLY_CATS') PICKUP_ONLY_CATS = v;
+  else if (n === 'VARIANT_ITEMS') VARIANT_ITEMS = v;
   else WEEKEND_ONLY_CATS = v;
 }
 function liveMenuContainers(){ return ['menu-individual', 'menu-ny']; }
@@ -2018,6 +2100,18 @@ function liveMenuPrepare(body){
   // every lookup — cart reconciliation, pricing, availability — and which one is an accident of order.
   if (new Set(dishes.map((d) => String(d.id))).size !== dishes.length) throw new Error('apply_dish_duplicate');
   if (new Set(extras.map((e) => String(e.id))).size !== extras.length) throw new Error('apply_extra_duplicate');
+  /* 1D add-product B — the group model, judged by the SHARED rules against the dishes ARRIVING (form-group-picker.js):
+     an extras_policy other than 'none' refuses the snapshot whole; a supplied variant map must be drawable, and a
+     RETAINED one (absent ⇒ keep what is in force) is re-judged too — it is a set of references into the dish list
+     this snapshot replaces, so dropping the choices must not leave a launcher with nothing to choose. */
+  GroupPicker.validateExtrasPolicy(dishes);
+  let variantItems = VARIANT_ITEMS;
+  if (body.variant_items !== undefined) {
+    GroupPicker.validateVariantBlock(body.variant_items, dishes, 'supplied');
+    variantItems = body.variant_items;
+  } else {
+    GroupPicker.validateVariantBlock(variantItems, dishes, 'retained');
+  }
   return {
     // 1D D1 — the SECOND boundary: the live refresh. This one really does carry ids (the served body
     // is overlaid), and it is the path that replaces MENU/EXTRAS under a running form.
@@ -2033,6 +2127,7 @@ function liveMenuPrepare(body){
     // pickup-only list must not silently OPEN a gate that is currently closed.
     PICKUP_ONLY_CATS: Array.isArray(body.pickup_only_cats) ? body.pickup_only_cats : PICKUP_ONLY_CATS,
     WEEKEND_ONLY_CATS: Array.isArray(body.weekend_only_cats) ? body.weekend_only_cats : WEEKEND_ONLY_CATS,
+    VARIANT_ITEMS: variantItems,
   };
 }
 
@@ -2436,7 +2531,12 @@ function availKeysFor(item){
 }
 // x_pizza is priced — and therefore 86'd — by NAME.
 function AVAIL_IDENTITY(item){ return item.name; }
+/* 1D add-product B — WHOLE-DISH AVAILABILITY (the shared rule): a choice is sold out when it OR its launcher is. The
+   per-record reader below is unchanged; with no groups in the menu this is exactly it. */
 function isSoldOut(item){
+  try { return GroupPicker.soldOutWithParent(item, MENU, ownSoldOut); } catch(_){ return false; }   // any doubt ⇒ available
+}
+function ownSoldOut(item){
   try {
     if(!item || typeof window.availKey !== 'function') return false;
     const keys = availKeysFor(item);
@@ -2518,6 +2618,8 @@ function genOrderId(){
 function wireMenuDelegate(){
   if (window.__menuDelegateWired) return;
   window.__menuDelegateWired = true;
+  // 1D add-product B (codex PB-2 r1 P2-6): the choice radios' keyboard — Space / arrows (change) and Enter choose
+  GroupPicker.wireChoiceKeys(document, function(raw){ const d = MENU.find(function(x){ return String(x.id) === String(raw); }); if (d) selectVariant(d.id); });
   document.addEventListener('click', function(ev){
     const actEl = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
     if (!actEl) return;
@@ -2536,6 +2638,9 @@ function wireMenuDelegate(){
     const dish = MENU.find(function(x){ return String(x.id) === String(raw); });
     if (!dish) return;                       // an id nothing matches is inert, which is the safe outcome
     if (act === 'open') { openDetailModal(dish.id); return; }
+    // 1D add-product B: a launcher is never added itself — any "add" on it opens its picker; a choice row stages a choice
+    if (act === 'inc' && itemIsLauncher(dish)) { openDetailModal(dish.id); return; }
+    if (act === 'variant') { selectVariant(dish.id); return; }
     if (act === 'inc')  { chg(dish.id, 1);  return; }
     if (act === 'dec')  { chg(dish.id, -1); return; }
     if (act === 'badge'){ toggleControls(dish.id); return; }
@@ -2558,16 +2663,24 @@ function wireMenuDelegate(){
 }
 
 /* ── Menu rendering ── */
+/* 1D add-product B — what the grid shows: never a choice (it is reached through its launcher), and never a dish that
+   choices point at while no drawable map makes it a launcher (an unreadable map must not surface a bare launcher as
+   an ordinary, orderable dish). With no groups in the menu this is MENU itself. */
+function gridDishes(){
+  return MENU.filter(p => !GroupPicker.isVariant(p)
+    && (itemIsLauncher(p) || !MENU.some(v => GroupPicker.isVariant(v) && GroupPicker.sameDishId(v.variantOf, p.id))));
+}
 function renderMenu(){
-  const indiv = MENU.filter(p=>p.cat==='individual');
-  const ny    = MENU.filter(p=>p.cat==='ny');
+  const grid  = gridDishes();
+  const indiv = grid.filter(p=>p.cat==='individual');
+  const ny    = grid.filter(p=>p.cat==='ny');
   /* 🔴 EVERY AUTHORED FIELD GOES THROUGH THE RENDERER FOR ITS OWN CONTEXT — see form-safe-render.js.
      The id appears only in `id=` and `data-` attributes, never inside a handler: the click is delegated
      and resolves the id back through MENU (see wireMenuDelegate). safeText is correct for an attribute
      as well as for body text, and because HTML attribute values are DECODED on parse, escaping here
      changes the serialization only — getElementById('card-' + p.id) still finds the element it always
      found, so this is safe AND behaviour-preserving. */
-  const card = p => `
+  const plainCard = p => `
     <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
       <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
         ${safeImgUrl(p.img)
@@ -2599,12 +2712,35 @@ function renderMenu(){
         </div>
       </div>
     </div>`;
+  /* 1D add-product B — a LAUNCHER card: the same card, priced by the shared rule ("L {min}" / "desde L {min}"), and its
+     one button OPENS the picker — a launcher is never added to the cart itself. */
+  const launcherCard = p => `
+    <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
+      <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
+        ${safeImgUrl(p.img)
+          ? `<img class="pizza-photo-img" src="${safeText(safeImgUrl(p.img))}" alt="${safeText(p.name)}" loading="lazy" style="display:block">`
+          : `<div class="pizza-photo-label">${safeText(p.emoji||'🍕')}</div>`
+        }
+        <div class="qty-overlay" data-stop="1">
+          <button class="qty-add-btn" id="qty-add-${safeText(p.id)}" aria-label="Elegir" data-act="open" data-id="${safeText(p.id)}">+</button>
+        </div>
+      </div>
+      <div class="pizza-card-body">
+        <div class="pizza-card-name">${safeText(p.name)}</div>
+        <div class="pizza-card-desc">${safeText(p.desc||'')}</div>
+        <div class="pizza-card-footer">
+          <span class="pizza-card-price">${safeText(GroupPicker.priceText(VARIANT_ITEMS[p.id], MENU) || '—')}</span>
+        </div>
+      </div>
+    </div>`;
+  const card = p => (itemIsLauncher(p) ? launcherCard(p) : plainCard(p));
   document.getElementById('menu-individual').innerHTML = indiv.map(card).join('');
   document.getElementById('menu-ny').innerHTML = ny.map(card).join('');
   applyAvailability();   // KDS 2b: re-apply sold-out overlay after any (re)render (no-op when availability absent)
 }
 
 function chg(id,d){
+  if(d>0 && itemIsLauncher(MENU.find(p => p.id === id))) return;   // 1D add-product B: a launcher is never a cart line — its choice is
   if(d>0 && soldOutById(id)) return;   // KDS 2b: item 86'd — freeze add/increment (decrements still allowed so an in-cart item can be removed). Fail-open: soldOutById is false on any doubt.
   // (qty[id]||0): a dish that arrives with a live upgrade has no entry yet, and undefined+1 is NaN —
   // which would render as "NaN" in the total and the subtotal of a money form.
@@ -3021,7 +3157,8 @@ function successTotalCents(o){
 // pizzas, each with a per-topping fine-line icon. 18" NY pies excluded (the server enforces this too).
 function buildRedeemCatalog(){
   const ICON={'Anchovies':'fish','Shrimp Scampi':'fish','Pistaccio Mortadella':'meat','Prosciutto':'meat','Sopressatta Chili Honey':'meat','Carnivora':'meat','Crispy Bacon':'bacon','Pancetta Vodka Sauce':'tomato','Mushroom':'mushroom','Sweet Corn & Calabrian Chili':'chili','Spinach':'leaf','Pepperoni':'slice','Potato & Dill Sausage':'meat','Margherita':'tomato','Cacio e Pepe':'cheese','Ham':'meat','Nutella':'slice'};
-  return MENU.filter(p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:ICON[p.name]||'slice' }));
+  // 1D add-product B: eligibility is this brand's data (12" individual pizzas); the shared rule drops launchers
+  return GroupPicker.rewardDishes(MENU, VARIANT_ITEMS, p=>p.cat==='individual').map(p=>({ key:p.name, name:p.name, price_cents:Math.round(p.price*100), icon:ICON[p.name]||'slice' }));
 }
 
 function calcTotal(){
@@ -3386,7 +3523,7 @@ function placePin(la,ln,fallback){
   });
   updateLocInfo(la,ln,fallback);
   reverseGeocode(la,ln);
-  document.getElementById('btnConfirm').disabled=false;
+  { const _bc=document.getElementById('btnConfirm'); if(_bc) _bc.disabled=false; }  // guard: no #btnConfirm exists in the markup — the old unguarded access THREW on every placePin (swallowed in the async geoloc callback), and now would land in locPickPred's catch and falsely refuse every successful search pick
   // Also show payment section hint
   const payEl = document.getElementById('btn-pay');
   if(payEl) payEl.disabled = false;   // never disabled — Confirmar stays tappable (processPayment guides on a miss)
@@ -3527,10 +3664,121 @@ function updateLocInfo(la,ln,fallback){
   const el=document.getElementById('locinfo');
   el.className='loc-card'+(fallback?'':' confirmed');
   el.innerHTML=fallback
-    ?'<b>Ubicación aproximada</b><br/>No pudimos detectar tu GPS. Mové el pin al lugar exacto.'
+    ?'<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6A2 2 0 0 0 22 18L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Ubicación aproximada</b><br/>No detectamos tu GPS. Buscá arriba, o tocá el mapa para abrir el ajuste.'
     :`<b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>Ubicación capturada con GPS</b><br/>Lat: ${la.toFixed(5)}, Lng: ${ln.toFixed(5)}<br/><small style="color:var(--muted)">Mové el pin si necesitás ajustar el punto exacto.</small>`;
+  // Location escape hatch (Phase 1): reveal the address search ONLY in the GPS-fail state; hide (and
+  // clear) it the moment a real point is placed (prediction pick / map tap / drag → fallback=false).
+  // The GPS-OK happy path never enters the fallback branch, so #loc-search-wrap stays display:none.
+  const search=document.getElementById('loc-search-wrap');
+  if(search) search.style.display=fallback?'block':'none';
+  if(!fallback){ const preds=document.getElementById('loc-preds'); if(preds){ preds.style.display='none'; preds.innerHTML=''; } }
+  // A real location is now confirmed (fallback===false) — reached by EVERY valid fix path: a search pick
+  // (placePin→here), a marker DRAG (dragend→here), the FULLSCREEN editor (closeFullscreenMap→here) and a
+  // GPS success. Clear any prior pick-failure refusal so checkout is never forever-refused after a recovery.
+  if(!fallback && typeof __locPickFailed!=='undefined') __locPickFailed=false;
+  // In fail state only, point the existing map hint at the fullscreen editor (tap opens it — no inline
+  // placement). Untouched on the happy path, so the chip stays byte-identical there.
+  if(fallback){ const hint=document.getElementById('map-tap-hint'); if(hint) hint.textContent='Tocá el mapa para ajustarlo'; }
   // Update delivery zone status — fires on every pin position change.
   checkDeliveryRadius(la, ln);
+}
+
+/* ── Location escape hatch (Phase 1): fail-state address search ──────────────────────────────
+   Rendered only in the GPS-fail state (see updateLocInfo). Uses the Places library already loaded
+   for the map; renders OUR OWN dropdown (brand parity, not Google's widget). Selecting a prediction
+   reuses placePin(lat,lng,false) — the SAME write path as GPS/drag, so no new order/write path and
+   the card flips to the green confirmed state + runs checkDeliveryRadius. Fails QUIET: if Places
+   errors or returns nothing, the map tap→fullscreen editor still works. Search is scoped to THIS
+   restaurant's delivery zone (RESTAURANT_LAT/LNG + DELIVERY_RADIUS_KM, padded) so a customer can't
+   pin another city — brand-agnostic, derived from the same constants the zone check uses. */
+let __locSessToken=null, __locSearchTimer=null, __locReqSeq=0, __locPicking=false, __locPickPromise=null, __locPickDone=null, __locPickFailed=false;
+function locHidePreds(){ const p=document.getElementById('loc-preds'); if(p){ p.style.display='none'; p.innerHTML=''; } }
+function locSearchBounds(){
+  const padKm=DELIVERY_RADIUS_KM*1.4;
+  const dLat=padKm/111.32;
+  const dLng=padKm/(111.32*Math.cos(RESTAURANT_LAT*Math.PI/180));
+  return {south:RESTAURANT_LAT-dLat,north:RESTAURANT_LAT+dLat,west:RESTAURANT_LNG-dLng,east:RESTAURANT_LNG+dLng};
+}
+function locSearchInput(v){
+  if(__locPicking) return;              // a selection is resolving — ignore typing so no search runs mid-pick
+  const q=(v||'').trim();
+  clearTimeout(__locSearchTimer);
+  __locReqSeq++;                        // any input change supersedes an in-flight prediction response
+  locHidePreds();                       // and clear the on-screen rows NOW, so a stale result isn't clickable through the next debounce+fetch
+  if(q.length<3){ return; }
+  __locSearchTimer=setTimeout(function(){ locFetchPreds(q); },250);
+}
+async function locFetchPreds(q){
+  const seq=++__locReqSeq;              // this request's generation
+  if(!(window.google&&google.maps&&google.maps.places&&google.maps.places.AutocompleteSuggestion)){ if(seq===__locReqSeq) locHidePreds(); return; }
+  try{
+    if(!__locSessToken) __locSessToken=new google.maps.places.AutocompleteSessionToken();
+    const {suggestions}=await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input:q, language:'es', includedRegionCodes:['hn'],
+      locationRestriction:locSearchBounds(), sessionToken:__locSessToken,
+    });
+    if(seq!==__locReqSeq) return;       // a newer input superseded this response — never let an older/late result repopulate
+    locRenderPreds(suggestions||[]);
+  }catch(e){ if(seq===__locReqSeq) locHidePreds(); }  // on error/unavailable: CLEAR — never leave stale rows visible + selectable
+}
+function locRenderPreds(suggestions){
+  const preds=document.getElementById('loc-preds');
+  if(!preds) return;
+  preds.innerHTML='';
+  const rows=suggestions.filter(function(s){return s.placePrediction;}).slice(0,5);
+  if(!rows.length){ preds.style.display='none'; return; }
+  rows.forEach(function(s,i){
+    const p=s.placePrediction;
+    const main=(p.mainText&&p.mainText.text)||(p.text&&p.text.text)||'';
+    const sec=(p.secondaryText&&p.secondaryText.text)||'';
+    const row=document.createElement('div');
+    row.className='loc-pred'+(i===0?' hot':'');
+    // Trusted static icon markup; prediction TEXT is set via textContent (never innerHTML) so an
+    // attacker-controlled place name can't inject markup.
+    row.innerHTML='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.6"/></svg>';
+    const box=document.createElement('div');
+    const t=document.createElement('div'); t.className='t'; t.textContent=main;
+    box.appendChild(t);
+    if(sec){ const sd=document.createElement('div'); sd.className='s'; sd.textContent=sec; box.appendChild(sd); }
+    row.appendChild(box);
+    row.addEventListener('click',function(){ locPickPred(p,main); });
+    preds.appendChild(row);
+  });
+  preds.style.display='';
+}
+async function locPickPred(p,label){
+  if(__locPicking) return;              // serialize: ignore a second pick while a details fetch is in flight
+  __locPicking=true;
+  __locPickFailed=false;                 // fresh attempt — don't carry a prior pick's failure into this one
+  __locPickPromise=new Promise(function(r){ __locPickDone=r; });  // checkout (processPayment) awaits this so a Confirmar tap mid-pick submits the PICKED coords, not the pre-pick fallback
+  clearTimeout(__locSearchTimer);        // cancel any queued debounce so a late fetch can't repopulate during this selection
+  __locReqSeq++;                         // dismiss the dropdown + invalidate any pending prediction response
+  const beforeLat=(typeof lat!=='undefined')?lat:null, beforeLng=(typeof lng!=='undefined')?lng:null;
+  locHidePreds();
+  const input=document.getElementById('loc-search-input');
+  if(input&&label) input.value=label;
+  try{
+    const place=p.toPlace();
+    // BOUND the details fetch: a hung socket (flaky webview — the case this feature targets) must not lock
+    // the selection or checkout forever. Race it against a timeout; a LATE result for a timed-out pick is
+    // discarded here (never wired to placePin), so it can't move the pin or become a later submit's coords.
+    const ms=(typeof window!=='undefined' && window.__LOC_PICK_TIMEOUT_MS) || 8000;
+    let timer; const timeout=new Promise(function(r){ timer=setTimeout(function(){ r('__timeout'); }, ms); });
+    const outcome=await Promise.race([ place.fetchFields({fields:['location']}).then(function(){ return '__ok'; }, function(){ return '__err'; }), timeout ]);
+    clearTimeout(timer);
+    // "still at the pre-pick point": no valid placement (editor / drag / GPS / another pick) happened while
+    // this pick was in flight. A STALE pick's failure must not re-refuse — nor clobber — a point the customer
+    // has since confirmed. (beforeLat/beforeLng = the coords when THIS pick started.)
+    const stillStart=(typeof lat==='undefined') || (lat===beforeLat && lng===beforeLng);
+    const loc=(outcome==='__ok') ? place.location : null;
+    if(outcome!=='__ok' || !loc || typeof loc.lat!=='function'){   // timeout / reject / resolved with NO location → a FAILED pick (never place; don't ship the fallback)
+      if(stillStart) __locPickFailed=true;   // mark failed ONLY if nothing valid was placed meanwhile (else it's already confirmed — don't re-refuse)
+      return;
+    }
+    if(!stillStart) return;   // the customer placed a point meanwhile (editor / drag / GPS) — it's confirmed; a late pick must not clobber it
+    if(typeof placePin==='function') placePin(loc.lat(),loc.lng(),false);
+  }catch(e){ if((typeof lat==='undefined') || (lat===beforeLat && lng===beforeLng)) __locPickFailed=true; }
+  finally{ __locSessToken=null; __locPicking=false; if(__locPickDone){ __locPickDone(); __locPickDone=null; } __locPickPromise=null; }  // retire the session token + release the checkout waiter on ANY outcome (fetchFields ends the session, incl. on reject)
 }
 
 /* ── Stage 2 → 3 ── */
@@ -3631,6 +3879,24 @@ async function processPayment(){
   window.__cqRequoted = false;                  // 1C T8: …and exactly ONE silent re-quote+resend on a stale quote
   const _payCta = document.getElementById('btn-pay'); if(_payCta) _payCta.disabled = true;
   try {
+  // Location escape hatch (Phase 1): if a fail-state address pick is resolving, WAIT (BOUNDED) for it so the
+  // order carries the PICKED coords, not the pre-pick fallback. __locPickPromise is null on the GPS-OK happy
+  // path → no wait, no message (byte-identical). The outer race is pure defense so a never-released waiter
+  // (should not happen — locPickPred bounds + releases in finally) can't lock checkout.
+  if(typeof __locPickPromise!=='undefined' && __locPickPromise){
+    const _capMs=(typeof window!=='undefined' && window.__LOC_PICK_CAP_MS) || 10000;
+    let _capped=false;
+    try { _capped = await Promise.race([ __locPickPromise.then(function(){ return false; }), new Promise(function(r){ setTimeout(function(){ r(true); }, _capMs); }) ]); } catch(_){ _capped=false; }
+    if(_capped && typeof __locPickFailed!=='undefined') __locPickFailed=true;  // outer cap won (waiter never released — should not happen; locPickPred bounds + releases in finally) → FAIL CLOSED
+  }
+  // If that pick hung/errored (or the cap tripped), REFUSE — never silently ship the fallback coords. Do
+  // NOT clear the flag here: a second Confirmar with no correction STAYS refused. It clears only when a real
+  // location is confirmed via updateLocInfo(false) (search pick / marker drag / fullscreen editor / GPS).
+  if(typeof __locPickFailed!=='undefined' && __locPickFailed){
+    const _e3=document.getElementById('err3'); if(_e3){ _e3.style.display='block'; _e3.textContent='No pudimos ubicar esa dirección. Elegila de nuevo o ajustá el mapa.'; }
+    const _sw=document.getElementById('loc-search-wrap'); if(_sw) _sw.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
   // Logged-in profile-first gate (User Profiles) — block a logged-in DELIVERY submit until the profile is
   // saved (defense-in-depth beyond the hidden-payment UI). Guest / complete-profile / pickup → no-op;
   // fail-open (never blocks a real order on an account-logic error).
@@ -3844,6 +4110,11 @@ var __orderNetAtBuild = null;   // 1C T8 — the displayed net that backs a degr
 function buildOrder(){
   const _conflicts = cartConflicts();
   if(_conflicts.length){ announceCartConflicts(_conflicts); return false; }
+  /* 1D add-product B — THE SEND BOUNDARY: no body is built while the RAW cart (not its resolution) holds a bare launcher. */
+  if(GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS).length){
+    console.warn('cart_blocked_build_launcher', JSON.stringify({ keys: GroupPicker.launcherKeys(CART.keys(), VARIANT_ITEMS) }));
+    return false;
+  }
   // Guarded like every other call into this module: a signature that cannot be computed means the
   // body simply travels token-less (grace / the unsigned floor), which is the safe direction.
   try{ __orderSigAtBuild = confirmQuoteCartSig(); }catch(_){ __orderSigAtBuild = null; }   // 1C T7 revise — stamped with THIS body's cart+reward
@@ -4688,10 +4959,14 @@ function showSuccess(){
    closes it and reveals the detail modal as it was.
    ═══════════════════════════════════════════════════ */
 let currentDetailPizzaId = null;
+// 1D add-product B — the choice staged in an open LAUNCHER's picker (a variant id, or null). Every open starts fresh.
+let stagedVariantId = null;
+function selectVariant(vid) { stagedVariantId = vid; updateDetailModal(); }
 
 function openDetailModal(pizzaId) {
   if (pizzaId === undefined || pizzaId === null) return;
   currentDetailPizzaId = pizzaId;
+  stagedVariantId = null;
   renderDetailModal();
 
   document.getElementById('detail-overlay').classList.add('open');
@@ -4835,11 +5110,14 @@ function renderDetailModal() {
   if (!pizza) return;
 
   document.getElementById('detail-header-title').textContent = pizza.name;
+  if (itemIsLauncher(pizza)) { renderLauncherModal(pizza); return; }
 
+  // 1D add-product B: a CHOICE (reopened from the cart) shows its launcher's photo and description
+  const look = GroupPicker.parentOf(pizza, MENU) || pizza;
   const pizzaQty = qty[pizzaId] || 0;
-  const photoColor = safeColor(pizza.color, '#C8321A');   // 1B Task 8 — constrained grammar, not an escape
-  const emoji = pizza.emoji || '🍕';
-  const desc = pizza.desc || '';
+  const photoColor = safeColor(look.color, '#C8321A');   // 1B Task 8 — constrained grammar, not an escape
+  const emoji = look.emoji || '🍕';
+  const desc = look.desc || '';
   const isNutella = pizza.name === 'Nutella';
 
   let html = '';
@@ -4850,9 +5128,9 @@ function renderDetailModal() {
      <img> took the "there is not" branch, so the two disagreed about the same field. The colour was
      then never used, which is also why a mutation that removed its constraint survived: the test could
      not reach the code it was aiming at. */
-  html += `<div class="detail-photo" style="background:${safeImgUrl(pizza.img) ? '#000' : photoColor}">
-    ${safeImgUrl(pizza.img)
-      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(pizza.img))}" alt="${safeText(pizza.name)}">`
+  html += `<div class="detail-photo" style="background:${safeImgUrl(look.img) ? '#000' : photoColor}">
+    ${safeImgUrl(look.img)
+      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(look.img))}" alt="${safeText(pizza.name)}">`
       : `<span class="detail-photo-label">${safeText(emoji)}</span>`
     }
   </div>`;
@@ -4876,8 +5154,8 @@ function renderDetailModal() {
     </div>
   </div>`;
 
-  // Extras section — only if qty>0 AND not Nutella
-  if (pizzaQty > 0 && !isNutella) {
+  // Extras section — only if qty>0 AND not Nutella AND the dish allows extras (1D add-product B: extras_policy 'none')
+  if (pizzaQty > 0 && !isNutella && !GroupPicker.noExtras(pizza)) {
     const cats = [...new Set(EXTRAS.map(e => e.cat))];
     for (let inst = 0; inst < pizzaQty; inst++) {
       if (pizzaQty > 1) {
@@ -4910,6 +5188,41 @@ function renderDetailModal() {
   updateDetailCta();
 }
 
+/* 1D add-product B — a LAUNCHER's picker, exactly the approved mock: photo, name, description, the derived price, then the
+   required single-select group. No quantity and no extras here: Add commits ONE of the chosen variant and closes, and
+   that variant is then an ordinary cart line (its own modal, its own extras — unless extras_policy is 'none'). */
+function renderLauncherModal(pizza) {
+  const cfg = VARIANT_ITEMS[pizza.id];
+  const photoColor = safeColor(pizza.color, '#C8321A');
+  let html = `<div class="detail-photo" style="background:${safeImgUrl(pizza.img) ? '#000' : photoColor}">
+    ${safeImgUrl(pizza.img)
+      ? `<img class="detail-photo-img" src="${safeText(safeImgUrl(pizza.img))}" alt="${safeText(pizza.name)}">`
+      : `<span class="detail-photo-label">${safeText(pizza.emoji || '🍕')}</span>`
+    }
+  </div>`;
+  html += `<div class="detail-body"><div class="detail-name">${escapeHtml(pizza.name)}</div>`
+    + (pizza.desc ? `<div class="detail-desc">${escapeHtml(pizza.desc)}</div>` : '')
+    + `<div class="detail-price">${safeText(GroupPicker.priceText(cfg, MENU) || '—')}</div></div>`;
+  html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
+  html += `<div class="detail-extras-list">` + GroupPicker.choiceRows(cfg, MENU, stagedVariantId).map(r =>
+    `<div class="detail-variant-row${r.selected ? ' sel' : ''}" data-act="variant" data-id="${safeText(r.id)}">`
+    + GroupPicker.choiceInputHtml(r, pizza.id, safeText)
+    + `<div class="choice-line"><span class="detail-extras-name">${escapeHtml(r.choice)}</span>`
+    + (r.recommended ? `<span class="choice-badge">${escapeHtml(GroupPicker.RECOMMENDED_LABEL)}</span>` : '') + `</div>`
+    + (r.delta !== null ? `<span class="choice-delta">+L ${safeText(r.delta)}</span>` : '')
+    + `<span class="detail-variant-radio"></span></div>`).join('') + `</div>`;
+  html += `<div style="height:24px"></div>`;
+  const choiceFocus = GroupPicker.choiceHasFocus(document);   // codex PB-2 r1 P2-6: a keyboard choice keeps its focus
+  document.getElementById('detail-scroll').innerHTML = html;
+  GroupPicker.refocusChoice(document, choiceFocus);
+  if (stagedVariantId === null) document.getElementById('detail-scroll').scrollTop = 0;   // a fresh open; a choice tap keeps the scroll
+  updateDetailCta();
+}
+
+function launcherCtaDecision(pizza) {
+  return GroupPicker.ctaDecision({ stagedId: stagedVariantId, menu: MENU, isSoldOut: isSoldOut, stagedExtras: null, extras: EXTRAS });
+}
+
 function updateDetailCta() {
   const cta = document.getElementById('detail-cta');
   if (!cta) return;
@@ -4917,6 +5230,23 @@ function updateDetailCta() {
   if (pizzaId === null) return;
   const pizza = MENU.find(p => p.id === pizzaId);
   if (!pizza) return;
+  // 1D add-product B — a launcher's button: choose → "Elegí tu {label}" (disabled); the chosen choice (or its launcher)
+  // sold out → "Agotado" (disabled); else "Agregar · L {chosen price}".
+  if (itemIsLauncher(pizza)) {
+    const decision = launcherCtaDecision(pizza);
+    cta.className = 'detail-cta detail-cta--group';
+    cta.style.opacity = '1';
+    if (decision.kind === 'add') {
+      cta.style.pointerEvents = 'auto'; cta.disabled = false;
+      cta.innerHTML = `<span>Agregar</span>
+      <span class="detail-cta-divider">·</span>
+      <span>L ${escapeHtml(decision.total)}</span>`;
+    } else {
+      cta.style.pointerEvents = 'none'; cta.disabled = true;
+      cta.innerHTML = decision.kind === 'soldout' ? '<span>Agotado</span>' : `<span>${escapeHtml(GroupPicker.promptText(VARIANT_ITEMS[pizza.id]))}</span>`;
+    }
+    return;
+  }
   const pizzaQty = qty[pizzaId] || 0;
   cta.style.opacity = '1';
   cta.style.pointerEvents = 'auto'; cta.disabled = false;
@@ -4965,6 +5295,15 @@ function updateDetailCta() {
 function detailCtaTap() {
   const pizzaId = currentDetailPizzaId;
   if (pizzaId === null) return;
+  // 1D add-product B — a launcher commits ONE of the chosen variant and closes; nothing chosen (or sold out) does nothing
+  const launcher = MENU.find(p => p.id === pizzaId);
+  if (itemIsLauncher(launcher)) {
+    if (launcherCtaDecision(launcher).kind !== 'add') return;
+    const vid = stagedVariantId;
+    chg(vid, 1);
+    closeDetailModal();
+    return;
+  }
   const wasZero = (qty[pizzaId] || 0) === 0;
   if (wasZero) {
     chg(pizzaId, 1);
@@ -5038,8 +5377,16 @@ function registerOutsideClick(id){
   if(window[key]) document.removeEventListener('click',window[key]);
   // Wait a tick so the current click doesn't immediately trigger it
   setTimeout(()=>{
-    window[key]=function(){
+    window[key]=function(e){
       const controls=document.getElementById('qty-controls-'+id);
+      // Only a GENUINE OUTSIDE click collapses the stepper to the badge. A tap on THIS id's +/- controls
+      // (inside its .qty-overlay) must keep it EXPANDED while the customer adds items. The data-stop
+      // delegated handler blocks the card->modal open but does NOT stopPropagation (the inline
+      // onclick="event.stopPropagation()" the safe-render refactor replaced used to stop them), so an
+      // inside tap still reaches this document listener - guard by target containment, and keep the
+      // listener registered on an inside tap so a later OUTSIDE tap still collapses.
+      const overlay=controls && controls.closest('.qty-overlay');
+      if(e && overlay && e.target && overlay.contains(e.target)) return;
       const badge=document.getElementById('qty-badge-'+id);
       const badgeNum=document.getElementById('qty-badge-num-'+id);
       if(controls) controls.classList.remove('visible');
@@ -5419,6 +5766,7 @@ loadAvailability();
 try {
   const _feed = bootLiveMenu();
   if (_feed) _feed.refresh();
+  if (_feed && typeof _feed.watchVisibility === 'function') _feed.watchVisibility(document, { minIntervalMs: 60000 });   // 1D add-product B: re-fetch on return to view
 } catch (_) { /* the bundle stands */ }
 setInterval(loadAvailability, 60000);
 

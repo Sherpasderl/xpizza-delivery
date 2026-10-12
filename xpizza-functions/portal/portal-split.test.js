@@ -38,6 +38,7 @@ const { unapplyD4c4 } = require('../tools/d4c4-inverse');
 const { unapplyD4c2b } = require('../tools/d4c2b-inverse');
 const { unapplyAddProductFold } = require('../tools/addproduct-inverse');
 const { unapplyAddProductB } = require('../tools/addproduct-b-inverse');   // 1D add-product B: reversed FIRST (it landed on top of A)
+const { unapplyStackedTracker } = require('../tools/stacked-tracker-inverse');   // stacked-tracker: landed on top of PB-2 → reversed right after D4-c2b's block
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
@@ -391,8 +392,9 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // parent pin composes with the later slice and still proves nothing else changed. D4-c4: the order-control slice's
     // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5.
     // 1D add-product A: its hunks (index.js + the moved blocks) are reversed before that — it landed on top of D4-c4; add-product B's
-    // before A's (it landed on top of A); D4-c2b's ONE delimited, byte-pinned block FIRST (it landed on top of add-product B).
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyD4c2b(foldPortalSplit(root))))));
+    // before A's (it landed on top of A); the stacked-tracker slice's before B's (it landed on top of PB-2); D4-c2b's ONE delimited,
+    // byte-pinned block FIRST (it landed on top of the stacked-tracker slice).
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(foldPortalSplit(root)))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));
@@ -451,7 +453,18 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
       "const { addProductIo } = require('../catalog/add-product-io');   // 1D add-product A — outside the moved blocks (the fold counts their requires)\n",
       "const addProductIoForEdit = () => addProductIo({ fs: getFirestore(), rtdb: getDatabase() });\n",
     ];
-    const skeletonPre = AP_LINES.reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
+    // R1 emulator isolation adds EXACTLY one block to lib/admin.js's skeleton, ABOVE the (byte-unchanged, fold-restored)
+    // init: the emulator-signal guard. Same treatment as the add-product lines — removed once, the rest must still hash
+    // to the pre-slice pin. The block's own content is pinned by tools/emulator-endpoint.test.js (exact text).
+    const R1_LINES = [
+      "// R1 emulator isolation (PLAN-emulator-isolation §b.6): an emulator signal (FUNCTIONS_EMULATOR exactly \"true\", or a\n"
+      + "// non-empty emulator host var) ⇒ validate this run's endpoints first, and refuse (throw) a half-configured or foreign\n"
+      + "// one rather than let the init below reach production. Any other FUNCTIONS_EMULATOR value is NOT a signal (a deployed\n"
+      + "// \"false\" takes the production path). Required ONLY on this branch; with no signal nothing extra loads.\n"
+      + "if (process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS\n"
+      + "  || process.env.FIREBASE_DATABASE_EMULATOR_HOST || process.env.FIREBASE_EMULATOR_HUB) require('./emulator-endpoint').guardEmulatorProcess();\n\n",
+    ];
+    const skeletonPre = [...AP_LINES, ...R1_LINES].reduce((acc, l) => { const i = acc.indexOf(l); assert.ok(i > -1 && acc.indexOf(l, i + 1) === -1, `add-product header line exactly once: ${l.slice(0, 60)}`); return acc.slice(0, i) + acc.slice(i + l.length); }, skeleton);
     assert.strictEqual(sha(skeletonPre), SKELETON, `🔴 the split's non-moved text changed (headers / imports / exports / the wrap loop / the wrapper): ${sha(skeletonPre)}`);
     assert.notStrictEqual(sha(skeleton), SKELETON, '(the add-product lines are really there)');
     assert.notStrictEqual(sha(skeletonPre.replace("exports[name] = withPreflightMaxAge(exports[name]);", 'void 0;')), SKELETON, 'sensitivity: dropping the wrap is caught');

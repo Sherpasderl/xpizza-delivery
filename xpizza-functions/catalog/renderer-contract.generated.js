@@ -10,6 +10,8 @@
 //                     list means the brand has no badge renderer, so no tag on it can be honoured.
 //   renderedCategories — the category ids its renderMenu actually DRAWS. A product may be ADDED only to one
 //                     of these (an unrendered category would hold a priced, invisible product). [] = none.
+//   choiceBadges    — the badges the shared group picker draws on a CHOICE row (a variant), present only when the form
+//                     ships the picker. A variant's tags may come from badges ∪ choiceBadges; any other item's from badges.
 module.exports = {
   "x_pizza": {
     "categoriesNamed": false,
@@ -17,6 +19,9 @@ module.exports = {
     "renderedCategories": [
       "individual",
       "ny"
+    ],
+    "choiceBadges": [
+      "recommended"
     ]
   },
   "la_musa": {
@@ -38,6 +43,9 @@ module.exports = {
       "rice",
       "soups_salads",
       "bebidas"
+    ],
+    "choiceBadges": [
+      "recommended"
     ]
   }
 };

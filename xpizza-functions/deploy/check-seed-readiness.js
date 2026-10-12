@@ -14,9 +14,25 @@ const { isRoutingValid } = require('../restaurant-config');
 
 const RID = process.env.READINESS_RID || 'x_pizza';
 
+// R1 (codex R1-build P1-1) — TWO MODES, NEVER INFERRED FROM ONE VARIABLE. It used to pick emulator mode on the RTDB var
+// alone, so a stale FIRESTORE_EMULATOR_HOST + no RTDB var + a prod FB_DATABASE_URL read PRODUCTION (mixed signals).
+//   · EMULATOR = any emulator signal: the run's endpoints are validated (both services, loopback, slot) first;
+//   · PROD = the explicit opt-in READINESS_TARGET=prod, and then NO emulator signal may be present.
+//   Neither ⇒ refuse.
+const EE = require('../lib/emulator-endpoint');
+const EMULATOR_MODE = EE.hasEmulatorSignal(process.env);
+if (process.env.READINESS_TARGET === 'prod') {
+  if (EMULATOR_MODE) { console.error('\n🔴 REFUSED — READINESS_TARGET=prod with emulator variables set: mixed signals, refusing both.\n'); process.exit(2); }
+} else if (EMULATOR_MODE) {
+  require('../test/_emulator-required').harness(['database']);
+} else {
+  console.error('\n🔴 REFUSED — no emulator signal and no READINESS_TARGET=prod opt-in. Production is never the default.\n');
+  process.exit(2);
+}
+
 (async () => {
-  // Emulator dry-run (FIREBASE_DATABASE_EMULATOR_HOST set) needs no real creds; prod uses the SA.
-  const EMU = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+  // Emulator dry-run needs no real creds; prod uses the SA.
+  const EMU = EMULATOR_MODE;
   const PID = process.env.GCLOUD_PROJECT || 'demo-xpizza';
   admin.initializeApp(
     EMU

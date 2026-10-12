@@ -34,6 +34,9 @@ function runStep(label, file) {
 }
 
 async function main() {
+  // R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod) —
+  // FIRST, before the build steps it spawns.
+  createRequire(import.meta.url)('./tools/emu-mixed-guard')('publish-menus');
   // 1) Regenerate the committed manifests from the forms, then 2) gate on the keys-golden.
   runStep('regenerate manifests (build-menus)', 'build-menus.mjs');
   runStep('keys-golden (menus.test)', 'menus.test.mjs');

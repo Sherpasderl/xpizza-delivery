@@ -95,6 +95,8 @@ function assertIdentityShape(rid, id) {
 async function main() {
   if (!XPIZZA_INSTANCE) throw new Error('ULTRAMSG_INSTANCE_ID not set — required for x_pizza whatsapp_instance');
 
+  // R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod).
+  require('./tools/emu-mixed-guard')('seed_identity');
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
     databaseURL: process.env.FB_DATABASE_URL,

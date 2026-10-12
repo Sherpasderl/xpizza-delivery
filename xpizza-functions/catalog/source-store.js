@@ -118,7 +118,7 @@ function rendererContract(rid) {
     // No bespoke renderer to honour. The badge set is EMPTY — never the keys the submission declares,
     // which would be the document deciding its own rules again — and categories need no labels,
     // because nothing prints them.
-    return { categoriesNamed: false, badges: new Set(), renderedCategories: [] };
+    return { categoriesNamed: false, badges: new Set(), renderedCategories: [], choiceBadges: new Set() };
   }
   const entry = table[rid];
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)
@@ -134,7 +134,15 @@ function rendererContract(rid) {
     }
     renderedCategories = entry.renderedCategories.slice();
   }
-  return { categoriesNamed: entry.categoriesNamed, badges: new Set(entry.badges), renderedCategories };
+  // 1D add-product B: the badges the shared picker draws on a CHOICE row. Absent → none (fail closed); malformed → refused.
+  let choiceBadges = [];
+  if (Object.prototype.hasOwnProperty.call(entry, 'choiceBadges')) {
+    if (!Array.isArray(entry.choiceBadges) || entry.choiceBadges.some((b) => typeof b !== 'string' || !b)) {
+      throw new Error(`source_malformed: the renderer contract for ${rid} carries a malformed choiceBadges; refusing to guess what its picker draws`);
+    }
+    choiceBadges = entry.choiceBadges.slice();
+  }
+  return { categoriesNamed: entry.categoriesNamed, badges: new Set(entry.badges), renderedCategories, choiceBadges: new Set(choiceBadges) };
 }
 
 // THREE SEPARATE QUESTIONS PER FIELD: is it required, what TYPE must it be, and is its content safe.
@@ -605,9 +613,13 @@ function validateSource(source, rid) {
   // is not agreement, and reading it as agreement is how an untested branch gets written down as
   // proven. Covered deliberately by the acceptance fixture in source-store.test.js.
   const badgeKeys = contract.badges;
+  // 1D add-product B: a CHOICE (a variant) is drawn by the shared picker, which can also show its choice badges; every other
+  // item is drawn as a card and may carry only the card badges. Nothing that would render nothing passes, on any brand.
+  const choiceBadgeKeys = contract.choiceBadges || new Set();
   for (const it of source.items) {
+    const isChoice = it.display.variantOf != null;
     for (const t of (Array.isArray(it.display.tags) ? it.display.tags : [])) {
-      if (!badgeKeys.has(t)) fail(`${rid}/${it.key} — tag ${t} is not a badge the renderer can select, so it would render nothing`);
+      if (!badgeKeys.has(t) && !(isChoice && choiceBadgeKeys.has(t))) fail(`${rid}/${it.key} — tag ${t} is not a badge the renderer can select${isChoice ? ' on a choice' : ''}, so it would render nothing`);
     }
   }
 

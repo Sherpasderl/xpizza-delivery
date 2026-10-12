@@ -30,6 +30,82 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
   ok('the contract records what each shipped renderer can actually do');
 }
 
+// ── 1D add-product B (advisor ruling 2026-10-10): CHOICE badges — drawn by the shared picker on a choice row only ─────
+{
+  const { CHOICE_BADGES, formShipsPicker } = require('../tools/generate-renderer-contract');
+  for (const rid of ['x_pizza', 'la_musa']) {
+    assert.strictEqual(formShipsPicker(rid), true, `premise: ${rid}'s form ships the picker`);
+    assert.deepStrictEqual(committed[rid].choiceBadges, [...CHOICE_BADGES], `${rid}: choiceBadges = the picker's own (derived, identical on every brand)`);
+    assert.ok(!committed[rid].badges.includes('recommended'), `${rid}: 'recommended' is NOT a card badge — a card cannot draw it`);
+  }
+  // choiceBadges is GATED on the strict marker: the same real form without the picker tag derives none
+  {
+    const { deriveContract } = require('../tools/generate-renderer-contract');
+    const { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } = require('fs');
+    const os = require('os');
+    const tmp = mkdtempSync(join(os.tmpdir(), 'choice-badges-'));
+    const root = join(tmp, 'a', 'b'); mkdirSync(root, { recursive: true });
+    try {
+      for (const [form] of [['xpizza-orders'], ['la-musa-orders']]) {
+        mkdirSync(join(tmp, form), { recursive: true });
+        copyFileSync(join(__dirname, '..', '..', form, 'form-group-picker.js'), join(tmp, form, 'form-group-picker.js'));
+      }
+      const real = readFileSync(join(__dirname, '..', '..', 'xpizza-orders', 'index.html'), 'utf8');
+      writeFileSync(join(tmp, 'xpizza-orders', 'index.html'), real);
+      assert.deepStrictEqual(deriveContract('x_pizza', root).choiceBadges, [...CHOICE_BADGES], 'premise: the real form, copied, derives them');
+      writeFileSync(join(tmp, 'xpizza-orders', 'index.html'), real.replace('<script src="form-group-picker.js"></script>', ''));
+      assert.deepStrictEqual(deriveContract('x_pizza', root).choiceBadges, [], '🔴 the same form WITHOUT the picker tag derives no choice badges');
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
+  }
+  // a fixture with ONE group (a launcher + 2 choices) on each brand, built on the real seed source
+  const withGroup = (rid, tagOn) => {
+    const s = buildSourceFromCode(rid);
+    const host = s.items.find((it) => !it.display.variantOf && !(s.structure.variant_items && s.structure.variant_items[it.display.id]));
+    const mk = (n) => (rid === 'la_musa' ? `zz_${n}` : 9000 + n);
+    const L = mk(1); const A = mk(2); const B = mk(3);
+    const lName = 'Grupo Prueba';
+    const items = [
+      { key: rid === 'la_musa' ? L : lName, price: 300, display: { id: L, cat: host.display.cat, name: lName, price: 300 } },
+      { key: rid === 'la_musa' ? A : `${lName} - Uno`, price: 300, display: { id: A, cat: host.display.cat, name: `${lName} - Uno`, price: 300, variantOf: L, choice: 'Uno' } },
+      { key: rid === 'la_musa' ? B : `${lName} - Dos`, price: 320, display: { id: B, cat: host.display.cat, name: `${lName} - Dos`, price: 320, variantOf: L, choice: 'Dos' } },
+    ];
+    if (host.display.subcat !== undefined) items.forEach((it) => { it.display.subcat = host.display.subcat; });
+    s.items.push(...items);
+    s.structure.item_order = [...s.structure.item_order, ...items.map((it) => it.key)];
+    s.structure.variant_items = { ...(s.structure.variant_items || {}), [String(L)]: { label: 'Opción', variantIds: [A, B] } };
+    if (tagOn === 'variant') items[2].display.tags = ['recommended'];
+    if (tagOn === 'dish') host.display.tags = [...(host.display.tags || []), 'recommended'];
+    return s;
+  };
+  for (const rid of ['x_pizza', 'la_musa']) {
+    assert.doesNotThrow(() => validateSource(withGroup(rid, null), rid), `premise: ${rid} accepts the group fixture untagged`);
+    assert.doesNotThrow(() => validateSource(withGroup(rid, 'variant'), rid), `${rid}: 'recommended' on a CHOICE is accepted`);
+    assert.throws(() => validateSource(withGroup(rid, 'dish'), rid), /tag recommended is not a badge the renderer can select, so it would render nothing/,
+      `🔴 ${rid}: 'recommended' on an ordinary dish is REFUSED — no card draws it`);
+  }
+  // a brand whose contract carries NO choiceBadges (its form does not ship the picker) refuses it even on a choice
+  {
+    const Module = require('module');
+    const realLoad = Module._load;
+    const stub = { x_pizza: { ...committed.x_pizza, choiceBadges: undefined }, la_musa: committed.la_musa };
+    delete stub.x_pizza.choiceBadges;
+    const fresh = require.resolve('./source-store');
+    delete require.cache[fresh];
+    Module._load = function (request, ...rest) { return request === './renderer-contract.generated' ? stub : realLoad.call(this, request, ...rest); };
+    try {
+      const { validateSource: v } = require('./source-store');
+      assert.throws(() => v(withGroup('x_pizza', 'variant'), 'x_pizza'), /tag recommended is not a badge the renderer can select on a choice/,
+        '🔴 no choiceBadges in the contract (no picker shipped) → refused even on a choice');
+      const bad = { x_pizza: { ...committed.x_pizza, choiceBadges: 'recommended' }, la_musa: committed.la_musa };
+      Module._load = function (request, ...rest) { return request === './renderer-contract.generated' ? bad : realLoad.call(this, request, ...rest); };
+      delete require.cache[fresh];
+      const { validateSource: v2 } = require('./source-store');
+      assert.throws(() => v2(buildSourceFromCode('x_pizza'), 'x_pizza'), /malformed choiceBadges/, '🔴 a malformed choiceBadges fails closed');
+    } finally { Module._load = realLoad; delete require.cache[fresh]; require('./source-store'); }
+  }
+  ok("choiceBadges: 'recommended' on a CHOICE is accepted and on an ordinary dish REFUSED, on both brands; a contract without choiceBadges refuses it on a choice; a malformed one fails closed");
+}
+
 // ── A BRAND WITH NO BADGE RENDERER REFUSES EVERY BADGE ───────────────────────────────────────────
 {
   // The failure this closes: falling back to "whatever the source declares" would let a brand with no

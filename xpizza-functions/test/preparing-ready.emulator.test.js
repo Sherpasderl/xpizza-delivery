@@ -19,11 +19,18 @@ const assert = require('assert');
 // ── PROD-WIPE SAFETY GUARD (BEFORE require('../index.js'), which initializeApp's a PRODUCTION databaseURL,
 //    index.js:148). This test wipes db.ref('/'); GCLOUD_PROJECT alone does NOT redirect an explicit
 //    databaseURL. Refuse to run unless the RTDB EMULATOR host is wired (emulators:exec sets it). ──
+// R1 (PLAN-emulator-isolation §c.1): the lax substring/regex check (it accepted 0.0.0.0 and "127.0.0.1.evil") is
+// replaced by the shared run-endpoint validator — strict loopback, THIS run's slot, both services configured.
 (function requireEmulator() {
-  const host = process.env.FIREBASE_DATABASE_EMULATOR_HOST || '';
-  const local = /(^|\/\/|@)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)(:\d+)?$/.test(host) || /localhost|127\.0\.0\.1/.test(host);
-  if (!host || !local) {
-    console.error('\n🛑 REFUSING TO RUN — FIREBASE_DATABASE_EMULATOR_HOST is not a local emulator.');
+  const EE = require('../lib/emulator-endpoint');
+  let why = null;
+  try {
+    if (!process.env[EE.OFFSET_VAR]) throw new Error(`${EE.OFFSET_VAR} is not set — the run's slot is unknown`);
+    const v = EE.validateEmulatorEnv(process.env);
+    if (v.endpoints.database === EE.NULL_ENDPOINT) throw new Error('the database is the NULL endpoint — this run did not start it');
+  } catch (e) { why = String(e && e.message || e).replace(/^🔴 REFUSED — /, ''); }
+  if (why) {
+    console.error(`\n🛑 REFUSING TO RUN — FIREBASE_DATABASE_EMULATOR_HOST is not this run's local emulator (${why}).`);
     console.error('   This test wipes the database ROOT and index.js points at PRODUCTION. Run it via:');
     console.error('   npm run test:preparing-ready   (firebase emulators:exec --only database …)\n');
     process.exit(2);

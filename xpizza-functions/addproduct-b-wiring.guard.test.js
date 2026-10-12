@@ -12,11 +12,14 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyAddProductB, INDEX_HUNKS } = require('./tools/addproduct-b-inverse');
+// The stacked-tracker slice landed on top of PB-2 → its inverse is reversed FIRST, before add-product B's.
+const { unapplyStackedTracker } = require('./tools/stacked-tracker-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-// D4-c2b landed on top of add-product B: its one delimited index.js block (tools/d4c2b-inverse.js, advisor ruling N1) is reversed FIRST.
-const idx = require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js'));
+// D4-c2b landed on top of the stacked-tracker slice (main 2cb5a1c): its one delimited index.js block (tools/d4c2b-inverse.js,
+// advisor ruling N1) is reversed FIRST, then the stacked-tracker inverse, before add-product B's proof.
+const idx = unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js')));
 const BASE = execFileSync('git', ['show', '4e2a710:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────

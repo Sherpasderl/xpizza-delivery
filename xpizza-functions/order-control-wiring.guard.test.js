@@ -17,9 +17,10 @@ const { unapplyD4c4, HUNKS } = require('./tools/d4c4-inverse');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // 1D add-product A landed on top of D4-c4: its index.js hunks (tools/addproduct-inverse.js) are reversed before the D4-c4 proof —
-// after add-product B's (tools/addproduct-b-inverse.js), which landed on top of A, and D4-c2b's one delimited block
-// (tools/d4c2b-inverse.js, advisor ruling N1), which landed on top of B and is reversed FIRST.
-const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js'))));
+// after add-product B's (tools/addproduct-b-inverse.js), which landed on top of A; the stacked-tracker slice's
+// (tools/stacked-tracker-inverse.js), which landed on top of PB-2; and D4-c2b's one delimited block (tools/d4c2b-inverse.js,
+// advisor ruling N1), which landed on top of the stacked-tracker slice and is reversed FIRST.
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js')))));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });

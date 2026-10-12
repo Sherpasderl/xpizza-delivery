@@ -42,6 +42,9 @@ const realHC = require('../pixelpay-hosted-charge');
 let FAIL_CLASSIFY = false;
 require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [], exports: { ...realHC,
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); } } };
+// 1D add-product B (PB-2 ruling (A)): the frozen ba29282 trace is the render-OFF path — render is PINNED off for it; the
+// render-ON companion below records the same requests with it on and asserts the exact delta
+const RP = require('./_render-pin');
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const fs = admin.firestore();
@@ -65,6 +68,9 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pselfupda
 
 // ── the recorder: patch the RTDB Reference/Query and Firestore reference/query/transaction prototypes ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -73,7 +79,7 @@ function patchChain(obj, names, describe) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return Q.track(orig.apply(this, a), nm); };   // R1b: in-flight counted
     }
   }
 }
@@ -124,12 +130,17 @@ async function seedPreP1(rid) {
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
   await asPreP1(rid, res.versionId);
 }
+/* R1b: the server binds 127.0.0.1 (exclusive — see tools/loopback-listen.guard.test.js), so the socket peer is
+   '127.0.0.1'; the FROZEN golden was captured on a wildcard server, whose IPv4 peer is '::ffff:127.0.0.1'. The handlers
+   key their per-IP rate limit on the left-most X-Forwarded-For first (index.js clientIp), so the golden's client identity
+   is pinned EXPLICITLY here instead of depending on the socket family. */
+const GOLDEN_CLIENT_IP = '::ffff:127.0.0.1';
 function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
+        const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, 'x-forwarded-for': GOLDEN_CLIENT_IP, ...headers }, body: JSON.stringify(body) });
         const t = await res.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
         s.close(() => resolve({ status: res.status, json: j, text: t }));
       } catch (e) { s.close(() => reject(e)); }
@@ -157,7 +168,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
   const r = kind === 'redeem'
     ? await post(app.quoteRedemption, { restaurant_id: rid, items: b.items, redeem: b.redeem }, { 'x-firebase-id-token': uid })
     : await post(app.quoteOrder, { restaurant_id: rid, items: b.items }, {});
-  await wait(300);   // let any fire-and-forget write the handler issued land inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
   const o = (await rtdb.ref(`orders/${oid}`).get()).val() || {};
   const subs = [];
@@ -214,7 +225,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     for (let i = 0; i < 10; i += 1) {
       REC = [];
       await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {});
-      await wait(300);
+      await Q.quiescent();   // R1b: was wait(300) — this loop counts the recorded Firestore calls
       const fsCalls = REC.filter((e) => e.db === 'fs').length; REC = null;
       if (!fsCalls) break;
       assert.ok(i < 9, `${rid}: the instance never settled`);
@@ -260,7 +271,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       await rtdb.ref('rate_limits').remove();
       { const wb2 = bodyFor('x_pizza', 'w', '1', { redeem: true });   // the SAME path as the checked request, so ITS caches refresh too
         await post(app.quoteRedemption, { restaurant_id: 'x_pizza', items: wb2.items, redeem: wb2.redeem }, { 'x-firebase-id-token': 'u_trace_x_pizza' }); }
-      await wait(300);
+      await Q.quiescent();   // R1b: was wait(300)
       CLOCK_OFFSET += FLOOR_TTL_MS + 1500;   // 31.5 s: past the floor's 30 s; inside the 45 s context / gate-pointer TTLs and the 60 s verifier
       const t = await traced('x_pizza', 'qtrace_unused_oid', 'u_trace_x_pizza', '99000001', { kind: 'redeem' });
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
@@ -268,6 +279,56 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
       assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.b_quote_redemption, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
       console.log(`  ✓ x_pizza post-TTL b_quote_redemption: exactly 1 allowlisted floor GET; the rest identical to the golden`);
+    }
+    // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────
+    // With render ON, quoteOrder / quoteRedemption run the group rules: GI.groupIssues reads the intake gates through
+    // gateReader().intakeGatesFor — a CACHED pointer read. Each render-ON request is compared with a render-OFF request
+    // recorded right before it in the SAME cache state: warm → identical; a REFRESH (every TTL crossed, the controlled
+    // clock advanced before EACH side) → the render-OFF trace + exactly the gate pointer read, at the end. The pin's
+    // sensitivity: the refresh pairs MUST differ by that non-empty delta.
+    console.log(`  (render capability shipped by catalog/platform-render.generated.js: ${RP.SHIPPED}; the golden cells above ran with it PINNED off)`);
+    {
+      const GATE_READ = (rid) => [{ db: 'fs', op: 'get', path: `restaurants/${rid}/meta/active_version` },
+        { db: 'fs', op: 'getAll', paths: [`restaurants/${rid}/meta/active_version`], raw_order: 'ascending', count: 1 }];
+      const noFloor = (t) => t.trace.filter((e) => !isFloorRead(e));
+      const side = async (on, rid, kind, refresh) => {
+        if (refresh) CLOCK_OFFSET += 61000;   // past the verifier's 60 s, the context's 45 s, the gate pointer's 45 s, the floor's 30 s
+        await rtdb.ref('rate_limits').remove();
+        const t = await RP.withRender(on, () => traced(rid, 'qtrace_unused_oid', `u_trace_${rid}`, '99000001', { kind }));
+        assert.strictEqual(t.status, 200, `${rid} render-${on ? 'ON' : 'OFF'} ${kind}${refresh ? ' refresh' : ''}: premise — status 200 (${t.status})`);
+        return noFloor(t);
+      };
+      for (const rid of ['x_pizza', 'la_musa']) {
+        const uid = `u_trace_${rid}`;
+        // render-ON warm-up + settle (unrecorded): the gate pointer cache filled, the verifier settled — as the golden block
+        await RP.withRender(true, async () => {
+          await rtdb.ref('rate_limits').remove();
+          assert.strictEqual((await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {})).status, 200, `${rid}: render-ON warm-up quote`);
+          const wb = bodyFor(rid, 'w', '1', { redeem: true });
+          assert.strictEqual((await post(app.quoteRedemption, { restaurant_id: rid, items: wb.items, redeem: wb.redeem }, { 'x-firebase-id-token': uid })).status, 200, `${rid}: render-ON warm-up redemption quote`);
+          for (let i = 0; i < 10; i += 1) {
+            REC = [];
+            await post(app.quoteOrder, { restaurant_id: rid, items: bodyFor(rid, 'w', '1').items }, {});
+            await Q.quiescent();   // R1b: as the golden block's settle — this loop counts the recorded Firestore calls
+            const fsCalls = REC.filter((e) => e.db === 'fs').length; REC = null;
+            if (!fsCalls) break;
+            assert.ok(i < 9, `${rid}: the instance never settled (render ON)`);
+          }
+        });
+        for (const kind of ['quote', 'redeem']) {
+          const off = await side(false, rid, kind, false); const on = await side(true, rid, kind, false);
+          assert.deepStrictEqual(on, off, `🔴 ${rid} render-ON ${kind} (warm): the trace must equal the render-OFF one`);
+        }
+        // quoteOrder: its first gate read is the render-gated one → + exactly the gate pointer read, at the end.
+        // quoteRedemption: it ALREADY reads the same gate snapshot (gateReader().redeemEligibleFor, both renders) right
+        // before the render-gated intakeGatesFor → served from that snapshot: NO added call, even on a refresh.
+        for (const [kind, add] of [['quote', GATE_READ(rid)], ['redeem', []]]) {
+          const off = await side(false, rid, kind, true); const on = await side(true, rid, kind, true);
+          assert.ok(off.some((e) => e.db === 'fs') || rid !== 'x_pizza', `${rid} render-OFF ${kind} refresh: premise — the refresh really re-read`);
+          assert.deepStrictEqual(on, [...off, ...add], `🔴 ${rid} render-ON ${kind} (refresh): the render-OFF trace + exactly ${JSON.stringify(add)} at the end`);
+        }
+        console.log(`  ✓ ${rid} render-ON: quoteOrder + quoteRedemption warm = the render-OFF trace; on a refresh quoteOrder = the render-OFF trace + exactly the gate pointer read (get + getAll restaurants/${rid}/meta/active_version) at the end, quoteRedemption = the render-OFF trace (its eligibility read already holds that snapshot)`);
+      }
     }
     console.log('pselfupdate-quote-trace(emulator): OK');
   }

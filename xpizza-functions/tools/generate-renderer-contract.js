@@ -13,13 +13,13 @@
 // ---------------------------------------------------------------------------
 const { writeFileSync } = require('fs');
 const { join } = require('path');
-const { formSource, readLiteral } = require('../catalog/form-menu-source');
+const { formSource, formSiblingSource, readLiteral } = require('../catalog/form-menu-source');
 
 const BRANDS = ['x_pizza', 'la_musa'];
 
 // What one brand's shipped form implies about the documents it can render.
-function deriveContract(restaurantId) {
-  const src = formSource(restaurantId);
+function deriveContract(restaurantId, root) {
+  const src = formSource(restaurantId, root);
   // Does the renderer PRINT a category label? A form with no CATEGORIES literal renders id-only
   // categories, and requiring a name there would reject a menu that is correct as it stands.
   let categoriesNamed = false;
@@ -40,7 +40,11 @@ function deriveContract(restaurantId) {
     // definition without a priority entry.
     badges = priority.filter((t) => defined.has(t));
   } catch (_) { badges = []; }        // no badge system in this renderer: it can select NOTHING
-  return { categoriesNamed, badges, renderedCategories: renderedCategoriesOf(src) };
+  // 1D add-product B (rev 6; advisor ruling 2026-10-10, plan §0/§0b.6/§2 "badges gains recommended" read as choiceBadges):
+  // the badges the shared group PICKER can draw on a CHOICE row — derived from the same strict marker as render, never a
+  // per-restaurant flag. A card cannot show them, so they live apart from `badges`.
+  const choiceBadges = formShipsPicker(restaurantId, root) ? CHOICE_BADGES.slice() : [];
+  return { categoriesNamed, badges, renderedCategories: renderedCategoriesOf(src), choiceBadges };
 }
 
 // 1D add-product A §1 — WHICH CATEGORIES DOES THE RENDERER ACTUALLY DRAW? A category the catalog accepts but
@@ -95,6 +99,8 @@ const RENDER = (contracts) => `'use strict';
 //                     list means the brand has no badge renderer, so no tag on it can be honoured.
 //   renderedCategories — the category ids its renderMenu actually DRAWS. A product may be ADDED only to one
 //                     of these (an unrendered category would hold a priced, invisible product). [] = none.
+//   choiceBadges    — the badges the shared group picker draws on a CHOICE row (a variant), present only when the form
+//                     ships the picker. A variant's tags may come from badges ∪ choiceBadges; any other item's from badges.
 module.exports = ${JSON.stringify(contracts, null, 2)};
 `;
 
@@ -136,11 +142,73 @@ function writeFallbackGroups(target) {
 }
 
 // ── 1D add-product B (rev 6, §0c.7) — the platform RENDER capability, derived from the SHIPPED forms ────────────────
-// ONE platform value: true only when EVERY brand's form ships the shared group picker (it declares GROUP_PICKER_V1).
+// ONE platform value: true only when EVERY brand's form SHIPS the shared group picker — STRICTLY: its index.html loads it by
+// the exact tag (once), AND the module shipped beside it declares GROUP_PICKER_V1. A marker in a comment, a module nobody
+// loads, or a tag naming a file that is not there each leaves render OFF.
 // Until then the platform group RULES (bare launcher non-orderable / non-redeemable, parent-or-variant availability)
 // stay off, because a form that cannot render a group must never meet a server that refuses its launcher.
-const GROUP_PICKER_MARKER = /\bGROUP_PICKER_V1\b/;
-function deriveRender() { return BRANDS.every((rid) => GROUP_PICKER_MARKER.test(formSource(rid))); }
+const GROUP_PICKER_MARKER = /\bconst GROUP_PICKER_V1 = 1;/;
+const GROUP_PICKER_FILE = 'form-group-picker.js';
+// The picker's own choice badge (form-group-picker.js isRecommended / RECOMMENDED_LABEL "Recomendada"), one for every brand.
+const CHOICE_BADGES = Object.freeze(['recommended']);
+/* codex PB-2 r1 P2-5 / r2 P2-2 / r3 (advisor ruling: no hand-written HTML tokenizer) — ACTIVE elements only, decided by
+   parse5, the WHATWG HTML parsing algorithm browsers implement (a devDependency, exact-pinned; this is a build-time
+   generator — no deployed function requires it). The page is parsed with scripting ENABLED (as a browser runs it) and
+   the DOCUMENT tree is walked through childNodes only:
+   • a <template>'s contents live in its separate `content` fragment — never descended into (inert);
+   • inert containers are not descended into: noscript (raw text with scripting on), iframe, noembed, noframes,
+     plaintext, textarea, xmp, title, style;
+   • comments, attribute values and raw text never become elements in the first place (the parser decides, not a regex);
+   • only an HTML-namespace <script> counts (an SVG / MathML <script> is not the HTML loader).
+   → every active HTML script element (parse5 node). */
+const INERT_CONTAINERS = new Set(['noscript', 'iframe', 'noembed', 'noframes', 'plaintext', 'textarea', 'xmp', 'title', 'style']);
+const HTML_NS = 'http://www.w3.org/1999/xhtml';
+function activeScripts(html) {
+  const { parse } = require('parse5');   // lazy: only the generator and its tests load the parser (ESM, require()-able on Node ≥ 22.12)
+  const out = [];
+  const walk = (node) => {
+    for (const c of node.childNodes || []) {
+      if (c.nodeName === 'script' && c.namespaceURI === HTML_NS) out.push(c);
+      if (INERT_CONTAINERS.has(c.nodeName)) continue;
+      walk(c);   // a <template>'s childNodes are empty — its contents sit in c.content, which is NOT walked
+    }
+  };
+  walk(parse(String(html), { scriptingEnabled: true, sourceCodeLocationInfo: true }));
+  return out;
+}
+// the picker is LOADED iff exactly ONE active script element is exactly <script src="form-group-picker.js"></script>:
+// its only attribute is that src (a type / defer / module variant is not the shipped loader), it has no inline body, and
+// it is CLOSED by an explicit </script> in the source (codex r4: a script left open at EOF — or written self-closing `/>`,
+// which HTML ignores — never executes; parse5 still builds the element, so its source location must show the end tag)
+const isPickerLoader = (el) => el.attrs.length === 1 && el.attrs[0].name === 'src' && el.attrs[0].value === GROUP_PICKER_FILE
+  && el.childNodes.length === 0 && !!(el.sourceCodeLocation && el.sourceCodeLocation.endTag);
+const loadsPicker = (html) => activeScripts(html).filter(isPickerLoader).length === 1;
+/* codeOnly: the module with every comment and every string / template-literal BODY blanked (newlines kept), by a small
+   scanner — so a declaration that is commented out, or that merely appears inside a string, is not a declaration. */
+function codeOnly(src) {
+  let out = ''; let i = 0; const n = src.length;
+  const blank = (t) => t.replace(/[^\n]/g, ' ');
+  while (i < n) {
+    const c = src[i], d = src[i + 1];
+    if (c === '/' && d === '/') { const j = src.indexOf('\n', i); const e = j === -1 ? n : j; out += blank(src.slice(i, e)); i = e; continue; }
+    if (c === '/' && d === '*') { const j = src.indexOf('*/', i + 2); const e = j === -1 ? n : j + 2; out += blank(src.slice(i, e)); i = e; continue; }
+    if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1;
+      while (j < n && src[j] !== c) { if (src[j] === '\\') j += 1; else if (c !== '`' && src[j] === '\n') break; j += 1; }
+      const e = Math.min(n, j + 1); out += c + blank(src.slice(i + 1, e - 1)) + (e - 1 > i ? src[e - 1] : ''); i = e; continue;
+    }
+    out += c; i += 1;
+  }
+  return out;
+}
+// the declaration as a STATEMENT: at the start of a line or after a statement boundary, in code (not a comment / string)
+const GROUP_PICKER_DECL = /(?:^|[;{}])[ \t]*const GROUP_PICKER_V1 = 1;/m;
+function formShipsPicker(rid, root) {
+  if (!loadsPicker(formSource(rid, root))) return false;
+  const mod = formSiblingSource(rid, GROUP_PICKER_FILE, root);
+  return typeof mod === 'string' && GROUP_PICKER_MARKER.test(mod) && GROUP_PICKER_DECL.test(codeOnly(mod));
+}
+function deriveRender(root) { return BRANDS.every((rid) => formShipsPicker(rid, root)); }
 const RENDER_PLATFORM = (render) => `'use strict';
 // GENERATED by tools/generate-renderer-contract.js — do not edit by hand.
 //
@@ -156,4 +224,4 @@ function writePlatformRender(target) {
 
 if (require.main === module) { console.log(`wrote ${writeContract()}`); console.log(`wrote ${writeFallbackGroups()}`); console.log(`wrote ${writePlatformRender()}`); }
 module.exports = { deriveContract, deriveContracts, writeContract, RENDER, BRANDS, renderedCategoriesOf,
-  deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, RENDER_PLATFORM, writePlatformRender };
+  deriveFallbackGroups, RENDER_FALLBACK_GROUPS, writeFallbackGroups, deriveRender, formShipsPicker, activeScripts, codeOnly, CHOICE_BADGES, RENDER_PLATFORM, writePlatformRender };

@@ -311,6 +311,7 @@ if (typeof globalThis.WebSocket === 'function') {
  * lesson as classifying builtins from `builtinModules` instead of from memory. */
 try {
   const dns = require('dns');
+  const { isIP } = require('net');
   const surfaces = [
     ['dns', dns],
     ['dns.Resolver', dns.Resolver && dns.Resolver.prototype],
@@ -333,6 +334,9 @@ try {
       const real = target[name];
       if (typeof real !== 'function') continue;
       target[name] = function patchedDns(...args) {
+        /* lookup of an IP LITERAL is not a contact: Node returns the literal itself on the next tick and never calls
+           getaddrinfo (measured). server.listen(0, '127.0.0.1') makes exactly this call. A hostname is still recorded. */
+        if (name === 'lookup' && typeof args[0] === 'string' && isIP(args[0]) !== 0) return real.apply(this, args);
         try { record(`${describeDns(this, name)}|${label}.${name}`); } catch (_) { /* never break the suite */ }
         return real.apply(this, args);
       };

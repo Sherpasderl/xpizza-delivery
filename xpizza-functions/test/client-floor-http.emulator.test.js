@@ -46,6 +46,10 @@ const LOGS = [];
 const origLog = console.log;
 console.log = (...a) => { if (a[0] === 'client_version') LOGS.push(JSON.parse(a[1])); return origLog.apply(console, a); };
 
+// 1D add-product B (PB-2): the render switch, held at the SHIPPED value (render ON) for every cell; the race cells issue
+// one order with it OFF (the real writer for an order in flight across the flip) — test/_render-pin.js
+const RP = require('./_render-pin');
+RP.setRender(RP.SHIPPED);
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -77,7 +81,7 @@ async function seed(rid) {
 function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
@@ -136,7 +140,7 @@ const is426 = (r, label) => {
   const st = {};
   for (const rid of ['x_pizza', 'la_musa']) {
     const mk = async (oid) => { await rtdb.ref('rate_limits').remove(); const r = await charge(rid, oid, H_EQ); assert.strictEqual(r.status, 200, `${rid} ${oid} setup: ${r.text.slice(0, 120)}`); return (await rtdb.ref(`orders/${oid}`).get()).val(); };
-    st[rid] = { live: `live_${rid}`, rotate: `rot_${rid}`, install: `inst_${rid}`, recover: `rec_${rid}`, raceC: `racec_${rid}`, raceHold: `raceh_${rid}` };
+    st[rid] = { live: `live_${rid}`, rotate: `rot_${rid}`, install: `inst_${rid}`, recover: `rec_${rid}`, raceC: `racec_${rid}`, raceHold: `raceh_${rid}`, raceBound: `raceb_${rid}` };
     await mk(st[rid].live);
     const ro = await mk(st[rid].rotate); await rtdb.ref(`payment_attempts/${ro.active_attempt_id}/hosted_expires_at`).set(1);
     const io = await mk(st[rid].install); await rtdb.ref(`orders/${st[rid].install}/active_attempt_id`).remove(); void io;
@@ -144,7 +148,13 @@ const is426 = (r, label) => {
     await rtdb.ref('rate_limits').remove();
     assert.strictEqual((await charge(rid, st[rid].raceC, H_EQ, { redeem: true })).status, 200, 'setup: a live checkout WITH a reward (its hold is released later)');
     await rtdb.ref('rate_limits').remove();
-    assert.strictEqual((await charge(rid, st[rid].raceHold, H_EQ, { redeem: true })).status, 200, 'setup: a charged order WITH a reward hold');
+    // issued with render OFF (no bound charge-input fingerprint): its retry takes the classify → acquire path, where the race lives
+    assert.strictEqual((await RP.withRender(false, () => charge(rid, st[rid].raceHold, H_EQ, { redeem: true }))).status, 200, 'setup: a charged order WITH a reward hold');
+    assert.strictEqual((await rtdb.ref(`orders/${st[rid].raceHold}/charge_inputs_fp`).get()).val(), null, 'premise: issued with render OFF — no bound fingerprint');
+    await rtdb.ref('rate_limits').remove();
+    // issued with render ON (bound): its retry is answered by the read-only bound reuse (catalog/bound-reuse.js)
+    assert.strictEqual((await charge(rid, st[rid].raceBound, H_EQ, { redeem: true })).status, 200, 'setup: a BOUND charged order WITH a reward hold');
+    assert.ok((await rtdb.ref(`orders/${st[rid].raceBound}/charge_inputs_fp`).get()).val(), 'premise: issued with render ON — the bound fingerprint is written');
     await rtdb.ref('rate_limits').remove();
     assert.strictEqual((await cash(rid, `exist_${rid}`, H_EQ)).status, 200, 'setup: an existing cash order');
   }
@@ -216,8 +226,17 @@ const is426 = (r, label) => {
   const onceProto = Object.getPrototypeOf(rtdb.ref('x'));
   let protoOnce = onceProto; while (protoOnce && !Object.prototype.hasOwnProperty.call(protoOnce, 'once')) protoOnce = Object.getPrototypeOf(protoOnce);
   const realOnce = protoOnce.once;
-  const hookOnce = (pathEq, nth, fn) => { let k = 0; protoOnce.once = async function (...a) { const p = decodeURIComponent(new URL(this.toString()).pathname).slice(1); if (p === pathEq && ++k === nth) await fn(); return realOnce.apply(this, a); }; };
+  /* 1D add-product B (PB-2): the hook is keyed on the CALL SITE, not on a bare count. Render ON adds the bound-reuse probe
+     (catalog/bound-reuse.js, before the gate) to every reward charge, and it reads the same payment_attempts/<id> node
+     itself and through classifyHostedAttempt — so "the Nth read" would land INSIDE the probe and fault the wrong decision
+     (the expiry before the gate's classify = a fresh issuance → 426, not the race between classify and acquire). Reads
+     made from the probe are not counted (they are tallied in PROBE_READS, the premise that the probe ran). */
+  let PROBE_READS = 0;
+  const fromBoundReuse = () => /[\\/]catalog[\\/]bound-reuse\.js:/.test(new Error().stack || '');
+  const hookOnce = (pathEq, nth, fn) => { let k = 0; protoOnce.once = async function (...a) { const p = decodeURIComponent(new URL(this.toString()).pathname).slice(1); if (p === pathEq) { if (fromBoundReuse()) PROBE_READS += 1; else if (++k === nth) await fn(); } return realOnce.apply(this, a); }; };
   const unhook = () => { protoOnce.once = realOnce; };
+  // the bound-reuse probe's OWN reads only (the call site this time): the Nth read of `pathEq` made from catalog/bound-reuse.js
+  const hookProbe = (pathEq, nth, fn) => { let k = 0; protoOnce.once = async function (...a) { const p = decodeURIComponent(new URL(this.toString()).pathname).slice(1); if (p === pathEq && fromBoundReuse() && ++k === nth) await fn(); return realOnce.apply(this, a); }; };
   for (const rid of ['x_pizza', 'la_musa']) {
     // createOrder: the order exists at the probe, is gone at the create decision
     const oid = `race_cash_${rid}`;
@@ -247,7 +266,9 @@ const is426 = (r, label) => {
     watch.on('value', onState);
     hookOnce(`payment_attempts/${lo.active_attempt_id}`, 3, async () => { await rtdb.ref(`payment_attempts/${lo.active_attempt_id}/hosted_expires_at`).set(1); });
     await rtdb.ref('rate_limits').remove();
+    const probeBefore = PROBE_READS;
     let r2; try { r2 = await charge(rid, st[rid].raceC, H_LOW, { redeem: true }); } finally { unhook(); }
+    assert.ok(PROBE_READS > probeBefore, `${rid} owned-hold race: premise — the render-ON bound-reuse probe read the attempt (not counted by the hook)`);
     await wait(300); watch.off('value', onState);
     assert.strictEqual(r2.status, 409, `${rid} owned-hold race: ${r2.status} ${r2.text.slice(0, 160)}`);
     assert.strictEqual(r2.json.reason, 'client_update_race', '🔴 a race is a NON-426 TYPED conflict');
@@ -271,7 +292,32 @@ const is426 = (r, label) => {
     assert.strictEqual((await rtdb.ref(`orders/${st[rid].raceHold}/active_attempt_id`).get()).val(), ho.active_attempt_id, '🔴 no fresh attempt was issued');
     assert.deepStrictEqual((await rtdb.ref(`user_rewards/u_${rid}/${rid}/reservations/${st[rid].raceHold}`).get()).val(), heldBefore, '🔴 the pre-existing hold is NOT released (ownership condition kept)');
     assert.deepStrictEqual((await rtdb.ref(`user_rewards/u_${rid}/${rid}`).get()).val(), walletBefore, 'the wallet is unchanged');
+
+    // render ON, a BOUND order whose hold is its own: the read-only bound reuse answers (the probe re-reads the attempt
+    // AFTER classifying and refuses an expired one, bound-reuse.js) — the classify→acquire race has no window here
+    const bo = (await rtdb.ref(`orders/${st[rid].raceBound}`).get()).val();
+    const bHeld = (await rtdb.ref(`user_rewards/u_${rid}/${rid}/reservations/${st[rid].raceBound}`).get()).val();
+    const bWallet = (await rtdb.ref(`user_rewards/u_${rid}/${rid}`).get()).val();
+    await rtdb.ref('rate_limits').remove();
+    const r4 = await charge(rid, st[rid].raceBound, H_LOW, { redeem: true });
+    assert.strictEqual(r4.status, 200, `${rid} bound reuse below the floor: ${r4.text.slice(0, 160)}`);
+    assert.strictEqual(r4.json.attempt_id, bo.active_attempt_id, '🔴 the bound reuse answers the SAME attempt (no fresh issuance)');
+    assert.deepStrictEqual((await rtdb.ref(`orders/${st[rid].raceBound}`).get()).val(), bo, 'the order is untouched (read-only)');
+    assert.deepStrictEqual((await rtdb.ref(`user_rewards/u_${rid}/${rid}/reservations/${st[rid].raceBound}`).get()).val(), bHeld, 'the hold is untouched');
+    assert.deepStrictEqual((await rtdb.ref(`user_rewards/u_${rid}/${rid}`).get()).val(), bWallet, 'the wallet is unchanged');
+    // …and its own race: the checkout expires at the probe's OWN re-read of the attempt (after its classify) → the probe
+    // refuses (null) → the current path's classify sees the expiry → a below-floor fresh issuance → the typed 426 the
+    // legacy path gives for the same timing (index.js: an admitted below-floor request must classify `reuse`) — nothing written
+    hookProbe(`payment_attempts/${bo.active_attempt_id}`, 2, async () => { await rtdb.ref(`payment_attempts/${bo.active_attempt_id}/hosted_expires_at`).set(1); });
+    await rtdb.ref('rate_limits').remove();
+    let r5; try { r5 = await charge(rid, st[rid].raceBound, H_LOW, { redeem: true }); } finally { unhook(); }
+    assert.strictEqual(r5.status, 426, `🔴 ${rid} bound-probe race: ${r5.status} ${r5.text.slice(0, 160)}`);
+    assert.deepStrictEqual(r5.json, { error: 'client_update_required', app: 'orders', required_compat: 2 }, 'the typed 426');
+    assert.strictEqual((await rtdb.ref(`orders/${st[rid].raceBound}/active_attempt_id`).get()).val(), bo.active_attempt_id, '🔴 no fresh attempt was issued');
+    assert.deepStrictEqual((await rtdb.ref(`user_rewards/u_${rid}/${rid}/reservations/${st[rid].raceBound}`).get()).val(), bHeld, '🔴 the hold is untouched');
+    assert.deepStrictEqual((await rtdb.ref(`user_rewards/u_${rid}/${rid}`).get()).val(), bWallet, 'the wallet is unchanged');
   }
+  ok('R (render ON) a BOUND order\'s retry below the floor is answered by the read-only bound reuse (same attempt, nothing written); its expiry at the probe\'s own attempt re-read → the legacy timing\'s typed 426, nothing written — both restaurants');
   ok('R races → NON-426 typed conflicts: createOrder (order gone at the create decision → 409 client_update_race, nothing written); charge (live checkout expires before acquire → acquire refuses the fresh issuance → 409 client_update_race, no new attempt; a hold this call made is released, a pre-existing hold is not) — both restaurants');
 
   // ═══ F — floor-read semantics (the reader itself, with a fake database) ═══

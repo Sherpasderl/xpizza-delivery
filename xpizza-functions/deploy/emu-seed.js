@@ -9,10 +9,8 @@
  */
 const admin = require('firebase-admin');
 
-if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
-  console.error('emu-seed: refusing to run without FIREBASE_DATABASE_EMULATOR_HOST (emulator only)');
-  process.exit(1);
-}
+// R1: the full run-endpoint validator, before any client — refuses no signal, foreign, half-configured (emulator only).
+require('../test/_emulator-required').harness(['database']);
 // Seed the SAME namespace the deployed function reads (the function's hardcoded prod ns — see
 // deploy/emu-ns.js), so createOrder/getIdentity inside the functions emulator find this identity.
 const { emuDatabaseURL } = require('./emu-ns');

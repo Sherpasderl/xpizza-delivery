@@ -15,7 +15,12 @@ const EMU_NS = 'xpizza-delivery-default-rtdb'; // must match index.js:98's datab
 function emuDatabaseURL() {
   const host = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
   if (!host) throw new Error('emu-ns: FIREBASE_DATABASE_EMULATOR_HOST not set (emulator only)');
-  return `http://${host}?ns=${EMU_NS}`;
+  /* R1 (PLAN-emulator-isolation §c.1): the URL is the run's validated loopback database with the expected ns —
+     validateRtdbUrl runs the full run-endpoint validator (strict loopback, slot band, both services configured)
+     and refuses the NULL database. A lax host here was a direct path to a foreign emulator. */
+  const url = `http://${host}?ns=${EMU_NS}`;
+  require('../lib/emulator-endpoint').validateRtdbUrl(url, process.env, EMU_NS);
+  return url;
 }
 
 module.exports = { EMU_NS, emuDatabaseURL };

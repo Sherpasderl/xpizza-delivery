@@ -34,8 +34,9 @@ try {
     // D4-c4: the order-control slice's hunks (tools/d4c4-inverse.js) reversed first — it landed on top of D4-c5
     // 1D add-product A: its hunks (tools/addproduct-inverse.js, index.js + the moved blocks) reversed before D4-c4 — it landed on top of D4-c4
     // 1D add-product B: its index.js hunks (tools/addproduct-b-inverse.js) reversed before A's — it landed on top of A
-    // D4-c2b: the monitor's ONE delimited, byte-pinned block (tools/d4c2b-inverse.js) reversed FIRST — it landed on top of add-product B
-    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProductFold(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/d4c2b-inverse').unapplyD4c2b(require('../tools/portal-split').foldPortalSplit())))));
+    // Stacked-tracker landed on top of PB-2 → its inverse (tools/stacked-tracker-inverse.js) is reversed on the folded tree before B's;
+    // D4-c2b: the monitor's ONE delimited, byte-pinned block (tools/d4c2b-inverse.js) reversed FIRST — it landed on top of the stacked-tracker slice
+    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProductFold(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(require('../tools/d4c2b-inverse').unapplyD4c2b(require('../tools/portal-split').foldPortalSplit()))))));
     assert.strictEqual(sha(idx), PARENT_INDEX, '🔴 index.js + the portal split do not fold back to the integration parent bb37684 — something beyond the mechanical move changed');
     {   // D4-c2b inverse: non-vacuity (the block is present and removed) + sensitivity (an edit inside it, a second or a missing
         // block, and a byte OUTSIDE it are each caught)
@@ -43,13 +44,13 @@ try {
       const real = read('index.js');
       assert.notStrictEqual(unapplyD4c2b(real), real, 'non-vacuity: the d4c2b block is present and removed');
       // PROOF (i): the block is the ONLY change c2b makes to index.js — its inverse is the integration base's index.js byte-for-byte
-      const C2B_BASE = 'ccc4fcf';
+      const C2B_BASE = '2cb5a1c';   // the re-merge integration base (origin/main after R1/R1b/PB-2/stacked-tracker/R1c/PB-3)
       assert.strictEqual(unapplyD4c2b(real), require('child_process').execFileSync('git', ['show', `${C2B_BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 }), `🔴 index.js minus the d4c2b block is not ${C2B_BASE}:index.js`);
       assert.throws(() => unapplyD4c2b(real.replace('retryCount: 0 }', 'retryCount: 1 }')), /pinned bytes/, 'an edit INSIDE the block is caught');
       assert.throws(() => unapplyD4c2b(real.replace('exports.sweepStalePending', '/* d4c2b:begin */\n/* d4c2b:end */\nexports.sweepStalePending')), /exactly one/, 'a second block is caught');
       assert.throws(() => unapplyD4c2b(real.replace('/* d4c2b:begin */', '')), /exactly one/, 'a missing delimiter is caught');
       const outside = real.replace('exports.sweepStalePending', 'exports.sweepStalePendinG');
-      const fold = (src) => require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProduct(require('../tools/addproduct-b-inverse').unapplyAddProductB(unapplyD4c2b(src)))));
+      const fold = (src) => require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProduct(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(unapplyD4c2b(src))))));
       assert.notStrictEqual(sha(fold(outside)), sha(fold(real)), 'a byte OUTSIDE the block survives the inverse (the parent pin catches it)');
     }
     const cut = (s, startMarker, endMarker) => {

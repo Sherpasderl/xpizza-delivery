@@ -42,6 +42,22 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
   classifyHostedAttempt: async (...a) => { if (FAIL_CLASSIFY) throw new Error('UNAVAILABLE (injected classify failure)'); return realHC.classifyHostedAttempt(...a); },
   acquireHostedAttempt: async (...a) => { if (FAIL_ACQUIRE) throw new Error('UNAVAILABLE (injected acquire failure)'); return realHC.acquireHostedAttempt(...a); } } };
 
+// 1D add-product B (PB-2 ruling (A)): the frozen f17466e base is the render-OFF path — render is PINNED off for it; the
+// render-ON companion below re-runs every case with it on and asserts the exact delta (test/_render-delta.js)
+const RP = require('./_render-pin');
+const RD = require('./_render-delta');
+// R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
+// this run unless the test advances it, so the only catalog traffic set aside is the COLD load (test/_render-delta.js
+// makeColdOnly); a GATE / CTX re-read stays in every comparison. Replaces R1b's wall-time-bounded makeCacheFill.
+// the WALL clock, with an offset only the R1c sensitivity cell moves (installed before index.js, like
+// pselfupdate-mirror-trace's controlled clock): every per-instance cache still on the default clock captures THIS function,
+// so a cache the catalog clock failed to hook WOULD follow the jump — which is what the cell detects
+const REAL_NOW = Date.now.bind(Date);
+let WALL_OFFSET = 0;
+Date.now = () => REAL_NOW() + WALL_OFFSET;
+const CLOCK = require('./_catalog-clock').install();
+const FILL = RD.makeColdOnly(['x_pizza', 'la_musa'], CLOCK);
+const COLD_OF = new WeakMap();   // recorded result → the rids its request cold-loaded (CLOCK.coldSince)   // from before the first recorded request: the floor's wall-time budget covers the whole run
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -69,6 +85,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── the recorder (the d4b-charge-trace recipe): every RTDB + Firestore call the handler issues, in order ─────────────
 let REC = null;
+// R1b: every recorded call's result is tracked IN FLIGHT; a recording ends at QUIESCENCE (no call in flight and none
+// recorded for 300 ms, hard cap 15 s → loud), not after a fixed sleep that a slow machine outruns — see test/_quiescence.js
+const Q = require('./_quiescence').makeQuiescence();
+const CTL = require('./_order-control-trace');
 const rel = (u) => { try { return decodeURIComponent(new URL(u).pathname).replace(/^\//, ''); } catch (_) { return String(u); } };
 function patchChain(obj, names, describe) {
   const done = new Set();
@@ -77,7 +97,7 @@ function patchChain(obj, names, describe) {
       if (done.has(nm) || !Object.prototype.hasOwnProperty.call(p, nm) || typeof p[nm] !== 'function') continue;
       done.add(nm);
       const orig = p[nm];
-      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return orig.apply(this, a); };
+      p[nm] = function (...a) { if (REC) REC.push(describe(this, nm, a)); return Q.track(orig.apply(this, a), nm); };   // R1b: in-flight counted
     }
   }
 }
@@ -89,7 +109,7 @@ const fsDescribe = (self, nm, a) => ({ db: 'fs', op: nm, path: self.path !== und
 const docPaths = (a) => a.filter((d) => d && typeof d === 'object' && typeof d.path === 'string' && typeof d.get === 'function').map((d) => d.path);
 patchChain(fs.doc('a/b'), ['get', 'set', 'update', 'create', 'delete', 'listCollections'], fsDescribe);
 patchChain(fs.collection('a').where('x', '==', 1), ['get'], fsDescribe);
-patchChain(fs.collection('a'), ['get', 'add'], fsDescribe);
+patchChain(fs.collection('a'), ['get', 'add', 'listDocuments'], fsDescribe);   // listDocuments: the restaurant registry's read (R1c, codex P2)
 patchChain(fs, ['getAll', 'runTransaction'], (self, nm, a) => (nm === 'getAll' ? { db: 'fs', op: nm, paths: docPaths(a) } : { db: 'fs', op: nm, path: '' }));
 
 // a read failure injected on ONE path (the RTDB Reference prototype's `once`)
@@ -121,7 +141,7 @@ async function seed(rid) {
 function post(handler, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.MAKE_SECRET}`, ...headers }, body: JSON.stringify(body) });
         const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (_) {}
@@ -158,10 +178,16 @@ const tree = async () => leaves((await rtdb.ref().get()).val() || {});
 async function traced(c, rid, setupState) {
   const before = await tree();
   const pre = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};
+  // R1b: the pause-switch reader cache (10 s from read initiation) put in a KNOWN state — WARM — with the recorder OFF,
+  // right before the request. It was left to timing: the case's setup warmed it, and under load setup + the tree read
+  // outran the 10 s TTL, so the handler re-read order_control/<rid>/current — one call the pre-c4 golden never had.
+  await CTL.controlWarm(rtdb, rid);
+  const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await c.request(rid, setupState);
-  await wait(300);   // a fire-and-forget write the handler issued lands inside the recording
+  await Q.quiescent();   // R1b: every fire-and-forget write the handler issued has SETTLED inside the recording (was a fixed wait(300))
   const calls = REC; REC = null;
+  const cold = CLOCK.coldSince(mark);
   const after = await tree();
   const post_ = (await rtdb.ref(`orders/${c.oid}`).get()).val() || {};
   const subs = [];
@@ -177,7 +203,9 @@ async function traced(c, rid, setupState) {
   const body = r.json ? JSON.parse(norm(JSON.stringify(r.json)).replace(/https:\/\/pay\.test\/[^"]+/g, '<checkout_url>')) : null;
   // request-local random tokens a body can carry that live on records other than the order (e.g. the attempt's poll_token)
   if (body) for (const k of ['poll_token', 'tracking_token', 'attempt_id']) if (typeof body[k] === 'string') body[k] = `<${k}>`;
-  return { status: r.status, body, ops, changed, raw: r.json };
+  const out = { status: r.status, body, ops, changed, raw: r.json };
+  COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
+  return out;
 }
 
 // ── the cases: setup (the real writers) → the retried request (the real handler) ─────────────────────────────────
@@ -283,17 +311,20 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   for (const rid of ['x_pizza', 'la_musa']) await rtdb.ref(`user_rewards/u_${rid}/${rid}`).set({ balance: 100000, reserved: 0 });
 
   const results = {};
+  const onResults = {};   // the render-ON companion (its own map: the base comparison below sees exactly the base's cases)
   let ci = 0;
-  const runCase = async (c) => {
+  const runCase = async (c, into = results) => {
     for (const rid of ['x_pizza', 'la_musa']) {
       ci += 1;
       const oid = `oe_${String(ci).padStart(3, '0')}_${rid}`;
       const ph = phoneFor();
       await c.setup(rid, oid, ph);
-      results[`${c.name} | ${rid}`] = await traced({ ...c, oid }, rid, { oid, ph });
+      into[`${c.name} | ${rid}`] = await traced({ ...c, oid }, rid, { oid, ph });
     }
   };
   for (const c of CASES.filter((x) => !x.floor)) await runCase(c);
+  // RENDER-ON COMPANION: every (non-floor) case again with render ON — setup AND request, the steady state after the flip
+  await RP.withRender(true, async () => { for (const c of CASES.filter((x) => !x.floor)) await runCase(c, onResults); });   // traced() warms the switch cache (R1b) for both passes
   // phase 2 — the client floor ON (it stays on; the page compositions below never reach a handler)
   await rtdb.ref('platform_config/client_floor/orders').set(FLOOR);
   await wait(require('../client-floor').FLOOR_TTL_MS + 1500);
@@ -352,10 +383,40 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the base'));
   }
+  // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)): each case == its render-OFF run of THIS process — status,
+  // body, changed paths, call sequence — except a card request carrying a reward (its render-OFF trace touches the
+  // customer's reward balance), which gains exactly the bound-reuse probe's order read right after the customer check:
+  // none of these orders carries a bound charge-input fingerprint, so the probe stops there and the current path runs.
+  let probed = 0; let fill = null;
+  if (!CAPTURE) {
+    const carriesReward = (r, rid) => r.ops.some((e) => e.db === 'rtdb' && e.path === `user_rewards/<uid>/${rid}`);
+    for (const c of CASES.filter((x) => !x.floor)) {
+      for (const rid of ['x_pizza', 'la_musa']) {
+        const key = `${c.name} | ${rid}`; const off = results[key]; const on = onResults[key];
+        check(() => {
+          const L = `${key} (render ON)`;
+          assert.ok(on, `${L}: ran`);
+          assert.strictEqual(on.status, off.status, `🔴 ${L}: status (${off.status} → ${on.status})`);
+          assert.deepStrictEqual(on.body, off.body, `🔴 ${L}: body`);
+          assert.deepStrictEqual(on.changed.map(RD.contentHash), off.changed.map(RD.contentHash), `🔴 ${L}: the changed-path set`);
+          // set aside on both sides, unrelated to render: the client floor's read (30 s, real clock, as the d4b / quote
+          // companions do) and the process's ONE COLD catalog load per restaurant (test/_render-delta.js makeColdOnly);
+          // under the R1c catalog clock no other catalog refill can be due, so any GATE / CTX re-read stays IN and shows
+          const noFill = (r, side) => FILL.strip(r.ops, rid, r, `${L}${side}`, { ignore: (e) => e.db === 'rtdb' && e.op === 'remove' && e.path === 'rate_limits', cold: COLD_OF.get(r) });
+          const offOps = RD.normOps(noFill(off, ' [render-OFF side]')); const onOps = RD.normOps(noFill(on, ''));
+          if (c.path === 'card' && carriesReward(off, rid)) { RD.assertInserted(offOps, onOps, RD.afterUidCheck(offOps, L), RD.PROBE_ABSENT(), L); probed += 1; }
+          else assert.deepStrictEqual(onOps, offOps, `🔴 ${L}: the call sequence must equal the render-OFF one`);
+        });
+      }
+    }
+    check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
+    check(() => { fill = FILL.assertBounded('render-ON companion'); });
+  }
   const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;
   if (!caseFails) ok(`${CAPTURE ? 'BASE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (both restaurants) — ${kinds('refusal')} covered refusals, ${kinds('terminal')} terminal-safe controls, ${kinds('control')} success / read-failure controls` +
     (CAPTURE ? ' — every refusal answers today\'s self-heal literal' : ' — status, ordered RTDB+Firestore call sequence and changed-path set EQUAL the base on every case; only the refusals\' body changed, to EXACTLY {error:"order_exists", reason ∈ enum, detail, order_id}; terminal-safe and controls byte-identical'));
+  if (!caseFails && !CAPTURE) ok(`render-ON companion: ${Object.keys(onResults).length} cases re-run with render ON (setup + request) — status, body and changed paths equal the render-OFF run; the call sequence equal too, except the ${probed} card request(s) carrying a reward: + exactly the bound-reuse probe's order read after the customer check (shipped render: ${RP.SHIPPED}; the base cells ran PINNED off); client-floor read + the ONE COLD catalog load per restaurant set aside on both sides (R1c catalog clock: no other refill can be due) — ${JSON.stringify(fill && fill.seen)} (floor wall-time budget ${fill && fill.budget})`);
 
   const sends = await Promise.all(pageChecks.map((x) => x.p));
   await wait(1500 + 3000 + 300);   // every retry timer a page could have armed has run out
@@ -368,6 +429,46 @@ async function pageSends(dir, c, firstStatus, firstBody) {
   }));
   H.closeAll();
   if (FAILS.length) throw new Error(`${FAILS.length} failing check(s):\n  - ${FAILS.join('\n  - ')}`);
+
+  // ── R1c — THE CATALOG CLOCK REACHES THE LIVE SINGLETONS, in both directions (sensitivity) ──────────────────────────────
+  // The same recorded control request three times: (a) as is → no catalog Firestore read (premise: steady state);
+  // (b) after the WALL clock jumps 61 s (past every catalog TTL) with the catalog clock still → STILL none — wall time no
+  //     longer drives these caches (r1c mutants: a hook that stops injecting the clock turns this RED);
+  // (c) after the CATALOG clock advances 45 s (the pointer TTL) → the request leads with exactly the pointer re-read(s),
+  //     `get`+`getAll restaurants/x_pizza/meta/active_version`, and no other catalog read — the hook drives the singletons.
+  if (!CAPTURE) {
+    // a FRESH cash order (no setup request): it runs the intake gate AND pricing, so both pointer caches are consulted —
+    // an idempotent retry could answer before pricing and read no catalog whatever the clock says. The clock moves right
+    // before the recorded request.
+    const fresh = { request: (rid, st) => send(rid, st.oid, 'cash', { phone: st.ph, hdr: H_EQ }) };   // current-compat client (the controls' headers)
+    const once = async (move = () => {}) => { ci += 1; const oid = `oe_clk_${String(ci).padStart(3, '0')}`; const ph = phoneFor(); move(); const r = await traced({ ...fresh, oid }, 'x_pizza', { oid, ph }); assert.strictEqual(r.status, 200, `R1c premise — the fresh cash order was accepted (${r.status} ${JSON.stringify(r.raw)})`); return r; };
+    const catalogOps = (r) => r.ops.filter((o) => o.db === 'fs');
+    const P = 'restaurants/x_pizza/meta/active_version';
+    const steady = await once();
+    assert.deepStrictEqual(catalogOps(steady), [], `🔴 R1C-CLOCK steady: a steady-state request read a catalog document — a cache refilled on the wall time the suite took so far (${JSON.stringify(catalogOps(steady))})`);
+    // +301 s: past EVERY catalog TTL, the registry's 300 s included (codex R1c P2: 61 s could not reach it)
+    const wall = await once(() => { WALL_OFFSET += 301000; });
+    assert.deepStrictEqual(catalogOps(wall), [], `🔴 R1C-CLOCK wall: the wall clock moved 301 s (catalog clock still) and a catalog cache or the registry refilled — real time still drives it: ${JSON.stringify(catalogOps(wall))}`);
+    const adv = await once(() => CLOCK.advance(45000));
+    const got = catalogOps(adv);
+    const pairs = got.length / 2;
+    const isPointerPair = (k) => got[2 * k].op === 'get' && got[2 * k].path === P && got[2 * k + 1].op === 'getAll' && JSON.stringify(got[2 * k + 1].paths) === JSON.stringify([P]);
+    assert.ok(Number.isInteger(pairs) && pairs === 2 && [...Array(pairs).keys()].every(isPointerPair),
+      `🔴 R1C-CLOCK advance: advancing the catalog clock 45 s must make the next request re-read the active_version pointer exactly twice (the pricing reader AND the gate reader, both 45 s) and nothing else: ${JSON.stringify(got)}`);
+    // the REGISTRY (5 min): the catalog clock past its TTL → exactly ONE live listDocuments('restaurants') (its background
+    // refresh, settled inside the recording), seen both at Firestore and by the hook's observer — plus the pointers again
+    const regMark = CLOCK.loads().filter((x) => x.kind === 'registry').length;
+    const reg = await once(() => CLOCK.advance(300000));
+    const regGot = catalogOps(reg);
+    const lists = regGot.filter((o) => o.op === 'listDocuments');
+    const ptr = regGot.filter((o) => o.op !== 'listDocuments');
+    assert.ok(lists.length === 1 && lists[0].path === 'restaurants', `🔴 R1C-REGISTRY: advancing the catalog clock past the registry TTL (300 s) must make the LIVE registry refresh exactly once (listDocuments restaurants): ${JSON.stringify(regGot)}`);
+    assert.strictEqual(CLOCK.loads().filter((x) => x.kind === 'registry').length - regMark, 1, '🔴 R1C-REGISTRY: the hook observed the live registry refresh exactly once');
+    assert.ok(ptr.length === 4 && [0, 2].every((k) => ptr[k].op === 'get' && ptr[k].path === P && ptr[k + 1].op === 'getAll' && JSON.stringify(ptr[k + 1].paths) === JSON.stringify([P])),
+      `🔴 R1C-CLOCK advance: past the registry TTL the request re-reads exactly the 2 pointers besides the registry list: ${JSON.stringify(regGot)}`);
+    CLOCK.assertBuilt(RD.CLOCKED, 'R1c sensitivity');
+    ok(`R1c catalog clock: a steady request reads no catalog doc; wall clock +301 s → still none (real time no longer drives the caches or the registry); catalog clock +45 s → exactly ${pairs} active_version pointer re-read(s), nothing else; +300 s → the live registry refreshes exactly once (listDocuments) + the 2 pointers; the live singletons — registry included — were built through the hook (${JSON.stringify(CLOCK.built())})`);
+  }
   ok(CAPTURE
     ? `BASE, composed with both brands' real pages: every covered refusal's real answer makes the page MINT a second order id and resend (${minted} page runs) — the defect, reproduced`
     : `CANDIDATE, composed with both brands' real pages: every covered refusal's real answer → exactly ONE request, no mint (${once} page runs); the terminal-safe controls still self-heal (${minted} page runs)`);

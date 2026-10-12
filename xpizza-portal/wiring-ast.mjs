@@ -116,6 +116,10 @@ export const ALLOWED_CONSUMERS = new Set([
   // not gated by canEdit, called ONLY on the save settle path after the generation check, with the server's own
   // canonical source — the response the review is built from.
   'addProduct', 'setAddition', 'removeAddition', 'adopt', 'Array.isArray',
+  // 1D add-product B — the required-choice setters (canEdit-guarded in editor.js, and each refuses anything but a NEW
+  // product's group; the price setters receive the saved-additions Set and only call .has on it) and their pure readers
+  'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
+  'choiceGroup', 'optionPricesEqual', 'isNewGroupOption', 'optionParentId',
 ]);
 // Method calls on a state property, by FULL CHAIN — so a mutating method is permitted on exactly the
 // collection it was ruled for and nowhere else.
@@ -125,6 +129,9 @@ export const ALLOWED_METHOD_CHAINS = new Set([
   'state.openGroups.has', 'state.openGroups.add', 'state.openGroups.delete',
   // 1D add-product A — membership reads of server-said facts; the save settle path records allocated keys (census-counted)
   'state.additionKeys.has', 'state.additionKeys.add', 'state.renderedCategories.includes',
+  // 1D add-product B — the option badges (a read) and "Mismo precio" per product (view state, census-counted)
+  'state.choiceBadges.includes', 'state.samePrice.has', 'state.samePrice.get', 'state.samePrice.set', 'state.samePrice.delete',
+  'state.rawPrice.has', 'state.rawPrice.get', 'state.rawPrice.set', 'state.rawPrice.delete',
 ]);
 // 🔴 PROPERTIES WHOSE VALUE IS A PRIMITIVE, and therefore cannot be retained or mutated by whoever
 // receives it. Reading one yields a copy of a string, number, boolean or null, so the escape rules

@@ -147,22 +147,45 @@ export function renderReview(root, model, opts = {}) {
     if (!list.length) continue;
     const g = el('div', 'mgroup');
     g.append(groupHead(label, list.length));
+    // 1D add-product B — a new product's OPTIONS (the server lists each one) are shown UNDER their product rather than as
+    // products of their own. Arrangement only: every row the server listed is rendered exactly once, and an option whose
+    // product is not in this list stays a row of its own.
+    const describeOf = cls === 'add' && typeof opts.describe === 'function' ? opts.describe : () => null;
+    const infos = new Map(list.map((x) => [x, describeOf(x)]));
+    const keys = new Set(list.map((x) => x && x.key));
+    const nested = (x) => { const i = infos.get(x); return !!(i && i.option && keys.has(i.parent)); };
     for (const x of list) {
+      if (nested(x)) continue;
       const r = el('div', `brow${cls === 'rem' ? ' rem' : ''}`);
       r.dataset.k = `${x.surface}::${x.key}`;
       r.append(el('span', `bchip ${cls}`, chip));
       // 1D add-product A — a NEW product reads as the merchant wrote it: its name, its section and the rules it
       // INHERITS from that section (e.g. "Solo para recoger · Solo fines de semana"), not its pricing key.
-      const info = cls === 'add' && typeof opts.describe === 'function' ? opts.describe(x) : null;
+      const info = infos.get(x);
+      const opts2 = info && info.choice ? list.filter((y) => { const i = infos.get(y); return nested(y) && i.parent === x.key; }) : [];
       if (info) {
         const nm = el('span', 'bnm');
         nm.append(el('b', null, info.name || String(x.key)));
         if (info.section) nm.append(el('span', 'bsec', ` · ${info.section}`));
         if (Array.isArray(info.rules) && info.rules.length) nm.append(el('span', 'brules', info.rules.join(' · ')));
+        // the required choice: its name, "el cliente elige 1", and "sin extras" when set
+        if (info.choice) nm.append(el('span', 'bchoice', [`Elección requerida: ${info.choice.label || '—'} · el cliente elige 1`, ...(info.choice.extrasNone ? ['Sin extras'] : [])].join(' · ')));
         r.append(nm);
       } else r.append(el('span', 'bnm', String(x.key)));
-      r.append(el('span', 'bval', shown(x.price)));
+      // a product with a required choice is priced by its options — the SERVER's numbers for them, as the order page shows it
+      const ps = opts2.map((y) => y.price).filter((v) => Number.isInteger(v) && v > 0);
+      r.append(el('span', 'bval', opts2.length && ps.length === opts2.length ? (Math.min(...ps) === Math.max(...ps) ? shown(ps[0]) : `desde ${shown(Math.min(...ps))}`) : shown(x.price)));
       g.append(r);
+      for (const y of opts2) {
+        const i = infos.get(y);
+        const sr = el('div', 'brow sub');
+        sr.dataset.k = `${y.surface}::${y.key}`;
+        const nm = el('span', 'bnm');
+        nm.append(el('b', null, i.name || String(y.key)));
+        if (i.recommended) nm.append(el('span', 'recpill recpill-on', 'Recomendada'));
+        sr.append(nm, el('span', 'bval', shown(y.price)));
+        g.append(sr);
+      }
     }
     root.append(g);
   }
@@ -295,16 +318,34 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       body.append(c);
     }
     // 1D add-product A — the NEW products, with the prices the factura will print for them.
+    // 1D add-product B (§0d.5) — a product with a required choice is never a factura line itself: each OPTION is, under its
+    // full name ("{product} - {choice}"), so the seal lists every option with its price, under its product.
     const added = Array.isArray(model.addedRows) ? model.addedRows : [];
+    const desc = (k) => (typeof opts.describe === 'function' ? opts.describe({ surface: 'item', key: k }) : null);
+    const addedKeys = new Set(added.map((r) => r.key));
+    const optionOf = (r) => { const d = desc(r.key); return d && d.option && addedKeys.has(d.parent) ? d : null; };
+    const products = added.filter((r) => !optionOf(r));
+    const optionCount = added.length - products.length;
     if (added.length) {
-      body.append(el('p', null, added.length === 1 ? 'Vas a agregar 1 producto nuevo con este precio:' : `Vas a agregar ${added.length} productos nuevos con estos precios:`));
-      for (const r of added) {
+      body.append(el('p', null, optionCount
+        ? (products.length === 1 ? 'Vas a agregar 1 producto nuevo. La factura imprimirá cada opción con su precio:' : `Vas a agregar ${products.length} productos nuevos. La factura imprimirá cada línea con su precio:`)
+        : (added.length === 1 ? 'Vas a agregar 1 producto nuevo con este precio:' : `Vas a agregar ${added.length} productos nuevos con estos precios:`)));
+      for (const r of products) {
+        const kids = added.filter((y) => { const d = optionOf(y); return d && d.parent === r.key; });
         const c = el('div', 'seachg');
         c.append(el('span', 'sn', nameOf(r.key)));
         const v = el('span', 'sv');
-        v.append(el('span', 'now', shown(r.now)));
+        if (!kids.length) v.append(el('span', 'now', shown(r.now)));
         c.append(v);
         body.append(c);
+        for (const y of kids) {
+          const kc = el('div', 'seachg sub');
+          kc.append(el('span', 'sn', optionOf(y).fullName || nameOf(y.key)));
+          const kv = el('span', 'sv');
+          kv.append(el('span', 'now', shown(y.now)));
+          kc.append(kv);
+          body.append(kc);
+        }
       }
     }
     if (!model.sealRows.length && !added.length) {
@@ -320,9 +361,10 @@ export function renderAttestation(root, model, onToggle, opts = {}) {
       const t = el('span', 'at');
       t.append(el('b', null, 'Autorizo'));
       const n = model.sealRows.length;
-      const a = Array.isArray(model.addedRows) ? model.addedRows.length : 0;
+      // products, not factura lines: a product's options are counted with it ("y sus N opciones")
+      const a = products.length;
       const prices = n === 1 ? 'este cambio de precio' : `estos ${n} cambios de precio`;
-      const adds = a === 1 ? '1 producto nuevo' : `${a} productos nuevos`;
+      const adds = (a === 1 ? '1 producto nuevo' : `${a} productos nuevos`) + (optionCount ? ` y sus ${optionCount} opciones` : '');
       t.append(a === 0
         ? (n === 1 ? ' este cambio de precio en la factura fiscal.' : (n === 0 ? ' esta edición en la factura fiscal.' : ` estos ${n} cambios de precio en la factura fiscal.`))
         : (n === 0 ? ` ${adds} con sus precios en la factura fiscal.` : ` ${prices} y ${adds} en la factura fiscal.`));

@@ -1,0 +1,16 @@
+{
+  "x_pizza": {
+    "source": "49ba603a3738d82989b4080e3d4bb4a7dc186d33ffb6d00df558e33fed42f90b",
+    "built": "b9e0a8baca4de35a622fc799cfb89ccd7801bcf3a3cbce71d19a651043eeca85",
+    "bundle": "b50325ecd61fa5262e272a1aeadb33f1b62c8f6bf297b0a9fe4a6101d47f4a6f",
+    "publicBody": "3f375a14f7d828697c39266f0305af7e513bcefbccbc41ef0228137367eb260e",
+    "kds": "207750e7362e9ad6aa3ba68a3c7ed0c4dc7a3cc863d7274c6648b199809f83ee"
+  },
+  "la_musa": {
+    "source": "cc5d7b968ebf8e2979c51ba5f19e8acf034b6c44a597252f6b4d1295f33d4bcd",
+    "built": "71d008b270560b45d28888e394fcbed701811f96464dafe805762cdf39946633",
+    "bundle": "35ae3226a494016263e2235b43d7cc7029093c0304b1989d79e88126f5902ac6",
+    "publicBody": "ceab60a0da8ad2c2a96b934572030d531bc3e1df60d1113d62804ffc7fd13358",
+    "kds": "60889787bbdc8edef0eaefe766d3e8bbcc1eec8011d644b195578735a1cb8361"
+  }
+}

@@ -2606,26 +2606,26 @@
   {
     "id": "b7-20",
     "slice": "b7",
-    "file": "../la-musa-orders/index.html",
+    "file": "../la-musa-orders/form-group-picker.js",
     "command": [
       "node",
       "../live-apply.test.mjs"
     ],
     "label": "la_musa: the launcher CTA ignores the selected variant's availability — a sold-out protein shows a priced Agregar",
-    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {\n      cta.className = 'detail-cta';\n      cta.style.opacity = '.5';\n      cta.style.pointerEvents = 'none'; cta.disabled = true;\n      cta.innerHTML = '<span>Agotado</span>';\n      return;\n    }\n",
-    "to": "    ;\n"
+    "from": "  if (v && typeof opts.isSoldOut === \"function\" && opts.isSoldOut(v)) return { kind: \"soldout\" };\n",
+    "to": ""
   },
   {
     "id": "b7-21",
     "slice": "b7",
-    "file": "../la-musa-orders/index.html",
+    "file": "../la-musa-orders/form-group-picker.js",
     "command": [
       "node",
       "../live-apply.test.mjs"
     ],
-    "label": "la_musa: the launcher CTA asks about the LAUNCHER instead of the selected variant",
-    "from": "    if (v && typeof isSoldOut === 'function' && isSoldOut(v)) {",
-    "to": "    if (v && typeof isSoldOut === 'function' && isSoldOut(pizza)) {"
+    "label": "la_musa: the launcher CTA asks about ANOTHER dish instead of the selected variant",
+    "from": "  if (v && typeof opts.isSoldOut === \"function\" && opts.isSoldOut(v)) return { kind: \"soldout\" };",
+    "to": "  if (v && typeof opts.isSoldOut === \"function\" && opts.isSoldOut(opts.menu.find(p => p !== v) || v)) return { kind: \"soldout\" };"
   },
   {
     "id": "b7-22",
@@ -2740,8 +2740,8 @@
     "slice": "b8",
     "label": "the card name is rendered unescaped again",
     "file": "../xpizza-orders/index.html",
-    "from": "<div class=\"pizza-card-name\">${safeText(p.name)}</div>",
-    "to": "<div class=\"pizza-card-name\">${p.name}</div>",
+    "from": "        <div class=\"pizza-card-name\">${safeText(p.name)}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">L ${safeText(p.price)}</span>",
+    "to": "        <div class=\"pizza-card-name\">${p.name}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">L ${safeText(p.price)}</span>",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2764,8 +2764,32 @@
     "slice": "b8",
     "label": "the card photo colour is taken raw",
     "file": "../xpizza-orders/index.html",
-    "from": "style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\"",
-    "to": "style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\"",
+    "from": "  const plainCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\">",
+    "to": "  const plainCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\">",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-08L",
+    "slice": "b8",
+    "label": "the LAUNCHER card name is rendered unescaped (1D add-product B)",
+    "file": "../xpizza-orders/index.html",
+    "from": "        <div class=\"pizza-card-name\">${safeText(p.name)}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">${safeText(GroupPicker.priceText(",
+    "to": "        <div class=\"pizza-card-name\">${p.name}</div>\n        <div class=\"pizza-card-desc\">${safeText(p.desc||'')}</div>\n        <div class=\"pizza-card-footer\">\n          <span class=\"pizza-card-price\">${safeText(GroupPicker.priceText(",
+    "command": [
+      "node",
+      "../live-apply.test.mjs"
+    ]
+  },
+  {
+    "id": "b8-10L",
+    "slice": "b8",
+    "label": "the LAUNCHER card photo colour is taken raw (1D add-product B)",
+    "file": "../xpizza-orders/index.html",
+    "from": "  const launcherCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\">",
+    "to": "  const launcherCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\">",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -2822,9 +2846,9 @@
   {
     "id": "b8-15",
     "slice": "b8",
-    "label": "la_musa: the launcher modal prints the authored basePrice raw",
+    "label": "la_musa: the launcher modal prints the AUTHORED basePrice (raw) instead of the price derived from its choices",
     "file": "../la-musa-orders/index.html",
-    "from": "    <div class=\"detail-price\">desde L ${safeText(cfg.basePrice)}</div>",
+    "from": "    <div class=\"detail-price\">${safeText(GroupPicker.priceText(cfg, MENU) || '—')}</div>",
     "to": "    <div class=\"detail-price\">desde L ${cfg.basePrice}</div>",
     "command": [
       "node",
@@ -2933,9 +2957,9 @@
     "id": "b8-24",
     "slice": "b8",
     "label": "la_musa: a launcher's basePrice is accepted without being checked as a number",
-    "file": "../la-musa-orders/index.html",
-    "from": "      if (!(typeof cfg.basePrice === 'number' && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error('apply_variant_basePrice@' + origin + ':' + k);",
-    "to": "      if (false) throw new Error('apply_variant_basePrice@' + origin + ':' + k);",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "    if (!(typeof cfg.basePrice === \"number\" && isFinite(cfg.basePrice) && cfg.basePrice > 0)) throw new Error(\"apply_variant_basePrice@\" + origin + \":\" + k);",
+    "to": "    if (false) throw new Error(\"apply_variant_basePrice@\" + origin + \":\" + k);",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3041,9 +3065,9 @@
     "id": "b8-33",
     "slice": "b8",
     "label": "la_musa: variantId validation goes back to coercing, so it admits what the renderer cannot draw",
-    "file": "../la-musa-orders/index.html",
-    "from": "        if (!dishes.some((d) => sameDishId(d.id, vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);",
-    "to": "        if (!dishes.some((d) => String(d.id) === String(vid))) throw new Error('apply_variant_id_orphan@' + origin + ':' + k + ':' + vid);",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "      if (!dishes.some(function (d) { return sameDishId(d.id, vid); })) throw new Error(\"apply_variant_id_orphan@\" + origin + \":\" + k + \":\" + vid);",
+    "to": "      if (!dishes.some(function (d) { return String(d.id) === String(vid); })) throw new Error(\"apply_variant_id_orphan@\" + origin + \":\" + k + \":\" + vid);",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3053,9 +3077,9 @@
     "id": "b8-34",
     "slice": "b8",
     "label": "la_musa: the shared dish-identity comparison stops pinning the type",
-    "file": "../la-musa-orders/index.html",
-    "from": "function sameDishId(a, b) { return typeof a === 'string' && typeof b === 'string' && a === b; }",
-    "to": "function sameDishId(a, b) { return String(a) === String(b); }",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "  if (typeof a === \"string\" && typeof b === \"string\") return a === b;\n  if (typeof a === \"number\" && typeof b === \"number\") return isFinite(a) && a === b;\n  return false;",
+    "to": "  return String(a) === String(b);",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3065,9 +3089,9 @@
     "id": "b8-35",
     "slice": "b8",
     "label": "la_musa: a variantId of the wrong type is accepted",
-    "file": "../la-musa-orders/index.html",
-    "from": "        if (typeof vid !== 'string' || !vid) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));",
-    "to": "        if (false) throw new Error('apply_variant_id_type@' + origin + ':' + k + ':' + String(vid));",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "      if (!groupType || idTypeOf(vid) !== groupType) throw new Error(\"apply_variant_id_type@\" + origin + \":\" + k + \":\" + String(vid));",
+    "to": "      if (false) throw new Error(\"apply_variant_id_type@\" + origin + \":\" + k + \":\" + String(vid));",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3091,9 +3115,9 @@
     "id": "b8-37",
     "slice": "b8",
     "label": "la_musa: the variant renderer dereferences a miss instead of skipping it",
-    "file": "../la-musa-orders/index.html",
-    "from": "    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;",
-    "to": "    const v = MENU.find(p => sameDishId(p.id, vid));",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "    const v = menu.find(p => sameDishId(p.id, vid)); if (!v) return;\n    rows.push(",
+    "to": "    const v = menu.find(p => sameDishId(p.id, vid));\n    rows.push(",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -3103,9 +3127,9 @@
     "id": "b8-38",
     "slice": "b8",
     "label": "la_musa: the variant renderer's comparison coerces, disagreeing with the validator",
-    "file": "../la-musa-orders/index.html",
-    "from": "    const v = MENU.find(p => sameDishId(p.id, vid)); if (!v) return;",
-    "to": "    const v = MENU.find(p => String(p.id) === String(vid)); if (!v) return;",
+    "file": "../la-musa-orders/form-group-picker.js",
+    "from": "    const v = menu.find(p => sameDishId(p.id, vid)); if (!v) return;\n    rows.push(",
+    "to": "    const v = menu.find(p => String(p.id) === String(vid)); if (!v) return;\n    rows.push(",
     "command": [
       "node",
       "../live-apply.test.mjs"
@@ -7879,8 +7903,8 @@
     "id": "e2a-19",
     "slice": "e2a",
     "file": "tools/emulator-run.js",
-    "from": "  String(command).replace(/\\bnode\\s+(?=[\\w./-]+\\.(?:js|mjs)\\b)/g, `node -r ${counter} `);",
-    "to": "  String(command).replace(/^node\\s+/, `node -r ${counter} `);",
+    "from": "  String(command).replace(/\\bnode\\s+(?=[\\w./-]+\\.(?:js|mjs)\\b)/g, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
+    "to": "  String(command).replace(/^node\\s+/, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
     "label": "only the first command in a chained script is preloaded",
     "kills_with": "a chained script preloaded only some of its suites — the rest report no count at all",
     "command": [
@@ -8245,45 +8269,6 @@
     "command": [
       "node",
       "tools/sweep-baseline.test.js"
-    ]
-  },
-  {
-    "id": "e2h-01",
-    "slice": "e2h",
-    "file": "tools/gate-all.js",
-    "from": "      return onRefuse(2);",
-    "to": "      break;",
-    "label": "the settle wait FALLS THROUGH on timeout instead of refusing",
-    "kills_with": "the settle wait FELL THROUGH on timeout",
-    "command": [
-      "node",
-      "tools/emulator-ports.guard.test.js"
-    ]
-  },
-  {
-    "id": "e2h-02",
-    "slice": "e2h",
-    "file": "tools/gate-all.js",
-    "from": "  if (waited >= SETTLE_POLL_MS) {",
-    "to": "  if (false) {",
-    "label": "the settle wait engages silently, recording nothing",
-    "kills_with": "an engagement was not recorded — a silent wait is indistinguishable from no wait",
-    "command": [
-      "node",
-      "tools/emulator-ports.guard.test.js"
-    ]
-  },
-  {
-    "id": "e2h-03",
-    "slice": "e2h",
-    "file": "tools/gate-all.js",
-    "from": "    const busy = ports.filter(([, port]) => !isFree(port));",
-    "to": "    const busy = [];",
-    "label": "the settle wait never looks at the ports",
-    "kills_with": "it did not wait for the held port to clear",
-    "command": [
-      "node",
-      "tools/emulator-ports.guard.test.js"
     ]
   },
   {
@@ -10790,6 +10775,713 @@
     "command": [
       "node",
       "tools/firestore-config-isolation.test.js"
+    ]
+  },
+  {
+    "id": "r1-01",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "      if (!lenient && started.has(svc) && !dead.has(svc)) {",
+    "to": "      if (false) {",
+    "label": "the NULL endpoint is accepted for a service the run STARTED",
+    "kills_with": "NOT refused: NULL for a started service",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-02",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "  if (accidental.length) installNullGuard(accidental);",
+    "to": "  void accidental;",
+    "label": "accidental use of a NULL service hangs instead of failing fast",
+    "kills_with": "no fast failure",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-03",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "      throw new EmulatorEndpointError(`${varName} is not set while other emulator signals are",
+    "to": "      continue; throw new EmulatorEndpointError(`${varName} is not set while other emulator signals are",
+    "label": "a half-configured process falls back to production for the unset service",
+    "kills_with": [
+      "NOT refused: Firestore host only",
+      "lib/admin.js did not refuse"
+    ],
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-04",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (isAlive(r.pid)) { incomplete = true; unreadable.push({ pid: r.pid, why: r.why }); }",
+    "to": "      void 0;",
+    "label": "a live unreadable same-user process no longer makes the scan incomplete",
+    "kills_with": "a LIVE unreadable same-user row did not make the scan incomplete",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-05",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    else if (e.args.startsWith(p.args + ' ')) row.env = e.args.slice(p.args.length + 1);",
+    "to": "    else if (e.args.startsWith(p.args + ' ')) row.env = e.args;",
+    "label": "argv is read as environment (x=y in argv, or a marker in argv, counts)",
+    "kills_with": "argv x=y leaked into the env",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-06",
+    "slice": "r1",
+    "file": "tools/emu-reap.js",
+    "from": "  if (sup && !ALLOC.isZombie(sup.state) && sup.start === mk.start) return { ok: false, why: 'supervisor is ALIVE — a live run is never signalled' };",
+    "to": "  void sup;",
+    "label": "emu-reap signals a process whose supervisor is ALIVE",
+    "kills_with": "a LIVE supervisor's process would be signalled",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-07",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (!server) { lastReason = `slot ${slot} sentinel held by another run`; continue; }",
+    "to": "      if (!server) { lastReason = `slot ${slot} sentinel held by another run`; return { slot, server: null, offset: slot * 10 }; }",
+    "label": "a held sentinel is treated as an acquired slot (two runs share a band)",
+    "kills_with": "concurrent allocators did not get",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-08",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "const PROBE_HOSTS = ['127.0.0.1', '0.0.0.0', '::'];",
+    "to": "const PROBE_HOSTS = ['127.0.0.1'];",
+    "label": "the band probe checks loopback only and misses a wildcard listener (AirPlay *:5000)",
+    "kills_with": "wildcard listener was probed FREE",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-09",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    if (!row.readable) return 'unconfirmed';",
+    "to": "    if (!row.readable) return 'dead';",
+    "label": "an unreadable target is counted as dead",
+    "kills_with": "a target that became UNREADABLE was counted as dead",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-10",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (!fresh || !fresh.readable || fresh.start !== start || isZombie(fresh.state) || !same(fresh)) continue;   // gone / reused / unreadable: NOT signalled",
+    "to": "      void fresh;",
+    "label": "no fresh per-pid identity check before a signal (a reused pid is signalled)",
+    "kills_with": "a REUSED pid (a different process now) was signalled",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-11",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    for (const r of sel.targets) if (!tracked.has(r.pid)) tracked.set(r.pid, r.start);",
+    "to": "    if (!tracked.size) for (const r of sel.targets) tracked.set(r.pid, r.start);",
+    "label": "the barrier freezes the first snapshot (a descendant spawned during the reap is missed)",
+    "kills_with": "spawned during the reap survived it",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-12",
+    "slice": "r1",
+    "file": "tools/emulator-run.js",
+    "from": "  if (services.includes('functions')) {\n    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(run ? run.pid : process.pid);",
+    "to": "  if (services.includes('functions') && !env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH) {\n    env.FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH = discoveryDirFor(run ? run.pid : process.pid);",
+    "label": "an inherited discovery path is kept (two worktrees share functions.yaml)",
+    "kills_with": "an inherited discovery path was kept",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-14",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "  return env.FUNCTIONS_EMULATOR === 'true' || present(env[HOST_VAR.firestore])",
+    "to": "  return present(env.FUNCTIONS_EMULATOR) || present(env[HOST_VAR.firestore])",
+    "label": "a non-\"true\" FUNCTIONS_EMULATOR counts as an emulator signal (a deployed \"false\" would throw)",
+    "kills_with": "the validator treats a non-\"true\" FUNCTIONS_EMULATOR as a signal",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-15",
+    "slice": "r1",
+    "file": "tools/emu-cmd-wrapper.js",
+    "from": "    if (stopping) break;",
+    "to": "    void stopping;",
+    "label": "the wrapper starts the next step after a forwarded SIGTERM",
+    "kills_with": "a later step started after the wrapper was signalled",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-16",
+    "slice": "r1",
+    "file": "lib/emulator-endpoint.js",
+    "from": "  if (distinct.length > 1) throw new EmulatorEndpointError(",
+    "to": "  if (false) throw new EmulatorEndpointError(",
+    "label": "disagreeing project variables are accepted",
+    "kills_with": "NOT refused: GCLOUD_PROJECT",
+    "command": [
+      "node",
+      "tools/emulator-endpoint.test.js"
+    ]
+  },
+  {
+    "id": "r1-17",
+    "slice": "r1",
+    "file": "tools/emu-mixed-guard.js",
+    "from": "  try { EE.validateEmulatorEnv(env, { lenient: true }); return 'emulator'; } catch (e) {",
+    "to": "  try { return 'emulator'; } catch (e) {",
+    "label": "a production CLI runs with MIXED emulator/prod signals",
+    "kills_with": [
+      "did not refuse",
+      "no anchored refusal banner"
+    ],
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-13",
+    "slice": "r1",
+    "file": "tools/gate-all.js",
+    "from": "      buf[stream] += d;",
+    "to": "      buf.out += d;",
+    "label": "stdout and stderr chunks are merged in arrival order (a ##CELLS trailer is lost)",
+    "kills_with": "interleaved stdout/stderr chunks lost a ##CELLS trailer",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-18",
+    "slice": "r1",
+    "file": "firebase.json",
+    "from": "        \".env.*\",\n",
+    "to": "",
+    "label": "a .env.<projectId> file or a stray secrets backup rides into the deploy archive",
+    "kills_with": "a local env file / backup would ride into the deploy archive",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-19",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "  for (const r of [...a.rows, ...b.rows]) {                     // the UNION: a pid in either view is classified",
+    "to": "  for (const r of [...a.rows]) {",
+    "label": "classification uses only the FIRST -E view (the handoff child is never classified)",
+    "kills_with": [
+      "the union of both -E views does not contain the handoff child"
+    ],
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-20",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "  if (!a.stable) return { occupied: false, incomplete: true,",
+    "to": "  if (false) return { occupied: false, incomplete: true,",
+    "label": "an unstable slot population is classified anyway (no sticky uncertainty — the redacted-child handoff is admitted)",
+    "kills_with": [
+      "was not INCOMPLETE",
+      "the redacted-child handoff slot was admitted",
+      "the doubtful slot was admitted"
+    ],
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-21",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (signal && signal.aborted) { await closeServer(server); throw cancelled(); }\n      return { slot, server, offset: slot * 10 };",
+    "to": "      return { slot, server, offset: slot * 10 };",
+    "label": "a cancel that lands during the probe is admitted (the suite launches anyway)",
+    "kills_with": "a cancel during the probe was ADMITTED",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-22",
+    "slice": "r1",
+    "file": "tools/emu-cmd-wrapper.js",
+    "from": "const sigCode = (sig) => 128 + ((os.constants.signals || {})[sig] || 1);",
+    "to": "const sigCode = (sig) => 128 + ({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1 }[sig] || 1);",
+    "label": "the wrapper maps an unlisted signal (SIGABRT) to 129",
+    "kills_with": "a SIGABRT step mapped to",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-23",
+    "slice": "r1",
+    "file": "tools/require-project.js",
+    "from": "  guard.armClientRecheck('require-project');",
+    "to": "  void guard.armClientRecheck;",
+    "label": "a dotenv load AFTER require-project's check introduces a foreign emulator host unchecked",
+    "kills_with": "with a .env that injects a foreign Firestore host AFTER its early check",
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-24",
+    "slice": "r1",
+    "file": "scripts/test-ingest.js",
+    "from": "require('../tools/emu-mixed-guard').refuseAnySignal('test-ingest');",
+    "to": "require('../tools/emu-mixed-guard')('test-ingest');",
+    "label": "test-ingest (posts to a deployed INGEST_URL) runs under a coherent emulator env",
+    "kills_with": "test-ingest under a COHERENT emulator env",
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-25",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    names.add(`.env.${id}`); names.add(`.env.${alias}`);   // EVERY alias incl. `default` (command.js:231 / env.js:152)",
+    "to": "    names.add(`.env.${id}`); if (alias !== 'default') names.add(`.env.${alias}`);",
+    "label": "the deploy guard skips .env.default (the alias a bare deploy selects)",
+    "kills_with": [
+      ".env.default (the default alias",
+      "the deploy env file set"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-26",
+    "slice": "r1",
+    "file": "firebase.json",
+    "from": "      \"predeploy\": [\n        \"node \\\"$RESOURCE_DIR/tools/deploy-env-guard.js\\\" --root \\\"$RESOURCE_DIR\\\"\"\n      ],\n",
+    "to": "",
+    "label": "the deploy guard is not on the deploy path (no functions predeploy hook)",
+    "kills_with": "the deploy-env guard is not the FIRST functions predeploy hook",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-27",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "    if (mk && (slot === null || mk.slot === slot)) sig.add(",
+    "to": "    if (mk) sig.add(",
+    "label": "stability is global: a run starting on any slot makes every slot doubtful",
+    "kills_with": "a handoff on slot 5 made slot 6 incomplete",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-28",
+    "slice": "r1",
+    "file": "tools/emu-mixed-guard.js",
+    "from": "  if (!proto || typeof proto.getOrInitService !== 'function') return internalsChanged(who, 'FirebaseApp.getOrInitService is not a function');",
+    "to": "  if (!proto) return internalsChanged(who, 'no prototype');",
+    "label": "a renamed firebase-admin initializer is silently accepted (the hook never arms)",
+    "kills_with": "a RENAMED initializer did not refuse the CLI",
+    "command": [
+      "node",
+      "tools/endpoint-census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-29",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    if (project && id !== project) continue;",
+    "to": "    void project;",
+    "label": "the deploy guard checks UNSELECTED projects' env files (a staging file blocks a prod deploy)",
+    "kills_with": "blocked a deploy to proj-x",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-30",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "const keysOf = (text) => parser().keys(String(text));",
+    "to": "const keysOf = (text) => Object.keys(require('dotenv').parse(String(text)));",
+    "label": "the deploy guard parses with dotenv instead of the deploying firebase-tools' parseStrict (codex's backtick input is missed)",
+    "kills_with": [
+      "the FIRESTORE_EMULATOR_HOST line the deploy WOULD load was missed",
+      "it fails LOUD, naming the file and key"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-31",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "  if (!PARSER) PARSER = resolveFirebaseTools();",
+    "to": "  if (!PARSER) PARSER = resolveFirebaseTools() || { name: 'dotenv fallback', keys: (t) => Object.keys(require('dotenv').parse(t)) };",
+    "label": "an unresolvable firebase-tools silently falls back to another parser (no fail-closed)",
+    "kills_with": "the guard did not FAIL CLOSED",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-32",
+    "slice": "r1",
+    "file": "tools/emu-alloc.js",
+    "from": "      if (sc.unstable) uncertain.add(slot);\n",
+    "to": "",
+    "label": "an unstable slot is reconsidered on the next sweep of the SAME admission (a queued call admits the handoff slot)",
+    "kills_with": "the SAME admission admitted the handoff slot on a later sweep",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1-33",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "            const e = new Error(`parse error: ${r.errors.length} unparseable line(s)${nums.length ? ` (line ${nums.join(', ')})` : ''} — the deploy's parseStrict would refuse this file too`);",
+    "to": "            const e = new Error(`parse error on: ${r.errors.join(',')}`);",
+    "label": "a parse-error diagnostic prints the raw line (a secret leaks)",
+    "kills_with": [
+      "a VALUE was printed",
+      "the expected message"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-34",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    if (name !== 'firebase-tools') return null;            // the nearest package is NOT firebase-tools ⇒ fail closed",
+    "to": "    if (name !== 'firebase-tools') continue;",
+    "label": "a non-firebase-tools `firebase` earlier on PATH is skipped (a later candidate vouches for a parser the deploy does not run)",
+    "kills_with": [
+      "inside a NON-firebase-tools package was accepted via an OUTER firebase-tools dir",
+      "an earlier non-firebase-tools 'firebase' on PATH was skipped past"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-36",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": ".split(path.delimiter).map((x) => (x === '' ? '.' : x))) {",
+    "to": ".split(path.delimiter).filter(Boolean)) {",
+    "label": "an empty PATH entry (the cwd) is dropped from firebase resolution",
+    "kills_with": "an EMPTY PATH entry (the cwd) was dropped",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-35",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    const id = (e && typeof e.code === 'string' && SAFE_CODES.has(e.code)) ? e.code : 'unexpected';",
+    "to": "    const id = (e && (e.code || e.name)) || 'unexpected';",
+    "label": "the boundary prints err.code / err.name verbatim (an arbitrary string can carry a secret)",
+    "kills_with": [
+      "a non-allowlisted code was not reduced",
+      "err.code / err.name: the secret was printed"
+    ],
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-37",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "  process.prependListener('uncaughtException', hardFail);",
+    "to": "  process.on('uncaughtException', hardFail);",
+    "label": "the hard-fail handler is appended, so a pre-existing listener that exits 0 runs first",
+    "kills_with": "a pre-existing uncaughtException listener that EXITS 0: the guard did not hard-fail",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-38",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "  process.prependListener('unhandledRejection', hardFail);",
+    "to": "",
+    "label": "no unhandledRejection handler (--unhandled-rejections=warn turns a failure into exit 0)",
+    "kills_with": "rejected promise under --unhandled-rejections=warn: the guard did not hard-fail",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1-39",
+    "slice": "r1",
+    "file": "tools/deploy-env-guard.js",
+    "from": "    try { fs.writeSync(2, `\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\\n`); } catch { /* fd 2 gone */ }",
+    "to": "    err(`\\n🔴 deploy-env-guard: internal error while checking ${current}; deploy BLOCKED (${id})\\n`);",
+    "label": "the boundary writes through the injectable err() (a throwing writer escapes it)",
+    "kills_with": "a throwing err() writer escaped the boundary",
+    "command": [
+      "node",
+      "tools/deploy-env-guard.test.js"
+    ]
+  },
+  {
+    "id": "r1c-01",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/catalog', 'createCatalogReader', { now: 'virtual' }, { getRestaurantDocs: 'cold' }],",
+    "to": "  ['catalog/catalog', 'createCatalogReader', {}, { getRestaurantDocs: 'cold' }],",
+    "label": "the hook stops putting the pricing pointer on the virtual clock (it keeps the wall clock)",
+    "kills_with": "real time still drives it",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
+    ]
+  },
+  {
+    "id": "r1c-02",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/menu-gates', 'createGateReader', { nowMs: 'virtual' }],",
+    "to": "  ['catalog/menu-gates', 'createGateReader', {}],",
+    "label": "the hook stops putting the LIVE gate pointer singleton on the virtual clock",
+    "kills_with": [
+      "R1C-CLOCK wall",
+      "R1C-CLOCK steady",
+      "the call sequence must equal the render-OFF one"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:order-exists"
+    ],
+    "why": "timing decides WHERE the real-clock refill (45 s TTL) first lands: inside a render-ON companion request (R1c keeps every GATE / CTX refill IN, so the companion's call-sequence equality catches it and the suite throws before the sensitivity block) or at the steady/wall sensitivity request. Both are the property."
+  },
+  {
+    "id": "r1c-03",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/context-source', 'createContextSource', { recordTtlMs: 'hold' }],",
+    "to": "  ['catalog/context-source', 'createContextSource', {}],",
+    "label": "the hook stops holding the LIVE context record TTL (it refills on wall time again)",
+    "kills_with": [
+      "R1C-CLOCK wall",
+      "R1C-CLOCK steady",
+      "the call sequence must equal the render-OFF one"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:order-exists"
+    ],
+    "why": "timing decides WHERE the real-clock refill (45 s TTL) first lands: inside a render-ON companion request (R1c keeps every GATE / CTX refill IN, so the companion's call-sequence equality catches it and the suite throws before the sensitivity block) or at the steady/wall sensitivity request. Both are the property."
+  },
+  {
+    "id": "r1c-04",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "    if (!wasCold) return ops;   // NOT a cold request: everything stays IN — a COLD-shaped block, any GATE / CTX refill",
+    "to": "    if (!wasCold) return matchAt(ops, 0, refillShapes(rid).GATE) ? ops.slice(refillShapes(rid).GATE.length) : ops;",
+    "label": "makeColdOnly loosened: a leading GATE re-read (not part of a COLD load) is set aside again (as makeCacheFill did)",
+    "kills_with": "a leading GATE re-read stays IN",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-05",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "    clock.assertBuilt(CLOCKED, label);",
+    "to": "",
+    "label": "makeColdOnly stops checking the singletons were built through the clock hook",
+    "kills_with": "singletons not built through the hook fail the bound",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-06",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "        if (opts && opts[k] !== undefined) throw new Error(`catalog-clock: ${name} was passed '${k}' by its caller — the hook would override production wiring (re-check R1c)`);",
+    "to": "        if (false) throw new Error('');",
+    "label": "the hook silently overrides a caller that already passes the injected option",
+    "kills_with": "cell refusesOverride failed",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
+    ]
+  },
+  {
+    "id": "r1c-07",
+    "slice": "r1c",
+    "file": "tools/emu-alloc.test.js",
+    "from": "      const split = (sc) => { const all = [...sc.orphans, ...sc.live]; return { ours: all.filter((x) => x.nonce === nonce), foreign: all.filter((x) => x.nonce !== nonce) }; };",
+    "to": "      const split = (sc) => { const all = [...sc.orphans, ...sc.live]; return { ours: all, foreign: [] }; };",
+    "label": "the emu-alloc after-check counts EVERY marked process on the slot index again (the flake)",
+    "kills_with": "turned red by ANOTHER run's marked process",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
+  },
+  {
+    "id": "r1c-08",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "stripRequest(trace.slice(pre), rid, id, label, cold.includes(rid))];",
+    "to": "stripRequest(trace.slice(pre), rid, id, label, matchAt(trace.slice(pre).filter((o) => !isFloorOp(o)), 0, refillShapes(rid).COLD))];",
+    "label": "makeColdOnly decides COLD by SHAPE again (codex R1c P2 loophole: a warm request's COLD-shaped ops are set aside)",
+    "kills_with": "31 ON-only COLD-shaped ops in a WARM request were set aside",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-09",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier', 'createRestaurantRegistry'];",
+    "to": "const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier'];",
+    "label": "the registry is dropped from the singletons proved built through the hook (codex R1c P2)",
+    "kills_with": "CLOCKED must name EVERY hooked factory",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-10",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/restaurant-registry', 'createRestaurantRegistry', { now: 'virtual' }, { listIds: 'registry' }],",
+    "to": "  ['catalog/restaurant-registry', 'createRestaurantRegistry', {}, { listIds: 'registry' }],",
+    "label": "the hook stops putting the LIVE registry on the virtual clock (it refreshes on wall time again)",
+    "kills_with": [
+      "R1C-CLOCK wall",
+      "R1C-CLOCK steady",
+      "R1C-REGISTRY"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:order-exists"
+    ]
+  },
+  {
+    "id": "r1c-11",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "rid: kind === 'cold' ? a[0] : null",
+    "to": "rid: null",
+    "label": "the load observer stops attributing a COLD load to its restaurant",
+    "kills_with": "the first (COLD) load of x_pizza was not observed",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
+    ]
+  },
+  {
+    "id": "r1c-12",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.test.js",
+    "from": "const childEnv = (env) => { const e = { ...env }; delete e.NODE_OPTIONS; return e; };",
+    "to": "const childEnv = (env) => { const e = { ...env }; e.NODE_OPTIONS = (e.NODE_OPTIONS || '').split(/\\s+/).filter((x, i, a) => x && !/count-marks/.test(x) && !(x === '-r' && /count-marks/.test(a[i + 1] || ''))).join(' '); return e; };",
+    "label": "the cell runner token-filters NODE_OPTIONS again (R1c's first version: a gate `--require <abs>` preload leaves a dangling --require)",
+    "kills_with": "did not boot",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
     ]
   }
 ]

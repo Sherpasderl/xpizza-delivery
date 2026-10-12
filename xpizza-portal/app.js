@@ -5,6 +5,9 @@
 // shows what came back.
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
+// 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
+import { parsePrice } from './editor.js';
+import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
 import { token } from './auth.js';
@@ -396,6 +399,10 @@ export async function loadMenu(rid) {
   state.restaurantName = '';
   state.draftUnpublishable = null;
   state.drawerError = null;
+  state.groupAuthoring = false;               // 1D add-product B — per-load server facts, fail closed until they arrive
+  state.choiceBadges = [];
+  state.samePrice = new Map();                // "Mismo precio para todas", per product; DERIVED again on every load
+  state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
   const gen = opGeneration;
   $('detail').replaceChildren();
@@ -448,7 +455,12 @@ export async function loadMenu(rid) {
 // pass that reads it.
 function repaintFromDraft() {
   const src = draftSource(state.draft);
-  state.groups = groupByCategory(src);
+  // 1D add-product B — a NEW product's options belong under it (its drawer, its review row), not in the list as products of
+  // their own: they are folded out here, and an orphan bucket left empty by that (an unsaved option has no section of its
+  // own — the server derives it) is not shown. A PUBLISHED group's rows (La Musa's Pad Thai) are listed exactly as before.
+  state.groups = groupByCategory(src)
+    .map((g) => ({ ...g, items: g.items.filter((it) => !isNewGroupOption(state.draft, it, state.additionKeys)) }))
+    .filter((g) => g.items.length || (categoriesOf().some((c) => c && String(c.id) === g.category.id)));
   // the extras ARRAY, not a {key: price} map — the rows need their display records to show a name
   state.extras = Array.isArray(src.extras) ? src.extras : [];
   if (!state.groups.some((g) => g.category.id === state.selectedCat)) {
@@ -464,6 +476,10 @@ function applyAddProductFacts(data) {
   state.renderedCategories = Array.isArray(data && data.renderedCategories) ? data.renderedCategories.filter((c) => typeof c === 'string') : [];
   state.restaurantName = (data && typeof data.restaurantName === 'string') ? data.restaurantName : '';
   state.draftUnpublishable = (data && data.draft_unpublishable && typeof data.draft_unpublishable === 'object') ? data.draft_unpublishable : null;
+  // 1D add-product B — whether the drawer may OFFER a required choice (the platform authoring switch the save is judged by) and
+  // which badges this brand's picker draws on an option. Strictly from the server; absent = off / none.
+  state.groupAuthoring = !!(data && data.groupAuthoring === true);
+  state.choiceBadges = Array.isArray(data && data.choiceBadges) ? data.choiceBadges.filter((b) => typeof b === 'string') : [];
 }
 // A NEW product: still unsaved (a temporary reference), or saved but not yet published (the server said so).
 const isTmpRow = (it) => !!(it && typeof it.ref === 'string' && it.ref.startsWith('tmp:') && !('key' in it));
@@ -487,8 +503,26 @@ function describeAddition(x) {
   const it = ((draftSource(state.draft) || {}).items || []).find((i) => i && rowId(i) === (x && x.key));
   if (!it || !it.display) return null;
   const d = it.display;
+  // 1D add-product B — an OPTION of a new product names its product (the review nests it there) and its choice; its full
+  // name ("{product} - {choice}", server-derived) is what the factura prints, so it is kept too.
+  const parent = optionParentId(state.draft, rowId(it));
+  if (parent) {
+    return { option: true, parent, name: typeof d.choice === 'string' && d.choice.trim() ? d.choice : String(x.key),
+      fullName: typeof d.name === 'string' && d.name.trim() ? d.name : String(x.key), recommended: Array.isArray(d.tags) && d.tags.includes('recommended') };
+  }
+  const g = choiceGroup(state.draft, rowId(it));
   return { name: typeof d.name === 'string' && d.name.trim() ? d.name : String(x.key),
-    section: categoryName(d.cat) + (typeof d.subcat === 'string' && d.subcat ? ` / ${d.subcat}` : ''), rules: inheritedRules(d.cat) };
+    section: categoryName(d.cat) + (typeof d.subcat === 'string' && d.subcat ? ` / ${d.subcat}` : ''), rules: inheritedRules(d.cat),
+    ...(g ? { choice: { label: g.label, extrasNone: g.extrasNone } } : {}) };
+}
+// The list row of a NEW product with a required choice: its group's name as a chip, and its price as the order page shows
+// it — "L {min}" when every option costs the same, "desde L {min}" otherwise — read-only (it is edited in the drawer).
+function listGroupOf(it) {
+  if (!it || !isAddition(it)) return null;
+  const g = choiceGroup(state.draft, rowId(it));
+  if (!g) return null;
+  const ps = g.options.map((o) => o.price).filter((p) => Number.isInteger(p) && p > 0);
+  return { label: g.label, min: ps.length ? Math.min(...ps) : null, max: ps.length ? Math.max(...ps) : null };
 }
 function onAddProduct(catId) {
   if (!state.draft || !canAddTo(catId)) return;
@@ -547,7 +581,7 @@ function offerResetToLive(host, rid, rev) {
 // only place "you have unpublished work" is said, so it must never say it when the draft matches what
 // is published — and never stay silent when it does not.
 function refreshBar() {
-  const n = pendingCount(state.draft);
+  const n = pendingCount(state.draft, state.additionKeys);
   // 🔴 #7-B — REACHABLE WHENEVER A DRAFT EXISTS, not only when this session typed something.
   //
   // editCatalog PERSISTS the draft and getEditableCatalog returns the SAVED draft, so after a reload
@@ -588,7 +622,7 @@ function onPrice(surface, key, value) {
 
 // Mark just the cell that changed, in place. Cheap, and it avoids the re-render that would steal focus.
 function markChanged(surface, key) {
-  const changed = new Set(pendingChanges(state.draft).map((c) => `${c.surface}::${c.key}`));
+  const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   for (const cell of document.querySelectorAll('.price')) {
     const k = cell.dataset && cell.dataset.k;
     if (k) cell.classList.toggle('chg', changed.has(k));
@@ -598,7 +632,7 @@ function markChanged(surface, key) {
 
 function paint() {
   renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; paint(); });
-  const changed = new Set(pendingChanges(state.draft).map((c) => `${c.surface}::${c.key}`));
+  const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
     editable: true,
     changed: (surface, key) => changed.has(`${surface}::${key}`),
@@ -614,6 +648,7 @@ function paint() {
     isAddition,
     canAdd: canAddTo,
     onAdd: bound(onAddProduct),
+    groupOf: listGroupOf,          // 1D add-product B
   });
   if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
 }
@@ -642,11 +677,33 @@ function closeDrawer() {
 // `inert` removes the subtree from focus and interaction entirely; the attribute is set on the
 // element AND its inputs are disabled, because inert is not supported everywhere and a fallback that
 // silently does nothing is the same failure again.
+// 1D add-product B (codex PB-3 P2-1) — a control that is OFF for a reason of its own (a saved product's fixed structure) rather
+// than because the drawer is busy: the busy/idle toggle below must never re-enable it.
+const lockedControls = new WeakSet();
+function lockControl(el, locked) { if (locked) { lockedControls.add(el); el.disabled = true; } return el; }
+// (codex PB-3 P2-4) a rebuild replaces every control, so the one the merchant was on is found again by its key and focused
+const focusables = new Map();
+function focusKey(el, key) { focusables.set(key, el); return el; }
+function refocus(keys) {
+  for (const k of keys) { const el = focusables.get(k); if (el && !el.disabled && typeof el.focus === 'function') { el.focus(); return; } }
+}
+// (codex PB-3 P2-2) typed price text that is not (yet) a price, per field, so a rebuild shows what was typed instead of a
+// blank — shown only while that field's draft price is still not a price (a stale entry is inert)
+function priceText(rid, price) {
+  if (Number.isInteger(price) && price > 0) return String(price);
+  const k = `item::${rid}`;
+  return state.rawPrice.has(k) ? state.rawPrice.get(k) : '';   // only ever set to a string (holdPriceText)
+}
+function holdPriceText(rid, text) {
+  if (parsePrice(text) === null && String(text).trim() !== '') state.rawPrice.set(`item::${rid}`, String(text));
+  else state.rawPrice.delete(`item::${rid}`);
+}
+
 function setDrawerInert(on) {
   const d = $('drawer');
   if (!d) return;
   if (on) d.setAttribute('inert', ''); else d.removeAttribute('inert');
-  for (const el of d.querySelectorAll('input, button')) el.disabled = on === true;
+  for (const el of d.querySelectorAll('input, button')) el.disabled = on === true || lockedControls.has(el);
   if (on && document.activeElement && d.contains(document.activeElement)) document.activeElement.blur();
 }
 
@@ -664,7 +721,11 @@ function renderDrawer() {
   const scroller = d.querySelector('.dwb');
   const keepScroll = scroller ? scroller.scrollTop : 0;
 
+  focusables.clear();
   const src = draftSource(state.draft);
+  // 1D add-product B — a NEW product's option is edited in its product's drawer
+  const parentId = optionParentId(state.draft, state.drawerKey);
+  if (parentId && isNewGroupOption(state.draft, (src.items || []).find((i) => i && rowId(i) === state.drawerKey), state.additionKeys)) state.drawerKey = parentId;
   const it = (src.items || []).find((i) => i && rowId(i) === state.drawerKey);
   d.replaceChildren();
   if (!it) { d.classList.remove('show'); return; }
@@ -782,8 +843,28 @@ function renderAddDrawer(d, it, keepScroll) {
   prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
   const price = document.createElement('input');
   price.type = 'text'; price.inputMode = 'numeric'; price.setAttribute('aria-label', 'Precio');
-  price.value = (Number.isInteger(it.price) && it.price > 0) ? String(it.price) : ''; price.placeholder = 'Sin precio';
+  price.value = priceText(id, it.price); price.placeholder = 'Sin precio';
+  focusKey(price, 'price');
+  // 1D add-product B (§0d.5) — with a required choice the product's price belongs to the GROUP: "Mismo precio para todas" on,
+  // it sets the product and every option together (setGroupPrice, ONE mutator); off, it is DERIVED (the cheapest option)
+  // and shown read-only. Without a group, exactly Phase A.
+  const group = choiceGroup(state.draft, id);
+  const sameOn = () => (state.samePrice.has(id) ? state.samePrice.get(id) : optionPricesEqual(state.draft, id));
+  const optionPriceInputs = [];
+  // readOnly, not disabled: syncUi re-enables every drawer input when the draft is handed back, and the handler below is
+  // what actually refuses a derived price
+  const derivedUi = () => { const d = !!choiceGroup(state.draft, id) && !sameOn(); price.readOnly = d; price.title = d ? 'Se calcula de la opción más barata' : ''; };
+  derivedUi();
   price.addEventListener('input', bound(() => {
+    if (choiceGroup(state.draft, id)) {
+      if (!sameOn()) { const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id); price.value = l && Number.isInteger(l.price) && l.price > 0 ? String(l.price) : ''; return; }
+      setGroupPrice(state.draft, id, price.value, state.additionKeys);
+      holdPriceText(id, price.value);
+      for (const [pi, oid] of optionPriceInputs) { pi.value = price.value; holdPriceText(oid, price.value); }   // in place: a repaint would steal the caret
+      refreshBar(); paint();
+      return;
+    }
+    holdPriceText(id, price.value);
     if (unsaved) setAddition(state.draft, id, 'price', price.value); else setItemPrice(state.draft, id, price.value);
     refreshBar(); syncRow('item', id, price.value);
   }));
@@ -813,6 +894,12 @@ function renderAddDrawer(d, it, keepScroll) {
     body.append(note);
   }
 
+  // 1D add-product B — "Elección requerida — el cliente elige 1", exactly the approved mock's block. Offered only while the
+  // server's platform authoring switch is on, and only on an UNSAVED product (a saved one shows its group, prices editable).
+  if ((state.groupAuthoring && unsaved) || group) {
+    body.append(choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, price, sameOn, optionPriceInputs, derivedUi }));
+  }
+
   const foot = mk('div', 'dwf');
   const quitar = document.createElement('button');
   quitar.type = 'button'; quitar.className = 'btn delx'; quitar.textContent = 'Quitar';
@@ -829,6 +916,152 @@ function renderAddDrawer(d, it, keepScroll) {
   d.append(head, body, foot);
   d.classList.add('show');
   body.scrollTop = keepScroll;
+}
+
+// ── 1D add-product B — the "Elección requerida" block of the NEW-product drawer (the approved mock, its Phase B subset) ──
+// Ninguna | the product's group. The group header carries its name (editable inline while unsaved) and "N opciones · define el
+// precio · en 1 producto"; its body lists the options — name, price, RECOMENDADA (where this brand's picker draws it), × —
+// then "Agregar opción", "Mismo precio para todas" and "Sin extras". Every write goes through the guarded editor; nothing
+// below assigns a draft field. Structure edits re-render the drawer; typing never does (the caret stays put).
+function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, price, sameOn, optionPriceInputs, derivedUi }) {
+  const svgPath = (dd) => { const NS = 'http://www.w3.org/2000/svg'; const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', dd); svg.append(pth); return svg; };
+  const newRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
+  const restructure = (keys) => { after(); renderDrawer(); refocus(keys); };
+  const errAt = (target, field) => (state.drawerError && state.drawerError.target === target && (!field || state.drawerError.field === field) && typeof state.drawerError.message === 'string' ? `${state.drawerError.message}` : null);
+  const block = mk('div', 'modblock');
+  block.append(mk('div', 'modh', 'Elección requerida — el cliente elige 1'));
+  const radioName = `dwreq-${id}`;
+
+  const none = mk('label', 'modopt');
+  const noneIn = document.createElement('input'); noneIn.type = 'radio'; noneIn.name = radioName; noneIn.checked = !group;
+  focusKey(noneIn, 'none');
+  // Ninguna on ANY new product, saved ones included (§0b.8): the product stays, its group goes
+  noneIn.addEventListener('change', bound(() => { if (noneIn.checked) { setRequiredChoice(state.draft, id, false, [], state.additionKeys); state.samePrice.delete(id); state.drawerError = null; restructure(['none', 'price']); } }));
+  const noneNm = mk('span', 'mognm', 'Ninguna'); noneNm.append(mk('span', 'mogsub', ' · sin elección obligatoria'));
+  none.append(noneIn, noneNm);
+  block.append(none);
+
+  // open by default; the chevron folds the options away (view state only)
+  state.openGroups = state.openGroups || new Set();
+  const foldKey = `choice::${id}`;
+  const open = !!group && !state.openGroups.has(foldKey);
+  const grp = mk('div', `modgrp${open ? ' open' : ''}`);
+  const h = mk('div', 'modgrp-h');
+  const attach = mk('label', 'mgattach');
+  const onIn = document.createElement('input'); onIn.type = 'radio'; onIn.name = radioName; onIn.checked = !!group; lockControl(onIn, !unsaved);
+  focusKey(onIn, 'on');
+  onIn.setAttribute('aria-label', 'El cliente elige 1 opción');
+  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()]); state.samePrice.delete(id); restructure(['label', 'on']); } }));
+  attach.append(onIn);
+  const n = group ? group.options.length : 0;
+  const sub = group ? `${n} ${n === 1 ? 'opción' : 'opciones'} · define el precio · en 1 producto` : 'el cliente elige 1 opción · define el precio';
+  const main = mk('div', 'mgmain');
+  if (group && unsaved) {
+    const lab = document.createElement('input');
+    lab.type = 'text'; lab.className = 'mgname-in'; lab.value = group.label; lab.placeholder = 'Nombre de la elección (ej. Salsa)';
+    lab.setAttribute('aria-label', 'Nombre de la elección');
+    focusKey(lab, 'label');
+    lab.addEventListener('input', bound(() => { setGroupLabel(state.draft, id, lab.value); after(); }));
+    main.append(lab);
+  } else main.append(mk('span', 'mgname', group ? (group.label || 'Elección') : 'Agregar una elección'));
+  main.append(mk('span', 'mgsub', sub));
+  h.append(attach, main);
+  if (group) {
+    const fold = document.createElement('button'); fold.className = 'mgchev'; fold.type = 'button';
+    fold.setAttribute('aria-label', 'Ver opciones'); fold.setAttribute('aria-expanded', String(open));
+    fold.append(svgPath('M9 6l6 6-6 6'));
+    focusKey(fold, 'fold');
+    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); refocus(['fold']); }));
+    h.append(fold);
+  }
+  grp.append(h);
+  const labelErr = errOn && (errField === 'label' || errField === 'choices' || errField === 'prompt') ? errMsg : null;
+  if (labelErr) { grp.classList.add('err'); grp.append(mk('div', 'ferr', labelErr)); }
+
+  if (group && open) {
+    const gb = mk('div', 'mgbody');
+    const canBadge = state.choiceBadges.includes('recommended');
+    for (const o of group.options) {
+      const oid = rowId(o);
+      const row = mk('div', 'mopt');
+      let nm;
+      if (unsaved) {
+        nm = document.createElement('input'); nm.type = 'text'; nm.className = 'moname'; nm.value = typeof o.display.choice === 'string' ? o.display.choice : '';
+        nm.placeholder = 'Nombre de la opción'; nm.setAttribute('aria-label', 'Nombre de la opción');
+        focusKey(nm, `name::${oid}`);
+        nm.addEventListener('input', bound(() => { setChoiceName(state.draft, oid, nm.value); after(); }));
+      } else nm = mk('span', 'moname ro', typeof o.display.choice === 'string' ? o.display.choice : String(oid));
+      const pr = mk('span', 'mopr');
+      const pi = document.createElement('input'); pi.type = 'text'; pi.inputMode = 'numeric';
+      pi.setAttribute('aria-label', `Precio de ${(typeof o.display.choice === 'string' && o.display.choice) || 'la opción'}`);
+      pi.value = priceText(oid, o.price); pi.placeholder = 'Sin precio';
+      focusKey(pi, `price::${oid}`);
+      // ONE option's price: "Mismo precio" turns off (§0d.5) and the product's derived price follows, in place
+      pi.addEventListener('input', bound(() => {
+        setChoicePrice(state.draft, oid, pi.value, state.additionKeys);
+        holdPriceText(oid, pi.value);
+        state.samePrice.set(id, false);
+        const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id);
+        price.value = l && Number.isInteger(l.price) && l.price > 0 ? String(l.price) : ''; derivedUi();
+        const same = gb.querySelector('.mgflag-same input'); if (same) same.checked = false;
+        refreshBar(); paint();
+      }));
+      optionPriceInputs.push([pi, oid]);
+      pr.append(mk('span', 'mc', 'L'), pi);
+      row.append(nm, pr);
+      if (canBadge) {
+        const on = Array.isArray(o.display.tags) && o.display.tags.includes('recommended');
+        const pill = document.createElement('button'); pill.className = 'recpill'; if (on) pill.classList.add('recpill-on');
+        pill.textContent = 'Recomendada'; pill.type = 'button'; pill.setAttribute('aria-pressed', String(on)); lockControl(pill, !unsaved);
+        focusKey(pill, `pill::${oid}`);
+        pill.addEventListener('click', bound(() => { setChoiceRecommended(state.draft, oid, !on); restructure([`pill::${oid}`]); }));
+        row.append(pill);
+      }
+      if (unsaved) {
+        const x = document.createElement('button'); x.className = 'model'; x.type = 'button'; x.title = 'Quitar opción'; x.setAttribute('aria-label', 'Quitar opción');
+        x.append(svgPath('M18 6L6 18M6 6l12 12'));
+        focusKey(x, `x::${oid}`);
+        // after a removal: the next option's name, else the previous one's, else "Agregar opción"
+        const i = group.options.indexOf(o);
+        const near = [group.options[i + 1], group.options[i - 1]].filter(Boolean).map((r) => `name::${rowId(r)}`);
+        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid); restructure([...near, 'add']); }));
+        row.append(x);
+      }
+      gb.append(row);
+      const oErr = errAt(oid);
+      if (oErr) { row.classList.add('err'); gb.append(mk('div', 'ferr', oErr)); }
+    }
+    if (unsaved) {
+      const add = document.createElement('button'); add.className = 'mgadd'; add.type = 'button';
+      add.append(svgPath('M12 5v14M5 12h14'), document.createTextNode('Agregar opción'));
+      focusKey(add, 'add');
+      add.addEventListener('click', bound(() => {
+        const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id);
+        const ref = newRef();
+        addChoice(state.draft, id, ref, sameOn() && l && Number.isInteger(l.price) ? String(l.price) : undefined);
+        restructure([`name::${ref}`, 'add']);   // straight into the new option's name
+      }));
+      gb.append(add);
+    }
+    const flag = (cls, text, checked, disabled, onChange) => {
+      const lab = mk('label', `mgflag ${cls}`);
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checked; lockControl(cb, disabled);
+      focusKey(cb, cls);
+      cb.addEventListener('change', bound(() => onChange(cb.checked)));
+      lab.append(cb, document.createTextNode(text));
+      return lab;
+    };
+    gb.append(flag('mgflag-same', 'Mismo precio para todas', sameOn(), false, (on) => {
+      state.samePrice.set(id, on);
+      // ON sets every option to the product's current price — the ONE mutator, so it counts once
+      if (on) { const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id); setGroupPrice(state.draft, id, l && Number.isInteger(l.price) ? String(l.price) : '', state.additionKeys); for (const o of group.options) holdPriceText(rowId(o), ''); }
+      restructure(['mgflag-same']);
+    }));
+    gb.append(flag('mgflag-extras', 'Sin extras — el cliente no puede agregar opcionales', group.extrasNone, !unsaved, (on) => { setGroupExtrasNone(state.draft, id, on); restructure(['mgflag-extras']); }));
+    grp.append(gb);
+  }
+  block.append(grp);
+  return block;
 }
 
 // One option group: a header that toggles, and — when open — its options with editable prices.
@@ -1358,9 +1591,12 @@ function showOutcome(outcome) {
       const it = outcome.target ? (draftSource(state.draft).items || []).find((i) => i && rowId(i) === outcome.target) : null;
       if (it && isAddition(it)) {
         state.drawerError = { target: outcome.target, field: outcome.field || null, message: outcome.detail };
-        if (it.display && it.display.cat) state.selectedCat = it.display.cat;
+        // 1D add-product B — a refusal named on an OPTION opens its product's drawer, the message under that option
+        const owner = optionParentId(state.draft, outcome.target);
+        const host = owner ? (draftSource(state.draft).items || []).find((i) => i && rowId(i) === owner) : it;
+        if (host && host.display && host.display.cat) state.selectedCat = host.display.cat;
         paint(); syncUi();
-        openDrawer(outcome.target);
+        openDrawer(owner || outcome.target);
       } else { paint(); syncUi(); }
       return;
     }
@@ -1427,7 +1663,7 @@ document.addEventListener('portal:auth', (e) => {
 function portalReloadFacts() {
   const a = document.activeElement;
   return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: state.draft ? pendingCount(state.draft) : 0, focusedTag: a ? a.tagName : null };
+    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) : 0, focusedTag: a ? a.tagName : null };
 }
 try {
   const S = window.SherpaClient;

@@ -472,8 +472,8 @@ const TWO = {
     }, gq);
     // 1D add-product A adds renderedCategories + restaurantName (always present); draft_unpublishable appears only
     // when the saved draft cannot publish (asserted in its own cell below).
-    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
-      'the four existing fields plus add-product A\'s two — nothing else appeared');
+    assert.deepStrictEqual(Object.keys(r.body).sort(), ['activeVersionId', 'choiceBadges', 'groupAuthoring', 'renderedCategories', 'restaurantName', 'source', 'sourceUpdateTime', 'usesPlatformFactura'],
+      'the four existing fields plus add-product A\'s two and add-product B\'s two — nothing else appeared');
     assert.deepStrictEqual(r.body.source, src, 'the source is untouched');
     assert.strictEqual(r.body.sourceUpdateTime, '1788754374.634000000', 'the CAS baseline is byte-identical to before');
     assert.strictEqual(r.body.activeVersionId, 'v-9', 'and the live version id');
@@ -483,7 +483,54 @@ const TWO = {
     }, gq);
     assert.strictEqual(denied.status, 403, 'a dispatcher is still refused by the tenant-facing read');
     assert.ok(!('usesPlatformFactura' in denied.body), 'and the refusal leaks no capability flag');
+    assert.ok(!('groupAuthoring' in denied.body) && !('choiceBadges' in denied.body), 'nor the group facts');
     ok('the new field is purely additive: the three existing fields are byte-identical and a refusal carries nothing new');
+  }
+
+  {
+    // 1D add-product B (PB-3) — the drawer offers "Elección requerida" only when the SAME platform switch editCatalog
+    // enforces is on; the option badges come from the generated contract. Both are server facts, never a brand literal.
+    const asOwner3 = async () => ({ ok: true, uid: 'u1', role: 'owner', actor: 'o@m.hn' });
+    const gqFor = (rid) => ({ method: 'GET', query: { restaurantId: rid }, get: () => 'Bearer tok' });
+    const { rendererContract, canonicalize } = require('./source-store');
+    const seeded = (rid) => canonicalize(require('../tools/seed-source-store').buildSourceFromCode(rid));   // each brand's REAL source
+    for (const rid of ['x_pizza', 'la_musa']) {
+      const r = await getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(seeded(rid)) }, gqFor(rid));
+      assert.strictEqual(r.status, 200, `${rid}: loads`);
+      assert.strictEqual(r.body.groupAuthoring, false, `${rid}: the SHIPPED switch is off (§0b.3(e): flipped only after the portal deploy)`);
+      assert.deepStrictEqual(r.body.choiceBadges, [...rendererContract(rid).choiceBadges], `${rid}: the badges the brand's picker draws on an option`);
+      assert.ok(r.body.choiceBadges.includes('recommended'), `${rid}: both forms ship the picker, so both can show Recomendada (uniform)`);
+    }
+    // sensitivity: the field FOLLOWS the platform switch (a fresh module over a stubbed switch); a throwing switch fails CLOSED
+    const pgPath = require.resolve('./platform-groups'); const prPath = require.resolve('./portal-reads');
+    const keep = { pg: require.cache[pgPath], pr: require.cache[prPath] };
+    const load = (caps) => {
+      require.cache[pgPath] = { id: pgPath, filename: pgPath, loaded: true, exports: { groupCapabilities: caps } };
+      delete require.cache[prPath];
+      return require('./portal-reads').getEditableCatalogCore;
+    };
+    try {
+      const on = await load(() => ({ render: true, authoring: true }))({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
+      assert.strictEqual(on.body.groupAuthoring, true, '🔴 the switch ON reaches the portal');
+      const bad = await load(() => { throw new Error('unreadable'); })({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
+      assert.deepStrictEqual([bad.status, bad.body.groupAuthoring], [200, false], 'an unreadable switch is OFF, and the editor still loads');
+    } finally {
+      require.cache[pgPath] = keep.pg; delete require.cache[prPath]; if (keep.pr) require.cache[prPath] = keep.pr;
+    }
+    // a THIRD contract — one whose picker draws NO option badge (both shipped brands draw "recommended", which would let a
+    // hard-coded list pass): choiceBadges follows the contract, so the portal shows no Recomendada pill there
+    const ssPath = require.resolve('./source-store');
+    const keepSs = require.cache[ssPath];
+    try {
+      const real = require('./source-store');
+      require.cache[ssPath] = { id: ssPath, filename: ssPath, loaded: true, exports: { ...real, rendererContract: (rid) => ({ ...real.rendererContract(rid), choiceBadges: Object.freeze([]) }) } };
+      delete require.cache[prPath];
+      const none = await require('./portal-reads').getEditableCatalogCore({ db: {}, fsdb: {}, authorize: asOwner3, readActiveVersionId: async () => 'v-1', ...mkFs(realSource('x_pizza')) }, gqFor('x_pizza'));
+      assert.deepStrictEqual([none.status, none.body.choiceBadges], [200, []], '🔴 a contract with no option badge → none offered (never a brand or a fixed list)');
+    } finally {
+      require.cache[ssPath] = keepSs; delete require.cache[prPath]; if (keep.pr) require.cache[prPath] = keep.pr;
+    }
+    ok('add-product B: groupAuthoring is the platform authoring switch (shipped OFF; follows it ON; unreadable → OFF) and choiceBadges the contract\'s option badges, on both brands');
   }
 
   {

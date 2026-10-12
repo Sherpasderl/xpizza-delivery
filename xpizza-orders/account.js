@@ -454,8 +454,34 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
   // golden ticket re-renders and the RESUMED order re-attaches the SAME redeem (same canonical → the server
   // reuses the ONE existing reservation, never a second). The quote is display-only (the server re-prices on
   // submit); require .ok so the applied-ticket predicate (rkApplied) matches. No payload → no-op (guest / non-redeemed retry).
+  /* 1D add-product B (rev 6 §0d.1) — a reward naming a bare LAUNCHER (e.g. a selection saved before its group's rule) is
+     never submitted bare: the whole selection is dropped on restore and the customer re-picks. The key resolves through
+     today's MENU by id, then by name — whichever the brand's reward catalog keys on, with no brand branch. */
+  const redeemDishes = (payload) => {
+    const keys = payload.type === 'free_pizza_choice' ? [payload.item_id]
+      : (Array.isArray(payload.items) ? payload.items.map((it) => it && it.id) : []);
+    const dish = (k) => MENU.find((p) => String(p.id) === String(k)) || MENU.find((p) => p.name === k) || null;
+    return keys.filter((k) => k != null).map(dish);
+  };
+  function redeemHoldsLauncher(payload) {
+    try {
+      if (typeof itemIsLauncher !== 'function' || typeof MENU === 'undefined') return false;
+      return redeemDishes(payload).some((d) => itemIsLauncher(d));
+    } catch (_) { return false; }
+  }
+  /* 1D add-product B (rev 6 §0d.4) — WHOLE-DISH AVAILABILITY on restore: a reward whose dish OR its launcher is 86'd is
+     dropped with a notice, through the form's own parent-or-variant reader (soldOutById → GroupPicker.soldOutWithParent),
+     the same one the picker, the cart and reorder ask. Any doubt reads as available (its fail-open rule). */
+  function redeemHoldsSoldOut(payload) {
+    try {
+      if (typeof soldOutById !== 'function' || typeof MENU === 'undefined') return false;
+      return redeemDishes(payload).some((d) => d && soldOutById(d.id));
+    } catch (_) { return false; }
+  }
   function restoreRedeem(payload, quote, items) {
     if (!payload) return;
+    if (redeemHoldsLauncher(payload)) { try { toast('Elegí de nuevo tu premio'); } catch (_) {} return; }
+    if (redeemHoldsSoldOut(payload)) { try { toast('Tu premio ya no está disponible. Elegí otro.'); } catch (_) {} return; }
     _redeemPending = payload;
     /* 🔴 A RESTORED QUOTE IS DROPPED, NOT RE-CERTIFIED. An earlier version stamped the SAVED quote with
        the CURRENT cart and menu version, which is a false "fresh": the snapshot came out of storage
@@ -1708,6 +1734,8 @@ body.s1-active.chip-mini .acct-chip .acct-cv{max-width:0;opacity:0;margin-left:0
         if (!rl || rl.key == null) { dropped++; continue; }
         const item = laMusa ? MENU.find((p) => p.id === rl.key) : MENU.find((p) => p.name === rl.key);   // la_musa by id / x_pizza by name (recipe key)
         if (!item) { dropped++; continue; }                                   // not on today's menu → drop
+        // 1D add-product B: a bare LAUNCHER (a legacy line from before its group) is never a cart line — dropped, and counted in the notice
+        if (typeof itemIsLauncher === 'function' && itemIsLauncher(item)) { dropped++; continue; }
         let so = false; try { so = (typeof soldOutById === 'function') && soldOutById(item.id); } catch (_) {}
         if (so) { dropped++; continue; }                                      // 86'd → drop (UX best-effort; server re-gates)
         const n = Number(rl.qty);

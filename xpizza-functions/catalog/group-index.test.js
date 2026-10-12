@@ -79,7 +79,7 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
   }
   {
     const pg = require('./platform-groups');
-    assert.deepStrictEqual(pg.groupCapabilities(), { render: false, authoring: false }, 'PB-1 ships DORMANT: neither switch is on');
+    assert.deepStrictEqual(pg.groupCapabilities(), { render: true, authoring: false }, 'PB-2 (§0b.3(b)/(c)): render is ON — both forms ship the picker; authoring stays OFF until the portal (§0b.3(e))');
     for (const bad of [{}, { render: 'yes' }, null, { render: 1 }]) {
       assert.throws(() => pg.parseRender(bad), /platform_groups_malformed/, `a malformed render artifact (${JSON.stringify(bad)}) is refused, never read as on`);
     }
@@ -87,10 +87,61 @@ const built = (rid, src = canonicalize(buildSourceFromCode(rid))) => {
     const { deriveRender, RENDER_PLATFORM } = require('../tools/generate-renderer-contract');
     assert.strictEqual(readFileSync(join(__dirname, 'platform-render.generated.js'), 'utf8'), RENDER_PLATFORM(deriveRender()),
       '🔴 the committed render capability does not match the shipped forms — regenerate with tools/generate-renderer-contract.js');
-    assert.strictEqual(deriveRender(), false, 'no form carries the shared group picker (GROUP_PICKER_V1) yet → render is off');
+    assert.strictEqual(deriveRender(), true, 'both shipped forms carry the shared group picker → render is on');
+    // STRICT: the exact tag in index.html (once) AND the declaration in the module beside it — each alone leaves it OFF
+    {
+      const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('fs');
+      const os = require('os');
+      const tmp = mkdtempSync(join(os.tmpdir(), 'render-marker-'));
+      const root = join(tmp, 'a', 'b');
+      mkdirSync(root, { recursive: true });
+      const TAG = '<script src="form-group-picker.js"></script>';
+      const MOD = 'const GROUP_PICKER_V1 = 1;\n';
+      const lay = (form, { html, mod }) => {
+        const d = join(tmp, form); mkdirSync(d, { recursive: true });
+        writeFileSync(join(d, 'index.html'), html);
+        if (mod === null) { try { rmSync(join(d, 'form-group-picker.js')); } catch (_) {} } else writeFileSync(join(d, 'form-group-picker.js'), mod);
+      };
+      const both = (spec) => { lay('xpizza-orders', spec); lay('la-musa-orders', { html: `<html>${TAG}</html>`, mod: MOD }); return deriveRender(root); };
+      try {
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: MOD }), true, 'premise: tag + declared module → on');
+        assert.strictEqual(both({ html: '<html></html>', mod: MOD }), false, 'a module nobody loads → off');
+        assert.strictEqual(both({ html: `<html>${TAG}${TAG}</html>`, mod: MOD }), false, 'the tag twice → off (exactly one)');
+        assert.strictEqual(both({ html: '<html><script src="form-group-picker.js" defer></script></html>', mod: MOD }), false, 'not the exact tag → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: null }), false, 'a tag naming a file that is not there → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: '// GROUP_PICKER_V1 someday\n' }), false, 'the marker only in a comment → off');
+        assert.strictEqual(both({ html: `<!-- GROUP_PICKER_V1 --><html></html>`, mod: MOD }), false, 'the marker in the HTML alone → off');
+        // codex PB-2 r1 P2-5 — its two exact substitutions, each alone: a COMMENTED-OUT tag; a module whose declaration is commented out
+        assert.strictEqual(both({ html: `<html><!-- ${TAG} --></html>`, mod: MOD }), false, '🔴 the tag only inside an HTML comment → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: '// const GROUP_PICKER_V1 = 1;\n' }), false, '🔴 the declaration only in a // comment → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: '/*\nconst GROUP_PICKER_V1 = 1;\n*/\n' }), false, 'the declaration only in a block comment → off');
+        assert.strictEqual(both({ html: `<html>${TAG}</html>`, mod: 'const s = "const GROUP_PICKER_V1 = 1;";\n' }), false, 'the declaration only inside a string → off');
+        assert.strictEqual(both({ html: `<html><script>var t = '${TAG}';</script></html>`, mod: MOD }), false, 'the tag only inside an inline script\'s text → off');
+        // codex PB-2 r2 P2-2 — inert MARKUP that is not an element: a <template>'s contents, a tag inside an attribute value
+        assert.strictEqual(both({ html: `<html><template>${TAG}</template></html>`, mod: MOD }), false, '🔴 the tag only inside a <template> (inert contents) → off');
+        assert.strictEqual(both({ html: `<div data-example='${TAG}'></div>`, mod: MOD }), false, '🔴 codex r2 verbatim: the tag only inside an attribute value → off');
+        assert.strictEqual(both({ html: `<template><template></template>${TAG}</template>`, mod: MOD }), false, '🔴 codex r2 verbatim: the tag inside a template that nests another → off');
+        assert.strictEqual(both({ html: `<html><textarea>${TAG}</textarea></html>`, mod: MOD }), false, 'the tag only inside a <textarea> → off');
+        assert.strictEqual(both({ html: `<html><template>x</template>${TAG}</html>`, mod: MOD }), true, 'premise kept: a real tag AFTER a template → on');
+        // codex PB-2 r3 — inert markup only the real HTML parser gets right (parse5, WHATWG): "</template>" inside a comment,
+        // an attribute value or a textarea within a template; and the inert containers iframe / noembed / plaintext; an SVG <script>
+        assert.strictEqual(both({ html: `<template><!-- </template> -->${TAG}</template>`, mod: MOD }), false, '🔴 codex r3 verbatim: "</template>" inside a comment within the template → off');
+        assert.strictEqual(both({ html: `<template><div title="</template>"></div>${TAG}</template>`, mod: MOD }), false, '🔴 codex r3: "</template>" inside an attribute value within the template → off');
+        assert.strictEqual(both({ html: `<template><textarea></template></textarea>${TAG}</template>`, mod: MOD }), false, '🔴 codex r3: "</template>" inside a textarea within the template → off');
+        for (const box of ['iframe', 'noembed', 'noframes', 'noscript', 'xmp', 'title']) assert.strictEqual(both({ html: `<html><${box}>${TAG}</${box}></html>`, mod: MOD }), false, `🔴 the tag only inside <${box}> (inert text) → off`);
+        assert.strictEqual(both({ html: `<html><plaintext>${TAG}`, mod: MOD }), false, '🔴 the tag after <plaintext> (everything after is text) → off');
+        assert.strictEqual(both({ html: `<html><svg>${TAG}</svg></html>`, mod: MOD }), false, 'an SVG-namespace <script> is not the HTML loader → off');
+        assert.strictEqual(both({ html: '<html><script src="form-group-picker.js" type="text/plain"></script></html>', mod: MOD }), false, 'a non-JS type → off (only the exact loader counts)');
+        assert.strictEqual(both({ html: '<html><SCRIPT src="form-group-picker.js"></SCRIPT></html>', mod: MOD }), true, 'premise: an upper-case tag IS an active script element (the parser decides, as a browser) → on');
+        // codex r4 — a script never CLOSED never executes (WHATWG): left open at EOF, and the self-closing form (HTML ignores `/>`)
+        assert.strictEqual(both({ html: '<html><body><script src="form-group-picker.js">', mod: MOD }), false, '🔴 codex r4: an UNCLOSED loader at EOF → off');
+        assert.strictEqual(both({ html: '<html><body><script src="form-group-picker.js"/>', mod: MOD }), false, '🔴 codex r4: a self-closing `/>` loader at EOF → off');
+        assert.strictEqual(both({ html: `<html><!-- ${TAG} -->${TAG}</html>`, mod: '// the picker\nconst GROUP_PICKER_V1 = 1;\n' }), true, 'premise kept: a real tag + a real declaration, beside comments → on');
+      } finally { rmSync(tmp, { recursive: true, force: true }); }
+    }
     const src = readFileSync(join(__dirname, 'platform-groups.js'), 'utf8');
     assert.ok(!/restaurant|rid\b|x_pizza|la_musa/i.test(src.replace(/\/\/.*$/gm, '')), 'no brand anywhere in the switch module');
-    ok('the two PLATFORM switches: both off in PB-1; a malformed render artifact throws; no brand appears in the module');
+    ok('the two PLATFORM switches: render ON (derived STRICTLY from the shipped forms — tag once + declared module, in ACTIVE markup and EXECUTABLE code; near-misses each off, decided by the WHATWG parser (parse5): codex r1–r3 inputs, template contents, attribute values, comments, inert containers, SVG), authoring OFF; a malformed render artifact throws; no brand appears in the module');
   }
   console.log(`\ngroup-index: OK (${n})`);
 })().catch((e) => { console.error('group-index FAILED:', e); process.exit(1); });

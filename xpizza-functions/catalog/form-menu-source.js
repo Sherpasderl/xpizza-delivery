@@ -113,6 +113,13 @@ function formSource(restaurantId, root) {
   if (!rel) throw new Error(`unknown_restaurant: ${restaurantId}`);
   return readFileSync(join(root || __dirname, ...rel), 'utf8');
 }
+// A file SHIPPED BESIDE a brand's form (a shared form module it loads by <script src>), or null when it does not exist.
+function formSiblingSource(restaurantId, file, root) {
+  const rel = FORM_PATH[restaurantId];
+  if (!rel) throw new Error(`unknown_restaurant: ${restaurantId}`);
+  if (typeof file !== 'string' || !/^[\w.-]+$/.test(file)) throw new Error(`bad_form_sibling: ${file}`);
+  try { return readFileSync(join(root || __dirname, ...rel.slice(0, -1), file), 'utf8'); } catch (e) { if (e && e.code === 'ENOENT') return null; throw e; }
+}
 
 // PIN 2 — `key` is the IMMUTABLE pricing identity; `name` is display DATA. x_pizza prices by NAME so
 // key === name there (guarded by a test); la_musa prices by the id slug.
@@ -386,4 +393,4 @@ function rebuildFormMenu(restaurantId, items, structure, extras) {
   return out;
 }
 
-module.exports = { buildCatalogV2, rebuildFormMenu, resolveVariants, deriveStartingPrice, formSource, readLiteral, readSetLiteral, pricingKeyOf, extrasKeyOf };
+module.exports = { buildCatalogV2, rebuildFormMenu, resolveVariants, deriveStartingPrice, formSource, formSiblingSource, readLiteral, readSetLiteral, pricingKeyOf, extrasKeyOf };

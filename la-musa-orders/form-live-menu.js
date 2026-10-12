@@ -137,7 +137,24 @@ function createLiveMenu(options) {
     return refresh();
   }
 
-  return { start, refresh, state };
+  /* 1D add-product B (rev 6 §2) — RE-FETCH WHEN THE PAGE COMES BACK INTO VIEW. A tab left open across a publish (a new
+     choice group, a rollback that removes one) would otherwise keep its boot-time menu until a reload. On every return to
+     `visible` this asks again — at most once per `minIntervalMs` since the last attempt of ANY origin — through the same
+     refresh() as boot: a stale answer still loses to a newer request, a refused body still changes nothing, and the
+     form's applier still defers while a modal or a payment is open. Returns the detach function. */
+  function watchVisibility(doc, opts) {
+    const minIntervalMs = (opts && Number.isFinite(opts.minIntervalMs)) ? opts.minIntervalMs : 60000;
+    if (!doc || typeof doc.addEventListener !== 'function') return function () {};
+    const onVisible = function () {
+      if (doc.visibilityState !== 'visible') return;
+      if (lastAttemptAt !== null && clock() - lastAttemptAt < minIntervalMs) return;
+      refresh();
+    };
+    doc.addEventListener('visibilitychange', onVisible);
+    return function () { doc.removeEventListener('visibilitychange', onVisible); };
+  }
+
+  return { start, refresh, state, watchVisibility };
 }
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { createLiveMenu };

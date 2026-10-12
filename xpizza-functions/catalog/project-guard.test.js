@@ -269,7 +269,9 @@ const stripComments = require('../tools/strip-comments.js');
     try {
       execFileSync(process.execPath, [join(TOOLS, 'backfill-identities.js'), ...args], {
         cwd: ROOT, encoding: 'utf8', timeout: 20000,
-        env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: saPath, FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', GOOGLE_CLOUD_PROJECT: '', GCLOUD_PROJECT: '', ...env },
+        // R1: BOTH data services on the dead NULL endpoint — a lone emulator host is now refused as MIXED signals by
+        // require-project (tools/emu-mixed-guard.js), which would stop the tool before the usage branch this cell needs.
+        env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: saPath, FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1', GOOGLE_CLOUD_PROJECT: '', GCLOUD_PROJECT: '', ...env },
       });
       return { code: 0, out: '' };
     } catch (e) { return { code: e.status === undefined ? -1 : e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; }

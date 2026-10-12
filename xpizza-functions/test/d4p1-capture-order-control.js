@@ -16,6 +16,10 @@
 //
 // It drives the REAL createOrder handler against real emulators and captures the STORED order twice,
 // diffing the two to discover which fields are volatile rather than assuming a list.
+// R1 (codex r5 P1-A): BOTH emulator services validated BEFORE index.js (or any client) loads. With no emulator signal
+// lib/admin.js takes the PRODUCTION branch and this harness writes identities + publishes a catalog — so the absence of
+// a validated run is a refusal here, not a comment. process.env.GCLOUD_PROJECT below is untouched provenance.
+require('./_emulator-required').harness(['firestore', 'database']);
 const http = require('http');
 const express = require('express');
 const { execSync } = require('child_process');
@@ -40,7 +44,7 @@ const identityFor = (rid) => ({ name: rid, phone: '+50400000000', active: true, 
 function post(handler, body) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
-    const s = http.createServer(w).listen(0, async () => {
+    const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
       try {
         const res = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` }, body: JSON.stringify(body) });

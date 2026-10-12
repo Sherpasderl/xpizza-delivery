@@ -190,6 +190,8 @@ module.exports = {
 
 // CLI entrypoint (real invocation): initialize admin, run one authoritative pass. Never imported by index.js.
 if (require.main === module) {
+  // R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod).
+  require('./tools/emu-mixed-guard')('ready-time-quality-run');
   const admin = require('firebase-admin');
   if (!admin.apps.length) admin.initializeApp();
   main({ db: admin.database(), now: Date.now(), mode: 'authoritative' })
