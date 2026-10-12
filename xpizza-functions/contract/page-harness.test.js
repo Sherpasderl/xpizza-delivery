@@ -111,6 +111,51 @@ const page = (body) => `<!doctype html><html><head></head><body><div id="app"></
     assert.ok(!c.settled && c.blocking.length === 1, FAIL(`updateClock at a CHANGED delay kept its exemption (${JSON.stringify(c)})`));
     ok(`real kitchen allowlist: the reviewed updateClock is idle; the same name + one added write BLOCKS (settle false, reported); a changed delay BLOCKS — exemption bound to source + kind + delay, not a name`);
   }
+  // codex r5 P1-1 — RUNTIME enforcement: an idle exemption can only make a run FAIL. Codex's probe on the REAL kitchen
+  // allowlist: updateClock's source is unchanged (still exempt), but the helper it calls was REASSIGNED to write →
+  // settle() exercises the exempt tick, the effect is caught, never "settled"; the unmodified control settles cleanly.
+  {
+    const kitchen = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-kitchen', 'index.html'), 'utf8');
+    const i0 = kitchen.indexOf('function updateClock()'); let d = 0; let i1 = kitchen.indexOf('{', i0);
+    for (; i1 < kitchen.length; i1++) { if (kitchen[i1] === '{') d++; else if (kitchen[i1] === '}' && --d === 0) break; }
+    const reviewed = kitchen.slice(i0, i1 + 1);
+    const html = (helper) => `<!doctype html><html><body><div id="app"></div><div id="clock"></div><div id="scheduled-screen"></div><script>let schedLastMinute = -1; let renderScheduled = () => {}; ${helper}\n${reviewed}\nsetInterval(updateClock, 1000);</script></body></html>`;
+    const fetchImpl = async () => ({ ok: true, json: async () => ({}) });
+    const run = async (helper) => { const p = await bootPage('xpizza-kitchen', { html: html(helper), fetchImpl }); const settled = await p.settle(2500); const r = { settled, idle: p.idleSites().length, violations: p.idleViolations.slice(), errs: p.errors.filter((e) => /R3-IDLE-EFFECT/.test(e)).length }; p.close(); return r; };
+    const ctl = await run('');
+    const bad = await run(`renderScheduled = () => { fetch('/probe-status-write', { method: 'POST' }); };`);
+    assert.ok(ctl.settled && ctl.idle === 1 && !ctl.violations.length, FAIL(`control: the reviewed updateClock did not settle cleanly (${JSON.stringify(ctl)})`));
+    assert.ok(!bad.settled && bad.violations.some((v) => /idle timer .*updateClock.* produced an effect: fetch \/probe-status-write POST/.test(v)) && bad.errs >= 1, FAIL(`codex's reassigned-helper probe was NOT caught (${JSON.stringify(bad)})`));
+    ok(`codex's probe (REAL kitchen allowlist, updateClock unchanged, renderScheduled REASSIGNED to write): settle() exercises the exempt tick → "${bad.violations[0].slice(0, 90)}…" → never settled, error recorded; the control settles`);
+  }
+  // the escape routes static analysis cannot follow, each caught at runtime: an EVENT dispatched by the idle tick, an
+  // OBJECT method, a DYNAMIC property, and a continuation the tick SCHEDULES (a timer / an await) — each → never settled
+  {
+    const tick = 'function idleTick() { window.__tick(); }';
+    const fetchImpl = async () => ({ ok: true });
+    const probes = [
+      ['event dispatch', `document.addEventListener('r3tick', () => navigator.sendBeacon('/probe-beacon')); window.__tick = () => document.dispatchEvent(new CustomEvent('r3tick'));`, /sendBeacon \/probe-beacon/],
+      ['object method', `const helpers = { paint() { fetch('/probe-obj', { method: 'POST' }); } }; window.__tick = () => helpers.paint();`, /fetch \/probe-obj/],
+      ['dynamic property', `const H = {}; H['pa' + 'int'] = () => fetch('/probe-dyn'); window.__tick = () => H['pa' + 'int']();`, /fetch \/probe-dyn/],
+      ['scheduled continuation', `window.__tick = () => { setTimeout(() => fetch('/probe-later'), 30); };`, /fetch \/probe-later/],
+      ['async continuation', `window.__tick = async () => { await new Promise((r) => setTimeout(r, 20)); await Promise.resolve(); fetch('/probe-await'); };`, /fetch \/probe-await/],
+    ];
+    for (const [label, setup, re] of probes) {
+      const p = await bootPage('xpizza-functions', { html: page(`${setup}\nsetInterval(${tick}, 5000);`), idleTimers: [bound('interval', 5000, tick)], fetchImpl });
+      const settled = await p.settle(2000); await new Promise((r) => setTimeout(r, 80)); const v = p.idleViolations.slice(); p.close();
+      assert.ok(!settled && v.some((x) => re.test(x)), FAIL(`idle probe "${label}" was NOT caught (${JSON.stringify({ settled, v })})`));
+    }
+    ok(`runtime enforcement catches what static analysis cannot follow: ${probes.map((x) => x[0]).join(', ')} — each effect of an idle-exempt tick → never settled`);
+    // an SDK WRITE (codex's XPD.setOrderStatus shape): the page module imports update() from the Firebase CDN URL —
+    // served by the harness's synthetic module, whose write functions are wrapped
+    const writes = [];
+    const host = { modules: { 'firebase-database': { getDatabase: () => ({}), ref: (db, pth) => ({ pth }), update: async (r, v) => { writes.push([r.pth, v]); } } } };
+    const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getDatabase, ref, update } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js'; const db = getDatabase(); window.__tick = () => update(ref(db, 'orders/probe'), { status: 'completed' });</script><script>setInterval(${tick}, 5000);</script></body></html>`;
+    const p = await bootPage('xpizza-functions', { html, host, idleTimers: [bound('interval', 5000, tick)] });
+    const settled = await p.settle(2000); const v = p.idleViolations.slice(); p.close();
+    assert.ok(!settled && v.some((x) => /firebase-database\.update\(\)/.test(x)) && writes.length === 1, FAIL(`an idle tick's SDK WRITE was NOT caught (${JSON.stringify({ settled, v, writes })})`));
+    ok(`an idle tick's SDK write (update(ref(db, 'orders/probe'), {status:'completed'}) via the CDN module) → "${v[0].slice(0, 80)}…" → never settled`);
+  }
   console.log(`\nr3-page-harness: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-page-harness FAILED:', e && e.stack || e); process.exit(1); });

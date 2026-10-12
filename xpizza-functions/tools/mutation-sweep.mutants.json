@@ -11731,5 +11731,53 @@
       "node",
       "contract/census.negative.test.js"
     ]
+  },
+  {
+    "id": "r3p0-17",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "    if (st && st.idle) {",
+    "to": "    if (false) {",
+    "label": "an effect inside an idle-exempt callback is ignored (codex r5 P1-1)",
+    "kills_with": [
+      "codex's reassigned-helper probe was NOT caught"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-18",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "        if (quiet >= 3 && !exercised) {",
+    "to": "        if (false && quiet >= 3 && !exercised) {",
+    "label": "settle() certifies without exercising the idle-exempt ticks (codex's 66 ms settle)",
+    "kills_with": [
+      "codex's reassigned-helper probe was NOT caught"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-19",
+    "slice": "r3p0",
+    "file": "contract/page-harness.js",
+    "from": "  const inCtx = (fn) => { const st = idleCtx.getStore(); return st ? (...x) => idleCtx.run(st, () => fn(...x)) : fn; };",
+    "to": "  const inCtx = (fn) => (...x) => idleCtx.exit(() => fn(...x));",
+    "label": "work an idle tick SCHEDULES loses its idle context (codex r5 P1-1)",
+    "kills_with": [
+      "idle probe \"scheduled continuation\" was NOT caught"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
   }
 ]

@@ -13,6 +13,11 @@
  *   · effects     = the RTDB / Firestore writes (the SDK's write functions under any local alias), fetch() and
  *                   sendBeacon() its EXECUTION closure (calls, method calls, iteration / promise callbacks) reaches; an
  *                   idle entry must have none (the guard requires effects == [] — "display-only" is checked, not asserted).
+ * THE STATIC BINDING IS NOT THE LAST LINE (codex r5 P1-1): static analysis can be outrun (a reassigned helper, an object
+ * method, a dynamic property, an event). contract/page-harness.js therefore ENFORCES at runtime: every SDK write / fetch /
+ * sendBeacon / XHR send made while code runs on behalf of an idle-exempt callback (its continuations, the timers / frames it
+ * schedules, the events it dispatches) fails the run, and settle() exercises every live exempt tick before it can certify
+ * "settled". An exemption can only make a test fail.
  * The closure follows names (calls / references) resolved to page or page-module functions, and method CALLS `NS.fn()`
  * on a namespace import of the page's own module (`import * as XPD from './xpizza-delivery.js'`). A method call on any
  * other object (`el.classList.remove()`, `SherpaClient.fetch()`) is not followed — stated limit.

@@ -115,7 +115,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   PAGES[5][2] = `https://xpizzatrack.netlify.app/${token}`; PAGES[5][3] = [`order_tracking/${token}`]; PAGES[5][4] = [Q(`order_tracking/${token}`)];
   ok(`real writers: createOrder pg_cash (HTTP 200) → auto-assigned to ${STAFF} by the real auto-assigner after advance(30 s); chargeOnlineOrder pg_pend stays pending_payment (S6)`);
 
-  const OBS = {};
+  const OBS = {}; const IDLE_EX = {};
   for (const [cell, dir, url, wantSubs, wantQueries] of PAGES) {
     const host = createFirebaseHost({ pageId: cell, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
     let maps = null;
@@ -132,6 +132,9 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
       assert.deepStrictEqual(errs, [], FAIL(cell, `${dir} boot errors:\n  ${errs.join('\n  ')}`));
       assert.ok(p.evaluated.includes('inline module') || p.evaluated.some((x) => /module/.test(x)), FAIL(cell, `${dir}: its module script ran (${JSON.stringify(p.evaluated)})`));
       for (const w of wantSubs) assert.ok(paths.has(w), FAIL(cell, `${dir}: subscription on ${w} opened (${[...paths].join(', ')})`));
+      assert.deepStrictEqual(p.idleViolations, [], FAIL(cell, `${dir}: an idle-exempt timer produced an effect (codex r5 P1-1)`));
+      if (dir === 'xpizza-kitchen') assert.ok(p.idleExercised().length >= 2, FAIL(cell, `premise — the kitchen's idle ticks were not exercised (${JSON.stringify(p.idleExercised())})`));
+      IDLE_EX[dir] = p.idleExercised().length;
       assert.deepStrictEqual(p.staleIdle, [], FAIL(cell, `${dir}: reviewed idle-timer entries no longer bind the page source (codex r4 P1-2)`));
       assert.strictEqual(settled, true, FAIL(cell, `${dir}: rendering never SETTLED after the barrier (in flight: ${p.inflight()}; blocking timers:\n    ${p.pendingSites().join('\n    ')})`));
       const got = host.subs.filter((x) => ORDER_ROOTS.test(x.path)).map((x) => `${x.kind}:${x.path}${(x.constraints || []).length ? JSON.stringify(x.constraints) : ''}`).sort();
@@ -144,6 +147,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   }
   console.log(`\nP0-OBS ${JSON.stringify(OBS)}`);
   S.assertClean(['monitorAssignmentTimeout']);
+  console.log(`  idle-exempt ticks exercised under effect enforcement (codex r5 P1-1): ${JSON.stringify(IDLE_EX)}`);
   console.log(`\nr3-p0-pages: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-p0-pages FAILED:', e && e.stack || e); process.exit(1); });

@@ -17,6 +17,13 @@ const path = require('path');
 const vm = require('vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { resolveEntries, sha: idleSha } = require('./idle-timers');
+const { AsyncLocalStorage } = require('async_hooks');
+// codex r5 P1-1 — RUNTIME enforcement of the idle allowlist: static analysis can be outrun (a reassigned helper, an object
+// method, a dynamic property, an event), so every EFFECT — an SDK write, fetch, sendBeacon, XHR send — is intercepted, and
+// one that happens while code runs ON BEHALF OF an idle-exempt timer callback (its body, its async continuations, the
+// timers / frames it schedules, the events it dispatches synchronously) FAILS the run loudly. An exemption can then only
+// make a test fail; it can never certify an unfinished render.
+const SDK_WRITES = new Set(['set', 'update', 'push', 'remove', 'runTransaction', 'setWithPriority', 'setPriority', 'setDoc', 'updateDoc', 'addDoc', 'deleteDoc', 'writeBatch']);
 
 const REPO = path.join(__dirname, '..', '..');
 const FIREBASE_CDN = /^https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/(firebase-[a-z-]+)\.js$/;
@@ -50,6 +57,16 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   // codex r4 P1-2: an entry binds the reviewed SOURCE, not a name — exempt only on an exact (kind, delay, sha256 of the
   // callback's full normalized source) match of an entry whose callback + helper closure are UNCHANGED in the page's
   // current source (contract/idle-timers.js resolveEntries); a changed body / helper / delay → not exempt → blocks.
+  const idleCtx = new AsyncLocalStorage(); const idleViolations = [];
+  const effect = (what) => {
+    const st = idleCtx.getStore();
+    if (st && st.idle) {
+      const msg = `idle timer ${st.idle} produced an effect: ${what}`;
+      idleViolations.push(msg); errors.push(`🔴 R3-IDLE-EFFECT ${msg}`);
+    }
+  };
+  // a callback scheduled now runs in the context it was scheduled from (explicit, so jsdom's own loops cannot drop it)
+  const inCtx = (fn) => { const st = idleCtx.getStore(); return st ? (...x) => idleCtx.run(st, () => fn(...x)) : fn; };
   let IDLE = idleTimers; let staleIdle = [];
   if (!IDLE) { try { const r = resolveEntries(dir); IDLE = r.active; staleIdle = r.stale.map((x) => `${x.entry.at} ${x.entry.callback.slice(0, 50)} — ${x.why}`); } catch (_) { IDLE = []; } }
   const timerInfo = new Map(); let seqT = 0;
@@ -64,8 +81,11 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const track = (kind, site, delay, fn) => {
     const key = `${kind}${++seqT}`; const cb = norm(fn);
     const ent = idleEntry(kind, delay, cb); const idle = !!ent; if (idle) idleHits.add(`${ent.at || ''} ${(ent.callback || '').slice(0, 60)}`.trim());
-    timerInfo.set(key, { kind, site, delay, idle, cb: cb.slice(0, 90) }); if (!idle) pending.add(key); return key;
+    timerInfo.set(key, { kind, site, delay, idle, cb: cb.slice(0, 90), label: idle ? `${ent.at || ''} (${(ent.callback || cb).slice(0, 40)})` : null }); if (!idle) pending.add(key); return key;
   };
+  // run a timer callback: an idle-exempt one inside an idle context (so any effect it — or what it starts — makes is caught)
+  const liveIdle = new Map(); const exercisedIdle = new Set();   // key → { fn, args } of each scheduled idle-exempt timer (exercised by settle())
+  const runAs = (key, fn, x, what) => { const t = timerInfo.get(key); return t && t.idle ? idleCtx.run({ idle: t.label }, () => runTracked(fn, x, what)) : runTracked(fn, x, what); };
   const runTracked = (fn, x, what) => {   // the callback's own execution + its returned promise are ALWAYS awaited
     const ek = `exec${++seqT}`; pending.add(ek);
     let r; try { r = fn(...x); } catch (e) { errors.push(`${what}: ${e && e.stack || e}`); pending.delete(ek); return undefined; }
@@ -76,30 +96,35 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   win.setTimeout = (fn, ms, ...a) => {
     const site = siteOf(); let id;
     const key = track('t', site, Number(ms || 0), fn);
-    id = realST(typeof fn === 'function' ? (...x) => { pending.delete(key); timerInfo.delete(key); return runTracked(fn, x, 'timer'); } : fn, ms, ...a);
+    id = realST(typeof fn === 'function' ? inCtx((...x) => { const r = runAs(key, fn, x, 'timer'); pending.delete(key); timerInfo.delete(key); return r; }) : fn, ms, ...a);
+    if (typeof fn === 'function' && timerInfo.get(key).idle) liveIdle.set(key, { fn, args: a });
     tKey.set(id, key); return id;
   };
-  win.clearTimeout = (id) => { const k = tKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); } return realCT(id); };
+  win.clearTimeout = (id) => { const k = tKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); liveIdle.delete(k); } return realCT(id); };
   const realSI = win.setInterval.bind(win); const realCI = win.clearInterval.bind(win);
   const iKey = new Map();
   win.setInterval = (fn, ms, ...a) => {
     const site = siteOf(); const key = track('i', site, Number(ms || 0), fn);
-    const id = realSI(typeof fn === 'function' ? (...x) => runTracked(fn, x, 'interval') : fn, ms, ...a);
+    const id = realSI(typeof fn === 'function' ? inCtx((...x) => runAs(key, fn, x, 'interval')) : fn, ms, ...a);
+    if (typeof fn === 'function' && timerInfo.get(key).idle) liveIdle.set(key, { fn, args: a });
     iKey.set(id, key); return id;
   };
-  win.clearInterval = (id) => { const k = iKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); } return realCI(id); };
+  win.clearInterval = (id) => { const k = iKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); liveIdle.delete(k); } return realCI(id); };
   // the timers currently BLOCKING (for diagnostics / an allowlist review), and the idle ones the allowlist let through
   const pendingSites = () => [...timerInfo.entries()].filter(([k]) => pending.has(k)).map(([, t]) => `${t.kind === 'i' ? 'interval' : 'timeout'} ${t.delay}ms — callback: ${t.cb} (${t.site.frame.replace(/^at /, '').slice(0, 120)})`);
   const idleSites = () => [...idleHits];
   const rawRaf = win.requestAnimationFrame.bind(win);
-  win.requestAnimationFrame = (fn) => { let id; id = rawRaf((t) => { let r; try { r = fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); pending.delete(`raf${id}`); return; } finish(`raf${id}`, r, 'raf'); }); pending.add(`raf${id}`); return id; };
+  win.requestAnimationFrame = (fn) => { let id; id = rawRaf(inCtx((t) => { let r; try { r = fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); pending.delete(`raf${id}`); return; } finish(`raf${id}`, r, 'raf'); })); pending.add(`raf${id}`); return id; };
   win.matchMedia = win.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   if (!win.navigator.serviceWorker) Object.defineProperty(win.navigator, 'serviceWorker', { value: { register: async () => ({}), ready: new Promise(() => {}), addEventListener() {}, getRegistration: async () => null }, configurable: true });
   win.Notification = win.Notification || Object.assign(function Notification() {}, { permission: 'denied', requestPermission: async () => 'denied' });
   win.Audio = win.Audio || function Audio() { return { play: async () => {}, pause() {}, load() {}, addEventListener() {} }; };
   win.HTMLMediaElement.prototype.play = async function () {};
   win.scrollTo = () => {};
-  win.fetch = fetchImpl || (async (u) => { refused.push(`fetch ${u}`); throw new Error(`r3-page: fetch ${u} is not routed in this harness`); });
+  const baseFetch = fetchImpl || (async (u) => { refused.push(`fetch ${u}`); throw new Error(`r3-page: fetch ${u} is not routed in this harness`); });
+  win.fetch = (u, o) => { effect(`fetch ${String(u).slice(0, 80)} ${(o && o.method) || 'GET'}`); return baseFetch(u, o); };
+  Object.defineProperty(win.navigator, 'sendBeacon', { value: (u) => { effect(`sendBeacon ${String(u).slice(0, 80)}`); return true; }, configurable: true });
+  { const xs = win.XMLHttpRequest.prototype.send; win.XMLHttpRequest.prototype.send = function (...x) { effect('XMLHttpRequest.send'); return xs.apply(this, x); }; }
   win.addEventListener('error', (e) => errors.push(`window error: ${e && (e.error && e.error.stack || e.message)}`));
   win.addEventListener('unhandledrejection', (e) => errors.push(`unhandled rejection: ${e && e.reason && (e.reason.stack || e.reason)}`));
   if (beforeScripts) beforeScripts(win);
@@ -115,7 +140,9 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     if (cache.has(key)) return cache.get(key);
     const exp = host.modules[name];
     if (!exp) { refused.push(`import ${name}`); throw new Error(`r3-page: no adapter for ${name}`); }
-    const m = new vm.SyntheticModule(Object.keys(exp), function () { for (const [k, v] of Object.entries(exp)) this.setExport(k, v); }, { context: ctx, identifier: key });
+    // the SDK's WRITE functions are wrapped: each call is an effect (an idle-context call fails the run)
+    const wrapped = Object.fromEntries(Object.entries(exp).map(([k, v]) => [k, typeof v === 'function' && SDK_WRITES.has(k) ? function (...x) { effect(`${name}.${k}()`); return v.apply(this, x); } : v]));
+    const m = new vm.SyntheticModule(Object.keys(wrapped), function () { for (const [k, v] of Object.entries(wrapped)) this.setExport(k, v); }, { context: ctx, identifier: key });
     cache.set(key, m); return m;
   };
   const fileModule = (abs) => {
@@ -160,15 +187,23 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   // settled = no pending short timer / frame (incl. their async continuations) AND no adapter work in flight (subscription
   // callbacks that returned a promise, outstanding reads / writes), for 3 consecutive polls. Callers ASSERT it returned true.
   const inflight = () => pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
+  // codex r5 P1-1: before certifying "settled", EXERCISE every live idle-exempt timer callback once, in its idle context —
+  // so an exempt tick that would write / fetch (through any path: a reassigned helper, an object method, an event) is
+  // caught NOW, not after the assertion. Any idle effect → never settled (and the error is recorded).
   async function settle(capMs = settleMs) {
-    const t0 = Date.now(); let quiet = 0;
+    const t0 = Date.now(); let quiet = 0; let exercised = false;
     while (Date.now() - t0 < capMs) {
       await new Promise((r) => setTimeout(r, 20));
-      if (inflight() === 0) { quiet += 1; if (quiet >= 3) return true; } else quiet = 0;
+      if (idleViolations.length) return false;   // an idle timer produced an effect: NEVER settled
+      if (inflight() === 0) {
+        quiet += 1;
+        if (quiet >= 3 && !exercised) { exercised = true; quiet = 0; for (const [k, t] of [...liveIdle]) { exercisedIdle.add((timerInfo.get(k) || {}).label); runAs(k, t.fn, t.args, 'idle-exercise'); } continue; }
+        if (quiet >= 3) return !idleViolations.length;
+      } else quiet = 0;
     }
     return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, pendingSites, idleSites, staleIdle, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, pendingSites, idleSites, staleIdle, idleViolations, idleExercised: () => [...exercisedIdle], close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };
