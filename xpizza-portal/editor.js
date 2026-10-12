@@ -234,7 +234,8 @@ export function adopt(draft, canonical) {
 // 1D add-product B (§0d.5) — a NEW product with a required choice is ONE pending change, not 1 + N: its options are added (or
 // removed) with it, so an option whose product is itself added (or removed) is folded into the product's entry. The review,
 // built from the server's diff, still lists every option.
-export function pendingChanges(draft) {
+export function pendingChanges(draft, savedAdditions = new Set()) {
+  const saved = savedAdditions instanceof Set ? savedAdditions : new Set();
   const out = [];
   for (const surface of ['item', 'extra']) {
     const origRows = rowsOf(draft.orig, surface);
@@ -260,10 +261,47 @@ export function pendingChanges(draft) {
       out.push({ surface, key: id, from: was.price, to: null, removed: true });
     }
   }
+  return foldNewGroups(draft, out, saved);
+}
+// 1D add-product B (§0d.5, codex PB-3 P2-3) — a NEW product's choice group is ONE pending change however many of its rows
+// moved: a shared-price edit (the product + every option), one option's price (and the product's derived price with it),
+// or "Ninguna" on a saved group (its options removed). The entries collapse into one on the PRODUCT. A published group
+// (La Musa's Pad Thai) is not folded — its rows count exactly as before. The review and the fiscal seal are built from
+// the SERVER's diff, so every option is still listed there.
+function foldNewGroups(draft, entries, saved) {
+  const isNew = (row) => !!row && !isOptionRow(row) && (isTmp(row) || (typeof row.key === 'string' && saved.has(row.key)));
+  const launcherOf = (key) => {
+    const st = rowsOf(draft.state, 'item').find((r) => r && rowId(r) === key);
+    const or = rowsOf(draft.orig, 'item').find((r) => r && rowId(r) === key);
+    const row = st || or;
+    if (!row || !isOptionRow(row)) return null;
+    return (st && parentOf(draft.state, st)) || (or && parentOf(draft.orig, or)) || null;
+  };
+  const hasGroup = (key) => {
+    const st = rowsOf(draft.state, 'item').find((r) => r && rowId(r) === key);
+    const or = rowsOf(draft.orig, 'item').find((r) => r && rowId(r) === key);
+    return !!((st && groupOfRow(draft.state, st)) || (or && groupOfRow(draft.orig, or)));
+  };
+  const own = new Map();   // launcher key → its group's collapsed entry
+  const out = [];
+  for (const e of entries) {
+    if (e.surface !== 'item') { out.push(e); continue; }
+    const l = launcherOf(e.key);
+    const lKey = l ? rowId(l) : (hasGroup(e.key) ? e.key : null);
+    const launcher = l || (lKey !== null ? (rowsOf(draft.state, 'item').find((r) => r && rowId(r) === lKey) || rowsOf(draft.orig, 'item').find((r) => r && rowId(r) === lKey)) : null);
+    // an OPTION's entry always folds into its new product; the product's OWN entry folds only when it is a price change
+    // (an added / removed product already carries its options — the loops above skipped them)
+    if (lKey === null || !isNew(launcher) || (!l && (e.added || e.removed))) { out.push(e); continue; }
+    if (own.has(lKey)) continue;
+    const was = rowsOf(draft.orig, 'item').find((r) => r && rowId(r) === lKey);
+    const now = rowsOf(draft.state, 'item').find((r) => r && rowId(r) === lKey);
+    const entry = { surface: 'item', key: lKey, from: was ? was.price : null, to: now ? now.price : null, group: true };
+    own.set(lKey, entry); out.push(entry);
+  }
   return out;
 }
 
-export const pendingCount = (draft) => pendingChanges(draft).length;
+export const pendingCount = (draft, savedAdditions) => pendingChanges(draft, savedAdditions).length;
 
 // Rows whose current value is not a price. The value is HELD rather than discarded — a field that
 // snapped back mid-keystroke would fight the merchant — so the draft can legitimately be in this
@@ -396,13 +434,16 @@ export function optionPricesEqual(draft, id) {
 
 // Ninguna ⇄ a group. ON creates the group with the given option references (2, from the caller), each at the product's
 // current price; OFF ("Ninguna") removes the options, the map entry and "sin extras" — zero residue.
-export function setRequiredChoice(draft, id, on, optionRefs = []) {
+export function setRequiredChoice(draft, id, on, optionRefs = [], savedAdditions = new Set()) {
   if (!canEditDraft(draft)) return draft;
-  const l = rowsOf(draft.state, 'item').find((r) => r && rowId(r) === id && isTmp(r) && !isOptionRow(r));
-  if (!l) return draft;
   const st = draft.state;
+  // OFF ("Ninguna") on any NEW product — unsaved, or saved and listed as an unpublished addition (§0b.8): the product stays,
+  // its group goes. A published group is never reachable here (editableLauncher refuses it).
+  if (!on) { const el = editableLauncher(draft, id, savedAdditions); const g = el ? groupOfRow(st, el) : null; if (g) dropGroup(st, g); return draft; }
+  // ON only while the product is unsaved: a saved product's structure is fixed
+  const l = rowsOf(st, 'item').find((r) => r && rowId(r) === id && isTmp(r) && !isOptionRow(r));
+  if (!l) return draft;
   const g = groupOfRow(st, l);
-  if (!on) { if (g) dropGroup(st, g); return draft; }
   if (g) return draft;
   const refs = Array.isArray(optionRefs) ? optionRefs.filter((r) => typeof r === 'string' && r.startsWith('tmp:')) : [];
   if (refs.length !== optionRefs.length || new Set(refs).size !== refs.length || refs.some((r) => rowsOf(st, 'item').some((x) => x && x.ref === r))) return draft;

@@ -685,6 +685,57 @@ test('🔴 pendingChanges counts a new product with its choice ONCE (added and r
   assert.deepStrictEqual([draftSource(d2).items.length, draftSource(d2).structure.item_order, 'variant_items' in draftSource(d2).structure], [2, ['Plato Uno', 'Plato Dos'], false], 'the whole unit goes');
 });
 
+// codex PB-3 P2-1 / P2-3 — a SAVED, unpublished group (the server listed it as an addition): its shared price is ONE pending
+// change, and "Ninguna" removes the group (the product stays) — while a PUBLISHED group stays untouched and counted per row
+function savedGroup() {
+  const src = SRC();
+  src.items.push({ key: 'NY Plain Slice', price: 624, display: { id: 3, cat: 'c1', name: 'NY Plain Slice', price: 624, extras_policy: 'none' } });
+  [['Salsa Roja', 4], ['Salsa Vodka', 5]].forEach(([c, id]) => src.items.push({ key: `NY Plain Slice - ${c}`, price: 624, display: { id, cat: 'c1', name: `NY Plain Slice - ${c}`, price: 624, variantOf: 3, choice: c } }));
+  src.items.push({ key: 'pad', price: 307, display: { id: 'pad', cat: 'c1', name: 'Pad', price: 307 } },
+    { key: 'pad_a', price: 307, display: { id: 'pad_a', cat: 'c1', name: 'Pad - A', price: 307, variantOf: 'pad', choice: 'A' } },
+    { key: 'pad_b', price: 342, display: { id: 'pad_b', cat: 'c1', name: 'Pad - B', price: 342, variantOf: 'pad', choice: 'B' } });
+  src.structure.item_order.push('NY Plain Slice', 'NY Plain Slice - Salsa Roja', 'NY Plain Slice - Salsa Vodka', 'pad', 'pad_a', 'pad_b');
+  src.structure.variant_items = { pad: { label: 'Proteína', variantIds: ['pad_a', 'pad_b'] }, 3: { label: 'Salsa', variantIds: [4, 5] } };
+  return src;
+}
+const LISTED = new Set(['NY Plain Slice', 'NY Plain Slice - Salsa Roja', 'NY Plain Slice - Salsa Vodka']);
+
+test('🔴 a SAVED group’s shared price is ONE pending change (product + every option); a published group still counts per row', () => {
+  const d = createDraft(savedGroup());
+  setGroupPrice(d, 'NY Plain Slice', '700', LISTED);
+  assert.deepStrictEqual(draftSource(d).items.slice(2, 5).map((r) => r.price), [700, 700, 700], 'premise: the product and both options moved');
+  assert.deepStrictEqual(pendingChanges(d, LISTED), [{ surface: 'item', key: 'NY Plain Slice', from: 624, to: 700, group: true }], '🔴 ONE change, on the product (§0d.5)');
+  assert.strictEqual(pendingCount(d, LISTED), 1);
+  setChoicePrice(d, 'NY Plain Slice - Salsa Vodka', '650', LISTED);
+  assert.deepStrictEqual(pendingChanges(d, LISTED).map((c) => [c.key, c.from, c.to]), [['NY Plain Slice', 624, 650]], 'one option’s price (and the derived product price) is still the one group change');
+  setItemPrice(d, 'pad_a', '310'); setItemPrice(d, 'pad_b', '345');
+  assert.deepStrictEqual(pendingChanges(d, LISTED).map((c) => c.key), ['NY Plain Slice', 'pad_a', 'pad_b'], 'a PUBLISHED group’s options count exactly as before');
+  assert.strictEqual(pendingCount(createDraft(savedGroup())), 0);
+  const unlisted = createDraft(savedGroup()); setItemPrice(unlisted, 'NY Plain Slice - Salsa Roja', '700');
+  assert.deepStrictEqual(pendingChanges(unlisted).map((c) => c.key), ['NY Plain Slice - Salsa Roja'], 'not listed as an addition → treated as published, not folded');
+});
+
+test('🔴 "Ninguna" on a SAVED, unpublished group removes the group and keeps the product; a published group is unreachable', () => {
+  const d = createDraft(savedGroup());
+  setRequiredChoice(d, 'NY Plain Slice', false, [], LISTED);
+  const st = draftSource(d);
+  assert.deepStrictEqual(st.items.map((r) => r.key), ['Plato Uno', 'Plato Dos', 'NY Plain Slice', 'pad', 'pad_a', 'pad_b'], 'the options go, the product stays');
+  assert.deepStrictEqual(st.items[2], { key: 'NY Plain Slice', price: 624, display: { id: 3, cat: 'c1', name: 'NY Plain Slice', price: 624 } }, 'no "sin extras" left on it');
+  assert.deepStrictEqual(st.structure.variant_items, { pad: { label: 'Proteína', variantIds: ['pad_a', 'pad_b'] } }, 'its map entry goes; the published one stays byte-for-byte');
+  assert.deepStrictEqual(st.structure.item_order.slice(2), ['NY Plain Slice', 'pad', 'pad_a', 'pad_b']);
+  assert.strictEqual(choiceGroup(d, 'NY Plain Slice'), null);
+  assert.deepStrictEqual(pendingChanges(d, LISTED), [{ surface: 'item', key: 'NY Plain Slice', from: 624, to: 624, group: true }], 'ONE pending change: the choice was removed');
+  // never without the server's listing, never on a published group, never ON again once saved
+  const p = createDraft(savedGroup());
+  setRequiredChoice(p, 'NY Plain Slice', false);                 // no listing → treated as published
+  setRequiredChoice(p, 'pad', false, [], LISTED);                // published
+  assert.deepStrictEqual(draftSource(p).structure.variant_items, savedGroup().structure.variant_items, 'an unlisted saved group and the published group are untouched');
+  assert.strictEqual(draftSource(p).items.length, 8);
+  const beforeOn = JSON.stringify(draftSource(d));
+  setRequiredChoice(d, 'NY Plain Slice', true, ['tmp:oooooooo-0009', 'tmp:oooooooo-0010'], LISTED);
+  assert.strictEqual(JSON.stringify(draftSource(d)), beforeOn, '🔴 a SAVED product cannot gain a group (structure fixed once saved) — nothing at all is written');
+});
+
 test('isPublishable refuses an incomplete choice on the row it lives on: no group name, fewer than 2 options, an unnamed option', () => {
   const d = createDraft(SRC());
   addProduct(d, { ref: REF, cat: 'c1' }); setAddition(d, REF, 'name', 'P'); setAddition(d, REF, 'price', '100');

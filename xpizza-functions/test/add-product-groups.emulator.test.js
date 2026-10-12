@@ -216,8 +216,38 @@ async function wipe() {
       const sv3 = await save(rid, E.draftSource(d2));
       assert.strictEqual(sv3.status, 200, `${rid} Ninguna save: ${JSON.stringify(sv3.body).slice(0, 300)}`);
       assert.strictEqual(JSON.stringify((await draft(rid)).structure.variant_items), before, `${rid}: zero residue in the stored map`);
+      // codex PB-3 P2-1 / P2-3 — a SAVED, unpublished group: its shared price is ONE pending change, and "Ninguna" (§0b.8) on it
+      // saves the product WITHOUT its group — accepted by the server, assessed publishable on reload, published as a plain product
+      E.adopt(d2, sv3.body.source);
+      E.addProduct(d2, { ref: R('p'), cat: CAT[rid] }); E.setAddition(d2, R('p'), 'name', 'Tercera Slice'); E.setAddition(d2, R('p'), 'price', '600');
+      E.setRequiredChoice(d2, R('p'), true, [R('q'), R('r')]); E.setGroupLabel(d2, R('p'), 'Queso');
+      E.setChoiceName(d2, R('q'), 'Mozzarella'); E.setChoiceName(d2, R('r'), 'Burrata'); E.setGroupExtrasNone(d2, R('p'), true);
+      const sv4 = await save(rid, E.draftSource(d2));
+      assert.strictEqual(sv4.status, 200, `${rid} save of a second group: ${JSON.stringify(sv4.body).slice(0, 300)}`);
+      const d3 = E.createDraft(await draft(rid));   // a RELOAD of the saved draft, as getEditableCatalog serves it
+      const listed4 = new Set(sv4.body.diff.added.filter((a) => a.surface === 'item').map((a) => a.key));
+      const unit = (await draft(rid)).items.filter((i) => /^Tercera Slice/.test(i.display.name));
+      const L3 = unit[0].key;
+      assert.deepStrictEqual(unit.map((i) => i.display.name), ['Tercera Slice', 'Tercera Slice - Mozzarella', 'Tercera Slice - Burrata'], `${rid}: premise — the saved group`);
+      E.setGroupPrice(d3, L3, '640', listed4);
+      assert.deepStrictEqual(E.pendingChanges(d3, listed4).map((c) => [c.key, c.to, !!c.group]), [[L3, 640, true]], `${rid}: 🔴 the shared price on a SAVED group is ONE pending change`);
+      E.setRequiredChoice(d3, L3, false, [], listed4);
+      assert.strictEqual(E.choiceGroup(d3, L3), null, `${rid}: Ninguna removed the saved group in the editor`);
+      assert.strictEqual(E.pendingChanges(d3, listed4).length, 1, `${rid}: and that is ONE pending change`);
+      const sv5 = await save(rid, E.draftSource(d3));
+      assert.strictEqual(sv5.status, 200, `${rid} 🔴 the server accepts a saved group removed by Ninguna: ${JSON.stringify(sv5.body).slice(0, 300)}`);
+      const stored5 = await draft(rid);
+      assert.deepStrictEqual(stored5.items.filter((i) => /^Tercera Slice/.test(i.display.name)).map((i) => [i.display.name, i.price, i.display.extras_policy]), [['Tercera Slice', 640, undefined]], `${rid}: the product stays, plain, at its price`);
+      assert.strictEqual(JSON.stringify(stored5.structure.variant_items), before, `${rid}: the stored map is exactly as before the group`);
+      const a5 = assessDraft(rid, stored5, await readActiveBuilt(rid)());
+      assert.strictEqual(a5.publishable, true, `${rid}: the reload assesses it publishable (${a5.code || ''} ${a5.detail || ''})`);
+      assert.ok(a5.additions.includes(L3) && !a5.additions.some((k) => /^Tercera Slice - /.test(k)), `${rid}: the product is still an addition, its former options are not`);
+      const p5 = await publish(rid, sv5);
+      assert.strictEqual(p5.status, 200, `${rid} publish: ${JSON.stringify(p5.body).slice(0, 300)}`);
+      const pm5 = await buildPublicMenu(db, rid, { known: new Set([rid]), isActive: async () => true });
+      assert.ok(!(pm5.body.variant_items && pm5.body.variant_items[String(unit[0].display.id)]), `${rid}: served WITHOUT a group`);
     }
-    ok('PB-3 composed, BOTH brands: the REAL portal editor\'s document saves (derived names, per-option prices, Recomendada, sin extras), adopts as ONE pending product, reloads as publishable, takes the ONE group price mutator, publishes and is served; "Ninguna" saves a plain product with the map untouched');
+    ok('PB-3 composed, BOTH brands: the REAL portal editor\'s document saves (derived names, per-option prices, Recomendada, sin extras), adopts as ONE pending product, reloads as publishable, takes the ONE group price mutator, publishes and is served; "Ninguna" saves a plain product with the map untouched — and on a SAVED group (codex P2-1/P2-3) the shared price counts once and Ninguna saves, assesses, publishes and serves the product without its group');
   }
 
   FINISHED = true;

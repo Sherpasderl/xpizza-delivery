@@ -973,6 +973,7 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.groupAuthoring':      [2, 'guarded', 'whether the drawer OFFERS a required choice (the platform authoring switch, from getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check; the server enforces the same switch on every save'],
     'state.choiceBadges':        [2, 'guarded', 'the option badges this brand\u2019s picker draws (renderer contract via getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check'],
     'state.samePrice':           [5, 'view',    '"Mismo precio para todas" per product — reset on load (DERIVED again from the prices), set/cleared by the drawer\u2019s controls; it only chooses WHICH canEdit-guarded mutator a price field calls (setGroupPrice vs setChoicePrice), it never writes the draft itself'],
+    'state.rawPrice':            [3, 'view',    'typed price text that is not (yet) a price, per field (codex PB-3 P2-2) — reset on load, set/cleared by the price fields\u2019 own input handlers; read only to REFILL a rebuilt field and only while that field\u2019s draft price is still not a price; it never writes the draft (the field\u2019s canEdit-guarded mutator does)'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
   };
 
@@ -1423,6 +1424,7 @@ const ALLOWED_METHOD_CHAINS = new Set([
   'state.additionKeys.has', 'state.additionKeys.add', 'state.renderedCategories.includes',
   // 1D add-product B — the option badges (a read) and "Mismo precio" per product (view state, census-counted)
   'state.choiceBadges.includes', 'state.samePrice.has', 'state.samePrice.get', 'state.samePrice.set', 'state.samePrice.delete',
+  'state.rawPrice.has', 'state.rawPrice.get', 'state.rawPrice.set', 'state.rawPrice.delete',
 ]);
 
 function grammarViolations(src) {

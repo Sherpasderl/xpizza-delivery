@@ -131,6 +131,7 @@ export const ALLOWED_METHOD_CHAINS = new Set([
   'state.additionKeys.has', 'state.additionKeys.add', 'state.renderedCategories.includes',
   // 1D add-product B — the option badges (a read) and "Mismo precio" per product (view state, census-counted)
   'state.choiceBadges.includes', 'state.samePrice.has', 'state.samePrice.get', 'state.samePrice.set', 'state.samePrice.delete',
+  'state.rawPrice.has', 'state.rawPrice.get', 'state.rawPrice.set', 'state.rawPrice.delete',
 ]);
 // 🔴 PROPERTIES WHOSE VALUE IS A PRIMITIVE, and therefore cannot be retained or mutated by whoever
 // receives it. Reading one yields a copy of a string, number, boolean or null, so the escape rules

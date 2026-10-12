@@ -6,6 +6,7 @@
 import { apiFetch, editCatalog, publishEdited, resetDraftToLive } from './api.js';
 import { createDraft, setItemPrice, setExtraPrice, pendingChanges, pendingCount, isPublishable, discard, commit, draftSource, optionGroups, groupUsage, addProduct, setAddition, removeAddition, adopt, rowId } from './editor.js';
 // 1D add-product B — the required choice on a NEW product ("Elección requerida — el cliente elige 1")
+import { parsePrice } from './editor.js';
 import { setRequiredChoice, setGroupLabel, setGroupExtrasNone, addChoice, removeChoice, setChoiceName, setChoiceRecommended, setChoicePrice, setGroupPrice, choiceGroup, optionPricesEqual, isNewGroupOption, optionParentId } from './editor.js';
 import { groupByCategory, renderRail, renderDetail } from './render.js';
 import { reviewModel, ackSetFrom, renderReview, attestationModel, renderAttestation, canPublish, createPublisher, outcomeFor, renderOutcome, receiptFor, renderReceipt, PUBLISH_ACTIONS } from './review.js';
@@ -401,6 +402,7 @@ export async function loadMenu(rid) {
   state.groupAuthoring = false;               // 1D add-product B — per-load server facts, fail closed until they arrive
   state.choiceBadges = [];
   state.samePrice = new Map();                // "Mismo precio para todas", per product; DERIVED again on every load
+  state.rawPrice = new Map();                 // typed price text that is not (yet) a price, per field (codex PB-3 P2-2)
   invalidateReview();                        // clears tenant-bound state AND bumps the generation
   const gen = opGeneration;
   $('detail').replaceChildren();
@@ -579,7 +581,7 @@ function offerResetToLive(host, rid, rev) {
 // only place "you have unpublished work" is said, so it must never say it when the draft matches what
 // is published — and never stay silent when it does not.
 function refreshBar() {
-  const n = pendingCount(state.draft);
+  const n = pendingCount(state.draft, state.additionKeys);
   // 🔴 #7-B — REACHABLE WHENEVER A DRAFT EXISTS, not only when this session typed something.
   //
   // editCatalog PERSISTS the draft and getEditableCatalog returns the SAVED draft, so after a reload
@@ -620,7 +622,7 @@ function onPrice(surface, key, value) {
 
 // Mark just the cell that changed, in place. Cheap, and it avoids the re-render that would steal focus.
 function markChanged(surface, key) {
-  const changed = new Set(pendingChanges(state.draft).map((c) => `${c.surface}::${c.key}`));
+  const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   for (const cell of document.querySelectorAll('.price')) {
     const k = cell.dataset && cell.dataset.k;
     if (k) cell.classList.toggle('chg', changed.has(k));
@@ -630,7 +632,7 @@ function markChanged(surface, key) {
 
 function paint() {
   renderRail($('rail'), state.groups, state.selectedCat, (id) => { state.selectedCat = id; paint(); });
-  const changed = new Set(pendingChanges(state.draft).map((c) => `${c.surface}::${c.key}`));
+  const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   renderDetail($('detail'), state.groups.find((g) => g.category.id === state.selectedCat), state.extras, {
     editable: true,
     changed: (surface, key) => changed.has(`${surface}::${key}`),
@@ -675,11 +677,33 @@ function closeDrawer() {
 // `inert` removes the subtree from focus and interaction entirely; the attribute is set on the
 // element AND its inputs are disabled, because inert is not supported everywhere and a fallback that
 // silently does nothing is the same failure again.
+// 1D add-product B (codex PB-3 P2-1) — a control that is OFF for a reason of its own (a saved product's fixed structure) rather
+// than because the drawer is busy: the busy/idle toggle below must never re-enable it.
+const lockedControls = new WeakSet();
+function lockControl(el, locked) { if (locked) { lockedControls.add(el); el.disabled = true; } return el; }
+// (codex PB-3 P2-4) a rebuild replaces every control, so the one the merchant was on is found again by its key and focused
+const focusables = new Map();
+function focusKey(el, key) { focusables.set(key, el); return el; }
+function refocus(keys) {
+  for (const k of keys) { const el = focusables.get(k); if (el && !el.disabled && typeof el.focus === 'function') { el.focus(); return; } }
+}
+// (codex PB-3 P2-2) typed price text that is not (yet) a price, per field, so a rebuild shows what was typed instead of a
+// blank — shown only while that field's draft price is still not a price (a stale entry is inert)
+function priceText(rid, price) {
+  if (Number.isInteger(price) && price > 0) return String(price);
+  const k = `item::${rid}`;
+  return state.rawPrice.has(k) ? state.rawPrice.get(k) : '';   // only ever set to a string (holdPriceText)
+}
+function holdPriceText(rid, text) {
+  if (parsePrice(text) === null && String(text).trim() !== '') state.rawPrice.set(`item::${rid}`, String(text));
+  else state.rawPrice.delete(`item::${rid}`);
+}
+
 function setDrawerInert(on) {
   const d = $('drawer');
   if (!d) return;
   if (on) d.setAttribute('inert', ''); else d.removeAttribute('inert');
-  for (const el of d.querySelectorAll('input, button')) el.disabled = on === true;
+  for (const el of d.querySelectorAll('input, button')) el.disabled = on === true || lockedControls.has(el);
   if (on && document.activeElement && d.contains(document.activeElement)) document.activeElement.blur();
 }
 
@@ -697,6 +721,7 @@ function renderDrawer() {
   const scroller = d.querySelector('.dwb');
   const keepScroll = scroller ? scroller.scrollTop : 0;
 
+  focusables.clear();
   const src = draftSource(state.draft);
   // 1D add-product B — a NEW product's option is edited in its product's drawer
   const parentId = optionParentId(state.draft, state.drawerKey);
@@ -818,7 +843,8 @@ function renderAddDrawer(d, it, keepScroll) {
   prf.append(mk('label', null, 'Precio'), mk('span', 'cur2', 'L'));
   const price = document.createElement('input');
   price.type = 'text'; price.inputMode = 'numeric'; price.setAttribute('aria-label', 'Precio');
-  price.value = (Number.isInteger(it.price) && it.price > 0) ? String(it.price) : ''; price.placeholder = 'Sin precio';
+  price.value = priceText(id, it.price); price.placeholder = 'Sin precio';
+  focusKey(price, 'price');
   // 1D add-product B (§0d.5) — with a required choice the product's price belongs to the GROUP: "Mismo precio para todas" on,
   // it sets the product and every option together (setGroupPrice, ONE mutator); off, it is DERIVED (the cheapest option)
   // and shown read-only. Without a group, exactly Phase A.
@@ -833,10 +859,12 @@ function renderAddDrawer(d, it, keepScroll) {
     if (choiceGroup(state.draft, id)) {
       if (!sameOn()) { const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id); price.value = l && Number.isInteger(l.price) && l.price > 0 ? String(l.price) : ''; return; }
       setGroupPrice(state.draft, id, price.value, state.additionKeys);
-      for (const pi of optionPriceInputs) pi.value = price.value;   // in place: a repaint would steal the caret
+      holdPriceText(id, price.value);
+      for (const [pi, oid] of optionPriceInputs) { pi.value = price.value; holdPriceText(oid, price.value); }   // in place: a repaint would steal the caret
       refreshBar(); paint();
       return;
     }
+    holdPriceText(id, price.value);
     if (unsaved) setAddition(state.draft, id, 'price', price.value); else setItemPrice(state.draft, id, price.value);
     refreshBar(); syncRow('item', id, price.value);
   }));
@@ -898,15 +926,17 @@ function renderAddDrawer(d, it, keepScroll) {
 function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, price, sameOn, optionPriceInputs, derivedUi }) {
   const svgPath = (dd) => { const NS = 'http://www.w3.org/2000/svg'; const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); const pth = document.createElementNS(NS, 'path'); pth.setAttribute('d', dd); svg.append(pth); return svg; };
   const newRef = () => `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
-  const restructure = () => { after(); renderDrawer(); };
+  const restructure = (keys) => { after(); renderDrawer(); refocus(keys); };
   const errAt = (target, field) => (state.drawerError && state.drawerError.target === target && (!field || state.drawerError.field === field) && typeof state.drawerError.message === 'string' ? `${state.drawerError.message}` : null);
   const block = mk('div', 'modblock');
   block.append(mk('div', 'modh', 'Elección requerida — el cliente elige 1'));
   const radioName = `dwreq-${id}`;
 
   const none = mk('label', 'modopt');
-  const noneIn = document.createElement('input'); noneIn.type = 'radio'; noneIn.name = radioName; noneIn.checked = !group; noneIn.disabled = !unsaved;
-  noneIn.addEventListener('change', bound(() => { if (noneIn.checked) { setRequiredChoice(state.draft, id, false); state.samePrice.delete(id); state.drawerError = null; restructure(); } }));
+  const noneIn = document.createElement('input'); noneIn.type = 'radio'; noneIn.name = radioName; noneIn.checked = !group;
+  focusKey(noneIn, 'none');
+  // Ninguna on ANY new product, saved ones included (§0b.8): the product stays, its group goes
+  noneIn.addEventListener('change', bound(() => { if (noneIn.checked) { setRequiredChoice(state.draft, id, false, [], state.additionKeys); state.samePrice.delete(id); state.drawerError = null; restructure(['none', 'price']); } }));
   const noneNm = mk('span', 'mognm', 'Ninguna'); noneNm.append(mk('span', 'mogsub', ' · sin elección obligatoria'));
   none.append(noneIn, noneNm);
   block.append(none);
@@ -918,9 +948,10 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
   const grp = mk('div', `modgrp${open ? ' open' : ''}`);
   const h = mk('div', 'modgrp-h');
   const attach = mk('label', 'mgattach');
-  const onIn = document.createElement('input'); onIn.type = 'radio'; onIn.name = radioName; onIn.checked = !!group; onIn.disabled = !unsaved;
+  const onIn = document.createElement('input'); onIn.type = 'radio'; onIn.name = radioName; onIn.checked = !!group; lockControl(onIn, !unsaved);
+  focusKey(onIn, 'on');
   onIn.setAttribute('aria-label', 'El cliente elige 1 opción');
-  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()]); state.samePrice.delete(id); restructure(); } }));
+  onIn.addEventListener('change', bound(() => { if (onIn.checked) { setRequiredChoice(state.draft, id, true, [newRef(), newRef()]); state.samePrice.delete(id); restructure(['label', 'on']); } }));
   attach.append(onIn);
   const n = group ? group.options.length : 0;
   const sub = group ? `${n} ${n === 1 ? 'opción' : 'opciones'} · define el precio · en 1 producto` : 'el cliente elige 1 opción · define el precio';
@@ -929,6 +960,7 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
     const lab = document.createElement('input');
     lab.type = 'text'; lab.className = 'mgname-in'; lab.value = group.label; lab.placeholder = 'Nombre de la elección (ej. Salsa)';
     lab.setAttribute('aria-label', 'Nombre de la elección');
+    focusKey(lab, 'label');
     lab.addEventListener('input', bound(() => { setGroupLabel(state.draft, id, lab.value); after(); }));
     main.append(lab);
   } else main.append(mk('span', 'mgname', group ? (group.label || 'Elección') : 'Agregar una elección'));
@@ -938,7 +970,8 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
     const fold = document.createElement('button'); fold.className = 'mgchev'; fold.type = 'button';
     fold.setAttribute('aria-label', 'Ver opciones'); fold.setAttribute('aria-expanded', String(open));
     fold.append(svgPath('M9 6l6 6-6 6'));
-    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); }));
+    focusKey(fold, 'fold');
+    fold.addEventListener('click', bound(() => { if (state.openGroups.has(foldKey)) state.openGroups.delete(foldKey); else state.openGroups.add(foldKey); renderDrawer(); refocus(['fold']); }));
     h.append(fold);
   }
   grp.append(h);
@@ -955,35 +988,43 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
       if (unsaved) {
         nm = document.createElement('input'); nm.type = 'text'; nm.className = 'moname'; nm.value = typeof o.display.choice === 'string' ? o.display.choice : '';
         nm.placeholder = 'Nombre de la opción'; nm.setAttribute('aria-label', 'Nombre de la opción');
+        focusKey(nm, `name::${oid}`);
         nm.addEventListener('input', bound(() => { setChoiceName(state.draft, oid, nm.value); after(); }));
       } else nm = mk('span', 'moname ro', typeof o.display.choice === 'string' ? o.display.choice : String(oid));
       const pr = mk('span', 'mopr');
       const pi = document.createElement('input'); pi.type = 'text'; pi.inputMode = 'numeric';
       pi.setAttribute('aria-label', `Precio de ${(typeof o.display.choice === 'string' && o.display.choice) || 'la opción'}`);
-      pi.value = (Number.isInteger(o.price) && o.price > 0) ? String(o.price) : ''; pi.placeholder = 'Sin precio';
+      pi.value = priceText(oid, o.price); pi.placeholder = 'Sin precio';
+      focusKey(pi, `price::${oid}`);
       // ONE option's price: "Mismo precio" turns off (§0d.5) and the product's derived price follows, in place
       pi.addEventListener('input', bound(() => {
         setChoicePrice(state.draft, oid, pi.value, state.additionKeys);
+        holdPriceText(oid, pi.value);
         state.samePrice.set(id, false);
         const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id);
         price.value = l && Number.isInteger(l.price) && l.price > 0 ? String(l.price) : ''; derivedUi();
         const same = gb.querySelector('.mgflag-same input'); if (same) same.checked = false;
         refreshBar(); paint();
       }));
-      optionPriceInputs.push(pi);
+      optionPriceInputs.push([pi, oid]);
       pr.append(mk('span', 'mc', 'L'), pi);
       row.append(nm, pr);
       if (canBadge) {
         const on = Array.isArray(o.display.tags) && o.display.tags.includes('recommended');
         const pill = document.createElement('button'); pill.className = 'recpill'; if (on) pill.classList.add('recpill-on');
-        pill.textContent = 'Recomendada'; pill.type = 'button'; pill.setAttribute('aria-pressed', String(on)); pill.disabled = !unsaved;
-        pill.addEventListener('click', bound(() => { setChoiceRecommended(state.draft, oid, !on); restructure(); }));
+        pill.textContent = 'Recomendada'; pill.type = 'button'; pill.setAttribute('aria-pressed', String(on)); lockControl(pill, !unsaved);
+        focusKey(pill, `pill::${oid}`);
+        pill.addEventListener('click', bound(() => { setChoiceRecommended(state.draft, oid, !on); restructure([`pill::${oid}`]); }));
         row.append(pill);
       }
       if (unsaved) {
         const x = document.createElement('button'); x.className = 'model'; x.type = 'button'; x.title = 'Quitar opción'; x.setAttribute('aria-label', 'Quitar opción');
         x.append(svgPath('M18 6L6 18M6 6l12 12'));
-        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid); restructure(); }));
+        focusKey(x, `x::${oid}`);
+        // after a removal: the next option's name, else the previous one's, else "Agregar opción"
+        const i = group.options.indexOf(o);
+        const near = [group.options[i + 1], group.options[i - 1]].filter(Boolean).map((r) => `name::${rowId(r)}`);
+        x.addEventListener('click', bound(() => { removeChoice(state.draft, id, oid); restructure([...near, 'add']); }));
         row.append(x);
       }
       gb.append(row);
@@ -993,16 +1034,19 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
     if (unsaved) {
       const add = document.createElement('button'); add.className = 'mgadd'; add.type = 'button';
       add.append(svgPath('M12 5v14M5 12h14'), document.createTextNode('Agregar opción'));
+      focusKey(add, 'add');
       add.addEventListener('click', bound(() => {
         const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id);
-        addChoice(state.draft, id, newRef(), sameOn() && l && Number.isInteger(l.price) ? String(l.price) : undefined);
-        restructure();
+        const ref = newRef();
+        addChoice(state.draft, id, ref, sameOn() && l && Number.isInteger(l.price) ? String(l.price) : undefined);
+        restructure([`name::${ref}`, 'add']);   // straight into the new option's name
       }));
       gb.append(add);
     }
     const flag = (cls, text, checked, disabled, onChange) => {
       const lab = mk('label', `mgflag ${cls}`);
-      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checked; cb.disabled = disabled;
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = checked; lockControl(cb, disabled);
+      focusKey(cb, cls);
       cb.addEventListener('change', bound(() => onChange(cb.checked)));
       lab.append(cb, document.createTextNode(text));
       return lab;
@@ -1010,10 +1054,10 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
     gb.append(flag('mgflag-same', 'Mismo precio para todas', sameOn(), false, (on) => {
       state.samePrice.set(id, on);
       // ON sets every option to the product's current price — the ONE mutator, so it counts once
-      if (on) { const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id); setGroupPrice(state.draft, id, l && Number.isInteger(l.price) ? String(l.price) : '', state.additionKeys); }
-      restructure();
+      if (on) { const l = (draftSource(state.draft).items || []).find((r) => r && rowId(r) === id); setGroupPrice(state.draft, id, l && Number.isInteger(l.price) ? String(l.price) : '', state.additionKeys); for (const o of group.options) holdPriceText(rowId(o), ''); }
+      restructure(['mgflag-same']);
     }));
-    gb.append(flag('mgflag-extras', 'Sin extras — el cliente no puede agregar opcionales', group.extrasNone, !unsaved, (on) => { setGroupExtrasNone(state.draft, id, on); restructure(); }));
+    gb.append(flag('mgflag-extras', 'Sin extras — el cliente no puede agregar opcionales', group.extrasNone, !unsaved, (on) => { setGroupExtrasNone(state.draft, id, on); restructure(['mgflag-extras']); }));
     grp.append(gb);
   }
   block.append(grp);
@@ -1619,7 +1663,7 @@ document.addEventListener('portal:auth', (e) => {
 function portalReloadFacts() {
   const a = document.activeElement;
   return { pendingWrite: !!pendingWrite, publishing: !!publisher.busy || !!state.settle, review: !!state.review, reviewLock: !!state.reviewLock,
-    pendingCount: state.draft ? pendingCount(state.draft) : 0, focusedTag: a ? a.tagName : null };
+    pendingCount: state.draft ? pendingCount(state.draft, state.additionKeys) : 0, focusedTag: a ? a.tagName : null };
 }
 try {
   const S = window.SherpaClient;
