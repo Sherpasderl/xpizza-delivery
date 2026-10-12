@@ -32,6 +32,7 @@ const fmtTimeSrc = html.slice(fa, html.indexOf('\n    }', fa) + '\n    }'.length
 const OWNER_WAITING = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
 assert.ok(!html.includes('está terminando una entrega que queda en camino'), 'superseded stacked copy gone');
 
+
 // ── Fake DOM ──
 function mkEl(id) {
   const classes = new Set(); const style = {};
@@ -84,7 +85,8 @@ function render(data) {
     segs, etaIsActive, calls,
     title: title._text, titleSuccess: title._classes.has('success'), titleDanger: title._classes.has('danger'),
     sub: sub._text, subBig: sub._classes.has('big'),
-    avatarShown: avatar.hidden === false, avatarChar: avatar._text,
+    // the avatar is hidden via the .hidden CLASS (the [hidden] attr is defeated by .driver-avatar{display:flex})
+    avatarShown: !avatar._classes.has('hidden'), avatarChar: avatar._text,
     barOpacity: segbar._style.opacity,
     liveHidden: (reg['updated-text'] ? reg['updated-text']._classes.has('hidden') : null),
   };
@@ -92,6 +94,19 @@ function render(data) {
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const segClasses = (r) => r.segs.map((s) => (s === 'done' ? 'done' : s === 'pending' ? 'pending' : 'active'));
+
+// ⛔ AVATAR HIDE MUST BE CSS-ENFORCED (codex REVISE). The avatar is a 44px .driver-avatar{display:flex} circle,
+// so the browser default [hidden]{display:none} is overridden and there is NO [hidden] rule in the tracker — the
+// hide MUST ride the .hidden class (display:none!important), or a stale initial / "—" lingers on every non-driver
+// state (pickup/new/preparing/delivered/cancelled/OFD-no-driver, incl. a stale "E" after delivery). The jsdom
+// .hidden boolean can't see a CSS override (structural-tests-blind-to-runtime), so guard all three legs:
+assert.ok(/\.hidden\s*\{\s*display:\s*none\s*!important\s*;?\s*\}/.test(html),
+  'CSS .hidden { display:none !important } rule present (enforces the avatar hide)'); ok('AVATAR-HIDE: .hidden display:none!important rule present');
+const avatarTag = html.match(/<div class="([^"]*)" id="driver-avatar">/);
+assert.ok(avatarTag && /\bhidden\b/.test(avatarTag[1]),
+  'avatar markup carries the .hidden CLASS at first paint (not the inert [hidden] attr)'); ok('AVATAR-HIDE: markup carries .hidden class (not the defeated [hidden] attr)');
+assert.ok(html.includes("avatarEl.classList.add('hidden')") && html.includes("avatarEl.classList.remove('hidden')") && !/avatarEl\.hidden\s*=/.test(html),
+  'render toggles the avatar via the .hidden class, and the defeated avatarEl.hidden = … is gone'); ok('AVATAR-HIDE: render toggles .hidden class; avatarEl.hidden= removed');
 const activeFill = (r) => { const i = r.segs.findIndex((s) => typeof s === 'object'); return i < 0 ? null : r.segs[i].a; };
 
 // ═══ DELIVERY states ═══

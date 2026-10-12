@@ -308,7 +308,7 @@
         <!-- Unified status — avatar (only when a driver is assigned) + ONE headline + ONE sub-line. The
              headline/sub reuse #driver-name / #driver-eta so the shipped core's ETA/map plumbing is unchanged. -->
         <div class="statusrow" id="statusrow">
-          <div class="driver-avatar" id="driver-avatar" hidden>—</div>
+          <div class="driver-avatar hidden" id="driver-avatar">—</div>
           <div class="shead">
             <div class="stitle" id="driver-name">—</div>
             <div class="ssub" id="driver-eta"></div>
@@ -661,7 +661,7 @@
 
       hideDriverMap();         // reset the live map every render; only the active-drop branch re-shows it
       etaIsActive = false;     // Fix C — cleared each render; only the active-drop branch re-arms ETA writes
-      avatarEl.hidden = true;  // only an assigned driver gets an avatar
+      avatarEl.classList.add('hidden');  // only an assigned driver gets an avatar — the .hidden CLASS (display:none!important) hides it; the [hidden] attr is defeated by .driver-avatar{display:flex}
       titleEl.className = 'stitle';
       subEl.className = 'ssub';
       segbarEl.style.opacity = '1';
@@ -732,7 +732,7 @@
       } else if (status === 'out_for_delivery') {
         if (data.driver_name) {
           const driverName = data.driver_name;
-          avatarEl.hidden = false;
+          avatarEl.classList.remove('hidden');
           avatarEl.textContent = driverName.charAt(0).toUpperCase();
           // Active drop = this order is the driver's current live delivery (server-gated is_active_drop + a
           // mirrored location). A stacked driver's WAITING order is out_for_delivery WITHOUT is_active_drop.
