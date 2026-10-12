@@ -11607,5 +11607,20 @@
       "node",
       "contract/matrix.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p0-09",
+    "slice": "r3p0",
+    "file": "contract/sdk-provision.js",
+    "from": "  for (const [k, v] of Object.entries(baseEnv)) if (!/^npm_config_/i.test(k) && k !== 'NODE_OPTIONS') env[k] = v;",
+    "to": "  for (const [k, v] of Object.entries(baseEnv)) if (!/^npm_config_/.test(k) && k !== 'NODE_OPTIONS') env[k] = v;",
+    "label": "inherited NPM_CONFIG_* (upper / mixed case) passes through to the provisioning npm (codex r3 P2)",
+    "kills_with": [
+      "inherited npm settings leaked into the child"
+    ],
+    "command": [
+      "node",
+      "contract/sdk-provision.test.js"
+    ]
   }
 ]
