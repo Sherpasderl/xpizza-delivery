@@ -145,7 +145,7 @@ const {
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
-const { activeDropOrderId, shouldMirror } = require('./tracking-mirror');
+const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting } = require('./tracking-mirror');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention (tasksToDelete/confirmTaskDelete now used by retention-sweep.js)
 const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');   // shared driver-name cascade + durable delivered_by_* attribution at the terminal edge (real-time trigger)
@@ -4499,6 +4499,36 @@ exports.sendOrderStatusNotifications = onValueWritten(
         await db.ref().update(trackingUpdates);
       } catch (e) {
         console.warn(`sendOrderStatusNotifications: tracking mirror update failed`, e.message);
+      }
+      // STACKED-WAITING tracker signal (finishes the tracker's is_active_drop===false branch): when an order
+      // flips to out_for_delivery while the driver is actively delivering a DIFFERENT order, mark THIS one
+      // is_active_drop:false so the tracker shows the gentle "one quick stop first" copy and suppresses the
+      // naive 12-min countdown (which would otherwise tick to ~1 min while the driver is at the other
+      // customer's door). The false→true upgrade happens automatically via the ingest mirror once this order
+      // becomes the driver's active drop (it only ever writes is_active_drop:true for activeDropOrderId).
+      // ⚠️ FAIL-SAFE: write false ONLY when a DIFFERENT order is CONFIRMED to be the driver's active
+      // out_for_delivery drop RIGHT NOW. A single/non-stacked order — or ANY uncertainty (no driver, no/stale
+      // current_task_id pointing at a now-delivered order, a pickup leg) — NEVER gets false; it falls to
+      // today's neutral branch (never worse than now, never a wrong "1 parada antes" on a normal delivery).
+      if (after === 'out_for_delivery') {
+        try {
+          const deliveryTaskId = order.delivery_task_id || `${orderId}_delivery`;
+          const driverId = ((await db.ref(`tasks/${deliveryTaskId}`).once('value')).val() || {}).assigned_driver_id;
+          if (driverId) {
+            const curTask = (await db.ref(`drivers/${driverId}/current_task_id`).once('value')).val();
+            const activeOrderId = activeDropOrderId(typeof curTask === 'string' ? curTask : null);
+            // Only read the OTHER order's status when the driver's active drop is a different, parseable order
+            // (avoids a wasted read on the common single-order case); the pure decision confirms the rest.
+            const activeStatus = (activeOrderId && activeOrderId !== orderId)
+              ? (await db.ref(`orders/${activeOrderId}/status`).once('value')).val()
+              : null;
+            if (shouldMarkStackedWaiting(orderId, curTask, activeStatus)) {
+              await db.ref(`order_tracking/${trackingToken}/is_active_drop`).set(false);
+            }
+          }
+        } catch (e) {
+          console.warn(`stackedWaitingSignal: ${orderId} skipped (fail-safe — no is_active_drop:false written)`, e.message);
+        }
       }
     }
 

@@ -885,12 +885,15 @@
             updateDriverMap(data);
           } else if (data.is_active_drop === false) {
             // EXPLICIT stacked waiting drop — the driver is finishing another delivery first. Locked copy,
-            // no map (they'd otherwise watch the driver visit someone else). Auto-upgrades to the live map
-            // via the onValue sub the moment they become the active drop. (Requires the server false-signal;
-            // Phase A ships the client 3-way, so today a genuine stacked-wait falls to the neutral branch.)
+            // no map (they'd otherwise watch the driver visit someone else) and no naive countdown (it would
+            // tick toward ~1 min while the driver is still at the other customer's door). Auto-upgrades to
+            // the live map + tightening ETA via the onValue sub the moment they become the active drop
+            // (the ingest mirror flips is_active_drop → true). Server emits the false signal from the
+            // status→out_for_delivery trigger, only when another order is confirmed to be the driver's
+            // active drop right now; a single/non-stacked order never reaches here (falls to neutral below).
             document.getElementById('driver-name').textContent = driverName;
             document.getElementById('driver-eta').textContent =
-              'Tu driver está terminando una entrega que queda en camino hacia tu dirección. Pronto saldrá directo hacia ti.';
+              'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
           } else {
             // Absent/unknown (the seconds between status→out_for_delivery and the first GPS mirror, on a
             // single order) → today's NEUTRAL copy. Never the false "finishing another delivery"; no map.
