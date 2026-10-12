@@ -11577,5 +11577,35 @@
       "--experimental-vm-modules",
       "contract/page-harness.test.js"
     ]
+  },
+  {
+    "id": "r3p0-07",
+    "slice": "r3p0",
+    "file": "contract/matrix-build.js",
+    "from": "    for (const c of app) c.sites.push(i);",
+    "to": "    if (app[0]) app[0].sites.push(i);",
+    "label": "a site obligation joins ONE cell of its group (codex r3 P1-3's weak join)",
+    "kills_with": [
+      "has NO applicable assertion"
+    ],
+    "command": [
+      "node",
+      "contract/matrix.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-08",
+    "slice": "r3p0",
+    "file": "contract/matrix-build.js",
+    "from": "    for (const a of want) if (!executed.has(`${c.cell}|${a}`)) missing.push(`${c.cell}|${a}`);",
+    "to": "    for (const a of want.slice(0, 1)) if (!executed.has(`${c.cell}|${a}`)) missing.push(`${c.cell}|${a}`);",
+    "label": "coverage() checks one assertion per cell (codex r3 P1-3's counter-example would pass)",
+    "kills_with": [
+      "the coverage rule accepted a site executed in only one of its applicable cells"
+    ],
+    "command": [
+      "node",
+      "contract/matrix.guard.test.js"
+    ]
   }
 ]

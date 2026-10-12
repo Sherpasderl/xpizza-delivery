@@ -709,5 +709,150 @@
       "site": "xpizza-functions/stats/stats-build.js#addSale#delivered_at#0",
       "reason": "stats uses delivered_at as the SALE TIME anchor (which day/hour a delivered order counts in) — not a driver-attribution or cash assertion"
     }
-  ]
+  ],
+  "unsitedFacts": {
+    "_doc": "codex r3 P1-3 — a PLAN fact of an R-site with NO census site (the census covers persisted-ORDER field reads). Each such (R, fact) group is dispositioned here, never silently joined: 'output' = the surface shows the fact through a path the census does not attribute (named outputs, file#fn, each checked to exist); 'not-in-source' = the PLAN lists the fact but the named outputs do NOT display it (a PLAN-vs-source finding: the cell asserts the fact's ABSENCE from those outputs until the PLAN table is reconciled). Every site-less group with cells must appear here; an entry for a group that HAS sites is stale (RED).",
+    "R4:DRIVER": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-driver/index.html#detectNewAssignments",
+        "xpizza-driver/index.html#renderHistoryModal",
+        "xpizza-driver/index.html#syncIdleStats"
+      ],
+      "reason": "driver identity on driver web comes from the TASK node (tasks/<id>_<type>.assigned_driver_id), not an order field"
+    },
+    "R5:PLACE": {
+      "kind": "not-in-source",
+      "outputs": [
+        "xpizza-functions/index.js#notifyDriverOnAssignment",
+        "xpizza-functions/index.js#notifyDriverOnCancellation"
+      ],
+      "reason": "the driver push bodies are `<customer_name> · L<total>` / `Pedido #<id>[: reason]` — no address (PLAN §R5 lists PLACE)"
+    },
+    "R5:FULFIL": {
+      "kind": "not-in-source",
+      "outputs": [
+        "xpizza-functions/index.js#notifyDriverOnAssignment",
+        "xpizza-functions/index.js#notifyDriverOnCancellation"
+      ],
+      "reason": "the driver push bodies carry no delivery / pickup marker (PLAN §R5 lists FULFIL)"
+    },
+    "R6:MONEY": {
+      "kind": "not-in-source",
+      "outputs": [
+        "xpizza-functions/staff-push.js#formatNewOrder",
+        "xpizza-functions/staff-push.js#formatGrouped"
+      ],
+      "reason": "staff push shows brand · #number · customer (grouped: per-brand counts) — no amount (PLAN §R6 lists MONEY)"
+    },
+    "R9:PLACE": {
+      "kind": "not-in-source",
+      "outputs": [
+        "xpizza-functions/whatsapp.js#tplOrderReceived",
+        "xpizza-functions/whatsapp.js#tplPickupReceived",
+        "xpizza-functions/whatsapp.js#tplOutForDelivery",
+        "xpizza-functions/whatsapp.js#tplPickupReady"
+      ],
+      "reason": "no WhatsApp template renders an address or pickup location (PLAN §R9 lists PLACE)"
+    },
+    "R12:STATUS": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-functions/index.js#onOrderCancelled"
+      ],
+      "reason": "the status is the trigger's own value (ref /orders/{id}/status: after === 'cancelled'), not a field access"
+    },
+    "R13:MONEY": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/index.html#updateCart",
+        "xpizza-orders/index.html#updateCartReviewBody",
+        "la-musa-orders/index.html#updateCart",
+        "la-musa-orders/index.html#updateCartReviewBody"
+      ],
+      "reason": "pre-order: the form cart reads the in-page cart, not a persisted order"
+    },
+    "R13:ITEMS": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/index.html#updateCart",
+        "xpizza-orders/index.html#updateCartReviewBody",
+        "la-musa-orders/index.html#updateCart",
+        "la-musa-orders/index.html#updateCartReviewBody"
+      ],
+      "reason": "pre-order: the form cart reads the in-page cart, not a persisted order"
+    },
+    "R14:MONEY": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/index.html#renderStage2Summary",
+        "la-musa-orders/index.html#renderStage2Summary"
+      ],
+      "reason": "pre-order: the pay step reads the in-page cart / quote, not a persisted order"
+    },
+    "R14:ITEMS": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/index.html#renderStage2Summary",
+        "la-musa-orders/index.html#renderStage2Summary"
+      ],
+      "reason": "pre-order: the pay step reads the in-page cart, not a persisted order"
+    },
+    "R14:TENDER": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/index.html#renderStage2Summary",
+        "la-musa-orders/index.html#renderStage2Summary"
+      ],
+      "reason": "pre-order: tender / change chips are form state"
+    },
+    "R14:REWARD": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/index.html#renderStage2Summary",
+        "la-musa-orders/index.html#renderStage2Summary"
+      ],
+      "reason": "pre-order: the reward row comes from the account balance / redeem choice, not a persisted order"
+    },
+    "R17:REWARD": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/account.js#rewardsSubscribe",
+        "la-musa-orders/account.js#rewardsSubscribe"
+      ],
+      "reason": "rewards display reads user_rewards/<uid>/<restaurant>, not order fields"
+    },
+    "R18:RECIPE": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/account.js#reorderFromEntry",
+        "xpizza-orders/account.js#applyReorderToCart",
+        "la-musa-orders/account.js#reorderFromEntry",
+        "la-musa-orders/account.js#applyReorderToCart"
+      ],
+      "reason": "RECIPE is derived from the history entry items (dish ids + options) and re-resolved against the live menu; no persisted field carries it as such"
+    },
+    "R19:ITEMS": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/form-group-picker.js#choiceRows",
+        "la-musa-orders/form-group-picker.js#choiceRows"
+      ],
+      "reason": "pre-order: the group picker renders menu choices"
+    },
+    "R19:MONEY": {
+      "kind": "output",
+      "outputs": [
+        "xpizza-orders/form-group-picker.js#priceText",
+        "xpizza-orders/form-group-picker.js#choiceRows",
+        "la-musa-orders/form-group-picker.js#priceText",
+        "la-musa-orders/form-group-picker.js#choiceRows"
+      ],
+      "reason": "pre-order: the group picker renders menu prices"
+    }
+  },
+  "siteApplicability": {
+    "_doc": "codex r3 P1-3 — every site obligation APPLIES, by default, to EVERY cell of its (R, fact) group (all its scenarios × brands × LPs): each such (cell, site) pair is an obligation. Narrowing is ONLY by a reviewed entry here: {site (exact census id), fact, scenarios?, brands?, lps?, reason}. An entry that matches no obligation, has no reason, or leaves the site no REQUIRED cell is RED. Empty at P0 (no narrowing reviewed yet).",
+    "entries": []
+  }
 }

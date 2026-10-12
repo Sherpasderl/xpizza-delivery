@@ -9,15 +9,29 @@
  *    fact ∈ FIELD_FACTS[field] ∩ reviewed facts(R). A site whose intersection is EMPTY is a DELTA (a fact the reviewed
  *    list does not cover) — reported; the guard requires the delta list to equal the reviewed `acceptedDeltas` (empty at
  *    P0 unless reviewed). Every (R, fact) obligation must join to ≥ 1 required cell.
+ *  · APPLICABILITY (codex r3 P1-3): the join is EXPLICIT per (site, fact, scenario, brand, LP). Each site obligation
+ *    carries `applies` — by default every cell of its (R, fact) group; narrowed ONLY by a reviewed
+ *    spec.siteApplicability entry (with reason). Each agreement cell carries `sites`: the indexes (into siteObligations)
+ *    of EVERY site obligation that applies to it — each (cell, site) pair is its own obligation. A (R, fact) group with
+ *    cells but NO census site must be dispositioned in spec.unsitedFacts ('output' / 'not-in-source', named outputs
+ *    checked to exist); its cells carry `outputs` instead. coverage(doc, executed) is the rule P1 enforces dynamically.
  * `node contract/matrix-build.js --write` regenerates matrix.json.
  */
 const fs = require('fs');
 const path = require('path');
 
-const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'matrix-spec.json'), 'utf8'));
+const SPEC_FILE = path.join(__dirname, 'matrix-spec.json');
 const CENSUS = () => JSON.parse(fs.readFileSync(path.join(__dirname, 'census.json'), 'utf8'));
 const OUT = path.join(__dirname, 'matrix.json');
+const REPO = path.join(__dirname, '..', '..');
+let SPEC;
 const FACTS_OF = (r) => SPEC.readers[r].facts.map((f) => f.replace(/^census:/, ''));
+// an output `file#fn` exists iff the file defines fn (function declaration, exports.fn =, or fn = / fn: function)
+function outputExists(ref) {
+  const [file, fn] = ref.split('#'); let src;
+  try { src = fs.readFileSync(path.join(REPO, file), 'latin1'); } catch { return false; }
+  return new RegExp(`(function\\s+${fn}\\b|exports\\.${fn}\\s*=|\\b${fn}\\s*[:=]\\s*(async\\s+)?(function\\b|\\())`).test(src);
+}
 
 function lpsFor(R, S) {
   const rd = SPEC.readers[R]; const sc = SPEC.scenarios[S];
@@ -31,7 +45,8 @@ function lpsFor(R, S) {
   return sc.lps.filter((lp) => pick.includes(lp));
 }
 
-function build() {
+function build(spec) {
+  SPEC = spec || JSON.parse(fs.readFileSync(SPEC_FILE, 'utf8'));
   const cells = []; const problems = [];
   const gapOf = (S, lp) => SPEC.gaps.find((g) => g.scenario === S && g.lp === lp);
   for (const R of Object.keys(SPEC.readers)) {
@@ -85,26 +100,77 @@ function build() {
   for (const c of cells) if (c.kind === 'agreement') c.group = `${c.R}:${c.fact}`;
   const reqCells = new Set(cells.filter((c) => c.status === 'required' && c.kind === 'agreement').map((c) => `${c.R}:${c.fact}`));
   for (const k of obligations.keys()) if (!reqCells.has(k)) problems.push(`obligation ${k} (${obligations.get(k)} sites) joins to no REQUIRED cell`);
+  // codex r3 P1-3 — EXPLICIT applicability: (cell, site) pairs, never an unrestricted group join
+  siteObligations.sort((a, b) => (a.site + a.fact).localeCompare(b.site + b.fact));
+  const cellsOf = {};
+  for (const c of cells) if (c.kind === 'agreement') (cellsOf[c.group] = cellsOf[c.group] || []).push(c);
+  const SA = (SPEC.siteApplicability && SPEC.siteApplicability.entries) || [];
+  SA.forEach((e, i) => {
+    if (!e.reason || !String(e.reason).trim()) problems.push(`siteApplicability[${i}] (${e.site} ${e.fact}) has no reason`);
+    if (!siteObligations.some((o) => o.site === e.site && o.fact === e.fact)) problems.push(`siteApplicability[${i}] (${e.site} ${e.fact}) matches no site obligation (stale)`);
+  });
+  const within = (e, c) => (!e.scenarios || e.scenarios.includes(c.S)) && (!e.brands || e.brands.includes(c.brand)) && (!e.lps || e.lps.includes(c.lp));
+  for (const c of cells) if (c.kind === 'agreement') c.sites = [];
+  siteObligations.forEach((o, i) => {
+    const rs = SA.filter((e) => e.site === o.site && e.fact === o.fact);
+    const app = (cellsOf[o.group] || []).filter((c) => rs.every((e) => within(e, c)));
+    for (const c of app) c.sites.push(i);
+    const uniq = (f) => [...new Set(app.map(f))].sort();
+    o.applies = { scenarios: uniq((c) => c.S), brands: uniq((c) => c.brand), lps: uniq((c) => c.lp), narrowed: rs.length ? rs.map((e) => e.reason) : undefined };
+    if (!o.applies.narrowed) delete o.applies.narrowed;
+    o.requiredCells = app.filter((c) => c.status === 'required').length;
+    if (!o.requiredCells) problems.push(`site obligation ${o.assertion} applies to no REQUIRED cell`);
+  });
+  // site-less groups: an explicit, reviewed disposition (never a silent join)
+  const US = SPEC.unsitedFacts || {};
+  const unsited = [];
+  for (const [g, cs] of Object.entries(cellsOf)) {
+    if (groups[g]) { if (US[g]) problems.push(`unsitedFacts.${g} is stale — the group has census sites`); continue; }
+    const d = US[g];
+    if (!d) { problems.push(`${g}: ${cs.filter((c) => c.status === 'required').length} required cell(s) with NO census site and no unsitedFacts disposition`); continue; }
+    if (!['output', 'not-in-source'].includes(d.kind) || !d.reason || !(d.outputs || []).length) { problems.push(`unsitedFacts.${g}: needs kind output|not-in-source, outputs and a reason`); continue; }
+    for (const ref of d.outputs) if (!outputExists(ref)) problems.push(`unsitedFacts.${g}: output ${ref} does not exist in source`);
+    const [R, fact] = g.split(':');
+    const assertions = d.outputs.map((ref) => `R3:${R}:${fact}:${d.kind === 'not-in-source' ? '!' : '@'}${ref}`);
+    for (const c of cs) { c.outputs = assertions; c.unsited = d.kind; }
+    unsited.push({ group: g, kind: d.kind, outputs: d.outputs, assertions, reason: d.reason, requiredCells: cs.filter((c) => c.status === 'required').length });
+  }
+  for (const g of Object.keys(US)) if (g !== '_doc' && !cellsOf[g]) problems.push(`unsitedFacts.${g} names a group with no cells (stale)`);
+  for (const c of cells) if (c.kind === 'agreement' && c.status === 'required' && !c.sites.length && !(c.outputs || []).length) problems.push(`required cell ${c.cell} has NO applicable assertion`);
   const accepted = new Set((SPEC.acceptedDeltas || []).map((d) => d.site));
   const openDeltas = deltas.filter((d) => !accepted.has(d.site));
   const count = (arr, f) => arr.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {});
   return {
     problems, openDeltas,
     doc: {
-      _doc: 'GENERATED by contract/matrix-build.js from matrix-spec.json + census.json — do not edit by hand.',
-      counts: { outputs: outputList.length, siteAssertions: siteObligations.length, groups: Object.keys(groups).length, siteObligations: siteObligations.length, cells: cells.length, byStatus: count(cells, (c) => c.status), byKind: count(cells, (c) => c.kind), byR: count(cells.filter((c) => c.status === 'required'), (c) => c.R), obligations: obligations.size, obligationSites: [...obligations.values()].reduce((a, b) => a + b, 0), deltas: deltas.length },
+      _doc: 'GENERATED by contract/matrix-build.js from matrix-spec.json + census.json — do not edit by hand. cells[].sites = indexes into siteObligations: EVERY site obligation applicable to that (R, fact, scenario, brand, LP) — each (cell, site) pair is an obligation; cells[].outputs = the reviewed output assertions of a site-less group (unsited).',
+      counts: { cellSitePairs: cells.reduce((a, c) => a + (c.sites || []).length, 0), requiredCellSitePairs: cells.reduce((a, c) => a + (c.status === 'required' ? (c.sites || []).length : 0), 0), unsitedGroups: unsited.length, unsitedRequiredCells: unsited.reduce((a, u) => a + u.requiredCells, 0), outputs: outputList.length, siteAssertions: siteObligations.length, groups: Object.keys(groups).length, siteObligations: siteObligations.length, cells: cells.length, byStatus: count(cells, (c) => c.status), byKind: count(cells, (c) => c.kind), byR: count(cells.filter((c) => c.status === 'required'), (c) => c.R), obligations: obligations.size, obligationSites: [...obligations.values()].reduce((a, b) => a + b, 0), deltas: deltas.length },
       gaps: cells.filter((c) => c.status === 'gap').reduce((m, c) => { const k = `${c.R} ${c.S} ${c.brand} ${c.lp}`; if (!m.find((x) => x.key === k)) m.push({ key: k, reason: c.reason }); return m; }, []),
       obligations: Object.fromEntries([...obligations.entries()].sort()),
       outputs: outputList,
       groups,
-      siteObligations: siteObligations.sort((a, b) => (a.site + a.fact).localeCompare(b.site + b.fact)),
+      siteObligations,
+      unsited,
       deltas,
       cells,
     },
   };
 }
 
-module.exports = { build, OUT };
+// THE COVERAGE RULE (P1 enforces it over the executed set; P0 defines and guards it). `executed` = Set of
+// `${cell}|${assertion}` pairs that ran. Every REQUIRED cell × every applicable site assertion (or reviewed output
+// assertion) must have run; GAP / absence cells are reported, never counted.
+function coverage(doc, executed) {
+  const missing = [];
+  for (const c of doc.cells) {
+    if (c.kind !== 'agreement' || c.status !== 'required') continue;
+    const want = c.sites.length ? c.sites.map((i) => doc.siteObligations[i].assertion) : c.outputs;
+    for (const a of want) if (!executed.has(`${c.cell}|${a}`)) missing.push(`${c.cell}|${a}`);
+  }
+  return missing;
+}
+
+module.exports = { build, coverage, OUT, SPEC_FILE };
 
 if (require.main === module) {
   const { problems, openDeltas, doc } = build();
@@ -114,5 +180,10 @@ if (require.main === module) {
     console.log(`\n${openDeltas.length} open delta site(s) — census reads whose facts the reviewed list does not cover:\n  ${Object.entries(byR).map(([k, v]) => `${k}: ${v}`).join('\n  ')}`);
   }
   if (problems.length) { console.error(`\n${problems.length} problem(s):\n  ${problems.slice(0, 30).join('\n  ')}`); process.exitCode = 1; }
-  if (process.argv.includes('--write')) { fs.writeFileSync(OUT, JSON.stringify(doc, null, 1) + '\n'); console.log('wrote contract/matrix.json'); }
+  if (process.argv.includes('--write')) {
+    // one cell / one site obligation per line (the cell→site index lists would otherwise put every index on a line)
+    const rows = (arr) => `[\n${arr.map((x) => JSON.stringify(x)).join(',\n')}\n]`;
+    const text = JSON.stringify({ ...doc, siteObligations: '\u0000SO', cells: '\u0000CELLS' }, null, 1).replace('"\\u0000SO"', () => rows(doc.siteObligations)).replace('"\\u0000CELLS"', () => rows(doc.cells));
+    fs.writeFileSync(OUT, text + '\n'); console.log('wrote contract/matrix.json');
+  }
 }
