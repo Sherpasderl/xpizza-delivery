@@ -1,0 +1,13 @@
+{
+  "launcher": {
+    "name": "Plain Slice",
+    "cat": "individual",
+    "extras_policy": "none"
+  },
+  "label": "Salsa",
+  "choices": [
+    { "choice": "Salsa Roja", "price": 299 },
+    { "choice": "Salsa Vodka", "price": 299 },
+    { "choice": "Combinada", "price": 299, "tags": ["recommended"] }
+  ]
+}

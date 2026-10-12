@@ -1,0 +1,9 @@
+{
+  "launcher": { "name": "Pad Thai", "cat": "noodles", "price": 414 },
+  "label": "Proteína",
+  "choices": [
+    { "choice": "Sin Proteína", "price": 307 },
+    { "choice": "Pollo", "price": 342 },
+    { "choice": "Camarones", "price": 414 }
+  ]
+}
