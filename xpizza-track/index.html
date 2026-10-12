@@ -129,163 +129,38 @@
       margin-bottom: 22px;
     }
 
-    /* Timeline */
-    .timeline {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      padding: 0 4px;
-      margin-bottom: 22px;
-      position: relative;
+    /* ── Segmented progress bar (Uber-Eats-style) — replaces the 4-step timeline ── */
+    .segbar { display: flex; gap: 6px; padding: 2px 2px 0; }
+    .seg { flex: 1; height: 7px; border-radius: 999px; background: var(--border); overflow: hidden; position: relative; }
+    .seg.done { background: var(--success); }
+    .seg.active { background: var(--brand-light); }
+    .seg .fill {
+      position: absolute; inset: 0; transform-origin: left center; transform: scaleX(var(--p, 0));
+      background: var(--brand); border-radius: 999px; transition: transform 0.6s cubic-bezier(.4, 0, .2, 1);
     }
-    .timeline-bar {
-      position: absolute;
-      top: 16px;
-      left: 18px;
-      right: 18px;
-      height: 2px;
-      background: var(--border-strong);
-      z-index: 0;
+    .seg.active .fill::after {
+      content: ""; position: absolute; inset: 0; border-radius: 999px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .65), transparent);
+      transform: translateX(-100%); animation: sweep 1.5s ease-in-out infinite;
     }
-    .timeline-fill {
-      position: absolute;
-      top: 16px;
-      left: 18px;
-      height: 2px;
-      background: var(--brand);
-      z-index: 0;
-      transition: width 0.4s ease;
-    }
-    .timeline-fill.success {
-      background: var(--success);
-    }
-    .step {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      flex: 1;
-      position: relative;
-      z-index: 1;
-    }
-    .step-circle {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 2px solid var(--border-strong);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text-mute);
-      transition: all 0.2s ease;
-    }
-    .step.done .step-circle {
-      background: var(--brand);
-      border-color: var(--brand);
-      color: white;
-    }
-    .step.current .step-circle {
-      background: var(--surface);
-      border-color: var(--brand);
-      color: var(--brand);
-    }
-    .step.complete .step-circle {
-      background: var(--success);
-      border-color: var(--success);
-      color: white;
-    }
-    .step-label {
-      font-size: 10px;
-      color: var(--text-mute);
-      margin-top: 6px;
-      font-weight: 500;
-      text-align: center;
-    }
-    .step.done .step-label,
-    .step.current .step-label {
-      color: var(--brand-dark);
-      font-weight: 700;
-    }
-    .step.complete .step-label {
-      color: var(--success-dark);
-      font-weight: 700;
+    @keyframes sweep { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(220%); } }
+    @media (prefers-reduced-motion: reduce) {
+      .seg.active .fill::after { animation: none; }
+      .seg .fill { transition: none; }
     }
 
-    /* Status banner */
-    .status-banner {
-      background: var(--brand-light);
-      border-radius: 10px;
-      padding: 14px 14px;
-      margin-bottom: 14px;
-      text-align: center;
-    }
-    .status-banner.success {
-      background: var(--success-light);
-    }
-    .status-banner.danger {
-      background: var(--danger-light);
-    }
-    .status-banner-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--brand-dark);
-      margin-bottom: 2px;
-    }
-    .status-banner.success .status-banner-title {
-      color: var(--success-dark);
-    }
-    .status-banner.danger .status-banner-title {
-      color: var(--danger-dark);
-    }
-    .status-banner-sub {
-      font-size: 12px;
-      color: var(--brand-dark);
-      opacity: 0.85;
-    }
-    .status-banner.success .status-banner-sub {
-      color: var(--success-dark);
-    }
-    .status-banner.danger .status-banner-sub {
-      color: var(--danger-dark);
-    }
-
-    /* Driver card */
-    .driver-card {
-      background: var(--brand-light);
-      border-radius: 10px;
-      padding: 14px 14px;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    /* ── Unified status: avatar (only when a driver) + ONE headline + ONE sub-line ── */
+    .statusrow { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
     .driver-avatar {
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: var(--brand);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      font-weight: 700;
-      flex-shrink: 0;
+      width: 44px; height: 44px; border-radius: 50%; background: var(--brand); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; flex-shrink: 0;
     }
-    .driver-info { flex: 1; }
-    .driver-name {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--brand-dark);
-      margin-bottom: 2px;
-    }
-    .driver-eta {
-      font-size: 12px;
-      color: var(--brand-dark);
-      opacity: 0.85;
-    }
+    .shead { flex: 1; min-width: 0; }
+    .stitle { font-size: 17px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2; color: var(--text); }
+    .stitle.success { color: var(--success-dark); }
+    .stitle.danger { color: var(--danger-dark); }
+    .ssub { font-size: 13px; color: var(--text-soft); margin-top: 3px; line-height: 1.45; }
+    .ssub.big { font-size: 15px; font-weight: 600; color: var(--brand-dark); }
     /* Live driver map (Phase A) */
     .driver-map {
       width: 100%;
@@ -426,40 +301,17 @@
         </div>
         <div class="order-id mono" id="order-id-display">—</div>
 
-        <!-- Timeline -->
-        <div class="timeline" id="timeline">
-          <div class="timeline-bar"></div>
-          <div class="timeline-fill" id="timeline-fill" style="width: 0%;"></div>
-          <div class="step" data-step="received">
-            <div class="step-circle">1</div>
-            <div class="step-label">Recibido</div>
-          </div>
-          <div class="step" data-step="preparing">
-            <div class="step-circle">2</div>
-            <div class="step-label">Preparando</div>
-          </div>
-          <div class="step" data-step="out_for_delivery">
-            <div class="step-circle">3</div>
-            <div class="step-label">En camino</div>
-          </div>
-          <div class="step" data-step="delivered">
-            <div class="step-circle">4</div>
-            <div class="step-label">Entregado</div>
-          </div>
-        </div>
+        <!-- Segmented progress bar (Uber-Eats-style) — replaces the 4-step timeline. No per-segment
+             labels; the single headline below names the state. Segments are built per-status in render(). -->
+        <div class="segbar" id="segbar"></div>
 
-        <!-- Status banner (state-dependent) -->
-        <div id="status-banner" class="status-banner">
-          <div class="status-banner-title" id="banner-title">Cargando...</div>
-          <div class="status-banner-sub" id="banner-sub"></div>
-        </div>
-
-        <!-- Driver card (only shown for out_for_delivery) -->
-        <div id="driver-card" class="driver-card hidden">
-          <div class="driver-avatar" id="driver-avatar">—</div>
-          <div class="driver-info">
-            <div class="driver-name" id="driver-name">—</div>
-            <div class="driver-eta" id="driver-eta">—</div>
+        <!-- Unified status — avatar (only when a driver is assigned) + ONE headline + ONE sub-line. The
+             headline/sub reuse #driver-name / #driver-eta so the shipped core's ETA/map plumbing is unchanged. -->
+        <div class="statusrow" id="statusrow">
+          <div class="driver-avatar" id="driver-avatar" hidden>—</div>
+          <div class="shead">
+            <div class="stitle" id="driver-name">—</div>
+            <div class="ssub" id="driver-eta"></div>
           </div>
         </div>
 
@@ -782,156 +634,154 @@
         }
       }
 
-      // Reset all step classes
-      const steps = document.querySelectorAll('.step');
-      steps.forEach(s => s.classList.remove('done', 'current', 'complete'));
-      const fill = document.getElementById('timeline-fill');
-      fill.classList.remove('success');
-
-      // State-driven rendering
+      // ── Segmented progress bar + unified headline (replaces the 4-step timeline + banner + driver card).
+      // Order-centric: 5 delivery segments Recibido·Preparando·En camino·Llegando·Entregado (pickup: 3 —
+      // Recibido·Preparando·Listo). ONE headline + one sub-line carry all the text; the active segment animates
+      // (inner scaleX fill + shimmer, both off under prefers-reduced-motion). The driver-card copy / no-map /
+      // ETA / map LOGIC is the shipped core — only its DOM home moved into the unified headline (#driver-name /
+      // #driver-eta are reused, so refreshDriverEta / setEtaText / the map plumbing are untouched).
       const status = data.status || 'new';
-      const banner = document.getElementById('status-banner');
-      const bannerTitle = document.getElementById('banner-title');
-      const bannerSub = document.getElementById('banner-sub');
-      const driverCard = document.getElementById('driver-card');
-
-      banner.classList.remove('success', 'danger');
-      driverCard.classList.add('hidden');
-      hideDriverMap();   // reset the live map every render; only the active-drop branch below re-shows it
-      etaIsActive = false;   // Fix C — cleared each render; only the active-drop branch re-arms ETA writes
-
-      // Pickup-aware: order_tracking carries order_type. A pickup order has no driver + no handoff signal,
-      // so its journey ENDS at "Listo para recoger" — a 3-step timeline (hide the 4th step) with Listo as the
-      // celebratory terminal state. Delivery keeps its full 4-step En camino / Entregado flow.
       const isPickup = data.order_type === 'pickup';
       const brandName = (rid) => rid === 'la_musa' ? 'La Musa' : 'X. Pizza';
-      const step4El = document.querySelector('.step[data-step="delivered"]');
-      step4El.style.display = isPickup ? 'none' : '';                          // pickup = 3 steps
-      document.querySelector('.step[data-step="out_for_delivery"] .step-label').textContent = isPickup ? 'Listo' : 'En camino';
-      if (!isPickup) step4El.querySelector('.step-label').textContent = 'Entregado';
+      const titleEl = document.getElementById('driver-name');    // the one big headline
+      const subEl = document.getElementById('driver-eta');       // the one sub-line (also the live-ETA slot)
+      const avatarEl = document.getElementById('driver-avatar');
+      const segbarEl = document.getElementById('segbar');
 
+      hideDriverMap();         // reset the live map every render; only the active-drop branch re-shows it
+      etaIsActive = false;     // Fix C — cleared each render; only the active-drop branch re-arms ETA writes
+      avatarEl.hidden = true;  // only an assigned driver gets an avatar
+      titleEl.className = 'stitle';
+      subEl.className = 'ssub';
+      segbarEl.style.opacity = '1';
+      document.getElementById('updated-text').classList.remove('hidden');
+
+      // Build the segmented bar. seg[i] ∈ 'done' | { a: fraction } (active, animated) | 'pending'.
+      const paintSegbar = (segs) => {
+        segbarEl.innerHTML = '';
+        segs.forEach((node) => {
+          const seg = document.createElement('div');
+          if (node === 'done') { seg.className = 'seg done'; }
+          else if (node === 'pending') { seg.className = 'seg'; }
+          else {
+            seg.className = 'seg active';
+            const f = document.createElement('div'); f.className = 'fill'; seg.appendChild(f);
+            requestAnimationFrame(() => f.style.setProperty('--p', node.a));   // 0 → fraction = the fill animates
+          }
+          segbarEl.appendChild(seg);
+        });
+      };
+
+      // CANCELLED — unchanged copy; dim the bar, no progression, hide the live-updates line.
       if (status === 'cancelled') {
-        // Cancelled — special state, no timeline progression shown
-        document.getElementById('timeline').style.opacity = '0.4';
-        banner.classList.add('danger');
-        bannerTitle.textContent = 'Pedido cancelado';
-        bannerSub.textContent = 'Si pagaste por adelantado, te contactaremos sobre el reembolso';
+        paintSegbar(new Array(isPickup ? 3 : 5).fill('pending'));
+        segbarEl.style.opacity = '0.4';
+        titleEl.className = 'stitle danger';
+        titleEl.textContent = 'Pedido cancelado';
+        subEl.textContent = 'Si pagaste por adelantado, te contactaremos sobre el reembolso';
         document.getElementById('updated-text').classList.add('hidden');
         return;
       }
 
-      document.getElementById('timeline').style.opacity = '1';
-      document.getElementById('updated-text').classList.remove('hidden');
-
-      // Map status → progress (steps 1-4)
-      let progressStep;  // 1, 2, 3, or 4
-      if (status === 'new') progressStep = 1;
-      else if (status === 'preparing') progressStep = 2;
-      else if (status === 'ready') progressStep = isPickup ? 3 : 2;   // pickup: ready = "Listo para recoger" (step 3); delivery: still preparing (awaiting driver)
-      else if (status === 'out_for_delivery') progressStep = 3;
-      else if (status === 'delivered' || status === 'completed') progressStep = 4;
-      else progressStep = 1;  // unknown status — assume just received
-
-      // Mark steps as done/current. For pickup, 'ready' is the TERMINAL state → all visible steps green.
-      const pickupDone = isPickup && (status === 'ready' || status === 'delivered' || status === 'completed');
-      const stepNames = ['received', 'preparing', 'out_for_delivery', 'delivered'];
-      stepNames.forEach((name, idx) => {
-        const stepNum = idx + 1;
-        const stepEl = document.querySelector(`.step[data-step="${name}"]`);
-        if (isPickup && name === 'delivered') return;   // 4th step hidden for pickup
-        if (status === 'delivered' || pickupDone) {
-          stepEl.classList.add('complete');             // all visible steps green
-        } else if (stepNum < progressStep) {
-          stepEl.classList.add('done');
-        } else if (stepNum === progressStep) {
-          stepEl.classList.add('current');
+      if (isPickup) {
+        // PICKUP — 3 segments Recibido·Preparando·Listo; behaviour byte-equivalent to today.
+        if (status === 'ready' || status === 'delivered' || status === 'completed') {
+          paintSegbar(['done', 'done', 'done']);                 // terminal Listo → all green
+          titleEl.className = 'stitle success';
+          if (status === 'ready') {
+            titleEl.textContent = '¡Tu pedido está listo para recoger!';
+            subEl.textContent = `Pasá por ${brandName(data.restaurant_id)} a recogerlo`;
+          } else {
+            titleEl.textContent = '¡Gracias por tu compra!';
+            subEl.textContent = 'Recogido';
+            if (data.delivered_at) {   // preserve today's pickup-delivered timestamp
+              const t = new Date(data.delivered_at), mm = String(t.getMinutes()).padStart(2, '0');
+              const hh = t.getHours(), ampm = hh >= 12 ? 'PM' : 'AM', h12 = (hh % 12) || 12;
+              subEl.textContent = `Recogido a las ${h12}:${mm} ${ampm}`;
+            }
+          }
+          document.getElementById('updated-text').classList.add('hidden');
+        } else if (status === 'preparing') {
+          paintSegbar(['done', { a: .55 }, 'pending']);
+          titleEl.textContent = 'Tu pedido se está preparando';
+          subEl.textContent = 'Te avisaremos cuando esté listo';
+        } else {   // new / unknown
+          paintSegbar([{ a: .5 }, 'pending', 'pending']);
+          titleEl.textContent = 'Recibimos tu pedido';
+          subEl.textContent = 'Estamos por empezar a preparar tu pedido';
         }
-      });
+        return;
+      }
 
-      // Fill bar → the current step's position. Pickup is a 3-step timeline (0/50/100%); delivery 4-step.
-      const fillWidths = isPickup ? { 1: '0%', 2: '50%', 3: '100%' } : { 1: '0%', 2: '33%', 3: '67%', 4: '100%' };
-      fill.style.width = fillWidths[progressStep] || '0%';
-
-      // Banner content per status
+      // DELIVERY — 5 segments.
       if (status === 'new') {
-        bannerTitle.textContent = 'Recibimos tu pedido';
-        bannerSub.textContent = 'Estamos por empezar a preparar tu pedido';
-      } else if (status === 'ready' && isPickup) {
-        banner.classList.add('success');
-        fill.classList.add('success');
-        bannerTitle.textContent = '¡Tu pedido está listo para recoger!';
-        bannerSub.textContent = `Pasá por ${brandName(data.restaurant_id)} a recogerlo`;
+        paintSegbar([{ a: .5 }, 'pending', 'pending', 'pending', 'pending']);
+        titleEl.textContent = 'Recibimos tu pedido';
+        subEl.textContent = 'Estamos por empezar a preparar tu pedido';
       } else if (status === 'preparing' || status === 'ready') {
-        bannerTitle.textContent = 'Tu pedido se está preparando';
-        bannerSub.textContent = isPickup ? 'Te avisaremos cuando esté listo' : 'Te avisaremos cuando vaya en camino';
+        paintSegbar(['done', { a: .55 }, 'pending', 'pending', 'pending']);
+        titleEl.textContent = 'Tu pedido se está preparando';
+        subEl.textContent = 'Te avisaremos cuando vaya en camino';
       } else if (status === 'out_for_delivery') {
-        // Banner is just complementary — main info is in the driver card below
         if (data.driver_name) {
-          // Hide banner, show driver card
-          banner.classList.add('hidden');
-          driverCard.classList.remove('hidden');
           const driverName = data.driver_name;
-          document.getElementById('driver-avatar').textContent =
-            driverName.charAt(0).toUpperCase();
-          // Active drop = this order is the driver's current live delivery (server-gated is_active_drop +
-          // a mirrored location). A stacked driver's WAITING order is out_for_delivery WITHOUT is_active_drop.
+          avatarEl.hidden = false;
+          avatarEl.textContent = driverName.charAt(0).toUpperCase();
+          // Active drop = this order is the driver's current live delivery (server-gated is_active_drop + a
+          // mirrored location). A stacked driver's WAITING order is out_for_delivery WITHOUT is_active_drop.
           const isActiveDrop = !!(data.is_active_drop && data.driver_location
             && Number.isFinite(data.driver_location.lat) && Number.isFinite(data.driver_location.lng));
+          // FUTURE close-hook seam: when a close-ETA signal lands, advance to the 4th segment (Llegando) +
+          // "{Driver} está llegando". Default OFF now, so the bar sits at En camino (3rd) in all 3 OFD
+          // sub-states — the visible upgrade is the MAP appearing, not a segment flip.
+          //   if (isActiveDrop && data.near_arrival === true) {
+          //     paintSegbar(['done','done','done',{ a: .72 },'pending']);
+          //     titleEl.textContent = driverName + ' está llegando'; subEl.className = 'ssub big';
+          //     etaIsActive = true; refreshDriverEta(data); updateDriverMap(data); return;
+          //   }
           if (isActiveDrop) {
             // Live map — the driver glides toward the customer pin, with a real tightening ETA (Phase B).
-            document.getElementById('driver-name').textContent = driverName + ' está en camino';
+            paintSegbar(['done', 'done', { a: .5 }, 'pending', 'pending']);
+            titleEl.textContent = driverName + ' está en camino';
+            subEl.className = 'ssub big';
             etaIsActive = true;       // Fix C — arm ETA writes; a route callback that resolves after a flip is dropped
             refreshDriverEta(data);   // throttled traffic-aware Directions ETA; falls back to 12-min on any failure
             updateDriverMap(data);
           } else if (data.is_active_drop === false) {
             // EXPLICIT stacked waiting drop — the driver is finishing another delivery first. Locked copy,
-            // no map (they'd otherwise watch the driver visit someone else) and no naive countdown (it would
-            // tick toward ~1 min while the driver is still at the other customer's door). Auto-upgrades to
-            // the live map + tightening ETA via the onValue sub the moment they become the active drop
-            // (the ingest mirror flips is_active_drop → true). Server emits the false signal from the
-            // status→out_for_delivery trigger, only when another order is confirmed to be the driver's
-            // active drop right now; a single/non-stacked order never reaches here (falls to neutral below).
-            document.getElementById('driver-name').textContent = driverName;
-            document.getElementById('driver-eta').textContent =
-              'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
+            // no map (they'd otherwise watch the driver visit someone else) and no naive countdown. The bar's
+            // active segment carries a smaller fill than an active drop (.35 vs .5) — behind another delivery,
+            // yet never a separate step the customer stares at. Auto-upgrades to the live map + tightening ETA
+            // via the onValue sub the moment they become the active drop (the ingest mirror flips is_active_drop).
+            paintSegbar(['done', 'done', { a: .35 }, 'pending', 'pending']);
+            titleEl.textContent = driverName + ' va en camino';
+            subEl.textContent = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
           } else {
             // Absent/unknown (the seconds between status→out_for_delivery and the first GPS mirror, on a
             // single order) → today's NEUTRAL copy. Never the false "finishing another delivery"; no map.
-            // Upgrades to the live map on the first mirror.
-            document.getElementById('driver-name').textContent = driverName + ' está en camino';
+            paintSegbar(['done', 'done', { a: .5 }, 'pending', 'pending']);
+            titleEl.textContent = driverName + ' está en camino';
+            subEl.className = 'ssub big';
             const eta = computeEta(data);
-            document.getElementById('driver-eta').textContent = eta
-              ? `Llega en ~${eta} min`
-              : 'En ruta a tu dirección';
+            subEl.textContent = eta ? `Llega en ~${eta} min` : 'En ruta a tu dirección';
           }
         } else {
-          banner.classList.remove('hidden');
-          bannerTitle.textContent = 'Tu pedido va en camino';
-          bannerSub.textContent = 'Pronto llegará a tu dirección';
+          // No driver assigned yet — order is out but we have no name.
+          paintSegbar(['done', 'done', { a: .5 }, 'pending', 'pending']);
+          titleEl.textContent = 'Tu pedido va en camino';
+          subEl.textContent = 'Pronto llegará a tu dirección';
         }
       } else if (status === 'delivered' || status === 'completed') {
-        banner.classList.remove('hidden');
-        banner.classList.add('success');
-        fill.classList.add('success');
-        bannerTitle.textContent = isPickup ? '¡Gracias por tu compra!' : '¡Buen provecho!';
-        const doneVerb = isPickup ? 'Recogido' : 'Entregado';
-        if (data.delivered_at) {
-          const t = new Date(data.delivered_at);
-          const hh = t.getHours();
-          const mm = String(t.getMinutes()).padStart(2, '0');
-          const ampm = hh >= 12 ? 'PM' : 'AM';
-          const displayHr = ((hh % 12) || 12);
-          bannerSub.textContent = `${doneVerb} a las ${displayHr}:${mm} ${ampm}`;
-        } else {
-          bannerSub.textContent = doneVerb;
-        }
-        // Hide live updates indicator (terminal state)
+        paintSegbar(['done', 'done', 'done', 'done', 'done']);
+        titleEl.className = 'stitle success';
+        titleEl.textContent = '¡Pedido entregado!';
+        subEl.textContent = 'Gracias por tu pedido. ¡Buen provecho!';
         document.getElementById('updated-text').classList.add('hidden');
-      }
-
-      // Show banner if we didn't hide it (out_for_delivery with driver hides it)
-      if (status !== 'out_for_delivery' || !data.driver_name) {
-        banner.classList.remove('hidden');
+      } else {
+        // unknown status — assume just received
+        paintSegbar([{ a: .5 }, 'pending', 'pending', 'pending', 'pending']);
+        titleEl.textContent = 'Recibimos tu pedido';
+        subEl.textContent = 'Estamos por empezar a preparar tu pedido';
       }
     }
 
