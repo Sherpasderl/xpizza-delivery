@@ -98,7 +98,12 @@ function body(rid, oid, name, method, { lines = 1, itemsText = null, type = 'del
     const host = createFirebaseHost({ pageId: `obs${cell}`, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
     const p = await bootPage(dir, { host, url, beforeScripts: (w) => { installGoogleMaps(w); } });
     for (let i = 0; i < 60 && !host.subs.length; i += 1) await new Promise((r) => setTimeout(r, 50));
-    await host.barrier(); await p.settle();
+    await host.barrier();
+    const settled = await p.settle();
+    // codex r1 P2: an observation counts only from a page that booted cleanly, subscribed and settled
+    const errs = [...p.errors.filter((e) => !/Could not parse CSS stylesheet/.test(e)), ...host.callbackErrors.map((e) => `callback ${e.path}: ${e.error}`)];
+    assert.deepStrictEqual(errs, [], FAIL(`OBS-${cell}`, `${dir} page / callback errors:\n  ${errs.join('\n  ')}`));
+    assert.ok(settled && host.subs.length && host.subs.every((x) => !x.error), FAIL(`OBS-${cell}`, `${dir} did not subscribe and settle (settled ${settled}, subs ${host.subs.length})`));
     return { p, host, text: p.doc.body.textContent.replace(/\s+/g, ' ') };
   };
   const around = (text, needle, span = 140) => { const i = text.indexOf(needle); return i < 0 ? null : text.slice(Math.max(0, i - 20), i + span); };
@@ -145,7 +150,8 @@ function body(rid, oid, name, method, { lines = 1, itemsText = null, type = 'del
     D1: /Pagado online/.test(OBS.readers.R2.card_delivery || '') && /Pagado online/.test(OBS.readers.R2.empty || '') ? 'CONFIRMED (runtime): dispatch chip shows "Pagado online" for card_delivery AND for \'\'' : 'NOT REPRODUCED',
     D2: OBS.readers.R3.payLines.some((l) => /Tarjeta · pagado/.test(l)) ? `CONFIRMED (runtime): lite paymentLine includes "Tarjeta · pagado" (${JSON.stringify(OBS.readers.R3.payLines)})` : `NOT REPRODUCED (${JSON.stringify(OBS.readers.R3.payLines)})`,
     D6: OBS.readers.R7.rawCardDelivery ? 'CONFIRMED (runtime): dashboard prints raw "card_delivery"' : 'NOT REPRODUCED',
-    D12: /Recoger en X\. Pizza/.test(OBS.readers.R8.persistedAddressShort || '') ? `CONFIRMED (writer + tracker): la_musa pickup address_short = "${OBS.readers.R8.persistedAddressShort}"` : `NOT REPRODUCED ("${OBS.readers.R8.persistedAddressShort}")`,
+    // codex r1 P2: CONFIRMED only from the RENDERED tracker text (the persisted value alone is the writer, not the reader)
+    D12: /Recoger en X\. Pizza/.test(OBS.readers.R8.la_musa_pickup || '') ? `CONFIRMED (runtime, rendered tracker): La Musa pickup shows "${OBS.readers.R8.la_musa_pickup.trim()}" (persisted address_short "${OBS.readers.R8.persistedAddressShort}")` : `NOT REPRODUCED in the rendered tracker (captured ${JSON.stringify(OBS.readers.R8.la_musa_pickup)})`,
     D13_KDS: OBS.readers.R1.showsClientText && !OBS.readers.R1.showsPricedName ? 'CONFIRMED (runtime): KDS shows the CLIENT items_text, not the priced line' : `NOT REPRODUCED (${JSON.stringify(OBS.readers.R1)})`,
     S14: `CONFIRMED (runtime): 'efectivo' → payment_method '' persisted (HTTP 200)`,
   };
@@ -153,7 +159,8 @@ function body(rid, oid, name, method, { lines = 1, itemsText = null, type = 'del
   // the reviewed record is committed; a normal run writes to the temp dir (R3_WRITE_OBS=1 refreshes the committed one)
   fs.writeFileSync(process.env.R3_WRITE_OBS === '1' ? path.join(__dirname, 'd-observations.json') : path.join(require('os').tmpdir(), 'r3-d-observations.json'), JSON.stringify(OBS, null, 1) + '\n');
   for (const [k, v] of Object.entries(verdict)) console.log(`  ${k}: ${v}`);
-  ok(`observed reader outputs for D1, D2, D6, D12, D13 (KDS) and S14 → contract/d-observations.json`);
+  assert.ok(OBS.readers.R8.la_musa_pickup, FAIL('OBS-R8', 'premise — the tracker rendered the pickup line (non-empty capture)'));
+  ok(`observed reader outputs for D1, D2, D6, D12 (rendered tracker text), D13 (KDS) and S14 — every page booted with no page / callback error, subscribed and settled`);
   S.assertClean();
   console.log(`\nr3-p0-observations: OK (${n})`);
   process.exit(0);

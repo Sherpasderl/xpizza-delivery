@@ -70,8 +70,8 @@
    ]
   },
   "R7": {
-   "card_delivery": "12-oct, 10:09 a. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 10:09 a. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Personalizado Del al Aplicar Resumen del período 4 Pedidos 0 En",
-   "empty": "12-oct, 10:09 a. m. Obs Emptyob_empty Entrega Nuevo — L340 12-oct, 10:09 a. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 10:09 a. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Pers",
+   "card_delivery": "12-oct, 01:53 p. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 01:53 p. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Personalizado Del al Aplicar Resumen del período 4 Pedidos 0 En",
+   "empty": "12-oct, 01:53 p. m. Obs Emptyob_empty Entrega Nuevo — L340 12-oct, 01:53 p. m. Obs Cardob_card Entrega Nuevo card_delivery L677 12-oct, 01:53 p. m. Revisión Hoy · 12 oct – 12 oct 2026 Período Hoy Ayer 7 días 30 días Pers",
    "rawCardDelivery": true
   },
   "R1": {
@@ -88,7 +88,7 @@
   "D1": "CONFIRMED (runtime): dispatch chip shows \"Pagado online\" for card_delivery AND for ''",
   "D2": "CONFIRMED (runtime): lite paymentLine includes \"Tarjeta · pagado\" ([\"Tarjeta · pagado\",\"Tarjeta · pagado\",\"Efectivo · paga exacto\",\"Efectivo · paga exacto\"])",
   "D6": "CONFIRMED (runtime): dashboard prints raw \"card_delivery\"",
-  "D12": "CONFIRMED (writer + tracker): la_musa pickup address_short = \"Recoger en X. Pizza\"",
+  "D12": "CONFIRMED (runtime, rendered tracker): La Musa pickup shows \"an Spicy WontonL223 Recoger en X. Pizza Total: L223 Actualizando en tiempo real Guardalo para reorde\" (persisted address_short \"Recoger en X. Pizza\")",
   "D13_KDS": "CONFIRMED (runtime): KDS shows the CLIENT items_text, not the priced line",
   "S14": "CONFIRMED (runtime): 'efectivo' → payment_method '' persisted (HTTP 200)"
  }
