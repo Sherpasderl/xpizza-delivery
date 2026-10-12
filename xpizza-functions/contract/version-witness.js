@@ -21,6 +21,8 @@
  */
 const path = require('path');
 const { ALS } = require('./scheduler');
+const { AsyncLocalStorage } = require('async_hooks');
+const GATE_CALL = new AsyncLocalStorage();   // codex r1 P1-6: provenance bound to EACH gate call, not read from a shared per-rid slot
 
 const FN = path.join(__dirname, '..');
 let installed = null;
@@ -57,16 +59,32 @@ function install() {
   const mg = require(path.join(FN, 'catalog/menu-gates'));
   const hookedGate = mg.createGateReader;                 // the R1c-hooked factory
   const lastPointer = new Map(); const pointerReads = []; let gatesBuilt = 0;
+  // Per CALL: the call runs in its own GATE_CALL context, which records — in order of authority — the version its menu
+  // read was made FOR (getMenu(rid, versionId)), the pointer IT fetched (getVersionId inside the call), else the cached
+  // pointer at the moment the call STARTED (the gate checks its pointer cache synchronously, before its first await, so no
+  // other call can move it in between). A fallback result has no version. A concurrent call never overwrites another's.
   mg.createGateReader = function witnessedGate(opts = {}) {
     gatesBuilt += 1;
-    const gv = opts.getVersionId;
-    const observed = typeof gv === 'function' ? { ...opts, getVersionId: async (rid) => { const v = await gv(rid); lastPointer.set(rid, v); pointerReads.push({ rid, versionId: v }); return v; } } : opts;
+    const gv = opts.getVersionId; const gm = opts.getMenu;
+    const observed = { ...opts };
+    if (typeof gv === 'function') observed.getVersionId = async (rid) => { const v = await gv(rid); lastPointer.set(rid, v); pointerReads.push({ rid, versionId: v }); const st = GATE_CALL.getStore(); if (st && st.rid === rid) st.fetched = v; return v; };
+    if (typeof gm === 'function') observed.getMenu = (rid, versionId) => { const st = GATE_CALL.getStore(); if (st && st.rid === rid) st.menuFor = versionId; return gm(rid, versionId); };
     const g = hookedGate.call(this, observed);
-    const record = (rid, method, extra) => { const store = ALS.getStore(); const rec = { rid, method, versionId: lastPointer.has(rid) ? lastPointer.get(rid) : null, ...extra };
-      if (store && Array.isArray(store.served)) (store.gates || (store.gates = [])).push(rec); else unattributed.push({ gate: rec }); };
+    const record = (call, method, extra) => {
+      const store = ALS.getStore();
+      const versionId = extra.fallback ? null : (call.menuFor !== undefined ? call.menuFor : (call.fetched !== undefined ? call.fetched : (call.startPointer !== undefined ? call.startPointer : null)));
+      const rec = { rid: call.rid, method, versionId, via: extra.fallback ? 'fallback' : (call.menuFor !== undefined ? 'menu-read' : (call.fetched !== undefined ? 'pointer-fetch' : 'cached-pointer-at-start')), ...extra };
+      if (store && Array.isArray(store.served)) (store.gates || (store.gates = [])).push(rec); else unattributed.push({ gate: rec });
+    };
+    const wrapCall = (method, fn, summarize) => async (rid, ...a) => {
+      const call = { rid, startPointer: lastPointer.has(rid) ? lastPointer.get(rid) : undefined };
+      const r = await GATE_CALL.run(call, () => fn(rid, ...a));
+      record(call, method, summarize(r));
+      return r;
+    };
     const out = { ...g };
-    if (typeof g.intakeGatesFor === 'function') out.intakeGatesFor = async (rid, ...a) => { const r = await g.intakeGatesFor(rid, ...a); record(rid, 'intakeGatesFor', { fallback: !!(r && r.fallback) }); return r; };
-    if (typeof g.redeemEligibleFor === 'function') out.redeemEligibleFor = async (rid, ...a) => { const r = await g.redeemEligibleFor(rid, ...a); record(rid, 'redeemEligibleFor', { rule: r == null ? 'static' : 'authored' }); return r; };
+    if (typeof g.intakeGatesFor === 'function') out.intakeGatesFor = wrapCall('intakeGatesFor', g.intakeGatesFor, (r) => ({ fallback: !!(r && r.fallback) }));
+    if (typeof g.redeemEligibleFor === 'function') out.redeemEligibleFor = wrapCall('redeemEligibleFor', g.redeemEligibleFor, (r) => ({ rule: r == null ? 'static' : 'authored' }));
     return out;
   };
   installed = {
