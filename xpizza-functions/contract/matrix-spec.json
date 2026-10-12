@@ -711,7 +711,7 @@
     }
   ],
   "unsitedFacts": {
-    "_doc": "codex r3 P1-3 — a PLAN fact of an R-site with NO census site (the census covers persisted-ORDER field reads). Each such (R, fact) group is dispositioned here, never silently joined: 'output' = the surface shows the fact through a path the census does not attribute (named outputs, file#fn, each checked to exist); 'not-in-source' = the PLAN lists the fact but the named outputs do NOT display it (a PLAN-vs-source finding: the cell asserts the fact's ABSENCE from those outputs until the PLAN table is reconciled). Every site-less group with cells must appear here; an entry for a group that HAS sites is stale (RED).",
+    "_doc": "codex r3 P1-3 — a PLAN fact of an R-site with NO census site (the census covers persisted-ORDER field reads). Each such (R, fact) group is dispositioned here, never silently joined: 'output' = the surface shows the fact through a path the census does not attribute (named outputs, file#fn, each checked to exist); 'not-in-source' = the PLAN lists the fact but the named outputs do NOT display it (a PLAN-vs-source finding: the cell asserts the fact's ABSENCE from those outputs until the PLAN table is reconciled). Every site-less group with cells must appear here; an entry for a group that HAS sites is stale (RED). A disposition may SPLIT ({split: [{when: {fulfil?, scenarios?, lps?}, kind, outputs, reason}]}); every cell must match exactly one part. 'not-in-source' cells get their own kind (reported apart from agreement, listed in matrix.json planReconciliation) and must be reconciled with the PLAN by an advisor ruling before P1 executes the matrix.",
     "R4:DRIVER": {
       "kind": "output",
       "outputs": [
@@ -746,14 +746,70 @@
       "reason": "staff push shows brand · #number · customer (grouped: per-brand counts) — no amount (PLAN §R6 lists MONEY)"
     },
     "R9:PLACE": {
-      "kind": "not-in-source",
-      "outputs": [
-        "xpizza-functions/whatsapp.js#tplOrderReceived",
-        "xpizza-functions/whatsapp.js#tplPickupReceived",
-        "xpizza-functions/whatsapp.js#tplOutForDelivery",
-        "xpizza-functions/whatsapp.js#tplPickupReady"
-      ],
-      "reason": "no WhatsApp template renders an address or pickup location (PLAN §R9 lists PLACE)"
+      "split": [
+        {
+          "when": {
+            "fulfil": [
+              "pickup"
+            ],
+            "lps": [
+              "new"
+            ]
+          },
+          "kind": "output",
+          "outputs": [
+            "xpizza-functions/whatsapp.js#tplPickupReceived"
+          ],
+          "reason": "pickup PLACE = the restaurant's own name (PLAN §3): 'Recibimos tu pedido en <brand> … listo para recoger' names where to collect; asserted against the order's restaurant identity — a literal-vs-identity divergence (brandFor's name vs the restaurant record; D12b) is recorded separately as a divergence, not an absence"
+        },
+        {
+          "when": {
+            "fulfil": [
+              "pickup"
+            ],
+            "lps": [
+              "ready"
+            ]
+          },
+          "kind": "output",
+          "outputs": [
+            "xpizza-functions/whatsapp.js#tplPickupReady"
+          ],
+          "reason": "'Ya puedes pasar por <brand> a recogerlo' IS the pickup-location statement (codex r4 P1-4); asserted against the restaurant identity, literal-vs-identity divergence recorded separately (D12b)"
+        },
+        {
+          "when": {
+            "fulfil": [
+              "pickup"
+            ],
+            "lps": [
+              "completed"
+            ]
+          },
+          "kind": "not-in-source",
+          "outputs": [
+            "xpizza-functions/whatsapp.js#tplDelivered"
+          ],
+          "reason": "no WhatsApp message at pickup completion states a location"
+        },
+        {
+          "when": {
+            "fulfil": [
+              "delivery"
+            ]
+          },
+          "kind": "not-in-source",
+          "outputs": [
+            "xpizza-functions/whatsapp.js#tplOrderReceived",
+            "xpizza-functions/whatsapp.js#tplPreparing",
+            "xpizza-functions/whatsapp.js#tplDriverAssigned",
+            "xpizza-functions/whatsapp.js#tplOutForDelivery",
+            "xpizza-functions/whatsapp.js#tplDelivered",
+            "xpizza-functions/whatsapp.js#tplCancelled"
+          ],
+          "reason": "no delivery-path WhatsApp template renders the delivery address (PLAN §R9 lists PLACE)"
+        }
+      ]
     },
     "R12:STATUS": {
       "kind": "output",
@@ -854,5 +910,39 @@
   "siteApplicability": {
     "_doc": "codex r3 P1-3 — every site obligation APPLIES, by default, to EVERY cell of its (R, fact) group (all its scenarios × brands × LPs): each such (cell, site) pair is an obligation. Narrowing is ONLY by a reviewed entry here: {site (exact census id), fact, scenarios?, brands?, lps?, reason}. An entry that matches no obligation, has no reason, or leaves the site no REQUIRED cell is RED. Empty at P0 (no narrowing reviewed yet).",
     "entries": []
+  },
+  "absenceOutputs": {
+    "_doc": "codex r4 P1-3 — the designated assertion of an ABSENCE cell: the reviewed output(s) that must NOT show the order at that LP (each checked to exist). coverage() requires every required absence cell's assertions to execute, like any other required cell.",
+    "R1": {
+      "outputs": [
+        "xpizza-kitchen/index.html#mapFirebaseOrderToCard",
+        "xpizza-kitchen/index.html#renderCurrentTab"
+      ],
+      "reason": "the KDS card map null-maps pending_payment (and the board renders only mapped cards): no card for an unpaid / reconciliation / stranded order"
+    },
+    "R2": {
+      "outputs": [
+        "xpizza-dispatch/xpizza-delivery.js#subscribeToOrders"
+      ],
+      "reason": "dispatch filters non-live (pending_payment) orders centrally in subscribeToOrders — absent from every board view"
+    },
+    "R3": {
+      "outputs": [
+        "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToOrders"
+      ],
+      "reason": "dispatch-lite filters non-live (pending_payment) orders centrally in subscribeToOrders"
+    },
+    "R4": {
+      "outputs": [
+        "xpizza-driver/xpizza-delivery.js#subscribeToOrders"
+      ],
+      "reason": "the driver app filters non-live (pending_payment) orders centrally in subscribeToOrders"
+    },
+    "R8": {
+      "outputs": [
+        "xpizza-track/index.html#render"
+      ],
+      "reason": "the tracker renders no order journey for a manual_reconciliation order"
+    }
   }
 }

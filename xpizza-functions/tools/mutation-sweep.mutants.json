@@ -11587,7 +11587,7 @@
     "to": "    if (app[0]) app[0].sites.push(i);",
     "label": "a site obligation joins ONE cell of its group (codex r3 P1-3's weak join)",
     "kills_with": [
-      "has NO applicable assertion"
+      "has NO designated assertion"
     ],
     "command": [
       "node",
@@ -11602,6 +11602,7 @@
     "to": "    for (const a of want.slice(0, 1)) if (!executed.has(`${c.cell}|${a}`)) missing.push(`${c.cell}|${a}`);",
     "label": "coverage() checks one assertion per cell (codex r3 P1-3's counter-example would pass)",
     "kills_with": [
+      "coverage() let required ABSENCE cells pass unexecuted",
       "the coverage rule accepted a site executed in only one of its applicable cells"
     ],
     "command": [
@@ -11683,6 +11684,37 @@
     "command": [
       "node",
       "contract/idle-timers.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-14",
+    "slice": "r3p0",
+    "file": "contract/matrix-build.js",
+    "from": "    if (c.status !== 'required') continue;   // codex r4 P1-3: EVERY required cell — agreement, absence, not-in-source",
+    "to": "    if (c.kind !== 'agreement' || c.status !== 'required') continue;",
+    "label": "coverage() skips non-agreement cells — required ABSENCE cells never enforced (codex r4 P1-3)",
+    "kills_with": [
+      "coverage() let required ABSENCE cells pass unexecuted"
+    ],
+    "command": [
+      "node",
+      "contract/matrix.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-15",
+    "slice": "r3p0",
+    "file": "contract/matrix-build.js",
+    "from": "      if (pt.kind === 'not-in-source') c.kind = 'not-in-source';",
+    "to": "      if (false) c.kind = 'not-in-source';",
+    "label": "not-in-source cells counted as agreement (codex r4 P1-4: must be reported apart)",
+    "kills_with": [
+      "not-in-source cells are not reported apart from agreement",
+      "coverage() let required NOT-IN-SOURCE cells pass unexecuted"
+    ],
+    "command": [
+      "node",
+      "contract/matrix.guard.test.js"
     ]
   }
 ]
