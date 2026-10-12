@@ -31,6 +31,9 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   const app = appFor(`r3-${pageId}`, options);
   const db = app.database();
   const subs = []; let seq = 0; const getCalls = []; const callbackErrors = [];
+  // codex r1 P1-5: adapter work IN FLIGHT — a page callback that returned a promise, an outstanding read / write
+  let pendingWork = 0;
+  const track = (p) => { if (!p || typeof p.then !== 'function') return p; pendingWork += 1; const done = () => { pendingWork -= 1; }; p.then(done, done); return p; };
   const SV = admin.database.ServerValue;
 
   // ── snapshots / refs (modular shapes over Admin compat objects) ──
@@ -63,11 +66,15 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   function subscribe(kind, q, cb, cancelCb, opts) {
     const a = adminOf(q);
     if (!a) throw new Error('r3-adapter: subscribe on a non-ref');
-    const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true };
+    const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true, cb };
     subs.push(rec);
     // an exception thrown by the PAGE's callback is the page's error (a browser reports it and keeps running): recorded in
     // callbackErrors — which every page cell asserts empty — never rethrown into the SDK's event loop
-    const guard = (fn) => { try { fn(); } catch (e) { callbackErrors.push({ sub: rec.id, path: rec.path, error: String(e && e.stack || e).slice(0, 600) }); } };
+    const guard = (fn) => {
+      let r;
+      try { r = fn(); } catch (e) { callbackErrors.push({ sub: rec.id, path: rec.path, error: String(e && e.stack || e).slice(0, 600) }); return; }
+      if (r && typeof r.then === 'function') track(r.then(undefined, (e) => { callbackErrors.push({ sub: rec.id, path: rec.path, error: `async: ${String(e && e.stack || e).slice(0, 600)}` }); }));
+    };
     const handler = kind === 'value'
       ? (s) => { rec.delivered += 1; rec.lastSeq = ++seq; guard(() => cb(wrapSnap(s))); }
       : (s, prev) => { rec.delivered += 1; rec.lastSeq = ++seq; guard(() => cb(wrapSnap(s), prev === undefined ? null : prev)); };
@@ -77,9 +84,12 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
     rec.off = () => { if (rec.active) { a.off(kind, handler); rec.active = false; } };
     return rec.off;
   }
-  function off(q, eventType, cb) {   // modular off(query, eventType?, callback?) — callback identity is the page's, mapped by subscription
-    const d = describe(q);
-    for (const s of subs) if (s.active && s.path === (d && d.path) && (!eventType || s.kind === eventType)) s.off();
+  // modular off(query, eventType?, callback?) — codex r1 P2: matches the QUERY (path + constraints), the event type when
+  // given, and the page's CALLBACK identity when given; another query or callback on the same path keeps its listener
+  function off(q, eventType, cb) {
+    const d = describe(q) || {};
+    const sameQuery = (s) => s.path === d.path && JSON.stringify(s.constraints || []) === JSON.stringify(d.constraints || []);
+    for (const s of subs) if (s.active && sameQuery(s) && (!eventType || s.kind === eventType) && (!cb || s.cb === cb)) s.off();
   }
 
   const database = {
@@ -91,17 +101,17 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
     equalTo: (v, k) => C('equalTo', k === undefined ? [v] : [v, k]), startAt: (v, k) => C('startAt', k === undefined ? [v] : [v, k]), endAt: (v, k) => C('endAt', k === undefined ? [v] : [v, k]),
     startAfter: (v, k) => C('startAfter', k === undefined ? [v] : [v, k]), endBefore: (v, k) => C('endBefore', k === undefined ? [v] : [v, k]),
     limitToFirst: (n) => C('limitToFirst', [n]), limitToLast: (n) => C('limitToLast', [n]),
-    get: async (q) => { getCalls.push(describe(q)); return wrapSnap(await adminOf(q).get()); },
+    get: (q) => { getCalls.push(describe(q)); return track((async () => wrapSnap(await adminOf(q).get()))()); },
     onValue: (q, cb, cancelCb, opts) => { if (cancelCb && typeof cancelCb === 'object') { opts = cancelCb; cancelCb = undefined; } return subscribe('value', q, cb, cancelCb, opts); },
     onChildAdded: (q, cb, c, o) => subscribe('child_added', q, cb, c, o),
     onChildChanged: (q, cb, c, o) => subscribe('child_changed', q, cb, c, o),
     onChildRemoved: (q, cb, c, o) => subscribe('child_removed', q, cb, c, o),
     off,
-    set: (r, v) => adminOf(r).set(v),
-    update: (r, v) => adminOf(r).update(v),
-    remove: (r) => adminOf(r).remove(),
+    set: (r, v) => track(adminOf(r).set(v)),
+    update: (r, v) => track(adminOf(r).update(v)),
+    remove: (r) => track(adminOf(r).remove()),
     push: (r, v) => { const t = adminOf(r).push(v); const w = wrapRef(t); if (v !== undefined) { w.then = (a, b) => t.then((x) => wrapRef(x)).then(a, b); w.catch = (b) => t.catch(b); } return w; },
-    runTransaction: async (r, fn, opts) => { const res = await adminOf(r).transaction(fn, undefined, opts && opts.applyLocally !== undefined ? opts.applyLocally : true); return { committed: res.committed, snapshot: wrapSnap(res.snapshot), toJSON: () => ({ committed: res.committed }) }; },
+    runTransaction: (r, fn, opts) => track((async () => { const res = await adminOf(r).transaction(fn, undefined, opts && opts.applyLocally !== undefined ? opts.applyLocally : true); return { committed: res.committed, snapshot: wrapSnap(res.snapshot), toJSON: () => ({ committed: res.committed }) }; })()),
     serverTimestamp: () => SV.TIMESTAMP,
     increment: (n) => SV.increment(n),
   };
@@ -142,7 +152,7 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   async function close() { for (const s of subs) s.off && s.off(); bref.off(); await app.delete(); }
 
   return { pageId, db, modules: { 'firebase-app': appMod, 'firebase-database': database, 'firebase-auth': auth, 'firebase-functions': functions },
-    subs, getCalls, callbackErrors, barrier, seq: () => seq, close };
+    subs, getCalls, callbackErrors, barrier, seq: () => seq, inflight: () => pendingWork, close };
 }
 
 module.exports = { createFirebaseHost, appFor };

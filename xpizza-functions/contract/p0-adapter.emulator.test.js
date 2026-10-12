@@ -80,6 +80,24 @@ async function settleEq(logs, label, ms = 3000) {
     ok('AD4 unsubscribe: no delivery after off, on either side');
   }
 
+  // OFF1 (codex r1 P2): off(query, type, callback) stops ONLY that callback on THAT query
+  {
+    const qA = A.query(A.ref(adb, 'offq'), A.orderByChild('k'), A.equalTo(1));
+    const qB = A.ref(adb, 'offq');
+    const hits = [0, 0, 0];
+    const cb1 = () => { hits[0] += 1; }; const cb2 = () => { hits[1] += 1; }; const cb3 = () => { hits[2] += 1; };
+    A.onValue(qA, cb1); A.onValue(qA, cb2); A.onValue(qB, cb3);
+    await writer.ref('offq/x').set({ k: 1 }); await page.barrier();
+    A.off(qA, 'value', cb1);
+    const active = page.subs.filter((x) => x.path === 'offq').map((x) => x.active);
+    const before = hits.slice();
+    await writer.ref('offq/y').set({ k: 1 }); await page.barrier(); await sleep(150);
+    assert.deepStrictEqual(active, [false, true, true], FAIL('OFF1', `off(A, value, cb1) must stop only cb1 on query A (active ${JSON.stringify(active)})`));
+    assert.ok(hits[0] === before[0] && hits[1] > before[1] && hits[2] > before[2], FAIL('OFF1', `deliveries after off: ${JSON.stringify({ before, hits })}`));
+    A.off(qA); A.off(qB);
+    ok('OFF1 off(query A, "value", cb1): only cb1 stops — cb2 on A and cb3 on the unfiltered query keep delivering');
+  }
+
   // AD5 forEach ordering by the query key
   {
     await writer.ref('ord').set({ a: { n: 3 }, b: { n: 1 }, c: { n: 2 } });

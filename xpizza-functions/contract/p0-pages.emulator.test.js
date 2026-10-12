@@ -71,15 +71,20 @@ function body(oid, name, method) {
     items: [{ name: it.display.name, qty: 1, price: it.price, extras: [] }] };
 }
 
-// [cell, dir, url, the subscription paths that must open]
+// [cell, dir, url, the subscription paths that must open, the EXACT queries on the order-data roots]
+// codex r1 P1-5: the QUERY (path + constraints) is verified, not just the path — an absence cell is only meaningful if the
+// page's order query is the one reviewed (KDS / driver: the whole /orders node, filtered client-side; dispatch: + its
+// pending_payment window). Exact multiset over orders / tasks / drivers / driver_cash / order_tracking.
+const Q = (path, constraints = []) => `value:${path}${constraints.length ? JSON.stringify(constraints) : ''}`;
 const PAGES = [
-  ['R1', 'xpizza-kitchen', 'https://xpizzakitchen.netlify.app/', ['orders', 'menus/x_pizza']],
-  ['R2', 'xpizza-dispatch', 'https://xpizzadispatch.netlify.app/', ['orders', 'tasks', 'drivers', 'driver_cash']],
-  ['R3', 'xpizza-dispatch-mobile', 'https://xpizzadispatchlite.netlify.app/', ['orders', 'tasks', 'drivers']],
-  ['R4', 'xpizza-driver', 'https://xpizzadriver.netlify.app/', ['orders', 'tasks', 'drivers']],
-  ['R7', 'xpizza-dashboard', 'https://xpizzadashboard.netlify.app/', ['orders', 'tasks', 'drivers']],
-  ['R8', 'xpizza-track', null, null],
+  ['R1', 'xpizza-kitchen', 'https://xpizzakitchen.netlify.app/', ['orders', 'menus/x_pizza'], [Q('orders'), Q('orders')]],
+  ['R2', 'xpizza-dispatch', 'https://xpizzadispatch.netlify.app/', ['orders', 'tasks', 'drivers', 'driver_cash'], [Q('drivers'), Q('tasks'), Q('orders'), Q('driver_cash'), Q('orders'), Q('orders', [['orderByChild', 'status'], ['equalTo', 'pending_payment']])]],
+  ['R3', 'xpizza-dispatch-mobile', 'https://xpizzadispatchlite.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('orders'), Q('orders'), Q('drivers'), Q('tasks')]],
+  ['R4', 'xpizza-driver', 'https://xpizzadriver.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('drivers'), Q('tasks'), Q('orders')]],
+  ['R7', 'xpizza-dashboard', 'https://xpizzadashboard.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('orders'), Q('tasks'), Q('drivers')]],
+  ['R8', 'xpizza-track', null, null, null],
 ];
+const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
 
 (async () => {
   await S.fixture(async () => {
@@ -107,17 +112,18 @@ const PAGES = [
   const pickup = (await rtdb.ref('tasks/pg_cash_pickup').get()).val() || {};
   assert.strictEqual(pickup.assigned_driver_id, STAFF, FAIL('P0', `the real auto-assigner assigned pg_cash to the page's driver (${pickup.assigned_driver_id})`));
   const token = cash.r.json.tracking_token;
-  PAGES[5][2] = `https://xpizzatrack.netlify.app/${token}`; PAGES[5][3] = [`order_tracking/${token}`];
+  PAGES[5][2] = `https://xpizzatrack.netlify.app/${token}`; PAGES[5][3] = [`order_tracking/${token}`]; PAGES[5][4] = [Q(`order_tracking/${token}`)];
   ok(`real writers: createOrder pg_cash (HTTP 200) → auto-assigned to ${STAFF} by the real auto-assigner after advance(30 s); chargeOnlineOrder pg_pend stays pending_payment (S6)`);
 
   const OBS = {};
-  for (const [cell, dir, url, wantSubs] of PAGES) {
+  for (const [cell, dir, url, wantSubs, wantQueries] of PAGES) {
     const host = createFirebaseHost({ pageId: cell, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
     let maps = null;
     const p = await bootPage(dir, { host, url, beforeScripts: (w) => { maps = installGoogleMaps(w); } });
     // settled: the auth callback → role check → subscriptions → first render; then the acknowledged barrier + settle
     for (let i = 0; i < 50 && !host.subs.length; i += 1) await new Promise((r) => setTimeout(r, 50));
-    await host.barrier(); await p.settle();
+    await host.barrier();
+    const settled = await p.settle();
     const errs = [...p.errors.filter((e) => !CSS_NOISE.test(e)), ...host.callbackErrors.map((e) => `callback on ${e.path}: ${e.error}`)];
     const text = p.doc.body.textContent;
     const paths = new Set(host.subs.map((s) => s.path));
@@ -126,11 +132,14 @@ const PAGES = [
       assert.deepStrictEqual(errs, [], FAIL(cell, `${dir} boot errors:\n  ${errs.join('\n  ')}`));
       assert.ok(p.evaluated.includes('inline module') || p.evaluated.some((x) => /module/.test(x)), FAIL(cell, `${dir}: its module script ran (${JSON.stringify(p.evaluated)})`));
       for (const w of wantSubs) assert.ok(paths.has(w), FAIL(cell, `${dir}: subscription on ${w} opened (${[...paths].join(', ')})`));
+      assert.strictEqual(settled, true, FAIL(cell, `${dir}: rendering never SETTLED after the barrier (in flight: ${p.inflight()})`));
+      const got = host.subs.filter((x) => ORDER_ROOTS.test(x.path)).map((x) => `${x.kind}:${x.path}${(x.constraints || []).length ? JSON.stringify(x.constraints) : ''}`).sort();
+      assert.deepStrictEqual(got, [...wantQueries].sort(), FAIL(cell, `${dir}: the order-data QUERIES differ from the reviewed set`));
       assert.ok(host.subs.every((s) => !s.error), FAIL(cell, `${dir}: a subscription was cancelled (${JSON.stringify(host.subs.filter((s) => s.error))})`));
       assert.ok(text.includes('Pages Cash'), FAIL(cell, `${dir}: the real order is rendered after the barrier (customer name) — visible text: ${text.replace(/\s+/g, ' ').trim().slice(0, 700)}`));
       if (['R1', 'R4'].includes(cell)) assert.ok(!OBS[cell].pendShown, FAIL(cell, `${dir}: the PENDING online order (S6) is rendered — it must be absent`));
     } finally { p.close(); await host.close(); }
-    ok(`${cell} ${dir}: booted (no script error), ${host.subs.length} subscriptions incl. ${wantSubs.join(', ')}, the order rendered after the barrier${['R1', 'R4'].includes(cell) ? ', the S6 pending order ABSENT' : ''}${maps && maps.maps ? ` (maps double: ${maps.markers.length} markers, ${maps.infoWindows.length} info window)` : ''}`);
+    ok(`${cell} ${dir}: booted (no script error), ${host.subs.length} subscriptions incl. the reviewed order-data queries (${wantQueries.length}), SETTLED after the barrier, the order rendered${['R1', 'R4'].includes(cell) ? ', the S6 pending order ABSENT' : ''}${maps && maps.maps ? ` (maps double: ${maps.markers.length} markers, ${maps.infoWindows.length} info window)` : ''}`);
   }
   console.log(`\nP0-OBS ${JSON.stringify(OBS)}`);
   S.assertClean(['monitorAssignmentTimeout']);

@@ -24,9 +24,9 @@ if (typeof vm.SourceTextModule !== 'function') {
   throw new Error('page-harness: vm.SourceTextModule is unavailable — run with node --experimental-vm-modules');
 }
 
-async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 4000 } = {}) {
+async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 4000, html: htmlOverride = null } = {}) {
   const pageDir = path.join(REPO, dir);
-  const html = fs.readFileSync(path.join(pageDir, 'index.html'), 'utf8');
+  const html = htmlOverride !== null ? htmlOverride : fs.readFileSync(path.join(pageDir, 'index.html'), 'utf8');   // htmlOverride: the harness's own acceptance pages
   const errors = []; const consoleErrors = []; const skipped = []; const refused = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(`jsdom: ${e && e.message}`));
@@ -36,13 +36,19 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const ctx = dom.getInternalVMContext();
 
   // ── environment the browser provides and jsdom does not ──
+  // codex r1 P1-5: a short timer / animation frame stays PENDING until its callback AND the promise it returns (an async
+  // render) have finished — leaving the set when the callback merely STARTED certified unfinished renders.
   const pending = new Set();
+  const finish = (key, r, what) => {
+    if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });
+    else pending.delete(key);
+  };
   const wrapTimer = (name, clear) => {
     const real = win[name].bind(win); const realClear = win[clear].bind(win);
     win[name] = (fn, ms, ...a) => {
       const short = name === 'setTimeout' && Number(ms || 0) <= 500;
       let id;
-      const run = (...x) => { pending.delete(id); try { return fn(...x); } catch (e) { errors.push(`timer: ${e && e.stack || e}`); } };
+      const run = (...x) => { let r; try { r = fn(...x); } catch (e) { errors.push(`timer: ${e && e.stack || e}`); pending.delete(id); return undefined; } finish(id, r, 'timer'); return r; };
       id = real(typeof fn === 'function' ? run : fn, ms, ...a);
       if (short) pending.add(id);
       return id;
@@ -51,7 +57,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   };
   wrapTimer('setTimeout', 'clearTimeout');
   const rawRaf = win.requestAnimationFrame.bind(win);
-  win.requestAnimationFrame = (fn) => { let id; id = rawRaf((t) => { pending.delete(`raf${id}`); try { fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); } }); pending.add(`raf${id}`); return id; };
+  win.requestAnimationFrame = (fn) => { let id; id = rawRaf((t) => { let r; try { r = fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); pending.delete(`raf${id}`); return; } finish(`raf${id}`, r, 'raf'); }); pending.add(`raf${id}`); return id; };
   win.matchMedia = win.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   if (!win.navigator.serviceWorker) Object.defineProperty(win.navigator, 'serviceWorker', { value: { register: async () => ({}), ready: new Promise(() => {}), addEventListener() {}, getRegistration: async () => null }, configurable: true });
   win.Notification = win.Notification || Object.assign(function Notification() {}, { permission: 'denied', requestPermission: async () => 'denied' });
@@ -116,15 +122,18 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   win.document.dispatchEvent(new win.Event('DOMContentLoaded'));
   win.dispatchEvent(new win.Event('load'));
 
+  // settled = no pending short timer / frame (incl. their async continuations) AND no adapter work in flight (subscription
+  // callbacks that returned a promise, outstanding reads / writes), for 3 consecutive polls. Callers ASSERT it returned true.
+  const inflight = () => pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
   async function settle(capMs = settleMs) {
     const t0 = Date.now(); let quiet = 0;
     while (Date.now() - t0 < capMs) {
       await new Promise((r) => setTimeout(r, 20));
-      if (pending.size === 0) { quiet += 1; if (quiet >= 3) return true; } else quiet = 0;
+      if (inflight() === 0) { quiet += 1; if (quiet >= 3) return true; } else quiet = 0;
     }
     return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };
