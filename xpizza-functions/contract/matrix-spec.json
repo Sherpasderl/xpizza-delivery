@@ -176,14 +176,29 @@
       "fulfil": "delivery",
       "pay": "cash"
     },
-    "S17": {
+    "S17d": {
+      "lps": [
+        "new",
+        "preparing",
+        "ready",
+        "assigned",
+        "out_for_delivery",
+        "delivered",
+        "cuadre"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash",
+      "brands": [
+        "r3_synth"
+      ]
+    },
+    "S17p": {
       "lps": [
         "new",
         "ready",
-        "delivered",
         "completed"
       ],
-      "fulfil": "mixed",
+      "fulfil": "pickup",
       "pay": "cash",
       "brands": [
         "r3_synth"
@@ -319,7 +334,8 @@
         "FULFIL",
         "MONEY",
         "census:STATUS",
-        "census:COLLECT"
+        "census:COLLECT",
+        "census:ITEMS"
       ],
       "shows": {
         "*": [
@@ -546,7 +562,9 @@
         "REWARD",
         "SCHED",
         "census:NUM",
-        "census:ITEMS"
+        "census:ITEMS",
+        "census:BRAND",
+        "census:BREAKDOWN"
       ],
       "shows": {
         "S5": [
@@ -569,7 +587,10 @@
         "STATUS",
         "REWARD",
         "census:PLACE",
-        "census:BRAND"
+        "census:BRAND",
+        "census:PAYLIFE",
+        "census:NUM",
+        "census:FULFIL"
       ],
       "shows": {
         "*form": [
@@ -637,7 +658,10 @@
   ],
   "thirdBrand": {
     "brand": "r3_synth",
-    "scenario": "S17",
+    "scenario": [
+      "S17d",
+      "S17p"
+    ],
     "canServe": [
       "R2",
       "R3",
