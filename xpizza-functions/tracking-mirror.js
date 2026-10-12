@@ -50,4 +50,16 @@ function shouldMarkStackedWaiting(thisOrderId, driverCurrentTaskId, activeOrderS
   return true;                                                 // a DIFFERENT order is actively being delivered now
 }
 
-module.exports = { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting };
+// Atomic conditional resolver for the stacked-waiting false write (RTDB transaction updater). The decision
+// to write false is made from a READ of the driver's state; between that read and the write the world can
+// move — order #1 finishes, order #2 becomes the active drop, and the ingest mirror writes is_active_drop
+// TRUE for order #2. A plain set(false) would then CLOBBER that true and downgrade a customer already on the
+// live map back to the "waiting" state (worse than today). As a transaction updater this can NEVER clobber a
+// true: return undefined to ABORT (leave the current value — the promotion stands); otherwise write false
+// (genuine stacked-waiting: current is absent/null/false). Fail-safe is preserved — a transaction failure in
+// the caller's try/catch is just no write.
+function stackedWaitingTxn(cur) {
+  return cur === true ? undefined : false;   // never downgrade an active drop; else mark waiting
+}
+
+module.exports = { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting, stackedWaitingTxn };

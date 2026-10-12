@@ -145,7 +145,7 @@ const {
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
-const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting } = require('./tracking-mirror');
+const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting, stackedWaitingTxn } = require('./tracking-mirror');
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention (tasksToDelete/confirmTaskDelete now used by retention-sweep.js)
 const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');   // shared driver-name cascade + durable delivered_by_* attribution at the terminal edge (real-time trigger)
@@ -4523,7 +4523,11 @@ exports.sendOrderStatusNotifications = onValueWritten(
               ? (await db.ref(`orders/${activeOrderId}/status`).once('value')).val()
               : null;
             if (shouldMarkStackedWaiting(orderId, curTask, activeStatus)) {
-              await db.ref(`order_tracking/${trackingToken}/is_active_drop`).set(false);
+              // ATOMIC conditional (not set): between our read above and this write, order #1 may finish and
+              // the ingest mirror may promote THIS order to is_active_drop:true. The transaction aborts on a
+              // current true → it can never downgrade a customer already on the live map; otherwise it writes
+              // false. (Txn failure stays inside the try/catch below → no write → fail-safe, unchanged.)
+              await db.ref(`order_tracking/${trackingToken}/is_active_drop`).transaction(stackedWaitingTxn);
             }
           }
         } catch (e) {

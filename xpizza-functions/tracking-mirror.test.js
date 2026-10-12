@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting } = require('./tracking-mirror');
+const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting, stackedWaitingTxn } = require('./tracking-mirror');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 
 // ── activeDropOrderId: only the DELIVERY leg is an active drop ──
@@ -57,5 +57,26 @@ assert.equal(shouldMarkStackedWaiting('', 'PZX-1_delivery', 'out_for_delivery'),
 ok('empty thisOrderId → never false');
 assert.equal(shouldMarkStackedWaiting(null, 'PZX-1_delivery', 'out_for_delivery'), false);
 ok('null thisOrderId → never false');
+
+// ── stackedWaitingTxn: the false write is an ATOMIC conditional that can NEVER downgrade an active drop ──
+// Direct resolver semantics: abort (undefined) only on a current true; otherwise write false.
+assert.strictEqual(stackedWaitingTxn(true), undefined); ok('txn: current true → abort (undefined), never downgrade');
+assert.strictEqual(stackedWaitingTxn(false), false); ok('txn: current false → stays false (idempotent)');
+assert.strictEqual(stackedWaitingTxn(null), false); ok('txn: current null → write false (genuine waiting)');
+assert.strictEqual(stackedWaitingTxn(undefined), false); ok('txn: current absent → write false (first write)');
+
+// ── DOWNGRADE-RACE interleave (the gate REVISE): model RTDB transaction semantics — returning undefined
+// ABORTS (value unchanged); any other value COMMITS. The regression: the ingest mirror promotes this order
+// to is_active_drop:true (order #1 finished, order #2 is now active) in the window BEFORE our false emission
+// runs; our stale decision must NOT clobber that true. A plain set(false) would. ⛔
+function applyTxn(initial, updater) { const next = updater(initial); return next === undefined ? initial : next; }
+// INTERLEAVE: ingest already promoted → true BEFORE our write lands → the live-map customer stays on the map.
+assert.strictEqual(applyTxn(true, stackedWaitingTxn), true);
+ok('INTERLEAVE: ingest promoted to true first → false emission does NOT downgrade (stays true)');
+// Genuine stacked-waiting: no prior promotion (absent) → false IS written.
+assert.strictEqual(applyTxn(null, stackedWaitingTxn), false);
+ok('INTERLEAVE: no prior true (genuine waiting) → false IS written');
+assert.strictEqual(applyTxn(false, stackedWaitingTxn), false);
+ok('INTERLEAVE: already false → remains false');
 
 console.log(`tracking-mirror: OK (${n} cases)`);
