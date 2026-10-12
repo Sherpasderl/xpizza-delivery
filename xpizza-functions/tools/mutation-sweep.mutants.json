@@ -11561,25 +11561,6 @@
     ]
   },
   {
-    "id": "r3p0-06",
-    "slice": "r3p0",
-    "file": "contract/page-harness.js",
-    "from": "    const ent = idleEntry(kind, delay, cb); const idle = !!ent;",
-    "to": "    const ent = IDLE[0] || { at: 'any', callback: 'any' }; const idle = true;",
-    "label": "every timer counts as idle (codex r3 P1-2: a retry / unreviewed interval would no longer block settling)",
-    "kills_with": [
-      "settle() certified an unfinished render",
-      "a finite 3-retry sequence was certified settled early",
-      "a NON-allowlisted interval did not block",
-      "a 700 ms + 700 ms transition was certified unfinished"
-    ],
-    "command": [
-      "node",
-      "--experimental-vm-modules",
-      "contract/page-harness.test.js"
-    ]
-  },
-  {
     "id": "r3p0-07",
     "slice": "r3p0",
     "file": "contract/matrix-build.js",
@@ -11656,37 +11637,6 @@
     ]
   },
   {
-    "id": "r3p0-12",
-    "slice": "r3p0",
-    "file": "contract/page-harness.js",
-    "from": "  const idleEntry = (kind, delay, cbSrc) => { const h = idleSha(cbSrc); return IDLE.find((e) => e.kind === (kind === 'i' ? 'interval' : 'timeout') && e.delay === delay && e.cbHash === h); };",
-    "to": "  const idleEntry = (kind, delay, cbSrc) => { return IDLE.find((e) => e.kind === (kind === 'i' ? 'interval' : 'timeout')); };",
-    "label": "an idle entry matches by kind only — a changed callback / delay keeps its exemption (codex r4 P1-2)",
-    "kills_with": [
-      "updateClock with an ADDED WRITE kept its exemption"
-    ],
-    "command": [
-      "node",
-      "--experimental-vm-modules",
-      "contract/page-harness.test.js"
-    ]
-  },
-  {
-    "id": "r3p0-13",
-    "slice": "r3p0",
-    "file": "contract/idle-timers.js",
-    "from": "    if (hits[0].closureHash !== e.closureHash) { stale.push",
-    "to": "    if (false) { stale.push",
-    "label": "a changed HELPER of an idle callback keeps the exemption (codex r4 P1-2)",
-    "kills_with": [
-      "a HELPER of updateClock changes"
-    ],
-    "command": [
-      "node",
-      "contract/idle-timers.guard.test.js"
-    ]
-  },
-  {
     "id": "r3p0-14",
     "slice": "r3p0",
     "file": "contract/matrix-build.js",
@@ -11733,14 +11683,15 @@
     ]
   },
   {
-    "id": "r3p0-17",
+    "id": "r3p0-20",
     "slice": "r3p0",
     "file": "contract/page-harness.js",
-    "from": "    if (st && st.idle) {",
-    "to": "    if (false) {",
-    "label": "an effect inside an idle-exempt callback is ignored (codex r5 P1-1)",
+    "from": "      for (const t of timers.values()) if (t.due <= limit && (!next || t.due < next.due || (t.due === next.due && t.id < next.id))) next = t;",
+    "to": "      for (const t of timers.values()) if (t.due <= now() && (!next || t.due < next.due || (t.due === next.due && t.id < next.id))) next = t;",
+    "label": "settle() never advances virtual time — a timer due within the horizon (KDS 700 ms) never fires (codex r6)",
     "kills_with": [
-      "codex's reassigned-helper probe was NOT caught"
+      "settle() certified an unfinished render",
+      "a 700 ms + 700 ms transition was certified unfinished"
     ],
     "command": [
       "node",
@@ -11749,14 +11700,14 @@
     ]
   },
   {
-    "id": "r3p0-18",
+    "id": "r3p0-21",
     "slice": "r3p0",
     "file": "contract/page-harness.js",
-    "from": "        if (quiet >= 3 && !exercised) {",
-    "to": "        if (false && quiet >= 3 && !exercised) {",
-    "label": "settle() certifies without exercising the idle-exempt ticks (codex's 66 ms settle)",
+    "from": "  win.fetch = (u, o) => trackP(baseFetch(u, o), 'fetch');",
+    "to": "  win.fetch = (u, o) => baseFetch(u, o);",
+    "label": "fetch is not tracked — a timer's write via fetch completes after settle() (codex r6 probes)",
     "kills_with": [
-      "codex's reassigned-helper probe was NOT caught"
+      "its write was not AWAITED before settle() returned"
     ],
     "command": [
       "node",
@@ -11765,19 +11716,20 @@
     ]
   },
   {
-    "id": "r3p0-19",
+    "id": "r3p0-22",
     "slice": "r3p0",
-    "file": "contract/page-harness.js",
-    "from": "  const inCtx = (fn) => { const st = idleCtx.getStore(); return st ? (...x) => idleCtx.run(st, () => fn(...x)) : fn; };",
-    "to": "  const inCtx = (fn) => (...x) => idleCtx.exit(() => fn(...x));",
-    "label": "work an idle tick SCHEDULES loses its idle context (codex r5 P1-1)",
+    "file": "contract/rtdb-adapter.js",
+    "from": "    httpsCallable: (_f, name) => (data) => track((async () => {",
+    "to": "    httpsCallable: (_f, name) => (data) => ((async () => {",
+    "label": "a routed callable invocation is not tracked (codex r6 P1-2)",
     "kills_with": [
-      "idle probe \"scheduled continuation\" was NOT caught"
+      "the real order is rendered after the barrier",
+      "a page timer's routed callable was not awaited"
     ],
     "command": [
-      "node",
-      "--experimental-vm-modules",
-      "contract/page-harness.test.js"
+      "npm",
+      "run",
+      "test:r3-p0-pages"
     ]
   }
 ]

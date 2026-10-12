@@ -8,7 +8,12 @@
  *    → a SyntheticModule over the adapter's exports; any OTHER remote URL → REFUSED (reported, never silently stubbed);
  *  · remote CLASSIC scripts (maps SDKs, fonts) are not executed; each is reported in `skipped` so a page that needed one
  *    shows as a GAP rather than passing;
- *  · the page's own timers are counted so settle() can wait until no short timer (≤ 500 ms) or animation frame is pending.
+ *  · VIRTUAL TIME (codex r6 / advisor structural call): the page's setTimeout / setInterval / requestAnimationFrame / Date /
+ *    performance.now run on a virtual clock — nothing fires on real time. settle(horizonMs) drains the microtask queue,
+ *    then fires every timer due within the horizon (periodic ones included, as normal code), awaiting ALL resulting work:
+ *    each callback's returned promise, fetch / XHR, and the adapter's reads / writes / callables (host.inflight()). It
+ *    returns true only when nothing is due within the horizon and nothing is in flight. There is NO exemption: a display
+ *    clock simply runs and does nothing; anything that writes is a normal, awaited effect.
  *
  * bootPage() never edits a page file: every rewrite is on the import graph (specifier → module), not on source text.
  */
@@ -16,15 +21,6 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { JSDOM, VirtualConsole } = require('jsdom');
-const { resolveEntries, sha: idleSha } = require('./idle-timers');
-const { AsyncLocalStorage } = require('async_hooks');
-// codex r5 P1-1 — RUNTIME enforcement of the idle allowlist: static analysis can be outrun (a reassigned helper, an object
-// method, a dynamic property, an event), so every EFFECT — an SDK write, fetch, sendBeacon, XHR send — is intercepted, and
-// one that happens while code runs ON BEHALF OF an idle-exempt timer callback (its body, its async continuations, the
-// timers / frames it schedules, the events it dispatches synchronously) FAILS the run loudly. An exemption can then only
-// make a test fail; it can never certify an unfinished render.
-const SDK_WRITES = new Set(['set', 'update', 'push', 'remove', 'runTransaction', 'setWithPriority', 'setPriority', 'setDoc', 'updateDoc', 'addDoc', 'deleteDoc', 'writeBatch']);
-
 const REPO = path.join(__dirname, '..', '..');
 const FIREBASE_CDN = /^https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/(firebase-[a-z-]+)\.js$/;
 
@@ -32,7 +28,7 @@ if (typeof vm.SourceTextModule !== 'function') {
   throw new Error('page-harness: vm.SourceTextModule is unavailable — run with node --experimental-vm-modules');
 }
 
-async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 4000, html: htmlOverride = null, idleTimers = null } = {}) {
+async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 8000, horizonMs = 10000, html: htmlOverride = null } = {}) {
   const pageDir = path.join(REPO, dir);
   const html = htmlOverride !== null ? htmlOverride : fs.readFileSync(path.join(pageDir, 'index.html'), 'utf8');   // htmlOverride: the harness's own acceptance pages
   const errors = []; const consoleErrors = []; const skipped = []; const refused = [];
@@ -43,88 +39,59 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const win = dom.window;
   const ctx = dom.getInternalVMContext();
 
-  // ── environment the browser provides and jsdom does not ──
-  // codex r1 P1-5: a short timer / animation frame stays PENDING until its callback AND the promise it returns (an async
-  // render) have finished — leaving the set when the callback merely STARTED certified unfinished renders.
-  const pending = new Set();
+  // ── VIRTUAL TIME ──
+  const RealDate = win.Date; const realNow = () => RealDate.now();
+  let offset = 0; const now = () => realNow() + offset;    // browser time = real time + the virtual time advanced by settle()
+  const pending = new Set(); let seqT = 0;
+  // work in flight: a key stays in `pending` until the callback AND the promise it returned (an async render) finish
   const finish = (key, r, what) => {
     if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });
     else pending.delete(key);
   };
-  // codex r3 P1-2: NO inference. EVERY application timer (setTimeout, any delay, and setInterval) BLOCKS settling unless it
-  // matches the REVIEWED idle allowlist (contract/idle-timers.json). A RUNNING callback — allowlisted or not — is ALWAYS
-  // awaited through its returned promise.
-  // codex r4 P1-2: an entry binds the reviewed SOURCE, not a name — exempt only on an exact (kind, delay, sha256 of the
-  // callback's full normalized source) match of an entry whose callback + helper closure are UNCHANGED in the page's
-  // current source (contract/idle-timers.js resolveEntries); a changed body / helper / delay → not exempt → blocks.
-  const idleCtx = new AsyncLocalStorage(); const idleViolations = [];
-  const effect = (what) => {
-    const st = idleCtx.getStore();
-    if (st && st.idle) {
-      const msg = `idle timer ${st.idle} produced an effect: ${what}`;
-      idleViolations.push(msg); errors.push(`🔴 R3-IDLE-EFFECT ${msg}`);
-    }
-  };
-  // a callback scheduled now runs in the context it was scheduled from (explicit, so jsdom's own loops cannot drop it)
-  const inCtx = (fn) => { const st = idleCtx.getStore(); return st ? (...x) => idleCtx.run(st, () => fn(...x)) : fn; };
-  let IDLE = idleTimers; let staleIdle = [];
-  if (!IDLE) { try { const r = resolveEntries(dir); IDLE = r.active; staleIdle = r.stale.map((x) => `${x.entry.at} ${x.entry.callback.slice(0, 50)} — ${x.why}`); } catch (_) { IDLE = []; } }
-  const timerInfo = new Map(); let seqT = 0;
-  const siteOf = () => {
-    const fr = (String(new Error().stack).split('\n').slice(3, 4)[0] || '').trim();
-    const m = /^at (?:async )?([^\s(]+) \(/.exec(fr);
-    return { fn: m ? m[1] : '<anonymous>', frame: fr };
-  };
-  const norm = (f) => (typeof f === 'function' ? String(f) : '').replace(/\s+/g, ' ').trim();
-  const idleEntry = (kind, delay, cbSrc) => { const h = idleSha(cbSrc); return IDLE.find((e) => e.kind === (kind === 'i' ? 'interval' : 'timeout') && e.delay === delay && e.cbHash === h); };
-  const idleHits = new Set();
-  const track = (kind, site, delay, fn) => {
-    const key = `${kind}${++seqT}`; const cb = norm(fn);
-    const ent = idleEntry(kind, delay, cb); const idle = !!ent; if (idle) idleHits.add(`${ent.at || ''} ${(ent.callback || '').slice(0, 60)}`.trim());
-    timerInfo.set(key, { kind, site, delay, idle, cb: cb.slice(0, 90), label: idle ? `${ent.at || ''} (${(ent.callback || cb).slice(0, 40)})` : null }); if (!idle) pending.add(key); return key;
-  };
-  // run a timer callback: an idle-exempt one inside an idle context (so any effect it — or what it starts — makes is caught)
-  const liveIdle = new Map(); const exercisedIdle = new Set();   // key → { fn, args } of each scheduled idle-exempt timer (exercised by settle())
-  const runAs = (key, fn, x, what) => { const t = timerInfo.get(key); return t && t.idle ? idleCtx.run({ idle: t.label }, () => runTracked(fn, x, what)) : runTracked(fn, x, what); };
-  const runTracked = (fn, x, what) => {   // the callback's own execution + its returned promise are ALWAYS awaited
+  const runTracked = (fn, x, what) => {
     const ek = `exec${++seqT}`; pending.add(ek);
     let r; try { r = fn(...x); } catch (e) { errors.push(`${what}: ${e && e.stack || e}`); pending.delete(ek); return undefined; }
     finish(ek, r, what); return r;
   };
-  const realST = win.setTimeout.bind(win); const realCT = win.clearTimeout.bind(win);
-  const tKey = new Map();
-  win.setTimeout = (fn, ms, ...a) => {
-    const site = siteOf(); let id;
-    const key = track('t', site, Number(ms || 0), fn);
-    id = realST(typeof fn === 'function' ? inCtx((...x) => { const r = runAs(key, fn, x, 'timer'); pending.delete(key); timerInfo.delete(key); return r; }) : fn, ms, ...a);
-    if (typeof fn === 'function' && timerInfo.get(key).idle) liveIdle.set(key, { fn, args: a });
-    tKey.set(id, key); return id;
+  const io = new Set();   // REAL I/O in flight (fetch, XHR) — distinct from page continuations, which may await virtual timers
+  const trackP = (p, what) => { const k = `${what}${++seqT}`; io.add(k); Promise.resolve(p).then(() => io.delete(k), () => io.delete(k)); return p; };
+  const siteOf = () => (String(new Error().stack).split('\n').slice(3, 4)[0] || '').trim().replace(/^at /, '').slice(0, 120);
+  const norm = (f) => (typeof f === 'function' ? String(f) : String(f || '')).replace(/\s+/g, ' ').trim();
+  const timers = new Map(); let nextId = 1;
+  const addTimer = (kind, fn, ms, args, every) => {
+    const id = nextId++; const delay = Math.max(0, Number(ms) || 0);
+    timers.set(id, { id, kind, due: now() + delay, delay, every, fn, args, site: siteOf(), cb: norm(fn).slice(0, 90) });
+    return id;
   };
-  win.clearTimeout = (id) => { const k = tKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); liveIdle.delete(k); } return realCT(id); };
-  const realSI = win.setInterval.bind(win); const realCI = win.clearInterval.bind(win);
-  const iKey = new Map();
-  win.setInterval = (fn, ms, ...a) => {
-    const site = siteOf(); const key = track('i', site, Number(ms || 0), fn);
-    const id = realSI(typeof fn === 'function' ? inCtx((...x) => runAs(key, fn, x, 'interval')) : fn, ms, ...a);
-    if (typeof fn === 'function' && timerInfo.get(key).idle) liveIdle.set(key, { fn, args: a });
-    iKey.set(id, key); return id;
+  win.setTimeout = (fn, ms, ...a) => addTimer('timeout', fn, ms, a, false);
+  win.setInterval = (fn, ms, ...a) => addTimer('interval', fn, ms, a, true);
+  win.clearTimeout = (id) => { timers.delete(id); };
+  win.clearInterval = (id) => { timers.delete(id); };
+  const t0v = now();
+  win.requestAnimationFrame = (fn) => addTimer('raf', fn, 16, null, false);
+  win.cancelAnimationFrame = (id) => { timers.delete(id); };
+  class VDate extends RealDate { constructor(...a) { if (a.length) super(...a); else super(now()); } static now() { return now(); } }
+  win.Date = VDate;
+  try { Object.defineProperty(win.performance, 'now', { value: () => now() - t0v, configurable: true }); } catch (_) { /* jsdom without performance */ }
+  const fire = (t) => {
+    if (t.every) t.due = Math.max(t.due + Math.max(t.delay, 4), now()); else timers.delete(t.id);   // browsers clamp a 0 ms interval
+    if (typeof t.fn !== 'function') { try { vm.runInContext(String(t.fn), ctx); } catch (e) { errors.push(`timer (string): ${e && e.stack || e}`); } return; }
+    runTracked(t.fn, t.kind === 'raf' ? [now() - t0v] : t.args, t.kind);
   };
-  win.clearInterval = (id) => { const k = iKey.get(id); if (k) { pending.delete(k); timerInfo.delete(k); liveIdle.delete(k); } return realCI(id); };
-  // the timers currently BLOCKING (for diagnostics / an allowlist review), and the idle ones the allowlist let through
-  const pendingSites = () => [...timerInfo.entries()].filter(([k]) => pending.has(k)).map(([, t]) => `${t.kind === 'i' ? 'interval' : 'timeout'} ${t.delay}ms — callback: ${t.cb} (${t.site.frame.replace(/^at /, '').slice(0, 120)})`);
-  const idleSites = () => [...idleHits];
-  const rawRaf = win.requestAnimationFrame.bind(win);
-  win.requestAnimationFrame = (fn) => { let id; id = rawRaf(inCtx((t) => { let r; try { r = fn(t); } catch (e) { errors.push(`raf: ${e && e.stack || e}`); pending.delete(`raf${id}`); return; } finish(`raf${id}`, r, 'raf'); })); pending.add(`raf${id}`); return id; };
+  // the timers currently scheduled (diagnostics): due within `withinMs` of now
+  const dueSites = (withinMs = horizonMs) => [...timers.values()].filter((t) => t.due <= now() + withinMs).map((t) => `${t.kind} ${t.delay}ms due +${Math.max(0, t.due - now())}ms — ${t.cb} (${t.site})`);
   win.matchMedia = win.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
   if (!win.navigator.serviceWorker) Object.defineProperty(win.navigator, 'serviceWorker', { value: { register: async () => ({}), ready: new Promise(() => {}), addEventListener() {}, getRegistration: async () => null }, configurable: true });
   win.Notification = win.Notification || Object.assign(function Notification() {}, { permission: 'denied', requestPermission: async () => 'denied' });
   win.Audio = win.Audio || function Audio() { return { play: async () => {}, pause() {}, load() {}, addEventListener() {} }; };
   win.HTMLMediaElement.prototype.play = async function () {};
   win.scrollTo = () => {};
+  // network effects are ordinary, AWAITED work (settle() waits for them); a beacon is fire-and-forget and recorded
   const baseFetch = fetchImpl || (async (u) => { refused.push(`fetch ${u}`); throw new Error(`r3-page: fetch ${u} is not routed in this harness`); });
-  win.fetch = (u, o) => { effect(`fetch ${String(u).slice(0, 80)} ${(o && o.method) || 'GET'}`); return baseFetch(u, o); };
-  Object.defineProperty(win.navigator, 'sendBeacon', { value: (u) => { effect(`sendBeacon ${String(u).slice(0, 80)}`); return true; }, configurable: true });
-  { const xs = win.XMLHttpRequest.prototype.send; win.XMLHttpRequest.prototype.send = function (...x) { effect('XMLHttpRequest.send'); return xs.apply(this, x); }; }
+  const beacons = [];
+  win.fetch = (u, o) => trackP(baseFetch(u, o), 'fetch');
+  Object.defineProperty(win.navigator, 'sendBeacon', { value: (u, d) => { beacons.push(String(u)); return true; }, configurable: true });
+  { const xs = win.XMLHttpRequest.prototype.send; win.XMLHttpRequest.prototype.send = function (...x) { const k = `xhr${++seqT}`; io.add(k); this.addEventListener('loadend', () => io.delete(k)); try { return xs.apply(this, x); } catch (e) { io.delete(k); throw e; } }; }
   win.addEventListener('error', (e) => errors.push(`window error: ${e && (e.error && e.error.stack || e.message)}`));
   win.addEventListener('unhandledrejection', (e) => errors.push(`unhandled rejection: ${e && e.reason && (e.reason.stack || e.reason)}`));
   if (beforeScripts) beforeScripts(win);
@@ -140,9 +107,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     if (cache.has(key)) return cache.get(key);
     const exp = host.modules[name];
     if (!exp) { refused.push(`import ${name}`); throw new Error(`r3-page: no adapter for ${name}`); }
-    // the SDK's WRITE functions are wrapped: each call is an effect (an idle-context call fails the run)
-    const wrapped = Object.fromEntries(Object.entries(exp).map(([k, v]) => [k, typeof v === 'function' && SDK_WRITES.has(k) ? function (...x) { effect(`${name}.${k}()`); return v.apply(this, x); } : v]));
-    const m = new vm.SyntheticModule(Object.keys(wrapped), function () { for (const [k, v] of Object.entries(wrapped)) this.setExport(k, v); }, { context: ctx, identifier: key });
+    const m = new vm.SyntheticModule(Object.keys(exp), function () { for (const [k, v] of Object.entries(exp)) this.setExport(k, v); }, { context: ctx, identifier: key });
     cache.set(key, m); return m;
   };
   const fileModule = (abs) => {
@@ -184,26 +149,33 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   win.document.dispatchEvent(new win.Event('DOMContentLoaded'));
   win.dispatchEvent(new win.Event('load'));
 
-  // settled = no pending short timer / frame (incl. their async continuations) AND no adapter work in flight (subscription
-  // callbacks that returned a promise, outstanding reads / writes), for 3 consecutive polls. Callers ASSERT it returned true.
-  const inflight = () => pending.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
-  // codex r5 P1-1: before certifying "settled", EXERCISE every live idle-exempt timer callback once, in its idle context —
-  // so an exempt tick that would write / fetch (through any path: a reassigned helper, an object method, an event) is
-  // caught NOW, not after the assertion. Any idle effect → never settled (and the error is recorded).
-  async function settle(capMs = settleMs) {
-    const t0 = Date.now(); let quiet = 0; let exercised = false;
-    while (Date.now() - t0 < capMs) {
-      await new Promise((r) => setTimeout(r, 20));
-      if (idleViolations.length) return false;   // an idle timer produced an effect: NEVER settled
-      if (inflight() === 0) {
-        quiet += 1;
-        if (quiet >= 3 && !exercised) { exercised = true; quiet = 0; for (const [k, t] of [...liveIdle]) { exercisedIdle.add((timerInfo.get(k) || {}).label); runAs(k, t.fn, t.args, 'idle-exercise'); } continue; }
-        if (quiet >= 3) return !idleViolations.length;
-      } else quiet = 0;
+  // in flight = page work (timer / frame callbacks and the promises they returned, fetch, XHR) + the adapter's (subscription
+  // callbacks that returned a promise, outstanding reads / writes / callables)
+  const ioInflight = () => io.size + (host && typeof host.inflight === 'function' ? host.inflight() : 0);
+  const inflight = () => pending.size + ioInflight();
+  const turn = () => new Promise((r) => setImmediate(r));
+  // settle(horizonMs): fire every timer due within the horizon (virtual time jumps to each due time), awaiting all resulting
+  // work; true only when nothing is due within the horizon AND nothing is in flight. Order: drain microtasks; while REAL I/O
+  // is in flight, wait for it (real time — virtual time never runs ahead of an outstanding read / write / fetch); else fire
+  // the next due timer (a page continuation may be waiting on it); when nothing is due, page continuations still pending
+  // are stuck → wait, false at the cap. false also if the page schedules without end inside the horizon (> maxFirings).
+  async function settle(horizon = horizonMs, { capMs = settleMs, maxFirings = 20000 } = {}) {
+    const t0 = realNow(); const limit = now() + horizon; let fired = 0;
+    for (;;) {
+      for (let i = 0; i < 3; i++) await turn();          // drain the microtask queue: continuations a timer resolved run now
+      if (ioInflight() > 0) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
+      let next = null;
+      for (const t of timers.values()) if (t.due <= limit && (!next || t.due < next.due || (t.due === next.due && t.id < next.id))) next = t;
+      if (!next) {
+        if (pending.size) { if (realNow() - t0 > capMs) return false; await new Promise((r) => setTimeout(r, 5)); continue; }
+        await turn(); await turn(); if (inflight() === 0 && ![...timers.values()].some((t) => t.due <= limit)) return true; continue;
+      }
+      if (++fired > maxFirings) { errors.push(`settle: more than ${maxFirings} timer firings within a ${horizon} ms horizon — the page schedules without end`); return false; }
+      if (next.due > now()) offset += next.due - now();
+      fire(next);
     }
-    return false;
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, settle, inflight, pendingSites, idleSites, staleIdle, idleViolations, idleExercised: () => [...exercisedIdle], close: () => { process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { now, skewMs: () => offset }, close: () => { timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

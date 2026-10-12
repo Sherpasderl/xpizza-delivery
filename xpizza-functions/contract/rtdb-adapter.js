@@ -131,10 +131,11 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   };
   const functions = {
     getFunctions: () => ({ __r3fns: true }),
-    httpsCallable: (_f, name) => async (data) => {
+    // codex r6 P1-2: a callable invocation is TRACKED work like a read / write — in flight until its handler settles
+    httpsCallable: (_f, name) => (data) => track((async () => {
       if (!callables[name]) throw new Error(`r3-adapter: callable ${name} is not routed in this harness (REFUSED — never silently stubbed)`);
       return { data: await callables[name](data, { uid: user.uid }) };
-    },
+    })()),
   };
   const appMod = { initializeApp: () => ({ name: `r3-${pageId}` }) };
 

@@ -115,7 +115,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   PAGES[5][2] = `https://xpizzatrack.netlify.app/${token}`; PAGES[5][3] = [`order_tracking/${token}`]; PAGES[5][4] = [Q(`order_tracking/${token}`)];
   ok(`real writers: createOrder pg_cash (HTTP 200) → auto-assigned to ${STAFF} by the real auto-assigner after advance(30 s); chargeOnlineOrder pg_pend stays pending_payment (S6)`);
 
-  const OBS = {}; const IDLE_EX = {};
+  const OBS = {}; const SKEW = {};
   for (const [cell, dir, url, wantSubs, wantQueries] of PAGES) {
     const host = createFirebaseHost({ pageId: cell, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
     let maps = null;
@@ -132,11 +132,8 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
       assert.deepStrictEqual(errs, [], FAIL(cell, `${dir} boot errors:\n  ${errs.join('\n  ')}`));
       assert.ok(p.evaluated.includes('inline module') || p.evaluated.some((x) => /module/.test(x)), FAIL(cell, `${dir}: its module script ran (${JSON.stringify(p.evaluated)})`));
       for (const w of wantSubs) assert.ok(paths.has(w), FAIL(cell, `${dir}: subscription on ${w} opened (${[...paths].join(', ')})`));
-      assert.deepStrictEqual(p.idleViolations, [], FAIL(cell, `${dir}: an idle-exempt timer produced an effect (codex r5 P1-1)`));
-      if (dir === 'xpizza-kitchen') assert.ok(p.idleExercised().length >= 2, FAIL(cell, `premise — the kitchen's idle ticks were not exercised (${JSON.stringify(p.idleExercised())})`));
-      IDLE_EX[dir] = p.idleExercised().length;
-      assert.deepStrictEqual(p.staleIdle, [], FAIL(cell, `${dir}: reviewed idle-timer entries no longer bind the page source (codex r4 P1-2)`));
-      assert.strictEqual(settled, true, FAIL(cell, `${dir}: rendering never SETTLED after the barrier (in flight: ${p.inflight()}; blocking timers:\n    ${p.pendingSites().join('\n    ')})`));
+      assert.strictEqual(settled, true, FAIL(cell, `${dir}: rendering never SETTLED after the barrier (in flight: ${p.inflight()}; timers due within the horizon:\n    ${p.dueSites().join('\n    ')})`));
+      SKEW[dir] = p.clock.skewMs();
       const got = host.subs.filter((x) => ORDER_ROOTS.test(x.path)).map((x) => `${x.kind}:${x.path}${(x.constraints || []).length ? JSON.stringify(x.constraints) : ''}`).sort();
       assert.deepStrictEqual(got, [...wantQueries].sort(), FAIL(cell, `${dir}: the order-data QUERIES differ from the reviewed set`));
       assert.ok(host.subs.every((s) => !s.error), FAIL(cell, `${dir}: a subscription was cancelled (${JSON.stringify(host.subs.filter((s) => s.error))})`));
@@ -147,7 +144,21 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   }
   console.log(`\nP0-OBS ${JSON.stringify(OBS)}`);
   S.assertClean(['monitorAssignmentTimeout']);
-  console.log(`  idle-exempt ticks exercised under effect enforcement (codex r5 P1-1): ${JSON.stringify(IDLE_EX)}`);
+  console.log(`  virtual time advanced by settle() per page (ms; every timer due within the 10 s horizon fired as normal code): ${JSON.stringify(SKEW)}`);
+
+  // codex r6 P1-2: a ROUTED CALLABLE invoked from a page timer is tracked work (the REAL adapter): settle() awaits its
+  // handler — the effect is visible before settle() returns
+  {
+    let done = 0;
+    const host = createFirebaseHost({ pageId: 'CALL', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture, callables: { setOrderStatus: async (d) => { await new Promise((r) => setTimeout(r, 150)); done += 1; return { ok: true, id: d.orderId }; } } });
+    const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js'; setTimeout(function tick() { httpsCallable(getFunctions(), 'setOrderStatus')({ orderId: 'probe', status: 'completed' }).then((r) => { document.getElementById('app').textContent = 'called:' + r.data.id; }); }, 1000);</script></body></html>`;
+    const p = await bootPage('xpizza-kitchen', { host, html });
+    try {
+      const settled = await p.settle();
+      assert.ok(settled && done === 1 && p.doc.getElementById('app').textContent === 'called:probe', FAIL('CALL', `a page timer's routed callable was not awaited (${JSON.stringify({ settled, done, text: p.doc.getElementById('app').textContent })})`));
+    } finally { p.close(); await host.close(); }
+    ok('codex r6 P1-2: a page timer invoking a routed callable (real adapter): the handler ran AND its result rendered before settle() returned');
+  }
   console.log(`\nr3-p0-pages: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-p0-pages FAILED:', e && e.stack || e); process.exit(1); });
