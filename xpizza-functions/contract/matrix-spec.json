@@ -752,9 +752,9 @@
           },
           "kind": "output",
           "outputs": [
-            "xpizza-functions/whatsapp.js#tplPickupReceived"
+            "xpizza-functions/whatsapp.js#renderPickupReceived"
           ],
-          "reason": "pickup PLACE = the restaurant's own name (PLAN §3): 'Recibimos tu pedido en <brand> … listo para recoger' names where to collect; asserted against the order's restaurant identity — a literal-vs-identity divergence (brandFor's name vs the restaurant record; D12b) is recorded separately as a divergence, not an absence"
+          "reason": "pickup PLACE = the restaurant's own name (PLAN §3): 'Recibimos tu pedido en <brand> … listo para recoger' names where to collect; asserted against the order's restaurant identity — since D12b (origin/main 239632b) the brand is the restaurant's own config display name (renderTemplate after brand resolution); a divergence from the order's identity is recorded separately, never as an absence"
         },
         {
           "when": {
@@ -767,9 +767,9 @@
           },
           "kind": "output",
           "outputs": [
-            "xpizza-functions/whatsapp.js#tplPickupReady"
+            "xpizza-functions/whatsapp.js#renderPickupReady"
           ],
-          "reason": "'Ya puedes pasar por <brand> a recogerlo' IS the pickup-location statement (codex r4 P1-4); asserted against the restaurant identity, literal-vs-identity divergence recorded separately (D12b)"
+          "reason": "'Ya puedes pasar por <brand> a recogerlo' IS the pickup-location statement (codex r4 P1-4); asserted against the restaurant identity, since D12b the name comes from the restaurant's own config; a divergence from identity is recorded separately"
         },
         {
           "when": {
@@ -782,7 +782,7 @@
           },
           "kind": "not-in-source",
           "outputs": [
-            "xpizza-functions/whatsapp.js#tplDelivered"
+            "xpizza-functions/whatsapp.js#renderDelivered"
           ],
           "reason": "no WhatsApp message at pickup completion states a location",
           "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work"
@@ -795,12 +795,12 @@
           },
           "kind": "not-in-source",
           "outputs": [
-            "xpizza-functions/whatsapp.js#tplOrderReceived",
-            "xpizza-functions/whatsapp.js#tplPreparing",
+            "xpizza-functions/whatsapp.js#renderOrderReceived",
+            "xpizza-functions/whatsapp.js#renderPreparing",
             "xpizza-functions/whatsapp.js#tplDriverAssigned",
             "xpizza-functions/whatsapp.js#tplOutForDelivery",
-            "xpizza-functions/whatsapp.js#tplDelivered",
-            "xpizza-functions/whatsapp.js#tplCancelled"
+            "xpizza-functions/whatsapp.js#renderDelivered",
+            "xpizza-functions/whatsapp.js#renderCancelled"
           ],
           "reason": "no delivery-path WhatsApp template renders the delivery address (PLAN §R9 lists PLACE)",
           "ruling": "dropped 2026-10-12, advisor: not shown by product; product additions are separate feature work"

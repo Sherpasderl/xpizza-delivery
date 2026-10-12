@@ -58,10 +58,10 @@ ok(`coverage covers every required cell: all ${allAgree.size} agreement pairs ex
 // outputs that state no location are not-in-source (reported apart, listed for PLAN reconciliation before P1)
 const r9 = doc.cells.filter((c) => c.R === 'R9' && c.fact === 'PLACE' && c.status === 'required');
 const r9ready = r9.find((c) => c.S === 'S2' && c.lp === 'ready');
-assert.ok(r9ready && r9ready.kind === 'agreement' && r9ready.outputs.includes('R3:R9:PLACE:@xpizza-functions/whatsapp.js#tplPickupReady'), FAIL('R9:PLACE pickup-ready does not assert the displayed pickup location (tplPickupReady)'));
+assert.ok(r9ready && r9ready.kind === 'agreement' && r9ready.outputs.includes('R3:R9:PLACE:@xpizza-functions/whatsapp.js#renderPickupReady'), FAIL('R9:PLACE pickup-ready does not assert the displayed pickup location (renderPickupReady)'));
 assert.ok(r9.filter((c) => c.kind === 'not-in-source').every((c) => c.S !== 'S2' || c.lp === 'completed'), FAIL('an R9:PLACE pickup cell stating the location was classified absent'));
 assert.ok(doc.planReconciliation.length && doc.planReconciliation.every((u) => /^dropped 2026-10-12, advisor/.test(u.ruling || '')) && doc.planReconciliation.every((u) => doc.cells.some((c) => c.kind === 'not-in-source' && c.group === u.group)) && doc.counts.byKind['not-in-source'] === doc.cells.filter((c) => c.kind === 'not-in-source').length, FAIL('not-in-source cells are not reported apart from agreement'));
-ok(`R9:PLACE split: pickup new / ready assert the displayed location (tplPickupReceived / tplPickupReady); delivery + pickup-completed are not-in-source; ${doc.counts.byKind['not-in-source']} not-in-source cells are their own kind, ${doc.planReconciliation.length} parts listed for PLAN reconciliation before P1`);
+ok(`R9:PLACE split: pickup new / ready assert the displayed location (renderPickupReceived / renderPickupReady); delivery + pickup-completed are not-in-source; ${doc.counts.byKind['not-in-source']} not-in-source cells are their own kind, ${doc.planReconciliation.length} parts listed for PLAN reconciliation before P1`);
 
 // codex's counter-example: an execution mapping where every required R2:MONEY cell runs the group's FIRST site and the
 // second site runs in ONE cell satisfies "each cell executes one, each site executes somewhere" — it must now be RED
