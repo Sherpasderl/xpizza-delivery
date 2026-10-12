@@ -21,8 +21,6 @@
  */
 const path = require('path');
 const { ALS } = require('./scheduler');
-const { AsyncLocalStorage } = require('async_hooks');
-const GATE_CALL = new AsyncLocalStorage();   // codex r1 P1-6: provenance bound to EACH gate call, not read from a shared per-rid slot
 
 const FN = path.join(__dirname, '..');
 let installed = null;
@@ -58,33 +56,44 @@ function install() {
   // GATES
   const mg = require(path.join(FN, 'catalog/menu-gates'));
   const hookedGate = mg.createGateReader;                 // the R1c-hooked factory
-  const lastPointer = new Map(); const pointerReads = []; let gatesBuilt = 0;
-  // Per CALL: the call runs in its own GATE_CALL context, which records — in order of authority — the version its menu
-  // read was made FOR (getMenu(rid, versionId)), the pointer IT fetched (getVersionId inside the call), else the cached
-  // pointer at the moment the call STARTED (the gate checks its pointer cache synchronously, before its first await, so no
-  // other call can move it in between). A fallback result has no version. A concurrent call never overwrites another's.
+  const pointerReads = []; let gatesBuilt = 0;
+  // codex r2 P1-2: a gate result is attributed by IDENTITY to the gate's own cache entry. intakeGatesFor returns the cached
+  // entry's own objects (weekend / known / groups), redeemEligibleFor its `redeem` rule; the reader exposes peek(rid, v).
+  // Candidates = the versions the gate has READ menus for. Nothing is inferred from a pointer read — a late, rejected
+  // pointer completion (never accepted into the gate's cache) cannot poison anything. Fallback = no version; more than
+  // one identical entry = recorded as AMBIGUOUS, never guessed.
+  const menusRead = new Map();   // rid -> Set(versionId) the gate built from
   mg.createGateReader = function witnessedGate(opts = {}) {
     gatesBuilt += 1;
     const gv = opts.getVersionId; const gm = opts.getMenu;
     const observed = { ...opts };
-    if (typeof gv === 'function') observed.getVersionId = async (rid) => { const v = await gv(rid); lastPointer.set(rid, v); pointerReads.push({ rid, versionId: v }); const st = GATE_CALL.getStore(); if (st && st.rid === rid) st.fetched = v; return v; };
-    if (typeof gm === 'function') observed.getMenu = (rid, versionId) => { const st = GATE_CALL.getStore(); if (st && st.rid === rid) st.menuFor = versionId; return gm(rid, versionId); };
+    if (typeof gv === 'function') observed.getVersionId = async (rid) => { const v = await gv(rid); pointerReads.push({ rid, versionId: v }); return v; };   // diagnostic only
+    if (typeof gm === 'function') observed.getMenu = (rid, versionId) => { (menusRead.get(rid) || menusRead.set(rid, new Set()).get(rid)).add(versionId); return gm(rid, versionId); };
     const g = hookedGate.call(this, observed);
-    const record = (call, method, extra) => {
-      const store = ALS.getStore();
-      const versionId = extra.fallback ? null : (call.menuFor !== undefined ? call.menuFor : (call.fetched !== undefined ? call.fetched : (call.startPointer !== undefined ? call.startPointer : null)));
-      const rec = { rid: call.rid, method, versionId, via: extra.fallback ? 'fallback' : (call.menuFor !== undefined ? 'menu-read' : (call.fetched !== undefined ? 'pointer-fetch' : 'cached-pointer-at-start')), ...extra };
-      if (store && Array.isArray(store.served)) (store.gates || (store.gates = [])).push(rec); else unattributed.push({ gate: rec });
+    const attribute = (rid, matches) => {
+      const cands = [...(menusRead.get(rid) || [])].filter((v) => { const e = typeof g.peek === 'function' ? g.peek(rid, v) : null; return e && matches(e); });
+      if (cands.length === 1) return { versionId: cands[0], via: 'cache-identity' };
+      if (cands.length > 1) return { versionId: null, via: 'ambiguous', candidates: cands };
+      return { versionId: null, via: 'no-cache-entry' };
     };
-    const wrapCall = (method, fn, summarize) => async (rid, ...a) => {
-      const call = { rid, startPointer: lastPointer.has(rid) ? lastPointer.get(rid) : undefined };
-      const r = await GATE_CALL.run(call, () => fn(rid, ...a));
-      record(call, method, summarize(r));
-      return r;
+    const record = (rid, method, rec) => {
+      const store = ALS.getStore();
+      const out = { rid, method, ...rec };
+      if (store && Array.isArray(store.served)) (store.gates || (store.gates = [])).push(out); else unattributed.push({ gate: out });
     };
     const out = { ...g };
-    if (typeof g.intakeGatesFor === 'function') out.intakeGatesFor = wrapCall('intakeGatesFor', g.intakeGatesFor, (r) => ({ fallback: !!(r && r.fallback) }));
-    if (typeof g.redeemEligibleFor === 'function') out.redeemEligibleFor = wrapCall('redeemEligibleFor', g.redeemEligibleFor, (r) => ({ rule: r == null ? 'static' : 'authored' }));
+    if (typeof g.intakeGatesFor === 'function') out.intakeGatesFor = async (rid, ...a) => {
+      const r = await g.intakeGatesFor(rid, ...a);
+      if (r && r.fallback) record(rid, 'intakeGatesFor', { versionId: null, via: 'fallback', fallback: true });
+      else record(rid, 'intakeGatesFor', { ...attribute(rid, (e) => e.weekend === r.weekend && (e.known === undefined || e.known === r.known) && (e.groups === undefined || e.groups === r.groups)), fallback: false });
+      return r;
+    };
+    if (typeof g.redeemEligibleFor === 'function') out.redeemEligibleFor = async (rid, ...a) => {
+      const r = await g.redeemEligibleFor(rid, ...a);
+      if (r == null) record(rid, 'redeemEligibleFor', { versionId: null, via: 'static', rule: 'static' });
+      else record(rid, 'redeemEligibleFor', { ...attribute(rid, (e) => e.redeem === r), rule: 'authored' });
+      return r;
+    };
     return out;
   };
   installed = {

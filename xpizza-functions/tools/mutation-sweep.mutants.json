@@ -11530,10 +11530,13 @@
     "id": "r3p0-04",
     "slice": "r3p0",
     "file": "contract/version-witness.js",
-    "from": "      const versionId = extra.fallback ? null : (call.menuFor !== undefined ? call.menuFor : (call.fetched !== undefined ? call.fetched : (call.startPointer !== undefined ? call.startPointer : null)));",
-    "to": "      const versionId = extra.fallback ? null : (lastPointer.has(call.rid) ? lastPointer.get(call.rid) : null);",
-    "label": "the gate witness reads the SHARED per-rid pointer at completion again (codex r1 P1-6's defect)",
-    "kills_with": "completed after B selected V2) attributed",
+    "from": "      if (cands.length === 1) return { versionId: cands[0], via: 'cache-identity' };",
+    "to": "      { const last = pointerReads.filter((y) => y.rid === rid).pop(); return { versionId: last ? last.versionId : null, via: 'last-pointer-read' }; }",
+    "label": "the gate witness attributes the LAST pointer read again (codex r1 P1-6 / r2 P1-2 defect)",
+    "kills_with": [
+      "a late, REJECTED pointer completion poisoned the witness",
+      "A (selected V1, completed after B)"
+    ],
     "command": [
       "node",
       "contract/version-witness.test.js"
