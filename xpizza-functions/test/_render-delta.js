@@ -47,26 +47,19 @@ function assertShortCircuit(off, on, at, ops, label) {
   assert.deepStrictEqual(on, want, `🔴 ${label}: the render-ON trace is not the render-OFF prefix + exactly the probe ${JSON.stringify(ops)}, ending there`);
 }
 
-// ── CACHE REFILLS, set aside on BOTH sides of a companion pair — ONLY in their EXACT known shapes (codex PB-2 r1 P2-4) ──
-// Per-instance caches refill on their own TTL in whichever request crosses it, on either side of a pair. Render adds
-// none of these reads in createOrder / chargeOnlineOrder (the charge's render-gated gate read is served from the
-// snapshot redeemEligibleFor already took, as quoteRedemption shows; the refresh delta is proved in the quote suite on a
-// controlled clock). What is set aside is an ALLOWLIST of exact operation sequences, each a known refill:
-//   FLOOR — the client floor reader (client-floor.js, 30 s): exactly { rtdb get platform_config/client_floor/orders }, ≤ 1.
-//   GATE  — the gate pointer re-read (catalog-firestore.js getActivePointer, 45 s): DOC(pointer).
-//   CTX   — the catalog context's pointer + version record (45 s): DOC(pointer) DOC(version).
-//   COLD  — the process's FIRST catalog load (pricing docs readVersionDocs, the context, the certification transaction,
-//           the menu read readVersionMenu): its exact 31-operation sequence, with its ONE runTransaction.
-// A document read records as `get p` + `getAll [p]`; a collection read as `get p` twice. Rules: the request's LEADING
-// Firestore block must be EXACTLY a concatenation of distinct refills (COLD / CTX / GATE, each at most once); a later
-// Firestore block may only be EXACTLY one GATE re-read, and only if the request used no GATE yet; every other Firestore
-// call — any extra read, a second transaction, a write — stays IN the comparison, so it shows. SENSITIVITY (wall time): a
-// cache refills at most once per TTL, so per restaurant GATE and CTX each refill at most ⌊elapsed / 30 s⌋ + 1 times
-// and COLD at most once.
-// ⚠ DOCUMENTED RESIDUAL (codex PB-2 r2 P2-1, advisor-accepted): this recognises a refill by its SHAPE and bounds how often
-// it occurs; it does not prove the refill was DUE (the cache had expired), and the COLD load's transaction is opaque to the
-// recorder (its internals are not recorded). Real cache-state control — a test hook or a controlled clock for these
-// caches — comes with R1c (order-control determinism), which REPLACES makeCacheFill.
+// ── CATALOG CACHE TRAFFIC under the R1c CATALOG CLOCK (test/_catalog-clock.js) — the COLD load, once, and nothing else ──
+// The suites install the catalog clock BEFORE index.js loads: the TTL-only caches (pricing pointer, gate pointer, registry)
+// run on a frozen virtual clock and the deadline-bearing ones (context record, verifier observation) have their TTL held.
+// So inside a run NO catalog cache can refill unless the test advances the clock, and the only catalog Firestore traffic a
+// request may carry beyond its own logic is the process's FIRST load per restaurant:
+//   COLD  — pricing docs readVersionDocs, the context, the certification transaction, the menu read readVersionMenu: its
+//           exact 31-operation sequence with its ONE runTransaction, LEADING the request. Set aside once per restaurant.
+//   FLOOR — the client floor reader (client-floor.js, rtdb, 30 s): exactly { rtdb get platform_config/client_floor/orders },
+//           ≤ 1 per request. It stays on the REAL clock (its suites wait for its expiry in real time), so it keeps the
+//           wall-time bound ⌊elapsed / 30 s⌋ + 1.
+// A GATE or CTX refill (refillShapes) is NOT set aside any more: under the clock it cannot be due, so one that appears stays
+// IN the comparison and shows as a diff. This REPLACES makeCacheFill (R1b), which recognised GATE / CTX by shape under a
+// wall-time budget and could not prove a refill was due (codex PB-2 r2 P2-1, the documented residual R1c closes).
 const { performance } = require('perf_hooks');
 const FLOOR_PATH = 'platform_config/client_floor/orders';
 const isFloorOp = (o) => o && o.db === 'rtdb' && typeof o.path === 'string' && o.path.startsWith('platform_config/client_floor');
@@ -90,47 +83,39 @@ const vnorm = (p) => (typeof p === 'string' ? p.replace(/(restaurants\/[^/]+\/ve
 const shapeOf = (o) => (o.paths !== undefined ? { op: o.op, paths: o.paths.map(vnorm) } : (o.path !== undefined && o.path !== '' ? { op: o.op, path: vnorm(o.path) } : { op: o.op }));
 const sameOp = (o, want) => o.db === 'fs' && JSON.stringify(shapeOf(o)) === JSON.stringify(want);
 const matchAt = (ops, i, shape) => i + shape.length <= ops.length && shape.every((w, k) => sameOp(ops[i + k], w));
-function makeCacheFill(rids) {
+// `clock` = the installed catalog clock (test/_catalog-clock.js install()). assertBounded proves the live singletons were
+// built through it — without that, "no GATE / CTX can be due" is an assumption, not a fact.
+const CLOCKED = ['createCatalogReader', 'createGateReader', 'createContextSource', 'createCatalogVerifier'];
+function makeColdOnly(rids, clock) {
+  if (!clock || typeof clock.assertBuilt !== 'function') throw new Error('makeColdOnly: pass the installed catalog clock (test/_catalog-clock.js) — without it a GATE / CTX refill can still be due');
   const t0 = performance.now();
-  const seen = new Map(rids.map((r) => [r, { GATE: new Set(), CTX: new Set(), COLD: new Set(), FLOOR: new Set() }]));
-  // → the trace without its refills; THROWS on anything that is not exactly a known refill in an allowed place.
-  //   `id` names the recorded request (counted once however often it is compared). `ignore`: test-issued calls recorded
-  //   BEFORE the handler's first (e.g. the suite's rate-limit reset) — passed through untouched, they do not start the request.
+  const seen = new Map(rids.map((r) => [r, { COLD: new Set(), FLOOR: new Set() }]));
+  // → the trace without the COLD load (if it leads) and the floor read. `id` names the recorded request (counted once
+  //   however often it is compared). `ignore`: test-issued calls recorded BEFORE the handler's first (e.g. the suite's
+  //   rate-limit reset) — passed through untouched, they do not start the request.
   function strip(trace, rid, id, label, { ignore = () => false } = {}) {
     let pre = 0; while (pre < trace.length && ignore(trace[pre])) pre += 1;
     return [...trace.slice(0, pre), ...stripRequest(trace.slice(pre), rid, id, label)];
   }
   function stripRequest(trace, rid, id, label) {
-    const shapes = refillShapes(rid);
-    const used = new Set();
     const floors = trace.filter(isFloorOp);
     assert.ok(floors.length <= 1 && floors.every((o) => o.op === 'get' && o.path === FLOOR_PATH), `🔴 ${label}: the client-floor calls are not exactly ≤ 1 { rtdb get ${FLOOR_PATH} } (${JSON.stringify(floors)})`);
     if (floors.length) seen.get(rid).FLOOR.add(id);
     const ops = trace.filter((o) => !isFloorOp(o));
-    let i = 0; while (i < ops.length && ops[i].db === 'fs') i += 1;
-    const lead = ops.slice(0, i);
-    for (let k = 0; k < lead.length;) {
-      const kind = ['COLD', 'CTX', 'GATE'].find((n) => !used.has(n) && matchAt(lead, k, shapes[n]));
-      assert.ok(kind, `🔴 ${label}: the leading Firestore block is not exactly a concatenation of known refills (COLD / CTX / GATE, each once) — at op ${k}: ${JSON.stringify(lead.slice(k, k + 4))}…`);
-      used.add(kind); k += shapes[kind].length;
-    }
-    const out = [];
-    for (let k = i; k < ops.length;) {
-      if (ops[k].db === 'fs' && !used.has('GATE') && matchAt(ops, k, shapes.GATE) && !(ops[k + shapes.GATE.length] && ops[k + shapes.GATE.length].db === 'fs')) {
-        used.add('GATE'); k += shapes.GATE.length; continue;   // exactly ONE gate re-read, a whole Firestore block on its own
-      }
-      out.push(ops[k]); k += 1;
-    }
-    for (const n of used) seen.get(rid)[n].add(id);
-    return out;
+    const cold = refillShapes(rid).COLD;
+    if (!matchAt(ops, 0, cold)) return ops;   // everything stays IN, including any GATE / CTX refill (it cannot be due)
+    const s = seen.get(rid).COLD;
+    assert.ok(s.size === 0 || s.has(id), `🔴 ${label}: a SECOND COLD catalog load for ${rid} — under the catalog clock it happens once per process`);
+    s.add(id);
+    return ops.slice(cold.length);
   }
   function assertBounded(label) {
+    clock.assertBuilt(CLOCKED, label);
     const per = Math.floor((performance.now() - t0) / 30000) + 1;
     const counts = {};
     for (const [r, m] of seen) {
-      counts[r] = Object.fromEntries(Object.entries(m).map(([n, set]) => [n, set.size]));
-      for (const n of ['GATE', 'CTX', 'FLOOR']) assert.ok(m[n].size <= per, `🔴 ${label}: ${m[n].size} ${r} requests carried a ${n} refill — more than that cache can refill in this run (${per}): a per-request read, not a TTL`);
-      assert.ok(m.COLD.size <= 1, `🔴 ${label}: ${m.COLD.size} ${r} requests carried the COLD load — it happens once per process`);
+      counts[r] = { COLD: m.COLD.size, FLOOR: m.FLOOR.size };
+      assert.ok(m.FLOOR.size <= per, `🔴 ${label}: ${m.FLOOR.size} ${r} requests carried a FLOOR refill — more than that cache can refill in this run (${per}): a per-request read, not a TTL`);
     }
     return { seen: counts, budget: per };
   }
@@ -141,4 +126,4 @@ function makeCacheFill(rids) {
 const contentHash = (s) => String(s).replace(/(recent_order_content\/[^/]+\/)[0-9a-f]{32}/g, '$1<content>');
 const normOps = (ops) => ops.map((e) => (typeof e.path === 'string' ? { ...e, path: contentHash(e.path) } : e));
 
-module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, makeCacheFill, refillShapes, contentHash, normOps };
+module.exports = { PROBE_ABSENT, PROBE_FULL, afterUidCheck, assertInserted, assertShortCircuit, makeColdOnly, refillShapes, contentHash, normOps, CLOCKED };

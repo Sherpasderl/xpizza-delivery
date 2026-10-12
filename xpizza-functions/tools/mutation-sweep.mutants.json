@@ -11310,5 +11310,98 @@
       "node",
       "tools/deploy-env-guard.test.js"
     ]
+  },
+  {
+    "id": "r1c-01",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/catalog', 'createCatalogReader', { now: 'virtual' }],",
+    "to": "  ['catalog/catalog', 'createCatalogReader', {}],",
+    "label": "the hook stops putting the pricing pointer on the virtual clock (it keeps the wall clock)",
+    "kills_with": "real time still drives it",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
+    ]
+  },
+  {
+    "id": "r1c-02",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/menu-gates', 'createGateReader', { nowMs: 'virtual' }],",
+    "to": "  ['catalog/menu-gates', 'createGateReader', {}],",
+    "label": "the hook stops putting the LIVE gate pointer singleton on the virtual clock",
+    "kills_with": "R1C-CLOCK wall",
+    "command": [
+      "npm",
+      "run",
+      "test:order-exists"
+    ]
+  },
+  {
+    "id": "r1c-03",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "  ['catalog/context-source', 'createContextSource', { recordTtlMs: 'hold' }],",
+    "to": "  ['catalog/context-source', 'createContextSource', {}],",
+    "label": "the hook stops holding the LIVE context record TTL (it refills on wall time again)",
+    "kills_with": "R1C-CLOCK wall",
+    "command": [
+      "npm",
+      "run",
+      "test:order-exists"
+    ]
+  },
+  {
+    "id": "r1c-04",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "    if (!matchAt(ops, 0, cold)) return ops;   // everything stays IN, including any GATE / CTX refill (it cannot be due)",
+    "to": "    if (matchAt(ops, 0, refillShapes(rid).GATE)) return ops.slice(refillShapes(rid).GATE.length);\n    if (!matchAt(ops, 0, cold)) return ops;",
+    "label": "makeColdOnly loosened: a leading GATE re-read is set aside again (as makeCacheFill did)",
+    "kills_with": "a leading GATE re-read stays IN",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-05",
+    "slice": "r1c",
+    "file": "test/_render-delta.js",
+    "from": "    clock.assertBuilt(CLOCKED, label);",
+    "to": "",
+    "label": "makeColdOnly stops checking the singletons were built through the clock hook",
+    "kills_with": "singletons not built through the hook fail the bound",
+    "command": [
+      "node",
+      "test/_render-delta.test.js"
+    ]
+  },
+  {
+    "id": "r1c-06",
+    "slice": "r1c",
+    "file": "test/_catalog-clock.js",
+    "from": "        if (opts && opts[k] !== undefined) throw new Error(`catalog-clock: ${name} was passed '${k}' by its caller — the hook would override production wiring (re-check R1c)`);",
+    "to": "        if (false) throw new Error('');",
+    "label": "the hook silently overrides a caller that already passes the injected option",
+    "kills_with": "cell refusesOverride failed",
+    "command": [
+      "node",
+      "test/_catalog-clock.test.js"
+    ]
+  },
+  {
+    "id": "r1c-07",
+    "slice": "r1c",
+    "file": "tools/emu-alloc.test.js",
+    "from": "      const split = (sc) => { const all = [...sc.orphans, ...sc.live]; return { ours: all.filter((x) => x.nonce === nonce), foreign: all.filter((x) => x.nonce !== nonce) }; };",
+    "to": "      const split = (sc) => { const all = [...sc.orphans, ...sc.live]; return { ours: all, foreign: [] }; };",
+    "label": "the emu-alloc after-check counts EVERY marked process on the slot index again (the flake)",
+    "kills_with": "turned red by ANOTHER run's marked process",
+    "command": [
+      "node",
+      "tools/emu-alloc.test.js"
+    ]
   }
 ]

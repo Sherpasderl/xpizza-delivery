@@ -60,7 +60,11 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // the render-ON companion re-runs the cases with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
-const FILL = RD.makeCacheFill(['x_pizza', 'la_musa']);   // from before the first recorded request: its wall-time budget covers the whole run
+// R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
+// this run unless the test advances it, so the only catalog traffic set aside is the COLD load (test/_render-delta.js
+// makeColdOnly); a GATE / CTX re-read stays in every comparison. Replaces R1b's wall-time-bounded makeCacheFill.
+const CLOCK = require('./_catalog-clock').install();
+const FILL = RD.makeColdOnly(['x_pizza', 'la_musa'], CLOCK);   // from before the first recorded request: the floor's wall-time budget covers the whole run
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -470,10 +474,10 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   //   • a reward order is written with its charge-input fingerprint (index.js: charge_inputs_fp) → + that one path when
   //     the request wrote the order's binding;
   //   • everything else — every cash case, every card case without a reward — byte-equal to the render-OFF run.
-  // THE CATALOG CACHE FILL: the per-instance catalog caches (context, gate pointer, verifier) re-read on their own TTLs, in
-  // whichever request crosses one — a leading block (with the cold load's runTransaction) or a gate-pointer re-read later
-  // in the request. Like the floor's cached read (isCacheRefresh), it is set aside on BOTH sides, bounded by wall time:
-  // test/_render-delta.js makeCacheFill (why render adds none of it, and the sensitivity).
+  // THE CATALOG CACHE TRAFFIC: under the R1c catalog clock (installed before index.js) no catalog cache refills inside this
+  // run, so the only catalog traffic set aside — on BOTH sides, like the floor's cached read (isCacheRefresh) — is the
+  // process's ONE COLD load per restaurant, leading the first request that met it (test/_render-delta.js makeColdOnly).
+  // A GATE / CTX re-read is never set aside: it stays in the comparison and shows.
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
     const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o)));
