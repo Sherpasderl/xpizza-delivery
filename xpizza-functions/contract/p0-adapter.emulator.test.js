@@ -10,8 +10,14 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 const admin = require('firebase-admin');
 require('../index.js');   // the default Admin app, configured exactly as the suites see it
 const { createFirebaseHost, appFor } = require('./rtdb-adapter');
-const { initializeApp: cInit } = require('firebase/app');
-const CDB = require('firebase/database');
+// the comparison CLIENT SDK: default = the repo's firebase (11.10.0, transitive); R3_CLIENT_SDK_DIR=<dir with
+// node_modules/firebase> pins another — the evidence run uses 10.13.2, the version production's pages load from the CDN
+const path = require('path');
+const SDK_DIR = process.env.R3_CLIENT_SDK_DIR ? path.join(process.env.R3_CLIENT_SDK_DIR, 'node_modules') : null;
+const sdkReq = (m) => require(SDK_DIR ? require.resolve(m, { paths: [SDK_DIR] }) : m);
+const SDK_VERSION = require(SDK_DIR ? path.join(SDK_DIR, 'firebase', 'package.json') : 'firebase/package.json').version;
+const { initializeApp: cInit } = sdkReq('firebase/app');
+const CDB = sdkReq('firebase/database');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FAIL = (cell, msg) => `🔴 R3-P0:${cell} ${msg}`;
@@ -187,6 +193,7 @@ async function settleEq(logs, label, ms = 3000) {
   }
 
   await page.close();
-  console.log(`\nr3-p0-adapter: OK (${n})`);
+  console.log(`\nclient SDK compared: firebase ${SDK_VERSION}`);
+  console.log(`r3-p0-adapter: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-p0-adapter FAILED:', e && e.stack || e); process.exit(1); });
