@@ -6,13 +6,21 @@
 // real layout (.app height = calc(100vh - topbar)). Renders the ACTUAL renderCashBar output at 300/342/480px for
 // two states (all-categories totals AND the invalid/error bar) and measures in Chrome that:
 //   • no horizontal overflow (scrollWidth ≤ clientWidth); the all-categories bar WRAPS to ≥2 rows (flex-wrap);
-//   • each critical control (review / error / Reconciliar) AND the roster viewport (.pbody) is EFFECTIVELY visible
-//     (computed display/visibility/opacity up the ancestor chain), positive-sized, and NOT clipped by any
-//     overflow-clipping ancestor — clipping measured against each ancestor's PADDING box (overflow clips there),
-//     not its border rect;
-//   • the roster has a positive visible viewport AND actually scrolls (set scrollTop, read it back).
-// Negative cells prove each check bites: no .right-open → rail clipped; a control in an ancestor's border gap →
-// clipped (padding-box, not border-box); .pbody opacity:0 → roster not effectively visible.
+//   • CRITICAL CONTENT — the review line, the error line, and the Reconciliar label — has EVERY text fragment
+//     (text-node Range.getClientRects()) inside the intersection of ALL applicable padding-box clips, INCLUDING the
+//     control's OWN box when it sets overflow:hidden, with only a subpixel epsilon. No area tolerance on text: a
+//     single trailing character cut by any clip ancestor fails (codex r6). Each critical control is also
+//     effectively visible (computed display/visibility/opacity up the chain) and positive-sized;
+//   • the full-width CONTAINERS (.pbody roster viewport, .cash-bar) sit within each clip ancestor's padding box,
+//     tolerating ONLY the known ~2px border discrepancy per edge (the rail-inner is exactly 2px wider than the
+//     1px-bordered .col padding box, so a full-width child tucks ≤2px under that border by design) + subpixel —
+//     NOT a percentage of area;
+//   • the roster is effectively visible, positive-sized, has a positive viewport AND actually scrolls.
+// Negative cells prove each check bites: (a) no .right-open → collapsed grid col clips the rail controls' text;
+// (b) a control in an ancestor's BORDER band → clipped under the padding-box rule (a border-rect check would pass
+// it); (c) .pbody opacity:0 → roster not effectively visible; (i) a Reconciliar button whose OWN overflow:hidden
+// box is narrowed clips its label (chain starts AT the element); (ii) a review/error line losing <10% of its
+// trailing text → caught by the text-fragment check though the old area metric would have passed it.
 //
 // Bounded + SAFE CLEANUP: Chrome runs under a hard deadline that process-GROUP-kills immediately (no pre-kill work
 // that could itself block). The test DELETES NOTHING outside its own mkdtemp page dir — a leaked Chrome temp
@@ -61,20 +69,24 @@ ok('all-categories + invalid renders contain every expected line (real renderer)
 
 if (!fs.existsSync(CHROME)) { console.log('  ⚠ Google Chrome not found — browser layout check SKIPPED (run it in the gate env with Chrome).'); process.exit(0); }
 
-// Measurement helpers (shared): effective visibility up the ancestor chain; clipping vs each overflow ancestor's
-// PADDING box (overflow:hidden clips to the padding edge — clientLeft/clientTop + clientWidth/clientHeight, NOT the
-// border rect). We flag SUBSTANTIAL clipping (>10% of the element's area hidden by some clip ancestor), not a
-// pixel: the production rail is a rounded, 1px-bordered .panel, so a full-width child legitimately tucks ≤ the
-// border width under that border/radius by design — a pixel-exact "unclipped" is impossible there. The real
-// regression surface (r2 P1) is a segment cut off / the rail collapsed / the bar overflowing — all whole-element,
-// never a 2px tuck. The visible-fraction rule catches those (negative cell (b): a control in the border BAND is 0%
-// inside the padding box → flagged, whereas a border-RECT check would wrongly pass it; negative cell (a): collapsed
-// rail → ~0% → flagged) while tolerating the by-design border tuck.
+// ── Measurement helpers (shared) ──
+//  effVisible   — display/visibility/opacity up the ancestor chain.
+//  clipRect     — intersection of the PADDING boxes of every overflow-clipping element from the element itself
+//                 (INCLUSIVE, so a control that clips its OWN label with overflow:hidden is caught) up through its
+//                 ancestors. overflow clips at the padding edge (clientLeft/Top + clientWidth/Height), not the border.
+//  textVisible  — every TEXT fragment (text-node Range rects) of a critical control lies inside clipRect, subpixel
+//                 epsilon only. No area tolerance: trailing characters cut by ANY clip ancestor fail (codex r6).
+//  boxUnclipped — a full-width CONTAINER's border-box within each ancestor's padding box, tolerating only the known
+//                 ~2px border discrepancy per edge (+ subpixel). The rail-inner/pbody/cash-bar are exactly 2px wider
+//                 than the 1px-bordered .col padding box, so they tuck ≤2px under that border by design.
 const MEASURE_FNS = `
- var CLIP_MIN_VISIBLE=0.9;
+ var SUBPX=0.5;      // subpixel epsilon only
+ var BORDER_TOL=2;   // full-width containers only: 1px .col border each side = exactly 2px of by-design tuck
  function effVisible(el){var e=el;while(e&&e.nodeType===1){var cs=getComputedStyle(e);if(cs.display==='none'||cs.visibility==='hidden'||parseFloat(cs.opacity||'1')===0)return false;e=e.parentElement;}return true;}
- function unclipped(el){var r=el.getBoundingClientRect();var A=r.width*r.height;if(A<=0)return false;var e=el.parentElement;while(e&&e.nodeType===1){var cs=getComputedStyle(e);if(cs.overflow!=='visible'||cs.overflowX!=='visible'||cs.overflowY!=='visible'){var br=e.getBoundingClientRect();var pl=br.left+e.clientLeft,pt=br.top+e.clientTop,pr=pl+e.clientWidth,pb=pt+e.clientHeight;var iw=Math.max(0,Math.min(r.right,pr)-Math.max(r.left,pl));var ih=Math.max(0,Math.min(r.bottom,pb)-Math.max(r.top,pt));if((iw*ih)/A<CLIP_MIN_VISIBLE)return false;}e=e.parentElement;}return true;}
- function measure(el){if(!el)return null;var r=el.getBoundingClientRect();return {w:Math.round(r.width),h:Math.round(r.height),vis:effVisible(el),unclipped:unclipped(el)};}`;
+ function clipRect(el){var L=-1e9,T=-1e9,R=1e9,B=1e9,e=el;while(e&&e.nodeType===1){var cs=getComputedStyle(e);if(cs.overflow!=='visible'||cs.overflowX!=='visible'||cs.overflowY!=='visible'){var br=e.getBoundingClientRect();var pl=br.left+e.clientLeft,pt=br.top+e.clientTop,pr=pl+e.clientWidth,pb=pt+e.clientHeight;if(pl>L)L=pl;if(pt>T)T=pt;if(pr<R)R=pr;if(pb<B)B=pb;}e=e.parentElement;}return {l:L,t:T,r:R,b:B};}
+ function textVisible(el){if(!el)return false;var clip=clipRect(el);var w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null),node,rects=[];while((node=w.nextNode())){if(!node.nodeValue||!node.nodeValue.trim())continue;var rng=document.createRange();rng.selectNodeContents(node);var rs=rng.getClientRects();for(var i=0;i<rs.length;i++){if(rs[i].width>0&&rs[i].height>0)rects.push(rs[i]);}}if(!rects.length)return false;for(var j=0;j<rects.length;j++){var r=rects[j];if(r.left<clip.l-SUBPX||r.right>clip.r+SUBPX||r.top<clip.t-SUBPX||r.bottom>clip.b+SUBPX)return false;}return true;}
+ function boxUnclipped(el,tol){if(!el)return false;var r=el.getBoundingClientRect();if(r.width<=0||r.height<=0)return false;var t=(tol==null?BORDER_TOL:tol)+SUBPX,e=el.parentElement;while(e&&e.nodeType===1){var cs=getComputedStyle(e);if(cs.overflow!=='visible'||cs.overflowX!=='visible'||cs.overflowY!=='visible'){var br=e.getBoundingClientRect();var pl=br.left+e.clientLeft,pt=br.top+e.clientTop,pr=pl+e.clientWidth,pb=pt+e.clientHeight;if(r.left<pl-t||r.right>pr+t||r.top<pt-t||r.bottom>pb+t)return false;}e=e.parentElement;}return true;}
+ function box(el){if(!el)return null;var r=el.getBoundingClientRect();return {w:Math.round(r.width),h:Math.round(r.height),vis:effVisible(el)};}`;
 
 // Production page: real .app/.main/#right-rail ancestors; width only via --rw-size; height from the real layout.
 function pageFor(width, barHtml, opts = {}) {
@@ -93,18 +105,48 @@ function pageFor(width, barHtml, opts = {}) {
  var cb=document.getElementById('cash-bar'), pbody=document.getElementById('pbody');
  var centers=new Set();[].forEach.call(cb.children,function(e){var r=e.getBoundingClientRect();if(r.width>0)centers.add(Math.round((r.top+r.bottom)/2));});
  var vh=pbody.clientHeight,sb=pbody.scrollTop;pbody.scrollTop=40;var moved=pbody.scrollTop;pbody.scrollTop=sb;
+ var pb=box(pbody);
+ function crit(sel){var el=cb.querySelector(sel);if(!el)return null;var b=box(el);b.textVisible=textVisible(el);return b;}
  var res={width:${width},sw:cb.scrollWidth,cw:cb.clientWidth,overflow:cb.scrollWidth>cb.clientWidth+1,rows:centers.size,
-   rosterViewport:vh,rosterScrolls:(vh>0&&moved>0),roster:measure(pbody),
-   recon:measure(cb.querySelector('.cash-recon-btn')),review:measure(cb.querySelector('.ci.cash-escape')),error:measure(cb.querySelector('.ci.cash-error'))};
+   rosterViewport:vh,rosterScrolls:(vh>0&&moved>0),rosterVis:pb.vis,rosterH:pb.h,rosterBox:boxUnclipped(pbody),
+   cbBox:boxUnclipped(cb),
+   recon:crit('.cash-recon-btn'),review:crit('.ci.cash-escape'),error:crit('.ci.cash-error')};
  document.getElementById('out').textContent='LAYOUT_RESULT:'+JSON.stringify(res)+':END';
 </script></body></html>`;
 }
-// Negative cell for the padding-box clip rule: a control inside the border area is outside the overflow clip box.
+// Negative cell (b): the clip region is the PADDING box, not the border rect — a control wholly inside a thick
+// border band is clipped by overflow:hidden; a border-rect check would wrongly pass it.
 function borderBoxPage() {
   return `<!doctype html><meta charset=utf8><style>#clip{position:relative;width:200px;height:80px;border:25px solid gray;overflow:hidden}#inside{position:absolute;left:10px;top:10px;width:12px;height:12px}#inborder{position:absolute;left:-18px;top:10px;width:12px;height:12px}</style>
 <div id=clip><div id=inside></div><div id=inborder></div></div><div id=out></div>
 <script>${MEASURE_FNS}
- var res={inside:measure(document.getElementById('inside')).unclipped, inborder:measure(document.getElementById('inborder')).unclipped};
+ var res={inside:boxUnclipped(document.getElementById('inside'),2), inborder:boxUnclipped(document.getElementById('inborder'),2)};
+ document.getElementById('out').textContent='LAYOUT_RESULT:'+JSON.stringify(res)+':END';
+</script>`;
+}
+// Negative cells (i) + (ii): text-fragment clipping below the old area threshold / by the element's own box.
+function textClipPage() {
+  return `<!doctype html><meta charset=utf8><style>
+ button,span{font:14px sans-serif}
+ #btnClip{overflow:hidden;width:40px;white-space:nowrap;padding:0;border:0;display:inline-block}
+ #btnOk{white-space:nowrap;padding:0;border:0;display:inline-block}
+ #lineWrap,#lineOkWrap{overflow:hidden;white-space:nowrap;display:inline-block}
+</style>
+<button id=btnClip>Reconciliar</button><button id=btnOk>Reconciliar</button>
+<div id=lineWrap><span id=line>Efectivo final C$ 12.345,67 · revisar</span></div>
+<div id=lineOkWrap><span id=lineOk>Efectivo final C$ 12.345,67 · revisar</span></div>
+<div id=out></div>
+<script>${MEASURE_FNS}
+ var line=document.getElementById('line'), lw=document.getElementById('lineWrap');
+ var natural=line.getBoundingClientRect().width;
+ lw.style.width=Math.round(natural*0.93)+'px';   // clip ~7% of the trailing text — BELOW the old 10% area threshold
+ void lw.offsetWidth;
+ var res={
+   btnClip:textVisible(document.getElementById('btnClip')),   // own overflow:hidden box narrows the label
+   btnOk:textVisible(document.getElementById('btnOk')),
+   line:textVisible(line),
+   lineOk:textVisible(document.getElementById('lineOk')),
+   lineVisibleFraction:lw.clientWidth/natural};
  document.getElementById('out').textContent='LAYOUT_RESULT:'+JSON.stringify(res)+':END';
 </script>`;
 }
@@ -145,35 +187,46 @@ function runChrome(fileUrl) {
         const r = await run(pageFor(width, st.bar));
         assert.strictEqual(r.overflow, false, `${st.name} @ ${width}px: NO horizontal overflow (sw ${r.sw} ≤ cw ${r.cw})`);
         assert.ok(r.rosterViewport > 0 && r.rosterScrolls, `${st.name} @ ${width}px: roster has a positive viewport (${r.rosterViewport}px) AND scrolls`);
-        assert.ok(r.roster && r.roster.vis && r.roster.unclipped && r.roster.h > 0, `${st.name} @ ${width}px: roster is effectively visible, positive-sized, and unclipped`);
+        assert.ok(r.rosterVis && r.rosterBox && r.rosterH > 0, `${st.name} @ ${width}px: roster effectively visible, positive-sized, container within ±2px of the padding box`);
+        assert.strictEqual(r.cbBox, true, `${st.name} @ ${width}px: cash-bar container within ±2px of each ancestor's padding box`);
         if (st.wrap && width <= 342) assert.ok(r.rows >= 2, `${st.name} @ ${width}px: bar WRAPPED to ≥2 rows (rows=${r.rows})`);
         for (const key of st.critical) {
           const b = r[key];
           assert.ok(b && b.w > 0 && b.h > 0, `${st.name} @ ${width}px: ${key} present with positive size`);
           assert.ok(b.vis, `${st.name} @ ${width}px: ${key} is effectively visible`);
-          assert.ok(b.unclipped, `${st.name} @ ${width}px: ${key} is not clipped (padding-box of every overflow ancestor)`);
+          assert.strictEqual(b.textVisible, true, `${st.name} @ ${width}px: every text fragment of ${key} is inside the clip chain (incl its own box), subpixel epsilon`);
         }
-        ok(`${st.name} @ ${width}px: no clip, roster visible+scrolls, ${st.critical.join('+')} visible+unclipped${st.wrap ? ` (${r.rows} rows)` : ''}`);
+        ok(`${st.name} @ ${width}px: no clip, roster ok, ${st.critical.join('+')} text fully visible${st.wrap ? ` (${r.rows} rows)` : ''}`);
       }
     }
-    // ── NEGATIVE (a): production ancestors matter — drop .right-open → grid col collapses → rail clipped ──
+    // ── NEGATIVE (a): production ancestors matter — drop .right-open → grid col collapses → critical text clipped ──
     {
       const r = await run(pageFor(342, allBar, { appClasses: 'app left-open' }));
-      assert.ok(!(r.recon && r.recon.unclipped) || !(r.review && r.review.unclipped), 'without .right-open the rail is CLIPPED by the collapsed grid column (production ancestor/hook is load-bearing)');
-      ok('negative (a): removing the production .right-open hook clips the rail controls — caught');
+      assert.strictEqual(r.recon && r.recon.textVisible, false, 'negative (a): without .right-open the collapsed grid column clips the Reconciliar label (production hook is load-bearing)');
+      ok('negative (a): removing the production .right-open hook clips the rail control text — caught');
     }
-    // ── NEGATIVE (b): padding-box clip rule — a control in the border gap is clipped (border-box would miss it) ──
+    // ── NEGATIVE (b): clip region is the PADDING box, not the border rect ──
     {
       const r = await run(borderBoxPage());
       assert.strictEqual(r.inside, true, 'negative (b): a control inside the padding box is unclipped');
-      assert.strictEqual(r.inborder, false, 'negative (b): a control in the BORDER area (outside the padding box) is CLIPPED — padding-box rule, not border-box');
-      ok('negative (b): clipping measured at the padding box (a border-area control is detected as clipped)');
+      assert.strictEqual(r.inborder, false, 'negative (b): a control in the BORDER band (outside the padding box) is CLIPPED — padding-box rule, not border-rect');
+      ok('negative (b): clipping measured at the padding box (a border-band control is detected as clipped)');
     }
-    // ── NEGATIVE (c): roster effective visibility — .pbody opacity:0 is caught despite positive clientHeight ──
+    // ── NEGATIVE (c): roster effective visibility — .pbody opacity:0 caught despite positive clientHeight/scroll ──
     {
       const r = await run(pageFor(342, allBar, { extraCss: '#pbody{opacity:0}' }));
-      assert.strictEqual(r.roster.vis, false, 'negative (c): an opacity:0 roster is NOT effectively visible (even with positive clientHeight/scroll)');
+      assert.strictEqual(r.rosterVis, false, 'negative (c): an opacity:0 roster is NOT effectively visible (even with positive clientHeight/scroll)');
       ok('negative (c): roster effective-visibility check catches an invisible (opacity:0) roster viewport');
+    }
+    // ── NEGATIVE (i)+(ii): text-fragment clipping (own box; and below the old 10% area threshold) ──
+    {
+      const r = await run(textClipPage());
+      assert.strictEqual(r.btnOk, true, 'control (i): a normally-sized Reconciliar label is fully visible');
+      assert.strictEqual(r.btnClip, false, 'negative (i): a Reconciliar button whose OWN overflow:hidden box is narrowed clips its label — caught (chain starts AT the element, not parentElement)');
+      assert.strictEqual(r.lineOk, true, 'control (ii): an unclipped line is fully visible');
+      assert.ok(r.lineVisibleFraction > 0.9, `negative (ii) premise: only ${((1 - r.lineVisibleFraction) * 100).toFixed(1)}% of the line is clipped — the OLD 10% area metric would have PASSED it (visible fraction ${r.lineVisibleFraction.toFixed(3)})`);
+      assert.strictEqual(r.line, false, 'negative (ii): a review/error line losing <10% of its trailing text is caught by the text-fragment check');
+      ok('negative (i)+(ii): text-fragment check catches an own-box label clip and a <10% trailing-text clip the area metric missed');
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });   // only our own page dir — nothing else is ever deleted
