@@ -127,6 +127,20 @@ const isControlRead = (o) => o.db === 'rtdb' && /^order_control\//.test(o.path);
 const isTestOp = (o) => o.db === 'rtdb' && o.op === 'remove' && o.path === 'rate_limits';
 // a TTL-cached config read (the client floor) refreshes on its own clock, not the request's — excluded on BOTH sides
 const isCacheRefresh = (o) => o.db === 'rtdb' && /^platform_config\/client_floor\//.test(o.path);
+// R3-FIX D12 (DECLARED, exact): a scheduled PICKUP released without a display-name snapshot — every order in this frozen
+// baseline predates it — names its brand from the LIVE identity: exactly two reads, display_name then name, right after the
+// release's hours read. checkD12 asserts that shape where it is due and its absence everywhere else; only then are they
+// stripped, so nothing else can hide behind the declaration.
+const isD12Read = (o) => o.db === 'rtdb' && o.op === 'once' && /^restaurants\/[^/]+\/identity\/(display_name|name)$/.test(o.path);
+function checkD12(key, ops, goldenOps) {
+  const rid = key.split(' | ')[2];
+  const found = ops.filter(isD12Read).map((o) => o.path);
+  const released = /^SCHEDULED/.test(key) && goldenOps.some((o) => o.op === 'update' && Array.isArray(o.keys) && o.keys.some((k) => /^order_tracking\//.test(k)));
+  if (!released) { assert.deepStrictEqual(found, [], `🔴 ${key}: an identity brand read where D12 makes none`); return; }
+  assert.deepStrictEqual(found, [`restaurants/${rid}/identity/display_name`, `restaurants/${rid}/identity/name`], `🔴 ${key}: D12's release reads — exactly display_name then name, for THIS restaurant`);
+  const at = ops.findIndex(isD12Read);
+  assert.strictEqual(ops[at - 1] && ops[at - 1].path, `restaurants/${rid}/identity/hours`, `🔴 ${key}: D12's reads follow the release's hours read`);
+}
 
 const onceProto = (() => { let p = Object.getPrototypeOf(rtdb.ref('x')); while (p && !Object.prototype.hasOwnProperty.call(p, 'once')) p = Object.getPrototypeOf(p); return p; })();
 const realOnce = onceProto.once;
@@ -416,7 +430,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
     assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
   };
-  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o));
+  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isD12Read(o));
   const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o));
   const tally = { same: 0, refused: 0 };
   for (const [key, r] of Object.entries(results)) {
@@ -435,6 +449,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.strictEqual(r.status, g.status, `🔴 ${key}: status changed (${g.status} → ${r.status})`);
         assert.deepStrictEqual(r.body, g.body, `🔴 ${key}: body changed`);
         assert.deepStrictEqual(r.headers, g.headers, `🔴 ${key}: headers changed`);
+        checkD12(key, r.ops, g.ops);
         assert.deepStrictEqual(stripControl(r.ops), goldOps(g.ops), `🔴 ${key}: the call sequence changed beyond the control read`);
         assert.deepStrictEqual(r.changed, g.changed, `🔴 ${key}: the changed-path set changed`);
         const reads = r.ops.filter(isControlRead);
