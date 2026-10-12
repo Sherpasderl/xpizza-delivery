@@ -12,10 +12,12 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyAddProductB, INDEX_HUNKS } = require('./tools/addproduct-b-inverse');
+// The stacked-tracker slice landed on top of PB-2 → its inverse is reversed FIRST, before add-product B's.
+const { unapplyStackedTracker } = require('./tools/stacked-tracker-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const idx = read('index.js');
+const idx = unapplyStackedTracker(read('index.js'));
 const BASE = execFileSync('git', ['show', '4e2a710:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────

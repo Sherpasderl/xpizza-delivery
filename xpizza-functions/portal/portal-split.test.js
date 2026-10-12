@@ -37,6 +37,7 @@ const { unapplyD4c5 } = require('../tools/d4c5-inverse');
 const { unapplyD4c4 } = require('../tools/d4c4-inverse');
 const { unapplyAddProductFold } = require('../tools/addproduct-inverse');
 const { unapplyAddProductB } = require('../tools/addproduct-b-inverse');   // 1D add-product B: reversed FIRST (it landed on top of A)
+const { unapplyStackedTracker } = require('../tools/stacked-tracker-inverse');   // stacked-tracker: landed on top of PB-2 → reversed first of all
 const PARENT_INDEX = '711db74576a3fe720c765e7c88af4738eff03fbde1b8d9fd987a2dfcb8858e09';   // bb37684:xpizza-functions/index.js
 
 // The REVIEWED application graph of every portal target (identical for all five: they are one isolated group).
@@ -390,7 +391,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // parent pin composes with the later slice and still proves nothing else changed. D4-c4: the order-control slice's
     // hunks (tools/d4c4-inverse.js) are reversed FIRST — it landed on top of D4-c5.
     // 1D add-product A: its hunks (index.js + the moved blocks) are reversed FIRST — it landed on top of D4-c4.
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(foldPortalSplit(root)))));
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(foldPortalSplit(root))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));

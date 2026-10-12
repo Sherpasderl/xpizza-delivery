@@ -145,7 +145,7 @@ const {
   validateIngestToken,
   coerceTs
 } = require('./driver-ingest');
-const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting, stackedWaitingTxn } = require('./tracking-mirror');
+const { activeDropOrderId, shouldMirror, shouldMarkStackedWaiting, stackedWaitingTxn } = require('./tracking-mirror');   // stacked-tracker: shouldMarkStackedWaiting (the OFD stacked-WAITING is_active_drop:false decision) + stackedWaitingTxn (its atomic no-downgrade write)
 const { sweepDecision, activeOrderCount, assignmentStrandState, HEAL_TERMINAL_STATUSES } = require('./sweep-pending');
 const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');   // RTDB egress Stage 1 — /tasks retention (tasksToDelete/confirmTaskDelete now used by retention-sweep.js)
 const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');   // shared driver-name cascade + durable delivered_by_* attribution at the terminal edge (real-time trigger)
