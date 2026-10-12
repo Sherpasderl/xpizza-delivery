@@ -11568,6 +11568,7 @@
     "to": "  const isIdle = (cbSrc) => true;",
     "label": "every timer counts as idle (codex r3 P1-2: a retry / unreviewed interval would no longer block settling)",
     "kills_with": [
+      "settle() certified an unfinished render",
       "a finite 3-retry sequence was certified settled early",
       "a NON-allowlisted interval did not block"
     ],
