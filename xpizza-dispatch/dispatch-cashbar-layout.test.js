@@ -13,16 +13,18 @@
 //
 // Bounded: Chrome runs under a hard deadline with a process-GROUP kill (detached + kill(-pid)). An explicit
 // --user-data-dir hangs Chrome's first-run here (verified across headless modes + the usual anti-hang flags), so
-// instead the test OWNS cleanup of Chrome's own ephemeral profile: it diffs the `com.google.Chrome.*` dirs in the
-// system temp around each run and removes the one this run created — on BOTH the clean-exit and the SIGKILL path,
-// so a SIGKILL-bypassed destructor leaves nothing behind. Temp pages are reaped in finally.
+// the test lets Chrome make its own ephemeral profile (which it reaps on clean exit). On the SIGKILL (deadline)
+// path a destructor is bypassed, so the test reaps the profile itself — but ONLY dirs PROVABLY ours: `lsof -g
+// <our process group>` is the authority (a parallel session's or the owner's Chrome can also create
+// com.google.Chrome.* temp dirs, so a blind snapshot-diff must NEVER be used). A dir we can't prove is ours is
+// left alone (a leaked temp dir is harmless; the OS reaps it). Temp pages are reaped in finally.
 //
 // Requires Google Chrome. Run:  node dispatch-cashbar-layout.test.js
 import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,20 +85,33 @@ function pageFor(width, barHtml) {
 </script></body></html>`;
 }
 
-// ── Bounded Chrome: spawn (own group) + hard deadline + group-kill; OWN-clean Chrome's ephemeral profile ──
-function runChrome(fileUrl) {
+// lsof is the AUTHORITY on profile ownership: only com.google.Chrome.* temp dirs that OUR process group currently
+// holds open are ours. Never attribute a dir to us by snapshot-diff.
+function ownedChromeDirs(pgid) {
   const T = os.tmpdir();
-  const snap = () => new Set(fs.readdirSync(T).filter((x) => x.startsWith('com.google.Chrome.')));
-  const before = snap();
-  const reapProfiles = () => { try { for (const x of snap()) if (!before.has(x)) fs.rmSync(path.join(T, x), { recursive: true, force: true }); } catch (_) {} };
+  try {
+    const out = execSync(`lsof -g ${pgid} 2>/dev/null`, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+    const names = new Set();
+    for (const mm of out.matchAll(/com\.google\.Chrome\.[^/\s]+/g)) names.add(mm[0]);
+    return [...names].map((name) => path.join(T, name));
+  } catch (_) { return []; }   // lsof unavailable/empty → prove nothing → delete nothing
+}
+
+// ── Bounded Chrome: spawn (own group) + hard deadline + group-kill; reap ONLY our own profile on the kill path ──
+function runChrome(fileUrl) {
   return new Promise((resolve, reject) => {
     const child = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', '--no-default-browser-check', '--window-size=900,900', '--dump-dom', fileUrl], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
     let out = '', done = false;
-    const finish = (fn, arg) => { if (done) return; done = true; clearTimeout(timer); reapProfiles(); fn(arg); };
-    const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch (_) {} finish(reject, new Error(`Chrome exceeded the ${DEADLINE_MS}ms deadline (process group killed)`)); }, DEADLINE_MS);
+    const finish = (fn, arg) => { if (done) return; done = true; clearTimeout(timer); fn(arg); };
+    const timer = setTimeout(() => {
+      const owned = ownedChromeDirs(child.pid);   // captured while ALIVE — provably ours (our process group holds them)
+      try { process.kill(-child.pid, 'SIGKILL'); } catch (_) {}
+      for (const d of owned) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {} }   // reap only OUR profile
+      finish(reject, new Error(`Chrome exceeded the ${DEADLINE_MS}ms deadline (process group killed; own profile reaped)`));
+    }, DEADLINE_MS);
     child.stdout.on('data', (d) => { out += d; });
     child.on('error', (e) => finish(reject, e));
-    child.on('close', () => finish(resolve, out));
+    child.on('close', () => finish(resolve, out));   // clean exit → Chrome reaps its own ephemeral profile
   });
 }
 
@@ -127,6 +142,27 @@ function runChrome(fileUrl) {
           assert.ok(b.unclipped, `${st.name} @ ${width}px: ${key} is not clipped by any overflow-clipping ancestor`);
         }
         ok(`${st.name} @ ${width}px: no clip, roster viewport=${r.rosterViewport}px & scrolls, ${st.critical.join('+')} visible+unclipped${st.wrap ? ` (${r.rows} rows)` : ''}`);
+      }
+    }
+
+    // Ownership SAFETY (codex r4-2): a FOREIGN com.google.Chrome.* dir appearing mid-run is NEVER deleted — only
+    // dirs our process group holds open (lsof) are reaped, so a parallel session's / the owner's live profile is safe.
+    {
+      const foreign = path.join(os.tmpdir(), `com.google.Chrome.FOREIGN-${process.pid}-${Date.now()}`);
+      fs.mkdirSync(foreign); fs.writeFileSync(path.join(foreign, 'marker'), 'not-ours');
+      const child = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', 'about:blank'], { detached: true, stdio: 'ignore' });
+      try {
+        let owned = [];
+        for (let i = 0; i < 20 && owned.length === 0; i++) { await new Promise((r) => setTimeout(r, 250)); owned = ownedChromeDirs(child.pid); }
+        assert.ok(owned.length >= 1, 'lsof proves our Chrome owns ≥1 profile dir (ownership check is live, not vacuous)');
+        assert.ok(!owned.includes(foreign), 'the planted FOREIGN profile dir is NOT in our lsof-owned set');
+        try { process.kill(-child.pid, 'SIGKILL'); } catch (_) {}
+        for (const d of owned) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {} }   // reap only OUR own
+        assert.ok(fs.existsSync(foreign), 'a planted foreign com.google.Chrome.* dir SURVIVES our cleanup (never deleted by snapshot-diff)');
+        ok(`ownership safety: foreign profile dir survives; reaped only our own (${owned.length} dir(s))`);
+      } finally {
+        try { process.kill(-child.pid, 'SIGKILL'); } catch (_) {}
+        fs.rmSync(foreign, { recursive: true, force: true });
       }
     }
   } finally {
