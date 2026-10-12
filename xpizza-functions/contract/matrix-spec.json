@@ -712,15 +712,6 @@
   ],
   "unsitedFacts": {
     "_doc": "codex r3 P1-3 — a PLAN fact of an R-site with NO census site (the census covers persisted-ORDER field reads). Each such (R, fact) group is dispositioned here, never silently joined: 'output' = the surface shows the fact through a path the census does not attribute (named outputs, file#fn, each checked to exist); 'not-in-source' = the PLAN lists the fact but the named outputs do NOT display it (a PLAN-vs-source finding: the cell asserts the fact's ABSENCE from those outputs until the PLAN table is reconciled). Every site-less group with cells must appear here; an entry for a group that HAS sites is stale (RED). A disposition may SPLIT ({split: [{when: {fulfil?, scenarios?, lps?}, kind, outputs, reason}]}); every cell must match exactly one part. 'not-in-source' cells get their own kind (reported apart from agreement, listed in matrix.json planReconciliation) and must be reconciled with the PLAN by an advisor ruling before P1 executes the matrix. Every 'not-in-source' part must carry the advisor's `ruling` (the PLAN fact's reconciliation) — a part without one is a build problem (P1 precondition).",
-    "R4:DRIVER": {
-      "kind": "output",
-      "outputs": [
-        "xpizza-driver/index.html#detectNewAssignments",
-        "xpizza-driver/index.html#renderHistoryModal",
-        "xpizza-driver/index.html#syncIdleStats"
-      ],
-      "reason": "driver identity on driver web comes from the TASK node (tasks/<id>_<type>.assigned_driver_id), not an order field"
-    },
     "R5:PLACE": {
       "kind": "not-in-source",
       "outputs": [

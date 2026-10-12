@@ -153,6 +153,14 @@
     "xpizza-functions/catalog/identity-record-writer.js:race>anon:setTimeout": {
       "class": "io-deadline",
       "reason": "race(): a labelled read/write timeout — REAL"
+    },
+    "xpizza-functions/catalog/identity-integrity-monitor.js:createReadBudget>anon>anon:setTimeout": {
+      "class": "sleep-body",
+      "reason": "the identity-integrity monitor's default sleep() implementation for its read budget (catalog maintenance job, real time) — not an order-path timer"
+    },
+    "xpizza-functions/catalog/identity-integrity-monitor.js:pace:sleep": {
+      "class": "job-pacing",
+      "reason": "rate-limits the identity-integrity monitor's Firestore reads to ≤ READS_PER_SECOND in every 1 s sliding window — a catalog maintenance job, never on an order path; REAL time, not a scheduler-virtualized application sleep (reviewed at the R3 P0 rebase onto 445d85d)"
     }
   },
   "clockReview": {
@@ -515,7 +523,13 @@
     "tasks-retention.js#tasksToDelete": "dispatch",
     "token-gate.js#gateConfirmedNet": "intake",
     "token-gate.js#gateInputFromRequest": "intake",
-    "token-gate.js#unsignedFloor": "intake"
+    "token-gate.js#unsignedFloor": "intake",
+    "catalog/identity-integrity-state.js#openByCond>anon": "catalog",
+    "catalog/identity-integrity-state.js#episodeByCond>anon": "catalog",
+    "catalog/identity-integrity-state.js#clearable": "catalog",
+    "catalog/identity-integrity-state.js#observe": "catalog",
+    "catalog/identity-integrity-state.js#recomputeSummary": "catalog",
+    "catalog/identity-integrity-state.js#ack": "catalog"
   },
   "pageFunctionExemptions": {
     "xpizza-orders/account.js#rewardsSubscribe": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
@@ -1067,6 +1081,14 @@
     "tracking_token": {
       "class": "pointer",
       "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
+    },
+    "restaurant_display_name": {
+      "class": "fact",
+      "facts": [
+        "PLACE",
+        "BRAND"
+      ],
+      "reason": "D12b: the restaurant's display name snapshotted on the order at intake; the pickup PLACE statement ('Recoger en <name>' via pickupLabel) and the brand label (reviewed at the R3 P0 rebase onto 445d85d)"
     }
   },
   "opaqueWriteResolutions": [

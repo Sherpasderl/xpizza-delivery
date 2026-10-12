@@ -46,6 +46,7 @@ const FIELD_FACTS = {
   scheduled_for: ['SCHED'], release_at: ['SCHED'], released_at: ['SCHED'], scheduled_blocked: ['SCHED'],
   address_detected: ['PLACE'], address_details: ['PLACE'], lat: ['PLACE'], lng: ['PLACE'], maps_link: ['PLACE'], hub_lat: ['PLACE'], hub_lng: ['PLACE'],
   restaurant_name: ['PLACE'], address_short: ['PLACE'], restaurant_id: ['BRAND'],
+  restaurant_display_name: ['PLACE', 'BRAND'],   // D12b (reviewed at the rebase onto 445d85d): the snapshotted display name — pickup PLACE + brand label
   display_number: ['NUM'], order_id: ['NUM'],
   delivered_by_uid: ['DRIVER'], delivered_by_name: ['DRIVER'], delivered_at: ['DRIVER', 'CASH'], fulfilled_offline_at: ['DRIVER'],
   cash_owed: ['CASH'], redemption: ['REWARD'], earn_preview: ['REWARD'], factura_status: ['FACTELIG'],
