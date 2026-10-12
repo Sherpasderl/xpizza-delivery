@@ -11505,12 +11505,16 @@
     "from": "    if (r && typeof r.then === 'function') r.then(() => pending.delete(key), (e) => { errors.push(`${what} (async): ${e && e.stack || e}`); pending.delete(key); });\n    else pending.delete(key);",
     "to": "    pending.delete(key);",
     "label": "settle() forgets a timer's async continuation (codex r1 P1-5: certifies an unfinished render)",
-    "kills_with": "settle() certified an unfinished render",
+    "kills_with": [
+      "settle() certified an unfinished render",
+      "settle() returned true with a render still pending"
+    ],
     "command": [
       "node",
       "--experimental-vm-modules",
       "contract/page-harness.test.js"
-    ]
+    ],
+    "why": "since r3 every app timer ≤ 10 s is tracked, so a timer-delayed continuation is caught by the timer rule; a continuation awaiting NON-timer work (cell 2) is what this mutant still breaks"
   },
   {
     "id": "r3p0-03",
