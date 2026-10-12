@@ -124,6 +124,18 @@ function priceCell(value, { editable, changed, onInput, surface, key }) {
   return cell;
 }
 
+// 1D add-product B — the price of a product with a required choice, as the order page draws it (the uniform rule, §0c.3):
+// "L {min}" when every option costs the same, "desde L {min}" otherwise. Text, never an input.
+export function groupPriceLabel(min, max) {
+  if (!(Number.isInteger(min) && min > 0)) return 'Sin precio';
+  return min === max ? `L${min}` : `desde L${min}`;
+}
+function groupPriceCell(grp, { changed, key }) {
+  const cell = el('div', `price${changed ? ' chg' : ''}`, groupPriceLabel(grp.min, grp.max));
+  cell.dataset.k = `item::${key}`;
+  return cell;
+}
+
 // `opts` is how the read-only 2b-2a render becomes the 2b-2b editor without forking the file. Absent,
 // every call behaves exactly as it did before — which is what keeps the read-only paths green.
 //
@@ -139,6 +151,9 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
   // 1D add-product A — which rows are NEW (a NUEVO tag) and whether this section can take a new product (only one the
   // brand's order page draws). Both are the caller's answers; the renderer only draws them.
   const isAddition = opts.isAddition || (() => false);
+  // 1D add-product B — a NEW product with a required choice: {label, min, max} from the caller, or null. Its row shows the
+  // group as a chip and its price as the order page will (read-only: it is the group's, edited in the drawer).
+  const groupOf = typeof opts.groupOf === 'function' ? opts.groupOf : () => null;
   const onAdd = editable && typeof opts.onAdd === 'function' && group && opts.canAdd && opts.canAdd(group.category.id) ? opts.onAdd : null;
   const rid = (it) => (it && typeof it.key === 'string' ? it.key : (it && typeof it.ref === 'string' ? it.ref : ''));
   detailEl.replaceChildren();
@@ -177,6 +192,14 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     if (isAddition(it)) nmEl.append(el('span', 'newtag', 'Nuevo'));
     info.append(nmEl);
     if (typeof d.desc === 'string' && d.desc.trim()) info.append(el('div', 'idesc', d.desc));
+    const grp = groupOf(it);
+    if (grp) {
+      const chips = el('div', 'ochips');
+      const chip = el('span', 'ochip req');
+      chip.append(svgIcon('M9 6l6 6-6 6'), document.createTextNode(typeof grp.label === 'string' && grp.label.trim() ? grp.label : 'Elección'));
+      chips.append(chip);
+      info.append(chips);
+    }
     // Opening the drawer is a separate affordance from the inline field, so a merchant editing in the
     // row is never one stray click from a modal, and the row itself stays a non-interactive surface.
     const label = typeof d.name === 'string' && d.name.trim() ? d.name : (it.key ? String(it.key) : 'Nuevo producto');
@@ -201,10 +224,11 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       chev.addEventListener('click', () => onOpen(id));
       cells.push(chev);
     }
-    row.append(...cells.slice(0, 1), info, priceCell(it && it.price, {
+    const pcell = grp ? groupPriceCell(grp, { changed: changed('item', id), key: id }) : priceCell(it && it.price, {
       editable, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),
       surface: 'item', key: id,
-    }), ...cells.slice(1));
+    });
+    row.append(...cells.slice(0, 1), info, pcell, ...cells.slice(1));
     detailEl.append(row);
   }
   if (onAdd) {

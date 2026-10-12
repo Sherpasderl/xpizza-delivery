@@ -372,10 +372,14 @@ test('no NON-PRICE mutator ships — the deferred 2b-2c affordances do not exist
   // ("Quitar": an addition only — never an existing product), adopt (the server's canonical source after a save),
   // and the read-only rowId / incompleteAdditions. Every banned 2b-2c/2b-2d name above stays banned.
   const exported = [...editor.matchAll(/export (?:function|const) ([A-Za-z_$][\w$]*)/g)].map((m) => m[1]).sort();
+  // 1D add-product B — and the REQUIRED CHOICE of a NEW product (never an extra, never an existing product's group): switch it
+  // on/off (setRequiredChoice), its name / "sin extras" / options while unsaved (setGroupLabel, setGroupExtrasNone, addChoice,
+  // removeChoice, setChoiceName, setChoiceRecommended), its prices while it is an addition (setChoicePrice, setGroupPrice —
+  // the ONE group price mutator), and the read-only choiceGroup / optionPricesEqual / isNewGroupOption / optionParentId.
   assert.deepStrictEqual(exported, [
-    'addProduct', 'adopt', 'canEditDraft', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isPublishable',
-    'optionGroups', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup', 'removeAddition', 'rowId',
-    'setAddition', 'setExtraPrice', 'setItemPrice',
+    'addChoice', 'addProduct', 'adopt', 'canEditDraft', 'choiceGroup', 'commit', 'commitTo', 'createDraft', 'discard', 'draftSource', 'groupUsage', 'incompleteAdditions', 'invalidKeys', 'isNewGroupOption', 'isPublishable',
+    'optionGroups', 'optionParentId', 'optionPricesEqual', 'parsePrice', 'pendingChanges', 'pendingCount', 'productsUsingGroup', 'removeAddition', 'removeChoice', 'rowId',
+    'setAddition', 'setChoiceName', 'setChoicePrice', 'setChoiceRecommended', 'setExtraPrice', 'setGroupExtrasNone', 'setGroupLabel', 'setGroupPrice', 'setItemPrice', 'setRequiredChoice',
   ], 'the edit state exports exactly these');
   // commit and discard are OPPOSITE operations on the same draft, and confusing them reverted a
   // published price. Both must exist, and the publish path must use commit.
@@ -950,8 +954,8 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.uid':                 [1, 'ender',   'the auth handler itself — the identity change that ENDS the previous world'],
     'state.extras':              [1, 'guarded', 'the flat extras list, written by the load path behind the generation check'],
     'state.selectedCat':         [5, 'view',    '[1D add-product A: + the add drawer\u2019s section change and the FIX action, both presentational] which category the rail highlights — a stale write repaints, it cannot mis-price'],
-    'state.openGroups':          [3, 'view',    'which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
-    'state.drawerKey':           [5, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] which dish the drawer shows; the fields inside it are canEdit-guarded'],
+    'state.openGroups':          [6, 'view',    '[1D add-product B: + the same three for the "Elección requerida" chevron, keyed choice::<id>] which option groups are expanded in the drawer — one assignment plus the add/delete of the toggle; presentational only'],
+    'state.drawerKey':           [6, 'view',    '[1D add-product A: + the add drawer\u2019s Cerrar and Listo] [1D add-product B: + renderDrawer redirecting a new product\u2019s OPTION to its product] which dish the drawer shows; the fields inside it are canEdit-guarded'],
     'state.restaurants':         [1, 'guarded', 'the switcher list, written by loadRestaurants behind its generation check'],
     'editLockHolder':            [4, 'guarded', 'the declaration, take, release, and the ender — which no longer clears it unconditionally: a ticket with a request on the wire is not the ender\u2019s to reclaim'],
     'writeSeq':                  [2, 'guarded', 'the monotonic source of request ids — declared once, incremented once, never reused, which is what makes a request id an identity rather than a label'],
@@ -964,7 +968,12 @@ test('🔴 every shared-state writer in app.js is enumerated and ruled on', () =
     'state.restaurantName':      [2, 'guarded', 'the fiscal note\u2019s restaurant name from data — load path, behind the generation check'],
     'state.draftUnpublishable':  [2, 'guarded', 'whether the saved draft can publish (getEditableCatalog) — load path, behind the generation check; it only OFFERS the reset'],
     'state.settle':              [3, 'guarded', 'codex build r1 #1/#3 — the post-publish reload is OWED: set on publish success (lock still held), cleared when the fresh source is ADOPTED (which releases the lock) and by the ender; while set, "Listo" is disabled and closeReview refuses'],
-    'state.drawerError':         [5, 'view',    'the field error shown in the add drawer after a refused save — presentational; the server re-checks every save'],
+    'state.drawerError':         [6, 'view',    '[1D add-product B: + "Ninguna" clearing it] the field error shown in the add drawer after a refused save — presentational; the server re-checks every save'],
+    // ── 1D add-product B ──
+    'state.groupAuthoring':      [2, 'guarded', 'whether the drawer OFFERS a required choice (the platform authoring switch, from getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check; the server enforces the same switch on every save'],
+    'state.choiceBadges':        [2, 'guarded', 'the option badges this brand\u2019s picker draws (renderer contract via getEditableCatalog) — reset at the start of a load, set on the load settle path behind the generation check'],
+    'state.samePrice':           [5, 'view',    '"Mismo precio para todas" per product — reset on load (DERIVED again from the prices), set/cleared by the drawer\u2019s controls; it only chooses WHICH canEdit-guarded mutator a price field calls (setGroupPrice vs setChoicePrice), it never writes the draft itself'],
+    'state.rawPrice':            [3, 'view',    'typed price text that is not (yet) a price, per field (codex PB-3 P2-2) — reset on load, set/cleared by the price fields\u2019 own input handlers; read only to REFILL a rebuilt field and only while that field\u2019s draft price is still not a price; it never writes the draft (the field\u2019s canEdit-guarded mutator does)'],
     'opGeneration':              [2, 'ender',   'the declaration and the += inside bumpGeneration — the only two, and bumping IS how a world ends'],
   };
 
@@ -1085,7 +1094,11 @@ const WRITERS = ['setItemPrice', 'setExtraPrice', 'discard', 'commit', 'commitTo
                  // editor.js or a load/settle path behind the generation check)
                  'addProduct', 'setAddition', 'removeAddition', 'adopt', 'onAddProduct', 'resetToLive', 'applyAddProductFacts',
                  // codex build r1 #1/#3 — the post-publish authoritative reload (adopts, releases the publish's lock)
-                 'settlePublish'];
+                 'settlePublish',
+                 // 1D add-product B — the required-choice setters (canEdit-guarded, NEW product only) and the drawer
+                 // renderers the tree found writing view state (state.drawerKey redirect, state.openGroups)
+                 'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
+                 'renderDrawer', 'renderAddDrawer', 'choiceBlock'];
 function writesIn(code) {
   const m = maskLiterals(code);
   const found = new Set();
@@ -1160,6 +1173,17 @@ const LISTENERS = {
   "listo::click":                 ['bound', [], 'closes the add drawer and repaints'],
   // codex build r1 #3 — "Recargar" on the receipt after a failed post-publish reload: retries the authoritative read
   "again::click":                 ['bound', [], 'retries the post-publish authoritative read; adopts only behind the settle/generation/tenant guard'],
+  // 1D add-product B — the "Elección requerida" block of the add drawer. Every one is bound(); every draft write goes through a
+  // canEdit-guarded group mutator that also refuses anything but a NEW product's group.
+  "noneIn::change":               ['bound', [], '"Ninguna": setRequiredChoice(off) — zero residue (canEdit, unsaved product only)'],
+  "onIn::change":                 ['bound', [], 'switches the required choice on: setRequiredChoice(on) with two fresh tmp refs (canEdit, unsaved product only)'],
+  "lab::input":                   ['bound', [], 'the group name, through setGroupLabel (canEdit, unsaved only)'],
+  "nm::input":                    ['bound', [], 'an option name, through setChoiceName (canEdit, unsaved only)'],
+  "pill::click":                  ['bound', [], 'RECOMENDADA, through setChoiceRecommended (canEdit, unsaved only)'],
+  "x::click":                     ['bound', [], '× an unsaved option, through removeChoice (canEdit)'],
+  "add::click":                   ['bound', [], '"Agregar opción", through addChoice (canEdit, unsaved only)'],
+  "cb::change":                   ['bound', [], '"Mismo precio para todas" (setGroupPrice, the ONE group mutator) and "Sin extras" (setGroupExtrasNone) — canEdit'],
+  "fold::click":                  ['bound', [], 'folds the choice\u2019s options away — view state (state.openGroups) and a drawer re-render'],
 };
 
 test('🔴 every listener that writes is bound, or ruled — and nothing else is registered', () => {
@@ -1385,6 +1409,9 @@ const ALLOWED_CONSUMERS = new Set([
   'optionGroups', 'groupUsage', 'canEditDraft', 'createDraft',
   'reviewModel', 'attestationModel', 'publisher.run', 'pickRid', 'canPublish',   // pure readers of the review
   'releaseEditLock', 'loadMenu',                                         // take an id / a rid, not the object
+  // 1D add-product B — the required-choice setters (canEdit-guarded) and their pure readers
+  'setRequiredChoice', 'setGroupLabel', 'setGroupExtrasNone', 'addChoice', 'removeChoice', 'setChoiceName', 'setChoiceRecommended', 'setChoicePrice', 'setGroupPrice',
+  'choiceGroup', 'optionPricesEqual', 'isNewGroupOption', 'optionParentId',
 ]);
 // Method calls on a state property, enumerated by FULL CHAIN rather than by method name — so a
 // mutating method is permitted on exactly the collection it was ruled for and nowhere else.
@@ -1395,6 +1422,9 @@ const ALLOWED_METHOD_CHAINS = new Set([
   'state.openGroups.add', 'state.openGroups.delete',   // the group toggle; counted by the field census
   // 1D add-product A — membership reads of server-said facts, and the save settle path recording allocated keys
   'state.additionKeys.has', 'state.additionKeys.add', 'state.renderedCategories.includes',
+  // 1D add-product B — the option badges (a read) and "Mismo precio" per product (view state, census-counted)
+  'state.choiceBadges.includes', 'state.samePrice.has', 'state.samePrice.get', 'state.samePrice.set', 'state.samePrice.delete',
+  'state.rawPrice.has', 'state.rawPrice.get', 'state.rawPrice.set', 'state.rawPrice.delete',
 ]);
 
 function grammarViolations(src) {

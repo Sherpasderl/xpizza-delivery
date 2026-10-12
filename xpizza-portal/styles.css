@@ -337,6 +337,22 @@
   .bsec{color:var(--mute);font-weight:500}
   .brules{display:block;font-size:11.5px;color:var(--mute);margin-top:2px}
   .kdswarn{font-size:13px;color:var(--red-text)}
+  /* 1D add-product B — "Elección requerida" (the approved mock): RECOMENDADA pill (gold when on), the group name edited
+     inline, the two group switches, the list chip, and the nested option rows in the review and the fiscal seal */
+  .recpill{display:inline-flex;align-items:center;margin-left:6px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--line);color:var(--mute);background:transparent;white-space:nowrap;flex:none;font-family:inherit}
+  .recpill.recpill-on{background:var(--gold-soft);border-color:var(--gold-line);color:var(--gold)}
+  .recpill:disabled{cursor:default}
+  .mgname-in{font-size:13.5px;font-weight:600;font-family:inherit;color:var(--ink);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:1px 0;width:100%}
+  .mgname-in:focus{outline:none;border-bottom-color:var(--accent)}
+  .mgflag{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mute);cursor:pointer}
+  .mgflag input{width:16px;height:16px;accent-color:var(--accent);flex:none}
+  .modgrp.err .mgname-in{border-bottom-color:var(--red)}
+  .modgrp > .ferr,.mgbody > .ferr{padding:0 14px 8px 43px}
+  .mgbody > .ferr{padding:0}
+  .ochips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .brow.sub{margin-left:22px;padding-top:8px;padding-bottom:8px}
+  .bchoice{display:block;font-size:11.5px;color:var(--mute);margin-top:2px;font-weight:500}
+  .sealbody .seachg.sub{padding-left:16px}
   .dwf .btn.accent{flex:none}
 
   /* ── orders view ── */

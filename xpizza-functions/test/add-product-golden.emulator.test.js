@@ -10,6 +10,8 @@
 //   • publishEdited additionally reads the active pointer + version after the flip (the KDS manifest sync);
 //   • getEditableCatalog's body gains `renderedCategories` + `restaurantName`, and it reads the active version (the
 //     draft assessment); an invalid stored draft's 503 gains `draft_unpublishable` + `sourceUpdateTime`.
+//   • (PB-3) getEditableCatalog's body gains `groupAuthoring` (the platform switch, OFF as shipped) + `choiceBadges` (the
+//     brand's renderer contract); both are code-derived, no read;
 //   • (codex PB-1 r3 P2-2) a successful publish whose candidate has a dish↔extra key overlap (x_pizza's existing Pepperoni /
 //     Prosciutto) reads exactly those keys' docs in the active version to prove the overlap is not new;
 //   Anything else — a status, a body field, a write, a missing or extra read of another kind — fails.
@@ -160,7 +162,17 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     assert.strictEqual(c.status, g.status, `${c.name}: status`);
     const body = { ...(c.body || {}) };
     if (/price save|stale save|invalid source/.test(c.name) && c.status === 200) delete body.source;
-    if (/getEditableCatalog/.test(c.name)) { delete body.renderedCategories; delete body.restaurantName; }
+    if (/getEditableCatalog/.test(c.name)) {
+      delete body.renderedCategories; delete body.restaurantName;
+      // PB-3 (declared): the portal's group facts. Their VALUES are asserted, not just dropped: the shipped switch is OFF,
+      // and the badges are exactly the brand's contract (no brand literal here).
+      if (c.status === 200) {
+        const rid = c.name.split(':')[0];
+        assert.strictEqual(body.groupAuthoring, false, `${c.name}: groupAuthoring is the shipped switch (OFF)`);
+        assert.deepStrictEqual(body.choiceBadges, [...require('../catalog/source-store').rendererContract(rid).choiceBadges], `${c.name}: choiceBadges = the brand's contract`);
+      }
+      delete body.groupAuthoring; delete body.choiceBadges;
+    }
     assert.deepStrictEqual(body, g.body, `${c.name}: body (beyond the declared fields)`);
     // calls: golden ⊆ candidate (as a multiset), and every EXTRA call is a declared read
     const left = [...c.calls];

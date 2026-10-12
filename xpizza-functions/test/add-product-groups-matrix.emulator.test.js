@@ -22,6 +22,9 @@ stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, s
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => ({ ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }) }));
 stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
 
+// the weekend-only gate reads a CONTROLLED day (Saturday by default): x_pizza's group lives in the weekend-only "ny" section,
+// so against the real clock this suite was green Fri–Sun and red Mon–Thu. The rule itself stays real (test/_weekend-clock.js).
+const WC = require('./_weekend-clock');
 const app = require('../index.js');
 const admin = require('firebase-admin');
 const rtdb = admin.database();
@@ -224,6 +227,7 @@ const charge = async (rid, oid, method, key, price, name = key) => {
   }
   ok('SAVE (both brands): an option whose derived name exists in the real identity registry is refused BEFORE allocation commits — name_previously_used on its tmp ref, field choice, nothing written');
 
+  assert.ok(WC.calls.some((c) => c.restaurantId === 'x_pizza' && c.isNow && c.day === 6), 'premise: the x_pizza orders above met the REAL weekend gate, on the controlled Saturday');
   FINISHED = true;
   console.log(`\nadd-product-groups-matrix: OK (${n})`);
   process.exit(0);
