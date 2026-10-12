@@ -30,6 +30,10 @@ for (const [name, code, re] of [
   ['update-spread-computed-key', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders/probe').update({ ...{ ['service_charge_cents']: 900 } }); });", /service_charge_cents/],
   ['opaque-builder-object', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders/probe').set(buildNewMoneyPayload()); });", /opaque order write unresolved: .*opaque-order-object .*buildNewMoneyPayload/],
   ['write-above-orders', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').set({ probe: { surcharge_cents: 900 } }); });", /NEW order field written: 'surcharge_cents'/],
+  // codex r3 P1-1: unresolved ROOT writes
+  ['root-unresolved-payload', "createOrderApp.all(async (req, res) => { await rtdb.ref().update(buildNewMoneyPayload()); });", /opaque order write unresolved: .*unresolved-root-write .*buildNewMoneyPayload/],
+  ['root-computed-key', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ [newOrderPath]: { ['service_charge_cents']: 900 } }); });", /opaque order write unresolved: .*computed-key-at-root .*newOrderPath/],
+  ['root-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...newMoneyUpdates }); });", /opaque order write unresolved: .*spread-at-root .*newMoneyUpdates/],
   ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));

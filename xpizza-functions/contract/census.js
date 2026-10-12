@@ -300,11 +300,17 @@ function census({ explicit = [], extraUnits = [] } = {}) {
       if (segs.length === 0 || (segs[0] === 'orders' && segs.length === 1)) {
         if (depth > 3) return;
         const objs = objOf(value);
-        if (!objs.length) { if (segs.length === 1 || /orders/.test(srcOf(value))) opaqueW(fn, 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }
+        // codex r3 P1-1: an UNRESOLVED payload at the root or /orders can carry any order field → opaque (RED unless bound)
+        if (!objs.length) { opaqueW(fn, segs.length === 0 ? 'unresolved-root-write' : 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }
         for (const o of objs) for (const q of o.properties) {
-          if (q.type === 'SpreadElement') { opaqueW(fn, 'spread-above-orders', q, srcOf(q.argument)); continue; }
+          if (q.type === 'SpreadElement') {   // a spread at root / orders: resolved through its object, else opaque
+            const inner = objOf(q.argument);
+            if (!inner.length) { opaqueW(fn, segs.length === 0 ? 'spread-at-root' : 'spread-above-orders', q, srcOf(q.argument)); continue; }
+            for (const o2 of inner) for (const q2 of o2.properties) { if (q2.type === 'SpreadElement') { opaqueW(fn, 'spread-at-root', q2, srcOf(q2.argument)); continue; } const k2 = q2.computed ? staticPath(q2.key) : (q2.key && (q2.key.name || q2.key.value)); if (k2 === null || k2 === undefined) { opaqueW(fn, 'computed-key-at-root', q2, srcOf(q2.key)); continue; } if (segs.length === 0 && !String(k2).startsWith('orders')) continue; pathWrite(fn, `${p}/${k2}`, q2.value, q2, `${how}/above/spread`, depth + 1); }
+            continue;
+          }
           const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
-          if (k === null || k === undefined) { if (segs.length === 1) opaqueW(fn, 'computed-key-above-orders', q, srcOf(q.key)); continue; }
+          if (k === null || k === undefined) { opaqueW(fn, segs.length === 0 ? 'computed-key-at-root' : 'computed-key-above-orders', q, srcOf(q.key)); continue; }
           if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree
           pathWrite(fn, `${p}/${k}`, q.value, q, `${how}/above`, depth + 1);
         }
@@ -334,11 +340,11 @@ function census({ explicit = [], extraUnits = [] } = {}) {
                   pathWrite(fn, `${base}/${k}`, q.value, q, 'update/spread');
                 }
               }
-              else if (normPath(base).startsWith('orders')) opaqueW(fn, 'spread-in-order-write', p, u.code.slice(p.argument.start, p.argument.end).slice(0, 60));
+              else if (normPath(base) === '' || normPath(base).startsWith('orders')) opaqueW(fn, normPath(base) === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));
               continue;
             }
             const key = p.computed ? staticPath(p.key) : (p.key.name || p.key.value);
-            if (key === null || key === undefined) { if (normPath(base).startsWith('orders')) opaqueW(fn, 'computed-key-in-order-write', p); continue; }
+            if (key === null || key === undefined) { if (normPath(base) === '' || normPath(base).startsWith('orders')) opaqueW(fn, normPath(base) === '' ? 'computed-key-at-root' : 'computed-key-in-order-write', p, srcOf(p.key)); continue; }
             pathWrite(fn, `${base}/${key}`, p.value, p, 'update');
           }
           return;
