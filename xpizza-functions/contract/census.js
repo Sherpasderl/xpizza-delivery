@@ -326,6 +326,11 @@ function census({ explicit = [], extraUnits = [] } = {}) {
       if (segs[2] === '*' || segs[2] === '') opaqueW(fn, 'dynamic-field-segment', node, full); else record(fn, segs[2], how, node);
     }
     walk(ast, (node, fn) => {
+      // codex r5 P1-2, modular form: runTransaction(ref(db[, '' | '/' | 'orders']), …) — opaque, never analysed
+      if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'runTransaction' && node.arguments[0] && node.arguments[0].type === 'CallExpression' && node.arguments[0].callee.type === 'Identifier' && node.arguments[0].callee.name === 'ref') {
+        const ra = node.arguments[0].arguments; const rp = ra.length < 2 ? '' : staticPath(ra[1]);
+        if (rp !== null && (normPath(rp) === '' || normPath(rp) === 'orders')) { AT = node; opaqueW(fn, normPath(rp) === '' ? 'transaction-at-root' : 'transaction-above-orders', node, `${normPath(rp) || '/'}: ${srcOf(node.arguments[1])}`); }
+      }
       if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed && WRITE_METHODS.has(node.callee.property.name)) {
         AT = node;
         const base = refPathOf(node.callee.object);
@@ -354,6 +359,9 @@ function census({ explicit = [], extraUnits = [] } = {}) {
           return;
         }
         if (m === 'transaction') {
+          // codex r5 P1-2: a transaction at the ROOT or on /orders can rewrite any order — its updater is NOT analysed: it is
+          // an OPAQUE write, RED unless explicitly bound (same binding as every opaque resolution)
+          if (normPath(base) === '' || normPath(base) === 'orders') { opaqueW(fn, normPath(base) === '' ? 'transaction-at-root' : 'transaction-above-orders', node, `${normPath(base) || '/'}: ${srcOf(v)}`); return; }
           if (normPath(base).split('/')[0] !== 'orders') return;
           const segs = normPath(base).split('/');
           if (segs.length >= 3 && segs[2] !== '*') { record(fn, segs[2], 'transaction', node); return; }

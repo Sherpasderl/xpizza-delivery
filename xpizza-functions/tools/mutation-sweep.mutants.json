@@ -11716,5 +11716,20 @@
       "node",
       "contract/matrix.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p0-16",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "          if (normPath(base) === '' || normPath(base) === 'orders') { opaqueW(fn, normPath(base) === '' ? 'transaction-at-root' : 'transaction-above-orders', node, `${normPath(base) || '/'}: ${srcOf(v)}`); return; }",
+    "to": "          if (false) { return; }",
+    "label": "a ROOT / /orders transaction is skipped again (codex r5 P1-2)",
+    "kills_with": [
+      "root-transaction"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
   }
 ]

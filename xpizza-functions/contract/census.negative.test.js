@@ -40,6 +40,11 @@ for (const [name, code, re] of [
   ['root-triple-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...{ ...newMoneyUpdates } } }); });", /opaque order write unresolved: .*spread-at-root .*newMoneyUpdates/],
   ['root-nested-resolved-field', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...{ ['orders/probe/surcharge_cents']: 900 } } }); });", /NEW order field written: 'surcharge_cents'/],
   ['orders-nested-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').update({ ...{ ...newMoneyUpdates } }); });", /opaque order write unresolved: .*spread-in-order-write .*newMoneyUpdates/],
+  // codex r5 P1-2: a transaction at the ROOT / on /orders is opaque (its updater is never analysed) — RED unless bound
+  ['root-transaction', "createOrderApp.all(async (req, res) => { await rtdb.ref().transaction(root => ({ ...root, orders: { ...root.orders, probe: { ['service_charge_cents']: 900 } } })); });", /opaque order write unresolved: .*transaction-at-root/],
+  ['orders-transaction', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').transaction((all) => all); });", /opaque order write unresolved: .*transaction-above-orders/],
+  ['root-transaction-slash', "createOrderApp.all(async (req, res) => { await rtdb.ref('/').transaction(fixUp); });", /opaque order write unresolved: .*transaction-at-root .*fixUp/],
+  ['modular-root-transaction', "createOrderApp.all(async (req, res) => { await runTransaction(ref(db), (root) => root); });", /opaque order write unresolved: .*transaction-at-root/],
   ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));
