@@ -46,7 +46,9 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Cash/cuadre bar — EXECUTED: display + Reconciliar link only, no write; Reconciliar activates the Caja rtab.
+// 2. Cash/cuadre bar — DRIVER-CUADRE breakdown driven through the REAL renderCashBar (extracted + executed):
+//    final vs provisional vs legacy vs escape-hatch, unresolved detail, and an explicit ERROR state (never L0).
+//    DISPLAY-only: no DB write; Reconciliar activates the Caja rtab; pending stays SEPARATE from driver cuadres.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   const src = fnSrc(html, 'renderCashBar');
@@ -55,30 +57,147 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   assert.doesNotMatch(src, /\.ref\(|\bfirebase\b|database\(|\bsubscribe/i, 'cash bar performs no write/subscription');
   assert.doesNotMatch(src, /XPD\.(set|update|write|create|delete|save|resolve|cancel|refund|assign)\w*\(/i, 'cash bar makes no money/assign call');
 
-  // execute it against a shim
-  let rtabClicked = 0;
-  const cashEl = { innerHTML: '' };
-  const reconBtn = { _l: {}, addEventListener(t, fn) { (this._l[t] || (this._l[t] = [])).push(fn); }, dispatch(t, e) { (this._l[t] || []).forEach(fn => fn(e)); } };
-  const caja = { classList: { contains: () => false }, click() { rtabClicked++; } };
-  const els = { 'cash-bar': cashEl, 'cash-recon-btn': reconBtn };
-  const $ = (id) => els[id] || null;
-  const doc = { querySelector: (sel) => (sel.includes('data-tab="caja"') ? caja : null) };
-  const reconciliationOrders = { o1: {}, o2: {}, o3: {} };     // 3 pending → "Cuadres pendientes"
-  const esc = (s) => String(s);
-  const cash = { drvA: { s1: { cuadre: { closed_at: Date.now(), cash_owed: 500 } } }, drvB: { s1: { cuadre: { closed_at: Date.now(), cash_owed: 240 } } } };
-  const renderCashBar = new Function('$', 'document', 'reconciliationOrders', 'escapeHtml', `${src}\nreturn renderCashBar;`)($, doc, reconciliationOrders, esc);
-  renderCashBar(cash);
-  assert.match(cashEl.innerHTML, /Efectivo del turno/, 'shows the shift-cash label');
-  assert.match(cashEl.innerHTML, /L 740/, 'sums the already-closed cuadres (read-only): 500 + 240');
-  assert.match(cashEl.innerHTML, /Cuadres pendientes/, 'shows the pending-reconciliation label');
-  assert.match(cashEl.innerHTML, /<b>3<\/b>/, 'pending count read from reconciliationOrders (3)');
-  assert.match(cashEl.innerHTML, /Reconciliar/, 'shows the Reconciliar link');
-  // Reconciliar → activates the existing Caja rtab
-  reconBtn.dispatch('click', {});
-  assert.strictEqual(rtabClicked, 1, 'Reconciliar activates the existing Caja rtab (navigation only)');
-  // freshness: the recon subscription refreshes the cash bar's pending count
+  const today = Date.now();
+  // Execute the REAL renderer against a shim. lastDriverCash/driverCashError are module-level in index.html, so
+  // inject fresh lexical bindings per run for isolation. Returns { html, reconBtn, rtabClicks }.
+  function run(cash, reconOrders = {}) {
+    let rtabClicked = 0;
+    const cashEl = { innerHTML: '' };
+    const reconBtn = { _l: {}, addEventListener(t, fn) { (this._l[t] || (this._l[t] = [])).push(fn); }, dispatch(t, e) { (this._l[t] || []).forEach(fn => fn(e)); } };
+    const caja = { classList: { contains: () => false }, click() { rtabClicked++; } };
+    const els = { 'cash-bar': cashEl, 'cash-recon-btn': reconBtn };
+    const $ = (id) => els[id] || null;
+    const doc = { querySelector: (sel) => (sel.includes('data-tab="caja"') ? caja : null) };
+    const esc = (s) => String(s);
+    const fn = new Function('$', 'document', 'reconciliationOrders', 'escapeHtml',
+      `let lastDriverCash={},driverCashError=null;\n${src}\nreturn renderCashBar;`)($, doc, reconOrders, esc);
+    fn(cash);
+    return { html: cashEl.innerHTML, reconBtn, rtabClicks: () => rtabClicked };
+  }
+  const C = (o) => ({ cuadre: { closed_at: today, cash_order_count: 1, ...o } });   // a today-closed cuadre fixture (schema-required count defaulted; override to test a bad count)
+
+  // (a) FINAL-only — provisional:false records sum into "Efectivo final".
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) }, dB: { s1: C({ cash_owed: 240, provisional: false }) } });
+    assert.match(r.html, /Efectivo final \(2\)/, 'final count = 2');
+    assert.match(r.html, /L 740/, 'final total = 500 + 240');
+    assert.doesNotMatch(r.html, /Provisional \(/, 'no provisional line when there are none');
+  }
+  // (b) PROVISIONAL-only — its own warn-styled line; the final line stays at a real L0 (NOT an error); unresolved shown.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 300, provisional: true, unresolved_count: 2, unresolved_ids: ['o1', 'o2'] }) } });
+    assert.match(r.html, /cash-prov/, 'provisional line present (warn style)');
+    assert.match(r.html, /Provisional \(1\)/, 'provisional count = 1');
+    assert.match(r.html, /L 300/, 'provisional total');
+    assert.match(r.html, /Efectivo final \(0\)/, 'final line present at a REAL 0 (not an error)');
+    assert.match(r.html, /Sin resolver/, 'unresolved line shown');
+    assert.match(r.html, /<b>2<\/b>/, 'unresolved count = 2');
+    assert.match(r.html, /title="[^"]*: 2"/, 'unresolved driver/shift detail in the title');
+  }
+  // (c) MIXED — final + provisional bucketed independently.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) }, dB: { s1: C({ cash_owed: 120, provisional: true, unresolved_count: 1 }) } });
+    assert.match(r.html, /Efectivo final \(1\)/, 'final count 1');
+    assert.match(r.html, /L 500/, 'final total 500');
+    assert.match(r.html, /Provisional \(1\)/, 'provisional count 1');
+    assert.match(r.html, /L 120/, 'provisional total 120');
+  }
+  // (d) NEEDS DISPATCH REVIEW — a cuadre Admin-flagged needs_dispatch_review:true (escape-hatch path, always
+  //     provisional) stands out as "requiere reconciliación manual", keyed on the FLAG (not the source), DISTINCT
+  //     from an ordinary provisional cuadre, and NEVER summed as a clean final. (2f r3.)
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 90, provisional: true, needs_dispatch_review: true, source: 'escape_hatch' }) } });
+    assert.match(r.html, /cash-escape/, 'needs-review line present (accent style)');
+    assert.match(r.html, /Requiere reconciliación manual/, 'needs-review label');
+    assert.match(r.html, /Efectivo final \(0\)/, 'needs-review NOT summed as a clean final');
+    assert.doesNotMatch(r.html, /Provisional \(/, 'needs-review NOT double-counted as an ordinary provisional');
+    // keyed on the FLAG, not the source: needs_dispatch_review:true with NO `source` → still the review bucket.
+    const r2 = run({ dB: { s1: C({ cash_owed: 40, provisional: true, needs_dispatch_review: true }) } });
+    assert.match(r2.html, /Requiere reconciliación manual/, 'review bucket keyed on needs_dispatch_review (no source needed)');
+    assert.doesNotMatch(r2.html, /Provisional \(/, 'a flag-only review record is not counted as ordinary provisional');
+  }
+  // (e) LEGACY — pre-feature record (NO provisional/metadata): must not crash; shown on its OWN SUBORDINATE
+  //     "Heredado" line (dim, cash-legacy) so unverified pre-2.5.0 cash can NEVER read as a verified-final figure,
+  //     and is NEVER merged into a grand total that hides it. (advisor: keep separate; must not read as final.)
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) }, dB: { s1: C({ cash_owed: 180 }) } });   // final 500 + legacy 180
+    assert.match(r.html, /<div class="ci cash-legacy"><b>[^<]*<\/b><span>Heredado \(1\)/, 'legacy shown on its OWN subordinate cash-legacy line (not crashed, not mislabeled)');
+    assert.match(r.html, /L 180/, 'legacy cash shown (display as before)');
+    assert.match(r.html, /Efectivo final \(1\)/, 'final count EXCLUDES legacy (1 final, not 2)');
+    assert.match(r.html, /L 500/, 'final total excludes legacy (500)');
+    assert.doesNotMatch(r.html, /L 680/, 'NO merged grand total that hides the legacy figure (500 and 180 stay separate)');
+    assert.doesNotMatch(r.html, /class="ci cash-legacy"><b>L 500/, 'the Efectivo final value is NOT dimmed/legacy-styled');
+  }
+  // (f) ERROR STATE — a subscription/permission failure renders an explicit error, NEVER an L0.
+  {
+    const r = run({ __error: true, code: 'PERMISSION_DENIED' });
+    assert.match(r.html, /cash-error/, 'error line present');
+    assert.match(r.html, /Error al leer cuadres/, 'explicit error message');
+    assert.doesNotMatch(r.html, /Efectivo final|Efectivo del turno|L 0\b/, 'NEVER renders a cash figure / L0 on error');
+  }
+  // (g) Reconciliar → Caja rtab (navigation only); the pending count is SEPARATE from driver cuadres.
+  {
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) } }, { o1: {}, o2: {}, o3: {} });
+    assert.match(r.html, /Cuadres pendientes/, 'payment-recon pending label present');
+    assert.match(r.html, /<b>3<\/b>/, 'pending count from reconciliationOrders (3) — SEPARATE from cuadres');
+    assert.match(r.html, /Reconciliar/, 'Reconciliar link present');
+    r.reconBtn.dispatch('click', {});
+    assert.strictEqual(r.rtabClicks(), 1, 'Reconciliar activates the Caja rtab (navigation only)');
+  }
+  // (h) MALFORMED money → explicit "registro de caja inválido" error (with driver/shift), NEVER a verified L0,
+  //     and NEVER a throw — incl. an object cash_owed where Number({toString:'x'}) would TypeError. (codex P1)
+  for (const bad of [
+    { cash_owed: 'oops' },                          // string
+    { cash_owed: null },                            // null
+    { provisional: false },                         // missing cash_owed
+    { cash_owed: { toString: 'x' } },               // object → Number() would throw
+    { cash_owed: -5 },                              // negative
+    { cash_owed: 100, cash_order_count: 'nope' },   // mistyped count (schema-required field)
+    { cash_owed: 100, provisional: 'yes' },         // mistyped boolean
+  ]) {
+    let threw = false, r;
+    try { r = run({ dA: { s1: C({ provisional: false, ...bad }) } }); } catch (_) { threw = true; }
+    assert.ok(!threw, `malformed record ${JSON.stringify(bad)} must NOT throw`);
+    assert.match(r.html, /Registro de caja inválido/, `malformed record ${JSON.stringify(bad)} → explicit invalid error`);
+    assert.doesNotMatch(r.html, /Efectivo final|L 0\b/, `malformed record ${JSON.stringify(bad)} → NEVER a verified L0 / cash figure`);
+  }
+  // (i) ERROR → INVALID/partial snapshot does NOT clear the error; a VALID snapshot recovers. (codex P1)
+  {
+    const cashEl = { innerHTML: '' };
+    const els = { 'cash-bar': cashEl, 'cash-recon-btn': { addEventListener() {} } };
+    const fn = new Function('$', 'document', 'reconciliationOrders', 'escapeHtml',
+      `let lastDriverCash={},driverCashError=null;\n${src}\nreturn renderCashBar;`)((id) => els[id] || null, { querySelector: () => null }, {}, (s) => String(s));
+    fn({ __error: true, code: 'PERMISSION_DENIED' });
+    assert.match(cashEl.innerHTML, /Error al leer cuadres/, 'step 1: subscription error shown');
+    fn({ dA: { s1: C({ cash_owed: 'oops', provisional: false }) } });   // partial/invalid snapshot after the error
+    assert.doesNotMatch(cashEl.innerHTML, /Efectivo final/, 'step 2: an invalid snapshot does NOT recover to a misleading final figure');
+    assert.match(cashEl.innerHTML, /Error al leer cuadres|Registro de caja inválido/, 'step 2: still an explicit error (not L0)');
+    fn({ dB: { s1: C({ cash_owed: 500, cash_order_count: 3, provisional: false }) } });   // valid snapshot
+    assert.match(cashEl.innerHTML, /Efectivo final \(1\)/, 'step 3: a VALID snapshot recovers to totals');
+    assert.match(cashEl.innerHTML, /L 500/, 'step 3: recovered total');
+  }
+  // (j) ALL CATEGORIES present — every line renders and the needs-action lines (review, then unresolved) come
+  //     FIRST (importance order, codex r2). The real no-clip LAYOUT is verified in Chrome by dispatch-cashbar-layout.test.js.
+  {
+    const r = run({
+      a: { s: C({ cash_owed: 500, provisional: false }) },
+      b: { s: C({ cash_owed: 300, provisional: true, unresolved_count: 2 }) },
+      c: { s: C({ cash_owed: 180 }) },                                       // legacy
+      d: { s: C({ cash_owed: 90, provisional: true, needs_dispatch_review: true }) },
+    });
+    for (const label of ['Requiere reconciliación manual', 'Sin resolver', 'Efectivo final', 'Provisional', 'Heredado', 'Cuadres pendientes', 'Reconciliar'])
+      assert.ok(r.html.includes(label), `all-categories: "${label}" present`);
+    assert.ok(r.html.indexOf('Requiere reconciliación manual') < r.html.indexOf('Efectivo final'), 'review line is ordered BEFORE final (importance order)');
+    assert.ok(r.html.indexOf('Sin resolver') < r.html.indexOf('Efectivo final'), 'unresolved is ordered before final');
+    assert.ok(r.html.indexOf('Reconciliar') > r.html.indexOf('Cuadres pendientes'), 'Reconciliar is last');
+  }
+  // freshness: the recon subscription still refreshes the bar's pending count.
   assert.match(html, /renderReconciliationSection\(\);\s*setTabBadge\('tab-caja-n'[^\n]*\n\s*renderCashBar\(\);/, 'recon subscription calls renderCashBar() to refresh the pending count');
-  ok('cash bar: display + Reconciliar→Caja rtab, no write; reads cash total + pending recon count; refreshed on recon updates');
+  // the subscription is wired with an ERROR handler → error state (never a silent L0 on permission failure).
+  assert.match(html, /subscribeToDriverCash\(renderCashBar,\s*\(err\)\s*=>\s*renderCashBar\(\{\s*__error:\s*true/, 'subscribeToDriverCash wired with an error handler → explicit error state');
+  // Heredado is visually SUBORDINATE (dim) so it can never read as a verified-final figure.
+  assert.match(html, /\.cash-bar \.ci\.cash-legacy b \{[^}]*color: var\(--text-dim\)/, 'Heredado value is dimmed (var(--text-dim)) — subordinate to Efectivo final');
+  ok('cash bar: final/provisional/legacy/escape-hatch split + unresolved detail + explicit error (never L0); Reconciliar→Caja; pending stays separate');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

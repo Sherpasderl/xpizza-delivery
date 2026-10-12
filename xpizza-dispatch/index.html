@@ -2103,10 +2103,21 @@
   /* ============ Right rail — cash bar + driver quick actions (Task 10a) ============ */
   /* D3: cash/cuadre bar — mockup horizontal layout (figures + divider + Reconciliar link). Display + link only. */
   /* F3: cash/cuadre bar is now the Repartidores panel FOOTER (mockup .cashbar) — pinned below the scrolling roster. */
-  .cash-bar { flex: none; display: flex; align-items: center; gap: 10px; background: var(--surface); border-top: 1px solid var(--border-soft); padding: 11px 14px; margin: 0; }
+  /* flex-wrap so that when many cuadre categories are present (final/provisional/Heredado/unresolved/review + pending +
+     Reconciliar) every line + the reconcile control stay VISIBLE in the fixed-width rail (342px, overflow:hidden) —
+     the row wraps to extra lines instead of clipping. The footer is flex:none, so it grows vertically and the
+     scrolling roster above absorbs it. */
+  .cash-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; background: var(--surface); border-top: 1px solid var(--border-soft); padding: 11px 14px; margin: 0; }
+  .cash-bar .cash-recon-btn { flex: none; margin-left: auto; }   /* keep the reconcile control intact + pushed to the row end */
   .cash-bar .ci { display: flex; flex-direction: column; line-height: 1.25; }
   .cash-bar .ci b { font-family: 'IBM Plex Mono', monospace; font-weight: 500; font-size: 13px; color: var(--text); }
   .cash-bar .ci span { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
+  /* driver-cuadre breakdown: provisional/unresolved = warn (needs care); escape-hatch + read error = accent (stands out). */
+  .cash-bar .ci.cash-prov b { color: var(--warn); }
+  .cash-bar .ci.cash-escape b, .cash-bar .ci.cash-escape span { color: var(--accent); font-weight: 600; }
+  .cash-bar .ci.cash-error b, .cash-bar .ci.cash-error span { color: var(--accent); }
+  /* Heredado (pre-2.5.0, unverified): SUBORDINATE — dim + lighter so it can never read as a verified-final figure. */
+  .cash-bar .ci.cash-legacy b { color: var(--text-dim); font-weight: 400; }
   .cash-div { width: 1px; height: 26px; background: var(--border-soft); flex: none; }
   .cash-recon-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
   .cash-recon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--hair-2); }
@@ -2963,7 +2974,9 @@ function subscribeAll() {
     renderSidebar();
     updateCustomerMarkers();
   });
-  XPD.subscribeToDriverCash(renderCashBar);   // read-only cash bar (today's closed cuadres)
+  // read-only cash bar (today's closed cuadres); the error cb renders an explicit error state (never a silent L0)
+  // if the /driver_cash parent .read is denied or the read fails.
+  XPD.subscribeToDriverCash(renderCashBar, (err) => renderCashBar({ __error: true, code: err && err.code }));
   // D4-c4 "Pausar pedidos" — read-only: the pause banner (the parent node enumerates every restaurant) + its clock
   XPD.subscribeToOrderControl((nodes) => {
     orderControlNodes = nodes; orderControlStatus = 'ok';
@@ -3890,28 +3903,82 @@ async function confirmCancelOrder(orderId) {
 // NO write. The reconciliation panel (Caja rtab) owns the resolve logic. `cash` comes from subscribeToDriverCash;
 // the recon subscription calls this with no arg to refresh the pending count, so the last cash snapshot is cached.
 let lastDriverCash = {};
+let driverCashError = null;   // set when the /driver_cash subscription ERRORS (permission/other) → explicit error state, NEVER L0
+// renderCashBar(cash):
+//   • a normal snapshot object → new driver_cash data (clears a prior error ONLY if every today-closed record is VALID)
+//   • { __error: true, code } → a subscription/PERMISSION failure → render an explicit error (NEVER L0)
+//   • undefined → refresh only (keep the last snapshot + error state; the recon tick calls this to refresh the
+//       "Cuadres pendientes" PAYMENT count, which stays SEPARATE from the driver-cash cuadres below)
+// DISPLAY + "Reconciliar" link ONLY — no DB write. Every today-closed record is VALIDATED before any total is
+// published or any error is cleared: malformed/partial money (cash_owed not a finite number ≥ 0, mistyped
+// count/boolean fields) is NEVER rendered as a verified L0 and never throws — it surfaces an explicit
+// "registro de caja inválido" error with driver/shift. Type-check BEFORE any Number() on untrusted input
+// (Number({toString:'x'}) would throw). An invalid/partial snapshot does NOT clear a prior subscription error.
 function renderCashBar(cash) {
-  if (cash !== undefined) lastDriverCash = cash || {};
+  if (cash && cash.__error === true) driverCashError = cash;                        // subscription/permission failure
+  else if (cash !== undefined) lastDriverCash = cash || {};                         // store the latest snapshot — validate BEFORE clearing an error / publishing totals
   const el = $('cash-bar');
   if (!el) return;
+
+  const pending = Object.keys(reconciliationOrders || {}).length;                   // PAYMENT reconciliations — SEPARATE concern, kept distinct from driver cuadres
+  const pendingHtml = `<div class="cash-div"></div><div class="ci"><b>${escapeHtml(String(pending))}</b><span>Cuadres pendientes</span></div>`;
+  const reconBtnHtml = `<button class="cash-recon-btn" id="cash-recon-btn" type="button">Reconciliar</button>`;
+
+  // Scan today's closed cuadres: split VALID rows from MALFORMED ones (type-checked, so no throw on hostile input).
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const startMs = dayStart.getTime();
-  let total = 0;
-  for (const shifts of Object.values(lastDriverCash || {})) {
-    for (const shift of Object.values(shifts || {})) {
+  const nn = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;           // a non-negative finite number
+  const rows = []; const invalid = [];
+  for (const [uid, shifts] of Object.entries(lastDriverCash || {})) {
+    if (!shifts || typeof shifts !== 'object') continue;
+    for (const [shiftId, shift] of Object.entries(shifts)) {
       const c = shift && shift.cuadre;
-      if (c && Number.isFinite(c.closed_at) && c.closed_at >= startMs) {
-        total += Number(c.cash_owed) || 0;
-      }
+      if (!c || typeof c !== 'object' || !Number.isFinite(c.closed_at) || c.closed_at < startMs) continue;   // today's closed cuadres only
+      const who = `${String(uid).slice(0, 6)}/${String(shiftId).slice(0, 8)}`;
+      const valid = nn(c.cash_owed) && nn(c.cash_order_count)                        // money + count MUST be finite numbers ≥ 0
+        && (c.unresolved_count === undefined || nn(c.unresolved_count))
+        && (c.legacy_provisional_count === undefined || nn(c.legacy_provisional_count))
+        && (c.provisional === undefined || typeof c.provisional === 'boolean')       // absence = legacy; present must be boolean
+        && (c.needs_dispatch_review === undefined || typeof c.needs_dispatch_review === 'boolean');
+      if (valid) rows.push({ c, who }); else invalid.push(who);
     }
   }
-  const pending = Object.keys(reconciliationOrders || {}).length;   // read-only — pending payment reconciliations
-  el.innerHTML = `
-    <div class="ci"><b>L ${escapeHtml(total.toLocaleString('es-HN'))}</b><span>Efectivo del turno</span></div>
-    <div class="cash-div"></div>
-    <div class="ci"><b>${escapeHtml(String(pending))}</b><span>Cuadres pendientes</span></div>
-    <button class="cash-recon-btn" id="cash-recon-btn" type="button">Reconciliar</button>
-  `;
+  // A VALID data snapshot clears a prior subscription error; a partial/INVALID one does NOT (it would otherwise
+  // flip the explicit error to a misleading L0).
+  if (cash !== undefined && !(cash && cash.__error === true) && invalid.length === 0) driverCashError = null;
+
+  if (driverCashError) {
+    el.innerHTML = `<div class="ci cash-error"><b>—</b><span>Error al leer cuadres · reintentá</span></div>${pendingHtml}${reconBtnHtml}`;
+  } else if (invalid.length > 0) {
+    // Malformed/partial money → explicit error (with driver/shift), NEVER a verified L0.
+    const detail = invalid[0] + (invalid.length > 1 ? ` (+${invalid.length - 1})` : '');
+    el.innerHTML = `<div class="ci cash-error"><b>—</b><span>Registro de caja inválido · ${escapeHtml(detail)} · revisar</span></div>${pendingHtml}${reconBtnHtml}`;
+  } else {
+    let finalTotal = 0, finalCount = 0, provTotal = 0, provCount = 0, legacyTotal = 0, legacyCount = 0;
+    let escapeCount = 0, unresolvedCount = 0;
+    const unresolvedDetail = [];                                                    // "uid/shift: n" per driver-shift with unresolved orders
+    for (const { c, who } of rows) {
+      const owed = c.cash_owed;                                                      // validated: finite number ≥ 0
+      if (c.needs_dispatch_review === true) escapeCount++;                           // Admin-flagged review (keyed on the FLAG) — DISTINCT, never a clean final
+      else if (c.provisional === true) { provCount++; provTotal += owed; }           // PROVISIONAL
+      else if (c.provisional === false) { finalCount++; finalTotal += owed; }        // FINAL — money-grade attributed
+      else { legacyCount++; legacyTotal += owed; }                                   // LEGACY pre-feature record (no `provisional`) → Heredado
+      const u = (c.unresolved_count === undefined) ? 0 : c.unresolved_count;         // validated
+      if (u > 0) { unresolvedCount += u; unresolvedDetail.push(`${who}: ${u}`); }
+    }
+    const L = (n) => 'L ' + n.toLocaleString('es-HN');
+    // ORDER BY IMPORTANCE (codex r2): the needs-action lines (review, then unresolved) lead, so if the rail is
+    // narrow the LEAST important figures wrap last — never the manual-review warning. Segments carry NO leading
+    // divider; join inserts them. flex-wrap keeps every segment + Reconciliar visible (the .cash-bar wraps).
+    const segs = [];
+    if (escapeCount > 0)     segs.push(`<div class="ci cash-escape"><b>${escapeHtml(String(escapeCount))}</b><span>Requiere reconciliación manual</span></div>`);
+    if (unresolvedCount > 0) segs.push(`<div class="ci cash-prov"><b>${escapeHtml(String(unresolvedCount))}</b><span title="${escapeHtml(unresolvedDetail.join(' · '))}">Sin resolver</span></div>`);
+    segs.push(`<div class="ci"><b>${escapeHtml(L(finalTotal))}</b><span>Efectivo final (${finalCount})</span></div>`);
+    if (provCount > 0)       segs.push(`<div class="ci cash-prov"><b>${escapeHtml(L(provTotal))}</b><span>Provisional (${provCount})</span></div>`);
+    if (legacyCount > 0)     segs.push(`<div class="ci cash-legacy"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);   // SUBORDINATE (dim) — unverified pre-2.5.0, never a verified-final figure, never merged into a grand total
+    el.innerHTML = segs.join('<div class="cash-div"></div>') + pendingHtml + reconBtnHtml;
+  }
+
   // Reconciliar → the shipped reconciliation panel (Caja rtab). Navigation only; no cuadre math/write here.
   const btn = $('cash-recon-btn');
   if (btn) btn.addEventListener('click', () => {

@@ -38,6 +38,7 @@
     "sync:rules": "node -e \"require('fs').copyFileSync('../xpizza-reference/database.rules.json','database.rules.json')\"",
     "check:rules": "npm run sync:rules && node scripts/assert-rules-synced.js && node restaurants-rules.guard.test.js && node pickup-ready-rules.guard.test.js && node counters-rules.guard.test.js && node user-auth-rules.guard.test.js && node catalog-integrity-rules.guard.test.js",
     "test:rules": "node tools/emulator-run.js --only database \"node test/restaurants-rules.emulator.test.js\"",
+    "test:driver-cash-subscription": "node tools/emulator-run.js --only database \"node test/driver-cash-subscription.emulator.test.js\"",
     "test:catalog-rules": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-rules.emulator.test.js\"",
     "test:catalog-parity": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/catalog-parity.emulator.test.js\"",
     "test:pricing-cutover": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/pricing-cutover.emulator.test.js\"",
