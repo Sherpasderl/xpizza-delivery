@@ -240,6 +240,8 @@ function census({ explicit = [], extraUnits = [] } = {}) {
   const writes = []; const opaqueWrites = [];
   const fnUnits = parsed.filter((x) => x.u.kind === 'fn');
   const returnsByName = new Map();
+  const NODE_CODE = new WeakMap();   // node → its unit's source (a builder's object can live in another file)
+  for (const { u, ast } of fnUnits) walk(ast, (node) => { NODE_CODE.set(node, u.code); });
   for (const { ast } of fnUnits) {
     // a function's returned object(s): `return {…}`, or `return x` where x is a same-function object literal
     const localObj = new Map();
@@ -290,10 +292,26 @@ function census({ explicit = [], extraUnits = [] } = {}) {
       }
     };
     // a write at a full path: orders → nothing; orders/<id> → the value object's keys; orders/<id>/<f>… → f
-    function pathWrite(fn, full, value, node, how) {
-      const segs = normPath(full).split('/');
-      if (segs[0] !== 'orders' || segs.length < 2) return;
-      if (segs.length === 2) { const objs = objOf(value); if (objs.length) objFields(fn, objs, node, how); else opaqueW(fn, 'opaque-order-object', node); return; }
+    // the value expression's source — binds an opaque-write RESOLUTION to its exact write site (codex r2 P1-1)
+    const srcOf = (n) => (n ? (NODE_CODE.get(n) || u.code).slice(n.start, n.end).replace(/\s+/g, ' ').slice(0, 80) : '');
+    function pathWrite(fn, full, value, node, how, depth = 0) {
+      const p = normPath(full); const segs = p === '' ? [] : p.split('/');
+      // codex r2 P1-1: a write ABOVE an order (the root, or /orders itself) is an order write too — descend its object
+      if (segs.length === 0 || (segs[0] === 'orders' && segs.length === 1)) {
+        if (depth > 3) return;
+        const objs = objOf(value);
+        if (!objs.length) { if (segs.length === 1 || /orders/.test(srcOf(value))) opaqueW(fn, 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }
+        for (const o of objs) for (const q of o.properties) {
+          if (q.type === 'SpreadElement') { opaqueW(fn, 'spread-above-orders', q, srcOf(q.argument)); continue; }
+          const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
+          if (k === null || k === undefined) { if (segs.length === 1) opaqueW(fn, 'computed-key-above-orders', q, srcOf(q.key)); continue; }
+          if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree
+          pathWrite(fn, `${p}/${k}`, q.value, q, `${how}/above`, depth + 1);
+        }
+        return;
+      }
+      if (segs[0] !== 'orders') return;
+      if (segs.length === 2) { const objs = objOf(value); if (objs.length) objFields(fn, objs, node, how); else opaqueW(fn, 'opaque-order-object', node, srcOf(value)); return; }
       if (segs[2] === '*' || segs[2] === '') opaqueW(fn, 'dynamic-field-segment', node, full); else record(fn, segs[2], how, node);
     }
     walk(ast, (node, fn) => {
@@ -307,7 +325,15 @@ function census({ explicit = [], extraUnits = [] } = {}) {
           for (const p of updObjs.flatMap((o) => o.properties)) {
             if (p.type === 'SpreadElement') {   // a conditional / variable spread inside a multipath update: its keys are paths under base
               const inner = objOf(p.argument);
-              if (inner.length) { for (const o of inner) for (const q of o.properties) { if (q.type === 'SpreadElement' || q.computed) continue; const k = q.key && (q.key.name || q.key.value); if (typeof k === 'string') pathWrite(fn, `${base}/${k}`, q.value, q, 'update/spread'); } }
+              if (inner.length) {
+                for (const o of inner) for (const q of o.properties) {
+                  if (q.type === 'SpreadElement') { if (normPath(base).startsWith('orders')) opaqueW(fn, 'spread-in-order-write', q, srcOf(q.argument)); continue; }
+                  // codex r2 P1-1: a COMPUTED key inside an update spread is resolved, or opaque — never skipped
+                  const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
+                  if (k === null || k === undefined) { if (normPath(base).startsWith('orders')) opaqueW(fn, 'computed-key-in-order-write', q, srcOf(q.key)); continue; }
+                  pathWrite(fn, `${base}/${k}`, q.value, q, 'update/spread');
+                }
+              }
               else if (normPath(base).startsWith('orders')) opaqueW(fn, 'spread-in-order-write', p, u.code.slice(p.argument.start, p.argument.end).slice(0, 60));
               continue;
             }

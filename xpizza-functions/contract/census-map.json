@@ -1080,7 +1080,8 @@
         "subtotal_cents",
         "tax_cents"
       ],
-      "reason": "the `priceBreakdown` PARAMETER is orderBreakdownCents(...)'s { total_cents, subtotal_cents, tax_cents } (order-money.js) — passed in by createOrder"
+      "reason": "the `priceBreakdown` PARAMETER is orderBreakdownCents(...)'s { total_cents, subtotal_cents, tax_cents } (order-money.js) — passed in by createOrder",
+      "count": 1
     },
     {
       "file": "xpizza-functions/index.js",
@@ -1091,7 +1092,9 @@
         "scheduled_for",
         "release_at"
       ],
-      "reason": "heldUpdates = buildScheduledOrderRecord(...) (create-order-build.js:142-152): buildCreateOrderUpdates' order record (inventoried there) + status / scheduled_for / release_at"
+      "reason": "heldUpdates = buildScheduledOrderRecord(...) (create-order-build.js:142-152): buildCreateOrderUpdates' order record (inventoried there) + status / scheduled_for / release_at — bound to THIS write (`db.ref().update(heldUpdates)` whose orders/<id> value is `record`)",
+      "detail": "record",
+      "count": 1
     }
   ]
 }

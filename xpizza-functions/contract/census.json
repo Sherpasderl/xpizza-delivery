@@ -38898,6 +38898,7 @@
    "fn": "createOrderApp.all",
    "how": "opaque-order-object",
    "line": 1152,
+   "detail": "record",
    "resolved": [
     "status",
     "scheduled_for",

@@ -65,12 +65,19 @@ function build({ extraUnits = [] } = {}) {
   const clocks = c.clocks.map((k) => ({ key: `${k.file}:${k.fn}:${k.what}`, line: k.line, class: k.proposed }));
   // ── WRITE INVENTORY (codex r1 P1-1): every written order field is reviewed; opaque writes must be resolved ──
   const resolved = [];
+  // codex r2 P1-1: a resolution is bound to its EXACT write site — file, function, kind AND the value expression — and
+  // to the NUMBER of such writes; a new write of the same shape, or any other opaque write, is RED
+  const resCount = new Map();
   const opaqueWrites = c.opaqueWrites.map((o) => {
-    const r = (MAP.opaqueWriteResolutions || []).find((x) => x.file === o.file && x.fn === o.fn && x.how === o.how && (!x.detail || x.detail === o.detail));
-    if (!r) problems.push(`opaque order write unresolved: ${o.file} ${o.fn} ${o.how} line ${o.line}${o.detail ? ` (${o.detail})` : ''} — resolve its fields in census-map`);
-    else resolved.push(...r.fields.map((f) => ({ file: o.file, fn: o.fn, field: f, how: `resolved:${o.how}`, line: o.line })));
+    const r = (MAP.opaqueWriteResolutions || []).find((x) => x.file === o.file && x.fn === o.fn && x.how === o.how && x.detail === o.detail);
+    if (!r) problems.push(`opaque order write unresolved: ${o.file} ${o.fn} ${o.how} line ${o.line} (${o.detail || '-'}) — resolve its fields in census-map`);
+    else { resolved.push(...r.fields.map((f) => ({ file: o.file, fn: o.fn, field: f, how: `resolved:${o.how}`, line: o.line }))); resCount.set(r, (resCount.get(r) || 0) + 1); }
     return { ...o, resolved: r ? r.fields : null };
   });
+  for (const r of MAP.opaqueWriteResolutions || []) {
+    const k = resCount.get(r) || 0;
+    if (k !== r.count) problems.push(`opaque-write resolution ${r.file} ${r.fn} ${r.how} (${r.detail}) matches ${k} write(s), reviewed for ${r.count}`);
+  }
   const allWrites = [...c.writes, ...resolved];
   const fieldsWritten = [...new Set(allWrites.map((w) => w.field))].sort();
   for (const f of fieldsWritten) {

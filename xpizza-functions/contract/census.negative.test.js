@@ -24,6 +24,18 @@ for (const [name, u, re] of cases) {
   assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG ${name}: the census stayed GREEN for ${u.file} (problems: ${JSON.stringify(p.slice(0, 4))})`);
   ok(`${name}: RED — ${p.filter((x) => re.test(x))[0].slice(0, 140)}`);
 }
+// codex r2 P1-1 probes, injected AS index.js / createOrderApp.all (where the reviewed opaque resolution lives)
+const asIndex = (code) => ({ file: 'xpizza-functions/index.js', scope: 'functions', kind: 'fn', code, lineOffset: 0, module: false });
+for (const [name, code, re] of [
+  ['update-spread-computed-key', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders/probe').update({ ...{ ['service_charge_cents']: 900 } }); });", /service_charge_cents/],
+  ['opaque-builder-object', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders/probe').set(buildNewMoneyPayload()); });", /opaque order write unresolved: .*opaque-order-object .*buildNewMoneyPayload/],
+  ['write-above-orders', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').set({ probe: { surcharge_cents: 900 } }); });", /NEW order field written: 'surcharge_cents'/],
+  ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
+]) {
+  const p = problemsWith(asIndex(code));
+  assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
+  ok(`${name} (injected into index.js / createOrderApp.all): RED — ${p.filter((x) => re.test(x))[0].slice(0, 130)}`);
+}
 // the sentinel AND the inventory both fire for a delivery fee on a template path (two independent nets)
 {
   const p = problemsWith(cases.find((c) => c[0] === 'template-path')[1]);

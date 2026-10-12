@@ -32,9 +32,9 @@ assert.deepStrictEqual({ added: added.slice(0, 20), stale: stale.slice(0, 20), r
 ok(`the reviewed census.json matches the code exactly (${now.size} site ids; 0 new, 0 stale, 0 remapped)`);
 
 const keyset = (arr, f) => JSON.stringify(arr.map(f).sort());
-for (const [name, f] of [['opaque', (o) => `${o.file}#${o.fn}#${o.how}#${o.rule}`], ['projections', (p) => `${p.scope}#${p.alias}#${p.field}`], ['sentinel', (s) => `${s.file}#${s.key}#${s.exempt}`], ['timers', (t) => `${t.key}#${t.class}`], ['clocks', (k) => `${k.key}#${k.class}`]]) {
+for (const [name, f] of [['writes', (w) => w.key], ['fieldsWritten', (x) => `${x.field}#${x.class}`], ['opaqueWrites', (o) => `${o.file}#${o.fn}#${o.how}#${o.detail || ''}#${(o.resolved || []).join(',')}`], ['opaque', (o) => `${o.file}#${o.fn}#${o.how}#${o.rule}`], ['projections', (p) => `${p.scope}#${p.alias}#${p.field}`], ['sentinel', (s) => `${s.file}#${s.key}#${s.exempt}`], ['timers', (t) => `${t.key}#${t.class}`], ['clocks', (k) => `${k.key}#${k.class}`]]) {
   assert.strictEqual(keyset(doc[name], f), keyset(committed[name], f), FAIL(`the ${name} inventory differs from the reviewed census — review, then regenerate`));
 }
-ok(`opaque reads, projection links (incl. the KDS pedido / estado / maps premise), write sentinel, ${doc.timers.length} timers and ${doc.clocks.length} clock sites all equal the reviewed census`);
+ok(`the WRITE inventory (${doc.writes.length} write keys, ${doc.fieldsWritten.length} fields, ${doc.opaqueWrites.length} bound opaque writes), opaque reads, projection links (incl. the KDS pedido / estado / maps premise), write sentinel, ${doc.timers.length} timers and ${doc.clocks.length} clock sites all equal the reviewed census`);
 
 console.log(`\nr3-census guard: OK (${n})`);
