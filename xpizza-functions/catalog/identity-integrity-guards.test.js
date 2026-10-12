@@ -143,6 +143,32 @@ try {
   }
   ok('OWNS_IDENTITY stays true (advisor ruling 2026-10-10): the identity integrity modules are required ONLY by index.js\'s d4c2b block (once, used nowhere else), the monitor, and three operator CLIs nothing outside tools/ loads; the classifier is pure; every monitor RTDB ref is under catalog_integrity/ — a planted money-module requirer, an out-of-block require or use, a classifier write and a foreign RTDB ref each go RED');
 
+  // ── 5. THE TWO PRODUCTION OPERATOR CLIs PIN THE PROJECT — spawned for real (endpoint census: prod-cli) ───────────────────────────
+  //    requireProject({ requireFlag: true }): an INHERITED GOOGLE_CLOUD_PROJECT alone is refused (exit 2) before any client; with
+  //    --project the guard lets it through. Safe by construction: no credential resolves, both data hosts are a dead port, no --apply.
+  {
+    const { spawnSync } = require('child_process');
+    const SCRUB = ['FUNCTIONS_EMULATOR', 'FIREBASE_FIRESTORE_EMULATOR_ADDRESS', 'FIREBASE_EMULATOR_HUB', 'XPIZZA_EMU_OFFSET', 'XPIZZA_EMU_SERVICES',
+      'XPIZZA_EMU_DEAD', 'XPIZZA_EMU_RUN', 'FUNCTION_TARGET', 'FIREBASE_CONFIG', 'FB_DATABASE_URL'];
+    const run = (tool, args) => {
+      const env = { ...process.env };
+      for (const k of SCRUB) delete env[k];
+      Object.assign(env, { GOOGLE_CLOUD_PROJECT: 'xpizza-delivery', GCLOUD_PROJECT: '', GOOGLE_APPLICATION_CREDENTIALS: '/nonexistent/never',
+        FIRESTORE_EMULATOR_HOST: '127.0.0.1:1', FIREBASE_DATABASE_EMULATOR_HOST: '127.0.0.1:1' });
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', tool), ...args], { cwd: ROOT, encoding: 'utf8', timeout: 30000, env });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+    for (const tool of ['ack-identity-finding.js', 'record-evidence-boundary.js']) {
+      assert.match(strip(read(`tools/${tool}`)), /requireProject\(\{ requireFlag: true \}\)/, `🔴 ${tool} must call requireProject({ requireFlag: true })`);
+      const inherited = run(tool, []);
+      assert.strictEqual(inherited.code, 2, `🔴 ${tool} with only an inherited GOOGLE_CLOUD_PROJECT exited ${inherited.code} — must refuse (exit 2)\n${inherited.out.slice(0, 400)}`);
+      assert.match(inherited.out, /project_guard_refused/, `🔴 ${tool}: the project guard must be what stopped it\n${inherited.out.slice(0, 400)}`);
+      const stated = run(tool, ['--project', 'xpizza-delivery']);
+      assert.ok(!/project_guard_refused/.test(stated.out), `non-vacuity: ${tool} with --project gets past the guard\n${stated.out.slice(0, 400)}`);
+    }
+  }
+  ok('the two production operator CLIs (ack-identity-finding, record-evidence-boundary) refuse an inherited GOOGLE_CLOUD_PROJECT alone (exit 2, project_guard_refused, spawned with a dead-port endpoint and no credential); with --project they get past the guard');
+
   console.log(`identity-integrity-guards: OK (${n})`);
 } catch (e) {
   console.error('identity-integrity-guards FAILED:', e);

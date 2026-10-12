@@ -56,6 +56,9 @@ const D = {
   [F('deploy/check-seed-readiness.js')]: 'harness', [F('deploy/emu-seed.js')]: 'harness', [F('tools/menus-identity-publish.js')]: 'harness',
   [F('test/portal-emulator-workers.probe.js')]: 'harness', [F('test/_kds-writer-worker.js')]: 'harness', [F('test/emu-isolation.proof.js')]: 'harness',
   [F('test/measure-identity-fence.js')]: 'harness',
+  // D4-c2b: the monitor's fresh-process child and the §8 latency measure — `_emulator-required('database', 'firestore')` is the
+  // first statement of each, before index.js is loaded (driven below like every harness)
+  [F('test/_c2b-monitor-child.js')]: 'harness', [F('test/c2b-latency.measure.js')]: 'harness',
   // KDS parent: self-launches the runner when NO signal is present (by design) — driven with foreign + half-configured
   [F('kds-manifest-writer.test.mjs')]: 'harness-selflaunch',
   // the latency child: `node -e` children that load index.js — guarded by lib/admin.js (driven: its child shape)
@@ -63,7 +66,9 @@ const D = {
   // operator CLIs — tools/require-project.js runs the mixed-signal guard (driven: mixed ⇒ refuse)
   ...Object.fromEntries(['backfill-identities', 'backfill-snapshot', 'bootstrap-identity', 'client-floor', 'client-version-report',
     'draft-drift-report', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
-    'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog',
+    // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
+    'ack-identity-finding', 'record-evidence-boundary'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -83,6 +88,7 @@ const D = {
   [F('rtdb-init.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   [F('stats/stats-volume.test.js')]: 'unit: a named app over catalog/firestore-fake — no network',
   [F('stats/stats-job.test.js')]: 'unit: initializeApp appears in a source string under test', [F('catalog/project-guard.test.js')]: 'unit: drives require-project refusals (no data I/O)',
+  [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('test/kds-writer-capture.mjs')]: 'unit: a STUB initializeApp (returns {})', [F('portal/portal-split.test.js')]: 'unit: fold-guard text',
   [F('pselfupdate-client.test.js')]: 'unit: injected fetch, no network', [F('pselfupdate-wrapper-lint.test.js')]: 'unit: lints source text',
   'order-control-client.test.mjs': 'unit: injected fetch, no network',

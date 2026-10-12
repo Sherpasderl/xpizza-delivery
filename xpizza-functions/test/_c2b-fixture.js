@@ -131,8 +131,4 @@ function fixture({ db, rtdb, now, sleep } = {}) {
   const openFindings = (node) => Object.entries((node && node.findings) || {}).filter(([, f]) => f.status === 'open');
   return { candidateFromSource, seed, publish, rollback, bootstrap, addDish, monitor, runFor, nodeOf, setNode, openFindings, versionsColOf, evidenceCol, evidenceIds, pointerRef, merchant, portalSave, portalSaveAndPublish };
 }
-function initEmulatorApp() {
-  if (!admin.apps.length) admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-xpizza', databaseURL: `http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}?ns=demo-xpizza-default-rtdb` });
-  return { db: admin.firestore(), rtdb: admin.database() };
-}
-module.exports = { fixture, initEmulatorApp, buildSourceFromCode, synthSource, zeroExtras };
+module.exports = { fixture, buildSourceFromCode, synthSource, zeroExtras };
