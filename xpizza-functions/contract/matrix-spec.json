@@ -1,0 +1,688 @@
+{
+  "_doc": "R3 §2 — the SPEC the matrix is generated from (contract/matrix-build.js → matrix.json). facts: the reviewed facts each R-site asserts (PLAN §3 table + census deltas accepted at P0, marked 'census'). shows: the lifecycle points (LP) at which the surface displays the order, per scenario family; 'absent' LPs are asserted as ABSENCE. brands: x_pizza + la_musa everywhere; r3_synth only on S17 surfaces that can serve it. gaps: timing GAPs (§6a ruling) — cells with status 'gap' + reason, never counted as executed. PROPOSED at P0 for advisor review before P1.",
+  "brands": [
+    "x_pizza",
+    "la_musa"
+  ],
+  "scenarios": {
+    "S1": {
+      "lps": [
+        "new",
+        "preparing",
+        "ready",
+        "assigned",
+        "out_for_delivery",
+        "delivered",
+        "cuadre"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S1t": {
+      "lps": [
+        "assigned",
+        "reassigned",
+        "takeover",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S1a": {
+      "lps": [
+        "new",
+        "assigned"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S2": {
+      "lps": [
+        "new",
+        "ready",
+        "completed"
+      ],
+      "fulfil": "pickup",
+      "pay": "cash"
+    },
+    "S3": {
+      "lps": [
+        "new",
+        "out_for_delivery",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "card_delivery"
+    },
+    "S4": {
+      "lps": [
+        "new",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "free"
+    },
+    "S5": {
+      "lps": [
+        "pending_payment",
+        "new",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "online"
+    },
+    "S6": {
+      "lps": [
+        "pending_payment"
+      ],
+      "fulfil": "delivery",
+      "pay": "online"
+    },
+    "S7": {
+      "lps": [
+        "manual_reconciliation",
+        "resolving",
+        "materialized",
+        "refunded",
+        "abandoned",
+        "closed_fulfilled"
+      ],
+      "fulfil": "delivery",
+      "pay": "online"
+    },
+    "S8": {
+      "lps": [
+        "cancelled_refunded",
+        "refund_pending",
+        "refunded",
+        "cancelled_cash",
+        "cancelled_unpaid"
+      ],
+      "fulfil": "delivery",
+      "pay": "mixed"
+    },
+    "S9": {
+      "lps": [
+        "refunding_paid_after_close",
+        "refunded"
+      ],
+      "fulfil": "delivery",
+      "pay": "online"
+    },
+    "S10": {
+      "lps": [
+        "stranded",
+        "materialized"
+      ],
+      "fulfil": "delivery",
+      "pay": "online"
+    },
+    "S11": {
+      "lps": [
+        "scheduled",
+        "releasing",
+        "new",
+        "blocked"
+      ],
+      "fulfil": "delivery",
+      "pay": "mixed"
+    },
+    "S12": {
+      "lps": [
+        "rebuilt_cart",
+        "repriced_order"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S12b": {
+      "lps": [
+        "rebuilt_cart",
+        "repriced_order"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S13": {
+      "lps": [
+        "assigned_a",
+        "assigned_b",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S14": {
+      "lps": [
+        "new",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "empty"
+    },
+    "S15": {
+      "lps": [
+        "confirmation",
+        "pay_step",
+        "order"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S16": {
+      "lps": [
+        "new"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash"
+    },
+    "S17": {
+      "lps": [
+        "new",
+        "ready",
+        "delivered",
+        "completed"
+      ],
+      "fulfil": "mixed",
+      "pay": "cash",
+      "brands": [
+        "r3_synth"
+      ]
+    }
+  },
+  "readers": {
+    "R1": {
+      "name": "KDS",
+      "facts": [
+        "ITEMS",
+        "NUM",
+        "FULFIL",
+        "SCHED",
+        "STATUS",
+        "PLACE",
+        "BRAND",
+        "census:MONEY",
+        "census:CASH",
+        "census:COLLECT",
+        "census:DRIVER"
+      ],
+      "shows": {
+        "*": [
+          "new",
+          "preparing",
+          "ready",
+          "out_for_delivery",
+          "scheduled",
+          "cancelled_cash",
+          "cancelled_refunded",
+          "materialized",
+          "repriced_order",
+          "assigned",
+          "assigned_a",
+          "assigned_b",
+          "reassigned",
+          "completed"
+        ]
+      },
+      "absent": [
+        "pending_payment",
+        "manual_reconciliation",
+        "stranded"
+      ]
+    },
+    "R2": {
+      "name": "dispatch",
+      "facts": [
+        "COLLECT",
+        "PAYLIFE",
+        "MONEY",
+        "ITEMS",
+        "DRIVER",
+        "NUM",
+        "SCHED",
+        "PLACE",
+        "CASH",
+        "STATUS",
+        "BRAND",
+        "census:TENDER",
+        "census:FULFIL"
+      ],
+      "shows": {
+        "*": "all-except-absent"
+      },
+      "absent": [
+        "pending_payment"
+      ]
+    },
+    "R3": {
+      "name": "dispatch-lite",
+      "facts": [
+        "COLLECT",
+        "TENDER",
+        "MONEY",
+        "ITEMS",
+        "DRIVER",
+        "SCHED",
+        "PLACE",
+        "STATUS",
+        "NUM",
+        "BRAND",
+        "census:FULFIL",
+        "census:CASH"
+      ],
+      "shows": {
+        "*": "all-except-absent"
+      },
+      "absent": [
+        "pending_payment"
+      ]
+    },
+    "R4": {
+      "name": "driver web",
+      "facts": [
+        "COLLECT",
+        "TENDER",
+        "MONEY",
+        "ITEMS",
+        "PLACE",
+        "SCHED",
+        "DRIVER",
+        "CASH",
+        "STATUS",
+        "NUM",
+        "BRAND",
+        "census:FULFIL"
+      ],
+      "shows": {
+        "*": [
+          "assigned",
+          "assigned_a",
+          "assigned_b",
+          "reassigned",
+          "out_for_delivery",
+          "delivered",
+          "cuadre"
+        ]
+      },
+      "absent": [
+        "pending_payment"
+      ],
+      "fulfil": [
+        "delivery"
+      ]
+    },
+    "R5": {
+      "name": "driver push",
+      "facts": [
+        "NUM",
+        "PLACE",
+        "FULFIL",
+        "MONEY",
+        "census:STATUS",
+        "census:COLLECT"
+      ],
+      "shows": {
+        "*": [
+          "assigned",
+          "assigned_a",
+          "assigned_b",
+          "reassigned",
+          "cancelled_cash",
+          "cancelled_refunded"
+        ]
+      },
+      "fulfil": [
+        "delivery"
+      ]
+    },
+    "R6": {
+      "name": "staff push",
+      "facts": [
+        "NUM",
+        "MONEY",
+        "BRAND",
+        "census:STATUS",
+        "census:FULFIL",
+        "census:SCHED"
+      ],
+      "shows": {
+        "*": [
+          "new"
+        ]
+      }
+    },
+    "R7": {
+      "name": "dashboard",
+      "facts": [
+        "COLLECT",
+        "PAYLIFE",
+        "MONEY",
+        "ITEMS",
+        "DRIVER",
+        "NUM",
+        "STATUS",
+        "census:PLACE",
+        "census:CASH",
+        "census:FULFIL",
+        "BRAND"
+      ],
+      "shows": {
+        "*": "all"
+      }
+    },
+    "R8": {
+      "name": "tracker",
+      "facts": [
+        "ITEMS",
+        "MONEY",
+        "PLACE",
+        "FULFIL",
+        "STATUS",
+        "DRIVER",
+        "REWARD",
+        "NUM",
+        "BRAND",
+        "census:COLLECT"
+      ],
+      "shows": {
+        "*": "all-except-absent"
+      },
+      "absent": [
+        "manual_reconciliation"
+      ]
+    },
+    "R9": {
+      "name": "WhatsApp",
+      "facts": [
+        "ITEMS",
+        "MONEY",
+        "PLACE",
+        "FULFIL",
+        "PAYLIFE",
+        "NUM",
+        "STATUS",
+        "BRAND",
+        "census:COLLECT"
+      ],
+      "shows": {
+        "*": [
+          "new",
+          "preparing",
+          "ready",
+          "out_for_delivery",
+          "delivered",
+          "completed",
+          "cancelled_cash",
+          "cancelled_refunded",
+          "refunded",
+          "blocked"
+        ]
+      }
+    },
+    "R10": {
+      "name": "factura",
+      "facts": [
+        "ITEMS",
+        "BREAKDOWN",
+        "TENDER",
+        "FACTELIG",
+        "PAYLIFE",
+        "census:MONEY",
+        "census:COLLECT",
+        "census:PLACE",
+        "census:NUM",
+        "census:BRAND"
+      ],
+      "shows": {
+        "*": [
+          "new",
+          "materialized",
+          "cancelled_cash",
+          "cancelled_refunded",
+          "refunded"
+        ]
+      }
+    },
+    "R11": {
+      "name": "stats → portal",
+      "facts": [
+        "ITEMS",
+        "MONEY",
+        "BREAKDOWN",
+        "ACCT",
+        "FULFIL",
+        "NUM",
+        "census:COLLECT",
+        "census:SCHED",
+        "census:BRAND"
+      ],
+      "shows": {
+        "*": "terminal"
+      }
+    },
+    "R12": {
+      "name": "Sheets",
+      "facts": [
+        "NUM",
+        "STATUS"
+      ],
+      "shows": {
+        "*": [
+          "cancelled_cash",
+          "cancelled_refunded",
+          "cancelled_unpaid"
+        ]
+      }
+    },
+    "R13": {
+      "name": "form cart",
+      "facts": [
+        "MONEY",
+        "ITEMS"
+      ],
+      "shows": {
+        "S12": [
+          "rebuilt_cart"
+        ],
+        "S12b": [
+          "rebuilt_cart"
+        ],
+        "S15": [
+          "pay_step"
+        ],
+        "S16": [
+          "new"
+        ],
+        "*form": [
+          "new"
+        ]
+      }
+    },
+    "R14": {
+      "name": "form pay step",
+      "facts": [
+        "MONEY",
+        "ITEMS",
+        "TENDER",
+        "REWARD"
+      ],
+      "shows": {
+        "S15": [
+          "pay_step"
+        ],
+        "*form": [
+          "new"
+        ]
+      }
+    },
+    "R15": {
+      "name": "form confirmation",
+      "facts": [
+        "MONEY",
+        "ITEMS",
+        "COLLECT",
+        "PAYLIFE",
+        "REWARD",
+        "FULFIL",
+        "SCHED",
+        "census:PLACE",
+        "census:NUM"
+      ],
+      "shows": {
+        "S15": [
+          "confirmation"
+        ],
+        "*form": [
+          "new",
+          "scheduled"
+        ]
+      }
+    },
+    "R16": {
+      "name": "online return",
+      "facts": [
+        "PAYLIFE",
+        "MONEY",
+        "REWARD",
+        "SCHED",
+        "census:NUM",
+        "census:ITEMS"
+      ],
+      "shows": {
+        "S5": [
+          "pending_payment",
+          "new"
+        ],
+        "S6": [
+          "pending_payment"
+        ],
+        "S9": [
+          "refunding_paid_after_close"
+        ]
+      }
+    },
+    "R17": {
+      "name": "account",
+      "facts": [
+        "ITEMS",
+        "MONEY",
+        "STATUS",
+        "REWARD",
+        "census:PLACE",
+        "census:BRAND"
+      ],
+      "shows": {
+        "*form": [
+          "delivered",
+          "completed"
+        ]
+      }
+    },
+    "R18": {
+      "name": "Reordenar",
+      "facts": [
+        "RECIPE",
+        "census:ITEMS",
+        "census:BRAND"
+      ],
+      "shows": {
+        "S12": [
+          "rebuilt_cart"
+        ],
+        "S12b": [
+          "rebuilt_cart"
+        ]
+      }
+    },
+    "R19": {
+      "name": "group picker",
+      "facts": [
+        "ITEMS",
+        "MONEY"
+      ],
+      "shows": {
+        "S16": [
+          "new"
+        ]
+      }
+    }
+  },
+  "formScenarios": [
+    "S1",
+    "S1a",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S11",
+    "S12",
+    "S12b",
+    "S13",
+    "S14",
+    "S15",
+    "S16"
+  ],
+  "terminalLps": [
+    "delivered",
+    "completed",
+    "cancelled_cash",
+    "cancelled_refunded",
+    "cancelled_unpaid",
+    "refunded",
+    "abandoned",
+    "closed_fulfilled",
+    "materialized",
+    "cuadre"
+  ],
+  "thirdBrand": {
+    "brand": "r3_synth",
+    "scenario": "S17",
+    "canServe": [
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R7",
+      "R8",
+      "R11"
+    ],
+    "gap": {
+      "R1": "KDS brand comes from the HOST (kdsRestaurantFromHost): any non-La-Musa host is x_pizza, and filterLiveOrders pins everything not la_musa to x_pizza — a third brand's orders would show on X Pizza's KDS (roadmap item 9)",
+      "R6": "staff-push brandLabel is a two-brand literal (to confirm in P1)",
+      "R9": "WhatsApp is enabled per restaurant config; a synthetic brand has none (to confirm in P1)",
+      "R10": "the platform factura is X. Pizza only (FACTURA_PLATFORM_RESTAURANTS)",
+      "R12": "the Sheets adapter targets the X. Pizza sheet (to confirm in P1)",
+      "R13": "no order form exists for a third brand (form hosts are per brand)",
+      "R14": "no order form exists for a third brand",
+      "R15": "no order form exists for a third brand",
+      "R16": "no order form exists for a third brand",
+      "R17": "no order form exists for a third brand",
+      "R18": "no order form exists for a third brand",
+      "R19": "no order form exists for a third brand"
+    }
+  },
+  "gaps": [
+    {
+      "scenario": "S10",
+      "lp": "stranded",
+      "reason": "sweepStalePending's age-gated escalation branches use hard-coded 15 / 10 / 20-minute thresholds (index.js) — no production config surface (§11.2 ruling): GAP unless real time is practical. The immediate paid-strand re-drive (LP materialized) IS executed."
+    },
+    {
+      "scenario": "S11",
+      "lp": "releasing",
+      "reason": "the scheduled release uses default lead windows (validateScheduledFor / releaseAtFor / releaseDecision defaults) — no production config surface (§11.2): real time only if the default lead fits the suite budget, else GAP (decided in P2)"
+    },
+    {
+      "scenario": "S11",
+      "lp": "blocked",
+      "reason": "slot-closed block at the scheduled sweep — same windows as releasing (§11.2): GAP unless real time is practical (decided in P2)"
+    }
+  ],
+  "acceptedDeltas": [
+    {
+      "site": "xpizza-functions/stats/stats-build.js#addSale#delivered_at#0",
+      "reason": "stats uses delivered_at as the SALE TIME anchor (which day/hour a delivered order counts in) — not a driver-attribution or cash assertion"
+    }
+  ]
+}
