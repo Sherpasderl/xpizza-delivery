@@ -2483,9 +2483,12 @@ function attachActiveCardHandlers(o) {
       try {
         await p;
       } catch (err) {
-        // Map the rules PERMISSION_DENIED (a dual-role account completing) to the approved guidance instead of
-        // the raw SDK error; the slider shows _userMessage and resets for a retry (r1 P2-2).
-        err._userMessage = completeErrorText(err);
+        // Map the error to driver-facing guidance instead of the raw SDK text (slider shows _userMessage, resets
+        // for retry). A PERMISSION_DENIED is the dual-role case ONLY if the acting uid is a dispatcher (r2); for
+        // an ordinary driver it's a reassigned/auth-lapse → neutral. The /dispatchers read happens only here (error path).
+        let dispatcher = false;
+        try { dispatcher = await XPD.isActingDispatcher(currentUser.uid); } catch (_) { /* fail-safe → neutral */ }
+        err._userMessage = completeErrorText(err, dispatcher);
         throw err;
       }
       toast('¡Entregado!', 'success');

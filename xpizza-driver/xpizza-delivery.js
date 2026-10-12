@@ -254,6 +254,17 @@ export async function setDriverAppVersion(uid, version) {
   catch (e) { console.warn('setDriverAppVersion failed (non-fatal)', e); }
 }
 
+/**
+ * Is the acting account a dispatcher? Reads /dispatchers/{uid} (a driver may read it for itself under the rules).
+ * Used only on a completeTask PERMISSION_DENIED to tell a dual-role account apart from an ordinary reassigned
+ * driver (codex r2). FAIL-SAFE: any read error → false, so an ordinary driver never gets the account-switch nag.
+ */
+export async function isActingDispatcher(uid) {
+  if (!uid) return false;
+  try { return (await get(ref(db, `dispatchers/${uid}`))).exists(); }
+  catch (e) { return false; }
+}
+
 export async function ensureDriverProfile(uid, name, phone) {
   // Create profile if missing; idempotent
   const driverRef = ref(db, `drivers/${uid}`);

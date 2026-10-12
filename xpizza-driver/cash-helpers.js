@@ -51,19 +51,24 @@ export const COLLECT_WARN_TEXT = 'Pago no confirmado — consultá a despacho';
 // reconciles the cash by hand. Retry stays available wherever a retry control exists (codex core r1 P2-1).
 export const BLOCKED_CLOSE_TEXT = 'No se pudo cerrar el turno. Contactá a despacho para cerrar el turno y reconciliar el efectivo.';
 
-// The approved guidance when a DUAL-ROLE account (a driver who is also a dispatcher) tries to complete a
-// delivery: the stamp rules intentionally reject it, so the raw PERMISSION_DENIED is mapped to this (r1 P2-2).
+// The approved guidance when a DUAL-ROLE account (a driver who is ALSO a dispatcher) tries to complete a
+// delivery: the stamp rules intentionally reject it (r1 P2-2). Shown ONLY with confirmed dispatcher membership.
 export const DUAL_ROLE_COMPLETE_TEXT = 'Entregá desde una cuenta de repartidor; contactá a despacho.';
+// Neutral guidance for a PERMISSION_DENIED on an ORDINARY driver — the realistic cause is the delivery was
+// reassigned away (or auth lapsed), NOT a dual-role account (codex r2: the dual-role mapping was too broad).
+export const REASSIGNED_COMPLETE_TEXT = 'No se pudo completar la entrega. Puede que el pedido haya sido reasignado — contactá a despacho.';
 
 /**
- * Map a completeTask failure to a driver-facing message. A rules PERMISSION_DENIED on an assigned driver's own
- * delivery means the dual-role rejection (never a transient) → the dual-role guidance. completeTask's own human
- * Spanish refusals (cancelled / task-gone) pass through; anything else → a generic retry line.
+ * Map a completeTask failure to a driver-facing message. completeTask's own human Spanish refusals (cancelled /
+ * task-gone) pass through. A rules PERMISSION_DENIED means the stamp write was rejected: the dual-role guidance
+ * applies ONLY when the acting account is CONFIRMED to be a dispatcher (`isDispatcher === true`, from reading
+ * /dispatchers/{uid}); otherwise it is the ordinary reassigned/auth-lapse case → neutral guidance. Anything else
+ * → a generic retry line. `isDispatcher` is fail-safe false (unknown ⇒ neutral, never a wrong account-switch nag).
  */
-export function completeErrorText(err) {
+export function completeErrorText(err, isDispatcher) {
   const s = String((err && (err.message || err.code)) || '');
-  if (/permission.?denied/i.test(s)) return DUAL_ROLE_COMPLETE_TEXT;
   if (/ya no existe|cancelad/i.test(s)) return s.replace(/^Error:\s*/i, '');
+  if (/permission.?denied/i.test(s)) return isDispatcher === true ? DUAL_ROLE_COMPLETE_TEXT : REASSIGNED_COMPLETE_TEXT;
   return 'No se pudo marcar como entregado — reintentá.';
 }
 

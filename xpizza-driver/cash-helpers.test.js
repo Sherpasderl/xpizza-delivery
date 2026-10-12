@@ -1,6 +1,6 @@
 // Pure cash-helper tests — run: `node cash-helpers.test.js` (no framework, repo idiom).
 import assert from 'node:assert/strict';
-import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, BLOCKED_CLOSE_TEXT, DUAL_ROLE_COMPLETE_TEXT, completeErrorText, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
+import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, shiftIdentityError, cuadreRecordPayload, isCashPayment, collectionFor, COLLECT_WARN_TEXT, BLOCKED_CLOSE_TEXT, DUAL_ROLE_COMPLETE_TEXT, REASSIGNED_COMPLETE_TEXT, completeErrorText, paymentRowHtml, queuePayHtml } from './cash-helpers.js';
 import { createRequire } from 'node:module';
 
 let passed = 0;
@@ -253,16 +253,22 @@ t('blocked-close text routes to dispatch for close + reconcile (every blocked st
   assert.equal(BLOCKED_CLOSE_TEXT, 'No se pudo cerrar el turno. Contactá a despacho para cerrar el turno y reconciliar el efectivo.'));
 t('dual-role complete text is the approved guidance', () =>
   assert.equal(DUAL_ROLE_COMPLETE_TEXT, 'Entregá desde una cuenta de repartidor; contactá a despacho.'));
-t('completeErrorText: a rules PERMISSION_DENIED → the dual-role guidance (not the raw SDK error)', () => {
-  assert.equal(completeErrorText(new Error('PERMISSION_DENIED: Permission denied')), DUAL_ROLE_COMPLETE_TEXT);
-  assert.equal(completeErrorText({ code: 'permission-denied' }), DUAL_ROLE_COMPLETE_TEXT);
+t('reassigned (neutral) complete text is the approved guidance', () =>
+  assert.equal(REASSIGNED_COMPLETE_TEXT, 'No se pudo completar la entrega. Puede que el pedido haya sido reasignado — contactá a despacho.'));
+t('completeErrorText: PERMISSION_DENIED → dual-role ONLY when the actor is a confirmed dispatcher (r2)', () => {
+  assert.equal(completeErrorText(new Error('PERMISSION_DENIED: Permission denied'), true), DUAL_ROLE_COMPLETE_TEXT);
+  assert.equal(completeErrorText({ code: 'permission-denied' }, true), DUAL_ROLE_COMPLETE_TEXT);
 });
-t('completeErrorText: completeTask human refusals pass through (cancelled / task-gone)', () => {
-  assert.equal(completeErrorText(new Error('Este pedido fue cancelado')), 'Este pedido fue cancelado');
-  assert.equal(completeErrorText(new Error('Esta tarea ya no existe')), 'Esta tarea ya no existe');
+t('completeErrorText: PERMISSION_DENIED for an ORDINARY driver (reassigned) → NEUTRAL, never account-switch', () => {
+  assert.equal(completeErrorText(new Error('PERMISSION_DENIED: Permission denied'), false), REASSIGNED_COMPLETE_TEXT);
+  assert.equal(completeErrorText(new Error('PERMISSION_DENIED')), REASSIGNED_COMPLETE_TEXT);   // unknown role ⇒ fail-safe neutral
+});
+t('completeErrorText: completeTask human refusals pass through regardless of role (cancelled / task-gone)', () => {
+  assert.equal(completeErrorText(new Error('Este pedido fue cancelado'), true), 'Este pedido fue cancelado');
+  assert.equal(completeErrorText(new Error('Esta tarea ya no existe'), false), 'Esta tarea ya no existe');
 });
 t('completeErrorText: anything else → a generic retry line (never the raw error)', () =>
-  assert.equal(completeErrorText(new Error('network glitch xyz')), 'No se pudo marcar como entregado — reintentá.'));
+  assert.equal(completeErrorText(new Error('network glitch xyz'), false), 'No se pudo marcar como entregado — reintentá.'));
 
 // ============================================================================
 // RENDER + GOLDEN (folded in; same assertions as before). Order shapes ORIGINATE from the real server
