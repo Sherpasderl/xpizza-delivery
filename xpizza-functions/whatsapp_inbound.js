@@ -15,12 +15,13 @@
  * - Operating hours aware: closed-hours messages include reopening time.
  */
 
-// Per-restaurant inbound config (mirrors BRAND_BY_RESTAURANT in whatsapp.js). x_pizza values are the
-// EXACT current literals EXCEPT orderFormUrl — migrated to orders.xpizza.hn (the one intended X. Pizza
-// change). la_musa points to its own order form, tracker, brand, and ack emoji.
+// Per-restaurant inbound config. x_pizza values are the EXACT current literals EXCEPT orderFormUrl — migrated to
+// orders.xpizza.hn (the one intended X. Pizza change). la_musa points to its own order form, tracker and ack emoji.
+// D12b: NO brand name here — the customer-facing brand comes from restaurants/{rid}/identity (display_name → name),
+// resolved by whatsapp.sendMessage; the old `restaurantName` field was never read and is gone.
 const CONFIG_BY_RESTAURANT = {
-  x_pizza: { orderFormUrl: 'https://orders.xpizza.hn',  trackingBase: 'https://xpizzatrack.netlify.app', restaurantName: 'X. Pizza', ackEmoji: '🍕' },
-  la_musa: { orderFormUrl: 'https://orders.lamusa.hn',  trackingBase: 'https://track.lamusa.hn',         restaurantName: 'La Musa',  ackEmoji: '🍜' }
+  x_pizza: { orderFormUrl: 'https://orders.xpizza.hn',  trackingBase: 'https://xpizzatrack.netlify.app', ackEmoji: '🍕' },
+  la_musa: { orderFormUrl: 'https://orders.lamusa.hn',  trackingBase: 'https://track.lamusa.hn',         ackEmoji: '🍜' }
 };
 const KNOWN_INBOUND_RESTAURANTS = Object.keys(CONFIG_BY_RESTAURANT);
 

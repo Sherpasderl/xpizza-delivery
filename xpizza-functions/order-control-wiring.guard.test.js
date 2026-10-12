@@ -20,7 +20,8 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // after add-product B's (tools/addproduct-b-inverse.js), which landed on top of A; the stacked-tracker slice's
 // (tools/stacked-tracker-inverse.js), which landed on top of PB-2; and D4-c2b's one delimited block (tools/d4c2b-inverse.js,
 // advisor ruling N1), which landed on top of the stacked-tracker slice and is reversed FIRST.
-const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js')))));
+// D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed FIRST.
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(read('index.js'))))));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
@@ -92,9 +93,12 @@ for (const f of CAPTURED) {
 // R3-FIX D12 landed later and adds the pickup-label hunks to some of these modules: its exact inverse
 // (tools/d12-inverse.js, proven by d12-wiring.guard) is reversed FIRST, so any byte OUTSIDE those hunks still fails here.
 const { unapplyD12, FILES: D12_FILES } = require('./tools/d12-inverse');
+// D12b (brand display name) landed on top of D12: its exact inverse is reversed FIRST (newest first)
+const { unapplyD12b, FILES: D12B_FILES } = require('./tools/d12b-inverse');
+const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, read(f)) : read(f));
 const pinned = [...CAPTURED, 'restaurant-config.js', 'scheduled-orders.js', 'createorder-classify.js', 'order-exists.js'].filter((f) => fs.existsSync(path.join(__dirname, f)));
 const diffed = pinned.filter((f) => {
-  const now = D12_FILES.includes(f) ? unapplyD12(f, read(f)) : read(f);
+  const now = D12_FILES.includes(f) ? unapplyD12(f, pinRead(f)) : pinRead(f);
   return now !== execFileSync('git', ['show', `e1aeb3f:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
 }).join('\n');
 assert.strictEqual(diffed, '', `🔴 pinned modules changed vs e1aeb3f: ${diffed}`);

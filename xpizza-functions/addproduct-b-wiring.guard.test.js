@@ -19,7 +19,8 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // D4-c2b landed on top of the stacked-tracker slice (main 2cb5a1c): its one delimited index.js block (tools/d4c2b-inverse.js,
 // advisor ruling N1) is reversed FIRST, then the stacked-tracker inverse, before add-product B's proof.
-const idx = unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(read('index.js')));
+// D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed FIRST.
+const idx = unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(read('index.js'))));
 const BASE = execFileSync('git', ['show', '4e2a710:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -44,17 +44,19 @@ assert.equal(w.isSendConfirmed({ sent: 'false' }), false); ok('isSendConfirmed(s
 // ── trackingUrl (x_pizza) ──
 assert.equal(w.trackingUrl('TOK', 'x_pizza'), `${X_TRACK}/TOK`); ok('trackingUrl x_pizza → constant base');
 
-// ── brandFor + template bodies (D1): x_pizza BYTE-IDENTICAL, la_musa branded ──
-assert.equal(w.brandFor('x_pizza'), 'X. Pizza'); ok('brandFor x_pizza = "X. Pizza"');
-assert.equal(w.brandFor('la_musa'), 'La Musa'); ok('brandFor la_musa = "La Musa"');
-assert.equal(w.brandFor(undefined), 'X. Pizza'); ok('brandFor default = "X. Pizza" (legacy/unknown)');
+// ── D12b: a branded template is a DEFERRED message; sendMessage renders it AFTER resolving the brand from config ──
+// (the send path, per brand, is in whatsapp-brand.test.js — x_pizza byte-identical once display_name is seeded)
 const ord = (rid) => w.tplOrderReceived({ customerName: 'Ana', total: 299, itemsText: 'X', trackingToken: 'T', restaurantId: rid });
-assert.ok(ord('x_pizza').includes('Recibimos tu pedido en X. Pizza ✅')); ok('tplOrderReceived x_pizza body byte-identical ("X. Pizza")');
-assert.ok(ord('la_musa').includes('Recibimos tu pedido en La Musa ✅')); ok('tplOrderReceived la_musa body branded ("La Musa")');
-assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }).includes('disfrutes X. Pizza, Ana.')); ok('tplDelivered x_pizza — brand, no "tu"');
-assert.ok(w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }).includes('disfrutes La Musa, Ana.')); ok('tplDelivered la_musa — brand, no "tu"');
-assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'x_pizza' }).includes('pedido #PZX-1 en X. Pizza fue cancelado')); ok('tplCancelled x_pizza — brand line added');
-assert.ok(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }).includes('pedido #PZX-1 en La Musa fue cancelado')); ok('tplCancelled la_musa — brand line added');
+for (const rid of ['x_pizza', 'la_musa', 'r3_synth']) {
+  assert.ok(w.isDeferred(ord(rid)) && !/X\.? ?Pizza|La Musa/.test(JSON.stringify(ord(rid))), `${rid}: deferred, no brand literal anywhere in it`);
+}
+assert.ok(w.renderTemplate(ord('x_pizza'), 'X. Pizza').includes('Recibimos tu pedido en X. Pizza ✅')); ok('tplOrderReceived x_pizza rendered with its config brand — byte-identical copy');
+assert.ok(w.renderTemplate(ord('la_musa'), 'La Musa').includes('Recibimos tu pedido en La Musa ✅')); ok('tplOrderReceived la_musa rendered with its config brand');
+assert.ok(w.renderTemplate(ord('r3_synth'), null).includes('Recibimos tu pedido ✅')); ok('tplOrderReceived with no brand → neutral copy');
+assert.ok(w.renderTemplate(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }), 'X. Pizza').includes('disfrutes X. Pizza, Ana.')); ok('tplDelivered x_pizza — brand');
+assert.ok(w.renderTemplate(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }), null).includes('disfrutes tu pedido, Ana.')); ok('tplDelivered — neutral "tu pedido"');
+assert.ok(w.renderTemplate(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }), 'La Musa').includes('pedido #PZX-1 en La Musa fue cancelado')); ok('tplCancelled — brand');
+assert.ok(w.renderTemplate(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }), null).includes('pedido #PZX-1 fue cancelado')); ok('tplCancelled — neutral');
 
 // ── E1: food-noun copy — x_pizza BYTE-IDENTICAL, la_musa branded ──
 assert.equal(w.itemsEmojiFor('x_pizza'), '🍕'); ok('itemsEmojiFor x_pizza = 🍕');
@@ -63,8 +65,8 @@ assert.equal(w.itemsEmojiFor(undefined), '🍕'); ok('itemsEmojiFor default = �
 assert.equal(w.readyLineFor('x_pizza'), '¡Tu pizza está lista! 🍕'); ok('readyLineFor x_pizza = exact prior literal');
 assert.equal(w.readyLineFor('la_musa'), '¡Tu pedido está listo! 🍜'); ok('readyLineFor la_musa = pedido/listo/🍜');
 assert.equal(w.readyLineFor(undefined), '¡Tu pizza está lista! 🍕'); ok('readyLineFor default = x_pizza literal');
-assert.ok(ord('x_pizza').includes('🍕 X')); ok('tplOrderReceived x_pizza item prefix 🍕 (byte-identical)');
-assert.ok(ord('la_musa').includes('🍜 X')); ok('tplOrderReceived la_musa item prefix 🍜');
+assert.ok(w.renderTemplate(ord('x_pizza'), 'X. Pizza').includes('🍕 X')); ok('tplOrderReceived x_pizza item prefix 🍕 (byte-identical)');
+assert.ok(w.renderTemplate(ord('la_musa'), 'La Musa').includes('🍜 X')); ok('tplOrderReceived la_musa item prefix 🍜');
 const drv = (rid) => w.tplDriverAssigned({ customerName: 'Ana', driverName: 'D', trackingToken: 'T', restaurantId: rid });
 assert.ok(drv('x_pizza').includes('¡Tu pizza está lista! 🍕')); ok('tplDriverAssigned x_pizza ready line byte-identical');
 assert.ok(drv('la_musa').includes('¡Tu pedido está listo! 🍜')); ok('tplDriverAssigned la_musa ready line (pedido/🍜)');

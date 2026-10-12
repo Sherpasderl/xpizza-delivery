@@ -13,6 +13,9 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const stripComments = require('./tools/strip-comments');
 const { HUNKS, FILES, unapplyD12 } = require('./tools/d12-inverse');
+// D12b (brand display name) landed on top of D12: its exact inverse is reversed FIRST (newest first)
+const { unapplyD12b, FILES: D12B_FILES } = require('./tools/d12b-inverse');
+const readD12 = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, fs.readFileSync(path.join(__dirname, f), 'utf8')) : fs.readFileSync(path.join(__dirname, f), 'utf8'));
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
@@ -21,9 +24,9 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── 1. the inverse ──
 assert.deepStrictEqual([...FILES].sort(), ['create-order-build.js', 'materialize.js', 'pixelpay-confirm.js', 'resolve-manual.js', 'restaurant-config.js', 'scheduled-release-core.js']);
-for (const f of FILES) assert.strictEqual(unapplyD12(f, read(f)), baseOf(f), `🔴 ${f} minus the D12 hunks is not ${BASE}:${f} — something beyond the D12 seams changed`);
+for (const f of FILES) assert.strictEqual(unapplyD12(f, readD12(f)), baseOf(f), `🔴 ${f} minus the D12 hunks is not ${BASE}:${f} — something beyond the D12 seams changed`);
 {
-  const f = 'materialize.js'; const src = read(f);
+  const f = 'materialize.js'; const src = readD12(f);
   const outside = src.replace('Pure (no db / no I/O)', 'Pure (no db / no IO)');
   assert.notStrictEqual(outside, src, 'premise');
   assert.notStrictEqual(unapplyD12(f, outside), baseOf(f), 'a byte OUTSIDE every hunk is detected');

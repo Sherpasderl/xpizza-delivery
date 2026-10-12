@@ -503,7 +503,10 @@ let n = 0; const ok = (l) => { console.log(`  ✓ ${++n} ${l}`); };
       const r = await resolveManualReconciliationCore(mkDeps(clientVoid({ ok: true }), undefined, ALL_OPEN).deps, { orderId: OID, action: 'materialize', actor: 'A', note: '', now: NOW, claimId: 'CID' });
       assert.strictEqual(r.body.outcome, 'materialized', `${rid}: premise — materialized`);
       const tok = (await oVal()).tracking_token;
-      assert.strictEqual((await db.ref(`order_tracking/${tok}`).once('value')).val().address_short, want, `${rid} ${JSON.stringify(snap)}: ${want}`);
+      const trk = (await db.ref(`order_tracking/${tok}`).once('value')).val();
+      assert.strictEqual(trk.address_short, want, `${rid} ${JSON.stringify(snap)}: ${want}`);
+      // D12b: the public record carries the same brand (absent when the line is neutral)
+      assert.strictEqual(trk.restaurant_display_name, want === 'Recoger en el restaurante' ? undefined : want.slice('Recoger en '.length), `${rid}: order_tracking.restaurant_display_name`);
     }
     ok('R3-FIX D12: manual materialize of a pickup names its OWN restaurant (x_pizza, la_musa, a synthetic third); never the x_pizza constant');
   }

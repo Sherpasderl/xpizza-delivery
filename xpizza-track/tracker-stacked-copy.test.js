@@ -176,9 +176,17 @@ assert.deepEqual(segClasses(r), ['active', 'pending', 'pending']); ok('pickup ne
 assert.equal(r.title, 'Recibimos tu pedido'); ok('pickup new: headline');
 r = render({ status: 'preparing', order_type: 'pickup' });
 assert.deepEqual(segClasses(r), ['done', 'active', 'pending']); assert.equal(r.sub, 'Te avisaremos cuando esté listo'); ok('pickup preparing: seg2 active, "esté listo" sub');
-r = render({ status: 'ready', order_type: 'pickup', restaurant_id: 'la_musa' });
+r = render({ status: 'ready', order_type: 'pickup', restaurant_id: 'la_musa', restaurant_display_name: 'La Musa' });
 assert.deepEqual(segClasses(r), ['done', 'done', 'done']); assert.ok(r.titleSuccess); ok('pickup ready: 3 green, success');
 assert.equal(r.title, '¡Tu pedido está listo para recoger!'); assert.equal(r.sub, 'Pasá por La Musa a recogerlo'); ok('pickup ready: Listo copy, brand name');
+// D12b: the brand is the PUBLIC record's restaurant_display_name (server-written from the restaurant's config), never the rid
+assert.equal(render({ status: 'ready', order_type: 'pickup', restaurant_id: 'x_pizza', restaurant_display_name: 'X. Pizza' }).sub, 'Pasá por X. Pizza a recogerlo'); ok('D12b: x_pizza names itself from the record ("X. Pizza", today\'s text)');
+assert.equal(render({ status: 'ready', order_type: 'pickup', restaurant_id: 'r3_synth', restaurant_display_name: 'Sushi Sur HN' }).sub, 'Pasá por Sushi Sur HN a recogerlo'); ok('D12b: a THIRD restaurant names itself');
+for (const old of [{ restaurant_id: 'x_pizza' }, { restaurant_id: 'la_musa' }, {}, { restaurant_id: 'x_pizza', restaurant_display_name: '   ' }, { restaurant_id: 'x_pizza', restaurant_display_name: 42 }]) {
+  assert.equal(render({ status: 'ready', order_type: 'pickup', ...old }).sub, 'Pasá por el restaurante a recogerlo', `older record ${JSON.stringify(old)} → neutral`);
+}
+ok('D12b: an OLDER record without the field (or a blank / non-string one) → NEUTRAL copy, never "X. Pizza" — on x_pizza too');
+assert.equal(render({ status: 'ready', order_type: 'pickup', restaurant_display_name: '<img src=x onerror=alert(1)>' }).sub, 'Pasá por <img src=x onerror=alert(1)> a recogerlo'); ok('D12b: the name lands as TEXT (textContent), never markup');
 r = render({ status: 'delivered', order_type: 'pickup', delivered_at: new Date(2026, 0, 1, 14, 5).getTime() });
 assert.deepEqual(segClasses(r), ['done', 'done', 'done']); ok('pickup delivered: 3 green');
 assert.equal(r.title, '¡Gracias por tu compra!'); assert.equal(r.sub, 'Recogido a las 2:05 PM'); ok('pickup delivered: thanks + timestamp (today\'s copy)');

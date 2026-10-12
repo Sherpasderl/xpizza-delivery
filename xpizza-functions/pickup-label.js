@@ -9,16 +9,23 @@
 const BRAND_MAX = 60;
 const READ_TIMEOUT_MS = 1500;
 
+// codex D12b r1 P2-1: control characters and private-use code points are never a brand (refused by the owner CLI, absent here)
+const UNSHOWABLE = /[\u0000-\u001F\u007F-\u009F\uE000-\uF8FF]|[\uDB80-\uDBFF][\uDC00-\uDFFF]/;
 function brandText(v) {
   if (typeof v !== 'string') return null;
   const t = v.trim();
-  return t && t.length <= BRAND_MAX ? t : null;
+  return t && t.length <= BRAND_MAX && !UNSHOWABLE.test(t) ? t : null;
 }
 
-// candidates, most preferred first: the first usable one names the brand
+// candidates, most preferred first: the first usable one IS the brand (or null when none is usable). D12b: the same
+// resolution feeds the pickup line, the public order_tracking.restaurant_display_name and the WhatsApp copy.
+function brandOf(...candidates) {
+  for (const c of candidates) { const b = brandText(c); if (b) return b; }
+  return null;
+}
 function pickupLabel(...candidates) {
-  for (const c of candidates) { const b = brandText(c); if (b) return `Recoger en ${b}`; }
-  return 'Recoger en el restaurante';
+  const b = brandOf(...candidates);
+  return b ? `Recoger en ${b}` : 'Recoger en el restaurante';
 }
 
 // The live identity's two names, for an order that carries no display-name snapshot (created before D12, or before the
@@ -34,4 +41,4 @@ async function readLiveBrand(db, rid) {
   try { return await Promise.race([read, timeout]); } catch (_) { return null; } finally { clearTimeout(timer); }
 }
 
-module.exports = { pickupLabel, brandText, readLiveBrand, BRAND_MAX };
+module.exports = { pickupLabel, brandOf, brandText, readLiveBrand, BRAND_MAX };

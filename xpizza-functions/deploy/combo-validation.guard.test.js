@@ -12,7 +12,10 @@ const { combosHash } = require('./combo-validation');
 // Rebumped for R3-FIX D12: the hub snapshot (HUB) gains the OPTIONAL `restaurant_display_name: 'X. Pizza'` — x_pizza's
 // identity.display_name, which the owner seeds before the D12 deploy. Re-audited: no pre3b record changed on any combo; in
 // particular order_tracking/TOK2's audited pickup line stays exactly 'Recoger en X. Pizza', now DERIVED from config.
-const EXPECTED_HASH = '7d2573944c188ffc74d41eaf8b470a71033eaa2744f64d8314d5aa615ae551e7';
+// Rebumped for D12b: both order_tracking records gain the additive `restaurant_display_name: 'X. Pizza'` (the public
+// brand the tracker shows, from the identity snapshot). Re-audited: the ONLY change on any record; every prior field,
+// address_short included ('Recoger en X. Pizza'), is byte-identical.
+const EXPECTED_HASH = '796e241cbef491e4b5d645c8ce9e2945066c56c58e46bbcc8fbdeaad314001c1';
 
 assert.equal(
   combosHash(),

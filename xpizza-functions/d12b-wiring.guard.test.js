@@ -1,0 +1,65 @@
+'use strict';
+// D12b (brand display name) — wiring guard.
+//   1. PROOF: tools/d12b-inverse.js turns each D12b-touched pinned module back into the D12b base (acd606e) BYTE-FOR-BYTE,
+//      each hunk exactly once — the inverse the zero-diff pins apply FIRST; a byte inside/outside a hunk and a duplicated
+//      hunk are each detected.
+//   2. Both builders write order_tracking.restaurant_display_name from the SAME resolution as the pickup line (brandOf over
+//      the same candidates, in the same order), and only when it resolves.
+//   3. The tracker's pickup banner reads the PUBLIC record's restaurant_display_name, falls back to NEUTRAL copy, and keeps
+//      no rid → brand-name map and no "X. Pizza" fallback.
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const stripComments = require('./tools/strip-comments');
+const { HUNKS, FILES, unapplyD12b, unapplyD12bIndex } = require('./tools/d12b-inverse');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
+const BASE = '5055cb9';   // the D12b parent (rebased from acd606e; the pinned files are identical in both)
+const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
+
+// ── 1. the inverse ──
+assert.deepStrictEqual([...FILES].sort(), ['create-order-build.js', 'materialize.js']);
+for (const f of FILES) assert.strictEqual(unapplyD12b(f, read(f)), baseOf(f), `🔴 ${f} minus the D12b hunks is not ${BASE}:${f}`);
+{
+  const f = 'create-order-build.js'; const src = read(f);
+  const outside = src.replace("'use strict';", "'use strict'; ");
+  assert.notStrictEqual(outside, src, 'premise');
+  assert.notStrictEqual(unapplyD12b(f, outside), baseOf(f), 'a byte OUTSIDE every hunk is detected');
+  const h = HUNKS.find((x) => x.file === f && x.now.includes('trackBrand'));
+  assert.throws(() => unapplyD12b(f, src.replace(h.now, h.now.replace('trackBrand', 'trackBrnd'))), /occurs 0 times/, 'a byte INSIDE a hunk is detected');
+  assert.throws(() => unapplyD12b(f, src + h.now), /occurs 2 times/, 'a duplicated hunk is detected');
+}
+ok(`PROOF: unapplyD12b → ${BASE} byte-for-byte for ${FILES.length} modules (${HUNKS.length} hunks, each once); a byte inside/outside a hunk and a duplicated hunk are each detected`);
+
+// ── 1b. index.js (codex D12b r1 P2-2): ONE delimited, byte-pinned block — requestOtp's message ──
+{
+  const real = read('index.js');
+  const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+  assert.notStrictEqual(unapplyD12bIndex(real), real, 'non-vacuity: the d12b block is present and swapped back');
+  assert.strictEqual(unapplyD12bIndex(real), baseIdx, `🔴 index.js minus the d12b block is not ${BASE}:index.js`);
+  assert.throws(() => unapplyD12bIndex(real.replace('whatsapp.tplOtp({ code })', 'whatsapp.tplOtp({ code: 1 })')), /pinned bytes/, 'an edit INSIDE the block');
+  assert.throws(() => unapplyD12bIndex(real.replace('exports.verifyOtp', '/* d12b:begin */\n/* d12b:end */\nexports.verifyOtp')), /exactly one/, 'a second block');
+  assert.throws(() => unapplyD12bIndex(real.replace('/* d12b:end */', '')), /exactly one/, 'a missing delimiter');
+  assert.notStrictEqual(unapplyD12bIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), baseIdx, 'a byte OUTSIDE the block survives (the base pin catches it)');
+}
+ok(`index.js: unapplyD12bIndex → ${BASE}:index.js byte-for-byte; an edit inside, a second block, a missing delimiter and a byte outside are each caught`);
+
+// ── 2. the tracking brand = the pickup line's brand ──
+const cob = stripComments(read('create-order-build.js')); const mat = stripComments(read('materialize.js'));
+assert.ok(cob.includes('pickupLabel(hubSnap.restaurant_display_name, hubSnap.restaurant_name)') && cob.includes('const trackBrand = brandOf(hubSnap.restaurant_display_name, hubSnap.restaurant_name);'), 'createOrder: the same candidates for both');
+assert.ok(mat.includes('pickupLabel(order.restaurant_display_name, live.display_name, order.restaurant_name, live.name)') && mat.includes('const trackBrand = brandOf(order.restaurant_display_name, live.display_name, order.restaurant_name, live.name);'), 'materialize: the same candidates for both');
+for (const src of [cob, mat]) assert.ok(/\.\.\.\(trackBrand \? \{ restaurant_display_name: trackBrand \} : \{\}\)/.test(src), 'written only when it resolves (never undefined into RTDB)');
+ok('both builders write order_tracking.restaurant_display_name from the SAME resolution as the pickup line, only when it resolves');
+
+// ── 3. the tracker banner ──
+const html = read('../xpizza-track/index.html');
+const start = html.indexOf('const brandName = '); const end = html.indexOf("'Pasá por el restaurante a recogerlo'", start);
+assert.ok(start > -1 && end > start, 'premise: the banner block');
+const block = html.slice(start, end + 40);
+assert.ok(/d\.restaurant_display_name/.test(block) && /brand \? `Pasá por \$\{brand\} a recogerlo` : 'Pasá por el restaurante a recogerlo'/.test(block), 'reads the public record; neutral fallback');
+assert.ok(!/X\.? ?Pizza|La Musa|restaurant_id/.test(block), '🔴 no rid → brand map and no brand-name fallback in the banner');
+ok('the tracker banner reads the record\'s restaurant_display_name, falls back to NEUTRAL copy, and has no rid → brand map');
+
+console.log(`\nd12b-wiring.guard: OK (${n})`);

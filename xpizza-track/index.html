@@ -653,7 +653,9 @@
       // #driver-eta are reused, so refreshDriverEta / setEtaText / the map plumbing are untouched).
       const status = data.status || 'new';
       const isPickup = data.order_type === 'pickup';
-      const brandName = (rid) => rid === 'la_musa' ? 'La Musa' : 'X. Pizza';
+      // D12b: the brand comes from the order's PUBLIC tracking record (restaurant_display_name, written by the server from
+      // the restaurant's own config) — never a per-brand literal. An older record without it gets neutral copy.
+      const brandName = (d) => (d && typeof d.restaurant_display_name === 'string' && d.restaurant_display_name.trim()) ? d.restaurant_display_name.trim() : null;
       const titleEl = document.getElementById('driver-name');    // the one big headline
       const subEl = document.getElementById('driver-eta');       // the one sub-line (also the live-ETA slot)
       const avatarEl = document.getElementById('driver-avatar');
@@ -701,7 +703,8 @@
           titleEl.className = 'stitle success';
           if (status === 'ready') {
             titleEl.textContent = '¡Tu pedido está listo para recoger!';
-            subEl.textContent = `Pasá por ${brandName(data.restaurant_id)} a recogerlo`;
+            const brand = brandName(data);
+            subEl.textContent = brand ? `Pasá por ${brand} a recogerlo` : 'Pasá por el restaurante a recogerlo';
           } else {
             titleEl.textContent = '¡Gracias por tu compra!';
             // today's pickup-delivered copy, byte-equivalent — now via the shared fmtTime (uppercase default)

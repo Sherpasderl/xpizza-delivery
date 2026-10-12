@@ -11,7 +11,7 @@
  * Pure (no db / no I/O): returns a `{ "path": value }` map for one atomic `.update()`.
  * `now` is injected (ServerValue.TIMESTAMP in prod, a number in tests).
  */
-const { pickupLabel } = require('./pickup-label');   // R3-FIX D12
+const { pickupLabel, brandOf } = require('./pickup-label');   // R3-FIX D12 (+ D12b brandOf)
 
 // Build the live-order updates. For online confirms `order` is the existing
 // pending_payment record (already holds customer/items/total/address); we PATCH the
@@ -115,10 +115,13 @@ function buildMaterializeUpdates({ orderId, order, trackingToken, now, restauran
   const addressShort = orderType === 'delivery'
     ? String(order.address_detected || '').split(',')[0].trim()
     : pickupLabel(order.restaurant_display_name, live.display_name, order.restaurant_name, live.name);
+  // D12b: the same brand on the PUBLIC tracking record (absent when nothing names it — the tracker then uses neutral copy)
+  const trackBrand = brandOf(order.restaurant_display_name, live.display_name, order.restaurant_name, live.name);
   updates[`order_tracking/${trackingToken}`] = {
     order_id: orderId,
     order_type: orderType,
     restaurant_id: order.restaurant_id || 'x_pizza',   // D2: per-restaurant tracker branding (legacy-normalized)
+    ...(trackBrand ? { restaurant_display_name: trackBrand } : {}),   // D12b
     customer_name: order.customer_name,
     items_text: order.items_text,
     total: order.total,

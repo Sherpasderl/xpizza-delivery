@@ -84,7 +84,10 @@ let sendMode = 'ok';
 let spyReadMarkerId = null;      // when set, capture that order's send_started_at AT SEND TIME (mark-before-send)
 let startMarkerAtSend = undefined;
 whatsapp.sendMessage = async (phone, body, restaurantId) => {
-  sends.push({ phone, body, restaurantId });
+  // D12b: a branded template arrives DEFERRED; record what the real sendMessage sends — rendered with the brand this
+  // restaurant's config resolves to — and that it was deferred (the brand is resolved at send, never baked in)
+  const deferred = whatsapp.isDeferred(body);
+  sends.push({ phone, deferred, body: deferred ? whatsapp.renderTemplate(body, { x_pizza: 'X. Pizza', la_musa: 'La Musa' }[restaurantId] || null) : body, restaurantId });
   if (spyReadMarkerId) startMarkerAtSend = (await realRef('preparing_notifications/' + spyReadMarkerId + '/send_started_at').once('value')).val();
   if (sendMode === 'throw') throw new Error('injected provider failure');
   if (sendMode === 'null') return null;

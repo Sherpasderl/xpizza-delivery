@@ -3,7 +3,7 @@
 // writers (create-order-build's buildCreateOrderUpdates over the real hubSnapshot; materialize's buildMaterializeUpdates)
 // for x_pizza, la_musa and a synthetic THIRD restaurant — two brands can make a literal look right.
 const assert = require('assert');
-const { pickupLabel, brandText, readLiveBrand, BRAND_MAX } = require('./pickup-label');
+const { pickupLabel, brandOf, brandText, readLiveBrand, BRAND_MAX } = require('./pickup-label');
 const { hubSnapshot } = require('./restaurant-config');
 const { buildCreateOrderUpdates } = require('./create-order-build');
 const { buildMaterializeUpdates } = require('./materialize');
@@ -22,6 +22,8 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pickup-la
   assert.strictEqual(pickupLabel(42, {}, ['X'], 'x'.repeat(BRAND_MAX + 1)), 'Recoger en el restaurante', 'non-strings and an over-long value are absent');
   assert.strictEqual(brandText('x'.repeat(BRAND_MAX)), 'x'.repeat(BRAND_MAX));
   ok('pickupLabel: the first usable candidate (trimmed, non-blank, ≤ 60 chars) names the brand; none → "Recoger en el restaurante"');
+  assert.strictEqual(brandOf('X. Pizza', 'X Pizza'), 'X. Pizza'); assert.strictEqual(brandOf(null, ' La Musa '), 'La Musa'); assert.strictEqual(brandOf('', 42, null), null);
+  ok('D12b brandOf: the same resolution as pickupLabel, returning the brand itself or null');
 
   // ── the live read: fail-SOFT ──
   const fakeDb = (vals, mode) => ({ ref: (p) => ({ once: () => (mode === 'throw' ? Promise.reject(new Error('down')) : mode === 'hang' ? new Promise(() => {}) : Promise.resolve({ val: () => vals[p] ?? null })) }) });
@@ -55,6 +57,7 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pickup-la
     lines[rid] = u[`order_tracking/T_${rid}`].address_short;
     assert.strictEqual(lines[rid], want, `${rid}: createOrder's pickup line`);
     assert.strictEqual(u[`orders/O_${rid}`].restaurant_display_name, id.display_name, `${rid}: the order carries its display-name snapshot (materialize reads it later)`);
+    assert.strictEqual(u[`order_tracking/T_${rid}`].restaurant_display_name, want.slice('Recoger en '.length), `${rid}: D12b — the PUBLIC tracking record carries the same brand`);
   }
   assert.ok(!/X\.? ?Pizza/.test(lines.la_musa + lines.r3_synth), '🔴 no other brand ever reads X. Pizza');
   ok('createOrder writer (real builder + real hubSnapshot): x_pizza "Recoger en X. Pizza", la_musa "Recoger en La Musa", a third "Recoger en Sushi Sur HN"; the order keeps the snapshot');
@@ -68,6 +71,9 @@ process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('pickup-la
   assert.strictEqual(mat({ restaurant_id: 'x_pizza', restaurant_name: 'X Pizza' }, { display_name: 'X. Pizza', name: 'X Pizza' }), 'Recoger en X. Pizza', 'an order from before D12: the LIVE display name');
   assert.strictEqual(mat({ restaurant_id: 'la_musa' }, { name: 'La Musa' }), 'Recoger en La Musa', 'pre-3b: the live name — not the constant');
   assert.strictEqual(mat({ restaurant_id: 'la_musa' }, null), 'Recoger en el restaurante', '🔴 pre-3b, nothing live: neutral — NEVER the x_pizza constant');
+  const trk = (order, live) => buildMaterializeUpdates({ orderId: 'M', order: { order_id: 'M', order_type: 'pickup', items_text: 'x', total: 1, ...order }, trackingToken: 'TM', now: 1, restaurant: XPIZZA_CONSTANT, liveIdentity: live })['order_tracking/TM'];
+  assert.strictEqual(trk({ restaurant_id: 'r3_synth', ...hubSnapshot(R3) }).restaurant_display_name, 'Sushi Sur HN', 'D12b: the third restaurant on the public record');
+  assert.ok(!('restaurant_display_name' in trk({ restaurant_id: 'la_musa' }, null)), 'D12b: nothing names it → the field is ABSENT (the tracker shows neutral copy), never the constant');
   assert.strictEqual(mat({ restaurant_id: 'x_pizza', ...hubSnapshot(X) }, { display_name: 'Otro' }), 'Recoger en X. Pizza', 'the order\'s own snapshot beats the live identity');
   ok('materialize writer: snapshot display → live display → snapshot name → live name → neutral, three restaurants; the x_pizza RESTAURANT constant never names a pickup');
 

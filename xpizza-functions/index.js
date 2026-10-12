@@ -6527,8 +6527,9 @@ exports.requestOtp = onRequest(
       // welcome to the RIGHT brand — spoof-proof, no client-supplied brand at verify. verifyConsume spreads
       // `...v`, so this rid survives the consume transaction. Fail-open: on miss, verifyOtp defaults x_pizza.
       try { await db.ref('otp/' + pHash + '/rid').set(restaurantId); } catch (_) {}
-      const brand = restaurantId === 'la_musa' ? 'La Musa' : 'X. Pizza';
-      await whatsapp.sendMessage(phone, `Tu código de ${brand} es ${code}. Vence en 5 minutos. No lo compartas.`, restaurantId);
+      /* d12b:begin */
+      await whatsapp.sendMessage(phone, whatsapp.tplOtp({ code }), restaurantId);   // D12b: the brand from this restaurant's config, never a literal
+      /* d12b:end */
       return res.status(200).json({ ok: true, cooldown: 30 });
     } catch (e) {
       console.error('requestOtp', e);
