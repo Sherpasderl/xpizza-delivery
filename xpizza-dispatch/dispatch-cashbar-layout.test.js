@@ -67,7 +67,9 @@ for (const label of ['Requiere reconciliación manual', 'Sin resolver', 'Efectiv
 assert.ok(invalidBar.includes('Registro de caja inválido') && invalidBar.includes('Reconciliar'), 'invalid render shows the error + Reconciliar');
 ok('all-categories + invalid renders contain every expected line (real renderer)');
 
-if (!fs.existsSync(CHROME)) { console.log('  ⚠ Google Chrome not found — browser layout check SKIPPED (run it in the gate env with Chrome).'); process.exit(0); }
+// This layout check is wired into the default npm test chain (xpizza-functions package.json), so it must FAIL
+// LOUDLY if Chrome is missing — never skip. A silent skip would look like coverage in CI while proving nothing.
+if (!fs.existsSync(CHROME)) { console.error(`\n✗ FAIL: Google Chrome not found at ${CHROME} — this real-layout check requires Chrome and must not be skipped. Install Chrome (or run where it is available) to execute the cash-bar layout gate.`); process.exit(1); }
 
 // ── Measurement helpers (shared) ──
 //  effVisible   — display/visibility/opacity up the ancestor chain.
