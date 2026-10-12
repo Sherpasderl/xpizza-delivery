@@ -110,12 +110,17 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
     assert.match(r.html, /Efectivo final \(0\)/, 'escape-hatch not counted as final');
     assert.doesNotMatch(r.html, /Provisional \(/, 'escape-hatch not double-counted as provisional');
   }
-  // (e) LEGACY — a pre-feature record (NO provisional/metadata fields) must not crash; shown as "Heredado" (as before).
+  // (e) LEGACY — pre-feature record (NO provisional/metadata): must not crash; shown on its OWN SUBORDINATE
+  //     "Heredado" line (dim, cash-legacy) so unverified pre-2.5.0 cash can NEVER read as a verified-final figure,
+  //     and is NEVER merged into a grand total that hides it. (advisor: keep separate; must not read as final.)
   {
-    const r = run({ dA: { s1: C({ cash_owed: 180 }) } });
-    assert.match(r.html, /Heredado \(1\)/, 'legacy record shown as Heredado');
+    const r = run({ dA: { s1: C({ cash_owed: 500, provisional: false }) }, dB: { s1: C({ cash_owed: 180 }) } });   // final 500 + legacy 180
+    assert.match(r.html, /<div class="ci cash-legacy"><b>[^<]*<\/b><span>Heredado \(1\)/, 'legacy shown on its OWN subordinate cash-legacy line (not crashed, not mislabeled)');
     assert.match(r.html, /L 180/, 'legacy cash shown (display as before)');
-    assert.match(r.html, /Efectivo final \(0\)/, 'legacy not mislabeled as final');
+    assert.match(r.html, /Efectivo final \(1\)/, 'final count EXCLUDES legacy (1 final, not 2)');
+    assert.match(r.html, /L 500/, 'final total excludes legacy (500)');
+    assert.doesNotMatch(r.html, /L 680/, 'NO merged grand total that hides the legacy figure (500 and 180 stay separate)');
+    assert.doesNotMatch(r.html, /class="ci cash-legacy"><b>L 500/, 'the Efectivo final value is NOT dimmed/legacy-styled');
   }
   // (f) ERROR STATE — a subscription/permission failure renders an explicit error, NEVER an L0.
   {
@@ -137,6 +142,8 @@ const fnSrc = (src, name) => { const s = src.indexOf(`function ${name}(`); const
   assert.match(html, /renderReconciliationSection\(\);\s*setTabBadge\('tab-caja-n'[^\n]*\n\s*renderCashBar\(\);/, 'recon subscription calls renderCashBar() to refresh the pending count');
   // the subscription is wired with an ERROR handler → error state (never a silent L0 on permission failure).
   assert.match(html, /subscribeToDriverCash\(renderCashBar,\s*\(err\)\s*=>\s*renderCashBar\(\{\s*__error:\s*true/, 'subscribeToDriverCash wired with an error handler → explicit error state');
+  // Heredado is visually SUBORDINATE (dim) so it can never read as a verified-final figure.
+  assert.match(html, /\.cash-bar \.ci\.cash-legacy b \{[^}]*color: var\(--text-dim\)/, 'Heredado value is dimmed (var(--text-dim)) — subordinate to Efectivo final');
   ok('cash bar: final/provisional/legacy/escape-hatch split + unresolved detail + explicit error (never L0); Reconciliar→Caja; pending stays separate');
 }
 

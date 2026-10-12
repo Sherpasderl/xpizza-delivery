@@ -2111,6 +2111,8 @@
   .cash-bar .ci.cash-prov b { color: var(--warn); }
   .cash-bar .ci.cash-escape b, .cash-bar .ci.cash-escape span { color: var(--accent); font-weight: 600; }
   .cash-bar .ci.cash-error b, .cash-bar .ci.cash-error span { color: var(--accent); }
+  /* Heredado (pre-2.5.0, unverified): SUBORDINATE — dim + lighter so it can never read as a verified-final figure. */
+  .cash-bar .ci.cash-legacy b { color: var(--text-dim); font-weight: 400; }
   .cash-div { width: 1px; height: 26px; background: var(--border-soft); flex: none; }
   .cash-recon-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-soft); font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
   .cash-recon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--hair-2); }
@@ -3945,7 +3947,7 @@ function renderCashBar(cash) {
     const L = (n) => 'L ' + Number(n).toLocaleString('es-HN');
     const parts = [`<div class="ci"><b>${escapeHtml(L(finalTotal))}</b><span>Efectivo final (${finalCount})</span></div>`];
     if (provCount > 0)    parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(L(provTotal))}</b><span>Provisional (${provCount})</span></div>`);
-    if (legacyCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);
+    if (legacyCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci cash-legacy"><b>${escapeHtml(L(legacyTotal))}</b><span>Heredado (${legacyCount})</span></div>`);   // SUBORDINATE line (dim) — unverified pre-2.5.0, never a verified-final figure, never merged into a grand total
     if (unresolvedCount > 0) parts.push(`<div class="cash-div"></div><div class="ci cash-prov"><b>${escapeHtml(String(unresolvedCount))}</b><span title="${escapeHtml(unresolvedDetail.join(' · '))}">Sin resolver</span></div>`);
     if (escapeCount > 0)  parts.push(`<div class="cash-div"></div><div class="ci cash-escape"><b>${escapeHtml(String(escapeCount))}</b><span>Requiere reconciliación manual</span></div>`);
     parts.push(pendingHtml, reconBtnHtml);
