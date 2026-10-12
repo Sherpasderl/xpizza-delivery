@@ -20,6 +20,7 @@
  */
 const MR = require('./manual-resolve');
 const MG = require('./materialize-guard');
+const { readLiveBrand } = require('./pickup-label');   // R3-FIX D12
 const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
 const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
 const { usesPlatformFactura } = require('./factura/eligibility');   // fiscal-brand gate: X.Pizza owes a SAR factura, La Musa does not
@@ -59,7 +60,9 @@ async function confirmAndMaterializeFromManualClaim(deps, { orderId, attemptId, 
   if (await holdIfClosedAtMaterialize(deps, orderId, order, now)) {
     return { outcome: 'held_closed_at_materialize' };
   }
-  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference: attemptId, paymentMethod: 'online' });
+  // R3-FIX D12: an order without a display-name snapshot (created before it existed) names its brand from the LIVE identity
+  const liveIdentity = order.order_type === 'pickup' && !order.restaurant_display_name ? await readLiveBrand(db, order.restaurant_id || 'x_pizza') : null;
+  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentReference: attemptId, paymentMethod: 'online', liveIdentity });
   await db.ref().update(updates);
   return { outcome: 'materialized' };
 }

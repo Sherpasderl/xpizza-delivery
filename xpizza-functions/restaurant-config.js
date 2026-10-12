@@ -1,4 +1,5 @@
 'use strict';
+const { brandText } = require('./pickup-label');   // R3-FIX D12
 
 /**
  * Config-plane reader (ADR-0002): source -> warm-instance cache (30s TTL + version) -> fail-closed.
@@ -72,7 +73,12 @@ async function getIdentity(db, rid, now = Date.now()) {
 // allowlist — NEVER spread the reader result, so _source/_fetched_at/active/version/hours/
 // whatsapp_* can never leak into order/task data.
 function hubSnapshot(id) {
-  return { hub_lat: id.hub_lat, hub_lng: id.hub_lng, restaurant_name: id.name, restaurant_phone: id.phone };
+  const snap = { hub_lat: id.hub_lat, hub_lng: id.hub_lng, restaurant_name: id.name, restaurant_phone: id.phone };
+  // R3-FIX D12: the brand as customers see it (identity.display_name), ONLY when configured — absent stays absent, so an
+  // order of a restaurant without one is byte-identical to before (and RTDB never receives an undefined)
+  const dn = brandText(id.display_name);
+  if (dn) snap.restaurant_display_name = dn;
+  return snap;
 }
 
 // isRoutingValid is exported so the deploy seed-readiness check reuses the EXACT hot-path

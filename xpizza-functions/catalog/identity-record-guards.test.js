@@ -88,8 +88,10 @@ try {
        delimiters; removing them reproduces the pinned sha byte for byte. Every other pin stays whole. */
     const C2A = /[ \t]*\/\* c2a-evidence:begin \*\/[\s\S]*?\/\* c2a-evidence:end \*\/\n?/g;
     const C2A_BLOCKS = { 'catalog/identity-bootstrap.js': 3 };
+    // R3-FIX D12 landed later: its exact inverse (tools/d12-inverse.js, proven by d12-wiring.guard) is reversed first
+    const { unapplyD12, FILES: D12_FILES } = require('../tools/d12-inverse');
     const baseOf = (f) => {
-      const src = read(f);
+      const src = D12_FILES.includes(f) ? unapplyD12(f, read(f)) : read(f);
       if (!C2A_BLOCKS[f]) return src;
       const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
       assert.strictEqual(begins, C2A_BLOCKS[f], `🔴 ${f}: expected exactly ${C2A_BLOCKS[f]} c2a blocks, found ${begins}`);

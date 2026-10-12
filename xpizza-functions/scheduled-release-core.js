@@ -20,6 +20,16 @@
  * next sweep retries; once OPEN (resume or an expired `until`) today's path runs and clears the marker.
  */
 const { buildMaterializeUpdates } = require('./materialize');
+const { readLiveBrand } = require('./pickup-label');   // R3-FIX D12
+// R3-FIX D12 (codex r1 note): the sweep releases due orders ONE AT A TIME with ONE deps object per run, so a restaurant's
+// live brand is read ONCE per run (memoized on that deps object) — never a bounded read per order, accumulating.
+const brandMemo = new WeakMap();
+function liveBrandFor(deps, db, rid) {
+  let m = brandMemo.get(deps);
+  if (!m) { m = new Map(); brandMemo.set(deps, m); }
+  if (!m.has(rid)) m.set(rid, readLiveBrand(db, rid));
+  return m.get(rid);
+}
 const S = require('./scheduled-orders');
 const { releaseHold } = require('./order-control-state');
 
@@ -78,7 +88,9 @@ async function finalizeRelease(deps, orderId, order, now) {
   // 'confirmed' re-set is idempotent; cash has no online block so this is a no-op).
   const trackingToken = deps.genToken();
   const restaurant = deps.restaurantFallback || { lat: order.hub_lat, lng: order.hub_lng, name: order.restaurant_name, phone: order.restaurant_phone };
-  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method });
+  // R3-FIX D12: an order without a display-name snapshot (scheduled before it existed) names its brand from the LIVE identity
+  const liveIdentity = order.order_type === 'pickup' && !order.restaurant_display_name ? await liveBrandFor(deps, db, rid) : null;
+  const updates = buildMaterializeUpdates({ orderId, order, trackingToken, now, restaurant, paymentMethod: order.payment_method, liveIdentity });
   delete updates[`orders/${orderId}/charged_at`];
   updates[`orders/${orderId}/release_claim_id`] = null;
   updates[`orders/${orderId}/releasing_since`] = null;

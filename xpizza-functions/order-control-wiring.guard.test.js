@@ -86,7 +86,14 @@ for (const f of CAPTURED) {
   if (!fs.existsSync(path.join(__dirname, f))) continue;
   assert.ok(!/order-control|order_control/.test(read(f)), `🔴 ${f} reads the pause switch — captured payments must proceed exactly as today`);
 }
-const diffed = execFileSync('git', ['diff', '--name-only', 'e1aeb3f', '--', ...CAPTURED, 'restaurant-config.js', 'scheduled-orders.js', 'createorder-classify.js', 'order-exists.js'], { cwd: __dirname, encoding: 'utf8' }).trim();
+// R3-FIX D12 landed later and adds the pickup-label hunks to some of these modules: its exact inverse
+// (tools/d12-inverse.js, proven by d12-wiring.guard) is reversed FIRST, so any byte OUTSIDE those hunks still fails here.
+const { unapplyD12, FILES: D12_FILES } = require('./tools/d12-inverse');
+const pinned = [...CAPTURED, 'restaurant-config.js', 'scheduled-orders.js', 'createorder-classify.js', 'order-exists.js'].filter((f) => fs.existsSync(path.join(__dirname, f)));
+const diffed = pinned.filter((f) => {
+  const now = D12_FILES.includes(f) ? unapplyD12(f, read(f)) : read(f);
+  return now !== execFileSync('git', ['show', `e1aeb3f:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 });
+}).join('\n');
 assert.strictEqual(diffed, '', `🔴 pinned modules changed vs e1aeb3f: ${diffed}`);
 ok('captured-payment / resolver / cancel / paid-after-close modules never mention the switch, and (with restaurant-config, scheduled-orders, the classifier and order-exists) are byte-identical to e1aeb3f');
 

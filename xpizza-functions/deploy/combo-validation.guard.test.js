@@ -9,7 +9,10 @@ const { combosHash } = require('./combo-validation');
 // Rebumped for S1 E2: additive `restaurant_id: 'x_pizza'` on tasks/ORD1_pickup (the only driver
 // pickup task in COMBOS — cash_pickup/ORD2 has no tasks). Re-audited: additive-only, no other field
 // moved on any record; cash_delivery + cash_pickup goldens still pass byte-identical on prior fields.
-const EXPECTED_HASH = 'e3e1fb8a1edb53c722563ff58b932403335db7bb499d49f9a98cd1ec907564a8';
+// Rebumped for R3-FIX D12: the hub snapshot (HUB) gains the OPTIONAL `restaurant_display_name: 'X. Pizza'` — x_pizza's
+// identity.display_name, which the owner seeds before the D12 deploy. Re-audited: no pre3b record changed on any combo; in
+// particular order_tracking/TOK2's audited pickup line stays exactly 'Recoger en X. Pizza', now DERIVED from config.
+const EXPECTED_HASH = '7d2573944c188ffc74d41eaf8b470a71033eaa2744f64d8314d5aa615ae551e7';
 
 assert.equal(
   combosHash(),
