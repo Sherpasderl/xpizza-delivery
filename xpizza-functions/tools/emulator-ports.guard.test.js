@@ -1113,14 +1113,14 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
     assert.strictEqual(injectCounter('node test/a.emulator.test.js', C), `node -r ${C} test/a.emulator.test.js`,
       'the ordinary single-suite shape is preloaded');
 
+    const chained = injectCounter('node test/a.js && node test/b.js && node test/c.js', C);
+    assert.strictEqual((chained.match(/-r \/abs/g) || []).length, 3,
+      '🔴 a chained script preloaded only some of its suites — the rest report no count at all');
     // R3: node FLAGS before the file are kept and the file is still preloaded (contract page harness)
     assert.strictEqual(injectCounter('node --experimental-vm-modules contract/p.emulator.test.js', C), `node --experimental-vm-modules -r ${C} contract/p.emulator.test.js`,
       '🔴 a `node --flag <file>` suite was not preloaded (it would run uncounted)');
     assert.strictEqual(injectCounter('node --max-old-space-size=4096 --experimental-vm-modules t.js && node u.js', C), `node --max-old-space-size=4096 --experimental-vm-modules -r ${C} t.js && node -r ${C} u.js`,
       'flags with values, several flags, and a chain');
-    const chained = injectCounter('node test/a.js && node test/b.js && node test/c.js', C);
-    assert.strictEqual((chained.match(/-r \/abs/g) || []).length, 3,
-      '🔴 a chained script preloaded only some of its suites — the rest report no count at all');
 
     // Every routed script in package.json actually receives it.
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));

@@ -7903,14 +7903,15 @@
     "id": "e2a-19",
     "slice": "e2a",
     "file": "tools/emulator-run.js",
-    "from": "  String(command).replace(/\\bnode\\s+(?=[\\w./-]+\\.(?:js|mjs)\\b)/g, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
+    "from": "  String(command).replace(NODE_INVOCATION, (_, flags) => `node ${flags}${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
     "to": "  String(command).replace(/^node\\s+/, `node ${[counter, ...more].map((p) => `-r ${p} `).join('')}`);",
     "label": "only the first command in a chained script is preloaded",
     "kills_with": "a chained script preloaded only some of its suites — the rest report no count at all",
     "command": [
       "node",
       "tools/emulator-ports.guard.test.js"
-    ]
+    ],
+    "repointed": "R3 P0 (2026-10-12): injectCounter now matches `node [flags] <file>` via NODE_INVOCATION; the mutant still reduces it to the FIRST command only"
   },
   {
     "id": "e2a-20",
@@ -11482,6 +11483,19 @@
     "command": [
       "node",
       "test/_catalog-clock.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-01",
+    "slice": "r3p0",
+    "file": "tools/emulator-run.js",
+    "from": "const NODE_INVOCATION = /\\bnode\\s+((?:--[a-z][a-z0-9-]*(?:=[^\\s\"']+)?\\s+)*)(?=[\\w./-]+\\.(?:js|mjs)\\b)/g;",
+    "to": "const NODE_INVOCATION = /\\bnode\\s+()(?=[\\w./-]+\\.(?:js|mjs)\\b)/g;",
+    "label": "injectCounter stops seeing `node --flag <file>` (the R3 page-harness suites would run uncounted)",
+    "kills_with": "a `node --flag <file>` suite was not preloaded",
+    "command": [
+      "node",
+      "tools/emulator-ports.guard.test.js"
     ]
   }
 ]
