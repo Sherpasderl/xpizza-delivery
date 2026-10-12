@@ -100,6 +100,7 @@ function cashOrder(oid, orderType = 'delivery') {
 const createOrder = (label, body) => S.writer(label, () => post(app.createOrder, body, H), { served: [] });
 const invsOf = (name) => S.state.invs.filter((i) => i.name === name);
 const SITE = (arg) => S.sites.calls.find((c) => c.arg === arg).line;
+const EXTRA = []; const OBS = {};
 
 (async () => {
   await S.fixture(async () => {
@@ -217,6 +218,7 @@ const SITE = (arg) => S.sites.calls.find((c) => c.arg === arg).line;
     const diagMark = WITNESS.readerDiag().length;
     const w = await createOrder('createOrder p0_3', cashOrder('p0_3', 'pickup'));
     SLOW_DOCS_MS = 0;
+    EXTRA.push(w); OBS.v2 = v2;
     assert.strictEqual(w.r.status, 200, FAIL('C2', `createOrder p0_3 HTTP 200 (${w.r.status} ${w.r.text.slice(0, 160)})`));
     assert.ok((await rtdb.ref('orders/p0_3').get()).exists(), FAIL('C2', 'order p0_3 persisted'));
     const s = w.store.served.filter((x) => x.rid === 'x_pizza');
@@ -224,11 +226,25 @@ const SITE = (arg) => S.sites.calls.find((c) => c.arg === arg).line;
     for (let i = 0; i < 40 && !WITNESS.readerDiag().slice(diagMark).some((d) => d.versionId === v2); i += 1) await realSleep(100);
     assert.ok(WITNESS.readerDiag().slice(diagMark).some((d) => d.versionId === v2), FAIL('C2', 'premise — the reader DID complete V2 late (diagnostic)'));
     const w2 = await createOrder('createOrder p0_4', cashOrder('p0_4', 'pickup'));
+    EXTRA.push(w2);
     assert.strictEqual(w2.r.status, 200, FAIL('C2', `createOrder p0_4 HTTP 200 (${w2.r.text.slice(0, 160)})`));
     const s2 = w2.store.served.filter((x) => x.rid === 'x_pizza');
     assert.ok(s2.length >= 1 && s2.every((x) => x.versionId === v2 && x.source === 'live'), FAIL('C2', `the warm call is served a NON-EMPTY {V2, live}: ${JSON.stringify(w2.store.served)}`));
     await S.drain('C2');
     ok(`C2 V2 published + catalog clock advanced + slow V2 load → createOrder p0_3 HTTP 200, persisted, served ${JSON.stringify(s.map((x) => x.source))} V1 while the reader completed V2 late; p0_4 served ${s2.length}× {V2, live}`);
+  }
+
+  // ── C3: the OTHER serving paths — gates (cached pointer + fallback flag), context (provenance), verifier (state) ──
+  {
+    const g1 = (w1.store.gates || []).filter((x) => x.rid === 'x_pizza' && x.method === 'intakeGatesFor');
+    assert.ok(g1.length >= 1 && g1.every((x) => x.versionId === V1.x_pizza && x.fallback === false), FAIL('C3', `p0_1's gate calls attributed to V1, not fallback: ${JSON.stringify(w1.store.gates)}`));
+    const c1 = w1.store.served.map((x) => x.context);
+    assert.ok(c1.every((c) => c && (c.availability !== 'available' || (c.versionId === V1.x_pizza))), FAIL('C3', `an attached context carries the served version (provenance): ${JSON.stringify(c1)}`));
+    const later = [w1, ...EXTRA].flatMap((w) => w.store.served.map((x) => x.context)).filter(Boolean);
+    OBS.contexts = later.map((c) => `${c.availability}${c.reason ? `/${c.reason}` : ''}${c.versionId ? `@${c.versionId === V1.x_pizza ? 'V1' : 'V2'}` : ''}${c.verifier ? `/verifier:${c.verifier}` : ''}`);
+    const g3 = (EXTRA[0].store.gates || []).filter((x) => x.rid === 'x_pizza' && x.method === 'intakeGatesFor');
+    assert.ok(g3.length >= 1 && g3.every((x) => x.versionId === OBS.v2 && x.fallback === false), FAIL('C3', `p0_3's gate calls attributed to V2 (the pointer refilled at the epoch) while its pricing was V1/last_good: ${JSON.stringify(EXTRA[0].store.gates)}`));
+    ok(`C3 per-reader evidence: gates p0_1 → V1 (not fallback); p0_3 → V2 while its PRICING was V1/last_good (the readers are attributed independently); contexts seen: ${[...new Set(OBS.contexts)].join(', ')}`);
   }
 
   // ── hygiene: no invocation error; only DECLARED sleepers left parked ──
