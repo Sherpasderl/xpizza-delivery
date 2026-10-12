@@ -11622,5 +11622,20 @@
       "node",
       "contract/sdk-provision.test.js"
     ]
+  },
+  {
+    "id": "r3p0-10",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "        if (!objs.length) { opaqueW(fn, segs.length === 0 ? 'unresolved-root-write' : 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }",
+    "to": "        if (!objs.length) { return; }",
+    "label": "an unresolved payload written at the DB root / /orders is silently accepted again (codex r3 P1-1)",
+    "kills_with": [
+      "root-unresolved-payload"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
   }
 ]
