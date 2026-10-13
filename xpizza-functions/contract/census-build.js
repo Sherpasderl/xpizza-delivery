@@ -68,8 +68,11 @@ function build({ extraUnits = [] } = {}) {
   const moneyFns = new Set(c.sites.filter((s) => (s.facts || []).some((f) => ['CASH', 'MONEY', 'COLLECT'].includes(f))).map((s) => `${s.file}#${s.fn}`));
   const NF = MAP.moneyPathNonFactReads || {};
   const moneyPathReads = (c.unknownReads || []).filter((x) => moneyFns.has(`${x.file}#${x.fn}`));
-  for (const x of moneyPathReads) if (!Object.prototype.hasOwnProperty.call(NF, x.field) || x.field === '_doc') problems.push(`unregistered field read on a money path: '${x.field}' (${x.file} ${x.fn} line ${x.line}, on '${x.base}') — register it as a fact (census FIELD_FACTS) or review it as a non-fact (census-map moneyPathNonFactReads)`);
-  for (const k of Object.keys(NF)) if (k !== '_doc' && !moneyPathReads.some((x) => x.field === k)) problems.push(`moneyPathNonFactReads.${k} is stale — no money-path read of it remains`);
+  // codex rebase-r2 P1: a review is bound to its SITE (field@file#fn), never to the field name — a new money-path use of a
+  // reviewed field elsewhere is RED until it is reviewed there
+  const npKey = (x) => `${x.field}@${x.file}#${x.fn}`;
+  for (const x of moneyPathReads) if (!Object.prototype.hasOwnProperty.call(NF, npKey(x))) problems.push(`unregistered field read on a money path: '${x.field}' (${x.file} ${x.fn} line ${x.line}, on '${x.base}') — register it as a fact (census FIELD_FACTS) or review THIS site as a non-fact (census-map moneyPathNonFactReads['${npKey(x)}'])`);
+  for (const k of Object.keys(NF)) if (k !== '_doc' && !moneyPathReads.some((x) => npKey(x) === k)) problems.push(`moneyPathNonFactReads['${k}'] is stale — that money-path read no longer exists`);
   // ── WRITE INVENTORY (codex r1 P1-1): every written order field is reviewed; opaque writes must be resolved ──
   const resolved = [];
   // codex r2 P1-1: a resolution is bound to its EXACT write site — file, function, kind AND the value expression — and

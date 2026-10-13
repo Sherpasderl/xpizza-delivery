@@ -53,6 +53,8 @@ const FIELD_FACTS = {
   delivered_by_driver_uid: ['DRIVER', 'CASH'],
   delivered_at: ['DRIVER', 'CASH'], fulfilled_offline_at: ['DRIVER'],
   cash_owed: ['CASH'], redemption: ['REWARD'], earn_preview: ['REWARD'], factura_status: ['FACTELIG'],
+  // codex rebase-r2 P1: the form confirmation's CLIENT-BUILT order object supplies displayed values — registered with obligations
+  redeem_total_cents: ['MONEY'], redeem: ['REWARD'],
 };
 const FIELDS = new Set(Object.keys(FIELD_FACTS));
 // tip / delivery fee / order email — snake AND camel case (codex r1 P1-1: `tipAmount` stayed green)
@@ -214,17 +216,24 @@ function census({ explicit = [], extraUnits = [] } = {}) {
         const f = propName(node);
         if (f && FIELDS.has(f)) add(fn, f, null, node, node.computed ? 'computed' : 'member');
         else if (f && al.has(f)) add(fn, al.get(f), f, node, 'projection');
-        else if (f && !node.computed && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && !(parent && parent.type === 'CallExpression' && parent.callee === node)) unknownReads.push({ file: u.file, fn, field: f, base: node.object.name, line: node.loc.start.line + u.lineOffset });
+        // codex rebase-r2 P1: EVERY read form on an order-ish object — dot, literal bracket (o['x']), optional chaining (o?.x)
+        else if (f && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && !(parent && parent.type === 'CallExpression' && parent.callee === node)) unknownReads.push({ file: u.file, fn, field: f, base: node.object.name, line: node.loc.start.line + u.lineOffset });
         else if (node.computed && !f && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && node.property.type !== 'NumericLiteral' && !(node.property.type === 'Literal' && typeof node.property.value === 'number')) {
           opaque.push({ file: u.file, fn, base: node.object.name, line: node.loc.start.line + u.lineOffset, how: 'computed' });
         }
       }
       if (node.type === 'ObjectPattern') {
+        // codex rebase-r2 P1: destructuring FROM an order-ish identifier (declarator / assignment; defaults and nested
+        // patterns included — the top-level key is the order field read) feeds the unknown-read collection too
+        const src = parent && ((parent.type === 'VariableDeclarator' && parent.id === node && parent.init) || (parent.type === 'AssignmentExpression' && parent.left === node && parent.right) || null);
+        const srcNode = src && (parent.type === 'VariableDeclarator' ? parent.init : parent.right);
+        const fromOrder = !!(srcNode && srcNode.type === 'Identifier' && ORDERISH.test(srcNode.name));
         for (const p of node.properties) {
-          if (p.type !== 'Property' || p.computed) continue;
-          const f = p.key && (p.key.name || p.key.value);
+          if (p.type !== 'Property') continue;
+          const f = p.computed ? (p.key.type === 'Literal' && typeof p.key.value === 'string' ? p.key.value : null) : (p.key && (p.key.name || p.key.value));
           if (f && FIELDS.has(f)) add(fn, f, null, p, 'destructure');
           else if (f && al.has(f)) add(fn, al.get(f), f, p, 'projection-destructure');
+          else if (f && fromOrder) unknownReads.push({ file: u.file, fn, field: f, base: srcNode.name, line: p.loc.start.line + u.lineOffset });
         }
       }
       if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && node.callee.object.type === 'Identifier' && node.callee.object.name === 'Object'

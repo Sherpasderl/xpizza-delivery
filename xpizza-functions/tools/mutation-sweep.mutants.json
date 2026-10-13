@@ -11897,10 +11897,11 @@
     "id": "r3p0-34",
     "slice": "r3p0",
     "file": "contract/census-build.js",
-    "from": "  for (const x of moneyPathReads) if (!Object.prototype.hasOwnProperty.call(NF, x.field) || x.field === '_doc') problems.push(",
-    "to": "  for (const x of moneyPathReads) if (false && !Object.prototype.hasOwnProperty.call(NF, x.field) || x.field === '_doc') problems.push(",
+    "from": "  for (const x of moneyPathReads) if (!Object.prototype.hasOwnProperty.call(NF, npKey(x))) problems.push(",
+    "to": "  for (const x of moneyPathReads) if (false && !Object.prototype.hasOwnProperty.call(NF, npKey(x))) problems.push(",
     "label": "an unregistered field read on a money path passes silently (codex rebase-r1 P1)",
     "kills_with": [
+      "per-site-binding: a created_at filter inside shiftDeliveries passed",
       "unregistered-identity-on-cash-read: the census stayed GREEN"
     ],
     "command": [
@@ -11922,6 +11923,53 @@
     "command": [
       "node",
       "contract/census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-36",
+    "slice": "r3p0",
+    "file": "contract/census-build.js",
+    "from": "  const npKey = (x) => `${x.field}@${x.file}#${x.fn}`;",
+    "to": "  const npKey = (x) => `${x.field}`;",
+    "label": "non-fact reviews applied by FIELD NAME again (codex rebase-r2 P1)",
+    "kills_with": [
+      "per-site-binding: a created_at filter inside shiftDeliveries passed",
+      "moneyPathNonFactReads"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-37",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "        else if (f && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && !(parent && parent.type === 'CallExpression' && parent.callee === node)) unknownReads.push(",
+    "to": "        else if (f && !node.computed && !node.optional && node.object.type === 'Identifier' && ORDERISH.test(node.object.name) && !(parent && parent.type === 'CallExpression' && parent.callee === node)) unknownReads.push(",
+    "label": "literal-bracket / optional reads escape the money-path rule (codex rebase-r2 P1)",
+    "kills_with": [
+      "is stale — that money-path read no longer exists",
+      "money-path-bracket: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-38",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "          else if (f && fromOrder) unknownReads.push({ file: u.file, fn, field: f, base: srcNode.name, line: p.loc.start.line + u.lineOffset });",
+    "to": "          else if (false) unknownReads.push({});",
+    "label": "destructuring reads escape the money-path rule (codex rebase-r2 P1)",
+    "kills_with": [
+      "money-path-destructure-default: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
     ]
   }
 ]

@@ -26,6 +26,15 @@ for (const [name, u, re] of cases) {
 }
 // codex r2 P1-1 probes, injected AS index.js / createOrderApp.all (where the reviewed opaque resolution lives)
 const asIndex = (code) => ({ file: 'xpizza-functions/index.js', scope: 'functions', kind: 'fn', code, lineOffset: 0, module: false });
+// codex rebase-r2 P1: a non-fact review is bound to its SITE — created_at is reviewed in other functions, but a NEW
+// created_at filter inside the driver's cash shiftDeliveries is unreviewed there → RED (codex's probe)
+{
+  const u = { file: 'xpizza-driver/cash-helpers.js', scope: 'xpizza-driver', kind: 'page', module: true, lineOffset: 0,
+    code: "export function shiftDeliveries(ordersMap, uid, sinceMs) { const out = []; for (const id in ordersMap) { const o = ordersMap[id]; if (o && o.created_at < sinceMs) continue; if (o.delivered_by_driver_uid === uid) out.push(o.total); } return out; }" };
+  const p = problemsWith(u);
+  assert.ok(p.some((x) => /unregistered field read on a money path: 'created_at' \(xpizza-driver\/cash-helpers\.js shiftDeliveries/.test(x)), `🔴 R3-CENSUS-NEG per-site-binding: a created_at filter inside shiftDeliveries passed (problems: ${JSON.stringify(p.slice(0, 4))})`);
+  ok('per-site binding: created_at reviewed elsewhere, but a NEW created_at filter inside the driver cash shiftDeliveries → RED (codex rebase-r2 probe)');
+}
 for (const [name, code, re] of [
   ['update-spread-computed-key', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders/probe').update({ ...{ ['service_charge_cents']: 900 } }); });", /service_charge_cents/],
   ['opaque-builder-object', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders/probe').set(buildNewMoneyPayload()); });", /opaque order write unresolved: .*opaque-order-object .*buildNewMoneyPayload/],
@@ -47,6 +56,12 @@ for (const [name, code, re] of [
   ['modular-root-transaction', "createOrderApp.all(async (req, res) => { await runTransaction(ref(db), (root) => root); });", /opaque order write unresolved: .*transaction-at-root/],
   // codex rebase-r1 P1 (generalized): an UNREGISTERED identity field on a CASH read (a function that reads an amount)
   ['unregistered-identity-on-cash-read', "function shiftCashProbe(o, uid) { return o.delivered_by_courier_uid === uid ? o.total : 0; }", /unregistered field read on a money path: 'delivered_by_courier_uid'/],
+  // codex rebase-r2 P1: EVERY read form of an unregistered field on a money path → RED (bracket, optional, destructuring
+  // with default, nested destructuring)
+  ['money-path-bracket', "function shiftCashProbeB(o, uid) { return o['courier_cash_exempt'] ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeB/],
+  ['money-path-optional', "function shiftCashProbeO(o, uid) { return o?.courier_cash_exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeO/],
+  ['money-path-destructure-default', "function shiftCashProbeD(o, uid) { const { courier_cash_exempt = false } = o; return courier_cash_exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeD/],
+  ['money-path-destructure-nested', "function shiftCashProbeN(o, uid) { const { courier: { exempt } } = o; return exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier' .*shiftCashProbeN/],
   ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));
