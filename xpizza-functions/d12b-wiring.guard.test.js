@@ -35,8 +35,8 @@ ok(`PROOF: unapplyD12b → ${BASE} byte-for-byte for ${FILES.length} modules (${
 
 // ── 1b. index.js (codex D12b r1 P2-2): ONE delimited, byte-pinned block — requestOtp's message ──
 {
-  // the WhatsApp-cancel block (the newer index.js slice) is reversed first, as in every fold guard
-  const real = require('./tools/wacancel-inverse').unapplyWaCancelIndex(read('index.js'));
+  // the per-product extras blocks (the newest index.js slice), then the WhatsApp-cancel block, are reversed first, as in every fold guard
+  const real = require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(read('index.js')));
   const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(unapplyD12bIndex(real), real, 'non-vacuity: the d12b block is present and swapped back');
   assert.strictEqual(unapplyD12bIndex(real), baseIdx, `🔴 index.js minus the d12b block is not ${BASE}:index.js`);

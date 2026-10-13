@@ -36,14 +36,14 @@ try {
     // 1D add-product B: its index.js hunks (tools/addproduct-b-inverse.js) reversed before A's — it landed on top of A
     // Stacked-tracker landed on top of PB-2 → its inverse (tools/stacked-tracker-inverse.js) is reversed on the folded tree before B's;
     // D4-c2b: the monitor's ONE delimited, byte-pinned block (tools/d4c2b-inverse.js) reversed FIRST — it landed on top of the stacked-tracker slice
-    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProductFold(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(require('../tools/d4c2b-inverse').unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/portal-split').foldPortalSplit()))))))));
+    const idx = require('../tools/d4c5-inverse').unapplyD4c5(require('../tools/d4c4-inverse').unapplyD4c4(require('../tools/addproduct-inverse').unapplyAddProductFold(require('../tools/addproduct-b-inverse').unapplyAddProductB(require('../tools/stacked-tracker-inverse').unapplyStackedTracker(require('../tools/d4c2b-inverse').unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(require('../tools/portal-split').foldPortalSplit())))))))));
     assert.strictEqual(sha(idx), PARENT_INDEX, '🔴 index.js + the portal split do not fold back to the integration parent bb37684 — something beyond the mechanical move changed');
     {   // D4-c2b inverse: non-vacuity (the block is present and removed) + sensitivity (an edit inside it, a second or a missing
         // block, and a byte OUTSIDE it are each caught)
       const { unapplyD4c2b } = require('../tools/d4c2b-inverse');
       // D12b landed on top of D4-c2b: its one delimited block (tools/d12b-inverse.js) is reversed first, so c2b's proofs below
       // see exactly the tree c2b landed on
-      const real = require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(read('index.js')));
+      const real = require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(read('index.js'))));
       assert.notStrictEqual(unapplyD4c2b(real), real, 'non-vacuity: the d4c2b block is present and removed');
       // PROOF (i): the block is the ONLY change c2b makes to index.js — its inverse is the integration base's index.js byte-for-byte
       const C2B_BASE = '2cb5a1c';   // the re-merge integration base (origin/main after R1/R1b/PB-2/stacked-tracker/R1c/PB-3)
@@ -110,7 +110,11 @@ try {
     const { unapplyD12, FILES: D12_FILES } = require('../tools/d12-inverse');
     // D12b landed on top of D12: its exact inverse is reversed FIRST (newest first)
     const { unapplyD12b, FILES: D12B_FILES } = require('../tools/d12b-inverse');
-    const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, read(f)) : read(f));
+    // per-product extras landed after D12b: its exact module inverse (tools/extras-module-inverse.js, proven by extras-wiring.guard)
+    // is reversed FIRST — menu-pricing.js gains only the shared extraPricingKey resolver the eligibility check reads through
+    const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
+    const xRead = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, read(f)) : read(f));
+    const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, xRead(f)) : xRead(f));
     const baseOf = (f) => {
       const src = D12_FILES.includes(f) ? unapplyD12(f, pinRead(f)) : pinRead(f);
       if (!C2A_BLOCKS[f]) return src;

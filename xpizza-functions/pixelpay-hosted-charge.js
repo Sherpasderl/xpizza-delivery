@@ -55,7 +55,7 @@ function genPollToken() {
    at the same authoritative point, FIRST, before the CAS — the EXISTING conflict shape, reason 'order_control' (the
    caller's conflict cleanup releases only a hold it owns, and answers with the kind its pre-gate recorded). Default
    false → every existing caller and path is unchanged. */
-async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false) {
+async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, now, cartBlocked = [], genId = genAttemptId, genTok = genPollToken, canonicalFp = null, refuseFresh = false, controlRefuseFresh = false, menuRefuseFresh = false, choiceRefuseFresh = false, extrasRefuseFresh = null) {
   const canon = once(canonicalFp);
   const orderRef = db.ref(`orders/${orderId}`);
 
@@ -112,6 +112,9 @@ async function acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint
     if (controlRefuseFresh === true) return { outcome: 'conflict', reason: 'order_control' };   // D4-c4 §0.2: paused / unknown → no fresh URL
     if (menuRefuseFresh === true) return { outcome: 'conflict', reason: 'menu_updating' };   // 1D add-product A §0b.1: a key the gate cannot classify → no fresh URL
     if (choiceRefuseFresh === true) return { outcome: 'conflict', reason: 'choice_required' };   // 1D add-product B: a bare launcher → no fresh URL
+    // per-product extras (PLAN rev 2.1 §5): a denied extra / unavailable eligibility under enforce (or an unknown mode) → no
+    // fresh URL, at THIS authoritative point (create / install / recover / rotate); bound reuse returned above, never re-judged
+    if (extrasRefuseFresh === 'extra_not_allowed' || extrasRefuseFresh === 'eligibility_unavailable') return { outcome: 'conflict', reason: extrasRefuseFresh };
     if (Array.isArray(cartBlocked) && cartBlocked.length > 0) {
       return { outcome: 'item_unavailable', blocked: cartBlocked };
     }

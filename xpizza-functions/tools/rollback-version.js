@@ -95,8 +95,10 @@ const db = admin.firestore();
      succeed while burying both. The operator chose from a list they read a moment ago; the fence is what
      says that moment is still current. Reproduced before fixing — expecting A@2 succeeded at generation 5.
      No new ARGUMENT for the operator: the tool reads both halves from the pointer it already read. */
+  // per-product extras (§4): the mode is read so a pre-baseline target is refused while shadow/enforce
   const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),
-    expected: { activeVersionId: active, activeGeneration } });
+    expected: { activeVersionId: active, activeGeneration },
+    readExtrasMode: async () => (await admin.database().ref(require('../catalog/extras-intake').PATH).once('value')).val() });
   console.log(`  done — active_version=${res.versionId}, mirrored=${res.mirrored}`);
   // 1D add-product A §0.2/§0b.3 — the KDS manifest of the catalog now active, through the ONE conditional writer,
   // stamped with THIS activation's generation (read from the pointer; a newer activation would supersede it).

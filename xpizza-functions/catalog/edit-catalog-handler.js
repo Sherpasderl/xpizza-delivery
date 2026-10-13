@@ -19,7 +19,8 @@
 // ---------------------------------------------------------------------------
 const { validateSource, sourceRefOf, canonicalize } = require('./source-store');
 const { checkValue, FIELD_SINKS } = require('./display-safety');
-const { groupCapabilities } = require('./platform-groups');   // 1D add-product B: the ONE platform authoring switch
+const { groupCapabilities } = require('./platform-groups');
+const { extrasCapabilities } = require('./platform-extras');   // 1D add-product B: the ONE platform authoring switch
 const { persistDeletionClaim } = require('./identity-partition');
 const { getActivePointer } = require('./catalog-firestore');
 
@@ -328,6 +329,7 @@ async function editCatalogCore({ db, authorize, readActiveBuilt, toPrecondition 
       renderedCategories: rendererContract(rid).renderedCategories,
       deletedIds: next.deleted_ids && Array.isArray(next.deleted_ids.ids) ? next.deleted_ids.ids : [],
       authoring: groupCapabilities().authoring,
+      extrasAuthoring: extrasCapabilities().authoring,   // per-product extras (the narrow deny_extras / extras_policy exception)
     });
   } catch (e) {
     if (e instanceof AP.AddProductError) {

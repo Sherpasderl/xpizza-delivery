@@ -398,6 +398,15 @@ async function capturePhase() {
     assertPremises();
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
+    // per-product extras (DECLARED, exact): the extras MODE read (platform_config/extras_eligibility) is a TTL-cached config read
+    // like the floor — set aside on its own: at most ONE per request, only a read; and with the mode absent (off) the version's
+    // eligibility DOCUMENT is never read
+    const isExtrasModeRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/extras_eligibility';
+    const assertExtrasDeclared = (trace, label) => {
+      const m = trace.filter(isExtrasModeRead);
+      assert.ok(m.length <= 1 && m.every((e) => /^(get|once)$/.test(e.op)), `🔴 ${label}: the extras mode read is at most one plain read (${JSON.stringify(m)})`);
+      assert.ok(!trace.some((e) => /\/meta\/extras_eligibility$/.test(String(e.path || ''))), `🔴 ${label}: no eligibility-document read while the mode is off`);
+    };
     // D4-c4 ALLOWLIST (advisor ruling, DECISIONS 2026-10-08 — mirrors R3.2): exactly one more call family is excluded,
     // the pause switch's read (rtdb once order_control/<rid>/current), asserted on its own by _order-control-trace.js:
     // quotes never read it (not wired); b ran WARM → 0; d ran COLD → exactly 1, at its §0.5 position — after the
@@ -407,11 +416,12 @@ async function capturePhase() {
         && after.db === 'rtdb' && after.op === 'once' && after.path === `restaurants/${rid}/identity` });
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
+      assertExtrasDeclared(out[rid][k], `${rid} ${k}`);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request — got ${floorCalls.length}`);
       const opts = ctlOpts(rid, k);
       const rest = CTL.withoutControlRead(out[rid][k], rid, opts);
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace`);
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the MIRROR-route call sequence differs from the frozen ba29282 trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get, +${opts.expected} switch read)`);
     }
     // ── RENDER-ON COMPANION (1D add-product B, PB-2): ON == OFF + exactly the declared delta, the OFF side recorded in the SAME
@@ -425,7 +435,7 @@ async function capturePhase() {
       const noFloor = (t, L) => {
         const f = t.filter(isFloorRead);
         assert.ok(f.length <= 1 && f.every((e) => e.op === 'get'), `🔴 ${L}: the floor calls are not exactly ≤ 1 rtdb get (${JSON.stringify(f)})`);
-        return t.filter((e) => !isFloorRead(e));
+        return t.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
       };
       let pairs = 0;
       for (const rid of ['x_pizza', 'la_musa']) for (const [name, { off, on }] of Object.entries(companion[rid])) {

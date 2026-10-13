@@ -30,8 +30,11 @@ try {
      EXACTLY 4 delimited blocks (its require, the function, the call in publishVersion, and — codex r4 — the under-lease baseline agreement); nothing else may change. */
   const PB1 = /[ \t]*\/\* pb1-key-overlap:begin \*\/[\s\S]*?\/\* pb1-key-overlap:end \*\/\n?/g;
   const PB1_BLOCKS = { 'catalog-publish.js': 4 };
+  // per-product extras (stage 2) landed later: its exact module inverse is reversed FIRST (newest first)
+  const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
   const shaBase = (f) => {
-    const src = fsys.readFileSync(path.join(__dirname, f), 'utf8');
+    const raw = fsys.readFileSync(path.join(__dirname, f), 'utf8');
+    const src = EXTRAS_FILES.includes(`catalog/${f}`) ? unapplyExtrasModule(`catalog/${f}`, raw) : raw;
     if (!C2A_BLOCKS[f]) return crypto.createHash('sha256').update(fsys.readFileSync(path.join(__dirname, f))).digest('hex');
     const begins = (src.match(/\/\* c2a-evidence:begin \*\//g) || []).length;
     const ends = (src.match(/\/\* c2a-evidence:end \*\//g) || []).length;
@@ -49,7 +52,8 @@ try {
   const one = crypto.createHash('sha256').update(Buffer.concat([fsys.readFileSync(path.join(__dirname, 'catalog-publish.js')), Buffer.from(' ')])).digest('hex');
   assert.notStrictEqual(one, FROZEN['catalog-publish.js']);
   {
-    const src = fsys.readFileSync(path.join(__dirname, 'catalog-publish.js'), 'utf8');
+    // the sensitivity cells judge the file as the pins do: the per-product extras hunks reversed first
+    const src = unapplyExtrasModule('catalog/catalog-publish.js', fsys.readFileSync(path.join(__dirname, 'catalog-publish.js'), 'utf8'));
     const planted = src.replace('async function releaseLease(', 'async function releaseLeasE(');
     assert.notStrictEqual(planted, src, 'sensitivity premise: the plant changed the file');
     assert.notStrictEqual(crypto.createHash('sha256').update(planted.replace(C2A, '').replace(PB1, '')).digest('hex'), FROZEN['catalog-publish.js'], 'a one-byte change OUTSIDE the c2a / PB-1 blocks is detected');

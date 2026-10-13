@@ -127,6 +127,14 @@ const isControlRead = (o) => o.db === 'rtdb' && /^order_control\//.test(o.path);
 const isTestOp = (o) => o.db === 'rtdb' && o.op === 'remove' && o.path === 'rate_limits';
 // a TTL-cached config read (the client floor) refreshes on its own clock, not the request's — excluded on BOTH sides
 const isCacheRefresh = (o) => o.db === 'rtdb' && /^platform_config\/client_floor\//.test(o.path);
+// per-product extras (DECLARED, exact): the extras MODE read is a TTL-cached config read like the floor — set aside, but asserted
+// on its own: at most ONE plain read per request, and with the mode absent (off) the version's eligibility DOCUMENT is never read
+const isExtrasModeRead = (o) => o.db === 'rtdb' && o.path === 'platform_config/extras_eligibility';
+function assertExtrasDeclared(key, ops) {
+  const m = ops.filter(isExtrasModeRead);
+  assert.ok(m.length <= 1 && m.every((o) => o.op === 'get' || o.op === 'once'), `🔴 ${key}: the extras mode read is at most one plain read (${JSON.stringify(m)})`);
+  assert.ok(!ops.some((o) => /\/meta\/extras_eligibility$/.test(String(o.path || ''))), `🔴 ${key}: no eligibility-document read while the mode is off`);
+}
 // R3-FIX D12 (DECLARED, exact): a scheduled PICKUP released without a display-name snapshot — every order in this frozen
 // baseline predates it — names its brand from the LIVE identity: exactly two reads, display_name then name, right after the
 // release's hours read. checkD12 asserts that shape where it is due and its absence everywhere else; only then are they
@@ -461,8 +469,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
     const tx = r.ops.filter((o) => o.db === 'rtdb' && o.op === 'transaction' && o.path === `user_rewards/<uid>/${rid}`);
     assert.strictEqual(tx.length, 2, `🔴 ${key}: exactly the reserve + release transactions on the reward balance (got ${tx.length})`);
   };
-  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isD12Read(o));
-  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o));
+  const stripControl = (ops) => ops.filter((o) => !isControlRead(o) && !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o) && !isD12Read(o));
+  const goldOps = (ops) => ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o));
   const tally = { same: 0, refused: 0 };
   for (const [key, r] of Object.entries(results)) {
     const [name, state] = key.split(' | ');
@@ -472,6 +480,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.ok(!r.ops.some(isControlRead), `${key}: the baseline reads no switch`);
         return;
       }
+      assertExtrasDeclared(key, r.ops);
       const g = golden.cases[key];
       assert.ok(g, `${key}: present in the frozen baseline`);
       const refused = c.expect !== 'same' && !ADMIT.has(state);
@@ -532,7 +541,7 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   // A GATE / CTX re-read is never set aside: it stays in the comparison and shows.
   let companion = { on: 0, ont: 0, probed: 0, bound: 0, mut: 0 };
   if (!CAPTURE) {
-    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o)));
+    const NO = (ops) => RD.normOps(ops.filter((o) => !isTestOp(o) && !isCacheRefresh(o) && !isExtrasModeRead(o)));
     const REUSE_REF = 'card REUSE of a live checkout holding a reward (the hold stays)';
     const BOUND = new Set([REUSE_REF, 'RACE with a REUSED reward hold (kept)']);
     const compare = (pass, key, on, c, steady) => {

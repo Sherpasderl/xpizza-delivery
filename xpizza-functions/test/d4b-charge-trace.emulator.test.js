@@ -239,12 +239,22 @@ async function traced(rid, oid, uid, phone) {
     // D4-c4 ALLOWLIST (advisor ruling, DECISIONS 2026-10-08 — mirrors R3.2): exactly one more call family is excluded,
     // the pause switch's read (rtdb once order_control/<rid>/current), asserted on its own by _order-control-trace.js
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
+    // per-product extras (DECLARED, exact): the extras MODE read (platform_config/extras_eligibility) is a TTL-cached config read
+    // like the floor — set aside on its own: at most ONE per request, only a read; and with the mode absent (off) the version's
+    // eligibility DOCUMENT is never read
+    const isExtrasModeRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/extras_eligibility';
+    const assertExtrasDeclared = (trace, label) => {
+      const m = trace.filter(isExtrasModeRead);
+      assert.ok(m.length <= 1 && m.every((e) => /^(get|once)$/.test(e.op)), `🔴 ${label}: the extras mode read is at most one plain read (${JSON.stringify(m)})`);
+      assert.ok(!trace.some((e) => /\/meta\/extras_eligibility$/.test(String(e.path || ''))), `🔴 ${label}: no eligibility-document read while the mode is off`);
+    };
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
+      assertExtrasDeclared(out[rid][k], `${rid} ${k}`);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
       const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache warm)` });
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to 717f97e (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
@@ -262,7 +272,7 @@ async function traced(rid, oid, uid, phone) {
       const ctlOpts = { expected: 1, label: 'x_pizza post-TTL a_normal_retry (switch cache cold)',
         anchor: ({ after }) => !!after && after.db === 'rtdb' && after.op === 'once' && after.path === 'orders/<oid>' };
       const rest = CTL.withoutControlRead(t.trace, 'x_pizza', ctlOpts);
-      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
+      assert.deepStrictEqual(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
       CTL.assertOtherRidRefused(t.trace, 'x_pizza', 'la_musa', ctlOpts);
       console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET + exactly 1 switch read (before the classifier's order read); the rest identical to the golden; a switch read on la_musa's path is refused`);
     }
@@ -278,7 +288,7 @@ async function traced(rid, oid, uid, phone) {
         const on = await RP.withRender(true, onReq);
         for (const [s, v] of [['OFF', off], ['ON', on]]) assert.strictEqual(v.status, 200, `${label} (${s}): premise — charged (${v.status})`);
         assert.deepStrictEqual(on.body, off.body, `🔴 ${label}: the render-ON answer differs from the render-OFF one`);
-        return { off: RD.normOps(off.trace.filter((e) => !isFloorRead(e))), on: RD.normOps(on.trace.filter((e) => !isFloorRead(e))) };
+        return { off: RD.normOps(off.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))), on: RD.normOps(on.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) };
       };
       let W = 0;   // each warm-up its own phone: the duplicate-order guard keys on phone + content
       const warm = async (rid, uid, tag) => { await rtdb.ref('rate_limits').remove(); W += 1; await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm_${tag}`, `9935${String(W).padStart(4, '0')}`), { 'x-firebase-id-token': uid }); await CTL.controlWarm(rtdb, rid); };

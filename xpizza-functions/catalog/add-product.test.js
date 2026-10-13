@@ -334,4 +334,52 @@ const allocated = (rid, adds) => alloc(rid, withFresh(rid, SRC[rid], adds)).sour
   assert.deepStrictEqual(r.refs, { Mapeada: T1 }, 'the allocation returns key → ref for the handler to attribute later refusals');
   ok(`field-mapped: an unusable name/desc (text_unsafe) and a wrong subsection (subcat_invalid) are refused on THEIR row, in exact agreement with the validator (${refused} of ${cases.length * 2} text cases refused); every post-allocation refusal names the tmp ref`);
 }
+// ── per-product extras (PLAN rev 2.1 §8/§9): the ONE narrow exception, behind the server authoring switch ──
+{
+  const cmpX = (rid, draftSrc, extrasAuthoring) => A.compareToActive({ draftBuilt: build(rid, draftSrc), activeBuilt: build(rid, SRC[rid]),
+    draftAuthored: authored(draftSrc), renderedCategories: rc(rid), extrasAuthoring });
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const plain = SRC[rid].items.find((i) => !(i.display && i.display.variantOf !== undefined) && !(SRC[rid].structure.variant_items || {})[String(i.display.id)]);
+    const ek = SRC[rid].extras[0].key;
+    // deny_extras added to an EXISTING product
+    const d = clone(SRC[rid]); d.structure.exposure.item_overrides[plain.key] = { ...(d.structure.exposure.item_overrides[plain.key] || {}), deny_extras: [ek] };
+    throwsCode(() => cmpX(rid, d, false), 'extras_not_supported_yet', `${rid}: deny_extras with the switch OFF`);
+    assert.doesNotThrow(() => cmpX(rid, d, true), `${rid}: deny_extras with the switch ON`);
+    // "Sin extras" toggled on an EXISTING product
+    const p = clone(SRC[rid]); p.items.find((i) => i.key === plain.key).display.extras_policy = 'none';
+    throwsCode(() => cmpX(rid, p, false), 'extras_not_supported_yet', `${rid}: the extras_policy toggle with the switch OFF`);
+    assert.doesNotThrow(() => cmpX(rid, p, true), `${rid}: the extras_policy toggle with the switch ON`);
+    // …and NOTHING else rides along, even with the switch ON
+    const a = clone(d); a.structure.exposure.category_allow = { ...a.structure.exposure.category_allow, [Object.keys(a.structure.exposure.category_allow)[0]]: [] };
+    throwsCode(() => cmpX(rid, a, true), 'structure_changed', `${rid}: a category_allow change beside it`);
+    const ad = clone(SRC[rid]); ad.structure.exposure.item_overrides[plain.key] = { add: [ek] };
+    throwsCode(() => cmpX(rid, ad, true), 'structure_changed', `${rid}: a new legacy add`);
+    const dn = clone(SRC[rid]); dn.structure.exposure.item_overrides[plain.key] = { deny: [SRC[rid].extras[0].display.cat] };
+    throwsCode(() => cmpX(rid, dn, true), 'structure_changed', `${rid}: a category deny`);
+    const nm = clone(p); nm.items.find((i) => i.key === plain.key).display.desc = 'x';
+    throwsCode(() => cmpX(rid, nm, true), 'existing_item_changed', `${rid}: an unrelated display field beside the toggle`);
+  }
+  // an existing legacy rule is never deleted by the normalization: la_musa rice_03 keeps its add when deny_extras is added
+  const r = clone(SRC.la_musa); r.structure.exposure.item_overrides.rice_03 = { add: ['Proteínas'], deny_extras: ['rice_white'] };
+  assert.doesNotThrow(() => cmpX('la_musa', r, true), 'rice_03: its add kept, deny_extras added');
+  const r2 = clone(SRC.la_musa); r2.structure.exposure.item_overrides.rice_03 = { deny_extras: ['rice_white'] };
+  throwsCode(() => cmpX('la_musa', r2, true), 'structure_changed', 'rice_03: dropping its legacy add is NOT part of the exception');
+  // x_pizza Nutella: its legacy '*' deny cannot be removed through this exception (the migration is its own step, §10)
+  const nu = clone(SRC.x_pizza); delete nu.structure.exposure.item_overrides.Nutella;
+  throwsCode(() => cmpX('x_pizza', nu, true), 'structure_changed', "Nutella's legacy '*' deny is not removable here");
+  ok('compareToActive: deny_extras and the extras_policy toggle on an EXISTING product pass ONLY with the extras switch ON (extras_not_supported_yet otherwise); category_allow / a legacy add or category deny / an unrelated display field / dropping rice_03\u2019s add / Nutella\u2019s "*" stay refused');
+}
+{ // §9: a NEW product's override is named by its tmp reference and rewritten to the allocated key
+  const rid = 'x_pizza';
+  const src = withFresh(rid, SRC[rid], [{ ref: T1, name: 'Pizza Con Lista' }]);
+  src.structure.exposure.item_overrides[T1] = { deny_extras: [SRC[rid].extras[0].key] };
+  const out = alloc(rid, src).source;
+  const key = out.items.at(-1).key;
+  assert.deepStrictEqual(out.structure.exposure.item_overrides[key], { deny_extras: [SRC[rid].extras[0].key] }, 'the override follows its product to its key');
+  assert.ok(!Object.keys(out.structure.exposure.item_overrides).some((k) => k.startsWith('tmp:')), 'no tmp reference survives');
+  const bad = withFresh(rid, SRC[rid], [{ ref: T1, name: 'Pizza Huerfana' }]);
+  bad.structure.exposure.item_overrides[T2] = { deny_extras: [SRC[rid].extras[0].key] };
+  throwsCode(() => alloc(rid, bad), 'exposure_ref_mismatch', 'an override naming a reference that is not a new product');
+  ok('allocation: a new product\u2019s extras setting is rewritten from its tmp reference to its key; an unknown reference is refused');
+}
 console.log(`\nadd-product: OK (${n})`);

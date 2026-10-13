@@ -25,6 +25,7 @@ const SCHEMA_VERSION = 2;
 // importer keeps working and there is still exactly one definition.
 const { extrasKeyOf } = require('./form-menu-source');
 const { ALL: EXPOSURE_ALL } = require('./extras-exposure');
+const EXPOSURE_OVERRIDE_FIELDS = new Set(['deny', 'add', 'deny_extras']);   // per-product extras: + the typed, key-only exclusions
 
 // The code-path literals this schema covers. The completeness test asserts every literal the code
 // path reads appears here — so a future code-only field cannot silently become uneditable in 2b.
@@ -437,13 +438,31 @@ function validateSource(source, rid) {
         if (!extraCatSet.has(v)) fail(`${rid} — structure.exposure.category_allow.${cat} references ${v}, which is not a declared extra-category`);
       }
     }
+    // per-product extras (PLAN rev 2.1 §2/§3): a VARIANT never carries its own typed exclusions — its launcher's list governs
+    // the whole group — so the variant keys are known before the overrides are read
+    const variantKeys = new Set(source.items.filter((it) => it && it.display && it.display.variantOf !== undefined && it.display.variantOf !== null).map((it) => it.key));
     for (const [key, ov] of Object.entries(exposure.item_overrides || {})) {
       if (!seen.has(key)) fail(`${rid} — structure.exposure.item_overrides references unknown item ${key}`);
       checkField(ov, { required: true, type: 'object' }, `${rid}/${key}`, 'exposure override');
       // An override that says nothing is a no-op someone believed was doing something.
       if (ov && typeof ov === 'object' && !Array.isArray(ov)
-        && !Object.prototype.hasOwnProperty.call(ov, 'deny') && !Object.prototype.hasOwnProperty.call(ov, 'add')) {
-        fail(`${rid}/${key} — an exposure override must deny or add something`);
+        && !Object.prototype.hasOwnProperty.call(ov, 'deny') && !Object.prototype.hasOwnProperty.call(ov, 'add')
+        && !Object.prototype.hasOwnProperty.call(ov, 'deny_extras')) {
+        fail(`${rid}/${key} — an exposure override must deny, add or deny_extras something`);
+      }
+      // the override's fields are exactly these three: an unknown one is an instruction nothing carries out
+      if (ov && typeof ov === 'object' && !Array.isArray(ov)) {
+        for (const f of Object.keys(ov)) if (!EXPOSURE_OVERRIDE_FIELDS.has(f)) fail(`${rid}/${key} — exposure override has an unknown field ${f}`);
+      }
+      // TYPED, KEY-ONLY exclusions (§2, codex r3 P2-2): entries resolve EXCLUSIVELY as existing extra keys — category
+      // selectors and the '*' sentinel are unsupported; a key spelled like a category is still a key and never expands
+      const typed = ov && ov.deny_extras;
+      if (typed !== undefined) {
+        checkField(typed, { required: true, type: 'string_array', unique: true, nonEmpty: true }, `${rid}/${key}`, 'exposure deny_extras');
+        for (const v of typed) {
+          if (!extraKeys.has(v)) fail(`${rid}/${key} — deny_extras references ${v}, which is not an existing extra key (category selectors and ${EXPOSURE_ALL} are not supported here)`);
+        }
+        if (variantKeys.has(key)) fail(`${rid}/${key} — deny_extras on a variant: its launcher's list governs the whole group`);
       }
       for (const side of ['deny', 'add']) {
         const list = ov && ov[side];
@@ -460,6 +479,12 @@ function validateSource(source, rid) {
           }
           if (!extraCatSet.has(v) && !extraKeys.has(v)) {
             fail(`${rid}/${key} — exposure ${side} references ${v}, which is neither a declared extra-category nor a known extra`);
+          }
+          // per-product extras (§2): a legacy entry naming BOTH an extra-category and an extra key is ambiguous — it would
+          // reach the whole category while reading like one extra (none exist today; the gate-0 audit found none). The typed
+          // deny_extras says "this extra" unambiguously.
+          if (extraCatSet.has(v) && extraKeys.has(v)) {
+            fail(`${rid}/${key} — exposure ${side} ${v} names both an extra-category and an extra key (ambiguous); use deny_extras for the one extra`);
           }
         }
       }

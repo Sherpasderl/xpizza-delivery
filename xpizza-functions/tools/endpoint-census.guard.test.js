@@ -68,7 +68,9 @@ const D = {
     'draft-drift-report', 'identity-display-name', 'verify-first-group', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
     'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
-    'ack-identity-finding', 'record-evidence-boundary'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
+    'ack-identity-finding', 'record-evidence-boundary',
+    // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run
+    'extras-export-live'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
@@ -182,6 +184,9 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
   {
     const coherent = { FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: '70' };
     refusedClean(observe([rel(F('scripts/test-ingest.js')), 'http://127.0.0.1:5270/demo-xpizza/us-central1/ingestDriverLocation', 'UID'], coherent), 'test-ingest under a COHERENT emulator env (production-only)');
+    // per-product extras gate 0 (codex r1 P1-1): the live export pairs a source with the PRODUCTION public menu — a coherent
+    // emulator env would pair emulator data with production, so it is production-only too
+    refusedClean(observe([rel(F('tools/extras-export-live.js')), '--project', 'xpizza-delivery', '--out', '/tmp/extras-census-never', 'x_pizza'], { ...coherent, GOOGLE_CLOUD_PROJECT: 'xpizza-delivery' }), 'extras-export-live under a COHERENT emulator env (production-only)');
     const DOTENV_CLIS = fs.readdirSync(path.join(FN, 'tools')).filter((f) => f.endsWith('.js'))
       .filter((f) => { const t = fs.readFileSync(path.join(FN, 'tools', f), 'utf8'); return /requireProject\(/.test(t) && /require\('dotenv'\)\.config\(\)/.test(t) && f !== 'require-project.js'; });
     assert.ok(DOTENV_CLIS.length >= 10, `premise — the dotenv-loading require-project CLIs were found (${DOTENV_CLIS.length})`);
@@ -198,7 +203,7 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
         passed.push(f);
       }
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-    ok(`test-ingest refuses even a coherent emulator env (production-only); ${passed.length} dotenv-loading require-project CLIs each refuse a .env-injected foreign emulator host at client construction, before any contact (${passed.join(', ')})`);
+    ok(`test-ingest and extras-export-live refuse even a coherent emulator env (production-only); ${passed.length} dotenv-loading require-project CLIs each refuse a .env-injected foreign emulator host at client construction, before any contact (${passed.join(', ')})`);
   }
 
   // 4. the LATENCY CHILD: portal-speed-proof's `node -e` children load index.js → lib/admin.js refuses mixed/foreign

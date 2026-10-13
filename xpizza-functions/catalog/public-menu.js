@@ -68,6 +68,9 @@ const BODY_CONTRACT = Object.freeze({
   extras_by_category: { type: 'object', fromSource: (menu) => menu.structure.extras_by_category !== undefined },
   extras_by_item: { type: 'object', fromSource: (menu) => menu.structure.extras_by_item !== undefined },
   badges: { type: 'object', fromSource: (menu) => menu.structure.badges !== undefined },
+  // per-product extras (PLAN rev 2.1 §7): the DENSE public complement { version, deny: { itemKey: [extraKey…] } } of the
+  // version's eligibility document — present exactly when that version carries one (a pre-feature version does not)
+  extras_eligibility: { type: 'object', fromSource: (menu) => menu.eligibility != null },
 });
 const PUBLIC_MENU_BODY_FIELDS = Object.freeze(Object.keys(BODY_CONTRACT));
 
@@ -137,6 +140,7 @@ async function assertServableRid(rid, { known, isActive }) {
 }
 
 // The default activity check: the config-plane identity, which is the same gate order intake uses.
+const defaultReadEligibility = (db, rid, versionId) => require('./extras-eligibility-store').readEligibility(db, rid, versionId);
 // Injected in tests, and by the endpoint, so this module needs no RTDB handle of its own.
 const defaultIsActive = (rtdb) => async (rid) => {
   const { getIdentity } = require('../restaurant-config');
@@ -145,7 +149,8 @@ const defaultIsActive = (rtdb) => async (rid) => {
 };
 
 async function buildPublicMenu(db, rid, deps = {}) {
-  const { known, isActive, representationVersion = REPRESENTATION_VERSION, generate = generateFormBundle } = deps;
+  const { known, isActive, representationVersion = REPRESENTATION_VERSION, generate = generateFormBundle,
+    readEligibility = defaultReadEligibility } = deps;
   const restaurantId = await assertServableRid(rid, { known, isActive });
 
   // THE LIVE CATALOG, through the 1A reader — which fails closed on an absent pointer, an incomplete
@@ -159,6 +164,18 @@ async function buildPublicMenu(db, rid, deps = {}) {
     fail('public_menu_unavailable', `${restaurantId}: ${String((e && e.message) || e).slice(0, 160)}`);
   }
 
+  // per-product extras: the eligibility document of EXACTLY this version. Only a CONFIRMED absence (a pre-feature version)
+  // serves the body without the field — the forms' explicit legacy branch. A read error or a malformed document is NOT
+  // absence (codex stage-2 r1 P1-3): it fails like any other unreadable part of the catalog — the retryable, never-cached
+  // public_menu_unavailable — so a transient error can never make a compatible form fall back to showing excluded extras.
+  // The money path reads the document for itself, bound to its own pricing version (§4).
+  try {
+    const doc = await readEligibility(db, restaurantId, menu.identity && menu.identity.version_id);
+    menu.eligibility = doc ? { version: doc.version, deny: doc.public_deny } : null;
+  } catch (e) {
+    fail('public_menu_unavailable', `${restaurantId}: the version's extras eligibility could not be read — ${String((e && e.message) || e).slice(0, 160)}`);
+  }
+
   // ATOMIC. The transform either produces a whole bundle or it throws — there is no path that returns
   // a body missing a collection. A menu with live dishes and bundled structure is the one outcome
   // worse than no menu, because it renders.
@@ -168,6 +185,7 @@ async function buildPublicMenu(db, rid, deps = {}) {
     for (const f of CARRIED_FROM_STRUCTURE) {
       if (menu.structure[f] !== undefined) body[f] = menu.structure[f];
     }
+    if (menu.eligibility) body.extras_eligibility = menu.eligibility;
   } catch (e) {
     fail('public_menu_unavailable', `${restaurantId}: the live catalog does not project to a servable menu — ${String((e && e.message) || e).slice(0, 160)}`);
   }

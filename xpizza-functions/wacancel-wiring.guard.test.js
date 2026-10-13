@@ -13,7 +13,8 @@ const { unapplyWaCancelIndex } = require('./tools/wacancel-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const BASE = '537bbbc';
-const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+// the per-product extras blocks (the newer index.js slice, tools/extras-inverse.js) are reversed first, as in every fold guard
+const real = require('./tools/extras-inverse').unapplyExtrasIndex(fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8'));
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 assert.notStrictEqual(unapplyWaCancelIndex(real), real, 'non-vacuity: the wacancel block is present and swapped back');

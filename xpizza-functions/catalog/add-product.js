@@ -210,6 +210,21 @@ function allocateAdditions({ incoming, stored, activeItems, keyMode, hwm, regist
     });
     for (const r of refToKey.keys()) if (!seen.has(r)) refuse('item_order_ref_mismatch', `the new product ${r} is missing from item_order`, { ref: r, field: 'item_order' });
   }
+  // per-product extras (§9): an exposure override OWNED by a new product names it by its temporary reference — rewritten to
+  // the allocated key exactly like item_order; an unknown reference, or one that collides with an override the key already
+  // has, is refused (never silently dropped or merged)
+  const ovs = source.structure && source.structure.exposure && source.structure.exposure.item_overrides;
+  if (ovs && typeof ovs === 'object' && !Array.isArray(ovs) && Object.keys(ovs).some((k) => k.startsWith('tmp:'))) {
+    const rewritten = {};
+    for (const [k, o] of Object.entries(ovs)) {
+      if (!k.startsWith('tmp:')) { rewritten[k] = o; continue; }
+      if (!refToKey.has(k)) refuse('exposure_ref_mismatch', `an extras setting names ${k}, which is not a new product`, { ref: k, field: 'deny_extras' });
+      const key = refToKey.get(k);
+      if (Object.prototype.hasOwnProperty.call(ovs, key) || Object.prototype.hasOwnProperty.call(rewritten, key)) refuse('exposure_ref_mismatch', `two extras settings would name ${JSON.stringify(key)}`, { ref: k, field: 'deny_extras' });
+      rewritten[key] = o;
+    }
+    source.structure.exposure.item_overrides = rewritten;
+  }
 
   // Collisions — ADDITION-scoped: each addition against everything else; pre-existing duplicates are not ours.
   const additions = [...fresh, ...allocated].map(({ item }) => item);
@@ -384,7 +399,7 @@ const ALWAYS_COMPARED = ['categories', 'variant_items', 'pickup_only_cats', 'wee
 const COMPARED_WHEN_AUTHORED = ['extra_categories', 'badges', 'exposure', 'extras_by_category', 'extras_by_item',
   'redeem_eligible_cats', 'redeem_eligible_items', 'redeem_eligible_extras'];
 
-function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false }) {
+function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCategories, deletedIds = null, authoring = false, extrasAuthoring = false }) {
   const active = new Map(activeBuilt.items.map((it) => [it.key, it]));
   const draft = new Map(draftBuilt.items.map((it) => [it.key, it]));
   const declared = deletedIds instanceof Set ? deletedIds : new Set(Array.isArray(deletedIds) ? deletedIds : []);
@@ -401,7 +416,14 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     if (own(d.display, 'identity_id') && (!own(a.display, 'identity_id') || d.display.identity_id !== a.display.identity_id)) {
       refuse('existing_item_changed', `"${a.display && a.display.name}" carries a different identity stamp`, { key, field: 'identity_id' });
     }
-    if (!sameJson(without(d.display, ['price', 'identity_id']), without(a.display, ['price', 'identity_id'])) || !!d.has_photo !== !!a.has_photo) {
+    // per-product extras (§8): with the extras authoring switch ON, the `extras_policy` toggle (absent ⇄ 'none', typed by the
+    // validator) is the ONE other field an existing product may change; with it OFF, it is compared like any other field
+    const free = extrasAuthoring ? ['price', 'identity_id', 'extras_policy'] : ['price', 'identity_id'];
+    if (!sameJson(without(d.display, free), without(a.display, free)) || !!d.has_photo !== !!a.has_photo) {
+      if (!extrasAuthoring && (d.display && d.display.extras_policy) !== (a.display && a.display.extras_policy)
+        && sameJson(without(d.display, [...free, 'extras_policy']), without(a.display, [...free, 'extras_policy']))) {
+        refuse('extras_not_supported_yet', `choosing which extras "${a.display && a.display.name}" takes is not available yet`, { key, field: 'extras_policy' });
+      }
       refuse('existing_item_changed', `"${a.display && a.display.name}" can only have its price changed here`, { key });
     }
   }
@@ -436,6 +458,8 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
       refuse('choices_not_supported_yet', 'products with a required choice are not available yet', { key: it.key, field: 'choices' });
     }
     if (own(d, 'identity_id')) refuse('client_supplied_key', 'a new product must not carry an identity stamp', { key: it.key, field: 'identity_id' });
+    // a NEW plain product's "Sin extras" is per-product extras authoring (a new GROUP's is the group's own, as today)
+    if (!extrasAuthoring && own(d, 'extras_policy') && !unitClaims.has(String(d.id))) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { key: it.key, field: 'extras_policy' });
     if (!drawn.has(d.cat)) refuse('category_not_renderable', `the section ${JSON.stringify(d.cat)} is not shown on your order page`, { key: it.key, field: 'cat' });
   }
 
@@ -456,10 +480,40 @@ function compareToActive({ draftBuilt, activeBuilt, draftAuthored, renderedCateg
     refuse('item_order_changed', 'existing products cannot be reordered here; new products go at the end', { field: 'item_order' });
   }
   const authored = draftAuthored instanceof Set ? draftAuthored : new Set(draftAuthored || []);
-  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x))]) {   // variant_items: above
+  for (const f of [...ALWAYS_COMPARED.filter((x) => x !== 'variant_items'), ...COMPARED_WHEN_AUTHORED.filter((x) => authored.has(x) && x !== 'exposure')]) {   // variant_items, exposure: their own rules
     if (!sameJson(draftBuilt.structure[f], activeBuilt.structure[f])) refuse('structure_changed', `the menu's ${f} cannot change here`, { field: f });
   }
+  // exposure (§8): EVERYTHING is frozen except the typed, key-only deny_extras lists — compared after removing only those
+  // and normalizing an override left empty by that removal (an existing `add` is never deleted by the normalization)
+  if (authored.has('exposure')) {
+    const de = draftBuilt.structure.exposure; const ae = activeBuilt.structure.exposure;
+    if (!sameJson(exposureWithoutDenyExtras(de), exposureWithoutDenyExtras(ae))) refuse('structure_changed', "the menu's exposure cannot change here", { field: 'exposure' });
+    if (!sameJson(denyExtrasOf(de), denyExtrasOf(ae)) && !extrasAuthoring) refuse('extras_not_supported_yet', 'choosing which extras a product takes is not available yet', { field: 'deny_extras' });
+  }
   return { additions: additions.map((it) => it.key), removals };
+}
+
+// exposure minus the typed deny_extras: each override without the field, and an override left EMPTY by that removal
+// dropped (it said only deny_extras). `deny` / `add` / everything else stays — so any other difference is still caught.
+function exposureWithoutDenyExtras(ex) {
+  if (!isObj(ex)) return ex;
+  const out = { ...ex };
+  if (isObj(ex.item_overrides)) {
+    const ov = {};
+    for (const [k, o] of Object.entries(ex.item_overrides)) {
+      if (!isObj(o)) { ov[k] = o; continue; }
+      const rest = without(o, ['deny_extras']);
+      if (Object.keys(rest).length) ov[k] = rest;
+    }
+    out.item_overrides = ov;
+  }
+  return out;
+}
+// { itemKey: [sorted deny_extras] } — only items that carry one
+function denyExtrasOf(ex) {
+  const out = {};
+  if (isObj(ex) && isObj(ex.item_overrides)) for (const [k, o] of Object.entries(ex.item_overrides)) if (isObj(o) && Array.isArray(o.deny_extras)) out[k] = [...o.deny_extras].sort();
+  return out;
 }
 
 // The authored structure fields of a source must be the same set as the stored draft's: dropping one would
