@@ -898,6 +898,15 @@
   "xpizza-dispatch/xpizza-delivery.js#subscribeToScheduledOrders>anon@self": {
    "status": "pending"
   },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/brand-helpers.js#brandMeta": {
+   "status": "pending"
+  },
+  "xpizza-driver/brand-helpers.js#brandLabel@xpizza-driver/brand-helpers.js#driverGreeting": {
+   "status": "pending"
+  },
+  "xpizza-driver/brand-helpers.js#brandMeta@xpizza-driver/index.html<script@0>#restaurantMeta": {
+   "status": "pending"
+  },
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/cash-helpers.js#computeShiftCash": {
    "status": "pending"
   },
@@ -968,9 +977,6 @@
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderStatusBar@xpizza-driver/index.html<script@0>#startKeepAlive>anon": {
-   "status": "pending"
-  },
-  "xpizza-driver/index.html<script@0>#restaurantMeta@xpizza-driver/index.html<script@0>#restaurantChip": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#scheduledBadge@xpizza-driver/index.html<script@0>#renderActiveCard": {
@@ -1839,6 +1845,9 @@
    "status": "terminal",
    "observable": "form.cartPill",
    "action": "tap the dish card + (chg); read #cart-pill-text"
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#detailCtaTap": {
+   "status": "pending"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#liveMenuPaint": {
    "status": "via",

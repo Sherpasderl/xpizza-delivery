@@ -16,7 +16,7 @@ const FAIL = (m) => `🔴 R3-BINARY-BLIND ${m}`;
 const REPO = path.join(__dirname, '..', '..');
 const TEXT = /\.(c?js|mjs|ts|tsx|jsx|json|html?|css|md|txt|ya?ml|xml|svg|sh|rules|toml|gradle|kt|java|swift|plist|properties)$/i;
 // the REVIEWED list (PLAN-R3-P1 §12 C2): a product finding for the advisor — removing it is a production edit
-const REVIEWED = [{ file: 'xpizza-functions/catalog/publish-edited-handler.js', offset: 3215 }];
+const REVIEWED = [{ file: 'xpizza-functions/catalog/publish-edited-handler.js', offset: 3276 }];
 
 const env = { ...process.env }; delete env.NODE_OPTIONS;
 const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: REPO, env, maxBuffer: 64 * 1024 * 1024 }).toString('utf8').split('\0').filter(Boolean);
