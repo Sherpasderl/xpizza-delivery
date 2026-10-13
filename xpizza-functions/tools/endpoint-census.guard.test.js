@@ -73,7 +73,7 @@ const D = {
     'extras-export-live'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
-  [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
+  [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/set-driver-enforcement-mode.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
   // deployed / library code (not executables on their own)
   [F('lib/admin.js')]: 'lib: the deployed Admin app — validator in its emulator branch (emulator-endpoint.test cells 1-8)',
   [F('lib/svc-assigner.js')]: 'lib: the narrowly-privileged svc-assigner Admin app (S1a §3) — lazy, named, singleton; created on first handler use, never at module load, so the one-default-app invariant (portal-split) holds; getDatabase() auto-redirects under the emulator host',
