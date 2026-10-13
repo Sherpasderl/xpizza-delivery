@@ -1158,8 +1158,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: Entregado (pickup handed over) runs only on the completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: Entregado (pickup handed over) runs only on the completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
     "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
@@ -1190,7 +1190,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#holdFire@xpizza-kitchen/index.html<script@0>#holdBegin>anon": {
    "group": "kitchen-action",
@@ -1202,8 +1205,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: the press-and-hold gate fires only on a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: the press-and-hold gate fires only on a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);         // fires ONLY if still armed at 700ms",
     "siteSha": "a1d5fb0bfdbd1c9778a06df43033609701e708e5fb3dd3689b5095f9482627bd",
@@ -1235,7 +1238,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#headerTap": {
    "group": "kitchen-action",
@@ -1284,8 +1290,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: Listo from a hold runs only on the ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: Listo from a hold runs only on the ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "else listo(id);                                               // SAME confirmed-write path, exactly once",
     "siteSha": "f0030f9c4adc00ee329fed4982e95f63b22fce9f94cf277792a7388e06ce12fa",
@@ -1317,7 +1323,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
    "group": "kitchen-action",
@@ -1481,8 +1490,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: a hold begins only on a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: a hold begins only on a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "const op = opState(o);",
     "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
@@ -1520,7 +1529,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdFire": {
    "group": "kitchen-action",
@@ -1532,8 +1544,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: a hold fires only on a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: a hold fires only on a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
     "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
@@ -1571,7 +1583,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#listo": {
    "group": "kitchen-action",
@@ -1633,8 +1648,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "const rest = (o && o.order_type === 'pickup' && opState(o) === 'listo') ? 'Entregado' : 'Completar';",
     "siteSha": "15c3377f3f6a3a567656182812a9c03cfc2bcc14e8330c8d232d012dfeef508b",
@@ -1672,7 +1687,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#startCompletion>anon": {
    "group": "kitchen-action",
@@ -1805,8 +1823,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "setHoldVisual(id, true);",
     "siteSha": "6e23f6ac62cd2c086ae5fca624c8edfd3b42be7523fcffd5216df2601ef612ec",
@@ -1832,7 +1850,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdCancel": {
    "group": "kitchen-action",
@@ -1844,8 +1865,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "setHoldVisual(activeHold.id, false);",
     "siteSha": "d7a496708f2730ad711648eea8ab408baa2c38044c2c4469115583607a300fd4",
@@ -1871,7 +1892,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdFire": {
    "group": "kitchen-action",
@@ -1883,8 +1907,8 @@
      ]
     }
    ],
-   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
-   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack); AND no hold gesture was observed in this LP interval (a hold released before the threshold still runs the hold handlers, with no write — codex P1-b mech r2 P1)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code — and with no hold gesture (established by the KDS recorder) no hold handler runs",
    "bind": {
     "site": "setHoldVisual(id, false);",
     "siteSha": "34761d369da6dfbafeb140c203c6c59034773d73affec4ddb92806a96d273c58",
@@ -1910,7 +1934,10 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "kds-no-hold-gesture"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#showCancelBanner@xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon": {
    "group": "cancelled",

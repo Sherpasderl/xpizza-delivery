@@ -13045,5 +13045,51 @@
       "run",
       "test:r3-p1a-journey"
     ]
+  },
+  {
+    "id": "r3p1-65",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "check: (ev) => (Array.isArray(ev.kdsEvents) ? !ev.kdsEvents.some((e) => e.holdGesture) : unknown) },",
+    "to": "check: (ev) => (Array.isArray(ev.kdsEvents) ? true : unknown) },",
+    "label": "codex P1-b mech r2 P1: an observed hold gesture no longer keeps the hold family required",
+    "kills_with": [
+      "a stray hold gesture did not keep it required"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-66",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "Array.isArray(x) ? x.length : typeof x === 'object' ? Object.keys(x).length : NaN",
+    "to": "Array.isArray(x) ? 1 : typeof x === 'object' ? Object.keys(x).length : NaN",
+    "label": "codex P1-b mech r2 P2: extras by container truthiness — an empty extras array counts as an extra",
+    "kills_with": [
+      "contradicted extras=false"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-67",
+    "slice": "r3p1",
+    "file": "contract/p1a-journey.emulator.test.mjs",
+    "from": "holdGesture: /^pointer/.test(t) && !!(el && el.closest('[id^=\"card-\"] .head'))",
+    "to": "holdGesture: false",
+    "label": "codex P1-b mech r2 P1: the KDS recorder stops flagging hold gestures — the stray-hold negative must catch it",
+    "kills_with": [
+      "a stray hold gesture did not turn exactly the hold-dependent exclusions"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
   }
 ]

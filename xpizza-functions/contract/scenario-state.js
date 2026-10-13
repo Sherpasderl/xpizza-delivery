@@ -107,6 +107,17 @@ function vectorProblems(v) {
 const unknown = { unknown: true };
 const has = (o, k) => o && Object.prototype.hasOwnProperty.call(o, k);
 const PAY_PERSISTED = { cash: 'cash', card_delivery: 'card_delivery', empty: '', online: 'online' };
+// the number of extras / options ENTRIES on the persisted items (codex P1-b mech r2 P2: contents, never container
+// truthiness — items:[{extras:[]}] has none). Absent / null = 0; an array or a keyed object counts its entries; any other
+// representation is UNSUPPORTED → NaN (→ unknown, never a contradiction)
+function persistedExtras(items) {
+  const coll = (x) => (x === undefined || x === null ? 0 : Array.isArray(x) ? x.length : typeof x === 'object' ? Object.keys(x).length : NaN);
+  const list = items === undefined || items === null ? [] : Array.isArray(items) ? items : typeof items === 'object' ? Object.values(items) : null;
+  if (!list) return NaN;
+  let n = 0;
+  for (const i of list) { if (i === null || typeof i !== 'object') return NaN; n += coll(i.extras) + coll(i.options); }
+  return n;
+}
 const CHECKS = Object.freeze({
   brand: { source: 'persisted order restaurant_id', check: (v, ev) => (ev.persisted ? ev.persisted.restaurant_id === v.brand : unknown) },
   fulfil: { source: 'persisted order order_type', check: (v, ev) => (ev.persisted && has(ev.persisted, 'order_type') ? ev.persisted.order_type === v.fulfil : unknown) },
@@ -130,12 +141,16 @@ const CHECKS = Object.freeze({
   restore: { source: 'form event recorder (no restoreOrderForm control) + form storage at boot (no snapshot to restore)', check: (v, ev) => (Array.isArray(ev.formEvents) && Array.isArray(ev.formStorageAtBoot) ? (ev.formEvents.some((e) => e.restore) || ev.formStorageAtBoot.some((k) => /snapshot|pending_pay|self_update|selfupdate/i.test(k))) === v.restore : unknown) },
   anotherOrder: { source: 'form event recorder (no startAnotherOrder control)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.anotherOrder) === v.anotherOrder : unknown) },
   sheetEdit: { source: 'form event recorder (no [data-act=review-inc|review-dec] in the cart sheet)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.sheetEdit) === v.sheetEdit : unknown) },
-  extras: { source: 'form event recorder (no [data-act=extra] toggle) + persisted items (no extras)', check: (v, ev) => (Array.isArray(ev.formEvents) && ev.persisted ? (ev.formEvents.some((e) => e.extras) || (ev.persisted.items || []).some((i) => i && (i.extras || i.options))) === v.extras : unknown) },
+  extras: { source: 'form event recorder (no [data-act=extra] toggle) + persisted items (no extras / options CONTENTS)', check: (v, ev) => { if (!Array.isArray(ev.formEvents) || !ev.persisted) return unknown; const n = persistedExtras(ev.persisted.items); return Number.isNaN(n) ? unknown : (ev.formEvents.some((e) => e.extras) || n > 0) === v.extras; } },
 });
 // context conditions (non-vector, asserted from run evidence) — e.g. P1-a's ticket count
 const CONTEXT = Object.freeze({
   'single-live-order': { source: 'KDS board ticket count', check: (ev) => (typeof ev.kdsTickets === 'number' ? ev.kdsTickets === 1 : unknown) },
   'kds-no-log-tap': { source: 'KDS event recorder (no tap on a ticket log button .h-log)', check: (ev) => (Array.isArray(ev.kdsEvents) ? !ev.kdsEvents.some((e) => e.logTap) : unknown) },
+  // codex P1-b mech r2 P1: a hold gesture (pointer down on a ticket header) runs the hold handlers even when it is
+  // released before the threshold and writes nothing — the hold exclusions need ZERO observed hold gestures in this LP
+  // interval from the KDS recorder (installed before the page's scripts); no recorder → unknown → required
+  'kds-no-hold-gesture': { source: 'KDS event recorder (no pointer gesture on a ticket header [id^=card-] .head in this LP interval)', check: (ev) => (Array.isArray(ev.kdsEvents) ? !ev.kdsEvents.some((e) => e.holdGesture) : unknown) },
   'kds-no-item-check': { source: 'KDS event recorder (no tap on a ticket item .card-item)', check: (ev) => (Array.isArray(ev.kdsEvents) ? !ev.kdsEvents.some((e) => e.itemCheck) : unknown) },
   'kds-no-http': { source: 'KDS page fetch recorder', check: (ev) => (Array.isArray(ev.kdsHttp) ? ev.kdsHttp.length === 0 : unknown) },
   'createorder-configured': { source: 'routed calls (createOrder answered 200)', check: (ev) => (Array.isArray(ev.routed) ? ev.routed.some((x) => x.fn === 'createOrder' && x.status === 200) : unknown) },

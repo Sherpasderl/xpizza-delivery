@@ -162,4 +162,29 @@ ok('scenario binding (codex P1-1): a change to the EXECUTED intent (tender 50000
   assert.strictEqual(RA.runDecision(doc, kl, cell, ev, paths).outcome, 'excluded', FAIL('no log tap did not exclude showLog'));
 }
 ok('context (codex P1-4): an empty condition without a nonempty validated context → RED; single-live-order established → excluded, 2 tickets / unknown → required; a recorded log tap keeps showLog required');
+{ // codex mech r2 P1: codex's probe — S1 / x_pizza / preparing (lpAction kitchenStart, acked; status preparing; the kitchen
+  // field unknown) with a stray hold gesture (pointerdown → pointerup before the threshold, no write): the hold family
+  // must be REQUIRED, never excluded; without the gesture it is excluded; without a recorder it stays required
+  const cell = { S: 'S1', brand: 'x_pizza', lp: 'preparing' };
+  const ev = { persisted: { restaurant_id: 'x_pizza', order_type: 'delivery', payment_method: 'cash', status: 'preparing' }, lpAction: { action: 'kitchenStart', ack: true }, kdsHttp: [], routed: [] };
+  const hold = Object.keys(doc.regions).filter((r) => (doc.regions[r].context || []).includes('kds-no-hold-gesture'));
+  assert.ok(hold.includes('xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdBegin') && hold.includes('xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdCancel'), FAIL('the hold family lacks the kds-no-hold-gesture context'));
+  const stray = [{ type: 'pointerdown', inTicket: true, holdGesture: true }, { type: 'pointerup', inTicket: true, holdGesture: true }];
+  for (const r of hold) {
+    assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, kdsEvents: stray }, paths).outcome, 'required', FAIL(`${r}: a stray hold gesture did not keep it required`));
+    assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, kdsEvents: [] }, paths).outcome, 'excluded', FAIL(`${r}: no hold gesture did not exclude it`));
+    assert.strictEqual(RA.runDecision(doc, r, cell, ev, paths).outcome, 'required', FAIL(`${r}: no KDS recorder did not keep it required`));
+  }
+  ok(`hold gestures (codex r2 P1): at S1 / preparing a stray hold (no write) keeps all ${hold.length} hold-family regions REQUIRED; zero observed gestures → excluded; no recorder → required`);
+}
+{ // codex mech r2 P2: extras by CONTENTS — empty collections are no extras; an unsupported representation is unknown
+  const v = SS.vectorOf('S1', 'x_pizza', 'new', paths); const X = (items) => SS.CHECKS.extras.check(v, { formEvents: [], persisted: { items } });
+  assert.strictEqual(X([{ extras: [] }]), true, FAIL('items:[{extras:[]}] contradicted extras=false'));
+  assert.strictEqual(X([{ options: [] }]), true, FAIL('items:[{options:[]}] contradicted extras=false'));
+  assert.strictEqual(X([{ extras: {} }, { id: 'a' }]), true, FAIL('an empty keyed extras object contradicted extras=false'));
+  assert.strictEqual(X([{ extras: [{ id: 'queso' }] }]), false, FAIL('a real extra did not contradict extras=false'));
+  assert.strictEqual(X({ 0: { options: { size: 'L' } } }), false, FAIL('a real option (keyed items) did not contradict extras=false'));
+  assert.ok(X([{ extras: 'queso' }]).unknown && X('items').unknown && X([null]).unknown, FAIL('an unsupported extras representation was not unknown'));
+}
+ok('extras (codex r2 P2): empty extras / options collections are no extras; real entries contradict; an unsupported representation is unknown, never contradicted');
 console.log(`\nr3-applicability guard: OK (${n})`);

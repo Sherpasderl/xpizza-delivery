@@ -223,7 +223,7 @@ try {
   const kdsHttp = []; const kdsEvents = [];
   const khost = createFirebaseHost({ pageId: 'p1a-kds', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
   const kds = await step('kds.boot-staff', () => phase('boot', () => bootPage('xpizza-kitchen', { host: khost, url: 'https://xpizzakitchen.netlify.app/', tracer: HITS, fetchImpl: async (u) => { kdsHttp.push(String(u)); throw new Error(`r3-p1a: KDS fetch ${u} not routed (LP new issues none)`); },
-    beforeScripts: (kw) => { installGoogleMaps(kw); for (const t of ['click', 'pointerdown', 'pointerup', 'mousedown', 'touchstart', 'keydown', 'change', 'input']) kw.document.addEventListener(t, (e) => { const el = e.target && e.target.nodeType === 1 ? e.target : null; kdsEvents.push({ type: t, inTicket: !!(el && el.closest('.tk')), logTap: !!(el && el.closest('.h-log')), itemCheck: !!(el && el.closest('.card-item')), target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?' }); }, true); } })));
+    beforeScripts: (kw) => { installGoogleMaps(kw); for (const t of ['click', 'pointerdown', 'pointerup', 'pointerleave', 'pointercancel', 'mousedown', 'touchstart', 'keydown', 'change', 'input']) kw.document.addEventListener(t, (e) => { const el = e.target && e.target.nodeType === 1 ? e.target : null; kdsEvents.push({ type: t, inTicket: !!(el && el.closest('.tk')), holdGesture: /^pointer/.test(t) && !!(el && el.closest('[id^="card-"] .head')), logTap: !!(el && el.closest('.h-log')), itemCheck: !!(el && el.closest('.card-item')), target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?' }); }, true); } })));
   const kdsActions = () => kdsEvents.filter((e) => e.inTicket).map((e) => `${e.type}:${e.target}`);
   for (let i = 0; i < 60 && !khost.subs.length; i++) await new Promise((r) => setTimeout(r, 25));
   await khost.barrier();
@@ -269,7 +269,7 @@ try {
   const ackLog = { complete: ack.issued === ack.answered && ack.issued === R.log.length, failures: R.log.filter((x) => !(x.status < 400)).length + kdsHttp.length + fhost.callbackErrors.length };
   // the persisted order RE-READ at gate time (after every page action): a later write (a stray kitchen tap) is seen
   const persistedNow = (await rtdb.ref(`orders/${oid}`).get()).val();
-  const evidence = { intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents, kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
+  const evidence = { intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
   // P1-b: the run's CONTRACT state is the scenario vector, ASSERTED from evidence (persisted order, routed calls, the KDS
   // recorder) — never from fixture intent alone; a field this LP cannot evidence is reported UNKNOWN (an exclusion that
   // depends on it would never apply)
@@ -298,6 +298,25 @@ try {
     const re = run(fresh, { ...evidence, kdsActions: kdsActions() });
     assert.strictEqual(re.red.length, 0, FAIL('stability', `recompare after settle(E): ${re.red.map(formatFailure).join(' | ')}`));
     ok(`stability: after a further horizon on both pages (scheduler drained), fresh confirmation / KDS / WhatsApp captures recompare green; confirmation byte-identical, the KDS ticket unchanged, exactly one send`);
+  }
+  // codex P1-b mech r2 P1, on the LIVE KDS: a stray hold gesture (pointer down → up on the ticket header, released before
+  // the threshold, no write) is OBSERVED by the recorder → every hold-dependent exclusion is REQUIRED (its pending
+  // region RED), never excluded; nothing else changes
+  {
+    const head = kds.doc.getElementById(`card-${oid}`).querySelector('.head'); const n0 = kdsEvents.length;
+    for (const t of ['pointerdown', 'pointerup']) head.dispatchEvent(new kds.win.MouseEvent(t, { bubbles: true, cancelable: true }));
+    await settled(kds, khost, HORIZON.kds, 'kds.stray-hold');
+    const stray = kdsEvents.slice(n0).filter((e) => e.holdGesture);
+    const after = (await rtdb.ref(`orders/${oid}/status`).get()).val();
+    // at LP new the gesture is also a kitchen-field contradiction (kitchen none) → every exclusion RED; at a kitchen LP
+    // the kitchen field is not checkable (codex's probe: kitchen unknown) → modelled with kdsActions unestablished
+    const hr0 = run(snaps, { ...evidence, kdsEvents: kdsEvents.slice(), kdsActions: kdsActions() });
+    assert.ok(hr0.red.length === res.counts.byOutcome.excluded && hr0.red.every((x) => /contradicts the scenario vector on .*kitchen/.test(x.detail)), FAIL('negative', `a stray hold at LP new did not contradict the kitchen field for every exclusion (${hr0.red.length})`));
+    const hr = run(snaps, { ...evidence, kdsEvents: kdsEvents.slice(), kdsActions: undefined });
+    const holdRegions = Object.keys(applicability.regions).filter((r) => (applicability.regions[r].context || []).includes('kds-no-hold-gesture'));
+    const holdRed = hr.red.filter((x) => holdRegions.includes(x.viaFrom || x.region));
+    assert.ok(stray.length === 2 && after === persisted.status && hr.red.length > 0 && holdRed.length === hr.red.length && hr.counts.byOutcome.excluded === res.counts.byOutcome.excluded - hr.red.length, FAIL('negative', `a stray hold gesture did not turn exactly the hold-dependent exclusions required/RED (recorded ${stray.length}; status ${after}; red ${hr.red.length}, of which hold ${holdRed.length}; excluded ${hr.counts.byOutcome.excluded} vs ${res.counts.byOutcome.excluded})`));
+    ok(`a stray hold gesture on the live KDS ticket header (pointer down → up, no write; status still ${after}) is recorded → at LP new every exclusion RED (kitchen contradicted, ${hr0.red.length}); with the kitchen field unestablished (as at a kitchen LP) exactly the ${hr.red.length} hold-dependent cells become REQUIRED (pending → RED); excluded ${res.counts.byOutcome.excluded} → ${hr.counts.byOutcome.excluded}`);
   }
   kds.close(); await khost.close();
 
