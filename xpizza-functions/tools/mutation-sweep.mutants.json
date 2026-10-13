@@ -12720,5 +12720,38 @@
       "node",
       "contract/ratchet.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-49",
+    "slice": "r3p1",
+    "file": "index.js",
+    "from": "  const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;",
+    "to": "  if (orderId) return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken }); const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;",
+    "label": "codex r6: an unconditional early return before the identity-shadow sampling statement (statically invisible) — the race justification never runs (line-preserving: no other binding moves)",
+    "kills_with": [
+      "did not run exactly once"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
+  },
+  {
+    "id": "r3p1-50",
+    "slice": "r3p1",
+    "file": "index.js",
+    "from": "  const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;\n  reportIdentityShadow(db, {\n    rid: restaurantId, orderId,\n    outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',\n    result: shadowResult,\n  });\n",
+    "to": "  if (false) { const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;\n  reportIdentityShadow(db, {\n    rid: restaurantId, orderId,\n    outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',\n    result: shadowResult,\n  }); }\n",
+    "label": "codex r5/r6: the sampling statement + its reportIdentityShadow call wrapped in a dead `if (false)` branch — never runs (line-preserving)",
+    "kills_with": [
+      "did not run exactly once",
+      "CONTROL-FLOW path changed"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
   }
 ]

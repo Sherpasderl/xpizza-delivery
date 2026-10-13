@@ -34,6 +34,13 @@ const capture = (realFetch, ResponseCtor) => async (u, init) => {
 { const nf = require.resolve('node-fetch'); const real = require('node-fetch'); const gated = capture(real, real.Response); Object.assign(gated, real, { default: gated });
   require.cache[nf] = { id: nf, filename: nf, loaded: true, children: [], paths: [], exports: gated }; }
 const CTX = { now: 'boot' };
+// the identity-shadow HEARTBEAT (codex P1-a r6): createOrder's sampling statement — `const shadowResult = …isSettled() …`
+// — is followed unconditionally by reportIdentityShadow(...), which logs ONE synchronous `order_identity_shadow_checked`
+// line per order. That statement holds no census read (its reads are call callees), so the tracer cannot hit it; its
+// heartbeat is the runtime obligation: exactly one per order, from createOrder's own call site (by stack). An early
+// return, a dead branch or a move that skips the sampling statement leaves no heartbeat → RED, whatever the syntax.
+const SHADOW_BEATS = [];
+{ const orig = console.log; console.log = function (...a) { if (a[0] === 'order_identity_shadow_checked') { const lim = Error.stackTraceLimit; Error.stackTraceLimit = 40; const stack = new Error().stack; Error.stackTraceLimit = lim; let body = null; try { body = JSON.parse(a[1]); } catch (_) { /* malformed */ } SHADOW_BEATS.push({ body, stack }); } return orig.apply(this, a); }; }
 const PH = {}; const phase = async (name, fn) => { const t0 = Date.now(); try { return await fn(); } finally { PH[name] = (PH[name] || 0) + (Date.now() - t0); } };
 
 require('../test/_catalog-clock').install();
@@ -291,6 +298,23 @@ try {
   const rt = RAT.ratchet({ baseline, shrink, current });
   assert.deepStrictEqual(rt.problems, [], FAIL('gateB', `ratchet: ${rt.problems.slice(0, 20).join(' | ')}`));
   ok(`GATE B ratchet: ${Object.entries(current).map(([k, v]) => `${k} ${v.length}`).join(', ')} sites reached ⊇ baseline (${Object.values(baseline.contexts).reduce((a, v) => a + v.length, 0)}); growth ${JSON.stringify(Object.fromEntries(Object.entries(rt.grown).map(([k, v]) => [k, v.length])))}; reviewed shrink ${(shrink.entries || []).length}; ${SRV.manifest.length} server units traced`);
+
+  // the sampling statement RAN (codex r6): exactly one heartbeat for this order, from createOrder's reportIdentityShadow
+  // call right after the reviewed justification (line from source), and its outcome agrees with gate B: status#23 (the
+  // shadow `status` read) is hit iff the sample settled ('dropped' ⇒ no hit)
+  {
+    const idxLines = fsx.readFileSync(new URL('../index.js', import.meta.url), 'utf8').split('\n');
+    const jLine = idxLines.findIndex((l) => l.includes(RAT.APPROVED_NONDETERMINISTIC[0].justification)) + 1;
+    const cLine = idxLines.findIndex((l, i) => i >= jLine && /reportIdentityShadow\(db, \{/.test(l)) + 1;
+    assert.ok(jLine > 0 && cLine > jLine, FAIL('shadow', `premise — the justification (line ${jLine}) and its reportIdentityShadow call (line ${cLine})`));
+    const mine = SHADOW_BEATS.filter((b) => b.body && b.body.order_id === oid);
+    assert.strictEqual(mine.length, 1, FAIL('shadow', `the identity-shadow sampling statement did not run exactly once for ${oid} (heartbeats ${mine.length}) — an early return / dead branch / move skipped it`));
+    assert.ok(mine[0].stack.includes(`index.js:${cLine}:`), FAIL('shadow', `the heartbeat did not come from createOrder's reportIdentityShadow call at index.js:${cLine} (${mine[0].stack.split('\n').filter((l) => /index\.js/.test(l)).slice(0, 2).join(' | ')})`));
+    const hit23 = (current['S1/x_pizza/new'] || []).includes(RAT.APPROVED_NONDETERMINISTIC[0].site);
+    const outcome = mine[0].body.outcome;
+    assert.ok(outcome === 'dropped' ? !hit23 : hit23, FAIL('shadow', `the sample outcome "${outcome}" disagrees with gate B (status#23 hit: ${hit23})`));
+    ok(`the race justification RAN: exactly one identity-shadow heartbeat for ${oid} from index.js:${cLine} (outcome "${outcome}"), consistent with gate B (status#23 ${hit23 ? 'hit' : 'not hit'})`);
+  }
 
   // EGRESS: this process runs under the process-level guard (preloaded by emulator-run) and nothing was refused
   assert.ok(global.__R3_EGRESS_GUARD === true && process.env.R3_EGRESS_MODE !== 'record', FAIL('net', 'the process-level egress guard is not installed in refuse mode'));
