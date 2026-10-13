@@ -12629,5 +12629,20 @@
       "run",
       "test:r3-p1a-journey"
     ]
+  },
+  {
+    "id": "r3p1-43",
+    "slice": "r3p1",
+    "file": "contract/ratchet.js",
+    "from": "    for (const s of now) if (!base.has(s) && !nd.has(`${ctx}|${s}`)) (grown[ctx] = grown[ctx] || []).push(s);",
+    "to": "    for (const s of now) if (!base.has(s)) (grown[ctx] = grown[ctx] || []).push(s);",
+    "label": "gate B: a reviewed NONDETERMINISTIC site is counted as growth (it would re-enter the baseline and flake)",
+    "kills_with": [
+      "a nondeterministic site was required or counted as growth"
+    ],
+    "command": [
+      "node",
+      "contract/ratchet.guard.test.js"
+    ]
   }
 ]

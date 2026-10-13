@@ -35,4 +35,18 @@ assert.ok(RAT.ratchet({ baseline, shrink, current: { ...baseline.contexts, 'S9/n
 const grown = RAT.ratchet({ baseline, shrink, current: { ...baseline.contexts, [c0]: [...baseline.contexts[c0], 'zz-new-site'] } });
 assert.ok(grown.problems.length === 0 && grown.grown[c0].includes('zz-new-site'), FAIL('growth is not reported as growth'));
 ok('a run context without a reviewed baseline → RED; new sites are reported as growth (enter the baseline only by a reviewed rewrite)');
+// the reviewed NONDETERMINISTIC sites: current census sites, not in the baseline; neither required nor growth
+for (const e of shrink.nondeterministic || []) assert.ok(ids.has(e.site) && e.reason && !(baseline.contexts[e.context] || []).includes(e.site), FAIL(`nondeterministic entry ${e.context}|${e.site} malformed / stale`));
+{
+  const e0 = (shrink.nondeterministic || [])[0];
+  if (e0) {
+    const withIt = { ...baseline.contexts, [e0.context]: [...(baseline.contexts[e0.context] || []), e0.site] };
+    const r1 = RAT.ratchet({ baseline, shrink, current: withIt }); const r2 = RAT.ratchet({ baseline, shrink, current: baseline.contexts });
+    assert.ok(r1.problems.length === 0 && !(r1.grown[e0.context] || []).includes(e0.site) && r2.problems.length === 0, FAIL('a nondeterministic site was required or counted as growth'));
+    const bad = { ...baseline, contexts: withIt };
+    assert.ok(RAT.ratchet({ baseline: bad, shrink, current: withIt }).problems.some((p) => /also in the baseline/.test(p)), FAIL('a nondeterministic site in the baseline passed'));
+    assert.ok(RAT.ratchet({ baseline, shrink: { ...shrink, nondeterministic: [{ ...e0, reason: '' }] }, current: baseline.contexts }).problems.some((p) => /needs a reason/.test(p)), FAIL('a nondeterministic entry without a reason passed'));
+  }
+}
+ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}): current census sites outside the baseline, reached or not → no problem and no growth; one placed in the baseline / without a reason → RED`);
 console.log(`\nr3-ratchet guard: OK (${n})`);

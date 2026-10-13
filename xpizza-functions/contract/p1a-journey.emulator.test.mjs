@@ -289,7 +289,7 @@ try {
   if (process.env.R3_RATCHET_WRITE === '1') { RAT.writeBaseline(current, 'S1 / x_pizza P1-a journey.'); console.log('  (gate B baseline rewritten — review the diff)'); }
   const { baseline, shrink } = RAT.load();
   const rt = RAT.ratchet({ baseline, shrink, current });
-  assert.deepStrictEqual(rt.problems, [], FAIL('gateB', `ratchet:\n  ${rt.problems.slice(0, 20).join('\n  ')}`));
+  assert.deepStrictEqual(rt.problems, [], FAIL('gateB', `ratchet: ${rt.problems.slice(0, 20).join(' | ')}`));
   ok(`GATE B ratchet: ${Object.entries(current).map(([k, v]) => `${k} ${v.length}`).join(', ')} sites reached ⊇ baseline (${Object.values(baseline.contexts).reduce((a, v) => a + v.length, 0)}); growth ${JSON.stringify(Object.fromEntries(Object.entries(rt.grown).map(([k, v]) => [k, v.length])))}; reviewed shrink ${(shrink.entries || []).length}; ${SRV.manifest.length} server units traced`);
 
   // EGRESS: this process runs under the process-level guard (preloaded by emulator-run) and nothing was refused
