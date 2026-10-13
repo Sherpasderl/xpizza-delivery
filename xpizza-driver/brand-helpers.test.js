@@ -91,6 +91,47 @@ t('greeting: URL-encoded param is single-param-safe and round-trips (accents/&/q
   assert.equal(driverGreeting({ restaurant_display_name: 'A & B' }), 'Hola, soy su repartidor de A & B.');
 });
 
+// ---- the REAL wa.me link renderers: lift both hrefs from index.html, build the URLs, parse them ----
+const greetingHrefBodies = indexSrc.split('\n')
+  .filter((l) => l.includes('driverGreeting(order)'))
+  .map((l) => { const m = l.match(/href="(https:\/\/wa\.me\/[^"]*?)"/); if (!m) throw new Error('could not lift a wa.me href'); return m[1]; });
+// evaluate a lifted href template literal with the same scope index.html gives it (String/encodeURIComponent are globals)
+const renderWaLink = (body, order, phone) => new Function('order', 'phone', 'driverGreeting', 'return `' + body + '`;')(order, phone, driverGreeting);
+const textParams = (url) => new URL(url).searchParams.getAll('text');
+const withPhone = (o) => ({ ...o, customer_phone: '+504 9999-8888' });
+
+t('greeting: BOTH real wa.me renderers produce exactly ONE text param == the expected greeting', () => {
+  assert.equal(greetingHrefBodies.length, 2, 'expected exactly the two greeting link renderers');
+  const cases = [[XP, 'Hola, soy su repartidor de X. Pizza.'], [LM, 'Hola, soy su repartidor de La Musa.'],
+    [RM, 'Hola, soy su repartidor de Pizza Roma.'], [{}, 'Hola, soy su repartidor.']];
+  for (const body of greetingHrefBodies) {
+    for (const [order, expected] of cases) {
+      const o = withPhone(order);
+      const params = textParams(renderWaLink(body, o, o.customer_phone));
+      assert.equal(params.length, 1, `exactly one text param (body: ${body})`);
+      assert.equal(params[0], expected);
+    }
+  }
+});
+t('greeting: REAL source mutations through the same renderer path go RED (not fabricated strings)', () => {
+  const lm = withPhone(LM), rm = withPhone(RM);
+  const isLaMusa = (body) => { const p = textParams(renderWaLink(body, lm, lm.customer_phone)); return p.length === 1 && p[0] === 'Hola, soy su repartidor de La Musa.'; };
+  for (const body of greetingHrefBodies) {
+    assert.ok(isLaMusa(body), 'baseline renderer is correct for La Musa');
+    // (a) old hard-coded greeting reintroduced -> La Musa order greeted as X. Pizza -> RED
+    assert.ok(!isLaMusa(body.replace('encodeURIComponent(driverGreeting(order))', "encodeURIComponent('Hola, soy del repartidor de X. Pizza.')")),
+      'old hard-coded greeting must fail');
+    // (b) old la_musa ternary reintroduced -> a 3rd brand greeted as X. Pizza -> RED
+    const ternaryBody = body.replace('encodeURIComponent(driverGreeting(order))',
+      "encodeURIComponent('Hola, soy su repartidor de ' + (order.restaurant_id === 'la_musa' ? 'La Musa' : 'X. Pizza') + '.')");
+    const p3 = textParams(renderWaLink(ternaryBody, rm, rm.customer_phone));
+    assert.ok(!(p3.length === 1 && p3[0] === 'Hola, soy su repartidor de Pizza Roma.'), 'old ternary must fail for a 3rd brand');
+    // (c) a second text param appended -> violates single-param -> RED
+    assert.equal(textParams(renderWaLink(body + '&text=WRONG', lm, lm.customer_phone)).length, 2,
+      'an extra &text=WRONG must produce two params (the single-param test would catch it)');
+  }
+});
+
 // ---- literal guard, sensitivity-proven ----
 t('literal-guard: no brand-name literal in the greeting/chip code; guard HAS teeth', () => {
   const BRAND = /X\.? ?Pizza|La Musa/;   // case-sensitive: matches display literals, not the snake_case ids
