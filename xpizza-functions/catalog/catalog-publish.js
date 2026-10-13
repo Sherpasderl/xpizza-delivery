@@ -1706,9 +1706,10 @@ async function verifyVersionStructure(db, rid, versionId) {
 }
 
 // ROLLBACK — a single atomic pointer flip to a RETAINED prior version. Verify it exists + verifies first.
-async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expected } = {}) {
+async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expected, readExtrasMode } = {}) {
   const token = await acquireLease(db, rid);
   try {
+    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);   // per-product extras §4: never a pre-baseline target while non-off
     // 1b: reuse the verify read's tables to re-emit the snapshot + mirror. A rollback that moved the
     // pointer without re-emitting would leave the fallback describing the version we just rolled AWAY
     // from — the fallback must always describe whatever is actually live.

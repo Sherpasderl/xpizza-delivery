@@ -164,15 +164,16 @@ async function buildPublicMenu(db, rid, deps = {}) {
     fail('public_menu_unavailable', `${restaurantId}: ${String((e && e.message) || e).slice(0, 160)}`);
   }
 
-  // per-product extras: the eligibility document of EXACTLY this version. A read failure serves the body without the field
-  // (the forms' legacy branch, today's behaviour) and says so — display only, never a decision; the money path reads the
-  // document for itself, bound to its own pricing version (§4).
+  // per-product extras: the eligibility document of EXACTLY this version. Only a CONFIRMED absence (a pre-feature version)
+  // serves the body without the field — the forms' explicit legacy branch. A read error or a malformed document is NOT
+  // absence (codex stage-2 r1 P1-3): it fails like any other unreadable part of the catalog — the retryable, never-cached
+  // public_menu_unavailable — so a transient error can never make a compatible form fall back to showing excluded extras.
+  // The money path reads the document for itself, bound to its own pricing version (§4).
   try {
     const doc = await readEligibility(db, restaurantId, menu.identity && menu.identity.version_id);
     menu.eligibility = doc ? { version: doc.version, deny: doc.public_deny } : null;
   } catch (e) {
-    menu.eligibility = null;
-    console.warn('public_menu_eligibility_unread', JSON.stringify({ rid: restaurantId, error: String((e && e.message) || e).slice(0, 160) }));
+    fail('public_menu_unavailable', `${restaurantId}: the version's extras eligibility could not be read — ${String((e && e.message) || e).slice(0, 160)}`);
   }
 
   // ATOMIC. The transform either produces a whole bundle or it throws — there is no path that returns

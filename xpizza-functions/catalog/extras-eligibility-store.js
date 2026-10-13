@@ -19,7 +19,8 @@ function buildEligibilityDoc({ items, extras, structure }) {
   return { version: DOC_VERSION, projection, public_deny: publicDeny(projection) };
 }
 
-// one read per (rid, versionId) per instance — the document is immutable for the life of the version
+// one read per (rid, versionId) per instance — the document is immutable for the life of the version (a read error or a
+// malformed document is never cached: it throws)
 const _cache = new Map();
 const CACHE_MAX = 16;
 async function readEligibility(db, rid, versionId) {
@@ -27,12 +28,17 @@ async function readEligibility(db, rid, versionId) {
   const k = `${rid}\u0000${versionId}`;
   if (_cache.has(k)) return _cache.get(k);
   const snap = await eligibilityRefOf(db, rid, versionId).get();   // a read error THROWS — the caller decides (§4)
+  // ONLY a confirmed absence is null (a pre-feature version). A document that EXISTS but is not a valid v1 document is
+  // an error, never "absent" — it throws, uncached, and each caller treats it as unreadable (codex stage-2 r1 P1-3)
   const doc = snap.exists ? snap.data() : null;
-  const valid = !!(doc && doc.version === DOC_VERSION && doc.projection && typeof doc.projection === 'object' && doc.public_deny && typeof doc.public_deny === 'object');
-  const out = valid ? doc : null;
+  if (snap.exists) {
+    const valid = !!(doc && doc.version === DOC_VERSION && doc.projection && typeof doc.projection === 'object' && !Array.isArray(doc.projection)
+      && doc.public_deny && typeof doc.public_deny === 'object' && !Array.isArray(doc.public_deny));
+    if (!valid) throw new Error(`eligibility_malformed: ${rid}/${versionId}`);
+  }
   if (_cache.size >= CACHE_MAX) _cache.delete(_cache.keys().next().value);
-  _cache.set(k, out);
-  return out;
+  _cache.set(k, doc);
+  return doc;
 }
 
 module.exports = { buildEligibilityDoc, readEligibility, eligibilityRefOf, DOC_VERSION, _cache };

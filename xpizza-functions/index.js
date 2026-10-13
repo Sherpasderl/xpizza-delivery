@@ -933,7 +933,7 @@ createOrderApp.all('*', async (req, res) => {
     /* extras:begin cash */
     {   // per-product extras: after the dedupe and the group rules, before any write or reserve
       const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
-      EI.logShadow('createOrder', restaurantId, xr);
+      EI.logShadow('createOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
       if (EI.refuses(xr)) { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }
     }
     /* extras:end cash */
@@ -1567,6 +1567,7 @@ chargeOnlineApp.all('*', async (req, res) => {
   let choiceArmed = false;   // 1D add-product B: a non-fresh request carrying a bare launcher (line or reward) — no fresh URL
   /* extras:begin card-arm */
   let extrasArmed = null;    // per-product extras: the acquire guard's reason ('extra_not_allowed' | 'eligibility_unavailable') or null
+  let extrasArmedDenied = [];   // ...and THIS request's denied pairs, so a race-mapped refusal still names them (codex r1 P2-5)
   /* extras:end card-arm */
   let canonicalFpG = null;   // the canonical recompute for the classify + probe checks — a request-local memoizer (the reserve/acquire
                              // site has its own request-local memoizer, canonicalChargeFp, over the same inputs)
@@ -1662,10 +1663,10 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:begin card */
     {   // per-product extras (§5): refused here when the classification says FRESH (or cannot say); a reuse only arms the guard
       const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
-      EI.logShadow('chargeOnlineOrder', restaurantId, xr);
+      EI.logShadow('chargeOnlineOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
       if (EI.refuses(xr)) {
         if (!clsForMenu || clsForMenu.willIssueFreshUrl) { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }
-        extrasArmed = EI.guardReason(xr);
+        extrasArmed = EI.guardReason(xr); extrasArmedDenied = xr.denied;
       }
     }
     /* extras:end card */
@@ -1971,7 +1972,7 @@ chargeOnlineApp.all('*', async (req, res) => {
     /* extras:begin card-map */
     if (acq.reason === 'extra_not_allowed' || acq.reason === 'eligibility_unavailable') {   // per-product extras: a drift to a fresh issuance
       console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason} (extras guard)`);
-      const xr = { outcome: acq.reason === 'extra_not_allowed' ? 'denied' : 'unavailable', denied: [] };
+      const xr = { outcome: acq.reason === 'extra_not_allowed' ? 'denied' : 'unavailable', denied: acq.reason === 'extra_not_allowed' ? extrasArmedDenied : [] };
       if (xr.outcome === 'unavailable') res.set('Retry-After', '2');
       return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId });
     }
@@ -6689,8 +6690,8 @@ exports.quoteOrder = onRequest(
       /* extras:begin quote */
       {   // per-product extras: refused BEFORE a quote (and its signed token) is issued — the order would refuse it anyway
         const xr = await extrasCheckFor(restaurantId, tables, body.items);
-        EI.logShadow('quoteOrder', restaurantId, xr);
-        if (EI.refuses(xr)) return res.status(200).json({ ok: false, ...EI.refusalBody(xr) });
+        EI.logShadow('quoteOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
+        if (EI.refuses(xr)) return EI.sendRefusal(res, xr, { ok: false });   // 409 / 503 like the other intakes
       }
       /* extras:end quote */
       const { total, error } = computeServerTotal(body.items, restaurantId, tables);
@@ -6762,8 +6763,8 @@ exports.quoteRedemption = onRequest(
       /* extras:begin quote-redemption */
       {   // per-product extras: the paid lines' extras (reward items are reward lines, never judged by a product's list)
         const xr = await extrasCheckFor(restaurantId, quoteTables, body.items);
-        EI.logShadow('quoteRedemption', restaurantId, xr);
-        if (EI.refuses(xr)) return res.status(EI.refusalStatus(xr)).json({ ok: false, ...EI.refusalBody(xr) });
+        EI.logShadow('quoteRedemption', restaurantId, xr, EI.ordersClientGen(clientHdr));
+        if (EI.refuses(xr)) return EI.sendRefusal(res, xr, { ok: false });
       }
       /* extras:end quote-redemption */
       const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });

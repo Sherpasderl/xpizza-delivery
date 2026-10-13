@@ -928,6 +928,7 @@ const GOOD = () => ({
     ['validateSource :: v === EXPOSURE_ALL', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ["validateSource :: side === 'deny'", 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
     ['validateSource :: !extraCatSet.has(v) && !extraKeys.has(v)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: extraCatSet.has(v) && extraKeys.has(v)', 'post-type', 'membership, asked after the value has been typed (a legacy entry naming BOTH a category and an extra key is ambiguous, refused — codex stage-2 r1 P2-7)'],
     ['readSource :: !snap || !snap.exists', 'post-type', 'a negated check over an already-typed value'],
     // ── 1D add-product B (rev 6, UNIFORM): the group rules, the same for every brand ──
     ['validateSource :: members.length < 2', 'post-type', 'a count over an already-typed collection (the resolved members of a validated variant list)'],
@@ -951,7 +952,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 169, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 170, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -965,7 +966,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 21, 'post-type': 76, shape: 50, 'not-a-presence-test': 22 },   // add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +7 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field)
+  assert.deepStrictEqual(counts, { requiredness: 21, 'post-type': 77, shape: 50, 'not-a-presence-test': 22 },   // add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +8 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field, no ambiguous legacy entry)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

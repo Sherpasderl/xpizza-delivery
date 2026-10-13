@@ -125,6 +125,11 @@ for (const rid of ['x_pizza', 'la_musa']) {
   // a key spelled like a category is a legitimate KEY (codex r3 P2-2)
   const c = withOv({ deny_extras: ['Carnes'] }, (s) => s.extras.push({ key: 'Carnes', price: 10, display: { id: 'e98', cat: 'Salsas & Queso', name: 'Carnes', price: 10 } }));
   assert.doesNotThrow(() => validateSource(c, 'x_pizza'), 'an extra whose key equals a category name may be denied as a key');
+  // ...but a LEGACY deny / add naming it is ambiguous (category AND key) and refused (codex stage-2 r1 P2-7: their exact repro)
+  const amb = (ov) => withOv(ov, (s) => s.extras.push({ key: 'Carnes', price: 10, display: { id: 'e98', cat: 'Salsas & Queso', name: 'Carnes', price: 10 } }));
+  refuse(amb({ deny: ['Carnes'] }), /names both an extra-category and an extra key/, '🔴 a legacy deny naming a category AND a key is refused');
+  refuse(amb({ add: ['Carnes'] }), /names both an extra-category and an extra key/, 'a legacy add naming both is refused too');
+  assert.doesNotThrow(() => validateSource(withOv({ deny: ['Carnes'] }), 'x_pizza'), 'premise — the same legacy deny is valid while Carnes is only a category');
   // a VARIANT never carries its own typed list
   const lm = buildSourceFromCode('la_musa');
   lm.structure.exposure.item_overrides.noodle_01_pollo = { deny_extras: ['rice_white'] };

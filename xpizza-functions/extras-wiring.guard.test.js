@@ -33,7 +33,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 }
 // ── 1b. the pinned modules ──
 {
-  assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js']);
+  assert.deepStrictEqual([...FILES].sort(), ['catalog/catalog-publish.js', 'catalog/source-store.js', 'menu-pricing.js']);
   for (const f of FILES) assert.strictEqual(unapplyExtrasModule(f, read(f)), baseOf(f), `🔴 ${f} minus the extras hunks is not ${BASE}:${f}`);
   const f = 'catalog/source-store.js'; const src = read(f);
   const h = HUNKS.find((x) => x.file === f && x.now.includes('deny_extras'));

@@ -4,7 +4,7 @@ const assert = require('assert');
 const X = require('./extras-intake');
 const { buildEligibilityDoc } = require('./extras-eligibility-store');
 const { buildSourceFromCode } = require('../tools/seed-source-store');
-const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT } = require('../menu-pricing');
+const { MENU_BY_RESTAURANT, EXTRAS_BY_RESTAURANT, computeServerTotal } = require('../menu-pricing');
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const quiet = async (fn) => { const w = console.warn, l = console.log; console.warn = () => {}; console.log = () => {}; try { return await fn(); } finally { console.warn = w; console.log = l; } };
 
@@ -86,7 +86,49 @@ const quiet = async (fn) => { const w = console.warn, l = console.log; console.w
     const r = await X.extrasCheck({ mode: { mode: 'enforce' }, tables: { menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa },
       items: [{ id: 'rice_02', qty: 1, extras: [{ id: 'rice_white', qty: 1 }, { id: 'sauce_aioli', qty: 1 }] }], rid: 'la_musa', envelopeOf: env, readEligibility: async () => ldoc });
     assert.deepStrictEqual(r.denied, [{ item: 'rice_02', extra: 'rice_white' }], 'la_musa ids: only rice_white denied');
-    ok('la_musa: lines addressed by id (decided by the tables, not the brand) — only the excluded extra is denied');
+    ok('la_musa: lines addressed by id (pricing\u2019s own resolver) — only the excluded extra is denied');
+  }
+  {
+    // FORGED id/name (codex stage-2 r1 P1-1): the line is judged by the key it is CHARGED by — pricing's own resolvers. For each
+    // forgery the denied pair is reported AND computeServerTotal charges exactly that extra (the judged key == the charged key).
+    const lm = buildSourceFromCode('la_musa'); lm.structure.exposure.item_overrides.rice_02 = { deny_extras: ['rice_white'] };
+    const BR = {
+      x_pizza: { doc, tables, item: 'Margherita', denied: 'Salsa Roja', ok: 'Pepperoni', free: 'Pepperoni',
+        forgeExtra: () => ({ name: 'Margherita', qty: 1, extras: [{ name: 'Salsa Roja', id: 'Pepperoni' }] }),
+        forgeItem: () => ({ name: 'Margherita', id: 'Pepperoni', qty: 1, extras: [{ name: 'Salsa Roja' }] }) },
+      la_musa: { doc: buildEligibilityDoc(lm), tables: { menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa }, item: 'rice_02', denied: 'rice_white', ok: 'sauce_aioli',
+        forgeExtra: () => ({ id: 'rice_02', qty: 1, extras: [{ id: 'rice_white', name: 'sauce_aioli', qty: 1 }] }),
+        forgeItem: () => ({ id: 'rice_02', name: 'rice_03', qty: 1, extras: [{ id: 'rice_white', qty: 1 }] }) },
+    };
+    for (const [rid, b] of Object.entries(BR)) {
+      for (const forge of ['forgeExtra', 'forgeItem']) {
+        const r = await X.extrasCheck({ mode: { mode: 'enforce' }, tables: b.tables, items: [b[forge]()], rid, envelopeOf: env, readEligibility: async () => b.doc });
+        assert.deepStrictEqual(r.denied, [{ item: b.item, extra: b.denied }], `🔴 ${rid} ${forge}: judged by the CHARGED keys`);
+        // the charge agrees: the forged line costs exactly the item + the DENIED extra
+        const t = computeServerTotal([b[forge]()], rid, { restaurantId: rid, ...b.tables });
+        const want = b.tables.menu[b.item] + (b.tables.extras[b.denied] * (rid === 'la_musa' ? 1 : 1));
+        assert.strictEqual(t.total, want, `${rid} ${forge}: pricing charges the item + the denied extra (${t.total} vs ${want})`);
+      }
+    }
+    // sensitivity: the OLD id-preferring resolution would have judged the x_pizza forgery as the allowed Pepperoni
+    const preferId = (e) => (e.id !== undefined && Object.prototype.hasOwnProperty.call(tables.extras, String(e.id)) ? String(e.id) : e.name);
+    assert.strictEqual(preferId(BR.x_pizza.forgeExtra().extras[0]), 'Pepperoni', 'premise — an id-preferring resolver picks the forged id');
+    ok('forged id/name: x_pizza (a forged id) and la_musa (a forged name), extra AND item — each judged by the key pricing charges, and computeServerTotal charges that same denied extra');
+  }
+  {
+    // codex stage-2 r1 P2-4 / P2-6: the shadow generation is the ORDERS client's compat, read like isBelowFloor; refusals go out one way
+    assert.strictEqual(X.ordersClientGen({ app: 'orders', compat: 7 }), 7);
+    assert.strictEqual(X.ordersClientGen({ app: 'portal', compat: 7 }), null, 'a foreign app → null');
+    assert.strictEqual(X.ordersClientGen({ app: null, compat: null, headerless: true }), null, 'header-less → null');
+    const logs = []; const l = console.log; console.log = (...a) => logs.push(a);
+    try { X.logShadow('quoteOrder', 'x_pizza', { mode: 'shadow', outcome: 'denied', versionId: 'v7', denied: [] }, X.ordersClientGen({ app: 'orders', compat: 3 })); } finally { console.log = l; }
+    assert.strictEqual(JSON.parse(logs[0][1]).client_gen, 3, 'the shadow record carries it');
+    const fakeRes = () => { const r = { h: {}, set(k, v) { r.h[k] = v; return r; }, status(c) { r.code = c; return r; }, json(b) { r.body = b; return r; } }; return r; };
+    const d = fakeRes(); X.sendRefusal(d, { outcome: 'denied', denied: [{ item: 'a', extra: 'b' }] }, { ok: false });
+    assert.ok(d.code === 409 && d.body.ok === false && d.body.error === 'extra_not_allowed' && d.body.lines.length === 1 && !d.h['Retry-After']);
+    const u = fakeRes(); X.sendRefusal(u, { outcome: 'unavailable', denied: [] }, { ok: false });
+    assert.ok(u.code === 503 && u.body.retryable === true && u.h['Retry-After'] === '2');
+    ok('ordersClientGen = the orders compat (foreign / header-less → null) and reaches the shadow record; sendRefusal: 409 +lines / 503 + Retry-After');
   }
   console.log(`\nextras-intake: OK (${n})`);
 })().catch((e) => { console.error('extras-intake FAILED:', e); process.exit(1); });

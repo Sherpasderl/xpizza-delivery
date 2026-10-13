@@ -480,6 +480,12 @@ function validateSource(source, rid) {
           if (!extraCatSet.has(v) && !extraKeys.has(v)) {
             fail(`${rid}/${key} — exposure ${side} references ${v}, which is neither a declared extra-category nor a known extra`);
           }
+          // per-product extras (§2): a legacy entry naming BOTH an extra-category and an extra key is ambiguous — it would
+          // reach the whole category while reading like one extra (none exist today; the gate-0 audit found none). The typed
+          // deny_extras says "this extra" unambiguously.
+          if (extraCatSet.has(v) && extraKeys.has(v)) {
+            fail(`${rid}/${key} — exposure ${side} ${v} names both an extra-category and an extra key (ambiguous); use deny_extras for the one extra`);
+          }
         }
       }
     }

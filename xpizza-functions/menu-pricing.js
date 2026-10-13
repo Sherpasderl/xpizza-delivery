@@ -153,6 +153,15 @@ function itemPricingKey(item, restaurantId) {
   return raw;
 }
 
+// The extra-side twin of itemPricingKey — the SINGLE source of truth for which key an order line's extra is priced by
+// (x_pizza → extra.name, la_musa → extra.id; the line's other field is IGNORED). computeServerTotal and summaryLines read
+// the extra's key THROUGH this, and so does the per-product extras eligibility check (catalog/extras-intake.js): an extra
+// is judged by exactly the key it is charged by, so a forged id beside a real name can never be judged as one extra and
+// charged as another.
+function extraPricingKey(ex, restaurantId) {
+  return restaurantId === 'la_musa' ? (ex && ex.id) : (ex && ex.name);
+}
+
 // Phase 1b-1 — resolve WHICH price tables price this order. Omitting `tables` keeps today's exact
 // behaviour (the in-code tables — the frozen fallback ONLY). Post-2a EVERY money caller passes the
 // SAME guarded catalog tables: the order total, the redemption cluster (1b-1b), AND the fiscal
@@ -218,7 +227,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
     const seenExtraIds = byId ? new Set() : null;
     for (const ex of extras) {
       if (byId) {  // la_musa — id-keyed, qty-aware, standalone (independent of dish qty)
-        const eid = ex && ex.id;
+        const eid = extraPricingKey(ex, restaurantId);
         if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid)) {
           return { total: NaN, error: `unknown extra: ${String(eid).slice(0, 40)}` };
         }
@@ -236,7 +245,7 @@ function computeServerTotal(items, restaurantId = 'x_pizza', tables = null) {
         }
         total += eprice * eqty;            // server table only — client ex.price ignored
       } else {  // x_pizza — original name-keyed / count-once logic, verbatim
-        const ename = ex && ex.name;
+        const ename = extraPricingKey(ex, restaurantId);
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) {
           return { total: NaN, error: `unknown extra: ${String(ename).slice(0, 40)}` };
         }
@@ -284,7 +293,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
     const seen = byId ? new Set() : null;
     for (const ex of extras) {
       if (byId) {
-        const eid = ex && ex.id;
+        const eid = extraPricingKey(ex, restaurantId);
         if (!eid || !Object.prototype.hasOwnProperty.call(extraPrices, eid)) return null;
         if (seen.has(eid)) return null; seen.add(eid);
         const eqty = Number(ex && ex.qty);
@@ -292,7 +301,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
         if (!isValidPrice(extraPrices[eid])) return null;                 // 1d-1a: same rule, null convention
         lineL += extraPrices[eid] * eqty;
       } else {
-        const ename = ex && ex.name;
+        const ename = extraPricingKey(ex, restaurantId);
         if (!ename || !Object.prototype.hasOwnProperty.call(extraPrices, ename)) return null;
         if (!isValidPrice(extraPrices[ename])) return null;               // 1d-1a: same rule, null convention
         lineL += extraPrices[ename];
@@ -316,7 +325,7 @@ function summaryLines(items, restaurantId = 'x_pizza', redemption = null, tables
 }
 
 module.exports = { PRICING_KEY_STAMP,
-  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, summaryLines,
+  MENU_BY_RESTAURANT, EXTRA_PRICES, EXTRAS_BY_RESTAURANT, computeServerTotal, itemPricingKey, extraPricingKey, summaryLines,
   resolvePriceTables,   // 1b-1b: the shared PIN-B-asserting table resolver, reused across the redemption graph
   X_PIZZA_WEEKEND_ONLY, hnDayFromMs, weekendOnlyViolation,
 };

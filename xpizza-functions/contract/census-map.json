@@ -291,6 +291,7 @@
     "catalog/extras-eligibility.js#publicDeny": "catalog",
     "catalog/extras-eligibility-store.js#buildEligibilityDoc": "catalog",
     "catalog/extras-intake.js#extrasCheck": "intake",
+    "catalog/extras-intake.js#sendRefusal": "intake",
     "catalog/generate-form-bundle.js#catalogSnapshot": "catalog",
     "catalog/generate-form-bundle.js#generateFormBundle": "catalog",
     "catalog/generate-form-bundle.js#generateKdsManifest": "catalog",

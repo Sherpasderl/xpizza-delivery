@@ -110,7 +110,11 @@ try {
     const { unapplyD12, FILES: D12_FILES } = require('../tools/d12-inverse');
     // D12b landed on top of D12: its exact inverse is reversed FIRST (newest first)
     const { unapplyD12b, FILES: D12B_FILES } = require('../tools/d12b-inverse');
-    const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, read(f)) : read(f));
+    // per-product extras landed after D12b: its exact module inverse (tools/extras-module-inverse.js, proven by extras-wiring.guard)
+    // is reversed FIRST — menu-pricing.js gains only the shared extraPricingKey resolver the eligibility check reads through
+    const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
+    const xRead = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, read(f)) : read(f));
+    const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, xRead(f)) : xRead(f));
     const baseOf = (f) => {
       const src = D12_FILES.includes(f) ? unapplyD12(f, pinRead(f)) : pinRead(f);
       if (!C2A_BLOCKS[f]) return src;

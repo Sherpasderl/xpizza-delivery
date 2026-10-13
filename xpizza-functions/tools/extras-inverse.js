@@ -13,17 +13,17 @@ const BLOCKS = [
   },
   {
     "id": "cash",
-    "sha": "81388e94f13abdd9d8929b7fcaceffc64b68eeedae3214090aa4af461517f862",
+    "sha": "0cdb9ce6f5a17b6e30f712c5033ebe0129b1ecc14f855c97edb1b92e890062cb",
     "original": ""
   },
   {
     "id": "card-arm",
-    "sha": "88336c6227b7a459f08c72da3ef0b234ae6a7713bdc503cd7e2469acb7b7d978",
+    "sha": "14de1af3673a2f0ebb5f4bcada2300c138bea56bccbdeef326ad84d209afa3d3",
     "original": ""
   },
   {
     "id": "card",
-    "sha": "b8fa35218856e01a613b16a04128aad373f8919a32a8677ace076a2385250bac",
+    "sha": "230db9d0b5ecb34ae0e73d16213a892bfa4479a64bbe6fdcf13978f7ad3f853f",
     "original": ""
   },
   {
@@ -33,17 +33,17 @@ const BLOCKS = [
   },
   {
     "id": "card-map",
-    "sha": "b0c2aa9dc1235833f0280c72e642cf892abba41346179e1cd058452fd8a10e64",
+    "sha": "928ea92f2fd0e9a290282cf9e731ea9246890c3269deb9e77c053c19cdb1486b",
     "original": ""
   },
   {
     "id": "quote",
-    "sha": "286a3ddb1770cd6d311eb747c804a7243ca2cbf265ff528d19de926907d31f08",
+    "sha": "1741753fd56ec59c9674a08cf4a93f6203d2ad6b022d68a525cf99f277574765",
     "original": ""
   },
   {
     "id": "quote-redemption",
-    "sha": "f7179d85bd99129e5d746370fac6abc4a730a98a5e580a881eb4893d0377536b",
+    "sha": "9a54803db5516da109c98377894e43157207a8c69f50c5519b5da18ff06a7044",
     "original": ""
   }
 ];

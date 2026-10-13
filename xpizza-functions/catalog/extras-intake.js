@@ -16,9 +16,12 @@
 // node into a full ordering outage. Only an affirmative "absent" or "off" skips the check.
 //
 // It never prices anything: eligibility is not arithmetic (menu-pricing stays structure-free, deferral #8's arithmetic pin
-// stands). Lines are addressed in PRICING keys, decided by DATA (whichever of the line's id / name the tables price),
-// never by a brand literal.
+// stands). Lines are addressed in PRICING keys through pricing's OWN resolvers (itemPricingKey / extraPricingKey), so an
+// order line is judged by exactly the key it is charged by. Eligibility adds no per-brand rule of its own: it inherits
+// pricing's addressing contract, whatever that is (today menu-pricing keys it per restaurant — existing onboarding debt
+// there, not a second copy here).
 const { eligibleSet } = require('./extras-eligibility');
+const { itemPricingKey, extraPricingKey } = require('../menu-pricing');
 
 const MODES = new Set(['off', 'shadow', 'enforce']);
 const PATH = 'platform_config/extras_eligibility';
@@ -54,19 +57,20 @@ function createExtrasModeReader({ read, now = Date.now, ttlMs = 30000, timeoutMs
 
 // ── the check ──
 const own = (o, k) => !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
-// a line's item / extra PRICING key: whichever of its id / name the tables actually price (data, not brand)
-function lineItemKey(line, tables) {
-  const menu = (tables && tables.menu) || {};
-  if (line && line.id !== undefined && own(menu, String(line.id))) return String(line.id);
-  if (line && typeof line.name === 'string' && own(menu, line.name)) return line.name;
-  return null;
+// A line's item / extra key is resolved by PRICING's OWN resolvers (menu-pricing itemPricingKey / extraPricingKey) — the
+// key the line is CHARGED by, never a second guess (codex stage-2 r1 P1-1: preferring a recognized `id` let
+// {name:'Salsa Roja', id:'Pepperoni'} be judged as Pepperoni and charged as Salsa Roja). The other field is ignored
+// exactly as pricing ignores it. A key the tables do not price is pricing's refusal, not ours.
+function lineItemKey(line, tables, rid) {
+  const k = itemPricingKey(line, rid);
+  return (typeof k === 'string' || typeof k === 'number') && own((tables && tables.menu) || {}, String(k)) ? String(k) : null;
 }
-function lineExtraKeys(line, tables) {
+function lineExtraKeys(line, tables, rid) {
   const ex = (tables && tables.extras) || {};
   const out = [];
   for (const e of (Array.isArray(line && line.extras) ? line.extras : [])) {
-    if (e && e.id !== undefined && own(ex, String(e.id))) out.push(String(e.id));
-    else if (e && typeof e.name === 'string' && own(ex, e.name)) out.push(e.name);
+    const k = extraPricingKey(e, rid);
+    if ((typeof k === 'string' || typeof k === 'number') && own(ex, String(k))) out.push(String(k));
   }
   return out;
 }
@@ -91,13 +95,17 @@ async function extrasCheck({ mode, tables, items, rid, envelopeOf, readEligibili
   if (!doc || !doc.projection) return { outcome: 'unavailable', mode: m, versionId, denied: [], why: 'document_absent' };   // a pre-feature version: never "unrestricted"
   const denied = [];
   for (const line of (Array.isArray(items) ? items : [])) {
-    const itemKey = lineItemKey(line, tables);
+    const itemKey = lineItemKey(line, tables, rid);
     if (!itemKey || !doc.projection.items || !own(doc.projection.items, itemKey)) continue;   // an unknown item is pricing's refusal, not ours
     const ok = eligibleSet(doc.projection, itemKey);
-    for (const k of lineExtraKeys(line, tables)) if (!ok.has(k)) denied.push({ item: itemKey, extra: k });
+    for (const k of lineExtraKeys(line, tables, rid)) if (!ok.has(k)) denied.push({ item: itemKey, extra: k });
   }
   return { outcome: denied.length ? 'denied' : 'allow', mode: m, versionId, denied };
 }
+
+// the client generation a shadow observation is filed under: the ORDERS client's normalized compat (client-floor
+// readClientHeaders), read exactly as isBelowFloor reads it — header-less or a foreign app → null (codex stage-2 r1 P2-4)
+const ordersClientGen = (h) => (h && h.app === 'orders' && Number.isInteger(h.compat) ? h.compat : null);
 
 // shadow: say what enforce WOULD do — the denominator of §6 (every evaluation, not just the would-refuses)
 function logShadow(endpoint, rid, res, clientGen) {
@@ -112,7 +120,12 @@ const EXTRA_NOT_ALLOWED = { error: 'extra_not_allowed', detail: 'Uno de los extr
 const ELIGIBILITY_UNAVAILABLE = { error: 'eligibility_unavailable', retryable: true, retryAfter: 2, detail: 'No pudimos confirmar los extras de tu pedido. Probá de nuevo.' };
 const refusalBody = (res) => (res.outcome === 'denied' ? { ...EXTRA_NOT_ALLOWED, lines: res.denied } : { ...ELIGIBILITY_UNAVAILABLE });
 const refusalStatus = (res) => (res.outcome === 'denied' ? 409 : 503);
+// send a refusal the one way every intake does: 409 / 503, Retry-After on the retryable one, the typed body (+ `extra`)
+function sendRefusal(res, xr, extra = {}) {
+  if (xr.outcome === 'unavailable') res.set('Retry-After', String(ELIGIBILITY_UNAVAILABLE.retryAfter));
+  return res.status(refusalStatus(xr)).json({ ...extra, ...refusalBody(xr) });
+}
 // the guard reason handed to acquireHostedAttempt (only on a FRESH issuance — bound reuse is never re-judged)
 const guardReason = (res) => (refuses(res) ? (res.outcome === 'denied' ? 'extra_not_allowed' : 'eligibility_unavailable') : null);
 
-module.exports = { createExtrasModeReader, extrasCheck, logShadow, refuses, refusalBody, refusalStatus, guardReason, lineItemKey, lineExtraKeys, PATH, MODES };
+module.exports = { createExtrasModeReader, extrasCheck, logShadow, refuses, refusalBody, refusalStatus, sendRefusal, guardReason, ordersClientGen, lineItemKey, lineExtraKeys, PATH, MODES };

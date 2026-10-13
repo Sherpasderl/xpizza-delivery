@@ -310,10 +310,10 @@
   {
     "id": "task7-13",
     "slice": "task7",
-    "label": "🔴 the rollback CLI stops stating what it rolled back FROM — an unconditional flip buries whatever landed between the operator reading the list and choosing. Re-pointed for E-1's F3, which added the FENCE beside the version.",
+    "label": "🔴 the rollback CLI stops stating what it rolled back FROM — an unconditional flip buries whatever landed between the operator reading the list and choosing. Re-pointed for E-1's F3, which added the FENCE beside the version. Re-pointed again for per-product extras, which passes the extras mode reader beside them (kept in the mutant: only the fence is removed).",
     "file": "tools/rollback-version.js",
-    "from": "  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),\n    expected: { activeVersionId: active, activeGeneration } });",
-    "to": "  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()) });"
+    "from": "  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),\n    expected: { activeVersionId: active, activeGeneration },\n    readExtrasMode: async () => (await admin.database().ref(require('../catalog/extras-intake').PATH).once('value')).val() });",
+    "to": "  const res = await rollbackVersion(db, RID, TO, { mirror: makeRtdbMirror(admin.database()),\n    readExtrasMode: async () => (await admin.database().ref(require('../catalog/extras-intake').PATH).once('value')).val() });"
   },
   {
     "id": "task7-14",

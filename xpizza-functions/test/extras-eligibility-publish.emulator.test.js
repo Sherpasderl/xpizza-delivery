@@ -5,7 +5,11 @@
 //     rice_03 has the proteins, rice_02 does not;
 //   • getPublicMenu's body carries `extras_eligibility` = { version, deny } for that version, exactly the document;
 //   • a version WITHOUT the document (pre-feature) serves NO field — never an empty, "unrestricted" one;
-//   • deleteVersion removes the document with its version.
+//   • deleteVersion removes the document with its version;
+//   • a READ ERROR or a MALFORMED document is never "absent": getPublicMenu fails public_menu_unavailable (retryable, never
+//     cached) instead of serving a body that looks pre-feature (codex stage-2 r1 P1-3);
+//   • rollbackVersion refuses a pre-baseline (document-less) target unless the extras mode is affirmatively off, and a
+//     caller that omits the mode reader is refused, not waved through (codex stage-2 r1 P1-2).
 // Run: npm run test:extras-eligibility-publish
 require('./_emulator-required')('firestore');
 
@@ -21,6 +25,8 @@ const { buildSourceFromCode } = require('../tools/seed-source-store');
 const { getActiveVersionId } = require('../catalog/catalog-firestore');
 const { buildPublicMenu } = require('../catalog/public-menu');
 const { eligibilityRefOf, readEligibility, _cache } = require('../catalog/extras-eligibility-store');
+const { rollbackVersion } = require('../catalog/catalog-publish');
+const { getActivePointer } = require('../catalog/catalog-firestore');
 const { projectEligibility, publicDeny } = require('../catalog/extras-eligibility');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -80,6 +86,47 @@ const deps = { known: new Set(['x_pizza', 'la_musa']), isActive: async () => tru
     await deleteVersion(db, rid, before);
     assert.ok(!(await eligibilityRefOf(db, rid, before).get()).exists, 'deleteVersion removed the eligibility document');
     ok('deleteVersion removes the eligibility document with its version');
+  }
+  // a READ ERROR / a MALFORMED document is not absence: the menu fails retryably, never serves a pre-feature-looking body
+  for (const rid of ['x_pizza', 'la_musa']) {
+    const failing = async () => { throw new Error('UNAVAILABLE: injected eligibility read error'); };
+    await assert.rejects(buildPublicMenu(db, rid, { ...deps, readEligibility: failing }), (e) => e.code === 'public_menu_unavailable', `🔴 ${rid}: a read error fails the menu (public_menu_unavailable)`);
+    const vid = await getActiveVersionId(db, rid);
+    await eligibilityRefOf(db, rid, vid).set({ version: 1, projection: [], public_deny: {} });   // exists, but not a v1 document
+    _cache.clear();
+    await assert.rejects(readEligibility(db, rid, vid), /eligibility_malformed/, `${rid}: a malformed document throws, it is not absent`);
+    _cache.clear();
+    await assert.rejects(buildPublicMenu(db, rid, deps), (e) => e.code === 'public_menu_unavailable', `🔴 ${rid}: a malformed document fails the menu`);
+    await eligibilityRefOf(db, rid, vid).delete(); _cache.clear();   // back to a confirmed absence
+    const pub = await buildPublicMenu(db, rid, deps);
+    assert.ok(!Object.prototype.hasOwnProperty.call(pub.body, 'extras_eligibility'), `${rid}: premise — a CONFIRMED absence still serves the legacy body`);
+  }
+  ok('a read error or a malformed document fails getPublicMenu (public_menu_unavailable, retryable) — only a confirmed absence serves the body without the field');
+
+  // ROLLBACK to a pre-baseline (document-less) target: refused unless the mode is affirmatively off (§4)
+  {
+    const rid = 'la_musa';
+    const pre = await getActiveVersionId(db, rid);   // its document was deleted above: a pre-baseline version
+    _cache.clear();
+    assert.strictEqual(await readEligibility(db, rid, pre), null, 'premise — the target has no document');
+    const { input } = buildPublishCandidate(rid, { activeVersionId: pre }, { source_sha: 'eep-post' });
+    await publishVersion(db, rid, input, { expected: { activeVersionId: pre } });
+    const post = await getActiveVersionId(db, rid);
+    assert.ok((await eligibilityRefOf(db, rid, post).get()).exists, 'premise — the new active version has its document');
+    const fence = async () => ({ activeVersionId: (await getActivePointer(db, rid)).version });
+    const mode = (v) => async () => v;
+    for (const [label, reader, code] of [['shadow', mode('shadow'), 'rollback_pre_baseline_while_non_off'], ['enforce', mode('enforce'), 'rollback_pre_baseline_while_non_off'],
+      ['unreadable', async () => { throw new Error('UNAVAILABLE'); }, 'rollback_extras_mode_unknown'], ['malformed', mode('ENFORCE!'), 'rollback_extras_mode_unknown'], ['omitted', undefined, 'rollback_extras_mode_unconfirmed']]) {
+      await assert.rejects(rollbackVersion(db, rid, pre, { expected: await fence(), readExtrasMode: reader }), (e) => e.code === code, `🔴 mode ${label}: the pre-baseline rollback is refused (${code})`);
+      assert.strictEqual(await getActiveVersionId(db, rid), post, `🔴 mode ${label}: the pointer did not move`);
+    }
+    // affirmatively off (explicit 'off', or a successfully-read ABSENT node) → allowed
+    await rollbackVersion(db, rid, pre, { expected: await fence(), readExtrasMode: mode(null) });
+    assert.strictEqual(await getActiveVersionId(db, rid), pre, 'an absent (= off) mode allows the pre-baseline rollback');
+    // a target WITH its document → allowed under any mode
+    await rollbackVersion(db, rid, post, { expected: await fence(), readExtrasMode: mode('enforce') });
+    assert.strictEqual(await getActiveVersionId(db, rid), post, 'a post-baseline target is allowed under enforce');
+    ok('rollbackVersion: a pre-baseline target is refused under shadow / enforce / an unreadable or malformed mode / an omitted reader (pointer unmoved); allowed when off (absent); a post-baseline target is allowed under enforce');
   }
   FINISHED = true;
   console.log(`\nextras-eligibility-publish(emulator): OK (${n})`);
