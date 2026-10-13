@@ -11419,7 +11419,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
      "text": "if (!newDriverId) return;",
-     "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+     "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
     },
     {
      "kind": "S",
