@@ -1,0 +1,401 @@
+{
+ "_doc": "R3 P1-b — REVIEWED scenario paths (contract/scenario-state.js). Each P1 scenario: constants (fulfilment, payment class, account, redemption, auto-assign …) and its ordered path of contract EFFECTS, an LP marked as [effect, lp] where it is observed. The vector at an LP is the fold of the effects up to it. Source: PLAN-R3-contract-tests.md scenario table (S1, S1t, S1a, S2, S3, S4, S13, S14, S17) + contract/matrix-spec.json scenarios (LPs).",
+ "defaultBrands": [
+  "x_pizza",
+  "la_musa"
+ ],
+ "defaults": {
+  "account": "guest",
+  "redemption": false,
+  "autoAssign": false,
+  "scheduled": false,
+  "cancelled": false,
+  "inbound": false,
+  "extras": false,
+  "reorder": false,
+  "restore": false,
+  "anotherOrder": false,
+  "sheetEdit": false,
+  "otp": false,
+  "refund": false
+ },
+ "scenarios": {
+  "S1": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    [
+     "kitchenStart",
+     "preparing"
+    ],
+    [
+     "kitchenReady",
+     "ready"
+    ],
+    [
+     "assign",
+     "assigned"
+    ],
+    [
+     "pickupComplete",
+     "out_for_delivery"
+    ],
+    [
+     "completeDelivery",
+     "delivered"
+    ],
+    [
+     "cuadre",
+     "cuadre"
+    ]
+   ]
+  },
+  "S1t-a": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash"
+   },
+   "path": [
+    "create",
+    "kitchenStart",
+    "kitchenReady",
+    [
+     "assign",
+     "assigned"
+    ],
+    [
+     "reassign",
+     "reassigned"
+    ],
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S1t-b": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash"
+   },
+   "path": [
+    "create",
+    "kitchenStart",
+    "kitchenReady",
+    [
+     "assign",
+     "assigned"
+    ],
+    [
+     "reassign",
+     "reassigned"
+    ],
+    "unassign",
+    [
+     "manualTakeover",
+     "takeover"
+    ],
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S1t-c": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash"
+   },
+   "path": [
+    "create",
+    "kitchenStart",
+    "kitchenReady",
+    [
+     "assign",
+     "assigned"
+    ],
+    [
+     "unassign",
+     "unassigned"
+    ],
+    "manualTakeover",
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S1a-on": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash",
+    "autoAssign": true
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    [
+     "autoAssign",
+     "assigned"
+    ]
+   ]
+  },
+  "S1a-off": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash",
+    "autoAssign": false
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ]
+   ]
+  },
+  "S2": {
+   "constants": {
+    "fulfil": "pickup",
+    "pay": "cash"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    [
+     "kitchenReady",
+     "ready"
+    ],
+    [
+     "completePickup",
+     "completed"
+    ]
+   ]
+  },
+  "S3": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "card_delivery"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    "kitchenReady",
+    "assign",
+    [
+     "pickupComplete",
+     "out_for_delivery"
+    ],
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S4": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "free",
+    "account": "signed_in",
+    "redemption": true
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    "kitchenReady",
+    "assign",
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S13": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash"
+   },
+   "path": [
+    "create",
+    "kitchenStart",
+    "kitchenReady",
+    [
+     "assign",
+     "assigned_a"
+    ],
+    [
+     "reassign",
+     "assigned_b"
+    ],
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S14-omitted": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "empty"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    "kitchenReady",
+    "assign",
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S14-empty": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "empty"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    "kitchenReady",
+    "assign",
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S14-efectivo": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "empty"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    "kitchenReady",
+    "assign",
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S14-bitcoin": {
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "empty"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    "kitchenReady",
+    "assign",
+    "pickupComplete",
+    [
+     "completeDelivery",
+     "delivered"
+    ]
+   ]
+  },
+  "S17d": {
+   "brands": [
+    "r3_synth"
+   ],
+   "constants": {
+    "fulfil": "delivery",
+    "pay": "cash"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    [
+     "kitchenStart",
+     "preparing"
+    ],
+    [
+     "kitchenReady",
+     "ready"
+    ],
+    [
+     "assign",
+     "assigned"
+    ],
+    [
+     "pickupComplete",
+     "out_for_delivery"
+    ],
+    [
+     "completeDelivery",
+     "delivered"
+    ],
+    [
+     "cuadre",
+     "cuadre"
+    ]
+   ]
+  },
+  "S17p": {
+   "brands": [
+    "r3_synth"
+   ],
+   "constants": {
+    "fulfil": "pickup",
+    "pay": "cash"
+   },
+   "path": [
+    [
+     "create",
+     "new"
+    ],
+    "kitchenStart",
+    [
+     "kitchenReady",
+     "ready"
+    ],
+    [
+     "completePickup",
+     "completed"
+    ]
+   ]
+  }
+ }
+}

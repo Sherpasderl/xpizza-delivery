@@ -247,10 +247,16 @@ try {
   const ga = gateA({ scenarios: SLICE.scenarios, brands: SLICE.brands, lps: SLICE.lps });
   const cells = ga.cells.filter((c) => SLICE.readers.includes(c.R));
   const registry = JSON.parse(fsx.readFileSync(new URL('./outputs/registry.json', import.meta.url), 'utf8'));
-  const applicability = AP.load();
+  const applicability = require('./region-applicability').load();   // P1-b: the region-level, derived model
   const evidence = { intent, persisted, steps, routed: R.log, kdsActions: kdsActions(), kdsHttp, kdsTickets };
+  // P1-b: the run's CONTRACT state is the scenario vector, ASSERTED from evidence (persisted order, routed calls, the KDS
+  // recorder) — never from fixture intent alone; a field this LP cannot evidence is reported UNKNOWN (an exclusion that
+  // depends on it would never apply)
+  { const SS = require('./scenario-state'); const vec = SS.vectorOf('S1', 'x_pizza', 'new'); const vr = SS.assertVector(vec, evidence);
+    assert.deepStrictEqual(vr.failed, [], FAIL('vector', `the S1 / x_pizza / new state vector disagrees with the run's evidence on: ${vr.failed.join(', ')}`));
+    ok(`the S1 / x_pizza / new state vector is asserted from evidence: ${vr.checked.length} fields checked (${vr.checked.join(', ')})${vr.unknown.length ? `; unknown at this LP: ${vr.unknown.join(', ')}` : ''}`); }
   const ctx = { brandBoard: 'x_pizza', spec: JSON.parse(fsx.readFileSync(new URL('./matrix-spec.json', import.meta.url), 'utf8')).displayCells };
-  const run = (sn, ev = evidence) => runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc: SCEN, evidence: ev, snapshots: sn, facts, ctx, observables: OBSERVABLES });
+  const run = (sn, ev = evidence) => runGateA({ cells, registry, applicability, regionsDoc, evidence: ev, snapshots: sn, facts, ctx, observables: OBSERVABLES });
   const res = run(snaps);
   PH.compare = Date.now() - t0;
   if (res.red.length) console.error(res.red.map(formatFailure).join('\n'));
@@ -280,7 +286,7 @@ try {
     const redRegions = new Set(neg.red.map((x) => x.region));
     assert.ok(neg.red.some((x) => x.fact === 'MONEY' && x.observable === 'form.reviewSheet') && [...redRegions].every((r) => registry.regions[r].observable === 'form.reviewSheet') && neg.results.filter((x) => x.observable === 'form.cartPill').every((x) => x.outcome === 'pass'), FAIL('negative', `pill-correct / sheet-wrong was not RED on exactly the sheet (${JSON.stringify([...redRegions])})`));
     const neg2 = run(snaps, { ...evidence, kdsActions: ['click:div'] });
-    assert.ok(neg2.red.length > 0 && neg2.red.every((x) => /UNMET/.test(x.detail) && /no-kitchen-action/.test(x.detail)), FAIL('negative', 'an unmet precondition (a kitchen tap) was not RED'));
+    assert.ok(neg2.red.length > 0 && neg2.red.every((x) => /UNMET in this run: the run's evidence contradicts the scenario vector on .*kitchen/.test(x.detail)), FAIL('negative', `a kitchen tap (the vector says kitchen none) did not turn exactly the kitchen-dependent exclusions RED: ${JSON.stringify(neg2.red.slice(0, 2).map((x) => x.detail))}`));
     const neg3 = run({ ...snaps, 'wa.orderReceived': { sends: [], exposed: { ok: false, detail: 'no message' } } });
     assert.ok(neg3.red.some((x) => x.observable === 'wa.orderReceived'), FAIL('negative', 'a missing WhatsApp send was not RED'));
     // codex r1 P1-5: absences reject a WRONG value too
@@ -293,7 +299,7 @@ try {
     // codex r1 P1-9: the sheet captured on the LIVE page while closed
     const neg6 = run({ ...snaps, 'form.reviewSheet': negSnaps.closedSheet });
     assert.ok(neg6.red.length > 0 && neg6.red.every((x) => x.observable === 'form.reviewSheet' && /not EXPOSED/.test(x.detail)), FAIL('negative', 'the cart sheet captured while CLOSED was not RED'));
-    ok(`negatives on this run's snapshots: pill right + sheet total wrong → RED on exactly the sheet (${neg.red.length}); a kitchen tap → every no-kitchen-action exclusion RED (${neg2.red.length}); no send → RED (${neg3.red.length}); a WRONG number / address in the message → NUM + PLACE RED; a WRONG address on the ticket → PLACE RED; the sheet captured CLOSED on the live page → RED (${neg6.red.length})`);
+    ok(`negatives on this run's snapshots: pill right + sheet total wrong → RED on exactly the sheet (${neg.red.length}); a kitchen tap → every kitchen-dependent derived exclusion RED (vector contradicted) (${neg2.red.length}); no send → RED (${neg3.red.length}); a WRONG number / address in the message → NUM + PLACE RED; a WRONG address on the ticket → PLACE RED; the sheet captured CLOSED on the live page → RED (${neg6.red.length})`);
   }
 
   // ── GATE B: the site-hit ratchet ──

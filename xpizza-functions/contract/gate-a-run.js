@@ -13,12 +13,17 @@
 const fs = require('fs');
 const path = require('path');
 const AP = require('./applicability');
+const RA = require('./region-applicability');
+const SS = require('./scenario-state');
 
 const PINS = path.join(__dirname, 'pins.json');
 const pinKey = (obs, fact, c) => `${obs}|${fact}|${c.S}|${c.brand}|${c.lp}`;
 
-function runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc, evidence, snapshots, facts, ctx, observables, pins = JSON.parse(fs.readFileSync(PINS, 'utf8')).pins }) {
-  const stale = new Set(AP.staleness(applicability, regionsDoc, scenariosDoc).map((p) => p.slice(0, p.indexOf(': '))));
+// applicability = the REVIEWED region-level doc (contract/region-applicability.json); paths = the scenario paths (P1-b)
+function runGateA({ cells, registry, applicability, regionsDoc, paths = SS.load(), evidence, snapshots, facts, ctx, observables, pins = JSON.parse(fs.readFileSync(PINS, 'utf8')).pins }) {
+  const probs = RA.problems(applicability, regionsDoc, paths);
+  const staleRegion = new Set(probs.filter((p) => !/^scenario /.test(p)).map((p) => p.slice(0, p.indexOf(': '))));
+  const staleScenario = new Set(probs.filter((p) => /^scenario /.test(p)).map((p) => p.split(' ')[1].replace(/:$/, '')));
   const cmp = new Map(); const results = []; const usedPins = new Set(); const deferred = [];
   const compare = (obs, fact) => {
     const k = `${obs}|${fact}`;
@@ -34,13 +39,19 @@ function runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc, ev
   for (const c of cells) {
     const region = c.viaFrom || c.region;
     const base = { id: c.id, cell: c.cell, output: c.output, kind: c.kind, fact: c.fact, region: c.region, viaFrom: c.viaFrom, fromRegions: c.fromRegions || [c.viaFrom || c.region] };
-    const x = AP.exclusionFor(applicability, region, c);
-    if (x) {
-      const u = AP.unmet(x, evidence);
-      if (c.kind === 'absence' || c.kind === 'display') { deferred.push({ c, base, x, u, stale: stale.has(region) }); continue; }
-      if (stale.has(region)) { results.push({ ...base, outcome: 'RED', detail: `exclusion is STALE (source or scenario changed) — the cell is required again` }); continue; }
-      results.push(u.length ? { ...base, outcome: 'RED', detail: `exclusion precondition(s) UNMET in this run: ${u.join(', ')}` } : { ...base, outcome: 'excluded', preconditions: x.preconditions });
-      continue;
+    // P1-b: the DERIVED decision — the region's reviewed appliesWhen against the cell's scenario vector, then the run's
+    // evidence must ESTABLISH every field / context it depends on (unknown → required; contradicted → RED)
+    const st = RA.staticDecision(applicability, region, c, paths);
+    if (st.invalid) { results.push({ ...base, outcome: 'RED', detail: `applicability INVALID for this cell (${st.reason}) — never read as excluded` }); continue; }
+    if (st.excluded) {
+      const isStale = staleRegion.has(region) || staleScenario.has(c.S);
+      const rd = RA.runDecision(applicability, region, c, evidence, paths);
+      const u = rd.outcome === 'excluded' ? [] : [rd.reason];
+      if (c.kind === 'absence' || c.kind === 'display') { deferred.push({ c, base, x: { preconditions: st.used }, u, stale: isStale }); continue; }
+      if (isStale) { results.push({ ...base, outcome: 'RED', detail: `exclusion is STALE (source or scenario changed) — the cell is required again` }); continue; }
+      if (rd.outcome === 'contradicted') { results.push({ ...base, outcome: 'RED', detail: `exclusion precondition(s) UNMET in this run: ${rd.reason}` }); continue; }
+      if (rd.outcome === 'excluded') { results.push({ ...base, outcome: 'excluded', preconditions: [...st.used, ...(rd.context || [])] }); continue; }
+      // not established by this run → the cell is REQUIRED: fall through to the comparison (a pending region is RED)
     }
     const e = registry.regions[c.region];
     if (!e || e.status !== 'terminal') { results.push({ ...base, outcome: 'RED', detail: `region ${c.region} is ${e ? e.status : 'unregistered'} in an enforced slice (unknown applicability = required)` }); continue; }

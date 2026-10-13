@@ -1,120 +1,111 @@
 'use strict';
-// R3 P1 §3c — THE APPLICABILITY GUARD (static; npm test chain). Every reviewed exclusion (contract/output-applicability.json)
-// is bound to its current source (call-site text + enclosing census scope) and to its scenario definition; names only
-// CONTRACT preconditions; never waives an absence / display obligation; and agrees with gate B's evidence — an output
-// whose every region is excluded for a scenario was NOT reached by that scenario's run (contract/p1-hits.json).
+// R3 P1-b — THE APPLICABILITY GUARD (static; npm test chain) for the REGION-LEVEL, DERIVED model
+// (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). Every reviewed region entry is fresh (call site, scope,
+// guard / dispatch source, scenario bindings), well-formed (declared fields, in-domain values, contract authority, why
+// false excludes) and its reviewed cases evaluate as stated; the derived exclusions at S1 / x_pizza / new are EXACTLY the
+// frozen P1-a 66; no absence / display obligation is waived anywhere in P1; gate B agrees.
 // Run: node contract/applicability.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const AP = require('./applicability');
+const RA = require('./region-applicability');
+const SS = require('./scenario-state');
 const { gateA } = require('./gate-a');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FAIL = (m) => `🔴 R3-APPLICABILITY ${m}`;
 const load = (f) => JSON.parse(fs.readFileSync(path.join(__dirname, f), 'utf8'));
-const doc = AP.load(); const regionsDoc = load('regions.json'); const scen = load('p1-scenarios.json'); const registry = load('outputs/registry.json');
+const doc = RA.load(); const regionsDoc = load('regions.json'); const registry = load('outputs/registry.json'); const paths = SS.load();
+const P1 = ['S1', 'S1t-a', 'S1t-b', 'S1t-c', 'S1a-on', 'S1a-off', 'S2', 'S3', 'S4', 'S13', 'S14-omitted', 'S14-empty', 'S14-efectivo', 'S14-bitcoin', 'S17d', 'S17p'];
 
-// 1. every binding and scenario hash is current
-const st = AP.staleness(doc, regionsDoc, scen);
-assert.deepStrictEqual(st, [], FAIL(`stale / malformed exclusion(s):\n  ${st.slice(0, 10).join('\n  ')}`));
-ok(`${doc.exclusions.length} exclusions: each bound to its call-site text + census scope (sha256) and its scenario definition — all current`);
+// 1. fresh + well-formed + reviewed cases hold
+const pr = RA.problems(doc, regionsDoc, paths);
+assert.deepStrictEqual(pr, [], FAIL(`region applicability problems:\n  ${pr.slice(0, 12).join('\n  ')}`));
+const entries = Object.entries(doc.regions);
+const nCases = entries.reduce((a, [, e]) => a + (e.cases.required || []).length + (e.cases.excluded || []).length, 0);
+ok(`${entries.length} reviewed region entries: call site / scope / guard bindings fresh, ${Object.keys(doc.scenarioBinding).length} scenario bindings current, declared fields only, contract authority + why-false on each; ${nCases} reviewed cases evaluate as stated`);
 
-// 2. well-formed: a real region, not terminal/via (a reached region is compared, never excluded), contract preconditions only
-const byId = new Map(regionsDoc.regions.map((r) => [r.region, r]));
-const dup = new Set(); const p2 = [];
-for (const x of doc.exclusions) {
-  const k = `${x.region}|${x.scope.S}|${x.scope.brands}|${x.scope.lps}`; if (dup.has(k)) p2.push(`${x.region}: duplicate`); dup.add(k);
-  if (!byId.has(x.region)) p2.push(`${x.region}: not a region`);
-  const e = registry.regions[x.region]; if (e && e.status !== 'pending') p2.push(`${x.region}: is ${e.status} in the registry — a compared region cannot also be excluded`);
-  for (const pc of x.preconditions) if (!AP.PRECONDITIONS[pc] || !/§|scenario definition|LP/.test(AP.PRECONDITIONS[pc].contract)) p2.push(`${x.region}: precondition ${pc} has no contract authority`);
+// 2. each entry's region is uncompared (pending) — a compared region is never excluded
+const compared = entries.filter(([id]) => registry.regions[id] && registry.regions[id].status !== 'pending').map(([id]) => id);
+assert.deepStrictEqual(compared, [], FAIL(`entries on terminal / via regions: ${compared.join(', ')}`));
+ok('every entry is on an uncompared (pending) region');
+
+// 3. THE REGRESSION LOCK — exact identities, at the original context
+const frozen = load('p1a-frozen-exclusions.json');
+const s1 = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'] }).cells;
+const derived = [...new Set(RA.derive(doc, s1, paths).map((x) => x.region))].sort();
+assert.deepStrictEqual(derived, [...frozen.regions].sort(), FAIL(`derived exclusions at ${frozen.context} ≠ the frozen P1-a 66 (${frozen.frozenAt}):\n  missing ${JSON.stringify(frozen.regions.filter((r) => !derived.includes(r)))}\n  extra ${JSON.stringify(derived.filter((r) => !frozen.regions.includes(r)))}`));
+ok(`regression lock: the derived exclusions at ${frozen.context} are EXACTLY the ${frozen.regions.length} P1-a regions frozen at ${frozen.frozenAt}`);
+
+// 4. no absence / display obligation is waived anywhere in P1 (the (cell, output) terminal rule)
+const p1cells = gateA({ scenarios: P1 }).cells;
+const w = RA.waivedObligations(doc, p1cells, paths);
+assert.deepStrictEqual(w, [], FAIL(w.slice(0, 10).join('\n  ')));
+const derivedP1 = RA.derive(doc, p1cells, paths);
+ok(`no absence / display obligation is waived across all ${p1cells.length} P1 cells; ${derivedP1.length} cells statically excluded by ${new Set(derivedP1.map((x) => x.region)).size} reviewed regions (each still needs the run's evidence)`);
+
+// 5. gate B agrees: an output whose every region is excluded at S1 / x_pizza / new had no site hit in S1's contexts
+{
+  const hits = load('p1-hits.json').contexts; const norm = (s) => s.replace(/<script@\d+>/, '');
+  const reached = new Set([...(hits['S1/x_pizza/new'] || []), ...(hits['S1/x_pizza/form'] || [])].map((id) => norm(id.split('#').slice(0, 2).join('#'))));
+  const ex = new Set(derived); const outs = new Set(regionsDoc.regions.filter((r) => ex.has(r.region)).map((r) => r.output));
+  const contra = [...outs].filter((o) => regionsDoc.regions.filter((r) => r.output === o).every((r) => ex.has(r.region)) && reached.has(norm(o)));
+  assert.deepStrictEqual(contra, [], FAIL(`gate B contradicts: ${contra.join(', ')}`));
+  ok('gate B agrees: no output with every region excluded at S1 / x_pizza / new was reached by that run');
 }
-assert.deepStrictEqual(p2, [], FAIL(p2.join('\n  ')));
-ok(`each exclusion names a real, uncompared (pending) region and only preconditions with a contract authority (${Object.keys(AP.PRECONDITIONS).length} defined)`);
 
-// 3. no exclusion waives an absence / display obligation
-const scopes = [...new Set(doc.exclusions.map((x) => JSON.stringify(x.scope)))].map((s) => JSON.parse(s));
-const cells = scopes.flatMap((s) => gateA({ scenarios: s.S, brands: s.brands, lps: s.lps }).cells);
-const sh = AP.shadowsAssertion(doc, cells);
-assert.deepStrictEqual(sh, [], FAIL(sh.join('\n  ')));
-const dispCells = cells.filter((c) => c.kind === 'display' || c.kind === 'absence');
-ok(`no absence / display obligation is waived: ${dispCells.length} such cell-region(s) in scope, every obligation keeps ≥ 1 required region`);
-
-// 4. agreement with gate B: an output whose EVERY region is excluded for a scenario had NO site reached by that scenario
-const hits = load('p1-hits.json').contexts;
-const norm = (s) => s.replace(/<script@\d+>/, '');
-const fnOf = (id) => norm(id.split('#').slice(0, 2).join('#'));
-const reached = new Set(Object.values(hits).flat().map(fnOf));
-const p4 = [];
-for (const s of scopes) {
-  const exR = new Set(doc.exclusions.filter((x) => JSON.stringify(x.scope) === JSON.stringify(s)).map((x) => x.region));
-  const outs = new Set(regionsDoc.regions.filter((r) => exR.has(r.region)).map((r) => r.output));
-  for (const o of outs) {
-    const all = regionsDoc.regions.filter((r) => r.output === o);
-    if (all.every((r) => exR.has(r.region)) && reached.has(norm(o))) p4.push(`${o}: every region excluded for ${JSON.stringify(s)}, yet the run reached its sites (gate B) — the exclusion is contradicted`);
-  }
-}
-assert.deepStrictEqual(p4, [], FAIL(p4.join('\n  ')));
-ok('gate B agrees: no output with all regions excluded was reached by the scenario run');
-
-// negatives (in memory)
+// ── negatives (in memory) ──
 const clone = () => JSON.parse(JSON.stringify(doc));
-const x0 = doc.exclusions[0];
-{ const d = clone(); d.exclusions[0].bind.siteSha = AP.sha('changed text'); assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => p.startsWith(`${x0.region}: call-site text changed`)), FAIL('a changed call site was not stale')); }
-{ const d = clone(); d.exclusions[0].bind.scopeSha = AP.sha('changed scope'); assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => /scope .* changed/.test(p)), FAIL('a changed scope was not stale')); }
-{ const s2 = JSON.parse(JSON.stringify(scen)); s2.scenarios.S1.steps.push('form.another-order'); assert.ok(AP.staleness(doc, regionsDoc, s2).some((p) => /scenario S1 definition changed/.test(p)), FAIL('a changed scenario was not stale')); }
-{ const d = clone(); const gi = d.exclusions.findIndex((e) => e.guards.some((g) => g.kind === 'F')); const g = d.exclusions[gi].guards.find((x) => x.kind === 'F'); g.text = `${g.text} /*changed*/`; assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => p.startsWith(`${d.exclusions[gi].region}: guard text occurs 0×`)), FAIL('a changed guard source did not make the exclusion stale')); }
-{ const d = clone(); delete d.exclusions[0].guards; assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => /needs at least one GUARD/.test(p)), FAIL('an exclusion without a guard binding passed')); }
-{ // codex P1-a r1 P1-6: RENDERERS.orderReceived re-pointed at renderPickupReceived → the pickup-body exclusion is stale
-  const x = doc.exclusions.find((e) => e.region === 'xpizza-functions/whatsapp.js#renderPickupReceived@self');
-  assert.ok(x, FAIL('no renderPickupReceived exclusion'));
+const [id0] = Object.keys(doc.regions);
+{ const d = clone(); d.regions[id0].bind.siteSha = AP.sha('changed'); assert.ok(RA.problems(d, regionsDoc, paths).some((p) => p.startsWith(`${id0}: its call site / scope changed`)), FAIL('a changed scope was not stale')); }
+{ const d = clone(); const k = Object.keys(d.regions).find((r) => d.regions[r].guards.some((g) => g.kind === 'F')); d.regions[k].guards.find((g) => g.kind === 'F').text += ' /*changed*/'; assert.ok(RA.problems(d, regionsDoc, paths).some((p) => p.startsWith(`${k}: guard text occurs 0×`)), FAIL('a changed guard source did not make the exclusion stale')); }
+{ // codex P1-a: RENDERERS.orderReceived → renderPickupReceived; and the dispatcher renderTemplate re-point
+  const e = doc.regions['xpizza-functions/whatsapp.js#renderPickupReceived@self'];
   const real = fs.readFileSync(path.join(__dirname, '..', 'whatsapp.js'), 'utf8');
-  const mutated = real.replace('orderReceived: renderOrderReceived, pickupReceived:', 'orderReceived: renderPickupReceived, pickupReceived:');
-  assert.ok(mutated !== real, FAIL('the RENDERERS probe text moved'));
-  const st = x.guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-functions/whatsapp.js' ? mutated : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
+  const st = e.guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-functions/whatsapp.js' ? real.replace('orderReceived: renderOrderReceived, pickupReceived:', 'orderReceived: renderPickupReceived, pickupReceived:') : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
+  const { sources } = require('./census'); const u = sources().find((x) => x.file === 'xpizza-functions/whatsapp.js');
+  const disp = e.guards.find((g) => g.kind === 'S' && g.scope === 'xpizza-functions/whatsapp.js#renderTemplate');
+  const st2 = disp && AP.guardStale(disp, { units: sources().map((x) => (x.file === u.file ? { ...u, code: u.code.replace('const r = RENDERERS[msg.name];', 'const r = RENDERERS.pickupReceived;') } : x)) });
   assert.ok(st.length > 0, FAIL('re-pointing RENDERERS.orderReceived did not invalidate the renderPickupReceived exclusion'));
-  // codex r2 P1-4: re-pointing the DISPATCHER (renderTemplate's selection → RENDERERS.pickupReceived) invalidates it too
-  const { sources } = require('./census');
-  const u = sources().find((x) => x.file === 'xpizza-functions/whatsapp.js');
-  const disp = x.guards.find((g) => g.kind === 'S' && g.scope === 'xpizza-functions/whatsapp.js#renderTemplate');
-  assert.ok(disp, FAIL('the renderPickupReceived exclusion does not bind the dispatcher whatsapp.js#renderTemplate'));
-  const mutatedU = { ...u, code: u.code.replace('const r = RENDERERS[msg.name];', 'const r = RENDERERS.pickupReceived;') };
-  assert.ok(mutatedU.code !== u.code, FAIL('the dispatcher probe text moved'));
-  const st2 = AP.guardStale(disp, { units: sources().map((x) => (x.file === u.file ? mutatedU : x)) });
   assert.ok(st2, FAIL('re-pointing renderTemplate\'s selection did not invalidate the renderPickupReceived exclusion'));
 }
-ok('negative: a stale exclusion (call-site text / scope / scenario definition / GUARD changed — codex\'s RENDERERS table AND dispatcher re-points) → stale → the cell is required again; an exclusion without a guard is malformed');
-{
-  const ev = { intent: { fulfil: 'delivery', pay: 'cash' }, persisted: { order_type: 'pickup', payment_method: 'cash', status: 'new' }, steps: [], routed: [], kdsActions: [], kdsHttp: [], kdsTickets: 1 };
-  const x = { preconditions: ['delivery', 'status-new'] };
-  assert.deepStrictEqual(AP.unmet(x, ev), ['delivery'], FAIL('an unmet precondition was not reported'));
-  assert.deepStrictEqual(AP.unmet({ preconditions: ['no-kitchen-action'] }, { ...ev, kdsActions: ['kds.tap'] }), ['no-kitchen-action'], FAIL('a kitchen tap did not unmeet no-kitchen-action'));
-  // int7 (picker extras d43a262): a dish-detail CTA / launcher add in the scenario unmeets no-detail-cta; S1's own steps meet it
-  assert.deepStrictEqual(AP.unmet({ preconditions: ['no-detail-cta'] }, { ...ev, steps: ['form.add-dish', 'form.detail-cta'] }), ['no-detail-cta'], FAIL('a detail-CTA tap did not unmeet no-detail-cta'));
-  assert.deepStrictEqual(AP.unmet({ preconditions: ['no-detail-cta'] }, { ...ev, steps: scen.scenarios.S1.steps }), [], FAIL('S1\'s own steps did not meet no-detail-cta'));
+ok('negative: a changed call site / guard text, the RENDERERS table re-point and the renderTemplate dispatcher re-point → stale → required + RED');
+{ // scenario invalidation: a changed scenario definition re-opens its exclusions EVEN IF the derived set is unchanged
+  const p2 = JSON.parse(JSON.stringify(paths)); p2.scenarios.S3.path = [...p2.scenarios.S3.path]; p2.scenarios.S3.path.splice(1, 0, 'noop');
+  const before = RA.derive(doc, p1cells.filter((c) => c.S === 'S3'), paths).length; const after = RA.derive(doc, p1cells.filter((c) => c.S === 'S3'), p2).length;
+  assert.ok(before === after && RA.problems(doc, regionsDoc, p2).some((p) => /^scenario S3: its definition \/ LPs \/ vectors changed/.test(p)), FAIL('a scenario definition change (derived set unchanged) did not invalidate its exclusions'));
 }
-{ // int7: re-pointing the detail modal's CTA (its onclick no longer the reviewed detailCtaTap button) invalidates the exclusion
-  const x = doc.exclusions.find((e) => /#detailCtaTap$/.test(e.region));
-  assert.ok(x && x.preconditions.includes('no-detail-cta'), FAIL('no detailCtaTap exclusion on no-detail-cta'));
-  const real = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-orders', 'index.html'), 'utf8');
-  const mutated = real.replace('id="detail-cta" onclick="detailCtaTap()"', 'id="detail-cta" onclick="openCartReview()"');
-  assert.ok(mutated !== real, FAIL('the detail-cta probe text moved'));
-  const st = x.guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-orders/index.html' ? mutated : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
-  assert.ok(st.length > 0, FAIL('re-pointing the detail CTA did not invalidate the detailCtaTap exclusion'));
+ok('negative: a scenario definition change re-opens every exclusion in it (RED) even when the derived set is unchanged');
+{ // invalid never reads as false
+  const d = clone(); d.regions[id0].appliesWhenAny = [{ colour: ['red'] }];
+  assert.ok(RA.problems(d, regionsDoc, paths).some((p) => /undeclared field colour/.test(p)), FAIL('an undeclared field passed'));
+  const st = RA.staticDecision(d, id0, { S: 'S1', brand: 'x_pizza', lp: 'new' }, paths);
+  assert.ok(st.invalid && !st.excluded, FAIL('an invalid condition was read as an exclusion'));
+  const p2 = JSON.parse(JSON.stringify(paths)); p2.defaults.inbound = 'maybe';
+  const st2 = RA.staticDecision(doc, Object.keys(doc.regions).find((r) => doc.regions[r].group === 'inbound'), { S: 'S1', brand: 'x_pizza', lp: 'new' }, p2);
+  assert.ok(st2.invalid && !st2.excluded, FAIL('an out-of-domain vector value was read as false'));
 }
-ok('negative: an unmet declared precondition (a pickup order / a kitchen tap / a detail-CTA tap) → reported unmet (RED in the run); a re-pointed detail CTA → the detailCtaTap exclusion is stale');
-{
-  const d = clone(); const disp = dispCells[0]; assert.ok(disp, FAIL('no display cell in scope for the negative'));
-  for (const c of dispCells.filter((y) => y.cell === disp.cell)) d.exclusions.push({ region: c.viaFrom || c.region, scope: { S: [c.S], brands: [c.brand], lps: [c.lp] }, preconditions: ['delivery'], reason: 'negative', bind: {}, scenarioSha: {} });
-  assert.ok(AP.shadowsAssertion(d, cells).some((p) => p.startsWith(disp.cell)), FAIL('an absence / display obligation expressed as an exclusion passed'));
+ok('negative: an undeclared field, or a vector value outside its domain, is INVALID — never read as false / excluded');
+{ // display / absence waiver
+  const d = clone(); const disp = p1cells.filter((c) => c.kind === 'display' && c.S === 'S1' && c.brand === 'x_pizza' && c.lp === 'new');
+  for (const c of disp) { const r = c.viaFrom || c.region; d.regions[r] = { ...doc.regions[id0], appliesWhenAny: [{ fulfil: ['pickup'] }] }; }
+  assert.ok(RA.waivedObligations(d, p1cells, paths).some((p) => /DISPLAY:envio_gratis/.test(p)), FAIL('an absence / display obligation expressed as an exclusion passed'));
 }
-{ // codex r1 P1-7: another OUTPUT's surviving region cannot keep an obligation alive — exclude every renderStage2Summary
-  // region of the R14 Envío Gratis obligation; the freeDeliveryRowHTML regions of other cells do not discharge it
-  const d = clone(); const ob = dispCells.filter((c) => /R14:DISPLAY/.test(c.cell) && /renderStage2Summary$/.test(c.output));
-  assert.ok(ob.length > 0, FAIL('no R14 display obligation on renderStage2Summary in scope'));
-  for (const c of ob) d.exclusions.push({ region: c.viaFrom || c.region, scope: { S: [c.S], brands: [c.brand], lps: [c.lp] }, preconditions: ['delivery'], reason: 'negative', bind: {}, scenarioSha: {} });
-  assert.ok(AP.shadowsAssertion(d, cells).some((p) => p.startsWith(`${ob[0].cell}|${ob[0].output}`)), FAIL('a display obligation of one output survived on another output\'s region'));
+ok('negative: a display obligation whose every region is excluded → RED');
+{ // a reviewed case that no longer evaluates as stated
+  const k = Object.keys(doc.regions).find((r) => (doc.regions[r].cases.required || []).length);
+  const d = clone(); d.regions[k].cases.excluded.push(d.regions[k].cases.required[0]);
+  assert.ok(RA.problems(d, regionsDoc, paths).some((p) => /reviewed EXCLUDED case .* evaluates as applies/.test(p)), FAIL('a mis-stated reviewed case passed'));
 }
-ok('negative: a display obligation expressed as an exclusion (every region of it — of its OWN output — excluded) → RED, even while another output keeps regions');
-
+ok('negative: a reviewed case that does not evaluate as stated → RED');
+{ // run evidence: established → excluded; unknown → required; contradicted → RED-worthy
+  const ex = 'xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady';
+  const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' };
+  const evOk = { persisted: { restaurant_id: 'x_pizza', order_type: 'delivery', payment_method: 'cash', status: 'new' }, kdsActions: [], routed: [], steps: [] };
+  assert.strictEqual(RA.runDecision(doc, ex, cell, evOk, paths).outcome, 'excluded', FAIL('an established exclusion did not apply'));
+  assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, kdsActions: undefined }, paths).outcome, 'required', FAIL('an unestablished field did not keep the cell required'));
+  assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, persisted: { ...evOk.persisted, order_type: 'pickup' } }, paths).outcome, 'contradicted', FAIL('contradicting evidence was not reported'));
+}
+ok('run evidence: established → excluded; a field this run cannot establish → the cell stays REQUIRED; contradicting evidence → contradicted (RED)');
 console.log(`\nr3-applicability guard: OK (${n})`);

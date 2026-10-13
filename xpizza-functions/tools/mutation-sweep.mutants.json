@@ -12081,12 +12081,13 @@
   {
     "id": "r3p1-08",
     "slice": "r3p1",
-    "file": "contract/gate-a-run.js",
-    "from": "      const u = AP.unmet(x, evidence);\n      if (c.kind === 'absence' || c.kind === 'display')",
-    "to": "      const u = [];\n      if (c.kind === 'absence' || c.kind === 'display')",
-    "label": "an exclusion applies without asserting its contract preconditions in the run",
+    "file": "contract/region-applicability.js",
+    "from": "  const contradicted = st.used.filter((f) => vr.failed.includes(f));\n  if (contradicted.length) return { outcome: 'contradicted', reason: `the run's evidence contradicts the scenario vector on ${contradicted.join(', ')}` };\n  const unk = st.used.filter((f) => !vr.checked.includes(f));",
+    "to": "  const contradicted = [];\n  if (contradicted.length) return { outcome: 'contradicted', reason: `the run's evidence contradicts the scenario vector on ${contradicted.join(', ')}` };\n  const unk = [];",
+    "label": "a derived exclusion applies without the run ESTABLISHING its vector fields (no contradiction / unknown check)",
     "kills_with": [
-      "an exclusion whose precondition is unmet in the run"
+      "an exclusion whose precondition is unmet in the run",
+      "an unestablished vector field did not keep the cell required"
     ],
     "command": [
       "node",
@@ -12126,8 +12127,8 @@
   {
     "id": "r3p1-11",
     "slice": "r3p1",
-    "file": "contract/applicability.js",
-    "from": "    if (b.scopeSha !== x.bind.scopeSha) p.push(",
+    "file": "contract/region-applicability.js",
+    "from": "    if (!e.bind || b.siteSha !== e.bind.siteSha || b.scopeSha !== e.bind.scopeSha) p.push(",
     "to": "    if (false) p.push(",
     "label": "an exclusion stays valid after its enclosing scope changed",
     "kills_with": [
@@ -12141,9 +12142,9 @@
   {
     "id": "r3p1-12",
     "slice": "r3p1",
-    "file": "contract/applicability.js",
-    "from": "    if (excluded.length && excluded.length === cs.length) p.push(",
-    "to": "    if (false) p.push(",
+    "file": "contract/region-applicability.js",
+    "from": "  for (const [k, cs] of by) if (cs.every((c) => staticDecision(doc, c.viaFrom || c.region, c, paths).excluded)) p.push(",
+    "to": "  for (const [k, cs] of by) if (false) p.push(",
     "label": "the static guard lets an exclusion waive a display / absence obligation",
     "kills_with": [
       "an absence / display obligation expressed as an exclusion passed"
@@ -12360,9 +12361,9 @@
   {
     "id": "r3p1-26",
     "slice": "r3p1",
-    "file": "contract/applicability.js",
-    "from": "    for (const gb of x.guards || []) { const st = guardStale(gb); if (st) p.push(",
-    "to": "    for (const gb of []) { const st = guardStale(gb); if (st) p.push(",
+    "file": "contract/region-applicability.js",
+    "from": "    for (const g of e.guards || []) { const st = AP.guardStale(g); if (st) p.push(",
+    "to": "    for (const g of []) { const st = AP.guardStale(g); if (st) p.push(",
     "label": "applicability: a changed GUARD (dispatch source) no longer invalidates the exclusion",
     "kills_with": [
       "a changed guard source did not make the exclusion stale"
@@ -12855,6 +12856,51 @@
     "label": "int7: no-detail-cta is met by any run (a detail-CTA / launcher add in the scenario no longer unmeets it, so the detailCtaTap exclusion would hold)",
     "kills_with": [
       "a detail-CTA tap did not unmeet no-detail-cta"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-52",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "  for (const [S, h] of Object.entries(doc.scenarioBinding || {})) if (scenarioSha(S, paths) !== h) p.push(",
+    "to": "  for (const [S, h] of Object.entries(doc.scenarioBinding || {})) if (false) p.push(",
+    "label": "P1-b: a changed scenario definition no longer re-opens its derived exclusions",
+    "kills_with": [
+      "a scenario definition change (derived set unchanged) did not invalidate"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-53",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "    const dom = SS.FIELDS[f]; if (Array.isArray(dom) && !dom.includes(v[f])) return { result: 'invalid',",
+    "to": "    const dom = SS.FIELDS[f]; if (false) return { result: 'invalid',",
+    "label": "P1-b: a vector value outside its field's domain is read as a (false) condition — an exclusion",
+    "kills_with": [
+      "an out-of-domain vector value was read as false"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-55",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "    for (const k of cs.excluded || []) { const [S, brand, lp] = k.split('|'); let v; try { v = SS.vectorOf(S, brand, lp, paths); } catch (_) { p.push(`${id}: case ${k} is not a scenario LP`); continue; } if (evaluate(e, v).result !== 'excluded-by-vector') p.push(",
+    "to": "    for (const k of cs.excluded || []) { const [S, brand, lp] = k.split('|'); let v; try { v = SS.vectorOf(S, brand, lp, paths); } catch (_) { p.push(`${id}: case ${k} is not a scenario LP`); continue; } if (false) p.push(",
+    "label": "P1-b: a reviewed EXCLUDED case that no longer evaluates as excluded is accepted",
+    "kills_with": [
+      "a mis-stated reviewed case passed"
     ],
     "command": [
       "node",

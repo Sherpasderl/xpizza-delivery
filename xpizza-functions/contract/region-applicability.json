@@ -1,0 +1,2797 @@
+{
+ "_doc": "R3 P1-b — REVIEWED region-level applicability (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). One entry per reviewed region; every other region is REQUIRED. Migrated from P1-a's 66 explicit S1 / x_pizza / new exclusions (regression-locked against contract/p1a-frozen-exclusions.json), each re-expressed as WHEN the region applies over the scenario vector.",
+ "scenarioBinding": {
+  "S1": "529ddbe603dc2c4fef2477855a90dfc8b1986e513e88894b81ba4a6921e2a1d5",
+  "S1t-a": "04c6c65d0a94d6631741260fe583f9caaf073e0bfca6c27b0fb4c3a034a6fa20",
+  "S1t-b": "bfe25ff1089f10537cf64217e7390659bd314ece97990e8557978acb2060062c",
+  "S1t-c": "a88ae3e05088dd2485d775959f58b40430456a4f6326aa7ee91b550c6e76fa9e",
+  "S1a-on": "e1d394a7314e09269e2ad34c5f45c97873182692d01bea1d537b84389aad81c9",
+  "S1a-off": "0ec286d15c7de85369867f78ce836017d665ae975a14a4bc5267af1e9c0257aa",
+  "S2": "731e4f76d6073966ad2b2b47371792042f6bf99d0d6444d5211a3d0be0b33a22",
+  "S3": "db251fd0ac3437a3ce4f13e48fc5686f4c526949e8a392f6a90cee58eef978bf",
+  "S4": "afabb775396414405d2179b8cd7ea346f7be1b3410fe39aec041768ca8df81cc",
+  "S13": "6e55ba52239620ed97653d9c87e3db7eb39e084369d7c08e6eeb6efc0df902c2",
+  "S14-omitted": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
+  "S14-empty": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
+  "S14-efectivo": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
+  "S14-bitcoin": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
+  "S17d": "53134eaed6970af73aa4599cce868c83a4dd19a92aff4d4b3e4e58fd5dd019af",
+  "S17p": "9a0af80603c6f061e9813b2515984f8262f72e6762a2f13e356ec5a91caeb50a"
+ },
+ "regions": {
+  "xpizza-functions/index.js#onIncomingWhatsApp>anon@self": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound status lookup answers a message the CUSTOMER sends (an HTTP webhook)",
+   "whyFalseExcludes": "no inbound message → no lookup reply",
+   "bind": {
+    "site": "o => {",
+    "siteSha": "e11a39d909aa3289fa248d2557e3c320228524007c7c674b82f8f339152acc83",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp>anon",
+    "scopeSha": "e9677520cc4c1e52e91942e0de3eb4c5f64865f63874ed07381342c61e73a1d1"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/index.js#onIncomingWhatsApp@self": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound status lookup answers a message the CUSTOMER sends (an HTTP webhook)",
+   "whyFalseExcludes": "no inbound message → no lookup reply",
+   "bind": {
+    "site": "async (req, res) => {",
+    "siteSha": "479d04be0606d25cbfe9359aae247a83c172b9098027c8a1ac144fbef4eece81",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler": {
+   "group": "refund",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ],
+     "refund": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: a paid-after-close refund (and its notice) exists only for an ONLINE payment confirmed after close and refunded",
+   "whyFalseExcludes": "a non-online or non-refunded order has no refund notice",
+   "bind": {
+    "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}",
+    "siteSha": "89061984e006b424b14d86cb5113e77b3e903f44c68f838d2ec3e8cfb50b2800",
+    "scope": "xpizza-functions/index.js#refundReconciler",
+    "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler~2": {
+   "group": "refund",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ],
+     "refund": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: a paid-after-close refund (and its notice) exists only for an ONLINE payment confirmed after close and refunded",
+   "whyFalseExcludes": "a non-online or non-refunded order has no refund notice",
+   "bind": {
+    "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); } catch (_) {}",
+    "siteSha": "b380c4b5d362470c21afb81b9dc9ed29173bcf18033e59bf198a790a98ed025a",
+    "scope": "xpizza-functions/index.js#refundReconciler",
+    "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (!isPac) continue;",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (dec.action === 'finalize_refunded') {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize": {
+   "group": "refund",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ],
+     "refund": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: a paid-after-close refund (and its notice) exists only for an ONLINE payment confirmed after close and refunded",
+   "whyFalseExcludes": "a non-online or non-refunded order has no refund notice",
+   "bind": {
+    "site": "if (deps.sendPaidAfterCloseRefund) { try { await deps.sendPaidAfterCloseRefund(deps.db, { orderId, order }); } catch (_) {} }   // customer message ONLY after a confirmed refund",
+    "siteSha": "cc67f0f472791661b66c97555ab8d89917fbfff581d6be29a1fec4b3d78628a2",
+    "scope": "xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize",
+    "scopeSha": "244d16aa51ab4f62111c4e3025ec4db7d9878e28145c81c619ef213aab91ba2b"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize",
+     "text": "if (!(await needsPaidAfterCloseRefund(deps, order, now))) return false;",
+     "scopeSha": "244d16aa51ab4f62111c4e3025ec4db7d9878e28145c81c619ef213aab91ba2b"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/index.js#sendScheduledSlotClosed@xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize": {
+   "group": "slotClosed",
+   "appliesWhenAny": [
+    {
+     "scheduled": [
+      true
+     ],
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-SCHED / F-PAYLIFE: the slot-closed notice is for a SCHEDULED ONLINE order confirmed after its slot closed",
+   "whyFalseExcludes": "an ASAP or non-online order has no slot-closed notice",
+   "bind": {
+    "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
+    "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
+    "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
+    "scopeSha": "3c1d4305bf10885c4080a36ea24e4064239a8d99df11cf10d3bfbe2dec89c6f7"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
+     "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
+     "scopeSha": "3c1d4305bf10885c4080a36ea24e4064239a8d99df11cf10d3bfbe2dec89c6f7"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"scheduled\":[true],\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/paid-after-close-notify.js#needsRefundNotifyRecovery@xpizza-functions/index.js#refundReconciler": {
+   "group": "refund",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ],
+     "refund": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: a paid-after-close refund (and its notice) exists only for an ONLINE payment confirmed after close and refunded",
+   "whyFalseExcludes": "a non-online or non-refunded order has no refund notice",
+   "bind": {
+    "site": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
+    "siteSha": "cebf5cdd793a080b49b30e8c96304fa4acf25d87a8aed2618c4304063c654e83",
+    "scope": "xpizza-functions/index.js#refundReconciler",
+    "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/whatsapp.js#renderCancelled@self": {
+   "group": "cancelled",
+   "appliesWhenAny": [
+    {
+     "cancelled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-STATUS: cancellation copy / banners exist only for a cancelled order",
+   "whyFalseExcludes": "a live order shows no cancellation",
+   "bind": {
+    "site": "function renderCancelled({ orderId, restaurantId, brand }) {",
+    "siteSha": "49babcd2155dbe1f581ef3daa0eea71172d10a68dc3b3b619370a2ea0ee23d23",
+    "scope": "xpizza-functions/whatsapp.js#renderCancelled",
+    "scopeSha": "65b0c2549bc82054abc87acc61ffc5dd6b1c6334a659f02f8cabc87badc80fc3"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "} else if (after === 'cancelled') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "cancelled: renderCancelled, pickupReady: renderPickupReady, preparing: renderPreparing, otp: renderOtp,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplCancelled = (args) => defer('cancelled', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d676f5ce63445bf68d18ebe789964640dc0637d782b2f9f583a09fd409a79aab"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"cancelled\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/whatsapp.js#renderDelivered@self": {
+   "group": "delivered",
+   "appliesWhenAny": [
+    {
+     "terminal": [
+      "delivered"
+     ]
+    }
+   ],
+   "authority": "§2 R9: the delivered message follows the delivered transition",
+   "whyFalseExcludes": "before delivery there is no delivered message",
+   "bind": {
+    "site": "function renderDelivered({ customerName, restaurantId, brand }) {",
+    "siteSha": "4f2fae774f0566c5cdecf1b94c613b407becb1e622001b895f63a64a906e6813",
+    "scope": "xpizza-functions/whatsapp.js#renderDelivered",
+    "scopeSha": "724eef6e31c863d3ecb2f1e4a7e8f543b0624657c07901bab0e981f254a6e483"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "} else if (after === 'delivered') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "orderReceived: renderOrderReceived, pickupReceived: renderPickupReceived, delivered: renderDelivered,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplDelivered = (args) => defer('delivered', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d676f5ce63445bf68d18ebe789964640dc0637d782b2f9f583a09fd409a79aab"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|delivered",
+     "S1t-a|x_pizza|delivered",
+     "S3|x_pizza|delivered"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#renderPickupReceived@self": {
+   "group": "pickupRecv",
+   "appliesWhenAny": [
+    {
+     "fulfil": [
+      "pickup"
+     ]
+    }
+   ],
+   "authority": "§2 R9: a PICKUP order gets the pickup order-received body (createOrder: orderType === pickup)",
+   "whyFalseExcludes": "a delivery order gets the delivery body instead",
+   "bind": {
+    "site": "function renderPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId, brand }) {",
+    "siteSha": "51dbbf0ac4c56c7b325f6c597a9e0929c905c416531f03d8870e2f0fbed11942",
+    "scope": "xpizza-functions/whatsapp.js#renderPickupReceived",
+    "scopeSha": "1298fd2484109266c230437bcce6153e3547416a2b1f52c221e7ce95bfb9b1b8"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#createOrderApp.all>anon",
+     "text": "if (orderType === 'pickup') {",
+     "scopeSha": "1bd0107d0f0dc2c82ff8677fb6bcb7b8a90f96ee85495ef428e7f7281651c9e5"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "orderReceived: renderOrderReceived, pickupReceived: renderPickupReceived, delivered: renderDelivered,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplOrderReceived = (args) => defer('orderReceived', args);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplPickupReceived = (args) => defer('pickupReceived', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d676f5ce63445bf68d18ebe789964640dc0637d782b2f9f583a09fd409a79aab"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S2|x_pizza|new",
+     "S17p|r3_synth|new"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#renderPreparing@self": {
+   "group": "preparing",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "§2 R9: the preparing message is sent when the kitchen STARTS the order (status → preparing)",
+   "whyFalseExcludes": "before the kitchen starts, there is no preparing message",
+   "bind": {
+    "site": "function renderPreparing({ customerName, etaMinutes, orderType, trackingToken, restaurantId, brand }) {",
+    "siteSha": "a4b9515fd32dbf190f693ddf6464fe8f233c366c3892b7a4ede4d79c4f1821fc",
+    "scope": "xpizza-functions/whatsapp.js#renderPreparing",
+    "scopeSha": "172bd07462d7ba14b2f04c103f580d1c79523e1ac80721786f71bb9b93dba539"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyPreparing",
+     "text": "if (after !== 'preparing' || before === after) return;",
+     "scopeSha": "7b865215fb519e37bde5a689a402ff45e201dd2f074ea452c33da172a5851cfb"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "cancelled: renderCancelled, pickupReady: renderPickupReady, preparing: renderPreparing, otp: renderOtp,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplPreparing = (args) => defer('preparing', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d676f5ce63445bf68d18ebe789964640dc0637d782b2f9f583a09fd409a79aab"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady": {
+   "group": "pickupReady",
+   "appliesWhenAny": [
+    {
+     "fulfil": [
+      "pickup"
+     ],
+     "kitchen": [
+      "ready"
+     ]
+    }
+   ],
+   "authority": "§2 R9 (WhatsApp): the pickup-ready message is sent when a PICKUP order becomes ready (notifyPickupReady: status → ready, order_type pickup)",
+   "whyFalseExcludes": "a delivery order, or one the kitchen has not readied, gets no pickup-ready message",
+   "bind": {
+    "site": "result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);",
+    "siteSha": "8559dfc8ad37e4f6bc93056573f292a7bcf2caf09930fdefc45c97501778a39f",
+    "scope": "xpizza-functions/index.js#notifyPickupReady",
+    "scopeSha": "0a1380766e5a8c1e013837d7787831eca37d2c2504c300923da2543410a40e5e"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyPickupReady",
+     "text": "if (after !== 'ready' || before === after) return;",
+     "scopeSha": "0a1380766e5a8c1e013837d7787831eca37d2c2504c300923da2543410a40e5e"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyPickupReady",
+     "text": "if (order.order_type !== 'pickup') return skip('not_pickup');",
+     "scopeSha": "0a1380766e5a8c1e013837d7787831eca37d2c2504c300923da2543410a40e5e"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S2|x_pizza|ready",
+     "S17p|r3_synth|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPreparing": {
+   "group": "preparing",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "§2 R9: the preparing message is sent when the kitchen STARTS the order (status → preparing)",
+   "whyFalseExcludes": "before the kitchen starts, there is no preparing message",
+   "bind": {
+    "site": "result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);",
+    "siteSha": "8559dfc8ad37e4f6bc93056573f292a7bcf2caf09930fdefc45c97501778a39f",
+    "scope": "xpizza-functions/index.js#notifyPreparing",
+    "scopeSha": "7b865215fb519e37bde5a689a402ff45e201dd2f074ea452c33da172a5851cfb"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyPreparing",
+     "text": "if (after !== 'preparing' || before === after) return;",
+     "scopeSha": "7b865215fb519e37bde5a689a402ff45e201dd2f074ea452c33da172a5851cfb"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#onIncomingWhatsApp": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound status lookup answers a message the CUSTOMER sends (an HTTP webhook)",
+   "whyFalseExcludes": "no inbound message → no lookup reply",
+   "bind": {
+    "site": "await whatsapp.sendMessage(fromPhoneRaw, replyBody, restaurantId);   // reply via the texted restaurant's instance",
+    "siteSha": "9abd63fecaa854820630aecd24d4920ae62cfe3ff12cacf3c1ce92eb9884b297",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#requestOtp": {
+   "group": "otp",
+   "appliesWhenAny": [
+    {
+     "otp": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: a one-time code is sent only when the customer requests sign-in (requestOtp)",
+   "whyFalseExcludes": "no OTP request → no OTP message",
+   "bind": {
+    "site": "await whatsapp.sendMessage(phone, whatsapp.tplOtp({ code }), restaurantId);   // D12b: the brand from this restaurant's config, never a literal",
+    "siteSha": "c010876b3f6275d6d7b9286943dd885112439552e06d06fc4d1d568faddf47fb",
+    "scope": "xpizza-functions/index.js#requestOtp",
+    "scopeSha": "e9b1c658f7f3e8569d5adce76c42b31889d3ca68ff49940443e129fb58763a42"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.requestOtp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"otp\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendOrderStatusNotifications~2": {
+   "group": "statusSend",
+   "appliesWhenAny": [
+    {
+     "outForDelivery": [
+      true
+     ]
+    },
+    {
+     "terminal": [
+      "delivered"
+     ]
+    },
+    {
+     "cancelled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: sendOrderStatusNotifications sends for out-for-delivery, delivered and cancelled transitions",
+   "whyFalseExcludes": "before any of those transitions the status trigger composes no body (`if (!body) return;`)",
+   "bind": {
+    "site": "await whatsapp.sendMessage(order.customer_phone, body, restaurantId);",
+    "siteSha": "de950982ac799734df60e476f575dc87f00303c69c8a3c049a2867439b7394c8",
+    "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+    "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "if (after === 'out_for_delivery') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "} else if (after === 'delivered') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "} else if (after === 'cancelled') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "if (!body) return;",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|out_for_delivery",
+     "S1t-a|x_pizza|delivered",
+     "S3|x_pizza|out_for_delivery"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendPaidAfterCloseRefund": {
+   "group": "refund",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ],
+     "refund": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: a paid-after-close refund (and its notice) exists only for an ONLINE payment confirmed after close and refunded",
+   "whyFalseExcludes": "a non-online or non-refunded order has no refund notice",
+   "bind": {
+    "site": "try { res = await whatsapp.sendMessage(order.customer_phone, body, rid); }",
+    "siteSha": "255045f7373801eb13ae8996ccaca7239062e362372fa93574e2cf2e28433934",
+    "scope": "xpizza-functions/index.js#sendPaidAfterCloseRefund",
+    "scopeSha": "d2206a0f16b9b62ac8ba4f6a78ef9862b47357510ec461dbc745124ebf48d9c8"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (dec.action === 'finalize_refunded') {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize",
+     "text": "if (!(await needsPaidAfterCloseRefund(deps, order, now))) return false;",
+     "scopeSha": "244d16aa51ab4f62111c4e3025ec4db7d9878e28145c81c619ef213aab91ba2b"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendScheduledSlotClosed": {
+   "group": "slotClosed",
+   "appliesWhenAny": [
+    {
+     "scheduled": [
+      true
+     ],
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-SCHED / F-PAYLIFE: the slot-closed notice is for a SCHEDULED ONLINE order confirmed after its slot closed",
+   "whyFalseExcludes": "an ASAP or non-online order has no slot-closed notice",
+   "bind": {
+    "site": "await whatsapp.sendMessage(order.customer_phone, inbound.tplScheduledSlotClosed(), rid);",
+    "siteSha": "8b0299edcbc3e662e5dcc238ef9c3a9c746d57483399a838cfd7f24b7d221305",
+    "scope": "xpizza-functions/index.js#sendScheduledSlotClosed",
+    "scopeSha": "6a0a96392dea49124379398bfb0cc322efff09e74987cc6b7d9adfdf26d93d6e"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
+     "text": "if (Number.isFinite(Number(order.scheduled_for))) {",
+     "scopeSha": "3c1d4305bf10885c4080a36ea24e4064239a8d99df11cf10d3bfbe2dec89c6f7"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"scheduled\":[true],\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/whatsapp.js#tplDriverAssigned@self": {
+   "group": "driverAssigned",
+   "appliesWhenAny": [
+    {
+     "driver": [
+      "assigned",
+      "reassigned"
+     ]
+    }
+   ],
+   "authority": "§1 F-DRIVER: the driver-assigned copy needs an assigned driver",
+   "whyFalseExcludes": "no driver → no driver-assigned copy",
+   "bind": {
+    "site": "function tplDriverAssigned({ customerName, driverName, trackingToken, restaurantId }) {",
+    "siteSha": "2d87c87e016f979bf9432ff120db915a37cb586553fcbcf106e76c18fc29aa80",
+    "scope": "xpizza-functions/whatsapp.js#tplDriverAssigned",
+    "scopeSha": "9140804647148b58a6092d715ced51704cd600061b3fb6628baec68b1088c9cd"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "if (after === 'out_for_delivery') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|assigned",
+     "S1t-a|x_pizza|assigned",
+     "S1a-on|x_pizza|assigned"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-c|x_pizza|unassigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#tplOutForDelivery@xpizza-functions/index.js#sendOrderStatusNotifications": {
+   "group": "ofd",
+   "appliesWhenAny": [
+    {
+     "outForDelivery": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the out-for-delivery message follows pickupComplete",
+   "whyFalseExcludes": "not yet out for delivery → no message",
+   "bind": {
+    "site": "body = whatsapp.tplOutForDelivery({",
+    "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
+    "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+    "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+     "text": "if (after === 'out_for_delivery') {",
+     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|out_for_delivery",
+     "S1t-a|x_pizza|delivered",
+     "S3|x_pizza|out_for_delivery"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp_inbound.js#tplPaidAfterCloseRefunded@xpizza-functions/index.js#sendPaidAfterCloseRefund": {
+   "group": "refund",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ],
+     "refund": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: a paid-after-close refund (and its notice) exists only for an ONLINE payment confirmed after close and refunded",
+   "whyFalseExcludes": "a non-online or non-refunded order has no refund notice",
+   "bind": {
+    "site": "const body = inbound.tplPaidAfterCloseRefunded({ customerName: order.customer_name, total, restaurantId: rid });",
+    "siteSha": "9c14b2b6f78bd7b143a22560cf2a91e38b5e3ab9f64b121bf0933aac0d9e7cd2",
+    "scope": "xpizza-functions/index.js#sendPaidAfterCloseRefund",
+    "scopeSha": "d2206a0f16b9b62ac8ba4f6a78ef9862b47357510ec461dbc745124ebf48d9c8"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#refundReconciler",
+     "text": "if (dec.action === 'finalize_refunded') {",
+     "scopeSha": "e4d28aef5c3a3b37dd7e713c2be11738b4a9e6a71b476e7d2047d90f4076a4d2"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize",
+     "text": "if (!(await needsPaidAfterCloseRefund(deps, order, now))) return false;",
+     "scopeSha": "244d16aa51ab4f62111c4e3025ec4db7d9878e28145c81c619ef213aab91ba2b"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-kitchen/card-model.js#tieKey@xpizza-kitchen/card-model.js#tie": {
+   "group": "tie",
+   "appliesWhenAny": [],
+   "context": [
+    "single-live-order"
+   ],
+   "authority": "scenario definition: one order on the board — the sort tie-break compares two tickets",
+   "whyFalseExcludes": "with one ticket there is nothing to tie-break (established from the KDS ticket count)",
+   "bind": {
+    "site": "const tie = (a, b) => tieKey(a).localeCompare(tieKey(b));",
+    "siteSha": "1cdca66c335bfbccb7c93a3827bf78fa6e8b669ea3c7c387c3f5bc28ccea0eae",
+    "scope": "xpizza-kitchen/card-model.js#tie",
+    "scopeSha": "6092fdd4999b19bcb087853e290dfb611a72b233a33502ab4a23b75abff719ad"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-kitchen/card-model.js",
+     "text": "return (vb - va) || tie(a, b);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-kitchen/card-model.js",
+     "text": "return (va - vb) || tie(a, b);"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (single-live-order): applies whenever the context does not hold"
+   }
+  },
+  "xpizza-kitchen/card-model.js#tieKey@xpizza-kitchen/card-model.js#tie~2": {
+   "group": "tie",
+   "appliesWhenAny": [],
+   "context": [
+    "single-live-order"
+   ],
+   "authority": "scenario definition: one order on the board — the sort tie-break compares two tickets",
+   "whyFalseExcludes": "with one ticket there is nothing to tie-break (established from the KDS ticket count)",
+   "bind": {
+    "site": "const tie = (a, b) => tieKey(a).localeCompare(tieKey(b));",
+    "siteSha": "1cdca66c335bfbccb7c93a3827bf78fa6e8b669ea3c7c387c3f5bc28ccea0eae",
+    "scope": "xpizza-kitchen/card-model.js#tie",
+    "scopeSha": "6092fdd4999b19bcb087853e290dfb611a72b233a33502ab4a23b75abff719ad"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-kitchen/card-model.js",
+     "text": "return (vb - va) || tie(a, b);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-kitchen/card-model.js",
+     "text": "return (va - vb) || tie(a, b);"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (single-live-order): applies whenever the context does not hold"
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#empezar": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'empezar'); }",
+    "siteSha": "68b13b0c29c2c4b3ea016f98ba7e31976f96be7d0a86b9ee733d16ba7b683a53",
+    "scope": "xpizza-kitchen/index.html<script@0>#empezar",
+    "scopeSha": "68b13b0c29c2c4b3ea016f98ba7e31976f96be7d0a86b9ee733d16ba7b683a53"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#listo": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "commitStatusWrite(id, 'listo');",
+    "siteSha": "4d1291777b79e6ec8543466fef369f3046e3031fcfa1315837369662d4081293",
+    "scope": "xpizza-kitchen/index.html<script@0>#listo",
+    "scopeSha": "31665374a83193d932847001903a240e95b509714811cf9b906a2ad8713ef72a"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#retryWrite": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }",
+    "siteSha": "c07c6f75f26ca1c3e78518bba1b1a74dc9f047c72970ae0391c489d507af305b",
+    "scope": "xpizza-kitchen/index.html<script@0>#retryWrite",
+    "scopeSha": "c07c6f75f26ca1c3e78518bba1b1a74dc9f047c72970ae0391c489d507af305b"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#entregado@xpizza-kitchen/index.html<script@0>#holdFire": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
+    "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+     "text": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);",
+     "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#holdFire@xpizza-kitchen/index.html<script@0>#holdBegin>anon": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);         // fires ONLY if still armed at 700ms",
+    "siteSha": "a1d5fb0bfdbd1c9778a06df43033609701e708e5fb3dd3689b5095f9482627bd",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdBegin>anon",
+    "scopeSha": "15dd89297b15b9e18182d42ec602aefc2e4fccf7d2b77faf82bd5ebf59e17348"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+     "text": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);",
+     "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#headerTap": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "else if (op === 'prep' || op === 'listo') listo(id);",
+    "siteSha": "3321e4970e910ee329974bd7814c827bce28cad102a8f6060f64b359209a5f49",
+    "scope": "xpizza-kitchen/index.html<script@0>#headerTap",
+    "scopeSha": "65a452e641922223bca7f2404fcb3f6e217e1563b207c0a66fcaefe41ba165c3"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#holdFire": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "else listo(id);                                               // SAME confirmed-write path, exactly once",
+    "siteSha": "f0030f9c4adc00ee329fed4982e95f63b22fce9f94cf277792a7388e06ce12fa",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+     "text": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);",
+     "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "const from = order ? opState(order) : (action === 'listo' ? 'prep' : 'nuevo');",
+    "siteSha": "fa03667b2a006d75369959bac390463a4fe6223a8c307d4e5026123eef73c75c",
+    "scope": "xpizza-kitchen/index.html<script@0>#commitStatusWrite",
+    "scopeSha": "eaf4e96ae50822dd5d42c23980f2bca7e90fd50f6abea70edd897471ba1e1329"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#entregado": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "if (!o || o.order_type !== 'pickup' || opState(o) !== 'listo') return;   // ONLY a ready pickup earns",
+    "siteSha": "1d6a6a61052966b8727d1b4cedd987d57683d4de407a18a30d63f6fa7115f60f",
+    "scope": "xpizza-kitchen/index.html<script@0>#entregado",
+    "scopeSha": "ce7cf8cd9343657bf64476cda157931863c061e901163f04e82651ba1d4720dd"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#headerTap": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "const op = opState(o);",
+    "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
+    "scope": "xpizza-kitchen/index.html<script@0>#headerTap",
+    "scopeSha": "65a452e641922223bca7f2404fcb3f6e217e1563b207c0a66fcaefe41ba165c3"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdBegin": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "const op = opState(o);",
+    "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+    "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdFire": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
+    "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#listo": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }",
+    "siteSha": "17a74ade0a96600747d729456e991d9b0939acbcc5c9bb3106eadf83e8089f25",
+    "scope": "xpizza-kitchen/index.html<script@0>#listo",
+    "scopeSha": "31665374a83193d932847001903a240e95b509714811cf9b906a2ad8713ef72a"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#setHoldVisual": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "const rest = (o && o.order_type === 'pickup' && opState(o) === 'listo') ? 'Entregado' : 'Completar';",
+    "siteSha": "15c3377f3f6a3a567656182812a9c03cfc2bcc14e8330c8d232d012dfeef508b",
+    "scope": "xpizza-kitchen/index.html<script@0>#setHoldVisual",
+    "scopeSha": "ca5ba3aabd3431c0d44d205cb8edc96e585d52b69cc1ef9a6b58ae5e2495bf33"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#startCompletion>anon": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "pendingWrites[id] = { from: opState(order), action: 'completar', skip: true, msg: 'No se pudo completar' };",
+    "siteSha": "1aea458b01efba8de552ed38e56e02cd13618d16dde067b91eaf019258ae4daa",
+    "scope": "xpizza-kitchen/index.html<script@0>#startCompletion>anon",
+    "scopeSha": "08b5ae8ff8f358266ac82dc33da575d0871c27cc2e7ae2e19fd65b70bf786439"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#renderScheduled>anon@self": {
+   "group": "scheduled",
+   "appliesWhenAny": [
+    {
+     "scheduled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-SCHED: Programados renders SCHEDULED orders per order / slot",
+   "whyFalseExcludes": "an ASAP order never reaches the per-scheduled-order rendering",
+   "bind": {
+    "site": "g => g.dayKey === schedSelectedDay",
+    "siteSha": "5a5e714a237d2c828fdce3e4d3b9d620d0d4a7045d8977433818471b9a9af7c0",
+    "scope": "xpizza-kitchen/index.html<script@0>#renderScheduled>anon",
+    "scopeSha": "91148422e8de901f20113796248ce608f227fc85f9d582528133e05b64802cc3"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/order-filter.js#filterScheduledOrders",
+     "text": "if (!o || !SCHEDULED_ORDER_STATUSES.has(o.status)) continue;",
+     "scopeSha": "ca55f7dc3e43fed1804fe068f1d54be3441d9629e2dfe7d90798bd5118687986"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"scheduled\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#schedSlot@xpizza-kitchen/index.html<script@0>#renderScheduled>anon": {
+   "group": "scheduled",
+   "appliesWhenAny": [
+    {
+     "scheduled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-SCHED: Programados renders SCHEDULED orders per order / slot",
+   "whyFalseExcludes": "an ASAP order never reaches the per-scheduled-order rendering",
+   "bind": {
+    "site": "<div class=\"card-band-r2\"><span class=\"ch-slot\"><svg viewBox=\"0 0 24 24\"><use href=\"#i-clock\"/></svg>${escapeHtml(schedSlot(o))}</span></div>",
+    "siteSha": "775602c4ee0511332a24d1115857aa524ec907a71c7ecbac20d19d7713202409",
+    "scope": "xpizza-kitchen/index.html<script@0>#renderScheduled>anon",
+    "scopeSha": "91148422e8de901f20113796248ce608f227fc85f9d582528133e05b64802cc3"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/order-filter.js#filterScheduledOrders",
+     "text": "if (!o || !SCHEDULED_ORDER_STATUSES.has(o.status)) continue;",
+     "scopeSha": "ca55f7dc3e43fed1804fe068f1d54be3441d9629e2dfe7d90798bd5118687986"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"scheduled\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdBegin": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "setHoldVisual(id, true);",
+    "siteSha": "6e23f6ac62cd2c086ae5fca624c8edfd3b42be7523fcffd5216df2601ef612ec",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+    "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdCancel": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "setHoldVisual(activeHold.id, false);",
+    "siteSha": "d7a496708f2730ad711648eea8ab408baa2c38044c2c4469115583607a300fd4",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdCancel",
+    "scopeSha": "92d4085472791b5e1eaabb45cef82051355856210cac74cf9756d809aefb1cf4"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdFire": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "setHoldVisual(id, false);",
+    "siteSha": "34761d369da6dfbafeb140c203c6c59034773d73affec4ddb92806a96d273c58",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#showCancelBanner@xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon": {
+   "group": "cancelled",
+   "appliesWhenAny": [
+    {
+     "cancelled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-STATUS: cancellation copy / banners exist only for a cancelled order",
+   "whyFalseExcludes": "a live order shows no cancellation",
+   "bind": {
+    "site": "showCancelBanner(o);",
+    "siteSha": "40aa057f011e7a5695466bf63f0f07676c52bcf3329b8e8668c7cab73e70b7c8",
+    "scope": "xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon",
+    "scopeSha": "a5d2d21ecc3f8667c908075cbe7262a15cfc035db361ed784eee649a3f1cb83d"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon",
+     "text": "o.estado === 'Cancelado' && !alertedCancellations.has(o.id)",
+     "scopeSha": "a5d2d21ecc3f8667c908075cbe7262a15cfc035db361ed784eee649a3f1cb83d"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"cancelled\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#showLog@self": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "function showLog(event, id) {",
+    "siteSha": "9092ac657d164afff45c5405fb31f94a8ac6ef0d5c18107356b5823fb48ac31f",
+    "scope": "xpizza-kitchen/index.html<script@0>#showLog",
+    "scopeSha": "821911cde59148d11d3125abb0832e3d130c2052667f05c7bc39a7fd01a76c60"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"showLog(event,'${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "else if (action === 'listo') startCompletion(id);  // DELIVERY (+ non-pickup): local beat only",
+    "siteSha": "4b7d35e3b01706954c55ffa5daedad1640497b977098525a5703bd18f085296f",
+    "scope": "xpizza-kitchen/index.html<script@0>#commitStatusWrite",
+    "scopeSha": "eaf4e96ae50822dd5d42c23980f2bca7e90fd50f6abea70edd897471ba1e1329"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#entregado": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "startCompletion(id);",
+    "siteSha": "2c0ca3451333184c8f7c43c6ec54e94e09796e37907c358cb9f79989b39eaac6",
+    "scope": "xpizza-kitchen/index.html<script@0>#entregado",
+    "scopeSha": "ce7cf8cd9343657bf64476cda157931863c061e901163f04e82651ba1d4720dd"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#listo": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }",
+    "siteSha": "17a74ade0a96600747d729456e991d9b0939acbcc5c9bb3106eadf83e8089f25",
+    "scope": "xpizza-kitchen/index.html<script@0>#listo",
+    "scopeSha": "31665374a83193d932847001903a240e95b509714811cf9b906a2ad8713ef72a"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/index.html<script@0>#updateHeaderRing@xpizza-kitchen/index.html<script@0>#paintItemCheck": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "updateHeaderRing(card, id);",
+    "siteSha": "d6c01680a966bed612b4ce348738481734b137637d8e09a761761d1ad009f491",
+    "scope": "xpizza-kitchen/index.html<script@0>#paintItemCheck",
+    "scopeSha": "c4608776603727140b733110fa2c068656d804a93eee72357d9b02812dac5943"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-kitchen/index.html",
+     "text": "el.addEventListener('click', (e) => { e.stopPropagation(); toggleItem(order.id, idx); });"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon@self": {
+   "group": "scheduled",
+   "appliesWhenAny": [
+    {
+     "scheduled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-SCHED: Programados renders SCHEDULED orders per order / slot",
+   "whyFalseExcludes": "an ASAP order never reaches the per-scheduled-order rendering",
+   "bind": {
+    "site": "(a, b) => {",
+    "siteSha": "ec176b81ed21b5b35a14c5e3bb964f832ee8857964cd46b95451e26665a09227",
+    "scope": "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon",
+    "scopeSha": "4506a19fd33b3d9b9ea09b1b23dd28cfc201aafa0f31f94e5cac2baf7bc2a0a7"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/order-filter.js#filterScheduledOrders",
+     "text": "if (!o || !SCHEDULED_ORDER_STATUSES.has(o.status)) continue;",
+     "scopeSha": "ca55f7dc3e43fed1804fe068f1d54be3441d9629e2dfe7d90798bd5118687986"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"scheduled\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-kitchen/sherpa-client.js#sfetch>anon@self": {
+   "group": "kitchen",
+   "appliesWhenAny": [
+    {
+     "kitchen": [
+      "started",
+      "ready"
+     ]
+    }
+   ],
+   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
+   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "bind": {
+    "site": "function (v, k) { h[k] = v; }",
+    "siteSha": "eb2c2835d47e06c72060f24e2adaf943abca43c681204d44b8b3e05a124b27ca",
+    "scope": "xpizza-kitchen/sherpa-client.js#sfetch>anon",
+    "scopeSha": "baf977b9d913c1b63add63ec9f5079cc53d980baa9140164443b499c62d15821"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "${isTapEmpezar ? ` onclick=\"headerTap('${id}')\"` : ''}",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#wireHold",
+     "text": "head.addEventListener('pointerdown', (e) => {",
+     "scopeSha": "bc8d5c88f889f5981d07ada818e543f34d89643bd2be7dcb6c00b0c75531f8de"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-kitchen/index.html<script@0>#renderTicket",
+     "text": "onclick=\"retryWrite('${id}')\"",
+     "scopeSha": "5135fc8f868b4a04b734be5b9aecfaf745a0b94f32ec049e6582d9eefe99d0ae"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned",
+     "S2|x_pizza|ready"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|la_musa|new",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals": {
+   "group": "redeem",
+   "appliesWhenAny": [
+    {
+     "redemption": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-REWARD: the redemption quote exists only for a redemption",
+   "whyFalseExcludes": "no redemption → no redeem quote",
+   "bind": {
+    "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
+    "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
+    "scope": "xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals",
+    "scopeSha": "27933840e3faa3ed6f3401227825f5be0ae8993d1577b22720a0c1727d0c2f24"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "onQuoted: applyRedeemQuoteToTotals,"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S4|x_pizza|new"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
+    "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
+    "scope": "xpizza-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "d108bfe8d4cebbf0bdcf4144f9fae17c970abb07810095367b735c04191714d3"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState~2": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "showSuccess();",
+    "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
+    "scope": "xpizza-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "d108bfe8d4cebbf0bdcf4144f9fae17c970abb07810095367b735c04191714d3"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
+    "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
+    "scope": "xpizza-orders/index.html<script@2>#processPixelPay",
+    "scopeSha": "23c841476b8f9745918327202eabe49ba4bbba79a18a9018ef8272e4e0a7e055"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "d108bfe8d4cebbf0bdcf4144f9fae17c970abb07810095367b735c04191714d3"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder": {
+   "group": "demo",
+   "appliesWhenAny": [],
+   "context": [
+    "createorder-configured"
+   ],
+   "authority": "scenario definition: the form submits to the REAL createOrder; the demo branch is the unconfigured-endpoint path",
+   "whyFalseExcludes": "with createOrder routed and answered 200 the demo branch is not taken",
+   "bind": {
+    "site": "showSuccess();",
+    "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
+    "scope": "xpizza-orders/index.html<script@2>#submitOrder",
+    "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#submitOrder",
+     "text": "if(CREATEORDER_URL==='YOUR_CREATEORDER_URL_HERE'){",
+     "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (createorder-configured): applies whenever the context does not hold"
+   }
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/account.js#applyReorderToCart": {
+   "group": "reorder",
+   "appliesWhenAny": [
+    {
+     "reorder": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: reorder-from-history is a customer action",
+   "whyFalseExcludes": "a fresh cart runs no reorder",
+   "bind": {
+    "site": "try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}",
+    "siteSha": "8e9511fb74406398df18571e5a8de35ae34ab5f4df1cecc50381fd9ba19930c8",
+    "scope": "xpizza-orders/account.js#applyReorderToCart",
+    "scopeSha": "f8a207f78131bba32e4b52f098a7e737ee529657df402e39e2713ee1ee1c9147"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/account.js",
+     "text": "btn.onclick = () => reorderFromEntry(entries[Number(btn.getAttribute('data-ord'))]);"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"reorder\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#restoreOrderForm": {
+   "group": "restore",
+   "appliesWhenAny": [
+    {
+     "restore": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: saved-form / snapshot restore is a recovery action",
+   "whyFalseExcludes": "no restore → no restore render",
+   "bind": {
+    "site": "renderMenu(); updateCart(); updateTotal();",
+    "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
+    "scope": "xpizza-orders/index.html<script@2>#restoreOrderForm",
+    "scopeSha": "b4bac8d3c836c0cc8ce49b76b9c6af4c89c4859fd34d16131d69530f904e82e5"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "const retry = v.retry ? `<a href=\"#\" onclick=\"restoreOrderForm();return false;\""
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"restore\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#startAnotherOrder": {
+   "group": "another",
+   "appliesWhenAny": [
+    {
+     "anotherOrder": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: \"Hacer otro pedido\" is a customer action after confirmation",
+   "whyFalseExcludes": "one order → no restart",
+   "bind": {
+    "site": "updateCart();",
+    "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
+    "scope": "xpizza-orders/index.html<script@2>#startAnotherOrder",
+    "scopeSha": "09a3dfb14f4e9de15bed1ecc6fd128bace1b63c4622ad2cd195a2167cf477870"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "<button onclick=\"startAnotherOrder()\""
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"anotherOrder\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#toggleDetailExtra": {
+   "group": "extras",
+   "appliesWhenAny": [
+    {
+     "extras": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: dish extras are a customer action",
+   "whyFalseExcludes": "no extras toggled",
+   "bind": {
+    "site": "updateCart();",
+    "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
+    "scope": "xpizza-orders/index.html<script@2>#toggleDetailExtra",
+    "scopeSha": "d8e358987aafc53d8ae3feb4931fa4101c9ef3e26e0024673940ac5cb7caeffc"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "toggleDetailExtra(ex.id, dish.id, inst);"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"extras\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/order-self-update.js#restoreSnapshot": {
+   "group": "restore",
+   "appliesWhenAny": [
+    {
+     "restore": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: saved-form / snapshot restore is a recovery action",
+   "whyFalseExcludes": "no restore → no restore render",
+   "bind": {
+    "site": "renderMenu(); updateCart(); updateTotal();",
+    "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
+    "scope": "xpizza-orders/order-self-update.js#restoreSnapshot",
+    "scopeSha": "e43bf3ab0b8334601b439052bfd78971037e304f6b6ab3b28e666d5c2c32a229"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/order-self-update.js",
+     "text": "if (!restoreSnapshot(data.form, toCheckout)) return;"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"restore\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#chgFromCart": {
+   "group": "sheetEdit",
+   "appliesWhenAny": [
+    {
+     "sheetEdit": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: qty edits inside the cart sheet are a customer action",
+   "whyFalseExcludes": "the sheet is read, not edited",
+   "bind": {
+    "site": "updateCartReviewBody();",
+    "siteSha": "ae662ecf8967309c29f300aed59d7f594ff58a1bfc9e151a238cb0ff594239a8",
+    "scope": "xpizza-orders/index.html<script@2>#chgFromCart",
+    "scopeSha": "7c3808d13b99068b162ed7eb3c100c9b2372f56fc881d620d0e533901994836d"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "if (act === 'review-inc')  { chgFromCart(dish.id, 1);  return; }"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"sheetEdit\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
+    "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
+    "scope": "xpizza-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "d108bfe8d4cebbf0bdcf4144f9fae17c970abb07810095367b735c04191714d3"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState~2": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "showSuccess();",
+    "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
+    "scope": "xpizza-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "d108bfe8d4cebbf0bdcf4144f9fae17c970abb07810095367b735c04191714d3"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
+    "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
+    "scope": "xpizza-orders/index.html<script@2>#processPixelPay",
+    "scopeSha": "23c841476b8f9745918327202eabe49ba4bbba79a18a9018ef8272e4e0a7e055"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "d108bfe8d4cebbf0bdcf4144f9fae17c970abb07810095367b735c04191714d3"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#submitOrder": {
+   "group": "demo",
+   "appliesWhenAny": [],
+   "context": [
+    "createorder-configured"
+   ],
+   "authority": "scenario definition: the form submits to the REAL createOrder; the demo branch is the unconfigured-endpoint path",
+   "whyFalseExcludes": "with createOrder routed and answered 200 the demo branch is not taken",
+   "bind": {
+    "site": "showSuccess();",
+    "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
+    "scope": "xpizza-orders/index.html<script@2>#submitOrder",
+    "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-orders/index.html<script@2>#submitOrder",
+     "text": "if(CREATEORDER_URL==='YOUR_CREATEORDER_URL_HERE'){",
+     "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (createorder-configured): applies whenever the context does not hold"
+   }
+  }
+ }
+}
