@@ -12790,9 +12790,9 @@
     "id": "r3p1-91",
     "slice": "r3p1",
     "file": "contract/observables.js",
-    "from": "if (id && String(p.orderId || '').includes(id)) return bad(",
-    "to": "if (false) return bad(",
-    "label": "D19 fixed: the confirmation's long order_id is accepted again (F-NUM fallback)",
+    "from": "if (id && String(p.orderId || '').includes(id)) return bad(`confirmation shows the long order_id (\"${p.orderId}\") — F-NUM never shows it`, { shape: 'Orden # {order_id}' }); if (f.NUM.value == null) return p.orderId ?",
+    "to": "if (f.NUM.value == null) return (p.orderId && p.orderId !== 'Orden # ' + id) ?",
+    "label": "D19 fixed: the pre-fix F-NUM FALLBACK — with no stamped number the long order_id is accepted",
     "kills_with": [
       "the long order_id passed (D19: never shown)"
     ],
