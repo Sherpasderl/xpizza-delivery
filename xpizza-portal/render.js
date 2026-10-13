@@ -130,10 +130,43 @@ export function groupPriceLabel(min, max) {
   if (!(Number.isInteger(min) && min > 0)) return 'Sin precio';
   return min === max ? `L${min}` : `desde L${min}`;
 }
+// Portal mockup screen 2 (approved): the price ONCE on the product — "L 624 / todas las opciones" with the same price for
+// every choice, "desde L 624 / precio por salsa" otherwise. Read-only; prices are edited in the product's drawer.
 function groupPriceCell(grp, { changed, key }) {
-  const cell = el('div', `price${changed ? ' chg' : ''}`, groupPriceLabel(grp.min, grp.max));
+  const cell = el('div', `price gp${changed ? ' chg' : ''}`);
   cell.dataset.k = `item::${key}`;
+  // the caption follows the CALLER's `same` (every choice valid and equal); the price is the order page's rule over the
+  // valid prices ("L {min}" when they agree, "desde L {min}" otherwise)
+  const same = grp.same === true;
+  const priced = Number.isInteger(grp.min) && grp.min > 0;
+  cell.append(el('b', null, !priced ? 'Sin precio' : (grp.min === grp.max ? `L ${grp.min}` : `desde L ${grp.min}`)));
+  const lbl = typeof grp.label === 'string' && grp.label.trim() ? grp.label.trim().toLocaleLowerCase('es') : 'opción';
+  if (priced) cell.append(el('span', null, same ? 'todas las opciones' : `precio por ${lbl}`));
   return cell;
+}
+// The choices under their product (mockup screen 2): "{Salsa} · el cliente elige 1", then one line per choice — its name,
+// RECOMENDADA where this brand draws it, and "mismo precio" or its own price. Not openers: the product row is the one way in.
+function groupKids(grp) {
+  const kids = el('div', 'kids');
+  kids.setAttribute('role', 'list');
+  const label = typeof grp.label === 'string' && grp.label.trim() ? grp.label.trim() : 'Elección';
+  kids.setAttribute('aria-label', `Opciones de ${label}`);
+  const head = el('div', 'kidhead', label);
+  head.append(el('span', 'dot', '·'), document.createTextNode('el cliente elige 1'));
+  kids.append(head);
+  const same = grp.same === true;
+  for (const o of grp.options) {
+    const kid = el('div', 'kid');
+    kid.setAttribute('role', 'listitem');
+    const nm = el('span', 'knm', o.name);
+    if (o.recommended && grp.badges) nm.append(el('span', 'rec', 'Recomendada'));
+    const pr = same ? el('span', 'kprice same', 'mismo precio')
+      : el('span', 'kprice diff', Number.isInteger(o.price) && o.price > 0 ? `L ${o.price}` : 'Sin precio');
+    const sp = el('span', 'kidspacer'); sp.setAttribute('aria-hidden', 'true');
+    kid.append(nm, pr, sp);
+    kids.append(kid);
+  }
+  return kids;
 }
 
 // `opts` is how the read-only 2b-2a render becomes the 2b-2b editor without forking the file. Absent,
@@ -196,7 +229,8 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
     if (grp) {
       const chips = el('div', 'ochips');
       const chip = el('span', 'ochip req');
-      chip.append(svgIcon('M9 6l6 6-6 6'), document.createTextNode(typeof grp.label === 'string' && grp.label.trim() ? grp.label : 'Elección'));
+      const n = Array.isArray(grp.options) ? grp.options.length : 0;
+      chip.append(svgIcon('M9 6l6 6-6 6'), document.createTextNode(`Elección: ${typeof grp.label === 'string' && grp.label.trim() ? grp.label.trim() : 'Elección'} · ${n} ${n === 1 ? 'opción' : 'opciones'}`));
       chips.append(chip);
       info.append(chips);
     }
@@ -224,12 +258,17 @@ export function renderDetail(detailEl, group, extras, opts = {}) {
       chev.addEventListener('click', () => onOpen(id));
       cells.push(chev);
     }
-    const pcell = grp ? groupPriceCell(grp, { changed: changed('item', id), key: id }) : priceCell(it && it.price, {
+    const pcell = grp ? groupPriceCell(grp, { changed: changed('item', id) || !!grp.changed, key: id }) : priceCell(it && it.price, {
       editable, changed: changed('item', id), onInput: (v) => onPrice('item', id, v),
       surface: 'item', key: id,
     });
     row.append(...cells.slice(0, 1), info, pcell, ...cells.slice(1));
-    detailEl.append(row);
+    if (grp && Array.isArray(grp.options) && grp.options.length) {
+      // ONE product row with its choices nested beneath (mockup screen 2): the pair is one unit in the list
+      const unit = el('div', 'grow');
+      unit.append(row, groupKids(grp));
+      detailEl.append(unit);
+    } else detailEl.append(row);
   }
   if (onAdd) {
     const addRow = el('div', 'addrow');

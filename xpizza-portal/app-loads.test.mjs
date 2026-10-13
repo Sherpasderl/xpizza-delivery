@@ -2101,7 +2101,8 @@ test('🔴 add-product B: the group is built in the drawer, sent in the SERVER�
   assert.strictEqual(pendingCountOf(app), 1, 'ONE pending change: a product with its choice, not 1 + 3');
   const rows = byId.get('detail').querySelectorAll('.irow');
   assert.strictEqual(rows.length, 2, 'the list shows Pizza and the new product — its options are folded under it');
-  assert.ok(byId.get('detail').querySelectorAll('.ochip').some((c) => c.children.some((t) => t.textContent === 'Salsa')), 'with its group as a chip');
+  // portal mockup screen 2 (approved): the chip names the choice and counts its options
+  assert.ok(byId.get('detail').querySelectorAll('.ochip').some((c) => c.children.some((t) => /^Elección: Salsa · \d+ opci(ón|ones)$/.test(t.textContent))), 'with its group as a chip');
 
   await fire(byId.get('review'));
   const sent = calls.find((c) => c.fn === 'editCatalog').body.source;
@@ -2129,7 +2130,8 @@ test('🔴 add-product B: unequal prices — the product price is DERIVED and re
   const product = () => items().find((i) => i.ref === ref);
   assert.strictEqual(product().price, 644, 'the product follows its cheapest option');
   const listPrice = byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === `item::${ref}`);
-  assert.strictEqual(listPrice && listPrice.textContent, 'desde L644', '🔴 the list prices it as the order page will: "desde" the cheapest');
+  // portal mockup screen 2 (approved): the price once — "desde L 644" — over "precio por salsa"
+  assert.deepStrictEqual(listPrice && listPrice.children.map((c) => c.textContent), ['desde L 644', 'precio por salsa'], '🔴 the list prices it as the order page will: "desde" the cheapest');
   assert.strictEqual(app.state.samePrice.get(ref), false, 'editing one option turned "Mismo precio" off');
   const price = inputBy(byId, 'Precio');
   assert.strictEqual([price.readOnly, price.value].join('|'), 'true|644', 'the product price is shown read-only, derived');
@@ -2253,4 +2255,145 @@ test('🔴 P2-4: after a rebuild, focus is on the replacement control (or the se
   assert.strictEqual(document.activeElement, q(byId, 'input').filter((i) => i.type === 'radio')[0], 'Ninguna: the Ninguna radio');
   await choose(q(byId, 'input').filter((i) => i.type === 'radio')[1]);
   assert.strictEqual(document.activeElement, q(byId, '.mgname-in')[0], 'a group: straight into its name');
+});
+
+// ── portal A (portal mockup screens 1 + 2, approved; advisor ruling on the published drawer) ─────────────────────────
+// A PUBLISHED group, in the server's shape: the launcher (display id 2) and its three choices (display ids 3–5), keyed by
+// name, variant_items keyed by the launcher's display id.
+const PUBLISHED_GROUP = (prices = [624, 624, 624]) => {
+  const s = SOURCE();
+  s.items.push({ key: 'NY Plain Slice', price: Math.min(...prices), display: { id: 2, cat: 'c', name: 'NY Plain Slice', price: Math.min(...prices), desc: 'La clásica.' } });
+  ['Salsa Roja', 'Salsa Vodka', 'Combinada'].forEach((choice, i) => s.items.push({ key: `NY Plain Slice - ${choice}`, price: prices[i],
+    display: { id: 3 + i, cat: 'c', name: `NY Plain Slice - ${choice}`, price: prices[i], variantOf: 2, choice, ...(choice === 'Combinada' ? { tags: ['recommended'] } : {}) } }));
+  s.structure.item_order = ['Pizza', 'NY Plain Slice', 'NY Plain Slice - Salsa Roja', 'NY Plain Slice - Salsa Vodka', 'NY Plain Slice - Combinada'];
+  s.structure.variant_items = { 2: { label: 'Salsa', variantIds: [3, 4, 5] } };
+  return s;
+};
+const sameBox = (byId) => q(byId, 'input').find((i) => i.type === 'checkbox');
+async function loadPublished(byId, prices, extra = {}) {
+  installFetch((fn) => (fn === 'getEditableCatalog' ? okJson({ source: PUBLISHED_GROUP(prices), sourceUpdateTime: 'T', activeVersionId: 'v', usesPlatformFactura: false, renderedCategories: ['c'], restaurantName: 'X', choiceBadges: ['recommended'], ...extra }) : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  return app;
+}
+
+test('🔴 portal A: a PUBLISHED group is ONE product row — its price once ("L 624 / todas las opciones"), its choices nested beneath ("mismo precio"), never 4 products', async () => {
+  const byId = installDom();
+  const app = await loadPublished(byId);
+  const detail = byId.get('detail');
+  const rows = detail.querySelectorAll('.irow');
+  assert.strictEqual(rows.length, 2, '🔴 Pizza + NY Plain Slice — the 3 choices are NOT products of their own');
+  const unit = detail.querySelectorAll('.grow');
+  assert.strictEqual(unit.length, 1, 'the group is ONE unit: its row and its nested choices');
+  const price = unit[0].querySelectorAll('.price')[0];
+  assert.deepStrictEqual(price.children.map((c) => c.textContent), ['L 624', 'todas las opciones'], 'the price ONCE, read-only');
+  assert.strictEqual(price.querySelectorAll('input').length, 0, 'no price box on the product');
+  assert.ok(detail.querySelectorAll('.ochip').some((c) => c.children.some((t) => t.textContent === 'Elección: Salsa · 3 opciones')), 'the chip names the choice and counts its options');
+  const kids = unit[0].querySelectorAll('.kid');
+  assert.deepStrictEqual(kids.map((k) => k.children[0].textContent), ['Salsa Roja', 'Salsa Vodka', 'Combinada'], 'the choices, in order');
+  assert.deepStrictEqual(kids.map((k) => k.querySelectorAll('.rec').map((r) => r.textContent)), [[], [], ['Recomendada']], 'Recomendada on Combinada only');
+  assert.deepStrictEqual(kids.map((k) => k.children[1].textContent), ['mismo precio', 'mismo precio', 'mismo precio'], 'same price → "mismo precio", no box');
+  assert.strictEqual(unit[0].querySelectorAll('.kid input').length + unit[0].querySelectorAll('.kid .rowchev').length, 0, '🔴 a choice line has no price box and no chevron of its own');
+  const head = unit[0].querySelectorAll('.kidhead')[0];
+  assert.deepStrictEqual([head.textContent, ...head.children.map((c) => c.textContent)], ['Salsa', '·', 'el cliente elige 1'], 'the choice\u2019s heading');
+  const rail = byId.get('rail').querySelectorAll('.rcount');
+  assert.strictEqual(rail[0].textContent, '2', 'the section counts PRODUCTS (2), not rows (5)');
+});
+
+test('portal A: unequal prices — "desde L 624 / precio por salsa" on the product, each choice its own price; RECOMENDADA only where the brand draws it', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 660, 645], { choiceBadges: [] });
+  const unit = byId.get('detail').querySelectorAll('.grow')[0];
+  assert.deepStrictEqual(unit.querySelectorAll('.price')[0].children.map((c) => c.textContent), ['desde L 624', 'precio por salsa']);
+  assert.deepStrictEqual(unit.querySelectorAll('.kid').map((k) => k.children[1].textContent), ['L 624', 'L 660', 'L 645']);
+  assert.strictEqual(unit.querySelectorAll('.rec').length, 0, 'a brand whose picker draws no badge shows none');
+});
+
+test('🔴 portal A: the ONE way in opens the product’s drawer — a price-only choice block (no "Precio" field), and a choice’s price edit is the list boxes’ own write', async () => {
+  const byId = installDom();
+  const app = await loadPublished(byId, [624, 624, 624]);
+  const unit = byId.get('detail').querySelectorAll('.grow')[0];
+  await fire(unit.querySelectorAll('.rowchev')[0]);
+  assert.ok(byId.get('drawer').classList.contains('show'), 'the chevron opens the drawer');
+  assert.strictEqual(inputBy(byId, 'Precio'), undefined, '🔴 no launcher "Precio" field (never charged)');
+  assert.strictEqual(q(byId, '.modh')[0].textContent, 'Elección requerida — el cliente elige 1');
+  assert.deepStrictEqual(q(byId, '.moname').map((n) => n.textContent), ['Salsa Roja', 'Salsa Vodka', 'Combinada'], 'choice names, read-only');
+  assert.strictEqual(q(byId, '.moname').filter((n) => n.tagName === 'INPUT').length, 0, 'names are not editable');
+  assert.ok(q(byId, '.recpill').every((p) => p.disabled), 'Recomendada is read-only');
+  assert.strictEqual(sameBox(byId).checked, true, '"Mismo precio para todas" derived ON');
+  // one choice's price → exactly the write a list price box made: one item price change on that choice's key
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '660');
+  assert.deepStrictEqual(pendingChanges(app.state.draft, app.state.additionKeys).map((c) => `${c.surface}::${c.key}`), ['item::NY Plain Slice - Salsa Vodka'], '🔴 one price change, on the choice');
+  assert.strictEqual(app.state.draft.state.items.find((i) => i.key === 'NY Plain Slice - Salsa Vodka').price, 660);
+  assert.strictEqual(sameBox(byId).checked, false, 'editing one price turns "Mismo precio" off');
+  const listNow = byId.get('detail').querySelectorAll('.grow')[0];
+  assert.deepStrictEqual(listNow.querySelectorAll('.price')[0].children.map((c) => c.textContent), ['desde L 624', 'precio por salsa'], 'the list follows');
+  assert.ok(listNow.querySelectorAll('.price')[0].classList.contains('chg'), 'and marks the product changed');
+  // "Mismo precio para todas" → every choice at the cheapest price
+  const same = sameBox(byId);
+  same.checked = true; await fire(same, 'change');
+  assert.deepStrictEqual(app.state.draft.state.items.filter((i) => / - /.test(i.key)).map((i) => i.price), [624, 624, 624], 'every choice at L 624');
+  assert.strictEqual(pendingChanges(app.state.draft, app.state.additionKeys).length, 0, 'back to what is published — nothing pending');
+});
+
+test('portal A: the choice name field (mockup screen 1) — a label above it, the portal input box, an example placeholder', async () => {
+  const byId = installDom();
+  installFetch((fn) => (fn === 'getEditableCatalog' ? GROUP_LOAD() : okJson({})));
+  const app = await loadAppModule();
+  await app.loadMenu('x_pizza');
+  await addPlainSlice(byId, app);
+  const input = q(byId, '.mgname-in')[0];
+  const label = q(byId, '.mgname-lbl')[0];
+  assert.ok(input && label, 'a label and the field');
+  assert.strictEqual(label.textContent, 'Nombre de la elección');
+  assert.strictEqual(label.htmlFor, input.id, 'the label names the field');
+  assert.strictEqual(input.placeholder, 'ej. Salsa, Tamaño, Proteína');
+  assert.ok(q(byId, '.modgrp-h').some((h) => h.classList.contains('with-in')), 'the header aligns to the field');
+});
+
+test('🔴 portal A codex P2-a: a choice with no usable price never hides behind "mismo precio" — the shared caption needs EVERY choice valid and equal', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 624, 624]);
+  await fire(byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.rowchev')[0]);
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '');   // the merchant clears one choice's price
+  const unit = byId.get('detail').querySelectorAll('.grow')[0];
+  assert.deepStrictEqual(unit.querySelectorAll('.kid').map((k) => k.children[1].textContent), ['L 624', 'Sin precio', 'L 624'], '🔴 each choice shows its own price; the cleared one says "Sin precio"');
+  assert.deepStrictEqual(unit.querySelectorAll('.price')[0].children.map((c) => c.textContent), ['L 624', 'precio por salsa'], 'the product no longer claims "todas las opciones"');
+});
+
+test('🔴 portal A codex P2-b: after a choice price edit, an unrelated inline edit keeps the group row highlighted (incremental = full renderer)', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 624, 624]);
+  await fire(byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.rowchev')[0]);
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '660');
+  const groupCell = () => byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.price')[0];
+  assert.ok(groupCell().classList.contains('chg'), 'premise — the group row is highlighted');
+  await fire(q(byId, '.dwx')[0]);   // the merchant closes the drawer (an open drawer makes the list inert)
+  assert.ok(groupCell().classList.contains('chg'), 'premise — still highlighted after closing');
+  // markChanged searches the DOCUMENT; this harness's document finds nothing, so — for THIS test — let it search the panels
+  // the page actually has (otherwise the incremental path is invisible and the assertion below would be vacuous)
+  const realQSA = globalThis.document.querySelectorAll;
+  globalThis.document.querySelectorAll = (sel) => [...byId.get('detail').querySelectorAll(sel), ...byId.get('drawer').querySelectorAll(sel)];
+  try {
+  // an unrelated inline edit: Pizza's own price box in the list (incremental markChanged, no repaint)
+  const pizzaBox = byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === 'item::Pizza').querySelectorAll('input')[0];
+  await setVal(pizzaBox, '310');
+  assert.ok(groupCell().classList.contains('chg'), '🔴 the group row keeps its highlight (its choices still differ)');
+  assert.ok(byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === 'item::Pizza').classList.contains('chg'), 'and Pizza is highlighted too (the incremental path ran)');
+  } finally { globalThis.document.querySelectorAll = realQSA; }
+});
+
+test('🔴 portal A codex r2: "Mismo precio" turned OFF at equal prices shows each choice’s own price — and back ON restores the shared caption', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 624, 624]);
+  await fire(byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.rowchev')[0]);
+  const unit = () => byId.get('detail').querySelectorAll('.grow')[0];
+  assert.deepStrictEqual(unit().querySelectorAll('.kid').map((k) => k.children[1].textContent), ['mismo precio', 'mismo precio', 'mismo precio'], 'premise — derived ON');
+  const same = sameBox(byId);
+  same.checked = false; await fire(same, 'change');
+  assert.deepStrictEqual(unit().querySelectorAll('.kid').map((k) => k.children[1].textContent), ['L 624', 'L 624', 'L 624'], '🔴 OFF → each choice shows its own price');
+  assert.deepStrictEqual(unit().querySelectorAll('.price')[0].children.map((c) => c.textContent), ['L 624', 'precio por salsa'], 'and the product no longer says "todas las opciones"');
+  same.checked = true; await fire(same, 'change');
+  assert.deepStrictEqual(unit().querySelectorAll('.price')[0].children.map((c) => c.textContent), ['L 624', 'todas las opciones'], 'back ON → the shared caption');
+  assert.deepStrictEqual(unit().querySelectorAll('.kid').map((k) => k.children[1].textContent), ['mismo precio', 'mismo precio', 'mismo precio']);
 });

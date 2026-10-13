@@ -342,14 +342,46 @@
   .recpill{display:inline-flex;align-items:center;margin-left:6px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;border:1px solid var(--line);color:var(--mute);background:transparent;white-space:nowrap;flex:none;font-family:inherit}
   .recpill.recpill-on{background:var(--gold-soft);border-color:var(--gold-line);color:var(--gold)}
   .recpill:disabled{cursor:default}
-  .mgname-in{font-size:13.5px;font-weight:600;font-family:inherit;color:var(--ink);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:1px 0;width:100%}
-  .mgname-in:focus{outline:none;border-bottom-color:var(--accent)}
+  /* the choice's name — portal mockup screen 1 (approved): a label above, and the same box as every portal input with ONE
+     focus style (green border + light green halo, never the global ink ring) */
+  .mgname-lbl{font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase;color:var(--mute2)}
+  .mgname-in{width:100%;background:var(--board-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:14px;font-weight:600;font-family:inherit;color:var(--ink);transition:border-color .15s,box-shadow .15s,background .15s;outline:none}
+  .mgname-in::placeholder{font-weight:400}
+  .mgname-in:hover{border-color:#D6D6CF}
+  .mgname-in:focus,.mgname-in:focus-visible{outline:none;border-color:var(--accent);background:var(--card);box-shadow:0 0 0 3px var(--tint2)}
+  .modgrp-h.with-in{align-items:flex-start;padding:14px 14px 12px}
+  .modgrp-h.with-in .mgattach{margin-top:31px}
+  .modgrp-h.with-in .mgmain{gap:7px;padding:0}
+  .modgrp-h.with-in .mgsub{font-size:11.5px}
+  .modgrp-h.with-in .mgchev{margin-top:26px}
   .mgflag{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mute);cursor:pointer}
   .mgflag input{width:16px;height:16px;accent-color:var(--accent);flex:none}
-  .modgrp.err .mgname-in{border-bottom-color:var(--red)}
+  .modgrp.err .mgname-in{border-color:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
   .modgrp > .ferr,.mgbody > .ferr{padding:0 14px 8px 43px}
   .mgbody > .ferr{padding:0}
   .ochips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  /* ── a product with a required choice, grouped (portal mockup screen 2, approved): ONE product row, its price once, its
+     choices nested and indented beneath — no price box and no chevron of their own ── */
+  .irow > .price{width:124px;flex:none}   /* the mockup's 108px, widened to fit "Sin precio" */
+  .price.gp{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+  .price.gp b{font-family:var(--disp);font-size:16px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .price.gp span{font-size:11px;color:var(--mute2);font-weight:400;white-space:nowrap}
+  .price.gp.chg b{color:var(--accent)}
+  .grow{border-bottom:1px solid var(--line2)}
+  .grow:last-child{border-bottom:0}
+  .grow > .irow{border-bottom:0;padding-bottom:8px}
+  .kids{margin:0 20px 14px 84px;border-left:2px solid var(--line);display:flex;flex-direction:column}
+  .kidhead{font-size:11px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;color:var(--mute2);padding:2px 0 4px 14px;display:flex;gap:8px}
+  .kidhead .dot{color:var(--line)}
+  .kid{display:flex;align-items:center;gap:10px;padding:7px 0 7px 14px;min-height:38px}
+  .kid + .kid{border-top:1px solid var(--line2)}
+  .kid .knm{flex:1;min-width:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .kid .kprice{font-variant-numeric:tabular-nums;font-weight:700;font-size:13.5px;width:124px;text-align:right;flex:none}
+  .kid .kprice.same{color:var(--mute2);font-weight:500;font-size:12px}
+  .kid .kprice.diff{color:var(--ink)}
+  .kid .rec{font-size:10.5px;font-weight:750;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--gold-soft);border:1px solid var(--gold-line);color:var(--gold)}
+  .kidspacer{width:17px;flex:none}
+  @media(max-width:560px){.irow > .price{width:84px}.kids{margin-right:14px}.kid .kprice{width:auto}.kidspacer{display:none}}
   .brow.sub{margin-left:22px;padding-top:8px;padding-bottom:8px}
   .bchoice{display:block;font-size:11.5px;color:var(--mute);margin-top:2px;font-weight:500}
   .sealbody .seachg.sub{padding-left:16px}
