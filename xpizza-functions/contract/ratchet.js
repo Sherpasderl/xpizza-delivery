@@ -32,8 +32,8 @@ const APPROVED_NONDETERMINISTIC = Object.freeze([
 ]);
 /* the justification is matched in EXECUTABLE source (codex P1-a r4): the reviewed text is parsed to its declarator
  * (name + init); the scope's own AST must hold EXACTLY ONE declarator of that name whose init has the same TOKENS
- * (comments and whitespace never count). A commented-out declaration, or one re-pointed on the same line
- * (`/* … *\/ const shadowResult = null;`), no longer matches → stale. */
+ * (comments and whitespace never count). A commented-out declaration, or the reviewed line wrapped in a block comment
+ * with `const shadowResult = null;` after it on the same line, no longer matches → stale. */
 const tokensOf = (code) => { const acorn = require('acorn'); const out = []; for (const t of acorn.tokenizer(code, { ecmaVersion: 'latest' })) out.push(t.value === undefined ? t.type.label : `${t.type.label}:${t.value}`); return out.join(' '); };
 function executableDeclarators(scope, name, units) {
   const { sources, walk, parseUnit } = require('./census');
