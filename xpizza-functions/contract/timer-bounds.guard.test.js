@@ -49,11 +49,21 @@ const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
     const ps = clone(); const s0 = ps.sites.find((e) => r.inventory.some((t) => t.key === e.key && t.delay != null)); s0.bound = 1;
     assert.ok(T.check(ps).problems.some((p) => /BELOW the computed delay/.test(p)), FAIL('a site bound below its computed delay passed'));
   }
+  // codex r3 P1-1: the reviewed bound is bound to its CONTROLLING scope — submitOrder's MAX_TRIES 3 → 5 (backoffs alone
+  // ≤ 15 s) re-opens the reviewed 6000 ms submit chain and its backoff site; a declaration elsewhere in an unrelated
+  // function does not
+  {
+    const real = sources(); const form = real.find((x) => x.file === 'xpizza-orders/index.html<script@2>');
+    assert.ok(form && form.code.includes('const MAX_TRIES = 3;'), FAIL('premise — submitOrder declares MAX_TRIES = 3'));
+    const mutated = real.map((x) => (x === form ? { ...form, code: form.code.replace('const MAX_TRIES = 3;', 'const MAX_TRIES = 5;') } : x));
+    const rm = T.check(doc, { units: mutated }).problems;
+    assert.ok(rm.some((p) => /^CHAIN await@xpizza-orders\/index\.html<script@2>:\d+ → .*submitOrder.*CONTROLLING scope changed/.test(p)) && rm.some((p) => /submitOrder>anon:setTimeout#2: its CONTROLLING scope changed/.test(p)), FAIL(`codex's MAX_TRIES 3 → 5 did not re-open the reviewed submit bound: ${JSON.stringify(rm.slice(0, 4))}`));
+  }
   const d = clone(); d.chains[0].reachesAsserted = true; d.chains[0].repeatLimit = 'unbounded';
   assert.ok(T.check(d).problems.some((p) => /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL('a reviewed chain reaching an asserted output past the horizon passed'));
   const d2 = clone(); d2.periodic[0].changesAsserted = true;
   assert.ok(T.check(d2).problems.some((p) => /declared to change an asserted output/.test(p)), FAIL('a periodic changing an asserted output passed'));
 }
-ok(`chains + periodic: ${r.chains.length} chains (${r.cneed.length} reviewed beyond-horizon / unresolved / repeating), ${r.periodic.length} reviewed periodic intervals; negatives: codex's 3 × 9 s chain → RED, codex r2's UNRETURNED awaited-sleeps and METHOD-chained forms → RED, a declared bound below the computed one → RED (contradiction), a self-re-arming timer → RED, an unreviewed interval → RED, a chain or interval reaching an asserted output → RED`);
+ok(`chains + periodic: ${r.chains.length} chains (${r.cneed.length} reviewed beyond-horizon / unresolved / repeating), ${r.periodic.length} reviewed periodic intervals; negatives: codex's 3 × 9 s chain → RED, codex r2's UNRETURNED awaited-sleeps and METHOD-chained forms → RED, a declared bound below the computed one → RED (contradiction), codex r3's MAX_TRIES 3 → 5 re-opens the reviewed submit bound (controlling-scope binding), a self-re-arming timer → RED, an unreviewed interval → RED, a chain or interval reaching an asserted output → RED`);
 ok('negatives: a long timer with no entry (or a shorter horizon exposing one), a changed call, a long timer reaching an asserted output, a stale entry → RED');
 console.log(`\nr3-timer-bounds guard: OK (${n})`);

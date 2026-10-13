@@ -31,7 +31,8 @@ function scopes(units = null) {
     const base = u.file.replace(/<script@\d+>$/, '');
     walk(parseUnit(u), (node, fn) => {
       if (!/Function/.test(node.type) || !fn) return;
-      for (const k of [`${u.file}#${fn}`, `${base}#${fn}`]) { if (!map.has(k)) map.set(k, []); map.get(k).push(u.code.slice(node.start, node.end)); }
+      // one key when the unit IS its file (no duplicated text)
+      for (const k of new Set([`${u.file}#${fn}`, `${base}#${fn}`])) { if (!map.has(k)) map.set(k, []); map.get(k).push(u.code.slice(node.start, node.end)); }
     });
   }
   if (!units) SCOPES = map;
@@ -130,4 +131,4 @@ function shadowsAssertion(doc, cells) {
 }
 function unmet(x, ev) { return x.preconditions.filter((pc) => { try { return !PRECONDITIONS[pc].check(ev); } catch (_) { return true; } }); }
 
-module.exports = { FILE, SCENARIOS, PRECONDITIONS, bindOf, bindGuard, guardStale, scenarioSha, load, exclusionFor, staleness, shadowsAssertion, unmet, sha, canon };
+module.exports = { scopeTextOf: (k) => scopeText(k), FILE, SCENARIOS, PRECONDITIONS, bindOf, bindGuard, guardStale, scenarioSha, load, exclusionFor, staleness, shadowsAssertion, unmet, sha, canon };

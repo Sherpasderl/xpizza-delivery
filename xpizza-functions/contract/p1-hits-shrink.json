@@ -5,7 +5,10 @@
   {
    "context": "S1/x_pizza/new",
    "site": "xpizza-functions/index.js#createOrderApp.all#status#23",
-   "reason": "createOrder's identity-shadow sample (index.js ~1269): the response is never held — the shadow result's `status` is read ONLY if the shadow check already settled, else the sample is 'dropped' (a deliberate race). Reached in most runs; missed under CPU load (seen once in the full emulator sweep, reproduced 1 of 3 runs under 6 busy loops)."
+   "reason": "createOrder's identity-shadow sample (index.js ~1269): the response is never held — the shadow result's `status` is read ONLY if the shadow check already settled, else the sample is 'dropped' (a deliberate race). Reached in most runs; missed under CPU load (seen once in the full emulator sweep, reproduced 1 of 3 runs under 6 busy loops).",
+   "scope": "xpizza-functions/index.js#createOrderApp.all",
+   "justification": "const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;",
+   "siteLine": "outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',"
   }
  ]
 }

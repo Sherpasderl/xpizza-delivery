@@ -48,5 +48,23 @@ for (const e of shrink.nondeterministic || []) assert.ok(ids.has(e.site) && e.re
     assert.ok(RAT.ratchet({ baseline, shrink: { ...shrink, nondeterministic: [{ ...e0, reason: '' }] }, current: baseline.contexts }).problems.some((p) => /needs a reason/.test(p)), FAIL('a nondeterministic entry without a reason passed'));
   }
 }
+// codex P1-a r3 P1-2: the category is PINNED — codex's move (the deterministic computeServerNet#total#0 baseline entry
+// re-filed as nondeterministic with a reason and its hit omitted) → RED; a stale race justification / changed site line → RED
+{
+  const MOVED = 'xpizza-functions/compute-server-net.js#computeServerNet#total#0'; const ctx = 'S1/x_pizza/new';
+  assert.ok((baseline.contexts[ctx] || []).includes(MOVED), FAIL('premise — computeServerNet#total#0 is a baseline site'));
+  const b2 = { ...baseline, contexts: { ...baseline.contexts, [ctx]: baseline.contexts[ctx].filter((x) => x !== MOVED) } };
+  const s2 = { ...shrink, nondeterministic: [...(shrink.nondeterministic || []), { context: ctx, site: MOVED, reason: 'looks racy' }] };
+  const cur = { ...baseline.contexts, [ctx]: baseline.contexts[ctx].filter((x) => x !== MOVED) };
+  assert.ok(RAT.ratchet({ baseline: b2, shrink: s2, current: cur }).problems.some((p) => p.includes(MOVED) && /NOT in the reviewed APPROVED_NONDETERMINISTIC list/.test(p)), FAIL('codex\'s move of a deterministic site into the nondeterministic category passed'));
+  const a = RAT.APPROVED_NONDETERMINISTIC[0]; const e = shrink.nondeterministic.find((x) => x.site === a.site);
+  const fsx = require('fs'); const px = require('path');
+  const realRead = (f) => fsx.readFileSync(px.join(__dirname, '..', '..', f), 'utf8');
+  const staleJust = RAT.justificationProblems(e, { scopeText: () => 'const shadowResult = await shadowCheck.value();' });
+  const staleLine = RAT.justificationProblems(e, { readFile: (f) => (f === 'xpizza-functions/index.js' ? realRead(f).replace(a.siteLine, "outcome: 'reported',") : realRead(f)) });
+  assert.ok(RAT.justificationProblems(e).length === 0, FAIL(`the approved race entry is not fresh: ${RAT.justificationProblems(e).join(' | ')}`));
+  assert.ok(staleJust.some((p) => /race justification no longer occurs exactly once/.test(p)) && staleLine.some((p) => /source line changed/.test(p)), FAIL('a stale race justification / site line passed'));
+}
+ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}) are PINNED: only an APPROVED (context, site) whose race justification still occurs exactly once in its scope and whose site line is unchanged — codex's move of computeServerNet#total#0 → RED; a stale justification / site line → RED`);
 ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}): current census sites outside the baseline, reached or not → no problem and no growth; one placed in the baseline / without a reason → RED`);
 console.log(`\nr3-ratchet guard: OK (${n})`);

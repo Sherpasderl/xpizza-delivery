@@ -33,13 +33,36 @@ function inventory(scopes, wrappers, units = sources()) {
     walk(ast, (node, _fn, parent) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init && parent && parent.kind === 'const') { const v = ev(node.init, consts); if (v != null) consts.set(node.id.name, v); } });
     const names = ['setTimeout', 'setInterval', ...(wrappers[u.file.replace(/<script@\d+>$/, '')] || [])];
     const seen = new Map();
+    /* the CONTROLLING SCOPE of a timer call (codex P1-a r3 P1-1): the OUTERMOST function enclosing it (its loops, retries
+     * and local constants — e.g. submitOrder's `MAX_TRIES` and retry loop) plus the DECLARATION texts of every identifier
+     * in its delay expression and in the tests / updates of the loops around it (wherever in the unit they are declared).
+     * A reviewed bound is bound to this hash: any change to what controls the timer's cumulative behaviour → re-review. */
+    const decls = new Map();
+    walk(ast, (n) => { if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier') { if (!decls.has(n.id.name)) decls.set(n.id.name, []); decls.get(n.id.name).push(u.code.slice(n.start, n.end)); } });
+    const idsIn = (n, acc = new Set()) => { if (!n || typeof n.type !== 'string') return acc; if (n.type === 'Identifier') acc.add(n.name); for (const k2 of Object.keys(n)) { if (k2 === 'loc') continue; const v = n[k2]; if (Array.isArray(v)) v.forEach((x) => idsIn(x, acc)); else if (v && typeof v.type === 'string') idsIn(v, acc); } return acc; };
+    const ctrl = new Map();
+    (function rec(n, stack) {
+      if (!n || typeof n.type !== 'string') return;
+      const st = /Function|Statement$/.test(n.type) ? [...stack, n] : stack;
+      if (n.type === 'CallExpression') {
+        const c = n.callee; const nm2 = c.type === 'Identifier' ? c.name : c.type === 'MemberExpression' && !c.computed ? c.property.name : null;
+        if (names.includes(nm2)) {
+          const outer = stack.find((x) => /Function/.test(x.type)) || null;
+          const loops = stack.filter((x) => /^(For|ForIn|ForOf|While|DoWhile)Statement$/.test(x.type));
+          const ids = new Set(); idsIn(n.arguments[1], ids); for (const L of loops) { idsIn(L.test, ids); idsIn(L.update, ids); idsIn(L.init, ids); idsIn(L.right, ids); }
+          const declText = [...ids].sort().map((id) => `${id}=${(decls.get(id) || []).join(' | ')}`).join('\n');
+          ctrl.set(n.start, sha(`${outer ? u.code.slice(outer.start, outer.end) : '<top>'}\n--\n${declText}`));
+        }
+      }
+      for (const k2 of Object.keys(n)) { if (k2 === 'loc') continue; const v = n[k2]; if (Array.isArray(v)) v.forEach((x) => rec(x, st)); else if (v && typeof v.type === 'string') rec(v, st); }
+    })(ast, []);
     walk(ast, (node, fn) => {
       if (node.type !== 'CallExpression') return;
       const c = node.callee; const nm = c.type === 'Identifier' ? c.name : c.type === 'MemberExpression' && !c.computed ? c.property.name : null;
       if (!names.includes(nm)) return;
       const a = node.arguments[1]; const text = u.code.slice(node.start, node.end);
       const base = `${u.file}#${fn || '<top>'}:${nm}`; const k = (seen.get(base) || 0); seen.set(base, k + 1);
-      const rec = { key: `${base}#${k}`, scope: u.scope, unit: u.file, kind: /Interval|^setI$/.test(nm) ? 'interval' : 'timeout', line: node.loc.start.line + u.lineOffset, delay: a ? ev(a, consts) : 0, delaySrc: a ? u.code.slice(a.start, a.end) : '0', sha: sha(text) };
+      const rec = { key: `${base}#${k}`, scope: u.scope, unit: u.file, kind: /Interval|^setI$/.test(nm) ? 'interval' : 'timeout', line: node.loc.start.line + u.lineOffset, delay: a ? ev(a, consts) : 0, delaySrc: a ? u.code.slice(a.start, a.end) : '0', sha: sha(text), ctrlSha: ctrl.get(node.start) };
       Object.defineProperty(rec, 'node', { value: node, enumerable: false }); Object.defineProperty(rec, 'start', { value: `${u.file}@${node.start}`, enumerable: false });
       out.push(rec);
     });
@@ -104,7 +127,7 @@ function chainsOf(scopes, wrappers, inv, units = sources()) {
         })(node.body, 0);
         if (awaits.length >= 2 || awaits.some((a) => a.inLoop)) {
           const repeats = awaits.some((a) => a.inLoop);
-          out.push({ path: [`await@${u.file}:${node.loc.start.line + u.lineOffset}`, ...awaits.map((a) => a.site.key)], repeats, sites: awaits.map((a) => a.site), awaitChain: true });
+          out.push({ path: [`await@${u.file}:${node.loc.start.line + u.lineOffset}`, ...awaits.map((a) => a.site.key)], repeats, sites: awaits.map((a) => a.site), awaitChain: true, hostSha: sha(u.code.slice(node.start, node.end)) });
         }
       }
       for (const k of Object.keys(node)) { if (k === 'loc') continue; const v = node[k]; if (Array.isArray(v)) v.forEach((x) => scan(x, /Function/.test(node.type) ? node : fnNode, loopDepth)); else if (v && typeof v.type === 'string') scan(v, /Function/.test(node.type) ? node : fnNode, loopDepth); }
@@ -117,7 +140,7 @@ function chainsOf(scopes, wrappers, inv, units = sources()) {
   return uniq.filter((c) => !uniq.some((o) => o !== c && key(o).endsWith(key(c)) && o.path.length > c.path.length)).map((c) => {
     const delays = (c.awaitChain ? c.sites : c.sites.slice(0, c.repeats ? -1 : undefined)).map((t) => t.delay);
     const cumulative = delays.some((d) => d == null) ? null : delays.reduce((a, d) => a + d, 0);
-    return { key: key(c), scope: c.sites[0].scope, repeats: c.repeats, cumulative, sha: sha(c.sites.map((t) => t.sha).join('|')) };
+    return { key: key(c), scope: c.sites[0].scope, repeats: c.repeats, cumulative, sha: sha(c.sites.map((t) => t.sha).join('|')), ctrlSha: sha(c.sites.map((t) => t.ctrlSha).join('|') + (c.hostSha ? `|host:${c.hostSha}` : '')) };
   });
 }
 
@@ -129,6 +152,7 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     const e = entries.get(s.key);
     if (!e) { p.push(`${s.key} (line ${s.line}): delay ${s.delay == null ? `unresolved (${s.delaySrc})` : `${s.delay} ms`} exceeds the ${s.scope} horizon ${doc.pages[s.scope].horizonMs} ms — no reviewed entry`); continue; }
     if (e.sha !== s.sha) p.push(`${s.key}: the call text changed — re-review`);
+    if (e.ctrlSha !== s.ctrlSha) p.push(`${s.key}: its CONTROLLING scope changed (the enclosing function, its loops or the declarations its delay / loops reference) — re-review the bound (RED)`);
     // an unresolved delay is bounded only by its REVIEWED bound; a declared bound below a computed delay is a contradiction
     if (s.delay != null && e.bound != null && e.bound < s.delay) p.push(`${s.key}: declared bound ${e.bound} ms is BELOW the computed delay ${s.delay} ms — a contradiction (RED)`);
     const eff = s.delay != null ? Math.max(s.delay, e.bound == null ? 0 : e.bound) : e.bound;
@@ -145,6 +169,7 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     const e = centries.get(c.key);
     if (!e) { p.push(`CHAIN ${c.key}: cumulative ${c.cumulative == null ? 'UNRESOLVED' : `${c.cumulative} ms`}${c.repeats ? ', REPEATS' : ''} beyond the ${c.scope} horizon ${doc.pages[c.scope].horizonMs} ms — no reviewed chain entry`); continue; }
     if (e.sha !== c.sha) p.push(`CHAIN ${c.key}: its call texts changed — re-review`);
+    if (e.ctrlSha !== c.ctrlSha) p.push(`CHAIN ${c.key}: its CONTROLLING scope changed (an enclosing function, loop, retry limit or referenced declaration) — re-review the bound (RED)`);
     if (!(e.reason && e.reason.trim()) || e.repeatLimit === undefined) p.push(`CHAIN ${c.key}: needs repeatLimit and a reason`);
     // a declaration can never be BELOW what the scanner computed (codex r2 P1-3): the computed bound overrides; a contradiction → RED
     if (c.cumulative != null && e.cumulativeBoundMs != null && e.cumulativeBoundMs < c.cumulative) p.push(`CHAIN ${c.key}: declared cumulativeBoundMs ${e.cumulativeBoundMs} is BELOW the computed ${c.cumulative} ms — a contradiction (RED)`);
@@ -162,6 +187,7 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     const e = pentries.get(t.key);
     if (!e) { p.push(`PERIODIC ${t.key} (every ${t.delay} ms, line ${t.line}): fires within the ${t.scope} horizon — no reviewed periodic expectation`); continue; }
     if (e.sha !== t.sha) p.push(`PERIODIC ${t.key}: its call text changed — re-review`);
+    if (e.ctrlSha !== t.ctrlSha) p.push(`PERIODIC ${t.key}: its CONTROLLING scope changed — re-review (RED)`);
     if (!(e.mayChange && e.mayChange.trim())) p.push(`PERIODIC ${t.key}: needs mayChange`);
     if (e.changesAsserted) p.push(`PERIODIC ${t.key}: declared to change an asserted output within the horizon — RED (the assertion would race it)`);
   }

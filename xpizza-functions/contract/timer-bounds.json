@@ -1,5 +1,5 @@
 {
- "_doc": "R3 P1 §12 C1 — REVIEWED page timer bounds (contract/timer-bounds.js). pages: the asserted pages and the settle() horizon their steps use. wrappers: reviewed timer wrapper names per unit. sites: every timer whose delay exceeds the page horizon or is unresolved, with reachesAsserted (does its effect reach an output a step asserts?) and the reason; bound to the call text (sha256). chains: every timer CHAIN (callback arming another timer, name-resolved within the unit) whose cumulative delay exceeds the horizon, is unresolved or repeats — { cumulativeBoundMs, repeatLimit, reachesAsserted, reason } bound to its call texts. periodic: every interval firing within the horizon — { periodMs, mayChange, mayChangeSelectors (blanked by the §5b recapture), changesAsserted:false }.",
+ "_doc": "R3 P1 §12 C1 — REVIEWED page timer bounds (contract/timer-bounds.js). pages: the asserted pages and the settle() horizon their steps use. wrappers: reviewed timer wrapper names per unit. sites: every timer whose delay exceeds the page horizon or is unresolved, with reachesAsserted (does its effect reach an output a step asserts?) and the reason; bound to the call text (sha256). chains: every timer CHAIN (callback arming another timer, name-resolved within the unit) whose cumulative delay exceeds the horizon, is unresolved or repeats — { cumulativeBoundMs, repeatLimit, reachesAsserted, reason } bound to its call texts. periodic: every interval firing within the horizon — { periodMs, mayChange, mayChangeSelectors (blanked by the §5b recapture), changesAsserted:false }. Every reviewed site / chain / periodic entry is also bound to ctrlSha: its CONTROLLING scope (outermost enclosing function incl. loops + the declarations its delay and loops reference).",
  "pages": {
   "xpizza-orders": {
    "horizonMs": 10000
@@ -26,7 +26,8 @@
    "bound": null,
    "reachesAsserted": false,
    "reason": "the reviewed timer WRAPPER body (setT): its delay is its caller's — every setT call site is inventoried separately",
-   "sha": "e87bd412031aafa83c023a382637d930d59c65ef4642730e147d3ac0e45065ae"
+   "sha": "e87bd412031aafa83c023a382637d930d59c65ef4642730e147d3ac0e45065ae",
+   "ctrlSha": "de6ec9926cf6b07dff626bd35c28410737971c4f109d40edf5bf2b7ed0b1f066"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#create>anon:setInterval#0",
@@ -35,7 +36,8 @@
    "bound": null,
    "reachesAsserted": false,
    "reason": "the reviewed timer WRAPPER body (setI): its delay is its caller's — every setI call site is inventoried separately",
-   "sha": "fbc595e5fe7621fc8dc518569b3eed5db554bfcbf31d67877f0c37419124c9a2"
+   "sha": "fbc595e5fe7621fc8dc518569b3eed5db554bfcbf31d67877f0c37419124c9a2",
+   "ctrlSha": "de6ec9926cf6b07dff626bd35c28410737971c4f109d40edf5bf2b7ed0b1f066"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#scheduleBeat:setT#0",
@@ -44,7 +46,8 @@
    "bound": null,
    "reachesAsserted": false,
    "reason": "the client-identity HEARTBEAT (a diagnostic request); it writes no DOM and no order data — it cannot reach a ticket / cart / pay-step / confirmation output",
-   "sha": "78eb79f92bf47377a38daed9d2980c1eb89df6ed15cd330db06a72ac0447f338"
+   "sha": "78eb79f92bf47377a38daed9d2980c1eb89df6ed15cd330db06a72ac0447f338",
+   "ctrlSha": "bd11270024393fb3a6908422a3706aebdbeac31271ca5557751bd695e5a8df29"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setT#0",
@@ -53,7 +56,8 @@
    "bound": 3000,
    "reachesAsserted": false,
    "reason": "the first deploy-version check (1.5–3 s, random): it can only raise the update-required path / reload, never an asserted order output; bound 3000 ms ≤ the horizon",
-   "sha": "97094a293ce2e443fe413aa627b9e9c2249b14cd93ec068a990780a3b2ab4393"
+   "sha": "97094a293ce2e443fe413aa627b9e9c2249b14cd93ec068a990780a3b2ab4393",
+   "ctrlSha": "00c8e0ab56d1ff41d1f74256b29e5db034cfcdedae8176de3612c84f08f718b9"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setI#0",
@@ -62,7 +66,8 @@
    "bound": 600000,
    "reachesAsserted": false,
    "reason": "the 10-min deploy-version re-check + heartbeat: no asserted order output",
-   "sha": "02f42a2a03437eb8dc1cc6942e439cb8fcda4765a40db2489e0ac1cb0d3a4b73"
+   "sha": "02f42a2a03437eb8dc1cc6942e439cb8fcda4765a40db2489e0ac1cb0d3a4b73",
+   "ctrlSha": "a589b92045b116b906774464bc25bff4b9c05b62029bbe8d26fc114126c5e082"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#showCancelBanner:setTimeout#0",
@@ -71,7 +76,8 @@
    "bound": 12000,
    "reachesAsserted": false,
    "reason": "hides the KDS cancellation banner 12 s after a CANCELLED order arrives; LP new has no cancellation (precondition not-cancelled) and the banner is not the ticket observable",
-   "sha": "3db36daea640d3186846225b0af739941ff54497b0004b91928586dd5fbf229c"
+   "sha": "3db36daea640d3186846225b0af739941ff54497b0004b91928586dd5fbf229c",
+   "ctrlSha": "51ea4a8b12b12bce04c4b59ca7909c9427b8b03e33eabd3408a296d12610dff7"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#create>anon:setTimeout#0",
@@ -80,7 +86,8 @@
    "bound": null,
    "reachesAsserted": false,
    "reason": "the reviewed timer WRAPPER body (setT): its delay is its caller's — every setT call site is inventoried separately",
-   "sha": "e87bd412031aafa83c023a382637d930d59c65ef4642730e147d3ac0e45065ae"
+   "sha": "e87bd412031aafa83c023a382637d930d59c65ef4642730e147d3ac0e45065ae",
+   "ctrlSha": "de6ec9926cf6b07dff626bd35c28410737971c4f109d40edf5bf2b7ed0b1f066"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#create>anon:setInterval#0",
@@ -89,7 +96,8 @@
    "bound": null,
    "reachesAsserted": false,
    "reason": "the reviewed timer WRAPPER body (setI): its delay is its caller's — every setI call site is inventoried separately",
-   "sha": "fbc595e5fe7621fc8dc518569b3eed5db554bfcbf31d67877f0c37419124c9a2"
+   "sha": "fbc595e5fe7621fc8dc518569b3eed5db554bfcbf31d67877f0c37419124c9a2",
+   "ctrlSha": "de6ec9926cf6b07dff626bd35c28410737971c4f109d40edf5bf2b7ed0b1f066"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0",
@@ -98,7 +106,8 @@
    "bound": null,
    "reachesAsserted": false,
    "reason": "the client-identity HEARTBEAT (a diagnostic request); it writes no DOM and no order data — it cannot reach a ticket / cart / pay-step / confirmation output",
-   "sha": "78eb79f92bf47377a38daed9d2980c1eb89df6ed15cd330db06a72ac0447f338"
+   "sha": "78eb79f92bf47377a38daed9d2980c1eb89df6ed15cd330db06a72ac0447f338",
+   "ctrlSha": "bd11270024393fb3a6908422a3706aebdbeac31271ca5557751bd695e5a8df29"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setT#0",
@@ -107,7 +116,8 @@
    "bound": 3000,
    "reachesAsserted": false,
    "reason": "the first deploy-version check (1.5–3 s, random): it can only raise the update-required path / reload, never an asserted order output; bound 3000 ms ≤ the horizon",
-   "sha": "97094a293ce2e443fe413aa627b9e9c2249b14cd93ec068a990780a3b2ab4393"
+   "sha": "97094a293ce2e443fe413aa627b9e9c2249b14cd93ec068a990780a3b2ab4393",
+   "ctrlSha": "00c8e0ab56d1ff41d1f74256b29e5db034cfcdedae8176de3612c84f08f718b9"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setI#0",
@@ -116,7 +126,8 @@
    "bound": 600000,
    "reachesAsserted": false,
    "reason": "the 10-min deploy-version re-check + heartbeat: no asserted order output",
-   "sha": "02f42a2a03437eb8dc1cc6942e439cb8fcda4765a40db2489e0ac1cb0d3a4b73"
+   "sha": "02f42a2a03437eb8dc1cc6942e439cb8fcda4765a40db2489e0ac1cb0d3a4b73",
+   "ctrlSha": "a589b92045b116b906774464bc25bff4b9c05b62029bbe8d26fc114126c5e082"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#locPickPred>anon:setTimeout#0",
@@ -125,7 +136,8 @@
    "bound": 8000,
    "reachesAsserted": false,
    "reason": "the place-details timeout of the fail-state ADDRESS PICK (location escape hatch): created only when a customer picks an address suggestion; S1's GPS-OK path never creates it. Default bound 8000 ms ≤ the horizon (window.__LOC_PICK_TIMEOUT_MS is a test knob)",
-   "sha": "ea5e0caf59bc78b517ac955c80fb7f763c33c0e4f685b51303534dcb44742a25"
+   "sha": "ea5e0caf59bc78b517ac955c80fb7f763c33c0e4f685b51303534dcb44742a25",
+   "ctrlSha": "883099dc7e67ccd8f824183de5e394250ec188ef7d08686a71c54b9dbca5e8c3"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0",
@@ -134,7 +146,8 @@
    "bound": 10000,
    "reachesAsserted": false,
    "reason": "the outer cap on a pending address-pick waiter at pay time: created only when __locPickPromise is set (an address pick in flight); S1 has none. Default bound 10000 ms = the horizon",
-   "sha": "30b25d685b6afc199d6f07964a4b64bdb8e9abafa0a39dae927c051ad13d8580"
+   "sha": "30b25d685b6afc199d6f07964a4b64bdb8e9abafa0a39dae927c051ad13d8580",
+   "ctrlSha": "107f7f3afa74783ae51a00b6b14d32056e4cb95a50be351531d3dcc46ec0b586"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#<top>:setInterval#0",
@@ -143,7 +156,8 @@
    "bound": 60000,
    "reachesAsserted": false,
    "reason": "loadAvailability every 60 s refreshes sold-out marks on the MENU; the run's availability is a static fixture and the menu is not an asserted output in R13 / R14 / R15",
-   "sha": "e14b812ecb24d1e938a33f4126a56ca09b932bd6ef630a487c695a2f12809629"
+   "sha": "e14b812ecb24d1e938a33f4126a56ca09b932bd6ef630a487c695a2f12809629",
+   "ctrlSha": "b0bd76a5846aa19e55c6baa8a967247341d2f22c19b30e94647fb93e3b633e13"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#check>anon:setT#0",
@@ -152,7 +166,8 @@
    "bound": 8000,
    "reachesAsserted": false,
    "reason": "the deploy-version check timeout (var VERSION_TIMEOUT_MS = 8000): it only finishes the version check; no order output",
-   "sha": "affd56aff0129e69066dfa42f860b02ff5de5cd636457a7981bd8b2b73a23bbc"
+   "sha": "affd56aff0129e69066dfa42f860b02ff5de5cd636457a7981bd8b2b73a23bbc",
+   "ctrlSha": "d7c2bae74d49f13d7b307d982cce118ccc426af25bd750fa0cd5445b0296ad40"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#heartbeat:setT#1",
@@ -161,7 +176,8 @@
    "bound": 8000,
    "reachesAsserted": false,
    "reason": "the heartbeat request abort timeout (var HEARTBEAT_TIMEOUT_MS = 8000): diagnostics only; no order output",
-   "sha": "e8055dcdf53249a21ca5228c1d2a8fe19f080ebd08c3156e7cb3bac332e85bc9"
+   "sha": "e8055dcdf53249a21ca5228c1d2a8fe19f080ebd08c3156e7cb3bac332e85bc9",
+   "ctrlSha": "6f0f90f95fa562efc7fde242ffee4cf40275a1c93d9989ff448691495429bd0f"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#check>anon:setT#0",
@@ -170,7 +186,8 @@
    "bound": 8000,
    "reachesAsserted": false,
    "reason": "the deploy-version check timeout (var VERSION_TIMEOUT_MS = 8000): it only finishes the version check; no order output",
-   "sha": "affd56aff0129e69066dfa42f860b02ff5de5cd636457a7981bd8b2b73a23bbc"
+   "sha": "affd56aff0129e69066dfa42f860b02ff5de5cd636457a7981bd8b2b73a23bbc",
+   "ctrlSha": "d7c2bae74d49f13d7b307d982cce118ccc426af25bd750fa0cd5445b0296ad40"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#heartbeat:setT#1",
@@ -179,7 +196,8 @@
    "bound": 8000,
    "reachesAsserted": false,
    "reason": "the heartbeat request abort timeout (var HEARTBEAT_TIMEOUT_MS = 8000): diagnostics only; no order output",
-   "sha": "e8055dcdf53249a21ca5228c1d2a8fe19f080ebd08c3156e7cb3bac332e85bc9"
+   "sha": "e8055dcdf53249a21ca5228c1d2a8fe19f080ebd08c3156e7cb3bac332e85bc9",
+   "ctrlSha": "6f0f90f95fa562efc7fde242ffee4cf40275a1c93d9989ff448691495429bd0f"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
@@ -188,7 +206,8 @@
    "bound": 3000,
    "reachesAsserted": true,
    "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon",
-   "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3"
+   "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3",
+   "ctrlSha": "d628f1e603e2d62b3fbc7339bc1ba32b98dfddd21221f9af722ba9661c90ed88"
   }
  ],
  "chains": [
@@ -199,7 +218,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "a23061a8211edb9dcc96e1a52196de5d01f2393dadaf7188de3681e4f0e54358"
+   "sha": "a23061a8211edb9dcc96e1a52196de5d01f2393dadaf7188de3681e4f0e54358",
+   "ctrlSha": "7067426aca4cc21e5b20f35432593a4d82962565559c8604de60852bf8408813"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#scheduleBeat:setT#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#1",
@@ -208,7 +228,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "5c049ce87fba95cd8b4dc66002d72c5a171d180ccab180394528f87c006e1471"
+   "sha": "5c049ce87fba95cd8b4dc66002d72c5a171d180ccab180394528f87c006e1471",
+   "ctrlSha": "15f7a5e86ca3dc3c4a0297bb1229081f8a61f1ff1af6aee87ad20b7d87ec75e5"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#scheduleBeat:setT#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#1",
@@ -217,7 +238,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "44cbb3267d061ae0d5fc6da41e3aef356562dc228a408e40f970cb22e1cff943"
+   "sha": "44cbb3267d061ae0d5fc6da41e3aef356562dc228a408e40f970cb22e1cff943",
+   "ctrlSha": "d0e9b9df2ed97f7c4d6a92cc2963410848cd8f3949c8908c424440e5a0751b56"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setT#0 → xpizza-kitchen/sherpa-client.js#check>anon:setT#0",
@@ -226,7 +248,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "265a546214f79bdae122066389befc3dda98b6ab4775a05823c294284f2681e8"
+   "sha": "265a546214f79bdae122066389befc3dda98b6ab4775a05823c294284f2681e8",
+   "ctrlSha": "6af74fee701b84e9a7c2c7327ada4e81105d4694fd1b20a724e84d493049c737"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setI#0 → xpizza-kitchen/sherpa-client.js#check>anon:setT#0",
@@ -235,7 +258,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "34bdb92cd01b23c17eb5cae048062ea926a1ebe271d0caba8770debc6b58eb6a"
+   "sha": "34bdb92cd01b23c17eb5cae048062ea926a1ebe271d0caba8770debc6b58eb6a",
+   "ctrlSha": "35855b79762dac3bd74ee917cbbacc355bb131ed429c55c070f642f625f463a9"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setI#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#0",
@@ -244,7 +268,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "ae040b9046b403f853ce5c65d1daac159243ea34b5ce84bfc52a7b519b32cab5"
+   "sha": "ae040b9046b403f853ce5c65d1daac159243ea34b5ce84bfc52a7b519b32cab5",
+   "ctrlSha": "c3568d5926d38a5fe2588bfe12a662590ad0c111a3bf7249e7284a2b88ce548c"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setI#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#1",
@@ -253,7 +278,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "11934adcca5060ca7ce0bfd29d13f85ced6380c6dd06e00d61cd2edb90494763"
+   "sha": "11934adcca5060ca7ce0bfd29d13f85ced6380c6dd06e00d61cd2edb90494763",
+   "ctrlSha": "bc94a5387d4992d4e5b4bfd2de510c0f0cb1c8b8683138d9b0fb1df5d82f0f45"
   },
   {
    "key": "xpizza-kitchen/sherpa-client.js#start:setI#0 → xpizza-kitchen/sherpa-client.js#heartbeat:setT#1",
@@ -262,7 +288,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "3ece9302d799725ae11bd20f4c06e72a6e493ba10bb2006c0ae57ad34c1a6ec3"
+   "sha": "3ece9302d799725ae11bd20f4c06e72a6e493ba10bb2006c0ae57ad34c1a6ec3",
+   "ctrlSha": "9957aebe88e732d3d2f2489cc674a85a826dfdf9f915d06c812b15f726bcb818"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0",
@@ -271,7 +298,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "17c998d5a2ed29c9cfd539d4d889d62ecc5920ef090cf67aa7644b76d80207ec"
+   "sha": "17c998d5a2ed29c9cfd539d4d889d62ecc5920ef090cf67aa7644b76d80207ec",
+   "ctrlSha": "bee2739575bbbfb9323b46e3453b15a8d8d7cdbc623df22d67b6d523013c3eee"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0",
@@ -280,7 +308,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "7d70d05d42856e6853048ac314b4384f06da83dfc51fc49ca71c511213c891b9"
+   "sha": "7d70d05d42856e6853048ac314b4384f06da83dfc51fc49ca71c511213c891b9",
+   "ctrlSha": "9528c92f5af1077eb36feec1f6a06be495dbb83599c5834232a977065114781c"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0",
@@ -289,7 +318,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "38bb8f3a5fbae21b499afbf4c5543ecd31514d6ee2843a29fbf1afc9bef0789e"
+   "sha": "38bb8f3a5fbae21b499afbf4c5543ecd31514d6ee2843a29fbf1afc9bef0789e",
+   "ctrlSha": "b39c5db177e64ad04f739293ffbec3484299e83fa0eda332fb25f2c0c9edd641"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0",
@@ -298,7 +328,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "bba4c7690a71676aab877f9118912bf4dd78ff696d731ea45d7ebcbf1a2d4412"
+   "sha": "bba4c7690a71676aab877f9118912bf4dd78ff696d731ea45d7ebcbf1a2d4412",
+   "ctrlSha": "93438b65d585234c982b5f56bca2bf76dcd759e31f438a9f7bdbfabdb1f2e548"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0",
@@ -307,7 +338,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "51d088fa37399cc385be377aee3bd3ce0e0b6a215b654873ce25161f3260c460"
+   "sha": "51d088fa37399cc385be377aee3bd3ce0e0b6a215b654873ce25161f3260c460",
+   "ctrlSha": "0348034087a80526a0fd1ce18503b81b8bf3218114c94bd3f037de2960b00587"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0",
@@ -316,7 +348,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "69a05f506359d2f02973c617780c33e0c6ce538fb5e9136ef8e7786f1ebed4f8"
+   "sha": "69a05f506359d2f02973c617780c33e0c6ce538fb5e9136ef8e7786f1ebed4f8",
+   "ctrlSha": "c0eed509609dcda5f924c771883283b09fd252d44da29b10dfaaff0ced1cd533"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0",
@@ -325,7 +358,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "020814da886efe331c9f16308a687dc8bc2c8c53286381cc7a4d6cccf0cb8594"
+   "sha": "020814da886efe331c9f16308a687dc8bc2c8c53286381cc7a4d6cccf0cb8594",
+   "ctrlSha": "9a5e5a7fb9ef2ee392192cca59347c5444f45a46c79f856757b9f1c01fa76d44"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0",
@@ -334,7 +368,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "3ec91bc07a6bcbff2c109665762df553b8858e3a2ec9d9f3b5391c954a38e0db"
+   "sha": "3ec91bc07a6bcbff2c109665762df553b8858e3a2ec9d9f3b5391c954a38e0db",
+   "ctrlSha": "59bffb900bf4e49fadf7b66cc716613a75f0090c5941790fc9e3b1082ff169a2"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0",
@@ -343,7 +378,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "11a304b923c0e101119f400dfb3e46d306c1f492a3ab1b44cf786fed269ff126"
+   "sha": "11a304b923c0e101119f400dfb3e46d306c1f492a3ab1b44cf786fed269ff126",
+   "ctrlSha": "f5f602d937b38796c79cc8fad35b0e73f7f2f7773a478f9b5d2a5208eaa8fe88"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0",
@@ -352,7 +388,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "6ef875fb4aaa7282a862a5a8ff8574108e5f204a3222f0df462f4c01143df7ce"
+   "sha": "6ef875fb4aaa7282a862a5a8ff8574108e5f204a3222f0df462f4c01143df7ce",
+   "ctrlSha": "f27f6a1f9bc0d3b512fe1fda565b55765d21826c02bbaab3a694596ad1cd7857"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0",
@@ -361,7 +398,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "65864895e17c6fafbebfaac80535001e0c333bdaac25c2d73f4dabd019cc55c6"
+   "sha": "65864895e17c6fafbebfaac80535001e0c333bdaac25c2d73f4dabd019cc55c6",
+   "ctrlSha": "cd7b924698bf461de0f00a62d2747f1cef57bdb0e706faa10fd881122e3610fa"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0",
@@ -370,7 +408,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "98a9e86eabf039eb3667feb719b68d5ac31a06e2a535166c59690e7fd1539395"
+   "sha": "98a9e86eabf039eb3667feb719b68d5ac31a06e2a535166c59690e7fd1539395",
+   "ctrlSha": "4b0b72a371e3f656b2eb1d380f0e74f022ee2a505e7150ebcda3303f11426fd4"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0",
@@ -379,7 +418,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "79539b8332befd5a66dc08d1497a8256c6657f943dbb162fc7b54b6e3335ba72"
+   "sha": "79539b8332befd5a66dc08d1497a8256c6657f943dbb162fc7b54b6e3335ba72",
+   "ctrlSha": "1d50ca959678c6130a0eaaa001bea3781d9c5de9e1c897f9b9b98cd9bb7bf024"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0",
@@ -388,7 +428,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "8e2338a72b50aee842ce3fb6b3cb9f231be94e04c57dcf24fba382cb81768b53"
+   "sha": "8e2338a72b50aee842ce3fb6b3cb9f231be94e04c57dcf24fba382cb81768b53",
+   "ctrlSha": "15215ff6cad33d2d932aa88ab4b3fc69e1defa4480fe964d36b90069bc7045f6"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0",
@@ -397,7 +438,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "aeac225fd6f99fb40df7777b909f432d41e26b0f72d0656e6bd80dcec11bdd2d"
+   "sha": "aeac225fd6f99fb40df7777b909f432d41e26b0f72d0656e6bd80dcec11bdd2d",
+   "ctrlSha": "746614620defdef85e57db4007a0b152fc1cc3e6ecaaf7912d5bb0aab165da25"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0",
@@ -406,7 +448,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "11b88e62b5d5b9b98ee212189f2dfa0040c846611f11bd1eaab8f33ead5d1aa1"
+   "sha": "11b88e62b5d5b9b98ee212189f2dfa0040c846611f11bd1eaab8f33ead5d1aa1",
+   "ctrlSha": "8482f55afcd0232ce1c1e6e80826d7f1aa798b1ab02b5043dedbb42f07cc957c"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0",
@@ -415,7 +458,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "02c20a61fa769d76f70244e0e89b586cf90a6eeb2b013a005977c4978b9a18cb"
+   "sha": "02c20a61fa769d76f70244e0e89b586cf90a6eeb2b013a005977c4978b9a18cb",
+   "ctrlSha": "b454f698ccc3d9389ea79e0280d910d1dc56107e79a422187193f85c88965731"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#holdBegin:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion>anon:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0 → xpizza-kitchen/index.html<script@0>#startCompletion:setTimeout#0",
@@ -424,7 +468,8 @@
    "repeatLimit": 3,
    "reachesAsserted": false,
    "reason": "the KDS completion / press-and-hold beats (holdBegin 700 ms → holdFire → startCompletion beats): armed ONLY by a kitchen tap or hold (precondition no-kitchen-action at LP new); the name-based call graph over-approximates the cycle; real chain ≤ 3 beats",
-   "sha": "692eaf1d224cb1c0ca29992eda181647955caef2744ad3c8443339889cc2fa33"
+   "sha": "692eaf1d224cb1c0ca29992eda181647955caef2744ad3c8443339889cc2fa33",
+   "ctrlSha": "7b2eb4ff83bd09e08eb568ac091a45d8665dbb5389dd8031a7a88f1850cc0608"
   },
   {
    "key": "xpizza-orders/account.js#rkCommit:setTimeout#0 → xpizza-orders/account.js#rkCommit:setTimeout#0",
@@ -433,7 +478,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "account.js rewards-key debounce re-armed on each keystroke of the reward/claim flow; no order output",
-   "sha": "bf487578908ef92771f568ad76efbde6b15f80d1d8fe926d80b69f234282816e"
+   "sha": "bf487578908ef92771f568ad76efbde6b15f80d1d8fe926d80b69f234282816e",
+   "ctrlSha": "8d1dc97b792311769a1520ebec63fee883fc899f8a11be19107b5f82935acf87"
   },
   {
    "key": "xpizza-orders/account.js#startResendCountdown:setInterval#0 → xpizza-orders/account.js#startResendCountdown:setInterval#0",
@@ -442,7 +488,8 @@
    "repeatLimit": 60,
    "reachesAsserted": false,
    "reason": "the OTP resend countdown (1 s ticks, stops at 0 / 60 s): profile sign-in only — not in S1 (guest checkout, precondition no-otp)",
-   "sha": "2918ed1daf9d7c8e2109079da11d777c06d6eb7314817ce55042db589df5bdc8"
+   "sha": "2918ed1daf9d7c8e2109079da11d777c06d6eb7314817ce55042db589df5bdc8",
+   "ctrlSha": "8d1dc97b792311769a1520ebec63fee883fc899f8a11be19107b5f82935acf87"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0",
@@ -451,7 +498,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
-   "sha": "fc8f59810c1d44ea2173db0a9712d02f7ee1af634b5d972cbdd789b6c2ad600f"
+   "sha": "fc8f59810c1d44ea2173db0a9712d02f7ee1af634b5d972cbdd789b6c2ad600f",
+   "ctrlSha": "8d1dc97b792311769a1520ebec63fee883fc899f8a11be19107b5f82935acf87"
   },
   {
    "key": "xpizza-orders/account.js#openAcctFullscreenMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0 → xpizza-orders/account.js#initAcctPreviewMap:setTimeout#0",
@@ -460,7 +508,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "account address map preview retries until Maps is ready; it touches only the account map preview",
-   "sha": "87e80d87e79634ce994c8c6bbaaf4b43df24f0e36757acfb3d9a45a3908db02f"
+   "sha": "87e80d87e79634ce994c8c6bbaaf4b43df24f0e36757acfb3d9a45a3908db02f",
+   "ctrlSha": "c619ccc1dd8b6dd25b4765ecf11a321c2e81ea42f39bf4ed7f7723c4d8e6c3b2"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0",
@@ -469,7 +518,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "a23061a8211edb9dcc96e1a52196de5d01f2393dadaf7188de3681e4f0e54358"
+   "sha": "a23061a8211edb9dcc96e1a52196de5d01f2393dadaf7188de3681e4f0e54358",
+   "ctrlSha": "7067426aca4cc21e5b20f35432593a4d82962565559c8604de60852bf8408813"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#1",
@@ -478,7 +528,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "5c049ce87fba95cd8b4dc66002d72c5a171d180ccab180394528f87c006e1471"
+   "sha": "5c049ce87fba95cd8b4dc66002d72c5a171d180ccab180394528f87c006e1471",
+   "ctrlSha": "15f7a5e86ca3dc3c4a0297bb1229081f8a61f1ff1af6aee87ad20b7d87ec75e5"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#1",
@@ -487,7 +538,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "44cbb3267d061ae0d5fc6da41e3aef356562dc228a408e40f970cb22e1cff943"
+   "sha": "44cbb3267d061ae0d5fc6da41e3aef356562dc228a408e40f970cb22e1cff943",
+   "ctrlSha": "d0e9b9df2ed97f7c4d6a92cc2963410848cd8f3949c8908c424440e5a0751b56"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setT#0 → xpizza-orders/sherpa-client.js#check>anon:setT#0",
@@ -496,7 +548,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "265a546214f79bdae122066389befc3dda98b6ab4775a05823c294284f2681e8"
+   "sha": "265a546214f79bdae122066389befc3dda98b6ab4775a05823c294284f2681e8",
+   "ctrlSha": "6af74fee701b84e9a7c2c7327ada4e81105d4694fd1b20a724e84d493049c737"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setI#0 → xpizza-orders/sherpa-client.js#check>anon:setT#0",
@@ -505,7 +558,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "34bdb92cd01b23c17eb5cae048062ea926a1ebe271d0caba8770debc6b58eb6a"
+   "sha": "34bdb92cd01b23c17eb5cae048062ea926a1ebe271d0caba8770debc6b58eb6a",
+   "ctrlSha": "35855b79762dac3bd74ee917cbbacc355bb131ed429c55c070f642f625f463a9"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setI#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0",
@@ -514,7 +568,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "ae040b9046b403f853ce5c65d1daac159243ea34b5ce84bfc52a7b519b32cab5"
+   "sha": "ae040b9046b403f853ce5c65d1daac159243ea34b5ce84bfc52a7b519b32cab5",
+   "ctrlSha": "c3568d5926d38a5fe2588bfe12a662590ad0c111a3bf7249e7284a2b88ce548c"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setI#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#1",
@@ -523,7 +578,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "11934adcca5060ca7ce0bfd29d13f85ced6380c6dd06e00d61cd2edb90494763"
+   "sha": "11934adcca5060ca7ce0bfd29d13f85ced6380c6dd06e00d61cd2edb90494763",
+   "ctrlSha": "bc94a5387d4992d4e5b4bfd2de510c0f0cb1c8b8683138d9b0fb1df5d82f0f45"
   },
   {
    "key": "xpizza-orders/sherpa-client.js#start:setI#0 → xpizza-orders/sherpa-client.js#heartbeat:setT#1",
@@ -532,7 +588,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "sherpa-client deploy-version check / identity heartbeat re-arming itself (random 1.5–3 s first check, 10-min cadence, heartbeat backoff): it issues diagnostics requests and may raise the update-required path; it writes no order output (ticket / cart / pay step / confirmation)",
-   "sha": "3ece9302d799725ae11bd20f4c06e72a6e493ba10bb2006c0ae57ad34c1a6ec3"
+   "sha": "3ece9302d799725ae11bd20f4c06e72a6e493ba10bb2006c0ae57ad34c1a6ec3",
+   "ctrlSha": "9957aebe88e732d3d2f2489cc674a85a826dfdf9f915d06c812b15f726bcb818"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#goToLocation:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0",
@@ -541,7 +598,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
-   "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01"
+   "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01",
+   "ctrlSha": "6a9dadfd6739a9fd176d69925d1c67ab8dde7bea0e80a21abc614a0c707033f8"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#locSearchInput:setTimeout#0 → xpizza-orders/index.html<script@2>#locPickPred>anon:setTimeout#0",
@@ -550,7 +608,8 @@
    "repeatLimit": 2,
    "reachesAsserted": false,
    "reason": "the address-search debounce → place-details timeout: an address PICK only; S1 uses the GPS-OK path",
-   "sha": "2d15ad9aa3982ece480c54896f95debbe8218245b1d37c063fd34938f923b7b3"
+   "sha": "2d15ad9aa3982ece480c54896f95debbe8218245b1d37c063fd34938f923b7b3",
+   "ctrlSha": "ef97cbc2621f960687e23b6f1a78cba3bd9561ac79306492b521bb4162502977"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#processPixelPay:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay:setTimeout#0",
@@ -559,7 +618,8 @@
    "repeatLimit": 2,
    "reachesAsserted": false,
    "reason": "the PixelPay charge retry (ONCE, 1.5 s): ONLINE payment only (precondition not-online-payment)",
-   "sha": "05b25fb8e9e20e749421a879832a8c11bd05f6b765e6a5325190c549f754d747"
+   "sha": "05b25fb8e9e20e749421a879832a8c11bd05f6b765e6a5325190c549f754d747",
+   "ctrlSha": "9f870e9c880662c305061cba19379e53ef2d5d19a5ccc49f45cadf081f25da71"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#restoreOrderForm:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0 → xpizza-orders/index.html<script@2>#initMap:setTimeout#0",
@@ -568,7 +628,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
-   "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01"
+   "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01",
+   "ctrlSha": "b4f55ba223276e1af9fa5a4b3e88a6a130597d76f1097e5ee3f34511a9710e53"
   },
   {
    "key": "await@xpizza-orders/index.html<script@2>:3875 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
@@ -577,7 +638,8 @@
    "repeatLimit": 3,
    "reachesAsserted": true,
    "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon",
-   "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1"
+   "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1",
+   "ctrlSha": "8f8cd71859b42c22e376b65e9f3b9792baa928ba9a59ffef405585b3538e43eb"
   },
   {
    "key": "await@xpizza-orders/index.html<script@2>:4387 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
@@ -586,7 +648,8 @@
    "repeatLimit": "unbounded",
    "reachesAsserted": false,
    "reason": "handlePaymentReturn’s status poll (5 s fetch timeout + 2.5 s waits until a deadline): the ONLINE payment return only (precondition not-online-payment) — never on S1",
-   "sha": "4041af37b47cd2cf537d43e6a542b819cb2df37d3a4769277f8067cbad44d748"
+   "sha": "4041af37b47cd2cf537d43e6a542b819cb2df37d3a4769277f8067cbad44d748",
+   "ctrlSha": "0a3b0926492cc65898d2532911013ba652c3ed66df7ed01763a7d4e0a8d7dc2e"
   },
   {
    "key": "await@xpizza-orders/index.html<script@2>:4562 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
@@ -595,7 +658,8 @@
    "repeatLimit": 3,
    "reachesAsserted": true,
    "reason": "submitOrder’s awaited steps on the real submit: the ID-token race (≤ 1500 ms) then the retry backoff (1500, 3000 ms; MAX_TRIES 3); the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 6000 ms ≤ the horizon; S1’s first attempt succeeds",
-   "sha": "3c146d0ad91f91544d8fc3140699e7381809382286338c6bbd021b47e7b33d7f"
+   "sha": "3c146d0ad91f91544d8fc3140699e7381809382286338c6bbd021b47e7b33d7f",
+   "ctrlSha": "cb379f2091fe3389c2554d720135fd612c48511952a71943268bf25b0bfcffdc"
   }
  ],
  "periodic": [
@@ -605,7 +669,8 @@
    "mayChange": "the ready-nudge tick (applyNudges every 1 s): may add / remove the nudge-overdue class on a ticket IN PREPARATION past its ready time",
    "mayChangeSelectors": [],
    "changesAsserted": false,
-   "sha": "6074bbe5a4269aad5a8645990080f8d567154566c52d53730070d781dbdb1bf0"
+   "sha": "6074bbe5a4269aad5a8645990080f8d567154566c52d53730070d781dbdb1bf0",
+   "ctrlSha": "a02f3232857a180ccbfefb99ef9e1acfa34b3962f8c102fa36abf47ac98295e2"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#<top>:setInterval#0",
@@ -616,7 +681,8 @@
     ".sched-day"
    ],
    "changesAsserted": false,
-   "sha": "16298c44845ada9928c2dfb2bd8a6f7e22aa4a84501304e49f0decdc2955a916"
+   "sha": "16298c44845ada9928c2dfb2bd8a6f7e22aa4a84501304e49f0decdc2955a916",
+   "ctrlSha": "b0bd76a5846aa19e55c6baa8a967247341d2f22c19b30e94647fb93e3b633e13"
   },
   {
    "key": "xpizza-kitchen/index.html<script@0>#<top>:setInterval#1",
@@ -626,7 +692,8 @@
     ".h-timer"
    ],
    "changesAsserted": false,
-   "sha": "e15173e8afcf885aa482a7e8e04db9ded6e4e4cad110b222e6101801127a8ee1"
+   "sha": "e15173e8afcf885aa482a7e8e04db9ded6e4e4cad110b222e6101801127a8ee1",
+   "ctrlSha": "b0bd76a5846aa19e55c6baa8a967247341d2f22c19b30e94647fb93e3b633e13"
   },
   {
    "key": "xpizza-orders/account.js#startResendCountdown:setInterval#0",
@@ -634,7 +701,8 @@
    "mayChange": "the OTP resend countdown text (profile sign-in only; not in S1)",
    "mayChangeSelectors": [],
    "changesAsserted": false,
-   "sha": "425dce5f41ee83fc2ec0297889164ec4cb18849ae35bd517aa50be582b0255e8"
+   "sha": "425dce5f41ee83fc2ec0297889164ec4cb18849ae35bd517aa50be582b0255e8",
+   "ctrlSha": "68815a623fa1af475c98ed21acae63114078b75da0b1b408174bf3c243354676"
   }
  ]
 }

@@ -17,12 +17,40 @@ const SHRINK = path.join(__dirname, 'p1-hits-shrink.json');
  * product (e.g. createOrder's identity-shadow sample is read ONLY if the shadow check already settled — "collect only if
  * already settled") is neither required nor growth. Each entry needs a reason, may not also sit in the baseline, and
  * must name a current census site (ratchet.guard). */
-function ratchet({ baseline, shrink, current }) {
+/* codex P1-a r3 P1-2: the category is PINNED. An entry is accepted only if it is in this reviewed list (a code change,
+ * reviewed — never a data edit) AND its race justification is still the source: the justification text occurs exactly
+ * once in its census scope, the site belongs to that scope, and the site's own source line is unchanged. Anything else
+ * (an unrelated site moved into the category, a stale justification) → RED: it could hide genuinely lost coverage. */
+const APPROVED_NONDETERMINISTIC = Object.freeze([
+  Object.freeze({
+    context: 'S1/x_pizza/new',
+    site: 'xpizza-functions/index.js#createOrderApp.all#status#23',
+    scope: 'xpizza-functions/index.js#createOrderApp.all',
+    justification: 'const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;',
+    siteLine: "outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',",
+  }),
+]);
+function justificationProblems(e, { readFile = (f) => fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'), scopeText = null } = {}) {
+  const a = APPROVED_NONDETERMINISTIC.find((x) => x.context === e.context && x.site === e.site);
+  if (!a) return [`nondeterministic entry ${e.context}|${e.site} is NOT in the reviewed APPROVED_NONDETERMINISTIC list (contract/ratchet.js) — a category entry is a reviewed code change, never a data edit`];
+  const p = [];
+  if (e.scope !== a.scope || e.justification !== a.justification || e.siteLine !== a.siteLine) p.push(`nondeterministic entry ${e.context}|${e.site}: its recorded justification differs from the reviewed one`);
+  const st = (scopeText || require('./applicability').scopeTextOf)(a.scope);
+  if (st == null) p.push(`nondeterministic ${e.site}: justification scope ${a.scope} is gone (stale)`);
+  else if (st.split(a.justification).length - 1 !== 1) p.push(`nondeterministic ${e.site}: the race justification no longer occurs exactly once in ${a.scope} (stale): ${a.justification}`);
+  if (!e.site.startsWith(`${a.scope}#`)) p.push(`nondeterministic ${e.site}: the site is not in its justification scope ${a.scope}`);
+  const c = JSON.parse(readFile('xpizza-functions/contract/census.json')).sites.find((x) => x.id === e.site);
+  if (!c) p.push(`nondeterministic ${e.site}: not a current census site (stale)`);
+  else { const file = e.site.slice(0, e.site.indexOf('#')).replace(/<script@\d+>$/, ''); const line = (readFile(file).split('\n')[c.line - 1] || '').trim(); if (line !== a.siteLine) p.push(`nondeterministic ${e.site}: its source line changed (stale) — now "${line.slice(0, 120)}"`); }
+  return p;
+}
+function ratchet({ baseline, shrink, current, justify = justificationProblems }) {
   const problems = []; const grown = {}; const shrunk = {};
   const nd = new Set((shrink.nondeterministic || []).map((e) => `${e.context}|${e.site}`));
   for (const e of shrink.nondeterministic || []) {
     if (!(e.reason && String(e.reason).trim())) problems.push(`nondeterministic entry ${e.context}|${e.site}: needs a reason`);
     if (((baseline.contexts || {})[e.context] || []).includes(e.site)) problems.push(`nondeterministic entry ${e.context}|${e.site} is also in the baseline — remove it from the baseline`);
+    problems.push(...justify(e));
   }
   const shr = new Map((shrink.entries || []).map((e) => [`${e.context}|${e.site}`, e]));
   for (const [ctx, sites] of Object.entries(baseline.contexts || {})) {
@@ -51,4 +79,4 @@ function writeBaseline(current, note, shrink = null) {
   fs.writeFileSync(BASELINE, `{\n "_doc": ${JSON.stringify(`R3 P1 gate B baseline — the census sites each run context reached (contract/ratchet.js). Reviewed; rewritten only with R3_RATCHET_WRITE=1. ${note || ''}`.trim())},\n "contexts": {\n${Object.entries(contexts).map(([k, v]) => `  ${JSON.stringify(k)}: [\n${v.map((s) => `   ${JSON.stringify(s)}`).join(',\n')}\n  ]`).join(',\n')}\n }\n}\n`);
 }
 
-module.exports = { ratchet, load, writeBaseline, BASELINE, SHRINK };
+module.exports = { ratchet, load, writeBaseline, justificationProblems, APPROVED_NONDETERMINISTIC, BASELINE, SHRINK };

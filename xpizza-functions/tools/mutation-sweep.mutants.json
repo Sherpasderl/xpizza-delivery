@@ -12644,5 +12644,50 @@
       "node",
       "contract/ratchet.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-44",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "    if (e.ctrlSha !== c.ctrlSha) p.push(`CHAIN ${c.key}: its CONTROLLING scope changed",
+    "to": "    if (false) p.push(`CHAIN ${c.key}: its CONTROLLING scope changed",
+    "label": "C1: a reviewed chain bound survives a change to its controlling scope (MAX_TRIES 3 → 5)",
+    "kills_with": [
+      "codex's MAX_TRIES 3 → 5 did not re-open the reviewed submit bound"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-45",
+    "slice": "r3p1",
+    "file": "contract/ratchet.js",
+    "from": "  if (!a) return [`nondeterministic entry ${e.context}|${e.site} is NOT in the reviewed APPROVED_NONDETERMINISTIC list",
+    "to": "  if (!a) return []; if (false) return [`nondeterministic entry ${e.context}|${e.site} is NOT in the reviewed APPROVED_NONDETERMINISTIC list",
+    "label": "gate B: ANY site can be filed as nondeterministic (the category is not pinned)",
+    "kills_with": [
+      "codex's move of a deterministic site into the nondeterministic category passed"
+    ],
+    "command": [
+      "node",
+      "contract/ratchet.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-46",
+    "slice": "r3p1",
+    "file": "contract/ratchet.js",
+    "from": "  else if (st.split(a.justification).length - 1 !== 1) p.push(",
+    "to": "  else if (false) p.push(",
+    "label": "gate B: a stale race justification keeps a nondeterministic entry valid",
+    "kills_with": [
+      "a stale race justification / site line passed"
+    ],
+    "command": [
+      "node",
+      "contract/ratchet.guard.test.js"
+    ]
   }
 ]
