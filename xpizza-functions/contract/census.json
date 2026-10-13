@@ -31323,7 +31323,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals#total_cents#0",
-   "line": 2926,
+   "line": 2942,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31335,7 +31335,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#requestServerQuote>anon#total_cents#0",
-   "line": 3138,
+   "line": 3154,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31347,7 +31347,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#requestServerQuote>anon#total_cents#1",
-   "line": 3138,
+   "line": 3154,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31359,7 +31359,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#requestServerQuote>anon#total_cents#2",
-   "line": 3138,
+   "line": 3154,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31371,7 +31371,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#total_cents#0",
-   "line": 3198,
+   "line": 3214,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31383,7 +31383,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#total_cents#1",
-   "line": 3198,
+   "line": 3214,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31395,7 +31395,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#redeem_total_cents#0",
-   "line": 3200,
+   "line": 3216,
    "kind": "member",
    "facts": [
     "MONEY"
@@ -31405,7 +31405,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#redeem_total_cents#1",
-   "line": 3200,
+   "line": 3216,
    "kind": "member",
    "facts": [
     "MONEY"
@@ -31415,7 +31415,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#successTotalCents#total#0",
-   "line": 3201,
+   "line": 3217,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31427,7 +31427,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#initMap#lat#0",
-   "line": 3544,
+   "line": 3560,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31437,7 +31437,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#initMap#lng#0",
-   "line": 3544,
+   "line": 3560,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31447,7 +31447,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#placePin>anon#lat#0",
-   "line": 3573,
+   "line": 3589,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31457,7 +31457,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#placePin>anon#lng#0",
-   "line": 3574,
+   "line": 3590,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31467,7 +31467,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lat#0",
-   "line": 3615,
+   "line": 3631,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31477,7 +31477,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lng#0",
-   "line": 3615,
+   "line": 3631,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31487,7 +31487,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lat#1",
-   "line": 3619,
+   "line": 3635,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31497,7 +31497,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#openFullscreenMap>anon#lng#1",
-   "line": 3619,
+   "line": 3635,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31507,7 +31507,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#closeFullscreenMap#lat#0",
-   "line": 3636,
+   "line": 3652,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31517,7 +31517,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#closeFullscreenMap#lng#0",
-   "line": 3636,
+   "line": 3652,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31527,7 +31527,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#locPickPred#lat#0",
-   "line": 3828,
+   "line": 3844,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31537,7 +31537,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#locPickPred#lat#1",
-   "line": 3833,
+   "line": 3849,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31547,7 +31547,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#locPickPred#lng#0",
-   "line": 3833,
+   "line": 3849,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -31557,7 +31557,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPayment#cash_tendered#0",
-   "line": 4033,
+   "line": 4049,
    "kind": "member",
    "facts": [
     "TENDER"
@@ -31567,7 +31567,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#0",
-   "line": 4293,
+   "line": 4309,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31580,7 +31580,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#1",
-   "line": 4295,
+   "line": 4311,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31593,7 +31593,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#2",
-   "line": 4296,
+   "line": 4312,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31606,7 +31606,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#3",
-   "line": 4297,
+   "line": 4313,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31619,7 +31619,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#4",
-   "line": 4297,
+   "line": 4313,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31632,45 +31632,6 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#5",
-   "line": 4304,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#6",
-   "line": 4316,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#7",
-   "line": 4317,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "form-composer",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#8",
    "line": 4320,
    "kind": "member",
    "facts": [
@@ -31683,8 +31644,47 @@
    "exempt": true
   },
   {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#6",
+   "line": 4332,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#7",
+   "line": 4333,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#8",
+   "line": 4336,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "form-composer",
+   "exempt": true
+  },
+  {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#9",
-   "line": 4327,
+   "line": 4343,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31697,7 +31697,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#10",
-   "line": 4327,
+   "line": 4343,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31710,7 +31710,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#redeem#0",
-   "line": 4340,
+   "line": 4356,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31720,7 +31720,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#11",
-   "line": 4356,
+   "line": 4372,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31733,7 +31733,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#status#12",
-   "line": 4369,
+   "line": 4385,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -31746,7 +31746,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#order_id#0",
-   "line": 4384,
+   "line": 4400,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31756,7 +31756,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#processPixelPay#order_id#1",
-   "line": 4389,
+   "line": 4405,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31766,7 +31766,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#scheduled_for#0",
-   "line": 4406,
+   "line": 4422,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -31776,7 +31776,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#order_id#0",
-   "line": 4407,
+   "line": 4423,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31786,7 +31786,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#scheduled_for#1",
-   "line": 4408,
+   "line": 4424,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -31796,7 +31796,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#0",
-   "line": 4409,
+   "line": 4425,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31808,7 +31808,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#1",
-   "line": 4409,
+   "line": 4425,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31820,7 +31820,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#0",
-   "line": 4410,
+   "line": 4426,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31830,7 +31830,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#1",
-   "line": 4410,
+   "line": 4426,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31840,7 +31840,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#items#0",
-   "line": 4421,
+   "line": 4437,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -31850,7 +31850,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#order_id#1",
-   "line": 4421,
+   "line": 4437,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31860,7 +31860,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#2",
-   "line": 4423,
+   "line": 4439,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31872,7 +31872,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#total_cents#3",
-   "line": 4423,
+   "line": 4439,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -31884,7 +31884,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#2",
-   "line": 4424,
+   "line": 4440,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31894,7 +31894,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#applyPollState#redemption#3",
-   "line": 4424,
+   "line": 4440,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31904,7 +31904,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handlePaymentReturn#order_id#0",
-   "line": 4449,
+   "line": 4465,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31914,7 +31914,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_id#0",
-   "line": 4512,
+   "line": 4528,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31924,7 +31924,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_id#1",
-   "line": 4512,
+   "line": 4528,
    "kind": "member",
    "facts": [
     "NUM"
@@ -31934,7 +31934,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#address_detected#0",
-   "line": 4529,
+   "line": 4545,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31945,7 +31945,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#address_details#0",
-   "line": 4529,
+   "line": 4545,
    "kind": "projection",
    "facts": [
     "PLACE"
@@ -31956,7 +31956,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#redeem#0",
-   "line": 4538,
+   "line": 4554,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31966,7 +31966,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#redeem#1",
-   "line": 4538,
+   "line": 4554,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -31976,7 +31976,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_type#0",
-   "line": 4545,
+   "line": 4561,
    "kind": "projection",
    "facts": [
     "FULFIL"
@@ -31987,7 +31987,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#order_type#1",
-   "line": 4546,
+   "line": 4562,
    "kind": "projection",
    "facts": [
     "FULFIL"
@@ -31998,7 +31998,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#0",
-   "line": 4547,
+   "line": 4563,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32008,7 +32008,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#0",
-   "line": 4547,
+   "line": 4563,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32018,7 +32018,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#1",
-   "line": 4548,
+   "line": 4564,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32028,7 +32028,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#1",
-   "line": 4548,
+   "line": 4564,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32038,7 +32038,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lat#2",
-   "line": 4548,
+   "line": 4564,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32048,7 +32048,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#restoreOrderForm#lng#2",
-   "line": 4548,
+   "line": 4564,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32058,7 +32058,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#0",
-   "line": 4694,
+   "line": 4710,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32071,7 +32071,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#1",
-   "line": 4694,
+   "line": 4710,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32084,7 +32084,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#2",
-   "line": 4696,
+   "line": 4712,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32097,7 +32097,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#3",
-   "line": 4698,
+   "line": 4714,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32110,7 +32110,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#4",
-   "line": 4700,
+   "line": 4716,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32123,7 +32123,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#redeem#0",
-   "line": 4729,
+   "line": 4745,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32133,7 +32133,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#5",
-   "line": 4780,
+   "line": 4796,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32146,7 +32146,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#6",
-   "line": 4785,
+   "line": 4801,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32159,7 +32159,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#7",
-   "line": 4786,
+   "line": 4802,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32172,7 +32172,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#submitOrder#status#8",
-   "line": 4799,
+   "line": 4815,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -32185,7 +32185,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#scheduled_for#0",
-   "line": 4951,
+   "line": 4967,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -32195,7 +32195,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_method#0",
-   "line": 4952,
+   "line": 4968,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -32208,7 +32208,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_status#0",
-   "line": 4952,
+   "line": 4968,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -32221,7 +32221,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#0",
-   "line": 4953,
+   "line": 4969,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -32231,7 +32231,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#1",
-   "line": 4954,
+   "line": 4970,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -32241,7 +32241,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#items#0",
-   "line": 4957,
+   "line": 4973,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32251,7 +32251,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#0",
-   "line": 4972,
+   "line": 4988,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32261,7 +32261,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#1",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32271,7 +32271,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#2",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32281,7 +32281,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#3",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32291,7 +32291,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#items#0",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32301,7 +32301,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#4",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32311,7 +32311,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#items#1",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32321,7 +32321,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#5",
-   "line": 4973,
+   "line": 4989,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32331,7 +32331,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#2",
-   "line": 4981,
+   "line": 4997,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -32341,7 +32341,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#total#0",
-   "line": 4985,
+   "line": 5001,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32353,7 +32353,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redemption#0",
-   "line": 4985,
+   "line": 5001,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32363,7 +32363,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess>anon#redeem#6",
-   "line": 4985,
+   "line": 5001,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32373,7 +32373,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_method#1",
-   "line": 4992,
+   "line": 5008,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -32386,7 +32386,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_method#2",
-   "line": 4996,
+   "line": 5012,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -32399,7 +32399,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#payment_status#1",
-   "line": 4996,
+   "line": 5012,
    "kind": "member",
    "facts": [
     "COLLECT",
@@ -32412,7 +32412,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#maps_link#0",
-   "line": 5003,
+   "line": 5019,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32422,7 +32422,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#total#0",
-   "line": 5029,
+   "line": 5045,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32434,7 +32434,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#items#1",
-   "line": 5030,
+   "line": 5046,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -32444,7 +32444,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#redemption#0",
-   "line": 5031,
+   "line": 5047,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32454,7 +32454,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#redeem#0",
-   "line": 5031,
+   "line": 5047,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -32464,7 +32464,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_id#0",
-   "line": 5034,
+   "line": 5050,
    "kind": "member",
    "facts": [
     "NUM"
@@ -32474,7 +32474,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#order_type#3",
-   "line": 5035,
+   "line": 5051,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -32484,7 +32484,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_detected#0",
-   "line": 5036,
+   "line": 5052,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32494,7 +32494,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#address_details#0",
-   "line": 5037,
+   "line": 5053,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32504,7 +32504,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lat#0",
-   "line": 5038,
+   "line": 5054,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32514,7 +32514,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lat#1",
-   "line": 5038,
+   "line": 5054,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32524,7 +32524,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lng#0",
-   "line": 5039,
+   "line": 5055,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32534,7 +32534,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#showSuccess#lng#1",
-   "line": 5039,
+   "line": 5055,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -32544,7 +32544,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#updateDetailCta#total#0",
-   "line": 5340,
+   "line": 5356,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -32556,7 +32556,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handleProfileClaim#order_id#0",
-   "line": 5838,
+   "line": 5854,
    "kind": "member",
    "facts": [
     "NUM"
@@ -32566,7 +32566,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handleProfileClaim#order_id#1",
-   "line": 5842,
+   "line": 5858,
    "kind": "member",
    "facts": [
     "NUM"
@@ -32576,7 +32576,7 @@
   },
   {
    "id": "xpizza-orders/index.html<script@2>#handleProfileClaim#order_id#2",
-   "line": 5845,
+   "line": 5861,
    "kind": "member",
    "facts": [
     "NUM"
@@ -35297,7 +35297,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handleProfileClaim#order_id#0",
-   "line": 6282,
+   "line": 6294,
    "kind": "member",
    "facts": [
     "NUM"
@@ -35307,7 +35307,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handleProfileClaim#order_id#1",
-   "line": 6286,
+   "line": 6298,
    "kind": "member",
    "facts": [
     "NUM"
@@ -35317,7 +35317,7 @@
   },
   {
    "id": "la-musa-orders/index.html<script@2>#handleProfileClaim#order_id#2",
-   "line": 6289,
+   "line": 6301,
    "kind": "member",
    "facts": [
     "NUM"
@@ -36770,7 +36770,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "fn": "pizzaExtrasTotal",
    "base": "data",
-   "line": 2871,
+   "line": 2887,
    "how": "Object.values",
    "rule": "page-fn"
   },
@@ -37642,7 +37642,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "claimOrderId",
    "field": "order_id",
-   "line": 5034,
+   "line": 5050,
    "round": 1
   },
   {
@@ -37650,7 +37650,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "orderType",
    "field": "order_type",
-   "line": 5035,
+   "line": 5051,
    "round": 1
   },
   {
@@ -37658,7 +37658,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "addressDetected",
    "field": "address_detected",
-   "line": 5036,
+   "line": 5052,
    "round": 1
   },
   {
@@ -37666,7 +37666,7 @@
    "file": "xpizza-orders/index.html<script@2>",
    "alias": "addressDetails",
    "field": "address_details",
-   "line": 5037,
+   "line": 5053,
    "round": 1
   },
   {
