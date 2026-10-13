@@ -177,8 +177,19 @@ function pageSourceHas(page, value) {
   const dir = path.join(REPO_ROOT, page); let names; try { names = fs.readdirSync(dir); } catch (_) { return false; }
   return names.filter((f) => /\.(html|js)$/.test(f)).some((f) => { try { return fs.readFileSync(path.join(dir, f), 'utf8').includes(value); } catch (_) { return false; } });
 }
+// PARAMETERIZED context `no-exec:<unit>#<fn>` (codex P1-b b3 r1 — EXECUTION, not UI inference): the census function
+// scope <unit>#<fn> was never ENTERED in this LP interval, from the tracer's line-preserving function-entry probe
+// (contract/tracer.js). Established only when the run's trace PROBED that scope (ev.exec.probed: the units actually
+// transformed) and recorded no entry (ev.exec.entered); a scope the census does not name → invalid; untraced → unknown.
+function noExec(key) {
+  const AP = require('./applicability');
+  if (!AP.scopeTextOf(key)) return null;
+  return { source: `the tracer's function-entry probe (${key} never entered in this LP interval)`, check: (ev) => { const x = ev.exec; return x && Array.isArray(x.probed) && Array.isArray(x.entered) && x.probed.includes(key) ? !x.entered.includes(key) : unknown; } };
+}
 function contextOf(name) {
   if (CONTEXT[name]) return CONTEXT[name];
+  const ne = /^no-exec:(.+#[^#]+)$/.exec(String(name));
+  if (ne) return noExec(ne[1]);
   const u = /^no-ui:([a-z0-9-]+):(attr|class|id|onclick)=(.+)$/.exec(String(name));
   if (u && pageSourceHas(u[1], u[3])) {
     const [, page, kind, value] = u;

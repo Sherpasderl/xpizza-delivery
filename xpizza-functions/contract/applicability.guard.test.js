@@ -229,20 +229,21 @@ ok('bulk mechanism: driver none needs the COMPLETE assignment transition log + t
   assert.strictEqual(c.check({ uiEvents: { [P]: sink.installedAt && { installedAt: 'beforeScripts', events: sink.events } } }), false, FAIL('a recorded [data-pick] click did not defeat no-ui'));
   assert.strictEqual(c.check({ uiEvents: { [P]: { installedAt: 'beforeScripts', events: [] } } }), true, FAIL('zero recorded events did not establish no-ui'));
   assert.ok(!SS.contextOf(`no-ui:${P}:attr=data-r3-no-such-control`) && !SS.contextOf('no-ui:no-such-page:attr=data-pick') && !SS.contextOf(`no-ui:${P}:style=x`), FAIL('a no-ui matcher absent from the page source / unknown page / unknown kind was accepted'));
-  const k = 'xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals'; const FP = 'xpizza-orders';
-  const rk = UI.installUiRecorder(new JSDOM('<!doctype html><body><div class="rk"><button data-rk-clear="1">Quitar</button></div></body>').window); rk.events.length = 0;
-  { const w2 = new JSDOM('<!doctype html><body><button data-rk-clear="1" id="q">Quitar</button></body>').window; const s2 = UI.installUiRecorder(w2); w2.document.getElementById('q').dispatchEvent(new w2.MouseEvent('click', { bubbles: true })); rk.events.push(...s2.events); }
+  // codex b3 r1: the redeem summary is decided on EXECUTION of applyRedeemQuoteToTotals (the UI recorder only supports)
+  const k = 'xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals'; const fk = 'xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals';
   const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' }; const ev = { persisted: { restaurant_id: 'x_pizza', status: 'new' }, lpAction: { action: 'create', ack: true } };
   const ev2 = { ...ev, persisted: { ...ev.persisted, order_type: 'delivery', payment_method: 'cash' }, formEvents: [], formStorageAtBoot: { at: 'beforeScripts', local: [], session: [] } };
-  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, uiEvents: { [FP]: { installedAt: 'beforeScripts', events: [] } } }, paths).outcome, 'excluded', FAIL('redeem summary: zero reward-control events did not exclude'));
-  // codex b12 r1 P1-4: apply-then-remove a reward (a [data-rk-clear] click) on an ordinary cash order → REQUIRED
-  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, uiEvents: { [FP]: { installedAt: 'beforeScripts', events: rk.events } } }, paths).outcome, 'required', FAIL('redeem summary: a reward removal ([data-rk-clear]) did not keep it required'));
-  assert.strictEqual(RA.runDecision(doc, k, cell, ev2, paths).outcome, 'required', FAIL('redeem summary: no form UI recorder did not keep it required'));
+  assert.deepStrictEqual(doc.regions[k].context, [`no-exec:${fk}`], FAIL('the redeem summary is not decided on the execution of applyRedeemQuoteToTotals'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, exec: { probed: [fk], entered: [] } }, paths).outcome, 'excluded', FAIL('redeem summary: a probed, never-entered callback did not exclude'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, exec: { probed: [fk], entered: [fk] } }, paths).outcome, 'required', FAIL('redeem summary: an entered callback (e.g. a reward removal) did not keep it required'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, exec: { probed: [], entered: [] } }, paths).outcome, 'required', FAIL('redeem summary: an UNPROBED callback established no-exec'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, ev2, paths).outcome, 'required', FAIL('redeem summary: no trace did not keep it required'));
+  assert.ok(!SS.contextOf('no-exec:xpizza-orders/index.html<script@2>#noSuchFunction'), FAIL('a no-exec context on a scope the census does not name was accepted'));
   const kg = AP.bindGuard(['K', 'xpizza-dispatch/index.html', 'openOrderDetailModal(']);
   const real = fs.readFileSync(path.join(__dirname, '..', '..', kg.file), 'utf8');
   assert.ok(!AP.guardStale(kg) && AP.guardStale(kg, { readFile: () => real + '\nopenOrderDetailModal(x);' }), FAIL('a new openOrderDetailModal( call site did not make a K guard stale'));
 }
-ok('UI mechanism: the UI recorder records a click\'s ancestor path on a real DOM; no-ui is established only by a before-scripts recorder with no matching event (absent / late → unknown; a matching click → required; codex b12 P1-4: a reward removal [data-rk-clear] keeps the redeem summary required); matchers absent from the page source / unknown page or kind → invalid; a new call site of a K-pinned handler → stale');
+ok('UI + exec mechanism: the redeem summary is decided on the EXECUTION of applyRedeemQuoteToTotals (probed + never entered → excluded; entered / unprobed / no trace → required; an unknown scope → invalid); the (supporting) UI recorder records a click\'s ancestor path on a real DOM; no-ui is established only by a before-scripts recorder with no matching event (absent / late → unknown; a matching click → required; codex b12 P1-4: a reward removal [data-rk-clear] keeps the redeem summary required); matchers absent from the page source / unknown page or kind → invalid; a new call site of a K-pinned handler → stale');
 { // codex b12 r1 P1-1: the invocation log is recorded at the FUNCTION BOUNDARY — a direct .run() is recorded; an export
   // that is not (or no longer) a recorder wrapper, or an invocation before installation, makes the log incomplete
   const FR = require('./fn-recorder');
@@ -261,22 +262,45 @@ ok('UI mechanism: the UI recorder records a click\'s ancestor path on a real DOM
   assert.ok(rg && !AP.guardStale(rg) && /references to isStuck changed/.test(AP.guardStale(rg, { units: alias }) || ''), FAIL('an alias of isStuck did not make the sweep-only exclusion stale'));
 }
 ok('boundary + references (codex b12 P1-1/2): a direct .run() and an HTTP call are recorded at the function boundary; a replaced export / late install → incomplete log; an alias reference to a caller-guarded function → stale');
-{ // dispatch batch: the delegated dispatch-lite picker and the desktop detail modal decide on their own controls
-  const { JSDOM } = require('jsdom'); const UI = require('./ui-recorder');
-  const P = 'xpizza-dispatch-mobile'; const k = `${P}/index.html<script@0>#openPicker@${P}/index.html<script@0>#document.addEventListener`;
-  const dom = new JSDOM('<!doctype html><body><div class="pass"><button data-pick="o1"><span id="t">Reasignar</span></button></div></body>');
-  const sink = UI.installUiRecorder(dom.window); dom.window.document.getElementById('t').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+{ // dispatch batch on EXECUTION (codex P1-b b3 r1): the tracer probes the real dispatch unit; codex's detached .click(),
+  // value= rewiring and timer drift all ENTER the handler → required; never entered → excluded
+  const T = require('./tracer'); const { JSDOM } = require('jsdom'); const acorn = require('acorn');
+  const D = 'xpizza-dispatch/index.html<script@0>'; const X = 'xpizza-dispatch/xpizza-delivery.js';
+  const unit = require('./census').sources().find((u) => u.file === D);
+  const tr = T.transform(D, unit.code, { module: unit.module });
+  for (const f of ['confirmCancelOrder', 'resolveReconciliationAction', 'openOrderDetailModal', 'openPicker']) assert.ok(tr.probed.includes(`${D}#${f}`), FAIL(`the tracer did not probe ${D}#${f} on the real unit (${JSON.stringify(tr.probed)})`));
+  assert.strictEqual(tr.code.split('\n').length, unit.code.split('\n').length, FAIL('the entry probes changed the line count (not line-preserving)'));
+  acorn.parse(tr.code, { ecmaVersion: 'latest', sourceType: unit.module ? 'module' : 'script', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true });
+  // the three paths codex probed, executed through the SAME probe rewrite
+  const FNS = ['confirmCancelOrder', 'resolveReconciliationAction', 'openOrderDetailModal']; const probes = new Map(FNS.map((f, i) => [f, i]));
+  const snippet = `function confirmCancelOrder(oid){ window.__c = oid; }
+function resolveReconciliationAction(oid, a){ window.__r = a; }
+function openOrderDetailModal(id){ window.__o = id; }
+const b = document.createElement('button'); b.addEventListener('click', () => confirmCancelOrder('o1')); window.__detached = b;
+const c = document.createElement('button'); c.value = 'close_fulfilled'; c.className = 'recon-btn'; document.body.appendChild(c);
+c.addEventListener('click', () => resolveReconciliationAction('o1', c.dataset.reconAction || c.value)); window.__recon = c;
+window.__timer = () => setTimeout(() => openOrderDetailModal('o9'), 0);`;
+  const rw = T.rewrite(snippet, [], false, probes, D);
+  const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'outside-only' }); const w = dom.window; const entered = new Set();
+  // a deterministic timer queue (the guard is synchronous): the callback runs from the queue, not from any UI event
+  const timers = []; w.setTimeout = (f) => { timers.push(f); return timers.length; };
+  w.__r3enter = (i) => entered.add(`${D}#${FNS[i]}`); w.eval(rw.code);
+  const sink = require('./ui-recorder').installUiRecorder(w);
+  w.__detached.click(); w.__recon.click(); w.__timer(); while (timers.length) timers.shift()();
+  assert.ok(w.__c === 'o1' && w.__r === 'close_fulfilled' && w.__o === 'o9', FAIL('the drift snippet did not run its handlers'));
+  assert.ok(FNS.every((f) => entered.has(`${D}#${f}`)), FAIL(`a detached .click() / a value= rewiring / a timer was not recorded as handler entry (${[...entered]})`));
+  assert.ok(!sink.events.some((e) => e.path.some((n) => n.attrs.includes('data-recon-action'))), FAIL('probe premise: the rewired recon button carried no data-recon-action'));
   const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' }; const ev = { persisted: { restaurant_id: 'x_pizza', status: 'new' }, lpAction: { action: 'create', ack: true } };
-  const U = (page, events) => ({ uiEvents: { [page]: { installedAt: 'beforeScripts', events } } });
-  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev, ...U(P, []) }, paths).outcome, 'excluded', FAIL('dispatch-lite openPicker: zero events did not exclude'));
-  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev, ...U(P, sink.events) }, paths).outcome, 'required', FAIL('dispatch-lite openPicker: a [data-pick] click did not keep it required'));
-  assert.strictEqual(RA.runDecision(doc, k, cell, ev, paths).outcome, 'required', FAIL('dispatch-lite openPicker: no recorder did not keep it required'));
-  const D = 'xpizza-dispatch'; const m = `${D}/index.html<script@0>#renderOrderDetailModal@${D}/index.html<script@0>#openOrderDetailModal`;
-  const d2 = new JSDOM('<!doctype html><body><div class="delivered-card" data-order-id="o9"><b id="t">x</b></div></body>'); const s2 = UI.installUiRecorder(d2.window); d2.window.document.getElementById('t').dispatchEvent(new d2.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(RA.runDecision(doc, m, cell, { ...ev, ...U(D, s2.events) }, paths).outcome, 'required', FAIL('dispatch detail modal: a delivered-card click did not keep it required'));
-  assert.strictEqual(RA.runDecision(doc, m, cell, { ...ev, ...U(D, []) }, paths).outcome, 'excluded', FAIL('dispatch detail modal: zero events did not exclude'));
+  const probed = FNS.map((f) => `${D}#${f}`);
+  const regs = [`${X}#cancelOrderRemote@${D}#confirmCancelOrder`, `${X}#resolveReconciliation@${D}#resolveReconciliationAction`, `${D}#renderOrderDetailModal@${D}#openOrderDetailModal`];
+  for (const r of regs) {
+    assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, exec: { probed, entered: [...entered] } }, paths).outcome, 'required', FAIL(`${r}: an executed handler (detached click / rewired value / timer) did not keep it required`));
+    assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, exec: { probed, entered: [] } }, paths).outcome, 'excluded', FAIL(`${r}: a probed, never-entered handler did not exclude`));
+    assert.strictEqual(RA.runDecision(doc, r, cell, { ...ev, uiEvents: { 'xpizza-dispatch': { installedAt: 'beforeScripts', events: [] } } }, paths).outcome, 'required', FAIL(`${r}: UI evidence alone (no trace) excluded it — the UI recorder is not the authority`));
+  }
   const n = Object.values(doc.regions).filter((e) => /^dispatch(-lite)?-ui$/.test(e.group)).length;
-  assert.ok(n === 61, FAIL(`dispatch-ui entries: ${n} (expected 61)`));
+  const noUi = Object.entries(doc.regions).filter(([, e]) => (e.context || []).some((c) => /^no-ui:/.test(c))).map(([id]) => id);
+  assert.ok(n === 61 && noUi.length === 0, FAIL(`dispatch entries ${n} (expected 61); entries still decided on UI events: ${noUi.slice(0, 3)}`));
 }
-ok('dispatch batch: 61 dispatch-ui entries; the delegated dispatch-lite picker ([data-pick]) and the desktop detail modal (a delivered-card click) stay REQUIRED on a matching event or with no recorder, excluded only with zero recorded events');
+ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-preservingly; a detached .click(), a value= rewiring and a timer each ENTER the handler → required; probed + never entered → excluded; UI evidence alone never excludes; no entry is decided on UI events');
 console.log(`\nr3-applicability guard: OK (${n})`);

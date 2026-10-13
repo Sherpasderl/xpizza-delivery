@@ -13276,15 +13276,62 @@
     "id": "r3p1-80",
     "slice": "r3p1",
     "file": "contract/region-applicability.json",
-    "from": "   \"no-ui:xpizza-orders:attr=data-rk-clear\",\n",
-    "to": "",
-    "label": "codex b12 P1-4: the redeem summary's reward-REMOVAL control is dropped from its contexts",
+    "from": "\"no-exec:xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals\"",
+    "to": "\"createorder-configured\"",
+    "label": "codex b3 r1: the XP redeem summary is no longer decided on the EXECUTION of its reward callback",
     "kills_with": [
-      "a reward removal ([data-rk-clear]) did not keep it required"
+      "the redeem summary is not decided on the execution of applyRedeemQuoteToTotals",
+      "an entered callback (e.g. a reward removal) did not keep it required"
     ],
     "command": [
       "node",
       "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-81",
+    "slice": "r3p1",
+    "file": "contract/tracer.js",
+    "from": "  if (probes && probes.size) {",
+    "to": "  if (false) {",
+    "label": "codex b3 r1: the tracer inserts no function-entry probes",
+    "kills_with": [
+      "the tracer did not probe"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-82",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "Array.isArray(x.entered) && x.probed.includes(key) ? !x.entered.includes(key) : unknown;",
+    "to": "Array.isArray(x.entered) ? !x.entered.includes(key) : unknown;",
+    "label": "codex b3 r1: no-exec established over a function the trace never PROBED",
+    "kills_with": [
+      "an UNPROBED callback established no-exec"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-83",
+    "slice": "r3p1",
+    "file": "contract/tracer.js",
+    "from": "    enter: (i) => { const key",
+    "to": "    enter: (i) => { return; const key",
+    "label": "codex b3 r1: the recorder drops function entries — a handler that RAN reads as never entered",
+    "kills_with": [
+      "running the real reward callback did not turn exactly its redeem-summary cell(s) required"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
     ]
   }
 ]

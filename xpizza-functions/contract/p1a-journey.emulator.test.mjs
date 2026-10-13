@@ -289,7 +289,10 @@ try {
   const tasks = Object.fromEntries(Object.entries((await rtdb.ref('tasks').get()).val() || {}).filter(([k, t]) => k.startsWith(`${oid}_`) || (t && t.order_id === oid)));
   const fnCalls = { complete: FNREC.complete() && ackLog.complete && R.refused.length === 0 && kdsHttp.length === 0, names: [...FNREC.names].sort() };
   const assignLog = { complete: TASK_TRIG && S.state.armed === true, events: ASSIGN.events.slice() };
-  const evidence = { uiEvents: { 'xpizza-orders': formUi }, tasks, fnCalls, assignLog, intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
+  // codex P1-b b3 r1: EXECUTION evidence — the scopes the tracer's function-entry probe actually instrumented on the pages
+  // this run booted, and every probed scope ENTERED anywhere in the run so far (all contexts: conservative for the LP)
+  const exec = { probed: [...new Set([...form.traceManifest, ...kds.traceManifest].flatMap((m) => m.probed || []))].sort(), entered: [...new Set(Object.values(HITS.enteredByContext()).flat())].sort() };
+  const evidence = { exec, uiEvents: { 'xpizza-orders': formUi }, tasks, fnCalls, assignLog, intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
   // P1-b: the run's CONTRACT state is the scenario vector, ASSERTED from evidence (persisted order, routed calls, the KDS
   // recorder) — never from fixture intent alone; a field this LP cannot evidence is reported UNKNOWN (an exclusion that
   // depends on it would never apply)
@@ -306,11 +309,12 @@ try {
     // (dispatch / driver … — their journeys record those); anything else unestablished, or contradicted, is RED
     const booted = new Set(Object.keys(evidence.uiEvents || {}).filter((p) => evidence.uiEvents[p]));
     const dec = st.map(([c]) => RAx.runDecision(applicability, c.viaFrom || c.region, c, evidence));
-    const onlyUnbootedUi = (d) => d.outcome === 'required' && /^not established by this run: /.test(d.reason) && d.reason.replace(/^not established by this run: /, '').split(', ').every((x) => { const m = /^no-ui:([a-z0-9-]+):/.exec(x); return m && !booted.has(m[1]); });
+    const bootedPages = new Set(exec.probed.map((k) => k.split('/')[0]).concat(['xpizza-orders', 'xpizza-kitchen']));
+    const onlyUnbootedUi = (d) => d.outcome === 'required' && /^not established by this run: /.test(d.reason) && d.reason.replace(/^not established by this run: /, '').split(', ').every((x) => { const m = /^no-(?:ui|exec):([a-z0-9-]+)[:/]/.exec(x); return m && !bootedPages.has(m[1]) && !booted.has(m[1]); });
     const bad = st.map(([c], i) => [c, dec[i]]).filter(([, d]) => d.outcome !== 'excluded' && !onlyUnbootedUi(d)).map(([c, d]) => `${c.viaFrom || c.region}: ${d.outcome} (${d.reason || ''})`);
     const deferred = dec.filter(onlyUnbootedUi).length;
     assert.ok(fnCalls.complete && bad.length === 0, FAIL('bulk', `the run's evidence did not establish ${bad.length} reviewed exclusion(s) of other readers (fnCalls complete ${fnCalls.complete}): ${bad.slice(0, 4).join(' | ')}`));
-    ok(`the run's evidence establishes ${st.length - deferred} of the ${st.length} derived exclusion cells of OTHER readers at S1 / x_pizza / new; ${deferred} wait on the UI recorder of a page this run never booted (required here) (${new Set(st.map(([c]) => c.viaFrom || c.region)).size} regions; the invocation log is complete over ${fnCalls.names.length} functions; ${Object.keys(tasks).length} task record(s), none assigned)`);
+    ok(`the run's evidence establishes ${st.length - deferred} of the ${st.length} derived exclusion cells of OTHER readers at S1 / x_pizza / new; ${deferred} wait on the execution trace of a page this run never booted (required here) (${new Set(st.map(([c]) => c.viaFrom || c.region)).size} regions; the invocation log is complete over ${fnCalls.names.length} functions; ${Object.keys(tasks).length} task record(s), none assigned)`);
   }
   const run = (sn, ev = evidence) => runGateA({ cells, registry, applicability, regionsDoc, evidence: ev, snapshots: sn, facts, ctx, observables: OBSERVABLES });
   const res = run(snaps);
@@ -352,6 +356,17 @@ try {
     const holdRed = hr.red.filter((x) => holdRegions.includes(x.viaFrom || x.region));
     assert.ok(stray.length === 2 && after === persisted.status && hr.red.length > 0 && holdRed.length === hr.red.length && hr.counts.byOutcome.excluded === res.counts.byOutcome.excluded - hr.red.length, FAIL('negative', `a stray hold gesture did not turn exactly the hold-dependent exclusions required/RED (recorded ${stray.length}; status ${after}; red ${hr.red.length}, of which hold ${holdRed.length}; excluded ${hr.counts.byOutcome.excluded} vs ${res.counts.byOutcome.excluded})`));
     ok(`a stray hold gesture on the live KDS ticket header (pointer down → up, no write; status still ${after}) is recorded → at LP new every exclusion RED (kitchen contradicted, ${hr0.red.length}); with the kitchen field unestablished (as at a kitchen LP) exactly the ${hr.red.length} hold-dependent cells become REQUIRED (pending → RED); excluded ${res.counts.byOutcome.excluded} → ${hr.counts.byOutcome.excluded}`);
+  }
+  // codex P1-b b3 r1, on the LIVE form: the probed reward callback actually RUNS (as a reward removal would: onQuoted(null))
+  // → its entry is traced → exactly the redeem-summary cell becomes REQUIRED (its pending region RED); nothing else changes
+  {
+    const RK = 'xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals';
+    assert.ok(exec.probed.includes(RK) && !exec.entered.includes(RK), FAIL('exec', `the live form's reward callback was not probed / was already entered (${exec.probed.includes(RK)}, ${exec.entered.includes(RK)})`));
+    w.applyRedeemQuoteToTotals(null);
+    const entered2 = [...new Set(Object.values(HITS.enteredByContext()).flat())];
+    const xr = run(snaps, { ...evidence, exec: { probed: exec.probed, entered: entered2 } });
+    assert.ok(entered2.includes(RK) && xr.red.length > 0 && xr.red.every((x) => (x.viaFrom || x.region) === 'xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals'), FAIL('negative', `running the real reward callback did not turn exactly its redeem-summary cell(s) required (entered ${entered2.includes(RK)}; red ${JSON.stringify(xr.red.map((x) => x.viaFrom || x.region))})`));
+    ok(`execution evidence on the live form: the probed reward callback was never entered by the journey (redeem summary excluded); RUNNING it (onQuoted(null), as a reward removal does) records its entry → exactly ${xr.red.length} redeem-summary cell(s) become REQUIRED`);
   }
   kds.close(); await khost.close();
 

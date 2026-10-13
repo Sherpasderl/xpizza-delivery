@@ -232,7 +232,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const traceManifest = [];
   const traced = (unitFile, code, module) => {
     if (!tracer) return code;
-    try { const r = require('./tracer').transform(unitFile, code, { module }); if (r.sha) traceManifest.push({ unit: unitFile, version: r.version, sha: r.sha, traced: r.traced.length, untraced: r.untraced }); return r.code; }
+    try { const r = require('./tracer').transform(unitFile, code, { module }); if (r.sha) traceManifest.push({ unit: unitFile, version: r.version, sha: r.sha, traced: r.traced.length, untraced: r.untraced, probed: r.probed || [] }); return r.code; }
     catch (e) { errors.push(`tracer: ${e && e.message || e}`); return code; }
   };
   const relUnit = (abs) => path.relative(REPO, abs).split(path.sep).join('/');
@@ -288,6 +288,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const scripts = collected.list.map((x) => ({ getAttribute: (k) => (k === 'src' ? x.src : k === 'type' ? x.type : null), textContent: x.text }));
   const evaluated = [];
   if (tracer) Object.defineProperty(win, '__r3hit', { value: (n) => tracer.hit(n), enumerable: false, configurable: false, writable: false });
+  if (tracer) Object.defineProperty(win, '__r3enter', { value: (i) => (tracer.enter ? tracer.enter(i) : undefined), enumerable: false, configurable: false, writable: false });
   let inlineK = 0;   // the census's inline-script numbering (parse5): every inline JS-type script, in document order
   for (const s of scripts) {
     const src = s.getAttribute('src'); const type = (s.getAttribute('type') || '').trim();

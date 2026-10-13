@@ -33,8 +33,8 @@
      ]
     }
    ],
-   "authority": "§1 F-REWARD: the Stage-2 summary is re-rendered through applyRedeemQuoteToTotals only by the reward flow — a reward quote, a reward REMOVAL (rkClear → onQuoted(null)) or a redeem RESTORE after a payment reload; every reward-flow entry is a [data-rk-*] control (codex P1-b b12 r1 P1-4)",
-   "whyFalseExcludes": "no redemption, no restore, and no event on any reward control ([data-rk-*], UI recorder before the page scripts) → the reward flow never runs, so the callback never fires",
+   "authority": "§1 F-REWARD: the Stage-2 summary is re-rendered through applyRedeemQuoteToTotals only by the reward flow — a reward quote, a reward REMOVAL (rkClear → onQuoted(null)) or a redeem RESTORE after a payment reload — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through applyRedeemQuoteToTotals, so a trace that probed applyRedeemQuoteToTotals and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "applyRedeemQuoteToTotals was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
     "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
@@ -77,14 +77,7 @@
     ]
    },
    "context": [
-    "no-ui:la-musa-orders:attr=data-rk-open",
-    "no-ui:la-musa-orders:attr=data-rk-pick",
-    "no-ui:la-musa-orders:attr=data-rk-add",
-    "no-ui:la-musa-orders:attr=data-rk-minus",
-    "no-ui:la-musa-orders:attr=data-rk-done",
-    "no-ui:la-musa-orders:attr=data-rk-clear",
-    "no-ui:la-musa-orders:attr=data-rk-dismiss",
-    "no-ui:la-musa-orders:attr=data-rk-id"
+    "no-exec:la-musa-orders/index.html<script@2>#applyRedeemQuoteToTotals"
    ]
   },
   "la-musa-orders/index.html#updateCart@la-musa-orders/account.js#applyReorderToCart": {
@@ -410,10 +403,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-drvfocus"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#__focusDriverOnMap"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the driver focus runs only from a [data-drvfocus] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through __focusDriverOnMap, so a trace that probed __focusDriverOnMap and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "__focusDriverOnMap was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }",
     "siteSha": "deb368c93927903c91e1fd367f3d1f71393515740bfe1cd564fd2666a573fd37",
@@ -455,10 +448,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-map"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#__focusOrderOnMap"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order map focus runs only from a [data-map] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through __focusOrderOnMap, so a trace that probed __focusOrderOnMap and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "__focusOrderOnMap was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }",
     "siteSha": "575ce555a92ed3dbdf778f78f4b7493fa185c4883d5a2104cab06c522ec37d1d",
@@ -500,10 +493,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker>anon, so a trace that probed openPicker>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const free = onShift.filter(r => bucketOf(r) === 'free');",
     "siteSha": "be3ef239d9e11bff41df0689212c631e34ea82baf7a8f2e3870e7ee34c6d027d",
@@ -566,10 +559,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker>anon, so a trace that probed openPicker>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const busy = onShift.filter(r => bucketOf(r) === 'busy');",
     "siteSha": "2603413c8a89aac2d51a0cbc8180e09cf7e7c2f9caa4f3c087b71d0ea995351e",
@@ -632,10 +625,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openConfirm"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openConfirm, so a trace that probed openConfirm and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openConfirm was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "<div class=\"fact\"><s>Pedido</s><b class=\"num\">${escapeHtml(displayLabel(orderId, order))}</b></div>",
     "siteSha": "dbcc778ef02dea652c068079d84e6781d943ed2c711ed2e59edf5e38039e9faf",
@@ -677,10 +670,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openConfirm"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openConfirm, so a trace that probed openConfirm and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openConfirm was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "<div><div class=\"big rd\" style=\"background:${driverColorVar(toD)}\">${initial(toD.name)}</div><b>${escapeHtml(String(toD.name || 'Repartidor').split(' ')[0])}</b><s>${row ? fmtDist(row.distanceM) : ''}</s></div>",
     "siteSha": "e9a377f6c637aea52a86348eaeb6e011c8feb35b2de082e0873578cacb5bb41e",
@@ -722,10 +715,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#rowOf"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through rowOf, so a trace that probed rowOf and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "rowOf was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "<span class=\"av rd\" style=\"background:${driverColorVar(dObj)}\">${escapeHtml(String(r.name || '?').charAt(0).toUpperCase())}</span>",
     "siteSha": "9504fac0d0ecea6393fab75c5e3a2208addf67b45666b9e3d60a0c240e2a1d34",
@@ -788,10 +781,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openConfirm"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openConfirm, so a trace that probed openConfirm and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openConfirm was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }",
     "siteSha": "40f2a5db66dbdcd1f9742f459d4d41493ab90987dbee4228e68dc69ab0805d3a",
@@ -833,10 +826,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-detail"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openDetail"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an order control ([data-detail])",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openDetail, so a trace that probed openDetail and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openDetail was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }",
     "siteSha": "64b313060d187928487b1eec1898c5494f904aa8e13126b09961a9a20336c4e0",
@@ -865,10 +858,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-drvfocus"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#__focusDriverOnMap"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the driver focus runs only from a [data-drvfocus] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through __focusDriverOnMap, so a trace that probed __focusDriverOnMap and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "__focusDriverOnMap was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "openDriverInfo(uid);",
     "siteSha": "f1cd9b3a88409e6adef7440398364279f7aedd85b05d584fb2792e92467cd6c6",
@@ -910,10 +903,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker>anon, so a trace that probed openPicker>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "r => (STORE.drivers[r.id] || {}).status !== XPD.DRIVER_STATUS.OFF_SHIFT",
     "siteSha": "59064650ee15738ccaa503ce27f37e6c2bfd224519300b284eb615cf1f3f81a7",
@@ -976,10 +969,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (ds.pick){ sheetDir = ds.back ? 'pop' : 'push'; openPicker(ds.pick); return; }",
     "siteSha": "2c7a34ed8e87ad0bb25f580acafe86379543e814d234b1f342b6ccdadf863a18",
@@ -1042,10 +1035,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#rowOf"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through rowOf, so a trace that probed rowOf and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "rowOf was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "(r) => {",
     "siteSha": "12d962f7ad91324fecd0ba221c0973dfbfd06de7b9aef8571ec489c7a97abd9d",
@@ -1108,11 +1101,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick",
-    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+    "no-exec:xpizza-dispatch-mobile/reassign-model.js#driverPickList"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "driverPickList runs only inside the picker / confirmation — neither trigger received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through driverPickList, so a trace that probed driverPickList and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "driverPickList was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "load: driverLoad(id, tasks),",
     "siteSha": "a99f89070a5b3fe7503724aa401e0d102aa3253ca59a37a924e548c0b97b00e9",
@@ -1178,10 +1170,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openConfirm"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openConfirm, so a trace that probed openConfirm and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openConfirm was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const row = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing }).find(r => r.id === driverId);",
     "siteSha": "59e780f9cc95e285371e19ac56ed4d8e43fd65a806d923a8d5d98c116d2d0b71",
@@ -1223,10 +1215,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });",
     "siteSha": "c7158f71157aa2dde3c65c614284780e24504ff7c55605ff7ebfd1959d72eeb5",
@@ -1289,11 +1281,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-pick",
-    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+    "no-exec:xpizza-dispatch-mobile/reassign-model.js#driverPickList"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "driverPickList runs only inside the picker / confirmation — neither trigger received an event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through driverPickList, so a trace that probed driverPickList and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "driverPickList was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "distanceM: haversineM(anchor, pos),",
     "siteSha": "d24267263b0735dedc2c78af2e7a3bf261c76e985b232e4f4f71937781b8c76f",
@@ -1359,10 +1350,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through commitAssign, so a trace that probed commitAssign and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "commitAssign was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": ": await XPD.assignOrderToDriver(orderId, driverId);",
     "siteSha": "2aba6953be0b8d874ae7ccad93862306857bfb5ddb02247b5982e125a78154c3",
@@ -1491,10 +1482,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+    "no-exec:xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolvePickupHub, so a trace that probed resolvePickupHub and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolvePickupHub was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };",
     "siteSha": "e5af4561a7f6afc839bce2c82e39fd10fbe531c074846f5b36ff28269f2112a8",
@@ -1623,10 +1614,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+    "no-exec:xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolvePickupHub, so a trace that probed resolvePickupHub and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolvePickupHub was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;",
     "siteSha": "c91696f10c862eb6a014f58804209707baced3b3f1e30d2324f42ddf55aad05d",
@@ -1755,10 +1746,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+    "no-exec:xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through commitAssign, so a trace that probed commitAssign and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "commitAssign was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "? await XPD.reassignOrder(orderId, driverId, pickerFromDriver)",
     "siteSha": "9e3bc4a26798f74f79c8943a1577eb089bc34749299cc68fc6e20b3692fd5eb8",
@@ -1887,10 +1878,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+    "no-exec:xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrderToDriver, so a trace that probed assignOrderToDriver and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrderToDriver was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
     "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
@@ -2019,10 +2010,10 @@
    "group": "dispatch-lite-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+    "no-exec:xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
    ],
-   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts) — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrderToDriver, so a trace that probed assignOrderToDriver and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrderToDriver was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
     "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
@@ -2151,14 +2142,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-alert-id",
-    "no-ui:xpizza-dispatch:attr=data-order-id",
-    "no-ui:xpizza-dispatch:attr=data-detail-order",
-    "no-ui:xpizza-dispatch:class=task-row",
-    "no-ui:xpizza-dispatch:class=delivered-card"
+    "no-exec:xpizza-dispatch/index.html<script@0>#renderOrderDetailModal"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through renderOrderDetailModal, so a trace that probed renderOrderDetailModal and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "renderOrderDetailModal was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const stalledDetail = isStalledAssignment(dtDetail, Date.now(), ptDetail);",
     "siteSha": "cb33e81bb9ecd8cd6fc390755aca420b73b37af0eead2699e3c9c54b2251bcd4",
@@ -2208,10 +2195,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx"
+    "no-exec:xpizza-dispatch/index.html<script@0>#showActionMenu>anon>anon"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through showActionMenu>anon>anon, so a trace that probed showActionMenu>anon>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "showActionMenu>anon>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (item && !item.disabled && item.action) item.action();",
     "siteSha": "0a13988f97a34a5a0ce907b4a12f349505b262c2f7dbce82b7b7f76f3c39a9f1",
@@ -2267,11 +2254,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-cancel-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (!confirm(`¿Cancelar el pedido ${displayOrderLabel(orderId)}?\\n\\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;",
     "siteSha": "e2b8f79a234460a2c3cdd7ede4db88145a1ed5ee4b401e080cccce61c01d3841",
@@ -2323,11 +2309,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-cancel-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');",
     "siteSha": "e3807cec4b3669dab5ca499a5fd5b4541cde6110e9f5f733e041ad8849702994",
@@ -2379,11 +2364,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-cancel-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');",
     "siteSha": "e45b6037bc06268680abfec499c4571acd4f9826a5893928b7c193a1bccbf779",
@@ -2435,13 +2419,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
@@ -2488,13 +2469,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
     "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
@@ -2541,10 +2519,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through reconNotePrompt>anon, so a trace that probed reconNotePrompt>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "reconNotePrompt>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "$('recon-note-title').textContent = `${label} el pedido ${displayOrderLabel(orderId)}`;",
     "siteSha": "c05ecaf6e70235d696ce29a665cadb1c37317a4103fa6765a436c6c696bf2081",
@@ -2610,14 +2588,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-alert-id",
-    "no-ui:xpizza-dispatch:attr=data-order-id",
-    "no-ui:xpizza-dispatch:attr=data-detail-order",
-    "no-ui:xpizza-dispatch:class=task-row",
-    "no-ui:xpizza-dispatch:class=delivered-card"
+    "no-exec:xpizza-dispatch/index.html<script@0>#renderOrderDetailModal"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through renderOrderDetailModal, so a trace that probed renderOrderDetailModal and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "renderOrderDetailModal was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "<span class=\"order-id\">${escapeHtml(displayOrderLabel(order))}</span>",
     "siteSha": "4c05dbbe3dc8a74109630724d00e882b49c2ff724271fc14f73ea2d4b0dfc85b",
@@ -2667,10 +2641,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolveReconciliationAction, so a trace that probed resolveReconciliationAction and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolveReconciliationAction was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "toast(`Pedido ${displayOrderLabel(orderId)}: ${outcome}`, 'success');",
     "siteSha": "730c754022e89354ea32e71ebaf5306ca35d0b002ad85ad8145e98d12ffe356d",
@@ -2736,10 +2710,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolveReconciliationAction, so a trace that probed resolveReconciliationAction and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolveReconciliationAction was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "toast(`Pedido ${displayOrderLabel(orderId)}: ${outcome} — revisar`, 'error');",
     "siteSha": "94b19b09c8ea63d5641a8ce850d668a7e2b1e347dbcc280b44a2634b89b5fdd4",
@@ -2805,10 +2779,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolveReconciliationAction, so a trace that probed resolveReconciliationAction and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolveReconciliationAction was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');",
     "siteSha": "e45b6037bc06268680abfec499c4571acd4f9826a5893928b7c193a1bccbf779",
@@ -2874,13 +2848,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker>anon"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker>anon, so a trace that probed openPicker>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "<span class=\"status-dot ${getDotClass(driver)}\"></span>",
     "siteSha": "5851274d23204dba9aac8ff9505daa0284424e99c0a4f6068ffbb65165cb4c30",
@@ -2927,13 +2898,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker>anon"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker>anon, so a trace that probed openPicker>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "([uid, d]) => {",
     "siteSha": "7d4d62a78a65131448eb29b3717839d563bd4e92a487b5130941cd62caa93622",
@@ -2980,10 +2948,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (order) items.push({ label: `Reasignar ${displayOrderLabel(order)}`, icon: ICONS.refresh, action: () => openPicker(order.order_id, true) });",
     "siteSha": "0aafb617c2bfce15b4b2fbc9c65c1414455992c134542a7d854f203e5090944a",
@@ -3039,10 +3007,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "action: () => openPicker(oid, true)",
     "siteSha": "36542afb7a4a2d8d0176c677c8861d676e25455c97fd4f90d5e076c69a4ad6b8",
@@ -3098,10 +3066,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached a stalled task-row Reasignar button ([data-reassign-order])",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "openPicker(btn.dataset.reassignOrder, true);",
     "siteSha": "33be600626dddb4d1588eaa625b46336b8e90c39b748b6999c3def94de09ea7d",
@@ -3129,10 +3097,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached the detail modal's Reasignar button (#od-reassign-order)",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "openPicker(oid, true);   // existing CAS-safe picker → reassignOrder (owns its own result toast)",
     "siteSha": "e95bd25a0dca034d374968bdc201de0950d4b5b3b39fbe78fcc0fe4cb2e94246",
@@ -3160,10 +3128,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an unassigned card's Asignar button ([data-assign-order])",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.assignOrder); });",
     "siteSha": "4147e9465663ea99a536683ac815429f207fd951e82e5b402d6195333ee5f4c8",
@@ -3191,10 +3159,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openPicker"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached a Reasignar button ([data-reassign-order])",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openPicker, so a trace that probed openPicker and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openPicker was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.reassignOrder, true); });",
     "siteSha": "e81d2f535a265618de363603a27279d1a693d37d2f751c0810bfb79ab11d8b85",
@@ -3222,14 +3190,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-alert-id",
-    "no-ui:xpizza-dispatch:attr=data-order-id",
-    "no-ui:xpizza-dispatch:attr=data-detail-order",
-    "no-ui:xpizza-dispatch:class=task-row",
-    "no-ui:xpizza-dispatch:class=delivered-card"
+    "no-exec:xpizza-dispatch/index.html<script@0>#renderOrderDetailModal"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through renderOrderDetailModal, so a trace that probed renderOrderDetailModal and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "renderOrderDetailModal was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "clienteRows.push(odRow('Código', `<span style=\"font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;\">${escapeHtml(orderCode(order))}</span>`));",
     "siteSha": "dc00491afd31fe2355409c7fa544d32b152e1e8e231e79a221ad15218b9fb744",
@@ -3279,10 +3243,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through reconNotePrompt>anon, so a trace that probed reconNotePrompt>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "reconNotePrompt>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "o => o && o.order_id === orderId",
     "siteSha": "d3552b59d0c44f7b7f2b39ccf5a23f38102a4b3da684c675afe49e0693c3490e",
@@ -3348,10 +3312,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolveReconciliationAction, so a trace that probed resolveReconciliationAction and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolveReconciliationAction was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const note = await reconNotePrompt(action, orderId);",
     "siteSha": "1aa6dd4ac49af7eef4543d994687049f4e3d70dba60d5cdbaa9b3c5081bd2f61",
@@ -3417,10 +3381,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-comms-from"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openCommsThread"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the comms thread opens only from a comms row ([data-comms-from]) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openCommsThread, so a trace that probed openCommsThread and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openCommsThread was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "renderCommsThread();",
     "siteSha": "8d3166152200b26af1e3cadc596092ced3b6f7aa28d1da7cabd45a58696038a6",
@@ -3456,14 +3420,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-alert-id",
-    "no-ui:xpizza-dispatch:attr=data-order-id",
-    "no-ui:xpizza-dispatch:attr=data-detail-order",
-    "no-ui:xpizza-dispatch:class=task-row",
-    "no-ui:xpizza-dispatch:class=delivered-card"
+    "no-exec:xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through renderOrderDetailModal>anon, so a trace that probed renderOrderDetailModal>anon and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "renderOrderDetailModal>anon was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "s => s.trim()",
     "siteSha": "5b81d3871e02b911a7e0537f9ed43a8c4e96110182fa6438109a863f8a82ae19",
@@ -3513,14 +3473,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-alert-id",
-    "no-ui:xpizza-dispatch:attr=data-order-id",
-    "no-ui:xpizza-dispatch:attr=data-detail-order",
-    "no-ui:xpizza-dispatch:class=task-row",
-    "no-ui:xpizza-dispatch:class=delivered-card"
+    "no-exec:xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through openOrderDetailModal, so a trace that probed openOrderDetailModal and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "openOrderDetailModal was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "renderOrderDetailModal(order);",
     "siteSha": "7b0eaf865d884bcb73461d3604b31e2ce5c86bf9090d375be6b560c146206ea1",
@@ -3570,14 +3526,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-alert-id",
-    "no-ui:xpizza-dispatch:attr=data-order-id",
-    "no-ui:xpizza-dispatch:attr=data-detail-order",
-    "no-ui:xpizza-dispatch:class=task-row",
-    "no-ui:xpizza-dispatch:class=delivered-card"
+    "no-exec:xpizza-dispatch/index.html<script@0>#renderOrderDetailModal"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through renderOrderDetailModal, so a trace that probed renderOrderDetailModal and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "renderOrderDetailModal was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (order.scheduled_for) sections.push(scheduledBadge(order));",
     "siteSha": "ab039399e9be172d9ef30fd9dcc11ea345fdcf69e31d70710d5bb65fdc292a6c",
@@ -3627,10 +3579,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx"
+    "no-exec:xpizza-dispatch/index.html<script@0>#showLastLocation"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through showLastLocation, so a trace that probed showLastLocation and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "showLastLocation was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => showLastLocation(uid) });",
     "siteSha": "557267caa19743a50b9d636eff143613926ec27bb4c66585db984f66fe7d09f0",
@@ -3686,10 +3638,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:id=od-center-map"
+    "no-exec:xpizza-dispatch/index.html<script@0>#showLookupPin"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "the lookup pin drops only from the modal's Centrar mapa (#od-center-map) — it received no event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through showLookupPin, so a trace that probed showLookupPin and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "showLookupPin was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "showLookupPin(order);",
     "siteSha": "b999a6471250fe42279cf3d90cedabb4a4f929189cbca200a1d4a3a310371c1d",
@@ -3731,13 +3683,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#assignOrder"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "assignOrder runs only from a picker row (click or its 1–9 key) — the picker never opened",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrder, so a trace that probed assignOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const res = await XPD.assignOrderToDriver(orderId, driverId);",
     "siteSha": "17d7e881fbe83a09bff4bb67d6a85ec25c7f203e8c20775a6cef371bd46809d1",
@@ -3797,10 +3746,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-self"
+    "no-exec:xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "no event reached an \"A mí\" button ([data-assign-self])",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrderToDriver, so a trace that probed assignOrderToDriver and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrderToDriver was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const res = await XPD.assignOrderToDriver(oid, currentUser.uid);",
     "siteSha": "9906a4a5fae7de352b3befea45b825fc739229413311e6f28dcb92cea19ae722",
@@ -3828,11 +3777,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-cancel-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through confirmCancelOrder, so a trace that probed confirmCancelOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "confirmCancelOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');",
     "siteSha": "6191ee8b81e45046c7d86c9c669f9f753c530701bd9cea62507a167c4fc2213f",
@@ -3884,14 +3832,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-assign-self"
+    "no-exec:xpizza-dispatch/xpizza-delivery.js#resolvePickupHub"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolvePickupHub, so a trace that probed resolvePickupHub and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolvePickupHub was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };",
     "siteSha": "e5af4561a7f6afc839bce2c82e39fd10fbe531c074846f5b36ff28269f2112a8",
@@ -3991,14 +3935,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-assign-self"
+    "no-exec:xpizza-dispatch/xpizza-delivery.js#resolvePickupHub"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolvePickupHub, so a trace that probed resolvePickupHub and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolvePickupHub was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;",
     "siteSha": "c91696f10c862eb6a014f58804209707baced3b3f1e30d2324f42ddf55aad05d",
@@ -4098,13 +4038,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order"
+    "no-exec:xpizza-dispatch/index.html<script@0>#assignOrder"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "assignOrder runs only from a picker row (click or its 1–9 key) — the picker never opened",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrder, so a trace that probed assignOrder and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const res = await XPD.reassignOrder(orderId, driverId, pickerFromDriver);",
     "siteSha": "a158a0e93037943e56e6076c850c170a61160e1ac9ff6601a37ef275d382651c",
@@ -4164,14 +4101,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-assign-self"
+    "no-exec:xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrderToDriver, so a trace that probed assignOrderToDriver and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrderToDriver was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
     "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
@@ -4271,14 +4204,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-assign-order",
-    "no-ui:xpizza-dispatch:attr=data-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-action-idx",
-    "no-ui:xpizza-dispatch:id=od-reassign-order",
-    "no-ui:xpizza-dispatch:attr=data-assign-self"
+    "no-exec:xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through assignOrderToDriver, so a trace that probed assignOrderToDriver and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "assignOrderToDriver was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
     "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
@@ -4378,10 +4307,10 @@
    "group": "dispatch-ui",
    "appliesWhenAny": [],
    "context": [
-    "no-ui:xpizza-dispatch:attr=data-recon-action"
+    "no-exec:xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
    ],
-   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
-   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through resolveReconciliationAction, so a trace that probed resolveReconciliationAction and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "resolveReconciliationAction was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "const r = await XPD.resolveReconciliation(orderId, action, note.trim());",
     "siteSha": "660f778ed9b4a981165653229a86238d5b9d56ccf180512933a4d0177ab0e533",
@@ -8152,8 +8081,8 @@
      ]
     }
    ],
-   "authority": "§1 F-REWARD: the Stage-2 summary is re-rendered through applyRedeemQuoteToTotals only by the reward flow — a reward quote, a reward REMOVAL (rkClear → onQuoted(null)) or a redeem RESTORE after a payment reload; every reward-flow entry is a [data-rk-*] control (codex P1-b b12 r1 P1-4)",
-   "whyFalseExcludes": "no redemption, no restore, and no event on any reward control ([data-rk-*], UI recorder before the page scripts) → the reward flow never runs, so the callback never fires",
+   "authority": "§1 F-REWARD: the Stage-2 summary is re-rendered through applyRedeemQuoteToTotals only by the reward flow — a reward quote, a reward REMOVAL (rkClear → onQuoted(null)) or a redeem RESTORE after a payment reload — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through applyRedeemQuoteToTotals, so a trace that probed applyRedeemQuoteToTotals and never recorded its entry in this LP interval establishes it did not run (any path: a click, a detached .click(), a timer, a rewired control)",
+   "whyFalseExcludes": "applyRedeemQuoteToTotals was never entered in this LP interval (the tracer's function-entry probe) → this region never executed; the UI recorder is supporting evidence only",
    "bind": {
     "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
     "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
@@ -8196,14 +8125,7 @@
     ]
    },
    "context": [
-    "no-ui:xpizza-orders:attr=data-rk-open",
-    "no-ui:xpizza-orders:attr=data-rk-pick",
-    "no-ui:xpizza-orders:attr=data-rk-add",
-    "no-ui:xpizza-orders:attr=data-rk-minus",
-    "no-ui:xpizza-orders:attr=data-rk-done",
-    "no-ui:xpizza-orders:attr=data-rk-clear",
-    "no-ui:xpizza-orders:attr=data-rk-dismiss",
-    "no-ui:xpizza-orders:attr=data-rk-id"
+    "no-exec:xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals"
    ]
   },
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
