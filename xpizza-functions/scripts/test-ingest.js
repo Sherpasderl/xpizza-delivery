@@ -27,11 +27,13 @@ if (!INGEST_URL || !UID) {
 }
 
 // RETIRED FROM PROD (codex S1 r7 P2 / advisor ruling): this script opened/replaced shifts for a caller-supplied
-// uid via unrestricted Admin against PRODUCTION. It is now EMULATOR-ONLY — refuse to run unless the RTDB emulator
-// is targeted, so it can never touch a real driver's shift state again.
-if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
-  console.error('test-ingest is emulator-only: set FIREBASE_DATABASE_EMULATOR_HOST to an RTDB emulator before running.');
-  process.exit(1);
+// uid via unrestricted Admin against PRODUCTION. It is now EMULATOR-ONLY — it must run ONLY under a COHERENT local
+// emulator, so it can never touch a real driver's shift state again. A production (no-signal) run is refused; a
+// mixed/foreign signal is refused as incoherent (part would reach the emulator, part production).
+if (require('../tools/emu-mixed-guard').refuseMixedSignals('test-ingest') === 'prod') {
+  console.error('\n🔴 REFUSED — test-ingest is EMULATOR-ONLY (it opens/replaces driver shifts via unrestricted Admin).');
+  console.error('   Run it under tools/emulator-run.js against a coherent local emulator — never against production.\n');
+  process.exit(2);
 }
 initializeApp({ databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' });
 const db = getDatabase();

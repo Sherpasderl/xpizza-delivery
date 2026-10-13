@@ -73,7 +73,7 @@ const D = {
     'extras-export-live'].map((t) => [F(`tools/${t}.js`), 'prod-cli'])),
   // functions-root production scripts — tools/emu-mixed-guard.js before initializeApp (driven: mixed ⇒ refuse)
   [F('publish-menus.mjs')]: 'prod-script', [F('seed-kitchen-staff.mjs')]: 'prod-script', [F('seed_identity.js')]: 'prod-script',
-  [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
+  [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
   // deployed / library code (not executables on their own)
   [F('lib/admin.js')]: 'lib: the deployed Admin app — validator in its emulator branch (emulator-endpoint.test cells 1-8)',
   [F('lib/emulator-endpoint.js')]: 'lib: the validator itself', [F('deploy/emu-ns.js')]: 'lib: emuDatabaseURL → validateRtdbUrl (strict)',
@@ -178,12 +178,15 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
   }
   ok(`${cli} production CLI/script runs: every require-project CLI and every functions-root production script REFUSES mixed (either half emulated, the other prod) and foreign signals before any client`);
 
-  // 3b. r2 P1-2 — (a) test-ingest is PRODUCTION-ONLY: even a COHERENT emulator env is refused (it posts to INGEST_URL);
+  // 3b. (a) S1a r7 P2 — test-ingest is EMULATOR-ONLY (retired from prod; it opens/replaces driver shifts via
+  //     unrestricted Admin). A NO-SIGNAL production run is refused before any client. (Mixed/foreign signals are
+  //     refused as incoherent in section 3 above; a coherent local emulator is its only allowed shape.)
   //     (b) DOTENV INJECTION: every require-project CLI that loads dotenv AFTER its early check is run from a directory
   //     whose .env introduces a FOREIGN Firestore host — the client-construction re-check must refuse before any client.
   {
     const coherent = { FIRESTORE_EMULATOR_HOST: lo(P.firestore), FIREBASE_DATABASE_EMULATOR_HOST: lo(P.database), XPIZZA_EMU_OFFSET: '70' };
-    refusedClean(observe([rel(F('scripts/test-ingest.js')), 'http://127.0.0.1:5270/demo-xpizza/us-central1/ingestDriverLocation', 'UID'], coherent), 'test-ingest under a COHERENT emulator env (production-only)');
+    // S1a r7 P2 — test-ingest is now EMULATOR-ONLY (retired from prod): a NO-SIGNAL production run is refused before any client.
+    refusedClean(observe([rel(F('scripts/test-ingest.js')), 'https://us-central1-xpizza-delivery.cloudfunctions.net/ingestDriverLocation', 'UID'], {}), 'test-ingest under NO signal (emulator-only, refuses a production run)');
     // per-product extras gate 0 (codex r1 P1-1): the live export pairs a source with the PRODUCTION public menu — a coherent
     // emulator env would pair emulator data with production, so it is production-only too
     refusedClean(observe([rel(F('tools/extras-export-live.js')), '--project', 'xpizza-delivery', '--out', '/tmp/extras-census-never', 'x_pizza'], { ...coherent, GOOGLE_CLOUD_PROJECT: 'xpizza-delivery' }), 'extras-export-live under a COHERENT emulator env (production-only)');
@@ -203,7 +206,7 @@ const FOREIGN = { FIRESTORE_EMULATOR_HOST: 'evil.example:8080', FIREBASE_DATABAS
         passed.push(f);
       }
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-    ok(`test-ingest and extras-export-live refuse even a coherent emulator env (production-only); ${passed.length} dotenv-loading require-project CLIs each refuse a .env-injected foreign emulator host at client construction, before any contact (${passed.join(', ')})`);
+    ok(`test-ingest is emulator-only (a no-signal production run is refused); extras-export-live refuses even a coherent emulator env (production-only); ${passed.length} dotenv-loading require-project CLIs each refuse a .env-injected foreign emulator host at client construction, before any contact (${passed.join(', ')})`);
   }
 
   // 4. the LATENCY CHILD: portal-speed-proof's `node -e` children load index.js → lib/admin.js refuses mixed/foreign

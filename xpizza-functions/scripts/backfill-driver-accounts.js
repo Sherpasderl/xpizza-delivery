@@ -17,6 +17,9 @@ const { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord } = require('../driver-ac
 
 (async () => {
   const apply = process.argv.includes('--apply');
+  // Mixed/foreign emulator signals ⇒ refuse before any client (part would reach an emulator, part production).
+  // No signal ⇒ the intended one-time PRODUCTION backfill proceeds; run against the emulator via tools/emulator-run.js.
+  require('../tools/emu-mixed-guard')('backfill-driver-accounts');
   initializeApp({ databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' });
   const db = getDatabase();
   const auth = getAuth();

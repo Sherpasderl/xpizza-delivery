@@ -11093,10 +11093,10 @@
     "id": "r1-24",
     "slice": "r1",
     "file": "scripts/test-ingest.js",
-    "from": "require('../tools/emu-mixed-guard').refuseAnySignal('test-ingest');",
-    "to": "require('../tools/emu-mixed-guard')('test-ingest');",
-    "label": "test-ingest (posts to a deployed INGEST_URL) runs under a coherent emulator env",
-    "kills_with": "test-ingest under a COHERENT emulator env",
+    "from": "refuseMixedSignals('test-ingest') === 'prod'",
+    "to": "refuseMixedSignals('test-ingest') === 'never'",
+    "label": "test-ingest no longer refuses a production (no-signal) run — emulator-only protection removed",
+    "kills_with": "test-ingest under NO signal (emulator-only, refuses a production run)",
     "command": [
       "node",
       "tools/endpoint-census.guard.test.js"

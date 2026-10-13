@@ -39,6 +39,7 @@ assert(!rules['.read'], 'FAIL: rules root has a truthy .read grant — would cas
 assert(!rules['.write'], 'FAIL: rules root has a truthy .write grant — would cascade over /counters');
 
 // Sanity: an unrelated sibling keeps its access (proves this guard didn't over-restrict the tree).
-assert.strictEqual(rules.order_timelines['.read'], 'auth != null && auth.token.customer !== true', 'FAIL: sibling order_timelines .read changed — guard over-reached');
+// S1a (§6 read gate): order_timelines .read now additionally requires the READER's own account not deactivated.
+assert.strictEqual(rules.order_timelines['.read'], "auth != null && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true", 'FAIL: sibling order_timelines .read changed unexpectedly — guard over-reached');
 
-console.log('counters-rules.guard: OK (/counters is admin-only deny; no nested grant; no root cascade; sibling order_timelines unchanged)');
+console.log('counters-rules.guard: OK (/counters is admin-only deny; no nested grant; no root cascade; sibling order_timelines as expected)');

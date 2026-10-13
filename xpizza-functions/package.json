@@ -64,6 +64,7 @@
     "test:kds-manifest-writer": "node --test kds-manifest-writer.test.mjs",
     "test:kitchen-staff-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/kitchen-staff-rules.emulator.test.js\"",
     "test:driver-cuadre-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-cuadre-rules.emulator.test.js\"",
+    "test:driver-eligibility-rules": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-eligibility-rules.emulator.test.js\"",
     "test:client-version": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/client-version.emulator.test.js\"",
     "test:pselfupdate-createorder-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pselfupdate-createorder-trace.emulator.test.js\"",
     "test:r3-p0-gate": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-gate.emulator.test.js\"",
