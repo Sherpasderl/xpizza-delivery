@@ -153,7 +153,9 @@ ok('both forms: chg(launcher, +1) and a direct cartSync write leave the cart emp
   const row = w.document.getElementById('card-soda_grp');
   assert.ok(row && row.classList.contains('bev-row'), 'premise — it renders as a list row');
   const btns = [...row.querySelectorAll('[data-act]')].map((b) => b.getAttribute('data-act'));
-  assert.deepStrictEqual(btns, ['open'], '🔴 the launcher row carries ONE control, and it opens the picker (no plain stepper)');
+  // owner 2026-10-12: the launcher row also carries the count stepper (hidden at 0) — its "+" opens the picker and its "−" the cart
+  assert.deepStrictEqual(btns, ['open', 'dec', 'inc'], '🔴 the launcher row: the "+" that opens the picker, then the count stepper');
+  assert.ok(!row.querySelector('.qty-controls').classList.contains('visible'), 'nothing chosen → the stepper is not shown');
   assert.strictEqual(row.querySelector('.bev-row-price').textContent, 'desde L 40', 'the row shows the derived price');
   row.querySelector('[data-act="open"]').click(); await settle();
   assert.ok(w.document.querySelector('.detail-overlay.open'), '🔴 tapping "+" opens the picker');

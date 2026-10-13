@@ -3086,6 +3086,7 @@ function wireMenuDelegate(){
     if (act === 'open')    { openDetailModal(dish.id); return; }
     // 1D add-product B: a launcher is never added itself — any "add" on it opens its picker (every layout, every control)
     if (act === 'inc' && itemIsLauncher(dish)) { openDetailModal(dish.id); return; }
+    if (act === 'dec' && itemIsLauncher(dish)) { openCartReview(); return; }   // which choice to remove is ambiguous → the cart's per-line steppers
     if (act === 'inc')     { chg(dish.id, 1);  return; }
     if (act === 'dec')     { chg(dish.id, -1); return; }
     if (act === 'badge')   { toggleControls(dish.id); return; }
@@ -3117,9 +3118,19 @@ function renderMenu() {
            the merchant-image test rather than by reading, which is the argument for having it. */
         (cardUrl ? '' : '<div class="pizza-photo-label">' + safeText(p.emoji || '•') + '</div>') +
         (cardUrl ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="' + safeText(cardUrl) + '" onerror="this.remove()">' : '') +
+        /* 1D add-product B: a LAUNCHER card counts the TOTAL of its choices in the cart (paintLauncherCard). Its "+" opens
+           the picker (every control); the stepper's "−" opens the cart, where each choice has its own stepper. */
         (itemIsLauncher(p)
           ? '<div class="qty-overlay" data-stop="1">' +
-              '<button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
+              '<div class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
+                '<button class="qty-ctrl-btn" data-act="dec" data-id="' + safeText(p.id) + '" id="minus-' + safeText(p.id) + '" aria-label="Ver tu pedido">−</button>' +
+                '<span class="qty-ctrl-num" id="qty-' + safeText(p.id) + '">0</span>' +
+                '<button class="qty-ctrl-btn" data-act="inc" data-id="' + safeText(p.id) + '" aria-label="Agregar otra">+</button>' +
+              '</div>' +
+              '<div class="qty-badge" id="qty-badge-' + safeText(p.id) + '" style="display:none" data-act="badge" data-id="' + safeText(p.id) + '">' +
+                '<span id="qty-badge-num-' + safeText(p.id) + '">1</span>' +
+              '</div>' +
+              '<button class="qty-add-btn" id="qty-add-' + safeText(p.id) + '" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
             '</div>'
           : '<div class="qty-overlay" data-stop="1">' +
               '<div class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
@@ -3160,7 +3171,14 @@ function renderMenu() {
       return '<div class="bev-row" id="card-' + safeText(p.id) + '">' +
           '<span class="bev-row-name">' + safeText(p.name) + '</span>' +
           '<span class="bev-row-meta"><span class="bev-row-price">' + safeText(GroupPicker.priceText(VARIANT_ITEMS[p.id], MENU) || '—') + '</span>' +
-            '<span class="bev-row-actions"><button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button></span>' +
+            '<span class="bev-row-actions">' +
+              '<button class="qty-add-btn" id="qty-add-' + safeText(p.id) + '" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
+              '<span class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
+                '<button class="qty-ctrl-btn" data-act="dec" data-id="' + safeText(p.id) + '" id="minus-' + safeText(p.id) + '" aria-label="Ver tu pedido">−</button>' +
+                '<span class="qty-ctrl-num" id="qty-' + safeText(p.id) + '">0</span>' +
+                '<button class="qty-ctrl-btn" data-act="inc" data-id="' + safeText(p.id) + '" aria-label="Agregar otra">+</button>' +
+              '</span>' +
+            '</span>' +
           '</span>' +
         '</div>';
     }
@@ -3269,10 +3287,41 @@ function chg(id,d){
   // Highlight card border
   const card=document.getElementById('card-'+id);
   if(card) card.classList.toggle('has-items',qty[id]>0);
+  // 1D add-product B — a CHOICE has no card of its own; its launcher's card counts it
+  const parent=GroupPicker.parentOf(findMenuItem(id), MENU);
+  if(parent && itemIsLauncher(parent)) paintLauncherCard(parent.id, d);
 
 
   updateTotal();
   updateCart();
+}
+
+/* 1D add-product B — a card's count: a plain dish's own quantity, a launcher's the TOTAL of its choices (the shared rule). */
+function cardQty(id){
+  const p = findMenuItem(id);
+  return itemIsLauncher(p) ? GroupPicker.launcherQty(VARIANT_ITEMS[p.id], (v) => qty[v] || 0) : (qty[id] || 0);
+}
+/* A launcher card's stepper, painted the way chg() paints a plain card's: zero → the "+"; otherwise the open stepper
+   showing the total (an outside tap collapses it to the badge, as on every card). Its "−" stays "−" — it opens the cart. */
+function paintLauncherCard(lid, d){
+  const n = cardQty(lid);
+  const num=document.getElementById('qty-'+lid), addBtn=document.getElementById('qty-add-'+lid);
+  const controls=document.getElementById('qty-controls-'+lid), badge=document.getElementById('qty-badge-'+lid);
+  const badgeNum=document.getElementById('qty-badge-num-'+lid);
+  if(num) num.textContent=n;
+  if(badgeNum) badgeNum.textContent=n;
+  if(n===0){
+    if(addBtn) addBtn.style.display='flex';
+    if(controls) controls.classList.remove('visible');
+    if(badge) badge.style.display='none';
+  } else {
+    if(addBtn) addBtn.style.display='none';
+    if(badge) badge.style.display='none';
+    if(controls) controls.classList.add('visible');
+    if(d>0) registerOutsideClick(lid);
+  }
+  const card=document.getElementById('card-'+lid);
+  if(card) card.classList.toggle('has-items',n>0);
 }
 
 function refreshCardExtrasIndicator(id){
@@ -5883,8 +5932,8 @@ function registerOutsideClick(id){
       const badge=document.getElementById('qty-badge-'+id);
       const badgeNum=document.getElementById('qty-badge-num-'+id);
       if(controls) controls.classList.remove('visible');
-      if(qty[id]>0){
-        if(badge){ badge.style.display='flex'; if(badgeNum) badgeNum.textContent=qty[id]; }
+      if(cardQty(id)>0){
+        if(badge){ badge.style.display='flex'; if(badgeNum) badgeNum.textContent=cardQty(id); }
       }
       document.removeEventListener('click',window[key]);
       window[key]=null;

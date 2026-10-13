@@ -117,6 +117,11 @@ function markLauncherLines(lines, variantItems) {
   return lines.map(l => (isLauncher({ id: l.key }, variantItems) ? Object.assign({}, l, { unresolved: "choice", blocked: true }) : l));
 }
 function launcherKeys(keys, variantItems) { return keys.filter(k => isLauncher({ id: k }, variantItems)); }
+/* ── A LAUNCHER CARD'S COUNT (owner, 2026-10-12) — the TOTAL of its choices in the cart (1 Salsa Roja + 1 Combinada → 2).
+   The launcher itself never holds quantity, so its card counts its choices. `qtyOf(choiceId)` is the form's own reader. */
+function launcherQty(cfg, qtyOf) {
+  return ((cfg && cfg.variantIds) || []).reduce(function (n, vid) { const q = Number(qtyOf(vid)); return n + (isFinite(q) && q > 0 ? q : 0); }, 0);
+}
 // `names`: [{ key, name }] — a cart key IS the variant map's key (both are the id as a string), so the label reads directly
 function reChooseText(names, variantItems) {
   return names.map(n => {
@@ -171,6 +176,6 @@ function ctaDecision(opts) {
 
 const GroupPicker = { GROUP_PICKER_V1, RECOMMENDED_LABEL, sameDishId, isLauncher, isVariant, validateVariantBlock, priceRange, priceText, choiceDelta,
   promptText, isRecommended, choiceRows, noExtras, validateExtrasPolicy, rewardDishes, parentOf, soldOutWithParent, ctaDecision,
-  markLauncherLines, launcherKeys, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys };
+  markLauncherLines, launcherKeys, launcherQty, reChooseText, CHOICE_INPUT_CLASS, choiceInputHtml, choiceHasFocus, refocusChoice, wireChoiceKeys };
 if (typeof module !== "undefined" && module.exports) module.exports = GroupPicker;
 if (typeof window !== "undefined") { window.GroupPicker = GroupPicker; }
