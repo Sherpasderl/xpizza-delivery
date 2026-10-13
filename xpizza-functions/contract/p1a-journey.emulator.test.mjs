@@ -302,10 +302,15 @@ try {
   {
     const RAx = require('./region-applicability'); const others = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'] }).cells.filter((c) => !SLICE.readers.includes(c.R));
     const st = others.map((c) => [c, RAx.staticDecision(applicability, c.viaFrom || c.region, c)]).filter(([, x]) => x.excluded);
-    const outc = st.map(([c]) => RAx.runDecision(applicability, c.viaFrom || c.region, c, evidence).outcome);
-    const bad = st.filter((_, i) => outc[i] !== 'excluded').map(([c], i) => `${c.viaFrom || c.region}: ${outc[i]}`);
+    // an exclusion may stay REQUIRED only when what this run cannot establish is a UI context of a page it never booted
+    // (dispatch / driver … — their journeys record those); anything else unestablished, or contradicted, is RED
+    const booted = new Set(Object.keys(evidence.uiEvents || {}).filter((p) => evidence.uiEvents[p]));
+    const dec = st.map(([c]) => RAx.runDecision(applicability, c.viaFrom || c.region, c, evidence));
+    const onlyUnbootedUi = (d) => d.outcome === 'required' && /^not established by this run: /.test(d.reason) && d.reason.replace(/^not established by this run: /, '').split(', ').every((x) => { const m = /^no-ui:([a-z0-9-]+):/.exec(x); return m && !booted.has(m[1]); });
+    const bad = st.map(([c], i) => [c, dec[i]]).filter(([, d]) => d.outcome !== 'excluded' && !onlyUnbootedUi(d)).map(([c, d]) => `${c.viaFrom || c.region}: ${d.outcome} (${d.reason || ''})`);
+    const deferred = dec.filter(onlyUnbootedUi).length;
     assert.ok(fnCalls.complete && bad.length === 0, FAIL('bulk', `the run's evidence did not establish ${bad.length} reviewed exclusion(s) of other readers (fnCalls complete ${fnCalls.complete}): ${bad.slice(0, 4).join(' | ')}`));
-    ok(`the run's evidence establishes all ${st.length} derived exclusion cells of OTHER readers at S1 / x_pizza / new (${new Set(st.map(([c]) => c.viaFrom || c.region)).size} regions; the invocation log is complete over ${fnCalls.names.length} functions; ${Object.keys(tasks).length} task record(s), none assigned)`);
+    ok(`the run's evidence establishes ${st.length - deferred} of the ${st.length} derived exclusion cells of OTHER readers at S1 / x_pizza / new; ${deferred} wait on the UI recorder of a page this run never booted (required here) (${new Set(st.map(([c]) => c.viaFrom || c.region)).size} regions; the invocation log is complete over ${fnCalls.names.length} functions; ${Object.keys(tasks).length} task record(s), none assigned)`);
   }
   const run = (sn, ev = evidence) => runGateA({ cells, registry, applicability, regionsDoc, evidence: ev, snapshots: sn, facts, ctx, observables: OBSERVABLES });
   const res = run(snaps);

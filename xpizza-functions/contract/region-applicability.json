@@ -406,6 +406,4043 @@
     "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios"
    }
   },
+  "xpizza-dispatch-mobile/index.html<script@0>#__focusDriverOnMap@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-drvfocus"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the driver focus runs only from a [data-drvfocus] control — none received an event",
+   "bind": {
+    "site": "if (ds.drvfocus){ showTab('mapa'); window.__focusDriverOnMap?.(ds.drvfocus); return; }",
+    "siteSha": "deb368c93927903c91e1fd367f3d1f71393515740bfe1cd564fd2666a573fd37",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "__focusDriverOnMap",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "__focusDriverOnMap",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-drvfocus): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#__focusOrderOnMap@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-map"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order map focus runs only from a [data-map] control — none received an event",
+   "bind": {
+    "site": "if (ds.map){ closeSheet(); showTab('mapa'); window.__focusOrderOnMap?.(ds.map); return; }",
+    "siteSha": "575ce555a92ed3dbdf778f78f4b7493fa185c4883d5a2104cab06c522ec37d1d",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "__focusOrderOnMap",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "__focusOrderOnMap",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-map): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#bucketOf@xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "const free = onShift.filter(r => bucketOf(r) === 'free');",
+    "siteSha": "be3ef239d9e11bff41df0689212c631e34ea82baf7a8f2e3870e7ee34c6d027d",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon",
+    "scopeSha": "492eaf2b9abe87fe5150d915e878caa8d4ba19f34403ade59d175710b42b05bc"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#bucketOf@xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon~2": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "const busy = onShift.filter(r => bucketOf(r) === 'busy');",
+    "siteSha": "2603413c8a89aac2d51a0cbc8180e09cf7e7c2f9caa4f3c087b71d0ea995351e",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon",
+    "scopeSha": "492eaf2b9abe87fe5150d915e878caa8d4ba19f34403ade59d175710b42b05bc"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#displayLabel@xpizza-dispatch-mobile/index.html<script@0>#openConfirm": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "bind": {
+    "site": "<div class=\"fact\"><s>Pedido</s><b class=\"num\">${escapeHtml(displayLabel(orderId, order))}</b></div>",
+    "siteSha": "dbcc778ef02dea652c068079d84e6781d943ed2c711ed2e59edf5e38039e9faf",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openConfirm",
+    "scopeSha": "4c967db16779effc9ecd2808fb1f80a5d4e5067b100a271bfa29d543e508aa2c"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openConfirm(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "openConfirm",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-choose): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#driverColorVar@xpizza-dispatch-mobile/index.html<script@0>#openConfirm": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "bind": {
+    "site": "<div><div class=\"big rd\" style=\"background:${driverColorVar(toD)}\">${initial(toD.name)}</div><b>${escapeHtml(String(toD.name || 'Repartidor').split(' ')[0])}</b><s>${row ? fmtDist(row.distanceM) : ''}</s></div>",
+    "siteSha": "e9a377f6c637aea52a86348eaeb6e011c8feb35b2de082e0873578cacb5bb41e",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openConfirm",
+    "scopeSha": "4c967db16779effc9ecd2808fb1f80a5d4e5067b100a271bfa29d543e508aa2c"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openConfirm(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "openConfirm",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-choose): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#driverColorVar@xpizza-dispatch-mobile/index.html<script@0>#rowOf": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "<span class=\"av rd\" style=\"background:${driverColorVar(dObj)}\">${escapeHtml(String(r.name || '?').charAt(0).toUpperCase())}</span>",
+    "siteSha": "9504fac0d0ecea6393fab75c5e3a2208addf67b45666b9e3d60a0c240e2a1d34",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#rowOf",
+    "scopeSha": "7acab7f8f9f79922746408fcd6a89907d309a53c3a7409aeb9ad73266d63e0c2"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openConfirm@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "bind": {
+    "site": "if (oid) { sheetDir = 'push'; openConfirm(oid, ds.choose); }",
+    "siteSha": "40f2a5db66dbdcd1f9742f459d4d41493ab90987dbee4228e68dc69ab0805d3a",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openConfirm(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "openConfirm",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-choose): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDetail@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-detail"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an order control ([data-detail])",
+   "bind": {
+    "site": "if (ds.detail){ sheetDir = ds.back ? 'pop' : 'push'; openDetail(ds.detail); return; }",
+    "siteSha": "64b313060d187928487b1eec1898c5494f904aa8e13126b09961a9a20336c4e0",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-detail): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openDriverInfo@xpizza-dispatch-mobile/index.html<script@0>#__focusDriverOnMap": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-drvfocus"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the driver focus runs only from a [data-drvfocus] control — none received an event",
+   "bind": {
+    "site": "openDriverInfo(uid);",
+    "siteSha": "f1cd9b3a88409e6adef7440398364279f7aedd85b05d584fb2792e92467cd6c6",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#__focusDriverOnMap",
+    "scopeSha": "c414992ef87804b3564dee8b742b230f28b22aedbf8a5849b80614859cd37f86"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "__focusDriverOnMap",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "__focusDriverOnMap",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-drvfocus): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon@self": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "r => (STORE.drivers[r.id] || {}).status !== XPD.DRIVER_STATUS.OFF_SHIFT",
+    "siteSha": "59064650ee15738ccaa503ce27f37e6c2bfd224519300b284eb615cf1f3f81a7",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon",
+    "scopeSha": "492eaf2b9abe87fe5150d915e878caa8d4ba19f34403ade59d175710b42b05bc"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "if (ds.pick){ sheetDir = ds.back ? 'pop' : 'push'; openPicker(ds.pick); return; }",
+    "siteSha": "2c7a34ed8e87ad0bb25f580acafe86379543e814d234b1f342b6ccdadf863a18",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+    "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#rowOf@self": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "(r) => {",
+    "siteSha": "12d962f7ad91324fecd0ba221c0973dfbfd06de7b9aef8571ec489c7a97abd9d",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#rowOf",
+    "scopeSha": "7acab7f8f9f79922746408fcd6a89907d309a53c3a7409aeb9ad73266d63e0c2"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/reassign-model.js#driverLoad@xpizza-dispatch-mobile/reassign-model.js#driverPickList": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick",
+    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "driverPickList runs only inside the picker / confirmation — neither trigger received an event",
+   "bind": {
+    "site": "load: driverLoad(id, tasks),",
+    "siteSha": "a99f89070a5b3fe7503724aa401e0d102aa3253ca59a37a924e548c0b97b00e9",
+    "scope": "xpizza-dispatch-mobile/reassign-model.js#driverPickList",
+    "scopeSha": "1e1fcee59f0dd4735c76c6e9752f621eb8a5e485dd07430a5331a9f7e7d150f4"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/reassign-model.js#driverPickList",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openConfirm",
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker"
+     ]
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openConfirm(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "driverPickList",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1
+     }
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "openConfirm",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick, no-ui:xpizza-dispatch-mobile:attr=data-choose): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/reassign-model.js#driverPickList@xpizza-dispatch-mobile/index.html<script@0>#openConfirm": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the assign confirmation opens only from a picker choice ([data-choose]) — none received an event",
+   "bind": {
+    "site": "const row = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing }).find(r => r.id === driverId);",
+    "siteSha": "59e780f9cc95e285371e19ac56ed4d8e43fd65a806d923a8d5d98c116d2d0b71",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openConfirm",
+    "scopeSha": "4c967db16779effc9ecd2808fb1f80a5d4e5067b100a271bfa29d543e508aa2c"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openConfirm(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "openConfirm",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-choose): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/reassign-model.js#driverPickList@xpizza-dispatch-mobile/index.html<script@0>#openPicker": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the reassign picker opens only from a [data-pick] control — none received an event",
+   "bind": {
+    "site": "const list = driverPickList({ order, orderId, drivers:STORE.drivers, tasks:STORE.tasks, hub, now:Date.now(), isStale:XPD.isStalePing });",
+    "siteSha": "c7158f71157aa2dde3c65c614284780e24504ff7c55605ff7ebfd1959d72eeb5",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+    "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#openPicker",
+     "text": "const rowOf = (r) => {",
+     "scopeSha": "c6596419c592b9d52ff11e4973365ddd9a663796f21f05b69d55e5d7f8f9594d"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/index.html<script@0>#bucketOf",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bucketOf",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/reassign-model.js#haversineM@xpizza-dispatch-mobile/reassign-model.js#driverPickList": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-pick",
+    "no-ui:xpizza-dispatch-mobile:attr=data-choose"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "driverPickList runs only inside the picker / confirmation — neither trigger received an event",
+   "bind": {
+    "site": "distanceM: haversineM(anchor, pos),",
+    "siteSha": "d24267263b0735dedc2c78af2e7a3bf261c76e985b232e4f4f71937781b8c76f",
+    "scope": "xpizza-dispatch-mobile/reassign-model.js#driverPickList",
+    "scopeSha": "1e1fcee59f0dd4735c76c6e9752f621eb8a5e485dd07430a5331a9f7e7d150f4"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/reassign-model.js#driverPickList",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#openConfirm",
+      "xpizza-dispatch-mobile/index.html<script@0>#openPicker"
+     ]
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openPicker(",
+     "count": 2
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "openConfirm(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "driverPickList",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1
+     }
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    },
+    {
+     "kind": "R",
+     "name": "openConfirm",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-pick, no-ui:xpizza-dispatch-mobile:attr=data-choose): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch-mobile/index.html<script@0>#commitAssign": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "bind": {
+    "site": ": await XPD.assignOrderToDriver(orderId, driverId);",
+    "siteSha": "2aba6953be0b8d874ae7ccad93862306857bfb5ddb02247b5982e125a78154c3",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#commitAssign",
+    "scopeSha": "08cb50629da1f4528a5e37cd530010b33965f395b2b1c5294f37ab8db7e3ebbc"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "commitAssign(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "commitAssign",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-commit): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch@xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "bind": {
+    "site": "if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };",
+    "siteSha": "e5af4561a7f6afc839bce2c82e39fd10fbe531c074846f5b36ff28269f2112a8",
+    "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+    "scopeSha": "9af90b69747a7ccd3349870ba29fe2d96211ab84b458743dc8bb3d53a6b38a4b"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "commitAssign(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "commitAssign",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-commit): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch@xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub~2": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "bind": {
+    "site": "return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;",
+    "siteSha": "c91696f10c862eb6a014f58804209707baced3b3f1e30d2324f42ddf55aad05d",
+    "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+    "scopeSha": "9af90b69747a7ccd3349870ba29fe2d96211ab84b458743dc8bb3d53a6b38a4b"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "commitAssign(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "commitAssign",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-commit): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder@xpizza-dispatch-mobile/index.html<script@0>#commitAssign": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "bind": {
+    "site": "? await XPD.reassignOrder(orderId, driverId, pickerFromDriver)",
+    "siteSha": "9e3bc4a26798f74f79c8943a1577eb089bc34749299cc68fc6e20b3692fd5eb8",
+    "scope": "xpizza-dispatch-mobile/index.html<script@0>#commitAssign",
+    "scopeSha": "08cb50629da1f4528a5e37cd530010b33965f395b2b1c5294f37ab8db7e3ebbc"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "commitAssign(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "commitAssign",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-commit): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "bind": {
+    "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
+    "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
+    "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "commitAssign(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "commitAssign",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-commit): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver~2": {
+   "group": "dispatch-lite-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch-mobile:attr=data-commit"
+   ],
+   "authority": "scenario definition: dispatch-lite actions are DISPATCHER actions — the delegated document click handler dispatches on the nearest [data-*] control; this code runs only after a user event reaches that control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "an assignment commits only from the confirmation's [data-commit] control — it received no event",
+   "bind": {
+    "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
+    "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
+    "scope": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener",
+     "text": "const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],",
+     "scopeSha": "be76daec3af3c4260a4d92a49bef719a249c169fb023a5db98f092a0e46eec50"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch-mobile/index.html",
+     "text": "commitAssign(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch-mobile/index.html<script@0>#commitAssign"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "commitAssign",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch-mobile:attr=data-commit): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/dispatch-stalled.js#isStalledAssignment@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-alert-id",
+    "no-ui:xpizza-dispatch:attr=data-order-id",
+    "no-ui:xpizza-dispatch:attr=data-detail-order",
+    "no-ui:xpizza-dispatch:class=task-row",
+    "no-ui:xpizza-dispatch:class=delivered-card"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "bind": {
+    "site": "const stalledDetail = isStalledAssignment(dtDetail, Date.now(), ptDetail);",
+    "siteSha": "cb33e81bb9ecd8cd6fc390755aca420b73b37af0eead2699e3c9c54b2251bcd4",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openOrderDetailModal(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7
+     }
+    },
+    {
+     "kind": "R",
+     "name": "renderOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#action@xpizza-dispatch/index.html<script@0>#showActionMenu>anon>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "bind": {
+    "site": "if (item && !item.disabled && item.action) item.action();",
+    "siteSha": "0a13988f97a34a5a0ce907b4a12f349505b262c2f7dbce82b7b7f76f3c39a9f1",
+    "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu>anon>anon",
+    "scopeSha": "6a80f6e5f0821d410ea33e6b80aa8048b26143eb17007e721772e7346662b03c"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu",
+     "text": "menu.querySelectorAll('[data-action-idx]').forEach(btn => {",
+     "scopeSha": "5da9bed9fcc5af760917135b3092038003140dc8acb42e4fd8a967e907b65dcc"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "showActionMenu(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "showActionMenu",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "showLastLocation",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-cancel-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "bind": {
+    "site": "if (!confirm(`¿Cancelar el pedido ${displayOrderLabel(orderId)}?\\n\\nEsto lo marcará como cancelado, reembolsará el cargo si hubo pago, y liberará al driver si está asignado.`)) return;",
+    "siteSha": "e2b8f79a234460a2c3cdd7ede4db88145a1ed5ee4b401e080cccce61c01d3841",
+    "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
+    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "confirmCancelOrder(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "confirmCancelOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "cancelOrderRemote",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-cancel-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "bind": {
+    "site": "toast(`Pedido ${displayOrderLabel(orderId)} cancelado${suffix}`, 'success');",
+    "siteSha": "e3807cec4b3669dab5ca499a5fd5b4541cde6110e9f5f733e041ad8849702994",
+    "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
+    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "confirmCancelOrder(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "confirmCancelOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "cancelOrderRemote",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~3": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-cancel-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "bind": {
+    "site": "if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');",
+    "siteSha": "e45b6037bc06268680abfec499c4571acd4f9826a5893928b7c193a1bccbf779",
+    "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
+    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "confirmCancelOrder(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "confirmCancelOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "cancelOrderRemote",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#openPicker": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "bind": {
+    "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
+    "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
+    "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
+    "scopeSha": "c587bc33894754189cc264d54bb6b92b845562854a6e26cdb98e57ad69895c33"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openPicker(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#openPicker",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
+      "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#openPicker~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "bind": {
+    "site": "$('picker-title').textContent = isReassign ? `Reasignar ${displayOrderLabel(orderId)}` : `Asignar ${displayOrderLabel(orderId)}`;",
+    "siteSha": "7e94fc97ed4c1c7b15c26081c72c68e7fea1759391ef31d1a1d98cfaccf50a82",
+    "scope": "xpizza-dispatch/index.html<script@0>#openPicker",
+    "scopeSha": "c587bc33894754189cc264d54bb6b92b845562854a6e26cdb98e57ad69895c33"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openPicker(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#openPicker",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
+      "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "$('recon-note-title').textContent = `${label} el pedido ${displayOrderLabel(orderId)}`;",
+    "siteSha": "c05ecaf6e70235d696ce29a665cadb1c37317a4103fa6765a436c6c696bf2081",
+    "scope": "xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon",
+    "scopeSha": "18674fc1bb60fb885c12cf02378a91f200357f6c6abde1f3c52ae37e58133729"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-alert-id",
+    "no-ui:xpizza-dispatch:attr=data-order-id",
+    "no-ui:xpizza-dispatch:attr=data-detail-order",
+    "no-ui:xpizza-dispatch:class=task-row",
+    "no-ui:xpizza-dispatch:class=delivered-card"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "bind": {
+    "site": "<span class=\"order-id\">${escapeHtml(displayOrderLabel(order))}</span>",
+    "siteSha": "4c05dbbe3dc8a74109630724d00e882b49c2ff724271fc14f73ea2d4b0dfc85b",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openOrderDetailModal(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7
+     }
+    },
+    {
+     "kind": "R",
+     "name": "renderOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "toast(`Pedido ${displayOrderLabel(orderId)}: ${outcome}`, 'success');",
+    "siteSha": "730c754022e89354ea32e71ebaf5306ca35d0b002ad85ad8145e98d12ffe356d",
+    "scope": "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction",
+    "scopeSha": "0116826700af8712c9756bed0848ebb9c016428fb087c8017e37537fcfb8e283"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "toast(`Pedido ${displayOrderLabel(orderId)}: ${outcome} — revisar`, 'error');",
+    "siteSha": "94b19b09c8ea63d5641a8ce850d668a7e2b1e347dbcc280b44a2634b89b5fdd4",
+    "scope": "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction",
+    "scopeSha": "0116826700af8712c9756bed0848ebb9c016428fb087c8017e37537fcfb8e283"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction~3": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "if (e && e.outcome) toast(`Pedido ${displayOrderLabel(orderId)}: ${e.outcome} — revisar`, 'error');",
+    "siteSha": "e45b6037bc06268680abfec499c4571acd4f9826a5893928b7c193a1bccbf779",
+    "scope": "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction",
+    "scopeSha": "0116826700af8712c9756bed0848ebb9c016428fb087c8017e37537fcfb8e283"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#getDotClass@xpizza-dispatch/index.html<script@0>#openPicker>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "bind": {
+    "site": "<span class=\"status-dot ${getDotClass(driver)}\"></span>",
+    "siteSha": "5851274d23204dba9aac8ff9505daa0284424e99c0a4f6068ffbb65165cb4c30",
+    "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
+    "scopeSha": "47339492dd25e74f07333173177a504c46a43dc1fd94454d516433f126db1326"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openPicker(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#openPicker",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
+      "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker>anon@self": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the driver picker opens only from its four triggers (assign / reassign buttons, a menu item, the modal Reasignar) — none received an event",
+   "bind": {
+    "site": "([uid, d]) => {",
+    "siteSha": "7d4d62a78a65131448eb29b3717839d563bd4e92a487b5130941cd62caa93622",
+    "scope": "xpizza-dispatch/index.html<script@0>#openPicker>anon",
+    "scopeSha": "47339492dd25e74f07333173177a504c46a43dc1fd94454d516433f126db1326"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openPicker(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#openPicker",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
+      "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openPicker",
+     "counts": {
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#action": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "bind": {
+    "site": "if (order) items.push({ label: `Reasignar ${displayOrderLabel(order)}`, icon: ICONS.refresh, action: () => openPicker(order.order_id, true) });",
+    "siteSha": "0aafb617c2bfce15b4b2fbc9c65c1414455992c134542a7d854f203e5090944a",
+    "scope": "xpizza-dispatch/index.html<script@0>#action",
+    "scopeSha": "9ab7fa7cd92c1a635bc62a56beec284c459e998ca1381ebb0f3bbf1ebde69447"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu",
+     "text": "menu.querySelectorAll('[data-action-idx]').forEach(btn => {",
+     "scopeSha": "5da9bed9fcc5af760917135b3092038003140dc8acb42e4fd8a967e907b65dcc"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "showActionMenu(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "showActionMenu",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "showLastLocation",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#action~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "bind": {
+    "site": "action: () => openPicker(oid, true)",
+    "siteSha": "36542afb7a4a2d8d0176c677c8861d676e25455c97fd4f90d5e076c69a4ad6b8",
+    "scope": "xpizza-dispatch/index.html<script@0>#action",
+    "scopeSha": "9ab7fa7cd92c1a635bc62a56beec284c459e998ca1381ebb0f3bbf1ebde69447"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu",
+     "text": "menu.querySelectorAll('[data-action-idx]').forEach(btn => {",
+     "scopeSha": "5da9bed9fcc5af760917135b3092038003140dc8acb42e4fd8a967e907b65dcc"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "showActionMenu(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "showActionMenu",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "showLastLocation",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached a stalled task-row Reasignar button ([data-reassign-order])",
+   "bind": {
+    "site": "openPicker(btn.dataset.reassignOrder, true);",
+    "siteSha": "33be600626dddb4d1588eaa625b46336b8e90c39b748b6999c3def94de09ea7d",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
+    "scopeSha": "0d5ef9b806f3d76da5b344ebfaf251696dcc4f28c69a92e1111b15d6a17bc856"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-dispatch/index.html",
+     "text": "wire.querySelectorAll('[data-reassign-order]').forEach(btn => {"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached the detail modal's Reasignar button (#od-reassign-order)",
+   "bind": {
+    "site": "openPicker(oid, true);   // existing CAS-safe picker → reassignOrder (owns its own result toast)",
+    "siteSha": "e95bd25a0dca034d374968bdc201de0950d4b5b3b39fbe78fcc0fe4cb2e94246",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+    "scopeSha": "d55c79c28031a09f785df43cd6d6c64a60d5d0ceaf843ada774cb478f171f89f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-dispatch/index.html",
+     "text": "const reassignBtn = $('od-reassign-order');"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an unassigned card's Asignar button ([data-assign-order])",
+   "bind": {
+    "site": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.assignOrder); });",
+    "siteSha": "4147e9465663ea99a536683ac815429f207fd951e82e5b402d6195333ee5f4c8",
+    "scope": "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon",
+    "scopeSha": "04cdad5a4b132068148bd019439b720abf67b162983fffc4529281a77e9e2e84"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-dispatch/index.html",
+     "text": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.assignOrder); });"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached a Reasignar button ([data-reassign-order])",
+   "bind": {
+    "site": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.reassignOrder, true); });",
+    "siteSha": "e81d2f535a265618de363603a27279d1a693d37d2f751c0810bfb79ab11d8b85",
+    "scope": "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon",
+    "scopeSha": "04cdad5a4b132068148bd019439b720abf67b162983fffc4529281a77e9e2e84"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-dispatch/index.html",
+     "text": "btn.addEventListener('click', (e) => { e.stopPropagation(); openPicker(btn.dataset.reassignOrder, true); });"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#orderCode@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-alert-id",
+    "no-ui:xpizza-dispatch:attr=data-order-id",
+    "no-ui:xpizza-dispatch:attr=data-detail-order",
+    "no-ui:xpizza-dispatch:class=task-row",
+    "no-ui:xpizza-dispatch:class=delivered-card"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "bind": {
+    "site": "clienteRows.push(odRow('Código', `<span style=\"font-family:'IBM Plex Mono',monospace; letter-spacing:0.02em;\">${escapeHtml(orderCode(order))}</span>`));",
+    "siteSha": "dc00491afd31fe2355409c7fa544d32b152e1e8e231e79a221ad15218b9fb744",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openOrderDetailModal(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7
+     }
+    },
+    {
+     "kind": "R",
+     "name": "renderOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon@self": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "o => o && o.order_id === orderId",
+    "siteSha": "d3552b59d0c44f7b7f2b39ccf5a23f38102a4b3da684c675afe49e0693c3490e",
+    "scope": "xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon",
+    "scopeSha": "18674fc1bb60fb885c12cf02378a91f200357f6c6abde1f3c52ae37e58133729"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#reconNotePrompt@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "const note = await reconNotePrompt(action, orderId);",
+    "siteSha": "1aa6dd4ac49af7eef4543d994687049f4e3d70dba60d5cdbaa9b3c5081bd2f61",
+    "scope": "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction",
+    "scopeSha": "0116826700af8712c9756bed0848ebb9c016428fb087c8017e37537fcfb8e283"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#renderCommsThread@xpizza-dispatch/index.html<script@0>#openCommsThread": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-comms-from"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the comms thread opens only from a comms row ([data-comms-from]) — none received an event",
+   "bind": {
+    "site": "renderCommsThread();",
+    "siteSha": "8d3166152200b26af1e3cadc596092ced3b6f7aa28d1da7cabd45a58696038a6",
+    "scope": "xpizza-dispatch/index.html<script@0>#openCommsThread",
+    "scopeSha": "a4fd4231792a738a2af35611ff2b8b8169e6742e3de563756c7ad0e57504751d"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openCommsThread(",
+     "count": 2
+    },
+    {
+     "kind": "R",
+     "name": "openCommsThread",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-comms-from): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon@self": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-alert-id",
+    "no-ui:xpizza-dispatch:attr=data-order-id",
+    "no-ui:xpizza-dispatch:attr=data-detail-order",
+    "no-ui:xpizza-dispatch:class=task-row",
+    "no-ui:xpizza-dispatch:class=delivered-card"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "bind": {
+    "site": "s => s.trim()",
+    "siteSha": "5b81d3871e02b911a7e0537f9ed43a8c4e96110182fa6438109a863f8a82ae19",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+    "scopeSha": "d55c79c28031a09f785df43cd6d6c64a60d5d0ceaf843ada774cb478f171f89f"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openOrderDetailModal(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7
+     }
+    },
+    {
+     "kind": "R",
+     "name": "renderOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal@xpizza-dispatch/index.html<script@0>#openOrderDetailModal": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-alert-id",
+    "no-ui:xpizza-dispatch:attr=data-order-id",
+    "no-ui:xpizza-dispatch:attr=data-detail-order",
+    "no-ui:xpizza-dispatch:class=task-row",
+    "no-ui:xpizza-dispatch:class=delivered-card"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "bind": {
+    "site": "renderOrderDetailModal(order);",
+    "siteSha": "7b0eaf865d884bcb73461d3604b31e2ce5c86bf9090d375be6b560c146206ea1",
+    "scope": "xpizza-dispatch/index.html<script@0>#openOrderDetailModal",
+    "scopeSha": "74f35ccd7ad04e1f680def2d293f6cbd7092a99e9433988a73058cb9399d7772"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openOrderDetailModal(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7
+     }
+    },
+    {
+     "kind": "R",
+     "name": "renderOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#scheduledBadge@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-alert-id",
+    "no-ui:xpizza-dispatch:attr=data-order-id",
+    "no-ui:xpizza-dispatch:attr=data-detail-order",
+    "no-ui:xpizza-dispatch:class=task-row",
+    "no-ui:xpizza-dispatch:class=delivered-card"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the order detail modal opens only from its triggers (alert card, order cards, Ver detalle, task row, delivered card) — none received an event",
+   "bind": {
+    "site": "if (order.scheduled_for) sections.push(scheduledBadge(order));",
+    "siteSha": "ab039399e9be172d9ef30fd9dcc11ea345fdcf69e31d70710d5bb65fdc292a6c",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+    "scopeSha": "1d51f909662dca8a333b537ee706b6092385b4e88918cb644cbfed42e9e4dc01"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "openOrderDetailModal(",
+     "count": 7
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#openOrderDetailModal"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "openOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7
+     }
+    },
+    {
+     "kind": "R",
+     "name": "renderOrderDetailModal",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-alert-id, no-ui:xpizza-dispatch:attr=data-order-id, no-ui:xpizza-dispatch:attr=data-detail-order, no-ui:xpizza-dispatch:class=task-row, no-ui:xpizza-dispatch:class=delivered-card): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#showLastLocation@xpizza-dispatch/index.html<script@0>#action": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an action-menu item ([data-action-idx]) → no menu action runs",
+   "bind": {
+    "site": "if (!d.active && Number.isFinite(d.lat) && Number.isFinite(d.lng)) items.push({ label: 'Ver última ubicación', icon: ICONS.pin, action: () => showLastLocation(uid) });",
+    "siteSha": "557267caa19743a50b9d636eff143613926ec27bb4c66585db984f66fe7d09f0",
+    "scope": "xpizza-dispatch/index.html<script@0>#action",
+    "scopeSha": "9ab7fa7cd92c1a635bc62a56beec284c459e998ca1381ebb0f3bbf1ebde69447"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-dispatch/index.html<script@0>#showActionMenu",
+     "text": "menu.querySelectorAll('[data-action-idx]').forEach(btn => {",
+     "scopeSha": "5da9bed9fcc5af760917135b3092038003140dc8acb42e4fd8a967e907b65dcc"
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "showActionMenu(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#showLastLocation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#action"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "showActionMenu",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "showLastLocation",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/index.html<script@0>#showLookupPin@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:id=od-center-map"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "the lookup pin drops only from the modal's Centrar mapa (#od-center-map) — it received no event",
+   "bind": {
+    "site": "showLookupPin(order);",
+    "siteSha": "b999a6471250fe42279cf3d90cedabb4a4f929189cbca200a1d4a3a310371c1d",
+    "scope": "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
+    "scopeSha": "d55c79c28031a09f785df43cd6d6c64a60d5d0ceaf843ada774cb478f171f89f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-dispatch/index.html",
+     "text": "const centerBtn = $('od-center-map');"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#showLookupPin",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "showLookupPin",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 2
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:id=od-center-map): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch/index.html<script@0>#assignOrder": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "assignOrder runs only from a picker row (click or its 1–9 key) — the picker never opened",
+   "bind": {
+    "site": "const res = await XPD.assignOrderToDriver(orderId, driverId);",
+    "siteSha": "17d7e881fbe83a09bff4bb67d6a85ec25c7f203e8c20775a6cef371bd46809d1",
+    "scope": "xpizza-dispatch/index.html<script@0>#assignOrder",
+    "scopeSha": "98195de252d830a7dbfa663bf35fb40fe4d4438b762c7941115d0f08934e5693"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "assignOrder(",
+     "count": 3
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#assignOrder"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "assignOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-self"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "no event reached an \"A mí\" button ([data-assign-self])",
+   "bind": {
+    "site": "const res = await XPD.assignOrderToDriver(oid, currentUser.uid);",
+    "siteSha": "9906a4a5fae7de352b3befea45b825fc739229413311e6f28dcb92cea19ae722",
+    "scope": "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon",
+    "scopeSha": "04cdad5a4b132068148bd019439b720abf67b162983fffc4529281a77e9e2e84"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-dispatch/index.html",
+     "text": "const oid = btn.dataset.assignSelf;"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-self): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote@xpizza-dispatch/index.html<script@0>#confirmCancelOrder": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-cancel-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "cancellation runs only from a menu item or the modal's Cancelar (#od-cancel-order) — neither received an event",
+   "bind": {
+    "site": "const r = await XPD.cancelOrderRemote(orderId, 'Cancelado por dispatcher');",
+    "siteSha": "6191ee8b81e45046c7d86c9c669f9f753c530701bd9cea62507a167c4fc2213f",
+    "scope": "xpizza-dispatch/index.html<script@0>#confirmCancelOrder",
+    "scopeSha": "242a72e46960b037256eb354c8f10b2f9b56819dfb4f6c56228cc954c67e816a"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "confirmCancelOrder(",
+     "count": 4
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#cancelOrderRemote",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#confirmCancelOrder"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "confirmCancelOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 4
+     }
+    },
+    {
+     "kind": "R",
+     "name": "cancelOrderRemote",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-cancel-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-assign-self"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "bind": {
+    "site": "if (rid == null || rid === 'x_pizza') return numeric ? (coordsMatch(ALLOWED_HUBS.x_pizza, lat, lng) ? { lat, lng } : null) : { lat: ALLOWED_HUBS.x_pizza.lat, lng: ALLOWED_HUBS.x_pizza.lng };",
+    "siteSha": "e5af4561a7f6afc839bce2c82e39fd10fbe531c074846f5b36ff28269f2112a8",
+    "scope": "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub",
+    "scopeSha": "9af90b69747a7ccd3349870ba29fe2d96211ab84b458743dc8bb3d53a6b38a4b"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#assignOrder",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "assignOrder(",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order, no-ui:xpizza-dispatch:attr=data-assign-self): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-assign-self"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "bind": {
+    "site": "return (canon && numeric && coordsMatch(canon, lat, lng)) ? { lat, lng } : null;",
+    "siteSha": "c91696f10c862eb6a014f58804209707baced3b3f1e30d2324f42ddf55aad05d",
+    "scope": "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub",
+    "scopeSha": "9af90b69747a7ccd3349870ba29fe2d96211ab84b458743dc8bb3d53a6b38a4b"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#assignOrder",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "assignOrder(",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order, no-ui:xpizza-dispatch:attr=data-assign-self): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#reassignOrder@xpizza-dispatch/index.html<script@0>#assignOrder": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "assignOrder runs only from a picker row (click or its 1–9 key) — the picker never opened",
+   "bind": {
+    "site": "const res = await XPD.reassignOrder(orderId, driverId, pickerFromDriver);",
+    "siteSha": "a158a0e93037943e56e6076c850c170a61160e1ac9ff6601a37ef275d382651c",
+    "scope": "xpizza-dispatch/index.html<script@0>#assignOrder",
+    "scopeSha": "98195de252d830a7dbfa663bf35fb40fe4d4438b762c7941115d0f08934e5693"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "assignOrder(",
+     "count": 3
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#reassignOrder",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#assignOrder"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "assignOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reassignOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/dispatch-stalled.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 7,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-functions/sweep-pending.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-assign-self"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "bind": {
+    "site": "const newHub = resolvePickupHub(allTasks[`${orderId}_pickup`]);",
+    "siteSha": "4c5117695686308367b67620c194b4a9491e5dcaf7f3e63d532d71dc35d11e7d",
+    "scope": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
+    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#assignOrder",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "assignOrder(",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order, no-ui:xpizza-dispatch:attr=data-assign-self): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver~2": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-assign-order",
+    "no-ui:xpizza-dispatch:attr=data-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-action-idx",
+    "no-ui:xpizza-dispatch:id=od-reassign-order",
+    "no-ui:xpizza-dispatch:attr=data-assign-self"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "assignOrderToDriver runs only from assignOrder (picker) or \"A mí\" — none of their triggers received an event",
+   "bind": {
+    "site": "const h = resolvePickupHub(allTasks[`${t.order_id}_pickup`]);",
+    "siteSha": "ba46ccb8fd3abdc4079cf2a748f45de5c339849a14d56f25ed2f1993c2d84fc7",
+    "scope": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
+    "scopeSha": "53f69a95fa76233c04e26627465c6fe58cdce8f46c222b813ee6300df7bc0547"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#assignOrder",
+      "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#coordsMatch",
+     "callers": [
+      "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub"
+     ]
+    },
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "assignOrder(",
+     "count": 3
+    },
+    {
+     "kind": "R",
+     "name": "assignOrderToDriver",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/board-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/reassign-model.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/claim-delivery.js#functions": 1,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolvePickupHub",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/driver-ingest.js#functions": 5,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "coordsMatch",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/stacking-helpers.js#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "assignOrder",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-assign-order, no-ui:xpizza-dispatch:attr=data-reassign-order, no-ui:xpizza-dispatch:attr=data-action-idx, no-ui:xpizza-dispatch:id=od-reassign-order, no-ui:xpizza-dispatch:attr=data-assign-self): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
+   "group": "dispatch-ui",
+   "appliesWhenAny": [],
+   "context": [
+    "no-ui:xpizza-dispatch:attr=data-recon-action"
+   ],
+   "authority": "scenario definition: dispatcher UI actions are DISPATCHER actions — this handler code runs only after a user event reaches its control (contract/ui-recorder.js, installed before the page scripts)",
+   "whyFalseExcludes": "a reconciliation action runs only from its [data-recon-action] button — none received an event",
+   "bind": {
+    "site": "const r = await XPD.resolveReconciliation(orderId, action, note.trim());",
+    "siteSha": "660f778ed9b4a981165653229a86238d5b9d56ccf180512933a4d0177ab0e533",
+    "scope": "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction",
+    "scopeSha": "0116826700af8712c9756bed0848ebb9c016428fb087c8017e37537fcfb8e283"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-dispatch/index.html",
+     "text": "resolveReconciliationAction(",
+     "count": 2
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/index.html<script@0>#reconNotePrompt",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation",
+     "callers": [
+      "xpizza-dispatch/index.html<script@0>#resolveReconciliationAction"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliationAction",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "reconNotePrompt",
+     "counts": {
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "resolveReconciliation",
+     "counts": {
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-ui:xpizza-dispatch:attr=data-recon-action): excluded only when the context is established; required otherwise"
+   }
+  },
   "xpizza-functions/claim-order.js#bindDecision@xpizza-functions/claim-order.js#claimOrderCore>anon": {
    "group": "no-call",
    "appliesWhenAny": [],

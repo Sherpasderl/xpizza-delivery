@@ -261,4 +261,22 @@ ok('UI mechanism: the UI recorder records a click\'s ancestor path on a real DOM
   assert.ok(rg && !AP.guardStale(rg) && /references to isStuck changed/.test(AP.guardStale(rg, { units: alias }) || ''), FAIL('an alias of isStuck did not make the sweep-only exclusion stale'));
 }
 ok('boundary + references (codex b12 P1-1/2): a direct .run() and an HTTP call are recorded at the function boundary; a replaced export / late install → incomplete log; an alias reference to a caller-guarded function → stale');
+{ // dispatch batch: the delegated dispatch-lite picker and the desktop detail modal decide on their own controls
+  const { JSDOM } = require('jsdom'); const UI = require('./ui-recorder');
+  const P = 'xpizza-dispatch-mobile'; const k = `${P}/index.html<script@0>#openPicker@${P}/index.html<script@0>#document.addEventListener`;
+  const dom = new JSDOM('<!doctype html><body><div class="pass"><button data-pick="o1"><span id="t">Reasignar</span></button></div></body>');
+  const sink = UI.installUiRecorder(dom.window); dom.window.document.getElementById('t').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' }; const ev = { persisted: { restaurant_id: 'x_pizza', status: 'new' }, lpAction: { action: 'create', ack: true } };
+  const U = (page, events) => ({ uiEvents: { [page]: { installedAt: 'beforeScripts', events } } });
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev, ...U(P, []) }, paths).outcome, 'excluded', FAIL('dispatch-lite openPicker: zero events did not exclude'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev, ...U(P, sink.events) }, paths).outcome, 'required', FAIL('dispatch-lite openPicker: a [data-pick] click did not keep it required'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, ev, paths).outcome, 'required', FAIL('dispatch-lite openPicker: no recorder did not keep it required'));
+  const D = 'xpizza-dispatch'; const m = `${D}/index.html<script@0>#renderOrderDetailModal@${D}/index.html<script@0>#openOrderDetailModal`;
+  const d2 = new JSDOM('<!doctype html><body><div class="delivered-card" data-order-id="o9"><b id="t">x</b></div></body>'); const s2 = UI.installUiRecorder(d2.window); d2.window.document.getElementById('t').dispatchEvent(new d2.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(RA.runDecision(doc, m, cell, { ...ev, ...U(D, s2.events) }, paths).outcome, 'required', FAIL('dispatch detail modal: a delivered-card click did not keep it required'));
+  assert.strictEqual(RA.runDecision(doc, m, cell, { ...ev, ...U(D, []) }, paths).outcome, 'excluded', FAIL('dispatch detail modal: zero events did not exclude'));
+  const n = Object.values(doc.regions).filter((e) => /^dispatch(-lite)?-ui$/.test(e.group)).length;
+  assert.ok(n === 61, FAIL(`dispatch-ui entries: ${n} (expected 61)`));
+}
+ok('dispatch batch: 61 dispatch-ui entries; the delegated dispatch-lite picker ([data-pick]) and the desktop detail modal (a delivered-card click) stay REQUIRED on a matching event or with no recorder, excluded only with zero recorded events');
 console.log(`\nr3-applicability guard: OK (${n})`);
