@@ -296,14 +296,23 @@ at('resolveCompleteErrorMessage: permission-denied + same uid + NOT a dispatcher
   const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', async () => false, 50);
   assert.equal(msg, REASSIGNED_COMPLETE_TEXT);
 });
-at('resolveCompleteErrorMessage: a HUNG role read settles NEUTRAL within the bound (P1 — slider never frozen)', async () => {
-  const lk = hungLookup();
-  const started = Date.now();
-  const msg = await resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', lk, 40);
-  const elapsed = Date.now() - started;
-  assert.equal(msg, REASSIGNED_COMPLETE_TEXT);           // timeout → fail-safe neutral
-  assert.ok(lk.calls() === 1, 'the lookup WAS attempted (and bounded), not skipped');
-  assert.ok(elapsed < 1000, `settled within the bound, took ${elapsed}ms`);  // generous CI margin over the 40ms deadline
+at('resolveCompleteErrorMessage: a HUNG role read settles NEUTRAL within the bound (P1 — slider never frozen; controlled timer)', async () => {
+  // Controlled timer (no Date.now measurement, so a scheduling pause / wall-clock jump can't flake it in the gate):
+  // capture the bound's setTimeout, assert its delay, then fire it deterministically to win the race.
+  const realST = global.setTimeout;
+  let scheduled = null;
+  global.setTimeout = (fn, ms) => { scheduled = { fn, ms }; return 0; };
+  try {
+    const lk = hungLookup();                                   // the role read never resolves
+    const p = resolveCompleteErrorMessage(pdErr(), 'driverA', 'driverA', lk, 40);
+    assert.ok(scheduled && scheduled.ms === 40, 'the lookup is bounded by the 40ms deadline');
+    scheduled.fn();                                            // fire the deadline -> race resolves false
+    const msg = await p;
+    assert.equal(msg, REASSIGNED_COMPLETE_TEXT);               // timeout -> fail-safe neutral
+    assert.equal(lk.calls(), 1, 'the lookup WAS attempted (and bounded), not skipped');
+  } finally {
+    global.setTimeout = realST;
+  }
 });
 at('resolveCompleteErrorMessage: session switched mid-completion → NEUTRAL, lookup NOT called (P2)', async () => {
   const lk = hungLookup();
