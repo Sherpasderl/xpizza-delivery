@@ -54,11 +54,16 @@ function bindGuard(g) {
   const [kind, where, text] = g;
   if (kind === 'S') { const t = scopeText(where); if (t == null) throw new Error(`guard scope ${where} not found`); if (!t.includes(text)) throw new Error(`guard text not in ${where}: ${text}`); return { kind, scope: where, text, scopeSha: sha(t) }; }
   if (kind === 'F') { const f = fs.readFileSync(path.join(REPO, where), 'utf8'); const k = f.split(text).length - 1; if (k !== 1) throw new Error(`guard text occurs ${k}× in ${where}: ${text}`); return { kind, file: where, text }; }
+  // C — the CALLER SET of an output (every census region whose output it is, from contract/regions.json, which the region
+  // guard keeps current): a region reachable only through these callers goes stale when a caller is added / removed
+  if (kind === 'C') { const callers = callersOf(where); if (!callers.length) throw new Error(`no census caller of ${where}`); return { kind, output: where, callers }; }
   throw new Error(`unknown guard kind ${kind}`);
 }
-function guardStale(gb, { readFile = (f) => fs.readFileSync(path.join(REPO, f), 'utf8'), units = null } = {}) {
+const callersOf = (output, regionsDoc = JSON.parse(fs.readFileSync(path.join(__dirname, 'regions.json'), 'utf8'))) => [...new Set(regionsDoc.regions.filter((r) => r.output === output).map((r) => r.consumer || 'self'))].sort();
+function guardStale(gb, { readFile = (f) => fs.readFileSync(path.join(REPO, f), 'utf8'), units = null, regionsDoc = null } = {}) {
   if (gb.kind === 'S') { const t = scopeText(gb.scope, units); if (t == null) return `guard scope ${gb.scope} is gone`; if (!t.includes(gb.text)) return `guard text no longer in ${gb.scope}: "${gb.text}"`; if (sha(t) !== gb.scopeSha) return `guard scope ${gb.scope} changed`; return null; }
   if (gb.kind === 'F') { let f; try { f = readFile(gb.file); } catch (_) { return `guard file ${gb.file} is gone`; } const k = f.split(gb.text).length - 1; return k === 1 ? null : `guard text occurs ${k}× in ${gb.file} (was exactly once): "${gb.text}"`; }
+  if (gb.kind === 'C') { const now = callersOf(gb.output, regionsDoc || undefined); return JSON.stringify(now) === JSON.stringify(gb.callers) ? null : `the callers of ${gb.output} changed: ${JSON.stringify(gb.callers)} → ${JSON.stringify(now)}`; }
   return `unknown guard kind ${gb.kind}`;
 }
 

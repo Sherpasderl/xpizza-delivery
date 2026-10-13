@@ -94,10 +94,10 @@ function problems(doc, regionsDoc, paths = SS.load(), exec = undefined) {
       if (!(f in SS.FIELDS)) p.push(`${id}: condition uses undeclared field ${f}`);
       else if (!Array.isArray(vals) || !vals.length || (Array.isArray(SS.FIELDS[f]) && vals.some((x) => !SS.FIELDS[f].includes(x)))) p.push(`${id}: condition ${f} ∈ ${JSON.stringify(vals)} is outside the field's domain`);
     }
-    for (const c of e.context || []) if (!SS.CONTEXT[c]) p.push(`${id}: unknown context ${c}`);
+    for (const c of e.context || []) if (!SS.contextOf(c)) p.push(`${id}: unknown context ${c}`);
     // an empty condition is "never by vector": only a nonempty, validated context may decide it (codex mech r1 P1-4) —
     // otherwise it would be an UNCONDITIONAL exclusion
-    if (Array.isArray(e.appliesWhenAny) && !e.appliesWhenAny.length && !((e.context || []).length && (e.context || []).every((c) => SS.CONTEXT[c]))) p.push(`${id}: an empty appliesWhenAny needs a nonempty, validated context (else it is an unconditional exclusion)`);
+    if (Array.isArray(e.appliesWhenAny) && !e.appliesWhenAny.length && !((e.context || []).length && (e.context || []).every((c) => SS.contextOf(c)))) p.push(`${id}: an empty appliesWhenAny needs a nonempty, validated context (else it is an unconditional exclusion)`);
     if (!(e.authority && e.authority.trim()) || !(e.whyFalseExcludes && e.whyFalseExcludes.trim())) p.push(`${id}: needs authority + whyFalseExcludes`);
     const cs = e.cases || {};
     if (!Array.isArray(cs.excluded) || !cs.excluded.length) p.push(`${id}: needs ≥ 1 reviewed EXCLUDED case`);

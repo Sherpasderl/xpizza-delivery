@@ -33,10 +33,13 @@ ok('every entry is on an uncompared (pending) region');
 
 // 3. THE REGRESSION LOCK — exact identities, at the original context
 const frozen = load('p1a-frozen-exclusions.json');
-const s1 = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'] }).cells;
+// over P1-a's ENFORCED slice readers (frozen.readers): the cells the 66 were reviewed for; other readers' S1 / new
+// exclusions are new reviewed entries (the review report lists them)
+const s1 = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'] }).cells.filter((c) => frozen.readers.includes(c.R));
+assert.deepStrictEqual(frozen.readers, ['R1', 'R9', 'R13', 'R14', 'R15'], FAIL(`the lock's reader set changed: ${JSON.stringify(frozen.readers)}`));
 const derived = [...new Set(RA.derive(doc, s1, paths).map((x) => x.region))].sort();
 assert.deepStrictEqual(derived, [...frozen.regions].sort(), FAIL(`derived exclusions at ${frozen.context} ≠ the frozen P1-a 66 (${frozen.frozenAt}):\n  missing ${JSON.stringify(frozen.regions.filter((r) => !derived.includes(r)))}\n  extra ${JSON.stringify(derived.filter((r) => !frozen.regions.includes(r)))}`));
-ok(`regression lock: the derived exclusions at ${frozen.context} are EXACTLY the ${frozen.regions.length} P1-a regions frozen at ${frozen.frozenAt}`);
+ok(`regression lock: the derived exclusions at ${frozen.context} on P1-a's slice readers (${frozen.readers.join(' ')}) are EXACTLY the ${frozen.regions.length} P1-a regions frozen at ${frozen.frozenAt}`);
 
 // 4. no absence / display obligation is waived anywhere in P1 (the (cell, output) terminal rule)
 const p1cells = gateA({ scenarios: P1 }).cells;
@@ -187,4 +190,22 @@ ok('context (codex P1-4): an empty condition without a nonempty validated contex
   assert.ok(X([{ extras: 'queso' }]).unknown && X('items').unknown && X([null]).unknown, FAIL('an unsupported extras representation was not unknown'));
 }
 ok('extras (codex r2 P2): empty extras / options collections are no extras; real entries contradict; an unsupported representation is unknown, never contradicted');
+{ // P1-b bulk (messaging): the driver check reads the order's TASKS; no-call:<fn> from a COMPLETE invocation log; caller sets
+  const v = SS.vectorOf('S1', 'x_pizza', 'new', paths); const per = { restaurant_id: 'x_pizza', status: 'new' };
+  assert.ok(SS.CHECKS.driver.check(v, { persisted: per }).unknown, FAIL('driver none established without the task records'));
+  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: {} }), true, FAIL('no tasks did not establish driver none'));
+  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: { o_pickup: { assigned_driver_id: 'd1' } } }), false, FAIL('a task with an assigned driver did not contradict driver none'));
+  const nc = 'xpizza-functions/index.js#send@xpizza-functions/index.js#pixelPayWebhook'; const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' };
+  const ev = { persisted: { ...per, order_type: 'delivery', payment_method: 'cash' }, lpAction: { action: 'create', ack: true } };
+  assert.strictEqual(RA.runDecision(doc, nc, cell, { ...ev, fnCalls: { complete: true, names: ['createOrder'] } }, paths).outcome, 'excluded', FAIL('no pixelPayWebhook call (complete log) did not exclude'));
+  assert.strictEqual(RA.runDecision(doc, nc, cell, { ...ev, fnCalls: { complete: true, names: ['createOrder', 'pixelPayWebhook'] } }, paths).outcome, 'required', FAIL('a pixelPayWebhook call did not keep it required'));
+  assert.strictEqual(RA.runDecision(doc, nc, cell, { ...ev, fnCalls: { complete: false, names: ['createOrder'] } }, paths).outcome, 'required', FAIL('an incomplete invocation log established no-call'));
+  assert.strictEqual(RA.runDecision(doc, nc, cell, ev, paths).outcome, 'required', FAIL('no invocation log established no-call'));
+  const d = clone(); d.regions[nc].context = ['no-call:noSuchFunction'];
+  assert.ok(RA.problems(d, regionsDoc, paths).some((p) => p.startsWith(`${nc}: unknown context no-call:noSuchFunction`)), FAIL('a no-call context on a non-exported function passed'));
+  const k = 'xpizza-functions/staff-push.js#orderAgeAnchor@xpizza-functions/staff-push.js#isStuck'; const cg = doc.regions[k].guards.find((g) => g.kind === 'C' && /isStuck$/.test(g.output));
+  const rd2 = { regions: [...regionsDoc.regions, { output: 'xpizza-functions/staff-push.js#isStuck', region: 'x@new', consumer: 'xpizza-functions/index.js#createOrderApp.all>anon', line: 1 }] };
+  assert.ok(cg && AP.guardStale(cg, { regionsDoc: rd2 }) && !AP.guardStale(cg), FAIL('a new caller of isStuck did not make the sweep-only exclusion stale'));
+}
+ok('bulk mechanism: driver none needs the task records (an assigned task contradicts); no-call:<fn> only from a COMPLETE invocation log naming no <fn> (a call / incomplete / absent → required; a non-exported fn → RED); a new caller of a sweep-only function → stale');
 console.log(`\nr3-applicability guard: OK (${n})`);

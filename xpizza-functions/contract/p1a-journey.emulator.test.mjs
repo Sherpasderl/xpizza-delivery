@@ -269,7 +269,12 @@ try {
   const ackLog = { complete: ack.issued === ack.answered && ack.issued === R.log.length, failures: R.log.filter((x) => !(x.status < 400)).length + kdsHttp.length + fhost.callbackErrors.length };
   // the persisted order RE-READ at gate time (after every page action): a later write (a stray kitchen tap) is seen
   const persistedNow = (await rtdb.ref(`orders/${oid}`).get()).val();
-  const evidence = { intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
+  // the order's TASK records (assignment lives there) and the run's COMPLETE invocation log: every trigger the scheduler
+  // ran + every HTTP call the form's router answered; complete iff the ack log is complete, nothing was refused and the
+  // KDS (whose fetch is not routed) issued none
+  const tasks = Object.fromEntries(Object.entries((await rtdb.ref('tasks').get()).val() || {}).filter(([k, t]) => k.startsWith(`${oid}_`) || (t && t.order_id === oid)));
+  const fnCalls = { complete: ackLog.complete && R.refused.length === 0 && kdsHttp.length === 0, names: [...new Set([...S.state.invs.map((i) => i.name), ...R.log.map((x) => x.fn)])].sort() };
+  const evidence = { tasks, fnCalls, intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
   // P1-b: the run's CONTRACT state is the scenario vector, ASSERTED from evidence (persisted order, routed calls, the KDS
   // recorder) — never from fixture intent alone; a field this LP cannot evidence is reported UNKNOWN (an exclusion that
   // depends on it would never apply)
@@ -277,6 +282,16 @@ try {
     assert.deepStrictEqual(vr.failed, [], FAIL('vector', `the S1 / x_pizza / new state vector disagrees with the run's evidence on: ${vr.failed.join(', ')}`));
     ok(`the S1 / x_pizza / new state vector is asserted from evidence: ${vr.checked.length} fields checked (${vr.checked.join(', ')})${vr.unknown.length ? `; unknown at this LP: ${vr.unknown.join(', ')}` : ''}`); }
   const ctx = { brandBoard: 'x_pizza', spec: JSON.parse(fsx.readFileSync(new URL('./matrix-spec.json', import.meta.url), 'utf8')).displayCells };
+  // P1-b bulk: the REAL run's evidence establishes the reviewed exclusions of OTHER readers at S1 / x_pizza / new (the
+  // invocation log is complete; no task carries a driver) — each derived exclusion there resolves to excluded, none RED
+  {
+    const RAx = require('./region-applicability'); const others = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'] }).cells.filter((c) => !SLICE.readers.includes(c.R));
+    const st = others.map((c) => [c, RAx.staticDecision(applicability, c.viaFrom || c.region, c)]).filter(([, x]) => x.excluded);
+    const outc = st.map(([c]) => RAx.runDecision(applicability, c.viaFrom || c.region, c, evidence).outcome);
+    const bad = st.filter((_, i) => outc[i] !== 'excluded').map(([c], i) => `${c.viaFrom || c.region}: ${outc[i]}`);
+    assert.ok(fnCalls.complete && bad.length === 0, FAIL('bulk', `the run's evidence did not establish ${bad.length} reviewed exclusion(s) of other readers (fnCalls complete ${fnCalls.complete}): ${bad.slice(0, 4).join(' | ')}`));
+    ok(`the run's evidence establishes all ${st.length} derived exclusion cells of OTHER readers at S1 / x_pizza / new (${new Set(st.map(([c]) => c.viaFrom || c.region)).size} regions; the invocation log is complete over ${fnCalls.names.length} functions; ${Object.keys(tasks).length} task record(s), none assigned)`);
+  }
   const run = (sn, ev = evidence) => runGateA({ cells, registry, applicability, regionsDoc, evidence: ev, snapshots: sn, facts, ctx, observables: OBSERVABLES });
   const res = run(snaps);
   PH.compare = Date.now() - t0;

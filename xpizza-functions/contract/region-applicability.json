@@ -19,6 +19,173 @@
   "S17p": "bd615c7d4a38baad28799abff730a2833e440a6bef6a2bab7a39e18dd037c19b"
  },
  "regions": {
+  "xpizza-functions/index.js#fanoutStaffPush@xpizza-functions/index.js#flushStaffPushQueue": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:flushStaffPushQueue"
+   ],
+   "authority": "scenario definition: the grouped staff push is the SCHEDULED queue flush (flushStaffPushQueue, onSchedule) — formatGrouped / its fan-out run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no flushStaffPushQueue run → none of it runs",
+   "bind": {
+    "site": "try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }",
+    "siteSha": "102a8fff9f047a14df1aea5fd6ccefafd7cc4f7287651d37321623e9ec7579c2",
+    "scope": "xpizza-functions/index.js#flushStaffPushQueue",
+    "scopeSha": "65fcc604f76f87d35a20a77d283fb0924917e2abcb02def1cb9b3fee9e260a0f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.flushStaffPushQueue = onSchedule("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#formatGrouped",
+     "callers": [
+      "xpizza-functions/index.js#flushStaffPushQueue"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:flushStaffPushQueue): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/index.js#fanoutStaffPush@xpizza-functions/index.js#sweepStuckOrders": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:sweepStuckOrders"
+   ],
+   "authority": "scenario definition: the stuck-order staff alert is the SCHEDULED sweep (sweepStuckOrders, onSchedule) — isStuck / its age anchor / formatStuck / its fan-out run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no sweepStuckOrders run → none of it runs",
+   "bind": {
+    "site": "await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });",
+    "siteSha": "e6465b2c76f41d4192520d361551391a2f3319842e1aac7916e7a95ac5a41249",
+    "scope": "xpizza-functions/index.js#sweepStuckOrders",
+    "scopeSha": "2753d92b4254c6a2c34ae2bed5344290e7497d1bccc9b99ea225226e0d55ca11"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.sweepStuckOrders = onSchedule("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#isStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#formatStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:sweepStuckOrders): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/index.js#notifyDriverOnCancellation@self": {
+   "group": "cancelled",
+   "appliesWhenAny": [
+    {
+     "cancelled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R5: the cancellation driver push is sent only on a status → cancelled transition (notifyDriverOnCancellation: `if (after !== 'cancelled') return;`)",
+   "whyFalseExcludes": "a live (not cancelled) order gets no cancellation push",
+   "bind": {
+    "site": "async (event) => {",
+    "siteSha": "aa85036853cd2416894dadd037a212d6f61d98b9f6675af8c560ac681531d23b",
+    "scope": "xpizza-functions/index.js#notifyDriverOnCancellation",
+    "scopeSha": "2ad2ef783565e6fba64c4e1be257311e63b7fb577e8cde0af9727389d5447917"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyDriverOnCancellation",
+     "text": "if (after !== 'cancelled') return;",
+     "scopeSha": "2ad2ef783565e6fba64c4e1be257311e63b7fb577e8cde0af9727389d5447917"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/index.js#sendDriverPush",
+     "callers": [
+      "xpizza-functions/index.js#notifyDriverOnAssignment",
+      "xpizza-functions/index.js#notifyDriverOnCancellation"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"cancelled\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#onAcceptedFresh@xpizza-functions/hosted-charge-flow.js#resolveAndIssueHostedCheckout": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:chargeOnlineOrder"
+   ],
+   "authority": "§1 F-PAYLIFE: a fresh accepted HOSTED checkout is issued only by chargeOnlineOrder (online card); createOrder refuses online payments",
+   "whyFalseExcludes": "the complete invocation log shows no chargeOnlineOrder call → no hosted checkout is issued",
+   "bind": {
+    "site": "if (opts.onAcceptedFresh) { try { opts.onAcceptedFresh(); } catch (_) { /* never fatal */ } }",
+    "siteSha": "daadf6cf7f18088baf2ca7e78bc973722d8abf843c6965cb34993779ad2d79c8",
+    "scope": "xpizza-functions/hosted-charge-flow.js#resolveAndIssueHostedCheckout",
+    "scopeSha": "5ec9cd2106a0c9bb3d3fc3622bb3f4da451b1b98ffe343aaa90df3216e10731f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.chargeOnlineOrder = onRequest("
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "await resolveAndIssueHostedCheckout({"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/hosted-charge-flow.js",
+     "text": "async function resolveAndIssueHostedCheckout(opts) {"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:chargeOnlineOrder): excluded only when the context is established; required otherwise"
+   }
+  },
   "xpizza-functions/index.js#onIncomingWhatsApp>anon@self": {
    "group": "inbound",
    "appliesWhenAny": [
@@ -85,6 +252,546 @@
      "S1t-a|x_pizza|assigned"
     ],
     "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(405).send('Method Not Allowed');",
+    "siteSha": "c79a4298fdd0a8a2662572147553c67ded5b3b7711e937479f175694736c68cc",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~10": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('muted');",
+    "siteSha": "d29394bc35256f4c7e369dca529b7ed522943e9ae8a9fe06afcc32e0dbf7158f",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~11": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('ok');",
+    "siteSha": "769f044fdb95775d1d28ff3a5f7186ded3e526bd9f0a523621b4a19bacf38cd4",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~2": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(500).send('Server not configured');",
+    "siteSha": "252107eb90cac2561d69c54ae3677593342a45a917934c8356c5434dd3f52478",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~3": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(401).send('Unauthorized');",
+    "siteSha": "4d1f450c4a4f3d05ec241cb7b3273528f6be02ee6825bad258e04d9e6673b9a5",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~4": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('handled: message_create');",
+    "siteSha": "aacf422bb659c85ef7719c599879e461515a76bb587a03f1e350166a0008bf66",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~5": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('ignored: event_type');",
+    "siteSha": "485db9127a80369c2d640b0feefc7e9ced8a33986a794c5f5f53c22fd7c78648",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~6": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('ignored: fromMe');",
+    "siteSha": "117115ad070ce556cd958a7c7c402808b809e5e615b701336ed0f26b20d1f01f",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~7": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('ignored: non-chat');",
+    "siteSha": "8ba7352df80afbaac450863ce5cf784528647928b9bffea8966a08e2ca85244d",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~8": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('ignored: no from');",
+    "siteSha": "eb8853ae2adf9294595262dd042205ed442dd57470118b8decf88d1b255a3f2e",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~9": {
+   "group": "inbound",
+   "appliesWhenAny": [
+    {
+     "inbound": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R9: the inbound WhatsApp webhook (onIncomingWhatsApp) answers only a message the CUSTOMER sends — each res.send / reply here runs only inside that HTTP handler",
+   "whyFalseExcludes": "no inbound message (the routed-call log shows no onIncomingWhatsApp) → the handler never runs",
+   "bind": {
+    "site": "return res.status(200).send('ignored: disabled');",
+    "siteSha": "51cf24ffed8cdacc1e0e86d5e8cec5b380df991ca1a9065a47c03891adbc638e",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "19594fdd46b62c9522ad879853c4068e6051ade0f9a19071008c48a883c37a9f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.onIncomingWhatsApp = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"inbound\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#pixelPayWebhook": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:pixelPayWebhook"
+   ],
+   "authority": "§1 F-PAYLIFE: the PixelPay webhook is called by the gateway for an online payment; its res.send runs only inside that HTTP handler",
+   "whyFalseExcludes": "the complete invocation log shows no pixelPayWebhook call → the handler never runs",
+   "bind": {
+    "site": "if (req.method !== 'POST') { res.set('Allow', 'POST'); return res.status(405).send('Method Not Allowed'); }",
+    "siteSha": "be0c2145f881e2054e8c2457bc2e28ecd49385bde92cea49e13cc54fc2522910",
+    "scope": "xpizza-functions/index.js#pixelPayWebhook",
+    "scopeSha": "8606d07f3be5ee26906cb9889dc7dc7be6ce81a7d0eb744e850ca308210945c9"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.pixelPayWebhook = onRequest("
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:pixelPayWebhook): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#sendDriverPush": {
+   "group": "driverPush",
+   "appliesWhenAny": [
+    {
+     "driver": [
+      "assigned",
+      "reassigned",
+      "unassigned"
+     ]
+    }
+   ],
+   "authority": "§2 R5: a driver push (sendDriverPush → FCM send) goes to a driver — its only callers push on a pickup task's assigned_driver_id (assignment) or on cancellation of an order whose pickup task has one",
+   "whyFalseExcludes": "no driver was ever assigned (no task carries assigned_driver_id) → both callers return before sendDriverPush",
+   "bind": {
+    "site": "await getMessaging().send(buildFcmMessage(fcmToken, payload));",
+    "siteSha": "6119ff6f4b6f6be1ef5d12654da747fd2689a9907f8f4f5fd4ef612371387d6d",
+    "scope": "xpizza-functions/index.js#sendDriverPush",
+    "scopeSha": "944e6dda27c8059a338a3111b020a674752f4c79773d79e726a55e0598c38042"
+   },
+   "guards": [
+    {
+     "kind": "C",
+     "output": "xpizza-functions/index.js#sendDriverPush",
+     "callers": [
+      "xpizza-functions/index.js#notifyDriverOnAssignment",
+      "xpizza-functions/index.js#notifyDriverOnCancellation"
+     ]
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
+     "text": "if (!newDriverId) return;",
+     "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyDriverOnCancellation",
+     "text": "if (!driverId) {",
+     "scopeSha": "2ad2ef783565e6fba64c4e1be257311e63b7fb577e8cde0af9727389d5447917"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|assigned",
+     "S1t-a|x_pizza|assigned",
+     "S1a-on|x_pizza|assigned"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1a-on|x_pizza|new"
+    ]
+   }
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/portal/functions.js#getSalesStats": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:getSalesStats"
+   ],
+   "authority": "scenario definition: the sales-stats response is the merchant PORTAL's HTTP read (getSalesStats); its res.send runs only inside that handler",
+   "whyFalseExcludes": "the complete invocation log shows no getSalesStats call → the handler never runs",
+   "bind": {
+    "site": "return res.status(out.status).send(out.body);",
+    "siteSha": "e2e4cacab4de34c4a24fafefc408cc2a7121fa0f48ef30c44a8e32980204fca1",
+    "scope": "xpizza-functions/portal/functions.js#getSalesStats",
+    "scopeSha": "ee5a3021e7076db19cf05a6fba9199265515d8ddc6c3cc77e211180a2b85d78d"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.getSalesStats = portalFunctions.getSalesStats;"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/portal/functions.js#getSalesStats",
+     "callers": [
+      "self"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:getSalesStats): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/index.js#sendDriverPush@xpizza-functions/index.js#notifyDriverOnCancellation": {
+   "group": "cancelled",
+   "appliesWhenAny": [
+    {
+     "cancelled": [
+      true
+     ]
+    }
+   ],
+   "authority": "§2 R5: the cancellation driver push is sent only on a status → cancelled transition (notifyDriverOnCancellation: `if (after !== 'cancelled') return;`)",
+   "whyFalseExcludes": "a live (not cancelled) order gets no cancellation push",
+   "bind": {
+    "site": "await sendDriverPush(db, driverId, {",
+    "siteSha": "1443adc47eaaa0066051984071d046a7f7e89984e56964c2151e4ff716a27501",
+    "scope": "xpizza-functions/index.js#notifyDriverOnCancellation",
+    "scopeSha": "2ad2ef783565e6fba64c4e1be257311e63b7fb577e8cde0af9727389d5447917"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/index.js#notifyDriverOnCancellation",
+     "text": "if (after !== 'cancelled') return;",
+     "scopeSha": "2ad2ef783565e6fba64c4e1be257311e63b7fb577e8cde0af9727389d5447917"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/index.js#sendDriverPush",
+     "callers": [
+      "xpizza-functions/index.js#notifyDriverOnAssignment",
+      "xpizza-functions/index.js#notifyDriverOnCancellation"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"cancelled\":[true]}]) — it applies in P2 scenarios"
    }
   },
   "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler": {
@@ -283,6 +990,179 @@
     "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"],\"refund\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
    }
   },
+  "xpizza-functions/staff-push.js#formatGrouped@xpizza-functions/index.js#flushStaffPushQueue": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:flushStaffPushQueue"
+   ],
+   "authority": "scenario definition: the grouped staff push is the SCHEDULED queue flush (flushStaffPushQueue, onSchedule) — formatGrouped / its fan-out run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no flushStaffPushQueue run → none of it runs",
+   "bind": {
+    "site": "try { await fanoutStaffPush(db, { ...formatGrouped(toSend), tag: 'neworder', data: {} }); }",
+    "siteSha": "102a8fff9f047a14df1aea5fd6ccefafd7cc4f7287651d37321623e9ec7579c2",
+    "scope": "xpizza-functions/index.js#flushStaffPushQueue",
+    "scopeSha": "65fcc604f76f87d35a20a77d283fb0924917e2abcb02def1cb9b3fee9e260a0f"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.flushStaffPushQueue = onSchedule("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#formatGrouped",
+     "callers": [
+      "xpizza-functions/index.js#flushStaffPushQueue"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:flushStaffPushQueue): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/staff-push.js#formatStuck@xpizza-functions/index.js#sweepStuckOrders": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:sweepStuckOrders"
+   ],
+   "authority": "scenario definition: the stuck-order staff alert is the SCHEDULED sweep (sweepStuckOrders, onSchedule) — isStuck / its age anchor / formatStuck / its fan-out run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no sweepStuckOrders run → none of it runs",
+   "bind": {
+    "site": "await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });",
+    "siteSha": "e6465b2c76f41d4192520d361551391a2f3319842e1aac7916e7a95ac5a41249",
+    "scope": "xpizza-functions/index.js#sweepStuckOrders",
+    "scopeSha": "2753d92b4254c6a2c34ae2bed5344290e7497d1bccc9b99ea225226e0d55ca11"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.sweepStuckOrders = onSchedule("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#isStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#formatStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:sweepStuckOrders): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/staff-push.js#isStuck@xpizza-functions/index.js#sweepStuckOrders": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:sweepStuckOrders"
+   ],
+   "authority": "scenario definition: the stuck-order staff alert is the SCHEDULED sweep (sweepStuckOrders, onSchedule) — isStuck / its age anchor / formatStuck / its fan-out run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no sweepStuckOrders run → none of it runs",
+   "bind": {
+    "site": "const result = isStuck(order, deliveryTask, now, thresholds);",
+    "siteSha": "f6d8218d4480062d2a58f64f1fc06cb934b9822b602893eff9aa6eabb1d12976",
+    "scope": "xpizza-functions/index.js#sweepStuckOrders",
+    "scopeSha": "2753d92b4254c6a2c34ae2bed5344290e7497d1bccc9b99ea225226e0d55ca11"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.sweepStuckOrders = onSchedule("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#isStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#formatStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:sweepStuckOrders): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/staff-push.js#orderAgeAnchor@xpizza-functions/staff-push.js#isStuck": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:sweepStuckOrders"
+   ],
+   "authority": "scenario definition: the stuck-order staff alert is the SCHEDULED sweep (sweepStuckOrders, onSchedule) — isStuck / its age anchor / formatStuck / its fan-out run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no sweepStuckOrders run → none of it runs",
+   "bind": {
+    "site": "const anchor = orderAgeAnchor(order);",
+    "siteSha": "ac4b03a394870b1dce4d5fdecf7201a03c6da9e7cf56732bfa836d80ac1fecfc",
+    "scope": "xpizza-functions/staff-push.js#isStuck",
+    "scopeSha": "b9d10a8b259874b837b420e8b8ba79e13e3911708e63ac9cb8e6ce15de9921bf"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.sweepStuckOrders = onSchedule("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#isStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/staff-push.js#formatStuck",
+     "callers": [
+      "xpizza-functions/index.js#sweepStuckOrders"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:sweepStuckOrders): excluded only when the context is established; required otherwise"
+   }
+  },
   "xpizza-functions/whatsapp.js#renderCancelled@self": {
    "group": "cancelled",
    "appliesWhenAny": [
@@ -380,6 +1260,50 @@
      "S1|x_pizza|delivered",
      "S1t-a|x_pizza|delivered",
      "S3|x_pizza|delivered"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-functions/whatsapp.js#renderPickupReady@self": {
+   "group": "pickupReady",
+   "appliesWhenAny": [
+    {
+     "fulfil": [
+      "pickup"
+     ],
+     "lpAction": [
+      "kitchenReady"
+     ]
+    }
+   ],
+   "authority": "§2 R9: the pickup-ready body is rendered only for the pickup-ready send (notifyPickupReady: a PICKUP order becomes ready)",
+   "whyFalseExcludes": "a delivery order, or an LP not produced by the ready action, renders no pickup-ready body",
+   "bind": {
+    "site": "function renderPickupReady({ customerName, trackingToken, restaurantId, brand }) {",
+    "siteSha": "129048d17994ee2da0dbc4c2543d4fa03099f4f6b976fd9c9508db6c5b9b75c9",
+    "scope": "xpizza-functions/whatsapp.js#renderPickupReady",
+    "scopeSha": "7fc26c7cc15ccf58ad738848266aab6ac29e52f14e889d459c32de240f7f2cd5"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "cancelled: renderCancelled, pickupReady: renderPickupReady,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.notifyPickupReady = onValueWritten("
+    }
+   ],
+   "cases": {
+    "required": [
+     "S2|x_pizza|ready",
+     "S17p|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",

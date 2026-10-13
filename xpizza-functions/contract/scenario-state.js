@@ -129,7 +129,10 @@ const CHECKS = Object.freeze({
   inbound: { source: 'routed calls (onIncomingWhatsApp)', check: (v, ev) => (Array.isArray(ev.routed) ? ev.routed.some((x) => x.fn === 'onIncomingWhatsApp') === v.inbound : unknown) },
   otp: { source: 'routed calls (requestOtp)', check: (v, ev) => (Array.isArray(ev.routed) ? ev.routed.some((x) => x.fn === 'requestOtp') === v.otp : unknown) },
   kitchen: { source: 'KDS event recorder (kitchen actions observed on tickets)', check: (v, ev) => (Array.isArray(ev.kdsActions) && v.kitchen === 'none' ? ev.kdsActions.length === 0 : unknown) },
-  driver: { source: 'persisted order assignment fields', check: (v, ev) => (ev.persisted && v.driver === 'none' ? !ev.persisted.driver_id && !ev.persisted.assigned_driver && !ev.persisted.driver_uid : unknown) },
+  // assignment lives on the order's TASKS (tasks/<id>_pickup|_delivery.assigned_driver_id), so "no driver" needs the
+  // order's task records read at gate time (ev.tasks: { taskId: record }, {} = none exist) — the order's own fields alone
+  // would hold vacuously; no task evidence → unknown
+  driver: { source: "the order's task records (assigned_driver_id) + persisted order assignment fields", check: (v, ev) => (ev.persisted && ev.tasks && typeof ev.tasks === 'object' && v.driver === 'none' ? !ev.persisted.driver_id && !ev.persisted.assigned_driver && !ev.persisted.driver_uid && Object.values(ev.tasks).every((t) => !(t && t.assigned_driver_id)) : unknown) },
   outForDelivery: { source: 'persisted order status (out_for_delivery / delivered ⇒ picked up)', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? ['out_for_delivery', 'delivered'].includes(ev.persisted.status) === v.outForDelivery : unknown) },
   terminal: { source: 'persisted order status', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? (v.terminal === 'none' ? !['delivered', 'completed'].includes(ev.persisted.status) : ev.persisted.status === v.terminal) : unknown) },
   status: { source: 'persisted order status (must equal the contract status expected at this LP)', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? ev.persisted.status === v.status : unknown) },
@@ -155,6 +158,16 @@ const CONTEXT = Object.freeze({
   'kds-no-http': { source: 'KDS page fetch recorder', check: (ev) => (Array.isArray(ev.kdsHttp) ? ev.kdsHttp.length === 0 : unknown) },
   'createorder-configured': { source: 'routed calls (createOrder answered 200)', check: (ev) => (Array.isArray(ev.routed) ? ev.routed.some((x) => x.fn === 'createOrder' && x.status === 200) : unknown) },
 });
+// PARAMETERIZED context `no-call:<fn>` — the run never invoked the Cloud Function <fn> (an `exports.<fn> =` of index.js),
+// established ONLY from a COMPLETE invocation log (ev.fnCalls { complete, names }: every trigger the scheduler ran + every
+// HTTP call any page's router answered, and no page call left unrouted / refused). Incomplete or absent → unknown.
+const FN_EXPORTS = (() => { let src = ''; try { src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8'); } catch (_) { /* no index.js → no fn */ } return new Set([...src.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map((m) => m[1])); })();
+function contextOf(name) {
+  if (CONTEXT[name]) return CONTEXT[name];
+  const m = /^no-call:([A-Za-z0-9_]+)$/.exec(String(name));
+  if (m && FN_EXPORTS.has(m[1])) return { source: `the run's COMPLETE invocation log (no ${m[1]} invocation)`, check: (ev) => (ev.fnCalls && ev.fnCalls.complete === true && Array.isArray(ev.fnCalls.names) ? !ev.fnCalls.names.includes(m[1]) : unknown) };
+  return null;
+}
 // assert a vector against evidence: { checked, unknown, failed } (field names)
 function assertVector(v, ev) {
   const r = { checked: [], unknown: [], failed: [] };
@@ -164,6 +177,6 @@ function assertVector(v, ev) {
   }
   return r;
 }
-function checkContext(name, ev) { const c = CONTEXT[name]; if (!c) return false; let x; try { x = c.check(ev); } catch (_) { x = unknown; } return x; }
+function checkContext(name, ev) { const c = contextOf(name); if (!c) return false; let x; try { x = c.check(ev); } catch (_) { x = unknown; } return x; }
 
-module.exports = { FILE, FIELDS, EFFECTS, CHECKS, CONTEXT, load, vectorsOf, vectorOf, vectorProblems, assertVector, checkContext };
+module.exports = { FILE, FIELDS, EFFECTS, CHECKS, CONTEXT, contextOf, load, vectorsOf, vectorOf, vectorProblems, assertVector, checkContext };

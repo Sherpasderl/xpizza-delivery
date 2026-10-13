@@ -1,7 +1,14 @@
 {
- "_doc": "R3 P1-b REGRESSION LOCK — the exact 66 region ids P1-a excluded at S1 / x_pizza / new, frozen from git show 1091d30:xpizza-functions/contract/output-applicability.json (codex P1-b design r1). The derived model must exclude exactly these at that context.",
+ "_doc": "R3 P1-b REGRESSION LOCK — the exact 66 region ids P1-a excluded at S1 / x_pizza / new, frozen from git show 1091d30:xpizza-functions/contract/output-applicability.json (codex P1-b design r1). The derived model must exclude exactly these at that context. The lock is over P1-a's ENFORCED slice readers (git show 1091d30 journey SLICE.readers) — the cells those 66 exclusions were reviewed for; P1-b bulk entries for OTHER readers at S1 / x_pizza / new are new reviewed exclusions, listed in the review report.",
  "frozenAt": "1091d30",
  "context": "S1|x_pizza|new",
+ "readers": [
+  "R1",
+  "R9",
+  "R13",
+  "R14",
+  "R15"
+ ],
  "regions": [
   "xpizza-functions/index.js#onIncomingWhatsApp>anon@self",
   "xpizza-functions/index.js#onIncomingWhatsApp@self",

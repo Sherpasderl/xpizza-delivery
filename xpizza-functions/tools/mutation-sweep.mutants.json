@@ -12957,7 +12957,7 @@
     "id": "r3p1-59",
     "slice": "r3p1",
     "file": "contract/region-applicability.js",
-    "from": "    if (Array.isArray(e.appliesWhenAny) && !e.appliesWhenAny.length && !((e.context || []).length && (e.context || []).every((c) => SS.CONTEXT[c]))) p.push(",
+    "from": "    if (Array.isArray(e.appliesWhenAny) && !e.appliesWhenAny.length && !((e.context || []).length && (e.context || []).every((c) => SS.contextOf(c)))) p.push(",
     "to": "    if (false) p.push(",
     "label": "codex P1-b mech r1 P1-4: an empty appliesWhenAny with no validated context (an unconditional exclusion) is accepted",
     "kills_with": [
@@ -13090,6 +13090,51 @@
       "npm",
       "run",
       "test:r3-p1a-journey"
+    ]
+  },
+  {
+    "id": "r3p1-68",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "&& Object.values(ev.tasks).every((t) => !(t && t.assigned_driver_id)) : unknown) },",
+    "to": ": unknown) },",
+    "label": "P1-b bulk: driver none ignores the order's task records (assignment lives on tasks)",
+    "kills_with": [
+      "a task with an assigned driver did not contradict driver none"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-69",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "(ev.fnCalls && ev.fnCalls.complete === true && Array.isArray(ev.fnCalls.names)",
+    "to": "(ev.fnCalls && Array.isArray(ev.fnCalls.names)",
+    "label": "P1-b bulk: no-call:<fn> established from an INCOMPLETE invocation log",
+    "kills_with": [
+      "an incomplete invocation log established no-call"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-70",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "return JSON.stringify(now) === JSON.stringify(gb.callers) ? null :",
+    "to": "return true ? null :",
+    "label": "P1-b bulk: a caller-set guard never goes stale (a new caller of a sweep-only function keeps its exclusion)",
+    "kills_with": [
+      "a new caller of isStuck did not make the sweep-only exclusion stale"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
     ]
   }
 ]
