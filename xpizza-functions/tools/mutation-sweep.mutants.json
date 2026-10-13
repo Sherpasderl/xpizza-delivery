@@ -13378,5 +13378,20 @@
       "node",
       "contract/applicability.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-100",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "const applies = (entry.appliesWhenAny || []).some((conj) =>",
+    "to": "const applies = (entry.appliesWhenAny || []).every((conj) =>",
+    "label": "P1-c c3: the condition list is read as a conjunction — terminal = delivered ∨ cancelled no longer applies at a delivered (not cancelled) LP, so the shift cash / cuadre would be excluded where it shows the order",
+    "kills_with": [
+      "evaluates as excluded-by-vector"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
   }
 ]
