@@ -2788,8 +2788,8 @@
     "slice": "b8",
     "label": "the LAUNCHER card photo colour is taken raw (1D add-product B)",
     "file": "../xpizza-orders/index.html",
-    "from": "  const launcherCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\">",
-    "to": "  const launcherCard = p => `\n    <div class=\"pizza-card\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\">",
+    "from": "  const launcherCard = p => { const n = cardQty(p.id); return `\n    <div class=\"pizza-card${n > 0 ? ' has-items' : ''}\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}\">",
+    "to": "  const launcherCard = p => { const n = cardQty(p.id); return `\n    <div class=\"pizza-card${n > 0 ? ' has-items' : ''}\" id=\"card-${safeText(p.id)}\" data-act=\"open\" data-id=\"${safeText(p.id)}\">\n      <div class=\"pizza-photo\" style=\"background:${safeImgUrl(p.img) ? '#000' : (p.color||'#C8321A')}\">",
     "command": [
       "node",
       "../live-apply.test.mjs"
