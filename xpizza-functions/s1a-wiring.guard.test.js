@@ -28,8 +28,8 @@ ok('applyS1aIndex and unapplyS1aIndex are exact mutual inverses');
 
 // ── 3. sensitivity — a byte INSIDE a hunk, a DUPLICATED hunk, a MISSING anchor, a byte OUTSIDE every hunk ──
 {
-  const h = HUNKS.find((x) => x.now.includes('svcAssignerDb()'));   // a representative modification hunk
-  assert.throws(() => unapplyS1aIndex(real.replace(h.now, h.now.replace('svcAssignerDb()', 'svcAssignerDB()'))), /occurs 0×/, 'a byte INSIDE a hunk is detected (anchor no longer matches)');
+  const h = HUNKS.find((x) => x.now.includes('await pickHandle(db)'));   // a representative modification hunk
+  assert.throws(() => unapplyS1aIndex(real.replace(h.now, h.now.replace('await pickHandle(db)', 'await pickHandle(DB)'))), /occurs 0×/, 'a byte INSIDE a hunk is detected (anchor no longer matches)');
   assert.throws(() => unapplyS1aIndex(real + h.now), /occurs 2×/, 'a DUPLICATED hunk is detected');
 }
 {
@@ -44,10 +44,12 @@ ok('applyS1aIndex and unapplyS1aIndex are exact mutual inverses');
 ok('a byte inside a hunk, a duplicated hunk, a missing anchor, and a byte outside every hunk are each detected');
 
 // ── 4. the edits are actually wired (not just reversible) ──
-assert.ok(/require\('\.\/lib\/svc-assigner'\)/.test(real) && /require\('\.\/lib\/driver-callable-guard'\)/.test(real), 'both S1a modules are required');
-assert.strictEqual((real.match(/claimDelivery\(svcDb,/g) || []).length, 3, 'all 3 CAS claims ride the svc-assigner handle');
-assert.strictEqual((real.match(/await svcDb\.ref\(\)\.update\(/g) || []).length, 4, 'all 4 finalize/shift-open writes ride the svc-assigner handle');
+assert.ok(/require\('\.\/lib\/svc-handle'\)/.test(real) && /require\('\.\/lib\/driver-callable-guard'\)/.test(real), 'both S1a modules are required');
+assert.ok(!/svcAssignerDb\(\)/.test(real), 'index.js no longer calls svcAssignerDb directly — the handle comes from the flag-gated pickHandle');
+assert.strictEqual((real.match(/const svcDb = await pickHandle\(db\);/g) || []).length, 4, 'all 4 handlers select the handle via the flag-gated pickHandle');
+assert.strictEqual((real.match(/svcWriteOrFallback\(db, svcDb, \(h\) =>/g) || []).length, 7, 'all 7 ownership/shift writes (3 claims + 4 finalize/shift-open) go through svcWriteOrFallback');
+assert.strictEqual((real.match(/claimDelivery\(h,/g) || []).length, 3, 'all 3 CAS claims take the selected handle');
 assert.strictEqual((real.match(/await assertDriverCallerActive\(uid, request\.auth\?\.token,/g) || []).length, 4, 'all 4 driver callables call the hard-stop guard');
-ok('wired: svc-assigner handle on 3 claims + 4 finalize/shift-open writes; the hard-stop on all 4 driver callables');
+ok('wired: flag-gated pickHandle on 4 handlers; svcWriteOrFallback on all 7 ownership/shift writes; the hard-stop on all 4 driver callables');
 
 console.log(`\ns1a-wiring.guard: OK (${n})`);

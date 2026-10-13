@@ -165,7 +165,7 @@ const { hashConfig } = require('./ready-time-quality-run');          // reuse th
 const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active model version(s) — windows prediction_logs by `<v>/new_at`
 
 require('./lib/admin');   // PORTAL SPEED P1: the ONE Admin app — initializeApp moved verbatim to lib/admin.js (shared with portal/functions.js)
-const { svcAssignerDb } = require('./lib/svc-assigner');   // S1a §3 — the narrowly-privileged ownership/shift writer handle
+const { pickHandle, svcWriteOrFallback } = require('./lib/svc-handle');   // S1a §3 — flag-gated ownership/shift writer handle + tolerant-mode fallback
 const { assertDriverCallerActive } = require('./lib/driver-callable-guard');   // S1a §6 — the shared driver-callable hard-stop
 
 // VAPID config for Web Push (set via .env, deployed as runtime env vars)
@@ -4246,7 +4246,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
   await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6
   const crypto = require('crypto');
   const db = getDatabase();
-  const svcDb = svcAssignerDb();   // S1a §3 — the shift-open write is rules-bound (new-shift transition gate)
+  const svcDb = await pickHandle(db);   // S1a §3 — the shift-open write is rules-bound (new-shift transition gate)
   const isNativeClient = request.data?.platform === 'native';
   const deviceId = request.data?.device_id || null;
   const now = Date.now();
@@ -4282,7 +4282,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     updates[`drivers/${uid}/ingest_token_hash`] = hash;
   }
 
-  await svcDb.ref().update(updates);   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
+  await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'startDriverShift' });   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
   console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);
   return { ok: true, shift_id: shiftId, location_source: isNativeClient ? 'native' : 'pwa', ingest_token: ingestToken };
 });
@@ -5977,7 +5977,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     console.log(`autoAssign: scheduling for order ${orderId}, waiting ${GRACE_PERIOD_MS}ms`);
 
     const db = getDatabase();
-    const svcDb = svcAssignerDb();   // S1a §3 — ownership-creating writes are rules-bound
+    const svcDb = await pickHandle(db);   // S1a §3 — ownership-creating writes are rules-bound
     await sleep(GRACE_PERIOD_MS);
 
     // Check global toggle
@@ -6066,7 +6066,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // rewrites the same value — identical end state to the pre-S3d plain write (no-op on the happy path).
     // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.
     let claim;
-    try { claim = await claimDelivery(svcDb, orderId, chosen.driverId); }   // S1a §3
+    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'autoAssign.claim' }); }   // S1a §3
     catch (e) { if (isEligibilityDenial(e)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }
     if (!claim.claimed) {
       console.warn(`autoAssign: ${orderId} — delivery already claimed by ${claim.current} during finalize; backing off`);
@@ -6077,7 +6077,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // for its 2-strikes rule (only relevant for non-stacked).
     const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
     try {
-      await svcDb.ref().update(updates);   // S1a §3
+      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize' });   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
     } catch (e) {
       console.error(`autoAssign: write failed for ${orderId}`, e);
@@ -6143,7 +6143,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
     console.log(`timeout-monitor: starting ${ACCEPT_TIMEOUT_MS}ms timer for ${taskId} → ${driverId}`);
 
     const db = getDatabase();
-    const svcDb = svcAssignerDb();   // S1a §3 — ownership-restoring writes are rules-bound
+    const svcDb = await pickHandle(db);   // S1a §3 — ownership-restoring writes are rules-bound
     await sleep(ACCEPT_TIMEOUT_MS);
 
     // Re-fetch the task — has anything changed during the wait?
@@ -6242,7 +6242,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
     // already reflects that writer's decision). Uncontended (field still == driverId), it's a no-op: the
     // finalize update() rewrites the same delivery/assigned_driver_id = nextDriver.
     let claim;
-    try { claim = await claimDelivery(svcDb, orderId, nextDriver.driverId, { expectCurrent: driverId }); }   // S1a §3
+    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, nextDriver.driverId, { expectCurrent: driverId }), { site: 'timeout.claim' }); }   // S1a §3
     catch (e) { if (isEligibilityDenial(e)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim (${e && (e.code || e.message)}); leaving on ${driverId}`); return; } throw e; }
     if (!claim.claimed) {
       console.log(`timeout-monitor: ${orderId} delivery no longer on ${driverId} (now ${claim.current}); backing off reassign`);
@@ -6250,7 +6250,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
     }
     const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);
     try {
-      await svcDb.ref().update(reassignUpdates);   // S1a §3
+      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(reassignUpdates), { site: 'timeout.finalize' });   // S1a §3
       // The new assigned_driver_id write will trigger another monitorAssignmentTimeout
       // for the new driver. The notifyDriverOnAssignment trigger will push to them.
     } catch (e) {
@@ -6287,7 +6287,7 @@ exports.sweepPendingOrders = onSchedule(
   { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
   async () => {
     const db = getDatabase();
-    const svcDb = svcAssignerDb();   // S1a §3 — ownership-creating writes are rules-bound
+    const svcDb = await pickHandle(db);   // S1a §3 — ownership-creating writes are rules-bound
     const now = Date.now();
     // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the
     // delivery CAS-claim is on the LIVE autoAssign/timeout paths, so a strand there must self-heal even
@@ -6414,7 +6414,7 @@ exports.sweepPendingOrders = onSchedule(
       // concurrent sweep/grab, and it's invisible to monitorAssignmentTimeout (watches PICKUP) and
       // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.
       let claim;
-      try { claim = await claimDelivery(svcDb, orderId, chosen.driverId); }   // S1a §3
+      try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'sweeper.claim' }); }   // S1a §3
       catch (e) { if (isEligibilityDenial(e)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }
       if (!claim.claimed) continue;   // lost the race — skip
 
@@ -6460,7 +6460,7 @@ exports.sweepPendingOrders = onSchedule(
         const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, recheck.hasAcceptedSameHubOrder);
         updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
         updates[`tasks/${orderId}_delivery/last_swept`] = now;
-        await svcDb.ref().update(updates);   // S1a §3
+        await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize' });   // S1a §3
         offered++;
         console.log(`sweepPending: re-offered ${orderId} → ${chosen.name} (offer ${retryCount + 1})`);
       } catch (e) {

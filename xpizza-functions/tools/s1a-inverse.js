@@ -12,7 +12,7 @@ const HUNKS = Object.freeze([
   // which foldPortalSplit reverts to an inline initializeApp, so a hunk spanning it would miss in the fold guards.
   {
     was: "\n// VAPID config for Web Push (set via .env, deployed as runtime env vars)",
-    now: "const { svcAssignerDb } = require('./lib/svc-assigner');   // S1a §3 — the narrowly-privileged ownership/shift writer handle"
+    now: "const { pickHandle, svcWriteOrFallback } = require('./lib/svc-handle');   // S1a §3 — flag-gated ownership/shift writer handle + tolerant-mode fallback"
        + "\nconst { assertDriverCallerActive } = require('./lib/driver-callable-guard');   // S1a §6 — the shared driver-callable hard-stop"
        + "\n\n// VAPID config for Web Push (set via .env, deployed as runtime env vars)",
   },
@@ -38,7 +38,7 @@ const HUNKS = Object.freeze([
   // startDriverShift: guard + the svc-assigner handle (shift-open is a §2(3) gated write)
   {
     was: "  const crypto = require('crypto');\n  const db = getDatabase();\n  const isNativeClient = request.data?.platform === 'native';\n",
-    now: "  await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6\n  const crypto = require('crypto');\n  const db = getDatabase();\n  const svcDb = svcAssignerDb();   // S1a §3 — the shift-open write is rules-bound (new-shift transition gate)\n  const isNativeClient = request.data?.platform === 'native';\n",
+    now: "  await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6\n  const crypto = require('crypto');\n  const db = getDatabase();\n  const svcDb = await pickHandle(db);   // S1a §3 — the shift-open write is rules-bound (new-shift transition gate)\n  const isNativeClient = request.data?.platform === 'native';\n",
   },
   {
     was: "  const db = getDatabase();\n  const hash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();\n",
@@ -47,46 +47,46 @@ const HUNKS = Object.freeze([
   // startDriverShift shift-open write → svc-assigner handle
   {
     was: "  await db.ref().update(updates);\n  console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);\n",
-    now: "  await svcDb.ref().update(updates);   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)\n  console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);\n",
+    now: "  await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'startDriverShift' });   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)\n  console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);\n",
   },
   // (c) autoAssign — svc-assigner handle + claim + finalize
   {
     was: "    const db = getDatabase();\n    await sleep(GRACE_PERIOD_MS);\n",
-    now: "    const db = getDatabase();\n    const svcDb = svcAssignerDb();   // S1a §3 — ownership-creating writes are rules-bound\n    await sleep(GRACE_PERIOD_MS);\n",
+    now: "    const db = getDatabase();\n    const svcDb = await pickHandle(db);   // S1a §3 — ownership-creating writes are rules-bound\n    await sleep(GRACE_PERIOD_MS);\n",
   },
   {
     was: "    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.\n    const claim = await claimDelivery(db, orderId, chosen.driverId);\n",
-    now: "    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.\n    let claim;\n    try { claim = await claimDelivery(svcDb, orderId, chosen.driverId); }   // S1a §3\n    catch (e) { if (isEligibilityDenial(e)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }\n",
+    now: "    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.\n    let claim;\n    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'autoAssign.claim' }); }   // S1a §3\n    catch (e) { if (isEligibilityDenial(e)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }\n",
   },
   {
     was: "    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);\n    try {\n      await db.ref().update(updates);\n",
-    now: "    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);\n    try {\n      await svcDb.ref().update(updates);   // S1a §3\n",
+    now: "    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);\n    try {\n      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize' });   // S1a §3\n",
   },
   // (d) timeout-reassign — svc-assigner handle + claim + finalize
   {
     was: "    const db = getDatabase();\n    await sleep(ACCEPT_TIMEOUT_MS);\n",
-    now: "    const db = getDatabase();\n    const svcDb = svcAssignerDb();   // S1a §3 — ownership-restoring writes are rules-bound\n    await sleep(ACCEPT_TIMEOUT_MS);\n",
+    now: "    const db = getDatabase();\n    const svcDb = await pickHandle(db);   // S1a §3 — ownership-restoring writes are rules-bound\n    await sleep(ACCEPT_TIMEOUT_MS);\n",
   },
   {
     was: "    const claim = await claimDelivery(db, orderId, nextDriver.driverId, { expectCurrent: driverId });\n",
-    now: "    let claim;\n    try { claim = await claimDelivery(svcDb, orderId, nextDriver.driverId, { expectCurrent: driverId }); }   // S1a §3\n    catch (e) { if (isEligibilityDenial(e)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim (${e && (e.code || e.message)}); leaving on ${driverId}`); return; } throw e; }\n",
+    now: "    let claim;\n    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, nextDriver.driverId, { expectCurrent: driverId }), { site: 'timeout.claim' }); }   // S1a §3\n    catch (e) { if (isEligibilityDenial(e)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim (${e && (e.code || e.message)}); leaving on ${driverId}`); return; } throw e; }\n",
   },
   {
     was: "    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);\n    try {\n      await db.ref().update(reassignUpdates);\n",
-    now: "    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);\n    try {\n      await svcDb.ref().update(reassignUpdates);   // S1a §3\n",
+    now: "    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);\n    try {\n      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(reassignUpdates), { site: 'timeout.finalize' });   // S1a §3\n",
   },
   // (e) sweeper — svc-assigner handle + claim + finalize
   {
     was: "    const db = getDatabase();\n    const now = Date.now();\n    // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the\n",
-    now: "    const db = getDatabase();\n    const svcDb = svcAssignerDb();   // S1a §3 — ownership-creating writes are rules-bound\n    const now = Date.now();\n    // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the\n",
+    now: "    const db = getDatabase();\n    const svcDb = await pickHandle(db);   // S1a §3 — ownership-creating writes are rules-bound\n    const now = Date.now();\n    // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the\n",
   },
   {
     was: "      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.\n      const claim = await claimDelivery(db, orderId, chosen.driverId);\n",
-    now: "      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.\n      let claim;\n      try { claim = await claimDelivery(svcDb, orderId, chosen.driverId); }   // S1a §3\n      catch (e) { if (isEligibilityDenial(e)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }\n",
+    now: "      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.\n      let claim;\n      try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'sweeper.claim' }); }   // S1a §3\n      catch (e) { if (isEligibilityDenial(e)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }\n",
   },
   {
     was: "        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;\n        updates[`tasks/${orderId}_delivery/last_swept`] = now;\n        await db.ref().update(updates);\n",
-    now: "        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;\n        updates[`tasks/${orderId}_delivery/last_swept`] = now;\n        await svcDb.ref().update(updates);   // S1a §3\n",
+    now: "        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;\n        updates[`tasks/${orderId}_delivery/last_swept`] = now;\n        await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize' });   // S1a §3\n",
   },
   // (f) notify-on-assignment account check (§14.2) — never push an assignment to a deactivated driver
   {

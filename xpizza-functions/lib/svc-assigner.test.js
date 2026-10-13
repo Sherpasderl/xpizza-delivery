@@ -11,7 +11,7 @@ const t = (name, fn) => { fn(); passed++; console.log(`  ok ${passed} ${name}`);
 // Lazy: the module must not create any app merely by being required.
 const before = getApps().map((a) => a.name);
 assert.ok(!before.includes('svc-assigner'), 'requiring the module must not create the svc-assigner app');
-const { svcAssignerDb, SVC_APP_NAME } = require('./svc-assigner');
+const { svcAssignerDb, SVC_APP_NAME, SVC_AUTH } = require('./svc-assigner');
 
 t('require-time is inert: no app created until first use', () => {
   assert.equal(getApps().map((a) => a.name).includes('svc-assigner'), false);
@@ -25,7 +25,11 @@ t('first use creates a NAMED app (not a default) with the svc-assigner auth over
   assert.equal(app.name, 'svc-assigner');
   assert.notEqual(app.name, '[DEFAULT]');
   const ov = app.options.databaseAuthVariableOverride;
-  assert.deepEqual(ov, { uid: 'svc-assigner', svc_assigner: true }, 'override must present uid svc-assigner + the claim');
+  // AUTH-SHAPE PARITY (codex r1 P1-7): a PRESENT token so the rules' auth.token.customer resolves (the svc claim txn
+  // reads /tasks, whose .read evaluates auth.token.customer !== true). uid is top-level (rules key on auth.uid).
+  assert.deepEqual(ov, { uid: 'svc-assigner', token: { svc_assigner: true } }, 'override must be {uid, token:{svc_assigner}}');
+  assert.deepEqual(ov, SVC_AUTH, 'the app override is the exported SVC_AUTH literal (what the parity harness mirrors)');
+  assert.equal(ov.token.customer, undefined, 'auth.token.customer resolves (to undefined → !== true → allowed), never a missing-object deref');
   assert.equal(app.options.databaseURL, 'https://xpizza-delivery-default-rtdb.firebaseio.com');
 });
 

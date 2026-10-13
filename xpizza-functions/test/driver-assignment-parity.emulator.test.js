@@ -55,7 +55,7 @@ function finalize(orderId, driverId, { stacked = false, sweeper = false } = {}) 
   const { buildCompleteTaskUpdates } = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-driver', 'driver-complete.js')).href);
   const env = await initializeTestEnvironment({ projectId: 'demo-xpizza', database: { rules: RULES } });
 
-  const svc = env.authenticatedContext('svc-assigner').database();   // RULES-ENFORCED as svc-assigner (the restricted handle)
+  const svc = env.authenticatedContext('svc-assigner', { svc_assigner: true }).database();   // RULES-ENFORCED as svc-assigner (the restricted handle)
   const drv = env.authenticatedContext(D_EN).database();             // the real driver
   let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
 
@@ -125,6 +125,18 @@ function finalize(orderId, driverId, { stacked = false, sweeper = false } = {}) 
   const offlineWrite = svc.ref('tasks/oR1_delivery/assigned_driver_id').set(D_EN);
   svc.goOnline();
   await assertSucceeds(offlineWrite); ok('RECONNECT: a write queued while the restricted handle was OFFLINE commits on reconnect');
+
+  // ================= SAFETY NET: svcWriteOrFallback real fallback (denied-in-tolerant → default handle + alert) =================
+  const { svcWriteOrFallback } = require('../lib/svc-handle');
+  await seedMode(null);   // tolerant
+  await env.withSecurityRulesDisabled(async (c) => {
+    const bypass = c.database();   // the DEFAULT (bypass) handle; svc is the rules-enforced handle
+    await svcWriteOrFallback(bypass, svc, (h) => h.ref(`drivers/${D_EN}/name`).set('viaFallback'), { site: 'parity.test' });
+    assert.equal((await bypass.ref(`drivers/${D_EN}/name`).get()).val(), 'viaFallback', 'the denied svc write fell back to the default handle');
+    const alerts = (await bypass.ref('dispatcher_alerts').get()).val() || {};
+    assert.ok(Object.values(alerts).some((a) => a.type === 'svc_handle_fallback' && a.site === 'parity.test'), 'a loud svc_handle_fallback alert was raised');
+  });
+  ok('SAFETY NET: an svc write DENIED in tolerant mode falls back to the default handle + raises a loud alert (real emulator)');
 
   // ================= LATENCY: rules-enforced handle vs bypass handle (measured, not asserted) =================
   // Benchmark an svc-GRANTED leaf (drivers/<uid>/last_ping) so both handles exercise the same write under / without

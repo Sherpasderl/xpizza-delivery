@@ -135,7 +135,7 @@ function shiftOpen(uid, shiftId, hash) {
   await env.withSecurityRulesDisabled(seedBase);
 
   const disp   = env.authenticatedContext(DISP).database();
-  const svc    = env.authenticatedContext(SVC).database();
+  const svc    = env.authenticatedContext(SVC, { svc_assigner: true }).database();
   const en     = env.authenticatedContext(D_EN).database();
   const abs    = env.authenticatedContext(D_ABS).database();
   const susp   = env.authenticatedContext(D_SUSP).database();

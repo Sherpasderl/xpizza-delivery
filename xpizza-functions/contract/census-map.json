@@ -1338,7 +1338,8 @@
     "tracking_token@xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize": "the tracker link token — routing, not an amount",
     "type@xpizza-functions/index.js#notifyDriverOnAssignment": "the task type in notifyDriverOnAssignment ('pickup' guard) — routing, not an order money field",
     "waze_link@la-musa-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only",
-    "waze_link@xpizza-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only"
+    "waze_link@xpizza-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only",
+    "length@xpizza-dispatch/index.html<script@0>#alertContent": "NOT an order field: Array.prototype.length of a.order_ids (the list of affected order ids in the driver_deactivated alert) — a derived count for rendering, not a persisted order field (S1a §5/P1-8)"
   },
   "unreachableOnSurface": {
     "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",
