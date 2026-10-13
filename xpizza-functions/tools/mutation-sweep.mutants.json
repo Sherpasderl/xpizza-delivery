@@ -13363,5 +13363,20 @@
       "node",
       "contract/applicability.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-99",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.json",
+    "from": "\"no-exec:xpizza-driver/xpizza-delivery.js#acceptTask\"",
+    "to": "\"no-exec:xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon\"",
+    "label": "P1-c c2: a driver action decided on the generic handler bundle instead of the action's own scope (any other card callback entering the bundle would decide accept)",
+    "kills_with": [
+      "(not the action's own scope)"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
   }
 ]

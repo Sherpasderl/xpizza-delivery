@@ -354,4 +354,27 @@ ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-p
   assert.strictEqual(RA.staticDecision(doc, id, at('S1', 'assigned')).excluded, false, FAIL('the board was excluded at an assigned LP'));
 }
 ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer or dropping the server terminal task delete → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
+{ // P1-c c2 (R4 driver actions): decided on the ACTION's own execution (no-exec on xpizza-delivery.js#<fn>, never the
+  // generic handler bundle); where the action IS the LP's action (pickupComplete / completeDelivery) it stays required
+  const D = 'xpizza-driver/xpizza-delivery.js'; const P = 'xpizza-driver/index.html<script@0>';
+  const acts = Object.entries(doc.regions).filter(([, e]) => e.group === 'driver-action');
+  const want = { acceptTask: 1, pickupComplete: 1, completeTask: 2, acceptSecondOrder: 2, arriveAtRestaurant: 1 };
+  const got = {}; for (const [, e] of acts) { assert.strictEqual(e.context.length, 1, FAIL('a driver action entry has more than its own no-exec')); const m = /^no-exec:xpizza-driver\/xpizza-delivery\.js#(\w+)$/.exec(e.context[0]); assert.ok(m, FAIL(`driver action decided on ${e.context[0]} (not the action's own scope)`)); got[m[1]] = (got[m[1]] || 0) + 1; }
+  assert.deepStrictEqual(got, want, FAIL(`driver action entries by probe scope ${JSON.stringify(got)}`));
+  const exOf = (fn, entered) => ({ exec: { probed: [`${D}#${fn}`], entered: entered ? [`${D}#${fn}`] : [] } });
+  const ev = (st, action, x) => ({ persisted: { restaurant_id: 'x_pizza', status: st }, lpAction: { action, ack: true }, ...x });
+  const cT = `${D}#completeTask@${P}#attachActiveCardHandlers>anon`; const aT = `${D}#acceptTask@${P}#attachActiveCardHandlers>anon`;
+  const at = (S, lp) => ({ S, brand: 'x_pizza', lp });
+  // out_for_delivery LP (pickupComplete): completeTask probed + never entered → excluded; entered → required; unprobed → required
+  assert.strictEqual(RA.runDecision(doc, cT, at('S1', 'out_for_delivery'), ev('out_for_delivery', 'pickupComplete', exOf('completeTask', false))).outcome, 'excluded', FAIL('a probed, never-entered completeTask was not excluded'));
+  assert.strictEqual(RA.runDecision(doc, cT, at('S1', 'out_for_delivery'), ev('out_for_delivery', 'pickupComplete', exOf('completeTask', true))).outcome, 'required', FAIL('an entered completeTask was excluded'));
+  assert.strictEqual(RA.runDecision(doc, cT, at('S1', 'out_for_delivery'), ev('out_for_delivery', 'pickupComplete', exOf('acceptTask', false))).outcome, 'required', FAIL('completeTask excluded on a trace that never probed it'));
+  // the delivered LP IS completeTask's action → required even with no entry recorded (another surface may have completed it)
+  assert.strictEqual(RA.staticDecision(doc, cT, at('S1', 'delivered')).excluded, false, FAIL('completeTask was excluded at the completeDelivery LP'));
+  assert.strictEqual(RA.staticDecision(doc, `${D}#pickupComplete@${P}#attachActiveCardHandlers>anon`, at('S1', 'out_for_delivery')).excluded, false, FAIL('pickupComplete was excluded at the pickupComplete LP'));
+  // acceptTask: no LP is an accept → excluded only on its own execution evidence
+  assert.strictEqual(RA.runDecision(doc, aT, at('S1', 'new'), ev('new', 'create', exOf('acceptTask', false))).outcome, 'excluded', FAIL('a probed, never-entered acceptTask was not excluded'));
+  assert.strictEqual(RA.runDecision(doc, aT, at('S1', 'new'), ev('new', 'create', {})).outcome, 'required', FAIL('acceptTask excluded with no trace'));
+}
+ok('driver actions (P1-c c2): 7 entries decided on the action\'s OWN scope (acceptTask, pickupComplete, completeTask ×2, acceptSecondOrder ×2, arriveAtRestaurant), never the handler bundle; probed + never entered → excluded; entered / unprobed / no trace → required; completeTask at a completeDelivery LP and pickupComplete at a pickupComplete LP stay required');
 console.log(`\nr3-applicability guard: OK (${n})`);

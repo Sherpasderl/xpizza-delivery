@@ -6165,6 +6165,85 @@
     ]
    }
   },
+  "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates@xpizza-driver/xpizza-delivery.js#completeTask": {
+   "group": "driver-action",
+   "appliesWhenAny": [
+    {
+     "lpAction": [
+      "completeDelivery"
+     ]
+    }
+   ],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#completeTask"
+   ],
+   "authority": "scenario definition: completing the delivery (¡Entregado!) and its update builder is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#completeTask, so a trace that probed completeTask and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer); it IS the action of a completeDelivery LP (lpAction: the runner's recorded executed action + the writer's ack) → required there",
+   "whyFalseExcludes": "completeTask was never entered in this LP interval (the tracer's function-entry probe) → this region never executed, and the LP was produced by another action than completeDelivery",
+   "bind": {
+    "site": "const updates = buildCompleteTaskUpdates({ driverId, taskId, task, allTasks, now: serverTimestamp() });",
+    "siteSha": "ea5be498c842009cffdc67622e06eb876625ea3ab0b2253264a523b8ae4cca76",
+    "scope": "xpizza-driver/xpizza-delivery.js#completeTask",
+    "scopeSha": "9eea1d7a6ded8a50b0e8683ff6100b3f931adb6ff2a42cc17883973c903bb0ac"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.completeTask(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#completeTask",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "completeTask",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
+     }
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
+     "callers": [
+      "xpizza-driver/xpizza-delivery.js#completeTask"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "buildCompleteTaskUpdates",
+     "counts": {
+      "xpizza-driver/driver-complete.js#xpizza-driver": 2,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|delivered",
+     "S1t-a|x_pizza|delivered",
+     "S3|x_pizza|delivered"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
   "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
    "group": "driverBoard",
    "appliesWhenAny": [
@@ -8402,6 +8481,352 @@
      "S1|x_pizza|new",
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|delivered"
+    ]
+   }
+  },
+  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder>anon@self": {
+   "group": "driver-action",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#acceptSecondOrder"
+   ],
+   "authority": "scenario definition: accepting a cross-hub 2nd order (incoming banner swipe) and its transaction is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#acceptSecondOrder, so a trace that probed acceptSecondOrder and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer)",
+   "whyFalseExcludes": "acceptSecondOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed",
+   "bind": {
+    "site": "(t) => {",
+    "siteSha": "435bbd3a443c74af9836b90932e3f57af54134fa4fdb8b6ce027950999dff3f7",
+    "scope": "xpizza-driver/xpizza-delivery.js#acceptSecondOrder>anon",
+    "scopeSha": "3d01462f65a921f229310feb82e2ae62995c35dc2940c24785e3e33c9e8074fa"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.acceptSecondOrder(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#acceptSecondOrder",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "acceptSecondOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-exec:xpizza-driver/xpizza-delivery.js#acceptSecondOrder): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder@xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon": {
+   "group": "driver-action",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#acceptSecondOrder"
+   ],
+   "authority": "scenario definition: accepting a cross-hub 2nd order (incoming banner swipe) and its transaction is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#acceptSecondOrder, so a trace that probed acceptSecondOrder and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer)",
+   "whyFalseExcludes": "acceptSecondOrder was never entered in this LP interval (the tracer's function-entry probe) → this region never executed",
+   "bind": {
+    "site": "const r = await XPD.acceptSecondOrder(currentUser.uid, o.pickupTask.id);",
+    "siteSha": "609a5ab31edfd1e8ddc46d0c8de81b2564741d78bebf7b79d5f1515a486921f5",
+    "scope": "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon",
+    "scopeSha": "0b316d8e97e6d66ed775a652763b4dd06c88bd861ca1a7b60a8f63c44d518bbc"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.acceptSecondOrder(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#acceptSecondOrder",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "acceptSecondOrder",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-exec:xpizza-driver/xpizza-delivery.js#acceptSecondOrder): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-driver/xpizza-delivery.js#acceptTask@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
+   "group": "driver-action",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#acceptTask"
+   ],
+   "authority": "scenario definition: accepting the assigned order (swipe-to-accept on the active card) is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#acceptTask, so a trace that probed acceptTask and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer)",
+   "whyFalseExcludes": "acceptTask was never entered in this LP interval (the tracer's function-entry probe) → this region never executed",
+   "bind": {
+    "site": "const p = XPD.acceptTask(currentUser.uid, o.pickupTask.id);",
+    "siteSha": "656e0bf9f6b48da30c1722f2db6335bceabdc420a6db2036ab0d9a919f54786a",
+    "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
+    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.acceptTask(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#acceptTask",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "acceptTask",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 2,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-exec:xpizza-driver/xpizza-delivery.js#acceptTask): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-driver/xpizza-delivery.js#arriveAtRestaurant@xpizza-driver/index.html<script@0>#<top>>anon": {
+   "group": "driver-action",
+   "appliesWhenAny": [],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#arriveAtRestaurant"
+   ],
+   "authority": "scenario definition: marking arrival back at the restaurant (idle screen button) is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#arriveAtRestaurant, so a trace that probed arriveAtRestaurant and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer)",
+   "whyFalseExcludes": "arriveAtRestaurant was never entered in this LP interval (the tracer's function-entry probe) → this region never executed",
+   "bind": {
+    "site": "await XPD.arriveAtRestaurant(currentUser.uid);",
+    "siteSha": "0f8cf0137e7d9e23868daa9b056e8ebffe93e608e96f0c33e7a483bde9735f2a",
+    "scope": "xpizza-driver/index.html<script@0>#<top>>anon",
+    "scopeSha": "3f548e5aa89e50086b5c61f823d62b96661f3ca425724f08d0211c0425daa7d9"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.arriveAtRestaurant(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#arriveAtRestaurant",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#<top>>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "arriveAtRestaurant",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
+     }
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-exec:xpizza-driver/xpizza-delivery.js#arriveAtRestaurant): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-driver/xpizza-delivery.js#completeTask@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
+   "group": "driver-action",
+   "appliesWhenAny": [
+    {
+     "lpAction": [
+      "completeDelivery"
+     ]
+    }
+   ],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#completeTask"
+   ],
+   "authority": "scenario definition: completing the delivery (¡Entregado!) and its update builder is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#completeTask, so a trace that probed completeTask and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer); it IS the action of a completeDelivery LP (lpAction: the runner's recorded executed action + the writer's ack) → required there",
+   "whyFalseExcludes": "completeTask was never entered in this LP interval (the tracer's function-entry probe) → this region never executed, and the LP was produced by another action than completeDelivery",
+   "bind": {
+    "site": "const p = XPD.completeTask(actingUid, o.deliveryTask.id);",
+    "siteSha": "3ed443e0e56b3d96567038aec540e76074280e71a9308031c4459aa8d5b5038e",
+    "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
+    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.completeTask(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#completeTask",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "completeTask",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 2,
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 2,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 2,
+      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/driver-complete.js#xpizza-driver": 3,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 4,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3,
+      "xpizza-functions/index.js#functions": 1,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 2
+     }
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
+     "callers": [
+      "xpizza-driver/xpizza-delivery.js#completeTask"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "buildCompleteTaskUpdates",
+     "counts": {
+      "xpizza-driver/driver-complete.js#xpizza-driver": 2,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|delivered",
+     "S1t-a|x_pizza|delivered",
+     "S3|x_pizza|delivered"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "xpizza-driver/xpizza-delivery.js#pickupComplete@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
+   "group": "driver-action",
+   "appliesWhenAny": [
+    {
+     "lpAction": [
+      "pickupComplete"
+     ]
+    }
+   ],
+   "context": [
+    "no-exec:xpizza-driver/xpizza-delivery.js#pickupComplete"
+   ],
+   "authority": "scenario definition: confirming the pickup (Recogido) is a DRIVER action — decided on EXECUTION (codex P1-b b3 r1): the region runs only inside / through xpizza-driver/xpizza-delivery.js#pickupComplete, so a trace that probed pickupComplete and never recorded its entry in this LP interval establishes it did not run (a slide, a detached call, a native action, a timer); it IS the action of a pickupComplete LP (lpAction: the runner's recorded executed action + the writer's ack) → required there",
+   "whyFalseExcludes": "pickupComplete was never entered in this LP interval (the tracer's function-entry probe) → this region never executed, and the LP was produced by another action than pickupComplete",
+   "bind": {
+    "site": "await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);",
+    "siteSha": "9e794452016d96cf9a83d2e669db4b893545fcaa3d4a6e609b5a65f1d952a271",
+    "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
+    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
+   },
+   "guards": [
+    {
+     "kind": "K",
+     "file": "xpizza-driver/index.html",
+     "text": "XPD.pickupComplete(",
+     "count": 1
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/xpizza-delivery.js#pickupComplete",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon"
+     ]
+    },
+    {
+     "kind": "R",
+     "name": "pickupComplete",
+     "counts": {
+      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 3,
+      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 3,
+      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 3,
+      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 1,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 3
+     }
+    }
+   ],
+   "cases": {
+    "required": [
+     "S1|x_pizza|out_for_delivery",
+     "S3|x_pizza|out_for_delivery",
+     "S17d|r3_synth|out_for_delivery"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
