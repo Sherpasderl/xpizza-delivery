@@ -1709,7 +1709,6 @@ async function verifyVersionStructure(db, rid, versionId) {
 async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expected, readExtrasMode } = {}) {
   const token = await acquireLease(db, rid);
   try {
-    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);   // per-product extras §4: never a pre-baseline target while non-off
     // 1b: reuse the verify read's tables to re-emit the snapshot + mirror. A rollback that moved the
     // pointer without re-emitting would leave the fallback describing the version we just rolled AWAY
     // from — the fallback must always describe whatever is actually live.
@@ -1717,6 +1716,9 @@ async function rollbackVersion(db, rid, targetVersionId, { mirror, alarm, expect
     const { menuTable, extraTable } = tablesFromVersionDocs(targetDocs);
     const seq = targetDocs.seq;   // 2b-pre: the ROLLED-TO version's ordinal — never the one we rolled away from
     await verifyVersionStructure(db, rid, targetVersionId);
+    // per-product extras §4: never a pre-baseline target while non-off — judged only once the target is known to EXIST and
+    // verify (a missing / torn target keeps its own refusal), and before the pointer moves
+    await require('./extras-rollback').assertRollbackTargetEligible(db, rid, targetVersionId, readExtrasMode);
     const snapshot = snapshotOf(rid, targetVersionId, seq, menuTable, extraTable);
     await flipPointer(db, rid, token, targetVersionId, snapshot, expected, { rollback: true });
     const mirrorResult = await writeMirror(mirror, alarm, rid, { version: targetVersionId, seq, rid, menu: menuTable, extras: extraTable });
