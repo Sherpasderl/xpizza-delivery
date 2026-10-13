@@ -59,6 +59,21 @@ function footing({ subtotal, tax = money(0), discount = money(0), total }) {
 }
 const change = (tender, total) => (tender ? money(tender.centavos - total.centavos) : null);
 
+/* §1 F-PAYLIFE — the state label per (status, payment_status). Written from the contract table, never from a reader. */
+function payLife(o) {
+  const ps = o.payment_status; const st = o.status;
+  if (o.refunded_at || ps === 'refunded') return 'refunded';
+  if (ps === 'refund_pending' || ps === 'refunding_paid_after_close') return 'refund_pending';
+  if (ps === 'manual_reconciliation' || ps === 'manual_review') return 'manual_reconciliation';
+  if (typeof ps === 'string' && ps.startsWith('resolving')) return 'resolving';
+  if (st === 'cancelled') return ps === 'confirmed' ? 'cancelled' : 'cancelled-unpaid';
+  if (ps === 'abandoned') return 'abandoned';
+  if (ps === 'failed') return 'failed';
+  if (ps === 'confirmed') return 'paid';
+  if (o.free_order) return 'paid';   // nothing to collect: the order value is covered
+  return 'pending';                  // cash / card on delivery / online not yet confirmed: not paid yet
+}
+
 /* the canonical facts of one persisted order, with their AUTHORITATIVE EVIDENCE (never a reader output):
  *   intent    — what the scenario ordered (items, qty, fulfil, tender, payment method)
  *   response  — the writer's acknowledged response (createOrder / charge)
@@ -78,8 +93,13 @@ function factsOf({ intent, response, persisted, restaurant }) {
     TENDER: { value: cash ? { tender, change: change(tender, total) } : null, evidence: 'intent tender; change = tender − total (§1)' },
     PLACE: { value: persisted.order_type === 'pickup' ? { pickupAt: restaurant && restaurant.display_name } : { address: persisted.address_detected || null }, evidence: persisted.order_type === 'pickup' ? 'restaurant IDENTITY (config display name) — never address_short' : 'intent address (persisted address_detected)' },
     BRAND: { value: restaurant && restaurant.display_name, evidence: 'restaurant identity record for persisted restaurant_id' },
-    _meta: { orderId: response && response.order_id, intent },
+    PAYLIFE: { value: payLife(persisted), evidence: '§1 F-PAYLIFE state label per (status, payment_status, payment_method)' },
+    SCHED: { value: persisted.scheduled_for ? { asap: false, slot: persisted.scheduled_for } : { asap: true, slot: null }, evidence: 'persisted scheduled_for (absent = ASAP)' },
+    REWARD: { value: { redemption: persisted.redemption || null, earn: persisted.earn_preview || null }, evidence: 'persisted redemption / earn_preview (as persisted, §1 F-REWARD)' },
+    DRIVER: { value: persisted.status === 'delivered' ? { uid: persisted.delivered_by_uid || null, name: persisted.delivered_by_name || null } : null, evidence: '§1 F-DRIVER: applicable only to a delivery order that reached delivered' },
+    CASH: { value: persisted.status === 'delivered' && cash ? { owed: total } : null, evidence: '§1 F-CASH: only a delivered cash order counts toward a driver\'s cash' },
+    _meta: { orderId: response && response.order_id, intent, persisted },
   };
 }
 
-module.exports = { money, fmt, parseMoney, compareMoney, footing, change, factsOf, CURRENCY, GRAMMAR };
+module.exports = { money, fmt, parseMoney, compareMoney, footing, change, factsOf, payLife, CURRENCY, GRAMMAR };

@@ -968,7 +968,9 @@
    "status": "pending"
   },
   "xpizza-functions/cancel-notify.js#suppressCancelledNotification@xpizza-functions/index.js#sendOrderStatusNotifications": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "cancel suppression consulted by the trigger — exactly one send, no cancellation copy"
   },
   "xpizza-functions/claim-order.js#bindDecision@xpizza-functions/claim-order.js#claimOrderCore>anon": {
    "status": "pending"
@@ -1010,7 +1012,9 @@
    "status": "pending"
   },
   "xpizza-functions/index.js#createOrderApp.all>anon@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "the createOrder WhatsApp block: it renders and sends the order-received body (the terminal send)"
   },
   "xpizza-functions/index.js#fanoutStaffPush@xpizza-functions/index.js#flushStaffPushQueue": {
    "status": "pending"
@@ -1034,10 +1038,14 @@
    "status": "pending"
   },
   "xpizza-functions/index.js#notifyPickupReady@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "the pickup-ready trigger RUNS on the new order and must send nothing (a delivery, not ready) — asserted by exactly one send to the customer"
   },
   "xpizza-functions/index.js#notifyPreparing@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "the preparing trigger RUNS on the new order and must send nothing (not started) — asserted by exactly one send to the customer"
   },
   "xpizza-functions/index.js#notifyStaffOnNewOrder@self": {
    "status": "pending"
@@ -1079,7 +1087,9 @@
    "status": "pending"
   },
   "xpizza-functions/index.js#sendOrderStatusNotifications@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "the status trigger runs on the new order; at LP new it adds NO second message — asserted by exactly one send to the customer"
   },
   "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler": {
    "status": "pending"
@@ -1097,7 +1107,9 @@
    "status": "pending"
   },
   "xpizza-functions/order-received.js#shouldSendOrderReceived@xpizza-functions/index.js#sendOrderStatusNotifications": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "decides the trigger does not re-send the order-received (createOrder sent it) — exactly one send"
   },
   "xpizza-functions/paid-after-close-notify.js#needsRefundNotifyRecovery@xpizza-functions/index.js#refundReconciler": {
    "status": "pending"
@@ -1208,7 +1220,9 @@
    "status": "pending"
   },
   "xpizza-functions/whatsapp.js#renderOrderReceived@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "tplOrderReceived renders the delivery order-received body that is sent"
   },
   "xpizza-functions/whatsapp.js#renderPickupReady@self": {
    "status": "pending"
@@ -1220,7 +1234,9 @@
    "status": "pending"
   },
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon": {
-   "status": "pending"
+   "status": "terminal",
+   "observable": "wa.orderReceived",
+   "action": "createOrder sends the order-received message; read the body captured at the UltraMsg transport (the real whatsapp.js renders it)"
   },
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady": {
    "status": "pending"
@@ -1235,7 +1251,9 @@
    "status": "pending"
   },
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendOrderStatusNotifications": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
+   "reason": "the trigger's send: none at LP new — exactly one send to the customer"
   },
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendPaidAfterCloseRefund": {
    "status": "pending"
@@ -1253,28 +1271,44 @@
    "status": "pending"
   },
   "xpizza-kitchen/card-model.js#agingAnchorMs@xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the card age anchor → the ticket timer"
   },
   "xpizza-kitchen/card-model.js#bandClass@xpizza-kitchen/index.html<script@0>#headerState": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the header age band (name shared with the inline bandClass; the same call site) → ticket header"
   },
   "xpizza-kitchen/card-model.js#bandClass@xpizza-kitchen/index.html<script@0>#paintOffPageLate>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "off-page late band → the board (not late at LP new)"
   },
   "xpizza-kitchen/card-model.js#completedTabVisible@xpizza-kitchen/index.html<script@0>#render>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "tab visibility → the ticket is on the live board"
   },
   "xpizza-kitchen/card-model.js#deriveTab@xpizza-kitchen/card-model.js#completedTabVisible": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the tab of the order → the ticket is on the live board"
   },
   "xpizza-kitchen/card-model.js#deriveTab@xpizza-kitchen/index.html<script@0>#openPool>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the open pool → the ticket is on the live board"
   },
   "xpizza-kitchen/card-model.js#deriveTab@xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the subscription tab split → the ticket is on the live board"
   },
   "xpizza-kitchen/card-model.js#isStaleCancelled@xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "stale-cancel filter → the (live) ticket is shown"
   },
   "xpizza-kitchen/card-model.js#tieKey@xpizza-kitchen/card-model.js#tie": {
    "status": "pending"
@@ -1334,16 +1368,24 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#augmentTickets@xpizza-kitchen/index.html<script@0>#render": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "render-time ticket augmentation → the ticket"
   },
   "xpizza-kitchen/index.html<script@0>#bandClass@xpizza-kitchen/index.html<script@0>#headerState": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the header age band → ticket header"
   },
   "xpizza-kitchen/index.html<script@0>#bandClass@xpizza-kitchen/index.html<script@0>#paintOffPageLate>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "off-page late band → the board"
   },
   "xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "new-order detection on the board (the ticket appears)"
   },
   "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#empezar": {
    "status": "pending"
@@ -1355,13 +1397,19 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#effectiveStatus@xpizza-kitchen/index.html<script@0>#paintOffPageLate>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "status used by the late painter → the ticket state"
   },
   "xpizza-kitchen/index.html<script@0>#effectiveStatus@xpizza-kitchen/index.html<script@0>#renderTicket": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the status the ticket renders"
   },
   "xpizza-kitchen/index.html<script@0>#effectiveStatus@xpizza-kitchen/index.html<script@0>#tickElapsed>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the status behind the elapsed timer"
   },
   "xpizza-kitchen/index.html<script@0>#entregado@xpizza-kitchen/index.html<script@0>#holdFire": {
    "status": "pending"
@@ -1376,13 +1424,19 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#mapFirebaseOrderToCard@xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the private projection → the ticket"
   },
   "xpizza-kitchen/index.html<script@0>#onOrders@xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "ready-nudge bookkeeping on each snapshot (no nudge on a new order)"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#augmentTickets": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "op state → ticket"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
    "status": "pending"
@@ -1391,7 +1445,9 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#headerState": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "op state → ticket header"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#headerTap": {
    "status": "pending"
@@ -1406,7 +1462,9 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#renderTicket": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "op state → ticket"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#setHoldVisual": {
    "status": "pending"
@@ -1415,19 +1473,27 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#wireHold": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "render wires hold only on holdable (prep / listo) headers — a new ticket is tap-to-start"
   },
   "xpizza-kitchen/index.html<script@0>#reconcileCancelBumps@xpizza-kitchen/index.html<script@0>#render": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "cancel-bump reconciliation before the tab split → the ticket"
   },
   "xpizza-kitchen/index.html<script@0>#render>anon@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the board render → the ticket"
   },
   "xpizza-kitchen/index.html<script@0>#renderScheduled>anon@self": {
    "status": "pending"
   },
   "xpizza-kitchen/index.html<script@0>#renderTicket@self": {
-   "status": "pending"
+   "status": "terminal",
+   "observable": "kds.ticket",
+   "action": "boot the KDS as staff on the same emulator; read #card-<orderId>; open Programados (#btn-scheduled) and read the list"
   },
   "xpizza-kitchen/index.html<script@0>#schedSlot@xpizza-kitchen/index.html<script@0>#renderScheduled>anon": {
    "status": "pending"
@@ -1460,10 +1526,14 @@
    "status": "pending"
   },
   "xpizza-kitchen/order-filter.js#filterLiveOrders@xpizza-kitchen/xpizza-delivery.js#subscribeToOrders>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "BRAND: the live filter puts the order on its own brand's board"
   },
   "xpizza-kitchen/order-filter.js#filterScheduledOrders@xpizza-kitchen/xpizza-delivery.js#subscribeScheduledOrders>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "SCHED: the scheduled filter keeps an ASAP order out of Programados (asserted on the list)"
   },
   "xpizza-kitchen/ready-nudge.js#nudgeEligibility@xpizza-kitchen/index.html<script@0>#applyNudges": {
    "status": "pending"
@@ -1472,7 +1542,9 @@
    "status": "pending"
   },
   "xpizza-kitchen/scheduled-view.js#groupScheduledByDay@xpizza-kitchen/index.html<script@0>#renderScheduled": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "SCHED: Programados groups scheduled orders by day (opened; the ASAP order is not listed)"
   },
   "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon@self": {
    "status": "pending"
@@ -1502,19 +1574,27 @@
    "status": "pending"
   },
   "xpizza-orders/index.html#freeDeliveryRowHTML@xpizza-orders/index.html<script@2>#updateCartReviewBody": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#openCartReview",
+   "reason": "the Envío Gratis row of the cart sheet"
   },
   "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#_showStageSwap": {
-   "status": "pending"
+   "status": "terminal",
+   "observable": "form.payStep",
+   "action": "Continuar → pay step; Efectivo + tender chip; read #s2-summary, #change-chips, #change-hint (the whole pay step is this observable)"
   },
   "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals": {
    "status": "pending"
   },
   "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#requestServerQuote>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#_showStageSwap",
+   "reason": "server quote re-renders the pay-step summary"
   },
   "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#updateTotal": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#_showStageSwap",
+   "reason": "totals refresh of the pay-step summary"
   },
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
    "status": "pending"
@@ -1523,19 +1603,27 @@
    "status": "pending"
   },
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder": {
-   "status": "pending"
+   "status": "terminal",
+   "observable": "form.confirmation",
+   "action": "Confirmar y enviar (submitOrder → createOrder); read #s5"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/account.js#applyReorderToCart": {
    "status": "pending"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#<top>": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#chg",
+   "reason": "boot paint of the cart"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#chg": {
-   "status": "pending"
+   "status": "terminal",
+   "observable": "form.cartPill",
+   "action": "tap the dish card + (chg); read #cart-pill-text"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#liveMenuPaint": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#chg",
+   "reason": "live menu repaint of the cart"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#restoreOrderForm": {
    "status": "pending"
@@ -1547,7 +1635,9 @@
    "status": "pending"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#updateTotal": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#chg",
+   "reason": "totals refresh of the cart"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/order-self-update.js#restoreSnapshot": {
    "status": "pending"
@@ -1556,10 +1646,14 @@
    "status": "pending"
   },
   "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#openCartReview": {
-   "status": "pending"
+   "status": "terminal",
+   "observable": "form.reviewSheet",
+   "action": "tap the cart bar (toggleCartReview → openCartReview); read #cart-review-body / #cart-review-total"
   },
   "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#updateCart": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#openCartReview",
+   "reason": "cart change re-renders the sheet body"
   },
   "xpizza-orders/index.html<script@2>#applyPollState@xpizza-orders/index.html<script@2>#handlePaymentReturn": {
    "status": "pending"
@@ -1574,13 +1668,19 @@
    "status": "pending"
   },
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#submitOrder": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
+   "reason": "the same call site as the terminal (the census names the inline unit)"
   },
   "xpizza-orders/index.html<script@2>#showSuccess>anon@self": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
+   "reason": "the receipt rows callback of the confirmation"
   },
   "xpizza-orders/index.html<script@2>#successTotalCents@xpizza-orders/index.html<script@2>#showSuccess>anon": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
+   "reason": "the confirmation Total"
   },
   "xpizza-portal/ventas-logic.js#viewModel@xpizza-portal/ventas.js#paintBody": {
    "status": "pending"

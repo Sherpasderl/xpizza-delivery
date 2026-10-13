@@ -37,9 +37,16 @@ function gateA({ scenarios = null, brands = null, lps = null, matrix = load('mat
     }
   }
   // de-duplicate: two via regions of one output targeting the same region are ONE comparison
-  const seen = new Set(); const uniq = cells.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+  // (every merged source region — the terminal itself or a via into it — is kept in `fromRegions`, so no region of a
+  // multi-region output drops out of the accounting)
+  const seen = new Map(); const uniq = [];
+  for (const x of cells) {
+    const src = x.viaFrom || x.region; const y = seen.get(x.id);
+    if (!y) { const z = { ...x, fromRegions: [src] }; seen.set(x.id, z); uniq.push(z); continue; }
+    if (!y.fromRegions.includes(src)) y.fromRegions.push(src);
+  }
   const count = (f) => uniq.reduce((m, x) => { const k = f(x); m[k] = (m[k] || 0) + 1; return m; }, {});
-  return { cells: uniq, problems, counts: { cells: uniq.length, byKind: count((x) => x.kind), byStatus: count((x) => x.status), regions: new Set(uniq.map((x) => x.region)).size } };
+  return { cells: uniq, problems, counts: { cells: uniq.length, byKind: count((x) => x.kind), byStatus: count((x) => x.status), regions: new Set(uniq.map((x) => x.region)).size, sourceRegions: new Set(uniq.flatMap((x) => x.fromRegions)).size } };
 }
 
 module.exports = { gateA, outputOfAssertion };

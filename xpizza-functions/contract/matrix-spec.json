@@ -998,7 +998,7 @@
     }
   },
   "displayCells": {
-    "_doc": "codex P1 plan r1 P1-7 / approved §1 'Envío Gratis': DISPLAY cells (kind display; counted separately). X Pizza's form shows the free-delivery promo row (\"Envío Gratis\", L70 struck through) for DELIVERY and NOT for pickup; L70 is never part of the payable total (an oracle MONEY relationship). La Musa has no such row.",
+    "_doc": "codex P1 plan r1 P1-7 / approved §1 'Envío Gratis': DISPLAY cells (kind display; counted separately). X Pizza's form shows the free-delivery promo row (\"Envío Gratis\", L70 struck through) for DELIVERY and NOT for pickup; L70 is never part of the payable total (an oracle MONEY relationship). La Musa has no such row. P1-a review: the PAY STEP (R14) does not call freeDeliveryRowHTML — renderStage2Summary prints its own 'Envío / Gratis' row — so R14's output is renderStage2Summary (the cart sheet R13 is freeDeliveryRowHTML's only consumer).",
     "envio_gratis": {
       "readers": [
         "R13",
@@ -1016,7 +1016,7 @@
           "xpizza-orders/index.html#freeDeliveryRowHTML"
         ],
         "R14": [
-          "xpizza-orders/index.html#freeDeliveryRowHTML"
+          "xpizza-orders/index.html#renderStage2Summary"
         ],
         "R15": [
           "xpizza-orders/index.html#showSuccess"

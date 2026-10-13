@@ -1,0 +1,43 @@
+{
+ "_doc": "R3 P1 — the SCENARIO DEFINITIONS a run executes (fixture intent, the ordered UI / staff steps, the LPs observed). An applicability exclusion is bound to sha256 of its scenario's entry here (contract/applicability.js scenarioSha): changing a scenario invalidates its exclusions. The journey reads its intent and step list from this file and asserts it executed exactly these steps.",
+ "scenarios": {
+  "S1": {
+   "brand": "x_pizza",
+   "lps": [
+    "new"
+   ],
+   "intent": {
+    "rid": "x_pizza",
+    "fulfil": "delivery",
+    "pay": "cash",
+    "name": "P1A Journey",
+    "phone": "99887711",
+    "email": "p1a@example.com",
+    "addressDetails": "Casa 12, portón negro",
+    "qty": 1,
+    "dish": "the first dish card's + stepper",
+    "tenderCents": 50000,
+    "scheduledFor": null,
+    "redeem": null,
+    "extras": []
+   },
+   "steps": [
+    "form.boot",
+    "form.add-dish",
+    "form.customer",
+    "form.cart-sheet-open",
+    "form.continue",
+    "form.address-details",
+    "form.pay-cash",
+    "form.tender",
+    "form.pay",
+    "kds.boot-staff",
+    "kds.open-programados"
+   ],
+   "pageWallClock": {
+    "form": "13:00 Honduras time (UTC-6) on the run's own Honduras day — inside the X Pizza form's hard-coded delivery HOURS (12:00–19:45 Sun–Wed, 12:00–20:45 Thu–Sat), so ASAP is offered at any hour the suite runs",
+    "kds": "real"
+   }
+  }
+ }
+}

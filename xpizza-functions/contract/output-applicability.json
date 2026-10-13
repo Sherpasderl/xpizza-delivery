@@ -1,0 +1,1676 @@
+{
+ "_doc": "R3 P1 §3c — REVIEWED applicability exclusions (contract/applicability.js). Each entry: region (contract/regions.json), scope {S, brands, lps}, the CONTRACT preconditions asserted in the run (applicability.PRECONDITIONS), the reason, the source binding {site, siteSha, scope, scopeSha} and the scenario binding scenarioSha (contract/p1-scenarios.json). A stale binding or an unmet precondition → the cell is REQUIRED again (RED). Absence / display obligations can never be excluded.",
+ "exclusions": [
+  {
+   "region": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "delivery",
+    "status-new"
+   ],
+   "reason": "the pickup-ready send",
+   "bind": {
+    "site": "result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);",
+    "siteSha": "8559dfc8ad37e4f6bc93056573f292a7bcf2caf09930fdefc45c97501778a39f",
+    "scope": "xpizza-functions/index.js#notifyPickupReady",
+    "scopeSha": "3fb7eb1705791017bf466f8a5dc63e425eeae016bbcc27d602c95d3f7c322289"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPreparing",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new",
+    "no-kitchen-action"
+   ],
+   "reason": "the preparing send",
+   "bind": {
+    "site": "result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);",
+    "siteSha": "8559dfc8ad37e4f6bc93056573f292a7bcf2caf09930fdefc45c97501778a39f",
+    "scope": "xpizza-functions/index.js#notifyPreparing",
+    "scopeSha": "a6819e0c6c4297a5eb0b43aad443e9a36b2feb19b3f80baac4b22f45d58ea762"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#renderPreparing@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new",
+    "no-kitchen-action"
+   ],
+   "reason": "the preparing body",
+   "bind": {
+    "site": "function renderPreparing({ customerName, etaMinutes, orderType, trackingToken, restaurantId, brand }) {",
+    "siteSha": "a4b9515fd32dbf190f693ddf6464fe8f233c366c3892b7a4ede4d79c4f1821fc",
+    "scope": "xpizza-functions/whatsapp.js#renderPreparing",
+    "scopeSha": "020d455d22b399a50692d77455b7df9735c2aa5a12b28c77c0296c1b4ef4c2aa"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/index.js#onIncomingWhatsApp@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-inbound"
+   ],
+   "reason": "inbound WhatsApp handler (status lookup)",
+   "bind": {
+    "site": "async (req, res) => {",
+    "siteSha": "479d04be0606d25cbfe9359aae247a83c172b9098027c8a1ac144fbef4eece81",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "ec874dceaf5c03820c228849d3342a26dd198b7905134fc2977a7f274991f636"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/index.js#onIncomingWhatsApp>anon@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-inbound"
+   ],
+   "reason": "inbound WhatsApp handler callback",
+   "bind": {
+    "site": "o => {",
+    "siteSha": "e11a39d909aa3289fa248d2557e3c320228524007c7c674b82f8f339152acc83",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp>anon",
+    "scopeSha": "95834ee2abccefde8d2668e34062fc255751f1d8673de9c2f336b46cf928094f"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#onIncomingWhatsApp",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-inbound"
+   ],
+   "reason": "the inbound reply send",
+   "bind": {
+    "site": "await whatsapp.sendMessage(fromPhoneRaw, replyBody, restaurantId);   // reply via the texted restaurant's instance",
+    "siteSha": "9abd63fecaa854820630aecd24d4920ae62cfe3ff12cacf3c1ce92eb9884b297",
+    "scope": "xpizza-functions/index.js#onIncomingWhatsApp",
+    "scopeSha": "ec874dceaf5c03820c228849d3342a26dd198b7905134fc2977a7f274991f636"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#requestOtp",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-otp"
+   ],
+   "reason": "the OTP send",
+   "bind": {
+    "site": "await whatsapp.sendMessage(phone, whatsapp.tplOtp({ code }), restaurantId);   // D12b: the brand from this restaurant's config, never a literal",
+    "siteSha": "c010876b3f6275d6d7b9286943dd885112439552e06d06fc4d1d568faddf47fb",
+    "scope": "xpizza-functions/index.js#requestOtp",
+    "scopeSha": "61c21c8a1856fa81e57abc7f2cd22dc3c728b17dc0e2a88ea467989884f1d4dc"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment",
+    "no-refund"
+   ],
+   "reason": "a paid-after-close refund needs an ONLINE payment confirmed after close",
+   "bind": {
+    "site": "try { await sendPaidAfterCloseRefund(db, { orderId, order: o }); notifyRecovered++; } catch (_) {}",
+    "siteSha": "89061984e006b424b14d86cb5113e77b3e903f44c68f838d2ec3e8cfb50b2800",
+    "scope": "xpizza-functions/index.js#refundReconciler",
+    "scopeSha": "e847462d9242da4fad7371a309f75d5715e554c87918b50cb67cdaadeafe23c1"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment",
+    "no-refund"
+   ],
+   "reason": "paid-after-close hold at materialize (online only)",
+   "bind": {
+    "site": "if (deps.sendPaidAfterCloseRefund) { try { await deps.sendPaidAfterCloseRefund(deps.db, { orderId, order }); } catch (_) {} }   // customer message ONLY after a confirmed refund",
+    "siteSha": "cc67f0f472791661b66c97555ab8d89917fbfff581d6be29a1fec4b3d78628a2",
+    "scope": "xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize",
+    "scopeSha": "eae24f060b3241f366c7506b73cde5f321126729a8f226bbdd5bfaf320e72517"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendPaidAfterCloseRefund",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment",
+    "no-refund"
+   ],
+   "reason": "the paid-after-close refund send",
+   "bind": {
+    "site": "try { res = await whatsapp.sendMessage(order.customer_phone, body, rid); }",
+    "siteSha": "255045f7373801eb13ae8996ccaca7239062e362372fa93574e2cf2e28433934",
+    "scope": "xpizza-functions/index.js#sendPaidAfterCloseRefund",
+    "scopeSha": "a3f7fa44415de05e7db7085f6b1de5f0d3218a3336bf0edf9fd2de5d4786f9d1"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp_inbound.js#tplPaidAfterCloseRefunded@xpizza-functions/index.js#sendPaidAfterCloseRefund",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment",
+    "no-refund"
+   ],
+   "reason": "the paid-after-close refund body",
+   "bind": {
+    "site": "const body = inbound.tplPaidAfterCloseRefunded({ customerName: order.customer_name, total, restaurantId: rid });",
+    "siteSha": "9c14b2b6f78bd7b143a22560cf2a91e38b5e3ab9f64b121bf0933aac0d9e7cd2",
+    "scope": "xpizza-functions/index.js#sendPaidAfterCloseRefund",
+    "scopeSha": "a3f7fa44415de05e7db7085f6b1de5f0d3218a3336bf0edf9fd2de5d4786f9d1"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/paid-after-close-notify.js#needsRefundNotifyRecovery@xpizza-functions/index.js#refundReconciler",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment",
+    "no-refund"
+   ],
+   "reason": "refund-notify recovery (online refunds only)",
+   "bind": {
+    "site": "if (needsRefundNotifyRecovery(o, now, 2 * 60 * 1000)) {",
+    "siteSha": "cebf5cdd793a080b49b30e8c96304fa4acf25d87a8aed2618c4304063c654e83",
+    "scope": "xpizza-functions/index.js#refundReconciler",
+    "scopeSha": "e847462d9242da4fad7371a309f75d5715e554c87918b50cb67cdaadeafe23c1"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/index.js#sendScheduledSlotClosed@xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "asap",
+    "not-online-payment"
+   ],
+   "reason": "the scheduled-slot-closed message: a SCHEDULED ONLINE order confirmed after its slot closed",
+   "bind": {
+    "site": "if (didNotify && deps.sendScheduledSlotClosed) { try { await deps.sendScheduledSlotClosed(db, { orderId, order }); } catch (_) {} }",
+    "siteSha": "893a10464deb4f02f240ce89d6f56ab6620dde110064ea556d8b8a8617438fb9",
+    "scope": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize",
+    "scopeSha": "f7eb50858e9e28591b6b740fa1d91265c9c3892cc9ab6b00dc1a311473c0d0d4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendScheduledSlotClosed",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "asap",
+    "not-online-payment"
+   ],
+   "reason": "the scheduled-slot-closed send",
+   "bind": {
+    "site": "await whatsapp.sendMessage(order.customer_phone, inbound.tplScheduledSlotClosed(), rid);",
+    "siteSha": "8b0299edcbc3e662e5dcc238ef9c3a9c746d57483399a838cfd7f24b7d221305",
+    "scope": "xpizza-functions/index.js#sendScheduledSlotClosed",
+    "scopeSha": "ca4b79d77b285206e52bcebf45b6c3fe438b429ebdf0d4c6dcc6b1d1a2906f02"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#renderCancelled@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "not-cancelled"
+   ],
+   "reason": "the cancellation body",
+   "bind": {
+    "site": "function renderCancelled({ orderId, restaurantId, brand }) {",
+    "siteSha": "49babcd2155dbe1f581ef3daa0eea71172d10a68dc3b3b619370a2ea0ee23d23",
+    "scope": "xpizza-functions/whatsapp.js#renderCancelled",
+    "scopeSha": "d67491ce34710b2d387c651a057140ff72caa7970dcd83d1ae587363a3869900"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#renderDelivered@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new"
+   ],
+   "reason": "the delivered body",
+   "bind": {
+    "site": "function renderDelivered({ customerName, restaurantId, brand }) {",
+    "siteSha": "4f2fae774f0566c5cdecf1b94c613b407becb1e622001b895f63a64a906e6813",
+    "scope": "xpizza-functions/whatsapp.js#renderDelivered",
+    "scopeSha": "c5fbde6e5599998d39f7fd3c4bf9232e36528af289f68e33a3825ac0117093cc"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#renderPickupReceived@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "delivery"
+   ],
+   "reason": "the PICKUP order-received body (this order is a delivery)",
+   "bind": {
+    "site": "function renderPickupReceived({ customerName, orderId, itemsText, total, pickupTime, trackingToken, restaurantId, brand }) {",
+    "siteSha": "51dbbf0ac4c56c7b325f6c597a9e0929c905c416531f03d8870e2f0fbed11942",
+    "scope": "xpizza-functions/whatsapp.js#renderPickupReceived",
+    "scopeSha": "ab5b746d79ec894c97da3aa2d6ab04663f208b47ed0ea41a292173fbe159a51d"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#tplDriverAssigned@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new",
+    "no-driver"
+   ],
+   "reason": "the driver-assigned body",
+   "bind": {
+    "site": "function tplDriverAssigned({ customerName, driverName, trackingToken, restaurantId }) {",
+    "siteSha": "2d87c87e016f979bf9432ff120db915a37cb586553fcbcf106e76c18fc29aa80",
+    "scope": "xpizza-functions/whatsapp.js#tplDriverAssigned",
+    "scopeSha": "b4b643a3c271d200d8f91759a775ebc97519486075c006c6617f6bf7356d50d4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-functions/whatsapp.js#tplOutForDelivery@xpizza-functions/index.js#sendOrderStatusNotifications",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new",
+    "no-driver"
+   ],
+   "reason": "the out-for-delivery body",
+   "bind": {
+    "site": "body = whatsapp.tplOutForDelivery({",
+    "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
+    "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
+    "scopeSha": "e7f5d5481a5946c575c35223985bc201d3ca009d3877caf30e3cf1a33facf376"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#empezar",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "the status write from a kitchen tap (empezar)",
+   "bind": {
+    "site": "function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'empezar'); }",
+    "siteSha": "68b13b0c29c2c4b3ea016f98ba7e31976f96be7d0a86b9ee733d16ba7b683a53",
+    "scope": "xpizza-kitchen/index.html<script@0>#empezar",
+    "scopeSha": "68b13b0c29c2c4b3ea016f98ba7e31976f96be7d0a86b9ee733d16ba7b683a53"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#listo",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "the status write from a kitchen tap (listo)",
+   "bind": {
+    "site": "commitStatusWrite(id, 'listo');",
+    "siteSha": "4d1291777b79e6ec8543466fef369f3046e3031fcfa1315837369662d4081293",
+    "scope": "xpizza-kitchen/index.html<script@0>#listo",
+    "scopeSha": "31665374a83193d932847001903a240e95b509714811cf9b906a2ad8713ef72a"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#retryWrite",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "the status write from a kitchen tap (retryWrite)",
+   "bind": {
+    "site": "function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }",
+    "siteSha": "c07c6f75f26ca1c3e78518bba1b1a74dc9f047c72970ae0391c489d507af305b",
+    "scope": "xpizza-kitchen/index.html<script@0>#retryWrite",
+    "scopeSha": "c07c6f75f26ca1c3e78518bba1b1a74dc9f047c72970ae0391c489d507af305b"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#entregado@xpizza-kitchen/index.html<script@0>#holdFire",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "press-and-hold completion",
+   "bind": {
+    "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
+    "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#holdFire@xpizza-kitchen/index.html<script@0>#holdBegin>anon",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "press-and-hold",
+   "bind": {
+    "site": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);         // fires ONLY if still armed at 700ms",
+    "siteSha": "a1d5fb0bfdbd1c9778a06df43033609701e708e5fb3dd3689b5095f9482627bd",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdBegin>anon",
+    "scopeSha": "15dd89297b15b9e18182d42ec602aefc2e4fccf7d2b77faf82bd5ebf59e17348"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#headerTap",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "header tap → listo",
+   "bind": {
+    "site": "else if (op === 'prep' || op === 'listo') listo(id);",
+    "siteSha": "3321e4970e910ee329974bd7814c827bce28cad102a8f6060f64b359209a5f49",
+    "scope": "xpizza-kitchen/index.html<script@0>#headerTap",
+    "scopeSha": "65a452e641922223bca7f2404fcb3f6e217e1563b207c0a66fcaefe41ba165c3"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#holdFire",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "hold → listo",
+   "bind": {
+    "site": "else listo(id);                                               // SAME confirmed-write path, exactly once",
+    "siteSha": "f0030f9c4adc00ee329fed4982e95f63b22fce9f94cf277792a7388e06ce12fa",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#commitStatusWrite",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (commitStatusWrite)",
+   "bind": {
+    "site": "const from = order ? opState(order) : (action === 'listo' ? 'prep' : 'nuevo');",
+    "siteSha": "fa03667b2a006d75369959bac390463a4fe6223a8c307d4e5026123eef73c75c",
+    "scope": "xpizza-kitchen/index.html<script@0>#commitStatusWrite",
+    "scopeSha": "eaf4e96ae50822dd5d42c23980f2bca7e90fd50f6abea70edd897471ba1e1329"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#entregado",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (entregado)",
+   "bind": {
+    "site": "if (!o || o.order_type !== 'pickup' || opState(o) !== 'listo') return;   // ONLY a ready pickup earns",
+    "siteSha": "1d6a6a61052966b8727d1b4cedd987d57683d4de407a18a30d63f6fa7115f60f",
+    "scope": "xpizza-kitchen/index.html<script@0>#entregado",
+    "scopeSha": "ce7cf8cd9343657bf64476cda157931863c061e901163f04e82651ba1d4720dd"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdFire",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (holdFire)",
+   "bind": {
+    "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
+    "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#listo",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (listo)",
+   "bind": {
+    "site": "if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }",
+    "siteSha": "17a74ade0a96600747d729456e991d9b0939acbcc5c9bb3106eadf83e8089f25",
+    "scope": "xpizza-kitchen/index.html<script@0>#listo",
+    "scopeSha": "31665374a83193d932847001903a240e95b509714811cf9b906a2ad8713ef72a"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#setHoldVisual",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (setHoldVisual)",
+   "bind": {
+    "site": "const rest = (o && o.order_type === 'pickup' && opState(o) === 'listo') ? 'Entregado' : 'Completar';",
+    "siteSha": "15c3377f3f6a3a567656182812a9c03cfc2bcc14e8330c8d232d012dfeef508b",
+    "scope": "xpizza-kitchen/index.html<script@0>#setHoldVisual",
+    "scopeSha": "ca5ba3aabd3431c0d44d205cb8edc96e585d52b69cc1ef9a6b58ae5e2495bf33"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#startCompletion>anon",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (startCompletion>anon)",
+   "bind": {
+    "site": "pendingWrites[id] = { from: opState(order), action: 'completar', skip: true, msg: 'No se pudo completar' };",
+    "siteSha": "1aea458b01efba8de552ed38e56e02cd13618d16dde067b91eaf019258ae4daa",
+    "scope": "xpizza-kitchen/index.html<script@0>#startCompletion>anon",
+    "scopeSha": "08b5ae8ff8f358266ac82dc33da575d0871c27cc2e7ae2e19fd65b70bf786439"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#headerTap",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (headerTap)",
+   "bind": {
+    "site": "const op = opState(o);",
+    "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
+    "scope": "xpizza-kitchen/index.html<script@0>#headerTap",
+    "scopeSha": "65a452e641922223bca7f2404fcb3f6e217e1563b207c0a66fcaefe41ba165c3"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdBegin",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "op state read inside a kitchen action (holdBegin)",
+   "bind": {
+    "site": "const op = opState(o);",
+    "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+    "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdBegin",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "hold visual (holdBegin)",
+   "bind": {
+    "site": "setHoldVisual(id, true);",
+    "siteSha": "6e23f6ac62cd2c086ae5fca624c8edfd3b42be7523fcffd5216df2601ef612ec",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdBegin",
+    "scopeSha": "031b5708cebe6dce7c60543acbdf3b1658283e769caa63b7a4548e0878343b26"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdCancel",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "hold visual (holdCancel)",
+   "bind": {
+    "site": "setHoldVisual(activeHold.id, false);",
+    "siteSha": "d7a496708f2730ad711648eea8ab408baa2c38044c2c4469115583607a300fd4",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdCancel",
+    "scopeSha": "92d4085472791b5e1eaabb45cef82051355856210cac74cf9756d809aefb1cf4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdFire",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "hold visual (holdFire)",
+   "bind": {
+    "site": "setHoldVisual(id, false);",
+    "siteSha": "34761d369da6dfbafeb140c203c6c59034773d73affec4ddb92806a96d273c58",
+    "scope": "xpizza-kitchen/index.html<script@0>#holdFire",
+    "scopeSha": "f6bd156f00a94ccaf2cd55a2d2126d51a3a53d68f1b9d6279277d5d6714f98f4"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#commitStatusWrite",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "completion beat (commitStatusWrite)",
+   "bind": {
+    "site": "else if (action === 'listo') startCompletion(id);  // DELIVERY (+ non-pickup): local beat only",
+    "siteSha": "4b7d35e3b01706954c55ffa5daedad1640497b977098525a5703bd18f085296f",
+    "scope": "xpizza-kitchen/index.html<script@0>#commitStatusWrite",
+    "scopeSha": "eaf4e96ae50822dd5d42c23980f2bca7e90fd50f6abea70edd897471ba1e1329"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#entregado",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "completion beat (entregado)",
+   "bind": {
+    "site": "startCompletion(id);",
+    "siteSha": "2c0ca3451333184c8f7c43c6ec54e94e09796e37907c358cb9f79989b39eaac6",
+    "scope": "xpizza-kitchen/index.html<script@0>#entregado",
+    "scopeSha": "ce7cf8cd9343657bf64476cda157931863c061e901163f04e82651ba1d4720dd"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#listo",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "completion beat (listo)",
+   "bind": {
+    "site": "if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }",
+    "siteSha": "17a74ade0a96600747d729456e991d9b0939acbcc5c9bb3106eadf83e8089f25",
+    "scope": "xpizza-kitchen/index.html<script@0>#listo",
+    "scopeSha": "31665374a83193d932847001903a240e95b509714811cf9b906a2ad8713ef72a"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#updateHeaderRing@xpizza-kitchen/index.html<script@0>#paintItemCheck",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "item check-off ring",
+   "bind": {
+    "site": "updateHeaderRing(card, id);",
+    "siteSha": "d6c01680a966bed612b4ce348738481734b137637d8e09a761761d1ad009f491",
+    "scope": "xpizza-kitchen/index.html<script@0>#paintItemCheck",
+    "scopeSha": "c4608776603727140b733110fa2c068656d804a93eee72357d9b02812dac5943"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#showLog@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action"
+   ],
+   "reason": "the Historial log (a tap)",
+   "bind": {
+    "site": "function showLog(event, id) {",
+    "siteSha": "9092ac657d164afff45c5405fb31f94a8ac6ef0d5c18107356b5823fb48ac31f",
+    "scope": "xpizza-kitchen/index.html<script@0>#showLog",
+    "scopeSha": "821911cde59148d11d3125abb0832e3d130c2052667f05c7bc39a7fd01a76c60"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/sherpa-client.js#sfetch>anon@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-kitchen-action",
+    "kds-no-http"
+   ],
+   "reason": "the KDS HTTP response handler (its calls are kitchen actions)",
+   "bind": {
+    "site": "function (v, k) { h[k] = v; }",
+    "siteSha": "eb2c2835d47e06c72060f24e2adaf943abca43c681204d44b8b3e05a124b27ca",
+    "scope": "xpizza-kitchen/sherpa-client.js#sfetch>anon",
+    "scopeSha": "e31f673ed2612938a8ba378526d66824e99e3300876b5bf1e267d8c8a4fc0b7a"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#showCancelBanner@xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "not-cancelled"
+   ],
+   "reason": "the cancellation banner",
+   "bind": {
+    "site": "showCancelBanner(o);",
+    "siteSha": "40aa057f011e7a5695466bf63f0f07676c52bcf3329b8e8668c7cab73e70b7c8",
+    "scope": "xpizza-kitchen/index.html<script@0>#checkForNewOrders>anon",
+    "scopeSha": "a5d2d21ecc3f8667c908075cbe7262a15cfc035db361ed784eee649a3f1cb83d"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/card-model.js#tieKey@xpizza-kitchen/card-model.js#tie",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "single-live-order"
+   ],
+   "reason": "the sort tie-break between two tickets",
+   "bind": {
+    "site": "const tie = (a, b) => tieKey(a).localeCompare(tieKey(b));",
+    "siteSha": "1cdca66c335bfbccb7c93a3827bf78fa6e8b669ea3c7c387c3f5bc28ccea0eae",
+    "scope": "xpizza-kitchen/card-model.js#tie",
+    "scopeSha": "f31fb73cae214536a740ac62e665d10c97524afa52953dc9742d1193b2cb075d"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#renderScheduled>anon@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "asap"
+   ],
+   "reason": "Programados per-scheduled-order rendering (this order is ASAP; the list is asserted not to contain it)",
+   "bind": {
+    "site": "g => g.dayKey === schedSelectedDay",
+    "siteSha": "5a5e714a237d2c828fdce3e4d3b9d620d0d4a7045d8977433818471b9a9af7c0",
+    "scope": "xpizza-kitchen/index.html<script@0>#renderScheduled>anon",
+    "scopeSha": "91148422e8de901f20113796248ce608f227fc85f9d582528133e05b64802cc3"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/index.html<script@0>#schedSlot@xpizza-kitchen/index.html<script@0>#renderScheduled>anon",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "asap"
+   ],
+   "reason": "Programados slot of a scheduled order",
+   "bind": {
+    "site": "<div class=\"card-band-r2\"><span class=\"ch-slot\"><svg viewBox=\"0 0 24 24\"><use href=\"#i-clock\"/></svg>${escapeHtml(schedSlot(o))}</span></div>",
+    "siteSha": "775602c4ee0511332a24d1115857aa524ec907a71c7ecbac20d19d7713202409",
+    "scope": "xpizza-kitchen/index.html<script@0>#renderScheduled>anon",
+    "scopeSha": "91148422e8de901f20113796248ce608f227fc85f9d582528133e05b64802cc3"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon@self",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "asap"
+   ],
+   "reason": "Programados per-order grouping callback",
+   "bind": {
+    "site": "(a, b) => {",
+    "siteSha": "ec176b81ed21b5b35a14c5e3bb964f832ee8857964cd46b95451e26665a09227",
+    "scope": "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon",
+    "scopeSha": "c5b0540d8bdbb3920f65259951687d95fb8189b1060d593f8c50a9c20eb70246"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/ready-nudge.js#nudgeEligibility@xpizza-kitchen/index.html<script@0>#applyNudges",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new",
+    "no-kitchen-action"
+   ],
+   "reason": "the ready nudge concerns an order IN PREPARATION past its ready time (applyNudges)",
+   "bind": {
+    "site": "const nudge = nudgeEligibility(raw[id], timelines[id], thresholdMin, now).nudge;",
+    "siteSha": "6bad4d82eba8d8c28e194b451d8c7a050d4e950ebfb9b22f64aee8094c767fce",
+    "scope": "xpizza-kitchen/index.html<script@0>#applyNudges",
+    "scopeSha": "78b6373586d5893c7dba9e3760a94053c02480ffc44a5850d448baccaba392d3"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-kitchen/ready-nudge.js#nudgeEligibility@xpizza-kitchen/index.html<script@0>#overdueIds",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "status-new",
+    "no-kitchen-action"
+   ],
+   "reason": "the ready nudge concerns an order IN PREPARATION past its ready time (overdueIds)",
+   "bind": {
+    "site": "if (nudgeEligibility(raw[id], timelines[id], thresholdMin, now).nudge) s.add(id);",
+    "siteSha": "51c3a114e993a0111a63c194bf178a13e7231de636c72b3c33c58d597396537a",
+    "scope": "xpizza-kitchen/index.html<script@0>#overdueIds",
+    "scopeSha": "faab4fc238c7c3ecbc479c54453d5cda7073eaef43b5dc3d8d3c210bc63a547c"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#updateCart@xpizza-orders/account.js#applyReorderToCart",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-reorder"
+   ],
+   "reason": "reorder from history",
+   "bind": {
+    "site": "try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}",
+    "siteSha": "8e9511fb74406398df18571e5a8de35ae34ab5f4df1cecc50381fd9ba19930c8",
+    "scope": "xpizza-orders/account.js#applyReorderToCart",
+    "scopeSha": "faef5761aaa15154bccc927e8da714650cac1c589218753a4ecaf02a89b067f8"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#restoreOrderForm",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-restore"
+   ],
+   "reason": "saved-form restore",
+   "bind": {
+    "site": "renderMenu(); updateCart(); updateTotal();",
+    "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
+    "scope": "xpizza-orders/index.html<script@2>#restoreOrderForm",
+    "scopeSha": "b4bac8d3c836c0cc8ce49b76b9c6af4c89c4859fd34d16131d69530f904e82e5"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#updateCart@xpizza-orders/order-self-update.js#restoreSnapshot",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-restore"
+   ],
+   "reason": "self-update snapshot restore",
+   "bind": {
+    "site": "renderMenu(); updateCart(); updateTotal();",
+    "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
+    "scope": "xpizza-orders/order-self-update.js#restoreSnapshot",
+    "scopeSha": "660d0ad9f7750b4197ecfc82a7afb0b262def56b52a008731355901825fd632d"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#startAnotherOrder",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-another-order"
+   ],
+   "reason": "\"Hacer otro pedido\"",
+   "bind": {
+    "site": "updateCart();",
+    "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
+    "scope": "xpizza-orders/index.html<script@2>#startAnotherOrder",
+    "scopeSha": "09a3dfb14f4e9de15bed1ecc6fd128bace1b63c4622ad2cd195a2167cf477870"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#toggleDetailExtra",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-extras"
+   ],
+   "reason": "extras toggle on the dish detail",
+   "bind": {
+    "site": "updateCart();",
+    "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
+    "scope": "xpizza-orders/index.html<script@2>#toggleDetailExtra",
+    "scopeSha": "d8e358987aafc53d8ae3feb4931fa4101c9ef3e26e0024673940ac5cb7caeffc"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#chgFromCart",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-sheet-edit"
+   ],
+   "reason": "qty edit inside the cart sheet",
+   "bind": {
+    "site": "updateCartReviewBody();",
+    "siteSha": "ae662ecf8967309c29f300aed59d7f594ff58a1bfc9e151a238cb0ff594239a8",
+    "scope": "xpizza-orders/index.html<script@2>#chgFromCart",
+    "scopeSha": "7c3808d13b99068b162ed7eb3c100c9b2372f56fc881d620d0e533901994836d"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-redeem"
+   ],
+   "reason": "redemption quote",
+   "bind": {
+    "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
+    "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
+    "scope": "xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals",
+    "scopeSha": "27933840e3faa3ed6f3401227825f5be0ae8993d1577b22720a0c1727d0c2f24"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment"
+   ],
+   "reason": "the confirmation after an ONLINE payment (applyPollState)",
+   "bind": {
+    "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
+    "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
+    "scope": "xpizza-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment"
+   ],
+   "reason": "the confirmation after an ONLINE payment (processPixelPay)",
+   "bind": {
+    "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
+    "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
+    "scope": "xpizza-orders/index.html<script@2>#processPixelPay",
+    "scopeSha": "23c841476b8f9745918327202eabe49ba4bbba79a18a9018ef8272e4e0a7e055"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment"
+   ],
+   "reason": "the confirmation after an ONLINE payment (applyPollState)",
+   "bind": {
+    "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
+    "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
+    "scope": "xpizza-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
+   "region": "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "cash",
+    "not-online-payment"
+   ],
+   "reason": "the confirmation after an ONLINE payment (processPixelPay)",
+   "bind": {
+    "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
+    "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
+    "scope": "xpizza-orders/index.html<script@2>#processPixelPay",
+    "scopeSha": "23c841476b8f9745918327202eabe49ba4bbba79a18a9018ef8272e4e0a7e055"
+   },
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  }
+ ]
+}
