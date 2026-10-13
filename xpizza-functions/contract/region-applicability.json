@@ -19,6 +19,571 @@
   "S17p": "bd615c7d4a38baad28799abff730a2833e440a6bef6a2bab7a39e18dd037c19b"
  },
  "regions": {
+  "la-musa-orders/index.html#renderStage2Summary@la-musa-orders/index.html<script@2>#applyRedeemQuoteToTotals": {
+   "group": "redeem",
+   "appliesWhenAny": [
+    {
+     "redemption": [
+      true
+     ]
+    }
+   ],
+   "authority": "§1 F-REWARD: the redemption quote exists only for a redemption (La Musa twin)",
+   "whyFalseExcludes": "no redemption → no redeem quote",
+   "bind": {
+    "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
+    "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
+    "scope": "la-musa-orders/index.html<script@2>#applyRedeemQuoteToTotals",
+    "scopeSha": "27933840e3faa3ed6f3401227825f5be0ae8993d1577b22720a0c1727d0c2f24"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/index.html",
+     "text": "onQuoted: applyRedeemQuoteToTotals,"
+    }
+   ],
+   "cases": {
+    "required": [
+     "S4|x_pizza|new"
+    ],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ]
+   }
+  },
+  "la-musa-orders/index.html#updateCart@la-musa-orders/account.js#applyReorderToCart": {
+   "group": "reorder",
+   "appliesWhenAny": [
+    {
+     "reorder": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: reorder-from-history (Reordenar) is a customer action (La Musa twin of the reviewed XP entry)",
+   "whyFalseExcludes": "a fresh cart runs no reorder (the form event recorder saw no [data-ord] tap)",
+   "bind": {
+    "site": "try { if (typeof updateCart === 'function') updateCart(); } catch (_) {}",
+    "siteSha": "8e9511fb74406398df18571e5a8de35ae34ab5f4df1cecc50381fd9ba19930c8",
+    "scope": "la-musa-orders/account.js#applyReorderToCart",
+    "scopeSha": "f8a207f78131bba32e4b52f098a7e737ee529657df402e39e2713ee1ee1c9147"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/account.js",
+     "text": "btn.onclick = () => reorderFromEntry(entries[Number(btn.getAttribute('data-ord'))]);"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"reorder\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html#updateCart@la-musa-orders/index.html<script@2>#chgDetailExtra": {
+   "group": "extras",
+   "appliesWhenAny": [
+    {
+     "extras": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: dish extras are a customer action — the detail modal's [data-act=extra] steppers call chgDetailExtra (La Musa twin)",
+   "whyFalseExcludes": "no extras toggled (no [data-act=extra] event; no extras / options entries persisted)",
+   "bind": {
+    "site": "updateCart();",
+    "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
+    "scope": "la-musa-orders/index.html<script@2>#chgDetailExtra",
+    "scopeSha": "2bbea7525883cf17abddb4c22205aa2d02bb24b307fa7425003cdd944c2f5044"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/index.html",
+     "text": "chgDetailExtra(ex.id, dish.id, delta);"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"extras\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html#updateCart@la-musa-orders/index.html<script@2>#restoreOrderForm": {
+   "group": "restore",
+   "appliesWhenAny": [
+    {
+     "restore": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: saved-form / snapshot restore is a recovery action (La Musa twin)",
+   "whyFalseExcludes": "no restore control event and no snapshot / pending-pay key in storage at boot → no restore render",
+   "bind": {
+    "site": "renderMenu(); updateCart(); updateTotal();",
+    "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
+    "scope": "la-musa-orders/index.html<script@2>#restoreOrderForm",
+    "scopeSha": "16b229a19268aee891055f0dbeae0aad5828cbc8c68605559e7b90388ecb3c7d"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/index.html",
+     "text": "const retry = v.retry ? `<a href=\"#\" onclick=\"restoreOrderForm();return false;\""
+    },
+    {
+     "kind": "F",
+     "file": "la-musa-orders/order-self-update.js",
+     "text": "if (!restoreSnapshot(data.form, toCheckout)) return;"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"restore\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html#updateCart@la-musa-orders/index.html<script@2>#startAnotherOrder": {
+   "group": "another",
+   "appliesWhenAny": [
+    {
+     "anotherOrder": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: \"Hacer otro pedido\" is a customer action after confirmation (La Musa twin)",
+   "whyFalseExcludes": "one order → no restart (no startAnotherOrder control event)",
+   "bind": {
+    "site": "updateCart();",
+    "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
+    "scope": "la-musa-orders/index.html<script@2>#startAnotherOrder",
+    "scopeSha": "883982a3f307caca66037ee1c51fcc13487a88674357165e54838e165a11e870"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/index.html",
+     "text": "<button onclick=\"startAnotherOrder()\""
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"anotherOrder\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html#updateCart@la-musa-orders/order-self-update.js#restoreSnapshot": {
+   "group": "restore",
+   "appliesWhenAny": [
+    {
+     "restore": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: saved-form / snapshot restore is a recovery action (La Musa twin)",
+   "whyFalseExcludes": "no restore control event and no snapshot / pending-pay key in storage at boot → no restore render",
+   "bind": {
+    "site": "renderMenu(); updateCart(); updateTotal();",
+    "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
+    "scope": "la-musa-orders/order-self-update.js#restoreSnapshot",
+    "scopeSha": "e43bf3ab0b8334601b439052bfd78971037e304f6b6ab3b28e666d5c2c32a229"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/index.html",
+     "text": "const retry = v.retry ? `<a href=\"#\" onclick=\"restoreOrderForm();return false;\""
+    },
+    {
+     "kind": "F",
+     "file": "la-musa-orders/order-self-update.js",
+     "text": "if (!restoreSnapshot(data.form, toCheckout)) return;"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"restore\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html#updateCartReviewBody@la-musa-orders/index.html<script@2>#chgFromCart": {
+   "group": "sheetEdit",
+   "appliesWhenAny": [
+    {
+     "sheetEdit": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: qty edits inside the cart sheet are a customer action (La Musa twin)",
+   "whyFalseExcludes": "the sheet is read, not edited (no review-inc / review-dec event)",
+   "bind": {
+    "site": "updateCartReviewBody();",
+    "siteSha": "ae662ecf8967309c29f300aed59d7f594ff58a1bfc9e151a238cb0ff594239a8",
+    "scope": "la-musa-orders/index.html<script@2>#chgFromCart",
+    "scopeSha": "7c3808d13b99068b162ed7eb3c100c9b2372f56fc881d620d0e533901994836d"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "la-musa-orders/index.html",
+     "text": "if (act === 'review-inc')  { chgFromCart(dish.id, 1);  return; }"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"sheetEdit\":[true]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#applyPollState": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment (La Musa twin)",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
+    "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
+    "scope": "la-musa-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "30d476cfe8ff76931861d65eb84523f9b64580d6371f9cb734ee0dc16ed19f35"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "la-musa-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "cb0b15964d666c14c129ad24cda7d2aa7bb3c9cccac48a4f07755c22b8f9806a"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#applyPollState~2": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment (La Musa twin)",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "showSuccess();",
+    "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
+    "scope": "la-musa-orders/index.html<script@2>#applyPollState",
+    "scopeSha": "30d476cfe8ff76931861d65eb84523f9b64580d6371f9cb734ee0dc16ed19f35"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "la-musa-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "cb0b15964d666c14c129ad24cda7d2aa7bb3c9cccac48a4f07755c22b8f9806a"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios"
+   }
+  },
+  "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#processPixelPay": {
+   "group": "online",
+   "appliesWhenAny": [
+    {
+     "pay": [
+      "online"
+     ]
+    }
+   ],
+   "authority": "§1 F-PAYLIFE: the post-payment confirmation paths (poll state / PixelPay) run only for an ONLINE payment (La Musa twin)",
+   "whyFalseExcludes": "a cash / card-on-delivery / free / empty order never returns from a hosted payment",
+   "bind": {
+    "site": "if(res.status===409 && cfg && cfg.error==='Already paid'){ orderSubmitting=false; currentOrder.payment_status='confirmed'; showSuccess(); return; }",
+    "siteSha": "4e9b968f324d42bb67df8eb7cfbfe906df0f850c43835566a72083939654667c",
+    "scope": "la-musa-orders/index.html<script@2>#processPixelPay",
+    "scopeSha": "eac0eddaee036f18cb146084cfb5e1c17b5dee0d49d37d4ef58853d986448467"
+   },
+   "guards": [
+    {
+     "kind": "S",
+     "scope": "la-musa-orders/index.html<script@2>#processPayment",
+     "text": "if(selectedPayment==='online'){",
+     "scopeSha": "cb0b15964d666c14c129ad24cda7d2aa7bb3c9cccac48a4f07755c22b8f9806a"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"pay\":[\"online\"]}]) — it applies in P2 scenarios"
+   }
+  },
+  "xpizza-functions/claim-order.js#bindDecision@xpizza-functions/claim-order.js#claimOrderCore>anon": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:claimOrder"
+   ],
+   "authority": "scenario definition: claiming a guest order into an account is a customer HTTP action (claimOrder) — claimOrderCore / bindDecision run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no claimOrder call → none of it runs",
+   "bind": {
+    "site": "const tx = await orderRef.transaction((cur) => bindDecision(cur, uid, h2, now));",
+    "siteSha": "dce7ee8e14798686976e06b93d5817279f7a15a387c5b0782f5336bc57122aae",
+    "scope": "xpizza-functions/claim-order.js#claimOrderCore>anon",
+    "scopeSha": "5febc573e5c7151273e6a3fd8f81112200db8c95d0b7e9469a8036144041e7e1"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.claimOrder = onRequest("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-order.js#claimOrderCore",
+     "callers": [
+      "xpizza-functions/index.js#claimOrder"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-order.js#bindDecision",
+     "callers": [
+      "xpizza-functions/claim-order.js#claimOrderCore>anon"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:claimOrder): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/claim-order.js#claimOrderCore@xpizza-functions/index.js#claimOrder": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:claimOrder"
+   ],
+   "authority": "scenario definition: claiming a guest order into an account is a customer HTTP action (claimOrder) — claimOrderCore / bindDecision run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no claimOrder call → none of it runs",
+   "bind": {
+    "site": "const r = await claimOrderCore(db, { uid, orderId, token: token || null, now: Date.now() });",
+    "siteSha": "a9931b06903d7de73e00b164fe56d528f5b9ae1fd1e534c273b38b032f7dfa98",
+    "scope": "xpizza-functions/index.js#claimOrder",
+    "scopeSha": "af700564ffd5a691b0a478164c725a986d0dfbe3988b3e882d788c05bf9c1bfe"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.claimOrder = onRequest("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-order.js#claimOrderCore",
+     "callers": [
+      "xpizza-functions/index.js#claimOrder"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-order.js#bindDecision",
+     "callers": [
+      "xpizza-functions/claim-order.js#claimOrderCore>anon"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:claimOrder): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/claim-prefill.js#claimPrefillCore@xpizza-functions/index.js#claimPrefill": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:claimPrefill"
+   ],
+   "authority": "scenario definition: the claim prefill is the claim flow's HTTP read (claimPrefill) — claimPrefillCore runs only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no claimPrefill call → none of it runs",
+   "bind": {
+    "site": "const r = await claimPrefillCore(db, orderId, token);",
+    "siteSha": "656aef89dfd7cbb2d838dfae191cbea6f43bcc5f25d76f711df1c385f13a6849",
+    "scope": "xpizza-functions/index.js#claimPrefill",
+    "scopeSha": "5468087038c7883a89fe2eb85e05837cd965c29856af19c295177d9e9d7a9cec"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.claimPrefill = onRequest("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-prefill.js#claimPrefillCore",
+     "callers": [
+      "xpizza-functions/index.js#claimPrefill"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:claimPrefill): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/index.js#claimOrder@self": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:claimOrder"
+   ],
+   "authority": "scenario definition: claiming a guest order into an account is a customer HTTP action (claimOrder) — claimOrderCore / bindDecision run only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no claimOrder call → none of it runs",
+   "bind": {
+    "site": "async (req, res) => {",
+    "siteSha": "479d04be0606d25cbfe9359aae247a83c172b9098027c8a1ac144fbef4eece81",
+    "scope": "xpizza-functions/index.js#claimOrder",
+    "scopeSha": "af700564ffd5a691b0a478164c725a986d0dfbe3988b3e882d788c05bf9c1bfe"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.claimOrder = onRequest("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-order.js#claimOrderCore",
+     "callers": [
+      "xpizza-functions/index.js#claimOrder"
+     ]
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-order.js#bindDecision",
+     "callers": [
+      "xpizza-functions/claim-order.js#claimOrderCore>anon"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:claimOrder): excluded only when the context is established; required otherwise"
+   }
+  },
+  "xpizza-functions/index.js#claimPrefill@self": {
+   "group": "no-call",
+   "appliesWhenAny": [],
+   "context": [
+    "no-call:claimPrefill"
+   ],
+   "authority": "scenario definition: the claim prefill is the claim flow's HTTP read (claimPrefill) — claimPrefillCore runs only inside it",
+   "whyFalseExcludes": "the complete invocation log shows no claimPrefill call → none of it runs",
+   "bind": {
+    "site": "async (req, res) => {",
+    "siteSha": "479d04be0606d25cbfe9359aae247a83c172b9098027c8a1ac144fbef4eece81",
+    "scope": "xpizza-functions/index.js#claimPrefill",
+    "scopeSha": "5468087038c7883a89fe2eb85e05837cd965c29856af19c295177d9e9d7a9cec"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "exports.claimPrefill = onRequest("
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-functions/claim-prefill.js#claimPrefillCore",
+     "callers": [
+      "xpizza-functions/index.js#claimPrefill"
+     ]
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (no-call:claimPrefill): excluded only when the context is established; required otherwise"
+   }
+  },
   "xpizza-functions/index.js#fanoutStaffPush@xpizza-functions/index.js#flushStaffPushQueue": {
    "group": "no-call",
    "appliesWhenAny": [],
