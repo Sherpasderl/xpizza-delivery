@@ -416,6 +416,10 @@
   .rchip .rdot { width:6px; height:6px; border-radius:50%; background:#fff; opacity:.85; flex-shrink:0; }
   .rchip.lm { background:var(--lamusa); }
   .rchip.xp { background:var(--accent); }
+  /* Neutral chip for a brand with no configured display name (legacy/pre-seed/unknown): dark ink on a
+     light gray fill (contrast ~8:1, well above 4.5:1), never a defaulted brand color or white-on-nothing. */
+  .rchip.neutral { background:#E7E9EC; color:#3A4250; }
+  .rchip.neutral .rdot { background:#8A93A3; opacity:1; }
   .rchip.sm { font-size:10px; padding:3px 9px; letter-spacing:.04em; }
   .ac-chiprow { margin-bottom:11px; }
   .qchip-row { margin-bottom:4px; }
@@ -1148,6 +1152,7 @@ import * as XPD from './xpizza-delivery.js?v=20';
 import { isNative, initNativePush, unregisterNativePush, clearDeliveredNotifications } from './native-push.js';
 import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLingeringTransistorsoft } from './native-location.js';
 import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml, BLOCKED_CLOSE_TEXT, resolveCompleteErrorMessage } from './cash-helpers.js';
+import { brandMeta, driverGreeting } from './brand-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
 
 // ============================================================
@@ -2426,7 +2431,7 @@ function renderActiveCard(o, solo) {
         <div class="ac-meta"><span class="phase-pill ${pill.cls}">${pill.label}</span>${countdownChip}</div>
       </div>
       ${scheduledBadge(order)}
-      ${order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
+      ${order.customer_phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(order.customer_phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(order.customer_phone).replace(/\D/g,'')}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
       <div class="ac-hr"></div>
       <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
       ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')}</div>` : ''}
@@ -2686,7 +2691,7 @@ function renderQueueDetail(o, seq) {
     <div class="ac-chiprow" style="margin-top:2px"><span class="order-num">${escapeHtml(displayOrderLabel(order))}</span>${restaurantChip(order)}</div>
     <div class="sh-head"><div class="sh-name">${escapeHtml(name)}</div><span class="sh-pill">${seq}º · EN COLA</span></div>
     ${scheduledBadge(order)}
-    ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent('Hola, soy del repartidor de X. Pizza.')}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
+    ${phone ? `<div class="contact-row"><a class="recipient-phone" href="tel:${String(phone).replace(/[^\d+]/g,'')}"><span class="ico">${ICONS.phone}</span>Llamar</a><a class="recipient-whatsapp" href="https://wa.me/${String(phone).replace(/\D/g,'')}?text=${encodeURIComponent(driverGreeting(order))}" target="_blank" rel="noopener"><span class="ico">${ICONS.whatsapp}</span>WhatsApp</a></div>` : ''}
     <div class="ac-hr"></div>
     <div class="address-block"><span class="ico">${ICONS.pin}</span><div><div class="address-line">${escapeHtml(order.address_detected || o.deliveryTask.destination_address || '—')}</div>${order.address_details ? `<div class="address-detail">"${escapeHtml(order.address_details)}"</div>` : ''}</div></div>
     ${order.items_text ? `<div class="items-list">${order.items_text.split(',').map(s => `<div class="item">${escapeHtml(s.trim())}</div>`).join('')}</div>` : ''}
@@ -2703,16 +2708,17 @@ function renderQueueDetail(o, seq) {
 // ============================================================
 // Utilities
 // ============================================================
-// Restaurant identity for an order card — brand label + chip class (reuses the la_musa mapping).
+// Restaurant identity for an order card — brand label + chip class, sourced from the order's
+// restaurant_display_name (brand-agnostic; no la_musa ternary). See brand-helpers.js.
 function restaurantMeta(order) {
-  return (order && order.restaurant_id === 'la_musa')
-    ? { label: 'La Musa', cls: 'lm' }
-    : { label: 'X. Pizza', cls: 'xp' };
+  return brandMeta(order);
 }
 // Brand-colored restaurant chip markup; pass size 'sm' for compact (queue) contexts.
+// The label is server-sourced, so it is HTML-escaped before interpolation.
 function restaurantChip(order, size) {
   const m = restaurantMeta(order);
-  return `<span class="rchip ${m.cls}${size === 'sm' ? ' sm' : ''}"><span class="rdot"></span>${m.label}</span>`;
+  if (!m.label) return '';   // no configured display name -> no chip (an empty dot-only pill looks broken); greeting is already neutral
+  return `<span class="rchip ${m.cls}${size === 'sm' ? ' sm' : ''}"><span class="rdot"></span>${escapeHtml(m.label)}</span>`;
 }
 
 function escapeHtml(s) {
