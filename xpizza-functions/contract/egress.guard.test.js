@@ -86,7 +86,8 @@ const viaReq = (mod, url) => new Promise((resolve) => {
   {
     const code = "const q=require('http').request('http://192.0.2.1/x');q.on('error',e=>{console.log(e.code)});q.end();setTimeout(()=>{},300)";
     const cp = require('child_process');
-    const out = (r) => String(r && (r.stdout !== undefined ? r.stdout : r) || '').trim();
+    // the child's FIRST line (a parent run under the gate preload hands count-marks to children too: it appends a trailer)
+    const out = (r) => String(r && (r.stdout !== undefined ? r.stdout : r) || '').trim().split('\n')[0].trim();
     const sync = (f) => { try { return f(); } catch (e) { return `ESCAPED (${e && (e.code || e.message)})`; } };   // an unguarded child hangs on the unroutable address → timeout
     const replaced = out(cp.spawnSync(process.execPath, ['-e', code], { env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 8000 }));
     const e2 = { ...process.env }; delete e2.NODE_OPTIONS;
