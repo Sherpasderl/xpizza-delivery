@@ -29,8 +29,10 @@ function installGoogleMaps(win) {
   class DirectionsService { route(_req, cb) { const res = { routes: [], status: 'ZERO_RESULTS' }; if (cb) { cb(res, 'ZERO_RESULTS'); return undefined; } return Promise.reject(Object.assign(new Error('ZERO_RESULTS'), { code: 'ZERO_RESULTS' })); } }
   class DirectionsRenderer extends MVC { setMap() {} setDirections() {} setOptions() {} }
   class OverlayView extends MVC { setMap() {} getPanes() { return { overlayLayer: win.document.createElement('div'), floatPane: win.document.createElement('div'), overlayMouseTarget: win.document.createElement('div') }; } getProjection() { return { fromLatLngToDivPixel: () => ({ x: 0, y: 0 }) }; } }
+  // P1: the order form's reverse geocode — deterministic (a scenario sets rec.geocodeAddress), every request recorded
+  class Geocoder { geocode(req, cb) { rec.geocodes = (rec.geocodes || []).concat([req]); const res = [{ formatted_address: rec.geocodeAddress || 'Col. Río de Piedras, San Pedro Sula, Honduras' }]; if (cb) { win.setTimeout(() => cb(res, 'OK'), 0); return undefined; } return Promise.resolve({ results: res }); } }
   const maps = {
-    Map, Marker, InfoWindow, MVCArray, Point, Size, Circle, Polyline, LatLng, LatLngBounds, DirectionsService, DirectionsRenderer, OverlayView,
+    Geocoder, Map, Marker, InfoWindow, MVCArray, Point, Size, Circle, Polyline, LatLng, LatLngBounds, DirectionsService, DirectionsRenderer, OverlayView,
     SymbolPath: { CIRCLE: 0, FORWARD_CLOSED_ARROW: 1 }, TravelMode: { DRIVING: 'DRIVING' }, Animation: { DROP: 1, BOUNCE: 2 },
     ControlPosition: { TOP_RIGHT: 3, RIGHT_BOTTOM: 9, LEFT_TOP: 1 }, MapTypeId: { ROADMAP: 'roadmap' },
     event: { trigger() {}, addListener: (o, ev, fn) => (o && o.addListener ? o.addListener(ev, fn) : { remove() {} }), clearListeners() {}, addListenerOnce: (o, ev, fn) => (o && o.addListener ? o.addListener(ev, fn) : { remove() {} }) },

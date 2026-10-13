@@ -62,16 +62,41 @@ if (typeof vm.SourceTextModule !== 'function') {
   throw new Error('page-harness: vm.SourceTextModule is unavailable — run with node --experimental-vm-modules');
 }
 
-async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 8000, horizonMs = 10000, html: htmlOverride = null, tracer = null } = {}) {
+async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 8000, horizonMs = 10000, html: htmlOverride = null, tracer = null, wallClockAnchorMs = null } = {}) {
+  if (wallClockAnchorMs !== null && !Number.isFinite(wallClockAnchorMs)) throw new Error('page-harness: wallClockAnchorMs must be a finite epoch ms');
   const pageDir = path.join(REPO, dir);
   const html = htmlOverride !== null ? htmlOverride : fs.readFileSync(path.join(pageDir, 'index.html'), 'utf8');   // htmlOverride: the harness's own acceptance pages
   const errors = []; const consoleErrors = []; const skipped = []; const refused = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(`jsdom: ${e && e.message}`));
   vc.on('error', (...a) => consoleErrors.push(a.map(String).join(' ').slice(0, 300)));
-  const dom = new JSDOM(html, { url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
+  // P1-a: the page's <script>s are COLLECTED from a script-inert parse, then the DOM is built WITHOUT them under
+  // runScripts:'dangerously' — so inline event-handler attributes (onclick="goToLocation()") are compiled by jsdom in the
+  // window's global scope, as a browser does ('outside-only' never compiles them, which left every inline UI action dead).
+  // The harness still executes each collected script itself, in document order (tracer, module graph, virtual time).
+  const collected = (() => {
+    const pre = new JSDOM(html, { runScripts: 'outside-only' });
+    const list = [...pre.window.document.querySelectorAll('script')].map((sc) => ({ src: sc.getAttribute('src'), type: (sc.getAttribute('type') || '').trim(), text: sc.textContent }));
+    for (const sc of [...pre.window.document.querySelectorAll('script')]) sc.remove();
+    const doctype = pre.window.document.doctype ? '<!doctype html>' : '';
+    const out = doctype + pre.window.document.documentElement.outerHTML; pre.window.close();
+    return { list, html: out };
+  })();
+  const dom = new JSDOM(collected.html, { url, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
   const win = dom.window;
   const ctx = dom.getInternalVMContext();
+
+  // ── P1-a: an optional DECLARED WALL-CLOCK ANCHOR (default null = the page reads the real clock, unchanged). With an
+  // anchor the page's Date reads anchor + REAL time elapsed since boot: time still flows in real time (no business time is
+  // created), only the calendar instant is the one the scenario declares — e.g. a delivery-hours instant for a form whose
+  // hours are hard-coded, so a scenario's verdict does not depend on the hour it happens to run at. Recorded in `clock`.
+  let wallOffsetMs = 0;
+  if (wallClockAnchorMs !== null) {
+    const RD = win.Date; wallOffsetMs = wallClockAnchorMs - RD.now();
+    const AD = function Date(...a) { if (!new.target) return new AD().toString(); return Reflect.construct(RD, a.length ? a : [RD.now() + wallOffsetMs], new.target); };
+    AD.prototype = RD.prototype; AD.now = () => RD.now() + wallOffsetMs; AD.UTC = RD.UTC; AD.parse = RD.parse;
+    Object.defineProperty(win, 'Date', { value: AD, configurable: true, writable: true, enumerable: false });
+  }
 
   // ── VIRTUAL TIME ──
   const realNow = () => Date.now();                          // the harness's (and the page's) REAL wall clock
@@ -208,8 +233,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   async function dynImport(spec, ref) { const m = resolve(spec, ref && ref.identifier); if (m.status === 'unlinked') await m.link(linker); if (m.status === 'linked') await m.evaluate(); return m; }
 
   // ── execute the scripts in document order ──
-  const scripts = [...win.document.querySelectorAll('script')];
-  for (const s of scripts) s.remove();
+  const scripts = collected.list.map((x) => ({ getAttribute: (k) => (k === 'src' ? x.src : k === 'type' ? x.type : null), textContent: x.text }));
   const evaluated = [];
   if (tracer) Object.defineProperty(win, '__r3hit', { value: (n) => tracer.hit(n), enumerable: false, configurable: false, writable: false });
   let inlineK = 0;   // the census's inline-script numbering (parse5): every inline JS-type script, in document order
@@ -267,7 +291,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
       fire(next);
     }
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow }, traceManifest, close: () => { OPEN_PAGES.delete(pageRec); timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow, wallOffsetMs, anchored: wallClockAnchorMs !== null }, traceManifest, close: () => { OPEN_PAGES.delete(pageRec); timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

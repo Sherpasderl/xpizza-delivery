@@ -214,6 +214,28 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
     assert.ok(a === true && !lateA && b2 === false && c === true && lateC, FAIL(`horizon semantics (${JSON.stringify({ a, lateA, b2, c, lateC })})`));
     ok('horizon semantics pinned: an UNRETURNED wait beyond the horizon → true (not tracked); RETURNED → false at the cap; a 30 s horizon reaches it → true and done');
   }
+  // P1-a: INLINE event-handler attributes run (the DOM is built under runScripts 'dangerously'; scripts are still executed by
+  // the harness itself) — and their async work is awaited by settle()
+  {
+    const html = `<!doctype html><html><body><div id="app"></div><button id="b" onclick="go()">go</button><script>function go(){ setTimeout(() => { document.getElementById('app').textContent = 'clicked'; }, 300); }</script></body></html>`;
+    const p = await bootPage('xpizza-functions', { html });
+    p.doc.getElementById('b').dispatchEvent(new p.win.MouseEvent('click', { bubbles: true }));
+    const settled = await p.settle(); const t = p.doc.getElementById('app').textContent; const scripts = p.doc.querySelectorAll('script').length; p.close();
+    assert.ok(settled && t === 'clicked' && scripts === 0, FAIL(`inline onclick (${JSON.stringify({ settled, t, scripts })})`));
+    ok('an inline onclick attribute runs (compiled in the page realm), its timer-delayed render is awaited; the page\'s scripts are executed by the harness, not jsdom');
+  }
+  // P1-a: the DECLARED WALL-CLOCK ANCHOR — default off (the page reads the real clock); with an anchor the page's Date (no-arg
+  // construction, Date.now(), Date()) reads anchor + real elapsed, explicit-argument construction is untouched, instanceof holds
+  {
+    const html = `<!doctype html><html><body><script>window.__r = { now: Date.now(), ctor: new Date().getTime(), str: typeof Date(), explicit: new Date(0).getTime(), inst: new Date() instanceof Date, utc: Date.UTC(2026, 0, 1) };</script></body></html>`;
+    const A = Date.UTC(2026, 9, 12, 19, 0, 0);
+    const off = await bootPage('xpizza-functions', { html }); const r0 = off.win.__r; const c0 = off.clock; off.close();
+    const on = await bootPage('xpizza-functions', { html, wallClockAnchorMs: A }); const r1 = on.win.__r; const c1 = on.clock; on.close();
+    assert.ok(!c0.anchored && Math.abs(r0.now - Date.now()) < 5000, FAIL(`default page clock is not real (${JSON.stringify({ r0, c0 })})`));
+    assert.ok(c1.anchored && Math.abs(r1.now - A) < 5000 && Math.abs(r1.ctor - A) < 5000 && r1.str === 'string' && r1.explicit === 0 && r1.inst === true && r1.utc === Date.UTC(2026, 0, 1), FAIL(`anchored page clock (${JSON.stringify({ r1, c1 })})`));
+    await assert.rejects(bootPage('xpizza-functions', { html, wallClockAnchorMs: NaN }), /wallClockAnchorMs must be a finite/);
+    ok('wall-clock anchor: default off = the real clock; anchored = anchor + real elapsed for now / new Date() / Date(); explicit dates, Date.UTC and instanceof unchanged');
+  }
   console.log(`\nr3-page-harness: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-page-harness FAILED:', e && e.stack || e); process.exit(1); });
