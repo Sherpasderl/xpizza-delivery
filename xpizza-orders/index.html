@@ -1496,6 +1496,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="form-confirm-quote.js"></script>
 <script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
+<script src="form-serial-order.js"></script>
 <script src="form-live-menu.js"></script>
 <script src="form-apply.js"></script>
 <script src="account.js"></script>
@@ -1850,7 +1851,8 @@ function trimExtrasToQty(id){
   if (n <= 0) { delete pizzaExtras[id]; return; }
   Object.keys(inst).forEach((k) => { const i = Number(k); if (!(Number.isInteger(i) && i >= 0 && i < n && String(i) === k)) delete inst[k]; });
 }
-// Cart lines IN MENU ORDER, so with no live conflict the serialization is byte-identical to before. A
+// Cart lines IN MENU ORDER — what the customer SEES (cart review, totals, conflicts). An ORDER does not serialize from
+// here: its items / items_text use serialLines() below (PLAN-menu-ordering §3: menu order never reaches a charge). A
 // line whose dish left the menu has no position there, so it sorts after the rest, in cart order — it
 // must still appear, and it must not reshuffle the lines around it.
 function cartLines(){
@@ -1860,7 +1862,7 @@ function cartLines(){
      than imported: form-cart.js has no business knowing there is an availability feed. */
   /* 1D add-product B: a bare LAUNCHER line (saved before its group, or a dish that became one while in the cart) is
      BLOCKED with reason 'choice' — the shared rule (form-group-picker.js markLauncherLines). */
-  return GroupPicker.markLauncherLines(CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } }), VARIANT_ITEMS)
+  return resolvedCartLines()
     .map((l, i) => ({ l, r: pos.has(l.key) ? pos.get(l.key) : MENU.length + i }))
     .sort((a, b) => a.r - b.r).map((x) => x.l);
 }
@@ -1868,6 +1870,17 @@ function cartLines(){
 // cart. A resolved line yields the LIVE record, so a merchant's price edit shows through; an unresolved
 // one yields what it was added as, because that is the only thing still true about it. Never empty by
 // omission — every line in the cart appears, which is the entire point.
+// The cart's resolved lines in CART INSERTION ORDER (form-cart.js keeps it) — the one resolution both orders below are
+// taken from. The availability predicate is the form's OWN isSoldOut (see cartLines).
+function resolvedCartLines(){
+  return GroupPicker.markLauncherLines(CART.resolve(findMenuItem, findMenuExtra, (rec) => { try { return isSoldOut(rec); } catch (_) { return false; } }), VARIANT_ITEMS);
+}
+/* PLAN-menu-ordering §3 — WHAT AN ORDER SENDS NEVER DEPENDS ON MENU ORDER. cartLines() stays in menu order for what the
+   customer SEES; the order's `items` and `items_text` serialize through serialLines(): cart insertion order, with a
+   pending order's first serialization pinned for its whole life (form-serial-order.js). So a merchant's reorder published
+   between a quote and the charge, or between a payment and its retry, cannot change an identical cart's fingerprint. */
+const SERIAL = createSerialOrder();
+function serialLines(){ return SERIAL.order(resolvedCartLines()); }
 function cartItems(){ return cartLines().map(l => l.record); }
 // 🔴 RESOLVE AN OPTION THROUGH ITS LINE, NOT THROUGH THE LIVE LIST. `findMenuExtra(eid) || captured`
 // looks equivalent and is not: a RE-PRICED option is still in the live list, so that expression hands
@@ -4092,7 +4105,7 @@ async function processPayment(){
 function redeemCartItems(){
   // 1B Task 4 — reads CART, not MENU. A dish the live menu no longer carries still serializes, from
   // what it was added as; submitOrder refuses while any such line exists, so it cannot reach a charge.
-  return cartLines().map(line=>{
+  return serialLines().map(line=>{   // §3: the order's serialization — insertion order, pinned for a pending order
     const p = line.record;
     const instances = pizzaExtras[line.key] || {};
     const extrasArr = [];
@@ -4179,7 +4192,7 @@ function orderIdForThisCart(){
   const sig = cartSig();
   if (window.__resumeOrderId){ const id = window.__resumeOrderId; window.__resumeOrderId = null; window.__pendingOrder = { id, sig }; return id; }
   if (window.__pendingOrder && window.__pendingOrder.sig === sig) return window.__pendingOrder.id;
-  const id = genOrderId(); window.__pendingOrder = { id, sig }; return id;
+  const id = genOrderId(); SERIAL.mint(resolvedCartLines()); window.__pendingOrder = { id, sig }; return id;   // §3: pin this order's serialization
 }
 /* 🔴 THE MONEY GATE LIVES HERE, AT THE CHOKEPOINT BOTH PAYMENT PATHS SHARE. It used to live only in
    submitOrder(), which is the CASH/free path — so an unresolved line reached the ONLINE charge
@@ -4216,7 +4229,7 @@ function buildOrder(){
      unsigned ceiling (T6's degraded floor) so the order still goes through immediately instead of
      blocking on a re-quote. Read at the send it would describe a cart the body is not. */
   try{ __orderNetAtBuild = Math.round(redeemAdjustedTotal() * 100); }catch(_){ __orderNetAtBuild = null; }
-  const items=cartItems();
+  const items=serialLines().map(l => l.record);   // §3: items_text serializes like items (insertion order, pinned per order)
   const total=calcTotal();
   const orderId = orderIdForThisCart();   // Layer 1: reuse the id while the cart is unchanged; folds __resumeOrderId; content change / completion mints fresh
   const mapsLink=`https://www.google.com/maps?q=${lat},${lng}`;
@@ -4560,6 +4573,9 @@ function restoreOrderForm(){
     Object.keys(qty).forEach(k=>delete qty[k]); Object.assign(qty, snap.qty||{});
     Object.keys(pizzaExtras).forEach(k=>delete pizzaExtras[k]); Object.assign(pizzaExtras, snap.extras||{});
     cartRestore(snap.cart);   // 1B Task 4 — rebuild the CART, not just the quantities
+    /* §3 — a RESUMED order keeps the line order it was first sent with (its stashed payload), so a stash written by an
+       older, menu-ordered page resumes byte-identically; a line the payload lacks follows in insertion order. */
+    try { const _ps = JSON.parse(localStorage.getItem('xpizza_pending_pay')||'null'); if (_ps && _ps.order_id && window.__resumeOrderId === _ps.order_id && _ps.order && Array.isArray(_ps.order.items)) SERIAL.resume(resolvedCartLines(), _ps.order.items); } catch(_){}
     const setV = (id,val)=>{ const el=document.getElementById(id); if(el) el.value = val||''; };
     setV('cname',snap.fields.cname);
     const _savedPhone = snap.fields.cphoneCC ? ('+'+snap.fields.cphoneCC+' '+(snap.fields.cphone||'')) : (snap.fields.cphone||'');
@@ -4849,6 +4865,7 @@ async function submitOrder(paymentStatus){
 function startAnotherOrder(){
   __orderNumber.stop();           // this confirmation is over: its number poll must never paint the next one
   window.__pendingOrder = null;   // Layer 1: next distinct order mints a fresh id
+  SERIAL.clear();                 // §3: the order is done — the next one serializes in insertion order
   // Reset cart quantities
   Object.keys(qty).forEach(k => { qty[k] = 0; });
   CART.clear();          // 1B Task 4 — qty and CART are cleared together or not at all
@@ -4971,6 +4988,7 @@ async function confirmTokenOf(res){
 }
 function showSuccess(){
   showStage('s5',100);
+  SERIAL.clear();   // §3: this order is done
   window.__pendingOrder = null;   // Layer 1: this order is DONE — an identical follow-up cart must mint a fresh id (never reuse a completed order_id → idempotent-return "success" with no new order)
   // Default the order summary to COLLAPSED on every success render (reward card first).
   try{ const rt=document.getElementById('receipt-toggle'); if(rt) rt.setAttribute('aria-expanded','false'); const rb=document.getElementById('receipt-items'); if(rb) rb.classList.remove('receipt-open'); }catch(_){}
