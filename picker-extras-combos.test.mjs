@@ -5,7 +5,8 @@
 //   8  ASAP cash + card, an existing cart + two picker adds
 //   9  a SCHEDULED order (cash + card): same money, scheduled_for carried
 //  10  payment return (restoreOrderForm) and 11 self-update (cartRestore) keep the picker's per-pizza extras exactly
-//  12  a reward in the cart: the picker line serializes the same beside it
+//  12  a reward in the cart: the picker line serializes the same beside it (serialization identity only; the REAL server
+//      reward quote, confirmed net and reward-bearing charge are picker-extras-money.test.mjs cell 14)
 //  13  a LATE, extras-free quote (asked before the add, answered after the post-add quote) never wins
 import assert from 'node:assert';
 import { createRequire } from 'node:module';

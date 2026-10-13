@@ -94,9 +94,19 @@ async function tick(w, eid) { const i = stagedInputs(w).find((x) => x.value === 
   w.detailCtaTap(); await settle();
   assert.strictEqual(serverTotal(w) - before2, cta2, '🔴 Δ server total = the button (second add of the same choice)');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(G(w, 'pizzaExtras')[COMB])), { 0: { [MOZZ]: 1 }, 1: { [PEPP]: 1 } }, 'pizza 1 keeps Mozzarella, pizza 2 has Pepperoni');
-  // a third add with NOTHING staged: a plain pizza 3 (a full replace, even when empty)
-  w.openDetailModal(L); await settle(); await pick(w, COMB); w.detailCtaTap(); await settle();
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(G(w, 'pizzaExtras')[COMB]))[2], {}, 'an empty staging → a plain new pizza');
+  // a third add with NOTHING staged: a plain pizza 3 (a full replace, even when empty). A STALE instance 2 is seeded first
+  // (codex build r1 P2-3) — per-pizza state the count no longer covers — so a commit that skipped the empty write would
+  // leave Pepperoni on the new pizza; the serialized extras and the server delta must show a plain pizza
+  const before3 = serverTotal(w);                       // the cart BEFORE the stale state is planted
+  w.eval(`pizzaExtras[${COMB}][2] = { ${PEPP}: 1 }`);
+  w.openDetailModal(L); await settle(); await pick(w, COMB);
+  const cta3 = ctaTotal(w);
+  assert.strictEqual(cta3, 624, 'premise: nothing staged → the button is the plain choice');
+  w.detailCtaTap(); await settle();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(G(w, 'pizzaExtras')[COMB]))[2], {}, '🔴 an empty staging → a plain new pizza (the stale instance is replaced)');
+  const comb3 = JSON.parse(JSON.stringify(w.redeemCartItems())).find((i) => i.name === 'NY Plain Slice - Combinada');
+  assert.deepStrictEqual(comb3.extras.map((e) => `${e.instance}:${e.name}`).sort(), ['0:Mozzarella', '1:Pepperoni'], '🔴 the serialized order carries no extra on pizza 3');
+  assert.strictEqual(serverTotal(w) - before3, cta3, '🔴 Δ server total = the plain button (L 624), not + the stale Pepperoni');
   // the cart shows them per pizza
   w.updateCartReviewBody();
   const ex = [...w.document.querySelectorAll('.cart-review-item')].find((el) => /Combinada/.test(el.textContent)).querySelectorAll('.cart-review-item-extras');
@@ -148,25 +158,112 @@ async function tick(w, eid) { const i = stagedInputs(w).find((x) => x.value === 
   assert.strictEqual(sc.scrollTop, 230, 'a tap keeps the scroll');
   ok('picker: the scroll position is kept across choice / extra taps');
 }
-// ── 7. repricing (codex r1 P2-3): the button shows the live price, the line keeps the captured one → a conflict checkout
-//        refuses; the picker never calls acceptExtra to "make them equal" ──
+// ── 7. repricing (codex r1 P2-3; codex build r1 P2-1): the button shows the LIVE price, the line keeps the CAPTURED one, so the
+//        line is a `repriced` conflict and a real cash AND card checkout send nothing — on the picker and the dish modal, for a
+//        repriced extra, a repriced choice, and a restored capture; the picker never calls acceptExtra to "make them equal" ──
 {
-  const w = loadForm(DIR); await settle();
-  const menu = withGroup(w);
-  await serve(w, envelope(B.rid, menu));
-  w.eval('(() => { window.__accepted = 0; const real = CART.acceptExtra.bind(CART); CART.acceptExtra = (...a) => { window.__accepted++; return real(...a); }; })()');
-  w.openDetailModal(L); await settle(); await pick(w, COMB); await tick(w, MOZZ);   // captured at L50
-  w.closeDetailModal(); await settle();                                            // …then cancelled
-  const repriced = JSON.parse(JSON.stringify(menu)); repriced.extras.find((e) => e.id === MOZZ).price = 70;
-  await serve(w, envelope(B.rid, repriced));
-  assert.strictEqual(G(w, 'EXTRAS').find((e) => e.id === MOZZ).price, 70, 'premise: Mozzarella is now L70 live');
-  w.openDetailModal(L); await settle(); await pick(w, COMB); await tick(w, MOZZ);
-  assert.strictEqual(ctaTotal(w), 694, 'the button shows the LIVE price (L624 + L70)');
-  w.detailCtaTap(); await settle();
-  const conflicts = JSON.parse(JSON.stringify(w.cartConflicts()));
-  assert.ok(conflicts.length === 1 && /Combinada/.test(conflicts[0].record.name), '🔴 the line is a conflict (its Mozzarella was agreed at L50), so checkout refuses it');
-  assert.strictEqual(w.eval('window.__accepted'), 0, '🔴 the picker never accepts a repriced extra on its own');
-  ok('picker: a repriced extra is shown at its live price, stays a conflict on the line (checkout refuses), and is never auto-accepted');
+  const res = (body) => Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(body) });
+  // the REAL checkout, both paths; charge requests are captured (a quote is priced like the server, over the live menu)
+  async function trySend(w) {
+    const sent = [];
+    w.__respond = (url, init) => {
+      const body = JSON.parse((init && init.body) || '{}');
+      if (url.includes('quoteOrder')) { const t = computeServerTotal(body.items, 'x_pizza', tablesOf(w)); return res(t.error ? { ok: false } : { ok: true, total_cents: Math.round(t.total * 100) }); }
+      if (/createOrder|chargeOnlineOrder/.test(url)) { sent.push(body); return res({ ok: true }); }
+      return new Promise(() => {});
+    };
+    w.requestServerQuote(); await settle();
+    const built = w.buildOrder();
+    try { await w.submitOrder('confirmed'); } catch (_) {}
+    await settle(); await settle();
+    w.selectPay('online'); const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
+    await settle(); await settle();
+    return { built, sent: sent.length };
+  }
+  const lineOf = (w, key) => JSON.parse(JSON.stringify(w.eval(`(() => { const l = cartLines().find((x) => String(x.key) === ${JSON.stringify(String(key))}); return l ? { unresolved: l.unresolved, blocked: l.blocked, extras: l.extras.map((x) => ({ key: x.key, unresolved: x.unresolved })) } : null; })()`)));
+  const agreed = (w, eid) => w.eval(`(CART.extraAgreed(${JSON.stringify(eid)}) || {}).price`);
+  const repricedMenu = (menu, f) => { const m = JSON.parse(JSON.stringify(menu)); f(m); return m; };
+  const spyAccept = (w) => w.eval('(() => { window.__accepted = 0; const real = CART.acceptExtra.bind(CART); CART.acceptExtra = (...a) => { window.__accepted++; return real(...a); }; })()');
+  function refused(r, label) {
+    assert.strictEqual(r.built, false, `🔴 ${label}: buildOrder refuses the conflicted cart`);
+    assert.strictEqual(r.sent, 0, `🔴 ${label}: no cash and no card request leaves the page`);
+  }
+
+  // control (non-vacuity): the SAME picker add with nothing repriced → both checkouts send
+  {
+    const w = await boot();
+    w.openDetailModal(L); await settle(); await pick(w, COMB); await tick(w, MOZZ); w.detailCtaTap(); await settle();
+    const r = await trySend(w);
+    assert.ok(r.built === true && r.sent === 2, `premise — an unconflicted picker line checks out on cash and card (${JSON.stringify(r)})`);
+  }
+  // (a) the PICKER, a repriced extra: staged at L50 (captured), cancelled, re-priced to L70, then added
+  {
+    const w = loadForm(DIR); await settle();
+    const menu = withGroup(w);
+    await serve(w, envelope(B.rid, menu)); spyAccept(w);
+    w.openDetailModal(L); await settle(); await pick(w, COMB); await tick(w, MOZZ);   // captured at L50 by the STAGING
+    w.closeDetailModal(); await settle();
+    assert.strictEqual(agreed(w, MOZZ), 50, '🔴 staging captured Mozzarella at L50');
+    await serve(w, envelope(B.rid, repricedMenu(menu, (m) => { m.extras.find((e) => e.id === MOZZ).price = 70; })));
+    assert.strictEqual(G(w, 'EXTRAS').find((e) => e.id === MOZZ).price, 70, 'premise: Mozzarella is now L70 live');
+    w.openDetailModal(L); await settle(); await pick(w, COMB); await tick(w, MOZZ);
+    assert.strictEqual(ctaTotal(w), 694, 'the button shows the LIVE price (L624 + L70)');
+    w.detailCtaTap(); await settle();
+    assert.strictEqual(agreed(w, MOZZ), 50, '🔴 the line keeps the CAPTURED L50 (no re-capture at the live L70)');
+    const line = lineOf(w, COMB);
+    assert.deepStrictEqual(line.extras, [{ key: MOZZ, unresolved: 'repriced' }], '🔴 its Mozzarella is a `repriced` conflict (not uncaptured)');
+    assert.ok(line.blocked && line.unresolved === null, 'the dish itself resolves; the extra blocks the line');
+    refused(await trySend(w), 'picker, repriced extra');
+    assert.strictEqual(w.eval('window.__accepted'), 0, '🔴 the picker never accepts a repriced extra on its own');
+  }
+  // (b) the DISH MODAL (the shared row): an ordinary dish's extra captured at L50, re-priced to L70
+  {
+    const w = loadForm(DIR); await settle();
+    const menu = withGroup(w);
+    await serve(w, envelope(B.rid, menu)); spyAccept(w);
+    w.chg(2, 1); w.openDetailModal(2); await settle();
+    $(w, 'detail-scroll').querySelector(`[data-act="extra"][data-eid="${MOZZ}"][data-inst="0"]`).dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle();
+    w.closeDetailModal(); await settle();
+    assert.strictEqual(agreed(w, MOZZ), 50, 'the modal row captured Mozzarella at L50');
+    await serve(w, envelope(B.rid, repricedMenu(menu, (m) => { m.extras.find((e) => e.id === MOZZ).price = 70; })));
+    w.openDetailModal(2); await settle();
+    const row = $(w, 'detail-scroll').querySelector(`[data-act="extra"][data-eid="${MOZZ}"][data-inst="0"]`);
+    assert.match(row.querySelector('.xrow-price').textContent.replace(/\s+/g, ' '), /\+L\s*70/, 'the modal row shows the LIVE price');
+    w.closeDetailModal(); await settle();
+    assert.deepStrictEqual(lineOf(w, 2).extras.find((x) => x.key === MOZZ), { key: MOZZ, unresolved: 'repriced' }, '🔴 dish modal: a `repriced` conflict at the captured L50');
+    assert.strictEqual(agreed(w, MOZZ), 50);
+    refused(await trySend(w), 'dish modal, repriced extra');
+    assert.strictEqual(w.eval('window.__accepted'), 0, 'never auto-accepted');
+  }
+  // (c) a repriced CHOICE: the picker added Combinada at L624, the merchant re-prices the choice to L650
+  {
+    const w = loadForm(DIR); await settle();
+    const menu = withGroup(w);
+    await serve(w, envelope(B.rid, menu));
+    w.openDetailModal(L); await settle(); await pick(w, COMB); await tick(w, MOZZ); w.detailCtaTap(); await settle();
+    await serve(w, envelope(B.rid, repricedMenu(menu, (m) => { m.dishes.find((d) => d.id === COMB).price = 650; })));
+    const line = lineOf(w, COMB);
+    assert.strictEqual(line.unresolved, 'repriced', '🔴 the CHOICE line is a `repriced` conflict (captured L624, live L650)');
+    assert.strictEqual(w.eval(`cartLines().find((l) => l.key === '${COMB}').added.price`), 624, 'the line keeps the captured choice price');
+    refused(await trySend(w), 'picker, repriced choice');
+  }
+  // (d) a RESTORED capture (payment return): the snapshot carries the L50 capture; restored over the re-priced menu it still conflicts
+  {
+    const a = loadForm(DIR); await settle();
+    const menu = withGroup(a);
+    await serve(a, envelope(B.rid, menu));
+    a.openDetailModal(L); await settle(); await pick(a, COMB); await tick(a, MOZZ); a.detailCtaTap(); await settle();
+    const form = a.snapshotForm();
+    const w = loadForm(DIR); await settle();
+    await serve(w, envelope(B.rid, repricedMenu(menu, (m) => { m.extras.find((e) => e.id === MOZZ).price = 70; })));
+    w.localStorage.setItem('xpizza_pending_pay', JSON.stringify({ order_id: 'xp_reprice_restore', form, ts: Date.now() }));
+    w.restoreOrderForm(); await settle();
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(G(w, 'pizzaExtras')[COMB])), { 0: { [MOZZ]: 1 } }, 'premise: the picker\'s extra came back');
+    assert.strictEqual(agreed(w, MOZZ), 50, '🔴 restored: the capture is still L50');
+    assert.deepStrictEqual(lineOf(w, COMB).extras, [{ key: MOZZ, unresolved: 'repriced' }], '🔴 restored over the re-price: a `repriced` conflict');
+    refused(await trySend(w), 'restored capture, repriced extra');
+  }
+  ok('repricing: the button shows the live price, the line keeps the captured one (a `repriced` conflict, never re-captured or auto-accepted), and a real cash AND card checkout send nothing — picker extra, dish-modal extra, repriced choice, restored capture; an unconflicted control sends both');
 }
 // ── 8. v4 status labels + ONE announcement (rev 2.3 §2.8) ──
 {
