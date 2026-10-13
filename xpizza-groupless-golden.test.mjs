@@ -57,7 +57,17 @@ if (CAPTURE) {
   console.log(`captured ${Object.keys(got).length} x_pizza groupless states → xpizza-groupless.golden.json`);
 } else {
   assert.ok(existsSync(GOLDEN), 'the x_pizza groupless golden exists (captured on the 4e2a710 forms)');
-  const want = JSON.parse(readFileSync(GOLDEN, 'utf8'));
+  const want0 = JSON.parse(readFileSync(GOLDEN, 'utf8'));
+  /* THE ONE DECLARED DELTA (owner-approved mockup v4, PLAN-picker-extras rev 2.3 §2.8): every extras row's interior moves from
+     "name over price" to "name · +L price" on one line — EXACTLY this rewrite of the 4e2a710 bytes, nothing else. Applied to the
+     golden (never to the page), so every other byte of every state stays pinned, and an extra change anywhere still fails. */
+  const ROW_OLD = /<div>\n {14}<span class="detail-extras-name">([^<]*)<\/span>\n {14}<span class="detail-extras-price">\+L ([^<]*)<\/span>\n {12}<\/div>/g;
+  const v4Row = (str) => str.replace(ROW_OLD, (m, name, price) => `<span class="xrow-main"><span class="detail-extras-name">${name}</span><span class="xrow-price">+L ${price}</span></span>`);
+  let rewrites = 0;
+  const deltaOf = (x) => (typeof x === 'string' ? x.replace(ROW_OLD, (...a) => { rewrites++; return v4Row(a[0]); })
+    : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, deltaOf(v)])) : x);
+  const want = deltaOf(want0);
+  assert.ok(rewrites > 0, 'premise — the golden carries extras rows, and the declared delta rewrote them');
   const firstDiff = (x, y, path) => {
     if (typeof x === 'string' && typeof y === 'string') { if (x === y) return null; let i = 0; while (x[i] === y[i]) i++; return `${path} @${i}: got ${JSON.stringify(x.slice(Math.max(0, i - 60), i + 80))} want ${JSON.stringify(y.slice(Math.max(0, i - 60), i + 80))}`; }
     if (x && y && typeof x === 'object' && typeof y === 'object') { for (const f of new Set([...Object.keys(x), ...Object.keys(y)])) { const d = firstDiff(x[f], y[f], `${path}.${f}`); if (d) return d; } return null; }
@@ -65,7 +75,7 @@ if (CAPTURE) {
   };
   for (const k of Object.keys(want)) assert.deepStrictEqual(got[k], want[k], `🔴 x_pizza groupless state "${k}" changed — ${firstDiff(got[k], want[k], k)}`);
   assert.deepStrictEqual(Object.keys(got).sort(), Object.keys(want).sort(), 'the same states');
-  ok(`x_pizza with no groups: ${Object.keys(want).length} DOM states (grid, ordinary modal through add/extra, cart review, sold-out, live re-apply) equal the 4e2a710 golden`);
+  ok(`x_pizza with no groups: ${Object.keys(want).length} DOM states (grid, ordinary modal through add/extra, cart review, sold-out, live re-apply) equal the 4e2a710 golden + the ONE declared v4 row delta (${rewrites} rows)`);
 }
 closeAll();
 console.log('\nxpizza-groupless-golden: OK');
