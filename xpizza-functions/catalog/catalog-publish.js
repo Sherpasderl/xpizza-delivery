@@ -31,6 +31,7 @@ const { catalogDocsForRestaurant } = require('./seed-catalog-core');
 /* pb1-key-overlap:begin */ const { docId: overlapDocId } = require('./seed-catalog-core'); /* pb1-key-overlap:end */
 const { integrityDescriptor } = require('./catalog-integrity');
 const { readVersionDocs } = require('./catalog-firestore');
+const { buildEligibilityDoc } = require('./extras-eligibility-store');   // per-product extras: the version's eligibility doc
 const { contentHash } = require('./content-hash');
 const { readVersionMenu } = require('./catalog-menu');
 const { ensureIdentitiesForKeys } = require('./identity-backfill');
@@ -1341,6 +1342,14 @@ async function writeVersion(db, rid, { items, structure, extras, extraRecords, s
     ...(d.has_photo !== undefined ? { has_photo: d.has_photo } : {}),
   }));
   ops.push((b) => b.create(vref.collection('meta').doc('menu_structure'), structure));
+  // per-product extras (PLAN rev 2.1 §4/§7): the version's ELIGIBILITY document, from the very docs written above, in the
+  // same commit. Derived data — not part of content_hash; a structurally impossible source fails the publish here.
+  const eligibilityDoc = buildEligibilityDoc({
+    items: itemDocs.map((d) => ({ key: d.key, price: d.price, display: d.display })),
+    extras: extraDocs.map((d) => ({ key: d.key, price: d.price, display: d.display })),
+    structure,
+  });
+  ops.push((b) => b.create(vref.collection('meta').doc('extras_eligibility'), eligibilityDoc));
   await commitOps(db, ops);
   // 🔴 HASHED OVER WHAT WAS WRITTEN, IN SERVED ORDER — not over the caller's inputs. The reader
   // recomputes this from the docs it reads BACK, so the two only agree if what landed in Firestore is
@@ -1762,6 +1771,7 @@ async function deleteVersion(db, rid, versionId) {
   items.forEach((d) => ops.push((b) => b.delete(d.ref)));
   extras.forEach((d) => ops.push((b) => b.delete(d.ref)));
   ops.push((b) => b.delete(vref.collection('meta').doc('menu_structure')));
+  ops.push((b) => b.delete(vref.collection('meta').doc('extras_eligibility')));   // per-product extras: deleted with its version
   ops.push((b) => b.delete(vref));
   await commitOps(db, ops);
 }

@@ -912,7 +912,17 @@ const GOOD = () => ({
     ['validateSource :: !extraCatSet.has(v)', 'post-type', 'membership, asked after the value has been typed'],
     ['validateSource :: exposure.item_overrides', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: !seen.has(key)', 'post-type', 'membership, asked after the value has been typed'],
-    ["validateSource :: ov && typeof ov === 'object' && !Array.isArray(ov) && !Object.prototype.hasOwnProperty.call(ov, 'deny') && !Object.prototype.hasOwnProperty.call(ov, 'add')", 'shape', 'this predicate IS the type test'],
+    ["validateSource :: ov && typeof ov === 'object' && !Array.isArray(ov) && !Object.prototype.hasOwnProperty.call(ov, 'deny') && !Object.prototype.hasOwnProperty.call(ov, 'add') && !Object.prototype.hasOwnProperty.call(ov, 'deny_extras')", 'shape', 'this predicate IS the type test'],
+    // ── per-product extras (PLAN rev 2.1 §2/§3): typed, key-only deny_extras; no variant-level list; no unknown override field ──
+    ['validateSource :: it && it.display && it.display.variantOf !== undefined', 'post-type', 'reads the items already typed by the item rules above, to know which keys are variants'],
+    ['validateSource :: it && it.display', 'post-type', 'reads the items already typed by the item rules above, to know which keys are variants'],
+    ['validateSource :: it', 'post-type', 'reads the items already typed by the item rules above, to know which keys are variants'],
+    ["validateSource :: ov && typeof ov === 'object' && !Array.isArray(ov)", 'shape', 'this predicate IS the type test (guards the unknown-field scan)'],
+    ['validateSource :: !EXPOSURE_OVERRIDE_FIELDS.has(f)', 'post-type', 'membership, asked after the value has been typed'],
+    ['validateSource :: typed !== undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
+    ['validateSource :: !extraKeys.has(v)', 'post-type', 'membership, asked after the value has been typed (deny_extras entries resolve ONLY as existing extra keys)'],
+    ['validateSource :: variantKeys.has(key)', 'post-type', 'membership, asked after the value has been typed (a variant carries no typed list of its own)'],
+    ['validateSource :: ov #2', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: ov', 'post-type', 'a lookup result or an already-validated record; absence here is refused by its own rule'],
     ['validateSource :: list === undefined', 'requiredness', 'undefined only; a present value (null included) reaches its type check'],
     ['validateSource :: v === EXPOSURE_ALL', 'not-a-presence-test', 'an ordinary value or business comparison — it asks what a value IS, never whether it is there'],
@@ -941,7 +951,7 @@ const GOOD = () => ({
     ...enumeratePredicates(readFileSync(join(__dirname, 'source-store.js'), 'utf8')),
     ...enumeratePredicates(readFileSync(join(__dirname, 'canonical-json.js'), 'utf8')),
   ];
-  assert.strictEqual(preds.length, 160, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
+  assert.strictEqual(preds.length, 169, `predicate count moved (got ${preds.length}); a control predicate was added or removed`);
 
   const unruled = preds.filter((p) => !RULED.has(p.key)).map((p) => `${p.line}: ${p.key}`);
   assert.deepStrictEqual(unruled, [],
@@ -955,7 +965,7 @@ const GOOD = () => ({
   }
   const counts = {};
   for (const p of preds) counts[RULED.get(p.key).kind] = (counts[RULED.get(p.key).kind] || 0) + 1;
-  assert.deepStrictEqual(counts, { requiredness: 20, 'post-type': 69, shape: 49, 'not-a-presence-test': 22 },   // add-product B: +10 group rules; +5 choiceBadges (net)
+  assert.deepStrictEqual(counts, { requiredness: 21, 'post-type': 76, shape: 50, 'not-a-presence-test': 22 },   // add-product B: +10 group rules; +5 choiceBadges (net); per-product extras: +7 post-type, +1 requiredness, +1 shape (typed deny_extras, no variant list, no unknown field)
     'the mix of rulings moved — a predicate changed meaning, which is a thing to look at rather than re-pin');
   ok(`all ${preds.length} control predicates ruled (${counts.requiredness} requiredness, ${counts['post-type']} post-type, ${counts.shape} shape, ${counts['not-a-presence-test']} not-a-presence-test)`);
 

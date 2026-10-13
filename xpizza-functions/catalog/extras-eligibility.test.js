@@ -110,4 +110,28 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.deepStrictEqual([...eligibleSet(p, 'Margherita')], eligibleExtras(p, 'Margherita'), 'same members, same order');
   ok('eligibleSet(proj, item) is the Set view (has()) of the ordered eligibleExtras');
 }
+{ // ── 9. the SOURCE VALIDATOR accepts exactly the typed shape (stage 2: catalog/source-store.js) ──
+  const { validateSource } = require('./source-store');
+  const base = () => buildSourceFromCode('x_pizza');
+  const withOv = (ov, mutate) => { const s = base(); s.structure.exposure.item_overrides.Margherita = ov; if (mutate) mutate(s); return s; };
+  assert.doesNotThrow(() => validateSource(withOv({ deny_extras: ['Salsa Roja', 'Salsa Blanca'] }), 'x_pizza'), 'key-only deny_extras validates');
+  const refuse = (src, re, label) => assert.throws(() => validateSource(src, 'x_pizza'), re, label);
+  refuse(withOv({ deny_extras: ['Carnes'] }), /not an existing extra key/, 'a category name is not a typed entry');
+  refuse(withOv({ deny_extras: ['*'] }), /not an existing extra key/, '"*" is not a typed entry');
+  refuse(withOv({ deny_extras: ['Nope'] }), /not an existing extra key/, 'an unknown key is refused');
+  refuse(withOv({ deny_extras: [] }), /deny_extras/, 'an empty list says nothing');
+  refuse(withOv({ deny_extras: ['Salsa Roja', 'Salsa Roja'] }), /deny_extras/, 'duplicates refused');
+  refuse(withOv({ deny_extras: ['Salsa Roja'], note: 'x' }), /unknown field note/, 'an unknown override field is refused');
+  // a key spelled like a category is a legitimate KEY (codex r3 P2-2)
+  const c = withOv({ deny_extras: ['Carnes'] }, (s) => s.extras.push({ key: 'Carnes', price: 10, display: { id: 'e98', cat: 'Salsas & Queso', name: 'Carnes', price: 10 } }));
+  assert.doesNotThrow(() => validateSource(c, 'x_pizza'), 'an extra whose key equals a category name may be denied as a key');
+  // a VARIANT never carries its own typed list
+  const lm = buildSourceFromCode('la_musa');
+  lm.structure.exposure.item_overrides.noodle_01_pollo = { deny_extras: ['rice_white'] };
+  assert.throws(() => validateSource(lm, 'la_musa'), /deny_extras on a variant/, 'a variant-level deny_extras is refused');
+  const lm2 = buildSourceFromCode('la_musa');
+  lm2.structure.exposure.item_overrides.noodle_01 = { deny_extras: ['rice_white'] };
+  assert.doesNotThrow(() => validateSource(lm2, 'la_musa'), 'the launcher carries the group\u2019s list');
+  ok('validator: key-only deny_extras accepted; a category / "*" / unknown key / empty / duplicate / unknown field / variant-level list refused; a key spelled like a category accepted');
+}
 console.log(`\nextras-eligibility: OK (${n})`);

@@ -25,6 +25,7 @@
   "scripts": {
     "test:intake-availability": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/intake-availability.emulator.test.js\"",
     "test:pickup-ready": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/pickup-ready.emulator.test.js\"",
+    "test:extras-eligibility-publish": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/extras-eligibility-publish.emulator.test.js\"",
     "test:preparing-ready": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/preparing-ready.emulator.test.js\"",
     "test:driver-freshness": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-freshness.emulator.test.js\"",
     "test:graduation": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/graduation-monitor.emulator.test.js\"",
