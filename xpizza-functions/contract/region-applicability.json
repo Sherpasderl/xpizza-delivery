@@ -202,7 +202,7 @@
     "site": "updateCart();",
     "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
     "scope": "la-musa-orders/index.html<script@2>#startAnotherOrder",
-    "scopeSha": "883982a3f307caca66037ee1c51fcc13487a88674357165e54838e165a11e870"
+    "scopeSha": "802b47e1ea67825abcbe70e6eccbcbeafb9e989c69bf303ee9a13d4001c6d63a"
    },
    "guards": [
     {
@@ -309,7 +309,7 @@
     "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
     "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
     "scope": "la-musa-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "30d476cfe8ff76931861d65eb84523f9b64580d6371f9cb734ee0dc16ed19f35"
+    "scopeSha": "73922848e404fc31dbbd87c34bb26a13c5500111991588a9357a54720998326a"
    },
    "guards": [
     {
@@ -344,7 +344,7 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "la-musa-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "30d476cfe8ff76931861d65eb84523f9b64580d6371f9cb734ee0dc16ed19f35"
+    "scopeSha": "73922848e404fc31dbbd87c34bb26a13c5500111991588a9357a54720998326a"
    },
    "guards": [
     {
@@ -6052,17 +6052,17 @@
    "authority": "§1 F-STATUS: cancellation copy / banners exist only for a cancelled order",
    "whyFalseExcludes": "a live order shows no cancellation",
    "bind": {
-    "site": "function renderCancelled({ orderId, restaurantId, brand }) {",
-    "siteSha": "49babcd2155dbe1f581ef3daa0eea71172d10a68dc3b3b619370a2ea0ee23d23",
+    "site": "function renderCancelled({ displayNumber, restaurantId, brand }) {",
+    "siteSha": "e2189b5a1de036f8df00422986a556d46ea4ecd7c94cb8144bd0056566070919",
     "scope": "xpizza-functions/whatsapp.js#renderCancelled",
-    "scopeSha": "65b0c2549bc82054abc87acc61ffc5dd6b1c6334a659f02f8cabc87badc80fc3"
+    "scopeSha": "449e8c9cf6318e0d19e3fc1bc4795c777e98c960f202c9c07112ef336fcfc580"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     },
     {
      "kind": "F",
@@ -6113,7 +6113,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     },
     {
      "kind": "F",
@@ -6476,32 +6476,32 @@
     "site": "await whatsapp.sendMessage(order.customer_phone, body, restaurantId);",
     "siteSha": "de950982ac799734df60e476f575dc87f00303c69c8a3c049a2867439b7394c8",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (!body) return;",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     }
    ],
    "cases": {
@@ -6628,7 +6628,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     }
    ],
    "cases": {
@@ -6659,14 +6659,14 @@
     "site": "body = whatsapp.tplOutForDelivery({",
     "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+    "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "89a69d757bf1950d28dccb543790067ac0a7b479e8839a6d472aa35ca2d5eccd"
+     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
     }
    ],
    "cases": {
@@ -8143,7 +8143,7 @@
     "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
     "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
    },
    "guards": [
     {
@@ -8178,7 +8178,7 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
    },
    "guards": [
     {
@@ -8245,14 +8245,14 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "xpizza-orders/index.html<script@2>#submitOrder",
-    "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+    "scopeSha": "b9781b411cc7d503057183d3eb2bbda35ade25a4565d1561e701ad79e992f1f1"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-orders/index.html<script@2>#submitOrder",
      "text": "if(CREATEORDER_URL==='YOUR_CREATEORDER_URL_HERE'){",
-     "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+     "scopeSha": "b9781b411cc7d503057183d3eb2bbda35ade25a4565d1561e701ad79e992f1f1"
     }
    ],
    "cases": {
@@ -8348,7 +8348,7 @@
     "site": "updateCart();",
     "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
     "scope": "xpizza-orders/index.html<script@2>#startAnotherOrder",
-    "scopeSha": "09a3dfb14f4e9de15bed1ecc6fd128bace1b63c4622ad2cd195a2167cf477870"
+    "scopeSha": "63a3ed4fa2deab4c7760b5cde71ff4798c27de5ebdc1f9802656c3ef278d669f"
    },
    "guards": [
     {
@@ -8484,7 +8484,7 @@
     "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
     "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
    },
    "guards": [
     {
@@ -8519,7 +8519,7 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "6b14008dd022ec0db43ffd12cc1fbe67890542e35f66e88fc996e5b010997182"
+    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
    },
    "guards": [
     {
@@ -8586,14 +8586,14 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "xpizza-orders/index.html<script@2>#submitOrder",
-    "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+    "scopeSha": "b9781b411cc7d503057183d3eb2bbda35ade25a4565d1561e701ad79e992f1f1"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-orders/index.html<script@2>#submitOrder",
      "text": "if(CREATEORDER_URL==='YOUR_CREATEORDER_URL_HERE'){",
-     "scopeSha": "ed962aad2d10e64bc9041eda3a2ebd81ddfba78d064fd9274baaab75dbf5dbd1"
+     "scopeSha": "b9781b411cc7d503057183d3eb2bbda35ade25a4565d1561e701ad79e992f1f1"
     }
    ],
    "cases": {
