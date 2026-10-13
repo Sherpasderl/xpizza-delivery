@@ -1,5 +1,5 @@
 {
- "_doc": "R3 P1-b REGRESSION LOCK — the exact 66 region ids P1-a excluded at S1 / x_pizza / new, frozen from git show 1091d30:xpizza-functions/contract/output-applicability.json (codex P1-b design r1). The derived model must exclude exactly these at that context. The lock is over P1-a's ENFORCED slice readers (git show 1091d30 journey SLICE.readers) — the cells those 66 exclusions were reviewed for; P1-b bulk entries for OTHER readers at S1 / x_pizza / new are new reviewed exclusions, listed in the review report.",
+ "_doc": "R3 P1-b REGRESSION LOCK — the exact 67 region ids P1-a excluded at S1 / x_pizza / new, frozen from git show 1091d30:xpizza-functions/contract/output-applicability.json (codex P1-b design r1), + the 67th added on main by int7 e8d0414 (advisor ruling A: updateCart@detailCtaTap; P1-a precondition no-detail-cta = vector field detailCta here). The derived model must exclude exactly these at that context. The lock is over P1-a's ENFORCED slice readers (git show 1091d30 journey SLICE.readers) — the cells those 66 exclusions were reviewed for; P1-b bulk entries for OTHER readers at S1 / x_pizza / new are new reviewed exclusions, listed in the review report.",
  "frozenAt": "1091d30",
  "context": "S1|x_pizza|new",
  "readers": [
@@ -67,6 +67,7 @@
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay",
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
   "xpizza-orders/index.html#updateCart@xpizza-orders/account.js#applyReorderToCart",
+  "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#detailCtaTap",
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#restoreOrderForm",
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#startAnotherOrder",
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#toggleDetailExtra",

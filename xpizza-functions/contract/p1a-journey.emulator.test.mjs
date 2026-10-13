@@ -151,6 +151,7 @@ try {
         const oc = (el && el.closest('[onclick]') && el.closest('[onclick]').getAttribute('onclick')) || '';
         formEvents.push({ type: t, target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?',
           sheetEdit: at('[data-act="review-inc"], [data-act="review-dec"]'), extras: at('[data-act="extra"]'),
+          detailCta: at('#detail-cta') || /detailCtaTap/.test(oc),
           anotherOrder: /startAnotherOrder/.test(oc), restore: /restoreOrderForm/.test(oc), reorder: at('[data-ord], [data-act="reorder"]') || /reorder/i.test(oc) });
       }, true);
       w.IntersectionObserver = function () { return { observe() {}, unobserve() {}, disconnect() {}, takeRecords() { return []; } }; };

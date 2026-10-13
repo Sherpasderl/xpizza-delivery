@@ -1,22 +1,22 @@
 {
  "_doc": "R3 P1-b — REVIEWED region-level applicability (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). One entry per reviewed region; every other region is REQUIRED. Migrated from P1-a's 66 explicit S1 / x_pizza / new exclusions (regression-locked against contract/p1a-frozen-exclusions.json), each re-expressed as WHEN the region applies over the scenario vector.",
  "scenarioBinding": {
-  "S1": "793d66900ac0faa29dcb2c1b7111a70dc50f62d1b3693b54f60c8d5b5a48a420",
-  "S1t-a": "5e3c2a7ed9f8520ea68cc9c4540c329e6db2dd16568c5a0d3df499d5bace25a8",
-  "S1t-b": "ea93c55e0f66c889dd3f600b2e7a62474c98f45a19cafe9e1e879e97b5722c9a",
-  "S1t-c": "bd67635a2edbfdb669f1635bb88b0159a6b8fd079199ad43db787e7e8f106c5c",
-  "S1a-on": "2941c874009e62e4eed40e5be7148d9715fc7a6199a6cdaee307b235f771403a",
-  "S1a-off": "a5948e355b17d2f87b4e08721bbc572393b07103420d3811e4174cab7068d7b4",
-  "S2": "60680c7c37c3a76258d87a99fe9f125610f4dab1ed7c33aae0a5e693b626dc33",
-  "S3": "74ab9e5a2dafddfdc7affdab43b7a883fec0ae3fd59138d5df2c67a5c4ba2af4",
-  "S4": "c0fccdc3daa4580833e42e7f0e38a42aa0d131e0a4a9458b9703f3bae5f1015d",
-  "S13": "13289f8720f32b3deaa009a630c3d55ddc92dc03644aaed17204f8c0c91c738f",
-  "S14-omitted": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
-  "S14-empty": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
-  "S14-efectivo": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
-  "S14-bitcoin": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
-  "S17d": "f440cacf4e90482ecb10c70d1f58f38d6740789de05b8929efc0e7f368151de2",
-  "S17p": "bd615c7d4a38baad28799abff730a2833e440a6bef6a2bab7a39e18dd037c19b"
+  "S1": "ed91e27644477e7792a72d063dac0372c56e85187bc4a5619b19333680ced8df",
+  "S1t-a": "6318830a1e5e9d55d777c8cb659e931faa29ce11c68c0c90ffc991ba9bbb1c1e",
+  "S1t-b": "6ec45ede72847de32328151468bb9fa790850c732703f89bbc59735447a8ec7e",
+  "S1t-c": "4518b4f5e7b7019ffe2d8410f3094a6d033769a2a7b1ef7d09813f48a99cdb7b",
+  "S1a-on": "5b6aad9542914e4f56abda24a0bb11dfbc7c97b2d7c4880e542b05509a8755be",
+  "S1a-off": "645f54c8c066f47dc44aba91001233e22e3421beccdbf4099028fe18be1e2e7b",
+  "S2": "b3626a62ca8c1f4b8a7226cfcf65bfd26cfd15ceef6584ed6efd8a827825ff55",
+  "S3": "d548b4d7d75afba90d0d89325d1cb10fc2462fb58f2490d6aa2e44154a92e9eb",
+  "S4": "bf8fb6e8349da428c0dd4d4fd774178e95c324ec0d0319455fb194de6c85746d",
+  "S13": "d9d4359005fa6d54d0c646c24fc6b099a7b937cf99e9918081ffeb99e7353a2b",
+  "S14-omitted": "f3a9623c084bce8bc65721c05c2b33b009b35606ed694f8daee51d2813278094",
+  "S14-empty": "f3a9623c084bce8bc65721c05c2b33b009b35606ed694f8daee51d2813278094",
+  "S14-efectivo": "f3a9623c084bce8bc65721c05c2b33b009b35606ed694f8daee51d2813278094",
+  "S14-bitcoin": "f3a9623c084bce8bc65721c05c2b33b009b35606ed694f8daee51d2813278094",
+  "S17d": "798c4de04ca8ce35bcb3484c4bfb6935bc1971a11650fc7dc7f4b8e1deb912c6",
+  "S17p": "1a7f10259bf2d6a90aa5b138a3b2550d9812ad5ca2324aca264692a995a586ec"
  },
  "regions": {
   "la-musa-orders/index.html#renderStage2Summary@la-musa-orders/index.html<script@2>#applyRedeemQuoteToTotals": {
@@ -4909,11 +4909,12 @@
       "xpizza-dispatch/order-control-state.js#xpizza-dispatch": 1,
       "xpizza-dispatch/sherpa-client.js#xpizza-dispatch": 4,
       "xpizza-functions/availability-gate.js#functions": 1,
+      "xpizza-functions/catalog/extras-intake.js#functions": 1,
       "xpizza-functions/catalog/group-intake.js#functions": 1,
       "xpizza-functions/client-floor.js#functions": 2,
       "xpizza-functions/compute-server-net.js#functions": 1,
       "xpizza-functions/hosted-charge-flow.js#functions": 4,
-      "xpizza-functions/index.js#functions": 31,
+      "xpizza-functions/index.js#functions": 33,
       "xpizza-functions/materialize-guard.js#functions": 2,
       "xpizza-functions/materialize.js#functions": 1,
       "xpizza-functions/order-control-state.js#functions": 1,
@@ -8297,6 +8298,40 @@
      "S1t-a|x_pizza|assigned"
     ],
     "note": "no P1 scenario reaches it ([{\"reorder\":[true]}]) — it applies in P2 scenarios (online / scheduled / cancellation / customer actions)"
+   }
+  },
+  "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#detailCtaTap": {
+   "group": "detail-cta",
+   "appliesWhenAny": [
+    {
+     "detailCta": [
+      true
+     ]
+    }
+   ],
+   "authority": "scenario definition: the dish detail modal CTA (detailCtaTap — a launcher variant add with its staged extras) is a customer action; P1 scenarios add the dish by its card + stepper",
+   "whyFalseExcludes": "no tap on the dish detail CTA → detailCtaTap never runs its launcher branch, so this updateCart() call does not execute",
+   "bind": {
+    "site": "refreshCardExtrasIndicator(vid); updateTotal(); updateCart();",
+    "siteSha": "c8b7767b2aded04dab87995ab4a4457588b1d74740a5fe1b5002f10396ff133f",
+    "scope": "xpizza-orders/index.html<script@2>#detailCtaTap",
+    "scopeSha": "04b19dc37792fce34bf054e41b7eacb534339175037f6896ad8b8fef3d17cc63"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "<button class=\"detail-cta\" id=\"detail-cta\" onclick=\"detailCtaTap()\"></button>"
+    }
+   ],
+   "cases": {
+    "required": [],
+    "excluded": [
+     "S1|x_pizza|new",
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"detailCta\":[true]}]). P1-a int7 (e8d0414, advisor ruling A): the launcher-add money path is covered independently through the REAL server pricing / net / reward code by picker-extras-money.test.mjs, picker-extras-combos.test.mjs and cart-extras-money.test.mjs (codex-approved). R3 backlog B1: make it terminal with a journey launcher add."
    }
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#restoreOrderForm": {

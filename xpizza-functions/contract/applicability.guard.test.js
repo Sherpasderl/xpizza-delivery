@@ -3,7 +3,7 @@
 // (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). Every reviewed region entry is fresh (call site, scope,
 // guard / dispatch source, scenario bindings), well-formed (declared fields, in-domain values, contract authority, why
 // false excludes) and its reviewed cases evaluate as stated; the derived exclusions at S1 / x_pizza / new are EXACTLY the
-// frozen P1-a 66; no absence / display obligation is waived anywhere in P1; gate B agrees.
+// frozen P1-a set (66 + int7 detailCtaTap = 67); no absence / display obligation is waived anywhere in P1; gate B agrees.
 // Run: node contract/applicability.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -38,7 +38,7 @@ const frozen = load('p1a-frozen-exclusions.json');
 const s1 = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'] }).cells.filter((c) => frozen.readers.includes(c.R));
 assert.deepStrictEqual(frozen.readers, ['R1', 'R9', 'R13', 'R14', 'R15'], FAIL(`the lock's reader set changed: ${JSON.stringify(frozen.readers)}`));
 const derived = [...new Set(RA.derive(doc, s1, paths).map((x) => x.region))].sort();
-assert.deepStrictEqual(derived, [...frozen.regions].sort(), FAIL(`derived exclusions at ${frozen.context} ≠ the frozen P1-a 66 (${frozen.frozenAt}):\n  missing ${JSON.stringify(frozen.regions.filter((r) => !derived.includes(r)))}\n  extra ${JSON.stringify(derived.filter((r) => !frozen.regions.includes(r)))}`));
+assert.deepStrictEqual(derived, [...frozen.regions].sort(), FAIL(`derived exclusions at ${frozen.context} ≠ the frozen P1-a ${frozen.regions.length} (${frozen.frozenAt}):\n  missing ${JSON.stringify(frozen.regions.filter((r) => !derived.includes(r)))}\n  extra ${JSON.stringify(derived.filter((r) => !frozen.regions.includes(r)))}`));
 ok(`regression lock: the derived exclusions at ${frozen.context} on P1-a's slice readers (${frozen.readers.join(' ')}) are EXACTLY the ${frozen.regions.length} P1-a regions frozen at ${frozen.frozenAt}`);
 
 // 4. no absence / display obligation is waived anywhere in P1 (the (cell, output) terminal rule)
@@ -125,11 +125,24 @@ ok('run evidence: established → excluded; a field this run cannot establish �
   // every LP vector carries an in-domain expected status
   for (const S of Object.keys(paths.scenarios)) for (const b of paths.scenarios[S].brands || paths.defaultBrands) for (const [lp, v] of Object.entries(SS.vectorsOf(S, b, paths))) assert.ok(SS.FIELDS.status.includes(v.status), FAIL(`${S}|${b}|${lp} has no in-domain expected status (${v.status})`));
 }
+{ // int7: re-pointing the detail modal's CTA (its onclick no longer the reviewed detailCtaTap button) re-opens the detailCtaTap entry
+  const id = Object.keys(doc.regions).find((r) => /#detailCtaTap$/.test(r));
+  assert.ok(id && JSON.stringify(doc.regions[id].appliesWhenAny) === JSON.stringify([{ detailCta: [true] }]), FAIL('no detailCtaTap entry on detailCta'));
+  const real = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-orders', 'index.html'), 'utf8');
+  const mutated = real.replace('id="detail-cta" onclick="detailCtaTap()"', 'id="detail-cta" onclick="openCartReview()"');
+  assert.ok(mutated !== real, FAIL('the detail-cta probe text moved'));
+  const st = doc.regions[id].guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-orders/index.html' ? mutated : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
+  assert.ok(st.length > 0, FAIL('re-pointing the detail CTA did not invalidate the detailCtaTap entry'));
+}
 ok('status (codex P1-3): every LP has an explicit expected status from its effects; a persisted status that disagrees → contradicted for every exclusion; none persisted → required');
 { // codex mech r1 P1-2: form-action fields come from the OBSERVED recorder; a step LABEL alone never establishes them
   const v = SS.vectorOf('S1', 'x_pizza', 'new', paths);
   assert.ok(SS.CHECKS.sheetEdit.check(v, { steps: ['form.cart-sheet-edit'] }).unknown, FAIL('a step label alone established sheetEdit'));
   assert.strictEqual(SS.CHECKS.sheetEdit.check(v, { formEvents: [{ type: 'click', sheetEdit: true }] }), false, FAIL('an observed sheet edit did not contradict sheetEdit=false'));
+  // int7 (P1-a e8d0414 → P1-b): detailCta — the dish detail CTA (detailCtaTap launcher add) comes from the recorder, never a label
+  assert.ok(SS.CHECKS.detailCta.check(v, { steps: ['form.detail-cta'] }).unknown, FAIL('a step label alone established detailCta'));
+  assert.strictEqual(SS.CHECKS.detailCta.check(v, { formEvents: [{ type: 'click', target: 'button#detail-cta', detailCta: true }] }), false, FAIL('an observed detail-CTA tap did not contradict detailCta=false'));
+  assert.strictEqual(SS.CHECKS.detailCta.check(v, { formEvents: [{ type: 'click', target: 'button#x' }] }), true, FAIL('a run with no detail-CTA tap did not establish detailCta=false'));
   assert.ok(SS.CHECKS.restore.check(v, { formEvents: [] }).unknown, FAIL('restore established without the boot storage'));
   // codex b12 r1 P1-5: BOTH storage areas, before the scripts; a stored key (codex's sessionStorage sherpa_reload_snapshot) → unknown; a late capture → unknown
   const B = (local, session, at = 'beforeScripts') => ({ at, local, session });

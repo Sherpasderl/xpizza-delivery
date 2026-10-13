@@ -43,6 +43,8 @@ const FIELDS = Object.freeze({
   restore: [true, false],
   anotherOrder: [true, false],
   sheetEdit: [true, false],
+  // a tap on the dish detail modal CTA (detailCtaTap: a launcher variant add with its staged extras — picker extras d43a262)
+  detailCta: [true, false],
   otp: [true, false],
   refund: [true, false],
 });
@@ -149,6 +151,7 @@ const CHECKS = Object.freeze({
   restore: { source: 'form event recorder (no restoreOrderForm control) + localStorage AND sessionStorage keys before the page scripts (empty)', check: (v, ev) => { const s = ev.formStorageAtBoot; if (!Array.isArray(ev.formEvents) || !s || s.at !== 'beforeScripts' || !Array.isArray(s.local) || !Array.isArray(s.session)) return unknown; if (ev.formEvents.some((e) => e.restore)) return v.restore === true; if (s.local.length || s.session.length) return unknown; return v.restore === false; } },
   anotherOrder: { source: 'form event recorder (no startAnotherOrder control)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.anotherOrder) === v.anotherOrder : unknown) },
   sheetEdit: { source: 'form event recorder (no [data-act=review-inc|review-dec] in the cart sheet)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.sheetEdit) === v.sheetEdit : unknown) },
+  detailCta: { source: 'form event recorder (no tap on the dish detail CTA: #detail-cta / onclick detailCtaTap)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.detailCta) === v.detailCta : unknown) },
   extras: { source: 'form event recorder (no [data-act=extra] toggle) + persisted items (no extras / options CONTENTS)', check: (v, ev) => { if (!Array.isArray(ev.formEvents) || !ev.persisted) return unknown; const n = persistedExtras(ev.persisted.items); return Number.isNaN(n) ? unknown : (ev.formEvents.some((e) => e.extras) || n > 0) === v.extras; } },
 });
 // context conditions (non-vector, asserted from run evidence) — e.g. P1-a's ticket count

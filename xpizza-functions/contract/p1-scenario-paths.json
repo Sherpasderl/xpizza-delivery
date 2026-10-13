@@ -16,6 +16,7 @@
   "restore": false,
   "anotherOrder": false,
   "sheetEdit": false,
+  "detailCta": false,
   "otp": false,
   "refund": false,
   "writeFailure": false
