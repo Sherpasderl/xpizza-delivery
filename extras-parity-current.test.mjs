@@ -37,8 +37,12 @@ async function parityFor(dir, inject = null) {
   const source = inject && inject.source ? inject.source : (liveSrc ? JSON.parse(readFileSync(liveSrc, 'utf8')) : buildSourceFromCode(RID));
   const proj = projectEligibility(source);
   const w = loadForm(dir); await settle();
-  const menuBody = inject && 'menu' in inject ? inject.menu : (liveMenu ? JSON.parse(readFileSync(liveMenu, 'utf8')) : null);
-  if (menuBody !== null) {
+  // PRESENCE is decided by the input, never by the parsed value (codex gate0 r2 P1): a supplied file that parses to null,
+  // a number or an array is a supplied, INVALID body — refused, never confused with "no menu supplied"
+  const menuSupplied = !!(inject && 'menu' in inject) || !!liveMenu;
+  const menuBody = inject && 'menu' in inject ? inject.menu : (liveMenu ? JSON.parse(readFileSync(liveMenu, 'utf8')) : undefined);
+  if (menuSupplied) {
+    assert.ok(menuBody !== null && typeof menuBody === 'object' && !Array.isArray(menuBody), `🔴 ${RID}: the supplied public menu is not a JSON object (${menuBody === null ? 'null' : Array.isArray(menuBody) ? 'array' : typeof menuBody}) — refusing, never the bundled fallback`);
     const body = menuBody;
     await serve(w, body);
     // …and the served menu was ACCEPTED and APPLIED before a single control is read (a rejected body leaves the bundle)
@@ -83,7 +87,7 @@ async function parityFor(dir, inject = null) {
   const required = Object.entries(proj.items).filter(([k]) => { const it = (source.items || []).find((i) => i.key === k); return it && it.price > 0; }).map(([k]) => k).sort();
   const missing = required.filter((k) => !visited.has(k));
   if (missing.length) mismatches.push(`source products/variants whose picker was never visited (absent from the form?): ${missing.join(', ')}`);
-  return { RID, checked: visited.size, required: required.length, mismatches, live: !!liveSrc || !!(inject && 'menu' in inject) };
+  return { RID, checked: visited.size, required: required.length, mismatches, live: !!liveSrc || menuSupplied };
 }
 
 for (const dir of ['xpizza-orders', 'la-musa-orders']) {
@@ -120,7 +124,9 @@ if (!process.env.EXTRAS_PARITY_X_PIZZA_SOURCE && !process.env.EXTRAS_PARITY_LA_M
   }
   { // P1-4: a supplied menu the form REJECTS ({}) is never silently replaced by the bundle
     await assert.rejects(parityFor('xpizza-orders', { menu: {} }), /was NOT applied/, '🔴 a rejected live menu fails before any control is read');
-    ok('sensitivity P1-4: a supplied public menu the form rejects fails gate 0 (never checks the bundled fallback)');
+    // codex gate0 r2 P1: a supplied body that parses to null / a number / an array is refused — never "not supplied"
+    for (const bad of [null, 42, [], 'menu']) await assert.rejects(parityFor('la-musa-orders', { menu: bad }), /not a JSON object/, `🔴 a supplied ${JSON.stringify(bad)} body is refused`);
+    ok('sensitivity P1-4: a supplied public menu the form rejects ({}), or a supplied null / number / array / string body, fails gate 0 — never the bundled fallback');
   }
 }
 closeAll();
