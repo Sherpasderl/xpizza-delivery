@@ -12679,7 +12679,7 @@
     "id": "r3p1-46",
     "slice": "r3p1",
     "file": "contract/ratchet.js",
-    "from": "  else if (got.length !== 1 || got[0] !== want) p.push(",
+    "from": "  else if (got.length !== 1 || got[0].init !== want) p.push(",
     "to": "  else if (false) p.push(",
     "label": "gate B: a stale race justification keeps a nondeterministic entry valid",
     "kills_with": [
@@ -12695,7 +12695,7 @@
     "id": "r3p1-47",
     "slice": "r3p1",
     "file": "contract/ratchet.js",
-    "from": "  else if (got.length !== 1 || got[0] !== want) p.push(",
+    "from": "  else if (got.length !== 1 || got[0].init !== want) p.push(",
     "to": "  else if (got.length !== 1) p.push(",
     "label": "gate B: the race justification is matched by declarator NAME only (a same-line re-point `const shadowResult = null;` passes)",
     "kills_with": [
