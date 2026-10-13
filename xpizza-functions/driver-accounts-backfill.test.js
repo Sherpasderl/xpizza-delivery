@@ -1,6 +1,6 @@
 // Backfill list + record tests — run: `node driver-accounts-backfill.test.js` (no framework, repo idiom).
 const assert = require('node:assert/strict');
-const { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord } = require('./driver-accounts-backfill.lib');
+const { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent } = require('./driver-accounts-backfill.lib');
 
 let passed = 0;
 function t(name, fn) { fn(); passed++; }
@@ -34,6 +34,13 @@ t('exactly one entry carries a note, and it is the Play Reviewer', () => {
   assert.equal(noted.length, 1);
   assert.equal(noted[0].note, 'play-review');
   assert.match(noted[0].label, /Play Reviewer/);
+});
+
+t('authRtdbCoherent (codex r1 P1-6): Auth and RTDB destinations must agree before any client', () => {
+  assert.equal(authRtdbCoherent('emulator', '127.0.0.1:9099'), true);   // both emulator
+  assert.equal(authRtdbCoherent('prod', undefined), true);              // both prod
+  assert.equal(authRtdbCoherent('emulator', undefined), false);        // RTDB emulator, Auth prod
+  assert.equal(authRtdbCoherent('prod', '127.0.0.1:9099'), false);     // Auth-only emulator (the reproduced hole)
 });
 
 console.log(`✓ driver-accounts-backfill: ${passed} tests passed`);

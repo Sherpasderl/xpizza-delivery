@@ -24,4 +24,9 @@ function accountRecord(driver, now) {
   return r;
 }
 
-module.exports = { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord };
+// codex r1 P1-6 — Auth and RTDB destinations must be COHERENT before any client: emu-mixed-guard ignores
+// FIREBASE_AUTH_EMULATOR_HOST, so an Auth-only-emulator env would send getUser() to an emulator while account
+// writes land in PRODUCTION RTDB (or vice-versa). emuMode is emu-mixed-guard's return ('prod' | 'emulator').
+function authRtdbCoherent(emuMode, authEmuHostSet) { return (emuMode === 'emulator') === !!authEmuHostSet; }
+
+module.exports = { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent };

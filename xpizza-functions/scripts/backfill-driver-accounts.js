@@ -13,13 +13,20 @@
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
-const { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord } = require('../driver-accounts-backfill.lib');
+const { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent } = require('../driver-accounts-backfill.lib');
 
 (async () => {
   const apply = process.argv.includes('--apply');
   // Mixed/foreign emulator signals ⇒ refuse before any client (part would reach an emulator, part production).
   // No signal ⇒ the intended one-time PRODUCTION backfill proceeds; run against the emulator via tools/emulator-run.js.
-  require('../tools/emu-mixed-guard')('backfill-driver-accounts');
+  const emuMode = require('../tools/emu-mixed-guard')('backfill-driver-accounts');
+  // codex r1 P1-6: Auth and RTDB must be COHERENT (both emulator or both prod) before constructing any client —
+  // emu-mixed-guard does not inspect FIREBASE_AUTH_EMULATOR_HOST, so an Auth-only-emulator env would hit the emulator
+  // for getUser() while account writes hit production RTDB.
+  if (!authRtdbCoherent(emuMode, process.env.FIREBASE_AUTH_EMULATOR_HOST)) {
+    console.error('REFUSING: Auth and RTDB destinations are incoherent — set BOTH emulator hosts (FIREBASE_AUTH_EMULATOR_HOST + FIREBASE_DATABASE_EMULATOR_HOST) or NEITHER.');
+    process.exit(2);
+  }
   initializeApp({ databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' });
   const db = getDatabase();
   const auth = getAuth();
