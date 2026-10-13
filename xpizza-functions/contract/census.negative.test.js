@@ -26,6 +26,16 @@ for (const [name, u, re] of cases) {
 }
 // codex r2 P1-1 probes, injected AS index.js / createOrderApp.all (where the reviewed opaque resolution lives)
 const asIndex = (code) => ({ file: 'xpizza-functions/index.js', scope: 'functions', kind: 'fn', code, lineOffset: 0, module: false });
+// P1-a: UNREACHABLE ON SURFACE is reviewed, both ways — a new unreferenced page function reading an order amount is RED
+// until reviewed; a reviewed-unreachable function that becomes referenced makes its entry stale (RED: review its mapping)
+{
+  const page = (code) => ({ file: 'xpizza-kitchen/zz-r3-probe.js', scope: 'xpizza-kitchen', kind: 'page', module: true, lineOffset: 0, code });
+  const a = problemsWith(page('export function deadTotalProbe(order) { return order.total; }'));
+  assert.ok(a.some((x) => /UNREACHABLE on its surface \(xpizza-kitchen\/zz-r3-probe\.js#deadTotalProbe/.test(x)), `🔴 R3-CENSUS-NEG unreachable-unreviewed: passed (${JSON.stringify(a.slice(0, 3))})`);
+  const b = problemsWith(page("import * as XPD from './xpizza-delivery.js'; export function wire() { return XPD.assignOrderToDriver; }"));
+  assert.ok(b.some((x) => /stale unreachableOnSurface entry: xpizza-kitchen\/xpizza-delivery\.js#assignOrderToDriver/.test(x)), `🔴 R3-CENSUS-NEG unreachable-revived: passed (${JSON.stringify(b.slice(0, 3))})`);
+  ok('unreachable on surface, reviewed both ways: a new unreferenced KDS function reading order.total → RED; referencing a reviewed-unreachable SDK function (XPD.assignOrderToDriver) → its entry is stale → RED');
+}
 // codex rebase-r2 P1: a non-fact review is bound to its SITE — created_at is reviewed in other functions, but a NEW
 // created_at filter inside the driver's cash shiftDeliveries is unreviewed there → RED (codex's probe)
 {

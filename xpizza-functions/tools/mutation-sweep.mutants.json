@@ -12016,5 +12016,36 @@
       "node",
       "contract/tracer.test.js"
     ]
+  },
+  {
+    "id": "r3p1-04",
+    "slice": "r3p1",
+    "file": "contract/census.js",
+    "from": "    if (!(refsOf(s.scope).get(top) > 0)) s.unreachable = top;",
+    "to": "    if (false) s.unreachable = top;",
+    "label": "unreachable-on-surface marking off: dead SDK copies stay mapped (or reviewed entries go stale silently)",
+    "kills_with": [
+      "stale unreachableOnSurface entry",
+      "is UNREACHABLE on its surface"
+    ],
+    "command": [
+      "node",
+      "contract/census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-05",
+    "slice": "r3p1",
+    "file": "contract/oracle.js",
+    "from": "  return p.money.centavos === expected.centavos ? { ok: true } : { ok: false, reason: `observed ${fmt(p.money)} ≠ expected ${fmt(expected)}` };\n}",
+    "to": "  return Math.round(p.money.centavos / 100) === Math.round(expected.centavos / 100) ? { ok: true } : { ok: false, reason: 'x' };\n}",
+    "label": "money compared at whole-lempira precision (a centavo error passes)",
+    "kills_with": [
+      "one centavo off passed"
+    ],
+    "command": [
+      "node",
+      "contract/comparator.guard.test.js"
+    ]
   }
 ]

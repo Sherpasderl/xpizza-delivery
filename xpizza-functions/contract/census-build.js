@@ -12,10 +12,16 @@ const OUT = path.join(__dirname, 'census.json');
 // codex r1 P1-2: NO catch-all. A site is (1) a SEND-BOUNDARY reader (mapped to its send's R-site), (2) a server reader
 // half listed narrowly by file / file#fn, (3) a page reader by the surface rules, or (4) EXEMPTED by an explicit per-
 // FUNCTION entry carrying its category reason. Anything else is unmapped → RED.
-const used = { serverFunctions: new Set(), pageFunctionExemptions: new Set(), serverReaders: new Set() };
+const used = { serverFunctions: new Set(), pageFunctionExemptions: new Set(), serverReaders: new Set(), unreachableOnSurface: new Set() };
 function ruleFor(x) {
   const fileRel = x.file.replace(/^xpizza-functions\//, '');
   if (x.send) return { rule: 'send-boundary', map: x.send };
+  // P1-a: unreachable on its surface (census.js marks it) — exempt ONLY through a reviewed entry; an unreviewed one is RED
+  if (x.unreachable) {
+    const k = `${x.file}#${x.unreachable}`;
+    if ((MAP.unreachableOnSurface || {})[k]) { used.unreachableOnSurface.add(k); return { rule: 'unreachable-on-surface', exempt: MAP.unreachableOnSurface[k] }; }
+    return null;
+  }
   if (x.scope === 'functions' || /^xpizza-functions\//.test(x.file)) {
     const rk = MAP.serverReaders[`${fileRel}#${x.fn}`] ? `${fileRel}#${x.fn}` : (MAP.serverReaders[fileRel] ? fileRel : null);
     if (rk) { used.serverReaders.add(rk); return { rule: `server-reader:${rk}`, map: MAP.serverReaders[rk] }; }
@@ -43,6 +49,8 @@ function build({ extraUnits = [] } = {}) {
   // stale explicit entries (a listed function that no longer has a site) — the lists stay exact
   for (const k of Object.keys(MAP.serverFunctions)) if (!used.serverFunctions.has(k)) problems.push(`stale serverFunctions entry: ${k}`);
   for (const k of Object.keys(MAP.serverReaders)) if (!used.serverReaders.has(k)) problems.push(`stale serverReaders entry: ${k}`);
+  for (const k of Object.keys(MAP.unreachableOnSurface || {})) if (k !== '_doc' && !used.unreachableOnSurface.has(k)) problems.push(`stale unreachableOnSurface entry: ${k} — the function is now referenced on its surface (review its mapping)`);
+  for (const s of c.sites) if (s.unreachable && !(MAP.unreachableOnSurface || {})[`${s.file}#${s.unreachable}`]) problems.push(`site ${s.id} is UNREACHABLE on its surface (${s.file}#${s.unreachable} is referenced nowhere in its page scope) — review: add census-map unreachableOnSurface['${s.file}#${s.unreachable}'] with its reason, or fix the analysis`);
   // projection premise (the KDS card's known renames must be present)
   for (const [scope, want] of Object.entries(MAP.projectionPremise || {})) {
     const have = new Set(c.projections.filter((p) => p.scope === scope).map((p) => p.alias));

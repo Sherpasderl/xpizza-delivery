@@ -3,11 +3,11 @@
  "counts": {
   "units": 318,
   "sites": 3222,
-  "mapped": 1652,
-  "exempt": 1570,
+  "mapped": 1411,
+  "exempt": 1811,
   "byR": {
    "R9": 61,
-   "R17": 59,
+   "R17": 43,
    "R10": 72,
    "R5": 18,
    "R16": 66,
@@ -15,11 +15,11 @@
    "R12": 1,
    "R8": 72,
    "R11": 61,
-   "R1": 167,
-   "R2": 442,
-   "R3": 190,
-   "R4": 164,
-   "R7": 173,
+   "R1": 110,
+   "R2": 398,
+   "R3": 141,
+   "R4": 143,
+   "R7": 119,
    "R18": 12,
    "R15": 77
   },
@@ -34,6 +34,7 @@
    "server scheduling": 46,
    "server seed": 2,
    "server fixtures": 5,
+   "unreachable-on-surface": 241,
    "page-fn": 341,
    "form-account-profile": 14,
    "form-composer": 51
@@ -16718,8 +16719,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#updateDriverLocation#lng#0",
@@ -16728,8 +16729,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#lat#0",
@@ -16853,8 +16854,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#arriveAtRestaurant#status#1",
@@ -16866,8 +16867,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#acceptTask#status#0",
@@ -16879,8 +16880,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#acceptTask#status#1",
@@ -16892,8 +16893,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#acceptSecondOrder>anon#status#0",
@@ -16905,8 +16906,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#acceptSecondOrder#status#0",
@@ -16918,8 +16919,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#completeTask#status#0",
@@ -16931,8 +16932,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#completeTask#order_id#0",
@@ -16941,8 +16942,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#completeTask#order_id#1",
@@ -16951,8 +16952,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#completeTask#order_id#2",
@@ -16961,8 +16962,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#completeTask#status#1",
@@ -16974,8 +16975,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#completeTask#status#2",
@@ -16987,8 +16988,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#coordsMatch#lat#0",
@@ -17072,8 +17073,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#status#1",
@@ -17085,8 +17086,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#order_id#0",
@@ -17095,8 +17096,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#lat#0",
@@ -17105,8 +17106,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#lat#1",
@@ -17115,8 +17116,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#lng#0",
@@ -17125,8 +17126,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#lng#1",
@@ -17135,8 +17136,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#reassignOrder#status#0",
@@ -17148,8 +17149,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#reassignOrder#status#1",
@@ -17161,8 +17162,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#reassignOrder#status#2",
@@ -17174,8 +17175,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#cancelOrder#status#0",
@@ -17187,8 +17188,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#cancelOrder#status#1",
@@ -17200,8 +17201,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#cancelOrder#status#2",
@@ -17213,8 +17214,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#status#0",
@@ -17226,8 +17227,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#status#1",
@@ -17239,8 +17240,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#status#2",
@@ -17252,8 +17253,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#order_id#0",
@@ -17262,8 +17263,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#order_id#1",
@@ -17272,8 +17273,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#order_id#2",
@@ -17282,8 +17283,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#order_id#3",
@@ -17292,8 +17293,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#order_id#4",
@@ -17302,8 +17303,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#pickupComplete#order_id#5",
@@ -17312,8 +17313,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders>anon#order_id#0",
@@ -17322,8 +17323,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders>anon#order_id#1",
@@ -17332,8 +17333,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders>anon#order_id#2",
@@ -17342,8 +17343,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders>anon#order_id#3",
@@ -17352,8 +17353,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders#status#0",
@@ -17365,8 +17366,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders#status#1",
@@ -17378,8 +17379,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders#status#2",
@@ -17391,8 +17392,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders#status#3",
@@ -17404,8 +17405,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders#status#4",
@@ -17417,8 +17418,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#getDriverOrders#status#5",
@@ -17430,8 +17431,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#order_id#0",
@@ -17440,8 +17441,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#lat#0",
@@ -17450,8 +17451,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#lng#0",
@@ -17460,8 +17461,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#items_text#0",
@@ -17470,8 +17471,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#lat#1",
@@ -17480,8 +17481,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#lng#1",
@@ -17490,8 +17491,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#address_detected#0",
@@ -17500,8 +17501,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#address_details#0",
@@ -17510,8 +17511,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#payment_method#0",
@@ -17523,8 +17524,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#total#0",
@@ -17535,8 +17536,8 @@
     "COLLECT",
     "CASH"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks#items_text#1",
@@ -17545,8 +17546,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/index.html<script@0>#onOrders#order_id#0",
@@ -18814,8 +18815,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#updateDriverLocation#lng#0",
@@ -18824,8 +18825,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#lat#0",
@@ -18949,8 +18950,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#arriveAtRestaurant#status#1",
@@ -18962,8 +18963,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#acceptTask#status#0",
@@ -18975,8 +18976,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#acceptTask#status#1",
@@ -18988,8 +18989,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#acceptSecondOrder>anon#status#0",
@@ -19001,8 +19002,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#acceptSecondOrder#status#0",
@@ -19014,8 +19015,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#completeTask#status#0",
@@ -19027,8 +19028,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#completeTask#order_id#0",
@@ -19037,8 +19038,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#completeTask#order_id#1",
@@ -19047,8 +19048,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#completeTask#order_id#2",
@@ -19057,8 +19058,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#completeTask#status#1",
@@ -19070,8 +19071,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#completeTask#status#2",
@@ -19083,8 +19084,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#subscribeToScheduledOrders>anon#status#0",
@@ -19396,8 +19397,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#status#1",
@@ -19409,8 +19410,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#status#2",
@@ -19422,8 +19423,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#order_id#0",
@@ -19432,8 +19433,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#order_id#1",
@@ -19442,8 +19443,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#order_id#2",
@@ -19452,8 +19453,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#order_id#3",
@@ -19462,8 +19463,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#order_id#4",
@@ -19472,8 +19473,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#pickupComplete#order_id#5",
@@ -19482,8 +19483,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders>anon#order_id#0",
@@ -19492,8 +19493,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders>anon#order_id#1",
@@ -19502,8 +19503,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders>anon#order_id#2",
@@ -19512,8 +19513,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders>anon#order_id#3",
@@ -19522,8 +19523,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders#status#0",
@@ -19535,8 +19536,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders#status#1",
@@ -19548,8 +19549,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders#status#2",
@@ -19561,8 +19562,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders#status#3",
@@ -19574,8 +19575,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders#status#4",
@@ -19587,8 +19588,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#getDriverOrders#status#5",
@@ -19600,8 +19601,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#order_id#0",
@@ -19610,8 +19611,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#lat#0",
@@ -19620,8 +19621,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#lng#0",
@@ -19630,8 +19631,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#items_text#0",
@@ -19640,8 +19641,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#lat#1",
@@ -19650,8 +19651,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#lng#1",
@@ -19660,8 +19661,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#address_detected#0",
@@ -19670,8 +19671,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#address_details#0",
@@ -19680,8 +19681,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#payment_method#0",
@@ -19693,8 +19694,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#total#0",
@@ -19705,8 +19706,8 @@
     "COLLECT",
     "CASH"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks#items_text#1",
@@ -19715,8 +19716,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#initMap#lat#0",
@@ -23615,8 +23616,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#updateDriverLocation#lng#0",
@@ -23625,8 +23626,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#lat#0",
@@ -23750,8 +23751,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#arriveAtRestaurant#status#1",
@@ -23763,8 +23764,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#acceptTask#status#0",
@@ -23776,8 +23777,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#acceptTask#status#1",
@@ -23789,8 +23790,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#acceptSecondOrder>anon#status#0",
@@ -23802,8 +23803,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#acceptSecondOrder#status#0",
@@ -23815,8 +23816,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask#status#0",
@@ -23828,8 +23829,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask#order_id#0",
@@ -23838,8 +23839,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask#order_id#1",
@@ -23848,8 +23849,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask#order_id#2",
@@ -23858,8 +23859,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask#status#1",
@@ -23871,8 +23872,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask#status#2",
@@ -23884,8 +23885,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToScheduledOrders>anon#status#0",
@@ -23923,8 +23924,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#resolveReconciliation#status#0",
@@ -23936,8 +23937,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#resolveReconciliation#status#1",
@@ -23949,8 +23950,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch#lat#0",
@@ -24149,8 +24150,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#cancelOrderRemote#status#1",
@@ -24162,8 +24163,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#status#0",
@@ -24175,8 +24176,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#status#1",
@@ -24188,8 +24189,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#status#2",
@@ -24201,8 +24202,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#order_id#0",
@@ -24211,8 +24212,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#order_id#1",
@@ -24221,8 +24222,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#order_id#2",
@@ -24231,8 +24232,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#order_id#3",
@@ -24241,8 +24242,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#order_id#4",
@@ -24251,8 +24252,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete#order_id#5",
@@ -24261,8 +24262,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders>anon#order_id#0",
@@ -24271,8 +24272,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders>anon#order_id#1",
@@ -24281,8 +24282,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders>anon#order_id#2",
@@ -24291,8 +24292,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders>anon#order_id#3",
@@ -24301,8 +24302,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders#status#0",
@@ -24314,8 +24315,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders#status#1",
@@ -24327,8 +24328,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders#status#2",
@@ -24340,8 +24341,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders#status#3",
@@ -24353,8 +24354,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders#status#4",
@@ -24366,8 +24367,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders#status#5",
@@ -24379,8 +24380,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#order_id#0",
@@ -24389,8 +24390,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#lat#0",
@@ -24399,8 +24400,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#lng#0",
@@ -24409,8 +24410,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#items_text#0",
@@ -24419,8 +24420,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#lat#1",
@@ -24429,8 +24430,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#lng#1",
@@ -24439,8 +24440,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#address_detected#0",
@@ -24449,8 +24450,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#address_details#0",
@@ -24459,8 +24460,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#payment_method#0",
@@ -24472,8 +24473,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#total#0",
@@ -24484,8 +24485,8 @@
     "COLLECT",
     "CASH"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks#items_text#1",
@@ -24494,8 +24495,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/index.html<script@0>#displayLabel#display_number#0",
@@ -26144,8 +26145,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#assignOrderToDriver#status#1",
@@ -26157,8 +26158,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#assignOrderToDriver#order_id#0",
@@ -26167,8 +26168,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#assignOrderToDriver#lat#0",
@@ -26177,8 +26178,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#assignOrderToDriver#lat#1",
@@ -26187,8 +26188,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#assignOrderToDriver#lng#0",
@@ -26197,8 +26198,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#assignOrderToDriver#lng#1",
@@ -26207,8 +26208,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#reassignOrder#status#0",
@@ -26220,8 +26221,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#reassignOrder#status#1",
@@ -26233,8 +26234,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#reassignOrder#status#2",
@@ -26246,8 +26247,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#pickupComplete#status#0",
@@ -26473,8 +26474,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#lat#0",
@@ -26483,8 +26484,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#lng#0",
@@ -26493,8 +26494,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#items_text#0",
@@ -26503,8 +26504,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#lat#1",
@@ -26513,8 +26514,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#lng#1",
@@ -26523,8 +26524,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#address_detected#0",
@@ -26533,8 +26534,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#address_details#0",
@@ -26543,8 +26544,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#payment_method#0",
@@ -26556,8 +26557,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#total#0",
@@ -26568,8 +26569,8 @@
     "COLLECT",
     "CASH"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/xpizza-delivery.js#createOrderWithTasks#items_text#1",
@@ -26578,8 +26579,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "driver",
-   "r": "R4"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-driver/index.html<script@0>#detectNewAssignments#status#0",
@@ -27194,8 +27195,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#updateDriverLocation#lng#0",
@@ -27204,8 +27205,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#lat#0",
@@ -27329,8 +27330,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#arriveAtRestaurant#status#1",
@@ -27342,8 +27343,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#acceptTask#status#0",
@@ -27355,8 +27356,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#acceptTask#status#1",
@@ -27368,8 +27369,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#acceptSecondOrder>anon#status#0",
@@ -27381,8 +27382,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#acceptSecondOrder#status#0",
@@ -27394,8 +27395,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#completeTask#status#0",
@@ -27407,8 +27408,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#completeTask#order_id#0",
@@ -27417,8 +27418,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#completeTask#order_id#1",
@@ -27427,8 +27428,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#completeTask#order_id#2",
@@ -27437,8 +27438,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#completeTask#status#1",
@@ -27450,8 +27451,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#completeTask#status#2",
@@ -27463,8 +27464,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#coordsMatch#lat#0",
@@ -27548,8 +27549,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#status#1",
@@ -27561,8 +27562,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#order_id#0",
@@ -27571,8 +27572,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#lat#0",
@@ -27581,8 +27582,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#lat#1",
@@ -27591,8 +27592,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#lng#0",
@@ -27601,8 +27602,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#lng#1",
@@ -27611,8 +27612,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#reassignOrder#status#0",
@@ -27624,8 +27625,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#reassignOrder#status#1",
@@ -27637,8 +27638,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#reassignOrder#status#2",
@@ -27650,8 +27651,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#status#0",
@@ -27663,8 +27664,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#status#1",
@@ -27676,8 +27677,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#status#2",
@@ -27689,8 +27690,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#order_id#0",
@@ -27699,8 +27700,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#order_id#1",
@@ -27709,8 +27710,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#order_id#2",
@@ -27719,8 +27720,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#order_id#3",
@@ -27729,8 +27730,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#order_id#4",
@@ -27739,8 +27740,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#pickupComplete#order_id#5",
@@ -27749,8 +27750,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders>anon#order_id#0",
@@ -27759,8 +27760,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders>anon#order_id#1",
@@ -27769,8 +27770,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders>anon#order_id#2",
@@ -27779,8 +27780,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders>anon#order_id#3",
@@ -27789,8 +27790,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders#status#0",
@@ -27802,8 +27803,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders#status#1",
@@ -27815,8 +27816,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders#status#2",
@@ -27828,8 +27829,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders#status#3",
@@ -27841,8 +27842,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders#status#4",
@@ -27854,8 +27855,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#getDriverOrders#status#5",
@@ -27867,8 +27868,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#order_id#0",
@@ -27877,8 +27878,8 @@
    "facts": [
     "NUM"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#lat#0",
@@ -27887,8 +27888,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#lng#0",
@@ -27897,8 +27898,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#items_text#0",
@@ -27907,8 +27908,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#lat#1",
@@ -27917,8 +27918,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#lng#1",
@@ -27927,8 +27928,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#address_detected#0",
@@ -27937,8 +27938,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#address_details#0",
@@ -27947,8 +27948,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#payment_method#0",
@@ -27960,8 +27961,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#total#0",
@@ -27972,8 +27973,8 @@
     "COLLECT",
     "CASH"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks#items_text#1",
@@ -27982,8 +27983,8 @@
    "facts": [
     "ITEMS"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/index.html<script@0>#isTestOrder#order_id#0",
@@ -30476,8 +30477,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lng#0",
@@ -30486,8 +30487,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lat#1",
@@ -30496,8 +30497,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lng#1",
@@ -30506,8 +30507,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lat#2",
@@ -30516,8 +30517,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lng#2",
@@ -30526,8 +30527,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lat#3",
@@ -30536,8 +30537,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#renderConfirmCard#lng#3",
@@ -30546,8 +30547,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-orders/account.js#saveEditedAddress#lat#0",
@@ -33220,8 +33221,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lng#0",
@@ -33230,8 +33231,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lat#1",
@@ -33240,8 +33241,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lng#1",
@@ -33250,8 +33251,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lat#2",
@@ -33260,8 +33261,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lng#2",
@@ -33270,8 +33271,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lat#3",
@@ -33280,8 +33281,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#renderConfirmCard#lng#3",
@@ -33290,8 +33291,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "form-account-claim",
-   "r": "R17"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "la-musa-orders/account.js#saveEditedAddress#lat#0",

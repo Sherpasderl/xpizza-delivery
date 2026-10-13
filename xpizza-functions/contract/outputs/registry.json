@@ -4,9 +4,6 @@
   "la-musa-orders/account.js#applyReorderToCart@la-musa-orders/account.js#seed": {
    "status": "pending"
   },
-  "la-musa-orders/account.js#renderConfirmCard@self": {
-   "status": "pending"
-  },
   "la-musa-orders/account.js#renderOrdersPane>anon@self": {
    "status": "pending"
   },
@@ -199,55 +196,19 @@
   "xpizza-dashboard/sherpa-client.js#sfetch>anon@self": {
    "status": "pending"
   },
-  "xpizza-dashboard/xpizza-delivery.js#acceptSecondOrder@self": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#acceptSecondOrder>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#acceptTask@self": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#arriveAtRestaurant@self": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver@self": {
-   "status": "pending"
-  },
   "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition@xpizza-dashboard/xpizza-delivery.js#updateDriverLocation": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#completeTask@self": {
    "status": "pending"
   },
   "xpizza-dashboard/xpizza-delivery.js#coordsMatch@xpizza-dashboard/xpizza-delivery.js#resolvePickupHub": {
    "status": "pending"
   },
-  "xpizza-dashboard/xpizza-delivery.js#createOrderWithTasks@self": {
-   "status": "pending"
-  },
   "xpizza-dashboard/xpizza-delivery.js#filterLiveOrders@xpizza-dashboard/xpizza-delivery.js#subscribeToOrders>anon": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#getDriverOrders@self": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#getDriverOrders>anon@self": {
    "status": "pending"
   },
   "xpizza-dashboard/xpizza-delivery.js#hubMatch@xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition": {
    "status": "pending"
   },
-  "xpizza-dashboard/xpizza-delivery.js#pickupComplete@self": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#reassignOrder@self": {
-   "status": "pending"
-  },
   "xpizza-dashboard/xpizza-delivery.js#resolvePickupHub@xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver": {
-   "status": "pending"
-  },
-  "xpizza-dashboard/xpizza-delivery.js#updateDriverLocation@self": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/board-model.js#isLiveDelivery@xpizza-dispatch-mobile/board-model.js#canReassign": {
@@ -451,49 +412,19 @@
   "xpizza-dispatch-mobile/slot-format.js#groupScheduledBySlot@xpizza-dispatch-mobile/index.html<script@0>#renderBoard": {
    "status": "pending"
   },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#acceptSecondOrder@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#acceptSecondOrder>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#acceptTask@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#arriveAtRestaurant@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch-mobile/index.html<script@0>#commitAssign": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#cancelOrderRemote@self": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition@xpizza-dispatch-mobile/xpizza-delivery.js#updateDriverLocation": {
    "status": "pending"
   },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#completeTask@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch@xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#createOrderWithTasks@self": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#filterLiveOrders@xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToOrders>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#getDriverOrders>anon@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch-mobile/xpizza-delivery.js#hubMatch@xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#pickupComplete@self": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#reassignOrder@xpizza-dispatch-mobile/index.html<script@0>#commitAssign": {
@@ -502,19 +433,10 @@
   "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver": {
    "status": "pending"
   },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#resolveReconciliation@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToManualReconciliation>anon@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToOrders@xpizza-dispatch-mobile/index.html<script@0>#__startApp": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToScheduledOrders>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch-mobile/xpizza-delivery.js#updateDriverLocation@self": {
    "status": "pending"
   },
   "xpizza-dispatch/dispatch-alert-nav.js#alertNavTarget@xpizza-dispatch/index.html<script@0>#renderDispatcherAlerts>anon>anon": {
@@ -838,18 +760,6 @@
   "xpizza-dispatch/sherpa-client.js#sfetch>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/xpizza-delivery.js#acceptSecondOrder@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#acceptSecondOrder>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#acceptTask@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#arriveAtRestaurant@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch/index.html<script@0>#assignOrder": {
    "status": "pending"
   },
@@ -862,28 +772,13 @@
   "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition@xpizza-dispatch/xpizza-delivery.js#updateDriverLocation": {
    "status": "pending"
   },
-  "xpizza-dispatch/xpizza-delivery.js#completeTask@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#createOrderWithTasks@self": {
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#filterLiveOrders@xpizza-dispatch/xpizza-delivery.js#subscribeToOrders>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch/xpizza-delivery.js#getDriverOrders@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#getDriverOrders>anon@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch/xpizza-delivery.js#hubMatch@xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#pickupComplete@self": {
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#reassignOrder@xpizza-dispatch/index.html<script@0>#assignOrder": {
@@ -902,9 +797,6 @@
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#subscribeToScheduledOrders>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/xpizza-delivery.js#updateDriverLocation@self": {
    "status": "pending"
   },
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/cash-helpers.js#computeShiftCash": {
@@ -1039,9 +931,6 @@
   "xpizza-driver/xpizza-delivery.js#arriveAtRestaurant@xpizza-driver/index.html<script@0>#<top>>anon": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#assignOrderToDriver@self": {
-   "status": "pending"
-  },
   "xpizza-driver/xpizza-delivery.js#checkGeofenceTransition@xpizza-driver/xpizza-delivery.js#updateDriverLocation": {
    "status": "pending"
   },
@@ -1052,9 +941,6 @@
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#coordsMatch@xpizza-driver/xpizza-delivery.js#resolvePickupHub": {
-   "status": "pending"
-  },
-  "xpizza-driver/xpizza-delivery.js#createOrderWithTasks@self": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#filterLiveOrders@xpizza-driver/xpizza-delivery.js#subscribeToOrders>anon": {
@@ -1070,9 +956,6 @@
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#pickupComplete@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
-   "status": "pending"
-  },
-  "xpizza-driver/xpizza-delivery.js#reassignOrder@self": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
@@ -1621,61 +1504,19 @@
   "xpizza-kitchen/sherpa-client.js#sfetch>anon@self": {
    "status": "pending"
   },
-  "xpizza-kitchen/xpizza-delivery.js#acceptSecondOrder@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#acceptSecondOrder>anon@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#acceptTask@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#arriveAtRestaurant@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#cancelOrder@self": {
-   "status": "pending"
-  },
   "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition@xpizza-kitchen/xpizza-delivery.js#updateDriverLocation": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#completeTask@self": {
    "status": "pending"
   },
   "xpizza-kitchen/xpizza-delivery.js#coordsMatch@xpizza-kitchen/xpizza-delivery.js#resolvePickupHub": {
    "status": "pending"
   },
-  "xpizza-kitchen/xpizza-delivery.js#createOrderWithTasks@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#getDriverOrders@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#getDriverOrders>anon@self": {
-   "status": "pending"
-  },
   "xpizza-kitchen/xpizza-delivery.js#hubMatch@xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#pickupComplete@self": {
-   "status": "pending"
-  },
-  "xpizza-kitchen/xpizza-delivery.js#reassignOrder@self": {
    "status": "pending"
   },
   "xpizza-kitchen/xpizza-delivery.js#resolvePickupHub@xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver": {
    "status": "pending"
   },
-  "xpizza-kitchen/xpizza-delivery.js#updateDriverLocation@self": {
-   "status": "pending"
-  },
   "xpizza-orders/account.js#applyReorderToCart@xpizza-orders/account.js#seed": {
-   "status": "pending"
-  },
-  "xpizza-orders/account.js#renderConfirmCard@self": {
    "status": "pending"
   },
   "xpizza-orders/account.js#renderOrdersPane>anon@self": {

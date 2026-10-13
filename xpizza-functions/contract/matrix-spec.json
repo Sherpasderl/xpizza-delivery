@@ -645,7 +645,6 @@
         "MONEY",
         "STATUS",
         "REWARD",
-        "census:PLACE",
         "census:BRAND",
         "census:PAYLIFE",
         "census:NUM",
@@ -656,7 +655,8 @@
           "delivered",
           "completed"
         ]
-      }
+      },
+      "_p1a": "P1-a (reviewed): census:PLACE removed — its only reader was the legacy renderConfirmCard, now census-exempt as unreachable on the account surface (referenced only in comments)"
     },
     "R18": {
       "name": "Reordenar",
