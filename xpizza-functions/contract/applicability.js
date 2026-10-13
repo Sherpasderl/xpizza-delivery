@@ -56,13 +56,28 @@ function bindGuard(g) {
   if (kind === 'F') { const f = fs.readFileSync(path.join(REPO, where), 'utf8'); const k = f.split(text).length - 1; if (k !== 1) throw new Error(`guard text occurs ${k}× in ${where}: ${text}`); return { kind, file: where, text }; }
   // C — the CALLER SET of an output (every census region whose output it is, from contract/regions.json, which the region
   // guard keeps current): a region reachable only through these callers goes stale when a caller is added / removed
+  // R — every REFERENCE to a function name (codex P1-b b12 r1 P1-2: aliases / callbacks escape the census caller set): the
+  // word-boundary occurrence count of the name in EVERY census source unit (all deployable code). An alias
+  // (`const f = name`), a callback (`arr.map(name)`), a new call or a new file mentioning it → stale
+  if (kind === 'R') { const counts = refCounts(where); if (!Object.keys(counts).length) throw new Error(`no reference to ${where} in any source unit`); return { kind, name: where, counts }; }
+  // K — a call TEXT's occurrence COUNT in a file (for a function with no census caller set): a new / removed call site → stale
+  if (kind === 'K') { const f = fs.readFileSync(path.join(REPO, where), 'utf8'); const k = f.split(text).length - 1; if (!k) throw new Error(`guard text absent in ${where}: ${text}`); return { kind, file: where, text, count: k }; }
   if (kind === 'C') { const callers = callersOf(where); if (!callers.length) throw new Error(`no census caller of ${where}`); return { kind, output: where, callers }; }
   throw new Error(`unknown guard kind ${kind}`);
 }
+let _units = null;
+const refCounts = (name, units = null) => {
+  const us = units || (_units = _units || require('./census').sources());
+  const re = new RegExp(`(?<![A-Za-z0-9_$])${name.replace(/[$]/g, '\\$')}(?![A-Za-z0-9_$])`, 'g');
+  const out = {}; for (const u of us) { const k = (String(u.code).match(re) || []).length; if (k) out[`${u.file}#${u.scope || ''}`] = (out[`${u.file}#${u.scope || ''}`] || 0) + k; }
+  return Object.fromEntries(Object.entries(out).sort());
+};
 const callersOf = (output, regionsDoc = JSON.parse(fs.readFileSync(path.join(__dirname, 'regions.json'), 'utf8'))) => [...new Set(regionsDoc.regions.filter((r) => r.output === output).map((r) => r.consumer || 'self'))].sort();
 function guardStale(gb, { readFile = (f) => fs.readFileSync(path.join(REPO, f), 'utf8'), units = null, regionsDoc = null } = {}) {
   if (gb.kind === 'S') { const t = scopeText(gb.scope, units); if (t == null) return `guard scope ${gb.scope} is gone`; if (!t.includes(gb.text)) return `guard text no longer in ${gb.scope}: "${gb.text}"`; if (sha(t) !== gb.scopeSha) return `guard scope ${gb.scope} changed`; return null; }
   if (gb.kind === 'F') { let f; try { f = readFile(gb.file); } catch (_) { return `guard file ${gb.file} is gone`; } const k = f.split(gb.text).length - 1; return k === 1 ? null : `guard text occurs ${k}× in ${gb.file} (was exactly once): "${gb.text}"`; }
+  if (gb.kind === 'R') { const now = refCounts(gb.name, units); return JSON.stringify(now) === JSON.stringify(gb.counts) ? null : `the references to ${gb.name} changed (an alias / callback / call site was added or removed): ${JSON.stringify(gb.counts)} → ${JSON.stringify(now)}`; }
+  if (gb.kind === 'K') { let f; try { f = readFile(gb.file); } catch (_) { return `guard file ${gb.file} is gone`; } const k = f.split(gb.text).length - 1; return k === gb.count ? null : `call text occurs ${k}× in ${gb.file} (was ${gb.count}×): "${gb.text}"`; }
   if (gb.kind === 'C') { const now = callersOf(gb.output, regionsDoc || undefined); return JSON.stringify(now) === JSON.stringify(gb.callers) ? null : `the callers of ${gb.output} changed: ${JSON.stringify(gb.callers)} → ${JSON.stringify(now)}`; }
   return `unknown guard kind ${gb.kind}`;
 }

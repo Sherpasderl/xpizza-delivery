@@ -13096,8 +13096,8 @@
     "id": "r3p1-68",
     "slice": "r3p1",
     "file": "contract/scenario-state.js",
-    "from": "&& Object.values(ev.tasks).every((t) => !(t && t.assigned_driver_id)) : unknown) },",
-    "to": ": unknown) },",
+    "from": " && Object.values(ev.tasks).every((t) => !(t && t.assigned_driver_id)) && ev.assignLog.events",
+    "to": " && ev.assignLog.events",
     "label": "P1-b bulk: driver none ignores the order's task records (assignment lives on tasks)",
     "kills_with": [
       "a task with an assigned driver did not contradict driver none"
@@ -13131,6 +13131,156 @@
     "label": "P1-b bulk: a caller-set guard never goes stale (a new caller of a sweep-only function keeps its exclusion)",
     "kills_with": [
       "a new caller of isStuck did not make the sweep-only exclusion stale"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-71",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "return r && r.installedAt === 'beforeScripts' && Array.isArray(r.events)",
+    "to": "return r && Array.isArray(r.events)",
+    "label": "P1-b dispatch: no-ui established by a recorder installed AFTER the page scripts (incomplete)",
+    "kills_with": [
+      "an absent / late recorder established no-ui"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-72",
+    "slice": "r3p1",
+    "file": "contract/ui-recorder.js",
+    "from": "return (ev.path || []).some((n) =>",
+    "to": "return [].some((n) =>",
+    "label": "P1-b dispatch: the recorder's matcher is blind — a recorded click on the control never defeats no-ui",
+    "kills_with": [
+      "the UI recorder did not record the click's ancestor path"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-73",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "return k === gb.count ? null :",
+    "to": "return true ? null :",
+    "label": "P1-b dispatch: a K (call-count) guard never goes stale — a new call site keeps the handler's exclusion",
+    "kills_with": [
+      "a new openOrderDetailModal( call site did not make a K guard stale"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-74",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "if (u && pageSourceHas(u[1], u[3])) {",
+    "to": "if (u) {",
+    "label": "P1-b dispatch: a no-ui matcher that occurs nowhere in the page source (mistyped / vacuous) is accepted",
+    "kills_with": [
+      "absent from the page source / unknown page / unknown kind was accepted"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-75",
+    "slice": "r3p1",
+    "file": "contract/fn-recorder.js",
+    "from": "w.run = function (...a) { rec(name); return run.apply(orig, a); };",
+    "to": "w.run = function (...a) { return run.apply(orig, a); };",
+    "label": "codex b12 P1-1: a direct .run() bypasses the boundary recorder",
+    "kills_with": [
+      "a direct .run() / an HTTP call was not recorded at the boundary"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-76",
+    "slice": "r3p1",
+    "file": "contract/fn-recorder.js",
+    "from": ".every((n) => mod[n] && mod[n][MARK] === n);",
+    "to": ".every(() => true);",
+    "label": "codex b12 P1-1: an export replaced after installation (unwrapped) still claims a complete log",
+    "kills_with": [
+      "an export replaced after installation (unwrapped) still claimed a complete log"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-77",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "return JSON.stringify(now) === JSON.stringify(gb.counts) ? null :",
+    "to": "return true ? null :",
+    "label": "codex b12 P1-2: the reference (R) guard never goes stale — an alias escapes",
+    "kills_with": [
+      "an alias of isStuck did not make the sweep-only exclusion stale"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-78",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": " && ev.assignLog.events.every((e) => !e.after && !e.before); } },",
+    "to": "; } },",
+    "label": "codex b12 P1-3: driver none from the final snapshot only — assigned-then-cleared reads as never assigned",
+    "kills_with": [
+      "assigned-then-cleared did not contradict driver none"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-79",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "if (s.local.length || s.session.length) return unknown;",
+    "to": "if (s.local.length) return unknown;",
+    "label": "codex b12 P1-5: a sessionStorage reload snapshot before the scripts is ignored",
+    "kills_with": [
+      "a sessionStorage reload snapshot before the scripts did not leave restore unknown"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-80",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.json",
+    "from": "   \"no-ui:xpizza-orders:attr=data-rk-clear\",\n",
+    "to": "",
+    "label": "codex b12 P1-4: the redeem summary's reward-REMOVAL control is dropped from its contexts",
+    "kills_with": [
+      "a reward removal ([data-rk-clear]) did not keep it required"
     ],
     "command": [
       "node",

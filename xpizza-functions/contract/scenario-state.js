@@ -132,7 +132,9 @@ const CHECKS = Object.freeze({
   // assignment lives on the order's TASKS (tasks/<id>_pickup|_delivery.assigned_driver_id), so "no driver" needs the
   // order's task records read at gate time (ev.tasks: { taskId: record }, {} = none exist) — the order's own fields alone
   // would hold vacuously; no task evidence → unknown
-  driver: { source: "the order's task records (assigned_driver_id) + persisted order assignment fields", check: (v, ev) => (ev.persisted && ev.tasks && typeof ev.tasks === 'object' && v.driver === 'none' ? !ev.persisted.driver_id && !ev.persisted.assigned_driver && !ev.persisted.driver_uid && Object.values(ev.tasks).every((t) => !(t && t.assigned_driver_id)) : unknown) },
+  // codex P1-b b12 r1 P1-3: "never assigned" over the observation INTERVAL — the assignment TRANSITION log (every task
+  // write's before/after, complete) must show no assigned_driver_id ever set; assigned-then-cleared is "assigned"
+  driver: { source: "the assignment transition log (every task write, complete) + the order's task records + persisted order fields", check: (v, ev) => { if (!(ev.persisted && ev.tasks && typeof ev.tasks === 'object' && ev.assignLog && ev.assignLog.complete === true && Array.isArray(ev.assignLog.events) && v.driver === 'none')) return unknown; return !ev.persisted.driver_id && !ev.persisted.assigned_driver && !ev.persisted.driver_uid && Object.values(ev.tasks).every((t) => !(t && t.assigned_driver_id)) && ev.assignLog.events.every((e) => !e.after && !e.before); } },
   outForDelivery: { source: 'persisted order status (out_for_delivery / delivered ⇒ picked up)', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? ['out_for_delivery', 'delivered'].includes(ev.persisted.status) === v.outForDelivery : unknown) },
   terminal: { source: 'persisted order status', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? (v.terminal === 'none' ? !['delivered', 'completed'].includes(ev.persisted.status) : ev.persisted.status === v.terminal) : unknown) },
   status: { source: 'persisted order status (must equal the contract status expected at this LP)', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? ev.persisted.status === v.status : unknown) },
@@ -141,7 +143,10 @@ const CHECKS = Object.freeze({
   // customer form actions — OBSERVED on the form page (a capture-phase event recorder: the element each event hit) or in
   // persisted / storage evidence; no recorder → unknown (codex P1-b mech r1 P1-2: never step labels)
   reorder: { source: 'form event recorder (no event on a reorder control: [data-ord] / reorder)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.reorder) === v.reorder : unknown) },
-  restore: { source: 'form event recorder (no restoreOrderForm control) + form storage at boot (no snapshot to restore)', check: (v, ev) => (Array.isArray(ev.formEvents) && Array.isArray(ev.formStorageAtBoot) ? (ev.formEvents.some((e) => e.restore) || ev.formStorageAtBoot.some((k) => /snapshot|pending_pay|self_update|selfupdate/i.test(k))) === v.restore : unknown) },
+  // restore (codex P1-b b12 r1 P1-5): BOTH localStorage and sessionStorage captured BEFORE the page scripts — a restore
+  // (pending-pay retry, reload snapshot …) can only come from stored state or the restore control. "No restore" needs
+  // both areas EMPTY and no restore event; any stored key → unknown (never guessed from key names)
+  restore: { source: 'form event recorder (no restoreOrderForm control) + localStorage AND sessionStorage keys before the page scripts (empty)', check: (v, ev) => { const s = ev.formStorageAtBoot; if (!Array.isArray(ev.formEvents) || !s || s.at !== 'beforeScripts' || !Array.isArray(s.local) || !Array.isArray(s.session)) return unknown; if (ev.formEvents.some((e) => e.restore)) return v.restore === true; if (s.local.length || s.session.length) return unknown; return v.restore === false; } },
   anotherOrder: { source: 'form event recorder (no startAnotherOrder control)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.anotherOrder) === v.anotherOrder : unknown) },
   sheetEdit: { source: 'form event recorder (no [data-act=review-inc|review-dec] in the cart sheet)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.sheetEdit) === v.sheetEdit : unknown) },
   extras: { source: 'form event recorder (no [data-act=extra] toggle) + persisted items (no extras / options CONTENTS)', check: (v, ev) => { if (!Array.isArray(ev.formEvents) || !ev.persisted) return unknown; const n = persistedExtras(ev.persisted.items); return Number.isNaN(n) ? unknown : (ev.formEvents.some((e) => e.extras) || n > 0) === v.extras; } },
@@ -162,8 +167,23 @@ const CONTEXT = Object.freeze({
 // established ONLY from a COMPLETE invocation log (ev.fnCalls { complete, names }: every trigger the scheduler ran + every
 // HTTP call any page's router answered, and no page call left unrouted / refused). Incomplete or absent → unknown.
 const FN_EXPORTS = (() => { let src = ''; try { src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8'); } catch (_) { /* no index.js → no fn */ } return new Set([...src.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map((m) => m[1])); })();
+// PARAMETERIZED context `no-ui:<page>:<kind>=<value>` — no user-action event reached a control matching kind=value
+// (attr: a data-* attribute NAME; class; id; onclick: a substring of the onclick source) on <page>, from the contract's UI
+// recorder (contract/ui-recorder.js) installed BEFORE the page's scripts (ev.uiEvents[<page>]). The value must occur in
+// that page's source (no vacuous / mistyped matcher). No / late recorder → unknown.
+const UI = require('./ui-recorder');
+const REPO_ROOT = path.join(__dirname, '..', '..');
+function pageSourceHas(page, value) {
+  const dir = path.join(REPO_ROOT, page); let names; try { names = fs.readdirSync(dir); } catch (_) { return false; }
+  return names.filter((f) => /\.(html|js)$/.test(f)).some((f) => { try { return fs.readFileSync(path.join(dir, f), 'utf8').includes(value); } catch (_) { return false; } });
+}
 function contextOf(name) {
   if (CONTEXT[name]) return CONTEXT[name];
+  const u = /^no-ui:([a-z0-9-]+):(attr|class|id|onclick)=(.+)$/.exec(String(name));
+  if (u && pageSourceHas(u[1], u[3])) {
+    const [, page, kind, value] = u;
+    return { source: `the UI recorder on ${page} (no event on a control with ${kind} ${value})`, check: (ev) => { const r = ev.uiEvents && ev.uiEvents[page]; return r && r.installedAt === 'beforeScripts' && Array.isArray(r.events) ? !r.events.some((e) => UI.matches(e, kind, value)) : unknown; } };
+  }
   const m = /^no-call:([A-Za-z0-9_]+)$/.exec(String(name));
   if (m && FN_EXPORTS.has(m[1])) return { source: `the run's COMPLETE invocation log (no ${m[1]} invocation)`, check: (ev) => (ev.fnCalls && ev.fnCalls.complete === true && Array.isArray(ev.fnCalls.names) ? !ev.fnCalls.names.includes(m[1]) : unknown) };
   return null;

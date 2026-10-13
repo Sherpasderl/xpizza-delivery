@@ -47,10 +47,20 @@ require('../test/_catalog-clock').install();
 const WITNESS = require('./version-witness').install();
 const admin = require('firebase-admin');
 const app = require('../index.js');
+// codex P1-b b12 r1 P1-1: every exported function (and its .run) is wrapped at the BOUNDARY before anything can invoke it
+const FNREC = require('./fn-recorder').installFnRecorder(app);
 const D = require('./discovery');
 const { createScheduler } = require('./scheduler');
 const TRIG = D.dbTriggers(D.runtimeInventory(app));
-const S = createScheduler({ admin, triggers: TRIG, run: new Set(TRIG.map((t) => t.name)) }).install();
+// codex P1-b b12 r1 P1-3: the ASSIGNMENT TRANSITION log — every gated write's before/after of a task, from the write gate
+// (complete only while a written trigger watches tasks/{id}, so every task write is formed into an event here)
+const ASSIGN = { events: [] };
+const TASK_TRIG = TRIG.some((t) => t.kind === 'written' && t.segs.length === 2 && t.segs[0] === 'tasks');
+const S = createScheduler({ admin, triggers: TRIG, run: new Set(TRIG.map((t) => t.name)), tap: (rec, event) => {
+  if (rec.kind !== 'written' || !/^tasks\/[^/]+$/.test(rec.path)) return;
+  const v = (s) => (s && typeof s.val === 'function' ? s.val() : null);
+  ASSIGN.events.push({ path: rec.path, before: (v(event.data.before) || {}).assigned_driver_id || null, after: (v(event.data.after) || {}).assigned_driver_id || null });
+} }).install();
 const { makeFormRouter } = require('./form-router');
 const { createFirebaseHost } = require('./rtdb-adapter');
 const { bootPage } = require('./page-harness');
@@ -121,7 +131,7 @@ try {
   };
   const fhost = createFirebaseHost({ pageId: 'p1a-form', user: { uid: 'cust_p1a', email: 'c@p1a.test' }, fixture: S.fixture });
   const intent = { ...S1.intent };
-  const formEvents = [];
+  const formEvents = []; let formStorageAtBoot = null; let formUi = null;
   const snaps = {}; const negSnaps = {};
   CTX.now = 'S1/x_pizza/form'; HITS.setContext(CTX.now);
   // the form's DECLARED wall-clock anchor (S1.pageWallClock): 13:00 HN on the run's own HN day
@@ -129,6 +139,11 @@ try {
   const form = await step('form.boot', () => phase('boot', () => bootPage('xpizza-orders', { host: fhost, url: 'https://orders.test/', tracer: HITS, fetchImpl: routed, wallClockAnchorMs: FORM_ANCHOR,
     beforeScripts: (w) => {
       installGoogleMaps(w);
+      // codex P1-b b12 r1 P1-5: BOTH storage areas, captured BEFORE any page script runs (a restore reads them at boot)
+      const keys = (st) => { const ks = []; try { for (let i = 0; i < st.length; i++) ks.push(st.key(i)); } catch (_) { return null; } return ks; };
+      formStorageAtBoot = { at: 'beforeScripts', local: keys(w.localStorage), session: keys(w.sessionStorage) };
+      // the contract UI recorder (no-ui:xpizza-orders:… — e.g. the reward controls [data-rk-*]), before the page scripts
+      formUi = require('./ui-recorder').installUiRecorder(w, 'beforeScripts');
       // the FORM EVENT RECORDER (codex P1-b mech r1 P1-2): every user-action event on the form page, with the action
       // FLAGS read from the element it hit — the form-action vector fields are asserted from these, never step labels
       for (const t of ['click', 'change', 'input', 'keydown', 'pointerdown', 'touchstart']) w.document.addEventListener(t, (e) => {
@@ -142,7 +157,6 @@ try {
       Object.defineProperty(w.navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (okCb) => w.setTimeout(() => okCb({ coords: { latitude: 15.5050, longitude: -88.0290, accuracy: 8 } }), 0) } });
     } })));
   const w = form.win; const doc = form.doc;
-  const formStorageAtBoot = (() => { const ks = []; for (let i = 0; i < w.localStorage.length; i++) ks.push(w.localStorage.key(i)); return ks; })();
   // codex P1-a r1 P1-3: EVERY observation requires settle() === true AND a clean page + adapter (no page error, no
   // subscription-callback error, nothing refused) — a handler that rendered then threw, or left tracked work, is RED
   const CLEAN = (pg, host, label) => {
@@ -273,8 +287,9 @@ try {
   // ran + every HTTP call the form's router answered; complete iff the ack log is complete, nothing was refused and the
   // KDS (whose fetch is not routed) issued none
   const tasks = Object.fromEntries(Object.entries((await rtdb.ref('tasks').get()).val() || {}).filter(([k, t]) => k.startsWith(`${oid}_`) || (t && t.order_id === oid)));
-  const fnCalls = { complete: ackLog.complete && R.refused.length === 0 && kdsHttp.length === 0, names: [...new Set([...S.state.invs.map((i) => i.name), ...R.log.map((x) => x.fn)])].sort() };
-  const evidence = { tasks, fnCalls, intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
+  const fnCalls = { complete: FNREC.complete() && ackLog.complete && R.refused.length === 0 && kdsHttp.length === 0, names: [...FNREC.names].sort() };
+  const assignLog = { complete: TASK_TRIG && S.state.armed === true, events: ASSIGN.events.slice() };
+  const evidence = { uiEvents: { 'xpizza-orders': formUi }, tasks, fnCalls, assignLog, intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents: kdsEvents.slice(), kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
   // P1-b: the run's CONTRACT state is the scenario vector, ASSERTED from evidence (persisted order, routed calls, the KDS
   // recorder) — never from fixture intent alone; a field this LP cannot evidence is reported UNKNOWN (an exclusion that
   // depends on it would never apply)

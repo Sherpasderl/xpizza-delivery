@@ -9,7 +9,7 @@ const RA = require('./region-applicability');
 const SS = require('./scenario-state');
 const { gateA } = require('./gate-a');
 const { execFileSync } = require('child_process');
-const fmtGuard = (g) => (g.kind === 'S' ? `${g.scope} ∋ \`${g.text.slice(0, 60)}\`` : g.kind === 'C' ? `callers(${g.output}) = {${g.callers.join(', ')}}` : `${g.file} ∋ \`${g.text.slice(0, 60)}\``);
+const fmtGuard = (g) => (g.kind === 'S' ? `${g.scope} ∋ \`${g.text.slice(0, 60)}\`` : g.kind === 'C' ? `callers(${g.output}) = {${g.callers.join(', ')}}` : g.kind === 'R' ? `references(${g.name}) pinned in ${Object.keys(g.counts).length} unit(s) (${Object.values(g.counts).reduce((x, y) => x + y, 0)}×)` : g.kind === 'K' ? `${g.file} ∋ \`${g.text}\` ×${g.count}` : `${g.file} ∋ \`${g.text.slice(0, 60)}\``);
 const fmtCond = (any, ctx) => `${any.length ? any.map((c) => Object.entries(c).map(([f, v]) => `${f} ∈ {${v.join(', ')}}`).join(' ∧ ')).join('  ∨  ') : '(never by vector)'}${ctx.length ? ` · excluded only when context established: ${ctx.join(', ')}` : ''}`;
 
 function report({ since = null } = {}) {

@@ -26,10 +26,15 @@
      "redemption": [
       true
      ]
+    },
+    {
+     "restore": [
+      true
+     ]
     }
    ],
-   "authority": "§1 F-REWARD: the redemption quote exists only for a redemption (La Musa twin)",
-   "whyFalseExcludes": "no redemption → no redeem quote",
+   "authority": "§1 F-REWARD: the Stage-2 summary is re-rendered through applyRedeemQuoteToTotals only by the reward flow — a reward quote, a reward REMOVAL (rkClear → onQuoted(null)) or a redeem RESTORE after a payment reload; every reward-flow entry is a [data-rk-*] control (codex P1-b b12 r1 P1-4)",
+   "whyFalseExcludes": "no redemption, no restore, and no event on any reward control ([data-rk-*], UI recorder before the page scripts) → the reward flow never runs, so the callback never fires",
    "bind": {
     "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
     "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
@@ -41,6 +46,24 @@
      "kind": "F",
      "file": "la-musa-orders/index.html",
      "text": "onQuoted: applyRedeemQuoteToTotals,"
+    },
+    {
+     "kind": "R",
+     "name": "applyRedeemQuoteToTotals",
+     "counts": {
+      "la-musa-orders/index.html<script@2>#la-musa-orders": 4,
+      "la-musa-orders/order-self-update.js#la-musa-orders": 2,
+      "xpizza-orders/index.html<script@2>#xpizza-orders": 4,
+      "xpizza-orders/order-self-update.js#xpizza-orders": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "rkClear",
+     "counts": {
+      "la-musa-orders/account.js#la-musa-orders": 6,
+      "xpizza-orders/account.js#xpizza-orders": 6
+     }
     }
    ],
    "cases": {
@@ -52,7 +75,17 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "no-ui:la-musa-orders:attr=data-rk-open",
+    "no-ui:la-musa-orders:attr=data-rk-pick",
+    "no-ui:la-musa-orders:attr=data-rk-add",
+    "no-ui:la-musa-orders:attr=data-rk-minus",
+    "no-ui:la-musa-orders:attr=data-rk-done",
+    "no-ui:la-musa-orders:attr=data-rk-clear",
+    "no-ui:la-musa-orders:attr=data-rk-dismiss",
+    "no-ui:la-musa-orders:attr=data-rk-id"
+   ]
   },
   "la-musa-orders/index.html#updateCart@la-musa-orders/account.js#applyReorderToCart": {
    "group": "reorder",
@@ -406,6 +439,31 @@
      "callers": [
       "xpizza-functions/claim-order.js#claimOrderCore>anon"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "claimOrderCore",
+     "counts": {
+      "xpizza-functions/claim-order.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bindDecision",
+     "counts": {
+      "xpizza-functions/claim-order.js#functions": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "claimOrder",
+     "counts": {
+      "la-musa-orders/account.js#la-musa-orders": 6,
+      "xpizza-functions/claim-order.js#functions": 2,
+      "xpizza-functions/index.js#functions": 4,
+      "xpizza-orders/account.js#xpizza-orders": 6
+     }
     }
    ],
    "cases": {
@@ -451,6 +509,31 @@
      "callers": [
       "xpizza-functions/claim-order.js#claimOrderCore>anon"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "claimOrderCore",
+     "counts": {
+      "xpizza-functions/claim-order.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bindDecision",
+     "counts": {
+      "xpizza-functions/claim-order.js#functions": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "claimOrder",
+     "counts": {
+      "la-musa-orders/account.js#la-musa-orders": 6,
+      "xpizza-functions/claim-order.js#functions": 2,
+      "xpizza-functions/index.js#functions": 4,
+      "xpizza-orders/account.js#xpizza-orders": 6
+     }
     }
    ],
    "cases": {
@@ -489,6 +572,24 @@
      "callers": [
       "xpizza-functions/index.js#claimPrefill"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "claimPrefillCore",
+     "counts": {
+      "xpizza-functions/claim-prefill.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "claimPrefill",
+     "counts": {
+      "la-musa-orders/index.html<script@2>#la-musa-orders": 2,
+      "xpizza-functions/claim-prefill.js#functions": 1,
+      "xpizza-functions/index.js#functions": 4,
+      "xpizza-orders/index.html<script@2>#xpizza-orders": 2
+     }
     }
    ],
    "cases": {
@@ -534,6 +635,31 @@
      "callers": [
       "xpizza-functions/claim-order.js#claimOrderCore>anon"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "claimOrderCore",
+     "counts": {
+      "xpizza-functions/claim-order.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "bindDecision",
+     "counts": {
+      "xpizza-functions/claim-order.js#functions": 3
+     }
+    },
+    {
+     "kind": "R",
+     "name": "claimOrder",
+     "counts": {
+      "la-musa-orders/account.js#la-musa-orders": 6,
+      "xpizza-functions/claim-order.js#functions": 2,
+      "xpizza-functions/index.js#functions": 4,
+      "xpizza-orders/account.js#xpizza-orders": 6
+     }
     }
    ],
    "cases": {
@@ -572,6 +698,24 @@
      "callers": [
       "xpizza-functions/index.js#claimPrefill"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "claimPrefillCore",
+     "counts": {
+      "xpizza-functions/claim-prefill.js#functions": 2,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "claimPrefill",
+     "counts": {
+      "la-musa-orders/index.html<script@2>#la-musa-orders": 2,
+      "xpizza-functions/claim-prefill.js#functions": 1,
+      "xpizza-functions/index.js#functions": 4,
+      "xpizza-orders/index.html<script@2>#xpizza-orders": 2
+     }
     }
    ],
    "cases": {
@@ -610,6 +754,22 @@
      "callers": [
       "xpizza-functions/index.js#flushStaffPushQueue"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "formatGrouped",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "flushStaffPushQueue",
+     "counts": {
+      "xpizza-functions/index.js#functions": 6,
+      "xpizza-functions/staff-push.js#functions": 4
+     }
     }
    ],
    "cases": {
@@ -655,6 +815,29 @@
      "callers": [
       "xpizza-functions/index.js#sweepStuckOrders"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "isStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "formatStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "sweepStuckOrders",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3
+     }
     }
    ],
    "cases": {
@@ -698,6 +881,15 @@
       "xpizza-functions/index.js#notifyDriverOnAssignment",
       "xpizza-functions/index.js#notifyDriverOnCancellation"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "sendDriverPush",
+     "counts": {
+      "xpizza-functions/driver-push.js#functions": 1,
+      "xpizza-functions/index.js#functions": 9,
+      "xpizza-functions/staff-push.js#functions": 1
+     }
     }
    ],
    "cases": {
@@ -739,6 +931,34 @@
      "kind": "F",
      "file": "xpizza-functions/hosted-charge-flow.js",
      "text": "async function resolveAndIssueHostedCheckout(opts) {"
+    },
+    {
+     "kind": "R",
+     "name": "chargeOnlineOrder",
+     "counts": {
+      "la-musa-orders/index.html<script@2>#la-musa-orders": 12,
+      "la-musa-orders/sherpa-client.js#la-musa-orders": 4,
+      "xpizza-dashboard/sherpa-client.js#xpizza-dashboard": 4,
+      "xpizza-dispatch-mobile/sherpa-client.js#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/order-control-state.js#xpizza-dispatch": 1,
+      "xpizza-dispatch/sherpa-client.js#xpizza-dispatch": 4,
+      "xpizza-functions/availability-gate.js#functions": 1,
+      "xpizza-functions/catalog/group-intake.js#functions": 1,
+      "xpizza-functions/client-floor.js#functions": 2,
+      "xpizza-functions/compute-server-net.js#functions": 1,
+      "xpizza-functions/hosted-charge-flow.js#functions": 4,
+      "xpizza-functions/index.js#functions": 31,
+      "xpizza-functions/materialize-guard.js#functions": 2,
+      "xpizza-functions/materialize.js#functions": 1,
+      "xpizza-functions/order-control-state.js#functions": 1,
+      "xpizza-functions/rewards-redeem-intake.js#functions": 1,
+      "xpizza-functions/scheduled-orders.js#functions": 1,
+      "xpizza-kitchen/sherpa-client.js#xpizza-kitchen": 4,
+      "xpizza-orders/index.html<script@2>#xpizza-orders": 12,
+      "xpizza-orders/sherpa-client.js#xpizza-orders": 4,
+      "xpizza-portal/sherpa-client.js#xpizza-portal": 4,
+      "xpizza-track/sherpa-client.js#xpizza-track": 4
+     }
     }
    ],
    "cases": {
@@ -1212,6 +1432,16 @@
      "kind": "F",
      "file": "xpizza-functions/index.js",
      "text": "exports.pixelPayWebhook = onRequest("
+    },
+    {
+     "kind": "R",
+     "name": "pixelPayWebhook",
+     "counts": {
+      "xpizza-functions/index.js#functions": 7,
+      "xpizza-functions/materialize.js#functions": 1,
+      "xpizza-functions/pixelpay-config.js#functions": 2,
+      "xpizza-orders/index.html<script@2>#xpizza-orders": 1
+     }
     }
    ],
    "cases": {
@@ -1263,6 +1493,15 @@
      "scope": "xpizza-functions/index.js#notifyDriverOnCancellation",
      "text": "if (!driverId) {",
      "scopeSha": "2ad2ef783565e6fba64c4e1be257311e63b7fb577e8cde0af9727389d5447917"
+    },
+    {
+     "kind": "R",
+     "name": "sendDriverPush",
+     "counts": {
+      "xpizza-functions/driver-push.js#functions": 1,
+      "xpizza-functions/index.js#functions": 9,
+      "xpizza-functions/staff-push.js#functions": 1
+     }
     }
    ],
    "cases": {
@@ -1304,6 +1543,19 @@
      "callers": [
       "self"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "getSalesStats",
+     "counts": {
+      "xpizza-functions/index.js#functions": 5,
+      "xpizza-functions/portal/functions.js#functions": 3,
+      "xpizza-functions/stats/keyer.js#functions": 1,
+      "xpizza-functions/stats/stats-api.js#functions": 1,
+      "xpizza-portal/api.js#xpizza-portal": 4,
+      "xpizza-portal/ventas-logic.js#xpizza-portal": 1,
+      "xpizza-portal/ventas.js#xpizza-portal": 4
+     }
     }
    ],
    "cases": {
@@ -1347,6 +1599,15 @@
       "xpizza-functions/index.js#notifyDriverOnAssignment",
       "xpizza-functions/index.js#notifyDriverOnCancellation"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "sendDriverPush",
+     "counts": {
+      "xpizza-functions/driver-push.js#functions": 1,
+      "xpizza-functions/index.js#functions": 9,
+      "xpizza-functions/staff-push.js#functions": 1
+     }
     }
    ],
    "cases": {
@@ -1581,6 +1842,22 @@
      "callers": [
       "xpizza-functions/index.js#flushStaffPushQueue"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "formatGrouped",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "flushStaffPushQueue",
+     "counts": {
+      "xpizza-functions/index.js#functions": 6,
+      "xpizza-functions/staff-push.js#functions": 4
+     }
     }
    ],
    "cases": {
@@ -1626,6 +1903,29 @@
      "callers": [
       "xpizza-functions/index.js#sweepStuckOrders"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "isStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "formatStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "sweepStuckOrders",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3
+     }
     }
    ],
    "cases": {
@@ -1671,6 +1971,29 @@
      "callers": [
       "xpizza-functions/index.js#sweepStuckOrders"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "isStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "formatStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "sweepStuckOrders",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3
+     }
     }
    ],
    "cases": {
@@ -1716,6 +2039,29 @@
      "callers": [
       "xpizza-functions/index.js#sweepStuckOrders"
      ]
+    },
+    {
+     "kind": "R",
+     "name": "isStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "formatStuck",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/staff-push.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "sweepStuckOrders",
+     "counts": {
+      "xpizza-functions/index.js#functions": 3
+     }
     }
    ],
    "cases": {
@@ -3762,10 +4108,15 @@
      "redemption": [
       true
      ]
+    },
+    {
+     "restore": [
+      true
+     ]
     }
    ],
-   "authority": "§1 F-REWARD: the redemption quote exists only for a redemption",
-   "whyFalseExcludes": "no redemption → no redeem quote",
+   "authority": "§1 F-REWARD: the Stage-2 summary is re-rendered through applyRedeemQuoteToTotals only by the reward flow — a reward quote, a reward REMOVAL (rkClear → onQuoted(null)) or a redeem RESTORE after a payment reload; every reward-flow entry is a [data-rk-*] control (codex P1-b b12 r1 P1-4)",
+   "whyFalseExcludes": "no redemption, no restore, and no event on any reward control ([data-rk-*], UI recorder before the page scripts) → the reward flow never runs, so the callback never fires",
    "bind": {
     "site": "try{ if(typeof renderStage2Summary==='function') renderStage2Summary(); }catch(_){}   // A6: refresh the Stage-2 summary reward line + total when the quote changes",
     "siteSha": "a72c1df958c5ccc919d678496133fdf1369e626cfc14c7329a35ce42fa285196",
@@ -3777,6 +4128,24 @@
      "kind": "F",
      "file": "xpizza-orders/index.html",
      "text": "onQuoted: applyRedeemQuoteToTotals,"
+    },
+    {
+     "kind": "R",
+     "name": "applyRedeemQuoteToTotals",
+     "counts": {
+      "la-musa-orders/index.html<script@2>#la-musa-orders": 4,
+      "la-musa-orders/order-self-update.js#la-musa-orders": 2,
+      "xpizza-orders/index.html<script@2>#xpizza-orders": 4,
+      "xpizza-orders/order-self-update.js#xpizza-orders": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "rkClear",
+     "counts": {
+      "la-musa-orders/account.js#la-musa-orders": 6,
+      "xpizza-orders/account.js#xpizza-orders": 6
+     }
     }
    ],
    "cases": {
@@ -3788,7 +4157,17 @@
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|assigned"
     ]
-   }
+   },
+   "context": [
+    "no-ui:xpizza-orders:attr=data-rk-open",
+    "no-ui:xpizza-orders:attr=data-rk-pick",
+    "no-ui:xpizza-orders:attr=data-rk-add",
+    "no-ui:xpizza-orders:attr=data-rk-minus",
+    "no-ui:xpizza-orders:attr=data-rk-done",
+    "no-ui:xpizza-orders:attr=data-rk-clear",
+    "no-ui:xpizza-orders:attr=data-rk-dismiss",
+    "no-ui:xpizza-orders:attr=data-rk-id"
+   ]
   },
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
    "group": "online",

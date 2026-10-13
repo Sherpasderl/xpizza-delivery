@@ -131,7 +131,12 @@ ok('status (codex P1-3): every LP has an explicit expected status from its effec
   assert.ok(SS.CHECKS.sheetEdit.check(v, { steps: ['form.cart-sheet-edit'] }).unknown, FAIL('a step label alone established sheetEdit'));
   assert.strictEqual(SS.CHECKS.sheetEdit.check(v, { formEvents: [{ type: 'click', sheetEdit: true }] }), false, FAIL('an observed sheet edit did not contradict sheetEdit=false'));
   assert.ok(SS.CHECKS.restore.check(v, { formEvents: [] }).unknown, FAIL('restore established without the boot storage'));
-  assert.strictEqual(SS.CHECKS.restore.check(v, { formEvents: [], formStorageAtBoot: ['xp_order_snapshot'] }), false, FAIL('a snapshot in storage at boot did not contradict restore=false'));
+  // codex b12 r1 P1-5: BOTH storage areas, before the scripts; a stored key (codex's sessionStorage sherpa_reload_snapshot) → unknown; a late capture → unknown
+  const B = (local, session, at = 'beforeScripts') => ({ at, local, session });
+  assert.ok(SS.CHECKS.restore.check(v, { formEvents: [], formStorageAtBoot: B([], ['sherpa_reload_snapshot']) }).unknown, FAIL('a sessionStorage reload snapshot before the scripts did not leave restore unknown'));
+  assert.ok(SS.CHECKS.restore.check(v, { formEvents: [], formStorageAtBoot: B([], [], 'afterBoot') }).unknown, FAIL('storage captured after the scripts established restore'));
+  assert.strictEqual(SS.CHECKS.restore.check(v, { formEvents: [], formStorageAtBoot: B([], []) }), true, FAIL('empty storage before the scripts did not establish no restore'));
+  assert.strictEqual(SS.CHECKS.restore.check(v, { formEvents: [{ type: 'click', restore: true }], formStorageAtBoot: B([], []) }), false, FAIL('a restore event did not contradict restore=false'));
   // writeFailure: only a COMPLETE ack log establishes it
   assert.ok(SS.CHECKS.writeFailure.check(v, { ackLog: { complete: false, failures: 0 } }).unknown, FAIL('an incomplete ack log established writeFailure=false'));
   assert.strictEqual(SS.CHECKS.writeFailure.check(v, { ackLog: { complete: true, failures: 1 } }), false, FAIL('a failed write did not contradict writeFailure=false'));
@@ -192,9 +197,13 @@ ok('context (codex P1-4): an empty condition without a nonempty validated contex
 ok('extras (codex r2 P2): empty extras / options collections are no extras; real entries contradict; an unsupported representation is unknown, never contradicted');
 { // P1-b bulk (messaging): the driver check reads the order's TASKS; no-call:<fn> from a COMPLETE invocation log; caller sets
   const v = SS.vectorOf('S1', 'x_pizza', 'new', paths); const per = { restaurant_id: 'x_pizza', status: 'new' };
-  assert.ok(SS.CHECKS.driver.check(v, { persisted: per }).unknown, FAIL('driver none established without the task records'));
-  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: {} }), true, FAIL('no tasks did not establish driver none'));
-  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: { o_pickup: { assigned_driver_id: 'd1' } } }), false, FAIL('a task with an assigned driver did not contradict driver none'));
+  const AL = (events, complete = true) => ({ complete, events });
+  assert.ok(SS.CHECKS.driver.check(v, { persisted: per, tasks: {} }).unknown, FAIL('driver none established without the assignment transition log'));
+  assert.ok(SS.CHECKS.driver.check(v, { persisted: per, tasks: {}, assignLog: AL([], false) }).unknown, FAIL('an incomplete assignment log established driver none'));
+  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: {}, assignLog: AL([]) }), true, FAIL('no assignment transition did not establish driver none'));
+  // codex b12 r1 P1-3: assigned THEN cleared before gate time is "assigned" (the final snapshot alone would say none)
+  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: { o_pickup: { assigned_driver_id: null } }, assignLog: AL([{ path: 'tasks/o_pickup', before: null, after: 'd1' }, { path: 'tasks/o_pickup', before: 'd1', after: null }]) }), false, FAIL('assigned-then-cleared did not contradict driver none'));
+  assert.strictEqual(SS.CHECKS.driver.check(v, { persisted: per, tasks: { o_pickup: { assigned_driver_id: 'd1' } }, assignLog: AL([]) }), false, FAIL('a task with an assigned driver did not contradict driver none'));
   const nc = 'xpizza-functions/index.js#send@xpizza-functions/index.js#pixelPayWebhook'; const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' };
   const ev = { persisted: { ...per, order_type: 'delivery', payment_method: 'cash' }, lpAction: { action: 'create', ack: true } };
   assert.strictEqual(RA.runDecision(doc, nc, cell, { ...ev, fnCalls: { complete: true, names: ['createOrder'] } }, paths).outcome, 'excluded', FAIL('no pixelPayWebhook call (complete log) did not exclude'));
@@ -207,5 +216,49 @@ ok('extras (codex r2 P2): empty extras / options collections are no extras; real
   const rd2 = { regions: [...regionsDoc.regions, { output: 'xpizza-functions/staff-push.js#isStuck', region: 'x@new', consumer: 'xpizza-functions/index.js#createOrderApp.all>anon', line: 1 }] };
   assert.ok(cg && AP.guardStale(cg, { regionsDoc: rd2 }) && !AP.guardStale(cg), FAIL('a new caller of isStuck did not make the sweep-only exclusion stale'));
 }
-ok('bulk mechanism: driver none needs the task records (an assigned task contradicts); no-call:<fn> only from a COMPLETE invocation log naming no <fn> (a call / incomplete / absent → required; a non-exported fn → RED); a new caller of a sweep-only function → stale');
+ok('bulk mechanism: driver none needs the COMPLETE assignment transition log + task records (an assigned task, or assigned-then-cleared, contradicts); no-call:<fn> only from a COMPLETE invocation log naming no <fn> (a call / incomplete / absent → required; a non-exported fn → RED); a new caller of a sweep-only function → stale');
+{ // P1-b bulk (dispatch): the contract UI recorder on a REAL DOM + the no-ui:<page>:<kind>=<value> context + K guards
+  const { JSDOM } = require('jsdom'); const UI = require('./ui-recorder');
+  const dom = new JSDOM('<!doctype html><body><div class="sheet"><button data-pick="o1"><span id="inner">Reasignar</span></button><div data-detail="o2" class="ord">x</div></div></body>');
+  const sink = UI.installUiRecorder(dom.window);
+  dom.window.document.getElementById('inner').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.ok(sink.events.length === 1 && UI.matches(sink.events[0], 'attr', 'data-pick') && !UI.matches(sink.events[0], 'attr', 'data-detail') && UI.matches(sink.events[0], 'class', 'sheet'), FAIL(`the UI recorder did not record the click's ancestor path (${JSON.stringify(sink.events)})`));
+  const P = 'xpizza-dispatch-mobile'; const c = SS.contextOf(`no-ui:${P}:attr=data-pick`);
+  assert.ok(c, FAIL('no-ui on a real page control was not a valid context'));
+  assert.ok(c.check({}).unknown && c.check({ uiEvents: { [P]: { installedAt: 'after-boot', events: [] } } }).unknown, FAIL('an absent / late recorder established no-ui'));
+  assert.strictEqual(c.check({ uiEvents: { [P]: sink.installedAt && { installedAt: 'beforeScripts', events: sink.events } } }), false, FAIL('a recorded [data-pick] click did not defeat no-ui'));
+  assert.strictEqual(c.check({ uiEvents: { [P]: { installedAt: 'beforeScripts', events: [] } } }), true, FAIL('zero recorded events did not establish no-ui'));
+  assert.ok(!SS.contextOf(`no-ui:${P}:attr=data-r3-no-such-control`) && !SS.contextOf('no-ui:no-such-page:attr=data-pick') && !SS.contextOf(`no-ui:${P}:style=x`), FAIL('a no-ui matcher absent from the page source / unknown page / unknown kind was accepted'));
+  const k = 'xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals'; const FP = 'xpizza-orders';
+  const rk = UI.installUiRecorder(new JSDOM('<!doctype html><body><div class="rk"><button data-rk-clear="1">Quitar</button></div></body>').window); rk.events.length = 0;
+  { const w2 = new JSDOM('<!doctype html><body><button data-rk-clear="1" id="q">Quitar</button></body>').window; const s2 = UI.installUiRecorder(w2); w2.document.getElementById('q').dispatchEvent(new w2.MouseEvent('click', { bubbles: true })); rk.events.push(...s2.events); }
+  const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' }; const ev = { persisted: { restaurant_id: 'x_pizza', status: 'new' }, lpAction: { action: 'create', ack: true } };
+  const ev2 = { ...ev, persisted: { ...ev.persisted, order_type: 'delivery', payment_method: 'cash' }, formEvents: [], formStorageAtBoot: { at: 'beforeScripts', local: [], session: [] } };
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, uiEvents: { [FP]: { installedAt: 'beforeScripts', events: [] } } }, paths).outcome, 'excluded', FAIL('redeem summary: zero reward-control events did not exclude'));
+  // codex b12 r1 P1-4: apply-then-remove a reward (a [data-rk-clear] click) on an ordinary cash order → REQUIRED
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev2, uiEvents: { [FP]: { installedAt: 'beforeScripts', events: rk.events } } }, paths).outcome, 'required', FAIL('redeem summary: a reward removal ([data-rk-clear]) did not keep it required'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, ev2, paths).outcome, 'required', FAIL('redeem summary: no form UI recorder did not keep it required'));
+  const kg = AP.bindGuard(['K', 'xpizza-dispatch/index.html', 'openOrderDetailModal(']);
+  const real = fs.readFileSync(path.join(__dirname, '..', '..', kg.file), 'utf8');
+  assert.ok(!AP.guardStale(kg) && AP.guardStale(kg, { readFile: () => real + '\nopenOrderDetailModal(x);' }), FAIL('a new openOrderDetailModal( call site did not make a K guard stale'));
+}
+ok('UI mechanism: the UI recorder records a click\'s ancestor path on a real DOM; no-ui is established only by a before-scripts recorder with no matching event (absent / late → unknown; a matching click → required; codex b12 P1-4: a reward removal [data-rk-clear] keeps the redeem summary required); matchers absent from the page source / unknown page or kind → invalid; a new call site of a K-pinned handler → stale');
+{ // codex b12 r1 P1-1: the invocation log is recorded at the FUNCTION BOUNDARY — a direct .run() is recorded; an export
+  // that is not (or no longer) a recorder wrapper, or an invocation before installation, makes the log incomplete
+  const FR = require('./fn-recorder');
+  const mod = { flushStaffPushQueue: { run: () => 'ran', __endpoint: { scheduleTrigger: {} } }, createOrder: Object.assign(function () { return 'http'; }, { __endpoint: { httpsTrigger: {} } }), CONST: 3 };
+  const r = FR.installFnRecorder(mod);
+  mod.flushStaffPushQueue.run(); mod.createOrder();
+  assert.ok(r.complete() && r.names.includes('flushStaffPushQueue') && r.names.includes('createOrder') && mod.flushStaffPushQueue.__endpoint && mod.createOrder.__endpoint, FAIL(`a direct .run() / an HTTP call was not recorded at the boundary (${JSON.stringify(r.names)})`));
+  mod.createOrder = function () { return 'replaced'; };
+  assert.ok(!r.complete(), FAIL('an export replaced after installation (unwrapped) still claimed a complete log'));
+  assert.ok(!FR.installFnRecorder({ a() {} }, { invocationsBefore: 1 }).complete(), FAIL('a recorder installed after an invocation claimed a complete log'));
+  // codex b12 r1 P1-2: an ALIAS reference (const check = isStuck; check(...)) escapes the caller census → the R guard is stale
+  const k = 'xpizza-functions/staff-push.js#orderAgeAnchor@xpizza-functions/staff-push.js#isStuck';
+  const rg = doc.regions[k].guards.find((g) => g.kind === 'R' && g.name === 'isStuck');
+  const units = require('./census').sources();
+  const alias = units.map((u) => (u.file === 'xpizza-functions/index.js' ? { ...u, code: `${u.code}\nconst check = isStuck; check({});` } : u));
+  assert.ok(rg && !AP.guardStale(rg) && /references to isStuck changed/.test(AP.guardStale(rg, { units: alias }) || ''), FAIL('an alias of isStuck did not make the sweep-only exclusion stale'));
+}
+ok('boundary + references (codex b12 P1-1/2): a direct .run() and an HTTP call are recorded at the function boundary; a replaced export / late install → incomplete log; an alias reference to a caller-guarded function → stale');
 console.log(`\nr3-applicability guard: OK (${n})`);
