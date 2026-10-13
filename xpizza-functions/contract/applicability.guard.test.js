@@ -89,8 +89,20 @@ ok('negative: a stale exclusion (call-site text / scope / scenario definition / 
   const x = { preconditions: ['delivery', 'status-new'] };
   assert.deepStrictEqual(AP.unmet(x, ev), ['delivery'], FAIL('an unmet precondition was not reported'));
   assert.deepStrictEqual(AP.unmet({ preconditions: ['no-kitchen-action'] }, { ...ev, kdsActions: ['kds.tap'] }), ['no-kitchen-action'], FAIL('a kitchen tap did not unmeet no-kitchen-action'));
+  // int7 (picker extras d43a262): a dish-detail CTA / launcher add in the scenario unmeets no-detail-cta; S1's own steps meet it
+  assert.deepStrictEqual(AP.unmet({ preconditions: ['no-detail-cta'] }, { ...ev, steps: ['form.add-dish', 'form.detail-cta'] }), ['no-detail-cta'], FAIL('a detail-CTA tap did not unmeet no-detail-cta'));
+  assert.deepStrictEqual(AP.unmet({ preconditions: ['no-detail-cta'] }, { ...ev, steps: scen.scenarios.S1.steps }), [], FAIL('S1\'s own steps did not meet no-detail-cta'));
 }
-ok('negative: an unmet declared precondition (a pickup order / a kitchen tap) → reported unmet (RED in the run)');
+{ // int7: re-pointing the detail modal's CTA (its onclick no longer the reviewed detailCtaTap button) invalidates the exclusion
+  const x = doc.exclusions.find((e) => /#detailCtaTap$/.test(e.region));
+  assert.ok(x && x.preconditions.includes('no-detail-cta'), FAIL('no detailCtaTap exclusion on no-detail-cta'));
+  const real = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-orders', 'index.html'), 'utf8');
+  const mutated = real.replace('id="detail-cta" onclick="detailCtaTap()"', 'id="detail-cta" onclick="openCartReview()"');
+  assert.ok(mutated !== real, FAIL('the detail-cta probe text moved'));
+  const st = x.guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-orders/index.html' ? mutated : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
+  assert.ok(st.length > 0, FAIL('re-pointing the detail CTA did not invalidate the detailCtaTap exclusion'));
+}
+ok('negative: an unmet declared precondition (a pickup order / a kitchen tap / a detail-CTA tap) → reported unmet (RED in the run); a re-pointed detail CTA → the detailCtaTap exclusion is stale');
 {
   const d = clone(); const disp = dispCells[0]; assert.ok(disp, FAIL('no display cell in scope for the negative'));
   for (const c of dispCells.filter((y) => y.cell === disp.cell)) d.exclusions.push({ region: c.viaFrom || c.region, scope: { S: [c.S], brands: [c.brand], lps: [c.lp] }, preconditions: ['delivery'], reason: 'negative', bind: {}, scenarioSha: {} });

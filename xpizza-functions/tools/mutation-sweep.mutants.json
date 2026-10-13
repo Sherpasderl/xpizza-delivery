@@ -12845,5 +12845,20 @@
       "node",
       "contract/timer-bounds.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-96",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "check: (ev) => !(ev.steps || []).some((s) => /detail-(cta|modal)|launcher|variant/i.test(s)) },",
+    "to": "check: (ev) => true },",
+    "label": "int7: no-detail-cta is met by any run (a detail-CTA / launcher add in the scenario no longer unmeets it, so the detailCtaTap exclusion would hold)",
+    "kills_with": [
+      "a detail-CTA tap did not unmeet no-detail-cta"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
   }
 ]

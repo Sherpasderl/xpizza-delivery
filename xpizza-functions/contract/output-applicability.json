@@ -2303,6 +2303,40 @@
    }
   },
   {
+   "region": "xpizza-orders/index.html#updateCart@xpizza-orders/index.html<script@2>#detailCtaTap",
+   "scope": {
+    "S": [
+     "S1"
+    ],
+    "brands": [
+     "x_pizza"
+    ],
+    "lps": [
+     "new"
+    ]
+   },
+   "preconditions": [
+    "no-detail-cta"
+   ],
+   "reason": "dish detail modal CTA — a launcher variant add with its staged extras (picker extras d43a262); S1 adds via the card + stepper. The launcher-add money path is covered independently through the REAL server pricing / net / reward code by picker-extras-money.test.mjs, picker-extras-combos.test.mjs and cart-extras-money.test.mjs (codex-approved; all in the functions test chain). Making this region terminal with a journey launcher add = R3 backlog (P1-b/P2).",
+   "bind": {
+    "site": "refreshCardExtrasIndicator(vid); updateTotal(); updateCart();",
+    "siteSha": "c8b7767b2aded04dab87995ab4a4457588b1d74740a5fe1b5002f10396ff133f",
+    "scope": "xpizza-orders/index.html<script@2>#detailCtaTap",
+    "scopeSha": "04b19dc37792fce34bf054e41b7eacb534339175037f6896ad8b8fef3d17cc63"
+   },
+   "guards": [
+    {
+     "kind": "F",
+     "file": "xpizza-orders/index.html",
+     "text": "<button class=\"detail-cta\" id=\"detail-cta\" onclick=\"detailCtaTap()\"></button>"
+    }
+   ],
+   "scenarioSha": {
+    "S1": "d5d16fae80e07db687843d9dd4f5050c9dce2725aa2e3ff0feb83b6d303e3599"
+   }
+  },
+  {
    "region": "xpizza-orders/index.html#updateCartReviewBody@xpizza-orders/index.html<script@2>#chgFromCart",
    "scope": {
     "S": [

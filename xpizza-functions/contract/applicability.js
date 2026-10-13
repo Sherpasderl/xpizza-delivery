@@ -91,6 +91,7 @@ const PRECONDITIONS = {
   'no-another-order': { contract: 'scenario definition: one order (no "Hacer otro pedido")', check: (ev) => !(ev.steps || []).some((s) => /another/i.test(s)) },
   'no-extras': { contract: 'scenario definition: no extras on the dish', check: (ev) => !(ev.steps || []).some((s) => /extra/i.test(s)) && !(ev.intent.extras && ev.intent.extras.length) },
   'no-sheet-edit': { contract: 'scenario definition: the cart sheet is opened and read, not edited', check: (ev) => !(ev.steps || []).some((s) => /sheet-(inc|dec)/i.test(s)) },
+  'no-detail-cta': { contract: 'scenario definition: the dish is added by its card\'s + stepper; the dish detail modal CTA (detailCtaTap — a launcher variant add with its staged extras) is never tapped', check: (ev) => !(ev.steps || []).some((s) => /detail-(cta|modal)|launcher|variant/i.test(s)) },
 };
 
 const load = (f = FILE) => JSON.parse(fs.readFileSync(f, 'utf8'));
