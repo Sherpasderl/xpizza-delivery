@@ -4333,6 +4333,12 @@ exports.ingestDriverLocation = onRequest({ region: 'us-central1' }, async (req, 
   if (!tokenRec) return res.status(401).json({ error: 'invalid token' });
   const uid = tokenRec.uid;
 
+  // S1a §8 (codex r1 P1-1) — a DEACTIVATED driver's opaque token is immediately dead (Auth revoke does not invalidate it);
+  // a SUSPENDED driver (enabled:false, not deactivated) keeps ingesting to finish held work.
+  if ((await db.ref(`driver_accounts/${uid}/deactivated`).once('value')).val() === true) {
+    return res.status(403).json({ error: 'deactivated' });
+  }
+
   // Per-uid rate limit (per-instance soft guard; harden with a shared store before scale).
   const nowMs = Date.now();
   const rl = ingestRate.get(uid);
@@ -5796,6 +5802,9 @@ async function pickEligibleDriver(db, excludeDriverIds = [], hubLat = RESTAURANT
  *                   active order; we don't want to demand a separate swipe
  *                   while they're delivering / driving.
  */
+function isEligibilityDenial(e) {   // S1a §3 (codex r1 P1-4) — an EXPECTED §2 eligibility denial surfaces as a permission-denied rejection from the svc-assigner write; classify it so callers handle it (next candidate / leave unassigned / continue the sweep) instead of crashing.
+  return /permission[_ ]denied/i.test(String((e && (e.code || e.message)) || e));
+}
 function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isStacked = false) {
   const now = Date.now();
   const deadline = now + ACCEPT_TIMEOUT_MS;
@@ -6056,7 +6065,9 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // brand-new order's delivery is null → the claim commits uncontended and the finalize update() below
     // rewrites the same value — identical end state to the pre-S3d plain write (no-op on the happy path).
     // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.
-    const claim = await claimDelivery(svcDb, orderId, chosen.driverId);   // S1a §3
+    let claim;
+    try { claim = await claimDelivery(svcDb, orderId, chosen.driverId); }   // S1a §3
+    catch (e) { if (isEligibilityDenial(e)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }
     if (!claim.claimed) {
       console.warn(`autoAssign: ${orderId} — delivery already claimed by ${claim.current} during finalize; backing off`);
       return;
@@ -6230,7 +6241,9 @@ exports.monitorAssignmentTimeout = onValueWritten(
     // the timed-out driver; if a concurrent writer moved it during our 60s wait, we back off (the field
     // already reflects that writer's decision). Uncontended (field still == driverId), it's a no-op: the
     // finalize update() rewrites the same delivery/assigned_driver_id = nextDriver.
-    const claim = await claimDelivery(svcDb, orderId, nextDriver.driverId, { expectCurrent: driverId });   // S1a §3
+    let claim;
+    try { claim = await claimDelivery(svcDb, orderId, nextDriver.driverId, { expectCurrent: driverId }); }   // S1a §3
+    catch (e) { if (isEligibilityDenial(e)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim (${e && (e.code || e.message)}); leaving on ${driverId}`); return; } throw e; }
     if (!claim.claimed) {
       console.log(`timeout-monitor: ${orderId} delivery no longer on ${driverId} (now ${claim.current}); backing off reassign`);
       return;
@@ -6343,6 +6356,43 @@ exports.sweepPendingOrders = onSchedule(
       }
     }
 
+    // S1a §5 (codex r1 P1-5) — monitoring backstop (read-only, ALWAYS runs; BEFORE the offer-switch gate so it is
+    // never skipped when the offer pass is off). Detects a DEACTIVATED driver that still owns a nonterminal task OR
+    // holds an open shift, and reconciles ONE actionable dispatcher alert per such driver against the CURRENT state
+    // (fresh reads; cleared when the violation resolves; content refreshed when the affected work changes). Keyed
+    // strictly on deactivated===true; NO mutation of task/order/shift. Inert until S1b deactivates anyone.
+    try {
+      const [monTasksSnap, monDriversSnap, monAlertsSnap] = await Promise.all([
+        db.ref('tasks').once('value'), db.ref('drivers').once('value'), db.ref('dispatcher_alerts').once('value')
+      ]);
+      const monTasks = monTasksSnap.val() || {}; const monDrivers = monDriversSnap.val() || {};
+      const monOwnerOrders = {};
+      for (const [monTid, monT] of Object.entries(monTasks)) {
+        if (monT && monT.assigned_driver_id && monT.status !== 'completed' && monT.status !== 'cancelled') {
+          (monOwnerOrders[monT.assigned_driver_id] = monOwnerOrders[monT.assigned_driver_id] || new Set()).add(monT.order_id || monTid);
+        }
+      }
+      const monCandidates = new Set(Object.keys(monOwnerOrders));
+      for (const [monUid, monD] of Object.entries(monDrivers)) {
+        if (monD && (monD.active === true || (monD.current_shift_id !== undefined && monD.current_shift_id !== null))) monCandidates.add(monUid);
+      }
+      const monViolations = {};
+      for (const monUid of monCandidates) {
+        if ((await db.ref(`driver_accounts/${monUid}/deactivated`).once('value')).val() !== true) continue;
+        const monD = monDrivers[monUid] || {};
+        monViolations[monUid] = { order_ids: monOwnerOrders[monUid] ? [...monOwnerOrders[monUid]] : [], open_shift: monD.active === true || (monD.current_shift_id !== undefined && monD.current_shift_id !== null), shift_id: monD.current_shift_id || null, driver_name: monD.name || null };
+      }
+      const monExisting = monAlertsSnap.val() || {}; const monUpdates = {};
+      for (const [monAid, monA] of Object.entries(monExisting)) {
+        if (monA && monA.type === 'driver_deactivated' && monA.driver_uid && !monViolations[monA.driver_uid]) monUpdates[`dispatcher_alerts/${monAid}`] = null;
+      }
+      for (const [monUid, monV] of Object.entries(monViolations)) {
+        const monPrior = monExisting[`driver_deactivated_${monUid}`];
+        monUpdates[`dispatcher_alerts/driver_deactivated_${monUid}`] = { type: 'driver_deactivated', driver_uid: monUid, driver_name: monV.driver_name, order_ids: monV.order_ids, open_shift: monV.open_shift, shift_id: monV.shift_id, created_at: (monPrior && monPrior.created_at) || now, updated_at: now };
+        console.warn(`sweepPending: driver_deactivated violation uid=${monUid} orders=${monV.order_ids.join(',')} open_shift=${monV.open_shift}`);
+      }
+      if (Object.keys(monUpdates).length) await db.ref().update(monUpdates);
+    } catch (e) { console.error('sweepPending: deactivated monitor failed', e && e.message); }
     // ---- OFFER PASS (gated, S3a kill-switch) ----
     // Stays OFF until config/sweep_pending_enabled === true (flip only after every writer's CAS is live, so a
     // dispatcher grab landing mid-sweep can't be overwritten). Also honor the global auto-assign pause.
@@ -6363,7 +6413,9 @@ exports.sweepPendingOrders = onSchedule(
       // is the field getPendingOrders reads, so the claim atomically leaves SIN ASIGNAR + blocks a
       // concurrent sweep/grab, and it's invisible to monitorAssignmentTimeout (watches PICKUP) and
       // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.
-      const claim = await claimDelivery(svcDb, orderId, chosen.driverId);   // S1a §3
+      let claim;
+      try { claim = await claimDelivery(svcDb, orderId, chosen.driverId); }   // S1a §3
+      catch (e) { if (isEligibilityDenial(e)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }
       if (!claim.claimed) continue;   // lost the race — skip
 
       // S3a exception-safety: EVERYTHING after the claim is inside try/catch so any throw (recheck read,
@@ -6416,23 +6468,6 @@ exports.sweepPendingOrders = onSchedule(
         await rollbackOrAlert(db, claim, orderId, 'sweepPending');
       }
     }
-    // S1a §5 — monitoring backstop (read-only): a nonterminal task owned by a DEACTIVATED driver ⇒ ONE idempotent,
-    // current-state-keyed dispatcher alert so a human reassigns it (via the existing Reasignar). Keyed strictly on
-    // deactivated===true; NO mutation of the task/order/shift (auto-release clobbers a newer owner, and deactivated
-    // does not prove no cash was collected). Self-clears when the uid is no longer a deactivated owner. Inert until
-    // S1b deactivates anyone — a backstop to the §2 rules invariant, not the primary guarantee.
-    try {
-      const deactOwners = new Set();
-      for (const t of Object.values(tasksSnap.val() || {})) {
-        if (t && t.assigned_driver_id && t.status !== 'completed' && t.status !== 'cancelled') deactOwners.add(t.assigned_driver_id);
-      }
-      for (const ownerUid of deactOwners) {
-        const isDeactivated = (await db.ref(`driver_accounts/${ownerUid}/deactivated`).once('value')).val() === true;
-        const alertRef = db.ref(`dispatcher_alerts/driver_deactivated_${ownerUid}`);
-        if (isDeactivated) await alertRef.transaction((cur) => cur || { type: 'driver_deactivated_owns_task', driver_uid: ownerUid, created_at: Date.now() });
-        else await alertRef.remove();
-      }
-    } catch (e) { console.error('sweepPending: deactivated-owner monitor failed', e && e.message); }
     if (offered || waiting || healed) console.log(`sweepPending: offered ${offered}, waiting ${waiting}, healed ${healed}`);
   }
 );
