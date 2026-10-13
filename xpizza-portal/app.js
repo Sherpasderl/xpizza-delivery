@@ -455,11 +455,12 @@ export async function loadMenu(rid) {
 // pass that reads it.
 function repaintFromDraft() {
   const src = draftSource(state.draft);
-  // 1D add-product B — a NEW product's options belong under it (its drawer, its review row), not in the list as products of
-  // their own: they are folded out here, and an orphan bucket left empty by that (an unsaved option has no section of its
-  // own — the server derives it) is not shown. A PUBLISHED group's rows (La Musa's Pad Thai) are listed exactly as before.
+  // 1D add-product B — a product's options belong under it (its drawer, its review row, its nested lines in the list —
+  // portal mockup screen 2), not in the list as products of their own: they are folded out here, NEW and PUBLISHED groups
+  // alike, so the section count counts products. An orphan bucket left empty by that (an unsaved option has no section of
+  // its own — the server derives it) is not shown.
   state.groups = groupByCategory(src)
-    .map((g) => ({ ...g, items: g.items.filter((it) => !isNewGroupOption(state.draft, it, state.additionKeys)) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => !isNewGroupOption(state.draft, it, state.additionKeys) && !listIsGroupOption(it)) }))
     .filter((g) => g.items.length || (categoriesOf().some((c) => c && String(c.id) === g.category.id)));
   // the extras ARRAY, not a {key: price} map — the rows need their display records to show a name
   state.extras = Array.isArray(src.extras) ? src.extras : [];
@@ -515,15 +516,26 @@ function describeAddition(x) {
     section: categoryName(d.cat) + (typeof d.subcat === 'string' && d.subcat ? ` / ${d.subcat}` : ''), rules: inheritedRules(d.cat),
     ...(g ? { choice: { label: g.label, extrasNone: g.extrasNone } } : {}) };
 }
-// The list row of a NEW product with a required choice: its group's name as a chip, and its price as the order page shows
-// it — "L {min}" when every option costs the same, "desde L {min}" otherwise — read-only (it is edited in the drawer).
+// The list row of ANY product with a required choice — new or published (portal mockup screen 2, approved): its group as a
+// chip, its price ONCE as the order page shows it ("L {min}" / "desde L {min}"), and its choices nested beneath. Read-only:
+// a choice's price is edited in the product's drawer. `changed` lights the row when any of its choices' prices moved.
 function listGroupOf(it) {
-  if (!it || !isAddition(it)) return null;
+  if (!it) return null;
   const g = choiceGroup(state.draft, rowId(it));
   if (!g) return null;
   const ps = g.options.map((o) => o.price).filter((p) => Number.isInteger(p) && p > 0);
-  return { label: g.label, min: ps.length ? Math.min(...ps) : null, max: ps.length ? Math.max(...ps) : null };
+  const moved = new Set(pendingChanges(state.draft, state.additionKeys).filter((c) => c.surface === 'item').map((c) => c.key));
+  return { label: g.label, min: ps.length ? Math.min(...ps) : null, max: ps.length ? Math.max(...ps) : null,
+    badges: state.choiceBadges.includes('recommended'),
+    changed: g.options.some((o) => moved.has(rowId(o))),
+    options: g.options.map((o) => {
+      const d = o.display || {};
+      return { name: typeof d.choice === 'string' && d.choice.trim() ? d.choice : String(rowId(o)), price: o.price,
+        recommended: Array.isArray(d.tags) && d.tags.includes('recommended') };
+    }) };
 }
+// An option row drawn under its product (listGroupOf), never as a product of its own.
+const listIsGroupOption = (it) => !!(it && optionParentId(state.draft, rowId(it)));
 function onAddProduct(catId) {
   if (!state.draft || !canAddTo(catId)) return;
   const ref = `tmp:${(globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
@@ -648,7 +660,7 @@ function paint() {
     isAddition,
     canAdd: canAddTo,
     onAdd: bound(onAddProduct),
-    groupOf: listGroupOf,          // 1D add-product B
+    groupOf: listGroupOf,          // 1D add-product B (a group's option rows are folded out in repaintFromDraft)
   });
   if (state.draftUnpublishable && state.draftRid) offerResetToLive($('detail'), state.draftRid, state.sourceUpdateTime);
 }
@@ -744,6 +756,19 @@ function renderDrawer() {
   const body = document.createElement('div');
   body.className = 'dwb';
 
+  // A PUBLISHED product with a required choice: its price IS its choices' prices (the launcher's own is legacy and never
+  // charged), so the drawer shows the choice block in price-only mode instead of a "Precio" field (advisor ruling on
+  // portal A — the list shows the choices read-only, so this is where a published choice's price is changed).
+  const pg = choiceGroup(state.draft, rowId(it));
+  if (pg && pg.options.length) {
+    body.append(publishedChoiceBlock(rowId(it), pg));
+    for (const g of optionGroups(state.draft)) body.append(groupBlock(g));
+    d.append(head, body);
+    d.classList.add('show');
+    body.scrollTop = keepScroll;
+    return;
+  }
+
   const fld = document.createElement('div');
   fld.className = 'fld pr';
   const label = document.createElement('label');
@@ -776,6 +801,75 @@ function renderDrawer() {
   // listeners were all correctly attached to a panel nobody could see.
   d.classList.add('show');
   body.scrollTop = keepScroll;
+}
+
+// ── A PUBLISHED group's choices, price-only (advisor ruling on portal A) ──────────────────────────────────────────────
+// The approved mock's "Elección requerida" block, applied: the same components as the new-product block (modblock / modgrp /
+// mopt / mopr / recpill / mgflag), with the group's structure READ-ONLY — its name, each choice's name, Recomendada — and
+// each choice's PRICE editable through the very write the list's price boxes made before the choices were grouped
+// (onPrice → setItemPrice on the choice's own key). "Mismo precio para todas" sets every choice to the cheapest current
+// price; editing one choice's price turns it off, exactly like the new-product block.
+function publishedChoiceBlock(id, g) {
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const block = mk('div', 'modblock');
+  block.append(mk('div', 'modh', 'Elección requerida — el cliente elige 1'));
+  const grp = mk('div', 'modgrp open');
+  const h = mk('div', 'modgrp-h');
+  const main = mk('div', 'mgmain');
+  const n = g.options.length;
+  main.append(mk('span', 'mgname', (typeof g.label === 'string' && g.label.trim()) ? g.label : 'Elección'), mk('span', 'mgsub', `${n} ${n === 1 ? 'opción' : 'opciones'} · define el precio`));
+  h.append(main);
+  grp.append(h);
+  const gb = mk('div', 'mgbody');
+  const canBadge = state.choiceBadges.includes('recommended');
+  const sameOn = () => (state.samePrice.has(id) ? state.samePrice.get(id) : optionPricesEqual(state.draft, id));
+  const inputs = [];
+  let cb = null;   // "Mismo precio para todas", created below; a price edit turns it off
+  for (const o of g.options) {
+    const oid = rowId(o);
+    const d = o.display || {};
+    const name = typeof d.choice === 'string' && d.choice.trim() ? d.choice : String(oid);
+    const row = mk('div', 'mopt');
+    const pr = mk('span', 'mopr');
+    const pi = document.createElement('input'); pi.type = 'text'; pi.inputMode = 'numeric';
+    pi.setAttribute('aria-label', `Precio de ${name}`);
+    pi.value = priceText(oid, o.price); pi.placeholder = 'Sin precio';
+    focusKey(pi, `price::${oid}`);
+    pi.addEventListener('input', bound(() => {
+      onPrice('item', oid, pi.value);   // the list boxes' write, on the choice's own key
+      holdPriceText(oid, pi.value);
+      state.samePrice.set(id, false);
+      if (cb) cb.checked = false;
+      paint();
+    }));
+    inputs.push(pi);
+    pr.append(mk('span', 'mc', 'L'), pi);
+    row.append(mk('span', 'moname ro', name), pr);
+    if (canBadge) {
+      const on = Array.isArray(d.tags) && d.tags.includes('recommended');
+      const pill = document.createElement('button'); pill.className = 'recpill'; if (on) pill.classList.add('recpill-on');
+      pill.textContent = 'Recomendada'; pill.type = 'button'; pill.setAttribute('aria-pressed', String(on)); lockControl(pill, true);
+      row.append(pill);
+    }
+    gb.append(row);
+  }
+  const lab = mk('label', 'mgflag mgflag-same');
+  cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = sameOn();
+  focusKey(cb, 'mgflag-same');
+  cb.addEventListener('change', bound(() => {
+    state.samePrice.set(id, cb.checked);
+    if (cb.checked) {
+      const ps = g.options.map((o) => o.price).filter((p) => Number.isInteger(p) && p > 0);
+      if (ps.length) { const v = String(Math.min(...ps)); for (const o of g.options) { onPrice('item', rowId(o), v); holdPriceText(rowId(o), ''); } }
+      inputs.forEach((pi, i) => { const p = g.options[i].price; pi.value = Number.isInteger(p) && p > 0 ? String(p) : ''; });
+      paint();
+    }
+  }));
+  lab.append(cb, document.createTextNode('Mismo precio para todas'));
+  gb.append(lab);
+  grp.append(gb);
+  block.append(grp);
+  return block;
 }
 
 // ── 1D add-product A — THE "NUEVO PRODUCTO" DRAWER (the approved mock's Phase A subset) ────────────────────────
@@ -957,12 +1051,16 @@ function choiceBlock({ id, unsaved, group, mk, errOn, errField, errMsg, after, p
   const sub = group ? `${n} ${n === 1 ? 'opción' : 'opciones'} · define el precio · en 1 producto` : 'el cliente elige 1 opción · define el precio';
   const main = mk('div', 'mgmain');
   if (group && unsaved) {
+    // the approved mock's field (portal mockup screen 1): a label above, then the same box as every portal input
     const lab = document.createElement('input');
-    lab.type = 'text'; lab.className = 'mgname-in'; lab.value = group.label; lab.placeholder = 'Nombre de la elección (ej. Salsa)';
+    lab.type = 'text'; lab.className = 'mgname-in'; lab.value = group.label; lab.placeholder = 'ej. Salsa, Tamaño, Proteína';
+    lab.id = `mgname-${String(id).replace(/[^A-Za-z0-9_-]/g, '_')}`;
     lab.setAttribute('aria-label', 'Nombre de la elección');
     focusKey(lab, 'label');
     lab.addEventListener('input', bound(() => { setGroupLabel(state.draft, id, lab.value); after(); }));
-    main.append(lab);
+    const lbl = mk('label', 'mgname-lbl', 'Nombre de la elección'); lbl.htmlFor = lab.id;
+    h.classList.add('with-in');
+    main.append(lbl, lab);
   } else main.append(mk('span', 'mgname', group ? (group.label || 'Elección') : 'Agregar una elección'));
   main.append(mk('span', 'mgsub', sub));
   h.append(attach, main);
