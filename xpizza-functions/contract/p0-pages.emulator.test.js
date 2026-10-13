@@ -5,6 +5,8 @@
 // order after the acknowledged barrier + settled rendering; the pending online order (S6) is ABSENT where it must be.
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:r3-p0-pages
 require('../test/_emulator-required')('database', 'firestore');
+// R3 P1 §3a differential: R3_TRACE=1 runs this suite with the site-hit tracer installed (before any census unit loads)
+const R3_TRACE = process.env.R3_TRACE === '1' ? (() => { const t = require('./tracer'); const rec = t.createRecorder(); const srv = t.installServer(rec); return { rec, srv }; })() : null;
 
 const assert = require('assert');
 const http = require('http');
@@ -119,7 +121,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   for (const [cell, dir, url, wantSubs, wantQueries] of PAGES) {
     const host = createFirebaseHost({ pageId: cell, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
     let maps = null;
-    const p = await bootPage(dir, { host, url, beforeScripts: (w) => { maps = installGoogleMaps(w); } });
+    const p = await bootPage(dir, { host, url, beforeScripts: (w) => { maps = installGoogleMaps(w); }, tracer: R3_TRACE ? R3_TRACE.rec : null });
     // settled: the auth callback → role check → subscriptions → first render; then the acknowledged barrier + settle
     for (let i = 0; i < 50 && !host.subs.length; i += 1) await new Promise((r) => setTimeout(r, 50));
     await host.barrier();
@@ -195,6 +197,7 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
     } finally { p.close(); await host.close(); }
     ok('codex r7 P2: an async onValue callback awaiting a 30 ms page timer — the timer fires (a continuation, not I/O) and the render completes');
   }
+  if (R3_TRACE) { const h = R3_TRACE.rec.hitsByContext(); console.log(`  R3_TRACE: ${Object.values(h).reduce((a, x) => a + x.size, 0)} distinct site hits; server units transformed ${R3_TRACE.srv.manifest.length}`); }
   console.log(`\nr3-p0-pages: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-p0-pages FAILED:', e && e.stack || e); process.exit(1); });

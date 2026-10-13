@@ -62,7 +62,7 @@ if (typeof vm.SourceTextModule !== 'function') {
   throw new Error('page-harness: vm.SourceTextModule is unavailable — run with node --experimental-vm-modules');
 }
 
-async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 8000, horizonMs = 10000, html: htmlOverride = null } = {}) {
+async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = null, fetchImpl = null, settleMs = 8000, horizonMs = 10000, html: htmlOverride = null, tracer = null } = {}) {
   const pageDir = path.join(REPO, dir);
   const html = htmlOverride !== null ? htmlOverride : fs.readFileSync(path.join(pageDir, 'index.html'), 'utf8');   // htmlOverride: the harness's own acceptance pages
   const errors = []; const consoleErrors = []; const skipped = []; const refused = [];
@@ -182,9 +182,19 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     const m = new vm.SyntheticModule(Object.keys(exp), function () { for (const [k, v] of Object.entries(exp)) this.setExport(k, v); }, { context: ctx, identifier: key });
     cache.set(key, m); return m;
   };
+  // P1 §3a: with `tracer`, every loaded census unit is transformed by contract/tracer.js before it runs (unit id = the
+  // census's: a local file by its repo path, an inline script by `<dir>/index.html<script@k>`); a loaded text that is not the
+  // reviewed census text is a recorded page error (RED), never silently run untraced
+  const traceManifest = [];
+  const traced = (unitFile, code, module) => {
+    if (!tracer) return code;
+    try { const r = require('./tracer').transform(unitFile, code, { module }); if (r.sha) traceManifest.push({ unit: unitFile, version: r.version, sha: r.sha, traced: r.traced.length, untraced: r.untraced }); return r.code; }
+    catch (e) { errors.push(`tracer: ${e && e.message || e}`); return code; }
+  };
+  const relUnit = (abs) => path.relative(REPO, abs).split(path.sep).join('/');
   const fileModule = (abs) => {
     if (cache.has(abs)) return cache.get(abs);
-    const m = new vm.SourceTextModule(fs.readFileSync(abs, 'utf8'), { context: ctx, identifier: abs, importModuleDynamically: dynImport });
+    const m = new vm.SourceTextModule(traced(relUnit(abs), fs.readFileSync(abs, 'utf8'), true), { context: ctx, identifier: abs, importModuleDynamically: dynImport });
     cache.set(abs, m); return m;
   };
   function resolve(spec, from) {
@@ -201,18 +211,21 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const scripts = [...win.document.querySelectorAll('script')];
   for (const s of scripts) s.remove();
   const evaluated = [];
+  if (tracer) Object.defineProperty(win, '__r3hit', { value: (n) => tracer.hit(n), enumerable: false, configurable: false, writable: false });
+  let inlineK = 0;   // the census's inline-script numbering (parse5): every inline JS-type script, in document order
   for (const s of scripts) {
     const src = s.getAttribute('src'); const type = (s.getAttribute('type') || '').trim();
     const isModule = type === 'module';
     if (type && !isModule && !/javascript/.test(type)) continue;             // JSON / templates
+    const inlineUnit = src ? null : `${dir}/index.html<script@${inlineK++}>`;
     try {
       if (src && /^https?:/.test(src)) { skipped.push(src); continue; }
       if (isModule) {
-        const m = src ? fileModule(path.join(pageDir, src.split('?')[0])) : new vm.SourceTextModule(s.textContent, { context: ctx, identifier: path.join(pageDir, `inline-module-${evaluated.length}.mjs`), importModuleDynamically: dynImport });
+        const m = src ? fileModule(path.join(pageDir, src.split('?')[0])) : new vm.SourceTextModule(traced(inlineUnit, s.textContent, true), { context: ctx, identifier: path.join(pageDir, `inline-module-${evaluated.length}.mjs`), importModuleDynamically: dynImport });
         await m.link(linker); await m.evaluate();
         evaluated.push(src || 'inline module');
       } else {
-        const code = src ? fs.readFileSync(path.join(pageDir, src.split('?')[0]), 'utf8') : s.textContent;
+        const code = src ? traced(relUnit(path.join(pageDir, src.split('?')[0])), fs.readFileSync(path.join(pageDir, src.split('?')[0]), 'utf8'), false) : traced(inlineUnit, s.textContent, false);
         vm.runInContext(code, ctx, { filename: src || 'inline-classic.js' });
         evaluated.push(src || 'inline classic');
       }
@@ -254,7 +267,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
       fire(next);
     }
   }
-  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow }, close: () => { OPEN_PAGES.delete(pageRec); timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
+  return { dom, win, doc: win.document, errors, consoleErrors, skipped, refused, evaluated, beacons, settle, inflight, dueSites, clock: { virtualMs: () => vnow }, traceManifest, close: () => { OPEN_PAGES.delete(pageRec); timers.clear(); process.off('unhandledRejection', onRejection); win.close(); } };
 }
 
 module.exports = { bootPage, REPO };

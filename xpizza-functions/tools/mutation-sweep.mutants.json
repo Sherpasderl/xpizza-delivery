@@ -11971,5 +11971,50 @@
       "node",
       "contract/census.negative.test.js"
     ]
+  },
+  {
+    "id": "r3p1-01",
+    "slice": "r3p1",
+    "file": "contract/tracer.js",
+    "from": "    if (node.start === pos && node.type === 'MemberExpression' && (field == null || propOf(node) === field)) { found = { node, anc }; return; }",
+    "to": "    if (node.start === pos && node.type === 'MemberExpression') { found = { node, anc }; return; }",
+    "label": "the tracer locates a site by start position only (nested members share a start)",
+    "kills_with": [
+      "nested / receiver"
+    ],
+    "command": [
+      "node",
+      "contract/tracer.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-02",
+    "slice": "r3p1",
+    "file": "contract/tracer.js",
+    "from": "  if (p.type === 'CallExpression' && p.callee === node) return { reason: 'call callee' };",
+    "to": "  if (false) return { reason: 'call callee' };",
+    "label": "a call callee is wrapped (receiver lost)",
+    "kills_with": [
+      "untraced forms"
+    ],
+    "command": [
+      "node",
+      "contract/tracer.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-03",
+    "slice": "r3p1",
+    "file": "contract/tracer.js",
+    "from": "  if (sha(code) !== u.sha) throw new TracerMismatch(",
+    "to": "  if (false) throw new TracerMismatch(",
+    "label": "a drifted unit is instrumented against other text (binding off)",
+    "kills_with": [
+      "a drifted unit was instrumented"
+    ],
+    "command": [
+      "node",
+      "contract/tracer.test.js"
+    ]
   }
 ]

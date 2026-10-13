@@ -8,6 +8,8 @@
 // Admin app to reach the RTDB Reference prototype, and index.js performs no RTDB write while loading. Date.now is NOT
 // replaced (only cell B2's contrast moves it, then restores).
 require('../test/_emulator-required')('database', 'firestore');
+// R3 P1 §3a differential: R3_TRACE=1 runs this suite with the site-hit tracer installed (before any census unit loads)
+const R3_TRACE = process.env.R3_TRACE === '1' ? (() => { const t = require('./tracer'); const rec = t.createRecorder(); const srv = t.installServer(rec); return { rec, srv }; })() : null;
 
 const assert = require('assert');
 const http = require('http');
@@ -252,6 +254,7 @@ const EXTRA = []; const OBS = {};
   assert.deepStrictEqual(WITNESS.unattributed(), [], FAIL('C', `pricing calls outside any writer context: ${JSON.stringify(WITNESS.unattributed())}`));
   ok(`hygiene: ${S.state.invs.length} invocations, 0 errors; parked = only the declared monitor(s) (${S.state.invs.filter((i) => i.parked).length}); ${S.state.transitions.length} transitions, ${S.state.records.length} trigger records; no unattributed pricing call; detached writes: ${S.state.detachedWrites.length}`);
 
+  if (R3_TRACE) console.log(`  R3_TRACE: server units transformed ${R3_TRACE.srv.manifest.length}`);
   console.log(`\nr3-p0-scheduler: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('r3-p0-scheduler FAILED:', e && e.stack || e); process.exit(1); });

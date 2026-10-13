@@ -169,7 +169,7 @@ const WRITE_METHODS = new Set(['set', 'update', 'push', 'setWithPriority', 'tran
 // send boundaries (the server-side readers): callee name → R-site
 const SEND = { sendMessage: 'R9', sendScheduledSlotClosed: 'R9', sendPaidAfterCloseRefund: 'R9', sendDriverPush: 'R5', sendStaffPush: 'R6', batchUpdate: 'R12', append: 'R12' };
 
-function census({ explicit = [], extraUnits = [] } = {}) {
+function census({ explicit = [], extraUnits = [], keepPos = false } = {}) {   // keepPos: the P1 tracer needs each site's AST start
   const units = [...sources(), ...extraUnits];
   const parsed = units.map((u) => ({ u, ast: parseUnit(u) }));
   // ── projections, per scope, fixpoint ≤ 3 ──
@@ -440,7 +440,7 @@ function census({ explicit = [], extraUnits = [] } = {}) {
     });
     for (const s of sites) if (s.file === u.file && s._pos !== undefined) { const hit = ranges.find((r) => s._pos >= r[0] && s._pos < r[1]); if (hit) s.send = hit[2]; }
   }
-  for (const s of sites) delete s._pos;
+  if (!keepPos) for (const s of sites) delete s._pos;
 
   // ── write sentinel + timers + clocks (functions only) ──
   const sentinel = sentinel0; const timers = []; const clocks = [];
