@@ -45,6 +45,9 @@ function lpsFor(R, S) {
   return sc.lps.filter((lp) => pick.includes(lp));
 }
 
+// P1-a: brandSurfaces — a brand's OWN surface (its form site) joins only that brand's cells
+const brandOk = (fileOrRef, brand) => { const bs = SPEC.brandSurfaces || {}; for (const [pre, brands] of Object.entries(bs)) if (pre !== '_doc' && String(fileOrRef).startsWith(pre)) return brands.includes(brand); return true; };
+
 function build(spec) {
   SPEC = spec || JSON.parse(fs.readFileSync(SPEC_FILE, 'utf8'));
   const cells = []; const problems = [];
@@ -128,7 +131,7 @@ function build(spec) {
   for (const c of cells) if (c.kind === 'agreement') c.sites = [];
   siteObligations.forEach((o, i) => {
     const rs = SA.filter((e) => e.site === o.site && e.fact === o.fact);
-    const app = (cellsOf[o.group] || []).filter((c) => rs.every((e) => within(e, c)));
+    const app = (cellsOf[o.group] || []).filter((c) => rs.every((e) => within(e, c)) && brandOk(o.site, c.brand));
     for (const c of app) c.sites.push(i);
     const uniq = (f) => [...new Set(app.map(f))].sort();
     o.applies = { scenarios: uniq((c) => c.S), brands: uniq((c) => c.brand), lps: uniq((c) => c.lp), narrowed: rs.length ? rs.map((e) => e.reason) : undefined };
@@ -161,7 +164,7 @@ function build(spec) {
       const hit = parts.map((pt, i) => (matches(pt.when, c) ? i : -1)).filter((i) => i >= 0);
       if (hit.length !== 1) { problems.push(`unsitedFacts.${g}: cell ${c.cell} matches ${hit.length} part(s) — every cell must match exactly one`); continue; }
       const pt = parts[hit[0]]; per[hit[0]].push(c);
-      c.outputs = pt.outputs.map((ref) => `R3:${R}:${fact}:${pt.kind === 'not-in-source' ? '!' : '@'}${ref}`);
+      c.outputs = pt.outputs.filter((ref) => brandOk(ref, c.brand)).map((ref) => `R3:${R}:${fact}:${pt.kind === 'not-in-source' ? '!' : '@'}${ref}`);
       c.unsited = pt.kind;
       // codex r4 P1-4: a PLAN fact the outputs do NOT display is not an agreement — its own kind, reported apart
       if (pt.kind === 'not-in-source') c.kind = 'not-in-source';

@@ -3,8 +3,8 @@
  "counts": {
   "units": 318,
   "sites": 3222,
-  "mapped": 1411,
-  "exempt": 1811,
+  "mapped": 1357,
+  "exempt": 1865,
   "byR": {
    "R9": 61,
    "R17": 43,
@@ -15,11 +15,11 @@
    "R12": 1,
    "R8": 72,
    "R11": 61,
-   "R1": 110,
-   "R2": 398,
-   "R3": 141,
+   "R1": 93,
+   "R2": 388,
+   "R3": 131,
    "R4": 143,
-   "R7": 119,
+   "R7": 102,
    "R18": 12,
    "R15": 77
   },
@@ -34,7 +34,7 @@
    "server scheduling": 46,
    "server seed": 2,
    "server fixtures": 5,
-   "unreachable-on-surface": 241,
+   "unreachable-on-surface": 295,
    "page-fn": 341,
    "form-account-profile": 14,
    "form-composer": 51
@@ -16739,8 +16739,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#lng#0",
@@ -16749,8 +16749,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#lat#1",
@@ -16759,8 +16759,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#lng#1",
@@ -16769,8 +16769,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#hubMatch#lat#0",
@@ -16779,8 +16779,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#hubMatch#lng#0",
@@ -16789,8 +16789,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#status#0",
@@ -16802,8 +16802,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#status#1",
@@ -16815,8 +16815,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#status#2",
@@ -16828,8 +16828,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#checkGeofenceTransition#status#3",
@@ -16841,8 +16841,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#arriveAtRestaurant#status#0",
@@ -16998,8 +16998,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#coordsMatch#lng#0",
@@ -17008,8 +17008,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#resolvePickupHub#restaurant_id#0",
@@ -17018,8 +17018,8 @@
    "facts": [
     "BRAND"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#resolvePickupHub#lat#0",
@@ -17029,8 +17029,8 @@
     "PLACE"
    ],
    "alias": "destination_lat",
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#resolvePickupHub#lng#0",
@@ -17040,8 +17040,8 @@
     "PLACE"
    ],
    "alias": "destination_lng",
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#resolvePickupHub#lat#1",
@@ -17050,8 +17050,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#resolvePickupHub#lng#1",
@@ -17060,8 +17060,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "kds",
-   "r": "R1"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-kitchen/xpizza-delivery.js#assignOrderToDriver#status#0",
@@ -18835,8 +18835,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#lng#0",
@@ -18845,8 +18845,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#lat#1",
@@ -18855,8 +18855,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#lng#1",
@@ -18865,8 +18865,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#hubMatch#lat#0",
@@ -18875,8 +18875,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#hubMatch#lng#0",
@@ -18885,8 +18885,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#status#0",
@@ -18898,8 +18898,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#status#1",
@@ -18911,8 +18911,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#status#2",
@@ -18924,8 +18924,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#checkGeofenceTransition#status#3",
@@ -18937,8 +18937,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch",
-   "r": "R2"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch/xpizza-delivery.js#arriveAtRestaurant#status#0",
@@ -23636,8 +23636,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#lng#0",
@@ -23646,8 +23646,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#lat#1",
@@ -23656,8 +23656,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#lng#1",
@@ -23666,8 +23666,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#hubMatch#lat#0",
@@ -23676,8 +23676,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#hubMatch#lng#0",
@@ -23686,8 +23686,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#status#0",
@@ -23699,8 +23699,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#status#1",
@@ -23712,8 +23712,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#status#2",
@@ -23725,8 +23725,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#checkGeofenceTransition#status#3",
@@ -23738,8 +23738,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dispatch-lite",
-   "r": "R3"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dispatch-mobile/xpizza-delivery.js#arriveAtRestaurant#status#0",
@@ -27215,8 +27215,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#lng#0",
@@ -27225,8 +27225,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#lat#1",
@@ -27235,8 +27235,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#lng#1",
@@ -27245,8 +27245,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#hubMatch#lat#0",
@@ -27255,8 +27255,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#hubMatch#lng#0",
@@ -27265,8 +27265,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#status#0",
@@ -27278,8 +27278,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#status#1",
@@ -27291,8 +27291,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#status#2",
@@ -27304,8 +27304,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#checkGeofenceTransition#status#3",
@@ -27317,8 +27317,8 @@
     "ACCT",
     "FACTELIG"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#arriveAtRestaurant#status#0",
@@ -27474,8 +27474,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#coordsMatch#lng#0",
@@ -27484,8 +27484,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#resolvePickupHub#restaurant_id#0",
@@ -27494,8 +27494,8 @@
    "facts": [
     "BRAND"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#resolvePickupHub#lat#0",
@@ -27505,8 +27505,8 @@
     "PLACE"
    ],
    "alias": "destination_lat",
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#resolvePickupHub#lng#0",
@@ -27516,8 +27516,8 @@
     "PLACE"
    ],
    "alias": "destination_lng",
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#resolvePickupHub#lat#1",
@@ -27526,8 +27526,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#resolvePickupHub#lng#1",
@@ -27536,8 +27536,8 @@
    "facts": [
     "PLACE"
    ],
-   "rule": "dashboard",
-   "r": "R7"
+   "rule": "unreachable-on-surface",
+   "exempt": true
   },
   {
    "id": "xpizza-dashboard/xpizza-delivery.js#assignOrderToDriver#status#0",

@@ -95,6 +95,20 @@ const nd = build(sn); const no2 = nd.doc.siteObligations.find((o) => o.assertion
 assert.ok(!nd.problems.length && no2.applies.brands.join() === 'x_pizza' && no2.requiredCells < o2.requiredCells && nd.doc.cells.filter((c) => c.brand === 'la_musa' && c.group === 'R2:MONEY').every((c) => !c.sites.includes(nd.doc.siteObligations.indexOf(no2))), FAIL('a reviewed narrowing did not narrow exactly'));
 ok(`schema negatives refused (${neg.length}): ${neg.map((x) => x[0]).join('; ')}; a REVIEWED narrowing narrows exactly (${o2.requiredCells} → ${no2.requiredCells} required cells)`);
 
+// P1-a: brandSurfaces — a brand's own form site never joins another brand's cell (sites or unsited outputs)
+{
+  const bs = Object.entries(JSON.parse(fs.readFileSync(SPEC_FILE, 'utf8')).brandSurfaces || {}).filter(([k]) => k !== '_doc');
+  const wrong = [];
+  for (const c of doc.cells) {
+    const refs = [...(c.sites || []).map((i) => doc.siteObligations[i].site), ...(c.outputs || []).map((x) => { const m = /:[@!]([^:]*)$/.exec(x); return m ? m[1] : ''; })];
+    for (const r of refs) for (const [pre, brands] of bs) if (r.startsWith(pre) && !brands.includes(c.brand)) wrong.push(`${c.cell} ← ${r}`);
+  }
+  assert.deepStrictEqual(wrong.slice(0, 5), [], FAIL(`a brand's own surface joined another brand's cell (${wrong.length})`));
+  const neg = JSON.parse(fs.readFileSync(SPEC_FILE, 'utf8')); delete neg.brandSurfaces;
+  const nd = build(neg).doc; const leaks = nd.cells.filter((c) => c.brand === 'x_pizza' && (c.sites || []).some((i) => nd.siteObligations[i].site.startsWith('la-musa-orders/'))).length;
+  assert.ok(leaks > 0, FAIL('premise — without brandSurfaces La Musa form sites would join x_pizza cells'));
+  ok(`brandSurfaces: no cell lists another brand's form site / output (without the rule ${leaks} x_pizza cells would join La Musa form sites)`);
+}
 const norm = (d) => JSON.stringify(d);
 const committed = JSON.parse(fs.readFileSync(OUT, 'utf8'));
 assert.ok(norm(committed) === norm(doc), FAIL('matrix.json differs from the generated document (cells, metadata, obligations, outputs or GAP report) — review, then node contract/matrix-build.js --write'));

@@ -32,9 +32,13 @@ const asIndex = (code) => ({ file: 'xpizza-functions/index.js', scope: 'function
   const page = (code) => ({ file: 'xpizza-kitchen/zz-r3-probe.js', scope: 'xpizza-kitchen', kind: 'page', module: true, lineOffset: 0, code });
   const a = problemsWith(page('export function deadTotalProbe(order) { return order.total; }'));
   assert.ok(a.some((x) => /UNREACHABLE on its surface \(xpizza-kitchen\/zz-r3-probe\.js#deadTotalProbe/.test(x)), `🔴 R3-CENSUS-NEG unreachable-unreviewed: passed (${JSON.stringify(a.slice(0, 3))})`);
-  const b = problemsWith(page("import * as XPD from './xpizza-delivery.js'; export function wire() { return XPD.assignOrderToDriver; }"));
+  // referenced from TOP-LEVEL code (a root): the reviewed-unreachable SDK function is now reachable on the KDS
+  const b = problemsWith(page("import * as XPD from './xpizza-delivery.js'; window.__wire = XPD.assignOrderToDriver;"));
   assert.ok(b.some((x) => /stale unreachableOnSurface entry: xpizza-kitchen\/xpizza-delivery\.js#assignOrderToDriver/.test(x)), `🔴 R3-CENSUS-NEG unreachable-revived: passed (${JSON.stringify(b.slice(0, 3))})`);
-  ok('unreachable on surface, reviewed both ways: a new unreferenced KDS function reading order.total → RED; referencing a reviewed-unreachable SDK function (XPD.assignOrderToDriver) → its entry is stale → RED');
+  // transitive: a helper referenced ONLY by an unreferenced function is unreachable too (fixpoint, not first-order)
+  const c = problemsWith(page('function deadHelperTotal(o) { return o.total; } export function deadCaller(o) { return deadHelperTotal(o); }'));
+  assert.ok(c.some((x) => /UNREACHABLE on its surface \(xpizza-kitchen\/zz-r3-probe\.js#deadHelperTotal/.test(x)), `🔴 R3-CENSUS-NEG unreachable-transitive: passed (${JSON.stringify(c.slice(0, 3))})`);
+  ok('unreachable on surface, reviewed both ways: a new unreferenced KDS function reading order.total → RED; a helper called only by a dead function → RED (fixpoint); referencing a reviewed-unreachable SDK function from top-level code (window.__wire = XPD.assignOrderToDriver) → its entry is stale → RED');
 }
 // codex rebase-r2 P1: a non-fact review is bound to its SITE — created_at is reviewed in other functions, but a NEW
 // created_at filter inside the driver's cash shiftDeliveries is unreviewed there → RED (codex's probe)

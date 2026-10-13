@@ -440,32 +440,44 @@ function census({ explicit = [], extraUnits = [], keepPos = false } = {}) {   //
     });
     for (const s of sites) if (s.file === u.file && s._pos !== undefined) { const hit = ranges.find((r) => s._pos >= r[0] && s._pos < r[1]); if (hit) s.send = hit[2]; }
   }
-  // P1-a: a page site inside a TOP-LEVEL function that nothing in its page scope references (no identifier / NS.member /
-  // inline HTML handler — e.g. a shared SDK copy's driver function on the KDS) is UNREACHABLE ON THAT SURFACE: marked, so
-  // census-build can exempt it only through a reviewed entry (unreachableOnSurface). Over-approximate: any same-named
-  // reference keeps it reachable (fewer exemptions, never more).
-  const refsByScope = new Map();
-  const refsOf = (scope) => {
-    if (refsByScope.has(scope)) return refsByScope.get(scope);
-    const m = new Map(); const add = (nm) => m.set(nm, (m.get(nm) || 0) + 1);
-    for (const { u, ast } of parsed.filter((x) => x.u.scope === scope)) {
+  // P1-a: REACHABILITY on each page surface (a fixpoint, not first-order): roots are top-level code (incl. imports,
+  // window assignments, listeners registered at top level) and inline HTML handlers; a top-level function is reachable when
+  // a REACHABLE function or a root references its name (identifier / NS.member). A page site inside an unreachable
+  // top-level function (e.g. a shared SDK copy's driver function on the KDS, or a helper only such a function calls) is
+  // UNREACHABLE ON THAT SURFACE — exempt only through a reviewed census-map entry (census-build). Over-approximate by name:
+  // any same-named reference from reachable code keeps it reachable (fewer exemptions, never more).
+  const reachByScope = new Map();
+  const reachOf = (scope) => {
+    if (reachByScope.has(scope)) return reachByScope.get(scope);
+    const edges = new Map(); const defined = new Set(); const roots = new Set();
+    const addEdge = (from, nm) => { if (!edges.has(from)) edges.set(from, new Set()); edges.get(from).add(nm); };
+    for (const { ast } of parsed.filter((x) => x.u.scope === scope)) {
       walk(ast, (node, fn, parent) => {
+        if (/Function/.test(node.type) && node.id && node.id.name) defined.add(node.id.name);
+        if (node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' && node.init && /Function/.test(node.init.type)) defined.add(node.id.name);
         if (node.type !== 'Identifier') return;
         const isDef = parent && ((/Function/.test(parent.type) && parent.id === node) || (parent.type === 'VariableDeclarator' && parent.id === node));
         const isKey = parent && ((parent.type === 'Property' && parent.key === node && !parent.computed && !parent.shorthand) || (parent.type === 'MethodDefinition' && parent.key === node));
-        if (!isDef && !isKey) add(node.name);
+        if (isDef || isKey) return;
+        const top = String(fn || '<top>').split('>')[0];
+        // a REGISTERED callback (census names it after its registration, `auth.onAuthStateChanged` / `x.on`) is invoked by the
+        // platform, not by name: its references are ROOTS, like top-level code
+        if (!top || top.startsWith('<') || top === 'anon' || top.includes('.')) roots.add(node.name); else addEdge(top, node.name);
       });
     }
     const html = path.join(REPO, scope, 'index.html');
-    if (fs.existsSync(html)) for (const mm of fs.readFileSync(html, 'utf8').matchAll(/\bon[a-z]+="([^"]*)"/g)) for (const id of mm[1].matchAll(/[A-Za-z_$][\w$]*/g)) add(id[0]);
-    refsByScope.set(scope, m); return m;
+    if (fs.existsSync(html)) for (const mm of fs.readFileSync(html, 'utf8').matchAll(/\bon[a-z]+="([^"]*)"/g)) for (const id of mm[1].matchAll(/[A-Za-z_$][\w$]*/g)) roots.add(id[0]);
+    const reach = new Set(); const queue = [...roots];
+    while (queue.length) { const nm = queue.pop(); if (reach.has(nm)) continue; reach.add(nm); for (const nx of edges.get(nm) || []) if (!reach.has(nx)) queue.push(nx); }
+    reachByScope.set(scope, reach); return reach;
   };
   for (const s of sites) {
     if (s.scope === 'functions' || /^xpizza-functions\//.test(s.file)) continue;
     const top = String(s.fn || '').split('>')[0];
     if (!top || top.startsWith('<') || top === 'anon') continue;
-    if (!(refsOf(s.scope).get(top) > 0)) s.unreachable = top;
+    if (!reachOf(s.scope).has(top)) s.unreachable = top;
   }
+  census.reachOf = reachOf;
   if (!keepPos) for (const s of sites) delete s._pos;
 
   // ── write sentinel + timers + clocks (functions only) ──

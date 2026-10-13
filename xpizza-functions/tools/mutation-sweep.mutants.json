@@ -12021,7 +12021,7 @@
     "id": "r3p1-04",
     "slice": "r3p1",
     "file": "contract/census.js",
-    "from": "    if (!(refsOf(s.scope).get(top) > 0)) s.unreachable = top;",
+    "from": "    if (!reachOf(s.scope).has(top)) s.unreachable = top;",
     "to": "    if (false) s.unreachable = top;",
     "label": "unreachable-on-surface marking off: dead SDK copies stay mapped (or reviewed entries go stale silently)",
     "kills_with": [
@@ -12046,6 +12046,36 @@
     "command": [
       "node",
       "contract/comparator.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-06",
+    "slice": "r3p1",
+    "file": "contract/census.js",
+    "from": "        if (!top || top.startsWith('<') || top === 'anon' || top.includes('.')) roots.add(node.name); else addEdge(top, node.name);",
+    "to": "        if (!top || top.startsWith('<') || top === 'anon') roots.add(node.name); else addEdge(top, node.name);",
+    "label": "registered callbacks not treated as roots — live render paths (KDS mapFirebaseOrderToCard) misread as unreachable",
+    "kills_with": [
+      "is UNREACHABLE on its surface"
+    ],
+    "command": [
+      "node",
+      "contract/census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-07",
+    "slice": "r3p1",
+    "file": "contract/matrix-build.js",
+    "from": "const brandOk = (fileOrRef, brand) => { const bs = SPEC.brandSurfaces || {}; for (const [pre, brands] of Object.entries(bs)) if (pre !== '_doc' && String(fileOrRef).startsWith(pre)) return brands.includes(brand); return true; };",
+    "to": "const brandOk = () => true;",
+    "label": "brandSurfaces ignored — a brand's own form site joins another brand's cells",
+    "kills_with": [
+      "a brand's own surface joined another brand's cell"
+    ],
+    "command": [
+      "node",
+      "contract/matrix.guard.test.js"
     ]
   }
 ]

@@ -438,12 +438,12 @@
         "STATUS",
         "census:PLACE",
         "census:CASH",
-        "census:FULFIL",
-        "BRAND"
+        "census:FULFIL"
       ],
       "shows": {
         "*": "all"
-      }
+      },
+      "_p1a": "P1-a (reviewed): BRAND removed — it is not a PLAN §3 R7 fact and its only census reader was the dashboard's copy of the shared SDK's resolvePickupHub, now census-exempt as (transitively) unreachable on the dashboard"
     },
     "R8": {
       "name": "tracker",
@@ -1027,5 +1027,14 @@
         "pickup": false
       }
     }
+  },
+  "brandSurfaces": {
+    "_doc": "P1-a (reviewed): a brand's OWN surface — code that is physically that brand's site — applies only to that brand's cells. Shared surfaces (KDS, dispatch, driver, dashboard, tracker, functions) apply to every brand. A site or an unsited output under one of these path prefixes joins only cells of the listed brands.",
+    "xpizza-orders/": [
+      "x_pizza"
+    ],
+    "la-musa-orders/": [
+      "la_musa"
+    ]
   }
 }
