@@ -12753,5 +12753,21 @@
       "run",
       "test:r3-p1a-journey"
     ]
+  },
+  {
+    "id": "r3p1-51",
+    "slice": "r3p1",
+    "file": "index.js",
+    "from": "  const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;",
+    "to": "  _r3fake(); if (orderId) return res.status(200).json({ ok: true, order_id: orderId, tracking_token: trackingToken }); function _r3fake() { reportIdentityShadow(db, { rid: restaurantId, orderId, outcome: 'reported', result: null }); } const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;",
+    "label": "codex r7: a same-line hoisted helper fakes the heartbeat, then an early return skips the real sampling statement (line-preserving)",
+    "kills_with": [
+      "the heartbeat's caller frame is not the reviewed call expression"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
   }
 ]

@@ -309,11 +309,31 @@ try {
     assert.ok(jLine > 0 && cLine > jLine, FAIL('shadow', `premise — the justification (line ${jLine}) and its reportIdentityShadow call (line ${cLine})`));
     const mine = SHADOW_BEATS.filter((b) => b.body && b.body.order_id === oid);
     assert.strictEqual(mine.length, 1, FAIL('shadow', `the identity-shadow sampling statement did not run exactly once for ${oid} (heartbeats ${mine.length}) — an early return / dead branch / move skipped it`));
-    assert.ok(mine[0].stack.includes(`index.js:${cLine}:`), FAIL('shadow', `the heartbeat did not come from createOrder's reportIdentityShadow call at index.js:${cLine} (${mine[0].stack.split('\n').filter((l) => /index\.js/.test(l)).slice(0, 2).join(' | ')})`));
+    // codex r7: the frame that called reportIdentityShadow must be EXACTLY the reviewed call expression — the statement
+    // right after the shadowResult declaration in createOrderApp.all's OWN body, located by AST in the code that RAN
+    // (the tracer's line-preserving transform of index.js), line:column — and that frame is the handler itself
+    // (anonymous: no nested / named helper in between). THREAT MODEL (advisor ruling): this guards accidental drift, not
+    // a deliberately deceptive edit — out of scope.
+    const idxPath = new URL('../index.js', import.meta.url).pathname;
+    const ran = T.transform('xpizza-functions/index.js', fsx.readFileSync(idxPath, 'utf8'), { module: false }).code;
+    const { walk: cwalk, parseUnit: cparse } = require('./census');
+    let callPos = null;
+    cwalk(cparse({ file: 'xpizza-functions/index.js', code: ran, module: false, lineOffset: 0 }), (node, fnName) => {
+      if (callPos || !/Function/.test(node.type) || fnName !== 'createOrderApp.all' || !node.body || node.body.type !== 'BlockStatement') return;
+      const body = node.body.body;
+      const k = body.findIndex((st) => st.type === 'VariableDeclaration' && st.declarations.some((d) => d.id.type === 'Identifier' && d.id.name === 'shadowResult'));
+      const nx = k >= 0 ? body[k + 1] : null;
+      if (nx && nx.type === 'ExpressionStatement' && nx.expression.type === 'CallExpression' && nx.expression.callee.type === 'Identifier' && nx.expression.callee.name === 'reportIdentityShadow') callPos = { line: nx.expression.loc.start.line, col: nx.expression.loc.start.column + 1 };
+    });
+    assert.ok(callPos, FAIL('shadow', 'premise — the reviewed reportIdentityShadow call right after the shadowResult declaration in createOrderApp.all\'s own body (AST)'));
+    const frames = mine[0].stack.split('\n').map((l) => l.trim());
+    const fi = frames.findIndex((l) => /^at reportIdentityShadow \(.*catalog\/identity-shadow-validate\.js:\d+:\d+\)$/.test(l));
+    const caller = fi >= 0 ? frames[fi + 1] : null;
+    assert.strictEqual(caller, `at ${idxPath}:${callPos.line}:${callPos.col}`, FAIL('shadow', `the heartbeat's caller frame is not the reviewed call expression in the handler itself (expected "at ${idxPath}:${callPos.line}:${callPos.col}", got "${caller}")`));
     const hit23 = (current['S1/x_pizza/new'] || []).includes(RAT.APPROVED_NONDETERMINISTIC[0].site);
     const outcome = mine[0].body.outcome;
     assert.ok(outcome === 'dropped' ? !hit23 : hit23, FAIL('shadow', `the sample outcome "${outcome}" disagrees with gate B (status#23 hit: ${hit23})`));
-    ok(`the race justification RAN: exactly one identity-shadow heartbeat for ${oid} from index.js:${cLine} (outcome "${outcome}"), consistent with gate B (status#23 ${hit23 ? 'hit' : 'not hit'})`);
+    ok(`the race justification RAN: exactly one identity-shadow heartbeat for ${oid} from the reviewed call expression index.js:${callPos.line}:${callPos.col} in the handler itself (outcome "${outcome}"), consistent with gate B (status#23 ${hit23 ? 'hit' : 'not hit'})`);
   }
 
   // EGRESS: this process runs under the process-level guard (preloaded by emulator-run) and nothing was refused
