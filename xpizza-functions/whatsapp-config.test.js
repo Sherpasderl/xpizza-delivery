@@ -55,8 +55,14 @@ assert.ok(w.renderTemplate(ord('la_musa'), 'La Musa').includes('Recibimos tu ped
 assert.ok(w.renderTemplate(ord('r3_synth'), null).includes('Recibimos tu pedido ✅')); ok('tplOrderReceived with no brand → neutral copy');
 assert.ok(w.renderTemplate(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }), 'X. Pizza').includes('disfrutes X. Pizza, Ana.')); ok('tplDelivered x_pizza — brand');
 assert.ok(w.renderTemplate(w.tplDelivered({ customerName: 'Ana', restaurantId: 'x_pizza' }), null).includes('disfrutes tu pedido, Ana.')); ok('tplDelivered — neutral "tu pedido"');
-assert.ok(w.renderTemplate(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }), 'La Musa').includes('pedido #PZX-1 en La Musa fue cancelado')); ok('tplCancelled — brand');
-assert.ok(w.renderTemplate(w.tplCancelled({ orderId: 'PZX-1', restaurantId: 'la_musa' }), null).includes('pedido #PZX-1 fue cancelado')); ok('tplCancelled — neutral');
+assert.ok(w.renderTemplate(w.tplCancelled({ displayNumber: 47, restaurantId: 'la_musa' }), 'La Musa').includes('pedido #47 en La Musa fue cancelado')); ok('tplCancelled — brand, the kitchen\u2019s number');
+assert.ok(w.renderTemplate(w.tplCancelled({ displayNumber: 47, restaurantId: 'la_musa' }), null).includes('pedido #47 fue cancelado')); ok('tplCancelled — neutral');
+// no number stamped (the allocator is fail-open), or not a positive integer → no number; and the long id never appears, even if passed
+for (const dn of [undefined, null, 0, -3, 4.5, '47', NaN]) {
+  const t = w.renderTemplate(w.tplCancelled({ displayNumber: dn, orderId: 'PZX-261012-ABC', restaurantId: 'x_pizza' }), 'X. Pizza');
+  assert.ok(t.includes('Lamentamos avisarte que tu pedido en X. Pizza fue cancelado.') && !t.includes('#') && !t.includes('PZX'), `tplCancelled displayNumber=${String(dn)} → no number: ${t.split('\n')[0]}`);
+}
+ok('tplCancelled — no (valid) display_number → no number at all, never the long id');
 
 // ── E1: food-noun copy — x_pizza BYTE-IDENTICAL, la_musa branded ──
 assert.equal(w.itemsEmojiFor('x_pizza'), '🍕'); ok('itemsEmojiFor x_pizza = 🍕');
