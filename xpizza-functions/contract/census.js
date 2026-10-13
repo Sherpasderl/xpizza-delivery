@@ -474,7 +474,7 @@ function census({ explicit = [], extraUnits = [], keepPos = false } = {}) {   //
   return { units: units.length, sites, opaque, projections, sentinel, timers, clocks, writes, opaqueWrites, unknownReads };
 }
 
-module.exports = { census, FIELD_FACTS, READER_DIRS, sources };
+module.exports = { census, FIELD_FACTS, READER_DIRS, sources, walk, parseUnit };
 
 if (require.main === module) {
   const c = census();

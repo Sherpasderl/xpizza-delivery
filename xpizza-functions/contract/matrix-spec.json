@@ -1,5 +1,5 @@
 {
-  "_doc": "R3 §2 — the SPEC the matrix is generated from (contract/matrix-build.js → matrix.json). facts: the reviewed facts each R-site asserts (PLAN §3 table + census deltas accepted at P0, marked 'census'). shows: the lifecycle points (LP) at which the surface displays the order, per scenario family; 'absent' LPs are asserted as ABSENCE. brands: x_pizza + la_musa everywhere; r3_synth only on S17 surfaces that can serve it. gaps: timing GAPs (§6a ruling) — cells with status 'gap' + reason, never counted as executed. PROPOSED at P0 for advisor review before P1.",
+  "_doc": "R3 §2 — the SPEC the matrix is generated from (contract/matrix-build.js → matrix.json). facts: the reviewed facts each R-site asserts (PLAN §3 table + census deltas accepted at P0, marked 'census'). shows: the lifecycle points (LP) at which the surface displays the order, per scenario family; 'absent' LPs are asserted as ABSENCE. brands: x_pizza + la_musa everywhere; r3_synth only on S17 surfaces that can serve it. gaps: timing GAPs (§6a ruling) — cells with status 'gap' + reason, never counted as executed. PROPOSED at P0 for advisor review before P1. formScenarios (P1-a, reviewed): every scenario whose order is placed through the REAL order form (PLAN §2: S1 / S1t / S1a / S2 / S3 / S4 / S13 and P2's S5 / S11); S14 (unsupported methods through the real HANDLER) and S17 (no form for the synthetic brand) are not.",
   "brands": [
     "x_pizza",
     "la_musa"
@@ -18,7 +18,17 @@
       "fulfil": "delivery",
       "pay": "cash"
     },
-    "S1t": {
+    "S1t-a": {
+      "lps": [
+        "assigned",
+        "reassigned",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash",
+      "variant": "first strike: A never accepts → reassigned to B (attempts 2, A cooldown) → B delivers"
+    },
+    "S1t-b": {
       "lps": [
         "assigned",
         "reassigned",
@@ -26,15 +36,35 @@
         "delivered"
       ],
       "fulfil": "delivery",
-      "pay": "cash"
+      "pay": "cash",
+      "variant": "second strike: B never accepts either → unassigned + no_response_takeover alert → manual assign → delivered"
     },
-    "S1a": {
+    "S1t-c": {
+      "lps": [
+        "assigned",
+        "unassigned",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash",
+      "variant": "only A eligible → no_drivers_available → unassigned → manual assign → delivered"
+    },
+    "S1a-on": {
       "lps": [
         "new",
         "assigned"
       ],
       "fulfil": "delivery",
-      "pay": "cash"
+      "pay": "cash",
+      "variant": "config/auto_assign_enabled = true: advance(GRACE) → the auto-assigner assigns"
+    },
+    "S1a-off": {
+      "lps": [
+        "new"
+      ],
+      "fulfil": "delivery",
+      "pay": "cash",
+      "variant": "config/auto_assign_enabled = false: advance(GRACE) is a NO-OP (still unassigned)"
     },
     "S2": {
       "lps": [
@@ -153,13 +183,41 @@
       "fulfil": "delivery",
       "pay": "cash"
     },
-    "S14": {
+    "S14-omitted": {
       "lps": [
         "new",
         "delivered"
       ],
       "fulfil": "delivery",
-      "pay": "empty"
+      "pay": "empty",
+      "variant": "payment_method omitted → persisted payment_method '' (S14)"
+    },
+    "S14-empty": {
+      "lps": [
+        "new",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "empty",
+      "variant": "payment_method '' → persisted payment_method '' (S14)"
+    },
+    "S14-efectivo": {
+      "lps": [
+        "new",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "empty",
+      "variant": "payment_method 'efectivo' (unsupported legacy spelling) → persisted payment_method '' (S14)"
+    },
+    "S14-bitcoin": {
+      "lps": [
+        "new",
+        "delivered"
+      ],
+      "fulfil": "delivery",
+      "pay": "empty",
+      "variant": "payment_method 'bitcoin' (unsupported) → persisted payment_method '' (S14)"
     },
     "S15": {
       "lps": [
@@ -631,19 +689,17 @@
   },
   "formScenarios": [
     "S1",
-    "S1a",
+    "S1t-a",
+    "S1t-b",
+    "S1t-c",
+    "S1a-on",
+    "S1a-off",
     "S2",
     "S3",
     "S4",
-    "S5",
-    "S6",
-    "S11",
-    "S12",
-    "S12b",
     "S13",
-    "S14",
-    "S15",
-    "S16"
+    "S5",
+    "S11"
   ],
   "terminalLps": [
     "delivered",
@@ -939,6 +995,37 @@
         "xpizza-track/index.html#render"
       ],
       "reason": "the tracker renders no order journey for a manual_reconciliation order"
+    }
+  },
+  "displayCells": {
+    "_doc": "codex P1 plan r1 P1-7 / approved §1 'Envío Gratis': DISPLAY cells (kind display; counted separately). X Pizza's form shows the free-delivery promo row (\"Envío Gratis\", L70 struck through) for DELIVERY and NOT for pickup; L70 is never part of the payable total (an oracle MONEY relationship). La Musa has no such row.",
+    "envio_gratis": {
+      "readers": [
+        "R13",
+        "R14",
+        "R15"
+      ],
+      "brands": [
+        "x_pizza"
+      ],
+      "lps": [
+        "new"
+      ],
+      "outputs": {
+        "R13": [
+          "xpizza-orders/index.html#freeDeliveryRowHTML"
+        ],
+        "R14": [
+          "xpizza-orders/index.html#freeDeliveryRowHTML"
+        ],
+        "R15": [
+          "xpizza-orders/index.html#showSuccess"
+        ]
+      },
+      "show": {
+        "delivery": true,
+        "pickup": false
+      }
     }
   }
 }

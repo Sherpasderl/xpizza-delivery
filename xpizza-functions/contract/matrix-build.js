@@ -71,6 +71,21 @@ function build(spec) {
       }
     }
   }
+  // codex P1 plan r1 P1-7: DISPLAY cells (approved §1) — kind display, counted separately; expect = shown | absent
+  for (const [id, d] of Object.entries(SPEC.displayCells || {})) {
+    if (id === '_doc') continue;
+    for (const R of d.readers) {
+      for (const ref of (d.outputs[R] || [])) if (!outputExists(ref)) problems.push(`displayCells.${id}: output ${ref} does not exist in source`);
+      for (const S of Object.keys(SPEC.scenarios)) {
+        const fulfil = SPEC.scenarios[S].fulfil; if (!(fulfil in d.show)) continue;
+        for (const brand of (SPEC.scenarios[S].brands || SPEC.brands).filter((b) => d.brands.includes(b))) {
+          for (const lp of lpsFor(R, S).filter((x) => d.lps.includes(x))) {
+            cells.push({ cell: `R3:${R}:DISPLAY:${id}:${S}:${brand}:${lp}`, R, fact: `DISPLAY:${id}`, S, brand, lp, kind: 'display', status: 'required', expect: d.show[fulfil] ? 'shown' : 'absent', outputs: (d.outputs[R] || []).map((ref) => `R3:${R}:DISPLAY:${id}:@${ref}`) });
+          }
+        }
+      }
+    }
+  }
   // obligations from the census
   const census = CENSUS();
   // codex r1 P1-3: obligations stay PER SITE. A site's OUTPUT = the function that implements the read (file#fn) — the
