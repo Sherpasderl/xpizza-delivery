@@ -3132,6 +3132,17 @@ function alertContent(a) {
       return { title: 'Reembolso sin confirmar',
         detail: `Pedido ${label(a.order_id)}${amt} — el reembolso automático no se pudo confirmar. Revisar en PixelPay.` };
     }
+    case 'driver_deactivated': {
+      // S1a §5 (codex r1 P1-8) — a desactivated driver still owns live work; identify them + the affected work, actionable.
+      const name = escapeHtml(a.driver_name || allDrivers[a.driver_uid]?.name || 'Un repartidor');
+      const orderIds = Array.isArray(a.order_ids) ? a.order_ids : [];
+      const bits = [];
+      if (orderIds.length) bits.push(`tiene ${orderIds.length} pedido(s) activo(s) (${orderIds.map((o) => label(o)).join(', ')})`);
+      if (a.open_shift) bits.push('sigue en turno');
+      const what = bits.length ? bits.join(' y ') : 'todavía figura con trabajo activo';
+      return { title: 'Repartidor desactivado con trabajo',
+        detail: `${name} fue desactivado pero ${what} — reasigná su trabajo con <strong>Reasignar</strong>.` };
+    }
     default: {
       // Fallback bucket (factura_* / unknown / no-type) — humanize, NEVER drop.
       const humanType = String(a.type || '').replace(/^(payment|factura)_/, '').replace(/_/g, ' ').trim();
