@@ -2,6 +2,8 @@
 //
 // 1. X. Pizza OVERCHARGE: extras live per PIZZA INSTANCE; lowering the quantity left the removed pizza's extras in place, so
 //    two Carnivora with Mozzarella on pizza 2, brought down to one, showed one plain Carnivora (L340) and charged L390.
+// 2. La Musa UNDERCHARGE: re-adding the same choice from its picker REPLACED the line's extras, so Pollo + Arroz Blanco then
+//    Pollo + Arroz Chino charged L769 instead of L819 (and Blanco twice charged one Blanco).
 //
 // Every payload here comes out of the REAL booted form (chg / toggleDetailExtra / the picker's own commit / restoreOrderForm),
 // and the money check is the SERVER's own computeServerTotal over the body the form actually sent — on cash AND card.
@@ -124,6 +126,40 @@ const CARN = 2, MOZZ = 'e4', PEPP = 'e7';
   ok('X. Pizza self-update restore (cartRestore): a stale instance is dropped');
 }
 
+// ═════════ 2. La Musa — re-adding a choice accumulates its extras ═════════
+const LM = 'la-musa-orders';
+async function pickerAdd(w, launcher, variant, staged) {
+  w.openDetailModal(launcher); await settle();
+  w.selectVariant(variant); await settle();
+  for (const [eid, n] of staged) for (let i = 0; i < n; i++) w.chgStagedExtra(eid, 1);
+  await settle();
+  const cta = w.document.getElementById('detail-cta').textContent.replace(/\s+/g, ' ');
+  w.detailCtaTap(); await settle();
+  return Number((cta.match(/L\s*([0-9]+)/) || [])[1]);
+}
+for (const [label, first, second, ctas, want] of [
+  ['Pollo + Arroz Blanco, then Pollo + Arroz Chino', [['rice_white', 1]], [['rice_chinese', 1]], [392, 427], 819],
+  ['Pollo + Arroz Blanco, twice', [['rice_white', 1]], [['rice_white', 1]], [392, 392], 784],
+  ['Pollo + Arroz Blanco, then Pollo with nothing', [['rice_white', 1]], [], [392, 342], 734],
+]) {
+  const { w, sent } = await boot(LM);
+  const c1 = await pickerAdd(w, 'noodle_01', 'noodle_01_pollo', first);
+  const c2 = await pickerAdd(w, 'noodle_01', 'noodle_01_pollo', second);
+  assert.deepStrictEqual([c1, c2], ctas, `${label}: premise — the two buttons read L${ctas.join(' and L')}`);
+  assert.strictEqual(w.calcTotal(), want, `🔴 ${label}: the cart totals the two buttons (L${want})`);
+  for (const { server } of await sendBoth(w, sent, 'la_musa')) assert.strictEqual(server, want, `🔴 ${label}: the server charges L${want}, the sum of what the customer was shown`);
+  ok(`La Musa ${label}: L${ctas.join(' + L')} = L${want} in the cart and on the server (cash and card)`);
+}
+{
+  // a refused add (the choice sold out) writes no extras
+  const { w } = await boot(LM);
+  w.openDetailModal('noodle_01'); await settle(); w.selectVariant('noodle_01_pollo'); w.chgStagedExtra('rice_white', 1); await settle();
+  w.eval("soldOutById = (id) => id === 'noodle_01_pollo'");   // the form's own add guard (chg) now refuses this choice
+  w.detailCtaTap(); await settle();
+  assert.strictEqual(G(w, 'qty').noodle_01_pollo || 0, 0, 'premise — the add was refused');
+  assert.ok(!G(w, 'pizzaExtras').noodle_01_pollo, '🔴 a refused add leaves no extras behind');
+  ok('La Musa: a refused add (sold out) leaves no extras behind');
+}
 closeAll();
 console.log('\ncart-extras-money: OK');
 process.exit(0);
