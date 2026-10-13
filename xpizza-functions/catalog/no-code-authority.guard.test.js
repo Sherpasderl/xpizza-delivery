@@ -282,9 +282,9 @@ ok(`the scanner sees ${FILES.length} production files (tests and the seed/publis
        they are reached. Only the dashboard one has no manifest that could reach it.
        🔴 SEPARATE ITEM FOR WHOEVER OWNS THE DASHBOARD, as with dispatch: this file runs in no automated
        gate. That is a coverage gap in main surfaced by the merge, and it is not ours to close. */
-    'xpizza-driver/cash-helpers.test.js',
-    'xpizza-driver/order-helpers.test.js',
-    'xpizza-driver/stacking-helpers.test.js',
+    /* WIRED 2026-10-13 (S0 branch): cash-helpers (88 money-grade cuadre cells), order-helpers, stacking
+       and the new brand-helpers are now reached by xpizza-functions `test` via `node ../xpizza-driver/<x>.test.js`.
+       Removed from this list per the shrink-never-grow rule (the loop below fails if a listed entry is reachable). */
     'xpizza-factura/src/print-recovery.test.js',
     'xpizza-kitchen/avail-write.test.mjs',
     'xpizza-kitchen/order-filter.test.mjs',
