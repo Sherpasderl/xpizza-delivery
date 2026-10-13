@@ -1,0 +1,149 @@
+{
+ "_doc": "R3 P1 §12 C1 — REVIEWED page timer bounds (contract/timer-bounds.js). pages: the asserted pages and the settle() horizon their steps use. wrappers: reviewed timer wrapper names per unit. sites: every timer whose delay exceeds the page horizon or is unresolved, with reachesAsserted (does its effect reach an output a step asserts?) and the reason; bound to the call text (sha256).",
+ "pages": {
+  "xpizza-orders": {
+   "horizonMs": 10000
+  },
+  "xpizza-kitchen": {
+   "horizonMs": 10000
+  }
+ },
+ "wrappers": {
+  "xpizza-orders/sherpa-client.js": [
+   "setT",
+   "setI"
+  ],
+  "xpizza-kitchen/sherpa-client.js": [
+   "setT",
+   "setI"
+  ]
+ },
+ "sites": [
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#create>anon:setTimeout#0",
+   "line": 89,
+   "delaySrc": "ms",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the reviewed timer WRAPPER body (setT): its delay is its caller's — every setT call site is inventoried separately",
+   "sha": "e87bd412031aafa83c023a382637d930d59c65ef4642730e147d3ac0e45065ae"
+  },
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#create>anon:setInterval#0",
+   "line": 90,
+   "delaySrc": "ms",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the reviewed timer WRAPPER body (setI): its delay is its caller's — every setI call site is inventoried separately",
+   "sha": "fbc595e5fe7621fc8dc518569b3eed5db554bfcbf31d67877f0c37419124c9a2"
+  },
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#scheduleBeat:setT#0",
+   "line": 357,
+   "delaySrc": "minMs + Math.floor(rand() * spanMs)",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the client-identity HEARTBEAT (a diagnostic request); it writes no DOM and no order data — it cannot reach a ticket / cart / pay-step / confirmation output",
+   "sha": "78eb79f92bf47377a38daed9d2980c1eb89df6ed15cd330db06a72ac0447f338"
+  },
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#start:setT#0",
+   "line": 366,
+   "delaySrc": "1500 + Math.floor(rand() * 1500)",
+   "bound": 3000,
+   "reachesAsserted": false,
+   "reason": "the first deploy-version check (1.5–3 s, random): it can only raise the update-required path / reload, never an asserted order output; bound 3000 ms ≤ the horizon",
+   "sha": "97094a293ce2e443fe413aa627b9e9c2249b14cd93ec068a990780a3b2ab4393"
+  },
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#start:setI#0",
+   "line": 368,
+   "delaySrc": "CHECK_EVERY_MS",
+   "bound": 600000,
+   "reachesAsserted": false,
+   "reason": "the 10-min deploy-version re-check + heartbeat: no asserted order output",
+   "sha": "02f42a2a03437eb8dc1cc6942e439cb8fcda4765a40db2489e0ac1cb0d3a4b73"
+  },
+  {
+   "key": "xpizza-kitchen/index.html<script@0>#showCancelBanner:setTimeout#0",
+   "line": 3294,
+   "delaySrc": "12000",
+   "bound": 12000,
+   "reachesAsserted": false,
+   "reason": "hides the KDS cancellation banner 12 s after a CANCELLED order arrives; LP new has no cancellation (precondition not-cancelled) and the banner is not the ticket observable",
+   "sha": "3db36daea640d3186846225b0af739941ff54497b0004b91928586dd5fbf229c"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#create>anon:setTimeout#0",
+   "line": 89,
+   "delaySrc": "ms",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the reviewed timer WRAPPER body (setT): its delay is its caller's — every setT call site is inventoried separately",
+   "sha": "e87bd412031aafa83c023a382637d930d59c65ef4642730e147d3ac0e45065ae"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#create>anon:setInterval#0",
+   "line": 90,
+   "delaySrc": "ms",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the reviewed timer WRAPPER body (setI): its delay is its caller's — every setI call site is inventoried separately",
+   "sha": "fbc595e5fe7621fc8dc518569b3eed5db554bfcbf31d67877f0c37419124c9a2"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#scheduleBeat:setT#0",
+   "line": 357,
+   "delaySrc": "minMs + Math.floor(rand() * spanMs)",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the client-identity HEARTBEAT (a diagnostic request); it writes no DOM and no order data — it cannot reach a ticket / cart / pay-step / confirmation output",
+   "sha": "78eb79f92bf47377a38daed9d2980c1eb89df6ed15cd330db06a72ac0447f338"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#start:setT#0",
+   "line": 366,
+   "delaySrc": "1500 + Math.floor(rand() * 1500)",
+   "bound": 3000,
+   "reachesAsserted": false,
+   "reason": "the first deploy-version check (1.5–3 s, random): it can only raise the update-required path / reload, never an asserted order output; bound 3000 ms ≤ the horizon",
+   "sha": "97094a293ce2e443fe413aa627b9e9c2249b14cd93ec068a990780a3b2ab4393"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#start:setI#0",
+   "line": 368,
+   "delaySrc": "CHECK_EVERY_MS",
+   "bound": 600000,
+   "reachesAsserted": false,
+   "reason": "the 10-min deploy-version re-check + heartbeat: no asserted order output",
+   "sha": "02f42a2a03437eb8dc1cc6942e439cb8fcda4765a40db2489e0ac1cb0d3a4b73"
+  },
+  {
+   "key": "xpizza-orders/index.html<script@2>#locPickPred>anon:setTimeout#0",
+   "line": 3766,
+   "delaySrc": "ms",
+   "bound": 8000,
+   "reachesAsserted": false,
+   "reason": "the place-details timeout of the fail-state ADDRESS PICK (location escape hatch): created only when a customer picks an address suggestion; S1's GPS-OK path never creates it. Default bound 8000 ms ≤ the horizon (window.__LOC_PICK_TIMEOUT_MS is a test knob)",
+   "sha": "ea5e0caf59bc78b517ac955c80fb7f763c33c0e4f685b51303534dcb44742a25"
+  },
+  {
+   "key": "xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0",
+   "line": 3889,
+   "delaySrc": "_capMs",
+   "bound": 10000,
+   "reachesAsserted": false,
+   "reason": "the outer cap on a pending address-pick waiter at pay time: created only when __locPickPromise is set (an address pick in flight); S1 has none. Default bound 10000 ms = the horizon",
+   "sha": "30b25d685b6afc199d6f07964a4b64bdb8e9abafa0a39dae927c051ad13d8580"
+  },
+  {
+   "key": "xpizza-orders/index.html<script@2>#<top>:setInterval#0",
+   "line": 5771,
+   "delaySrc": "60000",
+   "bound": 60000,
+   "reachesAsserted": false,
+   "reason": "loadAvailability every 60 s refreshes sold-out marks on the MENU; the run's availability is a static fixture and the menu is not an asserted output in R13 / R14 / R15",
+   "sha": "e14b812ecb24d1e938a33f4126a56ca09b932bd6ef630a487c695a2f12809629"
+  }
+ ]
+}

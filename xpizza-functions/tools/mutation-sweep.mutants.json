@@ -12077,5 +12077,189 @@
       "node",
       "contract/matrix.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-08",
+    "slice": "r3p1",
+    "file": "contract/gate-a-run.js",
+    "from": "      const u = AP.unmet(x, evidence);\n      if (c.kind === 'absence' || c.kind === 'display')",
+    "to": "      const u = [];\n      if (c.kind === 'absence' || c.kind === 'display')",
+    "label": "an exclusion applies without asserting its contract preconditions in the run",
+    "kills_with": [
+      "an exclusion whose precondition is unmet in the run"
+    ],
+    "command": [
+      "node",
+      "contract/execution.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-09",
+    "slice": "r3p1",
+    "file": "contract/gate-a-run.js",
+    "from": "if (pin && r.shape !== undefined && r.shape === pin.observedShape)",
+    "to": "if (pin)",
+    "label": "a pin absorbs ANY disagreement (its recorded shape is not checked)",
+    "kills_with": [
+      "a pin whose recorded shape no longer matches"
+    ],
+    "command": [
+      "node",
+      "contract/execution.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-10",
+    "slice": "r3p1",
+    "file": "contract/gate-a-run.js",
+    "from": "    if (!at) { results.push({ ...base, outcome: 'RED', detail: `every region of the ${c.kind} obligation ${c.cell} is excluded",
+    "to": "    if (false) { results.push({ ...base, outcome: 'RED', detail: `every region of the ${c.kind} obligation ${c.cell} is excluded",
+    "label": "a display / absence obligation can be waived by excluding every region of it",
+    "kills_with": [
+      "a display obligation whose every region is excluded"
+    ],
+    "command": [
+      "node",
+      "contract/execution.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-11",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "    if (b.scopeSha !== x.bind.scopeSha) p.push(",
+    "to": "    if (false) p.push(",
+    "label": "an exclusion stays valid after its enclosing scope changed",
+    "kills_with": [
+      "a changed scope was not stale"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-12",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "    if (excluded.length && excluded.length === cs.length) p.push(",
+    "to": "    if (false) p.push(",
+    "label": "the static guard lets an exclusion waive a display / absence obligation",
+    "kills_with": [
+      "an absence / display obligation expressed as an exclusion passed"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-13",
+    "slice": "r3p1",
+    "file": "contract/ratchet.js",
+    "from": "      problems.push(`${ctx}: baseline site ${s} is no longer reached (no reviewed shrink entry)`);",
+    "to": "      void 0;",
+    "label": "gate B: lost coverage passes silently",
+    "kills_with": [
+      "a shrunken hit set without a shrink entry passed"
+    ],
+    "command": [
+      "node",
+      "contract/ratchet.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-14",
+    "slice": "r3p1",
+    "file": "contract/observables.js",
+    "from": "    MONEY: (s, f) => { const c = cmpL(f.MONEY.value, s.totalText); return c.ok ? okv('shown', s.totalText) : bad(`sheet total — ${c.reason}`); },",
+    "to": "    MONEY: (s, f) => okv('shown', s.totalText),",
+    "label": "the cart review sheet's total is never compared (card correct / sheet wrong passes)",
+    "kills_with": [
+      "pill-correct / sheet-wrong was not RED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
+  },
+  {
+    "id": "r3p1-15",
+    "slice": "r3p1",
+    "file": "contract/observables.js",
+    "from": "    NUM: (s, f) => { const p = kdsTicket.parse(s); const want = f.NUM.value != null ? `#${f.NUM.value}` : null; return p.id === want",
+    "to": "    NUM: (s, f) => { const p = kdsTicket.parse(s); const want = f.NUM.value != null ? `#${f.NUM.value + 1}` : null; return p.id === want",
+    "label": "the KDS ticket number compared against the wrong display number",
+    "kills_with": [
+      "R3-FAIL R3:R1:NUM:S1:x_pizza:new"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
+  },
+  {
+    "id": "r3p1-16",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "    if (e.reachesAsserted && (s.delay == null || s.delay > doc.pages[s.scope].horizonMs)) p.push(",
+    "to": "    if (false) p.push(",
+    "label": "a long / unresolved timer that reaches an asserted output is excused by its declaration",
+    "kills_with": [
+      "a long timer reaching an asserted output passed"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-17",
+    "slice": "r3p1",
+    "file": "contract/token.guard.test.js",
+    "from": "    if (node.type === 'TemplateElement' && String(node.value.cooked).includes(PREFIX)) out.push({ line: node.loc.start.line, fn });",
+    "to": "    void 0;",
+    "label": "a template literal building the failure prefix outside the formatter goes undetected",
+    "kills_with": [
+      "the designated formatter does not build the prefix",
+      "a template / string builder was not detected"
+    ],
+    "command": [
+      "node",
+      "contract/token.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-18",
+    "slice": "r3p1",
+    "file": "contract/binary-blindness.guard.test.js",
+    "from": "const TEXT = /\\.(c?js|mjs|ts|tsx|jsx|json|html?|css|md|txt|ya?ml|xml|svg|sh|rules|toml|gradle|kt|java|swift|plist|properties)$/i;",
+    "to": "const TEXT = /\\.(json|html?|css|md)$/i;",
+    "label": "the binary-blindness scan skips .js sources (the reviewed NUL-bearing file falls out)",
+    "kills_with": [
+      "the NUL-bearing tracked text sources changed"
+    ],
+    "command": [
+      "node",
+      "contract/binary-blindness.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-19",
+    "slice": "r3p1",
+    "file": "contract/page-harness.js",
+    "from": "  if (wallClockAnchorMs !== null) {\n    const RD = win.Date;",
+    "to": "  if (false) {\n    const RD = win.Date;",
+    "label": "the declared page wall-clock anchor is ignored (the form's verdict depends on the hour the suite runs)",
+    "kills_with": [
+      "anchored page clock"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
   }
 ]

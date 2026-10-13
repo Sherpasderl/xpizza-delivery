@@ -1,0 +1,247 @@
+// R3 P1-a — ONE ORDINARY JOURNEY with both gates on (PLAN-R3-P1 rev 4 §8): S1 (form cash DELIVERY, x_pizza) through the
+// REAL order form's UI (page harness, virtual timers, every network call routed to the real handlers), the real createOrder
+// and its triggers (the P0 scheduler), the KDS's PRIVATE projection on the real KDS page, and the real order-received
+// WhatsApp send. Gate A: every required cell of the enforced slice (S1 / x_pizza / LP new on R1 R9 R13 R14 R15) is compared
+// against the writer-derived oracle at its region. Gate B: the tracer's site hits are ratcheted. Phase timing is reported.
+// Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:r3-p1a-journey
+import assert from 'node:assert';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+require('../test/_emulator-required')('database', 'firestore');
+process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
+
+// gate B: the tracer is installed BEFORE any census unit loads (installServer refuses otherwise)
+const T = require('./tracer');
+const HITS = T.createRecorder();
+const SRV = T.installServer(HITS);
+
+const fsx = require('node:fs');
+{ const m = /const ORDER_SECRET\s*=\s*'([0-9a-f]+)'/.exec(fsx.readFileSync(new URL('../../xpizza-orders/index.html', import.meta.url), 'utf8')); process.env.MAKE_SECRET = m[1]; }
+
+// the WhatsApp SEND BOUNDARY: the REAL whatsapp.js runs end to end (isEnabledForRestaurant, sendMessage's brand resolution +
+// renderTemplate); only the transport is captured — a TEST-ONLY fake UltraMsg instance (never a real credential, never read
+// from any .env). NETWORK FAIL-CLOSED: whatsapp.js uses node-fetch (not global fetch), so BOTH are wrapped before anything
+// loads: the fake UltraMsg host is captured; ANY other non-loopback host is REFUSED (thrown + recorded → the run is RED).
+process.env.ULTRAMSG_INSTANCE_ID = 'r3-test-instance'; process.env.ULTRAMSG_TOKEN = 'r3-test-token-not-a-secret';
+const SENT = []; const REFUSED_NET = [];
+const ULTRA = 'https://api.ultramsg.com/r3-test-instance/';
+const loopback = (u) => { try { const h = new URL(String(u)).hostname; return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]'; } catch (_) { return false; } };
+const netGate = (realFetch, ResponseCtor) => async (u, init) => {
+  if (String(u).startsWith(ULTRA)) { const p = new URLSearchParams(String(init && init.body || '')); SENT.push({ to: p.get('to'), body: p.get('body'), ctx: CTX.now }); return new ResponseCtor(JSON.stringify({ sent: 'true', id: `r3-${SENT.length}` }), { status: 200, headers: { 'content-type': 'application/json' } }); }
+  if (!loopback(u)) { REFUSED_NET.push(String(u)); throw new Error(`r3-p1a: outbound network to ${new URL(String(u)).hostname} REFUSED (tests reach loopback only)`); }
+  return realFetch(u, init);
+};
+{ const nf = require.resolve('node-fetch'); const real = require('node-fetch'); const gated = netGate(real, real.Response); Object.assign(gated, real, { default: gated });
+  require.cache[nf] = { id: nf, filename: nf, loaded: true, children: [], paths: [], exports: gated }; }
+global.fetch = netGate(global.fetch, Response);
+const CTX = { now: 'boot' };
+const PH = {}; const phase = async (name, fn) => { const t0 = Date.now(); try { return await fn(); } finally { PH[name] = (PH[name] || 0) + (Date.now() - t0); } };
+
+require('../test/_catalog-clock').install();
+const WITNESS = require('./version-witness').install();
+const admin = require('firebase-admin');
+const app = require('../index.js');
+const D = require('./discovery');
+const { createScheduler } = require('./scheduler');
+const TRIG = D.dbTriggers(D.runtimeInventory(app));
+const S = createScheduler({ admin, triggers: TRIG, run: new Set(TRIG.map((t) => t.name)) }).install();
+const { makeFormRouter } = require('./form-router');
+const { createFirebaseHost } = require('./rtdb-adapter');
+const { bootPage } = require('./page-harness');
+const { installGoogleMaps } = require('./maps-stub');
+const rtdb = admin.database(); const fs = admin.firestore();
+const { buildPublishCandidate } = require('../tools/publish-version');
+const { buildSourceFromCode } = require('../tools/seed-source-store');
+const { sourceRefOf, canonicalize } = require('../catalog/source-store');
+const { publishVersion } = require('../catalog/catalog-publish');
+const { backfillIdentities } = require('../catalog/identity-backfill');
+const { catalogSnapshot } = require('../catalog/generate-form-bundle');
+const { getActivePointer } = require('../catalog/catalog-firestore');
+const { makeRtdbMirror } = require('../catalog/mirror-rtdb');
+
+let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+const FAIL = (cell, msg) => `🔴 R3-P1A:${cell} ${msg}`;
+const OPEN = { open: true, start: '00:00', end: '24:00' };
+const STAFF = 'staff_r3';
+const text = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null);
+const { OBSERVABLES } = require('./observables');
+const { factsOf } = require('./oracle');
+const { gateA } = require('./gate-a');
+const { runGateA, formatFailure } = require('./gate-a-run');
+const AP = require('./applicability');
+const RAT = require('./ratchet');
+const SCEN = JSON.parse(fsx.readFileSync(AP.SCENARIOS, 'utf8')); const S1 = SCEN.scenarios.S1;
+// C1: every step settles with its page's DECLARED horizon (contract/timer-bounds.json, guarded by timer-bounds.guard)
+const TB = JSON.parse(fsx.readFileSync(new URL('./timer-bounds.json', import.meta.url), 'utf8'));
+const HORIZON = { form: TB.pages['xpizza-orders'].horizonMs, kds: TB.pages['xpizza-kitchen'].horizonMs };
+const SLICE = { scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'], readers: ['R1', 'R9', 'R13', 'R14', 'R15'] };
+// the per-step invocation multiset (observed, then DECLARED): the triggers the pay tap fans out to, by export name
+const EXPECTED_INVOCATIONS = JSON.parse(fsx.readFileSync(new URL('./p1a-expect.json', import.meta.url), 'utf8'));
+const steps = []; const step = async (name, fn) => { steps.push(name); return phase('actions', fn); };
+const calls = [];   // every routed cloudfunctions call, each in its OWN writer context (served-version witness)
+
+try {
+  await phase('setup', () => S.fixture(async () => {
+    await rtdb.ref().set(null); const rid = 'x_pizza';
+    await sourceRefOf(fs, rid).set(canonicalize(buildSourceFromCode(rid)));
+    const { input } = buildPublishCandidate(rid, { activeVersionId: null }, { source_sha: 'p1a' });
+    await publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
+    await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
+    { const v1 = (await getActivePointer(fs, rid)).version; const b = buildPublishCandidate(rid, { activeVersionId: v1 }, { source_sha: 'p1a-2' }); await publishVersion(fs, rid, b.input, { expected: { activeVersionId: v1 }, mirror: makeRtdbMirror(rtdb) }); }
+    await rtdb.ref(`restaurants/${rid}/identity`).set({ name: 'X Pizza', display_name: 'X. Pizza', phone: '+50400000000', active: true, hub_lat: 15.5003, hub_lng: -88.025, delivery_radius_km: 8, version: 1, hours: { sun: OPEN, mon: OPEN, tue: OPEN, wed: OPEN, thu: OPEN, fri: OPEN, sat: OPEN } });
+    await rtdb.ref('config/auto_assign_enabled').set(false);
+    for (const role of ['kitchen', 'dispatchers']) await rtdb.ref(`${role}/${STAFF}`).set(true);   // as the P0 page suites grant staff access
+  }));
+  const ACTIVE = (await getActivePointer(fs, 'x_pizza')).version;
+  const restaurant = (await rtdb.ref('restaurants/x_pizza/identity').get()).val();
+
+  // ── the REAL form, booted on the page harness (tracer on), network → the REAL handlers, each call its own writer context ──
+  const R = makeFormRouter({ app, rtdb });
+  const routed = async (u, i) => {
+    const m = /cloudfunctions\.net\/([A-Za-z0-9_]+)/.exec(String(u));
+    if (!m) return R.respond(String(u), i);
+    const w = await S.writer(`${m[1]}#${calls.length}`, () => R.respond(String(u), i), { served: [] });
+    calls.push({ fn: m[1], served: w.store.served.map((x) => ({ versionId: x.versionId, source: x.source })) });
+    return w.r;
+  };
+  const fhost = createFirebaseHost({ pageId: 'p1a-form', user: { uid: 'cust_p1a', email: 'c@p1a.test' }, fixture: S.fixture });
+  const intent = { ...S1.intent };
+  const snaps = {};
+  CTX.now = 'S1/x_pizza/form'; HITS.setContext(CTX.now);
+  // the form's DECLARED wall-clock anchor (S1.pageWallClock): 13:00 HN on the run's own HN day
+  const hn = new Date(Date.now() - 6 * 3600000); const FORM_ANCHOR = Date.UTC(hn.getUTCFullYear(), hn.getUTCMonth(), hn.getUTCDate(), 19, 0, 0);
+  const form = await step('form.boot', () => phase('boot', () => bootPage('xpizza-orders', { host: fhost, url: 'https://orders.test/', tracer: HITS, fetchImpl: routed, wallClockAnchorMs: FORM_ANCHOR,
+    beforeScripts: (w) => {
+      installGoogleMaps(w);
+      w.IntersectionObserver = function () { return { observe() {}, unobserve() {}, disconnect() {}, takeRecords() { return []; } }; };
+      Object.defineProperty(w.navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (okCb) => w.setTimeout(() => okCb({ coords: { latitude: 15.5050, longitude: -88.0290, accuracy: 8 } }), 0) } });
+    } })));
+  await phase('settle', () => form.settle(HORIZON.form));
+  const w = form.win; const doc = form.doc;
+  assert.deepStrictEqual(form.errors.filter((e) => !/Could not parse CSS/.test(e)), [], FAIL('boot', 'form boot errors'));
+  assert.ok(form.clock.anchored && w.isOpen() === true, FAIL('clock', `the form is not open at its declared wall-clock anchor (${new Date(FORM_ANCHOR).toISOString()})`));
+  const click = (el, what) => { assert.ok(el, FAIL('ui', `the control ${what} is missing`)); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true })); };
+  const type = (el, v, what) => { assert.ok(el, FAIL('ui', `the input ${what} is missing`)); el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); el.dispatchEvent(new w.Event('change', { bubbles: true })); };
+  const settle = () => phase('settle', () => form.settle(HORIZON.form));
+
+  await step('form.add-dish', async () => { const add = doc.querySelector('[data-act="inc"]'); intent.dishId = add && add.closest('[data-id]') ? add.closest('[data-id]').getAttribute('data-id') : null; click(add, 'dish +'); });
+  await step('form.customer', async () => { type(doc.getElementById('cname'), intent.name, '#cname'); type(doc.getElementById('cphone'), intent.phone, '#cphone'); type(doc.getElementById('cemail'), intent.email, '#cemail'); });
+  await settle();
+  snaps['form.cartPill'] = OBSERVABLES['form.cartPill'].capture({ doc });
+  await step('form.cart-sheet-open', async () => { click(doc.getElementById('cart-bar'), '#cart-bar'); });
+  await settle();
+  snaps['form.reviewSheet'] = OBSERVABLES['form.reviewSheet'].capture({ doc });
+  await step('form.continue', async () => { click(doc.getElementById('btn-continuar'), '#btn-continuar'); });
+  await settle();
+  assert.ok(doc.querySelector('#s2.stage.active'), FAIL('ui', `the pay step did not open (err1: ${text(doc.getElementById('err1'))})`));
+  await step('form.address-details', async () => { type(doc.getElementById('address-details'), intent.addressDetails, '#address-details'); });
+  await settle();
+  await step('form.pay-cash', async () => { click(doc.getElementById('pay-cash'), '#pay-cash'); });
+  await settle();
+  await step('form.tender', async () => { click([...doc.querySelectorAll('[data-act="tender"]')].find((b) => Number(b.getAttribute('data-amt')) * 100 === intent.tenderCents), `tender chip ${intent.tenderCents}`); });
+  await settle();
+  snaps['form.payStep'] = OBSERVABLES['form.payStep'].capture({ doc });
+
+  CTX.now = 'S1/x_pizza/new'; HITS.setContext(CTX.now);
+  const invBefore = S.state.invs.length;
+  await step('form.pay', async () => { click(doc.getElementById('btn-pay'), '#btn-pay'); });
+  await settle();
+  for (let i = 0; i < 60 && !doc.querySelector('#s5.stage.active'); i++) { await new Promise((r) => setTimeout(r, 25)); await form.settle(HORIZON.form); }
+  await S.drain('orders'); await settle();
+  const create = R.log.find((x) => x.fn === 'createOrder');
+  assert.ok(create && create.status === 200, FAIL('createOrder', create ? `status ${create.status} ${String(JSON.stringify(create.res)).slice(0, 200)}` : `never answered — routed ${JSON.stringify(R.log.map((x) => `${x.fn}:${x.status}`))}; active stage ${(doc.querySelector('.stage.active') || {}).id}; visible errors ${JSON.stringify([...doc.querySelectorAll('.error-box, [id^="err"]')].map((e) => text(e)).filter(Boolean)).slice(0, 400)}`));
+  const oid = create.res.order_id;
+  const persisted = (await rtdb.ref(`orders/${oid}`).get()).val();
+  snaps['form.confirmation'] = OBSERVABLES['form.confirmation'].capture({ doc });
+  assert.ok(snaps['form.confirmation'].active, FAIL('ui', 'the confirmation (#s5) is not the active stage'));
+  snaps['wa.orderReceived'] = OBSERVABLES['wa.orderReceived'].capture({ sends: SENT, phone: persisted.customer_phone });
+  ok(`S1 through the REAL form UI: ${steps.length} steps → createOrder 200 (${oid}, #${persisted.display_number}, ${persisted.total_cents} centavos, status ${persisted.status}); the confirmation is shown; ${SENT.length} WhatsApp send(s) captured at the transport`);
+
+  // per-step invocation multiset (observed, then declared) and hygiene
+  const invs = S.state.invs.slice(invBefore).map((i) => i.name).sort();
+  const ms = invs.reduce((m, k) => ((m[k] = (m[k] || 0) + 1), m), {});
+  assert.deepStrictEqual(ms, EXPECTED_INVOCATIONS['form.pay'], FAIL('invocations', `the pay tap's trigger multiset changed:\n  observed ${JSON.stringify(ms)}\n  declared ${JSON.stringify(EXPECTED_INVOCATIONS['form.pay'])}`));
+  S.assertClean(EXPECTED_INVOCATIONS.parked);
+  ok(`the pay tap's invocation multiset equals the declared one (${invs.length} invocations: ${Object.entries(ms).map(([k, v]) => `${k}×${v}`).join(', ')}); no invocation error, parked = declared`);
+
+  // per-call served version: every PRICING call served exactly {ACTIVE} live; the others are the declared non-pricing calls
+  const pricing = calls.filter((c) => c.served.length);
+  for (const c of pricing) assert.deepStrictEqual([...new Set(c.served.map((x) => `${x.versionId}/${x.source}`))], [`${ACTIVE}/live`], FAIL('version', `${c.fn} served ${JSON.stringify(c.served)} (expected {${ACTIVE}/live})`));
+  const nonPricing = [...new Set(calls.filter((c) => !c.served.length).map((c) => c.fn))].sort();
+  assert.deepStrictEqual(nonPricing, EXPECTED_INVOCATIONS.nonPricingCalls, FAIL('version', `non-pricing calls ${JSON.stringify(nonPricing)} ≠ declared ${JSON.stringify(EXPECTED_INVOCATIONS.nonPricingCalls)}`));
+  assert.ok(pricing.some((c) => c.fn === 'createOrder'), FAIL('version', 'createOrder recorded no served version'));
+  assert.deepStrictEqual(WITNESS.unattributed(), [], FAIL('version', `pricing outside any writer context: ${JSON.stringify(WITNESS.unattributed()).slice(0, 300)}`));
+  ok(`per-call version: ${pricing.length} pricing call(s) (${[...new Set(pricing.map((c) => c.fn))].join(', ')}) each served exactly {${ACTIVE}/live}; non-pricing calls = declared (${nonPricing.join(', ')}); nothing unattributed`);
+
+  // ── the REAL KDS (private projection), booted as staff on the same emulator; then Programados opened (a view, not a kitchen action) ──
+  const kdsHttp = []; const kdsActions = [];
+  const khost = createFirebaseHost({ pageId: 'p1a-kds', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
+  const kds = await step('kds.boot-staff', () => phase('boot', () => bootPage('xpizza-kitchen', { host: khost, url: 'https://xpizzakitchen.netlify.app/', tracer: HITS, fetchImpl: async (u) => { kdsHttp.push(String(u)); throw new Error(`r3-p1a: KDS fetch ${u} not routed (LP new issues none)`); }, beforeScripts: (kw) => { installGoogleMaps(kw); } })));
+  for (let i = 0; i < 60 && !khost.subs.length; i++) await new Promise((r) => setTimeout(r, 25));
+  await khost.barrier(); await phase('settle', () => kds.settle(HORIZON.kds));
+  assert.deepStrictEqual(kds.errors.filter((e) => !/Could not parse CSS/.test(e)), [], FAIL('kds', 'KDS boot errors'));
+  await step('kds.open-programados', async () => { kds.doc.getElementById('btn-scheduled').dispatchEvent(new kds.win.MouseEvent('click', { bubbles: true, cancelable: true })); });
+  await phase('settle', () => kds.settle(HORIZON.kds));
+  snaps['kds.ticket'] = OBSERVABLES['kds.ticket'].capture({ doc: kds.doc, orderId: oid, scheduledListHtml: (kds.doc.getElementById('scheduled-screen') || {}).innerHTML });
+  const kdsTickets = snaps['kds.ticket'].boardIds.length;
+  kds.close(); await khost.close();
+  assert.deepStrictEqual(steps, S1.steps, FAIL('steps', `executed ${JSON.stringify(steps)} ≠ the scenario definition ${JSON.stringify(S1.steps)}`));
+  ok(`the executed steps equal the S1 definition (${steps.length}); the KDS issued ${kdsHttp.length} HTTP request(s); ${kdsActions.length} kitchen action(s)`);
+
+  // ── GATE A over the enforced slice ──
+  const t0 = Date.now();
+  const facts = factsOf({ intent, response: create.res, persisted, restaurant });
+  const ga = gateA({ scenarios: SLICE.scenarios, brands: SLICE.brands, lps: SLICE.lps });
+  const cells = ga.cells.filter((c) => SLICE.readers.includes(c.R));
+  const regionsDoc = JSON.parse(fsx.readFileSync(new URL('./regions.json', import.meta.url), 'utf8'));
+  const registry = JSON.parse(fsx.readFileSync(new URL('./outputs/registry.json', import.meta.url), 'utf8'));
+  const applicability = AP.load();
+  const evidence = { intent, persisted, steps, routed: R.log, kdsActions, kdsHttp, kdsTickets };
+  const ctx = { brandBoard: 'x_pizza', spec: JSON.parse(fsx.readFileSync(new URL('./matrix-spec.json', import.meta.url), 'utf8')).displayCells };
+  const run = (sn) => runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc: SCEN, evidence, snapshots: sn, facts, ctx, observables: OBSERVABLES });
+  const res = run(snaps);
+  PH.compare = Date.now() - t0;
+  if (res.red.length) console.error(res.red.map(formatFailure).join('\n'));
+  assert.strictEqual(res.red.length, 0, FAIL('gateA', `${res.red.length} RED cell(s) in the enforced slice`));
+  ok(`GATE A (S1 / x_pizza / LP new on ${SLICE.readers.join(' ')}): ${res.counts.cells} cells over ${res.counts.regions} regions — ${JSON.stringify(res.counts.byOutcome)}; by kind ${JSON.stringify(res.counts.byKindOutcome)}; ${res.counts.comparisons} distinct comparisons ${JSON.stringify(res.counts.comparisonsByMode)}; pins ${JSON.stringify(res.counts.pinsUsed)}`);
+  if (process.env.R3_P1A_REPORT) fsx.writeFileSync(process.env.R3_P1A_REPORT, JSON.stringify({ counts: res.counts, comparisons: res.comparisons, results: res.results, invocations: ms, calls, phases: PH }, null, 1));
+
+  // §5b stability re-check: one more full horizon of page time after the assertion — the confirmation is re-captured and its
+  // money / facts recompared against the oracle; nothing may have changed (an undeclared effect or a money change → RED)
+  {
+    await phase('settle', () => form.settle(HORIZON.form));
+    const again = OBSERVABLES['form.confirmation'].capture({ doc });
+    assert.strictEqual(again.html, snaps['form.confirmation'].html, FAIL('stability', 'the confirmation changed after a further settle() horizon'));
+    const re = run({ ...snaps, 'form.confirmation': again });
+    assert.strictEqual(re.red.length, 0, FAIL('stability', `recompare after settle(E): ${re.red.map(formatFailure).join(' | ')}`));
+    ok(`stability: after a further ${HORIZON.form} ms horizon the confirmation is byte-identical and its cells recompare green`);
+  }
+
+  // codex's region negative, on THIS run's snapshots: the cart pill stays correct while the review sheet's total is wrong →
+  // RED on exactly the sheet's cells; and a sheet row dropped → RED; an unmet precondition → RED
+  {
+    const neg = run({ ...snaps, 'form.reviewSheet': { ...snaps['form.reviewSheet'], totalText: 'L 341' } });
+    const redRegions = new Set(neg.red.map((x) => x.region));
+    assert.ok(neg.red.some((x) => x.fact === 'MONEY' && x.observable === 'form.reviewSheet') && [...redRegions].every((r) => registry.regions[r].observable === 'form.reviewSheet') && neg.results.filter((x) => x.observable === 'form.cartPill').every((x) => x.outcome === 'pass'), FAIL('negative', `pill-correct / sheet-wrong was not RED on exactly the sheet (${JSON.stringify([...redRegions])})`));
+    const neg2 = runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc: SCEN, evidence: { ...evidence, kdsActions: ['kds.tap-empezar'] }, snapshots: snaps, facts, ctx, observables: OBSERVABLES });
+    assert.ok(neg2.red.length > 0 && neg2.red.every((x) => /UNMET/.test(x.detail) && /no-kitchen-action/.test(x.detail)), FAIL('negative', 'an unmet precondition (a kitchen tap) was not RED'));
+    const neg3 = run({ ...snaps, 'wa.orderReceived': { sends: [] } });
+    assert.ok(neg3.red.some((x) => x.observable === 'wa.orderReceived'), FAIL('negative', 'a missing WhatsApp send was not RED'));
+    ok(`negatives on this run's snapshots: pill correct + sheet total wrong → RED on exactly the sheet (${neg.red.length} cells); a kitchen tap → every no-kitchen-action exclusion RED (${neg2.red.length}); no send → the WhatsApp cells RED (${neg3.red.length})`);
+  }
+
+  // ── GATE B: the site-hit ratchet ──
+  const current = Object.fromEntries(Object.entries(HITS.hitsByContext()).map(([k, v]) => [k, [...v].sort()]));
+  if (process.env.R3_RATCHET_WRITE === '1') { RAT.writeBaseline(current, 'S1 / x_pizza P1-a journey.'); console.log('  (gate B baseline rewritten — review the diff)'); }
+  const { baseline, shrink } = RAT.load();
+  const rt = RAT.ratchet({ baseline, shrink, current });
+  assert.deepStrictEqual(rt.problems, [], FAIL('gateB', `ratchet:\n  ${rt.problems.slice(0, 20).join('\n  ')}`));
+  ok(`GATE B ratchet: ${Object.entries(current).map(([k, v]) => `${k} ${v.length}`).join(', ')} sites reached ⊇ baseline (${Object.values(baseline.contexts).reduce((a, v) => a + v.length, 0)}); growth ${JSON.stringify(Object.fromEntries(Object.entries(rt.grown).map(([k, v]) => [k, v.length])))}; reviewed shrink ${(shrink.entries || []).length}; ${SRV.manifest.length} server units traced`);
+
+  assert.deepStrictEqual(REFUSED_NET, [], FAIL('net', `outbound network attempted: ${JSON.stringify(REFUSED_NET)}`));
+  ok('network fail-closed: no non-loopback request was attempted (the UltraMsg transport is the in-process capture)');
+  console.log(`P1A-PHASES ${JSON.stringify(PH)}`);
+  form.close(); await fhost.close();
+  console.log(`\nr3-p1a-journey: OK (${n})`);
+  process.exit(0);
+} catch (e) { console.error('r3-p1a-journey FAILED:', e && e.stack || e); process.exit(1); }

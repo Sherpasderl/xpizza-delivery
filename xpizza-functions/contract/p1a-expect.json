@@ -1,0 +1,29 @@
+{
+ "_doc": "R3 P1-a — DECLARED run expectations (observed once, then declared): the trigger invocation multiset the S1 pay tap fans out to, the declared parked sleepers, and the routed calls that legitimately price nothing. parked: autoAssignOnOrderCreate waits on its reviewed GRACE_PERIOD_MS sleep at LP new (virtual time is not advanced in P1-a). nonPricingCalls: getPublicMenu serves the menu projection (its response carries representation_version, no catalog version id); in P1-a both published versions come from the same source, so the menu epoch cannot change an expectation — differing epochs are S1t-a/b/c (P1-d).",
+ "form.pay": {
+  "allocateDisplayNumberOnSale": 3,
+  "allocateFacturaOnSale": 3,
+  "autoAssignOnOrderCreate": 3,
+  "clearTrackerMirrorOnDone": 1,
+  "deleteTasksOnOrderTerminal": 1,
+  "earnRewardsOnCompletion": 1,
+  "logOrderLifecycle": 1,
+  "materializeOnConfirm": 3,
+  "mirrorStatusToHistory": 1,
+  "notifyDriverOnAssignment": 2,
+  "notifyDriverOnCancellation": 1,
+  "notifyPickupReady": 1,
+  "notifyPreparing": 1,
+  "notifyStaffOnNewOrder": 3,
+  "onOrderCancelled": 1,
+  "predictReadyTimeOnNew": 1,
+  "sendOrderStatusNotifications": 1,
+  "voidFacturaOnCancel": 3
+ },
+ "parked": [
+  "autoAssignOnOrderCreate"
+ ],
+ "nonPricingCalls": [
+  "getPublicMenu"
+ ]
+}

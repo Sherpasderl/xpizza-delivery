@@ -1,0 +1,4 @@
+{
+ "_doc": "R3 P1 gate B — REVIEWED shrink entries: a baseline site (contract/p1-hits.json) that an enforced run legitimately no longer reaches, with the reason. A stale entry (the site is reached again, or is not in the baseline) is RED.",
+ "entries": []
+}

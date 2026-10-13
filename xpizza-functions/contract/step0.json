@@ -1,0 +1,27 @@
+{
+ "_doc": "R3 P1 §1a STEP 0 at P1-a — every D re-observed with its ORIGINAL reproducer where one exists, per output, against the UNCHANGED oracle. Base = origin/main 239632b (verified by git ls-remote on 2026-10-12; unchanged since P0), branch feat/r3-p1. 'Not reproduced' alone is never resolution. A D whose reproducer is a surface adapter not built yet is listed with the P1 slice that re-observes it — it stays OPEN (pinned or to-confirm) until that slice runs.",
+ "reproducers": {
+  "p0-observations": "npm run test:r3-p0-observations (contract/p0-observations.emulator.test.js) — re-run at P1-a: verdicts identical to the committed contract/d-observations.json",
+  "p1a-journey": "npm run test:r3-p1a-journey (contract/p1a-journey.emulator.test.mjs)"
+ },
+ "D": {
+  "D1": { "outputs": ["dispatch queue chip (colaCard)", "comms header"], "status": "CONFIRMED (runtime, re-observed at P1-a): the chip shows \"Pagado online\" for card_delivery AND ''", "reproducer": "p0-observations" },
+  "D2": { "outputs": ["dispatch-lite paymentLine"], "status": "CONFIRMED (runtime, re-observed at P1-a): \"Tarjeta · pagado\" for non-'cash'", "reproducer": "p0-observations" },
+  "D3": { "outputs": ["driver card items", "driver queue items"], "status": "OPEN — no runtime reproducer yet (source-confirmed split(',') vs ' | '); re-observed when the driver adapter lands (S1 at LP assigned, P1-c)", "reproducer": null },
+  "D4": { "outputs": ["driver cuadre", "idle cash (Efectivo hoy)", "history"], "status": "OPEN — prod-confirmed (advisor, 54 shifts); the a2 fix (feat/driver-cuadre-core) is NOT on origin/main, so D4 stands at base. Each of the three outputs is re-observed after task deletion when the driver adapter reaches LP delivered (P1-c); split into D4-cuadre / D4-idle / D4-history there", "reproducer": null },
+  "D5": { "outputs": ["dispatch delivered list / drawer", "dispatch-lite"], "status": "OPEN — to confirm at LP delivered (P1-c); the Piece 1/2 durable delivered_by_* capture is on main (b55513e / 18598f7) for the dashboard only", "reproducer": null },
+  "D6": { "outputs": ["dashboard methodLabel"], "status": "CONFIRMED (runtime, re-observed at P1-a): raw \"card_delivery\"", "reproducer": "p0-observations" },
+  "D7": { "outputs": ["XP pay-step summary rows"], "status": "OPEN — needs extras (S1a-on, P1-c); in S1 (no extras) the pay step AGREES (gate A, R14 ITEMS / MONEY)", "reproducer": null },
+  "D8": { "outputs": ["XP confirmation rows"], "status": "OPEN — needs extras (S1a-on, P1-c); in S1 the confirmation rows AGREE (gate A, R15 ITEMS)", "reproducer": null },
+  "D9": { "outputs": ["XP confirmation total"], "status": "OPEN (source-confirmed: client o.total) — in S1 the client and server totals coincide, so the confirmation AGREES; the divergence needs a client/server total difference (S15 / S4)", "reproducer": null },
+  "D10": { "outputs": ["confirmation payment copy"], "status": "OPEN — needs a free order (S13, P1-d)", "reproducer": null },
+  "D11": { "outputs": ["XP history parseOrderItems"], "status": "OPEN — the history surface is not in P1-a's slice", "reproducer": null },
+  "D12": { "outputs": ["tracker address_short (pickup)", "WhatsApp new / ready (brand)"], "status": "NOT REPRODUCED in the rendered tracker (re-observed at P1-a, unchanged) — NOT resolution: the brand-specific tracker + WhatsApp new / ready assertions are retained (S17p / La Musa pickup, P1-e). P1-a's x_pizza order-received WhatsApp names the identity display name (\"X. Pizza\") — gate A R9 BRAND agrees", "reproducer": "p0-observations" },
+  "D13": { "outputs": ["KDS (pedido)", "order-received WhatsApp", "tracker fallback", "driver", "dashboard", "history"], "status": "KDS: CONFIRMED (runtime, re-observed at P1-a) — the KDS shows the client items_text. In P1-a's S1 the client items_text equals the priced line, so the KDS ticket and the WhatsApp items AGREE (gate A); the divergence needs items_text ≠ priced (P0 observation order)", "reproducer": "p0-observations" },
+  "D15": { "outputs": ["cart review sheet line extras"], "status": "OPEN — needs extras (S1a-on, P1-c); in S1 the sheet AGREES (gate A, R13)", "reproducer": null },
+  "D16": { "outputs": ["confirmation reward rows"], "status": "OPEN — needs a redemption (S4, P1-d)", "reproducer": null },
+  "D17": { "outputs": ["driver cash bar"], "status": "checked separately (agreement: the cash bar = Σ persisted cuadre; D4's pin carries the wrong value) — at LP delivered (P1-c)", "reproducer": null },
+  "D19": { "outputs": ["XP confirmation #order-id-display (showSuccess)"], "status": "NEW at P1-a (runtime): the confirmation prints \"Orden # <order_id>\" (the long PZX-… id) while F-NUM is the stamped display_number the KDS shows (#<n>). PINNED (contract/pins.json) as to-confirm; customer-facing; owner forms lane / advisor ruling", "reproducer": "p1a-journey" }
+ },
+ "S14": { "status": "CONFIRMED (runtime, re-observed at P1-a): 'efectivo' → payment_method '' persisted (HTTP 200)", "reproducer": "p0-observations" }
+}
