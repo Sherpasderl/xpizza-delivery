@@ -537,7 +537,10 @@
     "catalog/identity-integrity-state.js#recomputeSummary": "catalog",
     "catalog/identity-integrity-state.js#ack": "catalog",
     "catalog/context-source.js#shadow": "catalog",
-    "catalog/menu-gates.js#redeemEligibleFor": "catalog"
+    "catalog/menu-gates.js#redeemEligibleFor": "catalog",
+    "catalog/menu-order.js#facturaInMenuOrder": "intake",
+    "catalog/menu-order.js#facturaLinesInMenuOrder": "intake",
+    "catalog/menu-order.js#facturaLinesInMenuOrder>anon": "intake"
   },
   "pageFunctionExemptions": {
     "xpizza-orders/account.js#rewardsSubscribe": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
