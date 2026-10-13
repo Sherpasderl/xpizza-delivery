@@ -378,12 +378,12 @@ const extrasCheckFor = async (restaurantId, tables, items) => EI.extrasCheck({ m
 /* extras:end wiring */
 /* serial3:begin wiring */
 // §3 FISCAL (PLAN-menu-ordering §3): the factura's lines in the MENU order of the catalog version that PRICED the order — the
-// version the pricing tables' envelope names; its menu_structure.item_order, cached per immutable version, read under a
-// tight deadline (a warm instance does no read). Unavailable → the body's order, logged with the order_id.
+// version the pricing tables' envelope names; its item_order from the gate reader's snapshot of that version (the intake
+// gates loaded it; no read of its own), under a tight deadline. Unavailable → the body's order, logged with the order_id.
 const MO = require('./catalog/menu-order');
 let _menuOrderSource = null;
 function menuOrderSource() {
-  if (!_menuOrderSource) _menuOrderSource = MO.createMenuOrderSource({ readStructure: MO.firestoreReadStructure(getFirestore) });
+  if (!_menuOrderSource) _menuOrderSource = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(gateReader) });   // the gate reader's cached snapshot: no read of its own
   return _menuOrderSource;
 }
 const menuOrderVersionOf = (tables) => { const e = require('./catalog/pricing-tables').envelopeOf(tables); return e ? e.versionId : null; };

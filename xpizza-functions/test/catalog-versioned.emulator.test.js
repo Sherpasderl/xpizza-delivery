@@ -93,13 +93,16 @@ const buildReader = (codeMap = null) => {
 
   // ── (1b) §3 FISCAL (codex serialization r1) — the factura's lines in the MENU order of the version that PRICED the order,
   //        through the PRODUCTION pieces: the real reader's envelope names the version, catalog/menu-order's production
-  //        reader (firestoreReadStructure — the one index.js uses) reads THAT version's meta/menu_structure ──
+  //        source (fromGateReader over the REAL gate reader: previewVersion of THAT version — what index.js wires) ──
   {
     const MO = require('../catalog/menu-order');
     const { envelopeOf } = require('../catalog/pricing-tables');
     const { pricedLineItems } = require('../factura/pricing');
+    const { createGateReader } = require('../catalog/menu-gates');
     const reads = [];
-    const src = MO.createMenuOrderSource({ readStructure: async (rid, v) => { reads.push(`${rid}::${v}`); return MO.firestoreReadStructure(() => db)(rid, v); } });
+    const gateReaderOf = () => createGateReader({ getVersionId: (r) => getActiveVersionId(db, r), getMenu: (r, v) => { reads.push(`${r}::${v}`); return require('../catalog/catalog-publish').previewVersion(db, r, v); } });
+    const GR = gateReaderOf();
+    const src = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(() => GR) });
     const rid = 'x_pizza';
     const v1 = await pointerVersionOf(rid);
     const order1 = V2[rid].structure.item_order;
@@ -109,6 +112,7 @@ const buildReader = (codeMap = null) => {
     const { resolver } = buildReader();
     const t1 = await resolver.getPricingTables(rid);
     assert.strictEqual(envelopeOf(t1).versionId, v1, 'the pricing envelope names the version that priced the order');
+    await GR.intakeGatesFor(rid);   // the order's intake gates load the ACTIVE version (v1) — the snapshot the factura step peeks
     const viaV1 = await MO.facturaInMenuOrder({ source: src, restaurantId: rid, versionId: envelopeOf(t1).versionId, orderId: 'emu_1', bodyItems: cart, priced: pricedLineItems(cart, t1.menu, t1.extras) });
     assert.deepStrictEqual(viaV1, pricedLineItems(byOrder(order1), t1.menu, t1.extras), '🔴 v1: the factura lines equal the MENU-ordered body\'s (pre-§3), off the real Firestore structure');
     // the merchant publishes a REORDER (v2): v1's orders keep v1's order; v2's follow v2
@@ -118,14 +122,21 @@ const buildReader = (codeMap = null) => {
     assert.notStrictEqual(v2, v1, 'premise: a new version is active');
     const t2 = await buildReader().resolver.getPricingTables(rid);
     assert.strictEqual(envelopeOf(t2).versionId, v2);
+    await GR.getPickupOnlyKeys(rid, v2);   // the intake gates of a v2 order load v2
     const viaV2 = await MO.facturaInMenuOrder({ source: src, restaurantId: rid, versionId: v2, orderId: 'emu_2', bodyItems: cart, priced: pricedLineItems(cart, t2.menu, t2.extras) });
     assert.deepStrictEqual(viaV2, pricedLineItems(byOrder(order2), t2.menu, t2.extras), 'an order priced on v2 follows v2\'s menu order');
-    const fresh = MO.createMenuOrderSource({ readStructure: MO.firestoreReadStructure(() => db) });
-    assert.deepStrictEqual(await MO.facturaInMenuOrder({ source: fresh, restaurantId: rid, versionId: v1, orderId: 'emu_3', bodyItems: cart, priced: pricedLineItems(cart, t1.menu, t1.extras) }), viaV1,
-      '🔴 an order priced on v1 keeps v1\'s factura after the reorder (a COLD instance reads v1\'s immutable structure)');
-    assert.deepStrictEqual(reads, [`${rid}::${v1}`, `${rid}::${v2}`], 'one read per version; warm hits do no read');
+    const GR2 = gateReaderOf();
+    const fresh = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(() => GR2) });
+    await GR2.intakeGatesFor(rid);   // a COLD instance's intake gates hold only the active v2
+    const plain = pricedLineItems(cart, t1.menu, t1.extras);
+    assert.strictEqual(await MO.facturaInMenuOrder({ source: fresh, restaurantId: rid, versionId: v1, orderId: 'emu_3', bodyItems: cart, priced: plain }), plain,
+      '🔴 a v1-priced order on an instance holding only v2 → body order (logged), NEVER v2\'s order');
+    assert.deepStrictEqual(await MO.facturaInMenuOrder({ source: src, restaurantId: rid, versionId: v1, orderId: 'emu_4', bodyItems: cart, priced: plain }), viaV1,
+      '🔴 an order priced on v1 keeps v1\'s factura after the reorder (its version\'s immutable, cached snapshot)');
+    assert.deepStrictEqual(reads.filter((k) => k.startsWith(`${rid}::`)), [`${rid}::${v1}`, `${rid}::${v2}`, `${rid}::${v2}`], 'only the INTAKE gates load (one per version per instance); the factura step never reads');
     // brand-agnostic: la_musa's own version structure (id-keyed) is what the reader returns for it
     const lmV = await pointerVersionOf('la_musa');
+    await GR.intakeGatesFor('la_musa');
     assert.deepStrictEqual([...(await src.orderFor('la_musa', lmV, { orderId: 'emu_lm' }))], V2.la_musa.structure.item_order, 'la_musa: its version\'s id-keyed item_order');
     ok('§3 FISCAL off the REAL catalog: the pricing envelope\'s version → that version\'s menu_structure (production reader) → factura lines in its menu order; a reorder (v2) leaves v1 orders unchanged; la_musa\'s id-keyed order read alike');
   }

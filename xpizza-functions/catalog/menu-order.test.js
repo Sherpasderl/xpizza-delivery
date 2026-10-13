@@ -198,6 +198,57 @@ const CART = [
     assert.ok(logs.some((l) => l.includes('"reason":"read_timeout"') && l.includes('"order_id":"ord_h"')), 'logged as a timeout with the order_id');
     ok(`a hung structure read returns the body order within the ${MO.DEFAULT_DEADLINE_MS} ms deadline (took ${took} ms), logged with the order_id`);
   }
+  // ── 8. VERSION IDENTITY through the REAL gate reader: the order of the PRICING version, or the body's — never another's ──
+  {
+    const { createGateReader } = require('./menu-gates');
+    const V1 = XP.itemOrder.slice(), V2 = XP.itemOrder.slice().reverse();
+    const snap = (order) => { const b = buildCatalogV2('x_pizza'); return { items: b.items, extras: b.extras, structure: { ...b.structure, item_order: order } }; };
+    const body = json(CART).reverse();
+    const priced = pricedLineItems(body, XP.tables.menu, XP.tables.extras);
+    const inV = (order) => MO.facturaLinesInMenuOrder(priced, body, order);
+    // (a) the gate reader holds v1; the order was priced on v2 (not cached) → body order (never v1's), logged — and NO read
+    {
+      const logs = []; const loads = [];
+      const gr = createGateReader({ getVersionId: async () => 'v1', getMenu: (rid, v) => { loads.push(v); return Promise.resolve(snap(v === 'v1' ? V1 : V2)); } });
+      await gr.intakeGatesFor('x_pizza');                                 // the intake gates cached v1 (the active version they probed)
+      const src = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(() => gr), log: (...a) => logs.push(a.join(' ')) });
+      const out = await MO.facturaInMenuOrder({ source: src, restaurantId: 'x_pizza', versionId: 'v2', orderId: 'ord_v2', bodyItems: body, priced });
+      assert.strictEqual(out, priced, '🔴 priced on v2 while the gate holds only v1 → the BODY order, never v1\'s');
+      assert.notDeepStrictEqual(inV(V1), priced, 'non-vacuity: v1\'s order WOULD have changed the lines');
+      assert.deepStrictEqual(loads, ['v1'], 'the factura step made NO read of its own (only the intake gates\' v1 load)');
+      assert.ok(logs.some((l) => l.includes('"reason":"not_cached"') && l.includes('"order_id":"ord_v2"') && l.includes('"versionId":"v2"')), 'logged with the order_id + reason');
+    }
+    // (b) a snapshot that answers for ANOTHER version (a stale / mixed-up cache) is refused: version_mismatch → body order
+    {
+      const logs = [];
+      const liar = { peekItemOrder: () => ({ itemOrder: V1, versionId: 'v1' }) };   // asked for v2, answers v1
+      const src = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(() => liar), log: (...a) => logs.push(a.join(' ')) });
+      const out = await MO.facturaInMenuOrder({ source: src, restaurantId: 'x_pizza', versionId: 'v2', orderId: 'ord_mm', bodyItems: body, priced });
+      assert.strictEqual(out, priced, '🔴 another version\'s item_order is NEVER used');
+      assert.ok(logs.some((l) => l.includes('"reason":"version_mismatch"') && l.includes('"order_id":"ord_mm"') && l.includes('"versionId":"v2"') && l.includes('"snapshotVersion":"v1"')), 'version_mismatch logged with both versions + the order_id');
+      assert.strictEqual(src._cache.size, 0, 'a mismatch is not cached');
+    }
+    // (c) the pricing resolver FELL BACK (ladder last_good = v1) while the gate holds the active v2 → body order (never v2's);
+    //     once the gate holds v1 too, v1's own order
+    {
+      const loads = [];
+      const gr = createGateReader({ getVersionId: async () => 'v2', getMenu: async (rid, v) => { loads.push(v); return snap(v === 'v1' ? V1 : V2); } });
+      await gr.intakeGatesFor('x_pizza');                                 // gate cache: v2 (active)
+      const resolver = createPricingResolver({ reader: { getTables: async () => { throw new Error('UNAVAILABLE'); } }, alarm: () => {},
+        ladder: { recordActive() {}, recordGood() {}, snapshotFor: async () => ({ source: 'last_good', versionId: 'v1', seq: 1, menu: XP.tables.menu, extras: XP.tables.extras }) } });
+      const tables = await resolver.getPricingTables('x_pizza');
+      assert.strictEqual(envelopeOf(tables).versionId, 'v1', 'premise: priced from the ladder\'s v1');
+      const src = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(() => gr) });
+      const out = await MO.facturaInMenuOrder({ source: src, restaurantId: 'x_pizza', versionId: envelopeOf(tables).versionId, orderId: 'ord_lg', bodyItems: body, priced });
+      assert.strictEqual(out, priced, '🔴 a last_good v1 pricing with only v2 cached → the body order, never v2\'s');
+      assert.notDeepStrictEqual(inV(V1), inV(V2), 'non-vacuity: v1 and v2 order the lines differently');
+      await gr.getPickupOnlyKeys('x_pizza', 'v1');                       // the gate reader now holds v1 as well
+      const out2 = await MO.facturaInMenuOrder({ source: MO.createMenuOrderSource({ readStructure: MO.fromGateReader(() => gr) }), restaurantId: 'x_pizza', versionId: 'v1', orderId: 'ord_lg2', bodyItems: body, priced });
+      assert.deepStrictEqual(out2, inV(V1), 'with v1 cached, the v1-priced order follows v1 (its OWN version)');
+      assert.deepStrictEqual(loads, ['v2', 'v1'], 'no read by the factura step itself');
+    }
+    ok('version identity (real gate reader, peek only): priced on v2 with only v1 cached → body order, logged, no read; a snapshot answering for another version → version_mismatch, not cached; a last_good v1 pricing → body order until v1 is cached, then v1\'s — never v2\'s');
+  }
   FINISHED = true;
   console.log('\nmenu-order: OK');
 })().catch((e) => { console.error('menu-order FAILED:', e); process.exit(1); });

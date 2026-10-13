@@ -16,7 +16,7 @@ const BLOCKS = [
   },
   {
     "id": "wiring",
-    "sha": "4b60b038fc5e1e4b0844f081350edf5fc026a31cf6597bd35746033d90374a4d",
+    "sha": "c77b92ba33f9212a6b1eeeddb77bc749a83b6c359c5478c2e546ab605370fb53",
     "original": ""
   },
   {

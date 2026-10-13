@@ -59,8 +59,8 @@ for (const [label, start, end, tag, recordUse] of [
 {
   const wiring = idx.slice(at(idx, '/* serial3:begin wiring */'), at(idx, '/* serial3:end wiring */'));
   assert.ok(/require\('\.\/catalog\/pricing-tables'\)\.envelopeOf\(tables\)/.test(wiring) && /e \? e\.versionId : null/.test(wiring), 'the version is the pricing envelope\'s');
-  assert.ok(/MO\.createMenuOrderSource\(\{ readStructure: MO\.firestoreReadStructure\(getFirestore\) \}\)/.test(wiring), 'the item_order is read by the shared production reader (THAT version\'s menu_structure; emulator-tested)');
-  assert.ok(/collection\('restaurants'\)\.doc\(rid\)\.collection\('versions'\)\.doc\(versionId\)\.collection\('meta'\)\.doc\('menu_structure'\)/.test(read('catalog/menu-order.js')), '…which reads the version\'s meta/menu_structure');
+  assert.ok(/MO\.createMenuOrderSource\(\{ readStructure: MO\.fromGateReader\(gateReader\) \}\)/.test(wiring), 'the item_order comes from the gate reader\'s cached snapshot of that version (no read of its own; emulator-tested)');
+  assert.ok(/peekItemOrder: \(rid, versionId\) => \{ const g = cache\.get\(/.test(read('catalog/menu-gates.js')) && /itemOrder: built\.structure && Array\.isArray\(built\.structure\.item_order\)/.test(read('catalog/menu-gates.js')), '…which only PEEKS (never reads) the version\'s item_order from the intake gates\' cached snapshot');
   assert.ok(!/deadlineMs/.test(wiring), 'the module\'s own tight default deadline applies');
   const co = idx.slice(at(idx, 'createOrderApp.all('), at(idx, 'createOrderApp.use('));
   const stamp = co.slice(at(co, '/* serial3:begin create-stamp */'), at(co, '/* serial3:end create-stamp */'));

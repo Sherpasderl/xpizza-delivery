@@ -7,9 +7,10 @@
 // without the owner: the factura's lines are put back into the MENU order of the very catalog version that priced the
 // order, so it is byte-identical to what it was before §3, whatever order the body arrived in.
 //
-//   • WHICH order: the `item_order` of the version that PRICED the order — read from that version's immutable
-//     meta/menu_structure document. The version is the one the resolved pricing tables carry in their envelope
-//     (pricing-tables.js envelopeOf: live, last_good or mirror alike), never "the active version now".
+//   • WHICH order: the `item_order` of the version that PRICED the order — that version's immutable meta/menu_structure,
+//     as the gate reader ALREADY holds it (catalog/menu-gates.js peekItemOrder, the intake gates' snapshot; no read). The version is the
+//     one the resolved pricing tables carry in their envelope (pricing-tables.js envelopeOf: live, last_good or mirror
+//     alike), never "the active version now".
 //   • CACHED under the immutable (rid, versionId), LRU-bounded; behind a DEADLINE, so a hung read can never hang an order.
 //   • NEVER THROWS. Any failure — no version (flat layout), a read error, a timeout, an absent or malformed item_order —
 //     returns null with a LOUD log, and the factura keeps the body's order (exactly today's behaviour on that order).
@@ -43,6 +44,12 @@ function createMenuOrderSource({ readStructure, deadlineMs = DEFAULT_DEADLINE_MS
       const k = vkey(rid, versionId);
       if (cache.has(k)) { const v = cache.get(k); cache.delete(k); cache.set(k, v); return v; }
       const data = await withDeadline(Promise.resolve().then(() => readStructure(rid, versionId)), deadlineMs);
+      // VERSION IDENTITY: an answer that names its version must name THE PRICING version — another version's order
+      // (a stale cache, a publish in between, a fallback snapshot) is never used: body order + the loud log
+      if (data && Object.prototype.hasOwnProperty.call(data, 'versionId') && String(data.versionId) !== String(versionId)) {
+        loud('version_mismatch', { order_id: oid, restaurantId: rid, versionId, snapshotVersion: data.versionId == null ? null : String(data.versionId) });
+        return null;
+      }
       const order = data && data.item_order;
       if (!validItemOrder(order)) { loud(data ? 'malformed_item_order' : 'no_structure', { order_id: oid, restaurantId: rid, versionId }); return null; }
       const frozen = Object.freeze(order.slice());
@@ -50,7 +57,7 @@ function createMenuOrderSource({ readStructure, deadlineMs = DEFAULT_DEADLINE_MS
       while (cache.size > maxVersions) cache.delete(cache.keys().next().value);
       return frozen;
     } catch (e) {
-      loud(e && e.message === 'menu_order_read_timeout' ? 'read_timeout' : 'read_failed', { order_id: oid, restaurantId: rid, versionId: versionId || null, error: String((e && e.message) || e).slice(0, 160) });
+      loud(e && e.message === 'menu_order_read_timeout' ? 'read_timeout' : e && e.message === 'gate_snapshot_not_cached' ? 'not_cached' : 'read_failed', { order_id: oid, restaurantId: rid, versionId: versionId || null, error: String((e && e.message) || e).slice(0, 160) });
       return null;   // never cached: the next order tries again
     }
   }
@@ -85,11 +92,14 @@ function facturaLinesInMenuOrder(priced, bodyItems, itemOrder, log = (...a) => c
   return out;
 }
 
-// The version's menu_structure exactly where publish writes it (catalog-publish.js: restaurants/{rid}/versions/{v}/meta/
-// menu_structure) — the production readStructure, shared by index.js and the emulator test.
-const firestoreReadStructure = (getFirestore) => async (rid, versionId) => {
-  const snap = await getFirestore().collection('restaurants').doc(rid).collection('versions').doc(versionId).collection('meta').doc('menu_structure').get();
-  return snap.exists ? snap.data() : null;
+// The PRODUCTION readStructure: the gate reader's snapshot of THAT version, ONLY if it is already cached (catalog/menu-gates.js
+// peekItemOrder — the intake gates load the active version earlier in the same request). It NEVER reads: a version the gate
+// reader does not hold (cold, a publish in between, a last_good / mirror pricing, a gate read that failed) → THROW
+// 'gate_snapshot_not_cached' → body order + the loud log, never another version's order and never an extra read.
+const fromGateReader = (gateReader) => async (rid, versionId) => {
+  const got = gateReader().peekItemOrder(rid, versionId);
+  if (!got || !Array.isArray(got.itemOrder)) throw new Error('gate_snapshot_not_cached');
+  return { item_order: got.itemOrder, versionId: got.versionId };   // the version the snapshot was READ FOR — checked by orderFor
 };
 
 // THE ONE CALL each factura site makes. Nothing to order (no platform factura lines, a pricing error) → `priced` as is,
@@ -107,4 +117,4 @@ async function facturaInMenuOrder({ source, restaurantId, versionId, orderId, bo
   }
 }
 
-module.exports = { createMenuOrderSource, facturaLinesInMenuOrder, facturaInMenuOrder, firestoreReadStructure, validItemOrder, DEFAULT_DEADLINE_MS };
+module.exports = { createMenuOrderSource, facturaLinesInMenuOrder, facturaInMenuOrder, fromGateReader, validItemOrder, DEFAULT_DEADLINE_MS };

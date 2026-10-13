@@ -46,6 +46,11 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // render-ON companion below re-runs every case with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
+// §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key, bound to the
+// content the request persisted where it did, else the declared unbound mode; (the factura's item_order comes from the gate reader's cached snapshot — no new read)
+const SD = require('./_serial3-delta');
+const POST_OF = new WeakMap();   // recorded result → the order record after the request (the content a stamp may bind to)
+let S3_BOUND = 0, S3_UNBOUND = 0, S3_DIFF = 0;
 // R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
 // this run unless the test advances it, so the only catalog traffic set aside is the COLD load (test/_render-delta.js
 // makeColdOnly); a GATE / CTX re-read stays in every comparison. Replaces R1b's wall-time-bounded makeCacheFill.
@@ -205,6 +210,7 @@ async function traced(c, rid, setupState) {
   if (body) for (const k of ['poll_token', 'tracking_token', 'attempt_id']) if (typeof body[k] === 'string') body[k] = `<${k}>`;
   const out = { status: r.status, body, ops, changed, raw: r.json };
   COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
+  POST_OF.set(out, post_);
   return out;
 }
 
@@ -352,8 +358,12 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         const g = golden.cases[key];
         assert.ok(g, `${L}: present in the frozen base trace`);
         assert.strictEqual(r.status, g.status, `🔴 ${L}: status changed (${g.status} → ${r.status})`);
-        assert.deepStrictEqual(r.ops, g.ops, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write`);
-        assert.deepStrictEqual(r.changed, g.changed, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
+        const cs = SD.compareShape(r.ops, g.ops, { content: SD.contentOfOrder(POST_OF.get(r)), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
+        if (JSON.stringify(r.ops) !== JSON.stringify(g.ops)) S3_DIFF += 1;
+        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write`);
+        const ch = SD.changedShape(r.changed, g.changed, { content: SD.contentOfOrder(POST_OF.get(r)), bound: cs.bound });
+        assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
           assert.strictEqual(r.status, 409);
           assert.deepStrictEqual(Object.keys(r.raw), ['error', 'reason', 'detail', 'order_id'], `${L}: EXACTLY the four keys`);
@@ -412,6 +422,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     check(() => assert.ok(probed > 0, 'render-ON companion: premise — at least one card request carries a reward (the delta is exercised)'));
     check(() => { fill = FILL.assertBounded('render-ON companion'); });
   }
+  if (!CAPTURE) { check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one case differs from the base')); console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ only by the declared delta — ${S3_BOUND} content-bound, ${S3_UNBOUND} unbound (one key per request)`); }
   const caseFails = FAILS.length;
   const kinds = (k) => CASES.filter((c) => c.kind === k).length * 2;
   if (!caseFails) ok(`${CAPTURE ? 'BASE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (both restaurants) — ${kinds('refusal')} covered refusals, ${kinds('terminal')} terminal-safe controls, ${kinds('control')} success / read-failure controls` +
