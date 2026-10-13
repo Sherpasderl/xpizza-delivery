@@ -18,7 +18,7 @@
 // Brand-agnostic: a line is ranked by the first of its own identity fields (name, id, dish_id) that the version's
 // item_order holds — the same pricing key the catalog keys that brand's items by.
 
-const DEFAULT_DEADLINE_MS = 250;   // on createOrder / chargeOnlineOrder: a COLD version's one read; a warm instance does none
+const DEFAULT_DEADLINE_MS = 250;   // on the order path; the production source only PEEKS a cached snapshot (no read)
 const DEFAULT_MAX_VERSIONS = 64;
 
 function validItemOrder(v) {
