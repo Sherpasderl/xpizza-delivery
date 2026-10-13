@@ -103,4 +103,11 @@ for (const rid of ['x_pizza', 'la_musa']) {
   assert.throws(() => projectEligibility(src), /names launcher ghost/);
   ok('a variantOf naming no item is refused (no eligibility against a guess)');
 }
+{ // the API as the plan names it (codex gate0 r1 P2): eligibleSet is the Set view of the ordered eligibleExtras
+  const { eligibleSet } = require('./extras-eligibility');
+  const p = projectEligibility(buildSourceFromCode('x_pizza'));
+  assert.ok(eligibleSet(p, 'Margherita') instanceof Set && eligibleSet(p, 'Margherita').has('Salsa Roja') && !eligibleSet(p, 'Nutella').has('Salsa Roja'));
+  assert.deepStrictEqual([...eligibleSet(p, 'Margherita')], eligibleExtras(p, 'Margherita'), 'same members, same order');
+  ok('eligibleSet(proj, item) is the Set view (has()) of the ordered eligibleExtras');
+}
 console.log(`\nextras-eligibility: OK (${n})`);

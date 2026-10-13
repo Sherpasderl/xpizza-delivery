@@ -11,9 +11,12 @@
 //     node ../extras-parity-current.test.mjs
 //
 // It only READS: one Firestore pointer read + version-doc reads per rid (application-default credentials), and a public
-// GET. It writes nothing remote. tools/require-project.js runs FIRST: `--project` is mandatory and a mixed or foreign
-// emulator/production signal refuses before any client exists (the endpoint census drives that).
+// GET. It writes nothing remote. emu-mixed-guard.refuseAnySignal runs FIRST (production-only: any emulator signal, coherent
+// or not, refuses), then require-project (`--project` mandatory) — before any client exists (the endpoint census drives both).
 // Usage: node tools/extras-export-live.js --project xpizza-delivery --out /tmp/extras-gate0 x_pizza la_musa
+// PRODUCTION-ONLY (codex gate0 r1 P1-1): the public GET always reads production, so ANY emulator signal — even one coherent
+// local run — is refused before any client, or an emulator source would be paired with the production menu.
+require('./emu-mixed-guard').refuseAnySignal('extras-export-live');
 const { requireProject } = require('./require-project');
 const PROJECT = requireProject({ requireFlag: true });
 const fs = require('fs');

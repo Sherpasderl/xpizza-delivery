@@ -134,4 +134,8 @@ function publicDeny(proj) {
   return out;
 }
 
-module.exports = { projectEligibility, eligibleExtras, publicDeny, ALL };
+// A membership view for consumers that ask "may this line carry this extra?" (codex gate0 r1 P2: the plan's §1 named a Set;
+// eligibleExtras returns the ORDERED array — the order is what a picker renders — and this is the Set over it).
+function eligibleSet(proj, itemKey) { return new Set(eligibleExtras(proj, itemKey)); }
+
+module.exports = { projectEligibility, eligibleExtras, eligibleSet, publicDeny, ALL };
