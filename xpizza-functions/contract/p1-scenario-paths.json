@@ -17,7 +17,8 @@
   "anotherOrder": false,
   "sheetEdit": false,
   "otp": false,
-  "refund": false
+  "refund": false,
+  "writeFailure": false
  },
  "scenarios": {
   "S1": {

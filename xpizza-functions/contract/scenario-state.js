@@ -26,6 +26,12 @@ const FIELDS = Object.freeze({
   cancelled: [true, false],
   inbound: [true, false],
   extras: [true, false],
+  // the order STATUS the contract expects at this LP (codex P1-b mech r1 P1-3) — persisted status must agree
+  status: ['new', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'completed', 'cancelled'],
+  // the contract ACTION that produced this LP (advisor ruling: evidenced by the runner's executed action + the writer's ack)
+  lpAction: ['create', 'kitchenStart', 'kitchenReady', 'assign', 'autoAssign', 'reassign', 'unassign', 'manualTakeover', 'pickupComplete', 'completeDelivery', 'completePickup', 'cuadre'],
+  // a failed (then retried) write — false only on a COMPLETE ack log with no failure
+  writeFailure: [true, false],
   kitchen: ['none', 'started', 'ready'],
   driver: ['none', 'assigned', 'reassigned', 'unassigned'],
   takeover: [true, false],
@@ -42,18 +48,20 @@ const FIELDS = Object.freeze({
 });
 
 // what each contract step does to the vector (reviewed)
+// order assignment lives on the TASK (index.js: tasks 'assigned' / 'accepted'), so assign / reassign / unassign /
+// takeover / cuadre leave the ORDER status unchanged
 const EFFECTS = Object.freeze({
-  create: (v) => ({ ...v, phase: 'new', kitchen: 'none', driver: 'none', takeover: false, outForDelivery: false, terminal: 'none', cuadre: false }),
-  kitchenStart: (v) => ({ ...v, kitchen: 'started' }),
-  kitchenReady: (v) => ({ ...v, kitchen: 'ready' }),
+  create: (v) => ({ ...v, phase: 'new', status: 'new', kitchen: 'none', driver: 'none', takeover: false, outForDelivery: false, terminal: 'none', cuadre: false }),
+  kitchenStart: (v) => ({ ...v, kitchen: 'started', status: 'preparing' }),
+  kitchenReady: (v) => ({ ...v, kitchen: 'ready', status: 'ready' }),
   assign: (v) => ({ ...v, driver: 'assigned' }),
   autoAssign: (v) => ({ ...v, driver: 'assigned' }),
   reassign: (v) => ({ ...v, driver: 'reassigned' }),
   unassign: (v) => ({ ...v, driver: 'unassigned' }),
   manualTakeover: (v) => ({ ...v, driver: 'assigned', takeover: true }),
-  pickupComplete: (v) => ({ ...v, outForDelivery: true }),
-  completeDelivery: (v) => ({ ...v, terminal: 'delivered' }),
-  completePickup: (v) => ({ ...v, terminal: 'completed' }),
+  pickupComplete: (v) => ({ ...v, outForDelivery: true, status: 'out_for_delivery' }),
+  completeDelivery: (v) => ({ ...v, terminal: 'delivered', status: 'delivered' }),
+  completePickup: (v) => ({ ...v, terminal: 'completed', status: 'completed' }),
   cuadre: (v) => ({ ...v, cuadre: true }),
   noop: (v) => v,
 });
@@ -70,7 +78,7 @@ function vectorsOf(S, brand, doc = load()) {
   for (const step of sc.path) {
     const [effect, lp] = Array.isArray(step) ? step : [step, null];
     if (!EFFECTS[effect]) throw new Error(`scenario-state: ${S}: unknown effect ${effect}`);
-    v = EFFECTS[effect](v);
+    v = effect === 'noop' ? v : { ...EFFECTS[effect](v), lpAction: effect };
     if (lp) { if (out[lp]) throw new Error(`scenario-state: ${S}: LP ${lp} marked twice`); out[lp] = Object.freeze({ ...v, phase: lp }); }
   }
   return out;
@@ -92,7 +100,8 @@ function vectorProblems(v) {
 }
 
 /* CHECKS — each field ASSERTED from run evidence (never fixture intent alone; LP names are never evidence). Each entry
- * records its EVIDENCE SOURCE and comparison. evidence = { persisted, steps, routed, kdsActions, kdsHttp, kdsTickets }.
+ * records its EVIDENCE SOURCE and comparison. evidence = { persisted, steps, routed, kdsActions, kdsEvents, kdsHttp, kdsTickets,
+ * lpAction, ackLog, formEvents, formStorageAtBoot }.
  * Returns true (established), false (CONTRADICTED → RED) or { unknown: true } (this LP cannot establish it → an exclusion
  * depending on it never applies; the cell stays required). Missing evidence is never `false`. */
 const unknown = { unknown: true };
@@ -112,15 +121,22 @@ const CHECKS = Object.freeze({
   driver: { source: 'persisted order assignment fields', check: (v, ev) => (ev.persisted && v.driver === 'none' ? !ev.persisted.driver_id && !ev.persisted.assigned_driver && !ev.persisted.driver_uid : unknown) },
   outForDelivery: { source: 'persisted order status (out_for_delivery / delivered ⇒ picked up)', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? ['out_for_delivery', 'delivered'].includes(ev.persisted.status) === v.outForDelivery : unknown) },
   terminal: { source: 'persisted order status', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? (v.terminal === 'none' ? !['delivered', 'completed'].includes(ev.persisted.status) : ev.persisted.status === v.terminal) : unknown) },
-  reorder: { source: 'executed step log (no reorder step)', check: (v, ev) => (Array.isArray(ev.steps) ? ev.steps.some((x) => /reorder/i.test(x)) === v.reorder : unknown) },
-  restore: { source: 'executed step log (no restore step)', check: (v, ev) => (Array.isArray(ev.steps) ? ev.steps.some((x) => /restore/i.test(x)) === v.restore : unknown) },
-  anotherOrder: { source: 'executed step log (no another-order step)', check: (v, ev) => (Array.isArray(ev.steps) ? ev.steps.some((x) => /another/i.test(x)) === v.anotherOrder : unknown) },
-  sheetEdit: { source: 'executed step log (no cart-sheet qty edit)', check: (v, ev) => (Array.isArray(ev.steps) ? ev.steps.some((x) => /sheet-(inc|dec)/i.test(x)) === v.sheetEdit : unknown) },
-  extras: { source: 'executed step log + intent extras', check: (v, ev) => (Array.isArray(ev.steps) ? (ev.steps.some((x) => /extra/i.test(x)) || Boolean(ev.intent && ev.intent.extras && ev.intent.extras.length)) === v.extras : unknown) },
+  status: { source: 'persisted order status (must equal the contract status expected at this LP)', check: (v, ev) => (ev.persisted && has(ev.persisted, 'status') ? ev.persisted.status === v.status : unknown) },
+  lpAction: { source: "the runner's RECORDED executed action for this LP + the writer's ack (never the LP name)", check: (v, ev) => (ev.lpAction && typeof ev.lpAction.action === 'string' ? (ev.lpAction.action === v.lpAction && ev.lpAction.ack === true) : unknown) },
+  writeFailure: { source: 'the ack log of every write / call in the run (COMPLETE: every call answered)', check: (v, ev) => { const a = ev.ackLog; if (!a || a.complete !== true) return unknown; return (a.failures > 0) === v.writeFailure; } },
+  // customer form actions — OBSERVED on the form page (a capture-phase event recorder: the element each event hit) or in
+  // persisted / storage evidence; no recorder → unknown (codex P1-b mech r1 P1-2: never step labels)
+  reorder: { source: 'form event recorder (no event on a reorder control: [data-ord] / reorder)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.reorder) === v.reorder : unknown) },
+  restore: { source: 'form event recorder (no restoreOrderForm control) + form storage at boot (no snapshot to restore)', check: (v, ev) => (Array.isArray(ev.formEvents) && Array.isArray(ev.formStorageAtBoot) ? (ev.formEvents.some((e) => e.restore) || ev.formStorageAtBoot.some((k) => /snapshot|pending_pay|self_update|selfupdate/i.test(k))) === v.restore : unknown) },
+  anotherOrder: { source: 'form event recorder (no startAnotherOrder control)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.anotherOrder) === v.anotherOrder : unknown) },
+  sheetEdit: { source: 'form event recorder (no [data-act=review-inc|review-dec] in the cart sheet)', check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.sheetEdit) === v.sheetEdit : unknown) },
+  extras: { source: 'form event recorder (no [data-act=extra] toggle) + persisted items (no extras)', check: (v, ev) => (Array.isArray(ev.formEvents) && ev.persisted ? (ev.formEvents.some((e) => e.extras) || (ev.persisted.items || []).some((i) => i && (i.extras || i.options))) === v.extras : unknown) },
 });
 // context conditions (non-vector, asserted from run evidence) — e.g. P1-a's ticket count
 const CONTEXT = Object.freeze({
   'single-live-order': { source: 'KDS board ticket count', check: (ev) => (typeof ev.kdsTickets === 'number' ? ev.kdsTickets === 1 : unknown) },
+  'kds-no-log-tap': { source: 'KDS event recorder (no tap on a ticket log button .h-log)', check: (ev) => (Array.isArray(ev.kdsEvents) ? !ev.kdsEvents.some((e) => e.logTap) : unknown) },
+  'kds-no-item-check': { source: 'KDS event recorder (no tap on a ticket item .card-item)', check: (ev) => (Array.isArray(ev.kdsEvents) ? !ev.kdsEvents.some((e) => e.itemCheck) : unknown) },
   'kds-no-http': { source: 'KDS page fetch recorder', check: (ev) => (Array.isArray(ev.kdsHttp) ? ev.kdsHttp.length === 0 : unknown) },
   'createorder-configured': { source: 'routed calls (createOrder answered 200)', check: (ev) => (Array.isArray(ev.routed) ? ev.routed.some((x) => x.fn === 'createOrder' && x.status === 200) : unknown) },
 });

@@ -104,7 +104,11 @@ try {
 
   // ── the REAL form, booted on the page harness (tracer on), network → the REAL handlers, each call its own writer context ──
   const R = makeFormRouter({ app, rtdb });
-  const routed = async (u, i) => {
+  // the ACK LOG (codex P1-b mech r1): every call the form issues is counted when ISSUED and when ANSWERED — complete only
+  // when every issued call was answered
+  const ack = { issued: 0, answered: 0 };
+  const routed = async (u, i) => { ack.issued += 1; try { return await routed0(u, i); } finally { ack.answered += 1; } };
+  const routed0 = async (u, i) => {
     const m = /cloudfunctions\.net\/([A-Za-z0-9_]+)/.exec(String(u));
     // the confirmation's ORDER-NUMBER read (order_tracking/<token>/display_number.json, form-order-number.js) is answered only
     // once the backend's in-flight triggers have drained: the page runs on VIRTUAL time, the backend on real time — a read the
@@ -117,6 +121,7 @@ try {
   };
   const fhost = createFirebaseHost({ pageId: 'p1a-form', user: { uid: 'cust_p1a', email: 'c@p1a.test' }, fixture: S.fixture });
   const intent = { ...S1.intent };
+  const formEvents = [];
   const snaps = {}; const negSnaps = {};
   CTX.now = 'S1/x_pizza/form'; HITS.setContext(CTX.now);
   // the form's DECLARED wall-clock anchor (S1.pageWallClock): 13:00 HN on the run's own HN day
@@ -124,10 +129,20 @@ try {
   const form = await step('form.boot', () => phase('boot', () => bootPage('xpizza-orders', { host: fhost, url: 'https://orders.test/', tracer: HITS, fetchImpl: routed, wallClockAnchorMs: FORM_ANCHOR,
     beforeScripts: (w) => {
       installGoogleMaps(w);
+      // the FORM EVENT RECORDER (codex P1-b mech r1 P1-2): every user-action event on the form page, with the action
+      // FLAGS read from the element it hit — the form-action vector fields are asserted from these, never step labels
+      for (const t of ['click', 'change', 'input', 'keydown', 'pointerdown', 'touchstart']) w.document.addEventListener(t, (e) => {
+        const el = e.target && e.target.nodeType === 1 ? e.target : null; const at = (sel) => !!(el && el.closest(sel));
+        const oc = (el && el.closest('[onclick]') && el.closest('[onclick]').getAttribute('onclick')) || '';
+        formEvents.push({ type: t, target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?',
+          sheetEdit: at('[data-act="review-inc"], [data-act="review-dec"]'), extras: at('[data-act="extra"]'),
+          anotherOrder: /startAnotherOrder/.test(oc), restore: /restoreOrderForm/.test(oc), reorder: at('[data-ord], [data-act="reorder"]') || /reorder/i.test(oc) });
+      }, true);
       w.IntersectionObserver = function () { return { observe() {}, unobserve() {}, disconnect() {}, takeRecords() { return []; } }; };
       Object.defineProperty(w.navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (okCb) => w.setTimeout(() => okCb({ coords: { latitude: 15.5050, longitude: -88.0290, accuracy: 8 } }), 0) } });
     } })));
   const w = form.win; const doc = form.doc;
+  const formStorageAtBoot = (() => { const ks = []; for (let i = 0; i < w.localStorage.length; i++) ks.push(w.localStorage.key(i)); return ks; })();
   // codex P1-a r1 P1-3: EVERY observation requires settle() === true AND a clean page + adapter (no page error, no
   // subscription-callback error, nothing refused) — a handler that rendered then threw, or left tracked work, is RED
   const CLEAN = (pg, host, label) => {
@@ -208,7 +223,7 @@ try {
   const kdsHttp = []; const kdsEvents = [];
   const khost = createFirebaseHost({ pageId: 'p1a-kds', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
   const kds = await step('kds.boot-staff', () => phase('boot', () => bootPage('xpizza-kitchen', { host: khost, url: 'https://xpizzakitchen.netlify.app/', tracer: HITS, fetchImpl: async (u) => { kdsHttp.push(String(u)); throw new Error(`r3-p1a: KDS fetch ${u} not routed (LP new issues none)`); },
-    beforeScripts: (kw) => { installGoogleMaps(kw); for (const t of ['click', 'pointerdown', 'pointerup', 'mousedown', 'touchstart', 'keydown', 'change', 'input']) kw.document.addEventListener(t, (e) => { const el = e.target && e.target.nodeType === 1 ? e.target : null; kdsEvents.push({ type: t, inTicket: !!(el && el.closest('.tk')), target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?' }); }, true); } })));
+    beforeScripts: (kw) => { installGoogleMaps(kw); for (const t of ['click', 'pointerdown', 'pointerup', 'mousedown', 'touchstart', 'keydown', 'change', 'input']) kw.document.addEventListener(t, (e) => { const el = e.target && e.target.nodeType === 1 ? e.target : null; kdsEvents.push({ type: t, inTicket: !!(el && el.closest('.tk')), logTap: !!(el && el.closest('.h-log')), itemCheck: !!(el && el.closest('.card-item')), target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?' }); }, true); } })));
   const kdsActions = () => kdsEvents.filter((e) => e.inTicket).map((e) => `${e.type}:${e.target}`);
   for (let i = 0; i < 60 && !khost.subs.length; i++) await new Promise((r) => setTimeout(r, 25));
   await khost.barrier();
@@ -248,7 +263,13 @@ try {
   const cells = ga.cells.filter((c) => SLICE.readers.includes(c.R));
   const registry = JSON.parse(fsx.readFileSync(new URL('./outputs/registry.json', import.meta.url), 'utf8'));
   const applicability = require('./region-applicability').load();   // P1-b: the region-level, derived model
-  const evidence = { intent, persisted, steps, routed: R.log, kdsActions: kdsActions(), kdsHttp, kdsTickets };
+  // lpAction: the runner's RECORDED executed action for this LP (the pay tap → createOrder) + the writer's ack; ackLog:
+  // complete iff every issued call was answered, failures = any answer ≥ 400, any KDS fetch, any adapter callback error
+  const lpAction = { action: create ? 'create' : null, ack: !!create && create.status === 200 };
+  const ackLog = { complete: ack.issued === ack.answered && ack.issued === R.log.length, failures: R.log.filter((x) => !(x.status < 400)).length + kdsHttp.length + fhost.callbackErrors.length };
+  // the persisted order RE-READ at gate time (after every page action): a later write (a stray kitchen tap) is seen
+  const persistedNow = (await rtdb.ref(`orders/${oid}`).get()).val();
+  const evidence = { intent, persisted: persistedNow, steps, routed: R.log, kdsActions: kdsActions(), kdsEvents, kdsHttp, kdsTickets, lpAction, ackLog, formEvents, formStorageAtBoot };
   // P1-b: the run's CONTRACT state is the scenario vector, ASSERTED from evidence (persisted order, routed calls, the KDS
   // recorder) — never from fixture intent alone; a field this LP cannot evidence is reported UNKNOWN (an exclusion that
   // depends on it would never apply)
@@ -286,7 +307,15 @@ try {
     const redRegions = new Set(neg.red.map((x) => x.region));
     assert.ok(neg.red.some((x) => x.fact === 'MONEY' && x.observable === 'form.reviewSheet') && [...redRegions].every((r) => registry.regions[r].observable === 'form.reviewSheet') && neg.results.filter((x) => x.observable === 'form.cartPill').every((x) => x.outcome === 'pass'), FAIL('negative', `pill-correct / sheet-wrong was not RED on exactly the sheet (${JSON.stringify([...redRegions])})`));
     const neg2 = run(snaps, { ...evidence, kdsActions: ['click:div'] });
-    assert.ok(neg2.red.length > 0 && neg2.red.every((x) => /UNMET in this run: the run's evidence contradicts the scenario vector on .*kitchen/.test(x.detail)), FAIL('negative', `a kitchen tap (the vector says kitchen none) did not turn exactly the kitchen-dependent exclusions RED: ${JSON.stringify(neg2.red.slice(0, 2).map((x) => x.detail))}`));
+    const nEx = res.counts.byOutcome.excluded;
+    assert.ok(neg2.red.length === nEx && neg2.red.every((x) => /UNMET in this run: the run's evidence contradicts the scenario vector on .*kitchen/.test(x.detail)), FAIL('negative', `a kitchen tap (the vector says kitchen none) did not turn EVERY derived exclusion RED (${neg2.red.length} of ${nEx}): ${JSON.stringify(neg2.red.slice(0, 2).map((x) => x.detail))}`));
+    // codex P1-b mech r1: a recorded action other than this LP's (or an unacked one), a persisted status other than the LP's
+    const neg2b = run(snaps, { ...evidence, lpAction: { action: 'kitchenStart', ack: true } });
+    const neg2c = run(snaps, { ...evidence, persisted: { ...evidence.persisted, status: 'preparing' } });
+    const neg2d = run(snaps, { ...evidence, lpAction: undefined, ackLog: { ...evidence.ackLog, complete: false } });
+    assert.ok(neg2b.red.length === nEx && neg2c.red.length === nEx && neg2c.red.every((x) => /status/.test(x.detail)), FAIL('negative', `a different recorded action / persisted status did not void every exclusion (${neg2b.red.length}, ${neg2c.red.length} of ${nEx})`));
+    // unknown → REQUIRED: the lpAction-dependent cells fall through to comparison, and their (pending) regions are RED
+    assert.ok(neg2d.red.length > 0 && neg2d.red.every((x) => /pending in an enforced slice \(unknown applicability = required\)|not established/.test(x.detail)) && neg2d.counts.byOutcome.excluded < nEx, FAIL('negative', `with no recorded action, the lpAction-dependent exclusions did not become REQUIRED (excluded ${neg2d.counts.byOutcome.excluded} of ${nEx}; red ${neg2d.red.length}: ${JSON.stringify(neg2d.red.slice(0, 2).map((x) => x.detail))})`));
     const neg3 = run({ ...snaps, 'wa.orderReceived': { sends: [], exposed: { ok: false, detail: 'no message' } } });
     assert.ok(neg3.red.some((x) => x.observable === 'wa.orderReceived'), FAIL('negative', 'a missing WhatsApp send was not RED'));
     // codex r1 P1-5: absences reject a WRONG value too
@@ -299,7 +328,7 @@ try {
     // codex r1 P1-9: the sheet captured on the LIVE page while closed
     const neg6 = run({ ...snaps, 'form.reviewSheet': negSnaps.closedSheet });
     assert.ok(neg6.red.length > 0 && neg6.red.every((x) => x.observable === 'form.reviewSheet' && /not EXPOSED/.test(x.detail)), FAIL('negative', 'the cart sheet captured while CLOSED was not RED'));
-    ok(`negatives on this run's snapshots: pill right + sheet total wrong → RED on exactly the sheet (${neg.red.length}); a kitchen tap → every kitchen-dependent derived exclusion RED (vector contradicted) (${neg2.red.length}); no send → RED (${neg3.red.length}); a WRONG number / address in the message → NUM + PLACE RED; a WRONG address on the ticket → PLACE RED; the sheet captured CLOSED on the live page → RED (${neg6.red.length})`);
+    ok(`negatives on this run's snapshots: pill right + sheet total wrong → RED on exactly the sheet (${neg.red.length}); a kitchen tap → every derived exclusion RED (vector contradicted) (${neg2.red.length}); a different recorded action / a persisted "preparing" → every exclusion RED; no recorded action → the lpAction-dependent exclusions required (${nEx} → ${neg2d.counts.byOutcome.excluded} excluded); no send → RED (${neg3.red.length}); a WRONG number / address in the message → NUM + PLACE RED; a WRONG address on the ticket → PLACE RED; the sheet captured CLOSED on the live page → RED (${neg6.red.length})`);
   }
 
   // ── GATE B: the site-hit ratchet ──

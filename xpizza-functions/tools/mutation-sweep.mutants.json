@@ -12082,7 +12082,7 @@
     "id": "r3p1-08",
     "slice": "r3p1",
     "file": "contract/region-applicability.js",
-    "from": "  const contradicted = st.used.filter((f) => vr.failed.includes(f));\n  if (contradicted.length) return { outcome: 'contradicted', reason: `the run's evidence contradicts the scenario vector on ${contradicted.join(', ')}` };\n  const unk = st.used.filter((f) => !vr.checked.includes(f));",
+    "from": "  const contradicted = vr.failed;\n  if (contradicted.length) return { outcome: 'contradicted', reason: `the run's evidence contradicts the scenario vector on ${contradicted.join(', ')}` };\n  const unk = used.filter((f) => !vr.checked.includes(f));",
     "to": "  const contradicted = [];\n  if (contradicted.length) return { outcome: 'contradicted', reason: `the run's evidence contradicts the scenario vector on ${contradicted.join(', ')}` };\n  const unk = [];",
     "label": "a derived exclusion applies without the run ESTABLISHING its vector fields (no contradiction / unknown check)",
     "kills_with": [
@@ -12114,8 +12114,8 @@
     "slice": "r3p1",
     "file": "contract/gate-a-run.js",
     "from": "    if (!at) { results.push({ ...base, outcome: 'RED', detail: `the ${c.kind} obligation ${c.cell} on output ${c.output}",
-    "to": "    if (false) { results.push({ ...base, outcome: 'RED', detail: `the ${c.kind} obligation ${c.cell} on output ${c.output}",
-    "label": "a display / absence obligation can be waived by excluding every region of it",
+    "to": "    if (!at) { results.push({ ...base, outcome: 'excluded', detail: `the ${c.kind} obligation ${c.cell} on output ${c.output}",
+    "label": "a display / absence obligation is WAIVED (recorded excluded) when every region of it is excluded",
     "kills_with": [
       "a display obligation whose every region is excluded"
     ],
@@ -12866,7 +12866,7 @@
     "id": "r3p1-52",
     "slice": "r3p1",
     "file": "contract/region-applicability.js",
-    "from": "  for (const [S, h] of Object.entries(doc.scenarioBinding || {})) if (scenarioSha(S, paths) !== h) p.push(",
+    "from": "  for (const [S, h] of Object.entries(doc.scenarioBinding || {})) if (scenarioSha(S, paths, exec) !== h) p.push(",
     "to": "  for (const [S, h] of Object.entries(doc.scenarioBinding || {})) if (false) p.push(",
     "label": "P1-b: a changed scenario definition no longer re-opens its derived exclusions",
     "kills_with": [
@@ -12905,6 +12905,145 @@
     "command": [
       "node",
       "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-56",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "executed: (exec.scenarios || {})[S] || null",
+    "to": "executed: null",
+    "label": "codex P1-b mech r1 P1-1: the scenario binding no longer covers p1-scenarios.json's executed intent / steps",
+    "kills_with": [
+      "executed tender did not re-open",
+      "its definition / LPs / vectors changed"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-57",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "  const used = st.used.includes('status') ? st.used : [...st.used, 'status'];",
+    "to": "  const used = st.used;",
+    "label": "codex P1-b mech r1 P1-3: the LP's expected status is no longer required to be ESTABLISHED for an exclusion",
+    "kills_with": [
+      "an unevidenced status did not keep the cell required"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-58",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "  const contradicted = vr.failed;",
+    "to": "  const contradicted = st.used.filter((f) => vr.failed.includes(f));",
+    "label": "P1-b: only a contradicted field the entry USES voids the exclusion (a stray kitchen tap / a wrong status no longer voids every exclusion)",
+    "kills_with": [
+      "did not contradict"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-59",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "    if (Array.isArray(e.appliesWhenAny) && !e.appliesWhenAny.length && !((e.context || []).length && (e.context || []).every((c) => SS.CONTEXT[c]))) p.push(",
+    "to": "    if (false) p.push(",
+    "label": "codex P1-b mech r1 P1-4: an empty appliesWhenAny with no validated context (an unconditional exclusion) is accepted",
+    "kills_with": [
+      "an empty appliesWhenAny without context passed"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-60",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.sheetEdit) === v.sheetEdit : unknown) },",
+    "to": "check: (v, ev) => (Array.isArray(ev.formEvents) ? ev.formEvents.some((e) => e.sheetEdit) === v.sheetEdit : Array.isArray(ev.steps) ? ev.steps.some((s) => /sheet-edit/.test(s)) === v.sheetEdit : unknown) },",
+    "label": "codex P1-b mech r1 P1-2: a form action established from the STEP LABELS when no recorder ran",
+    "kills_with": [
+      "a step label alone established sheetEdit"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-61",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "if (!a || a.complete !== true) return unknown;",
+    "to": "if (!a) return unknown;",
+    "label": "P1-b writeFailure: an INCOMPLETE ack log establishes writeFailure=false",
+    "kills_with": [
+      "an incomplete ack log established writeFailure=false"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-62",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "(ev.lpAction.action === v.lpAction && ev.lpAction.ack === true)",
+    "to": "(ev.lpAction.action === v.lpAction)",
+    "label": "P1-b lpAction: an UNACKED recorded action establishes the LP's action",
+    "kills_with": [
+      "an unacked action established lpAction"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-63",
+    "slice": "r3p1",
+    "file": "contract/p1a-journey.emulator.test.mjs",
+    "from": "lpAction, ackLog, formEvents, formStorageAtBoot };",
+    "to": "lpAction, ackLog, formEvents: undefined, formStorageAtBoot };",
+    "label": "codex P1-b mech r1 P1-2: the journey drops the form event recorder — form-action exclusions must become REQUIRED (RED on pending regions), never silently excluded",
+    "kills_with": [
+      "RED cell(s) in the enforced slice"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
+  },
+  {
+    "id": "r3p1-64",
+    "slice": "r3p1",
+    "file": "contract/p1a-journey.emulator.test.mjs",
+    "from": "  const lpAction = { action: create ? 'create' : null, ack: !!create && create.status === 200 };",
+    "to": "  const lpAction = { action: 'kitchenStart', ack: true };",
+    "label": "P1-b lpAction: the journey records an action other than the one it executed — the vector assertion (and every exclusion) must turn RED",
+    "kills_with": [
+      "state vector disagrees with the run's evidence on: lpAction",
+      "RED cell(s) in the enforced slice"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
     ]
   }
 ]

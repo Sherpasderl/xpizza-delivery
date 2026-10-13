@@ -1,22 +1,22 @@
 {
  "_doc": "R3 P1-b — REVIEWED region-level applicability (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). One entry per reviewed region; every other region is REQUIRED. Migrated from P1-a's 66 explicit S1 / x_pizza / new exclusions (regression-locked against contract/p1a-frozen-exclusions.json), each re-expressed as WHEN the region applies over the scenario vector.",
  "scenarioBinding": {
-  "S1": "529ddbe603dc2c4fef2477855a90dfc8b1986e513e88894b81ba4a6921e2a1d5",
-  "S1t-a": "04c6c65d0a94d6631741260fe583f9caaf073e0bfca6c27b0fb4c3a034a6fa20",
-  "S1t-b": "bfe25ff1089f10537cf64217e7390659bd314ece97990e8557978acb2060062c",
-  "S1t-c": "a88ae3e05088dd2485d775959f58b40430456a4f6326aa7ee91b550c6e76fa9e",
-  "S1a-on": "e1d394a7314e09269e2ad34c5f45c97873182692d01bea1d537b84389aad81c9",
-  "S1a-off": "0ec286d15c7de85369867f78ce836017d665ae975a14a4bc5267af1e9c0257aa",
-  "S2": "731e4f76d6073966ad2b2b47371792042f6bf99d0d6444d5211a3d0be0b33a22",
-  "S3": "db251fd0ac3437a3ce4f13e48fc5686f4c526949e8a392f6a90cee58eef978bf",
-  "S4": "afabb775396414405d2179b8cd7ea346f7be1b3410fe39aec041768ca8df81cc",
-  "S13": "6e55ba52239620ed97653d9c87e3db7eb39e084369d7c08e6eeb6efc0df902c2",
-  "S14-omitted": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
-  "S14-empty": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
-  "S14-efectivo": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
-  "S14-bitcoin": "00b80c0cf6f00d75641f9914a59af81c8bdace3623cc33ffc7a52e86fcd9f977",
-  "S17d": "53134eaed6970af73aa4599cce868c83a4dd19a92aff4d4b3e4e58fd5dd019af",
-  "S17p": "9a0af80603c6f061e9813b2515984f8262f72e6762a2f13e356ec5a91caeb50a"
+  "S1": "793d66900ac0faa29dcb2c1b7111a70dc50f62d1b3693b54f60c8d5b5a48a420",
+  "S1t-a": "5e3c2a7ed9f8520ea68cc9c4540c329e6db2dd16568c5a0d3df499d5bace25a8",
+  "S1t-b": "ea93c55e0f66c889dd3f600b2e7a62474c98f45a19cafe9e1e879e97b5722c9a",
+  "S1t-c": "bd67635a2edbfdb669f1635bb88b0159a6b8fd079199ad43db787e7e8f106c5c",
+  "S1a-on": "2941c874009e62e4eed40e5be7148d9715fc7a6199a6cdaee307b235f771403a",
+  "S1a-off": "a5948e355b17d2f87b4e08721bbc572393b07103420d3811e4174cab7068d7b4",
+  "S2": "60680c7c37c3a76258d87a99fe9f125610f4dab1ed7c33aae0a5e693b626dc33",
+  "S3": "74ab9e5a2dafddfdc7affdab43b7a883fec0ae3fd59138d5df2c67a5c4ba2af4",
+  "S4": "c0fccdc3daa4580833e42e7f0e38a42aa0d131e0a4a9458b9703f3bae5f1015d",
+  "S13": "13289f8720f32b3deaa009a630c3d55ddc92dc03644aaed17204f8c0c91c738f",
+  "S14-omitted": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
+  "S14-empty": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
+  "S14-efectivo": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
+  "S14-bitcoin": "4ced72adba957b8c80c17a85fa340713666eb29515bb89ddc56312c7620ae964",
+  "S17d": "f440cacf4e90482ecb10c70d1f58f38d6740789de05b8929efc0e7f368151de2",
+  "S17p": "bd615c7d4a38baad28799abff730a2833e440a6bef6a2bab7a39e18dd037c19b"
  },
  "regions": {
   "xpizza-functions/index.js#onIncomingWhatsApp>anon@self": {
@@ -450,14 +450,13 @@
    "group": "preparing",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenStart"
      ]
     }
    ],
-   "authority": "§2 R9: the preparing message is sent when the kitchen STARTS the order (status → preparing)",
-   "whyFalseExcludes": "before the kitchen starts, there is no preparing message",
+   "authority": "§2 R9: the preparing body is rendered only for the start-transition send",
+   "whyFalseExcludes": "any other action produced this LP — no preparing body",
    "bind": {
     "site": "function renderPreparing({ customerName, etaMinutes, orderType, trackingToken, restaurantId, brand }) {",
     "siteSha": "a4b9515fd32dbf190f693ddf6464fe8f233c366c3892b7a4ede4d79c4f1821fc",
@@ -491,13 +490,12 @@
    "cases": {
     "required": [
      "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S17d|r3_synth|preparing"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|ready",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -508,13 +506,13 @@
      "fulfil": [
       "pickup"
      ],
-     "kitchen": [
-      "ready"
+     "lpAction": [
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "§2 R9 (WhatsApp): the pickup-ready message is sent when a PICKUP order becomes ready (notifyPickupReady: status → ready, order_type pickup)",
-   "whyFalseExcludes": "a delivery order, or one the kitchen has not readied, gets no pickup-ready message",
+   "authority": "§2 R9: the pickup-ready message is sent when a PICKUP order becomes ready (notifyPickupReady)",
+   "whyFalseExcludes": "a delivery order, or an LP not produced by the ready action, observes no pickup-ready send",
    "bind": {
     "site": "result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);",
     "siteSha": "8559dfc8ad37e4f6bc93056573f292a7bcf2caf09930fdefc45c97501778a39f",
@@ -551,14 +549,13 @@
    "group": "preparing",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenStart"
      ]
     }
    ],
-   "authority": "§2 R9: the preparing message is sent when the kitchen STARTS the order (status → preparing)",
-   "whyFalseExcludes": "before the kitchen starts, there is no preparing message",
+   "authority": "§2 R9: the preparing message is sent on the kitchen START transition (notifyPreparing: status → preparing)",
+   "whyFalseExcludes": "any other action produced this LP — no preparing send is observed at it",
    "bind": {
     "site": "result = await whatsapp.sendMessage(order.customer_phone, body, order.restaurant_id);",
     "siteSha": "8559dfc8ad37e4f6bc93056573f292a7bcf2caf09930fdefc45c97501778a39f",
@@ -576,13 +573,12 @@
    "cases": {
     "required": [
      "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S17d|r3_synth|preparing"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|ready",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -1008,17 +1004,16 @@
    }
   },
   "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#empezar": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenStart"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the Empezar status write runs only on the kitchen's start tap — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "function empezar(id) { if (pendingWrites[id] && !pendingWrites[id].error) return; commitStatusWrite(id, 'empezar'); }",
     "siteSha": "68b13b0c29c2c4b3ea016f98ba7e31976f96be7d0a86b9ee733d16ba7b683a53",
@@ -1048,28 +1043,26 @@
    "cases": {
     "required": [
      "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S17d|r3_synth|preparing"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|ready",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#commitStatusWrite@xpizza-kitchen/index.html<script@0>#listo": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the Listo status write runs only on the kitchen's ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "commitStatusWrite(id, 'listo');",
     "siteSha": "4d1291777b79e6ec8543466fef369f3046e3031fcfa1315837369662d4081293",
@@ -1098,14 +1091,14 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -1113,14 +1106,13 @@
    "group": "kitchen",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "writeFailure": [
+      true
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: Reintentar re-sends a FAILED status write (writeFailure, evidenced by a complete ack log)",
+   "whyFalseExcludes": "with no failed write there is nothing to retry",
    "bind": {
     "site": "function retryWrite(id) { const p = pendingWrites[id]; if (p && p.error) commitStatusWrite(id, p.action); }",
     "siteSha": "c07c6f75f26ca1c3e78518bba1b1a74dc9f047c72970ae0391c489d507af305b",
@@ -1148,30 +1140,26 @@
     }
    ],
    "cases": {
-    "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
-    ],
+    "required": [],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
-    ]
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "no P1 scenario reaches it ([{\"writeFailure\":[true]}]) — it applies in P2 scenarios"
    }
   },
   "xpizza-kitchen/index.html<script@0>#entregado@xpizza-kitchen/index.html<script@0>#holdFire": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: Entregado (pickup handed over) runs only on the completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
     "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
@@ -1194,29 +1182,28 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S2|x_pizza|completed",
+     "S17p|r3_synth|completed"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#holdFire@xpizza-kitchen/index.html<script@0>#holdBegin>anon": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the press-and-hold gate fires only on a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "setTimeout(() => holdFire(token), HOLD_COMPLETE_MS);         // fires ONLY if still armed at 700ms",
     "siteSha": "a1d5fb0bfdbd1c9778a06df43033609701e708e5fb3dd3689b5095f9482627bd",
@@ -1239,29 +1226,28 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#headerTap": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: Listo from a header tap runs only on the ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "else if (op === 'prep' || op === 'listo') listo(id);",
     "siteSha": "3321e4970e910ee329974bd7814c827bce28cad102a8f6060f64b359209a5f49",
@@ -1278,29 +1264,28 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#listo@xpizza-kitchen/index.html<script@0>#holdFire": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: Listo from a hold runs only on the ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "else listo(id);                                               // SAME confirmed-write path, exactly once",
     "siteSha": "f0030f9c4adc00ee329fed4982e95f63b22fce9f94cf277792a7388e06ce12fa",
@@ -1323,29 +1308,30 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenStart",
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: a status write runs only on a kitchen start / ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "const from = order ? opState(order) : (action === 'listo' ? 'prep' : 'nuevo');",
     "siteSha": "fa03667b2a006d75369959bac390463a4fe6223a8c307d4e5026123eef73c75c",
@@ -1375,28 +1361,27 @@
    "cases": {
     "required": [
      "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|preparing"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|assigned",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#entregado": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: Entregado runs only on the pickup completion — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "if (!o || o.order_type !== 'pickup' || opState(o) !== 'listo') return;   // ONLY a ready pickup earns",
     "siteSha": "1d6a6a61052966b8727d1b4cedd987d57683d4de407a18a30d63f6fa7115f60f",
@@ -1425,29 +1410,28 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S2|x_pizza|completed",
+     "S17p|r3_synth|completed"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#headerTap": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenStart",
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: a header tap is the start / ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "const op = opState(o);",
     "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
@@ -1477,28 +1461,28 @@
    "cases": {
     "required": [
      "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|preparing"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|assigned",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdBegin": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: a hold begins only on a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "const op = opState(o);",
     "siteSha": "528c71af06824d739457d9302fc3416031da021436bae77b3810a89dbe8d8fca",
@@ -1527,29 +1511,29 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#holdFire": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: a hold fires only on a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "if (o && o.order_type === 'pickup' && opState(o) === 'listo') entregado(id);",
     "siteSha": "b2dfc0fcc82e01dbef3e2e9ab2e206c2acd8e64ebebf36108b688576b79af1f4",
@@ -1578,29 +1562,28 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#listo": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: Listo runs only on the ready action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }",
     "siteSha": "17a74ade0a96600747d729456e991d9b0939acbcc5c9bb3106eadf83e8089f25",
@@ -1629,29 +1612,29 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#setHoldVisual": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "const rest = (o && o.order_type === 'pickup' && opState(o) === 'listo') ? 'Entregado' : 'Completar';",
     "siteSha": "15c3377f3f6a3a567656182812a9c03cfc2bcc14e8330c8d232d012dfeef508b",
@@ -1680,29 +1663,29 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#opState@xpizza-kitchen/index.html<script@0>#startCompletion>anon": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the completion beat runs only after a ready / completion action — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "pendingWrites[id] = { from: opState(order), action: 'completar', skip: true, msg: 'No se pudo completar' };",
     "siteSha": "1aea458b01efba8de552ed38e56e02cd13618d16dde067b91eaf019258ae4daa",
@@ -1731,14 +1714,14 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -1813,17 +1796,17 @@
    }
   },
   "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdBegin": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "setHoldVisual(id, true);",
     "siteSha": "6e23f6ac62cd2c086ae5fca624c8edfd3b42be7523fcffd5216df2601ef612ec",
@@ -1840,29 +1823,29 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdCancel": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "setHoldVisual(activeHold.id, false);",
     "siteSha": "d7a496708f2730ad711648eea8ab408baa2c38044c2c4469115583607a300fd4",
@@ -1879,29 +1862,29 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#setHoldVisual@xpizza-kitchen/index.html<script@0>#holdFire": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the hold visual runs only during a ready / completion hold — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "setHoldVisual(id, false);",
     "siteSha": "34761d369da6dfbafeb140c203c6c59034773d73affec4ddb92806a96d273c58",
@@ -1918,14 +1901,14 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -1966,16 +1949,9 @@
   },
   "xpizza-kitchen/index.html<script@0>#showLog@self": {
    "group": "kitchen",
-   "appliesWhenAny": [
-    {
-     "kitchen": [
-      "started",
-      "ready"
-     ]
-    }
-   ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "appliesWhenAny": [],
+   "authority": "scenario definition: the Historial log opens only on a tap on the ticket log button",
+   "whyFalseExcludes": "no log tap (established by the KDS event recorder) → the log never opens",
    "bind": {
     "site": "function showLog(event, id) {",
     "siteSha": "9092ac657d164afff45c5405fb31f94a8ac6ef0d5c18107356b5823fb48ac31f",
@@ -1991,30 +1967,30 @@
     }
    ],
    "cases": {
-    "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
-    ],
+    "required": [],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
-    ]
-   }
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (kds-no-log-tap): excluded only when the context is established; required otherwise"
+   },
+   "context": [
+    "kds-no-log-tap"
+   ]
   },
   "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady",
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the completion beat follows a ready / completion write — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "else if (action === 'listo') startCompletion(id);  // DELIVERY (+ non-pickup): local beat only",
     "siteSha": "4b7d35e3b01706954c55ffa5daedad1640497b977098525a5703bd18f085296f",
@@ -2043,29 +2019,28 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#entregado": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "completePickup"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the completion beat follows Entregado — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "startCompletion(id);",
     "siteSha": "2c0ca3451333184c8f7c43c6ec54e94e09796e37907c358cb9f79989b39eaac6",
@@ -2094,29 +2069,27 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S2|x_pizza|completed",
+     "S17p|r3_synth|completed"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#startCompletion@xpizza-kitchen/index.html<script@0>#listo": {
-   "group": "kitchen",
+   "group": "kitchen-action",
    "appliesWhenAny": [
     {
-     "kitchen": [
-      "started",
-      "ready"
+     "lpAction": [
+      "kitchenReady"
      ]
     }
    ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "authority": "scenario definition: the completion beat follows Listo — the action that produced this LP (lpAction: the runner's recorded executed action + the writer's ack)",
+   "whyFalseExcludes": "an LP produced by any other action does not run this kitchen-action code",
    "bind": {
     "site": "if (o && opState(o) === 'listo') { if (o.order_type !== 'pickup') startCompletion(id); return; }",
     "siteSha": "17a74ade0a96600747d729456e991d9b0939acbcc5c9bb3106eadf83e8089f25",
@@ -2145,29 +2118,22 @@
    ],
    "cases": {
     "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
+     "S1|x_pizza|ready",
+     "S2|x_pizza|ready",
+     "S17d|r3_synth|ready"
     ],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
     ]
    }
   },
   "xpizza-kitchen/index.html<script@0>#updateHeaderRing@xpizza-kitchen/index.html<script@0>#paintItemCheck": {
    "group": "kitchen",
-   "appliesWhenAny": [
-    {
-     "kitchen": [
-      "started",
-      "ready"
-     ]
-    }
-   ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "appliesWhenAny": [],
+   "authority": "scenario definition: the header ring repaints only on an item check-off tap",
+   "whyFalseExcludes": "no item tap (established by the KDS event recorder) → no repaint",
    "bind": {
     "site": "updateHeaderRing(card, id);",
     "siteSha": "d6c01680a966bed612b4ce348738481734b137637d8e09a761761d1ad009f491",
@@ -2182,17 +2148,17 @@
     }
    ],
    "cases": {
-    "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
-    ],
+    "required": [],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
-    ]
-   }
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (kds-no-item-check): excluded only when the context is established; required otherwise"
+   },
+   "context": [
+    "kds-no-item-check"
+   ]
   },
   "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon@self": {
    "group": "scheduled",
@@ -2231,16 +2197,9 @@
   },
   "xpizza-kitchen/sherpa-client.js#sfetch>anon@self": {
    "group": "kitchen",
-   "appliesWhenAny": [
-    {
-     "kitchen": [
-      "started",
-      "ready"
-     ]
-    }
-   ],
-   "authority": "scenario definition: kitchen-action code (start / ready / hold / complete / item check / log / its HTTP) runs only when the kitchen ACTS on the ticket",
-   "whyFalseExcludes": "a ticket the kitchen has not acted on runs none of it",
+   "appliesWhenAny": [],
+   "authority": "scenario definition: the KDS HTTP response handler runs only for a KDS HTTP request",
+   "whyFalseExcludes": "no KDS HTTP request (established by the KDS fetch recorder) → no response to handle",
    "bind": {
     "site": "function (v, k) { h[k] = v; }",
     "siteSha": "eb2c2835d47e06c72060f24e2adaf943abca43c681204d44b8b3e05a124b27ca",
@@ -2268,17 +2227,17 @@
     }
    ],
    "cases": {
-    "required": [
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned",
-     "S2|x_pizza|ready"
-    ],
+    "required": [],
     "excluded": [
      "S1|x_pizza|new",
-     "S1|la_musa|new",
-     "S1a-on|x_pizza|new"
-    ]
-   }
+     "S1|x_pizza|preparing",
+     "S1t-a|x_pizza|assigned"
+    ],
+    "note": "decided by run context (kds-no-http): excluded only when the context is established; required otherwise"
+   },
+   "context": [
+    "kds-no-http"
+   ]
   },
   "xpizza-orders/index.html#renderStage2Summary@xpizza-orders/index.html<script@2>#applyRedeemQuoteToTotals": {
    "group": "redeem",

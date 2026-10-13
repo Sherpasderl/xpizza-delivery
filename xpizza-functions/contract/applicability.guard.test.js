@@ -102,10 +102,64 @@ ok('negative: a reviewed case that does not evaluate as stated → RED');
 { // run evidence: established → excluded; unknown → required; contradicted → RED-worthy
   const ex = 'xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady';
   const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' };
-  const evOk = { persisted: { restaurant_id: 'x_pizza', order_type: 'delivery', payment_method: 'cash', status: 'new' }, kdsActions: [], routed: [], steps: [] };
+  const evOk = { persisted: { restaurant_id: 'x_pizza', order_type: 'delivery', payment_method: 'cash', status: 'new' }, lpAction: { action: 'create', ack: true }, kdsActions: [], kdsEvents: [], routed: [], steps: [] };
   assert.strictEqual(RA.runDecision(doc, ex, cell, evOk, paths).outcome, 'excluded', FAIL('an established exclusion did not apply'));
-  assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, kdsActions: undefined }, paths).outcome, 'required', FAIL('an unestablished field did not keep the cell required'));
+  assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, lpAction: undefined }, paths).outcome, 'required', FAIL('an unestablished field did not keep the cell required'));
   assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, persisted: { ...evOk.persisted, order_type: 'pickup' } }, paths).outcome, 'contradicted', FAIL('contradicting evidence was not reported'));
+  // lpAction: an UNACKED action, or a different recorded action, is never established
+  assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, lpAction: { action: 'create', ack: false } }, paths).outcome, 'contradicted', FAIL('an unacked action established lpAction'));
 }
-ok('run evidence: established → excluded; a field this run cannot establish → the cell stays REQUIRED; contradicting evidence → contradicted (RED)');
+ok('run evidence: established → excluded; a field this run cannot establish → the cell stays REQUIRED; contradicting evidence (incl. an unacked action) → contradicted (RED)');
+{ // codex mech r1 P1-3: the LP's expected STATUS is asserted for EVERY exclusion — persisted "ready" at LP new (an empty
+  // KDS recorder) contradicts; no persisted status → unknown → required
+  const ex = 'xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#notifyPickupReady';
+  const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' };
+  const evOk = { persisted: { restaurant_id: 'x_pizza', order_type: 'delivery', payment_method: 'cash', status: 'ready' }, lpAction: { action: 'create', ack: true }, kdsActions: [], kdsEvents: [] };
+  const d = RA.runDecision(doc, ex, cell, evOk, paths);
+  assert.ok(d.outcome === 'contradicted' && /status/.test(d.reason), FAIL(`a persisted status "ready" at LP new did not contradict (${JSON.stringify(d)})`));
+  const { status, ...noStatus } = evOk.persisted;
+  assert.strictEqual(RA.runDecision(doc, ex, cell, { ...evOk, persisted: noStatus }, paths).outcome, 'required', FAIL('an unevidenced status did not keep the cell required'));
+  // every LP vector carries an in-domain expected status
+  for (const S of Object.keys(paths.scenarios)) for (const b of paths.scenarios[S].brands || paths.defaultBrands) for (const [lp, v] of Object.entries(SS.vectorsOf(S, b, paths))) assert.ok(SS.FIELDS.status.includes(v.status), FAIL(`${S}|${b}|${lp} has no in-domain expected status (${v.status})`));
+}
+ok('status (codex P1-3): every LP has an explicit expected status from its effects; a persisted status that disagrees → contradicted for every exclusion; none persisted → required');
+{ // codex mech r1 P1-2: form-action fields come from the OBSERVED recorder; a step LABEL alone never establishes them
+  const v = SS.vectorOf('S1', 'x_pizza', 'new', paths);
+  assert.ok(SS.CHECKS.sheetEdit.check(v, { steps: ['form.cart-sheet-edit'] }).unknown, FAIL('a step label alone established sheetEdit'));
+  assert.strictEqual(SS.CHECKS.sheetEdit.check(v, { formEvents: [{ type: 'click', sheetEdit: true }] }), false, FAIL('an observed sheet edit did not contradict sheetEdit=false'));
+  assert.ok(SS.CHECKS.restore.check(v, { formEvents: [] }).unknown, FAIL('restore established without the boot storage'));
+  assert.strictEqual(SS.CHECKS.restore.check(v, { formEvents: [], formStorageAtBoot: ['xp_order_snapshot'] }), false, FAIL('a snapshot in storage at boot did not contradict restore=false'));
+  // writeFailure: only a COMPLETE ack log establishes it
+  assert.ok(SS.CHECKS.writeFailure.check(v, { ackLog: { complete: false, failures: 0 } }).unknown, FAIL('an incomplete ack log established writeFailure=false'));
+  assert.strictEqual(SS.CHECKS.writeFailure.check(v, { ackLog: { complete: true, failures: 1 } }), false, FAIL('a failed write did not contradict writeFailure=false'));
+  assert.ok(SS.CHECKS.lpAction.check(v, { steps: ['form.pay'] }).unknown, FAIL('a step label established lpAction'));
+}
+ok('action evidence (codex P1-2): step labels never establish a form action / lpAction; observed events, boot storage and a failed write contradict; an incomplete ack log → unknown');
+{ // codex mech r1 P1-1: the binding covers p1-scenarios.json's EXECUTED definition — the tender 50000 → 100000 change
+  const exec = JSON.parse(fs.readFileSync(path.join(__dirname, 'p1-scenarios.json'), 'utf8'));
+  const e2 = JSON.parse(JSON.stringify(exec)); const k = Object.keys(e2.scenarios).find((S) => e2.scenarios[S].intent && 'tenderCents' in e2.scenarios[S].intent);
+  assert.ok(k, FAIL('no executed scenario carries an intent tender to perturb'));
+  e2.scenarios[k].intent.tenderCents = e2.scenarios[k].intent.tenderCents === 100000 ? 50000 : 100000;
+  assert.ok(RA.problems(doc, regionsDoc, paths, e2).some((p) => p.startsWith(`scenario ${k}: its definition`)), FAIL(`changing ${k}'s executed tender did not re-open its exclusions`));
+  const e3 = JSON.parse(JSON.stringify(exec)); e3.scenarios[k].steps = [...(e3.scenarios[k].steps || []), 'form.extra-step'];
+  assert.ok(RA.problems(doc, regionsDoc, paths, e3).some((p) => p.startsWith(`scenario ${k}: its definition`)), FAIL(`changing ${k}'s executed steps did not re-open its exclusions`));
+}
+ok('scenario binding (codex P1-1): a change to the EXECUTED intent (tender 50000 ↔ 100000) or steps in p1-scenarios.json re-opens the scenario (RED)');
+{ // codex mech r1 P1-4: an empty appliesWhenAny needs a nonempty validated context; context decides per run
+  const k = Object.keys(doc.regions).find((r) => !doc.regions[r].appliesWhenAny.length && (doc.regions[r].context || []).includes('single-live-order'));
+  assert.ok(k, FAIL('no single-live-order context entry to exercise'));
+  const d = clone(); delete d.regions[k].context;
+  assert.ok(RA.problems(d, regionsDoc, paths).some((p) => p.startsWith(`${k}: an empty appliesWhenAny needs a nonempty`)), FAIL('an empty appliesWhenAny without context passed (an unconditional exclusion)'));
+  const d2 = clone(); d2.regions[k].context = ['no-such-context'];
+  assert.ok(RA.problems(d2, regionsDoc, paths).some((p) => p.startsWith(`${k}: an empty appliesWhenAny needs a nonempty`)), FAIL('an unvalidated context passed'));
+  const cell = { S: 'S1', brand: 'x_pizza', lp: 'new' };
+  const ev = { persisted: { restaurant_id: 'x_pizza', order_type: 'delivery', payment_method: 'cash', status: 'new' }, lpAction: { action: 'create', ack: true }, kdsActions: [], kdsEvents: [], kdsHttp: [], routed: [] };
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev, kdsTickets: 1 }, paths).outcome, 'excluded', FAIL('a single live order (established) did not exclude'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, { ...ev, kdsTickets: 2 }, paths).outcome, 'required', FAIL('2 tickets did not keep the context region required'));
+  assert.strictEqual(RA.runDecision(doc, k, cell, ev, paths).outcome, 'required', FAIL('an unestablished ticket count did not keep the region required'));
+  const kl = `xpizza-kitchen/index.html<script@0>#showLog@self`;
+  assert.strictEqual(RA.runDecision(doc, kl, cell, { ...ev, kdsEvents: [{ type: 'click', logTap: true }] }, paths).outcome, 'required', FAIL('a log tap did not keep showLog required'));
+  assert.strictEqual(RA.runDecision(doc, kl, cell, ev, paths).outcome, 'excluded', FAIL('no log tap did not exclude showLog'));
+}
+ok('context (codex P1-4): an empty condition without a nonempty validated context → RED; single-live-order established → excluded, 2 tickets / unknown → required; a recorded log tap keeps showLog required');
 console.log(`\nr3-applicability guard: OK (${n})`);
