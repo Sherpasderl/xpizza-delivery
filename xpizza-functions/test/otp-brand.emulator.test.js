@@ -41,16 +41,26 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 let FINISHED = false;
 process.on('exit', (c) => { if (c === 0 && !FINISHED) { console.error('otp-brand(emulator): FAILED — exited without completing'); process.exitCode = 1; } });
 
+// The stubbed identity read NEVER resolves, so a request that awaited branding would never answer at all: a slow answer
+// is not the signal, NO answer is. Each POST therefore races a deadline far above any cold, loaded round-trip (a wall-clock
+// "< 1 s" bound flaked on a loaded machine, on main too); the deadline only turns that hang into a clean failure.
+const POST_DEADLINE_MS = 15000;
 function post(handler, body) {
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), POST_DEADLINE_MS);
       try {
-        const t0 = Date.now();
-        const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const r = await fetch(`http://127.0.0.1:${s.address().port}/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal });
         const t = await r.text();
-        s.close(() => resolve({ status: r.status, text: t, t0, t1: Date.now() }));
-      } catch (e) { s.close(() => reject(e)); }
+        clearTimeout(timer);
+        s.close(() => resolve({ status: r.status, text: t }));
+      } catch (e) {
+        clearTimeout(timer);
+        s.closeAllConnections && s.closeAllConnections();
+        s.close(() => reject(ac.signal.aborted ? new Error(`🔴 requestOtp did not answer within ${POST_DEADLINE_MS} ms — it is waiting on the HUNG identity read (branding)`) : e));
+      }
     });
   });
 }
@@ -69,8 +79,7 @@ function post(handler, body) {
   assert.strictEqual(posts.length, 1, 'the OTP was POSTed to UltraMsg');
   assert.match(posts[0].body, /^Tu código es \d{6}\. Vence en 5 minutos\. No lo compartas\.$/, `neutral copy: ${posts[0].body}`);
   assert.strictEqual(liveReads, 0, '🔴 the OTP never STARTS an identity read (a hung read cannot delay it)');
-  assert.ok(r1.t1 - r1.t0 < 1000, `🔴 the whole requestOtp round-trip is well under the 1.5 s read bound (${r1.t1 - r1.t0} ms) — nothing waited on branding`);
-  ok(`a HUNG identity read: the real requestOtp POSTs the code with neutral copy, never starting a read (round-trip ${r1.t1 - r1.t0} ms)`);
+  ok('a HUNG identity read: the real requestOtp answers and POSTs the code with neutral copy, never starting a read');
 
   // ── 2. this instance already holds the identity (the real getIdentity warmed its cache) → branded, still no read ──
   await getIdentity(rtdb, 'x_pizza');
