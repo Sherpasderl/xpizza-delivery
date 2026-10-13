@@ -2720,9 +2720,11 @@ function renderMenu(){
   /* 1D add-product B — a LAUNCHER card: the same card, priced by the shared rule ("L {min}" / "desde L {min}"). Its "+"
      OPENS the picker — a launcher is never added to the cart itself. Its count is the TOTAL of its choices in the cart
      (paintLauncherCard); the stepper's "+" opens the picker again and its "−" opens the cart, where each choice has its
-     own stepper (which choice to remove is the customer's call, not the card's). */
-  const launcherCard = p => `
-    <div class="pizza-card" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
+     own stepper (which choice to remove is the customer's call, not the card's). The card's FIRST paint is derived from
+     the cart too (codex P2-1): a restored cart (payment return, self-update) shows the total in the badge at once — at 0
+     the markup is byte-identical to the bare card. */
+  const launcherCard = p => { const n = cardQty(p.id); return `
+    <div class="pizza-card${n > 0 ? ' has-items' : ''}" id="card-${safeText(p.id)}" data-act="open" data-id="${safeText(p.id)}">
       <div class="pizza-photo" style="background:${safeImgUrl(p.img) ? '#000' : safeColor(p.color, '#C8321A')}">
         ${safeImgUrl(p.img)
           ? `<img class="pizza-photo-img" src="${safeText(safeImgUrl(p.img))}" alt="${safeText(p.name)}" loading="lazy" style="display:block">`
@@ -2731,13 +2733,13 @@ function renderMenu(){
         <div class="qty-overlay" data-stop="1">
           <div class="qty-controls" id="qty-controls-${safeText(p.id)}">
             <button class="qty-ctrl-btn" data-act="dec" data-id="${safeText(p.id)}" id="minus-${safeText(p.id)}" aria-label="Ver tu pedido">−</button>
-            <span class="qty-ctrl-num" id="qty-${safeText(p.id)}">0</span>
+            <span class="qty-ctrl-num" id="qty-${safeText(p.id)}">${n}</span>
             <button class="qty-ctrl-btn" data-act="inc" data-id="${safeText(p.id)}" aria-label="Agregar otra">+</button>
           </div>
-          <div class="qty-badge" id="qty-badge-${safeText(p.id)}" style="display:none" data-act="badge" data-id="${safeText(p.id)}">
-            <span id="qty-badge-num-${safeText(p.id)}">1</span>
+          <div class="qty-badge" id="qty-badge-${safeText(p.id)}" style="display:${n > 0 ? 'flex' : 'none'}" data-act="badge" data-id="${safeText(p.id)}">
+            <span id="qty-badge-num-${safeText(p.id)}">${n > 0 ? n : 1}</span>
           </div>
-          <button class="qty-add-btn" id="qty-add-${safeText(p.id)}" aria-label="Elegir" data-act="open" data-id="${safeText(p.id)}">+</button>
+          <button class="qty-add-btn" id="qty-add-${safeText(p.id)}"${n > 0 ? ' style="display:none"' : ''} aria-label="Elegir" data-act="open" data-id="${safeText(p.id)}">+</button>
         </div>
       </div>
       <div class="pizza-card-body">
@@ -2747,7 +2749,7 @@ function renderMenu(){
           <span class="pizza-card-price">${safeText(GroupPicker.priceText(VARIANT_ITEMS[p.id], MENU) || '—')}</span>
         </div>
       </div>
-    </div>`;
+    </div>`; };
   const card = p => (itemIsLauncher(p) ? launcherCard(p) : plainCard(p));
   document.getElementById('menu-individual').innerHTML = indiv.map(card).join('');
   document.getElementById('menu-ny').innerHTML = ny.map(card).join('');
@@ -4897,8 +4899,10 @@ function toggleReceiptSummary(){
    long id). The token comes from the createOrder 200 / the online return's `paid` state; it lives HERE, never on
    currentOrder (the POST body). */
 let __confirmTrackingToken = null;
+let __orderNumberState = null;   // what the line shows now: 'pending' | 'number' | 'hidden'
 function paintOrderNumber(state, n){
   const el = document.getElementById('order-id-display'); if(!el) return;
+  __orderNumberState = state;
   if(state === 'number'){ el.style.display = ''; el.textContent = 'Orden #' + n; return; }
   if(state === 'pending'){
     el.style.display = ''; el.textContent = 'Orden # ';
@@ -4912,7 +4916,12 @@ const __orderNumber = (window.OrderNumber && typeof window.OrderNumber.createOrd
   ? window.OrderNumber.createOrderNumber({ base: 'https://xpizza-delivery-default-rtdb.firebaseio.com',
       read: (trackingUrl) => fetch(trackingUrl, { cache: 'no-store' }), setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), paint: paintOrderNumber })
   : { start(){ paintOrderNumber('hidden'); }, stop(){} };
-window.addEventListener('pagehide', () => { try { __orderNumber.stop(); } catch(_){} });
+// Leaving the page stops the poll — and a still-pending line is HIDDEN (codex P2-2): a page restored from the back-forward
+// cache would otherwise show "asignando número…" forever, with nothing left to fill it. A number already shown stays.
+window.addEventListener('pagehide', () => {
+  try { __orderNumber.stop(); } catch(_){}
+  if (__orderNumberState === 'pending') paintOrderNumber('hidden');
+});
 // The tracking token of a createOrder 200 ({ok, order_id, tracking_token}); a scheduled answer has none. Bounded, so a
 // slow body can never hold the confirmation; any doubt → null (the line hides).
 async function confirmTokenOf(res){

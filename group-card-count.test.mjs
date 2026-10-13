@@ -86,11 +86,12 @@ for (const b of BRANDS) {
   await click(w, w.document.body);
   assert.ok(!controls.classList.contains('visible') && shown(badge) && $(w, `qty-badge-num-${b.L}`).textContent === '1', `${b.dir}: outside tap → the badge shows 1`);
 
-  // a menu re-render keeps the count (the live-menu re-sync repaints a launcher through its choices)
+  // a menu re-render keeps the count: the card's FIRST paint is derived from the cart (codex P2-1) — the collapsed badge
   w.liveMenuRenderAll(); await settle();
-  assert.strictEqual($(w, `qty-${b.L}`).textContent, '0', `${b.dir}: premise — the bare re-render draws 0`);
+  assert.strictEqual($(w, `qty-${b.L}`).textContent, '1', `${b.dir}: the bare re-render already draws the count`);
+  assert.ok(shown($(w, `qty-badge-${b.L}`)) && $(w, `qty-badge-num-${b.L}`).textContent === '1' && !shown($(w, `qty-add-${b.L}`)), `${b.dir}: …as the badge, never the bare "+"`);
   w.cartLines().forEach((l) => w.chg(l.key, 0)); await settle();
-  assert.strictEqual($(w, `qty-${b.L}`).textContent, '1', `${b.dir}: the re-sync repaints the launcher card's count`);
+  assert.strictEqual($(w, `qty-${b.L}`).textContent, '1', `${b.dir}: the re-sync keeps the launcher card's count`);
 
   // the last one removed in the cart → back to the bare "+"
   w.openCartReview(); await settle();
@@ -113,6 +114,25 @@ for (const b of BRANDS) {
   ok(`${b.dir}: a non-group card keeps its own stepper ("+" adds, "−" removes, no cart sheet)`);
 }
 
+// codex P2-1 — the REAL payment-return restore ("Volver a intentar" after a cancelled hosted payment): the customer had two
+// choices in the cart; the fresh page rebuilds the cart from the stash, and the launcher card shows 2 at once
+const STASH = { 'xpizza-orders': 'xpizza_pending_pay', 'la-musa-orders': 'lamusa_pending_pay' };
+for (const b of BRANDS) {
+  const a = loadForm(b.dir); await settle(); await b.setup(a);
+  a.chg(b.A, 1); a.chg(b.B, 1); await settle();
+  assert.strictEqual($(a, `qty-${b.L}`).textContent, '2', `${b.dir}: premise — 2 in the cart before paying`);
+  const snap = JSON.parse(JSON.stringify(a.snapshotForm()));
+  const w = loadForm(b.dir); await settle(); await b.setup(w);
+  assert.strictEqual($(w, `qty-${b.L}`).textContent, '0', `${b.dir}: premise — a fresh page starts at 0`);
+  w.localStorage.setItem(STASH[b.dir], JSON.stringify({ order_id: 'o_restore', ts: Date.now(), form: snap }));
+  w.restoreOrderForm(); await settle();
+  assert.strictEqual(w.cartItemCount(), 2, `${b.dir}: premise — the cart is restored (2)`);
+  assert.ok($(w, `qty-badge-num-${b.L}`).textContent === '2' && shown($(w, `qty-badge-${b.L}`)) && !shown($(w, `qty-add-${b.L}`)),
+    `🔴 ${b.dir}: after "Volver a intentar" the launcher card shows 2, not the bare "+"`);
+  assert.ok($(w, `card-${b.L}`).classList.contains('has-items'), `${b.dir}: …and is highlighted`);
+  ok(`${b.dir}: payment-return restore ("Volver a intentar") — the launcher card shows the restored total (2) at once`);
+}
+
 // La Musa's LIST layout: a group in a list category counts the same way (its row carries the same stepper)
 {
   const dir = 'la-musa-orders'; const B = BRAND[dir];
@@ -132,6 +152,9 @@ for (const b of BRANDS) {
   assert.ok(!shown($(w, 'qty-add-soda_grp')) && $(w, 'qty-controls-soda_grp').classList.contains('visible'), 'list row: the stepper shows the total');
   await click(w, $(w, 'qty-controls-soda_grp').querySelector('[data-act="dec"]'));
   assert.ok(sheetOpen(w) && $(w, 'qty-soda_grp').textContent === '2', 'list row: "−" opens the cart and removes nothing');
+  w.closeCartReview(); await settle();
+  w.liveMenuRenderAll(); await settle();
+  assert.ok($(w, 'qty-soda_grp').textContent === '2' && $(w, 'qty-controls-soda_grp').classList.contains('visible') && !shown($(w, 'qty-add-soda_grp')), 'list row: a re-render draws the total from the cart');
   ok('la-musa-orders (list layout): a group row counts its choices too; "−" opens the cart');
 }
 

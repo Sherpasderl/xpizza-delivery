@@ -249,6 +249,30 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(r.reads.length, n, `${dir}: no read after pagehide`);
     ok(`${dir}: leaving the page (pagehide) stops the poll`);
   }
+  { // codex P2-2 — bfcache: leave while pending (persisted pagehide), come Back (persisted pageshow) → the pending line is
+    // HIDDEN, never a stranded "asignando número…"; and nothing polls
+    const r = await cash(dir, { create: (id) => ({ ok: true, order_id: id, tracking_token: TOKEN }), number: () => res(null) });
+    await wait(80);
+    assert.ok(/asignando/.test(line(r.w)) && visible(display(r.w)), `${dir}: premise — pending`);
+    const ev = (type) => { const e = new r.w.Event(type); Object.defineProperty(e, 'persisted', { value: true }); return e; };
+    r.w.dispatchEvent(ev('pagehide'));
+    const n = r.reads.length;
+    r.w.dispatchEvent(ev('pageshow'));
+    await wait(900);
+    assert.ok(!visible(display(r.w)) && !/asignando/.test(s5(r.w)), `${dir}: after Back the pending line is hidden`);
+    assert.ok(!s5(r.w).includes(r.sent()), `${dir}: …never the long id`);
+    assert.strictEqual(r.reads.length, n, `${dir}: …and nothing polls`);
+    ok(`${dir}: bfcache (persisted pagehide → pageshow) — a pending line is hidden, not stranded; no polling`);
+  }
+  { // …while a number already shown STAYS after the same round trip
+    const r = await cash(dir, { create: (id) => ({ ok: true, order_id: id, tracking_token: TOKEN }), number: () => res(47) });
+    await wait(300);
+    assert.strictEqual(line(r.w), 'Orden #47', `${dir}: premise — the number landed`);
+    const ev = (type) => { const e = new r.w.Event(type); Object.defineProperty(e, 'persisted', { value: true }); return e; };
+    r.w.dispatchEvent(ev('pagehide')); r.w.dispatchEvent(ev('pageshow'));
+    assert.strictEqual(line(r.w), 'Orden #47', `${dir}: a shown number survives Back`);
+    ok(`${dir}: bfcache — a number already shown stays ("Orden #47")`);
+  }
   { // the ONLINE return: the `paid` poll state carries the token → the same pending → number; scheduled_paid → no line
     for (const [state, expectLine] of [['paid', 'Orden #47'], ['scheduled_paid', null]]) {
       const B = BRAND[dir];
