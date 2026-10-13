@@ -23,8 +23,8 @@ const IDENTITY_RE = /cloudfunctions\.net\/(createOrder|quoteOrder|chargeOnlineOr
 const KEYWORDS = new Set(['if', 'while', 'for', 'switch', 'return', 'typeof', 'catch', 'function']);
 // bare fetch( targets that are NOT platform functions, by file → the exact first-argument text
 const NON_PLATFORM_FETCH = {
-  'xpizza-orders/index.html': ['AVAIL_URL'],                 // RTDB REST read (public availability), not a function
-  'la-musa-orders/index.html': ['AVAIL_URL'],
+  'xpizza-orders/index.html': ['AVAIL_URL', 'trackingUrl'],  // RTDB REST reads: public availability; the order's public tracking node
+  'la-musa-orders/index.html': ['AVAIL_URL', 'trackingUrl'],  //   (order_tracking/<token>/display_number — the confirmation's kitchen number), not functions
   'xpizza-dispatch-mobile/sw.js': ['e.request'],              // the service worker's own network-first pass-through
   'xpizza-catering/index.html': ["'/'"],                      // Netlify Forms submit to the site itself
 };

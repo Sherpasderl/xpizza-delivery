@@ -1057,6 +1057,9 @@ textarea{resize:none;height:80px;line-height:1.4}
 .success-title{font-family:var(--display);font-size:24px;font-weight:900;color:var(--charcoal);margin-bottom:6px}
 .success-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:24px;letter-spacing:.5px}
 .order-id{font-size:10px;color:var(--border2);margin-bottom:10px;font-family:var(--stamp);letter-spacing:2px}
+.order-num-pending{animation:order-num-pulse 1.4s ease-in-out infinite}
+@keyframes order-num-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.order-num-pending{animation:none}}
 .receipt{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;text-align:left;margin-bottom:12px}
 .acct-sx--rw + .receipt{margin-top:26px}   /* breathing room between the reward card and the "Resumen del pedido" card (guest reward-card only) */
 .receipt-head{background:var(--surface);padding:14px 16px;font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold-dk);border-bottom:1px solid var(--border)}
@@ -1471,6 +1474,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="availability-reducer.js"></script>
 <script src="form-safe-render.js"></script>
 <script src="form-group-picker.js"></script>
+<script src="form-order-number.js"></script>
 <script src="form-confirm-quote.js"></script>
 <script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
@@ -4410,6 +4414,7 @@ function applyPollState(st, j, orderId, stashedOrder){
       currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
       if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
       if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
+      __confirmTrackingToken = (j && typeof j.tracking_token === 'string') ? j.tracking_token : null;   // the kitchen number's source
       try {
         showSuccess();
         const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
@@ -4673,6 +4678,8 @@ async function submitOrder(paymentStatus){
       });
       if(res.ok){                       // 200, including {idempotent:true}
         orderSubmitting = false;
+        // the kitchen number's source (form-order-number.js) — guarded: a problem here can never turn a created order into a retry
+        try { __confirmTrackingToken = await confirmTokenOf(res); } catch(_) { __confirmTrackingToken = null; }
         showSuccess();
         return;
       }
@@ -4793,6 +4800,7 @@ async function submitOrder(paymentStatus){
 // belongs here. Anything order-specific (cart contents, location pin,
 // payment selection) gets cleared.
 function startAnotherOrder(){
+  __orderNumber.stop();           // this confirmation is over: its number poll must never paint the next one
   window.__pendingOrder = null;   // Layer 1: next distinct order mints a fresh id
   // Reset cart quantities
   Object.keys(qty).forEach(k => { qty[k] = 0; });
@@ -4878,6 +4886,35 @@ function toggleReceiptSummary(){
   const open=b.getAttribute('aria-expanded')==='true';
   b.setAttribute('aria-expanded', open?'false':'true'); body.classList.toggle('receipt-open', !open);
 }
+/* ── THE CONFIRMATION'S ORDER NUMBER (owner 2026-10-12; R3 D19) — the number the kitchen calls out, read from this order's
+   public tracking node once the allocator stamps it (form-order-number.js: pending → "Orden #47", or hidden — never the
+   long id). The token comes from the createOrder 200 / the online return's `paid` state; it lives HERE, never on
+   currentOrder (the POST body). */
+let __confirmTrackingToken = null;
+function paintOrderNumber(state, n){
+  const el = document.getElementById('order-id-display'); if(!el) return;
+  if(state === 'number'){ el.style.display = ''; el.textContent = 'Orden #' + n; return; }
+  if(state === 'pending'){
+    el.style.display = ''; el.textContent = 'Orden # ';
+    const s = document.createElement('span'); s.className = 'order-num-pending'; s.textContent = 'asignando número…'; el.appendChild(s);
+    return;
+  }
+  el.style.display = 'none'; el.textContent = '';
+}
+// Fail-safe: if the module did not load, the line is hidden (never the long id) and nothing polls.
+const __orderNumber = (window.OrderNumber && typeof window.OrderNumber.createOrderNumber === 'function')
+  ? window.OrderNumber.createOrderNumber({ base: 'https://xpizza-delivery-default-rtdb.firebaseio.com',
+      read: (trackingUrl) => fetch(trackingUrl, { cache: 'no-store' }), setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), paint: paintOrderNumber })
+  : { start(){ paintOrderNumber('hidden'); }, stop(){} };
+window.addEventListener('pagehide', () => { try { __orderNumber.stop(); } catch(_){} });
+// The tracking token of a createOrder 200 ({ok, order_id, tracking_token}); a scheduled answer has none. Bounded, so a
+// slow body can never hold the confirmation; any doubt → null (the line hides).
+async function confirmTokenOf(res){
+  try {
+    const j = await Promise.race([res.json(), new Promise((r) => setTimeout(() => r(null), 1500))]);
+    return (j && !j.scheduled && typeof j.tracking_token === 'string') ? j.tracking_token : null;
+  } catch(_){ return null; }
+}
 function showSuccess(){
   showStage('s5',100);
   window.__pendingOrder = null;   // Layer 1: this order is DONE — an identical follow-up cart must mint a fresh id (never reuse a completed order_id → idempotent-return "success" with no new order)
@@ -4890,7 +4927,10 @@ function showSuccess(){
     online:ICON_LOCK+'Pagado en línea · PixelPay',
   };
 
-  document.getElementById('order-id-display').textContent='Orden # '+o.order_id;
+  // The KITCHEN's short number (#47), never the long order id (owner 2026-10-12; R3 D19). Scheduled → no number until
+  // release day → no line. The token is consumed here, so a confirmation reached any other way (no token) hides the line.
+  const __tok = __confirmTrackingToken; __confirmTrackingToken = null;
+  __orderNumber.start((o.scheduled || window.__scheduledFor) ? null : __tok);
   document.getElementById('success-sub').innerHTML=
     (o.scheduled || window.__scheduledFor)
       ? ICON_CLOCK+'Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
