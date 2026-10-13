@@ -114,6 +114,8 @@ function setup(dir) {
 
 function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
   const { createCart } = require(`./${dir}/form-cart.js`);
+  // §3: the REAL shared serial-order module the form loads after form-cart.js (the cart block builds SERIAL from it)
+  const { createSerialOrder } = require(`./${dir}/form-serial-order.js`);
   const cartBlock = grab(html, /const CART = window\.createCart\(\{[\s\S]*?__onCartConflict\(conflicts\)[\s\S]*?\n\}/, 'the cart block');
   const chgFn     = grab(html, /\nfunction chg\(id,d\)\{[\s\S]*?\n\}\n/, 'chg()');
   const calcFn    = grab(html, /\nfunction calcTotal\(\)\{[\s\S]*?\n\}\n/, 'calcTotal()');
@@ -174,6 +176,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
     const refreshPickupGate = () => {}, itemIsLauncher = () => false;
     // 1D add-product B: the REAL shared group rules (cartLines / cartRestore / buildOrder ask them); no groups in this menu
     const GroupPicker = ctx.GroupPicker, VARIANT_ITEMS = {};
+    const createSerialOrder = ctx.createSerialOrder;
     // Collaborators the REAL buildOrder / processPixelPay / restoreOrderForm call. All inert: this suite
     // is about which paths the cart gate covers, not about rendering or networking.
     const redeemAdjustedTotal = () => calcTotal();
@@ -255,7 +258,7 @@ function makeFormWith(dir, html, MENU, EXTRAS, qty, pizzaExtras) {
              optionControl: ${dir === 'xpizza-orders' ? '(eid, pid) => toggleDetailExtra(eid, pid, 0)' : '(eid, pid, d) => chgDetailExtra(eid, pid, d === undefined ? 1 : d)'},
              liveMenu: () => MENU, setMenu: (m, e) => { MENU = m; if (e) EXTRAS = e; } };
   `)({ MENU, EXTRAS, pizzaExtras, qty, window: win, document: doc, notices, fetchCalls,
-       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa', plan, stages, GroupPicker: require(`./${dir}/form-group-picker.js`),
+       rid: dir === 'xpizza-orders' ? 'x_pizza' : 'la_musa', plan, stages, GroupPicker: require(`./${dir}/form-group-picker.js`), createSerialOrder,
        get onFetch() { return ctlRef.onFetch; },
        getStash: () => stash, setStash: (v) => { stash = v; } });
   const ctl = { plan, setPlan: (p) => { plan.length = 0; plan.push(...p); }, onFetch: (fn) => { ctlRef.onFetch = fn; } };
@@ -285,14 +288,21 @@ for (const dir of Object.keys(BRANDS)) {
     ok(`${dir}: NO REGRESSION — clean cart serializes + totals byte-identically to the shipped expression`);
   }
 
-  // ── 2. NO REGRESSION — line ORDER still follows MENU, not insertion ──
+  // ── 2. LINE ORDER — the customer SEES the menu's order; the ORDER serializes in cart insertion order ──
+  // PLAN-menu-ordering §3 deliberately replaced "serialize in MENU order": a merchant's reorder must never change
+  // what an identical cart sends. What the customer sees (cartLines) still follows the menu, and every line and
+  // field is still exactly the old expression's — only their order is now the cart's (cart-serial-order.test.mjs
+  // proves the fingerprints across a menu reorder, a retry and a deploy).
   {
     const { f, MENU, EXTRAS, qty, pizzaExtras } = setup(dir);
     f.chg(MENU[2].id, 1); f.chg(MENU[0].id, 1);        // added LAST-first
-    assert.deepStrictEqual(f.redeemCartItems().map(l => l.name), [MENU[0].name, MENU[2].name],
-      `${dir}: lines must serialize in MENU order regardless of the order they were added`);
-    assert.deepStrictEqual(f.redeemCartItems(), B.oldSerialize(MENU, EXTRAS, qty, pizzaExtras), `${dir}: still identical to the old expression`);
-    ok(`${dir}: NO REGRESSION — MENU ordering preserved (not cart-insertion order)`);
+    assert.deepStrictEqual(f.cartLines().map(l => l.record.name), [MENU[0].name, MENU[2].name],
+      `${dir}: the cart the customer SEES follows the MENU, whatever the order things were added`);
+    assert.deepStrictEqual(f.redeemCartItems().map(l => l.name), [MENU[2].name, MENU[0].name],
+      `${dir}: an order's lines serialize in CART INSERTION order, not menu order (§3)`);
+    assert.deepStrictEqual(f.redeemCartItems(), B.oldSerialize(MENU, EXTRAS, qty, pizzaExtras).reverse(),
+      `${dir}: …and each line is byte-identical to the old expression's, only reordered`);
+    ok(`${dir}: display follows the MENU; the order serializes in cart insertion order (§3)`);
   }
 
   // ── 3. A REMOVED DISH IS NOT DROPPED FROM THE SUBMISSION ──
