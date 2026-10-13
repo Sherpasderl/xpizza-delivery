@@ -106,10 +106,11 @@ try {
   const R = makeFormRouter({ app, rtdb });
   const routed = async (u, i) => {
     const m = /cloudfunctions\.net\/([A-Za-z0-9_]+)/.exec(String(u));
-    // a page's REST read of the database (e.g. the confirmation's order-number poll of order_tracking/<token>) is answered
-    // only once the backend's in-flight triggers have drained: the page runs on VIRTUAL time, the backend on real time — a
-    // read the page issues ≥ 700 ms of page time after a write sees what the backend's ms-scale triggers wrote by then
-    if (!m) { if (/firebaseio\.com/.test(String(u))) await S.drain('rest-read'); return R.respond(String(u), i); }
+    // the confirmation's ORDER-NUMBER read (order_tracking/<token>/display_number.json, form-order-number.js) is answered only
+    // once the backend's in-flight triggers have drained: the page runs on VIRTUAL time, the backend on real time — a read the
+    // page issues ≥ 700 ms of page time after the write sees what the ms-scale allocator wrote by then. ONLY that read: every
+    // other REST read (availability …) is answered as it arrives (codex P1-a rebase note)
+    if (!m) { if (/firebaseio\.com\/order_tracking\/[^/]+\/display_number\.json/.test(String(u))) await S.drain('order-number-read'); return R.respond(String(u), i); }
     const w = await S.writer(`${m[1]}#${calls.length}`, () => R.respond(String(u), i), { served: [] });
     calls.push({ fn: m[1], served: w.store.served.map((x) => ({ versionId: x.versionId, source: x.source })) });
     return w.r;

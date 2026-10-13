@@ -51,4 +51,15 @@ ok('independence: oracle.js imports no reader / page helper (its evidence is int
   assert.ok(C(snap(''), fx(null)).ok && !C(snap('Orden #12'), fx(null)).ok, FAIL('with no stamped number, a hidden line must pass and a shown number must fail'));
 }
 ok('F-NUM at the confirmation: "Orden #<display_number>" when stamped; a wrong number or the long order_id → RED; no stamp → hidden passes, a shown number → RED (D19 fixed: no order_id fallback)');
+{ // codex P1-a rebase note: a LEGITIMATELY hidden number line (nothing stamped) still exposes the confirmation and reaches the
+  // NUM comparator (exposure = the active stage + its receipt, never the number line)
+  const { JSDOM } = require('jsdom'); const { OBSERVABLES } = require('./observables'); const O = OBSERVABLES['form.confirmation'];
+  const dom = new JSDOM('<!doctype html><body><div id="s5" class="stage active"><div id="order-id-display" style="display:none"></div><div id="receipt-items"><div class="receipt-row"><span>1× Pizza</span><span>L 340.00</span></div></div></div></body>');
+  const snap = O.capture({ doc: dom.window.document });
+  assert.ok(snap.exposed.ok, FAIL(`a confirmation with a hidden (unstamped) number line was not exposed: ${JSON.stringify(snap.exposed)}`));
+  assert.ok(O.compare.NUM(snap, { NUM: { value: null }, _meta: { orderId: 'PZX-1' } }).ok, FAIL('the hidden line with nothing stamped did not pass F-NUM'));
+  const gone = new JSDOM('<!doctype html><body><div id="s5" class="stage active"></div></body>');
+  assert.ok(!O.capture({ doc: gone.window.document }).exposed.ok, FAIL('a confirmation without its receipt was exposed'));
+}
+ok('confirmation exposure: the active stage + its receipt — a legitimately hidden number line (nothing stamped) is exposed and passes F-NUM; no receipt → not exposed');
 console.log(`\nr3-comparator guard: OK (${n})`);

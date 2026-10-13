@@ -12815,5 +12815,35 @@
       "node",
       "contract/timer-bounds.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-94",
+    "slice": "r3p1",
+    "file": "contract/observables.js",
+    "from": "[shown(doc, doc.getElementById('receipt-items')), 'its receipt is shown']",
+    "to": "[shown(doc, doc.getElementById('order-id-display')), 'its order reference is shown']",
+    "label": "P1-a rebase note: the confirmation's exposure requires the number line again — a legitimately hidden line never reaches the NUM comparator",
+    "kills_with": [
+      "a confirmation with a hidden (unstamped) number line was not exposed"
+    ],
+    "command": [
+      "node",
+      "contract/comparator.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-95",
+    "slice": "r3p1",
+    "file": "contract/p1a-journey.emulator.test.mjs",
+    "from": "/firebaseio\\.com\\/order_tracking\\/[^/]+\\/display_number\\.json/",
+    "to": "/firebaseio\\.com/",
+    "label": "P1-a rebase note: the drain barrier applies to EVERY page REST read (availability too), not only the order-number read",
+    "kills_with": [
+      "drain barrier is not limited to the order-number read"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
   }
 ]

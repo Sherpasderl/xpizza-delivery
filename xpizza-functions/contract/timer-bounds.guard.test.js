@@ -19,6 +19,11 @@ const j = fs.readFileSync(path.join(__dirname, 'p1a-journey.emulator.test.mjs'),
   assert.deepStrictEqual(confSettles, ['form.confirmation', 'form.pay', 'stability.form'], FAIL(`the exception horizon settles steps other than the confirmation's: ${JSON.stringify(confSettles)}`));
   assert.ok(/formConfirmation: TB\.pages\['xpizza-orders'\]\.exception\.horizonMs/.test(j) && /settled\(form, fhost, HORIZON\.form,/.test(j) && /settled\(kds, khost, HORIZON\.kds,/.test(j) && /pg\.settle\(horizon\)/.test(j) && !/\.settle\(\)/.test(j) && (j.match(/\.settle\(/g) || []).length === 1, FAIL('the journey does not settle every step with a declared horizon'));
 }
+// the drain barrier is the ORDER-NUMBER read only (codex P1-a rebase note): one drain on a page REST read, matching exactly
+// order_tracking/<token>/display_number.json — an availability read is answered as it arrives
+{ const dr = [...j.matchAll(/S\.drain\('([^']+)'\)/g)].map((m) => m[1]); const re = /if \(\/(.+?)\/\.test\(String\(u\)\)\) await S\.drain\('order-number-read'\)/.exec(j);
+  const rx = re && new RegExp(re[1]);
+  assert.ok(dr.filter((x) => /read/.test(x)).length === 1 && rx && rx.test('https://xpizza-delivery-default-rtdb.firebaseio.com/order_tracking/tok_12345678/display_number.json') && !rx.test('https://xpizza-delivery-default-rtdb.firebaseio.com/restaurants/x_pizza/availability.json') && !rx.test('https://xpizza-delivery-default-rtdb.firebaseio.com/order_tracking/tok_12345678.json'), FAIL('the journey\'s drain barrier is not limited to the order-number read')); }
 ok('the enforced journey settles every step with the declared horizon — the standard, or the page exception for exactly the confirmation steps (pay, confirmation, its stability recapture)');
 const clone = () => JSON.parse(JSON.stringify(doc));
 const has = (d, re) => T.check(d).problems.some((p) => re.test(p));

@@ -138,7 +138,9 @@ const payStep = {
 };
 const confirmation = {
   capture: ({ doc }) => ({ html: (doc.getElementById('s5') || {}).innerHTML || '', active: !!doc.querySelector('#s5.stage.active'),
-    exposed: exposedBy([[!!doc.querySelector('#s5.stage.active'), 'the confirmation (#s5) is the active stage'], [shown(doc, doc.getElementById('order-id-display')), 'its order reference is shown']]) }),
+    // exposure = the confirmation stage + its receipt; the number line is NOT a precondition — F-NUM hides it legitimately when
+    // no display_number is stamped, and the NUM comparator decides shown vs hidden (codex P1-a rebase note)
+    exposed: exposedBy([[!!doc.querySelector('#s5.stage.active'), 'the confirmation (#s5) is the active stage'], [shown(doc, doc.getElementById('receipt-items')), 'its receipt is shown']]) }),
   parse(s) {
     const b = frag(s.html); const rowsOf = (sel) => [...b.querySelectorAll(`${sel} .receipt-row`)].map((r) => ({ label: squash(r.children[0] && r.children[0].textContent), value: squash(r.children[1] && r.children[1].textContent), struck: !!(r.children[1] && /line-through/.test(r.children[1].getAttribute('style') || '')), html: r.innerHTML }));
     return { b, items: rowsOf('#receipt-items'), pay: rowsOf('#receipt-payment'), orderId: squash((b.querySelector('#order-id-display') || {}).textContent), sub: squash((b.querySelector('#success-sub') || {}).textContent), text: squash(b.textContent), rw: b.querySelector('#acct-success-rewards') };
