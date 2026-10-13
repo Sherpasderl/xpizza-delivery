@@ -82,6 +82,7 @@ function shiftOpen(uid, shiftId, hash) {
   async function seedBase(ctx) {
     const db = ctx.database();
     await db.ref(`dispatchers/${DISP}`).set({ name: 'D' });
+    await db.ref(`drivers/${DISP}`).set({ name: 'Disp', status: 'off_shift', active: false });   // a driver row for the dispatcher (P1-3 dispatcher-token test isolates the dispatcher check)
     await db.ref(`drivers/${D_EN}`).set({ name: 'EN', status: 'off_shift', active: false });
     await db.ref(`drivers/${D_ABS}`).set({ name: 'ABS', status: 'off_shift', active: false });
     await db.ref(`drivers/${D_SUSP}`).set({ name: 'SU', status: 'off_shift', active: false });
@@ -244,6 +245,10 @@ function shiftOpen(uid, shiftId, hash) {
   await seedPendingTask('oE1');
   await no('svc CANNOT write an arbitrary task field (order_id) — no leaf grant', svc.ref('tasks/oE1_delivery/order_id').set('hijack'));
   await no('svc CANNOT write task type — no leaf grant', svc.ref('tasks/oE1_pickup/type').set('delivery'));
+  // P1-3: the sweeper marker/retry/sweep leaves are DELIVERY-leg only
+  await no('svc CANNOT write retry_count on a PICKUP leg (delivery-leg only)', svc.ref('tasks/oE1_pickup/retry_count').set(1));
+  await no('svc CANNOT write last_swept on a PICKUP leg', svc.ref('tasks/oE1_pickup/last_swept').set(NOW));
+  await no('svc CANNOT write half_claim_since on a PICKUP leg', svc.ref('tasks/oE1_pickup/half_claim_since').set(NOW));
   await no('svc CANNOT write its own driver profile (name)', svc.ref(`drivers/${SVC}/name`).set('svc'));
   await no('svc CANNOT write its own staff_push', svc.ref(`staff_push/${SVC}`).set({ x: 1 }));
   await no('svc CANNOT write a cuadre', svc.ref(`driver_cash/${SVC}/sh/cuadre`).set({ cash_owed: 1, cash_order_count: 1, closed_at: 1 }));
@@ -251,9 +256,29 @@ function shiftOpen(uid, shiftId, hash) {
   await no('svc CANNOT write /orders status', svc.ref('orders/oE2/status').set('delivered'));
   await no('svc CANNOT write /dispatchers', svc.ref(`dispatchers/${SVC}`).set({ name: 'x' }));
   await no('svc CANNOT write /driver_accounts', svc.ref(`driver_accounts/${D_EN}/enabled`).set(false));
-  await ok('svc CAN create a driver_token (shape-valid)', svc.ref('driver_tokens/hashE1').set({ uid: D_EN, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null }));
-  await ok('svc CAN delete a prior driver_token (set null)', svc.ref('driver_tokens/hashE1').set(null));
-  await no('svc CANNOT write a malformed driver_token (missing uid/shift_id)', svc.ref('driver_tokens/hashE2').set({ device_id: 'x' }));
+
+  // P1-2: the reserved identity cannot ESCALATE via self-assignment (even seeded as a task owner it gets no owner/order branch)
+  await no('svc CANNOT set a task owner to the reserved svc-assigner uid (assigned_driver_id validate)', svc.ref('tasks/oE1_delivery/assigned_driver_id').set(SVC));
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.database().ref('tasks/oE3_delivery').set({ order_id: 'oE3', type: 'delivery', status: 'assigned', assigned_driver_id: SVC });
+    await ctx.database().ref('orders/oE3').set({ status: 'out_for_delivery', payment_method: 'cash', total: 100 });
+  });
+  await no('svc owning a task CANNOT write a non-granted task field (order_id) via the owner branch', svc.ref('tasks/oE3_delivery/order_id').set('hijack'));
+  await no('svc owning a delivery task CANNOT write the order status (order owner branch excludes the reserved id)', svc.ref('orders/oE3/status').set('delivered'));
+  await no('svc owning a delivery task CANNOT stamp delivered_by_driver_uid', svc.ref('orders/oE3/delivered_by_driver_uid').set(SVC));
+
+  // P1-3: driver_tokens is BOUND to the shift rotation (same uid points at this hash in the SAME merged update)
+  await ok('svc CAN create a token BOUND to the rotation (drivers/<uid>/ingest_token_hash === hash in the same update)',
+    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'hashE1', 'driver_tokens/hashE1': { uid: D_EN, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null } }));
+  await no('svc CANNOT create an UNBOUND token (no matching drivers rotation in the update)',
+    svc.ref('driver_tokens/hashUnbound').set({ uid: D_EN, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null }));
+  await no('svc CANNOT mint a token for a DISPATCHER uid even if bound',
+    svc.ref().update({ [`drivers/${DISP}/ingest_token_hash`]: 'hashDisp', 'driver_tokens/hashDisp': { uid: DISP, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null } }));
+  await no('svc CANNOT delete a token the driver STILL points to (outside a rotation)', svc.ref('driver_tokens/hashE1').set(null));
+  await ok('svc CAN delete the prior token WITHIN a rotation (drivers now points to a NEW hash in the same update)',
+    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'hashE2', 'driver_tokens/hashE2': { uid: D_EN, shift_id: 'shiftE2', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null }, 'driver_tokens/hashE1': null }));
+  await no('svc CANNOT write a malformed token (missing uid/shift_id)',
+    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'hashBad', 'driver_tokens/hashBad': { device_id: 'x' } }));
 
   await env.cleanup();
   console.log(`\ndriver-eligibility-rules(emulator): OK (${n})`);
