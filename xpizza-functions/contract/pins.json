@@ -1,13 +1,4 @@
 {
  "_doc": "R3 P1 — REVIEWED PINS: a known divergence between a surface and the contract oracle, recorded so the gate stays green WHILE the divergence is exactly as recorded. key = observable|fact|S|brand|lp; observedShape = the comparator's normalized observation. The surface changing to AGREE makes the pin STALE (RED: remove it); changing to anything else is RED. A pin is never an exclusion: the cell is compared on every run.",
- "pins": [
-  {
-   "key": "form.confirmation|NUM|S1|x_pizza|new",
-   "D": "D19 (NEW in P1-a, to confirm)",
-   "audience": "customer",
-   "expected": "F-NUM: display_number if stamped, else order_id — the KDS ticket shows #<display_number>",
-   "observedShape": "Orden # {order_id}",
-   "reason": "The X Pizza confirmation (#order-id-display, showSuccess) prints the long order_id (PZX-…) while the kitchen ticket shows #<display_number>; the display number is stamped by allocateDisplayNumberOnSale after createOrder returns and the confirmation never shows it. Owner: forms lane / advisor ruling (product may intend the long id as the customer reference)."
-  }
- ]
+ "pins": []
 }

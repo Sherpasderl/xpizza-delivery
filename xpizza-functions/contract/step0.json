@@ -21,7 +21,7 @@
   "D15": { "outputs": ["cart review sheet line extras"], "status": "OPEN — needs extras (S1a-on, P1-c); in S1 the sheet AGREES (gate A, R13)", "reproducer": null },
   "D16": { "outputs": ["confirmation reward rows"], "status": "OPEN — needs a redemption (S4, P1-d)", "reproducer": null },
   "D17": { "outputs": ["driver cash bar"], "status": "OPEN — pending P1-c (no runtime reproducer yet). Planned check, NOT an observation: the cash bar = Σ persisted cuadre (agreement expected per the plan); D4's pin carries the wrong value. No resolution credit until P1-c runs it at LP delivered", "reproducer": null },
-  "D19": { "outputs": ["XP confirmation #order-id-display (showSuccess)"], "status": "NEW at P1-a (runtime): the confirmation prints \"Orden # <order_id>\" (the long PZX-… id) while F-NUM is the stamped display_number the KDS shows (#<n>). PINNED (contract/pins.json) as to-confirm; customer-facing; owner forms lane / advisor ruling", "reproducer": "p1a-journey" }
+  "D19": { "outputs": ["XP confirmation #order-id-display (showSuccess)"], "status": "FIXED on main (3a cb21bb9, R3-REPIN 8c30ee5; in 6f353ed): the confirmation shows \"Orden #<display_number>\" once stamped, hidden otherwise — never the long order_id. P1-a's pin removed; gate A compares F-NUM at R15 (no fallback)", "reproducer": "p1a-journey" }
  },
  "S14": { "status": "CONFIRMED (runtime, re-observed at P1-a): 'efectivo' → payment_method '' persisted (HTTP 200)", "reproducer": "p0-observations" }
 }

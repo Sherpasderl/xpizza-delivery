@@ -41,4 +41,14 @@ ok('money is integer centavos only; malformed text never parses');
 const src = fs.readFileSync(path.join(__dirname, 'oracle.js'), 'utf8');
 assert.ok(!/require\((['"])\.\.\/\.\.\/xpizza-|require\((['"])\.\.\/[a-z-]+-helpers/.test(src) && !/xpizza-(driver|dispatch|kitchen|orders|dashboard|track)/.test(src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '')), FAIL('the oracle references a reader surface'));
 ok('independence: oracle.js imports no reader / page helper (its evidence is intent, the writer response and persisted records)');
+{ // F-NUM at the confirmation (R15; D19 FIXED on main): "Orden #<display_number>" once stamped, else HIDDEN — never the long id
+  const { OBSERVABLES } = require('./observables'); const C = OBSERVABLES['form.confirmation'].compare.NUM;
+  const snap = (line) => ({ html: `<div id="order-id-display">${line}</div>`, active: true });
+  const fx = (n) => ({ NUM: { value: n }, _meta: { orderId: 'PZX-261013-130000-ABCDEFGH' } });
+  assert.ok(C(snap('Orden #47'), fx(47)).ok, FAIL('the stamped kitchen number was rejected'));
+  assert.ok(!C(snap('Orden #48'), fx(47)).ok, FAIL('a wrong kitchen number passed'));
+  assert.ok(!C(snap('Orden # PZX-261013-130000-ABCDEFGH'), fx(47)).ok && !C(snap('Orden # PZX-261013-130000-ABCDEFGH'), fx(null)).ok, FAIL('the long order_id passed (D19: never shown)'));
+  assert.ok(C(snap(''), fx(null)).ok && !C(snap('Orden #12'), fx(null)).ok, FAIL('with no stamped number, a hidden line must pass and a shown number must fail'));
+}
+ok('F-NUM at the confirmation: "Orden #<display_number>" when stamped; a wrong number or the long order_id → RED; no stamp → hidden passes, a shown number → RED (D19 fixed: no order_id fallback)');
 console.log(`\nr3-comparator guard: OK (${n})`);
