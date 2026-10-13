@@ -278,6 +278,9 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // ---------------------------------------------------------------------------
 const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
+/* serial3:begin require */
+const { readContentStamp } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key
+/* serial3:end require */
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 
@@ -373,6 +376,18 @@ const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-elig
 const extrasCheckFor = async (restaurantId, tables, items) => EI.extrasCheck({ mode: await extrasModeReader().getMode(), tables, items, rid: restaurantId,
   envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });
 /* extras:end wiring */
+/* serial3:begin wiring */
+// §3 FISCAL (PLAN-menu-ordering §3): the factura's lines in the MENU order of the catalog version that PRICED the order — the
+// version the pricing tables' envelope names; its menu_structure.item_order, cached per immutable version, read under a
+// tight deadline (a warm instance does no read). Unavailable → the body's order, logged with the order_id.
+const MO = require('./catalog/menu-order');
+let _menuOrderSource = null;
+function menuOrderSource() {
+  if (!_menuOrderSource) _menuOrderSource = MO.createMenuOrderSource({ readStructure: MO.firestoreReadStructure(getFirestore) });
+  return _menuOrderSource;
+}
+const menuOrderVersionOf = (tables) => { const e = require('./catalog/pricing-tables').envelopeOf(tables); return e ? e.versionId : null; };
+/* serial3:end wiring */
 
 // ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
 // The weekend gate needs CATEGORIES, but the serving path deliberately carries only { menu, extras }
@@ -954,7 +969,10 @@ createOrderApp.all('*', async (req, res) => {
     const ck = orderContentKey({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null });
     if (fields.customer_phone && ck) {
       const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
-      const rec = (await cbase.child(ck).once('value')).val();
+      /* serial3:begin create-stamp */
+      // §3: the prior stamp under the order-independent key OR (a stamp from before §3) the verbatim key — latest wins
+      const rec = await readContentStamp(db, { phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null });
+      /* serial3:end create-stamp */
       phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
       // F3 create-side (SECONDARY, NON-BLOCKING): the PRIOR stamp `rec` may hold a live ONLINE sibling X (same
       // cart) — the rare "X already live when this cash order Y is placed" variant. Raise a dispatcher alert
@@ -1122,12 +1140,20 @@ createOrderApp.all('*', async (req, res) => {
   // rejects (pricing_unavailable) on ANY catalog failure BEFORE this line, so the fiscal path never sees
   // null and never code-prices; this seam must never throw on catalog trouble.
   const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
-  const facturaPriced = redemptionPriced
+  /* serial3:begin factura-cash-head */
+  const facturaPricedBody = redemptionPriced
+  /* serial3:end factura-cash-head */
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
       ? pricedLineItems(body.items, facturaMenu, facturaExtras)
       : { items: null, error: null });
+  /* serial3:begin factura-cash-order */
+  // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
+  // whatever the body's line order) — catalog/menu-order.js; unavailable → body order, logged with this order_id
+  const facturaPriced = await MO.facturaInMenuOrder({ source: menuOrderSource(), restaurantId, versionId: menuOrderVersionOf(pricingTables),
+    orderId, bodyItems: body.items, priced: facturaPricedBody });
+  /* serial3:end factura-cash-order */
 
   // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
   // (no change) when absent/invalid so a bad value never blocks the order. Money in centavos.
@@ -1765,12 +1791,20 @@ chargeOnlineApp.all('*', async (req, res) => {
   // rejects (pricing_unavailable) on ANY catalog failure BEFORE this line, so the fiscal path never sees
   // null and never code-prices; this seam must never throw on catalog trouble.
   const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
-  const facturaPriced = redemptionPriced
+  /* serial3:begin factura-card-head */
+  const facturaPricedBody = redemptionPriced
+  /* serial3:end factura-card-head */
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
       ? pricedLineItems(body.items, facturaMenu, facturaExtras)
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
+  /* serial3:begin factura-card-order */
+  // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
+  // whatever the body's line order) — catalog/menu-order.js; unavailable → body order, logged with this order_id
+  const facturaPriced = await MO.facturaInMenuOrder({ source: menuOrderSource(), restaurantId, versionId: menuOrderVersionOf(pricingTables),
+    orderId, bodyItems: body.items, priced: facturaPricedBody });
+  /* serial3:end factura-card-order */
 
   // (customer_uid was resolved EARLY, above — the redemption prepare + both fingerprint sites need it.)
 

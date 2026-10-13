@@ -25,14 +25,17 @@ test('mint pins what it serializes; pinned keys keep their place, others follow 
   assert.deepStrictEqual(keys(s.order([line('b', 'B')])), ['b'], 'a removed pinned line is simply absent');
 });
 
-test('mint through an existing pin is a fixed point (quote and submit cannot disagree)', () => {
+test('a REPLACEMENT order (pin not live) serializes in its own insertion order, and its mint pins exactly that — quote and submit agree (codex r1 P2)', () => {
   const s = createSerialOrder();
   s.mint([line('a', 'A'), line('b', 'B')]);
   const now = [line('c', 'C'), line('b', 'B'), line('a', 'A')];
-  const before = keys(s.order(now));
-  s.mint(now);
-  assert.deepStrictEqual(keys(s.order(now)), before);
-  assert.deepStrictEqual(s.current(), ['a', 'b', 'c']);
+  assert.deepStrictEqual(keys(s.order(now)), ['a', 'b', 'c'], 'while the pin is live (a retry of the same order) it holds');
+  const quoted = keys(s.order(now, false));                       // the form's pin is NOT live: the cart will mint a new order
+  assert.deepStrictEqual(quoted, ['c', 'b', 'a'], 'not live → the cart\'s own insertion order, the old pin ignored');
+  s.mint(now);                                                    // the submit mints the replacement
+  assert.deepStrictEqual(keys(s.order(now)), quoted, 'the minted pin = what the quote serialized (quote == submit)');
+  assert.deepStrictEqual(s.current(), ['c', 'b', 'a']);
+  assert.deepStrictEqual(keys(s.order([line('a', 'A'), line('c', 'C'), line('b', 'B')])), ['c', 'b', 'a'], 'and a retry of the replacement keeps ITS pin');
 });
 
 test('resume pins the stashed payload order, matched on the fields it carries; clear releases it', () => {

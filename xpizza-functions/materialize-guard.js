@@ -22,7 +22,7 @@
  * inactive-restaurant post-capture posture. Returns true iff the order was held (caller must NOT materialize).
  */
 const SCHED = require('./scheduled-orders');
-const { orderContentKey, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write
+const { orderContentKey, readContentStamp } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)
 
 /* 🔴 Can THIS caller reverse a payment at all? voidOrRefund is the one dep the guard calls without
    checking first, so its absence is the difference between "refunds" and "throws mid-refund". Checked
@@ -258,7 +258,7 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
     const sf = SCHED.normalizeScheduledFor(order.scheduled_for);
     const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
     if (!ck) return false;
-    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();
+    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
     // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
     if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;
     const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();

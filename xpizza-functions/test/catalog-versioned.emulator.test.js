@@ -91,6 +91,45 @@ const buildReader = (codeMap = null) => {
     ok(`MONEY-PROOF ${rid}: publishVersion v1 → reader resolves pointer → byte-identical to code (identity-proven), zero alarms`);
   }
 
+  // ── (1b) §3 FISCAL (codex serialization r1) — the factura's lines in the MENU order of the version that PRICED the order,
+  //        through the PRODUCTION pieces: the real reader's envelope names the version, catalog/menu-order's production
+  //        reader (firestoreReadStructure — the one index.js uses) reads THAT version's meta/menu_structure ──
+  {
+    const MO = require('../catalog/menu-order');
+    const { envelopeOf } = require('../catalog/pricing-tables');
+    const { pricedLineItems } = require('../factura/pricing');
+    const reads = [];
+    const src = MO.createMenuOrderSource({ readStructure: async (rid, v) => { reads.push(`${rid}::${v}`); return MO.firestoreReadStructure(() => db)(rid, v); } });
+    const rid = 'x_pizza';
+    const v1 = await pointerVersionOf(rid);
+    const order1 = V2[rid].structure.item_order;
+    const names = order1.filter((k) => MENU_BY_RESTAURANT[rid][k] > 0);
+    const cart = [{ name: names[6], qty: 1 }, { name: names[0], qty: 2, extras: [{ name: Object.keys(EXTRAS_BY_RESTAURANT[rid])[0] }] }, { name: names[3], qty: 1 }];
+    const byOrder = (o) => cart.slice().sort((a, b) => o.indexOf(a.name) - o.indexOf(b.name));
+    const { resolver } = buildReader();
+    const t1 = await resolver.getPricingTables(rid);
+    assert.strictEqual(envelopeOf(t1).versionId, v1, 'the pricing envelope names the version that priced the order');
+    const viaV1 = await MO.facturaInMenuOrder({ source: src, restaurantId: rid, versionId: envelopeOf(t1).versionId, orderId: 'emu_1', bodyItems: cart, priced: pricedLineItems(cart, t1.menu, t1.extras) });
+    assert.deepStrictEqual(viaV1, pricedLineItems(byOrder(order1), t1.menu, t1.extras), '🔴 v1: the factura lines equal the MENU-ordered body\'s (pre-§3), off the real Firestore structure');
+    // the merchant publishes a REORDER (v2): v1's orders keep v1's order; v2's follow v2
+    const order2 = order1.slice().reverse();
+    await publishAt(rid, { items: V2[rid].items, structure: { ...V2[rid].structure, item_order: order2 }, extras: EXTRAS_BY_RESTAURANT[rid], extraRecords: V2[rid].extras, source_sha: 'v2-reorder' });
+    const v2 = await pointerVersionOf(rid);
+    assert.notStrictEqual(v2, v1, 'premise: a new version is active');
+    const t2 = await buildReader().resolver.getPricingTables(rid);
+    assert.strictEqual(envelopeOf(t2).versionId, v2);
+    const viaV2 = await MO.facturaInMenuOrder({ source: src, restaurantId: rid, versionId: v2, orderId: 'emu_2', bodyItems: cart, priced: pricedLineItems(cart, t2.menu, t2.extras) });
+    assert.deepStrictEqual(viaV2, pricedLineItems(byOrder(order2), t2.menu, t2.extras), 'an order priced on v2 follows v2\'s menu order');
+    const fresh = MO.createMenuOrderSource({ readStructure: MO.firestoreReadStructure(() => db) });
+    assert.deepStrictEqual(await MO.facturaInMenuOrder({ source: fresh, restaurantId: rid, versionId: v1, orderId: 'emu_3', bodyItems: cart, priced: pricedLineItems(cart, t1.menu, t1.extras) }), viaV1,
+      '🔴 an order priced on v1 keeps v1\'s factura after the reorder (a COLD instance reads v1\'s immutable structure)');
+    assert.deepStrictEqual(reads, [`${rid}::${v1}`, `${rid}::${v2}`], 'one read per version; warm hits do no read');
+    // brand-agnostic: la_musa's own version structure (id-keyed) is what the reader returns for it
+    const lmV = await pointerVersionOf('la_musa');
+    assert.deepStrictEqual([...(await src.orderFor('la_musa', lmV, { orderId: 'emu_lm' }))], V2.la_musa.structure.item_order, 'la_musa: its version\'s id-keyed item_order');
+    ok('§3 FISCAL off the REAL catalog: the pricing envelope\'s version → that version\'s menu_structure (production reader) → factura lines in its menu order; a reorder (v2) leaves v1 orders unchanged; la_musa\'s id-keyed order read alike');
+  }
+
   // ── (2) 2c THE FLIP — a diverged published version is now SERVED. This assertion is deliberately the
   //     INVERSE of its pre-flip self: before 2c the parity guard refused a diverged version and served
   //     the in-code table, which was right while code was the source of truth. After the flip the

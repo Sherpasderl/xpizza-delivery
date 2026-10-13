@@ -11,6 +11,9 @@
 //   • a PENDING order keeps its FIRST serialization for its whole life: when the form mints (or resumes) an order_id, the
 //     line order it serialized is pinned beside it, and every later quote and submit for that order applies the pin. A
 //     same-page retry that removed and re-added a line identically still sends [A, B], never [B, A];
+//   • a REPLACEMENT order (the cart changed, so a NEW order_id will be minted) is a fresh order: the form passes
+//     `live = false` while its cart no longer signs as the pending order, so its quote AND its submit both serialize in
+//     the cart's own insertion order, and the mint pins exactly that (codex serialization r1 P2);
 //   • a RESUMED order (payment return) pins the order of the payload it was first sent with (its stash's order.items),
 //     matched line by line on the fields that payload carries — so a stash written by an older, menu-ordered client
 //     resumes byte-identically;
@@ -36,16 +39,18 @@ function serialItemMatches(line, item) {
 
 function createSerialOrder() {
   let pin = null;   // line keys, in the order this pending order first serialized them; null = no pending order
-  // the lines in serialization order: pinned keys first (in pin order), then every other line in insertion order
-  function order(lines) {
+  // the lines in serialization order: pinned keys first (in pin order), then every other line in insertion order.
+  // `live` is the form's answer to "is the pinned order still the one being sent?" — false → insertion order
+  function order(lines, live = true) {
     const list = Array.isArray(lines) ? lines.slice() : [];
-    if (!pin) return list;
+    if (!pin || !live) return list;
     const at = new Map(pin.map((k, i) => [k, i]));
     return list.map((l, i) => ({ l, r: at.has(String(l.key)) ? at.get(String(l.key)) : pin.length + i }))
       .sort((a, b) => a.r - b.r).map((x) => x.l);
   }
-  // a NEW order_id: pin what it serializes now (through any pin already held, so quote and submit cannot disagree)
-  function mint(lines) { pin = order(lines).map((l) => String(l.key)); }
+  // a NEW order_id: pin the cart's insertion order — what its quote already serialized (the form's pin was not live
+  // for a cart that mints), so quote and submit cannot disagree
+  function mint(lines) { pin = (Array.isArray(lines) ? lines : []).map((l) => String(l.key)); }
   // a RESUMED order_id: pin the order of the payload it was first sent with
   function resume(lines, items) {
     const list = Array.isArray(lines) ? lines : [];

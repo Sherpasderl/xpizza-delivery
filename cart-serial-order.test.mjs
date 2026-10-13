@@ -159,14 +159,24 @@ for (const dir of Object.keys(CASES)) {
     assert.deepStrictEqual(quoted[quoted.length - 1], again.items, `🔴 ${dir}: and the retry's quote serializes the pinned order as well`);
     const body = await send(w, sent, 'card');
     assert.deepStrictEqual(fps(body, first.order_id), fps(first, first.order_id), `🔴 ${dir}: the retry's charge fingerprints equal the first build's`);
-    // ── 3. a genuine change mints a new order (pinned order + the new line); completion releases the pin ──
+    // ── 3. a genuine change is a REPLACEMENT order: it establishes its OWN insertion order (codex r1 P2), quote and
+    //       submit alike — the previous order's pin must not carry over; a retry of the replacement keeps ITS pin ──
     w.chg(c.Y, 1); await settle();
+    w.requestServerQuote(); await settle();
+    const replQuote = quoted[quoted.length - 1];
     assert.ok(w.buildOrder());
     const changed = plain(w.eval('currentOrder'));
     assert.notStrictEqual(changed.order_id, first.order_id, `${dir}: a genuine change is a new order`);
-    assert.deepStrictEqual(keysOf(changed.items, RID), keysOf(first.items, RID), `${dir}: …serialized through the pin (no reshuffle)`);
+    assert.deepStrictEqual(keysOf(changed.items, RID), [keyOfDish(w, c.Y, RID), keyOfDish(w, c.X, RID)], `🔴 ${dir}: the REPLACEMENT serializes in its own insertion order [Y, X], not the old order's pin [X, Y]`);
+    assert.deepStrictEqual(replQuote, changed.items, `🔴 ${dir}: …and its quote (taken before the new id was minted) serialized the same [Y, X]`);
+    assert.deepStrictEqual(plain(w.eval('SERIAL.current()')), [String(c.Y), String(c.X)], `${dir}: the replacement's mint pinned [Y, X]`);
+    w.chg(c.Y, -1); await settle(); w.chg(c.Y, 1); await settle();   // a same-page retry of the REPLACEMENT: Y out and back in at the same qty
+    assert.ok(w.buildOrder());
+    const replRetry = plain(w.eval('currentOrder'));
+    assert.strictEqual(replRetry.order_id, changed.order_id, `${dir}: the replacement's retry is the same order`);
+    assert.deepStrictEqual(replRetry.items, changed.items, `🔴 ${dir}: …and keeps the replacement's pin [Y, X]`);
   }
-  ok(`${dir}: a same-page retry (remove + re-add) keeps the same order_id and its FIRST serialization; quote == submit; a genuine change is a new order; completion releases the pin`);
+  ok(`${dir}: a same-page retry (remove + re-add) keeps the same order_id and its FIRST serialization; quote == submit; a genuine change is a REPLACEMENT that serializes in its own insertion order (quote and submit), and its retry keeps its own pin`);
   // ── 3b. the REAL completion: a cash order that succeeds releases the pin with its order_id ──
   {
     const { w, sent } = await boot(dir);

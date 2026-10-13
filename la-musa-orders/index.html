@@ -2224,7 +2224,10 @@ function resolvedCartLines(){
    pending order's first serialization pinned for its whole life (form-serial-order.js). So a merchant's reorder published
    between a quote and the charge, or between a payment and its retry, cannot change an identical cart's fingerprint. */
 const SERIAL = createSerialOrder();
-function serialLines(){ return SERIAL.order(resolvedCartLines()); }
+// codex r1 P2: the pin belongs to ONE pending order — it is live while that order is being resumed, or while the cart
+// still signs as it; a changed cart (it will mint a REPLACEMENT order) serializes in its own insertion order, quote and submit alike
+function serialPinLive(){ if (window.__resumeOrderId) return true; const po = window.__pendingOrder; return !!po && po.sig === cartSig(); }
+function serialLines(){ return SERIAL.order(resolvedCartLines(), serialPinLive()); }
 function cartItems(){ return cartLines().map(l => l.record); }
 // 🔴 RESOLVE AN OPTION THROUGH ITS LINE, NOT THROUGH THE LIVE LIST. `findMenuExtra(eid) || captured`
 // looks equivalent and is not: a RE-PRICED option is still in the live list, so that expression hands

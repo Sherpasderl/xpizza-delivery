@@ -2,7 +2,7 @@
 // F3 double-order guard — pure collision decision + the materialize-side hold (DI'd RTDB). Run: node f3-duplicate-decision.test.js
 const assert = require('assert');
 const { duplicateSiblingDecision, holdIfDuplicateSibling } = require('./materialize-guard');
-const { orderContentKey, rateLimitKey } = require('./order-dedup');
+const { orderContentKey, orderContentKeyVerbatim, readContentStamp, rateLimitKey } = require('./order-dedup');
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
@@ -109,6 +109,44 @@ const orderX = () => ({ order_id: 'X', customer_phone: PHONE, items_text: '1x Pa
     assert.equal(held, false, 'read throw → fail-open (materialize)');
     assert.equal(store['orders/X'].payment_status, 'confirmed', 'X untouched on fail-open');
     ok('read error → FAIL-OPEN (materialize, never hold)');
+  }
+
+  // ── PLAN-menu-ordering §3 (codex serialization r1 P1): the forms now serialize in cart INSERTION order ──
+  {
+    const A = '2x Carnivora (L340) [Pizza 1: Mozzarella | Pizza 2: Pepperoni]', B = '1x Margherita (L250)';
+    const AB = `${A} | ${B}`, BA = `${B} | ${A}`;
+    const args = (t) => ({ phone: PHONE, itemsText: t, orderType: 'delivery', scheduledFor: null });
+    const pathOf = (k) => `recent_order_content/${rateLimitKey(PHONE)}/${k}`;
+    const order = (id, t) => ({ ...orderX(), order_id: id, items_text: t, restaurant_id: 'x_pizza' });
+    assert.equal(orderContentKey(args(AB)), orderContentKey(args(BA)), '[A,B] and [B,A] → the same content key');
+    assert.notEqual(orderContentKeyVerbatim(args(AB)), orderContentKeyVerbatim(args(BA)), 'premise: the pre-§3 key told them apart');
+    // the cash sibling Y was built [A,B]; the late online X was built [B,A] (independently assembled) — and vice versa
+    for (const [yText, xText] of [[AB, BA], [BA, AB]]) {
+      const store = { [pathOf(orderContentKey(args(yText)))]: { at: Date.now(), order_id: 'Y', payment_method: 'cash' }, 'orders/Y': { status: 'new' }, 'orders/X': order('X', xText) };
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', xText), 123), true, `🔴 Y ${yText === AB ? '[A,B]' : '[B,A]'} vs X ${xText === AB ? '[A,B]' : '[B,A]'}: the REAL guard holds the duplicate`);
+      assert.equal(store['orders/X'].payment_status, 'manual_reconciliation');
+    }
+    ok('§3: the same cart in either line order is ONE content key — the real holdIfDuplicateSibling holds the late duplicate both ways');
+    // TRANSITION: Y was stamped by the PREVIOUS deploy (verbatim key, menu-ordered text); X materializes after the deploy
+    {
+      const store = { [pathOf(orderContentKeyVerbatim(args(AB)))]: { at: Date.now() - 60000, order_id: 'Y', payment_method: 'cash' }, 'orders/Y': { status: 'preparing' }, 'orders/X': order('X', AB) };
+      assert.notEqual(orderContentKeyVerbatim(args(AB)), orderContentKey(args(AB)), 'premise: a multi-line legacy stamp sits under a DIFFERENT key');
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', AB), 123), true, '🔴 a LEGACY-stamped live sibling still matches');
+      ok('§3 transition: a sibling stamped under the pre-§3 VERBATIM key still holds the duplicate');
+    }
+    // both stamps present → the LATEST `at` wins (exactly the old single key's "last writer" semantics)
+    {
+      const legacy = pathOf(orderContentKeyVerbatim(args(AB))), canon = pathOf(orderContentKey(args(AB)));
+      const st1 = { [legacy]: { at: 1000, order_id: 'Y', payment_method: 'cash' }, [canon]: { at: 2000, order_id: 'X', payment_method: 'online' }, 'orders/Y': { status: 'new' }, 'orders/X': order('X', AB) };
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(st1) }, 'X', order('X', AB), 123), false, 'the newer canonical stamp (X itself) wins over an older legacy one → no hold, as one shared key would have said');
+      const st2 = { [legacy]: { at: 3000, order_id: 'Y', payment_method: 'cash' }, [canon]: { at: 2000, order_id: 'X', payment_method: 'online' }, 'orders/Y': { status: 'new' }, 'orders/X': order('X', AB) };
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(st2) }, 'X', order('X', AB), 123), true, 'a newer legacy stamp (cash Y) wins → hold');
+      const one = { [pathOf(orderContentKey(args(B)))]: { at: 5, order_id: 'Y', payment_method: 'cash' } };
+      const reads = []; const db = { ref: (p) => ({ once: async () => { reads.push(p); return { val: () => one[p] }; } }) };
+      assert.deepStrictEqual(await readContentStamp(db, args(B)), one[pathOf(orderContentKey(args(B)))]);
+      assert.equal(reads.length, 1, 'a one-line cart has ONE key (canonical === verbatim) → one read');
+      ok('§3: with both stamps present the LATEST `at` wins; a one-line cart costs one read');
+    }
   }
 
   console.log(`\nf3-duplicate-decision.test.js: ${pass} passed`);
