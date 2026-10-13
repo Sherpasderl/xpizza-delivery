@@ -26,8 +26,13 @@ if (!INGEST_URL || !UID) {
   process.exit(1);
 }
 
-// R1 (codex R1-build P1-1): emulator variables that are not ONE coherent local run ⇒ refuse (never half-prod).
-require('../tools/emu-mixed-guard').refuseAnySignal('test-ingest');   // r2 P1-2: posts to a DEPLOYED INGEST_URL — production-only
+// RETIRED FROM PROD (codex S1 r7 P2 / advisor ruling): this script opened/replaced shifts for a caller-supplied
+// uid via unrestricted Admin against PRODUCTION. It is now EMULATOR-ONLY — refuse to run unless the RTDB emulator
+// is targeted, so it can never touch a real driver's shift state again.
+if (!process.env.FIREBASE_DATABASE_EMULATOR_HOST) {
+  console.error('test-ingest is emulator-only: set FIREBASE_DATABASE_EMULATOR_HOST to an RTDB emulator before running.');
+  process.exit(1);
+}
 initializeApp({ databaseURL: 'https://xpizza-delivery-default-rtdb.firebaseio.com' });
 const db = getDatabase();
 
@@ -100,8 +105,8 @@ async function post(token, body) {
     // --- cleanup ---
     await db.ref(`driver_tokens/${HASH}`).remove();
     await db.ref(`drivers/${UID}`).update({
-      current_shift_id: null, location_source: null, current_task_id: null,
-      ingest_token_hash: null, last_location_ts: null, status: 'available'
+      active: false, current_shift_id: null, location_source: null, current_task_id: null,
+      ingest_token_hash: null, last_location_ts: null, status: 'off_shift'
     });
   }
 

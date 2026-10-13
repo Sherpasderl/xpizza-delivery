@@ -170,6 +170,20 @@
     "driver_push_tokens": { ".read": false, ".write": false },
     "driver_tokens":      { ".read": false, ".write": false },
 
+    "driver_accounts": {
+      ".read": false,
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('dispatchers').child(auth.uid).exists())",
+        ".write": false,
+        ".validate": "newData.hasChild('enabled')",
+        "enabled":          { ".validate": "newData.isBoolean()" },
+        "deactivated":      { ".validate": "newData.isBoolean()" },
+        "onboarding_state": { ".validate": "newData.val() === 'pending' || newData.val() === 'profile_submitted' || newData.val() === 'active'" },
+        "grandfathered":    { ".validate": "newData.isBoolean()" },
+        "note":             { ".validate": "newData.isString()" }
+      }
+    },
+
     "client_versions":       { ".read": false, ".write": false, "$app": { ".indexOn": ["last_seen"] } },
     "client_version_limits": { ".read": false, ".write": false, ".indexOn": ["window_start"] },
     "client_version_stats":  { ".read": false, ".write": false },
