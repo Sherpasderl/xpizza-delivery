@@ -3,7 +3,7 @@
 // (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). Every reviewed region entry is fresh (call site, scope,
 // guard / dispatch source, scenario bindings), well-formed (declared fields, in-domain values, contract authority, why
 // false excludes) and its reviewed cases evaluate as stated; the derived exclusions at S1 / x_pizza / new are EXACTLY the
-// frozen P1-a set (66 + int7 detailCtaTap = 67); no absence / display obligation is waived anywhere in P1; gate B agrees.
+// frozen P1-a set (66 + int7 detailCtaTap = 67) — P1-c's R4 / R5 entries are other readers; no absence / display obligation is waived anywhere in P1; gate B agrees.
 // Run: node contract/applicability.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -316,4 +316,42 @@ window.__timer = () => setTimeout(() => openOrderDetailModal('o9'), 0);`;
   assert.ok(n === 61 && noUi.length === 0, FAIL(`dispatch entries ${n} (expected 61); entries still decided on UI events: ${noUi.slice(0, 3)}`));
 }
 ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-preservingly; a detached .click(), a value= rewiring and a timer each ENTER the handler → required; probed + never entered → excluded; UI evidence alone never excludes; no entry is decided on UI events');
+{ // P1-c c1 (R4 driver board + R5 assignment push): the board entries are decided on getDriverOrders' filter, the
+  // atomic delivered writers and the server's terminal task delete; drift in any of them → stale; run evidence can
+  // establish only "never assigned" (an unassigned / delivered LP stays required)
+  const P = 'xpizza-driver/index.html<script@0>'; const D = 'xpizza-driver/xpizza-delivery.js'; const I = 'xpizza-functions/index.js';
+  const board = Object.entries(doc.regions).filter(([, e]) => e.group === 'driverBoard');
+  const push = [`${I}#notifyDriverOnAssignment@self`, `${I}#sendDriverPush@${I}#notifyDriverOnAssignment`];
+  assert.ok(board.length === 22 && board.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ driver: ['assigned', 'reassigned'], terminal: ['none'] }])) && push.every((k) => doc.regions[k] && doc.regions[k].group === 'driverPush'), FAIL(`driver board entries ${board.length} (expected 22) / assignment push entries missing`));
+  const units = require('./census').sources();
+  const edit = (file, from, to) => units.map((u) => { if (u.file !== file) return u; assert.strictEqual(u.code.split(from).length - 1, 1, FAIL(`probe text not exactly once in ${file}: ${from}`)); return { ...u, code: u.code.replace(from, to) }; });
+  // each distinct guard once per probe; a scope guard re-parses only its own unit (the R guards scan every unit)
+  const uniq = new Map(); for (const [, e] of board) for (const g of e.guards) uniq.set(JSON.stringify(g), g);
+  const ownUnit = (g, u) => u.filter((x) => g.scope.startsWith(`${x.file}#`) || g.scope.startsWith(`${x.file.replace(/<script@\d+>$/, '')}#`));
+  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u })).map(([k]) => k)); return board.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
+  const base = staleIn(units); assert.strictEqual(base, 0, FAIL(`${base} driver board entries are stale on the real source`));
+  const drift = [
+    ['the assigned-driver filter removed', edit(D, 'if (t.assigned_driver_id !== driverId) return;\n    if (!grouped[t.order_id])', 'if (!grouped[t.order_id])')],
+    ['completed deliveries kept on the board', edit(P, 'const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);', 'const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders, true);')],
+    ['the idle screen renders a payment row', edit(P, 'syncIdleStats();\n}', 'syncIdleStats(); paymentRowHtml(allOrders, escapeHtml);\n}')],
+    ['a new ORDER_STATUS.DELIVERED writer', units.map((u) => (u.file === 'xpizza-dispatch/index.html<script@0>' ? { ...u, code: u.code + '\nfunction __forceDelivered(id) { return { [\'orders/\' + id + \'/status\']: ORDER_STATUS.DELIVERED }; }' } : u))],
+    ['the server terminal task delete dropped', edit(I, 'await captureDeliveryAttributionAndDelete(db, orderId);', '')],
+  ];
+  for (const [what, u] of drift) { const k = what === 'the idle screen renders a payment row' ? board.filter(([id]) => /paymentRowHtml/.test(id)).length : board.length; const got = staleIn(u); assert.ok(got >= k, FAIL(`${what}: only ${got} of the driver board entries went stale`)); }
+  const pg = doc.regions[push[0]].guards.find((g) => g.kind === 'S' && g.text === 'if (!newDriverId) return;');
+  assert.ok(pg && !AP.guardStale(pg) && AP.guardStale(pg, { units: edit(I, 'if (!newDriverId) return;', 'if (!newDriverId && false) return;') }), FAIL('weakening the assignment push guard did not make it stale'));
+  // run evidence: never assigned (complete log + task records) → excluded; an assigned task → contradicted; unassigned /
+  // delivered LPs cannot be established by evidence (driver ≠ none) → required, never excluded
+  const r = `${D}#getDriverOrders@${P}#renderActiveAndQueue`; const id = board.find(([k]) => /paymentRowHtml@.*renderActiveCard$/.test(k))[0];
+  assert.ok(!doc.regions[r], FAIL('getDriverOrders itself (the filter) must stay REQUIRED'));
+  const ev = (st, tasks, events = [], action = st === 'delivered' ? 'completeDelivery' : 'create') => ({ persisted: { restaurant_id: 'x_pizza', status: st }, tasks, assignLog: { complete: true, events }, lpAction: { action, ack: true } });
+  const at = (S, lp) => ({ S, brand: 'x_pizza', lp });
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'new'), ev('new', { t_pickup: { assigned_driver_id: null } })).outcome, 'excluded', FAIL('never assigned did not exclude the board at S1/new'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'new'), ev('new', { t_pickup: { assigned_driver_id: 'd1' } })).outcome, 'contradicted', FAIL('an assigned task at S1/new did not contradict'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'new'), ev('new', {}, [{ before: null, after: 'd1' }])).outcome, 'contradicted', FAIL('assigned-then-cleared at S1/new did not contradict'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1t-c', 'unassigned'), ev('ready', {}, [], 'unassign')).outcome, 'required', FAIL('an unassigned LP was excluded on evidence that cannot establish it'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'delivered'), ev('delivered', {})).outcome, 'required', FAIL('a delivered LP was excluded without driver evidence'));
+  assert.strictEqual(RA.staticDecision(doc, id, at('S1', 'assigned')).excluded, false, FAIL('the board was excluded at an assigned LP'));
+}
+ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer or dropping the server terminal task delete → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
 console.log(`\nr3-applicability guard: OK (${n})`);

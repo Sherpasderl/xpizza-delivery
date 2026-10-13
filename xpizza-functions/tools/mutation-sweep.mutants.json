@@ -13333,5 +13333,35 @@
       "run",
       "test:r3-p1a-journey"
     ]
+  },
+  {
+    "id": "r3p1-97",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "&& v.driver === 'none')) return unknown;",
+    "to": ")) return unknown;",
+    "label": "P1-c c1: the driver check establishes ANY expected driver state from \"no task carries a driver\" — an unassigned LP (driver ≠ none) reads as established, so the driver-board exclusion applies on evidence that cannot establish it",
+    "kills_with": [
+      "an unassigned LP was excluded on evidence that cannot establish it"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-98",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "const applies = (entry.appliesWhenAny || []).some((conj) => Object.entries(conj).every(",
+    "to": "const applies = (entry.appliesWhenAny || []).some((conj) => Object.entries(conj).some(",
+    "label": "P1-c c1: a conjunction is read as a disjunction — driver ∈ {assigned, reassigned} ∧ terminal = none applies at a never-assigned LP (terminal none alone)",
+    "kills_with": [
+      "evaluates as applies"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
   }
 ]
