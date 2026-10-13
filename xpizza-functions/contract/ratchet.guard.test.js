@@ -66,12 +66,20 @@ for (const e of shrink.nondeterministic || []) assert.ok(ids.has(e.site) && e.re
   // codex r4: the declaration COMMENTED OUT with a re-pointed one on the same line — the raw text still occurs once
   const commented = RAT.justificationProblems(e, { units: withIndex((c) => c.replace(a.justification, `/* ${a.justification} */ const shadowResult = null;`)) });
   assert.ok(commented.some((p) => /no longer occurs exactly once in .* as executable code/.test(p)), FAIL(`codex's comment-out of the justification passed: ${JSON.stringify(commented)}`));
+  // codex r5: the justification's CONTROL-FLOW context — the same lines and tokens wrapped in `if (false) { … }`, in an
+  // always-true-looking condition, or moved into a callback → RED
+  const SHADOW_CALL = 'reportIdentityShadow(db, {';
+  const wrap = (open, close) => withIndex((c) => { const i = c.indexOf(a.justification); const j = c.indexOf('});', c.indexOf(SHADOW_CALL, i)) + 3; assert.ok(i > 0 && j > i, FAIL('premise — the justification and its reportIdentityShadow call')); return c.slice(0, i) + open + c.slice(i, j) + close + c.slice(j); });
+  const ifFalse = RAT.justificationProblems(e, { units: wrap('if (false) { ', ' }') });
+  const ifTrue = RAT.justificationProblems(e, { units: wrap('if (restaurantId || !restaurantId) { ', ' }') });
+  const callback = RAT.justificationProblems(e, { units: wrap('setImmediate(() => { ', ' });') });
+  assert.ok(ifFalse.some((p) => /CONTROL-FLOW path changed/.test(p)) && ifTrue.some((p) => /CONTROL-FLOW path changed/.test(p)) && callback.some((p) => /no EXECUTABLE declaration/.test(p)), FAIL(`a control-flow wrap of the justification passed: ${JSON.stringify({ ifFalse, ifTrue, callback })}`));
   const commentedOnly = RAT.justificationProblems(e, { units: withIndex((c) => c.replace(a.justification, `// ${a.justification}`)) });
   assert.ok(commentedOnly.some((p) => /no EXECUTABLE declaration/.test(p)), FAIL('a justification that only survives in a comment passed'));
   const staleLine = RAT.justificationProblems(e, { readFile: (f) => (f === 'xpizza-functions/index.js' ? realRead(f).replace(a.siteLine, "outcome: 'reported',") : realRead(f)) });
   assert.ok(RAT.justificationProblems(e).length === 0, FAIL(`the approved race entry is not fresh: ${RAT.justificationProblems(e).join(' | ')}`));
   assert.ok(staleJust.some((p) => /race justification no longer occurs exactly once/.test(p)) && staleLine.some((p) => /source line changed/.test(p)), FAIL('a stale race justification / site line passed'));
 }
-ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}) are PINNED: only an APPROVED (context, site) whose race justification still occurs exactly once in its scope and whose site line is unchanged — codex's move of computeServerNet#total#0 → RED; a stale justification / site line → RED; the justification is matched as EXECUTABLE code (codex r4's comment-out + same-line re-point → RED; a comment-only survivor → RED)`);
+ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}) are PINNED: only an APPROVED (context, site) whose race justification still occurs exactly once in its scope and whose site line is unchanged — codex's move of computeServerNet#total#0 → RED; a stale justification / site line → RED; the justification is matched as EXECUTABLE code (codex r4's comment-out + same-line re-point → RED; a comment-only survivor → RED; codex r5's CONTROL-FLOW wraps — if (false), an always-true-looking if, a move into a callback → RED)`);
 ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}): current census sites outside the baseline, reached or not → no problem and no growth; one placed in the baseline / without a reason → RED`);
 console.log(`\nr3-ratchet guard: OK (${n})`);

@@ -28,6 +28,8 @@ const APPROVED_NONDETERMINISTIC = Object.freeze([
     scope: 'xpizza-functions/index.js#createOrderApp.all',
     justification: 'const shadowResult = (shadowCheck && shadowCheck.isSettled()) ? shadowCheck.value() : null;',
     siteLine: "outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',",
+    // directly in the handler body: no enclosing conditional, loop or extra block (reviewed 2026-10-13)
+    controlPath: 'BlockStatement > VariableDeclaration',
   }),
 ]);
 /* the justification is matched in EXECUTABLE source (codex P1-a r4): the reviewed text is parsed to its declarator
@@ -42,12 +44,17 @@ function executableDeclarators(scope, name, units) {
     const base = u.file.replace(/<script@\d+>$/, '');
     walk(parseUnit(u), (node, fn) => {
       if (!/Function/.test(node.type) || !fn || (`${u.file}#${fn}` !== scope && `${base}#${fn}` !== scope)) return;
-      (function rec(n, top) {
+      // the CONTROL-FLOW path (codex P1-a r5): every ancestor from the function body down to the declarator — its node
+      // type, plus the comment-free TOKENS of its test / condition / discriminant / loop header where it has one. Any new
+      // enclosing conditional, block or loop (even `if (false)` or an always-true-looking test) changes the path.
+      const step = (x) => { const parts = ['test', 'discriminant', 'init', 'update', 'right', 'left'].filter((k) => x[k] && x.type !== 'VariableDeclarator' && x.type !== 'VariableDeclaration' && /Statement$/.test(x.type)).map((k) => `${k}(${tokensOf(u.code.slice(x[k].start, x[k].end))})`); return parts.length ? `${x.type}[${parts.join(';')}]` : x.type; };
+      (function rec(n, top, chain) {
         if (!n || typeof n.type !== 'string') return;
-        if (/Function/.test(n.type) && !top) return;   // a nested function is its own scope
-        if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.id.name === name) found.push(n.init ? tokensOf(u.code.slice(n.init.start, n.init.end)) : '');
-        for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => rec(x, false)); else if (v && typeof v.type === 'string') rec(v, false); }
-      })(node, true);
+        if (/Function/.test(n.type) && !top) return;   // a nested function (a callback) is its own scope
+        if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.id.name === name) found.push({ init: n.init ? tokensOf(u.code.slice(n.init.start, n.init.end)) : '', path: chain.join(' > ') });
+        const next = top ? [] : [...chain, step(n)];
+        for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => rec(x, false, next)); else if (v && typeof v.type === 'string') rec(v, false, next); }
+      })(node, true, []);
     });
   }
   return found;
@@ -61,7 +68,8 @@ function justificationProblems(e, { readFile = (f) => fs.readFileSync(path.join(
   const want = tokensOf(a.justification.slice(decl.init.start, decl.init.end));
   const got = executableDeclarators(a.scope, decl.id.name, units);
   if (!got.length) p.push(`nondeterministic ${e.site}: no EXECUTABLE declaration of ${decl.id.name} in ${a.scope} (stale)`);
-  else if (got.length !== 1 || got[0] !== want) p.push(`nondeterministic ${e.site}: the race justification no longer occurs exactly once in ${a.scope} as executable code (stale): ${a.justification}`);
+  else if (got.length !== 1 || got[0].init !== want) p.push(`nondeterministic ${e.site}: the race justification no longer occurs exactly once in ${a.scope} as executable code (stale): ${a.justification}`);
+  else if (got[0].path !== a.controlPath) p.push(`nondeterministic ${e.site}: the race justification's CONTROL-FLOW path changed (an enclosing conditional / block / loop) — re-review (stale): now "${got[0].path}"`);
   if (!e.site.startsWith(`${a.scope}#`)) p.push(`nondeterministic ${e.site}: the site is not in its justification scope ${a.scope}`);
   const c = JSON.parse(readFile('xpizza-functions/contract/census.json')).sites.find((x) => x.id === e.site);
   if (!c) p.push(`nondeterministic ${e.site}: not a current census site (stale)`);

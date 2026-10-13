@@ -12705,5 +12705,20 @@
       "node",
       "contract/ratchet.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-48",
+    "slice": "r3p1",
+    "file": "contract/ratchet.js",
+    "from": "  else if (got[0].path !== a.controlPath) p.push(",
+    "to": "  else if (false) p.push(",
+    "label": "gate B: the race justification's CONTROL-FLOW context is ignored (an `if (false)` wrap passes)",
+    "kills_with": [
+      "a control-flow wrap of the justification passed"
+    ],
+    "command": [
+      "node",
+      "contract/ratchet.guard.test.js"
+    ]
   }
 ]
