@@ -2,7 +2,20 @@
  "_doc": "R3 P1 §12 C1 — REVIEWED page timer bounds (contract/timer-bounds.js). pages: the asserted pages and the settle() horizon their steps use. wrappers: reviewed timer wrapper names per unit. sites: every timer whose delay exceeds the page horizon or is unresolved, with reachesAsserted (does its effect reach an output a step asserts?) and the reason; bound to the call text (sha256). chains: every timer CHAIN (callback arming another timer, name-resolved within the unit) whose cumulative delay exceeds the horizon, is unresolved or repeats — { cumulativeBoundMs, repeatLimit, reachesAsserted, reason } bound to its call texts. periodic: every interval firing within the horizon — { periodMs, mayChange, mayChangeSelectors (blanked by the §5b recapture), changesAsserted:false }. Every reviewed site / chain / periodic entry is also bound to ctrlSha: its CONTROLLING scope (outermost enclosing function incl. loops + the declarations its delay and loops reference).",
  "pages": {
   "xpizza-orders": {
-   "horizonMs": 46000
+   "horizonMs": 10000,
+   "exception": {
+    "horizonMs": 46000,
+    "outputs": [
+     "form.confirmation"
+    ],
+    "keys": [
+     "xpizza-orders/form-order-number.js#start:setTimeout#0",
+     "xpizza-orders/form-order-number.js#next:setTimeout#0",
+     "xpizza-orders/form-order-number.js#next:setTimeout#0 → xpizza-orders/form-order-number.js#next:setTimeout#0"
+    ],
+    "reason": "the confirmation's order number (R15 NUM) is painted by form-order-number.js's poll (≤ 10 reads, 38.7 s) and hidden by its 45 s deadline — the product genuinely waits up to 45 s, so ONLY these timers, and ONLY the confirmation, get a 46 s horizon; the journey settles the confirmation steps (pay, confirmation, its stability recapture) with it and every other step with the standard 10 s",
+    "authority": "advisor 2026-10-13 (provisionally accepted, codex to confirm) — PLAN-R3-P1 §12 C1 reviewed exception"
+   }
   },
   "xpizza-kitchen": {
    "horizonMs": 10000
@@ -217,7 +230,8 @@
    "reachesAsserted": true,
    "reason": "one order-number read delay (ORDER_NUMBER_DELAYS_MS[i], max 5000 ms) — it paints the asserted confirmation number; within the horizon",
    "sha": "781de6443d7b598644b05db00a858ba984755ba66f0f22c5fcd2d0f3b23a582e",
-   "ctrlSha": "21b4cf4f7fcf7dd5d4229c4d6f4e6ca597fd1bd7d0b780c727ec1c05bd9c4553"
+   "ctrlSha": "21b4cf4f7fcf7dd5d4229c4d6f4e6ca597fd1bd7d0b780c727ec1c05bd9c4553",
+   "output": "form.confirmation"
   },
   {
    "key": "xpizza-orders/index.html<script@2>#setTimeout:setTimeout#0",
@@ -228,6 +242,17 @@
    "reason": "the reviewed pass-through WRAPPER the form hands to createOrderNumber (setTimeout: (f, ms) => setTimeout(f, ms)): its delay is its caller's — every env.setTimeout call in form-order-number.js is inventoried separately (start: 45000 ms deadline; next: ≤ 5000 ms reads)",
    "sha": "af51ad483d30898a1d906afd5adbf96724f42fe95c47ebed1e1cafd77bf3a649",
    "ctrlSha": "954a5dd9727547f54635f58340b89887343c5efcd3f95de5faa9c906343ad0b2"
+  },
+  {
+   "key": "xpizza-orders/form-order-number.js#start:setTimeout#0",
+   "line": 36,
+   "delaySrc": "ORDER_NUMBER_DEADLINE_MS",
+   "bound": 45000,
+   "reachesAsserted": true,
+   "output": "form.confirmation",
+   "reason": "the order-number DEADLINE (ORDER_NUMBER_DEADLINE_MS 45 s): with no stamped number it HIDES the confirmation's number line; stopped once the number paints",
+   "sha": "102d96395c3331ba0dd5ffc70981eba9ac50ebc77717e2f00faef62abcfb1513",
+   "ctrlSha": "b56ebc5e3fd62822a6b9b4863d8c43ecdffba1a60259f3088e01d0999981cdae"
   }
  ],
  "chains": [
@@ -687,9 +712,10 @@
    "repeats": true,
    "repeatLimit": 10,
    "reachesAsserted": true,
-   "reason": "the confirmation's order-number poll (ORDER_NUMBER_DELAYS_MS: 700, 1500, 2500, 4000, then 5000 × 6 = 38.7 s, ≤ 10 reads, stopped once the number paints; the 45 s deadline hides the line). It REACHES the asserted R15 NUM (pending → number | hidden), so the xpizza-orders horizon covers its deadline (46 s, raised at 6f353ed)",
+   "reason": "the confirmation's order-number poll (ORDER_NUMBER_DELAYS_MS: 700, 1500, 2500, 4000, then 5000 × 6 = 38.7 s, ≤ 10 reads, stopped once the number paints; the 45 s deadline hides the line). It REACHES the asserted R15 NUM (pending → number | hidden) — covered by the page's reviewed confirmation-horizon EXCEPTION",
    "sha": "ebdc227b6bd7c44b1bb5f7dfbc8ac7c1e6e2ac3bcea4a3c1d835b071fd78c2ac",
-   "ctrlSha": "a8fea25ab971e379f0cca337e71ad52d12f88bdb3dedde96d6cef7ff455808b2"
+   "ctrlSha": "a8fea25ab971e379f0cca337e71ad52d12f88bdb3dedde96d6cef7ff455808b2",
+   "output": "form.confirmation"
   }
  ],
  "periodic": [

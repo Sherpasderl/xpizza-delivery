@@ -79,7 +79,8 @@ const RAT = require('./ratchet');
 const SCEN = JSON.parse(fsx.readFileSync(AP.SCENARIOS, 'utf8')); const S1 = SCEN.scenarios.S1;
 // C1: every step settles with its page's DECLARED horizon (contract/timer-bounds.json, guarded by timer-bounds.guard)
 const TB = JSON.parse(fsx.readFileSync(new URL('./timer-bounds.json', import.meta.url), 'utf8'));
-const HORIZON = { form: TB.pages['xpizza-orders'].horizonMs, kds: TB.pages['xpizza-kitchen'].horizonMs };
+// the confirmation steps use the page's reviewed horizon EXCEPTION (the order-number poll, ≤ 45 s); every other step the standard
+const HORIZON = { form: TB.pages['xpizza-orders'].horizonMs, formConfirmation: TB.pages['xpizza-orders'].exception.horizonMs, kds: TB.pages['xpizza-kitchen'].horizonMs };
 const SLICE = { scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'], readers: ['R1', 'R9', 'R13', 'R14', 'R15'] };
 // the per-step invocation multiset (observed, then DECLARED): the triggers the pay tap fans out to, by export name
 const EXPECTED_INVOCATIONS = JSON.parse(fsx.readFileSync(new URL('./p1a-expect.json', import.meta.url), 'utf8'));
@@ -165,9 +166,9 @@ try {
   CTX.now = 'S1/x_pizza/new'; HITS.setContext(CTX.now);
   const invBefore = S.state.invs.length;
   await step('form.pay', async () => { click(doc.getElementById('btn-pay'), '#btn-pay'); });
-  await settleForm('form.pay');
+  await settled(form, fhost, HORIZON.formConfirmation, 'form.pay');
   await S.drain('orders');
-  await settleForm('form.confirmation');
+  await settled(form, fhost, HORIZON.formConfirmation, 'form.confirmation');
   const create = R.log.find((x) => x.fn === 'createOrder');
   assert.ok(create && create.status === 200, FAIL('createOrder', create ? `status ${create.status} ${String(JSON.stringify(create.res)).slice(0, 200)}` : `never answered — routed ${JSON.stringify(R.log.map((x) => `${x.fn}:${x.status}`))}; active stage ${(doc.querySelector('.stage.active') || {}).id}; visible errors ${JSON.stringify([...doc.querySelectorAll('.error-box, [id^="err"]')].map((e) => text(e)).filter(Boolean)).slice(0, 400)}`));
   const oid = create.res.order_id;
@@ -261,7 +262,7 @@ try {
   // confirmation is byte-identical, and the send multiplicity is still exactly one (no undeclared effect)
   {
     await S.drain('orders');
-    await settled(form, fhost, HORIZON.form, 'stability.form');
+    await settled(form, fhost, HORIZON.formConfirmation, 'stability.form');
     await settled(kds, khost, HORIZON.kds, 'stability.kds');
     const fresh = { ...snaps, 'form.confirmation': OBSERVABLES['form.confirmation'].capture({ doc }), 'kds.ticket': { ...ticket2, ...OBSERVABLES['kds.ticket'].captureScheduled({ doc: kds.doc }) }, 'wa.orderReceived': OBSERVABLES['wa.orderReceived'].capture({ sends: SENT, phone: persisted.customer_phone }) };
     assert.strictEqual(fresh['form.confirmation'].html, snaps['form.confirmation'].html, FAIL('stability', 'the confirmation changed after a further settle() horizon'));

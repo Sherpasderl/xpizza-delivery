@@ -144,10 +144,28 @@ function chainsOf(scopes, wrappers, inv, units = sources()) {
   });
 }
 
+/* The STANDARD step horizon every asserted page uses. A page may NOT raise it; a longer wait is only a page-scoped, reviewed
+ * EXCEPTION (pages[p].exception = { horizonMs, outputs, keys, reason, authority }): its horizon applies ONLY to the listed
+ * site / chain keys, each of which must reach exactly one of the listed outputs — no other timer or output inherits it
+ * (advisor 2026-10-13: the xpizza-orders confirmation's order-number poll, PLAN-R3-P1 §12 C1 reviewed exception). */
+const STANDARD_HORIZON_MS = 10000;
 function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = sources() } = {}) {
   const p = []; const inv = inventory(Object.keys(doc.pages), doc.wrappers || {}, units);
+  const H = (scope, key) => { const pg = doc.pages[scope]; const ex = pg && pg.exception; return ex && (ex.keys || []).includes(key) ? ex.horizonMs : pg.horizonMs; };
+  for (const [pg, v] of Object.entries(doc.pages)) {
+    if (v.horizonMs !== STANDARD_HORIZON_MS) p.push(`page ${pg}: horizon ${v.horizonMs} ms ≠ the standard ${STANDARD_HORIZON_MS} ms — a longer wait is only a page-scoped reviewed EXCEPTION bound to its timers and outputs`);
+    const ex = v.exception; if (!ex) continue;
+    if (!(ex.horizonMs > v.horizonMs) || !Array.isArray(ex.outputs) || !ex.outputs.length || !Array.isArray(ex.keys) || !ex.keys.length || !(ex.reason && ex.authority)) p.push(`page ${pg}: a malformed horizon exception (horizonMs above the page's, outputs, keys, reason, authority)`);
+    for (const k of ex.keys || []) {
+      const e = (doc.sites || []).find((x) => x.key === k) || (doc.chains || []).find((x) => x.key === k);
+      if (!e) { p.push(`page ${pg}: exception key ${k} has no reviewed site / chain entry`); continue; }
+      if (!k.startsWith(`${pg}/`) && !k.startsWith(`await@${pg}/`)) p.push(`page ${pg}: exception key ${k} is not a timer of this page`);
+      if (!e.reachesAsserted || !(ex.outputs || []).includes(e.output)) p.push(`page ${pg}: exception key ${k} must reach exactly one of the exception's outputs ${JSON.stringify(ex.outputs)} (declares ${JSON.stringify(e.output)})`);
+    }
+  }
+  for (const e of [...(doc.sites || []), ...(doc.chains || [])]) if (e.output && !Object.values(doc.pages).some((v) => v.exception && v.exception.keys.includes(e.key))) p.push(`${e.key}: declares an exception output but is not an exception key`);
   const entries = new Map(doc.sites.map((e) => [e.key, e]));
-  const need = inv.filter((s) => s.delay == null || s.delay > doc.pages[s.scope].horizonMs);
+  const need = inv.filter((s) => s.delay == null || s.delay > doc.pages[s.scope].horizonMs);   // the STANDARD horizon: every longer timer needs an entry
   for (const s of need) {
     const e = entries.get(s.key);
     if (!e) { p.push(`${s.key} (line ${s.line}): delay ${s.delay == null ? `unresolved (${s.delaySrc})` : `${s.delay} ms`} exceeds the ${s.scope} horizon ${doc.pages[s.scope].horizonMs} ms — no reviewed entry`); continue; }
@@ -156,7 +174,7 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     // an unresolved delay is bounded only by its REVIEWED bound; a declared bound below a computed delay is a contradiction
     if (s.delay != null && e.bound != null && e.bound < s.delay) p.push(`${s.key}: declared bound ${e.bound} ms is BELOW the computed delay ${s.delay} ms — a contradiction (RED)`);
     const eff = s.delay != null ? Math.max(s.delay, e.bound == null ? 0 : e.bound) : e.bound;
-    if (e.reachesAsserted && (eff == null || eff > doc.pages[s.scope].horizonMs)) p.push(`${s.key}: reaches an asserted output with ${eff == null ? 'an UNRESOLVED (unreviewed-bound)' : `a ${eff} ms`} delay beyond the horizon — RED (no declaration clears it)`);
+    if (e.reachesAsserted && (eff == null || eff > H(s.scope, s.key))) p.push(`${s.key}: reaches an asserted output with ${eff == null ? 'an UNRESOLVED (unreviewed-bound)' : `a ${eff} ms`} delay beyond the horizon — RED (no declaration clears it)`);
     if (!(e.reason && e.reason.trim())) p.push(`${s.key}: needs a reason`);
   }
   const live = new Set(need.map((s) => s.key));
@@ -175,7 +193,7 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     if (c.cumulative != null && e.cumulativeBoundMs != null && e.cumulativeBoundMs < c.cumulative) p.push(`CHAIN ${c.key}: declared cumulativeBoundMs ${e.cumulativeBoundMs} is BELOW the computed ${c.cumulative} ms — a contradiction (RED)`);
     if (c.repeats && typeof e.repeatLimit === 'number' && e.repeatLimit < 2) p.push(`CHAIN ${c.key}: the chain REPEATS but repeatLimit ${e.repeatLimit} < 2 — a contradiction (RED)`);
     const effBound = c.cumulative == null ? e.cumulativeBoundMs : Math.max(c.cumulative, e.cumulativeBoundMs == null ? 0 : e.cumulativeBoundMs);
-    const unbounded = e.repeatLimit === 'unbounded' || effBound == null || effBound > doc.pages[c.scope].horizonMs;
+    const unbounded = e.repeatLimit === 'unbounded' || effBound == null || effBound > H(c.scope, c.key);
     if (e.reachesAsserted && unbounded) p.push(`CHAIN ${c.key}: reaches an asserted output with a cumulative bound beyond the horizon / unbounded repeat — RED (no declaration clears it)`);
   }
   const clive = new Set(cneed.map((c) => c.key));
@@ -195,4 +213,4 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
   for (const e of doc.periodic || []) if (!plive.has(e.key)) p.push(`PERIODIC ${e.key}: stale periodic entry`);
   return { problems: p, inventory: inv, need, chains, cneed, periodic };
 }
-module.exports = { inventory, check, chainsOf, FILE, sha };
+module.exports = { inventory, check, chainsOf, FILE, sha, STANDARD_HORIZON_MS };

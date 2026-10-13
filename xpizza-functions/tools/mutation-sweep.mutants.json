@@ -12204,7 +12204,7 @@
     "id": "r3p1-16",
     "slice": "r3p1",
     "file": "contract/timer-bounds.js",
-    "from": "    if (e.reachesAsserted && (eff == null || eff > doc.pages[s.scope].horizonMs)) p.push(",
+    "from": "    if (e.reachesAsserted && (eff == null || eff > H(s.scope, s.key))) p.push(",
     "to": "    if (false) p.push(",
     "label": "a long / unresolved timer that reaches an asserted output is excused by its declaration",
     "kills_with": [
@@ -12783,6 +12783,37 @@
     "command": [
       "node",
       "contract/comparator.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-92",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "return ex && (ex.keys || []).includes(key) ? ex.horizonMs : pg.horizonMs;",
+    "to": "return ex ? ex.horizonMs : pg.horizonMs;",
+    "label": "C1 exception: every timer of the page inherits the confirmation's 46 s horizon",
+    "kills_with": [
+      "a non-exception timer inherited the exception horizon",
+      "a contradictory declaration cleared the 27 s chain"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-93",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "    if (v.horizonMs !== STANDARD_HORIZON_MS) p.push(",
+    "to": "    if (false) p.push(",
+    "label": "C1 exception: a page may raise its base horizon (unscoped)",
+    "kills_with": [
+      "raising a page's base horizon passed"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
     ]
   }
 ]

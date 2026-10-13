@@ -14,8 +14,12 @@ const r = T.check(doc);
 assert.deepStrictEqual(r.problems, [], FAIL(r.problems.join('\n  ')));
 ok(`${r.inventory.length} timer sites on the asserted pages (${Object.entries(doc.pages).map(([p, v]) => `${p} horizon ${v.horizonMs} ms`).join(', ')}); ${r.need.length} long / unresolved, each reviewed with a bound (one reaching an asserted output must stay within the horizon)`);
 const j = fs.readFileSync(path.join(__dirname, 'p1a-journey.emulator.test.mjs'), 'utf8');
-assert.ok(/settled\(form, fhost, HORIZON\.form,/.test(j) && /settled\(kds, khost, HORIZON\.kds,/.test(j) && /pg\.settle\(horizon\)/.test(j) && !/\.settle\(\)/.test(j) && (j.match(/\.settle\(/g) || []).length === 1, FAIL('the journey does not settle every step through the declared per-page horizons (one settled() helper)'));
-ok('the enforced journey settles every step with the declared per-page horizon (no default settle())');
+{ // every step settles with the declared horizon: the standard, or — for exactly the confirmation steps — the page's exception
+  const confSettles = [...j.matchAll(/settled\(form, fhost, HORIZON\.formConfirmation, '([^']+)'\)/g)].map((m) => m[1]).sort();
+  assert.deepStrictEqual(confSettles, ['form.confirmation', 'form.pay', 'stability.form'], FAIL(`the exception horizon settles steps other than the confirmation's: ${JSON.stringify(confSettles)}`));
+  assert.ok(/formConfirmation: TB\.pages\['xpizza-orders'\]\.exception\.horizonMs/.test(j) && /settled\(form, fhost, HORIZON\.form,/.test(j) && /settled\(kds, khost, HORIZON\.kds,/.test(j) && /pg\.settle\(horizon\)/.test(j) && !/\.settle\(\)/.test(j) && (j.match(/\.settle\(/g) || []).length === 1, FAIL('the journey does not settle every step with a declared horizon'));
+}
+ok('the enforced journey settles every step with the declared horizon — the standard, or the page exception for exactly the confirmation steps (pay, confirmation, its stability recapture)');
 const clone = () => JSON.parse(JSON.stringify(doc));
 const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
 // the mechanism negatives below are fixed-size probes (9 s timers): run them at a 10 s xpizza-orders horizon, independent of
@@ -69,4 +73,17 @@ const D10 = (() => { const d = JSON.parse(JSON.stringify(doc)); d.pages['xpizza-
 }
 ok(`chains + periodic: ${r.chains.length} chains (${r.cneed.length} reviewed beyond-horizon / unresolved / repeating), ${r.periodic.length} reviewed periodic intervals; negatives: codex's 3 × 9 s chain → RED, codex r2's UNRETURNED awaited-sleeps and METHOD-chained forms → RED, a declared bound below the computed one → RED (contradiction), codex r3's MAX_TRIES 3 → 5 re-opens the reviewed submit bound (controlling-scope binding), a self-re-arming timer → RED, an unreviewed interval → RED, a chain or interval reaching an asserted output → RED`);
 ok('negatives: a long timer with no entry (or a shorter horizon exposing one), a changed call, a long timer reaching an asserted output, a stale entry → RED');
+{ // the confirmation-horizon EXCEPTION is page- and output-scoped (advisor 2026-10-13): no other timer, output or page inherits it
+  const X = (f) => { const d = clone(); f(d); return T.check(d).problems; };
+  assert.ok(X((d) => { d.pages['xpizza-orders'].horizonMs = 46000; }).some((p) => /≠ the standard 10000 ms/.test(p)), FAIL('raising a page\'s base horizon passed'));
+  assert.ok(X((d) => { d.pages['xpizza-kitchen'].horizonMs = 46000; }).some((p) => /page xpizza-kitchen: horizon 46000/.test(p)), FAIL('raising the KDS horizon passed'));
+  // a non-exception timer reaching an asserted output beyond the standard horizon does NOT inherit the 46 s
+  assert.ok(X((d) => { const e = d.sites.find((x) => x.key.endsWith('locPickPred>anon:setTimeout#0')); e.reachesAsserted = true; e.bound = 20000; }).some((p) => /locPickPred.*reaches an asserted output/.test(p)), FAIL('a non-exception timer inherited the exception horizon'));
+  // an exception key declaring another output, or a key of another page, or an output without being a key → RED
+  assert.ok(X((d) => { d.sites.find((x) => x.key.endsWith('form-order-number.js#start:setTimeout#0')).output = 'form.payStep'; }).some((p) => /must reach exactly one of the exception's outputs/.test(p)), FAIL('an exception key reaching another output passed'));
+  assert.ok(X((d) => { d.pages['xpizza-orders'].exception.keys.push(d.chains.find((c) => /xpizza-kitchen/.test(c.key)).key); }).some((p) => /is not a timer of this page/.test(p)), FAIL('an exception key of another page passed'));
+  assert.ok(X((d) => { const e = d.sites.find((x) => x.key.endsWith('locPickPred>anon:setTimeout#0')); e.output = 'form.confirmation'; }).some((p) => /declares an exception output but is not an exception key/.test(p)), FAIL('an output declared outside the exception passed'));
+  assert.ok(X((d) => { d.pages['xpizza-orders'].exception.keys = d.pages['xpizza-orders'].exception.keys.filter((k) => !/start:setTimeout#0$/.test(k)); }).some((p) => /form-order-number\.js#start:setTimeout#0.*reaches an asserted output with a 45000 ms delay beyond the horizon/.test(p)), FAIL('the deadline reached its output beyond the standard horizon without the exception'));
+}
+ok('the confirmation-horizon exception is scoped: a raised base horizon (any page) → RED; a non-exception timer reaching an asserted output beyond 10 s → RED; an exception key naming another output / another page, or an output declared outside the exception → RED; without the exception the 45 s deadline → RED');
 console.log(`\nr3-timer-bounds guard: OK (${n})`);
