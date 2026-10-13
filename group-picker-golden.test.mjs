@@ -58,6 +58,9 @@ async function captureLaMusa() {
 //   (d) (codex PB-2 r1 P2-6, advisor-directed) each choice row gains, as its FIRST child, its native radio — one group name,
 //       the row's choice as its value, its accessible name read from the row's OWN visible text (name · tag · amount),
 //       checked iff the row is selected. Derived here from the frozen golden row, never from the form's helper.
+//   (e) (owner 2026-10-12, a launcher card counts its choices) the card's overlay gains, before its "+", the stepper and
+//       the badge every plain card has (its "+" opens the picker, its "−" opens the cart), and the "+" gains its id. Spelled
+//       out literally below, exactly once.
 const once = (str, from, to, where) => {
   const n = str.split(from).length - 1;
   if (n !== 1) throw new Error(`STEP2 ${where}: expected exactly one ${JSON.stringify(from)}, found ${n}`);
@@ -83,6 +86,14 @@ const STEP2 = (golden) => {
     if (st.cta.html === '<span>Elegí una proteína</span>') st.cta.html = '<span>Elegí tu proteína</span>';           // (b)
     else if (st.cta.html.startsWith('<span>Agregar al carrito</span>')) st.cta.html = once(st.cta.html, '<span>Agregar al carrito</span>', '<span>Agregar</span>', `${k} (c)`);
   }
+  g.card = once(g.card,
+    '<div class="qty-overlay" data-stop="1"><button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="noodle_01">+</button></div>',
+    '<div class="qty-overlay" data-stop="1">'
+      + '<div class="qty-controls" id="qty-controls-noodle_01"><button class="qty-ctrl-btn" data-act="dec" data-id="noodle_01" id="minus-noodle_01" aria-label="Ver tu pedido">−</button>'
+      + '<span class="qty-ctrl-num" id="qty-noodle_01">0</span><button class="qty-ctrl-btn" data-act="inc" data-id="noodle_01" aria-label="Agregar otra">+</button></div>'
+      + '<div class="qty-badge" id="qty-badge-noodle_01" style="display:none" data-act="badge" data-id="noodle_01"><span id="qty-badge-num-noodle_01">1</span></div>'
+      + '<button class="qty-add-btn" id="qty-add-noodle_01" aria-label="Personalizar" data-act="open" data-id="noodle_01">+</button></div>',
+    'card (e)');
   const touched = { b: g.opened.cta.html, c: g.stagedExtra.cta.html };
   if (touched.b !== '<span>Elegí tu proteína</span>' || !touched.c.startsWith('<span>Agregar</span>')) throw new Error('STEP2 did not apply (b)/(c)');
   return g;
@@ -104,7 +115,7 @@ if (CAPTURE) {
   };
   for (const k of Object.keys(want)) assert.deepStrictEqual(got[k], want[k], `🔴 la_musa picker state "${k}" changed beyond §0d.3's permitted differences — ${firstDiff(got[k], want[k], k)}`);
   assert.deepStrictEqual(Object.keys(got).sort(), Object.keys(want).sort(), 'the same states');
-  ok(`la_musa picker DOM: ${Object.keys(want).length} states equal the golden (step 1 byte-identical; step 2 = only the §0d.3 differences (a)–(c) + the per-row native radio (d))`);
+  ok(`la_musa picker DOM: ${Object.keys(want).length} states equal the golden (step 1 byte-identical; step 2 = only the §0d.3 differences (a)–(c) + the per-row native radio (d) + the card's count stepper (e))`);
 }
 closeAll();
 console.log('\ngroup-picker-golden: OK');

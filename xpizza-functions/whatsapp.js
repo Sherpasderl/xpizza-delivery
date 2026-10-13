@@ -349,9 +349,13 @@ function renderDelivered({ customerName, restaurantId, brand }) {
   ].join('\n');
 }
 
-function renderCancelled({ orderId, restaurantId, brand }) {
+// The number is the KITCHEN's short display_number (#47) — the one the confirmation, tracker and KDS show — never the long
+// order id (owner 2026-10-12). It is stamped asynchronously and fail-open, so when it is absent (or not a positive integer)
+// the sentence simply carries no number: the same fallback as the confirmation (hidden, never the long id).
+function renderCancelled({ displayNumber, restaurantId, brand }) {
+  const n = (typeof displayNumber === 'number' && Number.isInteger(displayNumber) && displayNumber > 0) ? displayNumber : null;
   return [
-    `Lamentamos avisarte que tu pedido${orderId ? ' #' + orderId : ''}${brand ? ' en ' + brand : ''} fue cancelado.`,
+    `Lamentamos avisarte que tu pedido${n ? ' #' + n : ''}${brand ? ' en ' + brand : ''} fue cancelado.`,
     ``,
     `Si pagaste por adelantado, te contactaremos pronto sobre el reembolso.`,
     ``,

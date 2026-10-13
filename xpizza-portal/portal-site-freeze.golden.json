@@ -62,8 +62,8 @@
    "bytes": 443
   },
   "styles.css": {
-   "sha256": "7f6550b55c99abb67bdbe19b02fb15cf71ea146bb4b3b922bd87ca528e9c3b3d",
-   "bytes": 64482
+   "sha256": "257a8c0760f86b5e4addb79dd2d9b215e7f5627567632b2557ef70eca1c07f63",
+   "bytes": 67248
   }
  },
  "diff_aid": {
@@ -902,6 +902,42 @@
    ],
    [
     "",
+    ".kid .kprice.diff",
+    "color",
+    "var(--ink)"
+   ],
+   [
+    "",
+    ".kid .kprice.same",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".kid .rec",
+    "background",
+    "var(--gold-soft)"
+   ],
+   [
+    "",
+    ".kid .rec",
+    "color",
+    "var(--gold)"
+   ],
+   [
+    "",
+    ".kidhead .dot",
+    "color",
+    "var(--line)"
+   ],
+   [
+    "",
+    ".kidhead",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
     ".lede",
     "color",
     "var(--mute)"
@@ -976,13 +1012,37 @@
     "",
     ".mgname-in",
     "background",
-    "transparent"
+    "var(--board-2)"
    ],
    [
     "",
     ".mgname-in",
     "color",
     "var(--ink)"
+   ],
+   [
+    "",
+    ".mgname-in:focus,.mgname-in:focus-visible",
+    "background",
+    "var(--card)"
+   ],
+   [
+    "",
+    ".mgname-in:focus,.mgname-in:focus-visible",
+    "border-color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".mgname-in:hover",
+    "border-color",
+    "#D6D6CF"
+   ],
+   [
+    "",
+    ".mgname-lbl",
+    "color",
+    "var(--mute2)"
    ],
    [
     "",
@@ -1031,6 +1091,12 @@
     ".model:hover",
     "color",
     "var(--red-text)"
+   ],
+   [
+    "",
+    ".modgrp.err .mgname-in",
+    "border-color",
+    "var(--red)"
    ],
    [
     "",
@@ -1419,6 +1485,18 @@
    [
     "",
     ".price.chg input",
+    "color",
+    "var(--accent)"
+   ],
+   [
+    "",
+    ".price.gp span",
+    "color",
+    "var(--mute2)"
+   ],
+   [
+    "",
+    ".price.gp.chg b",
     "color",
     "var(--accent)"
    ],

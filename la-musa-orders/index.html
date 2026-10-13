@@ -1052,6 +1052,9 @@ textarea{resize:none;height:80px;line-height:1.4}
 .success-title{font-family:var(--display);font-size:24px;font-weight:900;color:var(--charcoal);margin-bottom:6px}
 .success-sub{font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:24px;letter-spacing:.5px}
 .order-id{font-size:10px;color:var(--border2);margin-bottom:10px;font-family:var(--stamp);letter-spacing:2px}
+.order-num-pending{animation:order-num-pulse 1.4s ease-in-out infinite}
+@keyframes order-num-pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.order-num-pending{animation:none}}
 .receipt{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;text-align:left;margin-bottom:12px}
 .acct-sx--rw + .receipt{margin-top:26px}   /* breathing room between the reward card and the "Resumen del pedido" card (guest reward-card only) */
 .receipt-head{background:var(--surface);padding:14px 16px;font-family:var(--sans);font-size:14px;font-weight:700;color:var(--gold-dk);border-bottom:1px solid var(--border)}
@@ -1614,6 +1617,7 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="availability-reducer.js"></script>
 <script src="form-safe-render.js"></script>
 <script src="form-group-picker.js"></script>
+<script src="form-order-number.js"></script>
 <script src="form-confirm-quote.js"></script>
 <script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
@@ -3086,6 +3090,7 @@ function wireMenuDelegate(){
     if (act === 'open')    { openDetailModal(dish.id); return; }
     // 1D add-product B: a launcher is never added itself — any "add" on it opens its picker (every layout, every control)
     if (act === 'inc' && itemIsLauncher(dish)) { openDetailModal(dish.id); return; }
+    if (act === 'dec' && itemIsLauncher(dish)) { openCartReview(); return; }   // which choice to remove is ambiguous → the cart's per-line steppers
     if (act === 'inc')     { chg(dish.id, 1);  return; }
     if (act === 'dec')     { chg(dish.id, -1); return; }
     if (act === 'badge')   { toggleControls(dish.id); return; }
@@ -3100,8 +3105,11 @@ function renderMenu() {
   // it conditionally for items with extras.
   const card = p => {
     const cardUrl = HAS_PHOTO.has(p.id) ? safeImgUrl('images/' + p.id + '-card.webp') : '';
+    // a launcher's FIRST paint is derived from the cart (codex P2-1): a restored cart shows its total at once; at 0 the
+    // markup is byte-identical to the bare card
+    const n = itemIsLauncher(p) ? cardQty(p.id) : 0;
     return (
-    '<div class="pizza-card" id="card-' + safeText(p.id) + '">' +
+    '<div class="pizza-card' + (n > 0 ? ' has-items' : '') + '" id="card-' + safeText(p.id) + '">' +
       /* 🔴 1B Task 8 — every authored field through its own renderer; the id only ever lands in a
          `data-` attribute, never inside a handler. See form-safe-render.js and wireMenuDelegate. */
       '<div class="pizza-photo" '
@@ -3117,9 +3125,19 @@ function renderMenu() {
            the merchant-image test rather than by reading, which is the argument for having it. */
         (cardUrl ? '' : '<div class="pizza-photo-label">' + safeText(p.emoji || '•') + '</div>') +
         (cardUrl ? '<img class="pizza-photo-img" loading="lazy" decoding="async" alt="" src="' + safeText(cardUrl) + '" onerror="this.remove()">' : '') +
+        /* 1D add-product B: a LAUNCHER card counts the TOTAL of its choices in the cart (paintLauncherCard). Its "+" opens
+           the picker (every control); the stepper's "−" opens the cart, where each choice has its own stepper. */
         (itemIsLauncher(p)
           ? '<div class="qty-overlay" data-stop="1">' +
-              '<button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
+              '<div class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
+                '<button class="qty-ctrl-btn" data-act="dec" data-id="' + safeText(p.id) + '" id="minus-' + safeText(p.id) + '" aria-label="Ver tu pedido">−</button>' +
+                '<span class="qty-ctrl-num" id="qty-' + safeText(p.id) + '">' + n + '</span>' +
+                '<button class="qty-ctrl-btn" data-act="inc" data-id="' + safeText(p.id) + '" aria-label="Agregar otra">+</button>' +
+              '</div>' +
+              '<div class="qty-badge" id="qty-badge-' + safeText(p.id) + '" style="display:' + (n > 0 ? 'flex' : 'none') + '" data-act="badge" data-id="' + safeText(p.id) + '">' +
+                '<span id="qty-badge-num-' + safeText(p.id) + '">' + (n > 0 ? n : 1) + '</span>' +
+              '</div>' +
+              '<button class="qty-add-btn" id="qty-add-' + safeText(p.id) + '"' + (n > 0 ? ' style="display:none"' : '') + ' aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
             '</div>'
           : '<div class="qty-overlay" data-stop="1">' +
               '<div class="qty-controls" id="qty-controls-' + safeText(p.id) + '">' +
@@ -3157,10 +3175,18 @@ function renderMenu() {
     /* 1D add-product B: a LAUNCHER in a list-layout category is the same launcher as on a card — its derived price and
        ONE "+" that opens its picker; never the plain stepper (the uniform rule holds in every layout). */
     if (itemIsLauncher(p)) {
+      const n = cardQty(p.id);   // codex P2-1: a restored cart shows the total at once (no badge in a list row → the stepper)
       return '<div class="bev-row" id="card-' + safeText(p.id) + '">' +
           '<span class="bev-row-name">' + safeText(p.name) + '</span>' +
           '<span class="bev-row-meta"><span class="bev-row-price">' + safeText(GroupPicker.priceText(VARIANT_ITEMS[p.id], MENU) || '—') + '</span>' +
-            '<span class="bev-row-actions"><button class="qty-add-btn" aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button></span>' +
+            '<span class="bev-row-actions">' +
+              '<button class="qty-add-btn" id="qty-add-' + safeText(p.id) + '"' + (n > 0 ? ' style="display:none"' : '') + ' aria-label="Personalizar" data-act="open" data-id="' + safeText(p.id) + '">+</button>' +
+              '<span class="qty-controls' + (n > 0 ? ' visible' : '') + '" id="qty-controls-' + safeText(p.id) + '">' +
+                '<button class="qty-ctrl-btn" data-act="dec" data-id="' + safeText(p.id) + '" id="minus-' + safeText(p.id) + '" aria-label="Ver tu pedido">−</button>' +
+                '<span class="qty-ctrl-num" id="qty-' + safeText(p.id) + '">' + n + '</span>' +
+                '<button class="qty-ctrl-btn" data-act="inc" data-id="' + safeText(p.id) + '" aria-label="Agregar otra">+</button>' +
+              '</span>' +
+            '</span>' +
           '</span>' +
         '</div>';
     }
@@ -3269,10 +3295,41 @@ function chg(id,d){
   // Highlight card border
   const card=document.getElementById('card-'+id);
   if(card) card.classList.toggle('has-items',qty[id]>0);
+  // 1D add-product B — a CHOICE has no card of its own; its launcher's card counts it
+  const parent=GroupPicker.parentOf(findMenuItem(id), MENU);
+  if(parent && itemIsLauncher(parent)) paintLauncherCard(parent.id, d);
 
 
   updateTotal();
   updateCart();
+}
+
+/* 1D add-product B — a card's count: a plain dish's own quantity, a launcher's the TOTAL of its choices (the shared rule). */
+function cardQty(id){
+  const p = findMenuItem(id);
+  return itemIsLauncher(p) ? GroupPicker.launcherQty(VARIANT_ITEMS[p.id], (v) => qty[v] || 0) : (qty[id] || 0);
+}
+/* A launcher card's stepper, painted the way chg() paints a plain card's: zero → the "+"; otherwise the open stepper
+   showing the total (an outside tap collapses it to the badge, as on every card). Its "−" stays "−" — it opens the cart. */
+function paintLauncherCard(lid, d){
+  const n = cardQty(lid);
+  const num=document.getElementById('qty-'+lid), addBtn=document.getElementById('qty-add-'+lid);
+  const controls=document.getElementById('qty-controls-'+lid), badge=document.getElementById('qty-badge-'+lid);
+  const badgeNum=document.getElementById('qty-badge-num-'+lid);
+  if(num) num.textContent=n;
+  if(badgeNum) badgeNum.textContent=n;
+  if(n===0){
+    if(addBtn) addBtn.style.display='flex';
+    if(controls) controls.classList.remove('visible');
+    if(badge) badge.style.display='none';
+  } else {
+    if(addBtn) addBtn.style.display='none';
+    if(badge) badge.style.display='none';
+    if(controls) controls.classList.add('visible');
+    if(d>0) registerOutsideClick(lid);
+  }
+  const card=document.getElementById('card-'+lid);
+  if(card) card.classList.toggle('has-items',n>0);
 }
 
 function refreshCardExtrasIndicator(id){
@@ -3847,10 +3904,16 @@ function updateCartReviewBody(){
 /* ── Stage navigation ── */
 // A1: reduced-motion check (JS — index.html only had the CSS media query before).
 function _prm(){ try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; } }
+/* THE LAST CALL WINS. A cross-dissolve defers its swap ~170 ms, but a call naming the stage already showing swaps at
+   once — so without this a fast A → B → A (tap Pagar → instant offline failure → back to the pay step) let B's pending
+   swap land AFTER the swap back, stranding the customer on "Iniciando pago seguro…" with the error on a hidden stage.
+   Every call takes a generation; a deferred swap whose generation is no longer current does nothing. */
+let __stageGen = 0;
 function showStage(id,pct){
   const _t=document.getElementById(id); if(!_t) return;
+  const _gen=++__stageGen;
   const _cur=document.querySelector('.stage.active');
-  const _swap=()=>{ _showStageSwap(id,pct,_t); };
+  const _swap=()=>{ if(_gen!==__stageGen) return; _showStageSwap(id,pct,_t); };
   // A1: cross-dissolve — fade the current stage out, swap+scrollTo(0,0), fade the incoming stage in. Never a hard cut.
   if(_prm() || !_cur || _cur===_t){ _swap(); return; }
   _cur.classList.add('stage-out');
@@ -4797,6 +4860,7 @@ function applyPollState(st, j, orderId, stashedOrder){
       currentOrder = stashedOrder; currentOrder.payment_status = 'confirmed';
       if(j.total_cents!=null) currentOrder.total_cents=j.total_cents;   // #6: server-confirmed discounted total wins over the stashed client total
       if(j.redemption) currentOrder.redemption=j.redemption;            // #6: detection uses o.redemption || o.redeem
+      __confirmTrackingToken = (j && typeof j.tracking_token === 'string') ? j.tracking_token : null;   // the kitchen number's source
       try {
         showSuccess();
         const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove();
@@ -5010,7 +5074,7 @@ async function submitOrder(paymentStatus){
         ),
         body:JSON.stringify(currentOrder),
       });
-      if(res.ok){ orderSubmitting = false; showSuccess(); return; }
+      if(res.ok){ orderSubmitting = false; try { __confirmTrackingToken = await confirmTokenOf(res); } catch(_) { __confirmTrackingToken = null; } showSuccess(); return; }   // the kitchen number's source (form-order-number.js); guarded: never turns a created order into a retry
       if(res.status >= 400 && res.status < 500){
         const err = await res.json().catch(()=>({}));
         console.error('createOrder rejected', res.status, err);
@@ -5144,6 +5208,7 @@ function onCashTenderedInput(){
 // belongs here. Anything order-specific (cart contents, location pin,
 // payment selection) gets cleared.
 function startAnotherOrder(){
+  __orderNumber.stop();           // this confirmation is over: its number poll must never paint the next one
   window.__pendingOrder = null;   // Layer 1: next distinct order mints a fresh id
   // Reset cart quantities
   Object.keys(qty).forEach(k => { qty[k] = 0; });
@@ -5225,6 +5290,42 @@ function toggleReceiptSummary(){
   const open=b.getAttribute('aria-expanded')==='true';
   b.setAttribute('aria-expanded', open?'false':'true'); body.classList.toggle('receipt-open', !open);
 }
+/* ── THE CONFIRMATION'S ORDER NUMBER (owner 2026-10-12; R3 D19) — the number the kitchen calls out, read from this order's
+   public tracking node once the allocator stamps it (form-order-number.js: pending → "Orden #47", or hidden — never the
+   long id). The token comes from the createOrder 200 / the online return's `paid` state; it lives HERE, never on
+   currentOrder (the POST body). */
+let __confirmTrackingToken = null;
+let __orderNumberState = null;   // what the line shows now: 'pending' | 'number' | 'hidden'
+function paintOrderNumber(state, n){
+  const el = document.getElementById('order-id-display'); if(!el) return;
+  __orderNumberState = state;
+  if(state === 'number'){ el.style.display = ''; el.textContent = 'Orden #' + n; return; }
+  if(state === 'pending'){
+    el.style.display = ''; el.textContent = 'Orden # ';
+    const s = document.createElement('span'); s.className = 'order-num-pending'; s.textContent = 'asignando número…'; el.appendChild(s);
+    return;
+  }
+  el.style.display = 'none'; el.textContent = '';
+}
+// Fail-safe: if the module did not load, the line is hidden (never the long id) and nothing polls.
+const __orderNumber = (window.OrderNumber && typeof window.OrderNumber.createOrderNumber === 'function')
+  ? window.OrderNumber.createOrderNumber({ base: 'https://xpizza-delivery-default-rtdb.firebaseio.com',
+      read: (trackingUrl) => fetch(trackingUrl, { cache: 'no-store' }), setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), paint: paintOrderNumber })
+  : { start(){ paintOrderNumber('hidden'); }, stop(){} };
+// Leaving the page stops the poll — and a still-pending line is HIDDEN (codex P2-2): a page restored from the back-forward
+// cache would otherwise show "asignando número…" forever, with nothing left to fill it. A number already shown stays.
+window.addEventListener('pagehide', () => {
+  try { __orderNumber.stop(); } catch(_){}
+  if (__orderNumberState === 'pending') paintOrderNumber('hidden');
+});
+// The tracking token of a createOrder 200 ({ok, order_id, tracking_token}); a scheduled answer has none. Bounded, so a
+// slow body can never hold the confirmation; any doubt → null (the line hides).
+async function confirmTokenOf(res){
+  try {
+    const j = await Promise.race([res.json(), new Promise((r) => setTimeout(() => r(null), 1500))]);
+    return (j && !j.scheduled && typeof j.tracking_token === 'string') ? j.tracking_token : null;
+  } catch(_){ return null; }
+}
 function showSuccess(){
   showStage('s5',100);
   window.__pendingOrder = null;   // Layer 1: this order is DONE — an identical follow-up cart must mint a fresh id (never reuse a completed order_id → idempotent-return "success" with no new order)
@@ -5237,7 +5338,10 @@ function showSuccess(){
     online:ICON_LOCK+'Pagado en línea · PixelPay',
   };
 
-  document.getElementById('order-id-display').textContent='Orden # '+o.order_id;
+  // The KITCHEN's short number (#47), never the long order id (owner 2026-10-12; R3 D19). Scheduled → no number until
+  // release day → no line. The token is consumed here, so a confirmation reached any other way (no token) hides the line.
+  const __tok = __confirmTrackingToken; __confirmTrackingToken = null;
+  __orderNumber.start((o.scheduled || window.__scheduledFor) ? null : __tok);
   document.getElementById('success-sub').innerHTML=
     (o.scheduled || window.__scheduledFor)
       ? ICON_CLOCK+'Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
@@ -5883,8 +5987,8 @@ function registerOutsideClick(id){
       const badge=document.getElementById('qty-badge-'+id);
       const badgeNum=document.getElementById('qty-badge-num-'+id);
       if(controls) controls.classList.remove('visible');
-      if(qty[id]>0){
-        if(badge){ badge.style.display='flex'; if(badgeNum) badgeNum.textContent=qty[id]; }
+      if(cardQty(id)>0){
+        if(badge){ badge.style.display='flex'; if(badgeNum) badgeNum.textContent=cardQty(id); }
       }
       document.removeEventListener('click',window[key]);
       window[key]=null;

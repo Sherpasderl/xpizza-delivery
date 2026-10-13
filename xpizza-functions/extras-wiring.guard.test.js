@@ -1,6 +1,6 @@
 'use strict';
 // PER-PRODUCT EXTRAS, stage 2 — wiring guard (PLAN-per-product-extras rev 2.2 §4/§5).
-//   1. PROOF: tools/extras-inverse.js turns index.js back into 537bbbc BYTE-FOR-BYTE (8 delimited, byte-pinned blocks: 7 pure
+//   1. PROOF: tools/extras-inverse.js turns index.js back into its base (6f353ed) BYTE-FOR-BYTE (8 delimited, byte-pinned blocks: 7 pure
 //      insertions + the acquire call); tools/extras-module-inverse.js does the same for the pinned modules it touches. An edit
 //      inside a block, a missing / extra block and a byte outside are each detected.
 //   2. PLACEMENT: the check runs at all four money intakes, AFTER the group rules and BEFORE any write / reserve / quote
@@ -14,22 +14,25 @@ const { unapplyExtrasIndex, BLOCKS } = require('./tools/extras-inverse');
 const { unapplyExtrasModule, FILES, HUNKS } = require('./tools/extras-module-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
+// index.js: the extras slice sits on 6f353ed (main, which added the WhatsApp-cancel block); the pinned MODULES are byte-identical
+// at 537bbbc and 6f353ed, and keep the slice's original base
 const BASE = '537bbbc';
+const INDEX_BASE = '6f353ed';
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
+const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
 
 // ── 1a. index.js ──
 {
   const real = read('index.js');
-  const base = baseOf('index.js');
+  const base = baseOf('index.js', INDEX_BASE);
   assert.notStrictEqual(unapplyExtrasIndex(real), real, 'non-vacuity: the blocks are present and swapped back');
-  assert.strictEqual(unapplyExtrasIndex(real), base, `🔴 index.js minus the extras blocks is not ${BASE}:index.js`);
+  assert.strictEqual(unapplyExtrasIndex(real), base, `🔴 index.js minus the extras blocks is not ${INDEX_BASE}:index.js`);
   assert.strictEqual(BLOCKS.length, 8, '8 blocks');
   assert.throws(() => unapplyExtrasIndex(real.replace('EI.logShadow(\'createOrder\'', 'EI.logShadow(\'createorder\'')), /pinned bytes/, 'an edit INSIDE a block');
   assert.throws(() => unapplyExtrasIndex(real.replace('/* extras:end cash */', '')), /exactly 8/, 'a missing delimiter');
   assert.throws(() => unapplyExtrasIndex(real.replace('exports.verifyOtp', '/* extras:begin x */\n/* extras:end x */\nexports.verifyOtp')), /exactly 8/, 'a ninth block');
   assert.notStrictEqual(unapplyExtrasIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the blocks survives (the base pin catches it)');
-  ok(`index.js: unapplyExtrasIndex → ${BASE}:index.js byte-for-byte (8 blocks); an edit inside, a missing delimiter, a ninth block and a byte outside are each caught`);
+  ok(`index.js: unapplyExtrasIndex → ${INDEX_BASE}:index.js byte-for-byte (8 blocks); an edit inside, a missing delimiter, a ninth block and a byte outside are each caught`);
 }
 // ── 1b. the pinned modules ──
 {

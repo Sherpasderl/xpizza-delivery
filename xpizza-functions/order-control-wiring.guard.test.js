@@ -20,8 +20,10 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // after add-product B's (tools/addproduct-b-inverse.js), which landed on top of A; the stacked-tracker slice's
 // (tools/stacked-tracker-inverse.js), which landed on top of PB-2; and D4-c2b's one delimited block (tools/d4c2b-inverse.js,
 // advisor ruling N1), which landed on top of the stacked-tracker slice and is reversed FIRST.
-// D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed FIRST.
-const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/extras-inverse').unapplyExtrasIndex(read('index.js')))))));
+// D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
+// after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
+// (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(read('index.js'))))))));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });

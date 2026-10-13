@@ -398,8 +398,10 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // 1D add-product A: its hunks (index.js + the moved blocks) are reversed before that — it landed on top of D4-c4; add-product B's
     // before A's (it landed on top of A); the stacked-tracker slice's before B's (it landed on top of PB-2); D4-c2b's ONE delimited,
     // byte-pinned block FIRST (it landed on top of the stacked-tracker slice).
-// D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed FIRST.
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/extras-inverse').unapplyExtrasIndex(foldPortalSplit(root)))))))));
+// D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
+// after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
+// (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/wacancel-inverse').unapplyWaCancelIndex(require('../tools/extras-inverse').unapplyExtrasIndex(foldPortalSplit(root))))))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));

@@ -101,8 +101,21 @@ try {
   const shown = (w.document.getElementById('order-id-display') || {}).textContent || '';
   console.log(`F4-OBS active stage: ${(w.document.querySelector('.stage.active') || {}).id}; order-id-display: ${shown}; s5 text: ${(s5 ? s5.textContent : '').replace(/\s+/g, ' ').trim().slice(0, 300)}`);
   assert.ok(s5, FAIL('F4', `the confirmation stage #s5 is active after the REAL createOrder response (active: ${(w.document.querySelector('.stage.active') || {}).id})`));
-  assert.ok(shown.includes(oid), FAIL('F4', `the confirmation shows the order id the REAL createOrder returned (${shown} vs ${oid})`));
-  ok(`F4 the confirmation stage (#s5) is active and shows "${shown.trim()}" — the id the real createOrder returned (rendered from the real submit, no currentOrder injection)`);
+  // R3-REPIN D19 (2026-10-13, owner fix 3a cb21bb9): the confirmation's number is the kitchen's display_number (F-NUM),
+  // NEVER the long order_id. Old pin: "#order-id-display includes the createOrder order_id". New: the long id is ABSENT
+  // and the line starts "Orden #"; once the order's tracking node carries the stamped display_number (written here as
+  // allocateDisplayNumberOnSale writes it — this suite runs no triggers; the P1 journey runs the real allocator), the line
+  // is exactly "Orden #<that number>".
+  assert.ok(!shown.includes(oid) && /^Orden #/.test(shown.trim()), FAIL('F4', `the confirmation must not show the long order id and must start "Orden #" (shown "${shown}", order_id ${oid})`));
+  const token = order.tracking_token;
+  assert.ok(typeof token === 'string' && token.length >= 8, FAIL('F4', `premise — the persisted order carries its tracking_token (${token})`));
+  const N = 47;
+  await rtdb.ref(`order_tracking/${token}/display_number`).set(N);
+  let numbered = '';
+  for (let i = 0; i < 160; i += 1) { await settle(); numbered = ((w.document.getElementById('order-id-display') || {}).textContent || '').trim(); if (numbered === `Orden #${N}`) break; await new Promise((r) => setTimeout(r, 100)); }
+  assert.strictEqual(numbered, `Orden #${N}`, FAIL('F4', `after display_number ${N} is stamped on order_tracking/${token}, the confirmation reads "Orden #${N}" (got "${numbered}")`));
+  assert.ok(!numbered.includes(oid), FAIL('F4', 'the long order id reappeared'));
+  ok(`F4 the confirmation stage (#s5) is active; before the number lands it shows "${shown.trim()}" (never the long id ${oid}); once display_number ${N} is stamped on the order's tracking node it reads "${numbered}" — rendered from the real submit, no currentOrder injection`);
 
   assert.deepStrictEqual(R.refused, [], FAIL('F5', `unrouted network calls: ${JSON.stringify(R.refused)}`));
   ok(`F5 every network call the form made was routed to a real handler (${[...new Set(R.log.map((x) => x.fn))].join(', ')}); none refused`);

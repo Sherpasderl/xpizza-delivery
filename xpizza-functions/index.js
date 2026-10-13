@@ -4705,7 +4705,9 @@ exports.sendOrderStatusNotifications = onValueWritten(
         // still notifies.
         if (!suppressCancelledNotification(order)) {
           body = whatsapp.tplCancelled({
-            orderId,
+            /* wacancel:begin */
+            displayNumber: order.display_number,   // the kitchen's #47, never the long order id (absent → no number)
+            /* wacancel:end */
             restaurantId
           });
         }

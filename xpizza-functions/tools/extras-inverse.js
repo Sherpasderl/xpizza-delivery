@@ -2,7 +2,7 @@
 // PER-PRODUCT EXTRAS, stage 2 — the test-only INVERSE of its index.js change (PLAN-per-product-extras rev 2.1 §4/§5).
 // index.js carries EIGHT delimited, byte-pinned blocks `/* extras:begin <id> */ … /* extras:end <id> */`: seven pure
 // insertions and ONE replaced line (the acquire call). unapplyExtrasIndex swaps each back for its original bytes, so
-// unapplyExtrasIndex(index.js) === 537bbbc:index.js byte-for-byte (extras-wiring.guard). Every index.js fold guard applies
+// unapplyExtrasIndex(index.js) === 6f353ed:index.js byte-for-byte (extras-wiring.guard). Every index.js fold guard applies
 // it FIRST (this is the newest index.js slice), before the WhatsApp-cancel / D12b blocks.
 const crypto = require('crypto');
 const BLOCKS = [
