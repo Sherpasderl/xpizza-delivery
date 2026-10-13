@@ -254,11 +254,21 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     const golden = JSON.parse(fsys.readFileSync(GOLDEN, 'utf8'));
     // ALLOWLIST (ruling R3.2): exactly the HTTP floor's GET is excluded from the comparison, and asserted on its own
     const isFloorRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/client_floor/orders';
+    // per-product extras (DECLARED, exact): the extras MODE read (platform_config/extras_eligibility) is a TTL-cached config read
+    // like the floor — set aside on its own: at most ONE per request, only a read; and with the mode absent (off) the version's
+    // eligibility DOCUMENT is never read
+    const isExtrasModeRead = (e) => e.db === 'rtdb' && e.path === 'platform_config/extras_eligibility';
+    const assertExtrasDeclared = (trace, label) => {
+      const m = trace.filter(isExtrasModeRead);
+      assert.ok(m.length <= 1 && m.every((e) => /^(get|once)$/.test(e.op)), `🔴 ${label}: the extras mode read is at most one plain read (${JSON.stringify(m)})`);
+      assert.ok(!trace.some((e) => /\/meta\/extras_eligibility$/.test(String(e.path || ''))), `🔴 ${label}: no eligibility-document read while the mode is off`);
+    };
     for (const rid of Object.keys(golden)) for (const k of Object.keys(golden[rid])) {
       const floorCalls = out[rid][k].filter(isFloorRead);
+      assertExtrasDeclared(out[rid][k], `${rid} ${k}`);
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
-      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
+      assert.deepStrictEqual(out[rid][k].filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen ba29282 trace`);
       console.log(`  ✓ ${rid} ${k}: ${golden[rid][k].length} calls identical to ba29282 (+${floorCalls.length} allowlisted floor get)`);
     }
     assert.deepStrictEqual(Object.keys(out).sort(), Object.keys(golden).sort());
@@ -277,7 +287,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
       assert.strictEqual(t.status, 200, 'post-TTL request premise');
       const fl = t.trace.filter(isFloorRead);
       assert.deepStrictEqual(fl.map((e) => e.op), ['get'], `🔴 after the TTL exactly ONE floor GET is made (got ${JSON.stringify(fl)})`);
-      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e)), golden.x_pizza.b_quote_redemption, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
+      assert.deepStrictEqual(t.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), golden.x_pizza.b_quote_redemption, '🔴 the post-TTL request, minus its floor GET, equals the frozen golden');
       console.log(`  ✓ x_pizza post-TTL b_quote_redemption: exactly 1 allowlisted floor GET; the rest identical to the golden`);
     }
     // ── RENDER-ON COMPANION (1D add-product B, PB-2 ruling (A)) ─────────────────────────────────────────────────────
@@ -290,7 +300,7 @@ async function traced(rid, oid, uid, phone, opts = {}) {
     {
       const GATE_READ = (rid) => [{ db: 'fs', op: 'get', path: `restaurants/${rid}/meta/active_version` },
         { db: 'fs', op: 'getAll', paths: [`restaurants/${rid}/meta/active_version`], raw_order: 'ascending', count: 1 }];
-      const noFloor = (t) => t.trace.filter((e) => !isFloorRead(e));
+      const noFloor = (t) => t.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
       const side = async (on, rid, kind, refresh) => {
         if (refresh) CLOCK_OFFSET += 61000;   // past the verifier's 60 s, the context's 45 s, the gate pointer's 45 s, the floor's 30 s
         await rtdb.ref('rate_limits').remove();

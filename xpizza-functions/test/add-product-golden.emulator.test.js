@@ -181,7 +181,11 @@ const wipe = async () => { for (const c of await realDb.listCollections()) await
     // (and, on a refusal that used to precede every read, the stored draft) BEFORE deciding
     const isSourceRead = (x) => /^get restaurants\/[^/]+\/meta\/source$/.test(x);
     const isOverlapBaselineRead = (x) => /^get restaurants\/[^/]+\/versions\/<v>\/(menu_items|extras)\/[0-9a-f]{20}$/.test(x);
-    const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x))
+    // per-product extras (DECLARED, exact): a successful publish writes the version's eligibility document — exactly ONE create
+    const isEligibilityCreate = (x) => /^batch\.create restaurants\/[^/]+\/versions\/<v>\/meta\/extras_eligibility$/.test(x);
+    if (/publish/.test(c.name) && c.status === 200) assert.strictEqual(left.filter(isEligibilityCreate).length, 1, `${c.name}: exactly one eligibility-document create per publish`);
+    else assert.strictEqual(left.filter(isEligibilityCreate).length, 0, `${c.name}: no eligibility-document write without a publish`);
+    const allowExtra = (/publish/.test(c.name) && c.status === 200) ? left.every((x) => isKdsSyncRead(x) || isOverlapBaselineRead(x) || isEligibilityCreate(x))
       : /getEditableCatalog|stale save/.test(c.name) ? left.every(isKdsSyncRead)
       : /invalid source/.test(c.name) ? left.every((x) => isKdsSyncRead(x) || isSourceRead(x)) : left.length === 0;
     assert.ok(allowExtra, `${c.name}: undeclared extra calls ${JSON.stringify(left)}`);

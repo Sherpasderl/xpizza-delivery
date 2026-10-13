@@ -1035,6 +1035,7 @@ test('🔴 an EMPTY diff attests to nothing and publishes nothing', () => {
 
 // ── 1D add-product A — the add-only review, attestation, panels and receipt ─────────────────────────────────────
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 const ADD_DIFF = () => ({ added: [{ surface: 'item', key: 'Pizza Nueva', price: 420 }, { surface: 'extra', key: 'x', price: 5 }],
   removed: [], renamed: [], changed: [{ key: 'Pizza Margherita', surface: 'item', field: 'price', old: 299, new: 310 }], largeChangeSet: [] });
@@ -1077,6 +1078,12 @@ test('🔴 EVERY merchant-reachable add-product refusal has a designed panel —
   // Not reachable from this portal (it never sends a key, an id, a malformed row or a mismatched ref), or a server
   // configuration fault the merchant cannot fix: the generic panel is the honest answer for these.
   const GENERIC_BY_DESIGN = new Set(['addition_malformed', 'client_supplied_key', 'item_order_ref_mismatch', 'id_taken', 'key_mode_unknown', 'key_mode_inconsistent']);
+  // per-product extras (stage 2): unreachable from this portal ONLY while the platform extras-authoring switch is OFF — it
+  // sends no tmp-ref override, no extras_policy toggle and no deny_extras change. The exemption is TIED to the switch: turning
+  // authoring on (with the extras form) turns this test red until both codes have designed panels.
+  const { extrasCapabilities } = createRequire(import.meta.url)('../xpizza-functions/catalog/platform-extras.js');
+  const EXTRAS_CODES = ['exposure_ref_mismatch', 'extras_not_supported_yet'];
+  if (!extrasCapabilities().authoring) for (const c of EXTRAS_CODES) GENERIC_BY_DESIGN.add(c);
   const RESET = new Set(['existing_item_changed', 'existing_item_removed', 'extras_changed', 'item_order_changed', 'structure_changed']);
   for (const c of codes) {
     if (GENERIC_BY_DESIGN.has(c)) continue;
