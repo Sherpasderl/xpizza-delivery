@@ -523,6 +523,11 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .detail-variant-row{position:relative}
 .detail-variant-row .choice-radio{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
 .detail-variant-row:focus-within{outline:2px solid currentColor;outline-offset:2px}
+/* per-product extras (picker): each staged extra is a NATIVE checkbox inside the dish modal's own extras row — focusable and
+   announced (checked / not checked), visually hidden; the row shows keyboard focus exactly like the choice rows */
+.staged-extra-row{position:relative}
+.staged-extra-row .staged-extra-input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.staged-extra-row:focus-within{outline:2px solid currentColor;outline-offset:2px}
 .choice-line{display:flex;align-items:center;gap:8px}
 .choice-line .detail-extras-name{display:inline}
 .choice-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:var(--gold-lt);color:var(--gold-dk);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
@@ -2640,6 +2645,11 @@ function wireMenuDelegate(){
   window.__menuDelegateWired = true;
   // 1D add-product B (codex PB-2 r1 P2-6): the choice radios' keyboard — Space / arrows (change) and Enter choose
   GroupPicker.wireChoiceKeys(document, function(raw){ const d = MENU.find(function(x){ return String(x.id) === String(raw); }); if (d) selectVariant(d.id); });
+  // per-product extras (picker): a staged extra's native checkbox — click, tap on its row (the label) and Space all arrive as `change`
+  document.addEventListener('change', function(ev){
+    const t = ev.target;
+    if (t && t.classList && t.classList.contains('staged-extra-input')) toggleStagedExtra(t.value, t.checked);
+  });
   document.addEventListener('click', function(ev){
     const actEl = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
     if (!actEl) return;
@@ -5074,12 +5084,31 @@ function showSuccess(){
 let currentDetailPizzaId = null;
 // 1D add-product B — the choice staged in an open LAUNCHER's picker (a variant id, or null). Every open starts fresh.
 let stagedVariantId = null;
-function selectVariant(vid) { stagedVariantId = vid; updateDetailModal(); }
+// per-product extras (picker): the extras staged for the chosen choice ({ extraId: 1 }); every open starts fresh, like the choice
+let stagedExtras = {};
+const offeredIdsFor = (dish) => { const off = extrasOfferedFor(dish); return new Set(off ? off.flatMap(g => g.extras.map(e => String(e.id))) : []); };
+function selectVariant(vid) {
+  stagedVariantId = vid;
+  // switching choice KEEPS the staged extras (as approved), limited to what the new choice offers
+  const ok = offeredIdsFor(MENU.find(p => p.id === vid));
+  Object.keys(stagedExtras).forEach((k) => { if (!ok.has(String(k))) delete stagedExtras[k]; });
+  updateDetailModal();
+}
+// a staged extra toggled in the picker: captured AS PRICED NOW, exactly like the dish modal's toggle (CART.noteExtra is idempotent
+// and never recaptures a repriced extra — a price that moved since stays a conflict the checkout refuses, never accepted here)
+function toggleStagedExtra(eid, on) {
+  const ex = EXTRAS.find((x) => String(x.id) === String(eid));
+  if (!ex || stagedVariantId === null || !offeredIdsFor(MENU.find(p => p.id === stagedVariantId)).has(String(ex.id))) return;
+  if (on) { stagedExtras[ex.id] = 1; const _ex = findMenuExtra(ex.id); if (_ex) CART.noteExtra(_ex); }
+  else delete stagedExtras[ex.id];
+  updateDetailModal();
+}
 
 function openDetailModal(pizzaId) {
   if (pizzaId === undefined || pizzaId === null) return;
   currentDetailPizzaId = pizzaId;
   stagedVariantId = null;
+  stagedExtras = {};
   renderDetailModal();
 
   document.getElementById('detail-overlay').classList.add('open');
@@ -5231,7 +5260,6 @@ function renderDetailModal() {
   const photoColor = safeColor(look.color, '#C8321A');   // 1B Task 8 — constrained grammar, not an escape
   const emoji = look.emoji || '🍕';
   const desc = look.desc || '';
-  const isNutella = pizza.name === 'Nutella';
 
   let html = '';
 
@@ -5268,16 +5296,16 @@ function renderDetailModal() {
   </div>`;
 
   // Extras section — only if qty>0 AND not Nutella AND the dish allows extras (1D add-product B: extras_policy 'none')
-  if (pizzaQty > 0 && !isNutella && !GroupPicker.noExtras(pizza)) {
-    const cats = [...new Set(EXTRAS.map(e => e.cat))];
+  const offered = extrasOfferedFor(pizza);
+  if (pizzaQty > 0 && offered) {
     for (let inst = 0; inst < pizzaQty; inst++) {
       if (pizzaQty > 1) {
         html += `<div class="detail-pizza-header">Pizza ${inst + 1}</div>`;
       }
-      cats.forEach(cat => {
+      offered.forEach(({ cat, extras }) => {
         html += `<div class="detail-cat-label">${escapeHtml(cat)}</div>`;
         html += `<div class="detail-extras-list">`;
-        EXTRAS.filter(e => e.cat === cat).forEach(e => {
+        extras.forEach(e => {
           const instExtras = (pizzaExtras[pizzaId] && pizzaExtras[pizzaId][inst]) || {};
           const selected = (instExtras[e.id] || 0) > 0;
           html += `<div class="detail-extras-row" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-inst="${inst}">
@@ -5301,9 +5329,21 @@ function renderDetailModal() {
   updateDetailCta();
 }
 
+/* per-product extras (picker slice) — THE ONE RULE for which extras a dish offers, grouped by category in EXTRAS order. The dish
+   modal (a dish, or a choice reopened from the cart) and the launcher's picker (for the CHOSEN choice) both read it, so the
+   picker and the reopened line can never offer different sets again (the gate-0 finding: picker [] vs the line's 14). The
+   per-product checklist will filter here, once, for both. null = the dish takes no extras (Nutella, extras_policy 'none'). */
+function extrasOfferedFor(dish) {
+  if (!dish || dish.name === 'Nutella' || GroupPicker.noExtras(dish)) return null;
+  return [...new Set(EXTRAS.map(e => e.cat))].map(cat => ({ cat, extras: EXTRAS.filter(e => e.cat === cat) }));
+}
+
 /* 1D add-product B — a LAUNCHER's picker, exactly the approved mock: photo, name, description, the derived price, then the
-   required single-select group. No quantity and no extras here: Add commits ONE of the chosen variant and closes, and
-   that variant is then an ordinary cart line (its own modal, its own extras — unless extras_policy is 'none'). */
+   required single-select group. No quantity: Add commits ONE of the chosen variant and closes, and that variant is then an
+   ordinary cart line (its own modal, its own extras — unless extras_policy is 'none').
+   per-product extras (approved mockup v3, screen 6): once a choice is selected, the extras the CHOSEN choice offers
+   (extrasOfferedFor — the same set its own modal shows) follow it, in the dish modal's own rows and ✓ toggles, each a native
+   checkbox; the button totals the choice and the staged extras, and those extras land on the pizza this add creates. */
 function renderLauncherModal(pizza) {
   const cfg = VARIANT_ITEMS[pizza.id];
   const photoColor = safeColor(pizza.color, '#C8321A');
@@ -5324,16 +5364,39 @@ function renderLauncherModal(pizza) {
     + (r.recommended ? `<span class="choice-badge">${escapeHtml(GroupPicker.RECOMMENDED_LABEL)}</span>` : '') + `</div>`
     + (r.delta !== null ? `<span class="choice-delta">+L ${safeText(r.delta)}</span>` : '')
     + `<span class="detail-variant-radio"></span></div>`).join('') + `</div>`;
+  const offered = stagedVariantId === null ? null : extrasOfferedFor(MENU.find(p => p.id === stagedVariantId));
+  if (offered) offered.forEach(({ cat, extras }) => {
+    if (!extras.length) return;
+    html += `<div class="detail-cat-label">${escapeHtml(cat)}</div><div class="detail-extras-list">`;
+    extras.forEach((e) => {
+      const on = (stagedExtras[e.id] || 0) > 0;
+      html += `<label class="detail-extras-row staged-extra-row">
+            <div>
+              <span class="detail-extras-name">${escapeHtml(e.name)}</span>
+              <span class="detail-extras-price">+L ${safeText(e.price)}</span>
+            </div>
+            <input type="checkbox" class="staged-extra-input" data-act="staged-extra" data-eid="${safeText(e.id)}" value="${safeText(e.id)}"${on ? ' checked' : ''}>
+            <div class="detail-extras-toggle ${on ? 'selected' : ''}" aria-hidden="true">✓</div>
+          </label>`;
+    });
+    html += `</div>`;
+  });
   html += `<div style="height:24px"></div>`;
   const choiceFocus = GroupPicker.choiceHasFocus(document);   // codex PB-2 r1 P2-6: a keyboard choice keeps its focus
+  const ae = document.activeElement;   // …and so does a keyboard extra (the same extra, after the re-render)
+  const extraFocus = ae && ae.classList && ae.classList.contains('staged-extra-input') ? ae.value : null;
   document.getElementById('detail-scroll').innerHTML = html;
   GroupPicker.refocusChoice(document, choiceFocus);
+  if (extraFocus !== null) {
+    const again = [...document.querySelectorAll('#detail-scroll .staged-extra-input')].find((el) => el.value === extraFocus);
+    if (again) again.focus({ preventScroll: true });
+  }
   if (stagedVariantId === null) document.getElementById('detail-scroll').scrollTop = 0;   // a fresh open; a choice tap keeps the scroll
   updateDetailCta();
 }
 
 function launcherCtaDecision(pizza) {
-  return GroupPicker.ctaDecision({ stagedId: stagedVariantId, menu: MENU, isSoldOut: isSoldOut, stagedExtras: null, extras: EXTRAS });
+  return GroupPicker.ctaDecision({ stagedId: stagedVariantId, menu: MENU, isSoldOut: isSoldOut, stagedExtras: stagedExtras, extras: EXTRAS });
 }
 
 function updateDetailCta() {
@@ -5413,7 +5476,16 @@ function detailCtaTap() {
   if (itemIsLauncher(launcher)) {
     if (launcherCtaDecision(launcher).kind !== 'add') return;
     const vid = stagedVariantId;
+    const ok = offeredIdsFor(MENU.find(p => p.id === vid));
+    const staged = {};
+    Object.keys(stagedExtras).forEach((k) => { if (ok.has(String(k)) && stagedExtras[k] > 0) staged[k] = 1; });
+    const inst = qty[vid] || 0;               // the pizza this add creates
     chg(vid, 1);
+    if ((qty[vid] || 0) === inst + 1) {        // the add really happened (not sold out, not refused by cartSync)
+      if (!pizzaExtras[vid]) pizzaExtras[vid] = {};
+      pizzaExtras[vid][inst] = staged;         // a FULL replace, even when empty: the new pizza carries exactly what was staged
+      refreshCardExtrasIndicator(vid); updateTotal(); updateCart();
+    }
     closeDetailModal();
     return;
   }
