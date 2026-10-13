@@ -3930,6 +3930,12 @@ exports.notifyDriverOnAssignment = onValueWritten(
 
     const db = getDatabase();
 
+    // S1a §14.2 — never push an assignment to a DEACTIVATED driver (a backstop; §2 blocks the assignment itself when closed).
+    if ((await db.ref(`driver_accounts/${newDriverId}/deactivated`).once('value')).val() === true) {
+      console.warn(`notifyDriverOnAssignment: target ${newDriverId} is deactivated — no push`);
+      return;
+    }
+
     // Look up the order for the notification body
     const orderSnap = await db.ref(`orders/${after.order_id}`).once('value');
     const order = orderSnap.val();
@@ -6410,6 +6416,23 @@ exports.sweepPendingOrders = onSchedule(
         await rollbackOrAlert(db, claim, orderId, 'sweepPending');
       }
     }
+    // S1a §5 — monitoring backstop (read-only): a nonterminal task owned by a DEACTIVATED driver ⇒ ONE idempotent,
+    // current-state-keyed dispatcher alert so a human reassigns it (via the existing Reasignar). Keyed strictly on
+    // deactivated===true; NO mutation of the task/order/shift (auto-release clobbers a newer owner, and deactivated
+    // does not prove no cash was collected). Self-clears when the uid is no longer a deactivated owner. Inert until
+    // S1b deactivates anyone — a backstop to the §2 rules invariant, not the primary guarantee.
+    try {
+      const deactOwners = new Set();
+      for (const t of Object.values(tasksSnap.val() || {})) {
+        if (t && t.assigned_driver_id && t.status !== 'completed' && t.status !== 'cancelled') deactOwners.add(t.assigned_driver_id);
+      }
+      for (const ownerUid of deactOwners) {
+        const isDeactivated = (await db.ref(`driver_accounts/${ownerUid}/deactivated`).once('value')).val() === true;
+        const alertRef = db.ref(`dispatcher_alerts/driver_deactivated_${ownerUid}`);
+        if (isDeactivated) await alertRef.transaction((cur) => cur || { type: 'driver_deactivated_owns_task', driver_uid: ownerUid, created_at: Date.now() });
+        else await alertRef.remove();
+      }
+    } catch (e) { console.error('sweepPending: deactivated-owner monitor failed', e && e.message); }
     if (offered || waiting || healed) console.log(`sweepPending: offered ${offered}, waiting ${waiting}, healed ${healed}`);
   }
 );

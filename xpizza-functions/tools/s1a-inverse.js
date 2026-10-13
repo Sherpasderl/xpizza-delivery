@@ -78,6 +78,33 @@ const HUNKS = Object.freeze([
     was: "        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;\n        updates[`tasks/${orderId}_delivery/last_swept`] = now;\n        await db.ref().update(updates);\n",
     now: "        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;\n        updates[`tasks/${orderId}_delivery/last_swept`] = now;\n        await svcDb.ref().update(updates);   // S1a §3\n",
   },
+  // (f) notify-on-assignment account check (§14.2) — never push an assignment to a deactivated driver
+  {
+    was: "    const db = getDatabase();\n\n    // Look up the order for the notification body",
+    now: "    const db = getDatabase();\n\n    // S1a §14.2 — never push an assignment to a DEACTIVATED driver (a backstop; §2 blocks the assignment itself when closed).\n    if ((await db.ref(`driver_accounts/${newDriverId}/deactivated`).once('value')).val() === true) {\n      console.warn(`notifyDriverOnAssignment: target ${newDriverId} is deactivated — no push`);\n      return;\n    }\n\n    // Look up the order for the notification body",
+  },
+  // (g) monitoring backstop (§5) — read-only deactivated-owner alert in the sweeper, before its summary log
+  {
+    was: "    if (offered || waiting || healed) console.log(`sweepPending: offered ${offered}, waiting ${waiting}, healed ${healed}`);\n",
+    now: "    // S1a §5 — monitoring backstop (read-only): a nonterminal task owned by a DEACTIVATED driver ⇒ ONE idempotent,\n"
+       + "    // current-state-keyed dispatcher alert so a human reassigns it (via the existing Reasignar). Keyed strictly on\n"
+       + "    // deactivated===true; NO mutation of the task/order/shift (auto-release clobbers a newer owner, and deactivated\n"
+       + "    // does not prove no cash was collected). Self-clears when the uid is no longer a deactivated owner. Inert until\n"
+       + "    // S1b deactivates anyone — a backstop to the §2 rules invariant, not the primary guarantee.\n"
+       + "    try {\n"
+       + "      const deactOwners = new Set();\n"
+       + "      for (const t of Object.values(tasksSnap.val() || {})) {\n"
+       + "        if (t && t.assigned_driver_id && t.status !== 'completed' && t.status !== 'cancelled') deactOwners.add(t.assigned_driver_id);\n"
+       + "      }\n"
+       + "      for (const ownerUid of deactOwners) {\n"
+       + "        const isDeactivated = (await db.ref(`driver_accounts/${ownerUid}/deactivated`).once('value')).val() === true;\n"
+       + "        const alertRef = db.ref(`dispatcher_alerts/driver_deactivated_${ownerUid}`);\n"
+       + "        if (isDeactivated) await alertRef.transaction((cur) => cur || { type: 'driver_deactivated_owns_task', driver_uid: ownerUid, created_at: Date.now() });\n"
+       + "        else await alertRef.remove();\n"
+       + "      }\n"
+       + "    } catch (e) { console.error('sweepPending: deactivated-owner monitor failed', e && e.message); }\n"
+       + "    if (offered || waiting || healed) console.log(`sweepPending: offered ${offered}, waiting ${waiting}, healed ${healed}`);\n",
+  },
 ]);
 
 function applyHunks(src, dir) {   // dir: 'forward' = was→now, 'inverse' = now→was
