@@ -75,10 +75,32 @@ function lineExtraKeys(line, tables, rid) {
   return out;
 }
 
-// → { outcome: 'skip' | 'allow' | 'denied' | 'unavailable', mode, versionId, denied: [{ item, extra }] }
+// 🔴 MALFORMED KEYS ARE REFUSED, NEVER SKIPPED (codex stage-2 r2 P1). Pricing reads a line's key as a JavaScript PROPERTY key,
+// so it COERCES: {name: ["Salsa Roja"]} prices as "Salsa Roja" (an array stringifies), as would an object, a boolean or null
+// with a matching table key. Skipping such a key here let a denied extra through every intake while pricing charged it
+// (L338; La Musa {id: ["rice_white"]} → L506). Rather than mirror the coercion, a product's or an extra's `id` / `name` that is
+// PRESENT and not a string or a finite number makes the whole request malformed (400). Both fields, priced or not: no
+// legitimate client sends anything else, and refusing is the only answer that cannot drift from pricing.
+const validKey = (v) => typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v));
+function malformedKeys(items) {
+  const out = [];
+  (Array.isArray(items) ? items : []).forEach((line, i) => {
+    if (!line || typeof line !== 'object') return;   // a non-object line is pricing's refusal (no key to coerce)
+    for (const f of ['id', 'name']) if (own(line, f) && line[f] !== undefined && !validKey(line[f])) out.push({ line: i, field: f });
+    (Array.isArray(line.extras) ? line.extras : []).forEach((e, j) => {
+      if (!e || typeof e !== 'object') return;
+      for (const f of ['id', 'name']) if (own(e, f) && e[f] !== undefined && !validKey(e[f])) out.push({ line: i, extra: j, field: f });
+    });
+  });
+  return out;
+}
+
+// → { outcome: 'skip' | 'allow' | 'denied' | 'unavailable' | 'malformed', mode, versionId, denied: [{ item, extra }] }
 async function extrasCheck({ mode, tables, items, rid, envelopeOf, readEligibility, deadlineMs = 1500 }) {
   const m = mode && mode.mode;
   if (m === 'off') return { outcome: 'skip', mode: 'off', versionId: null, denied: [] };
+  const bad = malformedKeys(items);   // pure, no read: decided before (and regardless of) the version document
+  if (bad.length) return { outcome: 'malformed', mode: (m === 'shadow' || m === 'enforce') ? m : 'unknown', versionId: null, denied: [], malformed: bad.slice(0, 10) };
   if (m !== 'shadow' && m !== 'enforce') return { outcome: 'unavailable', mode: 'unknown', versionId: null, denied: [], why: 'mode_unknown' };
   const env = typeof envelopeOf === 'function' ? envelopeOf(tables) : undefined;
   const versionId = env && typeof env.versionId === 'string' && env.versionId ? env.versionId : null;
@@ -111,15 +133,18 @@ const ordersClientGen = (h) => (h && h.app === 'orders' && Number.isInteger(h.co
 function logShadow(endpoint, rid, res, clientGen) {
   if (res.mode !== 'shadow') return;
   console.log('eligibility_shadow', JSON.stringify({ endpoint, rid, outcome: res.outcome === 'denied' ? 'would_refuse' : res.outcome,
-    versionId: res.versionId, client_gen: clientGen === undefined ? null : clientGen, denied: res.denied.slice(0, 5), why: res.why || null }));
+    versionId: res.versionId, client_gen: clientGen === undefined ? null : clientGen, denied: res.denied.slice(0, 5), why: res.why || null,
+    ...(res.malformed ? { malformed: res.malformed.slice(0, 5) } : {}) }));
 }
 // does this result REFUSE (enforce or unknown)? shadow and off never do
-const refuses = (res) => (res.mode === 'enforce' || res.mode === 'unknown') && (res.outcome === 'denied' || res.outcome === 'unavailable');
+const refuses = (res) => (res.mode === 'enforce' || res.mode === 'unknown') && (res.outcome === 'denied' || res.outcome === 'unavailable' || res.outcome === 'malformed');
 
 const EXTRA_NOT_ALLOWED = { error: 'extra_not_allowed', detail: 'Uno de los extras ya no está disponible para ese producto. Revisá tu pedido.' };
 const ELIGIBILITY_UNAVAILABLE = { error: 'eligibility_unavailable', retryable: true, retryAfter: 2, detail: 'No pudimos confirmar los extras de tu pedido. Probá de nuevo.' };
-const refusalBody = (res) => (res.outcome === 'denied' ? { ...EXTRA_NOT_ALLOWED, lines: res.denied } : { ...ELIGIBILITY_UNAVAILABLE });
-const refusalStatus = (res) => (res.outcome === 'denied' ? 409 : 503);
+const ITEM_MALFORMED = { error: 'item_malformed', detail: 'Tu pedido tiene un producto o un extra que no reconocemos. Volvé a armarlo, por favor.' };
+const refusalBody = (res) => (res.outcome === 'denied' ? { ...EXTRA_NOT_ALLOWED, lines: res.denied }
+  : res.outcome === 'malformed' ? { ...ITEM_MALFORMED } : { ...ELIGIBILITY_UNAVAILABLE });
+const refusalStatus = (res) => (res.outcome === 'denied' ? 409 : res.outcome === 'malformed' ? 400 : 503);
 // send a refusal the one way every intake does: 409 / 503, Retry-After on the retryable one, the typed body (+ `extra`)
 function sendRefusal(res, xr, extra = {}) {
   if (xr.outcome === 'unavailable') res.set('Retry-After', String(ELIGIBILITY_UNAVAILABLE.retryAfter));
@@ -128,4 +153,4 @@ function sendRefusal(res, xr, extra = {}) {
 // the guard reason handed to acquireHostedAttempt (only on a FRESH issuance — bound reuse is never re-judged)
 const guardReason = (res) => (refuses(res) ? (res.outcome === 'denied' ? 'extra_not_allowed' : 'eligibility_unavailable') : null);
 
-module.exports = { createExtrasModeReader, extrasCheck, logShadow, refuses, refusalBody, refusalStatus, sendRefusal, guardReason, ordersClientGen, lineItemKey, lineExtraKeys, PATH, MODES };
+module.exports = { createExtrasModeReader, extrasCheck, malformedKeys, logShadow, refuses, refusalBody, refusalStatus, sendRefusal, guardReason, ordersClientGen, lineItemKey, lineExtraKeys, PATH, MODES };

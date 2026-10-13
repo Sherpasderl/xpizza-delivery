@@ -23,7 +23,7 @@ const BLOCKS = [
   },
   {
     "id": "card",
-    "sha": "230db9d0b5ecb34ae0e73d16213a892bfa4479a64bbe6fdcf13978f7ad3f853f",
+    "sha": "5299d42da79a6476e8d863525868cbdd998902273f0b2a9cd5a6bc5746718cdf",
     "original": ""
   },
   {

@@ -1665,7 +1665,7 @@ chargeOnlineApp.all('*', async (req, res) => {
       const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
       EI.logShadow('chargeOnlineOrder', restaurantId, xr, EI.ordersClientGen(clientHdr));
       if (EI.refuses(xr)) {
-        if (!clsForMenu || clsForMenu.willIssueFreshUrl) { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }
+        if (!clsForMenu || clsForMenu.willIssueFreshUrl || xr.outcome === 'malformed') { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }   // malformed: refused even on reuse
         extrasArmed = EI.guardReason(xr); extrasArmedDenied = xr.denied;
       }
     }

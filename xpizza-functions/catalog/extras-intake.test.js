@@ -130,5 +130,68 @@ const quiet = async (fn) => { const w = console.warn, l = console.log; console.w
     assert.ok(u.code === 503 && u.body.retryable === true && u.h['Retry-After'] === '2');
     ok('ordersClientGen = the orders compat (foreign / header-less → null) and reaches the shadow record; sendRefusal: 409 +lines / 503 + Retry-After');
   }
+  {
+    // codex stage-2 r2 P1 — a product's or an extra's id / name that is present and not a string or a finite number is
+    // MALFORMED: refused (400) under enforce / unknown, logged under shadow, untouched under off (decided before any read)
+    const lm = buildSourceFromCode('la_musa'); lm.structure.exposure.item_overrides.rice_02 = { deny_extras: ['rice_white'] };
+    const BR = {
+      x_pizza: { doc, tables, line: (it, ex) => ({ name: 'Margherita', qty: 1, ...it, extras: [{ name: 'Salsa Roja', ...ex }] }) },
+      la_musa: { doc: buildEligibilityDoc(lm), tables: { menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa },
+        line: (it, ex) => ({ id: 'rice_02', qty: 1, ...it, extras: [{ id: 'rice_white', qty: 1, ...ex }] }) },
+    };
+    const BAD = { array: (k) => [k], object: (k) => ({ k }), boolean: () => true, null: () => null, NaN: () => NaN, Infinity: () => Infinity };
+    let cells = 0;
+    for (const [rid, b] of Object.entries(BR)) {
+      const check = (mode, items) => X.extrasCheck({ mode: { mode }, tables: b.tables, items, rid, envelopeOf: env, readEligibility: async () => b.doc });
+      for (const [kind, mk] of Object.entries(BAD)) for (const where of ['product', 'extra']) for (const field of ['id', 'name']) {
+        const base = b.line({}, {});
+        const val = mk(where === 'product' ? (base[field] !== undefined ? base[field] : 'x') : (base.extras[0][field] !== undefined ? base.extras[0][field] : 'x'));
+        const line = where === 'product' ? b.line({ [field]: val }, {}) : b.line({}, { [field]: val });
+        const en = await check('enforce', [line]);
+        assert.ok(en.outcome === 'malformed' && X.refuses(en) && X.refusalStatus(en) === 400 && X.refusalBody(en).error === 'item_malformed',
+          `🔴 ${rid} ${where}.${field} = ${kind}: refused 400 item_malformed under enforce (${JSON.stringify(en)})`);
+        assert.strictEqual(X.guardReason(en) !== null, true, 'and it arms nothing that could let it pass');
+        const un = await check('unknown', [line]);
+        assert.ok(un.outcome === 'malformed' && X.refuses(un) && X.refusalStatus(un) === 400, `${rid} ${where}.${field} = ${kind}: unknown mode → 400 too`);
+        const sh = await quiet(() => check('shadow', [line]));
+        assert.ok(sh.outcome === 'malformed' && !X.refuses(sh), `${rid} ${where}.${field} = ${kind}: shadow decides, never refuses`);
+        assert.strictEqual((await check('off', [line])).outcome, 'skip', `${rid} ${where}.${field} = ${kind}: off is untouched (today)`);
+        cells++;
+      }
+    }
+    assert.strictEqual(cells, 2 * 6 * 2 * 2, 'premise: the whole matrix ran');
+    // the codex repros, exactly
+    const r1 = await X.extrasCheck({ mode: { mode: 'enforce' }, tables, items: [{ name: 'Margherita', qty: 1, extras: [{ name: ['Salsa Roja'] }] }], rid: 'x_pizza', envelopeOf: env, readEligibility: async () => doc });
+    assert.strictEqual(r1.outcome, 'malformed', '🔴 codex repro 1 (x_pizza array extra name) is refused');
+    const r2 = await X.extrasCheck({ mode: { mode: 'enforce' }, tables: BR.la_musa.tables, items: [{ id: 'rice_02', qty: 1, extras: [{ id: ['rice_white'], qty: 1 }] }], rid: 'la_musa', envelopeOf: env, readEligibility: async () => BR.la_musa.doc });
+    assert.strictEqual(r2.outcome, 'malformed', '🔴 codex repro 2 (la_musa array extra id) is refused');
+    ok(`malformed keys: both brands × {array, object, boolean, null, NaN, Infinity} × {product, extra} × {id, name} (${cells} cells) → 400 under enforce / unknown, logged under shadow, untouched under off; both codex repros refused`);
+  }
+  {
+    // GOLDEN — today's VALID keys are unchanged: every (product, extra) pair of both brands' code tables, string keys (and
+    // x_pizza's numeric dish ids beside them) → never malformed; the decision equals the evaluator's; the price equals the
+    // pricing tables' own sum (pricing itself is untouched)
+    const lm = buildSourceFromCode('la_musa'); const ldoc = buildEligibilityDoc(lm); const lmTables = { menu: MENU_BY_RESTAURANT.la_musa, extras: EXTRAS_BY_RESTAURANT.la_musa };
+    const xdoc = buildEligibilityDoc(buildSourceFromCode('x_pizza'));
+    const { eligibleSet } = require('./extras-eligibility');
+    let pairs = 0;
+    for (const [rid, t, d, mk] of [
+      ['x_pizza', tables, xdoc, (k, e, i) => ({ name: k, id: i + 1, qty: 1, extras: [{ name: e }] })],
+      ['la_musa', lmTables, ldoc, (k, e) => ({ id: k, name: k, qty: 1, extras: [{ id: e, qty: 1 }] })],
+    ]) {
+      const keys = Object.keys(t.menu).filter((k) => d.projection.items[k]);
+      for (const [i, k] of keys.entries()) for (const e of Object.keys(t.extras)) {
+        const line = mk(k, e, i);
+        const r = await X.extrasCheck({ mode: { mode: 'enforce' }, tables: t, items: [line], rid, envelopeOf: env, readEligibility: async () => d });
+        const want = eligibleSet(d.projection, k).has(e) ? 'allow' : 'denied';
+        assert.strictEqual(r.outcome, want, `${rid} ${k} + ${e}: ${want}`);
+        const p = computeServerTotal([line], rid, { restaurantId: rid, ...t });
+        assert.strictEqual(p.total, t.menu[k] + t.extras[e], `${rid} ${k} + ${e}: priced exactly as the tables say`);
+        pairs++;
+      }
+    }
+    assert.ok(pairs > 300, `premise: the golden covered every pair (${pairs})`);
+    ok(`golden: every valid (product, extra) pair of both brands (${pairs}) — never malformed, decided exactly as the evaluator, priced exactly as the tables`);
+  }
   console.log(`\nextras-intake: OK (${n})`);
 })().catch((e) => { console.error('extras-intake FAILED:', e); process.exit(1); });

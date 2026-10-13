@@ -201,6 +201,35 @@ const GEN_HDR = { 'x-client-app': 'orders', 'x-client-deployment': 'orders-xi', 
   }
   ok('forged id/name lines (a permissive name/id beside the charged key) are refused at cash, card, quoteOrder and quoteRedemption — judged by the key pricing charges, both brands');
 
+  // MALFORMED keys (codex stage-2 r2 P1): a priced key that is an array / object / boolean / null — which pricing would COERCE
+  // and charge — is refused 400 item_malformed at all four intakes, both brands, product AND extra; nothing written, no charge
+  {
+    const PRICED = { x_pizza: 'name', la_musa: 'id' };
+    const KINDS = { array: (k) => [k], object: (k) => ({ k }), boolean: () => true, null: () => null };
+    let cells = 0;
+    for (const rid of ['x_pizza', 'la_musa']) for (const [kind, mk] of Object.entries(KINDS)) for (const where of ['product', 'extra']) {
+      const f = PRICED[rid];
+      const bad = () => { const l = B[rid].line(B[rid].item, B[rid].denied); if (where === 'product') l[f] = mk(l[f]); else l.extras[0][f] = mk(l.extras[0][f]); return l; };
+      const tag = `${rid} ${where}.${f}=${kind}`;
+      // an ARRAY is the coercion bypass (pricing reads ["k"] as "k"): it must be refused BY THIS CHECK. The other kinds may
+      // meet pricing's own earlier 400 ("unknown menu item: [object Object]") — refused either way, nothing written or charged
+      const refusedHere = (j) => j && j.error === 'item_malformed';
+      const refused = (st, j) => st === 400 && (refusedHere(j) || (kind !== 'array' && j && /unknown (menu item|extra)|invalid/.test(String(j.detail || j.error || ''))));
+      const c = await cash(rid, null, `mf${PH}`, { line: bad() });
+      assert.ok(refused(c.status, c.json) && !c.written, `🔴 ${tag}: cash 400, nothing written (${c.status} ${c.text.slice(0, 120)})`);
+      const k = await card(rid, null, `mf${PH}`, { line: bad() });
+      assert.ok(refused(k.status, k.json) && k.charged === 0 && k.attempts === 0, `🔴 ${tag}: card 400, no attempt, no checkout (${k.status} ${k.text.slice(0, 120)})`);
+      const q = await quote(rid, null, bad());
+      assert.ok((refused(q.status, q.json) || (kind !== 'array' && q.json && q.json.ok === false && !q.json.quote_token)) && !(q.json && q.json.quote_token), `🔴 ${tag}: quoteOrder refuses, no quote (${q.status} ${q.text.slice(0, 120)})`);
+      const qr = await quoteRed(rid, null, bad());
+      assert.ok(refused(qr.status, qr.json) || (kind !== 'array' && qr.json && qr.json.ok === false), `🔴 ${tag}: quoteRedemption refuses (${qr.status} ${qr.text.slice(0, 120)})`);
+      if (kind === 'array') for (const [nm, r] of [['cash', c], ['card', k], ['quoteOrder', q], ['quoteRedemption', qr]]) assert.strictEqual(r.json.error, 'item_malformed', `🔴 ${tag}: ${nm} refuses the array by THIS check`);
+      cells++;
+    }
+    assert.strictEqual(cells, 16, 'premise: the whole matrix ran');
+    ok('malformed keys (array / object / boolean / null on the priced product or extra key) → 400 item_malformed at cash, card, quoteOrder and quoteRedemption, both brands; nothing written, no attempt, no charge');
+  }
+
   // a BOUND reuse is never re-judged; a reuse that DRIFTS to a fresh issuance refuses 409 WITH its lines (codex r1 P2-5)
   for (const rid of ['x_pizza', 'la_musa']) {
     const re = await card(rid, null, 'reuse', { body: LIVE[`${rid} reuse`] });
