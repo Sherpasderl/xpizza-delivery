@@ -1806,7 +1806,7 @@ function cartSync(id){
   const n = qty[id] || 0;
   /* 1D add-product B — THE QUANTITY WRITE POINT: a bare launcher never gains quantity, whatever control asked (its choice
      is the line). A decrease still passes, so a restored launcher line can be removed. */
-  if (n > CART.qtyOf(String(id)) && itemIsLauncher(findMenuItem(id))) { qty[id] = CART.qtyOf(String(id)); return; }
+  if (n > CART.qtyOf(String(id)) && itemIsLauncher(findMenuItem(id))) { qty[id] = CART.qtyOf(String(id)); trimExtrasToQty(id); return; }
   const rec = findMenuItem(id);
   if (n > 0 && rec) CART.setQty(rec, n); else CART.setQtyByKey(String(id), n);
   // 🔴 qty FOLLOWS THE CART, it does not merely feed it. Without this line the two can disagree, and
@@ -1816,6 +1816,21 @@ function cartSync(id){
   // the very drop this task exists to close, reappearing at the seam that closes it. Reading back
   // makes the cart the single source of truth: a dish that cannot be added stays at 0, visibly.
   qty[id] = CART.qtyOf(String(id));
+  trimExtrasToQty(id);
+}
+/* 🔴 EXTRAS LIVE PER PIZZA INSTANCE (0 … qty-1), AND AN INSTANCE AT OR PAST THE QUANTITY IS A PIZZA THAT IS NO LONGER IN
+   THE CART. Nothing removed them: chg() dropped a dish's extras only at quantity 0, so two pizzas with Mozzarella on pizza 2
+   going down to one kept pizza 2's Mozzarella — the cart line no longer showed it (it lists `qty` instances), but the
+   total, the quote and the order body (which walk EVERY instance) still charged it: L390 for one L340 pizza, on cash and
+   card alike (codex, reproduced live 2026-10-13). Trimmed at the quantity write point (cartSync, which chg() and the
+   reorder path go through) and over the whole cart after a restore (cartRestore: payment return and self-update), so a
+   stale instance can never be rendered, totalled, quoted or serialized — and a later re-add starts that pizza clean. */
+function trimExtrasToQty(id){
+  const inst = pizzaExtras[id];
+  if (!inst || typeof inst !== 'object') return;
+  const n = qty[id] || 0;
+  if (n <= 0) { delete pizzaExtras[id]; return; }
+  Object.keys(inst).forEach((k) => { const i = Number(k); if (!(Number.isInteger(i) && i >= 0 && i < n && String(i) === k)) delete inst[k]; });
 }
 // Cart lines IN MENU ORDER, so with no live conflict the serialization is byte-identical to before. A
 // line whose dish left the menu has no position there, so it sorts after the rest, in cart order — it
@@ -1907,6 +1922,7 @@ function cartRestore(stashedCart){
   Object.keys(qty).forEach((k) => { delete qty[k]; });
   MENU.forEach((pp) => { qty[pp.id] = 0; });
   CART.keys().forEach((k) => { qty[k] = CART.qtyOf(k); });
+  Object.keys(pizzaExtras).forEach(trimExtrasToQty);   // a restored stash can carry removed pizzas' extras: never revive them
 }
 /* 🔴 THE SEND GATE — THE LAST THING BEFORE MONEY MOVES, AND THE ONLY GUARANTEE THAT HOLDS.
 
