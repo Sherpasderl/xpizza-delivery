@@ -2382,3 +2382,18 @@ test('🔴 portal A codex P2-b: after a choice price edit, an unrelated inline e
   assert.ok(byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === 'item::Pizza').classList.contains('chg'), 'and Pizza is highlighted too (the incremental path ran)');
   } finally { globalThis.document.querySelectorAll = realQSA; }
 });
+
+test('🔴 portal A codex r2: "Mismo precio" turned OFF at equal prices shows each choice’s own price — and back ON restores the shared caption', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 624, 624]);
+  await fire(byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.rowchev')[0]);
+  const unit = () => byId.get('detail').querySelectorAll('.grow')[0];
+  assert.deepStrictEqual(unit().querySelectorAll('.kid').map((k) => k.children[1].textContent), ['mismo precio', 'mismo precio', 'mismo precio'], 'premise — derived ON');
+  const same = sameBox(byId);
+  same.checked = false; await fire(same, 'change');
+  assert.deepStrictEqual(unit().querySelectorAll('.kid').map((k) => k.children[1].textContent), ['L 624', 'L 624', 'L 624'], '🔴 OFF → each choice shows its own price');
+  assert.deepStrictEqual(unit().querySelectorAll('.price')[0].children.map((c) => c.textContent), ['L 624', 'precio por salsa'], 'and the product no longer says "todas las opciones"');
+  same.checked = true; await fire(same, 'change');
+  assert.deepStrictEqual(unit().querySelectorAll('.price')[0].children.map((c) => c.textContent), ['L 624', 'todas las opciones'], 'back ON → the shared caption');
+  assert.deepStrictEqual(unit().querySelectorAll('.kid').map((k) => k.children[1].textContent), ['mismo precio', 'mismo precio', 'mismo precio']);
+});

@@ -527,7 +527,11 @@ function listGroupOf(it) {
   const changedSet = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   // "the same price for every choice" only when EVERY choice has a valid price and they are equal (codex portal-A P2-a): a
   // choice without a usable price never hides behind "mismo precio"
-  const same = g.options.length > 0 && ps.length === g.options.length && ps.every((p) => p === ps[0]);
+  const equal = g.options.length > 0 && ps.length === g.options.length && ps.every((p) => p === ps[0]);
+  // …and the merchant's explicit "Mismo precio para todas" wins when they set it (codex portal-A r2): OFF at equal prices
+  // shows each choice's own price; ON can only hold while the prices really are equal
+  const id = rowId(it);
+  const same = state.samePrice && state.samePrice.has(id) ? (state.samePrice.get(id) === true && equal) : equal;
   return { label: g.label, min: ps.length ? Math.min(...ps) : null, max: ps.length ? Math.max(...ps) : null, same,
     badges: state.choiceBadges.includes('recommended'),
     changed: cellChanged(changedSet, `item::${rowId(it)}`),
@@ -870,6 +874,7 @@ function publishedChoiceBlock(id, g) {
   focusKey(cb, 'mgflag-same');
   cb.addEventListener('change', bound(() => {
     state.samePrice.set(id, cb.checked);
+    if (!cb.checked) { paint(); return; }   // OFF: the list shows each choice's own price (codex portal-A r2)
     if (cb.checked) {
       const ps = g.options.map((o) => o.price).filter((p) => Number.isInteger(p) && p > 0);
       if (ps.length) { const v = String(Math.min(...ps)); for (const o of g.options) { onPrice('item', rowId(o), v); holdPriceText(rowId(o), ''); } }
