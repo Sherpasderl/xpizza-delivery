@@ -135,9 +135,11 @@ export function groupPriceLabel(min, max) {
 function groupPriceCell(grp, { changed, key }) {
   const cell = el('div', `price gp${changed ? ' chg' : ''}`);
   cell.dataset.k = `item::${key}`;
-  const same = grp.min === grp.max;
+  // the caption follows the CALLER's `same` (every choice valid and equal); the price is the order page's rule over the
+  // valid prices ("L {min}" when they agree, "desde L {min}" otherwise)
+  const same = grp.same === true;
   const priced = Number.isInteger(grp.min) && grp.min > 0;
-  cell.append(el('b', null, !priced ? 'Sin precio' : (same ? `L ${grp.min}` : `desde L ${grp.min}`)));
+  cell.append(el('b', null, !priced ? 'Sin precio' : (grp.min === grp.max ? `L ${grp.min}` : `desde L ${grp.min}`)));
   const lbl = typeof grp.label === 'string' && grp.label.trim() ? grp.label.trim().toLocaleLowerCase('es') : 'opción';
   if (priced) cell.append(el('span', null, same ? 'todas las opciones' : `precio por ${lbl}`));
   return cell;
@@ -152,7 +154,7 @@ function groupKids(grp) {
   const head = el('div', 'kidhead', label);
   head.append(el('span', 'dot', '·'), document.createTextNode('el cliente elige 1'));
   kids.append(head);
-  const same = grp.min === grp.max;
+  const same = grp.same === true;
   for (const o of grp.options) {
     const kid = el('div', 'kid');
     kid.setAttribute('role', 'listitem');

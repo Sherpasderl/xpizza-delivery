@@ -2350,3 +2350,35 @@ test('portal A: the choice name field (mockup screen 1) — a label above it, th
   assert.strictEqual(input.placeholder, 'ej. Salsa, Tamaño, Proteína');
   assert.ok(q(byId, '.modgrp-h').some((h) => h.classList.contains('with-in')), 'the header aligns to the field');
 });
+
+test('🔴 portal A codex P2-a: a choice with no usable price never hides behind "mismo precio" — the shared caption needs EVERY choice valid and equal', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 624, 624]);
+  await fire(byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.rowchev')[0]);
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '');   // the merchant clears one choice's price
+  const unit = byId.get('detail').querySelectorAll('.grow')[0];
+  assert.deepStrictEqual(unit.querySelectorAll('.kid').map((k) => k.children[1].textContent), ['L 624', 'Sin precio', 'L 624'], '🔴 each choice shows its own price; the cleared one says "Sin precio"');
+  assert.deepStrictEqual(unit.querySelectorAll('.price')[0].children.map((c) => c.textContent), ['L 624', 'precio por salsa'], 'the product no longer claims "todas las opciones"');
+});
+
+test('🔴 portal A codex P2-b: after a choice price edit, an unrelated inline edit keeps the group row highlighted (incremental = full renderer)', async () => {
+  const byId = installDom();
+  await loadPublished(byId, [624, 624, 624]);
+  await fire(byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.rowchev')[0]);
+  await setVal(inputBy(byId, 'Precio de Salsa Vodka'), '660');
+  const groupCell = () => byId.get('detail').querySelectorAll('.grow')[0].querySelectorAll('.price')[0];
+  assert.ok(groupCell().classList.contains('chg'), 'premise — the group row is highlighted');
+  await fire(q(byId, '.dwx')[0]);   // the merchant closes the drawer (an open drawer makes the list inert)
+  assert.ok(groupCell().classList.contains('chg'), 'premise — still highlighted after closing');
+  // markChanged searches the DOCUMENT; this harness's document finds nothing, so — for THIS test — let it search the panels
+  // the page actually has (otherwise the incremental path is invisible and the assertion below would be vacuous)
+  const realQSA = globalThis.document.querySelectorAll;
+  globalThis.document.querySelectorAll = (sel) => [...byId.get('detail').querySelectorAll(sel), ...byId.get('drawer').querySelectorAll(sel)];
+  try {
+  // an unrelated inline edit: Pizza's own price box in the list (incremental markChanged, no repaint)
+  const pizzaBox = byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === 'item::Pizza').querySelectorAll('input')[0];
+  await setVal(pizzaBox, '310');
+  assert.ok(groupCell().classList.contains('chg'), '🔴 the group row keeps its highlight (its choices still differ)');
+  assert.ok(byId.get('detail').querySelectorAll('.price').find((c) => c.dataset && c.dataset.k === 'item::Pizza').classList.contains('chg'), 'and Pizza is highlighted too (the incremental path ran)');
+  } finally { globalThis.document.querySelectorAll = realQSA; }
+});

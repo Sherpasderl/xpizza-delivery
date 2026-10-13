@@ -22,7 +22,8 @@ const stub = (rel, exportsOf) => { const p = require.resolve(rel); const real = 
 const CHARGED = [];
 stub('../whatsapp', (r) => ({ ...r, isEnabledForRestaurant: async () => false, sendMessage: async () => ({ ok: true }) }));
 stub('../pixelpay-hosted', (r) => ({ ...r, createHostedCharge: async (q) => { CHARGED.push(q.amountLempiras); return { ok: true, url: `https://pay.test/${q.pixelpayOrderId}` }; } }));
-stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => ({ uid: String(t), customer: true }) }) }));
+// the portal page signs in as the restaurant OWNER (TK-owner); every other token is a customer's
+stub('firebase-admin/auth', (r) => ({ ...r, getAuth: () => ({ verifyIdToken: async (t) => (t === 'TK-owner' ? { uid: 'u_owner' } : { uid: String(t), customer: true }) }) }));
 
 const app = require('../index.js');
 const admin = require('firebase-admin');
@@ -189,6 +190,71 @@ const livePrice = async (key) => (await previewVersion(db, RID, await getActiveV
     const cart = [line('noodle_01_camaron', min)];
     await priceThrough(cart, expectedCents(cart, Object.fromEntries(CHOICES.map((k) => [k, min]))), `same price ${min}`);
     ok(`"Mismo precio para todas" (L ${min}) saves, publishes, and the dearest choice (Camarones) is now charged L ${min} by quote, cash and card`);
+  }
+
+  // ── 3. codex portal-A r1 — THE DRAWER'S OWN HANDLERS, end to end: the REAL portal page (app.js, fake DOM) signed in as the
+  //    owner, its fetches served by the REAL exported portal functions (getEditableCatalog / editCatalog / publishEdited);
+  //    the merchant types a choice's price in the drawer and presses Revisar → Publicar; then "Mismo precio para todas".
+  {
+    await rtdb.ref(`restaurants/${RID}/owners/u_owner`).set(true);
+    const page = await import(pathToFileURL(path.join(__dirname, '_portal-page.mjs')).href);
+    const realFetch = globalThis.fetch;
+    const srv = express(); srv.use(express.json());
+    for (const fn of ['getEditableCatalog', 'editCatalog', 'publishEdited', 'getMyRestaurants']) srv.all(`/${fn}`, (req, res) => app[fn](req, res));
+    const server = await new Promise((r) => { const sv = http.createServer(srv).listen(0, '127.0.0.1', () => r(sv)); });
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const portalCalls = [];
+    globalThis.fetch = (url, opts) => {
+      const u = new URL(String(url));
+      if (/cloudfunctions\.net$/.test(u.hostname)) { portalCalls.push(u.pathname.slice(1)); return realFetch(base + u.pathname + u.search, opts); }
+      return realFetch(url, opts);
+    };
+    try {
+      const byId = page.installDom();
+      const papp = await page.loadPortalApp('TK-owner');
+      const drawerInput = (label) => byId.get('drawer').querySelectorAll('input').find((i) => i.attrs['aria-label'] === label);
+      const reviewAndPublish = async (tag) => {
+        await page.fire(byId.get('review'));
+        assert.ok(portalCalls.includes('editCatalog'), `${tag}: Revisar SAVED through the real editCatalog`);
+        await page.fire(byId.get('pubbtn'));
+        assert.ok(portalCalls.includes('publishEdited'), `${tag}: Publicar went through the real publishEdited`);
+      };
+      await papp.loadMenu(RID);
+      assert.ok(papp.state.draft, 'premise — the portal loaded La Musa through the real getEditableCatalog');
+
+      // 3a. one choice's price, typed in the drawer
+      papp.openDrawer(LAUNCHER);   // the product row's opener (renderDetail's onOpen)
+      assert.strictEqual(drawerInput('Precio'), undefined, 'the published group drawer has no launcher "Precio"');
+      const before = await livePrice('noodle_01_pollo');
+      const now = before + 9;
+      await page.setVal(drawerInput('Precio de Pollo'), String(now));   // the drawer field's own handler (onPrice)
+      portalCalls.length = 0;
+      await reviewAndPublish('drawer price');
+      assert.strictEqual(await livePrice('noodle_01_pollo'), now, '🔴 the price typed in the DRAWER is live after Publicar');
+      await new Promise((r) => setTimeout(r, 46000));   // the pricing pointer cache (45 s)
+      const cart = [line('noodle_01_pollo', now)];
+      const priced = await post(app.quoteOrder, { restaurant_id: RID, items: cart });
+      assert.strictEqual(priced.json && priced.json.total_cents, orderBreakdownCents(now, RID).total_cents, '🔴 the QUOTE charges the drawer-typed price');
+      ok(`the DRAWER's own field: Pollo ${before}→${now} typed in the portal, Revisar → Publicar through the real portal functions, live and quoted at ${now}`);
+
+      // 3b. "Mismo precio para todas" — the drawer's own toggle
+      papp.openDrawer(LAUNCHER);
+      const same = byId.get('drawer').querySelectorAll('input').find((i) => i.type === 'checkbox');
+      assert.ok(same && same.checked === false, 'premise — the prices differ, so "Mismo precio" is off');
+      same.checked = true; await page.fire(same, 'change');   // the toggle's own handler
+      portalCalls.length = 0;
+      await reviewAndPublish('mismo precio');
+      const lows = await Promise.all(CHOICES.map(livePrice));
+      assert.ok(lows.every((p) => p === lows[0]), `🔴 every choice is live at one price (${lows.join(', ')})`);
+      await new Promise((r) => setTimeout(r, 46000));
+      const cart2 = [line('noodle_01_camaron', lows[0])];
+      const q2 = await post(app.quoteOrder, { restaurant_id: RID, items: cart2 });
+      assert.strictEqual(q2.json && q2.json.total_cents, orderBreakdownCents(lows[0], RID).total_cents, '🔴 the QUOTE charges the shared price');
+      ok(`the DRAWER's own "Mismo precio para todas": every choice live at L ${lows[0]}, Camarones quoted at it`);
+    } finally {
+      globalThis.fetch = realFetch;
+      await new Promise((r) => server.close(r));
+    }
   }
 
   FINISHED = true;

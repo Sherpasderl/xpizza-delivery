@@ -524,10 +524,13 @@ function listGroupOf(it) {
   const g = choiceGroup(state.draft, rowId(it));
   if (!g) return null;
   const ps = g.options.map((o) => o.price).filter((p) => Number.isInteger(p) && p > 0);
-  const moved = new Set(pendingChanges(state.draft, state.additionKeys).filter((c) => c.surface === 'item').map((c) => c.key));
-  return { label: g.label, min: ps.length ? Math.min(...ps) : null, max: ps.length ? Math.max(...ps) : null,
+  const changedSet = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
+  // "the same price for every choice" only when EVERY choice has a valid price and they are equal (codex portal-A P2-a): a
+  // choice without a usable price never hides behind "mismo precio"
+  const same = g.options.length > 0 && ps.length === g.options.length && ps.every((p) => p === ps[0]);
+  return { label: g.label, min: ps.length ? Math.min(...ps) : null, max: ps.length ? Math.max(...ps) : null, same,
     badges: state.choiceBadges.includes('recommended'),
-    changed: g.options.some((o) => moved.has(rowId(o))),
+    changed: cellChanged(changedSet, `item::${rowId(it)}`),
     options: g.options.map((o) => {
       const d = o.display || {};
       return { name: typeof d.choice === 'string' && d.choice.trim() ? d.choice : String(rowId(o)), price: o.price,
@@ -637,9 +640,18 @@ function markChanged(surface, key) {
   const changed = new Set(pendingChanges(state.draft, state.additionKeys).map((c) => `${c.surface}::${c.key}`));
   for (const cell of document.querySelectorAll('.price')) {
     const k = cell.dataset && cell.dataset.k;
-    if (k) cell.classList.toggle('chg', changed.has(k));
+    if (k) cell.classList.toggle('chg', cellChanged(changed, k));
   }
   void surface; void key;
+}
+// ONE rule for "is this price cell changed", shared by the incremental highlight above and the full renderer (listGroupOf):
+// its own key moved — or, for a product with a required choice, any of its CHOICES' prices moved (codex portal-A P2-b: the
+// group row's cell is keyed by the product, its edits land on the choices).
+function cellChanged(changed, k) {
+  if (changed.has(k)) return true;
+  if (!k.startsWith('item::')) return false;
+  const g = choiceGroup(state.draft, k.slice('item::'.length));
+  return !!(g && g.options.some((o) => changed.has(`item::${rowId(o)}`)));
 }
 
 function paint() {
