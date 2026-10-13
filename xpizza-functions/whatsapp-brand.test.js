@@ -38,7 +38,7 @@ const reader = (calls, ids = ID) => async (rid) => { calls.push(rid); return ids
       [w.tplPickupReceived({ customerName: 'Ana', total: 299, itemsText: 'X', pickupTime: 'standard', trackingToken: 'T', restaurantId: rid }), `Recibimos tu pedido en ${brand} ✅`],
       [w.tplPickupReady({ customerName: 'Ana', trackingToken: 'T', restaurantId: rid }), `Ya puedes pasar por ${brand} a recogerlo.`],
       [w.tplDelivered({ customerName: 'Ana', restaurantId: rid }), `Esperamos que disfrutes ${brand}, Ana.`],
-      [w.tplCancelled({ orderId: 'P-1', restaurantId: rid }), `pedido #P-1 en ${brand} fue cancelado.`],
+      [w.tplCancelled({ displayNumber: 12, restaurantId: rid }), `pedido #12 en ${brand} fue cancelado.`],
       [w.tplPreparing({ customerName: 'Ana', etaMinutes: 20, orderType: 'pickup', trackingToken: 'T', restaurantId: rid }), `Estamos preparando tu pedido en ${brand} —`],
       [w.tplOtp({ code: '123456' }), `Tu código de ${brand} es 123456. Vence en 5 minutos. No lo compartas.`],
     ];
@@ -96,7 +96,7 @@ const reader = (calls, ids = ID) => async (rid) => { calls.push(rid); return ids
     [w.tplOrderReceived({ customerName: 'Ana', total: 1, itemsText: 'X', trackingToken: 'T', restaurantId: 'la_musa' }), 'Recibimos tu pedido ✅'],
     [w.tplPickupReady({ trackingToken: 'T', restaurantId: 'la_musa' }), 'Ya puedes pasar por el restaurante a recogerlo.'],
     [w.tplDelivered({ customerName: 'Ana', restaurantId: 'la_musa' }), 'Esperamos que disfrutes tu pedido, Ana.'],
-    [w.tplCancelled({ orderId: 'P-1', restaurantId: 'la_musa' }), 'pedido #P-1 fue cancelado.'],
+    [w.tplCancelled({ displayNumber: 12, restaurantId: 'la_musa' }), 'pedido #12 fue cancelado.'],
     [w.tplPreparing({ etaMinutes: 20, orderType: 'pickup', trackingToken: 'T', restaurantId: 'la_musa' }), 'Estamos preparando tu pedido —'],
     [w.tplOtp({ code: '654321' }), 'Tu código es 654321. Vence en 5 minutos. No lo compartas.'],
   ];
