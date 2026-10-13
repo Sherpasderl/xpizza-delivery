@@ -165,6 +165,8 @@ const { hashConfig } = require('./ready-time-quality-run');          // reuse th
 const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active model version(s) — windows prediction_logs by `<v>/new_at`
 
 require('./lib/admin');   // PORTAL SPEED P1: the ONE Admin app — initializeApp moved verbatim to lib/admin.js (shared with portal/functions.js)
+const { svcAssignerDb } = require('./lib/svc-assigner');   // S1a §3 — the narrowly-privileged ownership/shift writer handle
+const { assertDriverCallerActive } = require('./lib/driver-callable-guard');   // S1a §6 — the shared driver-callable hard-stop
 
 // VAPID config for Web Push (set via .env, deployed as runtime env vars)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
@@ -4172,6 +4174,7 @@ exports.notifyDriverOnCancellation = onValueWritten(
 exports.registerDriverPushToken = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6
   const token = String(request.data?.token || '').trim();
   if (!token) throw new HttpsError('invalid-argument', 'token required');
 
@@ -4193,6 +4196,7 @@ exports.registerDriverPushToken = onCall({ region: 'us-central1' }, async (reque
 exports.unregisterDriverPushToken = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6
   const db = getDatabase();
   await db.ref(`driver_push_tokens/${uid}`).remove();
   const reachable = await refreshPushReachable(db, uid);
@@ -4233,8 +4237,10 @@ const ingestRate = new Map();                     // uid -> { count, windowStart
 exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6
   const crypto = require('crypto');
   const db = getDatabase();
+  const svcDb = svcAssignerDb();   // S1a §3 — the shift-open write is rules-bound (new-shift transition gate)
   const isNativeClient = request.data?.platform === 'native';
   const deviceId = request.data?.device_id || null;
   const now = Date.now();
@@ -4270,7 +4276,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     updates[`drivers/${uid}/ingest_token_hash`] = hash;
   }
 
-  await db.ref().update(updates);
+  await svcDb.ref().update(updates);   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
   console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);
   return { ok: true, shift_id: shiftId, location_source: isNativeClient ? 'native' : 'pwa', ingest_token: ingestToken };
 });
@@ -4280,6 +4286,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
 exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  await assertDriverCallerActive(uid, request.auth?.token, { db: getDatabase(), auth: getAuth(), HttpsError });   // S1a §6
   const db = getDatabase();
   const hash = (await db.ref(`drivers/${uid}/ingest_token_hash`).once('value')).val();
   const updates = {
@@ -5955,6 +5962,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     console.log(`autoAssign: scheduling for order ${orderId}, waiting ${GRACE_PERIOD_MS}ms`);
 
     const db = getDatabase();
+    const svcDb = svcAssignerDb();   // S1a §3 — ownership-creating writes are rules-bound
     await sleep(GRACE_PERIOD_MS);
 
     // Check global toggle
@@ -6042,7 +6050,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // brand-new order's delivery is null → the claim commits uncontended and the finalize update() below
     // rewrites the same value — identical end state to the pre-S3d plain write (no-op on the happy path).
     // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.
-    const claim = await claimDelivery(db, orderId, chosen.driverId);
+    const claim = await claimDelivery(svcDb, orderId, chosen.driverId);   // S1a §3
     if (!claim.claimed) {
       console.warn(`autoAssign: ${orderId} — delivery already claimed by ${claim.current} during finalize; backing off`);
       return;
@@ -6052,7 +6060,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // for its 2-strikes rule (only relevant for non-stacked).
     const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
     try {
-      await db.ref().update(updates);
+      await svcDb.ref().update(updates);   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
     } catch (e) {
       console.error(`autoAssign: write failed for ${orderId}`, e);
@@ -6118,6 +6126,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
     console.log(`timeout-monitor: starting ${ACCEPT_TIMEOUT_MS}ms timer for ${taskId} → ${driverId}`);
 
     const db = getDatabase();
+    const svcDb = svcAssignerDb();   // S1a §3 — ownership-restoring writes are rules-bound
     await sleep(ACCEPT_TIMEOUT_MS);
 
     // Re-fetch the task — has anything changed during the wait?
@@ -6215,14 +6224,14 @@ exports.monitorAssignmentTimeout = onValueWritten(
     // the timed-out driver; if a concurrent writer moved it during our 60s wait, we back off (the field
     // already reflects that writer's decision). Uncontended (field still == driverId), it's a no-op: the
     // finalize update() rewrites the same delivery/assigned_driver_id = nextDriver.
-    const claim = await claimDelivery(db, orderId, nextDriver.driverId, { expectCurrent: driverId });
+    const claim = await claimDelivery(svcDb, orderId, nextDriver.driverId, { expectCurrent: driverId });   // S1a §3
     if (!claim.claimed) {
       console.log(`timeout-monitor: ${orderId} delivery no longer on ${driverId} (now ${claim.current}); backing off reassign`);
       return;
     }
     const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);
     try {
-      await db.ref().update(reassignUpdates);
+      await svcDb.ref().update(reassignUpdates);   // S1a §3
       // The new assigned_driver_id write will trigger another monitorAssignmentTimeout
       // for the new driver. The notifyDriverOnAssignment trigger will push to them.
     } catch (e) {
@@ -6259,6 +6268,7 @@ exports.sweepPendingOrders = onSchedule(
   { schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
   async () => {
     const db = getDatabase();
+    const svcDb = svcAssignerDb();   // S1a §3 — ownership-creating writes are rules-bound
     const now = Date.now();
     // Read config + all data up front. The HEAL pass runs EVERY tick regardless of the flags (H1) — the
     // delivery CAS-claim is on the LIVE autoAssign/timeout paths, so a strand there must self-heal even
@@ -6347,7 +6357,7 @@ exports.sweepPendingOrders = onSchedule(
       // is the field getPendingOrders reads, so the claim atomically leaves SIN ASIGNAR + blocks a
       // concurrent sweep/grab, and it's invisible to monitorAssignmentTimeout (watches PICKUP) and
       // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.
-      const claim = await claimDelivery(db, orderId, chosen.driverId);
+      const claim = await claimDelivery(svcDb, orderId, chosen.driverId);   // S1a §3
       if (!claim.claimed) continue;   // lost the race — skip
 
       // S3a exception-safety: EVERYTHING after the claim is inside try/catch so any throw (recheck read,
@@ -6392,7 +6402,7 @@ exports.sweepPendingOrders = onSchedule(
         const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, recheck.hasAcceptedSameHubOrder);
         updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
         updates[`tasks/${orderId}_delivery/last_swept`] = now;
-        await db.ref().update(updates);
+        await svcDb.ref().update(updates);   // S1a §3
         offered++;
         console.log(`sweepPending: re-offered ${orderId} → ${chosen.name} (offer ${retryCount + 1})`);
       } catch (e) {
