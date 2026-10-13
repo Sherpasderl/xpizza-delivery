@@ -60,11 +60,18 @@ for (const e of shrink.nondeterministic || []) assert.ok(ids.has(e.site) && e.re
   const a = RAT.APPROVED_NONDETERMINISTIC[0]; const e = shrink.nondeterministic.find((x) => x.site === a.site);
   const fsx = require('fs'); const px = require('path');
   const realRead = (f) => fsx.readFileSync(px.join(__dirname, '..', '..', f), 'utf8');
-  const staleJust = RAT.justificationProblems(e, { scopeText: () => 'const shadowResult = await shadowCheck.value();' });
+  const { sources } = require('./census');
+  const withIndex = (fn) => sources().map((u) => (u.file === 'xpizza-functions/index.js' ? { ...u, code: fn(u.code) } : u));
+  const staleJust = RAT.justificationProblems(e, { units: withIndex((c) => c.replace(a.justification, 'const shadowResult = await shadowCheck.value();')) });
+  // codex r4: the declaration COMMENTED OUT with a re-pointed one on the same line — the raw text still occurs once
+  const commented = RAT.justificationProblems(e, { units: withIndex((c) => c.replace(a.justification, `/* ${a.justification} */ const shadowResult = null;`)) });
+  assert.ok(commented.some((p) => /no longer occurs exactly once in .* as executable code/.test(p)), FAIL(`codex's comment-out of the justification passed: ${JSON.stringify(commented)}`));
+  const commentedOnly = RAT.justificationProblems(e, { units: withIndex((c) => c.replace(a.justification, `// ${a.justification}`)) });
+  assert.ok(commentedOnly.some((p) => /no EXECUTABLE declaration/.test(p)), FAIL('a justification that only survives in a comment passed'));
   const staleLine = RAT.justificationProblems(e, { readFile: (f) => (f === 'xpizza-functions/index.js' ? realRead(f).replace(a.siteLine, "outcome: 'reported',") : realRead(f)) });
   assert.ok(RAT.justificationProblems(e).length === 0, FAIL(`the approved race entry is not fresh: ${RAT.justificationProblems(e).join(' | ')}`));
   assert.ok(staleJust.some((p) => /race justification no longer occurs exactly once/.test(p)) && staleLine.some((p) => /source line changed/.test(p)), FAIL('a stale race justification / site line passed'));
 }
-ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}) are PINNED: only an APPROVED (context, site) whose race justification still occurs exactly once in its scope and whose site line is unchanged — codex's move of computeServerNet#total#0 → RED; a stale justification / site line → RED`);
+ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}) are PINNED: only an APPROVED (context, site) whose race justification still occurs exactly once in its scope and whose site line is unchanged — codex's move of computeServerNet#total#0 → RED; a stale justification / site line → RED; the justification is matched as EXECUTABLE code (codex r4's comment-out + same-line re-point → RED; a comment-only survivor → RED)`);
 ok(`reviewed nondeterministic sites (${(shrink.nondeterministic || []).length}): current census sites outside the baseline, reached or not → no problem and no growth; one placed in the baseline / without a reason → RED`);
 console.log(`\nr3-ratchet guard: OK (${n})`);

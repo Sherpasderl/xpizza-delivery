@@ -12679,11 +12679,27 @@
     "id": "r3p1-46",
     "slice": "r3p1",
     "file": "contract/ratchet.js",
-    "from": "  else if (st.split(a.justification).length - 1 !== 1) p.push(",
+    "from": "  else if (got.length !== 1 || got[0] !== want) p.push(",
     "to": "  else if (false) p.push(",
     "label": "gate B: a stale race justification keeps a nondeterministic entry valid",
     "kills_with": [
-      "a stale race justification / site line passed"
+      "a stale race justification / site line passed",
+      "codex's comment-out of the justification passed"
+    ],
+    "command": [
+      "node",
+      "contract/ratchet.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-47",
+    "slice": "r3p1",
+    "file": "contract/ratchet.js",
+    "from": "  else if (got.length !== 1 || got[0] !== want) p.push(",
+    "to": "  else if (got.length !== 1) p.push(",
+    "label": "gate B: the race justification is matched by declarator NAME only (a same-line re-point `const shadowResult = null;` passes)",
+    "kills_with": [
+      "codex's comment-out of the justification passed"
     ],
     "command": [
       "node",

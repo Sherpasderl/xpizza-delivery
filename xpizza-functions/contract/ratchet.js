@@ -30,14 +30,38 @@ const APPROVED_NONDETERMINISTIC = Object.freeze([
     siteLine: "outcome: shadowResult ? (shadowResult.status === 'ok' ? 'reported' : shadowResult.status) : 'dropped',",
   }),
 ]);
-function justificationProblems(e, { readFile = (f) => fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'), scopeText = null } = {}) {
+/* the justification is matched in EXECUTABLE source (codex P1-a r4): the reviewed text is parsed to its declarator
+ * (name + init); the scope's own AST must hold EXACTLY ONE declarator of that name whose init has the same TOKENS
+ * (comments and whitespace never count). A commented-out declaration, or one re-pointed on the same line
+ * (`/* … *\/ const shadowResult = null;`), no longer matches → stale. */
+const tokensOf = (code) => { const acorn = require('acorn'); const out = []; for (const t of acorn.tokenizer(code, { ecmaVersion: 'latest' })) out.push(t.value === undefined ? t.type.label : `${t.type.label}:${t.value}`); return out.join(' '); };
+function executableDeclarators(scope, name, units) {
+  const { sources, walk, parseUnit } = require('./census');
+  const found = [];
+  for (const u of units || sources()) {
+    const base = u.file.replace(/<script@\d+>$/, '');
+    walk(parseUnit(u), (node, fn) => {
+      if (!/Function/.test(node.type) || !fn || (`${u.file}#${fn}` !== scope && `${base}#${fn}` !== scope)) return;
+      (function rec(n, top) {
+        if (!n || typeof n.type !== 'string') return;
+        if (/Function/.test(n.type) && !top) return;   // a nested function is its own scope
+        if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && n.id.name === name) found.push(n.init ? tokensOf(u.code.slice(n.init.start, n.init.end)) : '');
+        for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => rec(x, false)); else if (v && typeof v.type === 'string') rec(v, false); }
+      })(node, true);
+    });
+  }
+  return found;
+}
+function justificationProblems(e, { readFile = (f) => fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'), units = null } = {}) {
   const a = APPROVED_NONDETERMINISTIC.find((x) => x.context === e.context && x.site === e.site);
   if (!a) return [`nondeterministic entry ${e.context}|${e.site} is NOT in the reviewed APPROVED_NONDETERMINISTIC list (contract/ratchet.js) — a category entry is a reviewed code change, never a data edit`];
   const p = [];
   if (e.scope !== a.scope || e.justification !== a.justification || e.siteLine !== a.siteLine) p.push(`nondeterministic entry ${e.context}|${e.site}: its recorded justification differs from the reviewed one`);
-  const st = (scopeText || require('./applicability').scopeTextOf)(a.scope);
-  if (st == null) p.push(`nondeterministic ${e.site}: justification scope ${a.scope} is gone (stale)`);
-  else if (st.split(a.justification).length - 1 !== 1) p.push(`nondeterministic ${e.site}: the race justification no longer occurs exactly once in ${a.scope} (stale): ${a.justification}`);
+  const decl = require('acorn').parse(a.justification, { ecmaVersion: 'latest' }).body[0].declarations[0];
+  const want = tokensOf(a.justification.slice(decl.init.start, decl.init.end));
+  const got = executableDeclarators(a.scope, decl.id.name, units);
+  if (!got.length) p.push(`nondeterministic ${e.site}: no EXECUTABLE declaration of ${decl.id.name} in ${a.scope} (stale)`);
+  else if (got.length !== 1 || got[0] !== want) p.push(`nondeterministic ${e.site}: the race justification no longer occurs exactly once in ${a.scope} as executable code (stale): ${a.justification}`);
   if (!e.site.startsWith(`${a.scope}#`)) p.push(`nondeterministic ${e.site}: the site is not in its justification scope ${a.scope}`);
   const c = JSON.parse(readFile('xpizza-functions/contract/census.json')).sites.find((x) => x.id === e.site);
   if (!c) p.push(`nondeterministic ${e.site}: not a current census site (stale)`);
