@@ -5889,8 +5889,20 @@ function detailCtaTap() {
   const _pizza = MENU.find(p => p.id === pizzaId);
   if (itemIsLauncher(_pizza)) {
     if (!stagedVariantId) return;                        // required — no-op until chosen
-    if (Object.keys(stagedExtras).length) pizzaExtras[stagedVariantId] = { ...stagedExtras };
-    chg(stagedVariantId, 1);                             // increments qty + syncs cart/total (null-safe for hidden variant card)
+    /* 🔴 THE LINE'S EXTRAS ARE ONE BUCKET OF STANDALONE QUANTITIES, SHARED BY EVERY ADD OF THIS CHOICE. Replacing it with
+       this add's staging dropped what an earlier add of the SAME choice had chosen: Pollo + Arroz Blanco, then Pollo + Arroz
+       Chino, charged L769 instead of L819 and the kitchen never saw the Blanco (codex, reproduced live 2026-10-13). This add's
+       quantities are ACCUMULATED into the bucket (an empty staging leaves it as it was), written before chg() so its render,
+       totals and cart see them exactly as before — and taken back if chg() did not actually add the dish (sold out, refused). */
+    const vid = stagedVariantId, qtyBefore = qty[vid] || 0;
+    const hadBucket = Object.prototype.hasOwnProperty.call(pizzaExtras, vid), bucketBefore = hadBucket ? { ...pizzaExtras[vid] } : null;
+    if (Object.keys(stagedExtras).length) {
+      const bucket = { ...(pizzaExtras[vid] || {}) };
+      Object.keys(stagedExtras).forEach((eid) => { bucket[eid] = (bucket[eid] || 0) + stagedExtras[eid]; });
+      pizzaExtras[vid] = bucket;
+    }
+    chg(vid, 1);                                         // increments qty + syncs cart/total (null-safe for hidden variant card)
+    if ((qty[vid] || 0) !== qtyBefore + 1) { if (hadBucket) pizzaExtras[vid] = bucketBefore; else delete pizzaExtras[vid]; }
     closeDetailModal();
     return;
   }
