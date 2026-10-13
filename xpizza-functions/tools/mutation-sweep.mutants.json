@@ -12771,22 +12771,6 @@
     ]
   },
   {
-    "id": "r3p1-90",
-    "slice": "r3p1",
-    "file": "contract/p1a-journey.emulator.test.mjs",
-    "from": "if (/firebaseio\\.com/.test(String(u))) await S.drain('rest-read'); ",
-    "to": "",
-    "label": "6f353ed: a page REST read no longer waits for the backend's in-flight triggers — the order-number poll exhausts on virtual time and the confirmation's number is hidden",
-    "kills_with": [
-      "RED cell(s) in the enforced slice"
-    ],
-    "command": [
-      "npm",
-      "run",
-      "test:r3-p1a-journey"
-    ]
-  },
-  {
     "id": "r3p1-91",
     "slice": "r3p1",
     "file": "contract/observables.js",

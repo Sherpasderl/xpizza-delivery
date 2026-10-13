@@ -48,7 +48,7 @@ const D10 = (() => { const d = JSON.parse(JSON.stringify(doc)); d.pages['xpizza-
     const pd = JSON.parse(JSON.stringify(D10)); const c27 = r5.cneed.find((c) => /zz-r3-probe\.js#a:setTimeout#0/.test(c.key));
     pd.chains.push({ key: c27.key, cumulativeBoundMs: 1000, repeats: false, repeatLimit: 1, reachesAsserted: true, reason: 'contradictory declaration', sha: c27.sha });
     const rc = T.check(pd, { units: probe("const o = { a() { setTimeout(() => this.b(), 9000); }, b() { setTimeout(() => this.c(), 9000); }, c() { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); } }; o.a();") });
-    assert.ok(rc.problems.some((p) => /declared cumulativeBoundMs 1000 is BELOW the computed 27000 ms — a contradiction/.test(p)) && rc.problems.some((p) => /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL(`a contradictory declaration cleared the 27 s chain: ${JSON.stringify(rc.problems.filter((p) => /zz-r3/.test(p)))}`));
+    assert.ok(rc.problems.some((p) => /declared cumulativeBoundMs 1000 is BELOW the computed 27000 ms — a contradiction/.test(p)) && rc.problems.some((p) => /zz-r3-probe/.test(p) && /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL(`a contradictory declaration cleared the 27 s chain: ${JSON.stringify(rc.problems.filter((p) => /zz-r3/.test(p)))}`));
     const ps = clone(); const s0 = ps.sites.find((e) => r.inventory.some((t) => t.key === e.key && t.delay != null)); s0.bound = 1;
     assert.ok(T.check(ps).problems.some((p) => /BELOW the computed delay/.test(p)), FAIL('a site bound below its computed delay passed'));
   }
