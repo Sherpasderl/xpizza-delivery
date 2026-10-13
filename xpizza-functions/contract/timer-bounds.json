@@ -2,7 +2,7 @@
  "_doc": "R3 P1 §12 C1 — REVIEWED page timer bounds (contract/timer-bounds.js). pages: the asserted pages and the settle() horizon their steps use. wrappers: reviewed timer wrapper names per unit. sites: every timer whose delay exceeds the page horizon or is unresolved, with reachesAsserted (does its effect reach an output a step asserts?) and the reason; bound to the call text (sha256). chains: every timer CHAIN (callback arming another timer, name-resolved within the unit) whose cumulative delay exceeds the horizon, is unresolved or repeats — { cumulativeBoundMs, repeatLimit, reachesAsserted, reason } bound to its call texts. periodic: every interval firing within the horizon — { periodMs, mayChange, mayChangeSelectors (blanked by the §5b recapture), changesAsserted:false }. Every reviewed site / chain / periodic entry is also bound to ctrlSha: its CONTROLLING scope (outermost enclosing function incl. loops + the declarations its delay and loops reference).",
  "pages": {
   "xpizza-orders": {
-   "horizonMs": 10000
+   "horizonMs": 46000
   },
   "xpizza-kitchen": {
    "horizonMs": 10000
@@ -201,13 +201,33 @@
   },
   {
    "key": "xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
-   "line": 4736,
+   "line": 4793,
    "delaySrc": "attempt*1500",
    "bound": 3000,
    "reachesAsserted": true,
    "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon",
    "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3",
-   "ctrlSha": "d628f1e603e2d62b3fbc7339bc1ba32b98dfddd21221f9af722ba9661c90ed88"
+   "ctrlSha": "568fe2e50472844b75b2d2d040768f06fdd36571ae70d02bea9061098985fdec"
+  },
+  {
+   "key": "xpizza-orders/form-order-number.js#next:setTimeout#0",
+   "line": 41,
+   "delaySrc": "ORDER_NUMBER_DELAYS_MS[i++]",
+   "bound": 5000,
+   "reachesAsserted": true,
+   "reason": "one order-number read delay (ORDER_NUMBER_DELAYS_MS[i], max 5000 ms) — it paints the asserted confirmation number; within the horizon",
+   "sha": "781de6443d7b598644b05db00a858ba984755ba66f0f22c5fcd2d0f3b23a582e",
+   "ctrlSha": "21b4cf4f7fcf7dd5d4229c4d6f4e6ca597fd1bd7d0b780c727ec1c05bd9c4553"
+  },
+  {
+   "key": "xpizza-orders/index.html<script@2>#setTimeout:setTimeout#0",
+   "line": 4917,
+   "delaySrc": "ms",
+   "bound": null,
+   "reachesAsserted": false,
+   "reason": "the reviewed pass-through WRAPPER the form hands to createOrderNumber (setTimeout: (f, ms) => setTimeout(f, ms)): its delay is its caller's — every env.setTimeout call in form-order-number.js is inventoried separately (start: 45000 ms deadline; next: ≤ 5000 ms reads)",
+   "sha": "af51ad483d30898a1d906afd5adbf96724f42fe95c47ebed1e1cafd77bf3a649",
+   "ctrlSha": "954a5dd9727547f54635f58340b89887343c5efcd3f95de5faa9c906343ad0b2"
   }
  ],
  "chains": [
@@ -632,17 +652,17 @@
    "ctrlSha": "b4f55ba223276e1af9fa5a4b3e88a6a130597d76f1097e5ee3f34511a9710e53"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:3875 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
-   "cumulativeBoundMs": 6000,
+   "key": "await@xpizza-orders/index.html<script@2>:3929 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
+   "cumulativeBoundMs": 7500,
    "repeats": false,
    "repeatLimit": 3,
    "reachesAsserted": true,
-   "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon",
+   "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon — 6f353ed: submitOrder now also races the createOrder body for the tracking token (confirmTokenOf, ≤ 1500 ms, once on success) → bound 7500 ms ≤ the horizon",
    "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1",
-   "ctrlSha": "8f8cd71859b42c22e376b65e9f3b9792baa928ba9a59ffef405585b3538e43eb"
+   "ctrlSha": "009767ce2c48627c339974928c606c2beeb568cfe203456e2a08a9e8a7db40ba"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4387 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
+   "key": "await@xpizza-orders/index.html<script@2>:4442 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
    "cumulativeBoundMs": null,
    "repeats": true,
    "repeatLimit": "unbounded",
@@ -652,14 +672,24 @@
    "ctrlSha": "0a3b0926492cc65898d2532911013ba652c3ed66df7ed01763a7d4e0a8d7dc2e"
   },
   {
-   "key": "await@xpizza-orders/index.html<script@2>:4562 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
-   "cumulativeBoundMs": 6000,
+   "key": "await@xpizza-orders/index.html<script@2>:4617 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#confirmTokenOf>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "cumulativeBoundMs": 7500,
    "repeats": true,
    "repeatLimit": 3,
    "reachesAsserted": true,
-   "reason": "submitOrder’s awaited steps on the real submit: the ID-token race (≤ 1500 ms) then the retry backoff (1500, 3000 ms; MAX_TRIES 3); the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 6000 ms ≤ the horizon; S1’s first attempt succeeds",
-   "sha": "3c146d0ad91f91544d8fc3140699e7381809382286338c6bbd021b47e7b33d7f",
-   "ctrlSha": "cb379f2091fe3389c2554d720135fd612c48511952a71943268bf25b0bfcffdc"
+   "reason": "submitOrder's awaited steps on the real submit: the ID-token race (≤ 1500 ms), the retry backoff (1500, 3000 ms; MAX_TRIES 3) and — 6f353ed — the tracking-token race on the createOrder 200 body (confirmTokenOf, ≤ 1500 ms, once) before showSuccess; the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 7500 ms ≤ the horizon; S1's first attempt succeeds",
+   "sha": "87eca4668459cc1fd137eb3ec8c0421e93df3f9c91ad0fce86b9abfd60ace384",
+   "ctrlSha": "348639e12b57e1f0ea11e8d4162452d5497a729978f779bf16fbc8314793711e"
+  },
+  {
+   "key": "xpizza-orders/form-order-number.js#next:setTimeout#0 → xpizza-orders/form-order-number.js#next:setTimeout#0",
+   "cumulativeBoundMs": 38700,
+   "repeats": true,
+   "repeatLimit": 10,
+   "reachesAsserted": true,
+   "reason": "the confirmation's order-number poll (ORDER_NUMBER_DELAYS_MS: 700, 1500, 2500, 4000, then 5000 × 6 = 38.7 s, ≤ 10 reads, stopped once the number paints; the 45 s deadline hides the line). It REACHES the asserted R15 NUM (pending → number | hidden), so the xpizza-orders horizon covers its deadline (46 s, raised at 6f353ed)",
+   "sha": "ebdc227b6bd7c44b1bb5f7dfbc8ac7c1e6e2ac3bcea4a3c1d835b071fd78c2ac",
+   "ctrlSha": "a8fea25ab971e379f0cca337e71ad52d12f88bdb3dedde96d6cef7ff455808b2"
   }
  ],
  "periodic": [

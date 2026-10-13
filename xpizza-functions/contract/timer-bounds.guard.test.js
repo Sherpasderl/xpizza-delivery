@@ -18,6 +18,9 @@ assert.ok(/settled\(form, fhost, HORIZON\.form,/.test(j) && /settled\(kds, khost
 ok('the enforced journey settles every step with the declared per-page horizon (no default settle())');
 const clone = () => JSON.parse(JSON.stringify(doc));
 const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
+// the mechanism negatives below are fixed-size probes (9 s timers): run them at a 10 s xpizza-orders horizon, independent of
+// the reviewed page horizon (raised to 46 s at 6f353ed for the order-number poll)
+const D10 = (() => { const d = JSON.parse(JSON.stringify(doc)); d.pages['xpizza-orders'].horizonMs = 10000; return d; })();
 { const d = clone(); d.sites.shift(); assert.ok(has(d, /no reviewed entry/), FAIL('a long timer without an entry passed')); }
 { const d = clone(); d.pages['xpizza-orders'].horizonMs = 1000; assert.ok(has(d, /no reviewed entry/), FAIL('a shorter horizon exposed no new long timer')); }
 { const d = clone(); d.sites[0].sha = T.sha('x'); assert.ok(has(d, /call text changed/), FAIL('a changed timer call passed')); }
@@ -28,21 +31,21 @@ const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
 {
   const { sources } = require('./census');
   const probe = (code) => [...sources(), { file: 'xpizza-orders/zz-r3-probe.js', scope: 'xpizza-orders', kind: 'page', code, lineOffset: 0, module: false }];
-  const r1 = T.check(doc, { units: probe("function a(){ setTimeout(() => { setTimeout(() => { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); }, 9000); }, 9000); }") });
+  const r1 = T.check(D10, { units: probe("function a(){ setTimeout(() => { setTimeout(() => { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); }, 9000); }, 9000); }") });
   assert.ok(r1.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#a:setTimeout#0 → .* cumulative 27000 ms/.test(p)), FAIL(`the 3 × 9 s chain was not RED: ${JSON.stringify(r1.problems.filter((p) => /zz-r3/.test(p)))}`));
-  const r2 = T.check(doc, { units: probe('function poll(){ setTimeout(poll, 500); }') });
+  const r2 = T.check(D10, { units: probe('function poll(){ setTimeout(poll, 500); }') });
   assert.ok(r2.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#poll.*REPEATS/.test(p)), FAIL('a self-re-arming timer was not RED'));
-  const r3 = T.check(doc, { units: probe('function t(){ setInterval(() => {}, 2000); }') });
+  const r3 = T.check(D10, { units: probe('function t(){ setInterval(() => {}, 2000); }') });
   assert.ok(r3.problems.some((p) => /^PERIODIC xpizza-orders\/zz-r3-probe\.js#t:setInterval#0/.test(p)), FAIL('an unreviewed periodic interval was not RED'));
   // codex r2 P1-3 form 1: an UNRETURNED async function with three sequential awaited 9 s sleeps (27 s)
-  const r4 = T.check(doc, { units: probe("function go(){ (async () => { await new Promise((r) => setTimeout(r, 9000)); await new Promise((r) => setTimeout(r, 9000)); await new Promise((r) => setTimeout(r, 9000)); document.getElementById('cart-total').textContent = 'L 999.00'; })(); }") });
+  const r4 = T.check(D10, { units: probe("function go(){ (async () => { await new Promise((r) => setTimeout(r, 9000)); await new Promise((r) => setTimeout(r, 9000)); await new Promise((r) => setTimeout(r, 9000)); document.getElementById('cart-total').textContent = 'L 999.00'; })(); }") });
   assert.ok(r4.problems.some((p) => /^CHAIN await@xpizza-orders\/zz-r3-probe\.js:1 .*cumulative 27000 ms/.test(p)), FAIL(`the unreturned awaited-sleeps chain was not RED: ${JSON.stringify(r4.problems.filter((p) => /zz-r3/.test(p)))}`));
   // codex r2 P1-3 form 2: a timer chain continued through OBJECT METHODS
-  const r5 = T.check(doc, { units: probe("const o = { a() { setTimeout(() => this.b(), 9000); }, b() { setTimeout(() => this.c(), 9000); }, c() { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); } }; o.a();") });
+  const r5 = T.check(D10, { units: probe("const o = { a() { setTimeout(() => this.b(), 9000); }, b() { setTimeout(() => this.c(), 9000); }, c() { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); } }; o.a();") });
   assert.ok(r5.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#a:setTimeout#0 → .*#b:setTimeout#0 → .*#c:setTimeout#0: cumulative 27000 ms/.test(p)), FAIL(`the method-chained timers were not RED: ${JSON.stringify(r5.problems.filter((p) => /zz-r3/.test(p)))}`));
   // codex r2 P1-3: a declaration BELOW the computed bound is a contradiction → RED (computed overrides)
   {
-    const pd = clone(); const c27 = r5.cneed.find((c) => /zz-r3-probe\.js#a:setTimeout#0/.test(c.key));
+    const pd = JSON.parse(JSON.stringify(D10)); const c27 = r5.cneed.find((c) => /zz-r3-probe\.js#a:setTimeout#0/.test(c.key));
     pd.chains.push({ key: c27.key, cumulativeBoundMs: 1000, repeats: false, repeatLimit: 1, reachesAsserted: true, reason: 'contradictory declaration', sha: c27.sha });
     const rc = T.check(pd, { units: probe("const o = { a() { setTimeout(() => this.b(), 9000); }, b() { setTimeout(() => this.c(), 9000); }, c() { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); } }; o.a();") });
     assert.ok(rc.problems.some((p) => /declared cumulativeBoundMs 1000 is BELOW the computed 27000 ms — a contradiction/.test(p)) && rc.problems.some((p) => /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL(`a contradictory declaration cleared the 27 s chain: ${JSON.stringify(rc.problems.filter((p) => /zz-r3/.test(p)))}`));

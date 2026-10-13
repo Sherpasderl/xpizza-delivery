@@ -105,7 +105,10 @@ try {
   const R = makeFormRouter({ app, rtdb });
   const routed = async (u, i) => {
     const m = /cloudfunctions\.net\/([A-Za-z0-9_]+)/.exec(String(u));
-    if (!m) return R.respond(String(u), i);
+    // a page's REST read of the database (e.g. the confirmation's order-number poll of order_tracking/<token>) is answered
+    // only once the backend's in-flight triggers have drained: the page runs on VIRTUAL time, the backend on real time — a
+    // read the page issues ≥ 700 ms of page time after a write sees what the backend's ms-scale triggers wrote by then
+    if (!m) { if (/firebaseio\.com/.test(String(u))) await S.drain('rest-read'); return R.respond(String(u), i); }
     const w = await S.writer(`${m[1]}#${calls.length}`, () => R.respond(String(u), i), { served: [] });
     calls.push({ fn: m[1], served: w.store.served.map((x) => ({ versionId: x.versionId, source: x.source })) });
     return w.r;
