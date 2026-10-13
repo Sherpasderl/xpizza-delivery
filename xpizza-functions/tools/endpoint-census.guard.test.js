@@ -83,6 +83,7 @@ const D = {
   [F('cors-preflight.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   [F('tools/portal-split.js')]: 'lib: source-TEXT fold (the initializeApp is a string it rewrites, no runtime Admin)',
   [F('tools/deploy-env-guard.js')]: 'lib: reads deploy env KEY NAMES only, no client',
+  [F('tools/secret-env.js')]: 'lib: R3 credential scrub — names env KEYS (and reads .env KEY NAMES only) to DELETE them from a test process env; no client, no value read or printed',
   [F('tools/portal-latency-probe.js')]: 'prod-measurement: HTTP to the DEPLOYED functions by design (token-authenticated); no Admin client, emulator vars do not reach it',
   // tests that never contact a database (fakes / stubs / text), each verified
   [F('rtdb-init.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
