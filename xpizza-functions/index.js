@@ -359,6 +359,20 @@ function clientFloorReader() {
   if (!_clientFloorReader) _clientFloorReader = CF.createFloorReader({ getDb: getDatabase });
   return _clientFloorReader;
 }
+/* extras:begin wiring */
+// PER-PRODUCT EXTRAS (PLAN-per-product-extras rev 2.1 §4/§5) — the runtime mode (platform_config/extras_eligibility:
+// off | shadow | enforce; an UNKNOWN cold read refuses fresh issuance), bound to EXACTLY the pricing tables' version
+const EI = require('./catalog/extras-intake');
+let _extrasModeReader = null;
+function extrasModeReader() {
+  if (!_extrasModeReader) _extrasModeReader = EI.createExtrasModeReader({ read: async () => (await getDatabase().ref(EI.PATH).once('value')).val() });
+  return _extrasModeReader;
+}
+const extrasEnvelopeOf = (tables) => require('./catalog/pricing-tables').envelopeOf(tables);
+const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-eligibility-store').readEligibility(getFirestore(), rid, versionId);
+const extrasCheckFor = async (restaurantId, tables, items) => EI.extrasCheck({ mode: await extrasModeReader().getMode(), tables, items, rid: restaurantId,
+  envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });
+/* extras:end wiring */
 
 // ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
 // The weekend gate needs CATEGORIES, but the serving path deliberately carries only { menu, extras }
@@ -916,6 +930,13 @@ createOrderApp.all('*', async (req, res) => {
     const groupRefusal = GI.cashRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: intakeGates, items: body.items, restaurantId,
       rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, pricingTables), readAvailability: async () => (await db.ref(`restaurants/${restaurantId}/item_availability`).once('value')).val() }));
     if (groupRefusal) { if (groupRefusal.retryAfter) res.set('Retry-After', String(groupRefusal.retryAfter)); return res.status(groupRefusal.status).json(groupRefusal.body); }
+    /* extras:begin cash */
+    {   // per-product extras: after the dedupe and the group rules, before any write or reserve
+      const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
+      EI.logShadow('createOrder', restaurantId, xr);
+      if (EI.refuses(xr)) { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }
+    }
+    /* extras:end cash */
     const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
@@ -1544,6 +1565,9 @@ chargeOnlineApp.all('*', async (req, res) => {
   let menuArmed = false;     // 1D add-product A §0b.1: a non-fresh request carrying a key the gate snapshot does not know
   let clsForMenu = null;     // 1D add-product A: the preliminary classification, for the menu pre-gate below (null = failed)
   let choiceArmed = false;   // 1D add-product B: a non-fresh request carrying a bare launcher (line or reward) — no fresh URL
+  /* extras:begin card-arm */
+  let extrasArmed = null;    // per-product extras: the acquire guard's reason ('extra_not_allowed' | 'eligibility_unavailable') or null
+  /* extras:end card-arm */
   let canonicalFpG = null;   // the canonical recompute for the classify + probe checks — a request-local memoizer (the reserve/acquire
                              // site has its own request-local memoizer, canonicalChargeFp, over the same inputs)
   {
@@ -1635,6 +1659,16 @@ chargeOnlineApp.all('*', async (req, res) => {
       if (gd.armChoice) choiceArmed = true;
       for (const b of gd.block) if (!cartBlocked.includes(b)) cartBlocked.push(b);
     }
+    /* extras:begin card */
+    {   // per-product extras (§5): refused here when the classification says FRESH (or cannot say); a reuse only arms the guard
+      const xr = await extrasCheckFor(restaurantId, pricingTables, body.items);
+      EI.logShadow('chargeOnlineOrder', restaurantId, xr);
+      if (EI.refuses(xr)) {
+        if (!clsForMenu || clsForMenu.willIssueFreshUrl) { if (xr.outcome === 'unavailable') res.set('Retry-After', '2'); return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId }); }
+        extrasArmed = EI.guardReason(xr);
+      }
+    }
+    /* extras:end card */
     const weekendKeys = intakeGates.weekend;
     const weekendBad = weekendOnlyViolation(body.items, restaurantId, fMs, weekendKeys);
     if (weekendBad) {
@@ -1899,7 +1933,9 @@ chargeOnlineApp.all('*', async (req, res) => {
   // Acquire the hosted-charge lock + attempt (create-claim state machine; HOSTED-PAYMENT-PLAN.md).
   let acq;
   try {
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard
+    /* extras:begin card-acquire */
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed, extrasArmed);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
+    /* extras:end card-acquire */
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);
     await releaseHoldIfOwned();   // abandoned: no attempt written → release our hold
@@ -1932,6 +1968,14 @@ chargeOnlineApp.all('*', async (req, res) => {
       console.warn(`chargeOnlineOrder: ${orderId} — 409 choice_required (group guard)`);
       return res.status(409).json({ ...GI.CHOICE_REQUIRED, order_id: orderId });
     }
+    /* extras:begin card-map */
+    if (acq.reason === 'extra_not_allowed' || acq.reason === 'eligibility_unavailable') {   // per-product extras: a drift to a fresh issuance
+      console.warn(`chargeOnlineOrder: ${orderId} — ${acq.reason} (extras guard)`);
+      const xr = { outcome: acq.reason === 'extra_not_allowed' ? 'denied' : 'unavailable', denied: [] };
+      if (xr.outcome === 'unavailable') res.set('Retry-After', '2');
+      return res.status(EI.refusalStatus(xr)).json({ ...EI.refusalBody(xr), order_id: orderId });
+    }
+    /* extras:end card-map */
     // 1D D4-b: a TYPED conflict (binding_format_invalid / cart_unverifiable) keeps its reason; a legacy mismatch → the neutral 'conflict'
     console.warn(`chargeOnlineOrder: ${orderId} — 409 order_exists (acquire conflict${acq.reason ? `: ${acq.reason}` : ''})`);
     return res.status(409).json(OE.orderExistsBody(acq.reason || 'conflict', orderId));
@@ -6642,6 +6686,13 @@ exports.quoteOrder = onRequest(
         const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId }));
         if (qr) return res.status(200).json({ ok: false, ...qr });
       }
+      /* extras:begin quote */
+      {   // per-product extras: refused BEFORE a quote (and its signed token) is issued — the order would refuse it anyway
+        const xr = await extrasCheckFor(restaurantId, tables, body.items);
+        EI.logShadow('quoteOrder', restaurantId, xr);
+        if (EI.refuses(xr)) return res.status(200).json({ ok: false, ...EI.refusalBody(xr) });
+      }
+      /* extras:end quote */
       const { total, error } = computeServerTotal(body.items, restaurantId, tables);
       // fail-SOFT: an unknown item or a corrupt price is a 200 + ok:false, so the client keeps its own
       // total on screen instead of a broken checkout. The order path will reject it for real if it is
@@ -6708,6 +6759,13 @@ exports.quoteRedemption = onRequest(
         const qr = GI.quoteRefusal(await GI.groupIssues({ caps: groupCapabilities(), gates: await gateReader().intakeGatesFor(restaurantId), items: body.items, restaurantId, rewardKeys: GI.rewardKeysOf(body.redeem), rewardNamespace: GI.rewardNamespaceIn(restaurantId, quoteTables) }));
         if (qr) return res.status(409).json({ ok: false, ...qr });
       }
+      /* extras:begin quote-redemption */
+      {   // per-product extras: the paid lines' extras (reward items are reward lines, never judged by a product's list)
+        const xr = await extrasCheckFor(restaurantId, quoteTables, body.items);
+        EI.logShadow('quoteRedemption', restaurantId, xr);
+        if (EI.refuses(xr)) return res.status(EI.refusalStatus(xr)).json({ ok: false, ...EI.refusalBody(xr) });
+      }
+      /* extras:end quote-redemption */
       const q = await quoteRedemptionCore(db, { redeem: body.redeem, items: body.items, restaurantId, customerUid, tables: quoteTables, eligible: quoteEligible });
       if (!q.ok) return res.status(q.status).json({ ok: false, ...q.body });   // same typed errors as intake (+ bad_cart)
       return res.status(200).json(q);   // { ok:true, discount_cents, total_cents, subtotal_cents, tax_cents, free_item:{name} }

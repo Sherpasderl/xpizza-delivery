@@ -22,7 +22,7 @@ const { unapplyAddProductB } = require('./tools/addproduct-b-inverse');
 const { unapplyStackedTracker } = require('./tools/stacked-tracker-inverse');
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed FIRST.
 const { unapplyD4c2b } = require('./tools/d4c2b-inverse');
-const idx = unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(read('index.js')))));
+const idx = unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/extras-inverse').unapplyExtrasIndex(read('index.js'))))));
 const BASE = git('37dcf43:xpizza-functions/index.js');
 
 // ── (i) ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -47,8 +47,8 @@ ok(`PROOF (i): unapplyAddProduct(candidate index.js) === 37dcf43:index.js byte-f
   try {
     execFileSync('bash', ['-c', `git -C "${path.join(__dirname, '..')}" archive 37dcf43 xpizza-functions | tar -x -C "${tmp}"`]);
     const baseFold = require(path.join(tmp, 'xpizza-functions', 'tools', 'portal-split')).foldPortalSplit(path.join(tmp, 'xpizza-functions'));
-    assert.strictEqual(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(foldPortalSplit()))))), baseFold, '🔴 the portal fold minus the add-product hunks is not the 37dcf43 fold');
-    const fold = unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(foldPortalSplit()))));
+    assert.strictEqual(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/extras-inverse').unapplyExtrasIndex(foldPortalSplit())))))), baseFold, '🔴 the portal fold minus the add-product hunks is not the 37dcf43 fold');
+    const fold = unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/extras-inverse').unapplyExtrasIndex(foldPortalSplit())))));
     const [pnow] = PORTAL_HUNKS[0];
     const k = fold.indexOf(pnow) + 2;
     let detected; try { detected = unapplyAddProductFold(fold.slice(0, k) + '#' + fold.slice(k + 1)) !== baseFold; } catch (_) { detected = true; }

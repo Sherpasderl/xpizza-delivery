@@ -51,7 +51,10 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/draft-assess.js',                // 1D add-product A: getEditableCatalog's draft_unpublishable assessment (pure)
   'catalog/edit-catalog-handler.js',
   'catalog/evidence-encoding.js',           // 1D D4-c2a: the identity-evidence encoder (pure), reached via catalog-publish.js
-  'catalog/exposure-source.js', 'catalog/extras-exposure.js', 'catalog/form-menu-source.js',
+  'catalog/exposure-source.js',
+  'catalog/extras-eligibility-store.js',    // per-product extras: the per-version eligibility doc, written by catalog-publish.js
+  'catalog/extras-eligibility.js',          // per-product extras: the ONE pure evaluator, via the eligibility store
+  'catalog/extras-exposure.js', 'catalog/form-menu-source.js',
   'catalog/generate-form-bundle.js',        // 1D add-product A: generateKdsManifest (pure over a catalog), via kds-manifest.js
   'catalog/identity-backfill.js',
   'catalog/identity-derive.js', 'catalog/identity-destination.js',
@@ -62,6 +65,7 @@ const PORTAL_GRAPH_LOCAL = [
   'catalog/kds-manifest.js',                // 1D add-product A: the conditional /menus writer, after a successful publish
   'catalog/mirror-rtdb.js',
   'catalog/owner-index.js',
+  'catalog/platform-extras.js',             // per-product extras: the platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/platform-groups.js',             // 1D add-product B: the ONE platform authoring switch (editCatalog / publishEdited); no I/O
   'catalog/portal-reads.js', 'catalog/publish-edited-handler.js', 'catalog/redeem-source.js',
   'catalog/seed-catalog-core.js', 'catalog/source-store.js',
@@ -395,7 +399,7 @@ const LOAD_JS = (withRequest) => `${REQUEST_JS}
     // before A's (it landed on top of A); the stacked-tracker slice's before B's (it landed on top of PB-2); D4-c2b's ONE delimited,
     // byte-pinned block FIRST (it landed on top of the stacked-tracker slice).
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed FIRST.
-    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(foldPortalSplit(root))))))));
+    const foldToParent = (root) => unapplyD4c5(unapplyD4c4(unapplyAddProductFold(unapplyAddProductB(unapplyStackedTracker(unapplyD4c2b(require('../tools/d12b-inverse').unapplyD12bIndex(require('../tools/extras-inverse').unapplyExtrasIndex(foldPortalSplit(root)))))))));
     assert.strictEqual(sha(foldToParent()), PARENT_INDEX, 'premise: the real tree folds back to the parent');
     const FILES = ['index.js', 'lib/admin.js', 'lib/payment-alert.js', 'portal/origins.js', 'portal/functions.js', 'stats/keyer.js'];
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-split-'));

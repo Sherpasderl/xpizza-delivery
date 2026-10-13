@@ -33,7 +33,11 @@ try {
     'catalog/catalog-publish.js': '483446e372001e4955efc128ad0ba1a1f86045b7512710b988245d8857e1be24',
     'catalog/identity-bootstrap.js': 'acc732fe02ed81e8b2131ac936f581f2df96645ca7f98aa94574f3ee25f05e79',
   };
-  for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(read(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
+  // per-product extras (stage 2) landed later: its exact module inverse (tools/extras-module-inverse.js, proven by
+  // extras-wiring.guard) is reversed FIRST for the files it touches (catalog-publish.js, source-store.js)
+  const { unapplyExtrasModule, FILES: EXTRAS_FILES } = require('../tools/extras-module-inverse');
+  const pinned = (f) => (EXTRAS_FILES.includes(f) ? unapplyExtrasModule(f, read(f)) : read(f));
+  for (const [f, want] of Object.entries(PINS)) assert.strictEqual(sha(pinned(f)), want, `🔴 ${f} changed — c2b imports it and must never edit it`);
   assert.notStrictEqual(sha(`${read('catalog/catalog-verifier.js')} `), PINS['catalog/catalog-verifier.js'], 'sensitivity');
   ok(`zero diff: the ${Object.keys(PINS).length} existing modules c2b imports (evidence, encoding, verifier, c1 gates, registry, pointer reader, source store, identity registry, publisher, bootstrap) are byte-identical to the integration base 2cb5a1c`);
 
