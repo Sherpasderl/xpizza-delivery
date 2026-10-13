@@ -20,7 +20,7 @@
   "D13": { "outputs": ["KDS (pedido)", "order-received WhatsApp", "tracker fallback", "driver", "dashboard", "history"], "status": "KDS: CONFIRMED (runtime, re-observed at P1-a) — the KDS shows the client items_text. In P1-a's S1 the client items_text equals the priced line, so the KDS ticket and the WhatsApp items AGREE (gate A); the divergence needs items_text ≠ priced (P0 observation order)", "reproducer": "p0-observations" },
   "D15": { "outputs": ["cart review sheet line extras"], "status": "OPEN — needs extras (S1a-on, P1-c); in S1 the sheet AGREES (gate A, R13)", "reproducer": null },
   "D16": { "outputs": ["confirmation reward rows"], "status": "OPEN — needs a redemption (S4, P1-d)", "reproducer": null },
-  "D17": { "outputs": ["driver cash bar"], "status": "checked separately (agreement: the cash bar = Σ persisted cuadre; D4's pin carries the wrong value) — at LP delivered (P1-c)", "reproducer": null },
+  "D17": { "outputs": ["driver cash bar"], "status": "OPEN — pending P1-c (no runtime reproducer yet). Planned check, NOT an observation: the cash bar = Σ persisted cuadre (agreement expected per the plan); D4's pin carries the wrong value. No resolution credit until P1-c runs it at LP delivered", "reproducer": null },
   "D19": { "outputs": ["XP confirmation #order-id-display (showSuccess)"], "status": "NEW at P1-a (runtime): the confirmation prints \"Orden # <order_id>\" (the long PZX-… id) while F-NUM is the stamped display_number the KDS shows (#<n>). PINNED (contract/pins.json) as to-confirm; customer-facing; owner forms lane / advisor ruling", "reproducer": "p1a-journey" }
  },
  "S14": { "status": "CONFIRMED (runtime, re-observed at P1-a): 'efectivo' → payment_method '' persisted (HTTP 200)", "reproducer": "p0-observations" }

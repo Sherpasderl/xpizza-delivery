@@ -224,6 +224,30 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
     assert.ok(settled && t === 'clicked' && scripts === 0, FAIL(`inline onclick (${JSON.stringify({ settled, t, scripts })})`));
     ok('an inline onclick attribute runs (compiled in the page realm), its timer-delayed render is awaited; the page\'s scripts are executed by the harness, not jsdom');
   }
+  // codex P1-a r1 P1-2 probes: the harness model — jsdom runs NO script. (a) a FRAME whose script would arm an 80 ms timer
+  // and rewrite the parent's total never runs; (b) onclick="return go()" with an ASYNC go() is tracked until it finishes;
+  // (c) a <script> inserted after boot never runs, is recorded and settle() is false; (d) XHR is refused + recorded and fails
+  {
+    const html = `<!doctype html><html><body><div id="total">L 340.00</div><div id="out"></div><button id="b" onclick="return go()">go</button>
+      <script>async function go(){ await new Promise((r) => setTimeout(r, 20000)); document.getElementById('out').textContent = 'done'; }
+      const f = document.createElement('iframe'); f.srcdoc = '<script>setTimeout(function(){ parent.document.getElementById("total").textContent = "L 999.00"; }, 80)<\\/script>'; document.body.appendChild(f);</script></body></html>`;
+    const p = await bootPage('xpizza-functions', { html });
+    p.doc.getElementById('b').dispatchEvent(new p.win.MouseEvent('click', { bubbles: true }));
+    const s0 = await p.settle(10000, { capMs: 400 }); const out0 = p.doc.getElementById('out').textContent;
+    const s1 = await p.settle(30000); const out = p.doc.getElementById('out').textContent;
+    await new Promise((r) => setTimeout(r, 250)); const total = p.doc.getElementById('total').textContent;
+    const errs = p.errors.slice(); p.close();
+    assert.ok(s0 === false && out0 === '' && s1 === true && out === 'done' && total === 'L 340.00' && errs.length === 0, FAIL(`frame / async onclick probes (${JSON.stringify({ s0, out0, s1, out, total, errs })})`));
+    ok('codex probes: a frame script never runs (the parent total stays L 340.00 after real time passes); an async onclick ("return go()") RETURNED unfinished is tracked — settle() is false at the cap until a horizon reaches it, then true and done');
+  }
+  {
+    const html = `<!doctype html><html><body><div id="o">-</div><script>window.__xhr = 'pending'; const x = new XMLHttpRequest(); x.open('POST', 'https://api.ultramsg.com/r3/messages/chat'); x.onerror = () => { window.__xhr = 'error'; }; x.send('a=1');
+      setTimeout(() => { const sc = document.createElement('script'); sc.textContent = "document.getElementById('o').textContent = 'RAN'"; document.body.appendChild(sc); }, 10);</script></body></html>`;
+    const p = await bootPage('xpizza-functions', { html });
+    const s = await p.settle(10000); const o = p.doc.getElementById('o').textContent; const xhr = p.win.__xhr; const refused = p.refused.slice(); p.close();
+    assert.ok(s === false && o === '-' && xhr === 'error' && refused.some((r) => /^xhr https:\/\/api\.ultramsg\.com/.test(r)) && refused.some((r) => /inserted script/.test(r)), FAIL(`xhr / inserted script (${JSON.stringify({ s, o, xhr, refused })})`));
+    ok('XHR is refused + recorded (the request fails with an error event, nothing is sent); a script inserted after boot never runs, is recorded, and settle() is false');
+  }
   // P1-a: the DECLARED WALL-CLOCK ANCHOR — default off (the page reads the real clock); with an anchor the page's Date (no-arg
   // construction, Date.now(), Date()) reads anchor + real elapsed, explicit-argument construction is untouched, instanceof holds
   {

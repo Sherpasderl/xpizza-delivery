@@ -27,12 +27,13 @@ function runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc, ev
     if (!O) r = { ok: false, detail: `no observable ${obs}` };
     else if (!(obs in snapshots)) r = { ok: false, detail: `observable ${obs} was not captured in this run` };
     else if (!O.compare[fact]) r = { ok: false, missing: true, detail: `observable ${obs} has NO comparator for ${fact} — a missing comparison` };
+    else if (!snapshots[obs].exposed || !snapshots[obs].exposed.ok) r = { ok: false, detail: `the terminal region was not EXPOSED when captured (${snapshots[obs].exposed ? snapshots[obs].exposed.detail : 'no exposed state recorded'}) — its action did not show it` };
     else { try { r = O.compare[fact](snapshots[obs], facts, ctx); } catch (e) { r = { ok: false, detail: `comparator threw: ${e && e.message}` }; } }
     cmp.set(k, r); return r;
   };
   for (const c of cells) {
     const region = c.viaFrom || c.region;
-    const base = { id: c.id, cell: c.cell, kind: c.kind, fact: c.fact, region: c.region, viaFrom: c.viaFrom, fromRegions: c.fromRegions || [c.viaFrom || c.region] };
+    const base = { id: c.id, cell: c.cell, output: c.output, kind: c.kind, fact: c.fact, region: c.region, viaFrom: c.viaFrom, fromRegions: c.fromRegions || [c.viaFrom || c.region] };
     const x = AP.exclusionFor(applicability, region, c);
     if (x) {
       const u = AP.unmet(x, evidence);
@@ -54,8 +55,9 @@ function runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc, ev
    * excluded ONLY when the same obligation (matrix cell) is asserted and PASSES at a reached region in this run. If every
    * region of the cell is excluded, the exclusions would waive the obligation → RED. */
   for (const { c, base, x, u, stale: st } of deferred) {
-    const at = results.find((y) => y.cell === c.cell && (y.outcome === 'pass' || y.outcome === 'pin'));
-    if (!at) { results.push({ ...base, outcome: 'RED', detail: `every region of the ${c.kind} obligation ${c.cell} is excluded — an exclusion cannot waive a ${c.kind} assertion` }); continue; }
+    // the SAME obligation = same matrix cell AND same output, discharged at that output's TERMINAL region (codex r1 P1-7)
+    const at = results.find((y) => y.cell === c.cell && y.output === c.output && (y.outcome === 'pass' || y.outcome === 'pin') && registry.regions[y.region] && registry.regions[y.region].status === 'terminal');
+    if (!at) { results.push({ ...base, outcome: 'RED', detail: `the ${c.kind} obligation ${c.cell} on output ${c.output} is not discharged at a reached terminal of the SAME output — an exclusion cannot waive a ${c.kind} assertion` }); continue; }
     if (st) { results.push({ ...base, outcome: 'RED', detail: `exclusion is STALE (source or scenario changed) — the cell is required again` }); continue; }
     if (u.length) { results.push({ ...base, outcome: 'RED', detail: `exclusion precondition(s) UNMET in this run: ${u.join(', ')}` }); continue; }
     results.push({ ...base, outcome: 'excluded', preconditions: x.preconditions, dischargedAt: at.region });

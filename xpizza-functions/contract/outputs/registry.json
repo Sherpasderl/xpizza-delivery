@@ -76,19 +76,25 @@
   "la-musa-orders/index.html<script@2>#applyPollState@la-musa-orders/index.html<script@2>#handlePaymentReturn": {
    "status": "pending"
   },
+  "la-musa-orders/index.html<script@2>#applyPollState@la-musa-orders/index.html<script@2>#handlePaymentReturn~2": {
+   "status": "pending"
+  },
   "la-musa-orders/index.html<script@2>#handlePaymentReturn@la-musa-orders/index.html<script@2>#<top>": {
    "status": "pending"
   },
+  "la-musa-orders/index.html<script@2>#showSuccess>anon@self": {
+   "status": "pending"
+  },
   "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#applyPollState": {
+   "status": "pending"
+  },
+  "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#applyPollState~2": {
    "status": "pending"
   },
   "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#processPixelPay": {
    "status": "pending"
   },
   "la-musa-orders/index.html<script@2>#showSuccess@la-musa-orders/index.html<script@2>#submitOrder": {
-   "status": "pending"
-  },
-  "la-musa-orders/index.html<script@2>#showSuccess>anon@self": {
    "status": "pending"
   },
   "la-musa-orders/index.html<script@2>#successTotalCents@la-musa-orders/index.html<script@2>#showSuccess>anon": {
@@ -98,6 +104,21 @@
    "status": "pending"
   },
   "xpizza-dashboard/index.html<script@0>#callAction@xpizza-dashboard/index.html<script@0>#fn": {
+   "status": "pending"
+  },
+  "xpizza-dashboard/index.html<script@0>#callAction@xpizza-dashboard/index.html<script@0>#fn~2": {
+   "status": "pending"
+  },
+  "xpizza-dashboard/index.html<script@0>#callAction@xpizza-dashboard/index.html<script@0>#fn~3": {
+   "status": "pending"
+  },
+  "xpizza-dashboard/index.html<script@0>#callAction@xpizza-dashboard/index.html<script@0>#fn~4": {
+   "status": "pending"
+  },
+  "xpizza-dashboard/index.html<script@0>#callAction@xpizza-dashboard/index.html<script@0>#fn~5": {
+   "status": "pending"
+  },
+  "xpizza-dashboard/index.html<script@0>#callAction@xpizza-dashboard/index.html<script@0>#fn~6": {
    "status": "pending"
   },
   "xpizza-dashboard/index.html<script@0>#driverDotClass@xpizza-dashboard/index.html<script@0>#renderDrivers>anon": {
@@ -115,10 +136,10 @@
   "xpizza-dashboard/index.html<script@0>#getDriverIdForOrder@xpizza-dashboard/index.html<script@0>#renderLeaderboard>anon": {
    "status": "pending"
   },
-  "xpizza-dashboard/index.html<script@0>#getPedidos@xpizza-dashboard/index.html<script@0>#renderPedidos": {
+  "xpizza-dashboard/index.html<script@0>#getPedidos>anon@self": {
    "status": "pending"
   },
-  "xpizza-dashboard/index.html<script@0>#getPedidos>anon@self": {
+  "xpizza-dashboard/index.html<script@0>#getPedidos@xpizza-dashboard/index.html<script@0>#renderPedidos": {
    "status": "pending"
   },
   "xpizza-dashboard/index.html<script@0>#isPlausibleDelivery@xpizza-dashboard/index.html<script@0>#renderLeaderboard>anon": {
@@ -136,16 +157,19 @@
   "xpizza-dashboard/index.html<script@0>#methodLabel@xpizza-dashboard/index.html<script@0>#renderPedidos>anon": {
    "status": "pending"
   },
-  "xpizza-dashboard/index.html<script@0>#openOrderDetail@xpizza-dashboard/index.html<script@0>#renderPedidos>anon>anon": {
+  "xpizza-dashboard/index.html<script@0>#openOrderDetail>anon@self": {
    "status": "pending"
   },
-  "xpizza-dashboard/index.html<script@0>#openOrderDetail>anon@self": {
+  "xpizza-dashboard/index.html<script@0>#openOrderDetail@xpizza-dashboard/index.html<script@0>#renderPedidos>anon>anon": {
    "status": "pending"
   },
   "xpizza-dashboard/index.html<script@0>#orderTypeOf@xpizza-dashboard/index.html<script@0>#getPedidos>anon": {
    "status": "pending"
   },
   "xpizza-dashboard/index.html<script@0>#orderTypeOf@xpizza-dashboard/index.html<script@0>#openOrderDetail": {
+   "status": "pending"
+  },
+  "xpizza-dashboard/index.html<script@0>#orderTypeOf@xpizza-dashboard/index.html<script@0>#openOrderDetail~2": {
    "status": "pending"
   },
   "xpizza-dashboard/index.html<script@0>#orderTypeOf@xpizza-dashboard/index.html<script@0>#typeBadge": {
@@ -187,6 +211,9 @@
   "xpizza-dashboard/index.html<script@0>#statusBadge@xpizza-dashboard/index.html<script@0>#openOrderDetail": {
    "status": "pending"
   },
+  "xpizza-dashboard/index.html<script@0>#statusBadge@xpizza-dashboard/index.html<script@0>#openOrderDetail~2": {
+   "status": "pending"
+  },
   "xpizza-dashboard/index.html<script@0>#statusBadge@xpizza-dashboard/index.html<script@0>#renderPedidos>anon": {
    "status": "pending"
   },
@@ -223,6 +250,9 @@
   "xpizza-dispatch-mobile/board-model.js#sectionForOrder@xpizza-dispatch-mobile/index.html<script@0>#openDetail": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/board-model.js#sectionForOrder@xpizza-dispatch-mobile/index.html<script@0>#openDetail~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/board-model.js#sectionForOrder@xpizza-dispatch-mobile/index.html<script@0>#orderForDriver": {
    "status": "pending"
   },
@@ -241,10 +271,19 @@
   "xpizza-dispatch-mobile/board-model.js#typeChip@xpizza-dispatch-mobile/board-model.js#matchesChip": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/board-model.js#typeChip@xpizza-dispatch-mobile/board-model.js#matchesChip~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/board-model.js#typeChip@xpizza-dispatch-mobile/board-model.js#orderCompare": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/board-model.js#typeChip@xpizza-dispatch-mobile/board-model.js#orderCompare~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/driver-glide.js#distanceMeters@xpizza-dispatch-mobile/driver-glide.js#update": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/driver-glide.js#distanceMeters@xpizza-dispatch-mobile/driver-glide.js#update~2": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/driver-glide.js#lerpLatLng@xpizza-dispatch-mobile/driver-glide.js#displayedPos": {
@@ -272,6 +311,9 @@
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#bucketOf@xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#bucketOf@xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon~2": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#displayDriverId@xpizza-dispatch-mobile/index.html<script@0>#openDetail": {
@@ -313,6 +355,9 @@
   "xpizza-dispatch-mobile/index.html<script@0>#driverRow@xpizza-dispatch-mobile/index.html<script@0>#renderDriversTab>anon": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/index.html<script@0>#driverRow@xpizza-dispatch-mobile/index.html<script@0>#renderDriversTab>anon~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/index.html<script@0>#finishedAt@xpizza-dispatch-mobile/index.html<script@0>#completedAt": {
    "status": "pending"
   },
@@ -337,10 +382,10 @@
   "xpizza-dispatch-mobile/index.html<script@0>#openDriverInfo@xpizza-dispatch-mobile/index.html<script@0>#renderDrivers>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
+  "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch-mobile/index.html<script@0>#openPicker>anon@self": {
+  "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#document.addEventListener": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#passHTML@xpizza-dispatch-mobile/index.html<script@0>#deckHTML>anon": {
@@ -373,6 +418,12 @@
   "xpizza-dispatch-mobile/index.html<script@0>#stateParts@xpizza-dispatch-mobile/index.html<script@0>#passHTML": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/index.html<script@0>#stateParts@xpizza-dispatch-mobile/index.html<script@0>#passHTML~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#stateParts@xpizza-dispatch-mobile/index.html<script@0>#passHTML~3": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/index.html<script@0>#tasksFor@xpizza-dispatch-mobile/index.html<script@0>#finishedAt": {
    "status": "pending"
   },
@@ -380,6 +431,9 @@
    "status": "pending"
   },
   "xpizza-dispatch-mobile/index.html<script@0>#timelineHTML@xpizza-dispatch-mobile/index.html<script@0>#openDetail": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#timelineHTML@xpizza-dispatch-mobile/index.html<script@0>#openDetail~2": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/reassign-model.js#driverLoad@xpizza-dispatch-mobile/reassign-model.js#driverPickList": {
@@ -400,10 +454,16 @@
   "xpizza-dispatch-mobile/slot-format.js#groupScheduledBySlot@xpizza-dispatch-mobile/index.html<script@0>#renderBoard": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/slot-format.js#groupScheduledBySlot@xpizza-dispatch-mobile/index.html<script@0>#renderBoard~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver@xpizza-dispatch-mobile/index.html<script@0>#commitAssign": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch@xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#coordsMatch@xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub~2": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#filterLiveOrders@xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToOrders>anon": {
@@ -413,6 +473,9 @@
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch-mobile/xpizza-delivery.js#assignOrderToDriver~2": {
    "status": "pending"
   },
   "xpizza-dispatch-mobile/xpizza-delivery.js#subscribeToOrders@xpizza-dispatch-mobile/index.html<script@0>#__startApp": {
@@ -428,6 +491,9 @@
    "status": "pending"
   },
   "xpizza-dispatch/dispatch-alert-nav.js#orderIdOf@xpizza-dispatch/dispatch-alert-nav.js#alertNavTarget": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-alert-nav.js#orderIdOf@xpizza-dispatch/dispatch-alert-nav.js#alertNavTarget~2": {
    "status": "pending"
   },
   "xpizza-dispatch/dispatch-delivery-risk.js#deliveryRisk@xpizza-dispatch/index.html<script@0>#colaCard": {
@@ -463,6 +529,9 @@
   "xpizza-dispatch/driver-eta.js#distanceMeters@xpizza-dispatch/driver-glide.js#update": {
    "status": "pending"
   },
+  "xpizza-dispatch/driver-eta.js#distanceMeters@xpizza-dispatch/driver-glide.js#update~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch/driver-eta.js#distanceMeters@xpizza-dispatch/index.html<script@0>#refreshDeliveryEtas": {
    "status": "pending"
   },
@@ -470,6 +539,9 @@
    "status": "pending"
   },
   "xpizza-dispatch/driver-glide.js#distanceMeters@xpizza-dispatch/driver-glide.js#update": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/driver-glide.js#distanceMeters@xpizza-dispatch/driver-glide.js#update~2": {
    "status": "pending"
   },
   "xpizza-dispatch/driver-glide.js#distanceMeters@xpizza-dispatch/index.html<script@0>#refreshDeliveryEtas": {
@@ -490,6 +562,9 @@
   "xpizza-dispatch/index.html<script@0>#agedOrd@xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#agedOrd@xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#alertContent@xpizza-dispatch/index.html<script@0>#rowHtml": {
    "status": "pending"
   },
@@ -500,6 +575,18 @@
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#closedTime@xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#closedTime@xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#closedTime@xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon~3": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#closedTime@xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon~4": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#closedTime@xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon~5": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#colaCard@xpizza-dispatch/index.html<script@0>#renderCola>anon": {
@@ -520,6 +607,12 @@
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#confirmCancelOrder~3": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#detectNewPending": {
    "status": "pending"
   },
@@ -527,6 +620,9 @@
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#openPicker": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#openPicker~2": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon": {
@@ -557,6 +653,12 @@
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#displayOrderLabel@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction~3": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#drawRestaurant@xpizza-dispatch/index.html<script@0>#initMap": {
@@ -592,7 +694,13 @@
   "xpizza-dispatch/index.html<script@0>#mark>anon@self": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#openPicker>anon@self": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#action": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#action~2": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon": {
@@ -604,16 +712,16 @@
   "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#openPicker>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon~2": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#orderCode@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#reconNotePrompt@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
+  "xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#reconNotePrompt>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#reconNotePrompt@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#reconReason@xpizza-dispatch/index.html<script@0>#renderReconciliationSection>anon": {
@@ -625,6 +733,9 @@
   "xpizza-dispatch/index.html<script@0>#renderCashBar@xpizza-dispatch/index.html<script@0>#subscribeAll>anon": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#renderCashBar@xpizza-dispatch/index.html<script@0>#subscribeAll>anon~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#renderCola>anon@self": {
    "status": "pending"
   },
@@ -634,19 +745,25 @@
   "xpizza-dispatch/index.html<script@0>#renderCommsThread@xpizza-dispatch/index.html<script@0>#openCommsThread": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderDeliveredSection>anon@self": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#renderDispatcherAlerts>anon>anon@self": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#renderDriverNode>anon@self": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#renderDriverNode@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderDriverNode>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderDriverNode@xpizza-dispatch/index.html<script@0>#renderDriversSection>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon@self": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#renderDriversSection@xpizza-dispatch/index.html<script@0>#refreshDeliveryEtas>anon": {
@@ -661,16 +778,13 @@
   "xpizza-dispatch/index.html<script@0>#renderDriversSection@xpizza-dispatch/index.html<script@0>#subscribeAll>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon@self": {
-   "status": "pending"
-  },
   "xpizza-dispatch/index.html<script@0>#renderMessageRow@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal@xpizza-dispatch/index.html<script@0>#openOrderDetailModal": {
+  "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal@xpizza-dispatch/index.html<script@0>#openOrderDetailModal": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#renderOrderExpanded@xpizza-dispatch/index.html<script@0>#colaCard": {
@@ -679,19 +793,19 @@
   "xpizza-dispatch/index.html<script@0>#renderOrderExpanded@xpizza-dispatch/index.html<script@0>#renderTaskRow": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon@self": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#renderReconciliationSection>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderTaskRow@xpizza-dispatch/index.html<script@0>#renderDriverNode>anon": {
+  "xpizza-dispatch/index.html<script@0>#renderTaskRow>anon@self": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#renderTaskRow>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#renderTaskRow@xpizza-dispatch/index.html<script@0>#renderDriverNode>anon": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#riskOf@xpizza-dispatch/index.html<script@0>#bandOf": {
@@ -721,19 +835,22 @@
   "xpizza-dispatch/index.html<script@0>#showLookupPin@xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#updateCustomerMarkers>anon@self": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#updateCustomerMarkers@xpizza-dispatch/index.html<script@0>#subscribeAll>anon": {
    "status": "pending"
   },
-  "xpizza-dispatch/index.html<script@0>#updateCustomerMarkers>anon@self": {
+  "xpizza-dispatch/index.html<script@0>#updateCustomerMarkers@xpizza-dispatch/index.html<script@0>#subscribeAll>anon~2": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#updateDriverMarkers>anon@self": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#updateDriverMarkers@xpizza-dispatch/index.html<script@0>#startRenderTick>anon": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#updateDriverMarkers@xpizza-dispatch/index.html<script@0>#subscribeAll>anon": {
-   "status": "pending"
-  },
-  "xpizza-dispatch/index.html<script@0>#updateDriverMarkers>anon@self": {
    "status": "pending"
   },
   "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon@self": {
@@ -754,6 +871,9 @@
   "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub": {
    "status": "pending"
   },
+  "xpizza-dispatch/xpizza-delivery.js#coordsMatch@xpizza-dispatch/xpizza-delivery.js#resolvePickupHub~2": {
+   "status": "pending"
+  },
   "xpizza-dispatch/xpizza-delivery.js#filterLiveOrders@xpizza-dispatch/xpizza-delivery.js#subscribeToOrders>anon": {
    "status": "pending"
   },
@@ -761,6 +881,9 @@
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/xpizza-delivery.js#resolvePickupHub@xpizza-dispatch/xpizza-delivery.js#assignOrderToDriver~2": {
    "status": "pending"
   },
   "xpizza-dispatch/xpizza-delivery.js#resolveReconciliation@xpizza-dispatch/index.html<script@0>#resolveReconciliationAction": {
@@ -817,10 +940,10 @@
   "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#subscribeToFirebase>anon": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#renderActiveCard@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+  "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
    "status": "pending"
   },
-  "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
+  "xpizza-driver/index.html<script@0>#renderActiveCard@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
    "status": "pending"
   },
   "xpizza-driver/index.html<script@0>#renderHistoryModal>anon@self": {
@@ -880,13 +1003,25 @@
   "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/stacking-helpers.js#resolvePickupHub": {
    "status": "pending"
   },
+  "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/stacking-helpers.js#resolvePickupHub~2": {
+   "status": "pending"
+  },
   "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/xpizza-delivery.js#resolvePickupHub": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacking-helpers.js#coordsMatch@xpizza-driver/xpizza-delivery.js#resolvePickupHub~2": {
    "status": "pending"
   },
   "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
    "status": "pending"
   },
+  "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept~2": {
+   "status": "pending"
+  },
   "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver": {
+   "status": "pending"
+  },
+  "xpizza-driver/stacking-helpers.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver~2": {
    "status": "pending"
   },
   "xpizza-driver/stacking-helpers.js#sameHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
@@ -895,10 +1030,10 @@
   "xpizza-driver/stacking-helpers.js#stackedTasksToAccept@xpizza-driver/xpizza-delivery.js#acceptTask": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder@xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon": {
+  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder>anon@self": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder>anon@self": {
+  "xpizza-driver/xpizza-delivery.js#acceptSecondOrder@xpizza-driver/index.html<script@0>#attachIncomingBannerHandlers>anon": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#acceptTask@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
@@ -916,19 +1051,28 @@
   "xpizza-driver/xpizza-delivery.js#coordsMatch@xpizza-driver/stacking-helpers.js#resolvePickupHub": {
    "status": "pending"
   },
+  "xpizza-driver/xpizza-delivery.js#coordsMatch@xpizza-driver/stacking-helpers.js#resolvePickupHub~2": {
+   "status": "pending"
+  },
   "xpizza-driver/xpizza-delivery.js#coordsMatch@xpizza-driver/xpizza-delivery.js#resolvePickupHub": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#coordsMatch@xpizza-driver/xpizza-delivery.js#resolvePickupHub~2": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#filterLiveOrders@xpizza-driver/xpizza-delivery.js#subscribeToOrders>anon": {
    "status": "pending"
   },
-  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
-   "status": "pending"
-  },
   "xpizza-driver/xpizza-delivery.js#getDriverOrders>anon@self": {
    "status": "pending"
   },
+  "xpizza-driver/xpizza-delivery.js#getDriverOrders@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
+   "status": "pending"
+  },
   "xpizza-driver/xpizza-delivery.js#hubMatch@xpizza-driver/xpizza-delivery.js#checkGeofenceTransition": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#hubMatch@xpizza-driver/xpizza-delivery.js#checkGeofenceTransition~2": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#pickupComplete@xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon": {
@@ -937,7 +1081,13 @@
   "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept": {
    "status": "pending"
   },
+  "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/stacking-helpers.js#stackedTasksToAccept~2": {
+   "status": "pending"
+  },
   "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver": {
+   "status": "pending"
+  },
+  "xpizza-driver/xpizza-delivery.js#resolvePickupHub@xpizza-driver/xpizza-delivery.js#assignOrderToDriver~2": {
    "status": "pending"
   },
   "xpizza-driver/xpizza-delivery.js#subscribeToOrders@xpizza-driver/index.html<script@0>#subscribeToFirebase": {
@@ -1016,6 +1166,9 @@
    "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
    "reason": "the createOrder WhatsApp block: it renders and sends the order-received body (the terminal send)"
   },
+  "xpizza-functions/index.js#fanoutStaffPush>anon@self": {
+   "status": "pending"
+  },
   "xpizza-functions/index.js#fanoutStaffPush@xpizza-functions/index.js#flushStaffPushQueue": {
    "status": "pending"
   },
@@ -1023,9 +1176,6 @@
    "status": "pending"
   },
   "xpizza-functions/index.js#fanoutStaffPush@xpizza-functions/index.js#sweepStuckOrders": {
-   "status": "pending"
-  },
-  "xpizza-functions/index.js#fanoutStaffPush>anon@self": {
    "status": "pending"
   },
   "xpizza-functions/index.js#mirrorStatusToHistory@self": {
@@ -1053,10 +1203,10 @@
   "xpizza-functions/index.js#onAcceptedFresh@xpizza-functions/hosted-charge-flow.js#resolveAndIssueHostedCheckout": {
    "status": "pending"
   },
-  "xpizza-functions/index.js#onIncomingWhatsApp@self": {
+  "xpizza-functions/index.js#onIncomingWhatsApp>anon@self": {
    "status": "pending"
   },
-  "xpizza-functions/index.js#onIncomingWhatsApp>anon@self": {
+  "xpizza-functions/index.js#onIncomingWhatsApp@self": {
    "status": "pending"
   },
   "xpizza-functions/index.js#onOrderCancelled@self": {
@@ -1066,6 +1216,36 @@
    "status": "pending"
   },
   "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~10": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~11": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~2": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~3": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~4": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~5": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~6": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~7": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~8": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#send@xpizza-functions/index.js#onIncomingWhatsApp~9": {
    "status": "pending"
   },
   "xpizza-functions/index.js#send@xpizza-functions/index.js#pixelPayWebhook": {
@@ -1092,6 +1272,9 @@
    "reason": "the status trigger runs on the new order; at LP new it adds NO second message — asserted by exactly one send to the customer"
   },
   "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler": {
+   "status": "pending"
+  },
+  "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/index.js#refundReconciler~2": {
    "status": "pending"
   },
   "xpizza-functions/index.js#sendPaidAfterCloseRefund@xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize": {
@@ -1144,6 +1327,9 @@
   "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#getSalesStatsCore": {
    "status": "pending"
   },
+  "xpizza-functions/stats/stats-api.js#shapePeriod@xpizza-functions/stats/stats-api.js#getSalesStatsCore~2": {
+   "status": "pending"
+  },
   "xpizza-functions/stats/stats-build.js#addOrder@xpizza-functions/stats/stats-build.js#buildDailies": {
    "status": "pending"
   },
@@ -1157,6 +1343,9 @@
    "status": "pending"
   },
   "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#getSalesStatsCore": {
+   "status": "pending"
+  },
+  "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#getSalesStatsCore~2": {
    "status": "pending"
   },
   "xpizza-functions/stats/stats-build.js#mergeSummaries@xpizza-functions/stats/stats-api.js#series>anon": {
@@ -1255,6 +1444,9 @@
    "target": "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon",
    "reason": "the trigger's send: none at LP new — exactly one send to the customer"
   },
+  "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendOrderStatusNotifications~2": {
+   "status": "pending"
+  },
   "xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendPaidAfterCloseRefund": {
    "status": "pending"
   },
@@ -1313,6 +1505,9 @@
   "xpizza-kitchen/card-model.js#tieKey@xpizza-kitchen/card-model.js#tie": {
    "status": "pending"
   },
+  "xpizza-kitchen/card-model.js#tieKey@xpizza-kitchen/card-model.js#tie~2": {
+   "status": "pending"
+  },
   "xpizza-kitchen/index.html#mapFirebaseOrderToCard@xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon": {
    "status": "pending"
   },
@@ -1323,6 +1518,18 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#commitStatusWrite": {
+   "status": "pending"
+  },
+  "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#commitStatusWrite~2": {
+   "status": "pending"
+  },
+  "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#commitStatusWrite~3": {
+   "status": "pending"
+  },
+  "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#commitStatusWrite~4": {
+   "status": "pending"
+  },
+  "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#commitStatusWrite~5": {
    "status": "pending"
   },
   "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#dismissWrite": {
@@ -1359,6 +1566,9 @@
    "status": "pending"
   },
   "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#startCompletion>anon>anon": {
+   "status": "pending"
+  },
+  "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#startCompletion>anon~2": {
    "status": "pending"
   },
   "xpizza-kitchen/index.html#renderCurrentTab@xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon": {
@@ -1536,18 +1746,22 @@
    "reason": "SCHED: the scheduled filter keeps an ASAP order out of Programados (asserted on the list)"
   },
   "xpizza-kitchen/ready-nudge.js#nudgeEligibility@xpizza-kitchen/index.html<script@0>#applyNudges": {
-   "status": "pending"
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the ready nudge RUNS for every order on each snapshot / 1 s tick; at LP new it must not mark the ticket (no nudge-overdue class — asserted by kds.ticket STATUS)"
   },
   "xpizza-kitchen/ready-nudge.js#nudgeEligibility@xpizza-kitchen/index.html<script@0>#overdueIds": {
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "the off-page overdue count reads the same eligibility; at LP new nothing is overdue (asserted by kds.ticket STATUS: no nudge-overdue class)"
+  },
+  "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon@self": {
    "status": "pending"
   },
   "xpizza-kitchen/scheduled-view.js#groupScheduledByDay@xpizza-kitchen/index.html<script@0>#renderScheduled": {
    "status": "via",
    "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
    "reason": "SCHED: Programados groups scheduled orders by day (opened; the ASAP order is not listed)"
-  },
-  "xpizza-kitchen/scheduled-view.js#groupScheduledByDay>anon@self": {
-   "status": "pending"
   },
   "xpizza-kitchen/sherpa-client.js#sfetch>anon@self": {
    "status": "pending"
@@ -1599,13 +1813,19 @@
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
    "status": "pending"
   },
+  "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#applyPollState~2": {
+   "status": "pending"
+  },
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay": {
    "status": "pending"
   },
   "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder": {
+   "status": "pending"
+  },
+  "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2": {
    "status": "terminal",
    "observable": "form.confirmation",
-   "action": "Confirmar y enviar (submitOrder → createOrder); read #s5"
+   "action": "Confirmar y enviar (submitOrder → createOrder 200 → showSuccess, the REAL submit call site); read #s5"
   },
   "xpizza-orders/index.html#updateCart@xpizza-orders/account.js#applyReorderToCart": {
    "status": "pending"
@@ -1658,28 +1878,37 @@
   "xpizza-orders/index.html<script@2>#applyPollState@xpizza-orders/index.html<script@2>#handlePaymentReturn": {
    "status": "pending"
   },
+  "xpizza-orders/index.html<script@2>#applyPollState@xpizza-orders/index.html<script@2>#handlePaymentReturn~2": {
+   "status": "pending"
+  },
   "xpizza-orders/index.html<script@2>#handlePaymentReturn@xpizza-orders/index.html<script@2>#<top>": {
    "status": "pending"
   },
+  "xpizza-orders/index.html<script@2>#showSuccess>anon@self": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "the receipt rows callback of the confirmation"
+  },
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState": {
+   "status": "pending"
+  },
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#applyPollState~2": {
    "status": "pending"
   },
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#processPixelPay": {
    "status": "pending"
   },
   "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#submitOrder": {
-   "status": "via",
-   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
-   "reason": "the same call site as the terminal (the census names the inline unit)"
+   "status": "pending"
   },
-  "xpizza-orders/index.html<script@2>#showSuccess>anon@self": {
+  "xpizza-orders/index.html<script@2>#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2": {
    "status": "via",
-   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
-   "reason": "the receipt rows callback of the confirmation"
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "the same call site as the terminal (the census names the inline unit)"
   },
   "xpizza-orders/index.html<script@2>#successTotalCents@xpizza-orders/index.html<script@2>#showSuccess>anon": {
    "status": "via",
-   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
    "reason": "the confirmation Total"
   },
   "xpizza-portal/ventas-logic.js#viewModel@xpizza-portal/ventas.js#paintBody": {
@@ -1688,10 +1917,16 @@
   "xpizza-track/driver-eta.js#distanceMeters@xpizza-track/driver-glide.js#update": {
    "status": "pending"
   },
+  "xpizza-track/driver-eta.js#distanceMeters@xpizza-track/driver-glide.js#update~2": {
+   "status": "pending"
+  },
   "xpizza-track/driver-eta.js#distanceMeters@xpizza-track/index.html<script@0>#refreshDriverEta": {
    "status": "pending"
   },
   "xpizza-track/driver-glide.js#distanceMeters@xpizza-track/driver-glide.js#update": {
+   "status": "pending"
+  },
+  "xpizza-track/driver-glide.js#distanceMeters@xpizza-track/driver-glide.js#update~2": {
    "status": "pending"
   },
   "xpizza-track/driver-glide.js#distanceMeters@xpizza-track/index.html<script@0>#refreshDriverEta": {

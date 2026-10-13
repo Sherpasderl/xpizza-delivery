@@ -12112,8 +12112,8 @@
     "id": "r3p1-10",
     "slice": "r3p1",
     "file": "contract/gate-a-run.js",
-    "from": "    if (!at) { results.push({ ...base, outcome: 'RED', detail: `every region of the ${c.kind} obligation ${c.cell} is excluded",
-    "to": "    if (false) { results.push({ ...base, outcome: 'RED', detail: `every region of the ${c.kind} obligation ${c.cell} is excluded",
+    "from": "    if (!at) { results.push({ ...base, outcome: 'RED', detail: `the ${c.kind} obligation ${c.cell} on output ${c.output}",
+    "to": "    if (false) { results.push({ ...base, outcome: 'RED', detail: `the ${c.kind} obligation ${c.cell} on output ${c.output}",
     "label": "a display / absence obligation can be waived by excluding every region of it",
     "kills_with": [
       "a display obligation whose every region is excluded"
@@ -12260,6 +12260,178 @@
       "node",
       "--experimental-vm-modules",
       "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-20",
+    "slice": "r3p1",
+    "file": "tools/egress-guard.js",
+    "from": "    if (!path && !isLoopbackHost(host)) {",
+    "to": "    if (false) {",
+    "label": "egress: a non-loopback connection is no longer refused at the process boundary",
+    "kills_with": [
+      "not refused"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-21",
+    "slice": "r3p1",
+    "file": "contract/page-harness.js",
+    "from": "      el[a.name] = function (ev) { const r = runTracked((e) => fn.call(el, e), [ev], what);",
+    "to": "      el[a.name] = function (ev) { const r = fn.call(el, ev);",
+    "label": "harness: an inline handler's returned promise is no longer tracked (async onclick escapes settle)",
+    "kills_with": [
+      "frame / async onclick probes"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-22",
+    "slice": "r3p1",
+    "file": "contract/page-harness.js",
+    "from": "    for (const sc of scripts) { inserted.push(",
+    "to": "    for (const sc of []) { inserted.push(",
+    "label": "harness: a script inserted after boot is no longer refused / recorded",
+    "kills_with": [
+      "xhr / inserted script"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-23",
+    "slice": "r3p1",
+    "file": "contract/page-harness.js",
+    "from": "    XP.send = function () { refused.push(`xhr ${this.__r3url}`);",
+    "to": "    XP.send = function () {",
+    "label": "harness: an XHR is no longer recorded as refused",
+    "kills_with": [
+      "xhr / inserted script"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-24",
+    "slice": "r3p1",
+    "file": "contract/gate-a-run.js",
+    "from": "    else if (!snapshots[obs].exposed || !snapshots[obs].exposed.ok) r =",
+    "to": "    else if (false) r =",
+    "label": "gate A: a terminal captured while NOT exposed (the sheet closed) is still compared",
+    "kills_with": [
+      "a terminal captured while NOT exposed"
+    ],
+    "command": [
+      "node",
+      "contract/execution.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-25",
+    "slice": "r3p1",
+    "file": "contract/gate-a-run.js",
+    "from": "y.cell === c.cell && y.output === c.output &&",
+    "to": "y.cell === c.cell &&",
+    "label": "gate A: another OUTPUT's pass discharges an excluded display / absence obligation",
+    "kills_with": [
+      "a sibling exclusion discharged only by ANOTHER output"
+    ],
+    "command": [
+      "node",
+      "contract/execution.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-26",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "    for (const gb of x.guards || []) { const st = guardStale(gb); if (st) p.push(",
+    "to": "    for (const gb of []) { const st = guardStale(gb); if (st) p.push(",
+    "label": "applicability: a changed GUARD (dispatch source) no longer invalidates the exclusion",
+    "kills_with": [
+      "a changed guard source did not make the exclusion stale"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-27",
+    "slice": "r3p1",
+    "file": "contract/regions-build.js",
+    "from": "    for (const [k, lines] of [...cons].sort()) [...lines].sort((a, b) => a - b).forEach(",
+    "to": "    for (const [k, lines] of [...cons].sort()) [...lines].sort((a, b) => a - b).slice(0, 1).forEach(",
+    "label": "regions: a caller's second call site of an output is folded into its first",
+    "kills_with": [
+      "regions.json differs from the generated inventory",
+      "shapePeriod call sites"
+    ],
+    "command": [
+      "node",
+      "contract/region.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-28",
+    "slice": "r3p1",
+    "file": "contract/observables.js",
+    "from": "return NUM_ANY.test(b) || b.includes(f._meta.orderId) ?",
+    "to": "return b.includes(f._meta.orderId) ?",
+    "label": "WhatsApp NUM absence only rejects the CORRECT order id (a wrong number passes)",
+    "kills_with": [
+      "a WRONG order number / address in the message was not RED"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
+    ]
+  },
+  {
+    "id": "r3p1-29",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "    if (!e) { p.push(`CHAIN ${c.key}:",
+    "to": "    if (!e) { continue; p.push(`CHAIN ${c.key}:",
+    "label": "C1: an unreviewed timer CHAIN beyond the horizon passes",
+    "kills_with": [
+      "the 3 × 9 s chain was not RED"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-30",
+    "slice": "r3p1",
+    "file": "contract/oracle.js",
+    "from": "  const need = subtotal.centavos + tax.centavos;\n  return need === total.centavos ? { ok: true } : { ok: false, reason: `order footing:",
+    "to": "  const need = subtotal.centavos + tax.centavos - ((arguments[0] && arguments[0].discount) ? arguments[0].discount.centavos : 0);\n  return need === total.centavos ? { ok: true } : { ok: false, reason: `order footing:",
+    "label": "order footing subtracts a discount / rebaja",
+    "kills_with": [
+      "order footing accepted a discount / rebaja subtraction"
+    ],
+    "command": [
+      "node",
+      "contract/comparator.guard.test.js"
     ]
   }
 ]

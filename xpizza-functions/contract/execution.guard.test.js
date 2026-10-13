@@ -19,7 +19,8 @@ const C = (cell, fact, kind, region, extra = {}) => ({ id: `${cell}|o|${region}`
 const registry = { regions: { T1: { status: 'terminal', observable: 'A', action: 'a' }, T2: { status: 'terminal', observable: 'B', action: 'b' }, P: { status: 'pending' }, X: { status: 'pending' } } };
 const yes = () => ({ ok: true, mode: 'shown', detail: 'agrees' });
 const observables = { A: { compare: { MONEY: yes, ITEMS: yes, 'DISPLAY:d': yes } }, B: { compare: { MONEY: yes } } };
-const snapshots = { A: {}, B: {} };
+const EXP = { exposed: { ok: true, detail: 'shown' } };
+const snapshots = { A: EXP, B: EXP };
 const empty = { exclusions: [] }; const regionsDoc = { regions: [{ region: 'T1' }, { region: 'T2' }, { region: 'P' }, { region: 'X' }] };
 const base = { registry, applicability: empty, regionsDoc, scenariosDoc: { scenarios: {} }, evidence: {}, facts: {}, ctx: {}, observables, snapshots, pins: [] };
 const cells = [C('R3:R0:MONEY:S1:b:new', 'MONEY', 'agreement', 'T1'), C('R3:R0:MONEY:S1:b:new', 'MONEY', 'agreement', 'T2'), C('R3:R0:ITEMS:S1:b:new', 'ITEMS', 'agreement', 'T1'), C('R3:R0:DISPLAY:d:S1:b:new', 'DISPLAY:d', 'display', 'T1')];
@@ -32,16 +33,29 @@ const red = (label, r, re) => { assert.ok(r.red.length > 0 && r.red.some((x) => 
 const negs = [
   red('a missing unsited comparison (the observable has no comparator for the fact)', runGateA({ ...base, cells: [...cells, C('R3:R0:TENDER:S1:b:new', 'TENDER', 'agreement', 'T1')] }), /NO comparator for TENDER/),
   red('a missing display comparison', runGateA({ ...base, observables: { ...observables, A: { compare: { MONEY: yes, ITEMS: yes } } }, cells }), /NO comparator for DISPLAY:d/),
-  red('one region of a multi-region output not compared (its observable was never captured)', runGateA({ ...base, snapshots: { A: {} }, cells }), /observable B was not captured/),
+  red('one region of a multi-region output not compared (its observable was never captured)', runGateA({ ...base, snapshots: { A: EXP }, cells }), /observable B was not captured/),
+  red('a terminal captured while NOT exposed (codex r1 P1-9: the sheet never opened)', runGateA({ ...base, snapshots: { A: { exposed: { ok: false, detail: 'the cart review sheet is OPEN' } }, B: EXP }, cells }), /was not EXPOSED/),
   red('a pending region in an enforced slice', runGateA({ ...base, cells: [...cells, C('R3:R0:MONEY:S1:b:new', 'MONEY', 'agreement', 'P', { status: 'pending' })] }), /is pending in an enforced slice/),
   red('a comparison that disagrees', runGateA({ ...base, observables: { ...observables, B: { compare: { MONEY: () => ({ ok: false, detail: 'observed L 341.00 ≠ expected HNL 340.00' }) } } }, cells }), /≠ expected/),
   red('a stale pin (the surface now agrees)', runGateA({ ...base, pins: [{ key: 'A|ITEMS|S1|b|new', D: 'Dx', observedShape: 's' }], cells }), /STALE PIN/),
   red('a pin whose recorded shape no longer matches', runGateA({ ...base, pins: [{ key: 'B|MONEY|S1|b|new', D: 'Dx', observedShape: 'old' }], observables: { ...observables, B: { compare: { MONEY: () => ({ ok: false, detail: 'x', shape: 'new' }) } } }, cells }), /pin Dx expects shape "old"/),
   red('a display obligation whose every region is excluded', runGateA({ ...base, cells: [C('R3:R0:DISPLAY:d:S1:b:new', 'DISPLAY:d', 'display', 'X', { status: 'pending' })], applicability: { exclusions: [{ region: 'X', scope: { S: ['S1'], brands: ['b'], lps: ['new'] }, preconditions: ['status-new'], reason: 'r', bind: {}, scenarioSha: {} }] }, evidence: { persisted: { status: 'new' } } }), /cannot waive a display assertion/),
+  (() => {   // codex r1 P1-7: a display obligation of output o excluded at X cannot be discharged by ANOTHER output's pass
+    const AP = require('./applicability');
+    const scen = { scenarios: { S1: { steps: ['x'] } } };
+    const ex = { exclusions: [{ region: 'X', scope: { S: ['S1'], brands: ['b'], lps: ['new'] }, preconditions: ['status-new'], reason: 'r', bind: { siteSha: null, scopeSha: null }, guards: [AP.bindGuard(['F', 'xpizza-functions/whatsapp.js', 'const RENDERERS = Object.freeze({'])], scenarioSha: { S1: AP.scenarioSha('S1', scen) } }] };
+    const D = 'R3:R0:DISPLAY:d:S1:b:new';
+    const other = C(D, 'DISPLAY:d', 'display', 'T1', { output: 'o2', id: `${D}|o2|T1` });
+    const mine = C(D, 'DISPLAY:d', 'display', 'X', { status: 'pending' });
+    const same = C(D, 'DISPLAY:d', 'display', 'T1', { id: `${D}|o|T1` });
+    const okRun = runGateA({ ...base, cells: [same, mine], applicability: ex, scenariosDoc: scen, evidence: { persisted: { status: 'new' } } });
+    assert.ok(okRun.red.length === 0 && okRun.results.find((x) => x.region === 'X').outcome === 'excluded', FAIL(`a sibling of the SAME output discharged at its terminal was not excluded: ${JSON.stringify(okRun.red)}`));
+    return red('a sibling exclusion discharged only by ANOTHER output', runGateA({ ...base, cells: [other, mine], applicability: ex, scenariosDoc: scen, evidence: { persisted: { status: 'new' } } }), /not discharged at a reached terminal of the SAME output/);
+  })(),
   (() => {   // an exclusion whose contract precondition is UNMET in the run (fresh binding, real executor) → RED, never excluded
     const AP = require('./applicability');
     const scen = { scenarios: { S1: { steps: ['x'] } } };
-    const ex = { exclusions: [{ region: 'X', scope: { S: ['S1'], brands: ['b'], lps: ['new'] }, preconditions: ['status-new'], reason: 'r', bind: { siteSha: null, scopeSha: null }, scenarioSha: { S1: AP.scenarioSha('S1', scen) } }] };
+    const ex = { exclusions: [{ region: 'X', scope: { S: ['S1'], brands: ['b'], lps: ['new'] }, preconditions: ['status-new'], reason: 'r', bind: { siteSha: null, scopeSha: null }, guards: [AP.bindGuard(['F', 'xpizza-functions/whatsapp.js', 'const RENDERERS = Object.freeze({'])], scenarioSha: { S1: AP.scenarioSha('S1', scen) } }] };
     const cx = [C('R3:R0:STATUS:S1:b:new', 'STATUS', 'agreement', 'X', { status: 'pending' })];
     const met = runGateA({ ...base, cells: cx, applicability: ex, scenariosDoc: scen, evidence: { persisted: { status: 'new' } } });
     assert.ok(met.red.length === 0 && met.results[0].outcome === 'excluded', FAIL(`a fresh exclusion with its precondition met was not excluded: ${JSON.stringify(met.results)}`));

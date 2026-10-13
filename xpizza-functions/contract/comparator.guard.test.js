@@ -5,7 +5,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { money, compareMoney, parseMoney, footing, change } = require('./oracle');
+const { money, compareMoney, parseMoney, footing, facturaFooting, change } = require('./oracle');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const FAIL = (m) => `🔴 R3-COMPARATOR ${m}`;
@@ -24,10 +24,14 @@ assert.ok(!compareMoney(L(223), 'L 223').ok, FAIL('a whole-lempira rendering pas
 assert.ok(!compareMoney(L(223), 'L 223', { precision: 'lempiras' }).ok, FAIL('lempira precision used without §1 permission'));
 assert.ok(compareMoney(L(223), 'L 223', { precision: 'lempiras', permitsLempiras: true }).ok && !compareMoney(L(223.5), 'L 224', { precision: 'lempiras', permitsLempiras: true }).ok, FAIL('permitted lempira precision misbehaved'));
 ok('precision: centavos required unless §1 permits whole lempiras; a rounded-away centavo is a divergence, never normalized');
-const f = footing({ subtotal: L(200), tax: L(30), discount: L(7), total: L(223) });
-const bad = footing({ subtotal: L(210), tax: L(30), discount: L(7), total: L(223) });
+const f = footing({ subtotal: L(193.91), tax: L(29.09), total: L(223) });
+const bad = footing({ subtotal: L(200), tax: L(30), total: L(223) });
 assert.ok(f.ok && !bad.ok && compareMoney(L(223), 'L 223.00').ok, FAIL('footing'));
-ok('footing: subtotal + tax − discount = total; a wrong footing is RED even though the displayed total matches');
+assert.ok(!footing({ subtotal: L(200), tax: L(30), discount: L(7), total: L(223) }).ok, FAIL('order footing accepted a discount / rebaja subtraction'));
+ok('ORDER footing (§1): subtotal + tax = total exactly — a wrong footing is RED even though the displayed total matches; a discount / rebaja is never subtracted in it');
+const ff = facturaFooting({ subtotal: L(260.87), rebaja: L(295.65), itemsGross: L(640), total: L(300), compedGross: L(340) });
+assert.ok(ff.ok && ff.fullNet.centavos === 55652 && !facturaFooting({ subtotal: L(260.87), rebaja: L(295.65), itemsGross: L(600), total: L(300), compedGross: L(340) }).ok, FAIL('factura footing'));
+ok('FACTURA footing (separate rule): full net = subtotal + rebaja; Σ factura_items gross = total + comped gross');
 assert.ok(change(L(500), L(223)).centavos === 27700 && change(null, L(223)) === null, FAIL('change'));
 ok('change = tender − total (§1); no tender → no change (null, not 0)');
 assert.throws(() => money(223.5), /integer centavos/, FAIL('a float amount was accepted'));

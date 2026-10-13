@@ -47,6 +47,13 @@ const prCells = ga.cells.filter((c) => c.output === 'xpizza-driver/cash-helpers.
 assert.ok(new Set(prCells.map((c) => c.region)).size === 2, FAIL('gate A does not hold one cell per paymentRowHtml region'));
 ok(`codex's example: paymentRowHtml → 2 regions (renderActiveCard, renderQueueDetail), each its own gate A cell (${prCells.length} at S1 / x_pizza / assigned)`);
 
+// codex P1-a r1 P1-8: every CALL SITE is a region — getSalesStatsCore calls shapePeriod for the current AND the comparison
+// period: two regions, never folded by caller
+const sp = doc.regions.filter((r) => r.output === 'xpizza-functions/stats/stats-api.js#shapePeriod' && r.consumer === 'xpizza-functions/stats/stats-api.js#getSalesStatsCore');
+assert.ok(sp.length === 2 && sp[0].line !== sp[1].line && sp.every((r) => r.callSites === 2), FAIL(`shapePeriod call sites: ${JSON.stringify(sp)}`));
+const multi = doc.regions.filter((r) => r.callSites > 1).length;
+ok(`every call site is its own region (codex's shapePeriod × 2 in getSalesStatsCore → 2 regions, lines ${sp.map((r) => r.line).join(' / ')}); ${multi} regions come from callers with several call sites`);
+
 // negatives (in memory)
 const clone = () => JSON.parse(JSON.stringify(reg));
 const negs = [

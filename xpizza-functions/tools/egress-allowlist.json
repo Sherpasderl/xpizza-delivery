@@ -1,0 +1,4 @@
+{
+ "_doc": "Reviewed per-suite egress allowlist for tools/egress-guard.js: { suite (repo-relative entry script), host, reason, owner }. EMPTY by design — a test that reaches an external host is a hazard; an entry exists only for another lane's suite that cannot be fixed in the R3 lane, with its owner named.",
+ "entries": []
+}

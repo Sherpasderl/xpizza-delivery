@@ -324,7 +324,10 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 /* The suite command: injected + parsed ONCE, before any slot is taken (a refusal here holds nothing). */
 const COUNTER = path.join(ROOT, 'tools', 'count-marks.js');
 const NULL_GUARD = path.join(ROOT, 'tools', 'emu-null-guard.js');
-const INNER = injectCounter(rest[0], COUNTER, NULL_GUARD);
+// R3 P1-a (codex r1 P1-1): the process-level EGRESS refusal is preloaded FIRST — before the counter, the NULL guard and
+// any client — into every node step: a suite reaches loopback only (tools/egress-guard.js; R3_EGRESS_MODE=record inventories)
+const EGRESS = path.join(ROOT, 'tools', 'egress-guard.js');
+const INNER = injectCounter(rest[0], EGRESS, COUNTER, NULL_GUARD);
 if (!/count-marks\.js/.test(INNER)) {
   console.error(`\nemulator-run: could not inject the cell counter into ${JSON.stringify(rest[0])}.`);
   console.error('emulator-run:    The suite would run uncounted and the gate would fail it for a missing trailer.');

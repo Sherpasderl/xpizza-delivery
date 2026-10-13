@@ -70,10 +70,10 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => errors.push(`jsdom: ${e && e.message}`));
   vc.on('error', (...a) => consoleErrors.push(a.map(String).join(' ').slice(0, 300)));
-  // P1-a: the page's <script>s are COLLECTED from a script-inert parse, then the DOM is built WITHOUT them under
-  // runScripts:'dangerously' — so inline event-handler attributes (onclick="goToLocation()") are compiled by jsdom in the
-  // window's global scope, as a browser does ('outside-only' never compiles them, which left every inline UI action dead).
-  // The harness still executes each collected script itself, in document order (tracer, module graph, virtual time).
+  // P1-a (codex r1 P1-2): jsdom NEVER runs scripts ('outside-only'). The page's <script>s are COLLECTED from a script-inert
+  // parse and executed by the harness itself, in document order (tracer, module graph, virtual time). INLINE event-handler
+  // attributes (onclick="goToLocation()") are compiled BY THE HARNESS in the page realm (bindInline, below) and their return
+  // values are TRACKED; a <script> inserted after boot is never run — it is REFUSED and recorded (settle() is false).
   const collected = (() => {
     const pre = new JSDOM(html, { runScripts: 'outside-only' });
     const list = [...pre.window.document.querySelectorAll('script')].map((sc) => ({ src: sc.getAttribute('src'), type: (sc.getAttribute('type') || '').trim(), text: sc.textContent }));
@@ -82,7 +82,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
     const out = doctype + pre.window.document.documentElement.outerHTML; pre.window.close();
     return { list, html: out };
   })();
-  const dom = new JSDOM(collected.html, { url, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
+  const dom = new JSDOM(collected.html, { url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });   // no `resources`: jsdom loads no subresource
   const win = dom.window;
   const ctx = dom.getInternalVMContext();
 
@@ -185,7 +185,11 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const beacons = [];
   win.fetch = (u, o) => trackP(baseFetch(u, o), 'fetch');
   Object.defineProperty(win.navigator, 'sendBeacon', { value: (u, d) => { beacons.push(String(u)); return true; }, configurable: true });
-  { const xs = win.XMLHttpRequest.prototype.send; win.XMLHttpRequest.prototype.send = function (...x) { const k = `xhr${++seqT}`; io.add(k); this.addEventListener('loadend', () => io.delete(k)); try { return xs.apply(this, x); } catch (e) { io.delete(k); throw e; } }; }
+  // XHR is NOT a supported transport (codex r1 P1-1): the page's only network is the routed fetch. open() records the URL;
+  // send() is REFUSED and recorded (never reaches jsdom's dispatcher), and the request fails as a network error would.
+  { const XP = win.XMLHttpRequest.prototype; const xo = XP.open;
+    XP.open = function (m, u, ...r) { this.__r3url = String(u); return xo.call(this, m, u, ...r); };
+    XP.send = function () { refused.push(`xhr ${this.__r3url}`); const x = this; addTimer('timeout', () => { try { x.dispatchEvent(new win.ProgressEvent('error')); x.dispatchEvent(new win.ProgressEvent('loadend')); } catch (_) { /* best effort */ } }, 0, [], false); }; }
   win.addEventListener('error', (e) => errors.push(`window error: ${e && (e.error && e.error.stack || e.message)}`));
   win.addEventListener('unhandledrejection', (e) => errors.push(`unhandled rejection: ${e && e.reason && (e.reason.stack || e.reason)}`));
   if (beforeScripts) beforeScripts(win);
@@ -232,6 +236,39 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   async function linker(spec, ref) { return resolve(spec, ref.identifier); }
   async function dynImport(spec, ref) { const m = resolve(spec, ref && ref.identifier); if (m.status === 'unlinked') await m.link(linker); if (m.status === 'linked') await m.evaluate(); return m; }
 
+  // ── INLINE EVENT HANDLERS, compiled by the harness (codex r1 P1-2). Every on* attribute — in the boot DOM and on any
+  // element added / re-attributed later (a MutationObserver, plus a full sweep at every settle()) — becomes the element's
+  // IDL handler: the attribute body compiled in the PAGE realm as `function (event) { … }`, run with `this` = the element
+  // through runTracked (so a returned promise — onclick="return go()" — is awaited by settle()), `false` → preventDefault.
+  // A <script> added after boot never runs: REFUSED + recorded, and settle() is false from then on.
+  const inserted = [];
+  const compiledFor = new WeakMap();
+  const bindEl = (el) => {
+    if (!el || !el.attributes) return;
+    for (const a of [...el.attributes]) {
+      if (!/^on[a-z]+$/.test(a.name)) continue;
+      const key = `${a.name}\u0000${a.value}`; const done = compiledFor.get(el) || {};
+      if (done[a.name] === key) continue;
+      let fn; try { fn = vm.runInContext(`(function (event) {\n${a.value}\n})`, ctx, { filename: `inline-${a.name}` }); } catch (e) { errors.push(`inline ${a.name} compile: ${e && e.message}`); continue; }
+      const what = `inline ${a.name}`;
+      el[a.name] = function (ev) { const r = runTracked((e) => fn.call(el, e), [ev], what); if (r === false && ev && ev.preventDefault) ev.preventDefault(); return r; };
+      done[a.name] = key; compiledFor.set(el, done);
+    }
+  };
+  const bindInline = (root) => { if (!root) return; if (root.nodeType === 1) bindEl(root); if (root.querySelectorAll) for (const el of root.querySelectorAll('*')) bindEl(el); };
+  const noteInserted = (node) => {
+    if (!node || node.nodeType !== 1) return;
+    const scripts = node.tagName === 'SCRIPT' ? [node] : [...node.querySelectorAll('script')];
+    for (const sc of scripts) { inserted.push(`script ${sc.getAttribute('src') || (sc.textContent || '').slice(0, 60)}`); refused.push(`inserted script (never run): ${sc.getAttribute('src') || 'inline'}`); }
+  };
+  bindInline(win.document);
+  new win.MutationObserver((recs) => {
+    for (const r of recs) {
+      if (r.type === 'attributes' && /^on[a-z]+$/.test(r.attributeName)) bindEl(r.target);
+      for (const n of r.addedNodes || []) { bindInline(n); noteInserted(n); }
+    }
+  }).observe(win.document, { subtree: true, childList: true, attributes: true });
+
   // ── execute the scripts in document order ──
   const scripts = collected.list.map((x) => ({ getAttribute: (k) => (k === 'src' ? x.src : k === 'type' ? x.type : null), textContent: x.text }));
   const evaluated = [];
@@ -275,7 +312,7 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   // are stuck → wait, false at the cap. false also if the page schedules without end inside the horizon (> maxFirings).
   async function settle(horizon = horizonMs, { capMs = settleMs, maxFirings = 20000 } = {}) {
     const t0 = realNow(); const limit = now() + horizon; let fired = 0;
-    const refused = () => { guardFrames(); return channelAttempts.length > 0; };   // any channel attempt, ever → never settled
+    const refused = () => { guardFrames(); bindInline(win.document); return channelAttempts.length > 0 || inserted.length > 0; };   // any channel attempt / inserted script, ever → never settled
     for (;;) {
       if (refused()) return false;
       for (let i = 0; i < 3; i++) await turn();          // drain the microtask queue: continuations a timer resolved run now

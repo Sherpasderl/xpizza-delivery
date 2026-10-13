@@ -20,20 +20,18 @@ const fsx = require('node:fs');
 
 // the WhatsApp SEND BOUNDARY: the REAL whatsapp.js runs end to end (isEnabledForRestaurant, sendMessage's brand resolution +
 // renderTemplate); only the transport is captured — a TEST-ONLY fake UltraMsg instance (never a real credential, never read
-// from any .env). NETWORK FAIL-CLOSED: whatsapp.js uses node-fetch (not global fetch), so BOTH are wrapped before anything
-// loads: the fake UltraMsg host is captured; ANY other non-loopback host is REFUSED (thrown + recorded → the run is RED).
+// from any .env). whatsapp.js sends through node-fetch: its export is wrapped so a request to the fake instance is answered
+// in process (recorded with the CALL STACK, to prove which writer sent it). EGRESS is refused at the PROCESS level by
+// tools/egress-guard.js, which emulator-run preloads before anything loads (asserted below); nothing here allows egress.
 process.env.ULTRAMSG_INSTANCE_ID = 'r3-test-instance'; process.env.ULTRAMSG_TOKEN = 'r3-test-token-not-a-secret';
-const SENT = []; const REFUSED_NET = [];
+const SENT = [];
 const ULTRA = 'https://api.ultramsg.com/r3-test-instance/';
-const loopback = (u) => { try { const h = new URL(String(u)).hostname; return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '[::1]'; } catch (_) { return false; } };
-const netGate = (realFetch, ResponseCtor) => async (u, init) => {
-  if (String(u).startsWith(ULTRA)) { const p = new URLSearchParams(String(init && init.body || '')); SENT.push({ to: p.get('to'), body: p.get('body'), ctx: CTX.now }); return new ResponseCtor(JSON.stringify({ sent: 'true', id: `r3-${SENT.length}` }), { status: 200, headers: { 'content-type': 'application/json' } }); }
-  if (!loopback(u)) { REFUSED_NET.push(String(u)); throw new Error(`r3-p1a: outbound network to ${new URL(String(u)).hostname} REFUSED (tests reach loopback only)`); }
+const capture = (realFetch, ResponseCtor) => async (u, init) => {
+  if (String(u).startsWith(ULTRA)) { const p = new URLSearchParams(String(init && init.body || '')); const lim = Error.stackTraceLimit; Error.stackTraceLimit = 60; const origin = new Error().stack; Error.stackTraceLimit = lim; SENT.push({ to: p.get('to'), body: p.get('body'), ctx: CTX.now, origin }); return new ResponseCtor(JSON.stringify({ sent: 'true', id: `r3-${SENT.length}` }), { status: 200, headers: { 'content-type': 'application/json' } }); }
   return realFetch(u, init);
 };
-{ const nf = require.resolve('node-fetch'); const real = require('node-fetch'); const gated = netGate(real, real.Response); Object.assign(gated, real, { default: gated });
+{ const nf = require.resolve('node-fetch'); const real = require('node-fetch'); const gated = capture(real, real.Response); Object.assign(gated, real, { default: gated });
   require.cache[nf] = { id: nf, filename: nf, loaded: true, children: [], paths: [], exports: gated }; }
-global.fetch = netGate(global.fetch, Response);
 const CTX = { now: 'boot' };
 const PH = {}; const phase = async (name, fn) => { const t0 = Date.now(); try { return await fn(); } finally { PH[name] = (PH[name] || 0) + (Date.now() - t0); } };
 
@@ -106,7 +104,7 @@ try {
   };
   const fhost = createFirebaseHost({ pageId: 'p1a-form', user: { uid: 'cust_p1a', email: 'c@p1a.test' }, fixture: S.fixture });
   const intent = { ...S1.intent };
-  const snaps = {};
+  const snaps = {}; const negSnaps = {};
   CTX.now = 'S1/x_pizza/form'; HITS.setContext(CTX.now);
   // the form's DECLARED wall-clock anchor (S1.pageWallClock): 13:00 HN on the run's own HN day
   const hn = new Date(Date.now() - 6 * 3600000); const FORM_ANCHOR = Date.UTC(hn.getUTCFullYear(), hn.getUTCMonth(), hn.getUTCDate(), 19, 0, 0);
@@ -116,46 +114,64 @@ try {
       w.IntersectionObserver = function () { return { observe() {}, unobserve() {}, disconnect() {}, takeRecords() { return []; } }; };
       Object.defineProperty(w.navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (okCb) => w.setTimeout(() => okCb({ coords: { latitude: 15.5050, longitude: -88.0290, accuracy: 8 } }), 0) } });
     } })));
-  await phase('settle', () => form.settle(HORIZON.form));
   const w = form.win; const doc = form.doc;
-  assert.deepStrictEqual(form.errors.filter((e) => !/Could not parse CSS/.test(e)), [], FAIL('boot', 'form boot errors'));
+  // codex P1-a r1 P1-3: EVERY observation requires settle() === true AND a clean page + adapter (no page error, no
+  // subscription-callback error, nothing refused) — a handler that rendered then threw, or left tracked work, is RED
+  const CLEAN = (pg, host, label) => {
+    const errs = pg.errors.filter((e) => !/Could not parse CSS/.test(e));
+    assert.deepStrictEqual(errs, [], FAIL(label, `page error(s): ${errs.slice(0, 3).join(' | ').slice(0, 600)}`));
+    assert.deepStrictEqual(host.callbackErrors, [], FAIL(label, `adapter callback error(s): ${JSON.stringify(host.callbackErrors).slice(0, 600)}`));
+    assert.deepStrictEqual(pg.refused, [], FAIL(label, `refused: ${JSON.stringify(pg.refused)}`));
+  };
+  let observations = 0;
+  const settled = async (pg, host, horizon, label) => { const r = await phase('settle', () => pg.settle(horizon)); assert.strictEqual(r, true, FAIL(label, `settle(${horizon}) did not settle`)); CLEAN(pg, host, label); observations += 1; };
+  await settled(form, fhost, HORIZON.form, 'form.boot');
   assert.ok(form.clock.anchored && w.isOpen() === true, FAIL('clock', `the form is not open at its declared wall-clock anchor (${new Date(FORM_ANCHOR).toISOString()})`));
   const click = (el, what) => { assert.ok(el, FAIL('ui', `the control ${what} is missing`)); el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true })); };
   const type = (el, v, what) => { assert.ok(el, FAIL('ui', `the input ${what} is missing`)); el.value = v; el.dispatchEvent(new w.Event('input', { bubbles: true })); el.dispatchEvent(new w.Event('change', { bubbles: true })); };
-  const settle = () => phase('settle', () => form.settle(HORIZON.form));
+  const settleForm = (label) => settled(form, fhost, HORIZON.form, label);
 
   await step('form.add-dish', async () => { const add = doc.querySelector('[data-act="inc"]'); intent.dishId = add && add.closest('[data-id]') ? add.closest('[data-id]').getAttribute('data-id') : null; click(add, 'dish +'); });
   await step('form.customer', async () => { type(doc.getElementById('cname'), intent.name, '#cname'); type(doc.getElementById('cphone'), intent.phone, '#cphone'); type(doc.getElementById('cemail'), intent.email, '#cemail'); });
-  await settle();
+  await settleForm('form.cartPill');
   snaps['form.cartPill'] = OBSERVABLES['form.cartPill'].capture({ doc });
   await step('form.cart-sheet-open', async () => { click(doc.getElementById('cart-bar'), '#cart-bar'); });
-  await settle();
+  await settleForm('form.reviewSheet');
   snaps['form.reviewSheet'] = OBSERVABLES['form.reviewSheet'].capture({ doc });
+  // codex r1 P1-9 negative, on the LIVE page: the same sheet content captured while the sheet is NOT open is RED
+  { const sh = doc.getElementById('cart-review-sheet'); sh.classList.remove('open'); negSnaps.closedSheet = OBSERVABLES['form.reviewSheet'].capture({ doc }); sh.classList.add('open'); }
   await step('form.continue', async () => { click(doc.getElementById('btn-continuar'), '#btn-continuar'); });
-  await settle();
+  await settleForm('form.continue');
   assert.ok(doc.querySelector('#s2.stage.active'), FAIL('ui', `the pay step did not open (err1: ${text(doc.getElementById('err1'))})`));
   await step('form.address-details', async () => { type(doc.getElementById('address-details'), intent.addressDetails, '#address-details'); });
-  await settle();
+  await settleForm('form.address-details');
   await step('form.pay-cash', async () => { click(doc.getElementById('pay-cash'), '#pay-cash'); });
-  await settle();
+  await settleForm('form.pay-cash');
   await step('form.tender', async () => { click([...doc.querySelectorAll('[data-act="tender"]')].find((b) => Number(b.getAttribute('data-amt')) * 100 === intent.tenderCents), `tender chip ${intent.tenderCents}`); });
-  await settle();
+  await settleForm('form.payStep');
   snaps['form.payStep'] = OBSERVABLES['form.payStep'].capture({ doc });
 
   CTX.now = 'S1/x_pizza/new'; HITS.setContext(CTX.now);
   const invBefore = S.state.invs.length;
   await step('form.pay', async () => { click(doc.getElementById('btn-pay'), '#btn-pay'); });
-  await settle();
-  for (let i = 0; i < 60 && !doc.querySelector('#s5.stage.active'); i++) { await new Promise((r) => setTimeout(r, 25)); await form.settle(HORIZON.form); }
-  await S.drain('orders'); await settle();
+  await settleForm('form.pay');
+  await S.drain('orders');
+  await settleForm('form.confirmation');
   const create = R.log.find((x) => x.fn === 'createOrder');
   assert.ok(create && create.status === 200, FAIL('createOrder', create ? `status ${create.status} ${String(JSON.stringify(create.res)).slice(0, 200)}` : `never answered — routed ${JSON.stringify(R.log.map((x) => `${x.fn}:${x.status}`))}; active stage ${(doc.querySelector('.stage.active') || {}).id}; visible errors ${JSON.stringify([...doc.querySelectorAll('.error-box, [id^="err"]')].map((e) => text(e)).filter(Boolean)).slice(0, 400)}`));
   const oid = create.res.order_id;
   const persisted = (await rtdb.ref(`orders/${oid}`).get()).val();
   snaps['form.confirmation'] = OBSERVABLES['form.confirmation'].capture({ doc });
-  assert.ok(snaps['form.confirmation'].active, FAIL('ui', 'the confirmation (#s5) is not the active stage'));
   snaps['wa.orderReceived'] = OBSERVABLES['wa.orderReceived'].capture({ sends: SENT, phone: persisted.customer_phone });
   ok(`S1 through the REAL form UI: ${steps.length} steps → createOrder 200 (${oid}, #${persisted.display_number}, ${persisted.total_cents} centavos, status ${persisted.status}); the confirmation is shown; ${SENT.length} WhatsApp send(s) captured at the transport`);
+
+  // WHICH path sent the order-received (memory: assert which path answered): the ONE send's stack passes through the
+  // terminal region's call site (createOrder's sendMessage, line from contract/regions.json), not the status trigger's
+  const regionsDoc = JSON.parse(fsx.readFileSync(new URL('./regions.json', import.meta.url), 'utf8'));
+  const termWa = regionsDoc.regions.find((r) => r.region === 'xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#createOrderApp.all>anon');
+  const trigWa = regionsDoc.regions.find((r) => r.region === 'xpizza-functions/whatsapp.js#sendMessage@xpizza-functions/index.js#sendOrderStatusNotifications');
+  assert.ok(SENT.length === 1 && SENT[0].origin.includes(`index.js:${termWa.line}:`) && !SENT[0].origin.includes(`index.js:${trigWa.line}:`), FAIL('wa', `the order-received was not sent (exactly once) from createOrder's call site index.js:${termWa.line} (sends ${SENT.length}; origin ${SENT[0] && SENT[0].origin.split('\n').filter((l) => /index\.js/.test(l)).slice(0, 3).join(' | ')})`));
+  ok(`the ONE order-received send came from createOrder's call site (index.js:${termWa.line}), not the status trigger's (index.js:${trigWa.line})`);
 
   // per-step invocation multiset (observed, then declared) and hygiene
   const invs = S.state.invs.slice(invBefore).map((i) => i.name).sort();
@@ -173,32 +189,43 @@ try {
   assert.deepStrictEqual(WITNESS.unattributed(), [], FAIL('version', `pricing outside any writer context: ${JSON.stringify(WITNESS.unattributed()).slice(0, 300)}`));
   ok(`per-call version: ${pricing.length} pricing call(s) (${[...new Set(pricing.map((c) => c.fn))].join(', ')}) each served exactly {${ACTIVE}/live}; non-pricing calls = declared (${nonPricing.join(', ')}); nothing unattributed`);
 
-  // ── the REAL KDS (private projection), booted as staff on the same emulator; then Programados opened (a view, not a kitchen action) ──
-  const kdsHttp = []; const kdsActions = [];
+  // ── the REAL KDS (private projection), booted as staff on the same emulator ──
+  // codex r1: the kitchen-action evidence is a REAL recorder — every user-action event on the KDS page is recorded; one
+  // whose target is inside a ticket is a kitchen action
+  const kdsHttp = []; const kdsEvents = [];
   const khost = createFirebaseHost({ pageId: 'p1a-kds', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
-  const kds = await step('kds.boot-staff', () => phase('boot', () => bootPage('xpizza-kitchen', { host: khost, url: 'https://xpizzakitchen.netlify.app/', tracer: HITS, fetchImpl: async (u) => { kdsHttp.push(String(u)); throw new Error(`r3-p1a: KDS fetch ${u} not routed (LP new issues none)`); }, beforeScripts: (kw) => { installGoogleMaps(kw); } })));
+  const kds = await step('kds.boot-staff', () => phase('boot', () => bootPage('xpizza-kitchen', { host: khost, url: 'https://xpizzakitchen.netlify.app/', tracer: HITS, fetchImpl: async (u) => { kdsHttp.push(String(u)); throw new Error(`r3-p1a: KDS fetch ${u} not routed (LP new issues none)`); },
+    beforeScripts: (kw) => { installGoogleMaps(kw); for (const t of ['click', 'pointerdown', 'pointerup', 'mousedown', 'touchstart', 'keydown', 'change', 'input']) kw.document.addEventListener(t, (e) => { const el = e.target && e.target.nodeType === 1 ? e.target : null; kdsEvents.push({ type: t, inTicket: !!(el && el.closest('.tk')), target: el ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` : '?' }); }, true); } })));
+  const kdsActions = () => kdsEvents.filter((e) => e.inTicket).map((e) => `${e.type}:${e.target}`);
   for (let i = 0; i < 60 && !khost.subs.length; i++) await new Promise((r) => setTimeout(r, 25));
-  await khost.barrier(); await phase('settle', () => kds.settle(HORIZON.kds));
-  assert.deepStrictEqual(kds.errors.filter((e) => !/Could not parse CSS/.test(e)), [], FAIL('kds', 'KDS boot errors'));
+  await khost.barrier();
+  await settled(kds, khost, HORIZON.kds, 'kds.ticket');
+  const ticket1 = OBSERVABLES['kds.ticket'].capture({ doc: kds.doc, orderId: oid });
+  // §5b stability for the ticket: one more horizon; the ticket is byte-identical (no undeclared effect)
+  await settled(kds, khost, HORIZON.kds, 'kds.ticket-stability');
+  const ticket2 = OBSERVABLES['kds.ticket'].capture({ doc: kds.doc, orderId: oid });
+  // the only parts a declared PERIODIC may change (contract/timer-bounds.json periodic.mayChangeSelectors — e.g. the 1 s
+  // elapsed timer text) are blanked; anything else that moved is an undeclared effect
+  const KDS_PERIODIC_SELS = TB.periodic.filter((x) => x.key.startsWith('xpizza-kitchen/')).flatMap((x) => x.mayChangeSelectors || []);
+  const steady = (html) => { const t = kds.doc.createElement('template'); t.innerHTML = html; for (const sel of KDS_PERIODIC_SELS) for (const e of t.content.querySelectorAll(sel)) e.textContent = ''; return t.innerHTML; };
+  assert.strictEqual(steady(ticket2.html), steady(ticket1.html), FAIL('stability', `the KDS ticket changed after a further settle() horizon beyond its declared periodic parts (${KDS_PERIODIC_SELS.join(', ')})`));
   await step('kds.open-programados', async () => { kds.doc.getElementById('btn-scheduled').dispatchEvent(new kds.win.MouseEvent('click', { bubbles: true, cancelable: true })); });
-  await phase('settle', () => kds.settle(HORIZON.kds));
-  snaps['kds.ticket'] = OBSERVABLES['kds.ticket'].capture({ doc: kds.doc, orderId: oid, scheduledListHtml: (kds.doc.getElementById('scheduled-screen') || {}).innerHTML });
-  const kdsTickets = snaps['kds.ticket'].boardIds.length;
-  kds.close(); await khost.close();
+  await settled(kds, khost, HORIZON.kds, 'kds.programados');
+  snaps['kds.ticket'] = { ...ticket1, ...OBSERVABLES['kds.ticket'].captureScheduled({ doc: kds.doc }) };
+  const kdsTickets = ticket1.boardIds.length;
   assert.deepStrictEqual(steps, S1.steps, FAIL('steps', `executed ${JSON.stringify(steps)} ≠ the scenario definition ${JSON.stringify(S1.steps)}`));
-  ok(`the executed steps equal the S1 definition (${steps.length}); the KDS issued ${kdsHttp.length} HTTP request(s); ${kdsActions.length} kitchen action(s)`);
+  ok(`the executed steps equal the S1 definition (${steps.length}); every observation settled clean (${observations}); the KDS issued ${kdsHttp.length} HTTP request(s); recorded KDS events ${kdsEvents.length} (${[...new Set(kdsEvents.map((e) => e.target))].join(', ')}), kitchen actions ${kdsActions().length}`);
 
   // ── GATE A over the enforced slice ──
   const t0 = Date.now();
   const facts = factsOf({ intent, response: create.res, persisted, restaurant });
   const ga = gateA({ scenarios: SLICE.scenarios, brands: SLICE.brands, lps: SLICE.lps });
   const cells = ga.cells.filter((c) => SLICE.readers.includes(c.R));
-  const regionsDoc = JSON.parse(fsx.readFileSync(new URL('./regions.json', import.meta.url), 'utf8'));
   const registry = JSON.parse(fsx.readFileSync(new URL('./outputs/registry.json', import.meta.url), 'utf8'));
   const applicability = AP.load();
-  const evidence = { intent, persisted, steps, routed: R.log, kdsActions, kdsHttp, kdsTickets };
+  const evidence = { intent, persisted, steps, routed: R.log, kdsActions: kdsActions(), kdsHttp, kdsTickets };
   const ctx = { brandBoard: 'x_pizza', spec: JSON.parse(fsx.readFileSync(new URL('./matrix-spec.json', import.meta.url), 'utf8')).displayCells };
-  const run = (sn) => runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc: SCEN, evidence, snapshots: sn, facts, ctx, observables: OBSERVABLES });
+  const run = (sn, ev = evidence) => runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc: SCEN, evidence: ev, snapshots: sn, facts, ctx, observables: OBSERVABLES });
   const res = run(snaps);
   PH.compare = Date.now() - t0;
   if (res.red.length) console.error(res.red.map(formatFailure).join('\n'));
@@ -206,28 +233,42 @@ try {
   ok(`GATE A (S1 / x_pizza / LP new on ${SLICE.readers.join(' ')}): ${res.counts.cells} cells over ${res.counts.regions} regions — ${JSON.stringify(res.counts.byOutcome)}; by kind ${JSON.stringify(res.counts.byKindOutcome)}; ${res.counts.comparisons} distinct comparisons ${JSON.stringify(res.counts.comparisonsByMode)}; pins ${JSON.stringify(res.counts.pinsUsed)}`);
   if (process.env.R3_P1A_REPORT) fsx.writeFileSync(process.env.R3_P1A_REPORT, JSON.stringify({ counts: res.counts, comparisons: res.comparisons, results: res.results, invocations: ms, calls, phases: PH }, null, 1));
 
-  // §5b stability re-check: one more full horizon of page time after the assertion — the confirmation is re-captured and its
-  // money / facts recompared against the oracle; nothing may have changed (an undeclared effect or a money change → RED)
+  // §5b stability (codex r1 P1-3): one more horizon on BOTH pages after the assertion, the scheduler drained again; FRESH
+  // captures of the confirmation, the KDS (Programados still open) and the WhatsApp transport recompare green, the
+  // confirmation is byte-identical, and the send multiplicity is still exactly one (no undeclared effect)
   {
-    await phase('settle', () => form.settle(HORIZON.form));
-    const again = OBSERVABLES['form.confirmation'].capture({ doc });
-    assert.strictEqual(again.html, snaps['form.confirmation'].html, FAIL('stability', 'the confirmation changed after a further settle() horizon'));
-    const re = run({ ...snaps, 'form.confirmation': again });
+    await S.drain('orders');
+    await settled(form, fhost, HORIZON.form, 'stability.form');
+    await settled(kds, khost, HORIZON.kds, 'stability.kds');
+    const fresh = { ...snaps, 'form.confirmation': OBSERVABLES['form.confirmation'].capture({ doc }), 'kds.ticket': { ...ticket2, ...OBSERVABLES['kds.ticket'].captureScheduled({ doc: kds.doc }) }, 'wa.orderReceived': OBSERVABLES['wa.orderReceived'].capture({ sends: SENT, phone: persisted.customer_phone }) };
+    assert.strictEqual(fresh['form.confirmation'].html, snaps['form.confirmation'].html, FAIL('stability', 'the confirmation changed after a further settle() horizon'));
+    assert.strictEqual(SENT.length, 1, FAIL('stability', `the WhatsApp send multiplicity changed: ${SENT.length}`));
+    const re = run(fresh, { ...evidence, kdsActions: kdsActions() });
     assert.strictEqual(re.red.length, 0, FAIL('stability', `recompare after settle(E): ${re.red.map(formatFailure).join(' | ')}`));
-    ok(`stability: after a further ${HORIZON.form} ms horizon the confirmation is byte-identical and its cells recompare green`);
+    ok(`stability: after a further horizon on both pages (scheduler drained), fresh confirmation / KDS / WhatsApp captures recompare green; confirmation byte-identical, the KDS ticket unchanged, exactly one send`);
   }
+  kds.close(); await khost.close();
 
-  // codex's region negative, on THIS run's snapshots: the cart pill stays correct while the review sheet's total is wrong →
-  // RED on exactly the sheet's cells; and a sheet row dropped → RED; an unmet precondition → RED
+  // negatives on THIS run's snapshots
   {
     const neg = run({ ...snaps, 'form.reviewSheet': { ...snaps['form.reviewSheet'], totalText: 'L 341' } });
     const redRegions = new Set(neg.red.map((x) => x.region));
     assert.ok(neg.red.some((x) => x.fact === 'MONEY' && x.observable === 'form.reviewSheet') && [...redRegions].every((r) => registry.regions[r].observable === 'form.reviewSheet') && neg.results.filter((x) => x.observable === 'form.cartPill').every((x) => x.outcome === 'pass'), FAIL('negative', `pill-correct / sheet-wrong was not RED on exactly the sheet (${JSON.stringify([...redRegions])})`));
-    const neg2 = runGateA({ cells, registry, applicability, regionsDoc, scenariosDoc: SCEN, evidence: { ...evidence, kdsActions: ['kds.tap-empezar'] }, snapshots: snaps, facts, ctx, observables: OBSERVABLES });
+    const neg2 = run(snaps, { ...evidence, kdsActions: ['click:div'] });
     assert.ok(neg2.red.length > 0 && neg2.red.every((x) => /UNMET/.test(x.detail) && /no-kitchen-action/.test(x.detail)), FAIL('negative', 'an unmet precondition (a kitchen tap) was not RED'));
-    const neg3 = run({ ...snaps, 'wa.orderReceived': { sends: [] } });
+    const neg3 = run({ ...snaps, 'wa.orderReceived': { sends: [], exposed: { ok: false, detail: 'no message' } } });
     assert.ok(neg3.red.some((x) => x.observable === 'wa.orderReceived'), FAIL('negative', 'a missing WhatsApp send was not RED'));
-    ok(`negatives on this run's snapshots: pill correct + sheet total wrong → RED on exactly the sheet (${neg.red.length} cells); a kitchen tap → every no-kitchen-action exclusion RED (${neg2.red.length}); no send → the WhatsApp cells RED (${neg3.red.length})`);
+    // codex r1 P1-5: absences reject a WRONG value too
+    const wa = snaps['wa.orderReceived'];
+    const neg4 = run({ ...snaps, 'wa.orderReceived': { ...wa, sends: [{ ...wa.sends[0], body: `${wa.sends[0].body}\nOrden #999 · Dirección: Wrong address` }] } });
+    assert.ok(['NUM', 'PLACE'].every((f) => neg4.red.some((x) => x.observable === 'wa.orderReceived' && x.fact === f)), FAIL('negative', `a WRONG order number / address in the message was not RED on NUM + PLACE (${JSON.stringify(neg4.red.map((x) => x.fact))})`));
+    const tk = snaps['kds.ticket'];
+    const neg5 = run({ ...snaps, 'kds.ticket': { ...tk, html: tk.html.replace('<div class="body">', '<div class="body"><div class="addr">Col. Wrong Place, casa 9</div>') } });
+    assert.ok(neg5.red.some((x) => x.observable === 'kds.ticket' && x.fact === 'PLACE'), FAIL('negative', 'a WRONG address on the KDS ticket was not RED'));
+    // codex r1 P1-9: the sheet captured on the LIVE page while closed
+    const neg6 = run({ ...snaps, 'form.reviewSheet': negSnaps.closedSheet });
+    assert.ok(neg6.red.length > 0 && neg6.red.every((x) => x.observable === 'form.reviewSheet' && /not EXPOSED/.test(x.detail)), FAIL('negative', 'the cart sheet captured while CLOSED was not RED'));
+    ok(`negatives on this run's snapshots: pill right + sheet total wrong → RED on exactly the sheet (${neg.red.length}); a kitchen tap → every no-kitchen-action exclusion RED (${neg2.red.length}); no send → RED (${neg3.red.length}); a WRONG number / address in the message → NUM + PLACE RED; a WRONG address on the ticket → PLACE RED; the sheet captured CLOSED on the live page → RED (${neg6.red.length})`);
   }
 
   // ── GATE B: the site-hit ratchet ──
@@ -238,8 +279,10 @@ try {
   assert.deepStrictEqual(rt.problems, [], FAIL('gateB', `ratchet:\n  ${rt.problems.slice(0, 20).join('\n  ')}`));
   ok(`GATE B ratchet: ${Object.entries(current).map(([k, v]) => `${k} ${v.length}`).join(', ')} sites reached ⊇ baseline (${Object.values(baseline.contexts).reduce((a, v) => a + v.length, 0)}); growth ${JSON.stringify(Object.fromEntries(Object.entries(rt.grown).map(([k, v]) => [k, v.length])))}; reviewed shrink ${(shrink.entries || []).length}; ${SRV.manifest.length} server units traced`);
 
-  assert.deepStrictEqual(REFUSED_NET, [], FAIL('net', `outbound network attempted: ${JSON.stringify(REFUSED_NET)}`));
-  ok('network fail-closed: no non-loopback request was attempted (the UltraMsg transport is the in-process capture)');
+  // EGRESS: this process runs under the process-level guard (preloaded by emulator-run) and nothing was refused
+  assert.ok(global.__R3_EGRESS_GUARD === true && process.env.R3_EGRESS_MODE !== 'record', FAIL('net', 'the process-level egress guard is not installed in refuse mode'));
+  assert.deepStrictEqual(global.__R3_EGRESS_REFUSED, [], FAIL('net', `egress attempted: ${JSON.stringify(global.__R3_EGRESS_REFUSED)}`));
+  ok('egress: the process-level guard is installed (refuse mode) and no non-loopback connection was attempted; the UltraMsg transport is the in-process capture');
   console.log(`P1A-PHASES ${JSON.stringify(PH)}`);
   form.close(); await fhost.close();
   console.log(`\nr3-p1a-journey: OK (${n})`);

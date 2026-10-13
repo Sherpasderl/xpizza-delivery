@@ -52,10 +52,19 @@ function compareMoney(expected, observedText, { precision = 'cents', permitsLemp
   return p.money.centavos === expected.centavos ? { ok: true } : { ok: false, reason: `observed ${fmt(p.money)} ≠ expected ${fmt(expected)}` };
 }
 
-// §1 relationships
-function footing({ subtotal, tax = money(0), discount = money(0), total }) {
-  const need = subtotal.centavos + tax.centavos - discount.centavos;
-  return need === total.centavos ? { ok: true } : { ok: false, reason: `footing: subtotal ${fmt(subtotal)} + tax ${fmt(tax)} − discount ${fmt(discount)} = ${fmt(money(need))} ≠ total ${fmt(total)}` };
+// §1 F-BREAKDOWN relationships (codex P1-a r1 P2: the ORDER footing and the FACTURA footing are separate rules)
+// ORDER footing: subtotal_cents + tax_cents = total_cents, exact to the centavo. A discount never enters it
+// (discount_cents = 0: add-free never discounts the charged total), and the factura rebaja is never subtracted from it.
+function footing({ subtotal, tax = money(0), total }) {
+  const need = subtotal.centavos + tax.centavos;
+  return need === total.centavos ? { ok: true } : { ok: false, reason: `order footing: subtotal ${fmt(subtotal)} + tax ${fmt(tax)} = ${fmt(money(need))} ≠ total ${fmt(total)}` };
+}
+// FACTURA footing (redeemed x_pizza): full net = subtotal_cents + desc_rebaja_cents; Σ factura_items gross = total_cents +
+// the comped gross. Checked on its own — never folded into the order footing.
+function facturaFooting({ subtotal, rebaja, itemsGross, total, compedGross }) {
+  const p = [];
+  if (itemsGross.centavos !== total.centavos + compedGross.centavos) p.push(`Σ factura_items gross ${fmt(itemsGross)} ≠ total ${fmt(total)} + comped ${fmt(compedGross)}`);
+  return p.length ? { ok: false, reason: `factura footing: ${p.join('; ')}`, fullNet: money(subtotal.centavos + rebaja.centavos) } : { ok: true, fullNet: money(subtotal.centavos + rebaja.centavos) };
 }
 const change = (tender, total) => (tender ? money(tender.centavos - total.centavos) : null);
 
@@ -102,4 +111,4 @@ function factsOf({ intent, response, persisted, restaurant }) {
   };
 }
 
-module.exports = { money, fmt, parseMoney, compareMoney, footing, change, factsOf, payLife, CURRENCY, GRAMMAR };
+module.exports = { money, fmt, parseMoney, compareMoney, footing, facturaFooting, change, factsOf, payLife, CURRENCY, GRAMMAR };

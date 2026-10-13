@@ -14,7 +14,7 @@ const r = T.check(doc);
 assert.deepStrictEqual(r.problems, [], FAIL(r.problems.join('\n  ')));
 ok(`${r.inventory.length} timer sites on the asserted pages (${Object.entries(doc.pages).map(([p, v]) => `${p} horizon ${v.horizonMs} ms`).join(', ')}); ${r.need.length} long / unresolved, each reviewed as not reaching an asserted output`);
 const j = fs.readFileSync(path.join(__dirname, 'p1a-journey.emulator.test.mjs'), 'utf8');
-assert.ok(/settle\(HORIZON\.form\)/.test(j) && /settle\(HORIZON\.kds\)/.test(j) && !/\.settle\(\)/.test(j), FAIL('the journey does not settle with the declared per-page horizons'));
+assert.ok(/settled\(form, fhost, HORIZON\.form,/.test(j) && /settled\(kds, khost, HORIZON\.kds,/.test(j) && /pg\.settle\(horizon\)/.test(j) && !/\.settle\(\)/.test(j) && (j.match(/\.settle\(/g) || []).length === 1, FAIL('the journey does not settle every step through the declared per-page horizons (one settled() helper)'));
 ok('the enforced journey settles every step with the declared per-page horizon (no default settle())');
 const clone = () => JSON.parse(JSON.stringify(doc));
 const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
@@ -23,5 +23,22 @@ const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
 { const d = clone(); d.sites[0].sha = T.sha('x'); assert.ok(has(d, /call text changed/), FAIL('a changed timer call passed')); }
 { const d = clone(); d.sites[5].reachesAsserted = true; assert.ok(has(d, /RED \(no declaration clears it\)/), FAIL('a long timer reaching an asserted output passed')); }
 { const d = clone(); d.sites.push({ ...d.sites[0], key: 'xpizza-orders/gone.js#f:setTimeout#0' }); assert.ok(has(d, /stale entry/), FAIL('a stale entry passed')); }
+// codex P1-a r1 P1-4: three chained 9 s timers on an asserted page (27 s > the 10 s horizon) — each delay is under the
+// horizon, the CHAIN is not → RED; a self-re-arming (repeating) timer → RED; a periodic interval within the horizon → RED
+{
+  const { sources } = require('./census');
+  const probe = (code) => [...sources(), { file: 'xpizza-orders/zz-r3-probe.js', scope: 'xpizza-orders', kind: 'page', code, lineOffset: 0, module: false }];
+  const r1 = T.check(doc, { units: probe("function a(){ setTimeout(() => { setTimeout(() => { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); }, 9000); }, 9000); }") });
+  assert.ok(r1.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#a:setTimeout#0 → .* cumulative 27000 ms/.test(p)), FAIL(`the 3 × 9 s chain was not RED: ${JSON.stringify(r1.problems.filter((p) => /zz-r3/.test(p)))}`));
+  const r2 = T.check(doc, { units: probe('function poll(){ setTimeout(poll, 500); }') });
+  assert.ok(r2.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#poll.*REPEATS/.test(p)), FAIL('a self-re-arming timer was not RED'));
+  const r3 = T.check(doc, { units: probe('function t(){ setInterval(() => {}, 2000); }') });
+  assert.ok(r3.problems.some((p) => /^PERIODIC xpizza-orders\/zz-r3-probe\.js#t:setInterval#0/.test(p)), FAIL('an unreviewed periodic interval was not RED'));
+  const d = clone(); d.chains[0].reachesAsserted = true; d.chains[0].repeatLimit = 'unbounded';
+  assert.ok(T.check(d).problems.some((p) => /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL('a reviewed chain reaching an asserted output past the horizon passed'));
+  const d2 = clone(); d2.periodic[0].changesAsserted = true;
+  assert.ok(T.check(d2).problems.some((p) => /declared to change an asserted output/.test(p)), FAIL('a periodic changing an asserted output passed'));
+}
+ok(`chains + periodic: ${r.chains.length} chains (${r.cneed.length} reviewed beyond-horizon / unresolved / repeating), ${r.periodic.length} reviewed periodic intervals; negatives: codex's 3 × 9 s chain → RED, a self-re-arming timer → RED, an unreviewed interval → RED, a chain or interval reaching an asserted output → RED`);
 ok('negatives: a long timer with no entry (or a shorter horizon exposing one), a changed call, a long timer reaching an asserted output, a stale entry → RED');
 console.log(`\nr3-timer-bounds guard: OK (${n})`);

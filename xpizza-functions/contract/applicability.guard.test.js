@@ -63,7 +63,18 @@ const x0 = doc.exclusions[0];
 { const d = clone(); d.exclusions[0].bind.siteSha = AP.sha('changed text'); assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => p.startsWith(`${x0.region}: call-site text changed`)), FAIL('a changed call site was not stale')); }
 { const d = clone(); d.exclusions[0].bind.scopeSha = AP.sha('changed scope'); assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => /scope .* changed/.test(p)), FAIL('a changed scope was not stale')); }
 { const s2 = JSON.parse(JSON.stringify(scen)); s2.scenarios.S1.steps.push('form.another-order'); assert.ok(AP.staleness(doc, regionsDoc, s2).some((p) => /scenario S1 definition changed/.test(p)), FAIL('a changed scenario was not stale')); }
-ok('negative: a stale exclusion (call-site text / scope / scenario definition changed) → stale → the cell is required again');
+{ const d = clone(); const gi = d.exclusions.findIndex((e) => e.guards.some((g) => g.kind === 'F')); const g = d.exclusions[gi].guards.find((x) => x.kind === 'F'); g.text = `${g.text} /*changed*/`; assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => p.startsWith(`${d.exclusions[gi].region}: guard text occurs 0×`)), FAIL('a changed guard source did not make the exclusion stale')); }
+{ const d = clone(); delete d.exclusions[0].guards; assert.ok(AP.staleness(d, regionsDoc, scen).some((p) => /needs at least one GUARD/.test(p)), FAIL('an exclusion without a guard binding passed')); }
+{ // codex P1-a r1 P1-6: RENDERERS.orderReceived re-pointed at renderPickupReceived → the pickup-body exclusion is stale
+  const x = doc.exclusions.find((e) => e.region === 'xpizza-functions/whatsapp.js#renderPickupReceived@self');
+  assert.ok(x, FAIL('no renderPickupReceived exclusion'));
+  const real = fs.readFileSync(path.join(__dirname, '..', 'whatsapp.js'), 'utf8');
+  const mutated = real.replace('orderReceived: renderOrderReceived, pickupReceived:', 'orderReceived: renderPickupReceived, pickupReceived:');
+  assert.ok(mutated !== real, FAIL('the RENDERERS probe text moved'));
+  const st = x.guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-functions/whatsapp.js' ? mutated : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
+  assert.ok(st.length > 0, FAIL('re-pointing RENDERERS.orderReceived did not invalidate the renderPickupReceived exclusion'));
+}
+ok('negative: a stale exclusion (call-site text / scope / scenario definition / GUARD changed — codex\'s RENDERERS re-point) → stale → the cell is required again; an exclusion without a guard is malformed');
 {
   const ev = { intent: { fulfil: 'delivery', pay: 'cash' }, persisted: { order_type: 'pickup', payment_method: 'cash', status: 'new' }, steps: [], routed: [], kdsActions: [], kdsHttp: [], kdsTickets: 1 };
   const x = { preconditions: ['delivery', 'status-new'] };
@@ -76,6 +87,13 @@ ok('negative: an unmet declared precondition (a pickup order / a kitchen tap) �
   for (const c of dispCells.filter((y) => y.cell === disp.cell)) d.exclusions.push({ region: c.viaFrom || c.region, scope: { S: [c.S], brands: [c.brand], lps: [c.lp] }, preconditions: ['delivery'], reason: 'negative', bind: {}, scenarioSha: {} });
   assert.ok(AP.shadowsAssertion(d, cells).some((p) => p.startsWith(disp.cell)), FAIL('an absence / display obligation expressed as an exclusion passed'));
 }
-ok('negative: a display obligation expressed as an exclusion (every region of it excluded) → RED');
+{ // codex r1 P1-7: another OUTPUT's surviving region cannot keep an obligation alive — exclude every renderStage2Summary
+  // region of the R14 Envío Gratis obligation; the freeDeliveryRowHTML regions of other cells do not discharge it
+  const d = clone(); const ob = dispCells.filter((c) => /R14:DISPLAY/.test(c.cell) && /renderStage2Summary$/.test(c.output));
+  assert.ok(ob.length > 0, FAIL('no R14 display obligation on renderStage2Summary in scope'));
+  for (const c of ob) d.exclusions.push({ region: c.viaFrom || c.region, scope: { S: [c.S], brands: [c.brand], lps: [c.lp] }, preconditions: ['delivery'], reason: 'negative', bind: {}, scenarioSha: {} });
+  assert.ok(AP.shadowsAssertion(d, cells).some((p) => p.startsWith(`${ob[0].cell}|${ob[0].output}`)), FAIL('a display obligation of one output survived on another output\'s region'));
+}
+ok('negative: a display obligation expressed as an exclusion (every region of it — of its OWN output — excluded) → RED, even while another output keeps regions');
 
 console.log(`\nr3-applicability guard: OK (${n})`);
