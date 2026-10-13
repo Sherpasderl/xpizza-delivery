@@ -112,4 +112,27 @@ const both = (code, fields, extra) => { const sites = sitesFor(code, fields); co
   assert.ok(child.status === 0 && out.hits >= 2 && JSON.stringify(out.ids) === JSON.stringify(['o1', 'o2']) && out.units.includes('xpizza-functions/whatsapp.js') && out.units.includes('xpizza-functions/alert-prune.js'), FAIL(`server install: ${child.status} ${child.stderr} ${child.stdout}`));
   ok(`module cache: installServer refuses once a census unit is loaded; a clean install transforms the loaded census units (whatsapp.js, alert-prune.js); alertOrderIds returns the same ids and records ${out.hits} distinct site hits`);
 }
+{ // P1-b function-entry probes (codex no-exec P2): ASI-terminated directives, directive-only bodies, expression bodies —
+  // the probed text parses, keeps its line count, the directive still applies, and every entry is recorded
+  const vm = require('vm');
+  const src = [
+    'function a() {',
+    '  "use strict"',
+    '  return this',
+    '}',
+    'function b() { "use strict"; "other" }',
+    'const c = (x) => x + 1',
+    'const d = () => ({ k: 1 })',
+    'function e() {}',
+    'a(); b(); c(1); d(); e();',
+    'globalThis.__res = [a(), c(1), d().k]',
+  ].join('\n');
+  const names = ['a', 'b', 'c', 'd', 'e']; const probes = new Map(names.map((f, i) => [f, i]));
+  const rw = rewrite(src, [], false, probes, 'unit');
+  assert.strictEqual(rw.code.split('\n').length, src.split('\n').length, FAIL('entry probes changed the line count'));
+  const seen = new Set(); const ctx = { __r3enter: (i) => seen.add(names[i]) }; vm.createContext(ctx);
+  vm.runInContext(rw.code, ctx);
+  assert.ok(names.every((f) => seen.has(f)) && JSON.stringify(ctx.__res) === JSON.stringify([undefined, 2, 1]), FAIL(`probed code misbehaved: entered ${[...seen]}, result ${JSON.stringify(ctx.__res)} (a strict a() must return undefined)\n${rw.code}`));
+  ok(`function-entry probes: an ASI-terminated "use strict" directive stays a directive (strict this === undefined), directive-only and expression bodies parse, line count unchanged, all ${names.length} entries recorded`);
+}
 console.log(`\nr3-tracer: OK (${n})`);

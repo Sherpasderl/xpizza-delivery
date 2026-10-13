@@ -127,8 +127,10 @@ function rewrite(code, sites, module, probes = null, unitFile = '') {
       if (!/Function/.test(node.type) || !probes.has(fn)) return;
       const k = probes.get(fn); const key = `${unitFile}#${fn}`;
       if (node.body.type === 'BlockStatement') {
-        let at = node.body.start + 1; for (const st of node.body.body) { if (st.type === 'ExpressionStatement' && st.directive) at = st.end; else break; }
-        inserts.push({ at, text: `__r3enter(${k});`, order: 2, len: 0 });
+        let at = node.body.start + 1; let afterDirective = false; for (const st of node.body.body) { if (st.type === 'ExpressionStatement' && st.directive) { at = st.end; afterDirective = true; } else break; }
+        // after a directive the probe opens with `;` — an ASI-terminated directive ("use strict"⏎…) would otherwise fuse
+        // with it into one expression (codex P1-b no-exec P2)
+        inserts.push({ at, text: `${afterDirective ? ';' : ''}__r3enter(${k});`, order: 2, len: 0 });
       } else { inserts.push({ at: node.body.start, text: `(__r3enter(${k}),`, order: 0, len: node.body.end - node.body.start }, { at: node.body.end, text: ')', order: 1, len: node.body.end - node.body.start }); }
       if (!probed.includes(key)) probed.push(key);
     });
