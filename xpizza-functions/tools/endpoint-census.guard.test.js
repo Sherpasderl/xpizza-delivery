@@ -76,6 +76,7 @@ const D = {
   [F('scripts/backfill-driver-push.js')]: 'prod-script', [F('scripts/backfill-driver-accounts.js')]: 'prod-script', [F('scripts/test-ingest.js')]: 'prod-script', [F('ready-time-quality-run.js')]: 'prod-script',
   // deployed / library code (not executables on their own)
   [F('lib/admin.js')]: 'lib: the deployed Admin app — validator in its emulator branch (emulator-endpoint.test cells 1-8)',
+  [F('lib/svc-assigner.js')]: 'lib: the narrowly-privileged svc-assigner Admin app (S1a §3) — lazy, named, singleton; created on first handler use, never at module load, so the one-default-app invariant (portal-split) holds; getDatabase() auto-redirects under the emulator host',
   [F('lib/emulator-endpoint.js')]: 'lib: the validator itself', [F('deploy/emu-ns.js')]: 'lib: emuDatabaseURL → validateRtdbUrl (strict)',
   [F('test/_emulator-required.js')]: 'lib: the suite/harness guard', [F('tools/emu-mixed-guard.js')]: 'lib: the CLI mixed-signal guard',
   [F('tools/require-project.js')]: 'lib: project guard + mixed-signal guard', [F('tools/emulator-run.js')]: 'lib: the launcher',
