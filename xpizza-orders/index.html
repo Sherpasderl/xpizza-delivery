@@ -3444,10 +3444,16 @@ function updateCartReviewBody(){
 /* ── Stage navigation ── */
 // A1: reduced-motion check (JS — index.html only had the CSS media query before).
 function _prm(){ try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(_){ return false; } }
+/* THE LAST CALL WINS. A cross-dissolve defers its swap ~170 ms, but a call naming the stage already showing swaps at
+   once — so without this a fast A → B → A (tap Pagar → instant offline failure → back to the pay step) let B's pending
+   swap land AFTER the swap back, stranding the customer on "Iniciando pago seguro…" with the error on a hidden stage.
+   Every call takes a generation; a deferred swap whose generation is no longer current does nothing. */
+let __stageGen = 0;
 function showStage(id,pct){
   const _t=document.getElementById(id); if(!_t) return;
+  const _gen=++__stageGen;
   const _cur=document.querySelector('.stage.active');
-  const _swap=()=>{ _showStageSwap(id,pct,_t); };
+  const _swap=()=>{ if(_gen!==__stageGen) return; _showStageSwap(id,pct,_t); };
   // A1: cross-dissolve — fade the current stage out, swap+scrollTo(0,0), fade the incoming stage in. Never a hard cut.
   if(_prm() || !_cur || _cur===_t){ _swap(); return; }
   _cur.classList.add('stage-out');
