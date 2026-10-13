@@ -139,6 +139,7 @@
     "test:r3-p1a-journey": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node --experimental-vm-modules contract/p1a-journey.emulator.test.mjs\"",
     "test:cancel-number": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/cancel-number.emulator.test.js\"",
     "test:extras-intake": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/extras-intake.emulator.test.js\"",
-    "test:extras-eligibility-publish": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/extras-eligibility-publish.emulator.test.js\""
+    "test:extras-eligibility-publish": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/extras-eligibility-publish.emulator.test.js\"",
+    "test:driver-assignment-parity": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-assignment-parity.emulator.test.js\""
   }
 }
