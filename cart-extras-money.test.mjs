@@ -13,6 +13,7 @@ import { counter, settle, envelope, loadForm, res, BRAND, closeAll } from './for
 
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
 const { computeServerTotal } = require('./menu-pricing');
+const { gateConfirmedNet, gateInputFromRequest } = require('./token-gate');
 const { ok } = counter();
 const CHARGE_RE = /createOrder|chargeOnlineOrder/;
 
@@ -22,7 +23,13 @@ async function boot(dir, { stash = null } = {}) {
   const sent = [];
   w.__respond = (url, init) => {
     if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
-    if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 1 });
+    // the quote is PRICED like the server prices it — the actual request's items through computeServerTotal (codex hotfix r1 P2:
+    // a constant one-cent quote put expected_net_cents:1 in the bodies, which the real gate refuses)
+    if (url.includes('quoteOrder')) {
+      const q = JSON.parse((init && init.body) || '{}');
+      const t = computeServerTotal(q.items, B.rid);
+      return res(t.error ? { ok: false } : { ok: true, total_cents: Math.round(t.total * 100) });
+    }
     if (CHARGE_RE.test(url)) { sent.push(JSON.parse((init && init.body) || '{}')); return res({ ok: true }); }
     return new Promise(() => {});
   };
@@ -50,7 +57,16 @@ async function sendBoth(w, sent, rid) {
   w.selectPay('online'); const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
   await settle();
   assert.strictEqual(sent.length, 2, `premise — one cash and one card request were sent (${sent.length})`);
-  return sent.map((b) => ({ body: b, server: computeServerTotal(b.items, rid).total }));
+  return sent.map((b, i) => {
+    const server = computeServerTotal(b.items, rid).total;
+    const path = i === 0 ? 'cash' : 'card';
+    // the outgoing confirmation equals the server's recompute, and the server's OWN gate (through its own request mapping) accepts it
+    assert.strictEqual(b.expected_net_cents, Math.round(server * 100), `🔴 ${path}: expected_net_cents is the server's net (${b.expected_net_cents} vs ${server * 100})`);
+    if (b.total !== undefined) assert.strictEqual(Number(b.total), server, `🔴 ${path}: the body's total is the server's (${b.total} vs ${server})`);
+    const g = gateConfirmedNet(gateInputFromRequest(b, { rid, reward: null, tables: null, secret: 'hotfix-test', enforce: false, nowMs: Date.now() }));
+    assert.ok(g.action === 'charge' && g.chargeNet === Math.round(server * 100), `🔴 ${path}: the confirmed-net gate accepts and charges the server net (${JSON.stringify(g)})`);
+    return { body: b, server };
+  });
 }
 
 // ═════════ 1. X. Pizza — removed pizzas never keep chargeable extras ═════════
