@@ -12433,5 +12433,22 @@
       "node",
       "contract/comparator.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-31",
+    "slice": "r3p1",
+    "file": "tools/emu-cmd-wrapper.js",
+    "from": "    current = spawn(process.execPath, argv.slice(1), { stdio: 'inherit', env: stepEnv() });",
+    "to": "    current = spawn(process.execPath, argv.slice(1), { stdio: 'inherit', env: process.env });",
+    "label": "egress: a suite's own child processes no longer inherit the guard",
+    "kills_with": [
+      "does not hand the guard to step DESCENDANTS"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
   }
 ]

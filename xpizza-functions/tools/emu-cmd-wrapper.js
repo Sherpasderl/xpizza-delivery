@@ -34,6 +34,17 @@ const encode = (steps) => Buffer.from(JSON.stringify(steps), 'utf8').toString('b
 module.exports = { decode, encode };
 if (require.main !== module) return;
 
+/* R3 P1-a (codex r1 P1-1): every step is preloaded with tools/egress-guard.js on its argv (emulator-run injects it); its
+   DESCENDANTS — a node process a suite spawns itself — inherit the same guard through NODE_OPTIONS, so no process of a
+   suite reaches beyond loopback. The guard prints nothing unless it refuses (children's stdout stays clean). */
+const EGRESS = require('path').join(__dirname, 'egress-guard.js');
+function stepEnv() {
+  const env = { ...process.env };
+  const req = `--require ${EGRESS}`;
+  if (!String(env.NODE_OPTIONS || '').includes(EGRESS)) env.NODE_OPTIONS = `${env.NODE_OPTIONS ? env.NODE_OPTIONS + ' ' : ''}${req}`;
+  return env;
+}
+
 let steps;
 try { steps = decode(process.argv[2]); } catch (e) { console.error(`emulator-run: 🔴 ${e.message}`); process.exit(2); }
 
@@ -74,7 +85,7 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   if (process.env.XPIZZA_EMU_STARTED_FILE) { try { fs.writeFileSync(process.env.XPIZZA_EMU_STARTED_FILE, String(process.pid)); } catch { /* best-effort signal */ } }
   for (const argv of steps) {
     if (stopping) break;
-    current = spawn(process.execPath, argv.slice(1), { stdio: 'inherit', env: process.env });
+    current = spawn(process.execPath, argv.slice(1), { stdio: 'inherit', env: stepEnv() });
     const { code, signal } = await new Promise((res) => {
       current.once('error', (e) => { console.error(`emulator-run: 🔴 could not start a suite step — ${e && e.message}`); res({ code: 1, signal: null }); });
       current.once('exit', (c, s) => res({ code: c, signal: s }));

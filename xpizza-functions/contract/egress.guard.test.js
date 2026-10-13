@@ -70,13 +70,19 @@ const viaReq = (mod, url) => new Promise((resolve) => {
   // wiring: emulator-run preloads the guard FIRST into every suite step; every R3 contract entry in npm test preloads it
   const er = fs.readFileSync(path.join(__dirname, '..', 'tools', 'emulator-run.js'), 'utf8');
   assert.ok(/const INNER = injectCounter\(rest\[0\], EGRESS, COUNTER, NULL_GUARD\);/.test(er) && /const EGRESS = path\.join\(ROOT, 'tools', 'egress-guard\.js'\);/.test(er), FAIL('emulator-run does not preload tools/egress-guard.js first'));
+  const wr = fs.readFileSync(path.join(__dirname, '..', 'tools', 'emu-cmd-wrapper.js'), 'utf8');
+  assert.ok(/spawn\(process\.execPath, argv\.slice\(1\), \{ stdio: 'inherit', env: stepEnv\(\) \}\)/.test(wr) && /env\.NODE_OPTIONS = `\$\{env\.NODE_OPTIONS \? env\.NODE_OPTIONS \+ ' ' : ''\}\$\{req\}`/.test(wr), FAIL('the suite-command wrapper does not hand the guard to step DESCENDANTS via NODE_OPTIONS'));
+  // and it is effective: a grandchild spawned with the wrapper's step env is guarded
+  { const env = { ...process.env, NODE_OPTIONS: `--require ${path.join(__dirname, '..', 'tools', 'egress-guard.js')}` };
+    const r = require('child_process').spawnSync(process.execPath, ['-e', "const q=require('http').request('http://192.0.2.1/x');q.on('error',e=>{console.log(e.code)});q.end();setTimeout(()=>{},200)"], { env, encoding: 'utf8', timeout: 8000 });
+    assert.strictEqual((r.stdout || '').trim(), 'ERR_R3_EGRESS_REFUSED', FAIL(`a guarded grandchild was not refused (${r.stdout} ${r.stderr})`)); }
   const { injectCounter } = require('../tools/emulator-run');
   const inj = injectCounter('node a.js && node --experimental-vm-modules b.mjs', '/x/tools/egress-guard.js', '/x/tools/count-marks.js');
   assert.ok((inj.match(/-r \/x\/tools\/egress-guard\.js -r \/x\/tools\/count-marks\.js/g) || []).length === 2, FAIL(`chained injection: ${inj}`));
   const steps = require('../package.json').scripts.test.split('&&').map((x) => x.trim()).filter((x) => /\scontract\//.test(x));
   const bare = steps.filter((x) => !/-r \.\/tools\/egress-guard\.js /.test(x));
   assert.deepStrictEqual(bare, [], FAIL(`R3 contract entries in npm test without the egress preload:\n  ${bare.join('\n  ')}`));
-  ok(`wiring: emulator-run injects the guard ahead of the counter into EVERY chained node step; all ${steps.length} R3 contract entries in npm test preload it`);
+  ok(`wiring: emulator-run injects the guard ahead of the counter into EVERY chained node step, the wrapper hands it to every step's DESCENDANTS (a grandchild is refused); all ${steps.length} R3 contract entries in npm test preload it`);
   const al = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tools', 'egress-allowlist.json'), 'utf8')).entries;
   for (const a of al) assert.ok(a.suite && a.host && a.reason && a.owner, FAIL(`allowlist entry incomplete: ${JSON.stringify(a)}`));
   ok(`allowlist: ${al.length} reviewed entr${al.length === 1 ? 'y' : 'ies'} (each names suite, host, reason, owner)`);
