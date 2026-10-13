@@ -53,7 +53,11 @@ const click = async (w, el) => { el.dispatchEvent(new w.MouseEvent('click', { bu
   assert.strictEqual($(w, 'detail-header-title').textContent, 'NY Plain Slice');
   const scroll = $(w, 'detail-scroll');
   assert.strictEqual(scroll.querySelector('.detail-price').textContent, 'L 624');
-  assert.strictEqual(scroll.querySelector('.detail-cat-label').textContent, 'Salsa · Requerido');
+  // mockup v4 (owner-approved; PLAN-picker-extras rev 2.3 §2.8): the label + an amber "Obligatorio" status, replacing " · Requerido"
+  const head = scroll.querySelector('.detail-cat-label');
+  assert.strictEqual(head.firstElementChild.textContent, 'Salsa');
+  assert.ok(head.querySelector('.grp-status.req') && head.querySelector('.grp-status').textContent === 'Obligatorio', 'amber "Obligatorio" before a choice');
+  assert.ok(!/Requerido/.test(head.textContent), 'the red " · Requerido" is replaced');
   assert.deepStrictEqual(rows(w).map((r) => r.querySelector('.detail-extras-name').textContent), ['Salsa Roja', 'Salsa Vodka', 'Combinada']);
   assert.deepStrictEqual(rows(w).map((r) => (r.querySelector('.choice-badge') || {}).textContent || null), [null, null, 'Recomendada'], 'the gold "Recomendada" pill, on Combinada only');
   assert.strictEqual(scroll.querySelectorAll('.choice-delta').length, 0, 'equal prices: no row shows an amount');

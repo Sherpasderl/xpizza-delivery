@@ -115,8 +115,10 @@ async function tick(w, eid) { const i = stagedInputs(w).find((x) => x.value === 
   w.openDetailModal(L); await settle();
   assert.deepStrictEqual(stagedIds(w), [], 'a fresh open starts with nothing staged');
   await pick(w, COMB); await tick(w, MOZZ);
-  w.eval(`soldOutById = (id) => id === ${COMB}`);   // the choice sells out before the add
-  w.eval(`isSoldOut = (d) => !!d && d.id === ${COMB}`);
+  // the button still offers the add (its own sold-out read says available), but chg()'s add guard refuses it — so it is the
+  // commit's verified-increment check, not the button, that must keep the staged extras from landing
+  w.eval(`soldOutById = (id) => id === ${COMB}`);
+  assert.ok(/Agregar/.test(ctaText(w)), 'premise: the button still offers the add');
   w.detailCtaTap(); await settle();
   assert.strictEqual(G(w, 'qty')[COMB] || 0, 0, 'premise: the add was refused');
   assert.ok(!G(w, 'pizzaExtras')[COMB], '🔴 a refused add writes no extras');
@@ -165,6 +167,82 @@ async function tick(w, eid) { const i = stagedInputs(w).find((x) => x.value === 
   assert.ok(conflicts.length === 1 && /Combinada/.test(conflicts[0].record.name), '🔴 the line is a conflict (its Mozzarella was agreed at L50), so checkout refuses it');
   assert.strictEqual(w.eval('window.__accepted'), 0, '🔴 the picker never accepts a repriced extra on its own');
   ok('picker: a repriced extra is shown at its live price, stays a conflict on the line (checkout refuses), and is never auto-accepted');
+}
+// ── 8. v4 status labels + ONE announcement (rev 2.3 §2.8) ──
+{
+  const w = await boot();
+  const status = () => $(w, 'picker-status');
+  assert.ok(status() && !$(w, 'detail-scroll').contains(status()), 'the live region exists OUTSIDE #detail-scroll');
+  assert.strictEqual(status().getAttribute('role'), 'status');
+  const writes = []; new w.MutationObserver(() => writes.push(status().textContent)).observe(status(), { childList: true, characterData: true, subtree: true });
+  w.openDetailModal(L); await settle();
+  const head = () => $(w, 'detail-scroll').querySelector('.detail-cat-label');
+  assert.ok(head().querySelector('.grp-status.req'), 'amber Obligatorio before a choice');
+  assert.ok([...head().querySelectorAll('svg')].every((x) => x.getAttribute('aria-hidden') === 'true' && x.getAttribute('focusable') === 'false'), 'icons are hidden + unfocusable');
+  await pick(w, COMB);
+  assert.ok(head().querySelector('.grp-status.done') && /\(listo\)/.test(head().textContent), 'green Obligatorio (listo) after');
+  const cats = [...$(w, 'detail-scroll').querySelectorAll('.detail-cat-label')].slice(1);
+  assert.ok(cats.length >= 1 && cats.every((c) => c.querySelector('.grp-status.opt').textContent === 'Opcional'), 'every extras category says Opcional');
+  await tick(w, MOZZ); await pick(w, VODKA); await tick(w, PEPP); await settle();
+  assert.deepStrictEqual(writes.filter((t) => t), ['Salsa: elegida'], '🔴 exactly ONE announcement (on completion), none on toggles / switching / rerenders');
+  w.closeDetailModal(); await settle(); w.openDetailModal(L); await settle();
+  assert.strictEqual(status().textContent, '', 'reset on reopen');
+  ok('v4: amber → green "Obligatorio", "Opcional" per extras category, hidden icons; exactly one completion announcement outside the replaced subtree, reset on reopen');
+}
+// ── 9. the row-price contract, BOTH surfaces: "+L p" = one extra on one pizza = the CTA step = the server's gross step ──
+{
+  const w = await boot();
+  w.openDetailModal(L); await settle(); await pick(w, COMB);
+  for (const inp of stagedInputs(w)) {
+    const shown = Number(inp.closest('label').querySelector('.xrow-price').textContent.replace(/[^0-9]/g, ''));
+    const before = ctaTotal(w);
+    await tick(w, inp.value);
+    assert.strictEqual(ctaTotal(w) - before, shown, `picker: ${inp.value} — the CTA step equals the row's +L`);
+    const ex = G(w, 'EXTRAS').find((e) => String(e.id) === inp.value);
+    const base = computeServerTotal([{ name: 'NY Plain Slice - Combinada', qty: 1, extras: [] }], 'x_pizza', tablesOf(w)).total;
+    const withIt = computeServerTotal([{ name: 'NY Plain Slice - Combinada', qty: 1, extras: [{ instance: 0, name: ex.name, price: ex.price }] }], 'x_pizza', tablesOf(w)).total;
+    assert.strictEqual(withIt - base, shown, `picker: ${inp.value} — the server's gross step equals the row's +L`);
+    await tick(w, inp.value);
+  }
+  // the dish modal at quantity 2: each row shows ONE extra on ONE pizza (never ×2)
+  w.closeDetailModal(); await settle(); w.chg(2, 2); await settle(); w.openDetailModal(2); await settle();
+  const rowsOf = (inst) => [...$(w, 'detail-scroll').querySelectorAll(`[data-act="extra"][data-inst="${inst}"]`)];
+  for (const r of rowsOf(1)) {
+    const ex = G(w, 'EXTRAS').find((e) => String(e.id) === r.getAttribute('data-eid'));
+    assert.strictEqual(r.querySelector('.xrow-price').textContent, `+L ${ex.price}`, `dish modal qty 2: ${ex.name} shows +L ${ex.price}, never ×2`);
+  }
+  // free extras stay unsupported: the server refuses an extra priced 0
+  const t = tablesOf(w); t.extras.Mozzarella = 0;
+  assert.ok(computeServerTotal([{ name: 'Carnivora', qty: 1, extras: [{ name: 'Mozzarella' }] }], 'x_pizza', t).error, 'an L 0 extra is still refused by the server');
+  ok('row prices: every offered extra\'s "+L" equals its CTA step and the server\'s gross step; the dish modal shows one extra on one pizza at qty 2; L 0 stays refused');
+}
+// ── 10. the dish modal (ordinary + cart-reopened): a click on the name, the price or the toggle changes EXACTLY ONE instance ONCE ──
+{
+  const w = await boot();
+  const extrasNow = (id) => JSON.parse(JSON.stringify(G(w, 'pizzaExtras')[id] || {}));
+  const clickOn = async (sel) => { $(w, 'detail-scroll').querySelector(sel).dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle(); };
+  // ordinary dish, qty 2: name → pizza 1 Mozzarella; price → pizza 2 Pepperoni; toggle → pizza 2 Mozzarella (the same extra on both)
+  w.chg(2, 2); await settle(); w.openDetailModal(2); await settle();
+  await clickOn(`[data-act="extra"][data-inst="0"][data-eid="${MOZZ}"] .detail-extras-name`);
+  assert.deepStrictEqual(extrasNow(2), { 0: { [MOZZ]: 1 } }, 'a click on the NAME: pizza 1 only, once');
+  await clickOn(`[data-act="extra"][data-inst="1"][data-eid="${PEPP}"] .xrow-price`);
+  assert.deepStrictEqual(extrasNow(2), { 0: { [MOZZ]: 1 }, 1: { [PEPP]: 1 } }, 'a click on the PRICE: pizza 2 only, once');
+  await clickOn(`#detail-tog-2-1-${MOZZ}`);
+  assert.deepStrictEqual(extrasNow(2), { 0: { [MOZZ]: 1 }, 1: { [PEPP]: 1, [MOZZ]: 1 } }, 'a click on the TOGGLE: pizza 2 only, once (the same extra on both pizzas)');
+  assert.ok($(w, `detail-tog-2-1-${MOZZ}`).classList.contains('selected'), 'the toggle id is unchanged and reflects the state');
+  // decrease → re-add: the hotfix trim still holds through the new rows
+  w.closeDetailModal(); await settle(); w.chg(2, -1); w.chg(2, 1); await settle();
+  assert.deepStrictEqual(extrasNow(2), { 0: { [MOZZ]: 1 } }, 'decrease → re-add: pizza 2 comes back plain');
+  // a choice REOPENED from the cart: the same rows on its instance
+  w.openDetailModal(L); await settle(); await pick(w, COMB); w.detailCtaTap(); await settle();
+  w.openCartReview(); await settle();
+  const open = [...w.document.querySelectorAll('[data-act="review-open"]')].find((el) => el.getAttribute('data-id') === String(COMB));
+  open.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await settle();
+  assert.strictEqual($(w, 'detail-header-title').textContent, 'NY Plain Slice - Combinada', 'premise: the choice reopened from the cart');
+  await clickOn(`[data-act="extra"][data-inst="0"][data-eid="${PEPP}"] .xrow-price`);
+  assert.deepStrictEqual(extrasNow(COMB), { 0: { [PEPP]: 1 } }, 'cart-reopened: a click on the price toggles that pizza once');
+  assert.ok($(w, 'detail-scroll').querySelector(`[data-act="extra"][data-pid="${COMB}"][data-inst="0"] .xrow-main .xrow-price`), 'cart-reopened rows use the v4 layout');
+  ok('dish modal (ordinary qty 2 + cart-reopened choice): name / price / toggle each change exactly one instance once; ids and data-* kept; decrease → re-add stays plain');
 }
 closeAll();
 console.log('\npicker-extras: OK');

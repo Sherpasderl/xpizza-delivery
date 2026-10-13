@@ -528,6 +528,18 @@ body{font-family:var(--sans);background:var(--cream);color:var(--charcoal);min-h
 .staged-extra-row{position:relative}
 .staged-extra-row .staged-extra-input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
 .staged-extra-row:focus-within{outline:2px solid currentColor;outline-offset:2px}
+/* mockup v4 (owner-approved) — group status labels on the picker, and every extras row (picker AND dish modal) as
+   name · "+L price" · ✓: one extra on one pizza, right-aligned; the NAME wraps, the price and the toggle never shrink */
+.detail-cat-label.grp-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.grp-status{display:inline-flex;align-items:center;gap:5px;flex:none;padding:3px 9px 3px 7px;border-radius:999px;font-family:var(--sans);font-size:11.5px;font-weight:700;letter-spacing:.02em;text-transform:none;line-height:1.2}
+.grp-status svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.grp-status.req{background:var(--gold-lt);color:var(--gold-dk)}
+.grp-status.done{background:var(--green-bg);color:var(--green)}
+.grp-status.opt{background:var(--surface);color:#5A4F47;padding:3px 9px}
+.xrow-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px}
+.xrow-main .detail-extras-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.xrow-price{flex:none;font-size:15px;color:#5A4F47;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums;margin-right:14px}
+.picker-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .choice-line{display:flex;align-items:center;gap:8px}
 .choice-line .detail-extras-name{display:inline}
 .choice-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:var(--gold-lt);color:var(--gold-dk);font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
@@ -1459,6 +1471,7 @@ textarea{resize:none;height:80px;line-height:1.4}
     <div class="detail-header-spacer"></div>
   </div>
   <div class="detail-scroll" id="detail-scroll"></div>
+  <div id="picker-status" class="picker-sr" role="status" aria-live="polite"></div>
   <div class="detail-cta-bar">
     <button class="detail-cta" id="detail-cta" onclick="detailCtaTap()"></button>
   </div>
@@ -5088,7 +5101,14 @@ let stagedVariantId = null;
 let stagedExtras = {};
 const offeredIdsFor = (dish) => { const off = extrasOfferedFor(dish); return new Set(off ? off.flatMap(g => g.extras.map(e => String(e.id))) : []); };
 function selectVariant(vid) {
+  const wasIncomplete = stagedVariantId === null;
   stagedVariantId = vid;
+  if (wasIncomplete) {
+    const launcher = MENU.find(p => p.id === currentDetailPizzaId);
+    const cfg = launcher && VARIANT_ITEMS[launcher.id];
+    const st = document.getElementById('picker-status');
+    if (st && cfg) st.textContent = `${cfg.label}: elegida`;
+  }
   // switching choice KEEPS the staged extras (as approved), limited to what the new choice offers
   const ok = offeredIdsFor(MENU.find(p => p.id === vid));
   Object.keys(stagedExtras).forEach((k) => { if (!ok.has(String(k))) delete stagedExtras[k]; });
@@ -5109,6 +5129,7 @@ function openDetailModal(pizzaId) {
   currentDetailPizzaId = pizzaId;
   stagedVariantId = null;
   stagedExtras = {};
+  { const st = document.getElementById('picker-status'); if (st) st.textContent = ''; }   // reset per open
   renderDetailModal();
 
   document.getElementById('detail-overlay').classList.add('open');
@@ -5309,10 +5330,7 @@ function renderDetailModal() {
           const instExtras = (pizzaExtras[pizzaId] && pizzaExtras[pizzaId][inst]) || {};
           const selected = (instExtras[e.id] || 0) > 0;
           html += `<div class="detail-extras-row" data-act="extra" data-eid="${safeText(e.id)}" data-pid="${safeText(pizzaId)}" data-inst="${inst}">
-            <div>
-              <span class="detail-extras-name">${escapeHtml(e.name)}</span>
-              <span class="detail-extras-price">+L ${safeText(e.price)}</span>
-            </div>
+            ${extraRowInner(e)}
             <div class="detail-extras-toggle ${selected ? 'selected' : ''}"
                  id="detail-tog-${safeText(pizzaId)}-${inst}-${safeText(e.id)}">✓</div>
           </div>`;
@@ -5333,6 +5351,12 @@ function renderDetailModal() {
    modal (a dish, or a choice reopened from the cart) and the launcher's picker (for the CHOSEN choice) both read it, so the
    picker and the reopened line can never offer different sets again (the gate-0 finding: picker [] vs the line's 14). The
    per-product checklist will filter here, once, for both. null = the dish takes no extras (Nutella, extras_policy 'none'). */
+// one extra on ONE pizza: its live price, never multiplied by the dish's quantity, never net of the base price
+function extraRowInner(e) {
+  return `<span class="xrow-main"><span class="detail-extras-name">${escapeHtml(e.name)}</span><span class="xrow-price">+L ${safeText(e.price)}</span></span>`;
+}
+const GRP_ICON_WARN = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></svg>';
+const GRP_ICON_DONE = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 function extrasOfferedFor(dish) {
   if (!dish || dish.name === 'Nutella' || GroupPicker.noExtras(dish)) return null;
   return [...new Set(EXTRAS.map(e => e.cat))].map(cat => ({ cat, extras: EXTRAS.filter(e => e.cat === cat) }));
@@ -5356,7 +5380,13 @@ function renderLauncherModal(pizza) {
   html += `<div class="detail-body"><div class="detail-name">${escapeHtml(pizza.name)}</div>`
     + (pizza.desc ? `<div class="detail-desc">${escapeHtml(pizza.desc)}</div>` : '')
     + `<div class="detail-price">${safeText(GroupPicker.priceText(cfg, MENU) || '—')}</div></div>`;
-  html += `<div class="detail-cat-label">${escapeHtml(cfg.label)} <span class="detail-req">· Requerido</span></div>`;
+  // mockup v4: the choice group says what it needs — amber "Obligatorio" until a choice is made, then green with a check
+  // (the visible text; the one ANNOUNCEMENT is #picker-status, written on the incomplete → complete transition only)
+  html += `<div class="detail-cat-label grp-head"><span>${escapeHtml(cfg.label)}</span>`
+    + (stagedVariantId === null
+      ? `<span class="grp-status req">${GRP_ICON_WARN}Obligatorio</span>`
+      : `<span class="grp-status done">${GRP_ICON_DONE}Obligatorio<span class="picker-sr"> (listo)</span></span>`)
+    + `</div>`;
   html += `<div class="detail-extras-list">` + GroupPicker.choiceRows(cfg, MENU, stagedVariantId).map(r =>
     `<div class="detail-variant-row${r.selected ? ' sel' : ''}" data-act="variant" data-id="${safeText(r.id)}">`
     + GroupPicker.choiceInputHtml(r, pizza.id, safeText)
@@ -5367,14 +5397,11 @@ function renderLauncherModal(pizza) {
   const offered = stagedVariantId === null ? null : extrasOfferedFor(MENU.find(p => p.id === stagedVariantId));
   if (offered) offered.forEach(({ cat, extras }) => {
     if (!extras.length) return;
-    html += `<div class="detail-cat-label">${escapeHtml(cat)}</div><div class="detail-extras-list">`;
+    html += `<div class="detail-cat-label grp-head"><span>${escapeHtml(cat)}</span><span class="grp-status opt">Opcional</span></div><div class="detail-extras-list">`;
     extras.forEach((e) => {
       const on = (stagedExtras[e.id] || 0) > 0;
       html += `<label class="detail-extras-row staged-extra-row">
-            <div>
-              <span class="detail-extras-name">${escapeHtml(e.name)}</span>
-              <span class="detail-extras-price">+L ${safeText(e.price)}</span>
-            </div>
+            ${extraRowInner(e)}
             <input type="checkbox" class="staged-extra-input" data-act="staged-extra" data-eid="${safeText(e.id)}" value="${safeText(e.id)}"${on ? ' checked' : ''}>
             <div class="detail-extras-toggle ${on ? 'selected' : ''}" aria-hidden="true">✓</div>
           </label>`;
