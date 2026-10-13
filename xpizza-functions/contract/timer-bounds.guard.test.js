@@ -12,7 +12,7 @@ const FAIL = (m) => `🔴 R3-TIMER-BOUNDS ${m}`;
 const doc = JSON.parse(fs.readFileSync(T.FILE, 'utf8'));
 const r = T.check(doc);
 assert.deepStrictEqual(r.problems, [], FAIL(r.problems.join('\n  ')));
-ok(`${r.inventory.length} timer sites on the asserted pages (${Object.entries(doc.pages).map(([p, v]) => `${p} horizon ${v.horizonMs} ms`).join(', ')}); ${r.need.length} long / unresolved, each reviewed as not reaching an asserted output`);
+ok(`${r.inventory.length} timer sites on the asserted pages (${Object.entries(doc.pages).map(([p, v]) => `${p} horizon ${v.horizonMs} ms`).join(', ')}); ${r.need.length} long / unresolved, each reviewed with a bound (one reaching an asserted output must stay within the horizon)`);
 const j = fs.readFileSync(path.join(__dirname, 'p1a-journey.emulator.test.mjs'), 'utf8');
 assert.ok(/settled\(form, fhost, HORIZON\.form,/.test(j) && /settled\(kds, khost, HORIZON\.kds,/.test(j) && /pg\.settle\(horizon\)/.test(j) && !/\.settle\(\)/.test(j) && (j.match(/\.settle\(/g) || []).length === 1, FAIL('the journey does not settle every step through the declared per-page horizons (one settled() helper)'));
 ok('the enforced journey settles every step with the declared per-page horizon (no default settle())');
@@ -34,11 +34,26 @@ const has = (d, re) => T.check(d).problems.some((p) => re.test(p));
   assert.ok(r2.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#poll.*REPEATS/.test(p)), FAIL('a self-re-arming timer was not RED'));
   const r3 = T.check(doc, { units: probe('function t(){ setInterval(() => {}, 2000); }') });
   assert.ok(r3.problems.some((p) => /^PERIODIC xpizza-orders\/zz-r3-probe\.js#t:setInterval#0/.test(p)), FAIL('an unreviewed periodic interval was not RED'));
+  // codex r2 P1-3 form 1: an UNRETURNED async function with three sequential awaited 9 s sleeps (27 s)
+  const r4 = T.check(doc, { units: probe("function go(){ (async () => { await new Promise((r) => setTimeout(r, 9000)); await new Promise((r) => setTimeout(r, 9000)); await new Promise((r) => setTimeout(r, 9000)); document.getElementById('cart-total').textContent = 'L 999.00'; })(); }") });
+  assert.ok(r4.problems.some((p) => /^CHAIN await@xpizza-orders\/zz-r3-probe\.js:1 .*cumulative 27000 ms/.test(p)), FAIL(`the unreturned awaited-sleeps chain was not RED: ${JSON.stringify(r4.problems.filter((p) => /zz-r3/.test(p)))}`));
+  // codex r2 P1-3 form 2: a timer chain continued through OBJECT METHODS
+  const r5 = T.check(doc, { units: probe("const o = { a() { setTimeout(() => this.b(), 9000); }, b() { setTimeout(() => this.c(), 9000); }, c() { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); } }; o.a();") });
+  assert.ok(r5.problems.some((p) => /^CHAIN xpizza-orders\/zz-r3-probe\.js#a:setTimeout#0 → .*#b:setTimeout#0 → .*#c:setTimeout#0: cumulative 27000 ms/.test(p)), FAIL(`the method-chained timers were not RED: ${JSON.stringify(r5.problems.filter((p) => /zz-r3/.test(p)))}`));
+  // codex r2 P1-3: a declaration BELOW the computed bound is a contradiction → RED (computed overrides)
+  {
+    const pd = clone(); const c27 = r5.cneed.find((c) => /zz-r3-probe\.js#a:setTimeout#0/.test(c.key));
+    pd.chains.push({ key: c27.key, cumulativeBoundMs: 1000, repeats: false, repeatLimit: 1, reachesAsserted: true, reason: 'contradictory declaration', sha: c27.sha });
+    const rc = T.check(pd, { units: probe("const o = { a() { setTimeout(() => this.b(), 9000); }, b() { setTimeout(() => this.c(), 9000); }, c() { setTimeout(() => { document.getElementById('cart-total').textContent = 'L 999.00'; }, 9000); } }; o.a();") });
+    assert.ok(rc.problems.some((p) => /declared cumulativeBoundMs 1000 is BELOW the computed 27000 ms — a contradiction/.test(p)) && rc.problems.some((p) => /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL(`a contradictory declaration cleared the 27 s chain: ${JSON.stringify(rc.problems.filter((p) => /zz-r3/.test(p)))}`));
+    const ps = clone(); const s0 = ps.sites.find((e) => r.inventory.some((t) => t.key === e.key && t.delay != null)); s0.bound = 1;
+    assert.ok(T.check(ps).problems.some((p) => /BELOW the computed delay/.test(p)), FAIL('a site bound below its computed delay passed'));
+  }
   const d = clone(); d.chains[0].reachesAsserted = true; d.chains[0].repeatLimit = 'unbounded';
   assert.ok(T.check(d).problems.some((p) => /reaches an asserted output with a cumulative bound beyond the horizon/.test(p)), FAIL('a reviewed chain reaching an asserted output past the horizon passed'));
   const d2 = clone(); d2.periodic[0].changesAsserted = true;
   assert.ok(T.check(d2).problems.some((p) => /declared to change an asserted output/.test(p)), FAIL('a periodic changing an asserted output passed'));
 }
-ok(`chains + periodic: ${r.chains.length} chains (${r.cneed.length} reviewed beyond-horizon / unresolved / repeating), ${r.periodic.length} reviewed periodic intervals; negatives: codex's 3 × 9 s chain → RED, a self-re-arming timer → RED, an unreviewed interval → RED, a chain or interval reaching an asserted output → RED`);
+ok(`chains + periodic: ${r.chains.length} chains (${r.cneed.length} reviewed beyond-horizon / unresolved / repeating), ${r.periodic.length} reviewed periodic intervals; negatives: codex's 3 × 9 s chain → RED, codex r2's UNRETURNED awaited-sleeps and METHOD-chained forms → RED, a declared bound below the computed one → RED (contradiction), a self-re-arming timer → RED, an unreviewed interval → RED, a chain or interval reaching an asserted output → RED`);
 ok('negatives: a long timer with no entry (or a shorter horizon exposing one), a changed call, a long timer reaching an asserted output, a stale entry → RED');
 console.log(`\nr3-timer-bounds guard: OK (${n})`);

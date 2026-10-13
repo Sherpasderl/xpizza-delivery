@@ -24,19 +24,20 @@ const canon = (v) => (Array.isArray(v) ? `[${v.map(canon).join(',')}]` : v && ty
 
 // census function scopes: 'file#fn' → [source text of every function the census names fn in that unit]
 let SCOPES = null;
-function scopes() {
-  if (SCOPES) return SCOPES;
-  SCOPES = new Map();
-  for (const u of sources()) {
+function scopes(units = null) {
+  if (SCOPES && !units) return SCOPES;
+  const map = new Map();
+  for (const u of units || sources()) {
     const base = u.file.replace(/<script@\d+>$/, '');
     walk(parseUnit(u), (node, fn) => {
       if (!/Function/.test(node.type) || !fn) return;
-      for (const k of [`${u.file}#${fn}`, `${base}#${fn}`]) { if (!SCOPES.has(k)) SCOPES.set(k, []); SCOPES.get(k).push(u.code.slice(node.start, node.end)); }
+      for (const k of [`${u.file}#${fn}`, `${base}#${fn}`]) { if (!map.has(k)) map.set(k, []); map.get(k).push(u.code.slice(node.start, node.end)); }
     });
   }
-  return SCOPES;
+  if (!units) SCOPES = map;
+  return map;
 }
-const scopeText = (key) => { const t = scopes().get(key); return t && t.length ? t.join('\n\u0000\n') : null; };
+const scopeText = (key, units = null) => { const t = scopes(units).get(key); return t && t.length ? t.join('\n\u0000\n') : null; };
 const lineText = (file, line) => { const f = path.join(REPO, file.replace(/<script@\d+>$/, '')); const ls = fs.readFileSync(f, 'utf8').split('\n'); return ls[line - 1] === undefined ? null : ls[line - 1].trim(); };
 
 /* the binding of a region: its call site (consumer line) or, for an @self region, its own definition */
@@ -59,8 +60,8 @@ function bindGuard(g) {
   if (kind === 'F') { const f = fs.readFileSync(path.join(REPO, where), 'utf8'); const k = f.split(text).length - 1; if (k !== 1) throw new Error(`guard text occurs ${k}× in ${where}: ${text}`); return { kind, file: where, text }; }
   throw new Error(`unknown guard kind ${kind}`);
 }
-function guardStale(gb, { readFile = (f) => fs.readFileSync(path.join(REPO, f), 'utf8') } = {}) {
-  if (gb.kind === 'S') { const t = scopeText(gb.scope); if (t == null) return `guard scope ${gb.scope} is gone`; if (!t.includes(gb.text)) return `guard text no longer in ${gb.scope}: "${gb.text}"`; if (sha(t) !== gb.scopeSha) return `guard scope ${gb.scope} changed`; return null; }
+function guardStale(gb, { readFile = (f) => fs.readFileSync(path.join(REPO, f), 'utf8'), units = null } = {}) {
+  if (gb.kind === 'S') { const t = scopeText(gb.scope, units); if (t == null) return `guard scope ${gb.scope} is gone`; if (!t.includes(gb.text)) return `guard text no longer in ${gb.scope}: "${gb.text}"`; if (sha(t) !== gb.scopeSha) return `guard scope ${gb.scope} changed`; return null; }
   if (gb.kind === 'F') { let f; try { f = readFile(gb.file); } catch (_) { return `guard file ${gb.file} is gone`; } const k = f.split(gb.text).length - 1; return k === 1 ? null : `guard text occurs ${k}× in ${gb.file} (was exactly once): "${gb.text}"`; }
   return `unknown guard kind ${gb.kind}`;
 }

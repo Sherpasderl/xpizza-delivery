@@ -1,4 +1,5 @@
 'use strict';
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process
 // R3 P0 — THE THIRD SYNTHETIC BRAND through the real publish path, then the real createOrder (PLAN-R3 rev 4.1 §5c).
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:r3-p0-third-brand
 require('../test/_emulator-required')('database', 'firestore');

@@ -29,7 +29,8 @@ function inventory(scopes, wrappers, units = sources()) {
   const out = [];
   for (const u of units.filter((x) => scopes.includes(x.scope))) {
     const ast = parseUnit(u); const consts = new Map();
-    walk(ast, (node) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init) { const v = ev(node.init, consts); if (v != null) consts.set(node.id.name, v); } });
+    // only a `const` binds a value; a `let` / `var` (a loop's `attempt`) varies — never resolved (unresolved = reviewed)
+    walk(ast, (node, _fn, parent) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init && parent && parent.kind === 'const') { const v = ev(node.init, consts); if (v != null) consts.set(node.id.name, v); } });
     const names = ['setTimeout', 'setInterval', ...(wrappers[u.file.replace(/<script@\d+>$/, '')] || [])];
     const seen = new Map();
     walk(ast, (node, fn) => {
@@ -59,17 +60,24 @@ function chainsOf(scopes, wrappers, inv, units = sources()) {
   const out = [];
   for (const u of units.filter((x) => scopes.includes(x.scope))) {
     const ast = parseUnit(u); const fnDefs = new Map(); const sites = inv.filter((t) => t.unit === u.file);
+    // functions by NAME, and METHODS by property name (codex r2 P1-3: a chain continued through obj.method() — over-
+    // approximated by property name, fail closed: an unrelated method of the same name only adds a chain to review)
+    const methodDefs = new Map(); const addM = (k, f) => { if (!methodDefs.has(k)) methodDefs.set(k, []); methodDefs.get(k).push(f); };
     walk(ast, (node) => {
       if (node.type === 'FunctionDeclaration' && node.id) fnDefs.set(node.id.name, node);
       if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init && /Function/.test(node.init.type)) fnDefs.set(node.id.name, node.init);
+      if (node.type === 'Property' && node.key && /Function/.test((node.value || {}).type || '')) addM(node.key.name || node.key.value, node.value);
+      if (node.type === 'MethodDefinition' && node.key) addM(node.key.name, node.value);
+      if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression' && !node.left.computed && /Function/.test(node.right.type)) addM(node.left.property.name, node.right);
     });
-    const within = (root) => { const found = []; const calls = []; walk(root, (n) => { if (n.type !== 'CallExpression') return; const t = byStart.get(`${u.file}@${n.start}`); if (t) found.push(t); else if (n.callee.type === 'Identifier' && fnDefs.has(n.callee.name)) calls.push(n.callee.name); }); return { found, calls }; };
+    const within = (root) => { const found = []; const calls = []; walk(root, (n) => { if (n.type !== 'CallExpression') return; const t = byStart.get(`${u.file}@${n.start}`); if (t) found.push(t); else if (n.callee.type === 'Identifier' && fnDefs.has(n.callee.name)) calls.push(fnDefs.get(n.callee.name)); else if (n.callee.type === 'MemberExpression' && !n.callee.computed && methodDefs.has(n.callee.property.name)) calls.push(...methodDefs.get(n.callee.property.name)); }); return { found, calls }; };
     const reach = new Map();   // site key → timer sites its callback can arm
     for (const t of sites) {
       const cb = t.node.arguments[0]; let roots = [];
       if (cb && /Function/.test(cb.type)) roots = [cb]; else if (cb && cb.type === 'Identifier' && fnDefs.has(cb.name)) roots = [fnDefs.get(cb.name)];
+      if (cb && cb.type === 'MemberExpression' && !cb.computed && methodDefs.has(cb.property.name)) roots = methodDefs.get(cb.property.name);
       const seenFn = new Set(); const next = new Set(); const q = [...roots];
-      while (q.length) { const r = q.shift(); const { found, calls } = within(r); for (const f of found) if (f.node !== t.node || r !== cb) next.add(f.key); for (const c of calls) if (!seenFn.has(c) && seenFn.size < 40) { seenFn.add(c); q.push(fnDefs.get(c)); } }
+      while (q.length) { const r = q.shift(); const { found, calls } = within(r); for (const f of found) if (f.node !== t.node || r !== cb) next.add(f.key); for (const c of calls) if (!seenFn.has(c) && seenFn.size < 60) { seenFn.add(c); q.push(c); } }
       reach.set(t.key, [...next].filter((k) => k !== t.key || roots.length));
     }
     const siteBy = new Map(sites.map((t) => [t.key, t]));
@@ -79,13 +87,35 @@ function chainsOf(scopes, wrappers, inv, units = sources()) {
       for (const k of nx) { if (path.includes(k)) { out.push({ path: [...path, k], repeats: true }); continue; } if (path.length < 8) dfs([...path, k]); }
     };
     for (const t of sites) dfs([t.key]);
+    // AWAITED SLEEPS (codex r2 P1-3): inside one function, each `await <something that arms a timer>` in source order is a
+    // step of a chain — even when the function's promise is never returned to anyone; an awaited sleep inside a loop
+    // REPEATS. The awaited expression's timer is found lexically, or through the function / method it calls.
+    const timersIn = (root) => { const acc = []; const seen = new Set(); const q = [root]; while (q.length) { const r = q.shift(); if (!r || seen.has(r)) continue; seen.add(r); const { found, calls } = within(r); acc.push(...found); q.push(...calls); } return acc; };
+    (function scan(node, fnNode, loopDepth) {
+      if (!node || typeof node.type !== 'string') return;
+      if (/Function/.test(node.type) && node !== fnNode) {
+        const awaits = [];
+        (function inner(n, ld) {
+          if (!n || typeof n.type !== 'string') return;
+          if (/Function/.test(n.type) && n !== node) return;   // a nested function is its own scope
+          if (n.type === 'AwaitExpression') { const ts = timersIn(n.argument); if (ts.length) awaits.push({ site: ts[0], inLoop: ld > 0 }); }
+          const isLoop = /^(For|ForIn|ForOf|While|DoWhile)Statement$/.test(n.type);
+          for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((x) => inner(x, ld + (isLoop ? 1 : 0))); else if (v && typeof v.type === 'string') inner(v, ld + (isLoop ? 1 : 0)); }
+        })(node.body, 0);
+        if (awaits.length >= 2 || awaits.some((a) => a.inLoop)) {
+          const repeats = awaits.some((a) => a.inLoop);
+          out.push({ path: [`await@${u.file}:${node.loc.start.line + u.lineOffset}`, ...awaits.map((a) => a.site.key)], repeats, sites: awaits.map((a) => a.site), awaitChain: true });
+        }
+      }
+      for (const k of Object.keys(node)) { if (k === 'loc') continue; const v = node[k]; if (Array.isArray(v)) v.forEach((x) => scan(x, /Function/.test(node.type) ? node : fnNode, loopDepth)); else if (v && typeof v.type === 'string') scan(v, /Function/.test(node.type) ? node : fnNode, loopDepth); }
+    })(ast, null, 0);
     for (const c of out) if (!c.sites) { c.sites = c.path.map((k) => siteBy.get(k)).filter(Boolean); }
   }
   // dedupe: a chain that is the suffix of another is covered by it
   const key = (c) => c.path.join(' → ');
   const uniq = [...new Map(out.map((c) => [key(c), c])).values()];
   return uniq.filter((c) => !uniq.some((o) => o !== c && key(o).endsWith(key(c)) && o.path.length > c.path.length)).map((c) => {
-    const delays = c.sites.slice(0, c.repeats ? -1 : undefined).map((t) => t.delay);
+    const delays = (c.awaitChain ? c.sites : c.sites.slice(0, c.repeats ? -1 : undefined)).map((t) => t.delay);
     const cumulative = delays.some((d) => d == null) ? null : delays.reduce((a, d) => a + d, 0);
     return { key: key(c), scope: c.sites[0].scope, repeats: c.repeats, cumulative, sha: sha(c.sites.map((t) => t.sha).join('|')) };
   });
@@ -99,7 +129,10 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     const e = entries.get(s.key);
     if (!e) { p.push(`${s.key} (line ${s.line}): delay ${s.delay == null ? `unresolved (${s.delaySrc})` : `${s.delay} ms`} exceeds the ${s.scope} horizon ${doc.pages[s.scope].horizonMs} ms — no reviewed entry`); continue; }
     if (e.sha !== s.sha) p.push(`${s.key}: the call text changed — re-review`);
-    if (e.reachesAsserted && (s.delay == null || s.delay > doc.pages[s.scope].horizonMs)) p.push(`${s.key}: reaches an asserted output with ${s.delay == null ? 'an UNRESOLVED' : `a ${s.delay} ms`} delay beyond the horizon — RED (no declaration clears it)`);
+    // an unresolved delay is bounded only by its REVIEWED bound; a declared bound below a computed delay is a contradiction
+    if (s.delay != null && e.bound != null && e.bound < s.delay) p.push(`${s.key}: declared bound ${e.bound} ms is BELOW the computed delay ${s.delay} ms — a contradiction (RED)`);
+    const eff = s.delay != null ? Math.max(s.delay, e.bound == null ? 0 : e.bound) : e.bound;
+    if (e.reachesAsserted && (eff == null || eff > doc.pages[s.scope].horizonMs)) p.push(`${s.key}: reaches an asserted output with ${eff == null ? 'an UNRESOLVED (unreviewed-bound)' : `a ${eff} ms`} delay beyond the horizon — RED (no declaration clears it)`);
     if (!(e.reason && e.reason.trim())) p.push(`${s.key}: needs a reason`);
   }
   const live = new Set(need.map((s) => s.key));
@@ -113,7 +146,11 @@ function check(doc = JSON.parse(fs.readFileSync(FILE, 'utf8')), { units = source
     if (!e) { p.push(`CHAIN ${c.key}: cumulative ${c.cumulative == null ? 'UNRESOLVED' : `${c.cumulative} ms`}${c.repeats ? ', REPEATS' : ''} beyond the ${c.scope} horizon ${doc.pages[c.scope].horizonMs} ms — no reviewed chain entry`); continue; }
     if (e.sha !== c.sha) p.push(`CHAIN ${c.key}: its call texts changed — re-review`);
     if (!(e.reason && e.reason.trim()) || e.repeatLimit === undefined) p.push(`CHAIN ${c.key}: needs repeatLimit and a reason`);
-    const unbounded = e.repeatLimit === 'unbounded' || e.cumulativeBoundMs == null || e.cumulativeBoundMs > doc.pages[c.scope].horizonMs;
+    // a declaration can never be BELOW what the scanner computed (codex r2 P1-3): the computed bound overrides; a contradiction → RED
+    if (c.cumulative != null && e.cumulativeBoundMs != null && e.cumulativeBoundMs < c.cumulative) p.push(`CHAIN ${c.key}: declared cumulativeBoundMs ${e.cumulativeBoundMs} is BELOW the computed ${c.cumulative} ms — a contradiction (RED)`);
+    if (c.repeats && typeof e.repeatLimit === 'number' && e.repeatLimit < 2) p.push(`CHAIN ${c.key}: the chain REPEATS but repeatLimit ${e.repeatLimit} < 2 — a contradiction (RED)`);
+    const effBound = c.cumulative == null ? e.cumulativeBoundMs : Math.max(c.cumulative, e.cumulativeBoundMs == null ? 0 : e.cumulativeBoundMs);
+    const unbounded = e.repeatLimit === 'unbounded' || effBound == null || effBound > doc.pages[c.scope].horizonMs;
     if (e.reachesAsserted && unbounded) p.push(`CHAIN ${c.key}: reaches an asserted output with a cumulative bound beyond the horizon / unbounded repeat — RED (no declaration clears it)`);
   }
   const clive = new Set(cneed.map((c) => c.key));

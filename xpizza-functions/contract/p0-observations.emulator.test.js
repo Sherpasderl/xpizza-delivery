@@ -1,4 +1,5 @@
 'use strict';
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process
 // R3 P0 — THE D OBSERVATIONS (PLAN-R3 rev 4.1 §4, §9): what the REAL readers show for orders made by the REAL writers,
 // recorded as observed values for the divergence table (confirmed / dropped). This suite does not assert the
 // divergences are right or wrong — it asserts it OBSERVED each reader output (non-vacuity) and writes the observations to

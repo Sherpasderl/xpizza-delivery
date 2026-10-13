@@ -1,4 +1,5 @@
 'use strict';
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process
 // R3 P0 — THE RTDB ADAPTER ACCEPTANCE CELLS (PLAN-R3 rev 4.1 §5a): the adapter's callback traces vs the REAL client SDK
 // (firebase 11.10.0, Node build) on the same emulator, plus the acknowledged-write / subscription barrier cells.
 // The comparison runs in its own namespace (r3cmp) so client security rules do not decide the result.

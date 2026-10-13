@@ -1,4 +1,5 @@
 'use strict';
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process
 // R3 P0-T — THE SCHEDULER, CLOCK MODEL AND SERVED-VERSION WITNESS AS REAL ASSERTIONS (PLAN-R3 rev 4.1 §9 P0-T; codex r4
 // P2-1). The spike (spike/r3-p0 @ 253d379) proved the mechanisms; this suite asserts exactly what its cells claim.
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:r3-p0-scheduler

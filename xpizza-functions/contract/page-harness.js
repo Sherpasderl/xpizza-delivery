@@ -150,8 +150,23 @@ async function bootPage(dir, { host, url = 'https://r3.test/', beforeScripts = n
   const channelAttempts = [];
   const attempt = (k, how) => { const m = `r3-page: ${how} of ${k} — a queued-task source settle() cannot virtualize (FAIL CLOSED)`; channelAttempts.push(m); errors.push(m); return m; };
   const guarded = new WeakSet();
+  // codex P1-a r2 P1-2: EVERY window jsdom creates (a frame, nested at any depth) runs its timers / frames / idle callbacks /
+  // queued messages on the SAME virtual clock and task queue as the top window — so settle() tracks and fires them (and a
+  // frame timer that changes the page is awaited, never left to real time)
+  const virtualizeTimers = (w) => {
+    w.setTimeout = (fn, ms, ...a) => addTimer('timeout', fn, ms, a, false);
+    w.setInterval = (fn, ms, ...a) => addTimer('interval', fn, ms, a, true);
+    w.clearTimeout = (id) => { timers.delete(id); };
+    w.clearInterval = (id) => { timers.delete(id); };
+    w.requestAnimationFrame = (fn) => addTimer('raf', fn, 16, null, false);
+    w.cancelAnimationFrame = (id) => { timers.delete(id); };
+    w.requestIdleCallback = (fn) => addTimer('idle', () => fn({ didTimeout: false, timeRemaining: () => 50 }), 1, [], false);
+    w.cancelIdleCallback = (id) => { timers.delete(id); };
+    w.postMessage = (data) => { addTimer('message', () => { w.dispatchEvent(new w.MessageEvent('message', { data, origin: win.location.origin, source: w })); }, 0, [], false); };
+  };
   const guardWindow = (w) => {
     if (!w || guarded.has(w)) return; guarded.add(w);
+    if (w !== win) { try { virtualizeTimers(w); } catch (e) { attempt('frame window', `timer virtualization failed (${e && e.message})`); } }
     for (const k of UNVIRTUALIZED) {
       if (Object.prototype.hasOwnProperty.call(w, k) || typeof w[k] !== 'undefined') attempt(k, 'pre-existing exposure');
       Object.defineProperty(w, k, { configurable: false, enumerable: false, get() { throw new Error(attempt(k, 'access')); }, set() { throw new Error(attempt(k, 'assignment')); } });

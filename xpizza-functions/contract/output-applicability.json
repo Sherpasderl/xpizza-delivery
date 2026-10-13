@@ -119,6 +119,12 @@
      "kind": "F",
      "file": "xpizza-functions/whatsapp.js",
      "text": "const tplPreparing = (args) => defer('preparing', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d6e2df3f91f94de9b1ec9fac0ca0496b8205110e79322352b8d1d97dfac800f4"
     }
    ],
    "scenarioSha": {
@@ -674,6 +680,17 @@
      "kind": "F",
      "file": "xpizza-functions/whatsapp.js",
      "text": "cancelled: renderCancelled, pickupReady: renderPickupReady, preparing: renderPreparing, otp: renderOtp,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplCancelled = (args) => defer('cancelled', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d6e2df3f91f94de9b1ec9fac0ca0496b8205110e79322352b8d1d97dfac800f4"
     }
    ],
    "scenarioSha": {
@@ -714,6 +731,17 @@
      "kind": "F",
      "file": "xpizza-functions/whatsapp.js",
      "text": "orderReceived: renderOrderReceived, pickupReceived: renderPickupReceived, delivered: renderDelivered,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplDelivered = (args) => defer('delivered', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d6e2df3f91f94de9b1ec9fac0ca0496b8205110e79322352b8d1d97dfac800f4"
     }
    ],
    "scenarioSha": {
@@ -754,6 +782,22 @@
      "kind": "F",
      "file": "xpizza-functions/whatsapp.js",
      "text": "orderReceived: renderOrderReceived, pickupReceived: renderPickupReceived, delivered: renderDelivered,"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplOrderReceived = (args) => defer('orderReceived', args);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/whatsapp.js",
+     "text": "const tplPickupReceived = (args) => defer('pickupReceived', args);"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/whatsapp.js#renderTemplate",
+     "text": "const r = RENDERERS[msg.name];",
+     "scopeSha": "d6e2df3f91f94de9b1ec9fac0ca0496b8205110e79322352b8d1d97dfac800f4"
     }
    ],
    "scenarioSha": {

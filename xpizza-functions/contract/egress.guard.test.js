@@ -67,6 +67,97 @@ const viaReq = (mod, url) => new Promise((resolve) => {
     ok(`every path to ${EXT} is REFUSED and recorded: ${cases.map((c) => c[0]).join('; ')}`);
   } finally { srv.close(); }
 
+  // ── codex r2 P1-1a: the RESOLVED destination — a loopback NAME whose (custom) lookup maps to an external address ──
+  {
+    const k = G.refused.length;
+    const r = await Promise.race([new Promise((resolve) => { const sk = require('net').connect({ host: 'localhost', port: 443, lookup: (h, o, cb) => cb(null, '192.0.2.1', 4) }); sk.on('error', (e) => resolve(e)); sk.on('connect', () => { sk.destroy(); resolve(null); }); }), new Promise((res) => setTimeout(() => res('TIMEOUT'), 4000))]);
+    assert.ok(r && r !== 'TIMEOUT' && isRefusal(r) && G.refused.slice(k).some((x) => /localhost→192\.0\.2\.1/.test(x.target)), FAIL(`localhost with a custom lookup → 192.0.2.1 was not refused (${r && (r.code || r)})`));
+    const k2 = G.refused.length;
+    const r2 = await Promise.race([new Promise((resolve) => { const q = http.request({ host: 'localhost', port: 80, path: '/', lookup: (h, o, cb) => (o && o.all ? cb(null, [{ address: '192.0.2.1', family: 4 }]) : cb(null, '192.0.2.1', 4)) }); q.on('error', (e) => resolve(e)); q.on('response', () => resolve(null)); q.end(); }), new Promise((res) => setTimeout(() => res('TIMEOUT'), 4000))]);
+    assert.ok(r2 && r2 !== 'TIMEOUT' && G.refused.slice(k2).length > 0, FAIL('http.request with a custom lookup mapping localhost → external was not refused'));
+    // IPv6 normalization (codex r2 P2): every spelling of loopback is loopback; nothing else is
+    const yes = ['::1', '0:0:0:0:0:0:0:1', '0000:0000:0000:0000:0000:0000:0000:0001', '::ffff:7f00:1', '::ffff:127.0.0.1', '::FFFF:7F00:0001', '[::1]', '127.9.8.7'];
+    const no = ['::ffff:c000:201', '::ffff:192.0.2.1', '::2', 'fe80::1', '2001:db8::1', '192.0.2.1', '128.0.0.1'];
+    assert.ok(yes.every((a) => G.isLoopbackAddress(a)) && no.every((a) => !G.isLoopbackAddress(a)), FAIL(`IPv6 / IPv4 normalization: ${JSON.stringify({ yes: yes.filter((a) => !G.isLoopbackAddress(a)), no: no.filter((a) => G.isLoopbackAddress(a)) })}`));
+    ok(`the RESOLVED destination is checked: localhost with a custom lookup → 192.0.2.1 is refused (net.connect and http.request); loopback is recognised on the normalized address (${yes.length} spellings incl. ::ffff:7f00:1), ${no.length} non-loopback forms are not`);
+  }
+
+  // ── codex r2 P1-1b: DESCENDANTS — the guard travels with every child, whatever env / execArgv the caller passes ──
+  {
+    const code = "const q=require('http').request('http://192.0.2.1/x');q.on('error',e=>{console.log(e.code)});q.end();setTimeout(()=>{},300)";
+    const cp = require('child_process');
+    const out = (r) => String(r && (r.stdout !== undefined ? r.stdout : r) || '').trim();
+    const sync = (f) => { try { return f(); } catch (e) { return `ESCAPED (${e && (e.code || e.message)})`; } };   // an unguarded child hangs on the unroutable address → timeout
+    const replaced = out(cp.spawnSync(process.execPath, ['-e', code], { env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 8000 }));
+    const e2 = { ...process.env }; delete e2.NODE_OPTIONS;
+    const deleted = sync(() => out(cp.execFileSync(process.execPath, ['-e', code], { env: e2, encoding: 'utf8', timeout: 8000 })));
+    const plain = out(cp.spawnSync(process.execPath, ['-e', code], { encoding: 'utf8', timeout: 8000 }));
+    const viaExec = sync(() => out(cp.execSync(`"${process.execPath}" -e "${code.replace(/"/g, '\\"')}"`, { env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 8000 })));
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'r3-egress-fork-')); const kid = path.join(tmp, 'kid.js');
+    fs.writeFileSync(kid, "const q=require('http').request('http://192.0.2.1/x');q.on('error',e=>{process.send(e.code,()=>process.exit(0))});q.end();");
+    const forked = await new Promise((resolve) => { const f = cp.fork(kid, [], { execArgv: [], env: { PATH: process.env.PATH }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }); const t = setTimeout(() => { f.kill(); resolve('TIMEOUT'); }, 6000); f.on('message', (m) => { clearTimeout(t); resolve(m); }); f.on('error', (e) => { clearTimeout(t); resolve(`error ${e.message}`); }); });
+    fs.rmSync(tmp, { recursive: true, force: true });
+    const { Worker } = require('worker_threads');
+    const worker = await new Promise((resolve) => { const w = new Worker("const q=require('http').request('http://192.0.2.1/x');q.on('error',e=>{require('worker_threads').parentPort.postMessage(e.code)});q.end();", { eval: true, execArgv: [] }); const t = setTimeout(() => { w.terminate(); resolve('TIMEOUT'); }, 6000); w.on('message', (m) => { clearTimeout(t); w.terminate(); resolve(m); }); w.on('error', (e) => { clearTimeout(t); resolve(`error ${e.message}`); }); });
+    // a Worker honours NODE_OPTIONS from ITS env: an explicit EMPTY env is the case only the guard's env layer can cover
+    const workerEmptyEnv = await new Promise((resolve) => { const w = new Worker("const q=require('http').request('http://192.0.2.1/x');q.on('error',e=>{require('worker_threads').parentPort.postMessage(e.code)});q.end();", { eval: true, execArgv: [], env: {} }); const t = setTimeout(() => { w.terminate(); resolve('TIMEOUT'); }, 6000); w.on('message', (m) => { clearTimeout(t); w.terminate(); resolve(m); }); w.on('error', (e) => { clearTimeout(t); resolve(`error ${e.message}`); }); });
+    const all = { replaced, deleted, plain, viaExec, forked, worker, workerEmptyEnv };
+    assert.ok(Object.values(all).every((v) => v === 'ERR_R3_EGRESS_REFUSED'), FAIL(`a descendant escaped the guard: ${JSON.stringify(all)}`));
+    ok(`descendants are guarded whatever the caller passes: spawnSync with a REPLACED env, execFileSync with NODE_OPTIONS DELETED, a plain spawnSync, execSync, fork with execArgv: [] + a replaced env, a Worker with execArgv: [], a Worker with execArgv: [] AND an EMPTY env — each refused`);
+  }
+
+  // ── codex r2 P1-1b/1d static: every child-launch API used by a test / tool file is one the guard wraps; any NEW unix
+  // socket / pre-opened transport / custom createConnection use is flagged (none exists today — out of scope, residual)
+  {
+    const acorn = require('acorn');
+    const ROOT = path.join(__dirname, '..');
+    const files = []; (function w(d) { for (const nm of fs.readdirSync(d)) { if (['node_modules', 'sdk-10.13.2', '.git', '.firebase'].includes(nm)) continue; const p = path.join(d, nm); const st = fs.statSync(p); if (st.isDirectory()) w(p); else if (/\.(c?js|mjs)$/.test(nm)) files.push(p); } })(ROOT);
+    const WRAPPED = new Set(['spawn', 'spawnSync', 'execFile', 'execFileSync', 'fork', 'exec', 'execSync', 'Worker']);
+    const CP_API = new Set([...WRAPPED, 'execFileAsync', 'spawnAsync']);
+    const bypass = []; const transport = []; let launches = 0;
+    const SELF = new Set([__filename, path.join(ROOT, 'tools', 'egress-guard.js')]);
+    for (const f of files) {
+      if (SELF.has(f)) continue;
+      const src = fs.readFileSync(f, 'utf8'); let ast;
+      const o = { ecmaVersion: 'latest', allowHashBang: true, allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true, locations: true };
+      try { ast = acorn.parse(src, { ...o, sourceType: /\.mjs$/.test(f) ? 'module' : 'script' }); } catch (_) { try { ast = acorn.parse(src, { ...o, sourceType: 'module' }); } catch (__) { continue; } }
+      const rel = path.relative(ROOT, f);
+      (function rec(n) {
+        if (!n || typeof n.type !== 'string') return;
+        if (n.type === 'CallExpression' || n.type === 'NewExpression') {
+          const c = n.callee; const nm = c.type === 'Identifier' ? c.name : (c.type === 'MemberExpression' && !c.computed ? c.property.name : null);
+          if (WRAPPED.has(nm)) launches += 1;
+          if (nm === 'binding' || nm === 'internalBinding') { const a = n.arguments[0]; if (a && /spawn|process_wrap|tcp_wrap|pipe_wrap/.test(String(a.value))) bypass.push(`${rel}:${n.loc.start.line} ${nm}(${a.value})`); }
+          if (nm === 'connect' || nm === 'createConnection') { const op = n.arguments[0]; if (op && op.type === 'ObjectExpression' && op.properties.some((p) => p.key && ['path', 'fd'].includes(p.key.name))) transport.push(`${rel}:${n.loc.start.line} ${nm}({ path/fd })`); }
+        }
+        if (n.type === 'Property' && n.key && ['socketPath', 'createConnection'].includes(n.key.name || n.key.value)) transport.push(`${rel}:${n.loc.start.line} ${n.key.name || n.key.value}:`);
+        if (n.type === 'NewExpression' && n.callee && n.callee.type === 'MemberExpression' && n.callee.property.name === 'Socket' && n.arguments[0] && n.arguments[0].type === 'ObjectExpression' && n.arguments[0].properties.some((p) => p.key && p.key.name === 'fd')) transport.push(`${rel}:${n.loc.start.line} new Socket({ fd })`);
+        for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach(rec); else if (v && typeof v.type === 'string') rec(v); }
+      })(ast);
+      void CP_API;
+    }
+    const REVIEWED_TRANSPORT = [];   // residual, out of scope: unix sockets / pre-opened transports — none used by a test today
+    assert.deepStrictEqual(bypass, [], FAIL(`a process / socket binding bypasses the wrapped APIs:\n  ${bypass.join('\n  ')}`));
+    assert.deepStrictEqual(transport.filter((t) => !REVIEWED_TRANSPORT.includes(t)), [], FAIL(`a NEW unix-socket / pre-opened-transport / custom createConnection use (outside the egress boundary — review it):\n  ${transport.join('\n  ')}`));
+    ok(`static: ${files.length} test / tool sources — ${launches} child-launch call sites, all through the wrapped APIs (no process / socket binding bypass); 0 unix-socket / pre-opened-transport uses (residual, out of scope — any new one is RED)`);
+  }
+
+  // ── codex r2 P1-1c: no REAL credential in a test process — emulator-run scrubs every secret key name ──
+  {
+    const SE = require('../tools/secret-env');
+    const keys = SE.secretKeys();
+    assert.ok(['ULTRAMSG_TOKEN', 'ULTRAMSG_INSTANCE_ID', 'PIXELPAY_SECRET', 'PIXELPAY_GW_ACCESS_TOKEN', 'GOOGLE_APPLICATION_CREDENTIALS', 'VAPID_PRIVATE_KEY'].every((k) => keys.includes(k)), FAIL('the secret key set misses a reviewed key'));
+    const { childEnv } = require('../tools/emulator-run');
+    const fakeParent = { ...process.env, ULTRAMSG_TOKEN: 'r3-fake', PIXELPAY_SECRET: 'r3-fake', GOOGLE_APPLICATION_CREDENTIALS: '/tmp/r3-fake.json' };
+    const ce = childEnv(['database'], fakeParent);
+    assert.deepStrictEqual(SE.present(ce), [], FAIL(`emulator-run's suite env still holds secret key(s): ${SE.present(ce).join(', ')}`));
+    assert.deepStrictEqual(SE.present(process.env), [], FAIL(`this test process holds secret key(s): ${SE.present(process.env).join(', ')}`));
+    const contract = fs.readdirSync(__dirname).filter((f) => /\.emulator\.test\.(c?js|mjs)$/.test(f));
+    const missing = contract.filter((f) => !/require\('\.\/_no-secrets'\)/.test(fs.readFileSync(path.join(__dirname, f), 'utf8')));
+    assert.deepStrictEqual(missing, [], FAIL(`R3 runners that do not assert the absence of real credentials: ${missing.join(', ')}`));
+    ok(`no real credential: ${keys.length} secret key names (reviewed ∪ .env NAMES) — emulator-run's suite env drops them (fake parent values removed), this process holds none, all ${contract.length} R3 emulator runners assert it before setting any fake`);
+  }
+
   // wiring: emulator-run preloads the guard FIRST into every suite step; every R3 contract entry in npm test preloads it
   const er = fs.readFileSync(path.join(__dirname, '..', 'tools', 'emulator-run.js'), 'utf8');
   assert.ok(/const INNER = injectCounter\(rest\[0\], EGRESS, COUNTER, NULL_GUARD\);/.test(er) && /const EGRESS = path\.join\(ROOT, 'tools', 'egress-guard\.js'\);/.test(er), FAIL('emulator-run does not preload tools/egress-guard.js first'));

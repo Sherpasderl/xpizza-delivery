@@ -7,6 +7,7 @@
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process (before any fake is set)
 require('../test/_emulator-required')('database', 'firestore');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 
@@ -200,10 +201,22 @@ try {
   for (let i = 0; i < 60 && !khost.subs.length; i++) await new Promise((r) => setTimeout(r, 25));
   await khost.barrier();
   await settled(kds, khost, HORIZON.kds, 'kds.ticket');
+  // §5b clocks (codex r2 P2): the ticket's elapsed timer is checked against REAL time — the writer's created_at to now
+  // (the KDS runs on the real clock) — not merely blanked as a periodic part
+  const clockCheck = (label) => {
+    const el = kds.doc.getElementById(`elapsed-${oid}`); const m = el && /^(\d+):(\d{2})$/.exec(el.textContent.trim());
+    const shown = m ? Number(m[1]) * 60 + Number(m[2]) : NaN; const real = Math.floor((Date.now() - persisted.created_at) / 1000);
+    assert.ok(Number.isFinite(shown) && shown <= real + 1 && shown >= real - 2, FAIL('clock', `${label}: the ticket timer shows ${el && el.textContent} (${shown} s) but ${real} s have elapsed since created_at (real clock)`));
+    return `${el.textContent} ≈ ${real} s`;
+  };
   const ticket1 = OBSERVABLES['kds.ticket'].capture({ doc: kds.doc, orderId: oid });
+  const clk1 = clockCheck('ticket');
   // §5b stability for the ticket: one more horizon; the ticket is byte-identical (no undeclared effect)
   await settled(kds, khost, HORIZON.kds, 'kds.ticket-stability');
   const ticket2 = OBSERVABLES['kds.ticket'].capture({ doc: kds.doc, orderId: oid });
+  const clk2 = clockCheck('ticket-stability');
+  // negative (codex r2 P2): a ticket timer frozen at a constant (99:59) is RED on the live page
+  { const el = kds.doc.getElementById(`elapsed-${oid}`); const was = el.textContent; el.textContent = '99:59'; assert.throws(() => clockCheck('negative'), /the ticket timer shows 99:59/, FAIL('negative', 'a frozen 99:59 ticket timer passed the real-time clock check')); el.textContent = was; }
   // the only parts a declared PERIODIC may change (contract/timer-bounds.json periodic.mayChangeSelectors — e.g. the 1 s
   // elapsed timer text) are blanked; anything else that moved is an undeclared effect
   const KDS_PERIODIC_SELS = TB.periodic.filter((x) => x.key.startsWith('xpizza-kitchen/')).flatMap((x) => x.mayChangeSelectors || []);
@@ -214,7 +227,7 @@ try {
   snaps['kds.ticket'] = { ...ticket1, ...OBSERVABLES['kds.ticket'].captureScheduled({ doc: kds.doc }) };
   const kdsTickets = ticket1.boardIds.length;
   assert.deepStrictEqual(steps, S1.steps, FAIL('steps', `executed ${JSON.stringify(steps)} ≠ the scenario definition ${JSON.stringify(S1.steps)}`));
-  ok(`the executed steps equal the S1 definition (${steps.length}); every observation settled clean (${observations}); the KDS issued ${kdsHttp.length} HTTP request(s); recorded KDS events ${kdsEvents.length} (${[...new Set(kdsEvents.map((e) => e.target))].join(', ')}), kitchen actions ${kdsActions().length}`);
+  ok(`the executed steps equal the S1 definition (${steps.length}); every observation settled clean (${observations}); the KDS issued ${kdsHttp.length} HTTP request(s); recorded KDS events ${kdsEvents.length} (${[...new Set(kdsEvents.map((e) => e.target))].join(', ')}), kitchen actions ${kdsActions().length}; the ticket timer agrees with real time (${clk1}; after a further horizon ${clk2})`);
 
   // ── GATE A over the enforced slice ──
   const t0 = Date.now();

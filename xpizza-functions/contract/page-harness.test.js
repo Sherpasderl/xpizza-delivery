@@ -248,6 +248,21 @@ const slowFetch = (log) => async (u, o) => { log.push({ u: String(u), started: t
     assert.ok(s === false && o === '-' && xhr === 'error' && refused.some((r) => /^xhr https:\/\/api\.ultramsg\.com/.test(r)) && refused.some((r) => /inserted script/.test(r)), FAIL(`xhr / inserted script (${JSON.stringify({ s, o, xhr, refused })})`));
     ok('XHR is refused + recorded (the request fails with an error event, nothing is sent); a script inserted after boot never runs, is recorded, and settle() is false');
   }
+  // codex P1-a r2 P1-2 probe: a harness-executed script creates a frame and arms a timer ON THE FRAME's window that rewrites
+  // the parent's total — the frame window's timers are virtual: settle() fires it (awaited, deterministic), real time later
+  // changes nothing; rAF / interval / idle on a frame window are virtual too
+  {
+    const html = `<!doctype html><html><body><div id="total">L 340.00</div><script>
+      const fr = document.createElement('iframe'); document.body.appendChild(fr);
+      fr.contentWindow.setTimeout(() => { document.getElementById('total').textContent = 'L 999.00'; }, 120);
+      let n = 0; const iv = fr.contentWindow.setInterval(() => { n += 1; if (n === 3) { fr.contentWindow.clearInterval(iv); window.__ivDone = n; } }, 50);
+      fr.contentWindow.requestAnimationFrame(() => { window.__raf = true; });</script></body></html>`;
+    const p = await bootPage('xpizza-functions', { html });
+    const st = await p.settle(10000); const t1 = p.doc.getElementById('total').textContent; const iv = p.win.__ivDone; const raf = p.win.__raf; const inflight = p.inflight();
+    await new Promise((r) => setTimeout(r, 300)); const t2 = p.doc.getElementById('total').textContent; const errs = p.errors.slice(); p.close();
+    assert.ok(st === true && t1 === 'L 999.00' && t2 === 'L 999.00' && iv === 3 && raf === true && inflight === 0 && errs.length === 0, FAIL(`frame-window timers (${JSON.stringify({ st, t1, t2, iv, raf, inflight, errs })})`));
+    ok('codex r2 frame-timer probe: a timer armed on a FRAME window is virtual — settle() fires it (the parent total is L 999.00 when settle returns, nothing changes on real time after); frame interval / rAF are virtual too');
+  }
   // P1-a: the DECLARED WALL-CLOCK ANCHOR — default off (the page reads the real clock); with an anchor the page's Date (no-arg
   // construction, Date.now(), Date()) reads anchor + real elapsed, explicit-argument construction is untouched, instanceof holds
   {

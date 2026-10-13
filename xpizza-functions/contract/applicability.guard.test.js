@@ -73,8 +73,17 @@ const x0 = doc.exclusions[0];
   assert.ok(mutated !== real, FAIL('the RENDERERS probe text moved'));
   const st = x.guards.map((g) => AP.guardStale(g, { readFile: (f) => (f === 'xpizza-functions/whatsapp.js' ? mutated : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8')) })).filter(Boolean);
   assert.ok(st.length > 0, FAIL('re-pointing RENDERERS.orderReceived did not invalidate the renderPickupReceived exclusion'));
+  // codex r2 P1-4: re-pointing the DISPATCHER (renderTemplate's selection → RENDERERS.pickupReceived) invalidates it too
+  const { sources } = require('./census');
+  const u = sources().find((x) => x.file === 'xpizza-functions/whatsapp.js');
+  const disp = x.guards.find((g) => g.kind === 'S' && g.scope === 'xpizza-functions/whatsapp.js#renderTemplate');
+  assert.ok(disp, FAIL('the renderPickupReceived exclusion does not bind the dispatcher whatsapp.js#renderTemplate'));
+  const mutatedU = { ...u, code: u.code.replace('const r = RENDERERS[msg.name];', 'const r = RENDERERS.pickupReceived;') };
+  assert.ok(mutatedU.code !== u.code, FAIL('the dispatcher probe text moved'));
+  const st2 = AP.guardStale(disp, { units: sources().map((x) => (x.file === u.file ? mutatedU : x)) });
+  assert.ok(st2, FAIL('re-pointing renderTemplate\'s selection did not invalidate the renderPickupReceived exclusion'));
 }
-ok('negative: a stale exclusion (call-site text / scope / scenario definition / GUARD changed — codex\'s RENDERERS re-point) → stale → the cell is required again; an exclusion without a guard is malformed');
+ok('negative: a stale exclusion (call-site text / scope / scenario definition / GUARD changed — codex\'s RENDERERS table AND dispatcher re-points) → stale → the cell is required again; an exclusion without a guard is malformed');
 {
   const ev = { intent: { fulfil: 'delivery', pay: 'cash' }, persisted: { order_type: 'pickup', payment_method: 'cash', status: 'new' }, steps: [], routed: [], kdsActions: [], kdsHttp: [], kdsTickets: 1 };
   const x = { preconditions: ['delivery', 'status-new'] };

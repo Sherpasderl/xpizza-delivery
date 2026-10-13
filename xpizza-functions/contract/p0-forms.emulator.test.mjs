@@ -6,6 +6,7 @@ import assert from 'node:assert';
 import { createRequire } from 'node:module';
 import { loadForm, settle, closeAll } from '../../form-harness.mjs';
 const require = createRequire(import.meta.url);
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process (before any fake is set)
 require('../test/_emulator-required')('database', 'firestore');
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-xpizza';
 // the order-intake bearer the FORM sends is the constant in its own (public) page source; production's server secret

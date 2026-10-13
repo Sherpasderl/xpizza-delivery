@@ -1,4 +1,5 @@
 'use strict';
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process
 // R3 P0 — THE WRITE GATE + MATCHER acceptance cells (PLAN-R3 rev 4.1 §2b.1–§2b.4). Nothing RUNS here: every DB trigger
 // discovered from index.js is matched and RECORDED, and the formed event is inspected through the scheduler's tap.
 // Run: PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:r3-p0-gate

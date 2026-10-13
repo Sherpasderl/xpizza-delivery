@@ -1,4 +1,5 @@
 'use strict';
+require('./_no-secrets');   // R3 P1-a (codex r2 P1-1c): no real credential in a test process
 // R3 P0 — PAGE BOOT R1 KDS, R2 dispatch, R3 dispatch-lite, R4 driver, R7 dashboard, R8 tracker (PLAN-R3 rev 4.1 §5a, §9):
 // the REAL pages in jsdom over the §5a adapter, fed ONLY by real writers (createOrder, chargeOnlineOrder, the real
 // auto-assigner through the scheduler). Each page: boots with no script error, opens its subscriptions, renders the

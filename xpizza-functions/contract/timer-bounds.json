@@ -144,6 +144,51 @@
    "reachesAsserted": false,
    "reason": "loadAvailability every 60 s refreshes sold-out marks on the MENU; the run's availability is a static fixture and the menu is not an asserted output in R13 / R14 / R15",
    "sha": "e14b812ecb24d1e938a33f4126a56ca09b932bd6ef630a487c695a2f12809629"
+  },
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#check>anon:setT#0",
+   "line": 231,
+   "delaySrc": "VERSION_TIMEOUT_MS",
+   "bound": 8000,
+   "reachesAsserted": false,
+   "reason": "the deploy-version check timeout (var VERSION_TIMEOUT_MS = 8000): it only finishes the version check; no order output",
+   "sha": "affd56aff0129e69066dfa42f860b02ff5de5cd636457a7981bd8b2b73a23bbc"
+  },
+  {
+   "key": "xpizza-kitchen/sherpa-client.js#heartbeat:setT#1",
+   "line": 349,
+   "delaySrc": "HEARTBEAT_TIMEOUT_MS",
+   "bound": 8000,
+   "reachesAsserted": false,
+   "reason": "the heartbeat request abort timeout (var HEARTBEAT_TIMEOUT_MS = 8000): diagnostics only; no order output",
+   "sha": "e8055dcdf53249a21ca5228c1d2a8fe19f080ebd08c3156e7cb3bac332e85bc9"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#check>anon:setT#0",
+   "line": 231,
+   "delaySrc": "VERSION_TIMEOUT_MS",
+   "bound": 8000,
+   "reachesAsserted": false,
+   "reason": "the deploy-version check timeout (var VERSION_TIMEOUT_MS = 8000): it only finishes the version check; no order output",
+   "sha": "affd56aff0129e69066dfa42f860b02ff5de5cd636457a7981bd8b2b73a23bbc"
+  },
+  {
+   "key": "xpizza-orders/sherpa-client.js#heartbeat:setT#1",
+   "line": 349,
+   "delaySrc": "HEARTBEAT_TIMEOUT_MS",
+   "bound": 8000,
+   "reachesAsserted": false,
+   "reason": "the heartbeat request abort timeout (var HEARTBEAT_TIMEOUT_MS = 8000): diagnostics only; no order output",
+   "sha": "e8055dcdf53249a21ca5228c1d2a8fe19f080ebd08c3156e7cb3bac332e85bc9"
+  },
+  {
+   "key": "xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "line": 4736,
+   "delaySrc": "attempt*1500",
+   "bound": 3000,
+   "reachesAsserted": true,
+   "reason": "the createOrder retry BACKOFF (attempt*1500 with attempt ≤ MAX_TRIES − 1 = 2 → ≤ 3000 ms): ON the asserted submit path, only after a failed attempt (S1’s first createOrder answers 200); bound 3000 ms is within the 10 s horizon",
+   "sha": "de6c6db54ecf5d11861a4f726e1404d6942127f9803bb48080293b05be0098f3"
   }
  ],
  "chains": [
@@ -524,6 +569,33 @@
    "reachesAsserted": false,
    "reason": "the order-form map init retries until Maps is ready (the maps boundary double is ready at boot); it touches only the map preview / pin, whose coordinates are asserted from persisted lat/lng",
    "sha": "1c45c6c6d5dec9666e24f73fc6b232091513ce646f1fafdc29ef84f4ae445a01"
+  },
+  {
+   "key": "await@xpizza-orders/index.html<script@2>:3875 → xpizza-orders/index.html<script@2>#processPayment>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#processPixelPay>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0",
+   "cumulativeBoundMs": 6000,
+   "repeats": false,
+   "repeatLimit": 3,
+   "reachesAsserted": true,
+   "reason": "processPayment’s awaited steps: the address-pick cap (only while an address pick is in flight — not on S1’s GPS-OK path), then submitOrder’s token race (≤ 1500 ms) and retry backoff (≤ 1500 + 3000 ms, MAX_TRIES 3); the demo-branch and PixelPay steps are not on the cash path. On S1’s path the bound is 6000 ms, within the 10 s horizon",
+   "sha": "9ca9222901cc40dfd5f6822a0063cc3d5e028a95237bfa6f6a73d5b58608bab1"
+  },
+  {
+   "key": "await@xpizza-orders/index.html<script@2>:4387 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#handlePaymentReturn>anon:setTimeout#1",
+   "cumulativeBoundMs": null,
+   "repeats": true,
+   "repeatLimit": "unbounded",
+   "reachesAsserted": false,
+   "reason": "handlePaymentReturn’s status poll (5 s fetch timeout + 2.5 s waits until a deadline): the ONLINE payment return only (precondition not-online-payment) — never on S1",
+   "sha": "4041af37b47cd2cf537d43e6a542b819cb2df37d3a4769277f8067cbad44d748"
+  },
+  {
+   "key": "await@xpizza-orders/index.html<script@2>:4562 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#0 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#1 → xpizza-orders/index.html<script@2>#submitOrder>anon:setTimeout#2",
+   "cumulativeBoundMs": 6000,
+   "repeats": true,
+   "repeatLimit": 3,
+   "reachesAsserted": true,
+   "reason": "submitOrder’s awaited steps on the real submit: the ID-token race (≤ 1500 ms) then the retry backoff (1500, 3000 ms; MAX_TRIES 3); the 1500 ms demo sleep is the unconfigured-endpoint branch only. Bound 6000 ms ≤ the horizon; S1’s first attempt succeeds",
+   "sha": "3c146d0ad91f91544d8fc3140699e7381809382286338c6bbd021b47e7b33d7f"
   }
  ],
  "periodic": [

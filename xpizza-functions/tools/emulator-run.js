@@ -100,6 +100,9 @@ function childEnv(services, parentEnv, run = null) {
   // Inherited run identity is never trusted: a nested or stale value would name someone else's slot. An inherited
   // FIREBASE_CONFIG is scrubbed too (codex R1-build P2-6): the CLI derives the run's own from --project for the suite.
   for (const v of [ALLOC.RUN_VAR, ALLOC.OFFSET_VAR, EE.SERVICES_VAR, EE.DEAD_VAR, 'FIREBASE_CONFIG', 'XPIZZA_EMU_FS_RULES', 'XPIZZA_EMU_STARTED_FILE']) delete env[v];
+  // R3 P1-a (codex r2 P1-1c): a test process never holds a REAL credential — every secret key (tools/secret-env.js: the
+  // reviewed list ∪ the functions .env* key NAMES) is removed from the suite's environment; suites set their own fakes
+  require('./secret-env').scrub(env);
   if (run) {
     env[ALLOC.RUN_VAR] = ALLOC.formatMarker(run);
     env[ALLOC.OFFSET_VAR] = String(run.slot * 10);

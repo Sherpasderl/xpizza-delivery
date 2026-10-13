@@ -12204,7 +12204,7 @@
     "id": "r3p1-16",
     "slice": "r3p1",
     "file": "contract/timer-bounds.js",
-    "from": "    if (e.reachesAsserted && (s.delay == null || s.delay > doc.pages[s.scope].horizonMs)) p.push(",
+    "from": "    if (e.reachesAsserted && (eff == null || eff > doc.pages[s.scope].horizonMs)) p.push(",
     "to": "    if (false) p.push(",
     "label": "a long / unresolved timer that reaches an asserted output is excused by its declaration",
     "kills_with": [
@@ -12266,8 +12266,8 @@
     "id": "r3p1-20",
     "slice": "r3p1",
     "file": "tools/egress-guard.js",
-    "from": "    if (!path && !isLoopbackHost(host)) {",
-    "to": "    if (false) {",
+    "from": "      if (!isLoopbackHost(host)) {\n        const e = refuse('connect', `${host}:${opts.port}`);",
+    "to": "      if (false) {\n        const e = refuse('connect', `${host}:${opts.port}`);",
     "label": "egress: a non-loopback connection is no longer refused at the process boundary",
     "kills_with": [
       "not refused"
@@ -12449,6 +12449,185 @@
       "-r",
       "./tools/egress-guard.js",
       "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-32",
+    "slice": "r3p1",
+    "file": "tools/egress-guard.js",
+    "from": "      const bad = list.find((a) => !isLoopbackAddress(a));",
+    "to": "      const bad = null;",
+    "label": "egress: the RESOLVED destination of a loopback name is not checked (custom lookup → external passes)",
+    "kills_with": [
+      "localhost with a custom lookup → 192.0.2.1 was not refused"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-33",
+    "slice": "r3p1",
+    "file": "tools/egress-guard.js",
+    "from": "      if (b.slice(0, 10).every((x) => x === 0) && b[10] === 255 && b[11] === 255) return b[12] === 127;     // ::ffff:a.b.c.d",
+    "to": "      if (false) return b[12] === 127;     // ::ffff:a.b.c.d",
+    "label": "egress: IPv4-mapped IPv6 loopback (::ffff:7f00:1) not recognised",
+    "kills_with": [
+      "IPv6 / IPv4 normalization"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-34",
+    "slice": "r3p1",
+    "file": "tools/egress-guard.js",
+    "from": "      if (i >= 0) a[i] = { ...a[i], env: withGuard(a[i].env) };",
+    "to": "      if (i >= 0) a[i] = { ...a[i] };",
+    "label": "egress: a child launched with a REPLACED env escapes the guard",
+    "kills_with": [
+      "a descendant escaped the guard"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-35",
+    "slice": "r3p1",
+    "file": "tools/egress-guard.js",
+    "from": "          if (Array.isArray(o.execArgv) && !o.execArgv.includes(GUARD)) o.execArgv = [...o.execArgv, '--require', GUARD];\n          if (o.env && typeof o.env === 'object' && o.env !== wt.SHARE_ENV) o.env = withGuard(o.env);",
+    "to": "          void 0;",
+    "label": "egress: the Worker wrapper adds nothing (a Worker with execArgv: [] AND an explicit env escapes)",
+    "kills_with": [
+      "a descendant escaped the guard"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-36",
+    "slice": "r3p1",
+    "file": "tools/emulator-run.js",
+    "from": "  require('./secret-env').scrub(env);",
+    "to": "  void 0;",
+    "label": "a suite process inherits REAL credentials (emulator-run no longer scrubs)",
+    "kills_with": [
+      "emulator-run's suite env still holds secret key(s)"
+    ],
+    "command": [
+      "node",
+      "-r",
+      "./tools/egress-guard.js",
+      "contract/egress.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-37",
+    "slice": "r3p1",
+    "file": "contract/page-harness.js",
+    "from": "    if (w !== win) { try { virtualizeTimers(w); }",
+    "to": "    if (false) { try { virtualizeTimers(w); }",
+    "label": "harness: a FRAME window's timers run on real time (untracked by settle)",
+    "kills_with": [
+      "frame-window timers"
+    ],
+    "command": [
+      "node",
+      "--experimental-vm-modules",
+      "contract/page-harness.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-38",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "else if (n.callee.type === 'MemberExpression' && !n.callee.computed && methodDefs.has(n.callee.property.name)) calls.push(...methodDefs.get(n.callee.property.name));",
+    "to": "else if (false) calls.push(...methodDefs.get(n.callee.property.name));",
+    "label": "C1: a timer chain continued through object METHODS is not followed",
+    "kills_with": [
+      "the method-chained timers were not RED",
+      "stale chain entry"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-39",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "        if (awaits.length >= 2 || awaits.some((a) => a.inLoop)) {",
+    "to": "        if (false) {",
+    "label": "C1: sequential AWAITED sleeps in an unreturned async function are not a chain",
+    "kills_with": [
+      "the unreturned awaited-sleeps chain was not RED",
+      "stale chain entry"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-40",
+    "slice": "r3p1",
+    "file": "contract/timer-bounds.js",
+    "from": "    const effBound = c.cumulative == null ? e.cumulativeBoundMs : Math.max(c.cumulative, e.cumulativeBoundMs == null ? 0 : e.cumulativeBoundMs);",
+    "to": "    const effBound = e.cumulativeBoundMs;",
+    "label": "C1: a declared chain bound overrides (is trusted below) the computed bound",
+    "kills_with": [
+      "a contradictory declaration cleared the 27 s chain"
+    ],
+    "command": [
+      "node",
+      "contract/timer-bounds.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-41",
+    "slice": "r3p1",
+    "file": "contract/applicability.js",
+    "from": "  if (gb.kind === 'S') { const t = scopeText(gb.scope, units); if (t == null) return `guard scope ${gb.scope} is gone`; if (!t.includes(gb.text)) return `guard text no longer in ${gb.scope}: \"${gb.text}\"`; if (sha(t) !== gb.scopeSha) return `guard scope ${gb.scope} changed`; return null; }",
+    "to": "  if (gb.kind === 'S') { return null; }",
+    "label": "exclusions: a changed guard / DISPATCHER scope no longer invalidates the exclusion",
+    "kills_with": [
+      "re-pointing renderTemplate's selection did not invalidate"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-42",
+    "slice": "r3p1",
+    "file": "contract/p1a-journey.emulator.test.mjs",
+    "from": "    assert.ok(Number.isFinite(shown) && shown <= real + 1 && shown >= real - 2, FAIL('clock',",
+    "to": "    assert.ok(Number.isFinite(shown), FAIL('clock',",
+    "label": "§5b clocks: the ticket timer is not compared against real time (a frozen 99:59 passes)",
+    "kills_with": [
+      "a frozen 99:59 ticket timer passed"
+    ],
+    "command": [
+      "npm",
+      "run",
+      "test:r3-p1a-journey"
     ]
   }
 ]
