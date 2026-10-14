@@ -56,9 +56,23 @@
  *  - PATTERNS: a pure key path destructures (nested Picks); array / rest / computed / nested-parameter leaves → unmodelled.
  *  - CALLEES: `x.update` and `x['update']` alike; a ref's write method used other than as a direct call (`.call` /
  *    `.bind` / extracted) or named by a non-literal key → opaque.
- * The EMPTY-OK notes on the remaining empty answers document why each is a proven resolved-empty; the guarantee is the
- * SEMANTIC corpus in census.negative.test.js (every handled kind and a sample of unhandled ones, on a real writer, must
- * surface its field or an opaque). */
+ * The guarantee is the SEMANTIC corpus in census.negative.test.js (every handled kind and a sample of unhandled ones, on a
+ * real writer, must surface its field or an opaque).
+ *
+ * B4 r5 — TYPED EMPTY (advisor ruling on codex R3-B4 r5: "unknown" may never be ABSENCE):
+ *  - ONE CHOKE POINT (entriesOf): every resolved value — a binding's value, a property lookup, a spread, a builder's return —
+ *    passes through it. An answer with no entries is OPAQUE (`no-provenance-<kind>`); "this writes no field" is only the
+ *    explicit EMPTY entry ({ k:'empty', why }), produced where emptiness is PROVEN (a primitive, `{}`, an absent argument,
+ *    a declared-and-never-assigned variable, a cycle whose union the outer frame already holds). A missing property of a
+ *    resolved object is therefore opaque too.
+ *  - SINKS: `db['ref'](…)` / `['child']` resolve like their dotted forms; a conditional / logical / sequence receiver is the
+ *    UNION of its branches (segment-wise: differing segments → '*'); a snapshot `.ref` is a fully dynamic ref; a write-method
+ *    call whose receiver is REF-LIKE but does not resolve is an OPAQUE write (`unresolved-ref-receiver`), never skipped.
+ *  - BINDINGS: every binding has a modelled source or an opaque one — for-of / for-in (non-key) / catch parameters are
+ *    unmodelled; a DEFAULT (`{ a: r = d }`, `(r = d)`) adds d to the binding's values (the union); a nested default is
+ *    unmodelled.
+ *  - MEMBER BASES: `(c ? a : b).f = v` lands on each branch; any base we cannot follow (and that is not a global / `this`,
+ *    whose reads are already opaque at a write) is an OPAQUE write on the enclosing function (`unmodelled-member-base`). */
 
 const WRITE_METHODS = new Set(['set', 'update', 'push', 'setWithPriority', 'transaction', 'remove']);
 const IDENT = /^[A-Za-z_$][\w$]*$/;
@@ -103,7 +117,11 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   function patternLeaves(pat, path = [], out = []) {
     if (!pat) return out;
     if (pat.type === 'Identifier' || pat.type === 'MemberExpression') { out.push({ node: pat, path }); return out; }
-    if (pat.type === 'AssignmentPattern') return patternLeaves(pat.left, path, out);   // a default: the value may also be the default (unmodelled below if nested)
+    // r5: a DEFAULT on a leaf — the value may also be the default (`def`, unioned by the binder); on a nested pattern → unmodelled
+    if (pat.type === 'AssignmentPattern') {
+      if (pat.left.type === 'Identifier' || pat.left.type === 'MemberExpression') { out.push({ node: pat.left, path, def: pat.right }); return out; }
+      return patternLeaves(pat.left, null, out);
+    }
     if (pat.type === 'ObjectPattern') {
       for (const q of pat.properties) {
         if (q.type === 'RestElement') { patternLeaves(q.argument, null, out); continue; }
@@ -133,13 +151,15 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
         sc = { node, parent: scope, vars: new Map(), u, fnNode: node };
         node.params.forEach((p, i) => {
           const id = p.type === 'Identifier' ? p : (p.type === 'AssignmentPattern' && p.left.type === 'Identifier' ? p.left : null);
-          if (id) declare(sc, id.name, { kind: 'param', index: i, fnNode: node, declNode: id });
+          // r5: a default (`(r = d)`) is one of the parameter's values (the union with the caller's argument)
+          if (id) declare(sc, id.name, { kind: 'param', index: i, fnNode: node, declNode: id, init: p.type === 'AssignmentPattern' ? p.right : null });
           // a DESTRUCTURED parameter: `({ a, b: c })` — each name is the caller's argument property (propKey); every other
           // pattern leaf (nested / array / rest / computed) is UNMODELLED (r4 default-deny)
           if (!id) for (const lf of patternLeaves(p.type === 'AssignmentPattern' ? p.left : p)) {
             if (lf.node.type !== 'Identifier') continue;   // EMPTY-OK: a parameter pattern has no member targets
-            if (lf.path && lf.path.length === 1) { const b = declare(sc, lf.node.name, { kind: 'param', index: i, fnNode: node, declNode: lf.node }); b.propKey = lf.path[0]; }
+            if (lf.path && lf.path.length === 1) { const b = declare(sc, lf.node.name, { kind: 'param', index: i, fnNode: node, declNode: lf.node, init: lf.def || null }); b.propKey = lf.path[0]; }
             else declare(sc, lf.node.name, { kind: 'var', init: unmodelled(`param-pattern`, lf.node, u), declNode: lf.node });
+            if (p.type === 'AssignmentPattern') declare(sc, lf.node.name, { kind: 'var', init: unmodelled('param-pattern-default', lf.node, u) });
           }
         });
         const nm = FN.get(node);
@@ -151,15 +171,24 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
         const ko = { type: 'KeysOf', source: node.right, start: node.right.start, end: node.right.end, loc: node.right.loc }; FILE.set(ko, u); SCOPE.set(ko, sc);
         declare(sc, node.left.declarations[0].id.name, { kind: 'var', init: ko, declNode: node.left.declarations[0] });
       }
-      if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier') declare(sc, node.id.name, { kind: 'var', init: node.init, declNode: node });
+      // r5: every binding has a SOURCE — a for-of (or a non-key for-in) binding is unmodelled; a declared, never-initialised
+      // variable is explicitly undefined (proven empty; its assignments add its other values)
+      const loop = node.type === 'VariableDeclarator' && parent && PARENT.get(parent);
+      const loopLeft = !!(loop && /^For(Of|In)Statement$/.test(loop.type) && loop.left === parent);
+      if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && !(loopLeft && loop.type === 'ForInStatement')) {
+        const b = declare(sc, node.id.name, { kind: 'var', init: node.init || (loopLeft ? unmodelled(`${loop.type === 'ForOfStatement' ? 'for-of' : 'for-in'}-binding`, node.id, u) : null), declNode: node });
+        if (!node.init && !loopLeft) b.declaredUndef = true;   // not an init: aliases (`let r; r = x`) stay single-valued
+      }
+      if (node.type === 'CatchClause' && node.param) for (const lf of patternLeaves(node.param)) if (lf.node.type === 'Identifier') declare(sc, lf.node.name, { kind: 'var', init: unmodelled('catch-param', lf.node, u), declNode: node });
       // `const { a, b: c } = src` — a var whose value is src's property
       // `const { a, b: { c } } = src` — a leaf on a pure key path is src's property (nested Picks); array / rest / computed
       // leaves are UNMODELLED (r4 default-deny); a pattern with no init (for-of / catch) is unmodelled too
       if (node.type === 'VariableDeclarator' && node.id.type !== 'Identifier') for (const lf of patternLeaves(node.id)) {
         if (lf.node.type !== 'Identifier') continue;   // EMPTY-OK: a declaration pattern has no member targets
         let init = null;
-        if (node.init && lf.path && lf.path.length) { init = node.init; for (const k of lf.path) { const pick = { type: 'Pick', source: init, key: k, start: lf.node.start, end: lf.node.end, loc: lf.node.loc }; FILE.set(pick, u); SCOPE.set(pick, sc); init = pick; } }
+        if (node.init && lf.path && lf.path.length) { init = node.init; for (const k of lf.path) { const pick = { type: 'Pick', source: init, key: k, start: lf.node.start, end: lf.node.end, loc: lf.node.loc }; FILE.set(pick, u); SCOPE.set(pick, sc); init = pick; } if (lf.def) init.hasDefault = true; }
         declare(sc, lf.node.name, { kind: 'var', init: init || unmodelled('declaration-pattern', lf.node, u), declNode: node });
+        if (lf.def) declare(sc, lf.node.name, { kind: 'var', init: lf.def });   // r5: the default is one of its values
       }
       if (node.type === 'ReturnStatement' && node.argument && sc.fnNode) { const l = RETURNS.get(sc.fnNode) || []; l.push(node.argument); RETURNS.set(sc.fnNode, l); }
       if (/Function/.test(node.type) && node.expression && node.body && sc.fnNode === node) { const l = RETURNS.get(node) || []; l.push(node.body); RETURNS.set(node, l); }
@@ -209,6 +238,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   const callsOf = (fnNode) => CALLSITES.get(fnNode) || [];
   const srcOf = (n) => { const u = FILE.get(n); return n && u ? u.code.slice(n.start, n.end).replace(/\s+/g, ' ').slice(0, 80) : ''; };
   const fnOf = (n) => FN.get(n) || '<top>';
+  const record = (at, field, how) => { const u = FILE.get(at); writes.push({ file: u.file, fn: fnOf(at), field, how, line: at.loc.start.line }); };
+  const opaqueW = (at, how, detail) => { const u = FILE.get(at); opaqueWrites.push({ file: u.file, fn: fnOf(at), how, line: at.loc.start.line, ...(detail ? { detail } : {}) }); };
 
   // a KEY expression → its static string, or null (dynamic). Advisor ruling (r2, amending r1): a key that CONSTANT-FOLDS
   // exactly to a literal — a single-init const (`const k = 'lat'`), a literal concatenation ('l' + 'at'), a template with
@@ -291,8 +322,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     if (!n || depth > 4) return null;   // EMPTY-OK: no ref signature → never equal to a write's → the snapshot is OPAQUE at writeAt
     if (n.type === 'AwaitExpression') return refSig(n.argument, depth + 1);
     if (n.type === 'Identifier') { const b = resolve(n.name, n); if (b && b.kind === 'var' && b.inits.length === 1) return refSig(b.inits[0], depth + 1); return b ? `param:${b.name}@${b.fnNode ? b.fnNode.start : 0}` : null; }
-    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed) {
-      const m = n.callee.property.name;
+    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && methodName(n.callee)) {
+      const m = methodName(n.callee);
       if (m === 'ref') return `ref:${n.arguments[0] ? srcOf(n.arguments[0]).replace(/\s+/g, '') : ''}`;
       if (m === 'child') { const b = refSig(n.callee.object, depth + 1); return b && `${b}/child:${srcOf(n.arguments[0]).replace(/\s+/g, '')}`; }
     }
@@ -316,14 +347,31 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
 
   // a member ASSIGNMENT target: a contribution onto its tracked root; a root we cannot track (a call result, `this`, …)
   // marks what that call may return as mutated out of view (heap) — never a silent drop
-  function assignMember(target, val, at) {
+  // r5 (d): a base that is a conditional / logical / sequence lands on each branch; any other base we cannot follow is an
+  // OPAQUE write on the enclosing function — except a global or `this`, whose every read is already opaque at a write
+  function assignMember(target, val, at, depth = 0) {
     const r = rootOf(target);
     if (r && r.steps.length) { r.binding.contribs.push({ id: ++CID, steps: r.steps, value: val, at }); return; }
-    let base = target; while (base && base.type === 'MemberExpression') base = base.object;
+    const chain = []; let base = target; while (base && base.type === 'MemberExpression') { chain.unshift(base); base = base.object; }
     while (base && (base.type === 'AwaitExpression' || base.type === 'ParenthesizedExpression')) base = base.argument || base.expression;
-    if (base && base.type === 'CallExpression') for (const f of fnsFor(base)) for (const ret of RETURNS.get(f) || []) {
-      if (ret.type === 'Identifier') { const b = resolve(ret.name, ret); if (b) b.heap = b.heap || 'mutated-via-call-result'; }
+    const branches = !base ? [] : base.type === 'ConditionalExpression' ? [base.consequent, base.alternate] : base.type === 'LogicalExpression' ? [base.left, base.right]
+      : base.type === 'SequenceExpression' ? [base.expressions[base.expressions.length - 1]] : base.type === 'AssignmentExpression' && base.operator === '=' ? [base.left] : null;
+    if (branches && depth < 6) {
+      for (const br of branches) { let t = br; for (const m of chain) t = { type: 'MemberExpression', object: t, property: m.property, computed: m.computed, start: m.start, end: m.end, loc: m.loc }; assignMember(t, val, at, depth + 1); }
+      return;
     }
+    if (base && base.type === 'CallExpression') {
+      const fns = fnsFor(base); let open = !fns.length;
+      for (const f of fns) for (const ret of RETURNS.get(f) || []) {
+        const rr = ret.type === 'Identifier' ? rootOf(ret) : null;
+        if (rr) rr.binding.heap = rr.binding.heap || 'mutated-via-call-result';
+        else if (!['Literal', 'TemplateLiteral', 'UnaryExpression', 'BinaryExpression'].includes(ret.type)) open = true;
+      }
+      if (open) opaqueW(at, 'unmodelled-member-base', srcOf(target));
+      return;
+    }
+    if (base && ((base.type === 'Identifier' && !resolve(base.name, base)) || base.type === 'ThisExpression' || base.type === 'Super')) return;   // a global / this: every read of it is opaque at a write
+    opaqueW(at, 'unmodelled-member-base', srcOf(target));
   }
 
   // ── contributions + escapes ─────────────────────────────────────────────────────────────────────────────────────
@@ -342,6 +390,12 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
           if (lf.node.type === 'Identifier') { const b = resolve(lf.node.name, lf.node); if (b && (b.kind === 'var' || b.kind === 'param')) b.inits.push(uv); }
           else if (lf.node.type === 'MemberExpression') assignMember(lf.node, uv, node);
         }
+      }
+      // r5: `for (x of …)` / `for (x.f in …)` with an existing target: each leaf receives an unmodelled value
+      if ((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && node.left.type !== 'VariableDeclaration') for (const lf of patternLeaves(node.left)) {
+        const uv = unmodelled(node.type === 'ForOfStatement' ? 'for-of-assign' : 'for-in-assign', lf.node, FILE.get(node));
+        if (lf.node.type === 'Identifier') { const b = resolve(lf.node.name, lf.node); if (b && (b.kind === 'var' || b.kind === 'param')) b.inits.push(uv); }
+        else if (lf.node.type === 'MemberExpression') assignMember(lf.node, uv, node);
       }
       // `x.f++` / `--x.f`: field f is written (its value unmodelled)
       if (node.type === 'UpdateExpression' && node.argument.type === 'MemberExpression') assignMember(node.argument, unmodelled('update-expression', node, FILE.get(node)), node);
@@ -434,17 +488,21 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     return out;
   }
   const MEMO = new Map(); const INPROG = new Set();
+  // r5 TYPED EMPTY: the explicit "writes no field" — produced only where emptiness is PROVEN
+  const EMPTY = (why) => ({ k: 'empty', why });
+  // r5 THE CHOKE POINT: every value's entries pass here; an answer with NO entries is OPAQUE (never absence)
   function entriesOf(n, env = null, depth = 0, seen = new Set()) {
-    if (!n) return [];   // EMPTY-OK: no expression (an absent value) writes no field
-    if (n.type === 'Virtual') return n.entries;
+    if (!n) return [{ k: 'unresolved', node: null, why: 'no-value' }];
+    if (n.type === 'Virtual') return n.entries.length ? n.entries : [{ k: 'unresolved', node: null, why: 'no-provenance-virtual' }];
     if (!env && MEMO.has(n)) return MEMO.get(n);
     const key = n;
     // r3 P1-4: an analysis LIMIT is never an empty answer
     if (depth > 24) return [{ k: 'unresolved', node: n, why: 'analysis-limit (depth > 24)' }];
-    if (INPROG.has(key)) return [];   // EMPTY-OK: a CYCLE — this node's entries are being computed by the frame that entered it
+    if (INPROG.has(key)) return [EMPTY('cycle')];   // the frame that entered this node holds its entries (the union)
     INPROG.add(key);
-    const r = entriesOf0(n, env, depth, seen);
+    const r0 = entriesOf0(n, env, depth, seen);
     INPROG.delete(key);
+    const r = Array.isArray(r0) && r0.length ? r0 : [{ k: 'unresolved', node: n, why: `no-provenance-${n.type}` }];
     if (!env && depth === 0) MEMO.set(n, r);
     return r;
   }
@@ -456,6 +514,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   function entriesOf0(n, env, depth, seen) {
     const d = depth + 1;
     if (n.type === 'ObjectExpression') {
+      if (!n.properties.length) return [EMPTY('empty-object')];
       // r4: EVERY property kind is kept — spread; init / shorthand / computed (its key folded or null → opaque at the
       // write); method / getter / setter (the key is a written field whatever its value); anything else → unmodelled
       return n.properties.map((p) => {
@@ -466,11 +525,11 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     }
     if (n.type === 'Unmodelled') return [{ k: 'unresolved', node: n.node, why: `unmodelled-${n.why}` }];
     if (n.type === 'Identifier') {
-      if (n.name === 'undefined' || n.name === 'NaN' || n.name === 'Infinity') return [];   // EMPTY-OK: a primitive (an updater's abort) writes no field — primitives (an updater's abort)
+      if ((n.name === 'undefined' || n.name === 'NaN' || n.name === 'Infinity') && !resolve(n.name, n)) return [EMPTY('primitive')];   // an updater's abort
       const b = resolve(n.name, n);
       if (!b || b.kind === 'fn') return [{ k: 'unresolved', node: n }];
       const sk = `${allBindings.indexOf(b)}@${env ? env.call.start : ''}`;
-      if (seen.has(sk)) return [];   // EMPTY-OK: this binding's entries are already in this same evaluation (union — nothing is lost)
+      if (seen.has(sk)) return [EMPTY('cycle')];   // this binding's entries are already in this same evaluation (the union)
       seen.add(sk); b.consumed = true;
       const own = contribEntries(b, env);
       // r2 P1-3: an object that escaped into the heap may be mutated out of view → its provenance is incomplete
@@ -482,16 +541,17 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
         for (let f = env; f; f = f.parent) {
           if (f.fnNode !== b.fnNode) continue;   // EMPTY-OK: a frame of another function — keep looking
           const a = argOf(f.call, b);
-          let ents = a ? entriesOf(a, f.parent, d, seen) : [];   // EMPTY-OK: an absent argument is undefined (no field)
+          let ents = a ? entriesOf(a, f.parent, d, seen) : [EMPTY('absent-argument')];   // an absent argument is undefined
           if (b.propKey) ents = selectKey(ents, b.propKey, f.call);
           return [...ents, ...b.inits.flatMap((i) => entriesOf(i, env, d, seen)), ...own];
         }
         return [{ k: 'param', b, node: n }, ...b.inits.flatMap((i) => entriesOf(i, env, d, seen)), ...own];
       }
       const fromInits = b.inits.flatMap((i) => entriesOf(i, env, d, seen));
-      return [...fromInits, ...own];
+      return [...(b.declaredUndef ? [EMPTY('declared-undefined')] : []), ...fromInits, ...own];
     }
-    if (n.type === 'Pick') return selectKey(entriesOf(n.source, env, d, seen), n.key, n);
+    // r5: a missing property is OPAQUE (the choke point) — unless the leaf has a DEFAULT, which is then its value (proven)
+    if (n.type === 'Pick') { const r = selectKey(entriesOf(n.source, env, d, seen), n.key, n); return r.length || !n.hasDefault ? r : [EMPTY('default-applies')]; }
     if (n.type === 'MemberExpression') {
       const mc = memberChain(n);
       if (!mc) return [{ k: 'unresolved', node: n }];
@@ -503,6 +563,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     // r3 P1-1: `a || b`, `a && b`, `a ?? b` may be either operand — the UNION, always
     if (n.type === 'LogicalExpression') return [...entriesOf(n.left, env, d, seen), ...entriesOf(n.right, env, d, seen)];
     if (n.type === 'AwaitExpression' || n.type === 'ParenthesizedExpression') return entriesOf(n.argument || n.expression, env, d, seen);
+    if (n.type === 'SequenceExpression') return entriesOf(n.expressions[n.expressions.length - 1], env, d, seen);
     if (n.type === 'CallExpression') {
       const c = n.callee;
       if (c.type === 'MemberExpression' && !c.computed && c.object.type === 'Identifier' && c.object.name === 'Object' && c.property.name === 'assign') {
@@ -527,7 +588,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     }
     // primitives write no field of their own; EVERYTHING else that is not modelled (arrays, `this`, `new`, …) is OPAQUE —
     // r2 ruling: a value reaching a write is fully resolved or carries an opaque marker, never empty provenance
-    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];   // EMPTY-OK: a primitive value writes no field of its own
+    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [EMPTY('primitive')];
     return [{ k: 'unresolved', node: n, why: `unmodelled-${n.type}` }];   // r4 DEFAULT-DENY: every other expression kind
   }
   // the entries of property `key` of an object given by its entries (absent → nothing; an unknown part → unresolved,
@@ -543,6 +604,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   function expand(entries, depth = 0) {
     const out = [];
     for (const e of entries) {
+      if (e.k === 'empty') continue;   // a proven empty contributes nothing
       if (e.k !== 'spread') { out.push(e); continue; }
       if (depth > 8) { out.push({ k: 'spread-unresolved', arg: e.arg, env: e.env }); continue; }
       const inner = entriesOf(e.arg, e.env);
@@ -553,8 +615,6 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
 
   // ── recording ───────────────────────────────────────────────────────────────────────────────────────────────────
   const paramSinks = [];
-  const record = (at, field, how) => { const u = FILE.get(at); writes.push({ file: u.file, fn: fnOf(at), field, how, line: at.loc.start.line }); };
-  const opaqueW = (at, how, detail) => { const u = FILE.get(at); opaqueWrites.push({ file: u.file, fn: fnOf(at), how, line: at.loc.start.line, ...(detail ? { detail } : {}) }); };
   const dynamicField = (k) => k === null || k === undefined || k === '' || String(k).includes('*');
   // a path segment shape ('*' = dynamic) that could spell `orders`
   const couldBeOrders = (seg) => new RegExp(`^${String(seg).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`).test('orders');
@@ -617,13 +677,47 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       return null;   // EMPTY-OK: not a ref shape (crypto hash / Firestore tx / Map …)
     }
     if (n.type === 'AwaitExpression') return refPathOf(n.argument, depth + 1);
-    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed) {
-      const m = n.callee.property.name;
+    if (n.type === 'ParenthesizedExpression') return refPathOf(n.expression, depth + 1);
+    if (n.type === 'SequenceExpression') return refPathOf(n.expressions[n.expressions.length - 1], depth + 1);
+    // r5: a conditional / logical receiver is the UNION of its branches that are refs (segment-wise; differing → '*')
+    if (n.type === 'ConditionalExpression' || n.type === 'LogicalExpression') {
+      const ps = (n.type === 'ConditionalExpression' ? [n.consequent, n.alternate] : [n.left, n.right]).map((x) => refPathOf(x, depth + 1)).filter((x) => x !== null);
+      return ps.length ? ps.reduce(mergePaths) : null;
+    }
+    // r5: a snapshot's `.ref` is a ref whose path we do not follow (fully dynamic); `.parent` / `.root` of a known ref
+    if (n.type === 'MemberExpression' && methodName(n) === 'ref') return '*';
+    if (n.type === 'MemberExpression' && (methodName(n) === 'parent' || methodName(n) === 'root')) {
+      const b = refPathOf(n.object, depth + 1); if (b === null) return null;
+      return methodName(n) === 'root' ? '' : (b === '*' || b === '' ? '*' : normPath(b).split('/').slice(0, -1).join('/'));
+    }
+    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && methodName(n.callee)) {
+      const m = methodName(n.callee);   // r5: `db['ref'](…)` is `db.ref(…)`
       // r3: a ref whose path cannot be resolved is a fully DYNAMIC path ('*' — could be orders → opaque at the write)
       if (m === 'ref') return n.arguments.length ? pathOfExpr(n.arguments[0]) : '';
       if (m === 'child') { const b = refPathOf(n.callee.object, depth + 1); const c = staticPath(n.arguments[0]); return b === null ? null : normPath(`${b}/${c === null ? '*' : c}`); }
+      if (m === 'push') { const b = refPathOf(n.callee.object, depth + 1); return b === null ? null : normPath(`${b}/*`); }   // r5: a pushed child ref
     }
     return null;   // EMPTY-OK: not a ref shape (crypto hash / Firestore tx / Map …)
+  }
+  // r5: the union of two path shapes, segment-wise — equal segments kept, differing ones '*'; different depths → '*'
+  function mergePaths(a, b) {
+    if (a === b) return a;
+    const x = normPath(a).split('/'); const y = normPath(b).split('/');
+    if (x.length !== y.length || a === '*' || b === '*') return '*';
+    return x.map((s, i) => (s === y[i] ? s : '*')).join('/');
+  }
+  // r5: a receiver that is REF-LIKE — a ref / child / database call (any key form), a snapshot `.ref`, a call by a dynamic
+  // method — through variables and branches; a write method on one whose path does not resolve is an OPAQUE write
+  function refLike(n, depth = 0) {
+    if (!n || depth > 6) return !!n;
+    if (n.type === 'AwaitExpression' || n.type === 'ParenthesizedExpression') return refLike(n.argument || n.expression, depth + 1);
+    if (n.type === 'SequenceExpression') return refLike(n.expressions[n.expressions.length - 1], depth + 1);
+    if (n.type === 'ConditionalExpression') return refLike(n.consequent, depth + 1) || refLike(n.alternate, depth + 1);
+    if (n.type === 'LogicalExpression') return refLike(n.left, depth + 1) || refLike(n.right, depth + 1);
+    if (n.type === 'Identifier') { const b = resolve(n.name, n); return !!b && b.kind === 'var' && b.inits.some((i) => refLike(i, depth + 1)); }
+    if (n.type === 'MemberExpression') return ['ref', 'parent', 'root'].includes(methodName(n));
+    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression') { const m = methodName(n.callee); return m === null || ['ref', 'child', 'database', 'push', 'orderByChild', 'equalTo'].includes(m); }
+    return false;
   }
   // r3: a PATH expression's static shape — a literal / template / concatenation, a const, a path BUILDER's return
   // (`statusPath(oid)` → `orders/*/factura_status`), an object member (`decision.path`). Several shapes → the one that
@@ -684,7 +778,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       }
       if (!(node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && WRITE_METHODS.has(methodName(node.callee)))) return;   // EMPTY-OK: not a write-method call (a non-literal computed method on a ref is opaque above)
       const base = refPathOf(node.callee.object);
-      if (base === null) return;   // EMPTY-OK: the receiver is not a database ref we can see (crypto hashes, Firestore tx / batch, Maps); every `.ref(…)` resolves to a path or '*'
+      // the receiver is not a database ref (crypto hashes, Firestore tx / batch, Maps) — unless it is REF-LIKE (r5: OPAQUE)
+      if (base === null) { if (refLike(node.callee.object)) opaqueW(node, 'unresolved-ref-receiver', srcOf(node.callee.object)); return; }
       const m = methodName(node.callee); const v = node.arguments[0];
       const nb = normPath(base); const segs = nb === '' ? [] : nb.split('/');
       if (m === 'remove') {

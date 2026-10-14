@@ -178,6 +178,16 @@ for (const [name, code, re] of [
     ['r3 P1-4: a 60-deep builder chain hits the ANALYSIS LIMIT → opaque, never empty', asIndex(Array.from({ length: 60 }, (_, i) => (i === 0 ? 'function zzLim0() { return { surcharge_cents: 900 }; }' : `function zzLim${i}() { return zzLim${i - 1}(); }`)).join('\n') + "\ncreateOrderApp.all(async (req, res) => { await db.ref(`orders/${id}`).update(zzLim59()); });"), /opaque order write unresolved: .*analysis-limit/],
     ['r3: a SNAPSHOT of another order spread into this order', asIndex("createOrderApp.all(async (req, res) => { const other = (await db.ref(`orders/${otherId}`).once('value')).val(); await db.ref(`orders/${id}`).set({ ...other }); });"), /opaque order write unresolved: .*snapshot-spread/],
     ['r3 real: a PATH BUILDER now names another order field (factura statusPath)', real('factura/factura-helpers.js', 'const statusPath = (oid) => `orders/${oid}/factura_status`;', 'const statusPath = (oid) => `orders/${oid}/surcharge_cents`;'), NEW_S],
+    // codex R3-B4 r5 probes (each alone on the real charge handler) + the r5 typed-empty rule
+    ["r5 P1-1 real: a literal-computed `db['ref'](…)` receiver", real('index.js', H, H + "  await db['ref']('orders/probe').update({ surcharge_cents: 900 });\n"), NEW_S],
+    ['r5 P1-1 real: a conditional receiver (union of its branches)', real('index.js', H, H + "  await (req.x ? db.ref('orders/probe') : db.ref('orders/other')).update({ surcharge_cents: 900 });\n"), NEW_S],
+    ['r5 P1-2 real: a destructuring DEFAULT carries its payload', real('index.js', H, H + "  const { payload: r5probeRec = { surcharge_cents: 900 } } = {};\n  await db.ref('orders/probe').update(r5probeRec);\n"), NEW_S],
+    ['r5 P1-3 real: a for-of binding is UNMODELLED (opaque), never empty', real('index.js', H, H + "  for (const r5probeRec of [{ surcharge_cents: 900 }]) { await db.ref('orders/probe').update(r5probeRec); }\n"), /opaque order write unresolved: .*unmodelled-for-of-binding/],
+    ['r5 P1-4 real: a conditional member-assignment BASE lands on each branch', real('index.js', H, H + "  const r5probeRec = {};\n  (true ? r5probeRec : r5probeRec).surcharge_cents = 900;\n  await db.ref('orders/probe').update(r5probeRec);\n"), NEW_S],
+    ['r5 (c) real: a catch parameter is UNMODELLED (opaque)', real('index.js', H, H + "  try { throw { surcharge_cents: 900 }; } catch (r5probeErr) { await db.ref('orders/probe').update(r5probeErr); }\n"), /opaque order write unresolved: .*unmodelled-catch-param/],
+    ['r5 (d) real: an unfollowable member-assignment base is an OPAQUE write on its function', real('index.js', H, H + "  const r5probeRec = {};\n  ({ o: r5probeRec }).o.surcharge_cents = 900;\n  await db.ref('orders/probe').update(r5probeRec);\n"), /opaque order write unresolved: .*chargeOnlineApp.* unmodelled-member-base/],
+    ['r5 (b) real: a write on a REF-LIKE receiver that does not resolve is an OPAQUE write', real('index.js', H, H + "  await db[req.m]('orders/probe').update({ surcharge_cents: 900 });\n"), /opaque order write unresolved: .*unresolved-ref-receiver/],
+    ['r5 (a) typed empty: a MISSING property of a resolved object is opaque, never absence', asIndex("createOrderApp.all(async (req, res) => { const zw = { a: 1 }; await db.ref(`orders/${id}`).update(zw.b); });"), /opaque order write unresolved: .*no-provenance-MemberExpression/],
   ]) {
     const p = problemsWith(u);
     assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG fail-closed ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
@@ -259,6 +269,26 @@ for (const [name, code, re] of [
       ['callee: .push', `await db.ref('orders').push(${S});`],
       ['callee: .remove of a field', "await db.ref('orders/probe/surcharge_cents').remove();"],
       ['callee: .transaction', `${W}.transaction(() => (${S}));`],
+      // r5 (codex R3-B4 r5): receivers, bindings without a plain init, member bases
+      ["receiver: db['ref'] (codex r5 P1-1)", `await db['ref']('orders/probe').update(${S});`],
+      ['receiver: conditional (codex r5 P1-1)', `await (req.x ? db.ref('orders/probe') : db.ref('orders/other')).update(${S});`],
+      ['receiver: sequence', `await (0, db.ref('orders/probe')).update(${S});`],
+      ['receiver: logical', `await (req.r || db.ref('orders/probe')).update(${S});`],
+      ['receiver: pushed child', `await db.ref('orders').push().set(${S});`],
+      ['receiver: snapshot .ref', `const zs = await db.ref('orders/probe').once('value'); await zs.ref.update(${S});`],
+      ['receiver: dynamic ref method', `await db[req.m]('orders/probe').update(${S});`],
+      ['binding: destructuring default (codex r5 P1-2)', `const { payload: zr = ${S} } = {}; ${W}.update(zr);`],
+      ['binding: for-of (codex r5 P1-3)', `for (const zr of [${S}]) { ${W}.update(zr); }`],
+      ['binding: for-of onto an existing variable', `let zr = {}; for (zr of [${S}]) ; ${W}.update(zr);`],
+      ['binding: for-in key as a field', `const zo = {}; for (const zk in ${S}) zo[zk] = 900; ${W}.update(zo);`],
+      ['binding: catch parameter', `try { throw ${S}; } catch (zr) { ${W}.update(zr); }`],
+      ['binding: default parameter', `function zg(zr = ${S}) { return zr; } ${W}.update(zg());`],
+      ['binding: default parameter, explicit undefined', `function zg(zr = ${S}) { return zr; } ${W}.update(zg(undefined));`],
+      ['binding: destructured parameter default', `function zh({ p: zr = ${S} }) { return zr; } ${W}.update(zh({}));`],
+      ['member base: ternary (codex r5 P1-4)', `const zr = {}; (true ? zr : zr).surcharge_cents = 900; ${W}.update(zr);`],
+      ['member base: logical', `const zr = {}; (req.x || zr).surcharge_cents = 900; ${W}.update(zr);`],
+      ['member base: sequence', `const zr = {}; (0, zr).surcharge_cents = 900; ${W}.update(zr);`],
+      ['member base: object literal (unfollowable)', `const zr = {}; ({ o: zr }).o.surcharge_cents = 900; ${W}.update(zr);`],
     ];
     // ONE census build: construct i is one line of its own block, writing field `surcharge_<i>` at `orders/probe<i>` — it
     // surfaces iff its field is reported NEW, or an opaque is reported on its line
@@ -285,6 +315,12 @@ for (const [name, code, re] of [
     ['||= of an object binding', "createOrderApp.all(async (req, res) => { let za = {}; za ||= { status: 'new' }; await db.ref(`orders/${id}`).update(za); });"],
     ['??= of an object binding', "createOrderApp.all(async (req, res) => { let zb; zb ??= { status: 'new' }; await db.ref(`orders/${id}`).update(zb); });"],
     ["['update'] with a classified field", "createOrderApp.all(async (req, res) => { await db.ref(`orders/${id}`)['update']({ status: 'new' }); });"],
+    ["db['ref'] receiver", "createOrderApp.all(async (req, res) => { await db['ref'](`orders/${id}`).update({ status: 'new' }); });"],
+    ['conditional receiver', "createOrderApp.all(async (req, res) => { await (req.x ? db.ref(`orders/${id}`) : db.ref(`orders/${other}`)).update({ status: 'new' }); });"],
+    ['pushed child receiver', "createOrderApp.all(async (req, res) => { await db.ref('orders').push().set({ status: 'new' }); });"],
+    ['ternary member base', "createOrderApp.all(async (req, res) => { const za = {}; (req.x ? za : za).status = 'new'; await db.ref(`orders/${id}`).update(za); });"],
+    ['destructuring default over a missing key', "createOrderApp.all(async (req, res) => { const { p: za = { status: 'new' } } = {}; await db.ref(`orders/${id}`).update(za); });"],
+    ['declared, then assigned', "createOrderApp.all(async (req, res) => { let za; za = { status: 'new' }; await db.ref(`orders/${id}`).update(za); });"],
   ]) {
     const p = problemsWith(asIndex(code));
     assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG resolved-form ${name}: a modelled form did not resolve (${JSON.stringify(p.slice(0, 3))})`);

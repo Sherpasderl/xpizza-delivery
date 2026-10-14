@@ -12171,8 +12171,8 @@
     "id": "r3p0-52",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];",
-    "to": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'ArrayExpression' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];",
+    "from": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [EMPTY('primitive')];",
+    "to": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'ArrayExpression' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [EMPTY('primitive')];",
     "label": "B4 r2 P1-3: an ARRAY payload is empty provenance again",
     "kills_with": [
       "an ARRAY element pushed to /orders (charge handler): the census stayed GREEN"
@@ -12532,11 +12532,191 @@
     "id": "r3p0-76",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "      if (ret.type === 'Identifier') { const b = resolve(ret.name, ret); if (b) b.heap = b.heap || 'mutated-via-call-result'; }",
-    "to": "      void ret;",
+    "from": "        if (rr) rr.binding.heap = rr.binding.heap || 'mutated-via-call-result';",
+    "to": "        if (rr) void rr;",
     "label": "B4 r4: a mutation through a builder's call result is dropped",
     "kills_with": [
       "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-77",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    const r = Array.isArray(r0) && r0.length ? r0 : [",
+    "to": "    const r = Array.isArray(r0) ? r0 : [",
+    "label": "B4 r5 (a): the choke point lets an EMPTY answer through as absence",
+    "kills_with": [
+      "r5 (a) typed empty"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-78",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "init: p.type === 'AssignmentPattern' ? p.right : null });",
+    "to": "init: null });",
+    "label": "B4 r5 (c): a parameter's DEFAULT is not one of its values",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-79",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        if (lf.def) declare(sc, lf.node.name, { kind: 'var', init: lf.def });",
+    "to": "        void lf.def;",
+    "label": "B4 r5 P1-2: a destructuring default's payload is dropped",
+    "kills_with": [
+      "r5 P1-2 real"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-80",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      return ps.length ? ps.reduce(mergePaths) : null;",
+    "to": "      return null;",
+    "label": "B4 r5 P1-1: a conditional / logical receiver no longer resolves to the union of its branches",
+    "kills_with": [
+      "r5 P1-1 real: a conditional receiver"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-81",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "if (refLike(node.callee.object)) opaqueW(node, 'unresolved-ref-receiver'",
+    "to": "if (false) opaqueW(node, 'unresolved-ref-receiver'",
+    "label": "B4 r5 (b): a write on an unresolved REF-LIKE receiver is skipped again",
+    "kills_with": [
+      "r5 (b) real"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-82",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (branches && depth < 6) {",
+    "to": "    if (false) {",
+    "label": "B4 r5 P1-4: a conditional member-assignment base no longer lands on its branches",
+    "kills_with": [
+      "r5 P1-4 real"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-83",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    opaqueW(at, 'unmodelled-member-base', srcOf(target));\n  }",
+    "to": "    void target;\n  }",
+    "label": "B4 r5 (d): an unfollowable member-assignment base is dropped silently",
+    "kills_with": [
+      "r5 (d) real"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-84",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "node.init || (loopLeft ? unmodelled(`${loop.type === 'ForOfStatement' ? 'for-of' : 'for-in'}-binding`, node.id, u) : null)",
+    "to": "node.init || null",
+    "label": "B4 r5 P1-3: a for-of binding has no source again",
+    "kills_with": [
+      "r5 P1-3 real"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-85",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "if (node.type === 'CatchClause' && node.param)",
+    "to": "if (false && node.param)",
+    "label": "B4 r5 (c): a catch parameter is not bound",
+    "kills_with": [
+      "r5 (c) real"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-86",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      const m = methodName(n.callee);   // r5: `db['ref'](…)` is `db.ref(…)`",
+    "to": "      const m = n.callee.computed ? null : methodName(n.callee);   // r5: `db['ref'](…)` is `db.ref(…)`",
+    "label": "B4 r5 P1-1: a literal-computed db['ref'] receiver no longer resolves",
+    "kills_with": [
+      "r5 P1-1 real: a literal-computed"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-87",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "return r.length || !n.hasDefault ? r : [EMPTY('default-applies')]; }",
+    "to": "return r; }",
+    "label": "B4 r5: a destructuring default over a missing key is reported opaque (a modelled form regresses)",
+    "kills_with": [
+      "resolved-form destructuring default over a missing key: a modelled form did not resolve"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-88",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      if (m === 'push') {",
+    "to": "      if (false) {",
+    "label": "B4 r5: a pushed child ref no longer resolves (a modelled form regresses to opaque)",
+    "kills_with": [
+      "resolved-form pushed child receiver: a modelled form did not resolve"
     ],
     "command": [
       "node",
