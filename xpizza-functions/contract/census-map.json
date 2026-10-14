@@ -770,6 +770,18 @@
       "class": "lifecycle",
       "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
     },
+    "content_key": {
+      "class": "pointer",
+      "reason": "§3 dedup SELECTOR persisted on the pending order at chargeOnlineOrder intake (order-independent content key) — only selects which content stamp the duplicate-hold guard reads; never displayed, never an amount (review: moneyPathNonFactReads content_key@…#newPathSibling)"
+    },
+    "content_key_legacy_reason": {
+      "class": "lifecycle",
+      "reason": "§3 why the legacy menu-order permutation could not be built at intake (no_menu_snapshot | unmatched_line) — carried only into the guard's fallback LOG; never displayed, never an amount"
+    },
+    "content_legacy_order": {
+      "class": "pointer",
+      "reason": "§3 the menu-order PERMUTATION of this order's own client lines, persisted at chargeOnlineOrder intake — the duplicate guard rebuilds the pre-§3 legacy key from it (a selector only); never displayed, never an amount"
+    },
     "control_held": {
       "class": "lifecycle",
       "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
@@ -1084,6 +1096,10 @@
     "restaurant_phone": {
       "class": "identity",
       "reason": "customer / restaurant identity (contact) — shown as-is, not a contract fact (§1)"
+    },
+    "reward_text_appended": {
+      "class": "pointer",
+      "reason": "§3 r5 PROVENANCE: the exact reward text the server appended to items_text (createOrder held / normal, chargeOnlineOrder pending record) — read only to rebuild / verify the content key; the displayed items_text already contains it"
     },
     "rtn_cliente": {
       "class": "fiscal",
