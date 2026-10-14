@@ -63,6 +63,7 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key (bound to
 // the content the request persisted, else the declared unbound mode) and (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
+let S3_KEYS = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
 let S3_DIFF = 0;
@@ -506,7 +507,14 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         const cs = SD.compareShape(stripControl(r.ops), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
         if (JSON.stringify(stripControl(r.ops)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read`);
-        const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound });
+        const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
+        const post = POST_OF.get(r) || {};
+        if (c.path === 'card' && cs.bound && s3c && post.payment_method === 'online' && post.items_text === s3c.itemsText) {
+          S3_KEYS += 1;
+          assert.strictEqual(post.content_key, require('../order-dedup').orderContentKey(s3c), `🔴 ${key}: the pending order persists content_key = the stamped content's key`);
+          assert.ok((typeof post.content_key_legacy === 'string') !== (typeof post.content_key_legacy_reason === 'string'), `🔴 ${key}: exactly one of content_key_legacy / content_key_legacy_reason (${JSON.stringify([post.content_key_legacy, post.content_key_legacy_reason])})`);
+        }
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${key}: the changed-path set changed (beyond D12b's declared tracking field)`);
         const reads = r.ops.filter(isControlRead);
         if (c.noControlRead) assert.strictEqual(reads.length, 0, `🔴 ${key}: an existing-order / :839 answer must read NO switch (§0.5)`);
@@ -713,6 +721,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   }
   // collected (not thrown) so it never masks the per-cell failures that would explain it
   if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));
+  if (!CAPTURE) check(() => assert.ok(S3_KEYS > 0, 'non-vacuity: at least one card case checked the persisted content keys (r3)'));
+  if (!CAPTURE) console.log(`  ✓ §3 r3 persisted content keys: ${S3_KEYS} card case(s)`);
   if (!CAPTURE && S3_DIFF > 0) { console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ from the baseline only by it (content key bound to the POSTED content or the unbound mode)`); }
   if (!FAILS.length) ok(`${CAPTURE ? 'BASELINE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (${CASES.length} cases + the scheduled sweep × ${Object.keys(STATES).length} switch states × both restaurants)` +
     (CAPTURE ? ' — the switch node is inert at e1aeb3f; every state behaves as today' : ` — ${tally.same} UNCHANGED (status, body, headers, call sequence minus ONLY the control read, changed paths == baseline; the existing-order / :839 answers read NO switch); ${tally.refused} REFUSED with the exact 423 / 503 (+ Retry-After 2), nothing written, reward holds as planned — where the baseline admitted`));

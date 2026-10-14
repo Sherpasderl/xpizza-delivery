@@ -279,7 +279,7 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 /* serial3:begin require */
-const { readContentStamp } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key
+const { readContentStamp, contentKeysRecord } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key; r3: the keys persisted on the pending order
 /* serial3:end require */
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
@@ -1848,6 +1848,12 @@ chargeOnlineApp.all('*', async (req, res) => {
     // pending order so materialize.js can copy it into user_orders/{uid}.items at CONFIRM (never pending).
     ...(customer_uid ? { reorder_items: normalizeReorderItems(body.items, restaurantId, pricingTables) } : {})   // 2a: allowlist = the CATALOG menu
   };
+  /* serial3:begin card-content-keys */
+  // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
+  // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.
+  Object.assign(pendingOrderRecord, contentKeysRecord({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: isScheduled ? scheduledForRaw : null },
+    { menuNames: menuNamesOf(restaurantId, pricingTables), orderId }));
+  /* serial3:end card-content-keys */
   if (orderType === 'delivery') {
     pendingOrderRecord.lat = lat;
     pendingOrderRecord.lng = lng;
@@ -2410,9 +2416,6 @@ function confirmDeps(db) {
       catch (_) { return Number((Number(totalCents) / 100).toFixed(2)); }
     },
     voidOrRefund,   // cancel-vs-confirm race guard (I8)
-    /* serial3:begin confirm-deps */
-    menuNamesFor: (rid) => gateReader().peekActiveMenuNames(rid),   // §3 r2: the duplicate guard's legacy key (cached, never a read)
-    /* serial3:end confirm-deps */
     alert: (kind, detail) => paymentAlert(db, kind, detail)
   };
 }

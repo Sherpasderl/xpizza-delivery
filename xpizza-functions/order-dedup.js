@@ -103,7 +103,6 @@ function legacyItemsText(itemsText, menuNames) {
 // before: the last writer's stamp). Any read error THROWS — each caller already treats an error as its own fail-safe.
 async function readContentStamp(db, { phone, itemsText, orderType, scheduledFor } = {}, { menuNames = null, orderId = null, log = (...a) => console.warn(...a) } = {}) {
   const args = { phone, itemsText, orderType, scheduledFor };
-  const base = `recent_order_content/${rateLimitKey(phone)}`;
   const legacy = legacyItemsText(itemsText, menuNames);
   let legacyKey;
   if (legacy != null) legacyKey = contentKeyOf(phone, legacy, orderType, scheduledFor);
@@ -111,11 +110,33 @@ async function readContentStamp(db, { phone, itemsText, orderType, scheduledFor 
     legacyKey = orderContentKeyVerbatim(args);
     try { log('content_key_legacy_unavailable', JSON.stringify({ order_id: orderId == null ? null : String(orderId), reason: Array.isArray(menuNames) ? 'unmatched_line' : 'no_menu_snapshot' })); } catch (_) {}
   }
-  const keys = [...new Set([orderContentKey(args), legacyKey])];
-  const recs = (await Promise.all(keys.map((k) => db.ref(`${base}/${k}`).once('value').then((snap) => snap.val())))).filter((r) => r != null);
+  return readContentStampByKeys(db, phone, [orderContentKey(args), legacyKey]);
+}
+// The stamp under any of `keys` (deduped); the LATEST `at` wins. Any read error THROWS (each caller fails safe on its own).
+async function readContentStampByKeys(db, phone, keys) {
+  const base = `recent_order_content/${rateLimitKey(phone)}`;
+  const ks = [...new Set(keys.filter((k) => typeof k === 'string' && k))];
+  const recs = (await Promise.all(ks.map((k) => db.ref(`${base}/${k}`).once('value').then((snap) => snap.val())))).filter((r) => r != null);
   if (!recs.length) return null;
   const at = (r) => (r && Number.isFinite(r.at) ? r.at : -Infinity);
   return recs.reduce((best, r) => (at(r) > at(best) ? r : best));
 }
 
-module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, isContentRetap, rateLimitKey };
+// §3 r3 — an order's content keys, computed ONCE at the card checkout's intake (where the catalog snapshot is warm) and
+// PERSISTED on the pending order, so the confirm-side duplicate guard — confirm / webhook / sweep / materialize run in
+// separate instances with a cold catalog cache — never needs menu names. `content_key` is the order-independent key;
+// `content_key_legacy` the pre-§3 verbatim key of this cart's MENU-ordered text. When that cannot be rebuilt (no cached
+// snapshot, a dish it does not name) it is absent, `content_key_legacy_reason` says why, and it is LOGGED with the
+// order_id; the guard then reads the incoming verbatim key (as readContentStamp does). {} when the content has no key.
+function contentKeysRecord({ phone, itemsText, orderType, scheduledFor } = {}, { menuNames = null, orderId = null, log = (...a) => console.warn(...a) } = {}) {
+  const args = { phone, itemsText, orderType, scheduledFor };
+  const content_key = orderContentKey(args);
+  if (!content_key) return {};
+  const legacy = legacyItemsText(itemsText, menuNames);
+  if (legacy != null) return { content_key, content_key_legacy: contentKeyOf(phone, legacy, orderType, scheduledFor) };
+  const reason = Array.isArray(menuNames) ? 'unmatched_line' : 'no_menu_snapshot';
+  try { log('content_key_legacy_unavailable', JSON.stringify({ order_id: orderId == null ? null : String(orderId), reason })); } catch (_) {}
+  return { content_key, content_key_legacy_reason: reason };
+}
+
+module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, readContentStampByKeys, contentKeysRecord, isContentRetap, rateLimitKey };

@@ -22,7 +22,7 @@
  * inactive-restaurant post-capture posture. Returns true iff the order was held (caller must NOT materialize).
  */
 const SCHED = require('./scheduled-orders');
-const { orderContentKey, readContentStamp } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)
+const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)
 
 /* 🔴 Can THIS caller reverse a payment at all? voidOrRefund is the one dep the guard calls without
    checking first, so its absence is the difference between "refunds" and "throws mid-refund". Checked
@@ -256,10 +256,17 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
     // Already resolved (materialized returns earlier in the caller; defensive) → let the normal flow handle it.
     if (order.status === 'cancelled' || order.materialized_at || order.payment_status === 'manual_reconciliation') return false;
     const sf = SCHED.normalizeScheduledFor(order.scheduled_for);
-    const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
+    const args = { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null };
+    const ck = orderContentKey(args);
     if (!ck) return false;
-    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null },
-      { menuNames: deps.menuNamesFor && order.restaurant_id ? deps.menuNamesFor(order.restaurant_id) : null, orderId });
+    // §3 r3 (codex r3 P1): the keys the card checkout's intake PERSISTED, where the catalog snapshot is warm — this handler
+    // runs in another instance with a cold cache and never computes from menu names. Trusted only when the persisted key is
+    // THIS content's key. An order written before the deploy (no keys) or with stale ones → today's behaviour (the
+    // order-independent key + the incoming verbatim key), LOGGED with the order_id.
+    const persisted = typeof order.content_key === 'string' && order.content_key === ck;
+    if (!persisted) { try { console.warn('content_key_legacy_unavailable', JSON.stringify({ order_id: String(orderId), reason: order.content_key ? 'stale_persisted_keys' : 'no_persisted_keys' })); } catch (_) {} }
+    const legacyKey = persisted && typeof order.content_key_legacy === 'string' ? order.content_key_legacy : orderContentKeyVerbatim(args);
+    const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [ck, legacyKey]);
     // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
     if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;
     const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();

@@ -34,7 +34,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
   assert.deepStrictEqual([...FILES], ['materialize-guard.js']);
   const f = 'materialize-guard.js'; const src = read(f);
   assert.strictEqual(unapplySerial3Module(f, src), baseOf(f), `🔴 ${f} minus the serial3 hunks is not ${BASE}:${f}`);
-  assert.throws(() => unapplySerial3Module(f, src.replace(HUNKS[1].now, HUNKS[1].now.replace('readContentStamp(deps.db', 'readContentStamp( deps.db'))), /occurs 0 times/, 'a byte INSIDE a hunk');
+  assert.throws(() => unapplySerial3Module(f, src.replace(HUNKS[1].now, HUNKS[1].now.replace('readContentStampByKeys(deps.db', 'readContentStampByKeys( deps.db'))), /occurs 0 times/, 'a byte INSIDE a hunk');
   assert.throws(() => unapplySerial3Module(f, src + HUNKS[0].now), /occurs 2 times/, 'a duplicated hunk');
   assert.notStrictEqual(unapplySerial3Module(f, src.replace("'use strict';", "'use strict'; ")), baseOf(f), 'a byte OUTSIDE every hunk is detected');
   ok(`module: unapplySerial3Module → ${BASE}:materialize-guard.js byte-for-byte (${HUNKS.length} hunks); inside / duplicate / outside each caught`);
@@ -67,11 +67,18 @@ for (const [label, start, end, tag, recordUse] of [
   assert.ok(/const rec = await readContentStamp\(db, \{ phone: fields\.customer_phone, itemsText: fields\.items_text, orderType,/.test(stamp), 'createOrder reads its prior content stamp under BOTH keys');
   assert.ok(/\{ menuNames: menuNamesOf\(restaurantId, pricingTables\), orderId \}\);/.test(stamp), 'createOrder: the legacy key is rebuilt in the PRICING version\'s menu order (r2)');
   assert.ok(/const menuNamesOf = \(rid, tables\) => gateReader\(\)\.peekMenuNames\(rid, menuOrderVersionOf\(tables\)\);/.test(wiring), 'menuNamesOf peeks the cached snapshot of the pricing version');
+  // r3 (codex r3 P1): the keys are computed at chargeOnlineOrder's intake (warm snapshot) and PERSISTED on the pending order;
+  // confirmDeps supplies NO menu names (its handlers run cold), and the guard reads the persisted keys
   const cd = idx.slice(at(idx, 'function confirmDeps(db)'), at(idx, 'function runConfirm('));
-  assert.ok(/\/\* serial3:begin confirm-deps \*\/\n\s+menuNamesFor: \(rid\) => gateReader\(\)\.peekActiveMenuNames\(rid\),/.test(cd), 'confirmDeps (every materialize path) supplies menuNamesFor (cached, never a read)');
+  assert.ok(!/menuNamesFor|peekActiveMenuNames|serial3:begin confirm-deps/.test(cd), 'confirmDeps carries no menu-name dependency (r3)');
+  assert.ok(!/peekActiveMenuNames/.test(read('catalog/menu-gates.js')), '…and the gate reader no longer offers the cold-cache peek');
+  const ch = idx.slice(at(idx, 'chargeOnlineApp.all('), at(idx, 'chargeOnlineApp.use('));
+  const keys = ch.slice(at(ch, '/* serial3:begin card-content-keys */'), at(ch, '/* serial3:end card-content-keys */'));
+  assert.ok(/Object\.assign\(pendingOrderRecord, contentKeysRecord\(\{ phone: fields\.customer_phone, itemsText: fields\.items_text, orderType, scheduledFor: isScheduled \? scheduledForRaw : null \},\s*\{ menuNames: menuNamesOf\(restaurantId, pricingTables\), orderId \}\)\);/.test(keys), 'chargeOnlineOrder persists the content keys of the FINAL items_text (the record\'s own) in the PRICING version\'s menu order');
+  assert.ok(ch.indexOf('/* serial3:begin card-content-keys */') > ch.indexOf('const pendingOrderRecord = {') && ch.indexOf('/* serial3:begin card-content-keys */') < ch.indexOf('acquireHostedAttempt('), '…onto the pending record before it is written');
   const mg = read('materialize-guard.js');
-  assert.ok(/const stamp = await readContentStamp\(deps\.db, \{ phone: order\.customer_phone, itemsText: order\.items_text, orderType: order\.order_type,/.test(mg), 'the materialize-side duplicate guard reads BOTH keys');
-  assert.ok(/\{ menuNames: deps\.menuNamesFor && order\.restaurant_id \? deps\.menuNamesFor\(order\.restaurant_id\) : null, orderId \}\);/.test(mg), '…with the legacy key rebuilt from deps.menuNamesFor (r2)');
-  ok('wiring: the item_order is the PRICING version\'s menu_structure (module deadline); createOrder\'s prior stamp and the materialize guard read both content keys');
+  assert.ok(/const persisted = typeof order\.content_key === 'string' && order\.content_key === ck;/.test(mg), 'the materialize-side guard trusts the persisted keys only when they are THIS content\'s');
+  assert.ok(/const stamp = await readContentStampByKeys\(deps\.db, order\.customer_phone, \[ck, legacyKey\]\);/.test(mg) && !/menuNames/.test(mg), '…reads BOTH keys and never computes from menu names');
+  ok('wiring: the item_order is the PRICING version\'s menu_structure (module deadline); createOrder\'s prior stamp reads both keys; chargeOnlineOrder persists both and the materialize guard reads them (r3, no cold-cache dependency)');
 }
 console.log(`\nserial3-wiring.guard: OK (${n})`);

@@ -2,7 +2,7 @@
 // F3 double-order guard — pure collision decision + the materialize-side hold (DI'd RTDB). Run: node f3-duplicate-decision.test.js
 const assert = require('assert');
 const { duplicateSiblingDecision, holdIfDuplicateSibling } = require('./materialize-guard');
-const { orderContentKey, orderContentKeyVerbatim, readContentStamp, legacyItemsText, rateLimitKey } = require('./order-dedup');
+const { orderContentKey, orderContentKeyVerbatim, readContentStamp, contentKeysRecord, legacyItemsText, rateLimitKey } = require('./order-dedup');
 
 let pass = 0; const ok = (n) => { console.log(`  ✓ ${n}`); pass++; };
 
@@ -149,34 +149,49 @@ const orderX = () => ({ order_id: 'X', customer_phone: PHONE, items_text: '1x Pa
     }
   }
 
-  // ── §3 r2 (codex r2 P1): a LEGACY sibling (stamped by a pre-§3 client, menu order) is found from an incoming cart in
-  //    ANY line order — the guard rebuilds the legacy key in menu order from the cached snapshot (deps.menuNamesFor) ──
+  // ── §3 r3 (codex r3 P1): a LEGACY sibling (stamped by a pre-§3 client, menu order) is found from an incoming cart in ANY
+  //    line order through the keys chargeOnlineOrder PERSISTED at intake (contentKeysRecord, warm snapshot) — the guard
+  //    computes nothing from menu names (its handlers run cold). No / stale keys → today's behaviour, logged. ──
   {
     const MENU = ['Carnivora', 'Crispy Bacon', 'Margherita', 'Pepperoni'];
     const A = '2x Carnivora (L340) [Pizza 1: Mozzarella | Pizza 2: Pepperoni]', B = '1x Pepperoni (L307)';
     const AB = `${A} | ${B}`, BA = `${B} | ${A}`;   // AB = what a pre-§3 client sent (menu order)
     const args = (t) => ({ phone: PHONE, itemsText: t, orderType: 'delivery', scheduledFor: null });
     const pathOf = (k) => `recent_order_content/${rateLimitKey(PHONE)}/${k}`;
-    const order = (id, t) => ({ ...orderX(), order_id: id, items_text: t, restaurant_id: 'x_pizza' });
+    const keysOf = (t) => contentKeysRecord(args(t), { menuNames: MENU, orderId: 'X' });   // what intake persists (warm)
+    const order = (id, t, keys = keysOf(t)) => ({ ...orderX(), order_id: id, items_text: t, restaurant_id: 'x_pizza', ...keys });
     const legacyStamp = { [pathOf(orderContentKeyVerbatim(args(AB)))]: { at: Date.now() - 60000, order_id: 'Y', payment_method: 'cash' }, 'orders/Y': { status: 'preparing' } };
-    const deps = (store, names = MENU, logs = []) => ({ db: fakeDb(store), menuNamesFor: names === undefined ? undefined : () => names, logsink: logs });
+    const quiet = async (fn) => { const logs = []; const w = console.warn; console.warn = (...a) => logs.push(a.join(' ')); try { return { r: await fn(), logs }; } finally { console.warn = w; } };
+    assert.deepStrictEqual(Object.keys(keysOf(BA)).sort(), ['content_key', 'content_key_legacy'], 'premise: warm intake persists both keys');
+    assert.strictEqual(keysOf(BA).content_key_legacy, orderContentKeyVerbatim(args(AB)), 'premise: the persisted legacy key is the MENU-ORDER verbatim key');
     { const store = { ...legacyStamp, 'orders/X': order('X', BA) };
-      assert.equal(await holdIfDuplicateSibling(deps(store), 'X', order('X', BA), 123), true, '🔴 legacy [A,B] sibling + incoming [B,A] → HELD (the codex r2 reproduction)');
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123), true, '🔴 legacy [A,B] sibling + incoming [B,A] with persisted keys → HELD (the codex r3 reproduction)');
       assert.equal(store['orders/X'].payment_status, 'manual_reconciliation'); }
     { const store = { ...legacyStamp, 'orders/X': order('X', AB) };
-      assert.equal(await holdIfDuplicateSibling(deps(store), 'X', order('X', AB), 123), true, 'control: legacy [A,B] + incoming [A,B] → held'); }
-    // the snapshot is missing (cold instance / unknown rid): the incoming verbatim key is read instead, and that is logged
-    { const store = { ...legacyStamp, 'orders/X': order('X', AB) };
-      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', AB), 123), true, 'no snapshot: a same-order legacy sibling is still found (incoming verbatim)');
-      const logs = []; const db = fakeDb({ ...legacyStamp });
-      await readContentStamp(db, args(BA), { menuNames: null, orderId: 'X', log: (...a) => logs.push(a.join(' ')) });
-      assert.ok(logs.some((l) => l.includes('content_key_legacy_unavailable') && l.includes('"order_id":"X"') && l.includes('"reason":"no_menu_snapshot"')), 'the fallback is LOGGED with the order_id and reason');
-      const store2 = { ...legacyStamp, 'orders/X': order('X', BA) };
-      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store2) }, 'X', order('X', BA), 123), false, 'no snapshot + a permuted legacy sibling → not found (the logged, bounded transition gap)'); }
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', AB), 123), true, 'control: legacy [A,B] + incoming [A,B] → held'); }
+    // an order created BEFORE the deploy (no persisted keys) → today's behaviour: the order-independent + incoming verbatim keys, LOGGED
+    { const store = { ...legacyStamp, 'orders/X': order('X', AB, {}) };
+      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', AB, {}), 123));
+      assert.equal(r, true, 'no persisted keys: a same-order legacy sibling is still found (incoming verbatim)');
+      assert.ok(logs.some((l) => l.includes('content_key_legacy_unavailable') && l.includes('"order_id":"X"') && l.includes('"reason":"no_persisted_keys"')), 'the fallback is LOGGED with the order_id and reason');
+      const store2 = { ...legacyStamp, 'orders/X': order('X', BA, {}) };
+      assert.equal((await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store2) }, 'X', order('X', BA, {}), 123))).r, false, 'no persisted keys + a permuted legacy sibling → not found (the logged, bounded transition gap)'); }
+    // keys that are not THIS content's (stale) are never trusted
+    { const store = { ...legacyStamp, 'orders/X': order('X', BA, keysOf('1x Margherita (L250)')) };
+      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA, keysOf('1x Margherita (L250)')), 123));
+      assert.equal(r, false, 'stale keys → not trusted (today\'s behaviour: the permuted legacy sibling is not found)');
+      assert.ok(logs.some((l) => l.includes('"reason":"stale_persisted_keys"')), 'stale keys are LOGGED'); }
+    // intake with no warm snapshot: the legacy key is absent + a reason, LOGGED at intake; the guard then reads the incoming verbatim
+    { const logs = []; const k = contentKeysRecord(args(BA), { menuNames: null, orderId: 'X', log: (...a) => logs.push(a.join(' ')) });
+      assert.deepStrictEqual(Object.keys(k).sort(), ['content_key', 'content_key_legacy_reason']); assert.strictEqual(k.content_key_legacy_reason, 'no_menu_snapshot');
+      assert.ok(logs.some((l) => l.includes('content_key_legacy_unavailable') && l.includes('"order_id":"X"')), 'logged at intake');
+      const store = { ...legacyStamp, 'orders/X': order('X', AB, contentKeysRecord(args(AB), { menuNames: null, log: () => {} })) };
+      assert.equal((await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', AB, contentKeysRecord(args(AB), { menuNames: null, log: () => {} })), 123))).r, true, 'legacy unavailable at intake: a same-order sibling is still found (incoming verbatim)'); }
+    // exactly two reads, both from the persisted keys
     { const seen = []; const db = { ref: (p) => ({ once: async () => { seen.push(p); return { val: () => null }; } }) };
-      await readContentStamp(db, args(BA), { menuNames: MENU, orderId: 'X' });
-      assert.deepStrictEqual(seen.sort(), [pathOf(orderContentKey(args(BA))), pathOf(orderContentKeyVerbatim(args(AB)))].sort(), 'reads exactly the canonical key and the MENU-ORDER legacy key (no extra read)'); }
-    ok('§3 r2: a legacy [A,B] sibling is held from an incoming [B,A] (menu-order legacy key from deps.menuNamesFor); control held; no snapshot → incoming verbatim, logged');
+      await holdIfDuplicateSibling({ db }, 'X', order('X', BA), 123);
+      assert.deepStrictEqual(seen.sort(), [pathOf(orderContentKey(args(BA))), pathOf(orderContentKeyVerbatim(args(AB)))].sort(), 'reads exactly the canonical key and the persisted MENU-ORDER legacy key (no extra read)'); }
+    ok('§3 r3: a legacy [A,B] sibling is held from an incoming [B,A] via the keys persisted at intake; control held; no keys → today\'s behaviour, logged; stale keys untrusted; intake-unavailable legacy → incoming verbatim');
   }
 
   console.log(`\nf3-duplicate-decision.test.js: ${pass} passed`);

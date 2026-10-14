@@ -75,11 +75,28 @@ function compareShape(actualOps, goldenOps, { mode, content = null, route = '', 
 }
 
 // the CHANGED-PATH set of the same request, under the same declared mode
-function changedShape(actual, golden, { content = null, bound = false, menuNames = null } = {}) {
+// §3 r3 (codex r3 P1): chargeOnlineOrder persists the content keys on the pending order it WRITES. Declared, and only there:
+// a BOUND charge request whose changed paths add `orders/<id>/content_key` (required) plus exactly one of
+// `content_key_legacy` / `content_key_legacy_reason`, none of them in the golden. Their VALUES are asserted by the suite
+// against the persisted order (content_key = the stamped content's key). Anywhere else these leaves stay RED.
+const KEY_LEAF = /^(orders\/[^/]+)\/(content_key|content_key_legacy|content_key_legacy_reason)$/;
+function withoutPersistedKeys(actual, golden, route, label) {
+  if (golden.some((p) => KEY_LEAF.test(p))) throw new Error(`🔴 serial3-delta ${label}: the golden already carries persisted content keys`);
+  const added = actual.filter((p) => KEY_LEAF.test(p));
+  if (!added.length) return actual;
+  if (route !== 'chargeOnlineOrder') throw new Error(`🔴 serial3-delta ${label}: persisted content keys written on ${route || 'an undeclared route'}`);
+  const byOrder = new Map(); for (const p of added) { const [, o, f] = KEY_LEAF.exec(p); if (!byOrder.has(o)) byOrder.set(o, new Set()); byOrder.get(o).add(f); }
+  for (const [o, f] of byOrder) {
+    if (!f.has('content_key') || f.size !== 2) throw new Error(`🔴 serial3-delta ${label}: ${o} persists ${[...f].sort().join(' + ')} — content_key + exactly one of content_key_legacy / content_key_legacy_reason`);
+  }
+  return actual.filter((p) => !KEY_LEAF.test(p));
+}
+function changedShape(actual, golden, { content = null, bound = false, menuNames = null, route = null, label = '' } = {}) {
   const rx = /^(recent_order_content\/[^/]+\/)([0-9a-f]{32})(\/.*)?$/;
   if (bound) {
     const k = expectedKeys(content, menuNames);
-    return { actual: actual.map((p) => p.replace(rx, (m, a, key, rest) => a + (key === k.canonical ? k.legacy : key) + (rest || ''))).sort(), expected: golden };
+    const rest_ = withoutPersistedKeys(actual, golden, route, label);
+    return { actual: rest_.map((p) => p.replace(rx, (m, a, key, rest) => a + (key === k.canonical ? k.legacy : key) + (rest || ''))).sort(), expected: golden };
   }
   const un = (list) => list.map((p) => p.replace(rx, (m, a, k, rest) => `${a}<content-key>${rest || ''}`)).sort();
   return { actual: un(actual), expected: un(golden) };

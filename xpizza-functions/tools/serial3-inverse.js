@@ -11,7 +11,7 @@ const BASE = '207170e';
 const BLOCKS = [
   {
     "id": "require",
-    "sha": "9aa3353862511a35a95debc1937387db644206743dd859729d3358be04248b80",
+    "sha": "5088050ba41cec4597df7d19fd6f922f8246c49ffe9c90bae060f9b3c902abc4",
     "original": ""
   },
   {
@@ -45,8 +45,8 @@ const BLOCKS = [
     "original": ""
   },
   {
-    "id": "confirm-deps",
-    "sha": "24d66712cfc7763761d97131e5170e5198021a7c101e98b1cb4f3736a3a148e7",
+    "id": "card-content-keys",
+    "sha": "f78419ff41c9830db98bff09f3b206d9f8049e81e75236db1933353dfdf841d9",
     "original": ""
   }
 ];
@@ -67,13 +67,13 @@ function unapplySerial3Index(src) {
 const HUNKS = Object.freeze([
  {
   "file": "materialize-guard.js",
-  "now": "const { orderContentKey, readContentStamp } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)\n",
+  "now": "const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)\n",
   "was": "const { orderContentKey, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write\n"
  },
  {
   "file": "materialize-guard.js",
-  "now": "    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null },\n      { menuNames: deps.menuNamesFor && order.restaurant_id ? deps.menuNamesFor(order.restaurant_id) : null, orderId });\n",
-  "was": "    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();\n"
+  "now": "    const args = { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null };\n    const ck = orderContentKey(args);\n    if (!ck) return false;\n    // §3 r3 (codex r3 P1): the keys the card checkout's intake PERSISTED, where the catalog snapshot is warm — this handler\n    // runs in another instance with a cold cache and never computes from menu names. Trusted only when the persisted key is\n    // THIS content's key. An order written before the deploy (no keys) or with stale ones → today's behaviour (the\n    // order-independent key + the incoming verbatim key), LOGGED with the order_id.\n    const persisted = typeof order.content_key === 'string' && order.content_key === ck;\n    if (!persisted) { try { console.warn('content_key_legacy_unavailable', JSON.stringify({ order_id: String(orderId), reason: order.content_key ? 'stale_persisted_keys' : 'no_persisted_keys' })); } catch (_) {} }\n    const legacyKey = persisted && typeof order.content_key_legacy === 'string' ? order.content_key_legacy : orderContentKeyVerbatim(args);\n    const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [ck, legacyKey]);\n",
+  "was": "    const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });\n    if (!ck) return false;\n    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();\n"
  }
 ]);
 function unapplySerial3Module(file, src) {

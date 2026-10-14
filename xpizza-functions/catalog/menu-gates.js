@@ -235,7 +235,6 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
     // §3 r2: the menu-ordered dish names of a snapshot ALREADY cached — for the version that priced an order, or for the
     // version the gate reader currently holds as active (its pointer cache). Neither ever reads; null when not cached.
     peekMenuNames: (rid, versionId) => { const g = cache.get(`${rid}::${versionId == null ? 'flat' : versionId}`); return g && Array.isArray(g.menuNames) ? g.menuNames : null; },
-    peekActiveMenuNames: (rid) => { const p = pointer.get(rid); if (!p || p.versionId == null) return null; const g = cache.get(`${rid}::${p.versionId}`); return g && Array.isArray(g.menuNames) ? g.menuNames : null; },
     // §3 r1: the item_order of a snapshot ALREADY cached for (rid, versionId) — NEVER reads (the intake gates loaded it earlier
     // in the request). Returns { itemOrder, versionId } — versionId = the version the snapshot was read for — or null.
     peekItemOrder: (rid, versionId) => { const g = cache.get(`${rid}::${versionId == null ? 'flat' : versionId}`); return g && Array.isArray(g.itemOrder) ? { itemOrder: g.itemOrder, versionId: g.snapshotVersion } : null; },

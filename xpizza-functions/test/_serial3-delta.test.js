@@ -82,6 +82,17 @@ const red = (fn, why) => { let threw = false, eq = false; try { const r = fn(); 
   assert.strictEqual(SD.stampContent({ route: 'chargeOnlineOrder', sent, post: persisted }).itemsText, persisted.items_text);
   assert.strictEqual(SD.stampContent({ route: 'chargeOnlineOrder', sent: { ...sent, items_text: '2x Carnivora' }, post: persisted }).itemsText, '2x Carnivora', 'an order this request did not write (other cart) → the posted text');
   assert.strictEqual(SD.stampContent({ route: 'chargeOnlineOrder', sent, post: { ...persisted, items_text: '1x Carnivora | 1x Otra (L9)' } }).itemsText, '1x Carnivora', 'a non-server extra line is not this request\'s content');
+  // r3: the pending order's persisted content keys — declared on a BOUND chargeOnlineOrder request only
+  const base = [`recent_order_content/<k>/${V}/at`, 'orders/<oid>/status'];
+  const withKeys = (...f) => [`recent_order_content/<k>/${C}/at`, 'orders/<oid>/status', ...f.map((x) => `orders/<oid>/${x}`)];
+  { const r = SD.changedShape(withKeys('content_key', 'content_key_legacy'), base, { content, bound: true, route: 'chargeOnlineOrder' });
+    assert.deepStrictEqual(r.actual, [...r.expected].sort(), 'charge + content_key + content_key_legacy → admitted'); }
+  { const r = SD.changedShape(withKeys('content_key', 'content_key_legacy_reason'), base, { content, bound: true, route: 'chargeOnlineOrder' });
+    assert.deepStrictEqual(r.actual, [...r.expected].sort(), 'charge + content_key + content_key_legacy_reason → admitted'); }
+  assert.throws(() => SD.changedShape(withKeys('content_key', 'content_key_legacy'), base, { content, bound: true, route: 'createOrder' }), /undeclared route|written on createOrder/, 'on createOrder → RED');
+  assert.throws(() => SD.changedShape(withKeys('content_key_legacy'), base, { content, bound: true, route: 'chargeOnlineOrder' }), /content_key \+ exactly one/, 'no content_key → RED');
+  assert.throws(() => SD.changedShape(withKeys('content_key', 'content_key_legacy', 'content_key_legacy_reason'), base, { content, bound: true, route: 'chargeOnlineOrder' }), /exactly one/, 'both legacy and reason → RED');
+  assert.notDeepStrictEqual(SD.changedShape(withKeys('content_key', 'content_key_legacy'), base, { content, bound: false, route: 'chargeOnlineOrder' }).actual, SD.changedShape(withKeys('content_key', 'content_key_legacy'), base, { content, bound: false }).expected, 'an UNBOUND request writing them stays RED');
   ok('changed paths follow the declared binding (a wrong key stays RED); contentOfOrder / contentOfRequest read the order and the POSTED body (a post-stamp reward append is not the stamped content)');
 }
 console.log(`\n_serial3-delta: OK (${n})`);
