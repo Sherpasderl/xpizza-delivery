@@ -852,7 +852,17 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     await handleHostedCallback(webhookDeps(), paidCb(OID, A1), later + 1000);
     await H0.frequentPass(db, { now: later + 2000, log: silent });
     assert.strictEqual((await cancelOrderCore(cdeps, { orderId: OID, actor: 'D', reason: 't', now: later + 3000, claimId: 'K1' })).body.outcome, 'manual_review', 'premise: blocked');
+    // the × writes EXACTLY the alert removal + the two dismissal fields, and nothing else (a full-DB diff)
+    const before = await val('/');
     await staffDismiss(ALK);                                                        // staff handled it in PixelPay → ×
+    const after = await val('/');
+    const flat = (o, p = '', out = {}) => { if (o && typeof o === 'object') { for (const k of Object.keys(o)) flat(o[k], p ? `${p}/${k}` : k, out); } else out[p] = o; return out; };
+    const fb = flat(before), fa = flat(after);
+    const changed = [...new Set([...Object.keys(fb), ...Object.keys(fa)])].filter((k) => fb[k] !== fa[k]).sort();
+    const evp = `orders/${OID}/paid_evidence/${A1}`;
+    assert.deepStrictEqual(changed.filter((k) => !k.startsWith(`dispatcher_alerts/${ALK}/`)), [`${evp}/dismissed_kind`, `${evp}/dismissed_version`], 'the × changes ONLY the two dismissal fields (+ removes the alert)');
+    assert.strictEqual(after.dispatcher_alerts && after.dispatcher_alerts[ALK], undefined, 'the alert is removed');
+    assert.deepStrictEqual(after.payment_attempts, before.payment_attempts, 'no payment_attempts write');
     const c2 = await cancelOrderCore(cdeps, { orderId: OID, actor: 'D', reason: 't', now: later + 4000, claimId: 'K2' });
     assert.strictEqual(c2.status, 200, `the dismissed (kind, version) no longer blocks the cancel (${JSON.stringify(c2.body)})`);
     assert.strictEqual((await val(`orders/${OID}`)).status, 'cancelled');
@@ -864,6 +874,18 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     await staffDismiss(ALK);
     await db.ref(`payment_attempts/${A1}`).update({ paid_amount_cents: 45000 });   // a different capture amount → a new version
     assert.strictEqual((await cancelOrderCore(cdeps, { orderId: OID, actor: 'D', reason: 't', now: later + 3000, claimId: 'K3' })).body.outcome, 'manual_review', 'a changed state is NOT covered by the old dismissal');
+    // …and the new version RE-ALERTS
+    assert.strictEqual((await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 3500 })).outcome, 'delivered', 'the new version re-alerts');
+    assert.strictEqual((await alertsOf())[ALK].amount_cents, 45000);
+    // a × on a STALE record (the v1 alert a dispatcher still had on screen) never unlocks the newer version
+    const evNow = await val(`orders/${OID}/paid_evidence/${A1}`);
+    const staleRec = { type: 'paid_superseded', order_id: OID, attempt_id: A1, version: 'stale-v1-version' };
+    assert.notStrictEqual(staleRec.version, evNow.version, 'premise: a stale version');
+    await db.ref().update(h0DismissUpdate(ALK, staleRec));                         // the real × builder, on the stale record
+    assert.strictEqual((await cancelOrderCore(cdeps, { orderId: OID, actor: 'D', reason: 't', now: later + 3600, claimId: 'K4' })).body.outcome, 'manual_review', 'a stale × does not unlock the cancel');
+    assert.ok(!H0.evidenceResolved(await val(`orders/${OID}/paid_evidence/${A1}`)), 'nor the stored (abandon CAS) check');
+    assert.strictEqual((await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 3700 })).outcome, 'already_delivered');
+    assert.ok((await alertsOf())[ALK], 'the removed (but not dismissed-for-this-version) alert is repaired');
     // abandon: blocked → × → proceeds; a changed state blocks the fresh pre-check
     await clearAll();
     later = await rotatedOrder(OID);
@@ -883,7 +905,7 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     const ab = await resolveManualReconciliationCore(rdeps, { orderId: OID, action: 'abandon', actor: 'A', note: '', now: later + 4000, claimId: 'AB3' });
     assert.strictEqual(ab.status, 200, `abandon proceeds over the dismissed state (${JSON.stringify(ab.body)})`);
     assert.strictEqual((await val(`orders/${OID}`)).payment_status, 'abandoned');
-    ok('ruling C (staff manual path): the × on the H0 alert, after the money is handled in PixelPay, lets cancel and abandon proceed with NO further sweep; any changed money state blocks again (fresh classification)');
+    ok('ruling C (OWNER: × = handled manually): the × writes ONLY the alert removal + the two dismissal fields; then cancel and abandon proceed with NO further sweep; a new version re-blocks AND re-alerts; a × on a STALE version never unlocks the newer one (cancel, abandon CAS) and the removed alert is repaired');
   }
 
   console.log(`\nsuperseded-capture emulator: OK (${n})`);
