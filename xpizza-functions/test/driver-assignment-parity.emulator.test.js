@@ -84,27 +84,59 @@ const REASSIGN_PARAMS = ['db', 'orderId', 'driverId', 'nextDriver', 'attempts', 
 const runReassignFn = new Function(...REASSIGN_PARAMS, reassignBody);
 const runReassign = (o) => runReassignFn(o.db, o.orderId, o.driverId, o.nextDriver, 1, o.pickHandle, o.svcWriteOrFallback || svcHandleLib.svcWriteOrFallback, claimDelivery, o.isExpectedEligibilityDenial, releaseDeliveryFromDriver, { TIMESTAMP: NOW }, 60000, console);
 
-// codex r4 P2: LIFT the ACTUAL non-stacked both-leg assignment batch out of a dispatch CLIENT (desktop / mobile
-// xpizza-delivery.js assignOrderToDriver) with a SOURCE-PARITY check (the executed text is sliced verbatim from the
-// shipped file), so the test runs the client's real batch — not the server builder — through the rules. The finalize
-// half_claim_since clear (shared by both branches) is asserted present + appended.
+// codex r4 P2 / r5 P2: LIFT the ACTUAL non-stacked both-leg assignment batch out of a dispatch CLIENT
+// (desktop / mobile xpizza-delivery.js assignOrderToDriver). Source-parity is SCOPED to the assignOrderToDriver
+// FUNCTION BODY (brace-matched) — a whole-file `includes` would be satisfied by reassignOrder and miss drift — and
+// checks the batch loop, its half_claim_since clear, AND the CAS claim, all inside that body. A drift-negative proves
+// the scoped check goes RED if the shipped clear is dropped. The executed batch is the loop text sliced verbatim.
 function clientBatch(file) {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
-  const START = '      const deadline = Date.now() + ACCEPT_TIMEOUT_MS;';
-  const END = '        updates[`tasks/${tid}/assignment_attempts`] = 1;\n      }';
+  const at = src.indexOf('export async function assignOrderToDriver('); assert.notStrictEqual(at, -1, `assignOrderToDriver in ${file}`);
+  let i = src.indexOf('{', at), d = 0, end = i; for (; end < src.length; end++) { if (src[end] === '{') d++; else if (src[end] === '}') { d--; if (!d) break; } }
+  const body = src.slice(at, end + 1);   // the assignOrderToDriver body ONLY — scope parity here, not the whole file
+  const LOOP_START = '      const deadline = Date.now() + ACCEPT_TIMEOUT_MS;';
+  const LOOP_END = '        updates[`tasks/${tid}/assignment_attempts`] = 1;\n      }';
   const HALF = 'updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;';
-  const a = src.indexOf(START); assert.notStrictEqual(a, -1, `client batch start in ${file}`);
-  const b = src.indexOf(END, a); assert.notStrictEqual(b, -1, `client batch end in ${file}`);
-  assert.ok(src.includes(HALF), `client finalize half_claim clear present in ${file}`);
-  const loopSrc = src.slice(a, b + END.length);
+  const CAS = 'const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));';
+  const liftLoop = (b) => {
+    const a = b.indexOf(LOOP_START); assert.notStrictEqual(a, -1, `batch loop in assignOrderToDriver (${file})`);
+    const z = b.indexOf(LOOP_END, a); assert.notStrictEqual(z, -1, `batch loop end in assignOrderToDriver (${file})`);
+    assert.notStrictEqual(b.indexOf(HALF, z), -1, `half_claim_since clear in assignOrderToDriver body (${file})`);
+    assert.ok(b.includes(CAS), `CAS claim bound to source in assignOrderToDriver (${file})`);
+    return b.slice(a, z + LOOP_END.length);
+  };
+  const loopSrc = liftLoop(body);
+  assert.throws(() => liftLoop(body.replace(HALF, '')), /half_claim_since clear/, `drift-negative: scoped parity must go RED if the shipped clear is dropped (${file})`);
   // eslint-disable-next-line no-new-func
   const fn = new Function('updates', 'pickupTaskId', 'deliveryTaskId', 'driverId', 'TASK_STATUS', 'serverTimestamp', 'ACCEPT_TIMEOUT_MS', `${loopSrc}\n      ${HALF}`);
-  return (oid, driver) => { const u = {}; fn(u, `${oid}_pickup`, `${oid}_delivery`, driver, { ASSIGNED: 'assigned' }, () => NOW, 60000); return u; };
+  return {
+    casText: CAS,
+    build: (oid, driver) => { const u = {}; fn(u, `${oid}_pickup`, `${oid}_delivery`, driver, { ASSIGNED: 'assigned' }, () => NOW, 60000); return u; },
+  };
 }
 const DISPATCH_ASSIGNERS = [
-  { key: 'desktop', fn: 'assignOrderToDriver', build: clientBatch('xpizza-dispatch/xpizza-delivery.js') },
-  { key: 'mobile', fn: 'assignOrderToDriver', build: clientBatch('xpizza-dispatch-mobile/xpizza-delivery.js') },
+  { key: 'desktop', fn: 'assignOrderToDriver', ...clientBatch('xpizza-dispatch/xpizza-delivery.js') },
+  { key: 'mobile', fn: 'assignOrderToDriver', ...clientBatch('xpizza-dispatch-mobile/xpizza-delivery.js') },
 ];
+
+// codex r5 P1: a db view whose reads on the given paths NEVER resolve (writes + other reads delegate), to prove a
+// HANGING denial-path read is bounded and recovery runs within budget. Only `.ref(path).once/.get` is intercepted.
+function hangReads(realDb, hangPrefixes) {
+  const hung = () => new Promise(() => {});
+  return new Proxy(realDb, {
+    get(t, prop, r) {
+      if (prop === 'ref') return (p) => {
+        const node = realDb.ref(p);
+        if (hangPrefixes.some((h) => p === h || String(p).startsWith(h))) {
+          return new Proxy(node, { get(nt, np) { if (np === 'once' || np === 'get') return hung; const v = nt[np]; return typeof v === 'function' ? v.bind(nt) : v; } });
+        }
+        return node;
+      };
+      const v = Reflect.get(t, prop, r); return typeof v === 'function' ? v.bind(t) : v;
+    },
+  });
+}
+const withWatchdog = (p, ms, label) => Promise.race([p, new Promise((_r, rej) => setTimeout(() => rej(new Error(`watchdog: ${label} did not recover within ${ms}ms`)), ms))]);
 
 (async () => {
   const { buildCompleteTaskUpdates } = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-driver', 'driver-complete.js')).href);
@@ -262,25 +294,78 @@ const DISPATCH_ASSIGNERS = [
   ok('TIMEOUT (lifted handler, flag-ON): a FINALIZE denial whose eligibility classification THROWS falls back to main — ordinary rollback, both legs consistent, no release (codex r4 P1)');
   await setAcct(D_EN2, { enabled: true });
 
+  // (G/H/I) codex r5 P1 — a HANGING denial-path read must never stall the handler: each case is bounded by the read
+  // deadline and must RECOVER within the test's own watchdog. The read deadline is shortened for the test; the WRITE
+  // wrapper is never deadline-wrapped (only the reads), so there is no late fallback write.
+  const prevDeadline = svcHandleLib._setReadDeadlineForTest(300);
+  try {
+    // (G) TOLERANT, the ACCOUNT (classification) read hangs → can't establish ineligibility → main's ordinary rollback
+    await seedReassign('oT7');
+    await env.withSecurityRulesDisabled(async (c) => {
+      const bypass = c.database();
+      const hungDb = hangReads(bypass, [`driver_accounts/${D_EN2}`]);
+      const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await bypass.ref(`driver_accounts/${D_EN2}/enabled`).set(false); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
+      await withWatchdog(runReassign({ db: hungDb, orderId: 'oT7', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }), 3000, 'hung account read');
+    });
+    { const d = await legOf('oT7', 'delivery'), p = await legOf('oT7', 'pickup');
+      assert.equal(d.assigned_driver_id, D_EN, 'hung account read → ordinary rollback restored the owner'); assert.equal(p.assigned_driver_id, D_EN, 'both legs consistent');
+      assert.equal(await alertFor('oT7'), false, 'no SIN ASIGNAR release when ineligibility could not be established (read hung)'); }
+    ok('TIMEOUT (lifted handler, flag-ON, TOLERANT): a HUNG account (classification) read is bounded → main rollback within budget, both legs consistent (codex r5 P1)');
+    await setAcct(D_EN2, { enabled: true });
+
+    // (H) CLOSED, the account read hangs INSIDE expectedIneligibleOrMain (closed skips svcWriteOrFallback's reads) → rollback
+    await seedReassign('oT8');
+    await seedMode('closed');
+    await env.withSecurityRulesDisabled(async (c) => {
+      const bypass = c.database();
+      const hungDb = hangReads(bypass, [`driver_accounts/${D_EN2}`]);
+      const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await bypass.ref(`driver_accounts/${D_EN2}/enabled`).set(false); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
+      await withWatchdog(runReassign({ db: hungDb, orderId: 'oT8', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }), 3000, 'hung account read (closed)');
+    });
+    { const d = await legOf('oT8', 'delivery'), p = await legOf('oT8', 'pickup');
+      assert.equal(d.assigned_driver_id, D_EN, 'closed + hung account read → rollback restored the owner'); assert.equal(p.assigned_driver_id, D_EN, 'both legs consistent'); }
+    ok('TIMEOUT (lifted handler, flag-ON, CLOSED): a HUNG account read inside expectedIneligibleOrMain is bounded → main rollback within budget (codex r5 P1)');
+    await seedMode(null);
+    await setAcct(D_EN2, { enabled: true });
+
+    // (I) TOLERANT, the MODE read hangs inside svcWriteOrFallback → it can't decide the fallback (throws the ORIGINAL denial);
+    // the segment's INDEPENDENT account classification (not hung) positively establishes ineligibility → bounded release
+    await seedReassign('oT9');
+    await env.withSecurityRulesDisabled(async (c) => {
+      const bypass = c.database();
+      const hungDb = hangReads(bypass, ['platform_config/driver_enforcement_mode']);
+      const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await bypass.ref(`driver_accounts/${D_EN2}/enabled`).set(false); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
+      await withWatchdog(runReassign({ db: hungDb, orderId: 'oT9', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }), 3000, 'hung mode read');
+    });
+    { const d = await legOf('oT9', 'delivery'), p = await legOf('oT9', 'pickup');
+      assert.equal(d.assigned_driver_id ?? null, null, 'hung mode read bounded; the independent account classification established ineligibility → released'); assert.equal(p.assigned_driver_id ?? null, null);
+      assert.ok(await alertFor('oT9'), 'the bounded recovery still raised the SIN ASIGNAR alert'); }
+    ok('TIMEOUT (lifted handler, flag-ON, TOLERANT): a HUNG mode read inside svcWriteOrFallback is bounded → recovery proceeds within budget (released via the independent classification) (codex r5 P1)');
+    await setAcct(D_EN2, { enabled: true });
+  } finally { svcHandleLib._setReadDeadlineForTest(prevDeadline); }
+
   // DESKTOP/MOBILE assignment — the ACTUAL client batch construction, LIFTED from each client with a source-parity check,
   // plus the client's own CAS claim, run through the rules-enforced dispatcher handle for an eligible AND a denied
   // (suspended) target (codex r4 P2). Both legs are asserted; the §2 invariant bites both the claim and the batch.
   await env.withSecurityRulesDisabled((c) => c.database().ref('dispatchers/disp-parity').set({ name: 'Disp' }));
   const dispAuth = env.authenticatedContext('disp-parity', { dispatcher: true }).database();
-  const bothLegsClient = async (oid, driver) => { for (const leg of ['pickup', 'delivery']) { const t = await legOf(oid, leg); assert.equal(t.assigned_driver_id, driver, `${oid}_${leg} driver`); assert.equal(t.status, 'assigned', `${oid}_${leg} status`); } };
+  const bothLegsClient = async (oid, driver, status) => { for (const leg of ['pickup', 'delivery']) { const t = await legOf(oid, leg); assert.equal(t.assigned_driver_id, driver, `${oid}_${leg} driver`); assert.equal(t.status, status, `${oid}_${leg} status`); } };
+  // CAS claim text bound to source (liftLoop asserted client.casText is in the shipped body); the test mirrors its logic
   const clientClaim = (oid, driver) => dispAuth.ref(`tasks/${oid}_delivery/assigned_driver_id`).transaction((cur) => (cur == null ? driver : undefined));
   for (const client of DISPATCH_ASSIGNERS) {
-    // eligible: the client's real CAS claim commits, then its lifted batch lands BOTH legs
+    assert.ok(/cur == null \? driverId : undefined/.test(client.casText), `${client.key} CAS is source-bound`);
+    // eligible: the client's real CAS claim commits, then its lifted batch lands BOTH legs (assigned)
     await seedOrder(`oD_${client.key}_ok`);
     const claimOk = await assertSucceeds(clientClaim(`oD_${client.key}_ok`, D_EN));
     assert.equal(claimOk.snapshot.val(), D_EN, 'the real CAS claim committed to the eligible driver');
     await assertSucceeds(dispAuth.ref().update(client.build(`oD_${client.key}_ok`, D_EN)));
-    await bothLegsClient(`oD_${client.key}_ok`, D_EN);
-    // denied (suspended): the §2 invariant bites BOTH the real CAS claim AND the lifted batch
+    await bothLegsClient(`oD_${client.key}_ok`, D_EN, 'assigned');
+    // denied (suspended): the §2 invariant bites BOTH the real CAS claim AND the lifted batch; BOTH legs stay pending/unassigned
     await seedOrder(`oD_${client.key}_no`);
     await assertFails(clientClaim(`oD_${client.key}_no`, D_SUSP));
     await assertFails(dispAuth.ref().update(client.build(`oD_${client.key}_no`, D_SUSP)));
-    ok(`DESKTOP/MOBILE (${client.key}): the REAL lifted ${client.fn} CAS claim + both-leg batch land for an eligible target and are DENIED for a suspended one (source-parity checked)`);
+    for (const leg of ['pickup', 'delivery']) { const t = await legOf(`oD_${client.key}_no`, leg); assert.equal(t.assigned_driver_id ?? null, null, `denied ${leg} stays unassigned`); assert.equal(t.status, 'pending', `denied ${leg} stays pending`); }
+    ok(`DESKTOP/MOBILE (${client.key}): the REAL lifted ${client.fn} CAS claim + both-leg batch land for an eligible target and are DENIED for a suspended one (both legs stay pending/unassigned; scoped source-parity + drift-negative)`);
   }
 
   // the REAL driver completion batch (both-leg + stamp) through the driver handle
