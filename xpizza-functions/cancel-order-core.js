@@ -108,7 +108,12 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   // PLAN-H0 §4 — BEFORE B.6 sets any attempt flag: unaccounted paid money or an uncertain reversal on ANY of the order's
   // attempts (the claim snapshot's current evidence keys + its active attempt, each read fresh) → staff resolve it in
   // PixelPay; automation never voids/finalizes over it. Refusal leaves no cancellation flags behind.
-  const h0 = await H0.unresolvedMoneyOnOrder(db, orderId, claimed);
+  let h0;
+  try { h0 = await H0.unresolvedMoneyOnOrder(db, orderId, claimed); }
+  catch (e) {                                                          // nothing was flagged yet → release and let staff retry
+    await releaseCancelClaim(orderRef, claimId);
+    return { status: 503, body: { ok: false, outcome: 'retryable', retryable: true, error: 'No se pudo verificar el pago — reintentá', order_id: orderId } };
+  }
   if (h0) {
     await releaseCancelClaim(orderRef, claimId);
     await audit('manual_review', { reason: 'unresolved_money_on_order', attempt_id: h0.attemptId, kind: h0.kind });

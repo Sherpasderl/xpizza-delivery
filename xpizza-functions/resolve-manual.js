@@ -151,7 +151,11 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
       });
       if (!abTx.committed) {
         const cur = abTx.snapshot.val() || {};
-        if (cur.paid_during_resolve === true || H0.hasEvidenceKeys(cur)) return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
+        if (cur.paid_during_resolve === true) return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
+        if (H0.hasEvidenceKeys(cur)) {                                    // PLAN-H0 §4: still our pre-side-effect claim → release it, so "Reembolsar" can claim
+          if (cur.resolving_claim_id === claimId && cur.resolving_phase === MR.PHASE.CLAIMED) await releaseClaim();
+          return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
+        }
         return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };
       }
       if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'abandoned', status: 'abandoned', abandoned_at: now });

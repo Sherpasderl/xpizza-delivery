@@ -57,7 +57,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "cancel-order-core.js",
-  "now": "  const claimed = claimTx.snapshot.val();\n\n  // PLAN-H0 §4 — BEFORE B.6 sets any attempt flag: unaccounted paid money or an uncertain reversal on ANY of the order's\n  // attempts (the claim snapshot's current evidence keys + its active attempt, each read fresh) → staff resolve it in\n  // PixelPay; automation never voids/finalizes over it. Refusal leaves no cancellation flags behind.\n  const h0 = await H0.unresolvedMoneyOnOrder(db, orderId, claimed);\n  if (h0) {\n    await releaseCancelClaim(orderRef, claimId);\n    await audit('manual_review', { reason: 'unresolved_money_on_order', attempt_id: h0.attemptId, kind: h0.kind });\n    return { status: 409, body: { ok: false, outcome: 'manual_review', order_id: orderId } };\n  }\n\n",
+  "now": "  const claimed = claimTx.snapshot.val();\n\n  // PLAN-H0 §4 — BEFORE B.6 sets any attempt flag: unaccounted paid money or an uncertain reversal on ANY of the order's\n  // attempts (the claim snapshot's current evidence keys + its active attempt, each read fresh) → staff resolve it in\n  // PixelPay; automation never voids/finalizes over it. Refusal leaves no cancellation flags behind.\n  let h0;\n  try { h0 = await H0.unresolvedMoneyOnOrder(db, orderId, claimed); }\n  catch (e) {                                                          // nothing was flagged yet → release and let staff retry\n    await releaseCancelClaim(orderRef, claimId);\n    return { status: 503, body: { ok: false, outcome: 'retryable', retryable: true, error: 'No se pudo verificar el pago — reintentá', order_id: orderId } };\n  }\n  if (h0) {\n    await releaseCancelClaim(orderRef, claimId);\n    await audit('manual_review', { reason: 'unresolved_money_on_order', attempt_id: h0.attemptId, kind: h0.kind });\n    return { status: 409, body: { ok: false, outcome: 'manual_review', order_id: orderId } };\n  }\n\n",
   "was": "  const claimed = claimTx.snapshot.val();\n\n"
  },
  {
@@ -77,8 +77,8 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "resolve-manual.js",
-  "now": "        const cur = abTx.snapshot.val() || {};\n        if (cur.paid_during_resolve === true || H0.hasEvidenceKeys(cur)) return { status: 409, body: { error: 'Se detectó un pago — usá \"Reembolsar\".', payment_uuid_present: true } };\n        return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };\n",
-  "was": "        const cur = abTx.snapshot.val() || {};\n        if (cur.paid_during_resolve === true) return { status: 409, body: { error: 'Se detectó un pago — usá \"Reembolsar\".', payment_uuid_present: true } };\n        return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };\n"
+  "now": "        if (cur.paid_during_resolve === true) return { status: 409, body: { error: 'Se detectó un pago — usá \"Reembolsar\".', payment_uuid_present: true } };\n        if (H0.hasEvidenceKeys(cur)) {                                    // PLAN-H0 §4: still our pre-side-effect claim → release it, so \"Reembolsar\" can claim\n          if (cur.resolving_claim_id === claimId && cur.resolving_phase === MR.PHASE.CLAIMED) await releaseClaim();\n          return { status: 409, body: { error: 'Se detectó un pago — usá \"Reembolsar\".', payment_uuid_present: true } };\n        }\n        return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };\n",
+  "was": "        if (cur.paid_during_resolve === true) return { status: 409, body: { error: 'Se detectó un pago — usá \"Reembolsar\".', payment_uuid_present: true } };\n        return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };\n"
  }
 ]);
 function unapplyH0Module(file, src) {

@@ -55,6 +55,30 @@ async function rotatedOrder(oid) {
   assert.strictEqual((await val(`orders/${oid}`)).active_attempt_id, A2, 'premise: rotated to A2');
   return later;
 }
+// The same real writers for many orders (paging / budget / fairness fixtures, codex build r1): create a1, expire it, rotate
+// to a2, then a verified paid callback for the superseded a1 at `paidAt` (the webhook acks attempt_superseded).
+async function realSuperseded(oid, a1, a2, paidAt) {
+  const gen = (ids) => () => ids.shift();
+  assert.strictEqual((await acquireHostedAttempt(db, oid, pendingRecord(oid), FP, T0, [], gen([a1]), () => 'P1')).outcome, 'claimed');
+  await db.ref(`payment_attempts/${a1}`).update({ hosted_state: 'created', hosted_checkout_url: 'https://pay/1' });
+  const later = T0 + HOSTED_TTL_MS + 60 * 1000;
+  assert.strictEqual((await acquireHostedAttempt(db, oid, pendingRecord(oid), FP, later, [], gen([a2]), () => 'P2')).outcome, 'claimed');
+  const r = await handleHostedCallback(webhookDeps(), paidCb(oid, a1), paidAt);
+  assert.strictEqual(r.outcome, 'attempt_superseded', `premise ${oid}: the webhook acks attempt_superseded`);
+}
+const hex16 = (p, i) => p + i.toString(16).padStart(15, '0');
+async function realSupersededMany(prefix, n, paidAtOf) {
+  const ids = [];
+  for (let i = 0; i < n; i += 25) {
+    await Promise.all(Array.from({ length: Math.min(25, n - i) }, (_, j) => {
+      const k = i + j, oid = `${prefix}${String(k).padStart(3, '0')}`;
+      ids.push({ oid, a1: hex16('a', k), a2: hex16('b', k) });
+      return realSuperseded(oid, hex16('a', k), hex16('b', k), paidAtOf(k));
+    }));
+  }
+  return ids.sort((x, y) => (x.oid < y.oid ? -1 : 1));
+}
+const gate = () => { let open; const p = new Promise((r) => { open = r; }); return { wait: () => p, open }; };
 const alertsOf = async () => (await val('dispatcher_alerts')) || {};
 const itemsOf = async () => (await val('pending_paid_alerts')) || {};
 
@@ -220,12 +244,29 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     const r2 = await cancelOrderCore({ ...cdeps, db: proxy }, { orderId: OID, actor: 'D', reason: 'test', now: later2 + 3000, claimId: 'CC2' });
     assert.ok(injected, 'premise: the evidence landed after the initial read');
     assert.strictEqual(r2.body.outcome, 'manual_review', 'refused on evidence that arrived mid-cancel');
+    // codex build r1 P2-5: the guard's own read FAILS → the owned claim is released, a retryable error, no attempt flags;
+    // the next cancel is answered on its merits (manual_review here), never claim_lost
+    const failRead = Object.create(db);
+    let failed = false;
+    failRead.ref = (p) => {
+      const ref = db.ref(p);
+      if (p === `payment_attempts/${A1}` && !failed) { ref.once = async () => { failed = true; throw new Error('read failed'); }; }
+      return ref;
+    };
+    const r3 = await cancelOrderCore({ ...cdeps, db: failRead }, { orderId: OID, actor: 'D', reason: 'test', now: later2 + 4000, claimId: 'CC3' });
+    assert.ok(failed, 'premise: the guard read failed');
+    assert.strictEqual(r3.status, 503); assert.strictEqual(r3.body.outcome, 'retryable'); assert.strictEqual(r3.body.retryable, true);
+    assert.ok(!(await val(`orders/${OID}`)).cancel_claim_id, 'the claim is released on a guard-read failure');
+    const a2f = await val(`payment_attempts/${A2}`);
+    assert.ok(!a2f.cancelling && !a2f.cancel_pending, 'no attempt flags');
+    const r4 = await cancelOrderCore(cdeps, { orderId: OID, actor: 'D', reason: 'test', now: later2 + 5000, claimId: 'CC4' });
+    assert.strictEqual(r4.body.outcome, 'manual_review', `the next cancel is not claim_lost (${r4.body.outcome})`);
     // golden: no evidence, nothing uncertain → today's cancel
     await clearAll();
     await db.ref('orders/PZXH0G').set(pendingRecord('PZXH0G', { payment_method: 'cash', status: 'new', payment_status: 'pending' }));
     const g = await cancelOrderCore({ db, voidOrRefund: async () => ({ voided: true }), alert: async () => {}, serverTimestamp: 1 }, { orderId: 'PZXH0G', actor: 'D', reason: 't', now: T0, claimId: 'G' });
     assert.strictEqual(g.status, 200, `golden cancel ${JSON.stringify(g.body)}`);
-    ok('cancel guard: unresolved money on another attempt → 409 manual_review, claim released, NO attempt flags; evidence arriving mid-cancel is caught; a clean order cancels as today');
+    ok('cancel guard: unresolved money on another attempt → 409 manual_review, claim released, NO attempt flags; evidence arriving mid-cancel is caught; a guard-read failure releases the claim with a retryable 503 (the next cancel is not claim_lost); a clean order cancels as today');
   }
 
   // ── 7. abandon refuses on evidence — preliminary and at the terminal CAS ──
@@ -256,18 +297,24 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     };
     const r2 = await resolveManualReconciliationCore({ ...rdeps, db: proxy }, { orderId: OID, action: 'abandon', actor: 'A', note: '', now: later + 3000, claimId: 'AB2' });
     assert.strictEqual(r2.status, 409, 'the terminal CAS refuses on evidence that arrived mid-abandon');
-    assert.notStrictEqual((await val(`orders/${OID}`)).payment_status, 'abandoned');
-    ok('abandon refuses when the order carries evidence — at the preliminary check AND at the terminal CAS (mid-flow evidence)');
+    const oa = await val(`orders/${OID}`);
+    assert.notStrictEqual(oa.payment_status, 'abandoned');
+    // codex build r1 P2-6: the still-owned pre-side-effect claim is RELEASED, so "Reembolsar" can claim the order next
+    assert.strictEqual(oa.payment_status, 'manual_reconciliation', 'the abandon claim is released');
+    assert.ok(!oa.resolving_claim_id && !oa.resolving_action, 'no resolving claim left behind');
+    const rf = await resolveManualReconciliationCore(rdeps, { orderId: OID, action: 'refund', actor: 'A', note: '', now: later + 4000, claimId: 'RF1' });
+    assert.notStrictEqual(rf.body && rf.body.error, 'Pedido no resolvable (ya en proceso o resuelto)', `"Reembolsar" can claim after the refusal (${JSON.stringify(rf.body)})`);
+    ok('abandon refuses when the order carries evidence — at the preliminary check AND at the terminal CAS (mid-flow evidence), and the CAS refusal releases its claim so "Reembolsar" can claim next');
   }
 
   // ── 8. generation-aware work items + a failing first item with a deliverable one behind it ──
   {
     await clearAll();
     const ref = db.ref('pending_paid_alerts/K');
-    await ref.set({ order_id: 'x', attempt_id: 'y', at: 1, version: 'v2' });
-    await H0.deleteItemIfVersion(ref, 'v1');
-    assert.ok(await val('pending_paid_alerts/K'), 'a newer generation keeps its item');
-    await H0.deleteItemIfVersion(ref, 'v2');
+    await ref.set({ order_id: 'x', attempt_id: 'y', at: 1, gen: 'g2' });
+    await H0.deleteItemIfGen(ref, 'g1');
+    assert.ok(await val('pending_paid_alerts/K'), 'another generation keeps its item');
+    await H0.deleteItemIfGen(ref, 'g2');
     assert.strictEqual(await val('pending_paid_alerts/K'), null, 'the matching generation deletes it');
     // two concurrent writers on the same state converge: one evidence, one alert, no item
     const later = await rotatedOrder(OID);
@@ -277,21 +324,16 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     assert.deepStrictEqual(await itemsOf(), {});
     // failing first item: its alert write fails → rescheduled into the future; the item behind it is delivered in the same run
     await clearAll();
-    const OIDb = 'PZXH0B';
+    const OIDb = 'PZXH0B', C3 = 'c3c3c3c3c3c3c3c3', D4 = 'd4d4d4d4d4d4d4d4';
     const later2 = await rotatedOrder(OID);
     await handleHostedCallback(webhookDeps(), paidCb(OID, A1), later2 + 1000);
-    // a second order whose evidence is deliverable
-    const gen = (ids) => () => ids.shift();
-    await acquireHostedAttempt(db, OIDb, pendingRecord(OIDb), FP, T0, [], gen(['c3c3c3c3c3c3c3c3']), () => 'P');
-    await db.ref('payment_attempts/c3c3c3c3c3c3c3c3').update({ hosted_state: 'created' });
-    await acquireHostedAttempt(db, OIDb, pendingRecord(OIDb), FP, later2, [], gen(['d4d4d4d4d4d4d4d4']), () => 'P');
-    await handleHostedCallback(webhookDeps(), paidCb(OIDb, 'c3c3c3c3c3c3c3c3'), later2 + 1000);
-    await db.ref(`pending_paid_alerts/${OID}_${A1}`).set({ order_id: OID, attempt_id: A1, at: 10, version: 'old' });
-    await db.ref(`pending_paid_alerts/${OIDb}_c3c3c3c3c3c3c3c3`).set({ order_id: OIDb, attempt_id: 'c3c3c3c3c3c3c3c3', at: 20, version: 'old' });
+    await realSuperseded(OIDb, C3, D4, later2 + 1000);
+    await db.ref(`pending_paid_alerts/${OID}_${A1}`).set({ order_id: OID, attempt_id: A1, at: 10, gen: 'old' });
+    await db.ref(`pending_paid_alerts/${OIDb}_${C3}`).set({ order_id: OIDb, attempt_id: C3, at: 20, gen: 'old' });
     const failing = Object.create(db);
     failing.ref = (p) => {
       const r = db.ref(p);
-      if (p === `dispatcher_alerts/paid_superseded_${OID}_${A1}`) r.set = async () => { throw new Error('alert write failed'); };
+      if (p === `dispatcher_alerts/paid_superseded_${OID}_${A1}`) r.transaction = async () => { throw new Error('alert write failed'); };
       return r;
     };
     // run only the work-item part: items are due; the paged parts find nothing new (cursor past them)
@@ -299,40 +341,59 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     await H0.frequentPass(failing, { now: later2 + 2000, log: silent });
     const items = await itemsOf();
     assert.ok(items[`${OID}_${A1}`] && items[`${OID}_${A1}`].at > later2 + 2000, 'the failing item is rescheduled into the future');
-    assert.strictEqual(items[`${OIDb}_c3c3c3c3c3c3c3c3`], undefined, 'the item behind it was delivered and cleared');
-    assert.ok((await alertsOf())[`paid_superseded_${OIDb}_c3c3c3c3c3c3c3c3`], 'its alert exists');
-    ok('work items: a newer generation survives an older ack; concurrent writers converge to one alert; a failing first item is rescheduled and does not starve the next');
+    assert.strictEqual(items[`${OIDb}_${C3}`], undefined, 'the item behind it was delivered and cleared');
+    assert.ok((await alertsOf())[`paid_superseded_${OIDb}_${C3}`], 'its alert exists');
+    ok('work items: another generation survives an ack; concurrent writers converge to one alert; a failing first item is rescheduled and does not starve the next (real writers)');
   }
 
-  // ── 9. the daily budget against the REMAINING invocation time, checkpointed, carried over to the tail ──
+  // ── 9. the daily budget against the REMAINING invocation time, checkpointed, carried over to the tail (real writers) ──
   {
     await clearAll();
     const N = 40;
     const later = T0 + HOSTED_TTL_MS + 60000;
-    const updates = {};
-    for (let i = 0; i < N; i++) {
-      const oid = `PZXD${String(i).padStart(3, '0')}`;
-      const old = `e${String(i).padStart(15, '0')}`, act = `f${String(i).padStart(15, '0')}`;
-      updates[`orders/${oid}`] = pendingRecord(oid, { active_attempt_id: act });
-      updates[`payment_attempts/${old}`] = { order_id: oid, hosted_state: 'paid', hosted_callback_verified: true, payment_uuid: `U${i}`, paid_amount_cents: 29900 };   // no paid_at: daily-only
-      updates[`payment_attempts/${act}`] = { order_id: oid, hosted_state: 'created' };
-    }
-    await db.ref().update(updates);
-    // the preceding reconcile work ate 120 s; each candidate costs 10 s on the stub clock → ~16 per run before the reserve
+    await realSupersededMany('PZXD', N, () => later + 1000);
+    // the preceding reconcile work ate 120 s; each clock read costs 10 s → the remaining budget minus the reserve binds
     let runs = 0;
     for (; runs < 10; runs++) {
       const start = T0;
       let t = start + 120000;
       const clock = () => { t += 10000; return t; };
-      const r = await H0.dailyPass(db, { orders: await val('orders'), attempts: await val('payment_attempts'), invocationStartedAt: start, now: later, clock, log: silent });
+      const r = await H0.dailyPass(db, { orders: await val('orders'), attempts: await val('payment_attempts'), invocationStartedAt: start, now: later + 2000, clock, log: silent });
       assert.ok(r.visited < r.total, 'budget-bounded run');
+      assert.ok(t - start <= 300000 - 20000 + 10000, `never past the remaining budget minus the reserve (${t - start})`);
       const cur = await val('ops/superseded_sweep/daily_cursor');
       assert.ok(cur && cur.k, 'cursor checkpointed');
-      const alerted = Object.keys(await alertsOf()).length;
-      if (alerted === N) break;
+      if (Object.keys(await alertsOf()).length === N) break;
     }
     assert.strictEqual(Object.keys(await alertsOf()).length, N, `all ${N} candidates alerted across ${runs + 1} budget-bounded runs`);
-    ok(`daily pass: with 120 s already spent, each run stops at the remaining budget minus the reserve; the checkpointed cursor carries over and the tail is reached (${runs + 1} runs)`);
+    ok(`daily pass: with 120 s already spent, each run stops at the remaining budget minus the reserve; the checkpointed cursor carries over and the tail is reached (${runs + 1} runs, real writers)`);
+
+    // codex build r1 P2-4 (a): NO preceding work → the 200 s sweep cap binds (not the ~280 s the invocation would allow)
+    await clearAll();
+    await realSupersededMany('PZXD', N, () => later + 1000);
+    {
+      const start = T0; let t = start;
+      const clock = () => { t += 10000; return t; };
+      const r = await H0.dailyPass(db, { orders: await val('orders'), attempts: await val('payment_attempts'), invocationStartedAt: start, now: later + 2000, clock, log: silent });
+      assert.ok(r.outOfTime, 'stopped by a cap');
+      assert.ok(t - start <= H0.SWEEP_CAP_MS + 2 * 10000, `the 200 s sweep cap binds (${t - start} ms)`);
+    }
+    // (b): the pending-children loop checks the deadline per child — 40 pending evidence children (left pending by the
+    // REAL writer whose alert step failed), no candidates, 10 s per clock read
+    await clearAll();
+    const many = await realSupersededMany('PZXD', N, () => later + 1000);
+    for (const { oid, a1 } of many) {
+      await H0.recordEvidence(db, { orderId: oid, attemptId: a1, now: later + 2000, hooks: { beforeAlert: async () => { throw new Error('alert step down'); } } }).catch(() => {});
+      assert.strictEqual((await val(`orders/${oid}/paid_evidence/${a1}`)).alert_state, 'pending', 'premise: pending evidence');
+    }
+    {
+      const start = T0; let t = start;
+      const clock = () => { t += 10000; return t; };
+      const r = await H0.dailyPass(db, { orders: await val('orders'), attempts: {}, invocationStartedAt: start, now: later + 3000, clock, log: silent });
+      assert.ok(r.outOfTime && r.redelivered < N, `the per-child deadline stops redelivery (${r.redelivered}/${N})`);
+      assert.ok(t - start <= H0.SWEEP_CAP_MS + 2 * 10000, `bounded by the cap (${t - start} ms)`);
+    }
+    ok('daily pass (codex build r1 P2-4): the 200 s sweep cap binds when nothing preceded it, and the pending-children loop checks the deadline per child');
   }
 
   // ── 10. clean DB → no evidence / alert / item writes; orphans are logged only ──
@@ -357,15 +418,7 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
   {
     await clearAll();
     const now = T0 + 7 * 60 * 60 * 1000;
-    const updates = {};
-    for (let i = 0; i < 201; i++) {
-      const oid = `PZXP${String(i).padStart(3, '0')}`;
-      const old = `a${String(i).padStart(15, '0')}`, act = `b${String(i).padStart(15, '0')}`;
-      updates[`orders/${oid}`] = pendingRecord(oid, { active_attempt_id: act });
-      updates[`payment_attempts/${old}`] = { order_id: oid, hosted_state: 'paid', hosted_callback_verified: true, payment_uuid: `U${i}`, paid_amount_cents: 29900, paid_at: now - 1000 + i };
-      updates[`payment_attempts/${act}`] = { order_id: oid, hosted_state: 'created' };
-    }
-    await db.ref().update(updates);
+    await realSupersededMany('PZXP', 201, (i) => now - 1000 + i);   // real writers; paid_at = the callback time
     await db.ref('ops/superseded_sweep/paid_cursor').set({ v: T0, k: 'aaaa' });   // older than now − 6 h → jumps
     const r1 = await H0.frequentPass(db, { now, log: silent });
     assert.strictEqual(r1.paid, 200, 'page 1: 200');
@@ -375,7 +428,7 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     assert.strictEqual(Object.keys(await alertsOf()).length, 201, 'row 201 visited on the next run');
     const r3 = await H0.frequentPass(db, { now: now + 2, log: silent });
     assert.strictEqual(r3.paid, 0, 'caught up: stable');
-    ok('frequent pass: server-side paging 200 per run with a persisted cursor (row 201 on the next run); a cursor older than 6 h jumps; caught-up runs are stable');
+    ok('frequent pass: server-side paging 200 per run with a persisted cursor (row 201 on the next run); a cursor older than 6 h jumps; caught-up runs are stable (real writers)');
   }
 
   // ── 13. snapshot consistency: a STALE orders map (active A1) vs the DB (A2 active and normally paid) → no false alert ──
@@ -394,6 +447,199 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     assert.deepStrictEqual(await alertsOf(), {}, 'no false alert from a stale snapshot');
     assert.strictEqual((await val(`orders/${OIDs}`)).paid_evidence, undefined);
     ok('snapshot consistency: a stale orders map (pre-rotation) cannot produce a false alert — recordEvidence re-reads the order and attempt fresh before writing');
+  }
+
+  // ── 14. codex build r1 P1-1: TRUE overlapping v1/v2 writers — the alert can never disagree with the evidence ──
+  {
+    const ALK = `paid_superseded_${OID}_${A1}`;
+    const setup = async () => {
+      await clearAll();
+      const later = await rotatedOrder(OID);
+      await handleHostedCallback(webhookDeps(), paidCb(OID, A1), later + 1000);   // v1: L299
+      return later;
+    };
+    const finalConsistent = async (label) => {
+      const ev = await val(`orders/${OID}/paid_evidence/${A1}`);
+      assert.strictEqual(ev.alert_state, 'delivered', `${label}: evidence delivered`);
+      assert.strictEqual(ev.amount_cents, 31000, `${label}: evidence is v2`);
+      const al = (await alertsOf())[ALK];
+      return { ev, al };
+    };
+    // (a) X writes evidence v1 and pauses BEFORE its alert; Y delivers v2 and deletes its item; X resumes
+    {
+      const later = await setup();
+      const g = gate(); let paused;
+      const pausedP = new Promise((r) => { paused = r; });
+      const X = H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 2000, hooks: { beforeAlert: async () => { paused(); await g.wait(); } } });
+      await pausedP;
+      await db.ref(`payment_attempts/${A1}`).update({ paid_amount_cents: 31000 });   // v2
+      const y = await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 3000 });
+      assert.strictEqual(y.outcome, 'delivered', 'Y delivers v2');
+      g.open();
+      const x = await X;
+      assert.strictEqual(x.outcome, 'superseded_by_newer', `X sees it lost (${x.outcome})`);
+      const { ev, al } = await finalConsistent('(a)');
+      assert.ok(al, '(a) the alert is present');
+      assert.strictEqual(al.amount_cents, 31000, '(a) the alert shows v2, never the stale v1');
+      assert.strictEqual(al.seq, ev.seq, '(a) the alert generation equals the evidence generation');
+      assert.deepStrictEqual(await itemsOf(), {}, '(a) no item left');
+    }
+    // (b) X pauses AFTER writing its v1 alert, before the delivered CAS; Y delivers v2; X resumes
+    {
+      const later = await setup();
+      const g = gate(); let paused;
+      const pausedP = new Promise((r) => { paused = r; });
+      const X = H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 2000, hooks: { beforeDelivered: async () => { paused(); await g.wait(); } } });
+      await pausedP;
+      assert.strictEqual((await alertsOf())[ALK].amount_cents, 29900, 'premise: X\'s v1 alert is up');
+      await db.ref(`payment_attempts/${A1}`).update({ paid_amount_cents: 31000 });
+      await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 3000 });
+      g.open(); await X;
+      const { ev, al } = await finalConsistent('(b)');
+      assert.ok(al && al.amount_cents === 31000 && al.seq === ev.seq, '(b) X does not withdraw or overwrite the newer alert');
+      assert.deepStrictEqual(await itemsOf(), {});
+    }
+    // (c) as (a), but staff DISMISS the v2 alert before X resumes → X must not resurrect a stale alert
+    {
+      const later = await setup();
+      const g = gate(); let paused;
+      const pausedP = new Promise((r) => { paused = r; });
+      const X = H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 2000, hooks: { beforeAlert: async () => { paused(); await g.wait(); } } });
+      await pausedP;
+      await db.ref(`payment_attempts/${A1}`).update({ paid_amount_cents: 31000 });
+      await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 3000 });
+      await db.ref(`dispatcher_alerts/${ALK}`).remove();                         // dismissed
+      g.open(); await X;
+      await finalConsistent('(c)');
+      assert.deepStrictEqual(await alertsOf(), {}, '(c) a dismissed newer alert stays dismissed — the stale writer withdraws what it wrote');
+    }
+    // (d) a STALE not_alertable writer never deletes a newer writer's pending retry item
+    {
+      const later = await setup();
+      await db.ref(`payment_attempts/${A1}`).update({ status: 'refunded' });       // proven reversed → not alertable
+      const g = gate(); let paused;
+      const pausedP = new Promise((r) => { paused = r; });
+      const X = H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 2000, hooks: { afterClassify: async () => { paused(); await g.wait(); } } });
+      await pausedP;
+      await db.ref(`payment_attempts/${A1}/status`).remove();                     // alertable again
+      const failing = Object.create(db);
+      failing.ref = (p) => { const r = db.ref(p); if (p === `dispatcher_alerts/${ALK}`) r.transaction = async () => { throw new Error('down'); }; return r; };
+      const y = await H0.recordEvidence(failing, { orderId: OID, attemptId: A1, now: later + 3000 });
+      assert.strictEqual(y.outcome, 'alert_failed', 'premise: Y left a rescheduled retry item');
+      g.open();
+      assert.strictEqual((await X).outcome, 'not_alertable');
+      const it = (await itemsOf())[`${OID}_${A1}`];
+      assert.ok(it && it.attempts === 1 && it.at > later + 3000, '(d) the newer writer\'s retry item survives the stale cleanup');
+    }
+    // (e) repair: delivered evidence whose alert shows an OLDER generation is rewritten; a kind change withdraws the
+    // other kind's older alert; a dismissed (absent) alert stays dismissed
+    {
+      const later = await setup();
+      await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 2000 });
+      const ev = await val(`orders/${OID}/paid_evidence/${A1}`);
+      await db.ref(`dispatcher_alerts/${ALK}`).update({ amount_cents: 1, seq: ev.seq - 1, version: 'stale' });   // an older generation's content
+      assert.strictEqual((await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 3000 })).outcome, 'already_delivered');
+      const al = (await alertsOf())[ALK];
+      assert.ok(al.amount_cents === 29900 && al.seq === ev.seq && al.version === ev.version, '(e) repaired from the evidence');
+      await db.ref(`payment_attempts/${A1}`).update({ status: 'manual_review' });  // the same attempt becomes an uncertain reversal
+      assert.strictEqual((await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 4000 })).outcome, 'delivered');
+      const all = await alertsOf();
+      assert.ok(all[`reversal_uncertain_${OID}_${A1}`], '(e) the new kind is alerted');
+      assert.ok(!all[ALK], '(e) the older paid_superseded alert for the same attempt is withdrawn');
+      await db.ref(`dispatcher_alerts/reversal_uncertain_${OID}_${A1}`).remove();
+      await H0.recordEvidence(db, { orderId: OID, attemptId: A1, now: later + 5000 });
+      assert.deepStrictEqual(await alertsOf(), {}, '(e) a dismissed alert is not resurrected by the repair');
+    }
+    ok('overlapping writers (codex build r1 P1-1): a stale v1 writer never overwrites, resurrects or deletes a newer v2 generation (pause before the alert, after it, with a dismissal, and a stale not_alertable cleanup); the repair rewrites an older alert and withdraws the other kind');
+  }
+
+  // ── 15. codex build r1 P1-2: work item FIRST, then a FRESH re-read — the REAL manual confirm at that boundary ──
+  {
+    await clearAll();
+    const OIDm = 'PZXH0Q';
+    const later = await rotatedOrder(OIDm);
+    await handleHostedCallback(webhookDeps(), paidCb(OIDm, A1), later + 1000);    // A1 paid, superseded (not yet accounted)
+    await db.ref(`orders/${OIDm}`).update({ payment_status: 'resolving_materialize', resolving_action: 'materialize', resolving_claim_id: 'CLM', resolving_phase: 'claimed', resolving_claimed_at: later });
+    const deps = { db, restaurant: RESTAURANT, buildMaterializeUpdates, genToken: () => 'TOK', alert: async () => {}, getIdentity: async () => ({ active: true, hours: ALL_OPEN }), sanitizeText: (s) => String(s || ''), serverTimestamp: 1 };
+    let itemSeen = false;
+    const r = await H0.recordEvidence(db, { orderId: OIDm, attemptId: A1, now: later + 2000, hooks: { afterItem: async () => {
+      itemSeen = !!(await val(`pending_paid_alerts/${OIDm}_${A1}`));
+      await confirmAndMaterializeFromManualClaim(deps, { orderId: OIDm, attemptId: A1, claimId: 'CLM', now: later + 2100, trackingToken: 'TT' });   // payment_reference = A1
+    } } });
+    assert.ok(itemSeen, 'the work item exists BEFORE the read');
+    assert.strictEqual((await val(`orders/${OIDm}`)).payment_reference, A1, 'premise: the real manual confirm accounted A1 at the boundary');
+    assert.strictEqual(r.outcome, 'not_alertable', `the fresh re-read refuses (${r.outcome})`);
+    assert.deepStrictEqual(await alertsOf(), {}, 'no false paid_superseded for accounted money');
+    assert.strictEqual((await val(`orders/${OIDm}`)).paid_evidence, undefined, 'no evidence');
+    assert.deepStrictEqual(await itemsOf(), {}, 'its own item is cleaned up');
+
+    // a read failure AFTER the item write leaves the item for the work-item pass, which then delivers
+    await clearAll();
+    const later2 = await rotatedOrder(OID);
+    await handleHostedCallback(webhookDeps(), paidCb(OID, A1), later2 + 1000);
+    const flaky = Object.create(db);
+    let failedOnce = false;
+    flaky.ref = (p) => { const r0 = db.ref(p); if (p === `orders/${OID}` && !failedOnce) r0.once = async () => { failedOnce = true; throw new Error('read failed'); }; return r0; };
+    await assert.rejects(H0.recordEvidence(flaky, { orderId: OID, attemptId: A1, now: later2 + 2000 }));
+    assert.ok((await itemsOf())[`${OID}_${A1}`], 'the item survives the read failure');
+    await db.ref('ops/superseded_sweep').set({ paid_cursor: { v: later2 + 5000, k: 'zzzz' }, uncertain_cursor: { v: later2 + 5000, k: 'zzzz' } });
+    await H0.frequentPass(db, { now: later2 + 3000, log: silent });
+    assert.ok((await alertsOf())[`paid_superseded_${OID}_${A1}`], 'the work-item pass delivers it');
+    assert.deepStrictEqual(await itemsOf(), {});
+
+    // an item-WRITE failure in the paged pass never advances the cursor past the candidate
+    await clearAll();
+    const later3 = await rotatedOrder(OID);
+    await handleHostedCallback(webhookDeps(), paidCb(OID, A1), later3 + 1000);
+    const noItem = Object.create(db);
+    noItem.ref = (p) => { const r0 = db.ref(p); if (p === `pending_paid_alerts/${OID}_${A1}`) r0.update = async () => { throw new Error('item write failed'); }; return r0; };
+    await H0.frequentPass(noItem, { now: later3 + 2000, log: silent });
+    assert.deepStrictEqual(await alertsOf(), {}, 'premise: nothing delivered');
+    await H0.frequentPass(db, { now: later3 + 3000, log: silent });
+    assert.ok((await alertsOf())[`paid_superseded_${OID}_${A1}`], 'the next run reaches the same candidate (the cursor did not pass it)');
+    ok('write-first ordering (codex build r1 P1-2): the item exists before the fresh read; the REAL manual confirm landing at that boundary → no false alert; a read failure leaves the item for retry; an item-write failure never advances the cursor');
+  }
+
+  // ── 16. codex build r1 P2-3: no-uuid callback, THEN a uuid callback whose reversal is proven → NO alert ──
+  {
+    await clearAll();
+    const OIDv = 'PZXH0V';
+    const later = await rotatedOrder(OIDv);
+    await db.ref(`orders/${OIDv}`).update({ status: 'cancelled' });
+    const r1 = await handleHostedCallback(webhookDeps(), paidCb(OIDv, A2, { uuid: undefined }), later + 1000);
+    assert.strictEqual(r1.outcome, 'cancelled_no_uuid_manual_review');
+    const r2 = await handleHostedCallback(webhookDeps(), paidCb(OIDv, A2), later + 2000);   // the uuid arrives; the REAL voidOrRefund succeeds
+    assert.strictEqual(r2.outcome, 'cancelled_voided', `premise: proven reversal (${r2.outcome})`);
+    const a = await val(`payment_attempts/${A2}`);
+    assert.strictEqual(a.status, 'refunded', 'premise: the attempt is refunded');
+    assert.ok(a.no_uuid_paid_callback, 'premise: the no-uuid marker survives');
+    await H0.frequentPass(db, { now: later + 3000, log: silent });
+    await H0.dailyPass(db, { orders: await val('orders'), attempts: await val('payment_attempts'), invocationStartedAt: later + 4000, now: later + 4000, clock: () => later + 4000, log: silent });
+    assert.deepStrictEqual(await alertsOf(), {}, 'no "Reembolso sin confirmar" over a proven reversal');
+    assert.strictEqual((await val(`orders/${OIDv}`)).paid_evidence, undefined);
+    ok('a surviving no-uuid marker does not beat a PROVEN reversal (real webhook no-uuid → uuid + real voidOrRefund → refunded): no alert');
+  }
+
+  // ── 17. fairness: 100 failing work items fill a page; item 101 is reached on the next run (real writers) ──
+  {
+    await clearAll();
+    const now = T0 + 7 * 60 * 60 * 1000;
+    const many = await realSupersededMany('PZXF', 101, () => now - 5000);
+    const failSet = new Set(many.slice(0, 100).map((x) => x.a1));
+    const down = { beforeAlert: async ({ attemptId }) => { if (failSet.has(attemptId)) throw new Error('alert path down'); } };
+    const all = { beforeAlert: async () => { throw new Error('alert path down'); } };
+    // run 1: every candidate fails after writing its item (101 due items); the work-item page (100, oldest first) fails too
+    await H0.frequentPass(db, { now, log: silent, hooks: all });
+    const items1 = await itemsOf();
+    assert.strictEqual(Object.keys(items1).length, 101, 'premise: 101 work items');
+    const last = many[100];
+    const rescheduled = many.slice(0, 100).filter((x) => items1[`${x.oid}_${x.a1}`].at > now).length;
+    assert.strictEqual(rescheduled, 100, 'the page of 100 failing items is rescheduled into the future');
+    assert.ok(items1[`${last.oid}_${last.a1}`].at <= now && !(await alertsOf())[`paid_superseded_${last.oid}_${last.a1}`], 'premise: item 101 was not in that page');
+    // run 2 (before any backoff elapses): the failing items are not due → item 101 is reached
+    await H0.frequentPass(db, { now: now + 1000, log: silent, hooks: down });
+    assert.ok((await alertsOf())[`paid_superseded_${last.oid}_${last.a1}`], 'item 101 is reached on the next run');
+    ok('fairness: a page full of 100 failing work items is rescheduled into the future and item 101 is delivered on the next run (real writers)');
   }
 
   console.log(`\nsuperseded-capture emulator: OK (${n})`);

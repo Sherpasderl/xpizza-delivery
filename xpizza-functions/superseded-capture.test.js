@@ -50,6 +50,11 @@ const order = (over = {}) => ({ order_id: O, status: 'pending_payment', payment_
   // independent of the paid flags (codex r4 P1-2): a direct-cancel stale reversal without paid flags
   assert.strictEqual(H0.classify(O, o, 'A2', { order_id: O, status: 'manual_review', refund_message: 'stale_reversing_post_side_effect' }, null), 'reversal_uncertain', 'manual_review with no paid flags');
   assert.strictEqual(H0.classify(O, o, 'A1', { order_id: O, hosted_callback_verified: true, status: 'manual_review', no_uuid_paid_callback: { at: 1 } }, null), 'reversal_uncertain', 'the no-uuid marker');
+  // codex build r1 P2-3: a PROVEN reversal (or one a job owns) beats a surviving marker
+  for (const st of ['refunded', 'voided', 'refund_pending', 'reversing']) {
+    assert.strictEqual(H0.classify(O, o, 'A1', { order_id: O, hosted_callback_verified: true, hosted_state: 'voided', status: st, no_uuid_paid_callback: { at: 1 } }, null), null, `the marker under status ${st}`);
+    assert.strictEqual(H0.classify(O, o, 'A1', { order_id: O, hosted_callback_verified: true, status: st, reversing_phase: 'side_effect_started' }, null), null, `side_effect_started under status ${st}`);
+  }
   assert.strictEqual(H0.classify(O, o, 'A1', { order_id: O, reversing_phase: 'side_effect_started', status: 'captured' }, null), 'reversal_uncertain', 'side_effect_started outside reversing');
   assert.strictEqual(H0.classify(O, o, 'A1', { order_id: O, hosted_state: 'voided', status: 'captured' }, null), 'reversal_uncertain', 'hosted voided with a non-terminal status');
   assert.strictEqual(H0.classify(O, o, 'A1', { order_id: O, hosted_state: 'voided', status: 'refunded' }, null), null, 'hosted voided + status refunded → proven');
