@@ -4476,6 +4476,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -4691,6 +4743,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -4910,6 +5014,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -5024,7 +5180,7 @@
    }
   },
   "xpizza-driver/cash-helpers.js#collectionFor@xpizza-driver/cash-helpers.js#computeShiftCash": {
-   "group": "driverShiftCash",
+   "group": "driverShiftDelivery",
    "appliesWhenAny": [
     {
      "terminal": [
@@ -5037,8 +5193,8 @@
      ]
     }
    ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
+   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash / history count an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start); this code runs once PER LISTED DELIVERY (the per-delivery collection in computeShiftCash; the history sort / sum / row callbacks) — the aggregates around it stay REQUIRED",
+   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries does not list it → this per-delivery code never runs for it",
    "bind": {
     "site": "const c = collectionFor(order);",
     "siteSha": "380a85ccab6e6f1770a1636d1b79e29106d7c04042cf5ac0e72da4bfe91df920",
@@ -5059,12 +5215,6 @@
      "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
     },
     {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
      "callers": [
@@ -5078,23 +5228,6 @@
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
     },
     {
@@ -5127,38 +5260,32 @@
      }
     },
     {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
+     "kind": "S",
+     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
+     "text": "for (const { order } of resolved.concat(legacyProvisional)) {",
+     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
     },
     {
      "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
+     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
+     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
+     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
+    },
+    {
+     "kind": "C",
+     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
+     "callers": [
+      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
+      "xpizza-driver/index.html<script@0>#syncIdleStats"
+     ]
     },
     {
      "kind": "R",
-     "name": "renderIdleState",
+     "name": "computeShiftCash",
      "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
+      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
     },
     {
@@ -5169,9 +5296,16 @@
     },
     {
      "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
+     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
+     "text": "const myDeliveries = resolved.concat(legacyProvisional).sort((a, b) => b.at - a.at);",
+     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
+    },
+    {
+     "kind": "R",
+     "name": "renderHistoryModal",
+     "counts": {
+      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
+     }
     }
    ],
    "cases": {
@@ -5289,6 +5423,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -5492,6 +5678,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -5693,6 +5931,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -5787,498 +6077,6 @@
      "S1|x_pizza|new",
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|delivered"
-    ]
-   }
-  },
-  "xpizza-driver/cash-helpers.js#computeShiftCash@xpizza-driver/index.html<script@0>#renderCuadreReceipt": {
-   "group": "driverShiftCash",
-   "appliesWhenAny": [
-    {
-     "terminal": [
-      "delivered"
-     ]
-    },
-    {
-     "cancelled": [
-      true
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
-   "bind": {
-    "site": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-    "siteSha": "72c79fe01b3eedeafd6ee87d451d47e152a9de7e59ffa023de391b6cf9a8b9ea",
-    "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-    "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "if (at == null || at < sinceMs) continue;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "callers": [
-      "xpizza-driver/cash-helpers.js#computeShiftCash",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "shiftDeliveries",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "R",
-     "name": "delivered_at",
-     "counts": {
-      "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/ready-time-quality-run.js#functions": 1,
-      "xpizza-functions/stats/stats-build.js#functions": 1,
-      "xpizza-functions/stats/stats-fixtures.js#functions": 2,
-      "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|delivered",
-     "S1t-a|x_pizza|delivered",
-     "S3|x_pizza|delivered"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ]
-   }
-  },
-  "xpizza-driver/cash-helpers.js#computeShiftCash@xpizza-driver/index.html<script@0>#syncIdleStats": {
-   "group": "driverShiftCash",
-   "appliesWhenAny": [
-    {
-     "terminal": [
-      "delivered"
-     ]
-    },
-    {
-     "cancelled": [
-      true
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
-   "bind": {
-    "site": "const cash = computeShiftCash(allOrders, currentUser.uid, todayMidnightMs(), driverIdentityCutoverMs);",
-    "siteSha": "d59beb90b3484c12f6d2d9c56f66ce256ef64dfe45586e5c761396bcc8111d0e",
-    "scope": "xpizza-driver/index.html<script@0>#syncIdleStats",
-    "scopeSha": "4e077a32354eaf249b41780bf59ac951770ede28ef15c78383ba1b5e00edc999"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "if (at == null || at < sinceMs) continue;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "callers": [
-      "xpizza-driver/cash-helpers.js#computeShiftCash",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "shiftDeliveries",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "R",
-     "name": "delivered_at",
-     "counts": {
-      "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/ready-time-quality-run.js#functions": 1,
-      "xpizza-functions/stats/stats-build.js#functions": 1,
-      "xpizza-functions/stats/stats-fixtures.js#functions": 2,
-      "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|delivered",
-     "S1t-a|x_pizza|delivered",
-     "S3|x_pizza|delivered"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ]
-   }
-  },
-  "xpizza-driver/cash-helpers.js#cuadreRecordPayload@xpizza-driver/xpizza-delivery.js#recordCuadre": {
-   "group": "driverShiftCash",
-   "appliesWhenAny": [
-    {
-     "terminal": [
-      "delivered"
-     ]
-    },
-    {
-     "cancelled": [
-      true
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
-   "bind": {
-    "site": "...cuadreRecordPayload(cuadre),",
-    "siteSha": "b8e857e4a8392f5670a9e62d23353509b8b74bdfbe6aba27df611354590adf29",
-    "scope": "xpizza-driver/xpizza-delivery.js#recordCuadre",
-    "scopeSha": "2b5134c8fa4f6490f3f6ddb5c81f80d8d5ba8ec138f9022fb2d28e4eb9549ddc"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "if (at == null || at < sinceMs) continue;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "callers": [
-      "xpizza-driver/cash-helpers.js#computeShiftCash",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "shiftDeliveries",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "R",
-     "name": "delivered_at",
-     "counts": {
-      "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/ready-time-quality-run.js#functions": 1,
-      "xpizza-functions/stats/stats-build.js#functions": 1,
-      "xpizza-functions/stats/stats-fixtures.js#functions": 2,
-      "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|delivered",
-     "S1t-a|x_pizza|delivered",
-     "S3|x_pizza|delivered"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -6384,6 +6182,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -6566,6 +6416,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -6746,6 +6648,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -6818,334 +6772,6 @@
      "S1|x_pizza|new",
      "S1|x_pizza|preparing",
      "S1t-a|x_pizza|delivered"
-    ]
-   }
-  },
-  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/cash-helpers.js#computeShiftCash": {
-   "group": "driverShiftCash",
-   "appliesWhenAny": [
-    {
-     "terminal": [
-      "delivered"
-     ]
-    },
-    {
-     "cancelled": [
-      true
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
-   "bind": {
-    "site": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-    "siteSha": "8c1520d2cc3685f555b0daf54f59ba46d2bd901d99fa388e3c3cfdaa5ac3e9b6",
-    "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-    "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "if (at == null || at < sinceMs) continue;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "callers": [
-      "xpizza-driver/cash-helpers.js#computeShiftCash",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "shiftDeliveries",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "R",
-     "name": "delivered_at",
-     "counts": {
-      "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/ready-time-quality-run.js#functions": 1,
-      "xpizza-functions/stats/stats-build.js#functions": 1,
-      "xpizza-functions/stats/stats-fixtures.js#functions": 2,
-      "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|delivered",
-     "S1t-a|x_pizza|delivered",
-     "S3|x_pizza|delivered"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ]
-   }
-  },
-  "xpizza-driver/cash-helpers.js#shiftDeliveries@xpizza-driver/index.html<script@0>#renderHistoryModal": {
-   "group": "driverShiftCash",
-   "appliesWhenAny": [
-    {
-     "terminal": [
-      "delivered"
-     ]
-    },
-    {
-     "cancelled": [
-      true
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
-   "bind": {
-    "site": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-    "siteSha": "b523eb39a73e246ce2f7e4ea1cdd8e7bfbdbd4321f09113d3099cad91490abd6",
-    "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-    "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "if (at == null || at < sinceMs) continue;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "callers": [
-      "xpizza-driver/cash-helpers.js#computeShiftCash",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "shiftDeliveries",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "R",
-     "name": "delivered_at",
-     "counts": {
-      "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/ready-time-quality-run.js#functions": 1,
-      "xpizza-functions/stats/stats-build.js#functions": 1,
-      "xpizza-functions/stats/stats-fixtures.js#functions": 2,
-      "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|delivered",
-     "S1t-a|x_pizza|delivered",
-     "S3|x_pizza|delivered"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
     ]
    }
   },
@@ -7332,6 +6958,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -7496,6 +7174,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -7557,7 +7287,7 @@
    }
   },
   "xpizza-driver/index.html<script@0>#renderHistoryModal>anon@self": {
-   "group": "driverShiftCash",
+   "group": "driverShiftDelivery",
    "appliesWhenAny": [
     {
      "terminal": [
@@ -7570,8 +7300,8 @@
      ]
     }
    ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
+   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash / history count an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start); this code runs once PER LISTED DELIVERY (the per-delivery collection in computeShiftCash; the history sort / sum / row callbacks) — the aggregates around it stay REQUIRED",
+   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries does not list it → this per-delivery code never runs for it",
    "bind": {
     "site": "(a, b) => b.at - a.at",
     "siteSha": "879b4f57b35cc40691b35de5b65751577ed75640b18dbbaf6637465ae72206e1",
@@ -7592,12 +7322,6 @@
      "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
     },
     {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
-     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
      "kind": "C",
      "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
      "callers": [
@@ -7611,23 +7335,6 @@
      "counts": {
       "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
       "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#computeShiftCash",
-     "callers": [
-      "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-      "xpizza-driver/index.html<script@0>#syncIdleStats"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "computeShiftCash",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1
      }
     },
     {
@@ -7660,122 +7367,16 @@
      }
     },
     {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
-    },
-    {
      "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "renderHistoryModal",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 3
-     }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
-    }
-   ],
-   "cases": {
-    "required": [
-     "S1|x_pizza|delivered",
-     "S1t-a|x_pizza|delivered",
-     "S3|x_pizza|delivered"
-    ],
-    "excluded": [
-     "S1|x_pizza|new",
-     "S1|x_pizza|preparing",
-     "S1t-a|x_pizza|assigned"
-    ]
-   }
-  },
-  "xpizza-driver/index.html<script@0>#renderIdleState@xpizza-driver/index.html<script@0>#renderActiveAndQueue": {
-   "group": "driverShiftCash",
-   "appliesWhenAny": [
-    {
-     "terminal": [
-      "delivered"
-     ]
-    },
-    {
-     "cancelled": [
-      true
-     ]
-    }
-   ],
-   "authority": "§2 R4 (PLAN-R3-contract-tests R4): the driver's shift cash — idle \"Efectivo hoy\", history, cuadre receipt and the recorded cuadre — counts an order only once it is DELIVERED and attributed to that driver (shiftDeliveries: orders with delivered_at at/after the shift start; computeShiftCash sums them via collectionFor)",
-   "whyFalseExcludes": "the order was never delivered (no delivered_at — stamped only in the update that marks it delivered) and not cancelled after a delivery → shiftDeliveries skips it → no shift cash / history / cuadre figure includes it",
-   "bind": {
-    "site": "renderIdleState();",
-    "siteSha": "d87ee27e1f8e92f024252b3bc5cddcdeded2804985abf870abc8f25cfc24c149",
-    "scope": "xpizza-driver/index.html<script@0>#renderActiveAndQueue",
-    "scopeSha": "c8e524cd6f928144647062fd6433301919c40ad16945f766f2f9b3262962d1b0"
-   },
-   "guards": [
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "if (at == null || at < sinceMs) continue;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "text": "const at = o && typeof o.delivered_at === 'number' ? o.delivered_at : null;",
-     "scopeSha": "171f0c346294e73e1ca42ae53dfde6182494e7a1a3d4bded9d5b9e61d2a8303e"
+     "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
+     "text": "for (const { order } of resolved.concat(legacyProvisional)) {",
+     "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
     },
     {
      "kind": "S",
      "scope": "xpizza-driver/cash-helpers.js#computeShiftCash",
      "text": "const { resolved, legacyProvisional, pending } = shiftDeliveries(ordersMap, uid, sinceMs, cutoverMs);",
      "scopeSha": "ed6405686b68fda554a36a832f61ce577c95b5b618958223c879837bca0d68c0"
-    },
-    {
-     "kind": "C",
-     "output": "xpizza-driver/cash-helpers.js#shiftDeliveries",
-     "callers": [
-      "xpizza-driver/cash-helpers.js#computeShiftCash",
-      "xpizza-driver/index.html<script@0>#renderHistoryModal"
-     ]
-    },
-    {
-     "kind": "R",
-     "name": "shiftDeliveries",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 4,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
     },
     {
      "kind": "C",
@@ -7796,60 +7397,15 @@
     },
     {
      "kind": "S",
-     "scope": "xpizza-driver/driver-complete.js#buildCompleteTaskUpdates",
-     "text": "updates[`orders/${task.order_id}/delivered_at`] = now;",
-     "scopeSha": "e10e7fc69a4b58dd7a10e213b626af19ceea68f2f1a10c9f038f3e1bf930be1f"
-    },
-    {
-     "kind": "R",
-     "name": "delivered_at",
-     "counts": {
-      "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
-      "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
-      "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 5,
-      "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 3,
-      "xpizza-driver/driver-complete.js#xpizza-driver": 1,
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2,
-      "xpizza-functions/index.js#functions": 1,
-      "xpizza-functions/ready-time-quality-run.js#functions": 1,
-      "xpizza-functions/stats/stats-build.js#functions": 1,
-      "xpizza-functions/stats/stats-fixtures.js#functions": 2,
-      "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
-      "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
-      "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
-     }
-    },
-    {
-     "kind": "R",
-     "name": "cuadreRecordPayload",
-     "counts": {
-      "xpizza-driver/cash-helpers.js#xpizza-driver": 1,
-      "xpizza-driver/xpizza-delivery.js#xpizza-driver": 3
-     }
+     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
+     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
+     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
     },
     {
      "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderIdleState",
-     "text": "syncIdleStats();",
-     "scopeSha": "998701166532344fe6fc3a7dc1a9e1a4094323099da9bbeca272481a67f86f3d"
-    },
-    {
-     "kind": "R",
-     "name": "renderIdleState",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
-    },
-    {
-     "kind": "R",
-     "name": "syncIdleStats",
-     "counts": {
-      "xpizza-driver/index.html<script@0>#xpizza-driver": 2
-     }
+     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
+     "text": "const myDeliveries = resolved.concat(legacyProvisional).sort((a, b) => b.at - a.at);",
+     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
     },
     {
      "kind": "R",
@@ -7857,18 +7413,6 @@
      "counts": {
       "xpizza-driver/index.html<script@0>#xpizza-driver": 3
      }
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderHistoryModal",
-     "text": "const { resolved, legacyProvisional } = shiftDeliveries(allOrders, currentUser.uid, todayMs, driverIdentityCutoverMs);",
-     "scopeSha": "1873db4c17009d3868434b18c3520e781c188feedd585888b50f9bcb32788ad8"
-    },
-    {
-     "kind": "S",
-     "scope": "xpizza-driver/index.html<script@0>#renderCuadreReceipt",
-     "text": "const cash = computeShiftCash(allOrders, bound.uid, bound.start, driverIdentityCutoverMs);",
-     "scopeSha": "1cbd2ff09fd33720f78efc214d905a4fdec8a6e786f4302bf59508f63589934d"
     }
    ],
    "cases": {
@@ -7986,6 +7530,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -8152,6 +7748,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -8316,6 +7964,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -8478,6 +8178,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -8662,6 +8414,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -8842,6 +8646,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -9026,6 +8882,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -9208,6 +9116,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -9379,6 +9339,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",
@@ -9554,6 +9566,58 @@
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
     },
     {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
      "kind": "C",
      "output": "xpizza-driver/index.html<script@0>#renderActiveCard",
      "callers": [
@@ -9725,6 +9789,58 @@
      "scope": "xpizza-functions/index.js#deleteTasksOnOrderTerminal",
      "text": "await captureDeliveryAttributionAndDelete(db, orderId);",
      "scopeSha": "6d08db01b6edc52b4cf7fe660d9015343411f9ecf989815550b388e3f5d51c5c"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete",
+     "text": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });",
+     "scopeSha": "765af561c342a7ee772853e5049a31937bc0451e077b1a79a15c637ad4cad7c5"
+    },
+    {
+     "kind": "S",
+     "scope": "xpizza-functions/tasks-retention.js#entersTerminalEdge",
+     "text": "return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);",
+     "scopeSha": "49f4148057454e0d8175e8f77b515f88ae9579875e683a9b39d4199db6fbe515"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/tasks-retention.js",
+     "text": "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { REALTIME_TERMINAL_STATUSES, entersTerminalEdge } = require('./tasks-retention');"
+    },
+    {
+     "kind": "F",
+     "file": "xpizza-functions/index.js",
+     "text": "const { resolveDriverName, captureDeliveryAttributionAndDelete } = require('./driver-attribution');"
+    },
+    {
+     "kind": "R",
+     "name": "captureDeliveryAttributionAndDelete",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 4,
+      "xpizza-functions/index.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "entersTerminalEdge",
+     "counts": {
+      "xpizza-functions/index.js#functions": 2,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
+    },
+    {
+     "kind": "R",
+     "name": "REALTIME_TERMINAL_STATUSES",
+     "counts": {
+      "xpizza-functions/driver-attribution.js#functions": 2,
+      "xpizza-functions/index.js#functions": 3,
+      "xpizza-functions/tasks-retention.js#functions": 2
+     }
     },
     {
      "kind": "C",

@@ -13393,5 +13393,20 @@
       "node",
       "contract/applicability.guard.test.js"
     ]
+  },
+  {
+    "id": "r3p1-101",
+    "slice": "r3p1",
+    "file": "driver-attribution.js",
+    "from": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });   // unconditional",
+    "to": "/* deletion dropped */",
+    "label": "codex P1-c r1 P2: the terminal-edge helper no longer deletes the task legs — a delivered order would stay on the driver board, so the board exclusions must go stale",
+    "kills_with": [
+      "guard text no longer in xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
   }
 ]

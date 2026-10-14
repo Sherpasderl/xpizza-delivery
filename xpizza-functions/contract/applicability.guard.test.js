@@ -328,7 +328,9 @@ ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-p
   // each distinct guard once per probe; a scope guard re-parses only its own unit (the R guards scan every unit)
   const uniq = new Map(); for (const [, e] of board) for (const g of e.guards) uniq.set(JSON.stringify(g), g);
   const ownUnit = (g, u) => u.filter((x) => g.scope.startsWith(`${x.file}#`) || g.scope.startsWith(`${x.file.replace(/<script@\d+>$/, '')}#`));
-  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u })).map(([k]) => k)); return board.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
+  // F / K guards read the file: serve a whole-file unit's (edited) code, else the disk
+  const fileOf = (u) => (f) => { const x = u.find((y) => y.file === f); return x ? x.code : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'); };
+  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u, readFile: fileOf(u) })).map(([k]) => k)); return board.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
   const base = staleIn(units); assert.strictEqual(base, 0, FAIL(`${base} driver board entries are stale on the real source`));
   const drift = [
     ['the assigned-driver filter removed', edit(D, 'if (t.assigned_driver_id !== driverId) return;\n    if (!grouped[t.order_id])', 'if (!grouped[t.order_id])')],
@@ -336,6 +338,10 @@ ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-p
     ['the idle screen renders a payment row', edit(P, 'syncIdleStats();\n}', 'syncIdleStats(); paymentRowHtml(allOrders, escapeHtml);\n}')],
     ['a new ORDER_STATUS.DELIVERED writer', units.map((u) => (u.file === 'xpizza-dispatch/index.html<script@0>' ? { ...u, code: u.code + '\nfunction __forceDelivered(id) { return { [\'orders/\' + id + \'/status\']: ORDER_STATUS.DELIVERED }; }' } : u))],
     ['the server terminal task delete dropped', edit(I, 'await captureDeliveryAttributionAndDelete(db, orderId);', '')],
+    // codex P1-c r1 P2: the deletion INSIDE the helper, and the terminal-edge implementation
+    ['the helper\'s task deletion dropped', edit('xpizza-functions/driver-attribution.js', 'await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });', '')],
+    ['the terminal edge never fires', edit('xpizza-functions/tasks-retention.js', 'return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);', 'return false;')],
+    ['delivered dropped from the real-time terminal set', edit('xpizza-functions/tasks-retention.js', "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);", "const REALTIME_TERMINAL_STATUSES = new Set(['completed']);")],
   ];
   for (const [what, u] of drift) { const k = what === 'the idle screen renders a payment row' ? board.filter(([id]) => /paymentRowHtml/.test(id)).length : board.length; const got = staleIn(u); assert.ok(got >= k, FAIL(`${what}: only ${got} of the driver board entries went stale`)); }
   const pg = doc.regions[push[0]].guards.find((g) => g.kind === 'S' && g.text === 'if (!newDriverId) return;');
@@ -353,7 +359,7 @@ ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-p
   assert.strictEqual(RA.runDecision(doc, id, at('S1', 'delivered'), ev('delivered', {})).outcome, 'required', FAIL('a delivered LP was excluded without driver evidence'));
   assert.strictEqual(RA.staticDecision(doc, id, at('S1', 'assigned')).excluded, false, FAIL('the board was excluded at an assigned LP'));
 }
-ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer or dropping the server terminal task delete → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
+ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer, dropping the server terminal task delete, the helper\'s deletion itself (codex r1 P2), the terminal edge or delivered from its set → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
 { // P1-c c2 (R4 driver actions): decided on the ACTION's own execution (no-exec on xpizza-delivery.js#<fn>, never the
   // generic handler bundle); where the action IS the LP's action (pickupComplete / completeDelivery) it stays required
   const D = 'xpizza-driver/xpizza-delivery.js'; const P = 'xpizza-driver/index.html<script@0>';
@@ -377,31 +383,44 @@ ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ 
   assert.strictEqual(RA.runDecision(doc, aT, at('S1', 'new'), ev('new', 'create', {})).outcome, 'required', FAIL('acceptTask excluded with no trace'));
 }
 ok('driver actions (P1-c c2): 7 entries decided on the action\'s OWN scope (acceptTask, pickupComplete, completeTask ×2, acceptSecondOrder ×2, arriveAtRestaurant), never the handler bundle; probed + never entered → excluded; entered / unprobed / no trace → required; completeTask at a completeDelivery LP and pickupComplete at a pickupComplete LP stay required');
-{ // P1-c c3 (R4 shift cash / history / cuadre): an order counts only once delivered (delivered_at, stamped only with the
-  // delivered status) — or cancelled after a delivery (delivered_at kept); drift in the source → stale
-  const CH = 'xpizza-driver/cash-helpers.js'; const P = 'xpizza-driver/index.html<script@0>';
-  const cash = Object.entries(doc.regions).filter(([, e]) => e.group === 'driverShiftCash');
-  assert.ok(cash.length === 8 && cash.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ terminal: ['delivered'] }, { cancelled: [true] }])), FAIL(`driver shift-cash entries ${cash.length} (expected 8) / condition`));
+{ // P1-c c3 (codex P1-c r1 P1 fold): the shift AGGREGATES show a figure at every LP (zero deliveries is a figure) → stay
+  // REQUIRED; only per-delivery code (runs once per order shiftDeliveries lists — delivered_at, stamped only with the
+  // delivered status, or cancelled after it) is reviewed
+  const CH = 'xpizza-driver/cash-helpers.js'; const P = 'xpizza-driver/index.html<script@0>'; const DD = 'xpizza-driver/xpizza-delivery.js';
+  const per = Object.entries(doc.regions).filter(([, e]) => e.group === 'driverShiftDelivery');
+  assert.ok(per.length === 2 && per.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ terminal: ['delivered'] }, { cancelled: [true] }])), FAIL(`per-delivery shift entries ${per.length} (expected 2) / condition`));
+  const aggregates = [`${CH}#cuadreRecordPayload@${DD}#recordCuadre`, `${CH}#computeShiftCash@${P}#renderCuadreReceipt`, `${CH}#computeShiftCash@${P}#syncIdleStats`, `${CH}#shiftDeliveries@${CH}#computeShiftCash`, `${CH}#shiftDeliveries@${P}#renderHistoryModal`, `${P}#renderIdleState@${P}#renderActiveAndQueue`];
+  for (const r of aggregates) assert.ok(!doc.regions[r], FAIL(`${r}: a shift aggregate is excluded — it shows a figure (zero deliveries included) at every LP`));
+  // codex P1-c r1 P1 reproduction: a zero-delivery shift's cuadre is REAL output — execute the real cash helpers on no
+  // deliveries, mutate the zero cash to 1 inside the payload builder; the S1 / assigned CASH cell must stay required
+  const vm = require('vm'); const src = fs.readFileSync(path.join(__dirname, '..', '..', CH), 'utf8').replace(/^export /gm, '');
+  const load = (code) => { const ctx = {}; vm.runInNewContext(`${code}\nthis.computeShiftCash = computeShiftCash; this.cuadreRecordPayload = cuadreRecordPayload;`, ctx); return ctx; };
+  const real = load(src); const zero = real.cuadreRecordPayload(real.computeShiftCash({}, 'd1', 0, null));
+  assert.ok(zero.cash_owed === 0 && zero.cash_order_count === 0, FAIL('probe premise: a zero-delivery cuadre writes cash_owed 0'));
+  const from = 'cash_owed: num(c.cashOwed != null ? c.cashOwed : c.cash_owed),'; assert.strictEqual(src.split(from).length - 1, 1, FAIL('the cuadre payload probe text moved'));
+  const mut = load(src.replace(from, 'cash_owed: num(c.cashOwed != null ? c.cashOwed : c.cash_owed) || 1,'));
+  assert.strictEqual(mut.cuadreRecordPayload(mut.computeShiftCash({}, 'd1', 0, null)).cash_owed, 1, FAIL('probe premise: the mutated payload did not write 1'));
+  const cells = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['assigned'] }).cells.filter((c) => c.R === 'R4' && c.fact === 'CASH' && (c.viaFrom || c.region) === aggregates[0]);
+  assert.ok(cells.length > 0 && cells.every((c) => !RA.staticDecision(doc, c.viaFrom || c.region, c).excluded), FAIL(`R3:R4:CASH:S1:x_pizza:assigned on the cuadre payload is excluded (${cells.length} cells) — a mutated zero-delivery cuadre would escape`));
   const units = require('./census').sources();
-  const edit = (file, from, to) => units.map((u) => { if (u.file !== file) return u; assert.strictEqual(u.code.split(from).length - 1, 1, FAIL(`probe text not exactly once in ${file}: ${from}`)); return { ...u, code: u.code.replace(from, to) }; });
-  const uniq = new Map(); for (const [, e] of cash) for (const g of e.guards) uniq.set(JSON.stringify(g), g);
+  const edit = (file, from2, to) => units.map((u) => { if (u.file !== file) return u; assert.strictEqual(u.code.split(from2).length - 1, 1, FAIL(`probe text not exactly once in ${file}: ${from2}`)); return { ...u, code: u.code.replace(from2, to) }; });
+  const uniq = new Map(); for (const [, e] of per) for (const g of e.guards) uniq.set(JSON.stringify(g), g);
   const ownUnit = (g, u) => u.filter((x) => g.scope.startsWith(`${x.file}#`) || g.scope.startsWith(`${x.file.replace(/<script@\d+>$/, '')}#`));
-  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u })).map(([k]) => k)); return cash.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
-  assert.strictEqual(staleIn(units), 0, FAIL('driver shift-cash entries are stale on the real source'));
+  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u })).map(([k]) => k)); return per.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
+  assert.strictEqual(staleIn(units), 0, FAIL('per-delivery shift entries are stale on the real source'));
   for (const [what, u] of [
-    ['shiftDeliveries counts undelivered orders', edit(CH, 'if (at == null || at < sinceMs) continue;', 'if (at != null && at < sinceMs) continue;')],
+    ['shiftDeliveries lists undelivered orders', edit(CH, 'if (at == null || at < sinceMs) continue;', 'if (at != null && at < sinceMs) continue;')],
     ['a new delivered_at writer', units.map((x) => (x.file === 'xpizza-dispatch/index.html<script@0>' ? { ...x, code: x.code + '\nfunction __stamp(id) { return { [\'orders/\' + id + \'/delivered_at\']: Date.now() }; }' } : x))],
-    ['the idle screen shows another order figure', edit(P, 'syncIdleStats();\n}', 'syncIdleStats(); $(\'stat-cash\').title = String(allOrders && Object.keys(allOrders).length);\n}')],
-  ]) { const got = staleIn(u); assert.ok(got === cash.length, FAIL(`${what}: only ${got} of ${cash.length} shift-cash entries went stale`)); }
-  // a cancelled-after-delivery order keeps delivered_at → applies; run: out_for_delivery (live, not cancelled) → excluded
-  const id = `${CH}#computeShiftCash@${P}#syncIdleStats`; const e = doc.regions[id];
+    ['computeShiftCash collects outside its delivered loop', edit(CH, 'for (const { order } of resolved.concat(legacyProvisional)) {', 'for (const { order } of resolved.concat(legacyProvisional, pending.map((id) => ({ order: ordersMap[id] })))) {')],
+  ]) { const got = staleIn(u); assert.ok(got === per.length, FAIL(`${what}: only ${got} of ${per.length} per-delivery entries went stale`)); }
+  const id = `${CH}#collectionFor@${CH}#computeShiftCash`; const e = doc.regions[id];
   const v = SS.vectorOf('S1', 'x_pizza', 'out_for_delivery');
-  assert.strictEqual(RA.evaluate(e, { ...v, cancelled: true }).result, 'applies', FAIL('a cancelled (after delivery) order was excluded from the shift cash'));
+  assert.strictEqual(RA.evaluate(e, { ...v, cancelled: true }).result, 'applies', FAIL('a cancelled (after delivery) order was excluded from the per-delivery collection'));
   const ev = (st, x = {}) => ({ persisted: { restaurant_id: 'x_pizza', status: st, ...x }, lpAction: { action: 'pickupComplete', ack: true } });
   const at = { S: 'S1', brand: 'x_pizza', lp: 'out_for_delivery' };
-  assert.strictEqual(RA.runDecision(doc, id, at, ev('out_for_delivery')).outcome, 'excluded', FAIL('a live, undelivered order was not excluded from the shift cash'));
+  assert.strictEqual(RA.runDecision(doc, id, at, ev('out_for_delivery')).outcome, 'excluded', FAIL('a live, undelivered order was not excluded from the per-delivery collection'));
   assert.strictEqual(RA.runDecision(doc, id, at, ev('cancelled', { cancelled_at: 1 })).outcome, 'contradicted', FAIL('a cancelled order at an out_for_delivery LP did not contradict'));
-  assert.strictEqual(RA.staticDecision(doc, id, { S: 'S1', brand: 'x_pizza', lp: 'cuadre' }).excluded, false, FAIL('the shift cash was excluded at the cuadre LP'));
+  assert.strictEqual(RA.staticDecision(doc, id, { S: 'S1', brand: 'x_pizza', lp: 'cuadre' }).excluded, false, FAIL('the per-delivery collection was excluded at the cuadre LP'));
 }
-ok('driver shift cash (P1-c c3): 8 entries on terminal = delivered ∨ cancelled (idle stats, history, cuadre receipt + record, computeShiftCash / shiftDeliveries / collectionFor); counting undelivered orders, a new delivered_at writer or another idle-screen figure → stale; cancelled-after-delivery applies; a live undelivered order → excluded, a cancelled one contradicts; the cuadre LP stays required');
+ok('driver shift (P1-c c3, codex r1 P1 fold): the 6 shift AGGREGATES (cuadre payload, receipt, idle stats + idle state, shiftDeliveries ×2) stay REQUIRED — a mutated zero-delivery cuadre (cash 0 → 1, real helpers) keeps R3:R4:CASH:S1:x_pizza:assigned required; 2 per-delivery entries on terminal = delivered ∨ cancelled; listing undelivered orders, a new delivered_at writer or collecting outside the delivered loop → stale; cancelled-after-delivery applies; live undelivered → excluded, cancelled → contradicted; the cuadre LP stays required');
 console.log(`\nr3-applicability guard: OK (${n})`);
