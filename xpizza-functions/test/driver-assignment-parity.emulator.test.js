@@ -84,53 +84,70 @@ const REASSIGN_PARAMS = ['db', 'orderId', 'driverId', 'nextDriver', 'attempts', 
 const runReassignFn = new Function(...REASSIGN_PARAMS, reassignBody);
 const runReassign = (o) => runReassignFn(o.db, o.orderId, o.driverId, o.nextDriver, 1, o.pickHandle, o.svcWriteOrFallback || svcHandleLib.svcWriteOrFallback, claimDelivery, o.isExpectedEligibilityDenial, releaseDeliveryFromDriver, { TIMESTAMP: NOW }, 60000, console);
 
-// codex r6 P2-2: LIFT the ACTUAL non-stacked both-leg assignment batch out of a dispatch CLIENT
-// (desktop / mobile xpizza-delivery.js assignOrderToDriver) by PARSING it with acorn and lifting the source spans of
-// the EXECUTABLE AST nodes — the non-stacked for-of batch loop, the half_claim_since clear (an AssignmentExpression,
-// NOT reassignOrder's object-property clear or a comment/string), and the CAS runTransaction call. Comment/string/
-// brace tricks can't satisfy an AST node, and nothing is synthesized that the source doesn't contain. Four drift
-// mutations (comment the clear, hide the clear in a string, comment the CAS, alter the CAS predicate) each go RED.
+// codex r6/r7 P2-2: bind the dispatch CLIENT batch to the ACTUAL shipped code STRUCTURALLY (acorn), tightly:
+//   (a) select the UNIQUE EXPORTED assignOrderToDriver and fail if another declaration of that name exists (decoy);
+//   (b) the CAS, the non-stacked deadline+for-of, and the half_claim_since clear must be DIRECT statements of that
+//       function's real blocks (function body / else block / try block) — never a nested fn or a conditional;
+//   (c) the CAS is validated structurally (runTransaction(ref(…assigned_driver_id…), <callback>)) and its REAL lifted
+//       callback is EXECUTED (so a changed callback changes the result), never a handwritten equivalent.
 const acorn = require('acorn');
 function fnBodySpans(src, file) {
   const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module' });
-  let fn = null;
-  (function w(n) { if (!n || typeof n !== 'object' || fn) return; if (n.type === 'FunctionDeclaration' && n.id && n.id.name === 'assignOrderToDriver') { fn = n; return; } for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object' && v.type) w(v); } })(ast);
-  assert.ok(fn, `assignOrderToDriver FunctionDeclaration in ${file}`);
-  let cas = null, clear = null, loop = null, deadlineDecl = null;
-  (function w(n) {
-    if (!n || typeof n !== 'object') return;
-    if (!cas && n.type === 'CallExpression' && n.callee && n.callee.name === 'runTransaction') { const t = src.slice(n.start, n.end); if (/assigned_driver_id/.test(t) && /cur == null \? driverId : undefined/.test(t)) cas = n; }
-    if (!clear && n.type === 'AssignmentExpression' && n.operator === '=' && n.right && n.right.type === 'Literal' && n.right.value === null && /deliveryTaskId\}\/half_claim_since`\]$/.test(src.slice(n.left.start, n.left.end))) clear = n;
-    if (!deadlineDecl && n.type === 'VariableDeclaration' && n.declarations[0] && n.declarations[0].id && n.declarations[0].id.name === 'deadline' && /Date\.now\(\) \+ ACCEPT_TIMEOUT_MS/.test(src.slice(n.start, n.end))) deadlineDecl = n;
-    if (!loop && n.type === 'ForOfStatement' && /\[pickupTaskId, deliveryTaskId\]/.test(src.slice(n.right.start, n.right.end))) { const b = src.slice(n.start, n.end); if (/assignment_deadline/.test(b) && /assignment_attempts/.test(b)) loop = n; }
-    for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object' && v.type) w(v); }
-  })(fn);
-  assert.ok(cas, `executable CAS runTransaction node in assignOrderToDriver (${file})`);
-  assert.ok(clear, `executable half_claim_since clear (AssignmentExpression) in assignOrderToDriver (${file})`);
-  assert.ok(loop && deadlineDecl && deadlineDecl.end <= loop.start, `executable non-stacked batch (deadline + for-of) in assignOrderToDriver (${file})`);
-  // the executable batch = the `const deadline` decl through the end of the non-stacked for-of (both lifted verbatim)
-  return { casText: src.slice(cas.start, cas.end), loopText: src.slice(deadlineDecl.start, loop.end), clearText: `${src.slice(clear.start, clear.end)};` };
+  // (a) the unique EXPORTED declaration; reject any other declaration of the name (a decoy)
+  const exported = ast.body.filter((s) => s.type === 'ExportNamedDeclaration' && s.declaration && s.declaration.type === 'FunctionDeclaration' && s.declaration.id.name === 'assignOrderToDriver').map((s) => s.declaration);
+  assert.equal(exported.length, 1, `exactly one EXPORTED assignOrderToDriver in ${file}`);
+  const fn = exported[0];
+  let others = 0; (function w(n) { if (!n || typeof n !== 'object') return; if (n !== fn && n.type === 'FunctionDeclaration' && n.id && n.id.name === 'assignOrderToDriver') others++; for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach(w); else if (v && typeof v === 'object' && v.type) w(v); } })(ast);
+  assert.equal(others, 0, `no decoy/nested assignOrderToDriver declaration in ${file}`);
+  const stmts = fn.body.body;
+  // (c) CAS: a DIRECT `const claim = await runTransaction(ref(…assigned_driver_id…), <callback>)` statement of the body
+  const casDecl = stmts.find((s) => s.type === 'VariableDeclaration' && s.declarations[0] && s.declarations[0].id.name === 'claim' && s.declarations[0].init && s.declarations[0].init.type === 'AwaitExpression' && s.declarations[0].init.argument.type === 'CallExpression' && s.declarations[0].init.argument.callee.name === 'runTransaction');
+  assert.ok(casDecl, `direct CAS (const claim = await runTransaction(…)) statement in assignOrderToDriver (${file})`);
+  const casCall = casDecl.declarations[0].init.argument;
+  assert.ok(casCall.arguments[0] && casCall.arguments[0].type === 'CallExpression' && casCall.arguments[0].callee.name === 'ref' && /assigned_driver_id/.test(src.slice(casCall.arguments[0].start, casCall.arguments[0].end)), `CAS ref targets the delivery assigned_driver_id (${file})`);
+  const casCb = casCall.arguments[1];
+  assert.ok(casCb && /Function/.test(casCb.type), `CAS callback is a function (${file})`);
+  // (b) the main try block → the isStacked if/else → the else (non-stacked) block holds a DIRECT deadline decl + for-of;
+  // the half_claim clear is a DIRECT expression-statement of the try block (not inside the if/else, a nested fn, etc.)
+  const tryStmt = stmts.find((s) => s.type === 'TryStatement');
+  assert.ok(tryStmt, `try block in assignOrderToDriver (${file})`);
+  const tb = tryStmt.block.body;
+  const ifStacked = tb.find((s) => s.type === 'IfStatement' && src.slice(s.test.start, s.test.end) === 'isStacked');
+  assert.ok(ifStacked && ifStacked.alternate && ifStacked.alternate.type === 'BlockStatement', `isStacked if/else in assignOrderToDriver (${file})`);
+  const elseStmts = ifStacked.alternate.body;
+  const deadlineDecl = elseStmts.find((s) => s.type === 'VariableDeclaration' && s.declarations[0] && s.declarations[0].id.name === 'deadline' && /Date\.now\(\) \+ ACCEPT_TIMEOUT_MS/.test(src.slice(s.start, s.end)));
+  const loop = elseStmts.find((s) => s.type === 'ForOfStatement' && /\[pickupTaskId, deliveryTaskId\]/.test(src.slice(s.right.start, s.right.end)) && /assignment_deadline/.test(src.slice(s.start, s.end)) && /assignment_attempts/.test(src.slice(s.start, s.end)));
+  assert.ok(deadlineDecl && loop && deadlineDecl.end <= loop.start, `direct non-stacked deadline + for-of in the else block (${file})`);
+  const clearStmt = tb.find((s) => s.type === 'ExpressionStatement' && s.expression.type === 'AssignmentExpression' && s.expression.operator === '=' && s.expression.right.type === 'Literal' && s.expression.right.value === null && /deliveryTaskId\}\/half_claim_since`\]$/.test(src.slice(s.expression.left.start, s.expression.left.end)));
+  assert.ok(clearStmt, `direct half_claim_since clear statement in the try block (${file})`);
+  return { casCbText: src.slice(casCb.start, casCb.end), batchText: src.slice(deadlineDecl.start, loop.end), clearText: src.slice(clearStmt.start, clearStmt.end) };
 }
 function clientBatch(file) {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
-  const { casText, loopText, clearText } = fnBodySpans(src, file);
-  assert.ok(/\(cur\) => \(cur == null \? driverId : undefined\)/.test(casText), `CAS predicate bound to source (${file})`);
-  // drift-negatives: each shipped-text mutation must make the AST-based lift go RED (desktop AND mobile)
-  const mutations = [
-    ['comment out the clear', (s) => s.replace('updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;', '// updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;')],
-    ['hide the clear in a string', (s) => s.replace('updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;', 'const _drift = "updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;";')],
-    ['comment out the CAS', (s) => s.replace('const claim = await runTransaction(ref(db, `tasks/${deliveryTaskId}/assigned_driver_id`), (cur) => (cur == null ? driverId : undefined));', '// CAS removed')],
-    ['alter the CAS predicate', (s) => s.replace('(cur) => (cur == null ? driverId : undefined)', '(cur) => (cur == null ? null : undefined)')],
+  const { casCbText, batchText, clearText } = fnBodySpans(src, file);
+  // the 3 codex r7 drift probes — each must go RED (desktop AND mobile):
+  const probes = [
+    ['decoy nested assignOrderToDriver + exported clear deleted', (s) => s.replace('export async function assignOrderToDriver(orderId, driverId, allTasks = null) {', 'async function assignOrderToDriver() { updates[`tasks/${deliveryTaskId}/half_claim_since`] = null; }\nexport async function assignOrderToDriver(orderId, driverId, allTasks = null) {').replace('    updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;\n', '')],
+    ['clear moved into if (false) { … }', (s) => s.replace('    updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;', '    if (false) { updates[`tasks/${deliveryTaskId}/half_claim_since`] = null; }')],
+    ['CAS callback changed to return null (original kept in a block comment)', (s) => s.replace('(cur) => (cur == null ? driverId : undefined));', '/* (cur) => (cur == null ? driverId : undefined) */ (cur) => (cur == null ? null : undefined));')],
   ];
-  for (const [label, mut] of mutations) {
-    const mutated = mut(src); assert.notStrictEqual(mutated, src, `${file}: drift mutation '${label}' changed the source`);
-    assert.throws(() => { const r = fnBodySpans(mutated, file); if (!/\(cur\) => \(cur == null \? driverId : undefined\)/.test(r.casText)) throw new Error('CAS drift'); }, `drift-negative '${label}' must go RED (${file})`);
+  for (const [label, mut] of probes) {
+    const mutated = mut(src); assert.notStrictEqual(mutated, src, `${file}: probe '${label}' changed the source`);
+    if (/CAS callback changed/.test(label)) {
+      // (c) EXECUTION-bound: the lifted callback from the mutated source must execute DIFFERENTLY (claims null, not the driver)
+      const r = fnBodySpans(mutated, file); const cb = new Function('driverId', `return ${r.casCbText};`)('DRV');
+      assert.notEqual(cb(null), 'DRV', `probe '${label}': the executed lifted callback must change (${file})`);
+    } else {
+      assert.throws(() => fnBodySpans(mutated, file), `drift probe '${label}' must go RED (${file})`);
+    }
   }
+  // the REAL lifted CAS callback, executed in the test's transaction (a changed callback changes the claim)
+  const claimCb = (driver) => new Function('driverId', `return ${casCbText};`)(driver);
   // eslint-disable-next-line no-new-func
-  const fn = new Function('updates', 'pickupTaskId', 'deliveryTaskId', 'driverId', 'TASK_STATUS', 'serverTimestamp', 'ACCEPT_TIMEOUT_MS', `${loopText}\n${clearText}`);
+  const batchFn = new Function('updates', 'pickupTaskId', 'deliveryTaskId', 'driverId', 'TASK_STATUS', 'serverTimestamp', 'ACCEPT_TIMEOUT_MS', `${batchText}\n${clearText}`);
   return {
-    casText,
-    build: (oid, driver) => { const u = {}; fn(u, `${oid}_pickup`, `${oid}_delivery`, driver, { ASSIGNED: 'assigned' }, () => NOW, 60000); return u; },
+    claimCb,
+    build: (oid, driver) => { const u = {}; batchFn(u, `${oid}_pickup`, `${oid}_delivery`, driver, { ASSIGNED: 'assigned' }, () => NOW, 60000); return u; },
   };
 }
 const DISPATCH_ASSIGNERS = [
@@ -349,18 +366,20 @@ async function captureErr(fn) { const logs = []; const orig = console.error; con
     ok('TIMEOUT (lifted handler, flag-ON, TOLERANT): a HUNG account (classification) read is bounded → main rollback within budget, both legs consistent (codex r5 P1)');
     await setAcct(D_EN2, { enabled: true });
 
-    // (H) CLOSED, the account read hangs INSIDE expectedIneligibleOrMain (closed skips svcWriteOrFallback's reads) → rollback
+    // (H) CLOSED, the account read hangs INSIDE expectedIneligibleOrMain (closed skips svcWriteOrFallback's own reads) →
+    // rollback; the classifier-timeout log must still carry the KNOWN mode=closed (codex r7 P2-1).
     await seedReassign('oT8');
     await seedMode('closed');
-    await env.withSecurityRulesDisabled(async (c) => {
+    const logsH = await captureErr(() => env.withSecurityRulesDisabled(async (c) => {
       const bypass = c.database();
       const hungDb = hangReads(bypass, [`driver_accounts/${D_EN2}`]);
       const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await bypass.ref(`driver_accounts/${D_EN2}/enabled`).set(false); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
       await withWatchdog(runReassign({ db: hungDb, orderId: 'oT8', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }), 3000, 'hung account read (closed)');
-    });
+    }));
     { const d = await legOf('oT8', 'delivery'), p = await legOf('oT8', 'pickup');
-      assert.equal(d.assigned_driver_id, D_EN, 'closed + hung account read → rollback restored the owner'); assert.equal(p.assigned_driver_id, D_EN, 'both legs consistent'); }
-    ok('TIMEOUT (lifted handler, flag-ON, CLOSED): a HUNG account read inside expectedIneligibleOrMain is bounded → main rollback within budget (codex r5 P1)');
+      assert.equal(d.assigned_driver_id, D_EN, 'closed + hung account read → rollback restored the owner'); assert.equal(p.assigned_driver_id, D_EN, 'both legs consistent');
+      assert.ok(logsH.some((l) => /classification unavailable/.test(l) && /read=account/.test(l) && /mode=closed/.test(l)), 'the closed-mode classifier timeout logged read=account + mode=closed (codex r7 P2-1)'); }
+    ok('TIMEOUT (lifted handler, flag-ON, CLOSED): a HUNG account read is bounded → main rollback within budget, logging read=account + mode=closed (codex r5 P1 + r7 P2-1)');
     await seedMode(null);
     await setAcct(D_EN2, { enabled: true });
 
@@ -406,21 +425,21 @@ async function captureErr(fn) { const logs = []; const orig = console.error; con
   await env.withSecurityRulesDisabled((c) => c.database().ref('dispatchers/disp-parity').set({ name: 'Disp' }));
   const dispAuth = env.authenticatedContext('disp-parity', { dispatcher: true }).database();
   const bothLegsClient = async (oid, driver, status) => { for (const leg of ['pickup', 'delivery']) { const t = await legOf(oid, leg); assert.equal(t.assigned_driver_id, driver, `${oid}_${leg} driver`); assert.equal(t.status, status, `${oid}_${leg} status`); } };
-  // CAS claim text bound to source (liftLoop asserted client.casText is in the shipped body); the test mirrors its logic
-  const clientClaim = (oid, driver) => dispAuth.ref(`tasks/${oid}_delivery/assigned_driver_id`).transaction((cur) => (cur == null ? driver : undefined));
+  // the CAS runs the client's REAL lifted callback (codex r7 P2-2(c)) — a changed callback changes the claim
+  const clientClaim = (oid, cb) => dispAuth.ref(`tasks/${oid}_delivery/assigned_driver_id`).transaction(cb);
   for (const client of DISPATCH_ASSIGNERS) {
-    assert.ok(/cur == null \? driverId : undefined/.test(client.casText), `${client.key} CAS is source-bound`);
+    assert.equal(client.claimCb(D_EN)(null), D_EN, `${client.key}: the lifted CAS callback claims the driver on a null leaf`);
     // eligible: the client's real CAS claim commits, then its lifted batch lands BOTH legs (assigned)
     await seedOrder(`oD_${client.key}_ok`);
-    const claimOk = await assertSucceeds(clientClaim(`oD_${client.key}_ok`, D_EN));
-    assert.equal(claimOk.snapshot.val(), D_EN, 'the real CAS claim committed to the eligible driver');
+    const claimOk = await assertSucceeds(clientClaim(`oD_${client.key}_ok`, client.claimCb(D_EN)));
+    assert.equal(claimOk.snapshot.val(), D_EN, 'the real CAS callback committed to the eligible driver');
     await assertSucceeds(dispAuth.ref().update(client.build(`oD_${client.key}_ok`, D_EN)));
     await bothLegsClient(`oD_${client.key}_ok`, D_EN, 'assigned');
     // denied (suspended): the §2 invariant bites BOTH the real CAS claim AND the lifted batch; assert both legs stay
     // pending/unassigned AFTER EACH denied operation (codex r6 P2-2)
     await seedOrder(`oD_${client.key}_no`);
     const legsPending = async (why) => { for (const leg of ['pickup', 'delivery']) { const t = await legOf(`oD_${client.key}_no`, leg); assert.equal(t.assigned_driver_id ?? null, null, `${why}: ${leg} stays unassigned`); assert.equal(t.status, 'pending', `${why}: ${leg} stays pending`); } };
-    await assertFails(clientClaim(`oD_${client.key}_no`, D_SUSP)); await legsPending('after denied CAS claim');
+    await assertFails(clientClaim(`oD_${client.key}_no`, client.claimCb(D_SUSP))); await legsPending('after denied CAS claim');
     await assertFails(dispAuth.ref().update(client.build(`oD_${client.key}_no`, D_SUSP))); await legsPending('after denied batch');
     ok(`DESKTOP/MOBILE (${client.key}): the REAL lifted ${client.fn} CAS claim + both-leg batch land for an eligible target and are DENIED for a suspended one (both legs stay pending/unassigned; scoped source-parity + drift-negative)`);
   }
