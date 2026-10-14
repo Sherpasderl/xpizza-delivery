@@ -25,7 +25,8 @@ const between = (a, b, from = 0) => { const i = src.indexOf(a, from); assert.ok(
 const chStart = src.indexOf('chargeOnlineApp.all(');
 const KEYS_BLOCK = between('  /* serial3:begin card-content-keys */', '  /* serial3:end card-content-keys */', chStart);
 assert.ok(src.indexOf('/* serial3:begin card-content-keys */', chStart) < src.indexOf('chargeOnlineApp.use('), 'premise: the lifted block is chargeOnlineOrder\'s');
-const WIRING = between('const menuOrderVersionOf = (tables) =>', '\n', 0) + between('const menuNamesOf = (rid, tables) =>', '\n', 0);
+const WIRING = between('const menuOrderVersionOf = (tables) =>', '\n', 0) + between('const menuNamesOf = (rid, tables) =>', '\n', 0)
+  + between('const rewardSuffixOf = (freeItems, itemsText) =>', '\n', 0);   // r5: the reward-provenance helper the block calls
 // confirmDeps, verbatim: from its declaration to the function after it
 const CONFIRM_DEPS = src.slice(src.indexOf('function confirmDeps(db) {'), src.indexOf('function runConfirm('));
 assert.ok(CONFIRM_DEPS.length > 200 && /return \{\s*db,/.test(CONFIRM_DEPS), 'premise: confirmDeps lifted');
@@ -41,7 +42,8 @@ function fakeDb(store) {
 }
 // the intake block, verbatim, over exactly the names it uses
 const runKeys = new Function('ctx', `
-  const { pendingOrderRecord, fields, orderType, isScheduled, scheduledForRaw, restaurantId, pricingTables, orderId, contentKeysRecord, gateReader, require } = ctx;
+  const { pendingOrderRecord, fields, orderType, isScheduled, scheduledForRaw, restaurantId, pricingTables, orderId, contentKeysRecord, gateReader, require,
+    redemptionCanonical, redemptionFreeItems, rewardAppendText } = ctx;
   ${WIRING}
   ${KEYS_BLOCK}
   return pendingOrderRecord;`);
@@ -80,7 +82,7 @@ function liftConfirmDeps(provided) {
 
   const intake = (t, reader = warm) => runKeys({ pendingOrderRecord: { order_id: 'X', customer_phone: PHONE, items_text: t, order_type: 'pickup', restaurant_id: 'x_pizza', payment_method: 'online' },
     fields: { customer_phone: PHONE, items_text: t }, orderType: 'pickup', isScheduled: false, scheduledForRaw: NaN, restaurantId: 'x_pizza', pricingTables, orderId: 'X',
-    contentKeysRecord, gateReader: () => reader, require });
+    contentKeysRecord, gateReader: () => reader, require, redemptionCanonical: null, redemptionFreeItems: null, rewardAppendText: require('./order-dedup').rewardAppendText });
   const confirmed = (rec) => ({ ...rec, payment_status: 'confirmed', status: 'pending_payment' });
   // the legacy cash sibling is a real order with its OWN (menu-order) content — the guard verifies it before any hold (r4)
   const legacyCashSibling = (ytext = AB) => ({ [leaf(orderContentKeyVerbatim(args(AB)))]: { at: Date.now() - 30000, order_id: 'Y', payment_method: 'cash' },

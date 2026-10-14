@@ -187,9 +187,65 @@ const sibY = (extra = {}, content = {}) => ({ order_id: 'Y', customer_phone: PHO
       if (label === 'another type') store['orders/Y'].order_type = 'pickup';
       assert.equal((await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123))).r, false, `🔴 a sibling with ${label} → not held`);
     }
-    { const store = { ...legacyStamp(`${AB} | 1x Margherita (Recompensa)`), 'orders/X': order('X', BA) };   // Y redeemed a reward; X did not
-      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123), true, 'a sibling that differs ONLY by its server-appended reward line is the same cart → held'); }
-    ok('§3 r4 (a): the sibling\'s OWN content is verified before any hold — unrelated / other phone / other type / other lines / other extras → not held, logged; a reward-only difference → held');
+    // r5: the reward lines a sibling's server appended are known by PROVENANCE (redemption + reward_text_appended), never by pattern
+    const RW = ' | 1x Margherita (Recompensa)';
+    { const store = { ...legacyStamp(`${AB}${RW}`), 'orders/X': order('X', BA) };   // Y redeemed (provenance recorded); X did not
+      Object.assign(store['orders/Y'], { redemption: { model: 'add_free' }, reward_text_appended: RW });
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123), true, 'a sibling whose server appended a reward (provenance) is the same cart → held'); }
+    ok('§3 r4 (a): the sibling\'s OWN content is verified before any hold — unrelated / other phone / other type / other lines / other extras → not held, logged; a reward the sibling\'s server appended (provenance) → held');
+
+    // ── §3 r5 (codex r5 P1-A / P1-B, verbatim): provenance, not pattern ──
+    { // P1-A: a CLIENT line that ends " (Recompensa)" — no redemption on the sibling → nothing is stripped → NOT the same cart
+      const PA = `${AB} | 1x Extra dish (L99) (Recompensa)`;
+      // each lookup with the X that reads it: canonical + legacy (persisted permutation), verbatim (no persisted keys → today's fallback)
+      for (const [keyName, key, xKeys] of [['canonical', orderContentKey(args(BA)), undefined], ['legacy', orderContentKeyVerbatim(args(AB)), undefined], ['verbatim', orderContentKeyVerbatim(args(BA)), {}]]) {
+        const x = order('X', BA, xKeys);
+        const reads = []; const db0 = fakeDb({ [pathOf(key)]: { at: Date.now(), order_id: 'Y', payment_method: 'cash' }, 'orders/Y': sibY({ status: 'preparing' }, { items_text: PA }), 'orders/X': x });
+        const db = { ref: (p) => { const r0 = db0.ref(p); return { ...r0, once: async (...q) => { reads.push(p); return r0.once(...q); } }; } };
+        const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db }, 'X', x, 123));
+        assert.ok(reads.includes('orders/Y'), `premise (${keyName}): the stamp was FOUND through this lookup (the sibling was read)`);
+        assert.equal(r, false, `🔴 r5 P1-A (${keyName} lookup): a paid line ending "(Recompensa)" on a sibling with no redemption is NOT stripped → not held`);
+        assert.ok(logs.some((l) => l.includes('"reason":"sibling_content_mismatch"')), `…logged (${keyName})`);
+      } }
+    { // P1-B: a reward display name with an unbalanced "[" — today (207170e) HOLDS; provenance strips exactly what was appended
+      const PAID = '2x Carnivora (L340)', RB = ' | 1x Margherita [special (Recompensa)';
+      const a1 = (t) => ({ phone: PHONE, itemsText: t, orderType: 'delivery', scheduledFor: null });
+      const store = { [pathOf(orderContentKey(a1(PAID)))]: { at: Date.now(), order_id: 'Y', payment_method: 'cash' },
+        'orders/Y': sibY({ status: 'preparing', redemption: { model: 'add_free' }, reward_text_appended: RB }, { items_text: PAID + RB }),
+        'orders/X': { ...orderX(), items_text: PAID, ...contentKeysRecord(a1(PAID), { menuNames: MENU }) } };
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', store['orders/X'], 123), true, '🔴 r5 P1-B: online X + live cash Y with the same paid cart and a "[special" reward name → HELD (as on main)'); }
+    { // a redeemed sibling written BEFORE this deploy (no provenance) cannot be verified → today's behaviour (held), LOGGED
+      const store = { ...legacyStamp(`${AB}${RW}`), 'orders/X': order('X', BA) };
+      Object.assign(store['orders/Y'], { redemption: { model: 'add_free' } });
+      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123));
+      assert.equal(r, true, 'a pre-deploy redeemed sibling (no provenance) → today\'s behaviour: held');
+      assert.ok(logs.some((l) => l.includes('duplicate_sibling_unverifiable') && l.includes('"reason":"no_reward_provenance"') && l.includes('"sibling_id":"Y"')), 'logged'); }
+    { // provenance recorded but the text no longer ends with it → not the content that was stamped → not held, logged
+      const store = { ...legacyStamp(`${AB} | 1x Otra (Recompensa)`), 'orders/X': order('X', BA) };
+      Object.assign(store['orders/Y'], { redemption: { model: 'add_free' }, reward_text_appended: RW });
+      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123));
+      assert.equal(r, false, 'provenance that is not the text\'s suffix → not held'); assert.ok(logs.some((l) => l.includes('"reason":"sibling_content_mismatch"')), 'logged'); }
+    { // r5 P2: a valid canonical key with NO permutation and no reason → an explicit, logged fallback
+      const noOrder = { content_key: orderContentKey(args(BA)) };
+      const store = { ...legacyStamp(), 'orders/X': order('X', BA, noOrder) };
+      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA, noOrder), 123));
+      assert.equal(r, false, 'no permutation → the incoming verbatim key (the permuted legacy sibling is not found)');
+      assert.ok(logs.some((l) => l.includes('content_key_legacy_unavailable') && l.includes('"order_id":"X"') && l.includes('"reason":"legacy_order_absent"')), '🔴 r5 P2: logged legacy_order_absent');
+      const withReason = { content_key: orderContentKey(args(BA)), content_key_legacy_reason: 'no_menu_snapshot' };
+      const store2 = { ...legacyStamp(), 'orders/X': order('X', BA, withReason) };
+      assert.ok((await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store2) }, 'X', order('X', BA, withReason), 123))).logs.some((l) => l.includes('"reason":"intake_no_menu_snapshot"')), 'an intake reason is carried into the guard\'s log'); }
+    { // X's own reward lines are cut by X's provenance when its legacy key is rebuilt
+      const XR = ' | 1x Margherita (Recompensa)'; const xk = { ...contentKeysRecord(args(BA + XR), { menuNames: MENU, suffix: XR }), reward_text_appended: XR };
+      assert.deepStrictEqual(xk.content_legacy_order, [1, 0], 'the permutation covers the CLIENT lines only (provenance)');
+      assert.strictEqual(legacyKeyByOrder(args(BA + XR), xk.content_legacy_order, XR), orderContentKeyVerbatim(args(AB + XR)), 'rebuilt: client lines in menu order, then exactly the appended text'); }
+    { // …and the GUARD uses it: an incoming X that redeemed (its own provenance) finds a legacy stamp of the same full text in
+      // menu order and holds — the rebuild must cut X's appended text exactly (else the permutation never fits X's lines)
+      const XR = ' | 1x Margherita (Recompensa)';
+      const xr = { ...order('X', BA + XR, {}), ...contentKeysRecord(args(BA + XR), { menuNames: MENU, suffix: XR }), reward_text_appended: XR };
+      const store = { [pathOf(orderContentKeyVerbatim(args(AB + XR)))]: { at: Date.now(), order_id: 'Y', payment_method: 'cash' },
+        'orders/Y': sibY({ status: 'preparing' }, { items_text: AB + XR }), 'orders/X': xr };
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', xr, 123), true, '🔴 r5: X\'s legacy key rebuilt from its client lines + its OWN provenance → the menu-order legacy stamp is found → held'); }
+    ok('§3 r5: P1-A (a paid line ending "(Recompensa)", no redemption) → not held on canonical / legacy / verbatim, logged; P1-B ("[special" reward name, provenance) → HELD; pre-deploy redeemed sibling → today\'s behaviour, logged; stale provenance → not held; P2 legacy_order_absent / intake reason logged; X\'s own reward lines by provenance');
 
     // (b) a corrupted permutation can only cost a hold (today's behaviour, logged) — never name another order's content
     for (const [label, perm] of [['too short', [0]], ['duplicate index', [0, 0]], ['out of range', [0, 2]], ['not integers', ['1', '0']], ['not an array', 'xyz'], ['an index object of the wrong length', { 0: 1, 1: 0, 2: 2 }], ['a non-dense object', { 0: 1, 2: 0 }]]) {

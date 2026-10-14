@@ -22,7 +22,7 @@
  * inactive-restaurant post-capture posture. Returns true iff the order was held (caller must NOT materialize).
  */
 const SCHED = require('./scheduled-orders');
-const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys, legacyKeyByOrder, clientContentKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)
+const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys, legacyKeyByOrder, clientTextOf } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)
 
 /* 🔴 Can THIS caller reverse a payment at all? voidOrRefund is the one dep the guard calls without
    checking first, so its absence is the difference between "refunds" and "throws mid-refund". Checked
@@ -266,8 +266,11 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
     // before the deploy), stale keys or an invalid permutation → today's behaviour (the order-independent key + the
     // incoming verbatim key), LOGGED with the order_id.
     const persisted = typeof order.content_key === 'string' && order.content_key === ck;
+    // r5: this order's own server-appended text (its reward lines) is known by PROVENANCE — reward_text_appended — never by pattern
+    const ownSuffix = typeof order.reward_text_appended === 'string' && order.reward_text_appended ? order.reward_text_appended : null;
     let legacyKey = null, fallback = persisted ? null : (order.content_key ? 'stale_persisted_keys' : 'no_persisted_keys');
-    if (persisted && order.content_legacy_order != null) { legacyKey = legacyKeyByOrder(args, order.content_legacy_order); if (!legacyKey) fallback = 'invalid_legacy_order'; }
+    if (persisted && order.content_legacy_order != null) { legacyKey = legacyKeyByOrder(args, order.content_legacy_order, ownSuffix); if (!legacyKey) fallback = 'invalid_legacy_order'; }
+    else if (persisted) fallback = typeof order.content_key_legacy_reason === 'string' ? `intake_${order.content_key_legacy_reason}` : 'legacy_order_absent';   // r5 P2: never a silent fallback
     if (fallback) { try { console.warn('content_key_legacy_unavailable', JSON.stringify({ order_id: String(orderId), reason: fallback })); } catch (_) {} }
     const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [ck, legacyKey || orderContentKeyVerbatim(args)]);
     // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
@@ -275,14 +278,28 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
     const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();
     const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides
     if (!dec.collision) return false;
-    // §3 r4 (codex r4 P1): a paid order is held ONLY on a VERIFIED sibling — its OWN content (phone, client lines, type,
-    // slot; order-independent) must be this order's, whichever key found its stamp. Otherwise no hold, logged.
-    const ssf = SCHED.normalizeScheduledFor(siblingOrder && siblingOrder.scheduled_for);
-    const sibKey = siblingOrder ? clientContentKey({ phone: siblingOrder.customer_phone, itemsText: siblingOrder.items_text, orderType: siblingOrder.order_type, scheduledFor: Number.isFinite(ssf) ? ssf : null }) : null;
-    if (!sibKey || sibKey !== clientContentKey(args)) {
-      try { console.warn('duplicate_sibling_not_verified', JSON.stringify({ order_id: String(orderId), sibling_id: String(stamp.order_id), reason: 'sibling_content_mismatch' })); } catch (_) {}
-      return false;
-    }
+    // §3 r4/r5 (codex r4 P1, r5 P1-A/B): a paid order is held only on a VERIFIED sibling — whichever key found its stamp, the
+    // sibling's own content must be the content this order's stamp lookup asked for. That is TODAY's (207170e) hold condition
+    // made explicit: createOrder stamps a cash order from its text BEFORE appending a reward's lines, and this order's key is
+    // its FULL text — so the sibling's CLIENT text (its items_text minus EXACTLY what its server appended, by provenance:
+    // reward_text_appended) must key as this order's full text. No reward → nothing to strip. A reward the server recorded
+    // no provenance for (an order written before this deploy) cannot be verified → today's behaviour (the stamp decides),
+    // LOGGED. A mismatch → no hold, LOGGED.
+    const sib = siblingOrder || {};
+    const sibSuffix = typeof sib.reward_text_appended === 'string' && sib.reward_text_appended ? sib.reward_text_appended : null;
+    let sibText = null, unverifiable = null;
+    if (typeof sib.items_text !== 'string') unverifiable = 'no_sibling_text';
+    else if (sibSuffix) sibText = clientTextOf(sib.items_text, sibSuffix);   // null: the text no longer ends with what was appended
+    else if (sib.redemption) unverifiable = 'no_reward_provenance';
+    else sibText = sib.items_text;
+    if (!unverifiable) {
+      const ssf = SCHED.normalizeScheduledFor(sib.scheduled_for);
+      const sibKey = sibText == null ? null : orderContentKey({ phone: sib.customer_phone, itemsText: sibText, orderType: sib.order_type, scheduledFor: Number.isFinite(ssf) ? ssf : null });
+      if (!sibKey || sibKey !== ck) {
+        try { console.warn('duplicate_sibling_not_verified', JSON.stringify({ order_id: String(orderId), sibling_id: String(stamp.order_id), reason: 'sibling_content_mismatch' })); } catch (_) {}
+        return false;
+      }
+    } else { try { console.warn('duplicate_sibling_unverifiable', JSON.stringify({ order_id: String(orderId), sibling_id: String(stamp.order_id), reason: unverifiable })); } catch (_) {} }
     // CAS-claim X → manual_reconciliation. ONLY the pass that transitions this order proceeds (didClaim); a
     // concurrent guard pass no-ops. NEVER refund, NEVER materialize; the dispatcher resolves in the panel.
     const orderRef = deps.db.ref(`orders/${orderId}`);

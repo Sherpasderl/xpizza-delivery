@@ -22,12 +22,12 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplySerial3Index(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplySerial3Index(real), base, `🔴 index.js minus the serial3 blocks is not ${BASE}:index.js`);
-  assert.strictEqual(BLOCKS.length, 8, '8 blocks');
+  assert.strictEqual(BLOCKS.length, 10, '10 blocks');
   assert.throws(() => unapplySerial3Index(real.replace('orderId, bodyItems: body.items, priced: facturaPricedBody', 'orderId, bodyItems: body.items, priced: facturaPricedBody ')), /pinned bytes/, 'an edit INSIDE a block');
-  assert.throws(() => unapplySerial3Index(real.replace('/* serial3:end wiring */', '')), /exactly 8/, 'a missing delimiter');
-  assert.throws(() => unapplySerial3Index(real.replace('exports.verifyOtp', '/* serial3:begin x */\n/* serial3:end x */\nexports.verifyOtp')), /exactly 8/, 'a ninth block');
+  assert.throws(() => unapplySerial3Index(real.replace('/* serial3:end wiring */', '')), /exactly 10/, 'a missing delimiter');
+  assert.throws(() => unapplySerial3Index(real.replace('exports.verifyOtp', '/* serial3:begin x */\n/* serial3:end x */\nexports.verifyOtp')), /exactly 10/, 'an eleventh block');
   assert.notStrictEqual(unapplySerial3Index(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the blocks survives (the base pin catches it)');
-  ok(`index.js: unapplySerial3Index → ${BASE}:index.js byte-for-byte (8 blocks); an edit inside, a missing delimiter, a ninth block and a byte outside are each caught`);
+  ok(`index.js: unapplySerial3Index → ${BASE}:index.js byte-for-byte (10 blocks); an edit inside, a missing delimiter, an eleventh block and a byte outside are each caught`);
 }
 // ── 1b. the pinned module ──
 {
@@ -74,16 +74,31 @@ for (const [label, start, end, tag, recordUse] of [
   assert.ok(!/peekActiveMenuNames/.test(read('catalog/menu-gates.js')), '…and the gate reader no longer offers the cold-cache peek');
   const ch = idx.slice(at(idx, 'chargeOnlineApp.all('), at(idx, 'chargeOnlineApp.use('));
   const keys = ch.slice(at(ch, '/* serial3:begin card-content-keys */'), at(ch, '/* serial3:end card-content-keys */'));
-  assert.ok(/Object\.assign\(pendingOrderRecord, contentKeysRecord\(\{ phone: fields\.customer_phone, itemsText: fields\.items_text, orderType, scheduledFor: isScheduled \? scheduledForRaw : null \},\s*\{ menuNames: menuNamesOf\(restaurantId, pricingTables\), orderId \}\)\);/.test(keys), 'chargeOnlineOrder persists the content keys of the FINAL items_text (the record\'s own) in the PRICING version\'s menu order');
+  assert.ok(/Object\.assign\(pendingOrderRecord, contentKeysRecord\(\{ phone: fields\.customer_phone, itemsText: fields\.items_text, orderType, scheduledFor: isScheduled \? scheduledForRaw : null \},\s*\{ menuNames: menuNamesOf\(restaurantId, pricingTables\), orderId, suffix: rewardSuffix \}\)\);/.test(keys), 'chargeOnlineOrder persists the content keys of the FINAL items_text (the record\'s own) in the PRICING version\'s menu order');
   assert.ok(ch.indexOf('/* serial3:begin card-content-keys */') > ch.indexOf('const pendingOrderRecord = {') && ch.indexOf('/* serial3:begin card-content-keys */') < ch.indexOf('acquireHostedAttempt('), '…onto the pending record before it is written');
   const mg = read('materialize-guard.js');
   assert.ok(/const persisted = typeof order\.content_key === 'string' && order\.content_key === ck;/.test(mg), 'the materialize-side guard trusts the persisted keys only when they are THIS content\'s');
   assert.ok(/const stamp = await readContentStampByKeys\(deps\.db, order\.customer_phone, \[ck, legacyKey \|\| orderContentKeyVerbatim\(args\)\]\);/.test(mg) && !/menuNames/.test(mg), '…reads BOTH keys and never computes from menu names');
   // r4 (codex r4 P1): the legacy key is REBUILT from the order's own text + the persisted permutation (never a stored key),
   // and a paid order is held only on a sibling whose OWN content verifies
-  assert.ok(/legacyKey = legacyKeyByOrder\(args, order\.content_legacy_order\)/.test(mg) && !/order\.content_key_legacy\b(?!_reason)/.test(mg), '…the legacy key is rebuilt from the order\'s own text + the permutation; no stored key is trusted');
-  const vAt = mg.indexOf('if (!sibKey || sibKey !== clientContentKey(args))'), dAt = mg.indexOf('if (!dec.collision) return false;'), cAt = mg.indexOf('const claim = await orderRef.transaction(', vAt);
+  assert.ok(/legacyKey = legacyKeyByOrder\(args, order\.content_legacy_order, ownSuffix\)/.test(mg) && !/order\.content_key_legacy\b(?!_reason)/.test(mg), '…the legacy key is rebuilt from the order\'s own text + the permutation; no stored key is trusted');
+  const vAt = mg.indexOf('if (!sibKey || sibKey !== ck) {'), dAt = mg.indexOf('if (!dec.collision) return false;'), cAt = mg.indexOf('const claim = await orderRef.transaction(', vAt);
   assert.ok(dAt > 0 && vAt > dAt && cAt > vAt, '…and the sibling\'s OWN content is verified after the collision decision and BEFORE the hold\'s CAS');
+  // r5 (codex r5 P1): server-appended reward text by PROVENANCE only — persisted where the server appends it, read exactly
+  assert.ok(/const rewardSuffixOf = \(freeItems, itemsText\) => \{ const t = freeItems && freeItems\.length \? rewardAppendText\(freeItems\) : ''; return t && String\(itemsText\)\.endsWith\(t\) \? t : null; \};/.test(idx), 'the provenance is the server\'s OWN formatter output, persisted only when the text ends with it');
+  // the pinned prepareRedemption appends with EXACTLY the template order-dedup.rewardAppendText uses (byte-identical)
+  const TPL = '` | ${fi.qty}x ${fi.name} (Recompensa)`';
+  assert.ok(read('rewards-redeem-intake.js').includes(`const appends = freeItems.map((fi) => ${TPL}).join('');`), 'prepareRedemption still appends with the template');
+  assert.ok(read('order-dedup.js').includes(`.map((fi) => ${TPL}).join('');`), '…and order-dedup.rewardAppendText uses the byte-identical template');
+  const coAll = idx.slice(at(idx, 'createOrderApp.all('), at(idx, 'createOrderApp.use('));
+  for (const id of ['cash-reward-provenance-held', 'cash-reward-provenance']) {
+    const blk = coAll.slice(at(coAll, `/* serial3:begin ${id} */`), at(coAll, `/* serial3:end ${id} */`));
+    assert.ok(/\.reward_text_appended = rewardSuffixOf\(redemptionFreeItems, fields\.items_text\);/.test(blk), `createOrder (${id}) persists reward_text_appended`);
+  }
+  assert.ok(/if \(rewardSuffix\) pendingOrderRecord\.reward_text_appended = rewardSuffix;/.test(keys) && /orderId, suffix: rewardSuffix \}\)\);/.test(keys), 'chargeOnlineOrder persists it and builds the permutation over the CLIENT lines (provenance)');
+  assert.ok(!/SERVER_LINE|\(Recompensa\)\\\$/.test(read('order-dedup.js')), 'order-dedup decides NOTHING by a "(Recompensa)" pattern');
+  assert.ok(/else if \(sibSuffix\) sibText = clientTextOf\(sib\.items_text, sibSuffix\);/.test(mg) && /else if \(sib\.redemption\) unverifiable = 'no_reward_provenance';/.test(mg), 'the guard strips the sibling\'s reward text by provenance only; a reward without provenance is unverifiable (today\'s behaviour, logged)');
+  assert.ok(/: 'legacy_order_absent';/.test(mg), 'r5 P2: an absent permutation is an explicit, logged fallback');
   ok('wiring: the item_order is the PRICING version\'s menu_structure (module deadline); createOrder\'s prior stamp reads both keys; chargeOnlineOrder persists both and the materialize guard reads them (r3, no cold-cache dependency)');
 }
 console.log(`\nserial3-wiring.guard: OK (${n})`);

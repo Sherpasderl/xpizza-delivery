@@ -63,7 +63,7 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key (bound to
 // the content the request persisted, else the declared unbound mode) and (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
-let S3_KEYS = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
+let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
 const POST_OF = new WeakMap();
 const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
 let S3_DIFF = 0;
@@ -515,7 +515,14 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
           assert.strictEqual(post.content_key, require('../order-dedup').orderContentKey(s3c), `🔴 ${key}: the pending order persists content_key = the stamped content's key`);
           assert.ok((post.content_legacy_order != null) !== (typeof post.content_key_legacy_reason === 'string'), `🔴 ${key}: exactly one of content_legacy_order / content_key_legacy_reason (${JSON.stringify([post.content_legacy_order, post.content_key_legacy_reason])})`);
           assert.ok(!('content_key_legacy' in post), `🔴 ${key}: no free-floating legacy key is stored (r4)`);
-          if (post.content_legacy_order != null) assert.ok(require('../order-dedup').legacyKeyByOrder(s3c, post.content_legacy_order), `🔴 ${key}: the persisted permutation is a valid permutation of the order's own lines`);
+          if (post.content_legacy_order != null) assert.ok(require('../order-dedup').legacyKeyByOrder(s3c, post.content_legacy_order, post.reward_text_appended || null), `🔴 ${key}: the persisted permutation is a valid permutation of the order's own lines`);
+        }
+        // §3 r5: a request that redeemed and wrote its order persisted EXACTLY what its server appended (provenance), on both routes
+        const sentB = SENT_OF.get(r) || {};
+        if (cs.bound && post.redemption && sentB.redeem && typeof sentB.items_text === 'string' && post.items_text !== sentB.items_text) {
+          S3_PROV += 1;
+          assert.strictEqual(typeof post.reward_text_appended, 'string', `🔴 ${key}: a redeemed order persists reward_text_appended`);
+          assert.strictEqual(post.items_text, sentB.items_text + post.reward_text_appended, `🔴 ${key}: reward_text_appended is EXACTLY the persisted text minus the posted one`);
         }
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${key}: the changed-path set changed (beyond D12b's declared tracking field)`);
         const reads = r.ops.filter(isControlRead);
@@ -725,6 +732,8 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));
   if (!CAPTURE) check(() => assert.ok(S3_KEYS > 0, 'non-vacuity: at least one card case checked the persisted content keys (r3)'));
   if (!CAPTURE) console.log(`  ✓ §3 r3 persisted content keys: ${S3_KEYS} card case(s)`);
+  if (!CAPTURE) check(() => assert.ok(S3_PROV > 0, 'non-vacuity: at least one redeemed case checked its reward provenance (r5)'));
+  if (!CAPTURE) console.log(`  ✓ §3 r5 reward provenance: ${S3_PROV} redeemed case(s), cash and card`);
   if (!CAPTURE && S3_DIFF > 0) { console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ from the baseline only by it (content key bound to the POSTED content or the unbound mode)`); }
   if (!FAILS.length) ok(`${CAPTURE ? 'BASELINE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (${CASES.length} cases + the scheduled sweep × ${Object.keys(STATES).length} switch states × both restaurants)` +
     (CAPTURE ? ' — the switch node is inert at e1aeb3f; every state behaves as today' : ` — ${tally.same} UNCHANGED (status, body, headers, call sequence minus ONLY the control read, changed paths == baseline; the existing-order / :839 answers read NO switch); ${tally.refused} REFUSED with the exact 423 / 503 (+ Retry-After 2), nothing written, reward holds as planned — where the baseline admitted`));

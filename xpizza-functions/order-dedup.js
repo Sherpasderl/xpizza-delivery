@@ -61,14 +61,14 @@ function rateLimitKey(raw) {
   return require('crypto').createHash('sha256').update(String(raw)).digest('hex').slice(0, 32);
 }
 
-// §3 r2 — THE PRE-§3 TEXT OF THIS CART. A stamp written before §3 came from a client that serialized in MENU order, so
+// §3 r2/r5 — THE PRE-§3 TEXT OF THIS CART. A stamp written before §3 came from a client that serialized in MENU order, so
 // its verbatim key is the key of THIS cart's lines re-ordered into menu order — whatever order they arrive in now. The
 // client lines ("{n}x {name} (L{price}){extras}") are stably sorted by their dish's position in `menuNames` (the cached
-// catalog snapshot's names, in item_order); the lines the SERVER appends (a reward's "… (Recompensa)") stay last, in
-// order, exactly as they were appended then. null when it cannot be rebuilt faithfully: no snapshot, unbalanced
-// brackets, or a line whose dish the snapshot does not name.
+// catalog snapshot's names, in item_order). r5: the lines the SERVER appended (a reward's) are known by PROVENANCE only —
+// `suffix`, the exact text the server appended (rewardAppendText, persisted as reward_text_appended) — never by a text
+// pattern: they are cut off exactly and kept last, as they were appended. null when it cannot be rebuilt faithfully: no
+// snapshot, unbalanced brackets, a line whose dish the snapshot does not name, or a suffix the text does not end with.
 const LEGACY_LINE = /^\d+x (.+?) \(L\d+(?:\.\d+)?\)/;
-const SERVER_LINE = / \(Recompensa\)$/;
 function topLevelLines(s) {
   const lines = []; let depth = 0, start = 0;
   for (let i = 0; i < s.length; i++) {
@@ -81,54 +81,47 @@ function topLevelLines(s) {
   lines.push(s.slice(start));
   return lines;
 }
-// The order's top-level lines split into CLIENT lines and the SERVER-appended "… (Recompensa)" lines after them; null when
-// the text is not a shape either writer produces (unbalanced brackets, a client line after a server line).
-function splitLines(itemsText) {
-  const lines = topLevelLines(String(itemsText == null ? '' : itemsText).trim()); if (!lines) return null;
-  const client = [], server = [];
-  for (const line of lines) {
-    if (SERVER_LINE.test(line)) { server.push(line); continue; }
-    if (server.length) return null;
-    client.push(line);
-  }
-  return { client, server };
+// The order's CLIENT text: its items_text minus EXACTLY the server-appended `suffix` (provenance). No suffix → the whole
+// text; a suffix the text does not end with → null (not a shape the server writes).
+function clientTextOf(itemsText, suffix) {
+  const t = String(itemsText == null ? '' : itemsText);
+  if (suffix == null || suffix === '') return t;
+  if (typeof suffix !== 'string' || !t.endsWith(suffix) || t.length === suffix.length) return null;
+  return t.slice(0, t.length - suffix.length);
+}
+function clientLinesOf(itemsText, suffix) {
+  const c = clientTextOf(itemsText, suffix); if (c == null) return null;
+  return topLevelLines(c.trim());
 }
 // §3 r4 — the MENU-ORDER PERMUTATION of the order's own client lines: perm[k] = the index (in the order's text) of the
-// line a pre-§3 client would have written k-th. null when it cannot be rebuilt faithfully (no snapshot, a dish it does not name).
-function legacyOrderOf(itemsText, menuNames) {
+// line a pre-§3 client would have written k-th.
+function legacyOrderOf(itemsText, menuNames, suffix = null) {
   if (!Array.isArray(menuNames) || !menuNames.length) return null;
-  const sp = splitLines(itemsText); if (!sp) return null;
+  const client = clientLinesOf(itemsText, suffix); if (!client) return null;
   const at = new Map(menuNames.map((n, i) => [n, i]));
   const ranked = [];
-  for (const [i, line] of sp.client.entries()) {
+  for (const [i, line] of client.entries()) {
     const m = LEGACY_LINE.exec(line); if (!m || !at.has(m[1])) return null;
     ranked.push({ r: at.get(m[1]), i });
   }
   return ranked.sort((a, b) => (a.r - b.r) || (a.i - b.i)).map((x) => x.i);
 }
-// the legacy text of THIS order's lines in the order `perm` gives — or null unless `perm` is a true permutation of them
-// (an array — or RTDB's dense index object — of every client-line index exactly once). A corrupted permutation can never
-// name another order's content: at worst it names this cart's lines in another order (a missed hold, never a false one).
-function legacyTextByOrder(itemsText, perm) {
-  const sp = splitLines(itemsText); if (!sp) return null;
+// the legacy text of THIS order's client lines in the order `perm` gives, + the server suffix — or null unless `perm` is a
+// true permutation of them (an array — or RTDB's dense index object — of every client-line index exactly once). A
+// corrupted permutation can never name another order's content: at worst this cart's lines in another order.
+function legacyTextByOrder(itemsText, perm, suffix = null) {
+  const client = clientLinesOf(itemsText, suffix); if (!client) return null;
   const arr = Array.isArray(perm) ? perm
     : (perm && typeof perm === 'object' && Object.keys(perm).every((k, i, ks) => k === String(i) && ks.length) ? Object.keys(perm).map((k) => perm[k]) : null);
-  const n = sp.client.length;
+  const n = client.length;
   if (!arr || arr.length !== n || !n) return null;
   const seen = new Set();
   for (const i of arr) { if (!Number.isInteger(i) || i < 0 || i >= n || seen.has(i)) return null; seen.add(i); }
-  return arr.map((i) => sp.client[i]).concat(sp.server).join(' | ');
+  return arr.map((i) => client[i]).join(' | ') + (suffix || '');
 }
-function legacyItemsText(itemsText, menuNames) {
-  const perm = legacyOrderOf(itemsText, menuNames);
-  return perm == null ? null : legacyTextByOrder(itemsText, perm);
-}
-// §3 r4 — what makes two orders the SAME cart for the duplicate guard: the order-independent key of their CLIENT lines
-// (phone, the lines without the server-appended reward lines, type, slot). A reward one order redeemed and the other did
-// not is not a different cart; any other difference is.
-function clientContentKey({ phone, itemsText, orderType, scheduledFor } = {}) {
-  const sp = splitLines(itemsText);
-  return orderContentKey({ phone, itemsText: sp ? sp.client.join(' | ') : itemsText, orderType, scheduledFor });
+function legacyItemsText(itemsText, menuNames, suffix = null) {
+  const perm = legacyOrderOf(itemsText, menuNames, suffix);
+  return perm == null ? null : legacyTextByOrder(itemsText, perm, suffix);
 }
 
 // The content stamp this order's content resolves to: the ORDER-INDEPENDENT key's, and — while stamps written before §3
@@ -164,21 +157,28 @@ async function readContentStampByKeys(db, phone, keys) {
 // reader rebuilds the pre-§3 verbatim key from the order's OWN items_text and validates the permutation). When it cannot be
 // rebuilt (no cached snapshot, a dish it does not name) it is absent, `content_key_legacy_reason` says why, and it is
 // LOGGED with the order_id; the guard then reads the incoming verbatim key (as readContentStamp does). {} when no key.
-function contentKeysRecord({ phone, itemsText, orderType, scheduledFor } = {}, { menuNames = null, orderId = null, log = (...a) => console.warn(...a) } = {}) {
+function contentKeysRecord({ phone, itemsText, orderType, scheduledFor } = {}, { menuNames = null, orderId = null, suffix = null, log = (...a) => console.warn(...a) } = {}) {
   const args = { phone, itemsText, orderType, scheduledFor };
   const content_key = orderContentKey(args);
   if (!content_key) return {};
-  const perm = legacyOrderOf(itemsText, menuNames);
+  const perm = legacyOrderOf(itemsText, menuNames, suffix);
   if (perm != null) return { content_key, content_legacy_order: perm };
   const reason = Array.isArray(menuNames) ? 'unmatched_line' : 'no_menu_snapshot';
   try { log('content_key_legacy_unavailable', JSON.stringify({ order_id: orderId == null ? null : String(orderId), reason })); } catch (_) {}
   return { content_key, content_key_legacy_reason: reason };
 }
 
+// §3 r5 — the EXACT text the server appends to items_text for a redemption's free items: byte-identical to
+// rewards-redeem-intake.prepareRedemption's `appends` (that module is pinned; serial3-wiring asserts the two templates are
+// the same). The intake routes persist it as provenance ONLY when the order's text really ends with it — a drift can only
+// cost provenance (the guard then treats a redeemed sibling as unverifiable: today's behaviour, logged), never a false hold.
+function rewardAppendText(freeItems) {
+  return (Array.isArray(freeItems) ? freeItems : []).map((fi) => ` | ${fi.qty}x ${fi.name} (Recompensa)`).join('');
+}
 // the pre-§3 verbatim key of an order rebuilt from its OWN content + the persisted permutation; null when invalid
-function legacyKeyByOrder({ phone, itemsText, orderType, scheduledFor } = {}, perm) {
-  const t = legacyTextByOrder(itemsText, perm);
+function legacyKeyByOrder({ phone, itemsText, orderType, scheduledFor } = {}, perm, suffix = null) {
+  const t = legacyTextByOrder(itemsText, perm, suffix);
   return t == null ? null : contentKeyOf(phone, t, orderType, scheduledFor);
 }
 
-module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, readContentStampByKeys, contentKeysRecord, legacyOrderOf, legacyKeyByOrder, clientContentKey, isContentRetap, rateLimitKey };
+module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, readContentStampByKeys, contentKeysRecord, legacyOrderOf, legacyKeyByOrder, clientTextOf, rewardAppendText, isContentRetap, rateLimitKey };

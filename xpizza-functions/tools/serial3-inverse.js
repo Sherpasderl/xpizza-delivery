@@ -1,6 +1,6 @@
 'use strict';
 // MENU-ORDERING §3, codex serialization r1 (order-independent content key + the factura's lines in menu order) — the slice's
-// test-only INVERSE. index.js carries 8 delimited, byte-pinned blocks `/* serial3:begin <id> */ … /* serial3:end <id> */`
+// test-only INVERSE. index.js carries 10 delimited, byte-pinned blocks `/* serial3:begin <id> */ … /* serial3:end <id> */`
 // (pure insertions, plus the createOrder content-stamp read and the two factura heads, which REPLACE one line each);
 // unapplySerial3Index swaps each back for its original bytes, so unapplySerial3Index(index.js) === 207170e:index.js
 // byte-for-byte (serial3-wiring.guard). Every index.js fold guard applies it FIRST (this is the newest index.js slice),
@@ -11,7 +11,7 @@ const BASE = '207170e';
 const BLOCKS = [
   {
     "id": "require",
-    "sha": "5088050ba41cec4597df7d19fd6f922f8246c49ffe9c90bae060f9b3c902abc4",
+    "sha": "c18aad5a350c276d303c2e1a041250dbdbc68e3a0d4471b90643bd015ad3af46",
     "original": ""
   },
   {
@@ -46,7 +46,17 @@ const BLOCKS = [
   },
   {
     "id": "card-content-keys",
-    "sha": "f78419ff41c9830db98bff09f3b206d9f8049e81e75236db1933353dfdf841d9",
+    "sha": "c7bca4d63314905bfb5459e68f7aed11a0f9760753aa0348bbdbd8064707731e",
+    "original": ""
+  },
+  {
+    "id": "cash-reward-provenance-held",
+    "sha": "63adbed4fe88de776db3e372e6d84918ff171b5b37ccb42104c314d20fefb145",
+    "original": ""
+  },
+  {
+    "id": "cash-reward-provenance",
+    "sha": "a3d4841a350a15f060a4a9042da941b1852f93605348966cbafe2a3368170d27",
     "original": ""
   }
 ];
@@ -67,17 +77,17 @@ function unapplySerial3Index(src) {
 const HUNKS = Object.freeze([
  {
   "file": "materialize-guard.js",
-  "now": "const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys, legacyKeyByOrder, clientContentKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)\n",
+  "now": "const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys, legacyKeyByOrder, clientTextOf } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)\n",
   "was": "const { orderContentKey, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write\n"
  },
  {
   "file": "materialize-guard.js",
-  "now": "    const args = { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null };\n    const ck = orderContentKey(args);\n    if (!ck) return false;\n    // §3 r3/r4 (codex r3 P1, r4 P1): what the card checkout's intake PERSISTED, where the catalog snapshot is warm — this\n    // handler runs in another instance with a cold cache and never computes from menu names. The persisted key is trusted\n    // only when it is THIS content's key; the legacy key is never stored, it is REBUILT from this order's own items_text and\n    // the persisted menu-order permutation, which must be a true permutation of its lines. No keys (an order written\n    // before the deploy), stale keys or an invalid permutation → today's behaviour (the order-independent key + the\n    // incoming verbatim key), LOGGED with the order_id.\n    const persisted = typeof order.content_key === 'string' && order.content_key === ck;\n    let legacyKey = null, fallback = persisted ? null : (order.content_key ? 'stale_persisted_keys' : 'no_persisted_keys');\n    if (persisted && order.content_legacy_order != null) { legacyKey = legacyKeyByOrder(args, order.content_legacy_order); if (!legacyKey) fallback = 'invalid_legacy_order'; }\n    if (fallback) { try { console.warn('content_key_legacy_unavailable', JSON.stringify({ order_id: String(orderId), reason: fallback })); } catch (_) {} }\n    const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [ck, legacyKey || orderContentKeyVerbatim(args)]);\n",
+  "now": "    const args = { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null };\n    const ck = orderContentKey(args);\n    if (!ck) return false;\n    // §3 r3/r4 (codex r3 P1, r4 P1): what the card checkout's intake PERSISTED, where the catalog snapshot is warm — this\n    // handler runs in another instance with a cold cache and never computes from menu names. The persisted key is trusted\n    // only when it is THIS content's key; the legacy key is never stored, it is REBUILT from this order's own items_text and\n    // the persisted menu-order permutation, which must be a true permutation of its lines. No keys (an order written\n    // before the deploy), stale keys or an invalid permutation → today's behaviour (the order-independent key + the\n    // incoming verbatim key), LOGGED with the order_id.\n    const persisted = typeof order.content_key === 'string' && order.content_key === ck;\n    // r5: this order's own server-appended text (its reward lines) is known by PROVENANCE — reward_text_appended — never by pattern\n    const ownSuffix = typeof order.reward_text_appended === 'string' && order.reward_text_appended ? order.reward_text_appended : null;\n    let legacyKey = null, fallback = persisted ? null : (order.content_key ? 'stale_persisted_keys' : 'no_persisted_keys');\n    if (persisted && order.content_legacy_order != null) { legacyKey = legacyKeyByOrder(args, order.content_legacy_order, ownSuffix); if (!legacyKey) fallback = 'invalid_legacy_order'; }\n    else if (persisted) fallback = typeof order.content_key_legacy_reason === 'string' ? `intake_${order.content_key_legacy_reason}` : 'legacy_order_absent';   // r5 P2: never a silent fallback\n    if (fallback) { try { console.warn('content_key_legacy_unavailable', JSON.stringify({ order_id: String(orderId), reason: fallback })); } catch (_) {} }\n    const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [ck, legacyKey || orderContentKeyVerbatim(args)]);\n",
   "was": "    const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });\n    if (!ck) return false;\n    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();\n"
  },
  {
   "file": "materialize-guard.js",
-  "now": "    // §3 r4 (codex r4 P1): a paid order is held ONLY on a VERIFIED sibling — its OWN content (phone, client lines, type,\n    // slot; order-independent) must be this order's, whichever key found its stamp. Otherwise no hold, logged.\n    const ssf = SCHED.normalizeScheduledFor(siblingOrder && siblingOrder.scheduled_for);\n    const sibKey = siblingOrder ? clientContentKey({ phone: siblingOrder.customer_phone, itemsText: siblingOrder.items_text, orderType: siblingOrder.order_type, scheduledFor: Number.isFinite(ssf) ? ssf : null }) : null;\n    if (!sibKey || sibKey !== clientContentKey(args)) {\n      try { console.warn('duplicate_sibling_not_verified', JSON.stringify({ order_id: String(orderId), sibling_id: String(stamp.order_id), reason: 'sibling_content_mismatch' })); } catch (_) {}\n      return false;\n    }\n",
+  "now": "    // §3 r4/r5 (codex r4 P1, r5 P1-A/B): a paid order is held only on a VERIFIED sibling — whichever key found its stamp, the\n    // sibling's own content must be the content this order's stamp lookup asked for. That is TODAY's (207170e) hold condition\n    // made explicit: createOrder stamps a cash order from its text BEFORE appending a reward's lines, and this order's key is\n    // its FULL text — so the sibling's CLIENT text (its items_text minus EXACTLY what its server appended, by provenance:\n    // reward_text_appended) must key as this order's full text. No reward → nothing to strip. A reward the server recorded\n    // no provenance for (an order written before this deploy) cannot be verified → today's behaviour (the stamp decides),\n    // LOGGED. A mismatch → no hold, LOGGED.\n    const sib = siblingOrder || {};\n    const sibSuffix = typeof sib.reward_text_appended === 'string' && sib.reward_text_appended ? sib.reward_text_appended : null;\n    let sibText = null, unverifiable = null;\n    if (typeof sib.items_text !== 'string') unverifiable = 'no_sibling_text';\n    else if (sibSuffix) sibText = clientTextOf(sib.items_text, sibSuffix);   // null: the text no longer ends with what was appended\n    else if (sib.redemption) unverifiable = 'no_reward_provenance';\n    else sibText = sib.items_text;\n    if (!unverifiable) {\n      const ssf = SCHED.normalizeScheduledFor(sib.scheduled_for);\n      const sibKey = sibText == null ? null : orderContentKey({ phone: sib.customer_phone, itemsText: sibText, orderType: sib.order_type, scheduledFor: Number.isFinite(ssf) ? ssf : null });\n      if (!sibKey || sibKey !== ck) {\n        try { console.warn('duplicate_sibling_not_verified', JSON.stringify({ order_id: String(orderId), sibling_id: String(stamp.order_id), reason: 'sibling_content_mismatch' })); } catch (_) {}\n        return false;\n      }\n    } else { try { console.warn('duplicate_sibling_unverifiable', JSON.stringify({ order_id: String(orderId), sibling_id: String(stamp.order_id), reason: unverifiable })); } catch (_) {} }\n",
   "was": ""
  }
 ]);

@@ -89,7 +89,13 @@ const red = (fn, why) => { let threw = false, eq = false; try { const r = fn(); 
     assert.deepStrictEqual(r.actual, [...r.expected].sort(), 'charge + content_key + content_legacy_order (index leaves) → admitted'); }
   { const r = SD.changedShape(withKeys('content_key', 'content_key_legacy_reason'), base, { content, bound: true, route: 'chargeOnlineOrder' });
     assert.deepStrictEqual(r.actual, [...r.expected].sort(), 'charge + content_key + content_key_legacy_reason → admitted'); }
-  assert.throws(() => SD.changedShape(withKeys('content_key', 'content_legacy_order/0'), base, { content, bound: true, route: 'createOrder' }), /undeclared route|written on createOrder/, 'on createOrder → RED');
+  assert.throws(() => SD.changedShape(withKeys('content_key', 'content_legacy_order/0'), base, { content, bound: true, route: 'createOrder' }), /on createOrder/, 'content keys on createOrder → RED');
+  // r5: the reward provenance — declared on BOTH routes (bound), alone on createOrder, beside the keys on chargeOnlineOrder
+  { const r = SD.changedShape(withKeys('reward_text_appended'), base, { content, bound: true, route: 'createOrder' }); assert.deepStrictEqual(r.actual, [...r.expected].sort(), 'createOrder + reward_text_appended → admitted'); }
+  { const r = SD.changedShape(withKeys('content_key', 'content_legacy_order/0', 'reward_text_appended'), base, { content, bound: true, route: 'chargeOnlineOrder' }); assert.deepStrictEqual(r.actual, [...r.expected].sort(), 'charge + keys + reward_text_appended → admitted'); }
+  assert.throws(() => SD.changedShape(withKeys('reward_text_appended'), base, { content, bound: true, route: 'chargeOnlineOrder' }), /content_key \+ exactly one/, 'charge: the provenance without the keys → RED');
+  assert.throws(() => SD.changedShape(withKeys('reward_text_appended'), base, { content, bound: true, route: 'someOtherRoute' }), /undeclared route|written on someOtherRoute/, 'another route → RED');
+  red(() => SD.changedShape(withKeys('reward_text_appended'), base, { content, bound: false, route: 'createOrder' }), 'an UNBOUND request writing the provenance stays RED');
   assert.throws(() => SD.changedShape(withKeys('content_legacy_order/0'), base, { content, bound: true, route: 'chargeOnlineOrder' }), /content_key \+ exactly one/, 'no content_key → RED');
   assert.throws(() => SD.changedShape(withKeys('content_key', 'content_legacy_order/0', 'content_key_legacy_reason'), base, { content, bound: true, route: 'chargeOnlineOrder' }), /exactly one/, 'both legacy and reason → RED');
   red(() => SD.changedShape([...withKeys('content_key'), 'orders/<oid>/content_key_legacy'], base, { content, bound: true, route: 'chargeOnlineOrder' }), 'the r3 free-floating content_key_legacy leaf is NOT declared any more');

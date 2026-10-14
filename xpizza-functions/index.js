@@ -280,6 +280,9 @@ const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTabl
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
 /* serial3:begin require */
 const { readContentStamp, contentKeysRecord } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key; r3: the keys persisted on the pending order
+const { rewardAppendText } = require('./order-dedup');   // §3 r5: the exact text the server appends for a reward (provenance)
+// the EXACT reward text the server appended to this items_text — provenance for the duplicate guard; null when none / not a suffix
+const rewardSuffixOf = (freeItems, itemsText) => { const t = freeItems && freeItems.length ? rewardAppendText(freeItems) : ''; return t && String(itemsText).endsWith(t) ? t : null; };
 /* serial3:end require */
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
@@ -1195,6 +1198,9 @@ createOrderApp.all('*', async (req, res) => {
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
+    /* serial3:begin cash-reward-provenance-held */
+    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
+    /* serial3:end cash-reward-provenance-held */
     /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
        grace one afterwards: absent means no token was presented, present means this exact net was
        confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
@@ -1229,6 +1235,9 @@ createOrderApp.all('*', async (req, res) => {
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
   if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until completion consumes)
+  /* serial3:begin cash-reward-provenance */
+  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
+  /* serial3:end cash-reward-provenance */
   /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
      grace one afterwards: absent means no token was presented, present means this exact net was
      confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
@@ -1851,8 +1860,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   /* serial3:begin card-content-keys */
   // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
   // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.
+  const rewardSuffix = redemptionCanonical ? rewardSuffixOf(redemptionFreeItems, fields.items_text) : null;   // r5: the reward lines by PROVENANCE
+  if (rewardSuffix) pendingOrderRecord.reward_text_appended = rewardSuffix;
   Object.assign(pendingOrderRecord, contentKeysRecord({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: isScheduled ? scheduledForRaw : null },
-    { menuNames: menuNamesOf(restaurantId, pricingTables), orderId }));
+    { menuNames: menuNamesOf(restaurantId, pricingTables), orderId, suffix: rewardSuffix }));
   /* serial3:end card-content-keys */
   if (orderType === 'delivery') {
     pendingOrderRecord.lat = lat;
