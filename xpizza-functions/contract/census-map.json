@@ -325,6 +325,7 @@
     "catalog/identity-stampmap.js#walkDraftIdentities": "catalog",
     "catalog/identity-sweep.js#sweepIdentityIntegrity>anon": "catalog",
     "catalog/menu-gates.js#gatesFor": "catalog",
+    "catalog/menu-gates.js#menuNamesOf": "catalog",
     "catalog/owner-index.js#readOwnerRestaurants": "catalog",
     "catalog/owner-index.js#readOwnerRestaurants>anon": "catalog",
     "catalog/policy-primitive.js#dishesInCats": "catalog",
