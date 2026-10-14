@@ -46,7 +46,7 @@
   "projections": 117,
   "sentinel": 3,
   "timers": {
-   "io-deadline": 26,
+   "io-deadline": 27,
    "sleep-body": 2,
    "job-pacing": 1,
    "application-sleep": 2
@@ -54,7 +54,7 @@
   "clocks": {
    "display": 32,
    "persisted-stamp": 49,
-   "business-sample": 98,
+   "business-sample": 100,
    "business-comparison": 7,
    "io-deadline": 1
   }
@@ -10193,7 +10193,7 @@
   },
   {
    "id": "xpizza-functions/index.js#reassertAssignable#status#0",
-   "line": 5850,
+   "line": 5847,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10206,7 +10206,7 @@
   },
   {
    "id": "xpizza-functions/index.js#reassertAssignable#status#1",
-   "line": 5863,
+   "line": 5860,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10219,7 +10219,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#0",
-   "line": 5966,
+   "line": 5963,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10232,7 +10232,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#1",
-   "line": 5966,
+   "line": 5963,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10245,7 +10245,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_id#0",
-   "line": 5969,
+   "line": 5966,
    "kind": "projection",
    "facts": [
     "NUM"
@@ -10256,7 +10256,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_type#0",
-   "line": 5972,
+   "line": 5969,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -10266,7 +10266,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_type#1",
-   "line": 5972,
+   "line": 5969,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -10276,7 +10276,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_type#2",
-   "line": 5973,
+   "line": 5970,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -10286,7 +10286,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#2",
-   "line": 6013,
+   "line": 6010,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10299,7 +10299,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#3",
-   "line": 6014,
+   "line": 6011,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10312,7 +10312,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#4",
-   "line": 6017,
+   "line": 6014,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10325,7 +10325,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#total#0",
-   "line": 6030,
+   "line": 6027,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10337,7 +10337,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#total#1",
-   "line": 6048,
+   "line": 6045,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10349,7 +10349,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#0",
-   "line": 6138,
+   "line": 6135,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10362,7 +10362,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#1",
-   "line": 6174,
+   "line": 6170,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10375,7 +10375,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#2",
-   "line": 6178,
+   "line": 6174,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10388,7 +10388,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#3",
-   "line": 6179,
+   "line": 6175,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10401,7 +10401,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#total#0",
-   "line": 6204,
+   "line": 6200,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10413,7 +10413,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#total#1",
-   "line": 6227,
+   "line": 6223,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10425,7 +10425,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#0",
-   "line": 6318,
+   "line": 6315,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10438,7 +10438,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#1",
-   "line": 6371,
+   "line": 6368,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10451,7 +10451,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#2",
-   "line": 6371,
+   "line": 6368,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10464,7 +10464,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#order_id#0",
-   "line": 6372,
+   "line": 6369,
    "kind": "member",
    "facts": [
     "NUM"
@@ -37621,7 +37621,7 @@
    "file": "xpizza-functions/index.js",
    "fn": "sweepPendingOrders",
    "base": "orders",
-   "line": 6313,
+   "line": 6310,
    "how": "Object.keys",
    "rule": "server:payment"
   },
@@ -37629,7 +37629,7 @@
    "file": "xpizza-functions/index.js",
    "fn": "sweepPendingOrders",
    "base": "orders",
-   "line": 6318,
+   "line": 6315,
    "how": "computed",
    "rule": "server:payment"
   },
@@ -39203,15 +39203,21 @@
   },
   {
    "key": "xpizza-functions/index.js:autoAssignOnOrderCreate:sleep",
-   "line": 5981,
+   "line": 5978,
    "delay": "GRACE_PERIOD_MS",
    "class": "application-sleep"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:sleep",
-   "line": 6147,
+   "line": 6143,
    "delay": "ACCEPT_TIMEOUT_MS",
    "class": "application-sleep"
+  },
+  {
+   "key": "xpizza-functions/lib/svc-handle.js:_withTimeout>anon:setTimeout",
+   "line": 29,
+   "delay": "ms",
+   "class": "io-deadline"
   },
   {
    "key": "xpizza-functions/notify-deadline.js:notifyWithinDeadline>anon:setTimeout",
@@ -39907,57 +39913,57 @@
   },
   {
    "key": "xpizza-functions/index.js:buildAssignmentUpdates:Date.now()",
-   "line": 5809,
+   "line": 5806,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:buildAssignmentUpdates:ServerValue.TIMESTAMP",
-   "line": 5817,
+   "line": 5814,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:buildAssignmentUpdates:ServerValue.TIMESTAMP",
-   "line": 5821,
+   "line": 5818,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:reassertAssignable:Date.now()",
-   "line": 5854,
+   "line": 5851,
    "class": "io-deadline"
   },
   {
    "key": "xpizza-functions/index.js:rollbackOrAlert:ServerValue.TIMESTAMP",
-   "line": 5893,
+   "line": 5890,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:autoAssignOnOrderCreate:ServerValue.TIMESTAMP",
-   "line": 6031,
+   "line": 6028,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:autoAssignOnOrderCreate:ServerValue.TIMESTAMP",
-   "line": 6049,
+   "line": 6046,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:Date.now()",
-   "line": 6186,
+   "line": 6182,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:ServerValue.TIMESTAMP",
-   "line": 6206,
+   "line": 6202,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:ServerValue.TIMESTAMP",
-   "line": 6228,
+   "line": 6224,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:sweepPendingOrders:Date.now()",
-   "line": 6291,
+   "line": 6288,
    "class": "business-sample"
   },
   {
@@ -40027,12 +40033,22 @@
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:svcHandleEnabled:Date.now()",
-   "line": 22,
+   "line": 36,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/lib/svc-handle.js:svcHandleEnabled>anon:Date.now()",
+   "line": 45,
+   "class": "business-sample"
+  },
+  {
+   "key": "xpizza-functions/lib/svc-handle.js:svcHandleEnabled>anon:Date.now()",
+   "line": 50,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:svcWriteOrFallback:Date.now()",
-   "line": 56,
+   "line": 86,
    "class": "persisted-stamp"
   },
   {

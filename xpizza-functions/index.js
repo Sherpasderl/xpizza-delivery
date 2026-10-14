@@ -165,7 +165,7 @@ const { hashConfig } = require('./ready-time-quality-run');          // reuse th
 const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active model version(s) — windows prediction_logs by `<v>/new_at`
 
 require('./lib/admin');   // PORTAL SPEED P1: the ONE Admin app — initializeApp moved verbatim to lib/admin.js (shared with portal/functions.js)
-const { pickHandle, svcWriteOrFallback } = require('./lib/svc-handle');   // S1a §3 — flag-gated ownership/shift writer handle + tolerant-mode fallback
+const { pickHandle, svcWriteOrFallback, isExpectedEligibilityDenial } = require('./lib/svc-handle');   // S1a §3 — flag-gated ownership/shift writer handle + tolerant-mode fallback
 const { assertDriverCallerActive } = require('./lib/driver-callable-guard');   // S1a §6 — the shared driver-callable hard-stop
 
 // VAPID config for Web Push (set via .env, deployed as runtime env vars)
@@ -4282,7 +4282,7 @@ exports.startDriverShift = onCall({ region: 'us-central1' }, async (request) => 
     updates[`drivers/${uid}/ingest_token_hash`] = hash;
   }
 
-  await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'startDriverShift' });   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
+  await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'startDriverShift', target: uid });   // S1a §3 — rules-bound shift-open (new-shift transition requires the target eligible)
   console.log(`startDriverShift: ${uid} on shift ${shiftId} (source=${isNativeClient ? 'native' : 'pwa'})`);
   return { ok: true, shift_id: shiftId, location_source: isNativeClient ? 'native' : 'pwa', ingest_token: ingestToken };
 });
@@ -5802,9 +5802,6 @@ async function pickEligibleDriver(db, excludeDriverIds = [], hubLat = RESTAURANT
  *                   active order; we don't want to demand a separate swipe
  *                   while they're delivering / driving.
  */
-function isEligibilityDenial(e) {   // S1a §3 (codex r1 P1-4) — an EXPECTED §2 eligibility denial surfaces as a permission-denied rejection from the svc-assigner write; classify it so callers handle it (next candidate / leave unassigned / continue the sweep) instead of crashing.
-  return /permission[_ ]denied/i.test(String((e && (e.code || e.message)) || e));
-}
 function buildAssignmentUpdates(orderId, driverId, attempts, isAutoAssigned, isStacked = false) {
   const now = Date.now();
   const deadline = now + ACCEPT_TIMEOUT_MS;
@@ -6066,8 +6063,8 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // rewrites the same value — identical end state to the pre-S3d plain write (no-op on the happy path).
     // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.
     let claim;
-    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'autoAssign.claim' }); }   // S1a §3
-    catch (e) { if (isEligibilityDenial(e)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }
+    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'autoAssign.claim', target: chosen.driverId }); }   // S1a §3
+    catch (e) { if (await isExpectedEligibilityDenial(e, db, chosen.driverId)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }
     if (!claim.claimed) {
       console.warn(`autoAssign: ${orderId} — delivery already claimed by ${claim.current} during finalize; backing off`);
       return;
@@ -6077,7 +6074,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
     // for its 2-strikes rule (only relevant for non-stacked).
     const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);
     try {
-      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize' });   // S1a §3
+      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'autoAssign.finalize', target: chosen.driverId });   // S1a §3
       console.log(`autoAssign: success for ${orderId} → ${chosen.driverId}`);
     } catch (e) {
       console.error(`autoAssign: write failed for ${orderId}`, e);
@@ -6143,7 +6140,6 @@ exports.monitorAssignmentTimeout = onValueWritten(
     console.log(`timeout-monitor: starting ${ACCEPT_TIMEOUT_MS}ms timer for ${taskId} → ${driverId}`);
 
     const db = getDatabase();
-    const svcDb = await pickHandle(db);   // S1a §3 — ownership-restoring writes are rules-bound
     await sleep(ACCEPT_TIMEOUT_MS);
 
     // Re-fetch the task — has anything changed during the wait?
@@ -6241,16 +6237,17 @@ exports.monitorAssignmentTimeout = onValueWritten(
     // the timed-out driver; if a concurrent writer moved it during our 60s wait, we back off (the field
     // already reflects that writer's decision). Uncontended (field still == driverId), it's a no-op: the
     // finalize update() rewrites the same delivery/assigned_driver_id = nextDriver.
+    const svcDb = await pickHandle(db);   // S1a §3 (codex r2 P1-2) — re-select the handle AFTER the 60s wait
     let claim;
-    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, nextDriver.driverId, { expectCurrent: driverId }), { site: 'timeout.claim' }); }   // S1a §3
-    catch (e) { if (isEligibilityDenial(e)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim (${e && (e.code || e.message)}); leaving on ${driverId}`); return; } throw e; }
+    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, nextDriver.driverId, { expectCurrent: driverId }), { site: 'timeout.claim', target: nextDriver.driverId }); }   // S1a §3
+    catch (e) { if (await isExpectedEligibilityDenial(e, db, nextDriver.driverId)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim; releasing to SIN ASIGNAR`); await releaseToSinAsignar(db, orderId, driverId); return; } throw e; }
     if (!claim.claimed) {
       console.log(`timeout-monitor: ${orderId} delivery no longer on ${driverId} (now ${claim.current}); backing off reassign`);
       return;
     }
     const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);
     try {
-      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(reassignUpdates), { site: 'timeout.finalize' });   // S1a §3
+      await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(reassignUpdates), { site: 'timeout.finalize', target: nextDriver.driverId });   // S1a §3
       // The new assigned_driver_id write will trigger another monitorAssignmentTimeout
       // for the new driver. The notifyDriverOnAssignment trigger will push to them.
     } catch (e) {
@@ -6387,8 +6384,11 @@ exports.sweepPendingOrders = onSchedule(
         if (monA && monA.type === 'driver_deactivated' && monA.driver_uid && !monViolations[monA.driver_uid]) monUpdates[`dispatcher_alerts/${monAid}`] = null;
       }
       for (const [monUid, monV] of Object.entries(monViolations)) {
+        const monCanon = (a) => (a ? JSON.stringify([a.driver_name || null, [...(a.order_ids || [])].sort(), !!a.open_shift, a.shift_id || null]) : null);
         const monPrior = monExisting[`driver_deactivated_${monUid}`];
-        monUpdates[`dispatcher_alerts/driver_deactivated_${monUid}`] = { type: 'driver_deactivated', driver_uid: monUid, driver_name: monV.driver_name, order_ids: monV.order_ids, open_shift: monV.open_shift, shift_id: monV.shift_id, created_at: (monPrior && monPrior.created_at) || now, updated_at: now };
+        const monNext = { type: 'driver_deactivated', driver_uid: monUid, driver_name: monV.driver_name, order_ids: monV.order_ids, open_shift: monV.open_shift, shift_id: monV.shift_id };
+        if (monPrior && monCanon(monPrior) === monCanon(monNext)) continue;   // codex r2 P2 — unchanged violation: no write, preserve timestamps
+        monUpdates[`dispatcher_alerts/driver_deactivated_${monUid}`] = Object.assign(monNext, { created_at: (monPrior && monPrior.created_at) || now, updated_at: now });
         console.warn(`sweepPending: driver_deactivated violation uid=${monUid} orders=${monV.order_ids.join(',')} open_shift=${monV.open_shift}`);
       }
       if (Object.keys(monUpdates).length) await db.ref().update(monUpdates);
@@ -6414,8 +6414,8 @@ exports.sweepPendingOrders = onSchedule(
       // concurrent sweep/grab, and it's invisible to monitorAssignmentTimeout (watches PICKUP) and
       // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.
       let claim;
-      try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'sweeper.claim' }); }   // S1a §3
-      catch (e) { if (isEligibilityDenial(e)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }
+      try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'sweeper.claim', target: chosen.driverId }); }   // S1a §3
+      catch (e) { if (await isExpectedEligibilityDenial(e, db, chosen.driverId)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }
       if (!claim.claimed) continue;   // lost the race — skip
 
       // S3a exception-safety: EVERYTHING after the claim is inside try/catch so any throw (recheck read,
@@ -6460,7 +6460,7 @@ exports.sweepPendingOrders = onSchedule(
         const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, recheck.hasAcceptedSameHubOrder);
         updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;
         updates[`tasks/${orderId}_delivery/last_swept`] = now;
-        await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize' });   // S1a §3
+        await svcWriteOrFallback(db, svcDb, (h) => h.ref().update(updates), { site: 'sweeper.finalize', target: chosen.driverId });   // S1a §3
         offered++;
         console.log(`sweepPending: re-offered ${orderId} → ${chosen.name} (offer ${retryCount + 1})`);
       } catch (e) {
