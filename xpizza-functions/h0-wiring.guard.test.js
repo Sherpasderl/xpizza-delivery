@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { unapplyH0Index, unapplyH0Module, BLOCKS, HUNKS, FILES, BASE } = require('./tools/h0-inverse');
+const { unapplyS1aIndex } = require('./tools/s1a-inverse');   // S1a now sits ON TOP of H0 — strip it FIRST so unapplyH0Index reaches H0's base
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
@@ -19,7 +20,8 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── 1a. index.js ──
 {
-  const real = read('index.js');
+  const real = unapplyS1aIndex(read('index.js'));   // the H0-layer index.js (S1a's edits removed; it is the newest layer, reversed first)
+  assert.notStrictEqual(unapplyS1aIndex(read('index.js')), read('index.js'), 'non-vacuity: S1a sits on top and is stripped before the H0 check');
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplyH0Index(real), real, 'non-vacuity: the blocks are present and removed');
   assert.strictEqual(unapplyH0Index(real), base, `🔴 index.js minus the h0 blocks is not ${BASE}:index.js`);

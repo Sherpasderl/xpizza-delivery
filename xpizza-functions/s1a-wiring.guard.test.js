@@ -1,7 +1,7 @@
 'use strict';
 // S1a — index.js wiring guard (PLAN-S1 §15).
 //   PROOF: tools/s1a-inverse.js reverses ALL the S1a index.js edits (the svc-assigner handle + the 7 ownership/shift
-//   writer conversions + the 4 driver-callable hard-stops + the two requires) back to 90fac9e:index.js BYTE-FOR-BYTE,
+//   writer conversions + the 4 driver-callable hard-stops + the two requires) back to 34d935f:index.js BYTE-FOR-BYTE,
 //   each hunk exactly once — the inverse every other index.js fold guard applies FIRST (newest-first). A byte inside a
 //   hunk, a duplicated hunk, a missing anchor and a byte outside every hunk are each detected.
 const assert = require('assert');
@@ -12,7 +12,7 @@ const { HUNKS, applyS1aIndex, unapplyS1aIndex } = require('./tools/s1a-inverse')
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
-const BASE = '90fac9e';   // the rebase base (int7); S1a's edits are the only index.js delta on top of it
+const BASE = '34d935f';   // the rebase base (G2, atop H0+serial3); S1a's edits are the only index.js delta on top of it
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 const real = read('index.js');
 
