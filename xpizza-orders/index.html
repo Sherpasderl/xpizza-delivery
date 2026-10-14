@@ -3327,14 +3327,14 @@ function renderStage2Summary(){
     if(__confirmQuote && _onPay) __confirmQuote.scheduleRefresh();
   }catch(_){}
   const box=document.getElementById('s2-summary'); if(!box) return;
-  const items=cartItems();
-  if(!items.length){ box.innerHTML=''; return; }
-  const rows=items.map(p=>{
-    const extras=pizzaExtras[p.id]||{};
-    const extrasArr=Object.entries(extras).filter(([,q])=>q>0).map(([eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return ex?(q>1?q+'x ':'')+ex.name:null; }).filter(Boolean);
-    const extrasTotal=Object.entries(extras).reduce((s,[eid,q])=>{ const ex=EXTRAS.find(e=>e.id===eid); return s+(ex?ex.price*q:0); },0);
-    const subtotal=p.price*qty[p.id]+extrasTotal;
-    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+qty[p.id]+'x '+escapeHtml(p.name)+'</div>'+(extrasArr.length?'<div class="review-item-extras">+ '+escapeHtml(extrasArr.join(', '))+'</div>':'')+'</div><div class="review-item-price">L '+subtotal.toFixed(0)+'</div></div>';
+  const lines=cartLines();   // 🔴 X. Pizza keeps extras PER PIZZA INSTANCE (pizzaExtras[key] = {0:{extraId:1},1:{…}}): read flat, the summary showed no extras and its lines left them out while the Total had them
+  if(!lines.length){ box.innerHTML=''; return; }   // (2× Carnivora + Pepperoni on pizza 1: "2x Carnivora L 680 · Total L 730"). Now each pizza's extras, in the cart review's "Pizza n: …" format,
+  const rows=lines.map(line=>{   // priced exactly as calcTotal() prices them (every instance, each option through lineExtra), so the lines add up to the pre-reward total
+    const p=line.record, n=line.qty, instances=pizzaExtras[line.key]||{};
+    const perPizza=Array.from({length:n},(_,i)=>{ const inst=instances[i]; if(!inst||typeof inst!=='object') return null; const names=Object.entries(inst).filter(([,q])=>q>0).map(([eid])=>{ const ex=lineExtra(line,eid); return ex?ex.name:null; }).filter(Boolean); return names.length?(n>1?'Pizza '+(i+1)+': ':'')+names.join(', '):null; }).filter(Boolean);
+    let extrasTotal=0; Object.values(instances).forEach(inst=>{ if(typeof inst!=='object') return; Object.entries(inst).forEach(([eid,q])=>{ const ex=lineExtra(line,eid); if(ex) extrasTotal+=ex.price*q; }); });
+    const subtotal=p.price*n+extrasTotal;
+    return '<div class="review-item"><div class="review-item-left"><div class="review-item-name">'+n+'x '+escapeHtml(p.name)+'</div>'+perPizza.map(l=>'<div class="review-item-extras">+ '+escapeHtml(l)+'</div>').join('')+'</div><div class="review-item-price">L '+subtotal.toFixed(0)+'</div></div>';
   }).join('');
   const envio = orderType==='delivery' ? '<div class="review-item"><div class="review-item-left"><div class="review-item-name" style="color:var(--green)">Envío</div></div><div class="review-item-price" style="color:var(--green)">Gratis</div></div>' : '';
   let reward='';
