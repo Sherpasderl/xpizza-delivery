@@ -17,7 +17,9 @@ for (const [brand, { file, stash }] of Object.entries(FORMS)) {
   const src = fs.readFileSync(file, 'utf8');
   const has = (re, msg) => assert.ok(re.test(src), `[${brand}] ${msg}`);
   // poll-loop terminal case: stops polling, clears the stash, shows the terminal screen
-  has(new RegExp(`st==='scheduled_review'\\)\\{[\\s\\S]*?removeItem\\('${stash}'\\)[\\s\\S]*?showPayReturn\\('scheduled_review'\\); return true;`), 'poll-loop scheduled_review case (clears stash + terminal showPayReturn + stops polling)');
+  has(new RegExp(`st==='scheduled_review'\\)\\{[\\s\\S]*?clearPendingPayFor\\(orderId\\)[\\s\\S]*?showPayReturn\\('scheduled_review'\\); return true;`), 'poll-loop scheduled_review case (clears stash + terminal showPayReturn + stops polling)');
+  // S2: the terminal clear is clearPendingPayFor(orderId), which removes THIS brand's stash key (only when it is this order's)
+  has(new RegExp(`function clearPendingPayFor\\(orderId\\)\\{[\\s\\S]*?localStorage\\.removeItem\\('${stash}'\\)`), 'S2 helper removes this brand\'s stash key');
   // copy-map entry: terminal (mark:'ok', NOT wait:true) + verbatim message
   has(/scheduled_review:\s*\{mark:'ok'/, 'copy-map scheduled_review is terminal (mark:ok, not wait)');
   assert.ok(src.includes(VERBATIM), `[${brand}] verbatim owner-locked message present`);
