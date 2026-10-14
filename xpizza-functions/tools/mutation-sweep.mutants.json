@@ -12021,8 +12021,8 @@
     "id": "r3p0-42",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "          if (r && r.steps.length) r.binding.contribs.push({ id: ++CID, steps: r.steps, value: node.right, at: node });",
-    "to": "          if (false) r.binding.contribs.push({ id: ++CID, steps: r.steps, value: node.right, at: node });",
+    "from": "    if (r && r.steps.length) { r.binding.contribs.push({ id: ++CID, steps: r.steps, value: val, at }); return; }",
+    "to": "    if (false) { r.binding.contribs.push({ id: ++CID, steps: r.steps, value: val, at }); return; }",
     "label": "B4 r1: a field ASSIGNED onto a payload object (x.f = v) is not a contribution (createOrder orderRecord.lat …)",
     "kills_with": [
       "stale written-field entry: 'address_details' is no longer written"
@@ -12306,8 +12306,8 @@
     "id": "r3p0-61",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "if (b && (b.kind === 'var' || b.kind === 'param')) b.inits.push(node.right);",
-    "to": "if (b && b.kind === 'var') b.inits.push(node.right);",
+    "from": "        if (node.left.type === 'Identifier') { const b = resolve(node.left.name, node.left); if (b && (b.kind === 'var' || b.kind === 'param')) b.inits.push(val); }",
+    "to": "        if (node.left.type === 'Identifier') { const b = resolve(node.left.name, node.left); if (b && b.kind === 'var') b.inits.push(val); }",
     "label": "B4 r3 P1-1: a parameter REASSIGNMENT (cur = {…}) is ignored",
     "kills_with": [
       "the updater REASSIGNS its parameter and returns it: the census stayed GREEN"
@@ -12416,6 +12416,126 @@
     "label": "B4 r3: a transaction RESULT's snapshot is not the committed value at its ref",
     "kills_with": [
       "pixelpay-confirm.js confirmAndMaterialize opaque-order-object line 301 (orders/*: o)"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-69",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        const FLOWS = ['=', '||=', '&&=', '??='];",
+    "to": "        const FLOWS = ['='];",
+    "label": "B4 r4 P1-1: ||= / &&= / ??= are not modelled (a classified ||= turns opaque)",
+    "kills_with": [
+      "resolved-form ||= of a classified field: a modelled form did not resolve"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-70",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        else for (const lf of patternLeaves(node.left)) {   // a destructuring assignment",
+    "to": "        else for (const lf of []) {   // a destructuring assignment",
+    "label": "B4 r4 P1-1: a destructuring ASSIGNMENT is dropped",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-71",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "  const methodName = (m) => (!m.computed ? m.property.name : (m.property.type === 'Literal'",
+    "to": "  const methodName = (m) => (!m.computed ? m.property.name : (false",
+    "label": "B4 r4 P1-2: a literal bracket method (['update']) is not the method itself",
+    "kills_with": [
+      "resolved-form ['update'] with a classified field: a modelled form did not resolve"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-72",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        if (!direct && nm && WRITE_METHODS.has(nm) && refPathOf(node.object) !== null) opaqueW(",
+    "to": "        if (false) opaqueW(",
+    "label": "B4 r4: a ref write method used indirectly (.call / .bind / extracted) is silent",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-73",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      return n.properties.map((p) => {",
+    "to": "      return n.properties.filter((p) => p.kind !== 'get').map((p) => {",
+    "label": "B4 r4 P1-3: object-literal walking silently drops a property kind (getter)",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-74",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    return [{ k: 'unresolved', node: n, why: `unmodelled-${n.type}` }];",
+    "to": "    return [];",
+    "label": "B4 r4 P1-3: the default branch of the expression dispatch answers EMPTY",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-75",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (n.type === 'Unmodelled') return [{ k: 'unresolved', node: n.node, why: `unmodelled-${n.why}` }];",
+    "to": "    if (n.type === 'Unmodelled') return [];",
+    "label": "B4 r4: an UNMODELLED marker (compound assign / patterns) answers EMPTY",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-76",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      if (ret.type === 'Identifier') { const b = resolve(ret.name, ret); if (b) b.heap = b.heap || 'mutated-via-call-result'; }",
+    "to": "      void ret;",
+    "label": "B4 r4: a mutation through a builder's call result is dropped",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
     ],
     "command": [
       "node",

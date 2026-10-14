@@ -108,7 +108,15 @@ function sources() {
   return units;
 }
 
+// parsed ASTs are cached per (file, source) within a process — the negatives rebuild the census many times with one
+// unit changed; the walkers only READ the AST (every per-run fact lives in per-run Maps)
+const PARSE_CACHE = new Map();
 function parseUnit(u) {
+  const ck = `${u.file}\0${u.module ? 1 : 0}\0${u.code}`;
+  if (!PARSE_CACHE.has(ck)) { if (PARSE_CACHE.size > 2000) PARSE_CACHE.clear(); PARSE_CACHE.set(ck, parseUnit0(u)); }
+  return PARSE_CACHE.get(ck);
+}
+function parseUnit0(u) {
   const opts = { ecmaVersion: 'latest', locations: true, allowHashBang: true, allowReturnOutsideFunction: true, allowImportExportEverywhere: true, allowAwaitOutsideFunction: true };
   try { return acorn.parse(u.code, { ...opts, sourceType: u.module ? 'module' : 'script' }); }
   catch (e1) { try { return acorn.parse(u.code, { ...opts, sourceType: u.module ? 'script' : 'module' }); } catch (e2) { throw new Error(`census: cannot parse ${u.file}: ${e1.message}`); } }

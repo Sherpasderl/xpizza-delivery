@@ -189,32 +189,102 @@ for (const [name, code, re] of [
     assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG fail-closed json-clone: a deep clone of a resolved record was reported (${JSON.stringify(p.slice(0, 3))})`);
     ok('fail-closed — a JSON deep clone of a resolved record keeps its provenance: QUIET');
   }
-  // r3 STRUCTURAL CLOSURE: every place the provenance walker can answer "nothing" is either ACCOUNTED on that line (an
-  // opaque / a recorded field / a param sink / a pushed entry / a recursive write / a throw) or ANNOTATED `EMPTY-OK:`
-  // with why the empty answer is a proven resolved-empty. A new unannotated empty return is RED.
+  // r4 SEMANTIC CLOSURE (replaces r3's syntactic empty-site audit, which codex showed unsound): a GENERATED corpus — every
+  // node kind on the walker's handled lists plus a sample of unhandled ones, each placed in a write-reaching position on
+  // the REAL charge handler — and every one must SURFACE: the field it writes, or an opaque. Only a silent empty fails.
   {
-    const acorn = require('acorn');
-    const WALKER = ['entriesOf', 'entriesOf0', 'selectKey', 'expand', 'contribEntries', 'keysOfSource', 'writeAt', 'pathOfExpr', 'refPathOf', 'heapEscape', 'snapshotRef', 'refSig', 'sinkVisit', 'escapeVisit'];
-    const ACCOUNTED = /EMPTY-OK:|opaqueW\(|record\(|paramSinks\.push\(|out\.push\(|writeAt\(|throw /;
-    const emptySites = (src) => {
-      const lines = src.split('\n'); const ast = acorn.parse(src, { ecmaVersion: 'latest', locations: true }); const found = new Set(); const sites = [];
-      (function rec(n, inFn) {
-        if (!n || typeof n.type !== 'string') return;
-        let f = inFn; if (/Function/.test(n.type) && n.id && WALKER.includes(n.id.name)) { f = n.id.name; found.add(f); }
-        if (f && ((n.type === 'ReturnStatement' && (!n.argument || (n.argument.type === 'Literal' && n.argument.value === null) || (n.argument.type === 'ArrayExpression' && !n.argument.elements.length))) || n.type === 'ContinueStatement')) sites.push({ fn: f, line: n.loc.start.line, text: lines[n.loc.start.line - 1] });
-        for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((c) => rec(c, f)); else if (v && typeof v === 'object' && typeof v.type === 'string') rec(v, f); }
-      })(ast, null);
-      return { found, sites, bad: sites.filter((x) => !ACCOUNTED.test(x.text)) };
-    };
-    const src = fsx.readFileSync(pathx.join(__dirname, 'write-provenance.js'), 'utf8');
-    const r = emptySites(src);
-    assert.deepStrictEqual(WALKER.filter((w) => !r.found.has(w)), [], 'premise — every walker function named in the audit exists');
-    assert.ok(r.sites.length >= 40, `premise — the audit sees the walker's empty sites (${r.sites.length})`);
-    assert.deepStrictEqual(r.bad.map((x) => `${x.fn}:${x.line} ${x.text.trim()}`), [], '🔴 R3-CENSUS-NEG empty-provenance audit: an empty answer in the walker is neither accounted nor annotated EMPTY-OK');
-    // the audit itself is sensitive: an unannotated `return [];` planted in entriesOf0 is RED
-    const planted = emptySites(src.replace("  function entriesOf0(n, env, depth, seen) {\n", "  function entriesOf0(n, env, depth, seen) {\n    if (n.type === 'ThisExpression') return [];\n"));
-    assert.ok(planted.bad.some((x) => x.fn === 'entriesOf0' && /ThisExpression/.test(x.text)), 'premise — a planted unannotated empty return is caught');
-    ok(`fail-closed — empty-provenance audit: all ${r.sites.length} empty-answer sites in ${WALKER.length} walker functions are accounted or annotated EMPTY-OK (a planted one is RED)`);
+    const W = "await db.ref('orders/probe')";
+    const S = '{ surcharge_cents: 900 }';
+    const corpus = [
+      // payload expression kinds (handled)
+      ['expr: object literal', `${W}.update(${S});`],
+      ['expr: identifier', `const zp = ${S}; ${W}.update(zp);`],
+      ['expr: member', `const zw = { a: ${S} }; ${W}.update(zw.a);`],
+      ['expr: conditional', `${W}.update(req.x ? ${S} : {});`],
+      ['expr: logical ||', `${W}.update(req.x || ${S});`],
+      ['expr: logical &&', `${W}.update(req.x && ${S});`],
+      ['expr: logical ??', `${W}.update(req.x ?? ${S});`],
+      ['expr: parenthesized', `${W}.update((${S}));`],
+      ['expr: own builder call', `function zf() { return ${S}; } ${W}.update(zf());`],
+      ['expr: Object.assign', `${W}.update(Object.assign({}, ${S}));`],
+      ['expr: JSON deep clone', `${W}.update(JSON.parse(JSON.stringify(${S})));`],
+      ['expr: structuredClone', `${W}.update(structuredClone(${S}));`],
+      ['expr: snapshot of another ref', `const zo = (await db.ref('orders/other').once('value')).val(); ${W}.set({ ...zo });`],
+      // object property kinds
+      ['property: shorthand', `const surcharge_cents = 900; ${W}.update({ surcharge_cents });`],
+      ['property: computed literal', `${W}.update({ ['surcharge_cents']: 900 });`],
+      ['property: computed dynamic', `${W}.update({ [req.k]: 900 });`],
+      ['property: getter', `${W}.update({ get surcharge_cents() { return 900; } });`],
+      ['property: method', `${W}.update({ surcharge_cents() { return 900; } });`],
+      ['property: spread of a literal', `${W}.update({ ...${S} });`],
+      ['property: spread of an unknown', `${W}.update({ ...req.body });`],
+      // assignment operators / targets
+      ['assign: =', `const za = {}; za.surcharge_cents = 900; ${W}.update(za);`],
+      ['assign: ||= (codex r4 P1-1)', `const za = {}; za.surcharge_cents ||= 900; ${W}.update(za);`],
+      ['assign: &&=', `const za = {}; za.surcharge_cents &&= 900; ${W}.update(za);`],
+      ['assign: ??=', `const za = {}; za.surcharge_cents ??= 900; ${W}.update(za);`],
+      ['assign: +=', `const za = {}; za.surcharge_cents += 900; ${W}.update(za);`],
+      ['assign: ++', `const za = {}; za.surcharge_cents++; ${W}.update(za);`],
+      ['assign: updater cur ||= (codex r4 P1-1)', `${W}.transaction((cur) => { cur ||= ${S}; return cur; });`],
+      ['assign: updater cur &&= (codex r4 P1-1)', `${W}.transaction((cur) => { cur &&= ${S}; return cur; });`],
+      ['assign: object destructuring (codex r4 P1-1)', `let za = {}; ({ payload: za } = { payload: ${S} }); ${W}.update(za);`],
+      ['assign: array destructuring', `let za = {}; [za] = [${S}]; ${W}.update(za);`],
+      ['assign: destructuring onto a member', `const za = {}; ({ v: za.surcharge_cents } = { v: 900 }); ${W}.update(za);`],
+      ['assign: onto a builder call result', `const zmr = {}; function zmf() { return zmr; } zmf().surcharge_cents = 900; ${W}.update(zmr);`],
+      // declaration / parameter patterns
+      ['pattern: nested object', `const { a: { b: zr } } = { a: { b: ${S} } }; ${W}.update(zr);`],
+      ['pattern: array', `const [zr] = [${S}]; ${W}.update(zr);`],
+      ['pattern: rest', `const { ...zr } = ${S}; ${W}.update(zr);`],
+      ['pattern: array parameter', `function zg([r]) { return r; } ${W}.update(zg([${S}]));`],
+      ['pattern: nested parameter', `function zh({ a: { b } }) { return b; } ${W}.update(zh({ a: { b: ${S} } }));`],
+      // unhandled expression kinds (default-deny)
+      ['unhandled: array element', `${W}.update([${S}][0]);`],
+      ['unhandled: Array.of (codex r4 P1-3)', `${W}.update(Array.of(${S})[0]);`],
+      ['unhandled: sequence', `${W}.update((0, ${S}));`],
+      ['unhandled: assignment expression', `let zt; ${W}.update((zt = ${S}));`],
+      ['unhandled: optional chain', `const zw = { a: ${S} }; ${W}.update(zw?.a);`],
+      ['unhandled: new', `class Zc { constructor() { this.surcharge_cents = 900; } } ${W}.update(new Zc());`],
+      ['unhandled: Object.fromEntries', `${W}.update(Object.fromEntries([['surcharge_cents', 900]]));`],
+      ['unhandled: Reflect.set', `const za = {}; Reflect.set(za, 'surcharge_cents', 900); ${W}.update(za);`],
+      ['unhandled: Object.defineProperty', `const za = {}; Object.defineProperty(za, 'surcharge_cents', { value: 900, enumerable: true }); ${W}.update(za);`],
+      ['unhandled: tagged template', `const zt = (x) => x; ${W}.update(zt\`x\`);`],
+      // callee forms
+      ["callee: ['update'] (codex r4 P1-2)", `${W}['update'](${S});`],
+      ['callee: ["set"]', `${W}["set"](${S});`],
+      ['callee: template key', `${W}[\`update\`](${S});`],
+      ['callee: dynamic key', `${W}[req.m](${S});`],
+      ['callee: .update.call', `const zref = db.ref('orders/probe'); await zref.update.call(zref, ${S});`],
+      ['callee: extracted + bound', `const zref = db.ref('orders/probe'); const zu = zref.update.bind(zref); await zu(${S});`],
+      ['callee: .set', `${W}.set(${S});`],
+      ['callee: .push', `await db.ref('orders').push(${S});`],
+      ['callee: .remove of a field', "await db.ref('orders/probe/surcharge_cents').remove();"],
+      ['callee: .transaction', `${W}.transaction(() => (${S}));`],
+    ];
+    // ONE census build: construct i is one line of its own block, writing field `surcharge_<i>` at `orders/probe<i>` — it
+    // surfaces iff its field is reported NEW, or an opaque is reported on its line
+    const H = "chargeOnlineApp.all('*', async (req, res) => {\n";
+    const at = fsx.readFileSync(pathx.join(REPO_FN, 'index.js'), 'utf8').split(H)[0].split('\n').length + 1;   // the first injected line
+    const block = corpus.map(([, code], i) => `  { ${code.replace(/surcharge_cents/g, `surcharge_${i}`).replace(/orders\/probe/g, `orders/probe${i}`).replace(/'orders'\)\.push/g, `'orders').push`)} }`).join('\n');
+    const p = problemsWith(real('index.js', H, `${H}${block}\n`));
+    const silent = [];
+    corpus.forEach(([name], i) => {
+      const line = at + i;
+      const hit = p.some((x) => x.includes(`NEW order field written: 'surcharge_${i}'`) || (/^opaque order write unresolved: xpizza-functions\/index\.js /.test(x) && x.includes(` line ${line} `)));
+      if (!hit) silent.push(`${name} (line ${line})`);
+    });
+    assert.ok(p.length >= corpus.length - 5, `premise — the corpus surfaces problems (${p.length})`);
+    assert.deepStrictEqual(silent, [], '🔴 R3-CENSUS-NEG semantic corpus: a write-reaching construct was SILENT (neither its field nor an opaque surfaced)');
+    ok(`fail-closed — semantic corpus: all ${corpus.length} constructs (handled kinds + a sample of unhandled ones, on the real charge handler) surface a field or an opaque — no silent empty`);
+  }
+  // r4: modelled forms RESOLVE (not merely surface): a logical assignment and a literal-bracket write of classified
+  // fields are QUIET — so a regression that turns them opaque is RED too
+  for (const [name, code] of [
+    ['||= of a classified field', "createOrderApp.all(async (req, res) => { const za = {}; za.status ||= 'new'; await db.ref(`orders/${id}`).update(za); });"],
+    ["['update'] with a classified field", "createOrderApp.all(async (req, res) => { await db.ref(`orders/${id}`)['update']({ status: 'new' }); });"],
+  ]) {
+    const p = problemsWith(asIndex(code));
+    assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG resolved-form ${name}: a modelled form did not resolve (${JSON.stringify(p.slice(0, 3))})`);
+    ok(`fail-closed — modelled form resolves: ${name}: QUIET`);
   }
   // r2 P2-5: an UNUSED local object literal inside a real transaction updater is QUIET (provenance runs to the return)
   {
