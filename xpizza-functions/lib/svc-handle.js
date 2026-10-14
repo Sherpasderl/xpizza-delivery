@@ -19,6 +19,11 @@ const FLAG_TTL_MS = 30_000;            // a fresh `true`/`false` is trusted this
 const FLAG_REFRESH_TIMEOUT_MS = 500;   // a refresh must resolve within this bound, else DEFAULT
 const FLAG_BACKOFF_MS = 5_000;         // after a failed/timed-out refresh, don't hammer — DEFAULT until this elapses
 const ALERT_TIMEOUT_MS = 2_000;        // the fallback alert await is bounded so a hung alert can't block the write
+// codex r5 P1: the DENIAL-PATH reads (mode + account) are bounded too, so a HANGING read can never strand a reassignment
+// within the handler's budget — a timeout is treated as "can't establish" and the caller runs main's recovery. A few
+// seconds, well inside the ~30 s left after the 60 s accept wait. Bounds the READS only (never the whole write wrapper —
+// a late fallback write after recovery would be worse); a late-resolving read loses the race and has no write effect.
+let READ_DEADLINE_MS = 3_000;
 
 let _cache = { value: false, at: 0 };
 let _inflight = null;
@@ -27,6 +32,12 @@ let _backoffUntil = 0;
 function _withTimeout(promise, ms, onTimeout) {
   let timer;
   const t = new Promise((res) => { timer = setTimeout(() => res(onTimeout()), ms); });
+  return Promise.race([promise.then((v) => { clearTimeout(timer); return v; }, (e) => { clearTimeout(timer); throw e; }), t]);
+}
+// Race a read against a deadline that REJECTS (so the caller's existing catch treats a hang as a read failure).
+function _readOrTimeout(promise, ms, label) {
+  let timer;
+  const t = new Promise((_res, rej) => { timer = setTimeout(() => rej(new Error(`${label}_timeout`)), ms); });
   return Promise.race([promise.then((v) => { clearTimeout(timer); return v; }, (e) => { clearTimeout(timer); throw e; }), t]);
 }
 
@@ -64,7 +75,7 @@ function isPermissionDenied(e) { return /permission[_ ]denied/i.test(String((e &
 // gap). The account read THROWS on failure so the caller treats a failed classification as unexpected (loud / no bypass).
 async function isExpectedEligibilityDenial(e, db, target) {
   if (!isPermissionDenied(e) || !target) return false;
-  const a = (await db.ref(`driver_accounts/${target}`).once('value')).val();
+  const a = (await _readOrTimeout(db.ref(`driver_accounts/${target}`).once('value'), READ_DEADLINE_MS, 'classify')).val();
   return !!a && (a.deactivated === true || a.enabled === false);
 }
 
@@ -77,7 +88,7 @@ async function svcWriteOrFallback(db, handle, doWrite, { site, target }) {
   catch (e) {
     if (!isPermissionDenied(e)) throw e;
     let mode;
-    try { mode = (await db.ref(MODE_PATH).once('value')).val(); } catch (_) { throw e; }   // mode read failed → don't bypass
+    try { mode = (await _readOrTimeout(db.ref(MODE_PATH).once('value'), READ_DEADLINE_MS, 'mode')).val(); } catch (_) { throw e; }   // mode read failed / hung → don't bypass
     if (mode === 'closed') throw e;                                                          // closed: eligibility refusal, propagate
     let expected;
     try { expected = await isExpectedEligibilityDenial(e, db, target); } catch (_) { throw e; }   // account read failed → loud
@@ -89,5 +100,6 @@ async function svcWriteOrFallback(db, handle, doWrite, { site, target }) {
 }
 
 function _resetCacheForTest() { _cache = { value: false, at: 0 }; _inflight = null; _backoffUntil = 0; }
+function _setReadDeadlineForTest(ms) { const prev = READ_DEADLINE_MS; READ_DEADLINE_MS = ms; return prev; }
 
-module.exports = { svcHandleEnabled, pickHandle, isPermissionDenied, isExpectedEligibilityDenial, svcWriteOrFallback, FLAG_PATH, MODE_PATH, FLAG_TTL_MS, FLAG_REFRESH_TIMEOUT_MS, FLAG_BACKOFF_MS, _resetCacheForTest };
+module.exports = { svcHandleEnabled, pickHandle, isPermissionDenied, isExpectedEligibilityDenial, svcWriteOrFallback, FLAG_PATH, MODE_PATH, FLAG_TTL_MS, FLAG_REFRESH_TIMEOUT_MS, FLAG_BACKOFF_MS, READ_DEADLINE_MS, _resetCacheForTest, _setReadDeadlineForTest };

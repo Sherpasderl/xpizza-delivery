@@ -39227,7 +39227,13 @@
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:_withTimeout>anon:setTimeout",
-   "line": 29,
+   "line": 34,
+   "delay": "ms",
+   "class": "io-deadline"
+  },
+  {
+   "key": "xpizza-functions/lib/svc-handle.js:_readOrTimeout>anon:setTimeout",
+   "line": 40,
    "delay": "ms",
    "class": "io-deadline"
   },
@@ -40050,22 +40056,22 @@
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:svcHandleEnabled:Date.now()",
-   "line": 36,
+   "line": 47,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:svcHandleEnabled>anon:Date.now()",
-   "line": 45,
+   "line": 56,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:svcHandleEnabled>anon:Date.now()",
-   "line": 50,
+   "line": 61,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/lib/svc-handle.js:svcWriteOrFallback:Date.now()",
-   "line": 86,
+   "line": 97,
    "class": "persisted-stamp"
   },
   {

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const H = require('./svc-handle');
 
 // A fake db: programmable flag (with optional delay / throw), mode, per-uid accounts; records pushed alerts.
-function fakeDb({ flag = false, flagDelayMs = 0, throwFlag = false, mode = null, accounts = {}, throwMode = false, throwAccount = false } = {}) {
+function fakeDb({ flag = false, flagDelayMs = 0, throwFlag = false, mode = null, accounts = {}, throwMode = false, throwAccount = false, modeDelayMs = 0, accountDelayMs = 0 } = {}) {
   const alerts = []; let flagReads = 0;
   return {
     alerts, get flagReads() { return flagReads; },
@@ -16,9 +16,9 @@ function fakeDb({ flag = false, flagDelayMs = 0, throwFlag = false, mode = null,
             if (throwFlag) throw new Error('flag read failed');
             return { val: () => (flag ? true : false) };
           }
-          if (path === H.MODE_PATH) { if (throwMode) throw new Error('mode read failed'); return { val: () => mode }; }
+          if (path === H.MODE_PATH) { if (modeDelayMs) await new Promise((r) => setTimeout(r, modeDelayMs)); if (throwMode) throw new Error('mode read failed'); return { val: () => mode }; }
           const m = path.match(/^driver_accounts\/(.+)$/);
-          if (m) { if (throwAccount) throw new Error('account read failed'); return { val: () => accounts[m[1]] || null }; }
+          if (m) { if (accountDelayMs) await new Promise((r) => setTimeout(r, accountDelayMs)); if (throwAccount) throw new Error('account read failed'); return { val: () => accounts[m[1]] || null }; }
           return { val: () => null };
         },
         push: async (rec) => { assert.equal(path, 'dispatcher_alerts'); alerts.push(rec); },
@@ -116,6 +116,32 @@ const T = H.FLAG_TTL_MS;
   await t('fallback: a NON-permission fault always propagates', async () => {
     const db = fakeDb({ mode: null }); const svc = {};
     await assert.rejects(H.svcWriteOrFallback(db, svc, async () => { throw new Error('boom'); }, { site: 's', target: 'en' }), /boom/);
+  });
+
+  // ---- read deadline (codex r5 P1): a HUNG denial-path read can never stall; it is treated as "can't establish" ----
+  await t('read bound: a HUNG mode read → the ORIGINAL denial propagates (no bypass, no alert), within the deadline', async () => {
+    const prev = H._setReadDeadlineForTest(40);
+    try {
+      const db = fakeDb({ mode: null, modeDelayMs: 500, accounts: { en: { enabled: true } } }); const svc = {};
+      await assert.rejects(H.svcWriteOrFallback(db, svc, async (x) => { if (x === svc) DENY(); }, { site: 's', target: 'en' }), /PERMISSION_DENIED/);
+      assert.equal(db.alerts.length, 0, 'a hung mode read never bypasses to a fallback write/alert');
+    } finally { H._setReadDeadlineForTest(prev); }
+  });
+  await t('read bound: a HUNG account read → the ORIGINAL denial propagates (no bypass, no alert), within the deadline', async () => {
+    const prev = H._setReadDeadlineForTest(40);
+    try {
+      const db = fakeDb({ mode: null, accountDelayMs: 500, accounts: { en: { enabled: true } } }); const svc = {};
+      await assert.rejects(H.svcWriteOrFallback(db, svc, async (x) => { if (x === svc) DENY(); }, { site: 's', target: 'en' }), /PERMISSION_DENIED/);
+      assert.equal(db.alerts.length, 0, 'a hung account read never bypasses');
+    } finally { H._setReadDeadlineForTest(prev); }
+  });
+  await t('read bound: isExpectedEligibilityDenial REJECTS (classify_timeout) on a hung account read, so callers fall back to main', async () => {
+    const prev = H._setReadDeadlineForTest(40);
+    try {
+      const db = fakeDb({ accountDelayMs: 500, accounts: { de: { deactivated: true } } });
+      const E = () => { const e = new Error('PERMISSION_DENIED'); e.code = 'PERMISSION_DENIED'; return e; };
+      await assert.rejects(H.isExpectedEligibilityDenial(E(), db, 'de'), /classify_timeout/);
+    } finally { H._setReadDeadlineForTest(prev); }
   });
 
   console.log(`\nsvc-handle: ${passed} tests passed`);
