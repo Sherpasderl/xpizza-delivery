@@ -21,8 +21,10 @@
  *   - the TIMEOUT reassign flow run through the LIFTED monitorAssignmentTimeout core (handle-select → claim → finalize
  *     → the denial catches, release + alert): flag-ON eligible replacement (both legs land), flag-ON suspended at claim
  *     and suspended-between-claim-and-finalize (release to SIN ASIGNAR + alert, never restoring the expired owner), and
- *     flag-OFF (svcDb===db) claim + finalize denials that propagate / ordinary-rollback with ZERO account reads; plus a
- *     dispatcher desktop/mobile assignment batch;
+ *     flag-OFF (svcDb===db) claim + finalize denials that propagate / ordinary-rollback with ZERO account reads, and a
+ *     finalize denial whose eligibility classification THROWS falling back to main's rollback (codex r4 P1); plus the
+ *     REAL desktop + mobile client assignment batch (lifted from each client's assignOrderToDriver with a source-parity
+ *     check) and its CAS claim, both-legs for an eligible target and DENIED for a suspended one (codex r4 P2);
  *   - the REAL driver accept at the rules layer: first (lone), stacked (same-hub cascade), second (cross-hub owner
  *     write), and a NEGATIVE (a driver cannot accept another driver's task); plus the real completion batch;
  *   - a COLD transaction (the first claim on a fresh env) and an OFFLINE→reconnect delayed commit both land;
@@ -75,12 +77,34 @@ function liftSegment(startNeedle, endNeedle) {
 }
 const REASSIGN_SEG = liftSegment(
   '    const svcDb = await pickHandle(db);   // S1a §3 (codex r2 P1-2)',
-  "await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault)\n    }");
-const reassignBody = [liftFn('buildAssignmentUpdates'), liftFn('releaseToSinAsignar'), liftFn('releaseAndAlert'), liftFn('rollbackOrAlert'), `return (async () => {\n${REASSIGN_SEG}\n})();`].join('\n');
+  "await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault; also the fall-back when eligibility can't be established — codex r4 P1)\n    }");
+const reassignBody = [liftFn('buildAssignmentUpdates'), liftFn('expectedIneligibleOrMain'), liftFn('releaseToSinAsignar'), liftFn('releaseAndAlert'), liftFn('rollbackOrAlert'), `return (async () => {\n${REASSIGN_SEG}\n})();`].join('\n');
 const REASSIGN_PARAMS = ['db', 'orderId', 'driverId', 'nextDriver', 'attempts', 'pickHandle', 'svcWriteOrFallback', 'claimDelivery', 'isExpectedEligibilityDenial', 'releaseDeliveryFromDriver', 'ServerValue', 'ACCEPT_TIMEOUT_MS', 'console'];
 // eslint-disable-next-line no-new-func
 const runReassignFn = new Function(...REASSIGN_PARAMS, reassignBody);
 const runReassign = (o) => runReassignFn(o.db, o.orderId, o.driverId, o.nextDriver, 1, o.pickHandle, o.svcWriteOrFallback || svcHandleLib.svcWriteOrFallback, claimDelivery, o.isExpectedEligibilityDenial, releaseDeliveryFromDriver, { TIMESTAMP: NOW }, 60000, console);
+
+// codex r4 P2: LIFT the ACTUAL non-stacked both-leg assignment batch out of a dispatch CLIENT (desktop / mobile
+// xpizza-delivery.js assignOrderToDriver) with a SOURCE-PARITY check (the executed text is sliced verbatim from the
+// shipped file), so the test runs the client's real batch — not the server builder — through the rules. The finalize
+// half_claim_since clear (shared by both branches) is asserted present + appended.
+function clientBatch(file) {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', file), 'utf8');
+  const START = '      const deadline = Date.now() + ACCEPT_TIMEOUT_MS;';
+  const END = '        updates[`tasks/${tid}/assignment_attempts`] = 1;\n      }';
+  const HALF = 'updates[`tasks/${deliveryTaskId}/half_claim_since`] = null;';
+  const a = src.indexOf(START); assert.notStrictEqual(a, -1, `client batch start in ${file}`);
+  const b = src.indexOf(END, a); assert.notStrictEqual(b, -1, `client batch end in ${file}`);
+  assert.ok(src.includes(HALF), `client finalize half_claim clear present in ${file}`);
+  const loopSrc = src.slice(a, b + END.length);
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('updates', 'pickupTaskId', 'deliveryTaskId', 'driverId', 'TASK_STATUS', 'serverTimestamp', 'ACCEPT_TIMEOUT_MS', `${loopSrc}\n      ${HALF}`);
+  return (oid, driver) => { const u = {}; fn(u, `${oid}_pickup`, `${oid}_delivery`, driver, { ASSIGNED: 'assigned' }, () => NOW, 60000); return u; };
+}
+const DISPATCH_ASSIGNERS = [
+  { key: 'desktop', fn: 'assignOrderToDriver', build: clientBatch('xpizza-dispatch/xpizza-delivery.js') },
+  { key: 'mobile', fn: 'assignOrderToDriver', build: clientBatch('xpizza-dispatch-mobile/xpizza-delivery.js') },
+];
 
 (async () => {
   const { buildCompleteTaskUpdates } = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-driver', 'driver-complete.js')).href);
@@ -222,12 +246,42 @@ const runReassign = (o) => runReassignFn(o.db, o.orderId, o.driverId, o.nextDriv
   ok('TIMEOUT (lifted handler, flag-OFF): a finalize denial takes the ordinary rollback path — zero account reads, no SIN ASIGNAR release (byte-for-byte main)');
   await setAcct(D_EN2, { enabled: true });
 
-  // DESKTOP/MOBILE manual assignment batch: a dispatcher writes the full assignment on both legs (ancestor grant + §2 eligibility)
+  // (F) flag-ON, FINALIZE denial but the eligibility CLASSIFICATION READ THROWS → fall back to MAIN: ordinary rollback,
+  // both legs consistent on the pre-reassign owner, NO SIN ASIGNAR release, original denial not swallowed (codex r4 P1)
+  await seedReassign('oT6');
+  await env.withSecurityRulesDisabled(async (c) => {
+    const bypass = c.database();
+    const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await bypass.ref(`driver_accounts/${D_EN2}/enabled`).set(false); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
+    const throwingClass = async () => { throw new Error('account read failed'); };
+    await runReassign({ db: bypass, orderId: 'oT6', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: throwingClass });
+  });
+  { const d = await legOf('oT6', 'delivery'), p = await legOf('oT6', 'pickup');
+    assert.equal(d.assigned_driver_id, D_EN, 'classification threw → ordinary rollback restored the owner (main behaviour), NOT released');
+    assert.equal(p.assigned_driver_id, D_EN, 'both legs consistent on the pre-reassign owner');
+    assert.equal(await alertFor('oT6'), false, 'no SIN ASIGNAR / no_drivers_available alert when ineligibility was never established'); }
+  ok('TIMEOUT (lifted handler, flag-ON): a FINALIZE denial whose eligibility classification THROWS falls back to main — ordinary rollback, both legs consistent, no release (codex r4 P1)');
+  await setAcct(D_EN2, { enabled: true });
+
+  // DESKTOP/MOBILE assignment — the ACTUAL client batch construction, LIFTED from each client with a source-parity check,
+  // plus the client's own CAS claim, run through the rules-enforced dispatcher handle for an eligible AND a denied
+  // (suspended) target (codex r4 P2). Both legs are asserted; the §2 invariant bites both the claim and the batch.
   await env.withSecurityRulesDisabled((c) => c.database().ref('dispatchers/disp-parity').set({ name: 'Disp' }));
-  const disp = env.authenticatedContext('disp-parity').database();
-  await seedOrder('oD1');
-  await assertSucceeds(disp.ref().update(buildAssignmentUpdates('oD1', D_EN, 1, true, false)));
-  await assertBothLegs('oD1', D_EN, 'assigned'); ok('DESKTOP/MOBILE: a dispatcher manual assignment batch lands both legs under the rules (ancestor grant, §2-eligible target)');
+  const dispAuth = env.authenticatedContext('disp-parity', { dispatcher: true }).database();
+  const bothLegsClient = async (oid, driver) => { for (const leg of ['pickup', 'delivery']) { const t = await legOf(oid, leg); assert.equal(t.assigned_driver_id, driver, `${oid}_${leg} driver`); assert.equal(t.status, 'assigned', `${oid}_${leg} status`); } };
+  const clientClaim = (oid, driver) => dispAuth.ref(`tasks/${oid}_delivery/assigned_driver_id`).transaction((cur) => (cur == null ? driver : undefined));
+  for (const client of DISPATCH_ASSIGNERS) {
+    // eligible: the client's real CAS claim commits, then its lifted batch lands BOTH legs
+    await seedOrder(`oD_${client.key}_ok`);
+    const claimOk = await assertSucceeds(clientClaim(`oD_${client.key}_ok`, D_EN));
+    assert.equal(claimOk.snapshot.val(), D_EN, 'the real CAS claim committed to the eligible driver');
+    await assertSucceeds(dispAuth.ref().update(client.build(`oD_${client.key}_ok`, D_EN)));
+    await bothLegsClient(`oD_${client.key}_ok`, D_EN);
+    // denied (suspended): the §2 invariant bites BOTH the real CAS claim AND the lifted batch
+    await seedOrder(`oD_${client.key}_no`);
+    await assertFails(clientClaim(`oD_${client.key}_no`, D_SUSP));
+    await assertFails(dispAuth.ref().update(client.build(`oD_${client.key}_no`, D_SUSP)));
+    ok(`DESKTOP/MOBILE (${client.key}): the REAL lifted ${client.fn} CAS claim + both-leg batch land for an eligible target and are DENIED for a suspended one (source-parity checked)`);
+  }
 
   // the REAL driver completion batch (both-leg + stamp) through the driver handle
   await seedOrder('oP2', { ownerDelivery: D_EN, status: 'assigned' });
