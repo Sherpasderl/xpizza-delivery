@@ -278,6 +278,12 @@ const ALLOWED_PAYMENT_METHODS = ['cash', 'card_delivery', 'online'];
 // ---------------------------------------------------------------------------
 const { computeServerTotal, summaryLines, weekendOnlyViolation, resolvePriceTables } = require('./menu-pricing');
 const { orderContentKey, isContentRetap, rateLimitKey } = require('./order-dedup');   // Layer 2 — content-aware phone rate limit; rateLimitKey shared with the F3 guard
+/* serial3:begin require */
+const { readContentStamp, contentKeysRecord } = require('./order-dedup');   // §3: the content stamp under the order-independent OR the pre-§3 verbatim key; r3: the keys persisted on the pending order
+const { rewardAppendText } = require('./order-dedup');   // §3 r5: the exact text the server appends for a reward (provenance)
+// the EXACT reward text the server appended to this items_text — provenance for the duplicate guard; null when none / not a suffix
+const rewardSuffixOf = (freeItems, itemsText) => { const t = freeItems && freeItems.length ? rewardAppendText(freeItems) : ''; return t && String(itemsText).endsWith(t) ? t : null; };
+/* serial3:end require */
 const CONTENT_DEDUP_WINDOW_MS = 120000;   // a same-phone same-cart resubmit within 2 min = a re-tap, not a new order
 const { checkItemAvailability } = require('./availability-gate');   // KDS 2b — server intake "86" fail-safe (fail-open)
 
@@ -373,6 +379,21 @@ const extrasReadEligibility = (rid, versionId) => require('./catalog/extras-elig
 const extrasCheckFor = async (restaurantId, tables, items) => EI.extrasCheck({ mode: await extrasModeReader().getMode(), tables, items, rid: restaurantId,
   envelopeOf: extrasEnvelopeOf, readEligibility: extrasReadEligibility });
 /* extras:end wiring */
+/* serial3:begin wiring */
+// §3 FISCAL (PLAN-menu-ordering §3): the factura's lines in the MENU order of the catalog version that PRICED the order — the
+// version the pricing tables' envelope names; its item_order from the gate reader's snapshot of that version (the intake
+// gates loaded it; no read of its own), under a tight deadline. Unavailable → the body's order, logged with the order_id.
+const MO = require('./catalog/menu-order');
+let _menuOrderSource = null;
+function menuOrderSource() {
+  if (!_menuOrderSource) _menuOrderSource = MO.createMenuOrderSource({ readStructure: MO.fromGateReader(gateReader) });   // the gate reader's cached snapshot: no read of its own
+  return _menuOrderSource;
+}
+const menuOrderVersionOf = (tables) => { const e = require('./catalog/pricing-tables').envelopeOf(tables); return e ? e.versionId : null; };
+// §3 r2: the dish names in that version's menu order (the gate reader's cached snapshot; never a read) — what a pre-§3 client
+// serialized in, so a legacy content stamp is found from a cart in any line order
+const menuNamesOf = (rid, tables) => gateReader().peekMenuNames(rid, menuOrderVersionOf(tables));
+/* serial3:end wiring */
 
 // ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
 // The weekend gate needs CATEGORIES, but the serving path deliberately carries only { menu, extras }
@@ -954,7 +975,12 @@ createOrderApp.all('*', async (req, res) => {
     const ck = orderContentKey({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null });
     if (fields.customer_phone && ck) {
       const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
-      const rec = (await cbase.child(ck).once('value')).val();
+      /* serial3:begin create-stamp */
+      // §3: the prior stamp under the order-independent key OR (a stamp from before §3) the LEGACY key — this cart's text
+      // re-ordered into the pricing version's menu order (cached snapshot, no read) — latest wins
+      const rec = await readContentStamp(db, { phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null },
+        { menuNames: menuNamesOf(restaurantId, pricingTables), orderId });
+      /* serial3:end create-stamp */
       phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
       // F3 create-side (SECONDARY, NON-BLOCKING): the PRIOR stamp `rec` may hold a live ONLINE sibling X (same
       // cart) — the rare "X already live when this cash order Y is placed" variant. Raise a dispatcher alert
@@ -1122,12 +1148,20 @@ createOrderApp.all('*', async (req, res) => {
   // rejects (pricing_unavailable) on ANY catalog failure BEFORE this line, so the fiscal path never sees
   // null and never code-prices; this seam must never throw on catalog trouble.
   const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
-  const facturaPriced = redemptionPriced
+  /* serial3:begin factura-cash-head */
+  const facturaPricedBody = redemptionPriced
+  /* serial3:end factura-cash-head */
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn base); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
       ? pricedLineItems(body.items, facturaMenu, facturaExtras)
       : { items: null, error: null });
+  /* serial3:begin factura-cash-order */
+  // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
+  // whatever the body's line order) — catalog/menu-order.js; unavailable → body order, logged with this order_id
+  const facturaPriced = await MO.facturaInMenuOrder({ source: menuOrderSource(), restaurantId, versionId: menuOrderVersionOf(pricingTables),
+    orderId, bodyItems: body.items, priced: facturaPricedBody });
+  /* serial3:end factura-cash-order */
 
   // Cash tendered (FACTURA_PLAN §2): validated >= total (never trust client), defaults to exact
   // (no change) when absent/invalid so a bad value never blocks the order. Money in centavos.
@@ -1164,6 +1198,9 @@ createOrderApp.all('*', async (req, res) => {
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
+    /* serial3:begin cash-reward-provenance-held */
+    if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
+    /* serial3:end cash-reward-provenance-held */
     /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
        grace one afterwards: absent means no token was presented, present means this exact net was
        confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
@@ -1198,6 +1235,9 @@ createOrderApp.all('*', async (req, res) => {
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
   if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until completion consumes)
+  /* serial3:begin cash-reward-provenance */
+  if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
+  /* serial3:end cash-reward-provenance */
   /* 1C T4 — PROVENANCE. Stamped only on a GATED order, which is how a gated one is told from a
      grace one afterwards: absent means no token was presented, present means this exact net was
      confirmed under this quote id. Deliberately alongside the redemption stamp — same shape, same
@@ -1765,12 +1805,20 @@ chargeOnlineApp.all('*', async (req, res) => {
   // rejects (pricing_unavailable) on ANY catalog failure BEFORE this line, so the fiscal path never sees
   // null and never code-prices; this seam must never throw on catalog trouble.
   const { menu: facturaMenu, extraPrices: facturaExtras } = resolvePriceTables(restaurantId, pricingTables);
-  const facturaPriced = redemptionPriced
+  /* serial3:begin factura-card-head */
+  const facturaPricedBody = redemptionPriced
+  /* serial3:end factura-card-head */
     ? { items: (usesPlatformFactura(restaurantId) ? redemptionPriced.items : null),
         factura_items: (usesPlatformFactura(restaurantId) ? redemptionPriced.factura_items : null), error: null }   // items = paid-only (order.items/earn); factura_items = paid + comped (SAR doc)
     : (usesPlatformFactura(restaurantId)
       ? pricedLineItems(body.items, facturaMenu, facturaExtras)
       : { items: null, error: null });  // non-platform (la_musa) → no factura line items
+  /* serial3:begin factura-card-order */
+  // §3 FISCAL: the factura's lines in the MENU order of the version that priced this order (byte-identical to before §3,
+  // whatever the body's line order) — catalog/menu-order.js; unavailable → body order, logged with this order_id
+  const facturaPriced = await MO.facturaInMenuOrder({ source: menuOrderSource(), restaurantId, versionId: menuOrderVersionOf(pricingTables),
+    orderId, bodyItems: body.items, priced: facturaPricedBody });
+  /* serial3:end factura-card-order */
 
   // (customer_uid was resolved EARLY, above — the redemption prepare + both fingerprint sites need it.)
 
@@ -1809,6 +1857,14 @@ chargeOnlineApp.all('*', async (req, res) => {
     // pending order so materialize.js can copy it into user_orders/{uid}.items at CONFIRM (never pending).
     ...(customer_uid ? { reorder_items: normalizeReorderItems(body.items, restaurantId, pricingTables) } : {})   // 2a: allowlist = the CATALOG menu
   };
+  /* serial3:begin card-content-keys */
+  // §3 r3 (codex r3 P1): the order's content keys, computed HERE where the pricing version's catalog snapshot is warm, and
+  // persisted on the pending order — the confirm-side duplicate guard (other instances, cold cache) reads them, never menu names.
+  const rewardSuffix = redemptionCanonical ? rewardSuffixOf(redemptionFreeItems, fields.items_text) : null;   // r5: the reward lines by PROVENANCE
+  if (rewardSuffix) pendingOrderRecord.reward_text_appended = rewardSuffix;
+  Object.assign(pendingOrderRecord, contentKeysRecord({ phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: isScheduled ? scheduledForRaw : null },
+    { menuNames: menuNamesOf(restaurantId, pricingTables), orderId, suffix: rewardSuffix }));
+  /* serial3:end card-content-keys */
   if (orderType === 'delivery') {
     pendingOrderRecord.lat = lat;
     pendingOrderRecord.lng = lng;

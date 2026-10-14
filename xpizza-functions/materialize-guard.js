@@ -22,7 +22,7 @@
  * inactive-restaurant post-capture posture. Returns true iff the order was held (caller must NOT materialize).
  */
 const SCHED = require('./scheduled-orders');
-const { orderContentKey, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write
+const { orderContentKey, orderContentKeyVerbatim, readContentStampByKeys, legacyKeyByOrder, clientTextOf, rateLimitKey } = require('./order-dedup');   // F3 — resolve the SAME content-stamp path createOrder/chargeOnlineOrder write (§3: + the pre-§3 verbatim key, latest wins)
 
 /* 🔴 Can THIS caller reverse a payment at all? voidOrRefund is the one dep the guard calls without
    checking first, so its absence is the difference between "refunds" and "throws mid-refund". Checked
@@ -250,20 +250,83 @@ function duplicateSiblingDecision(orderId, stamp, siblingOrder, siblingMethod) {
 // human), NEVER double-cook. Returns true iff the caller must NOT materialize. FAIL-OPEN: any error →
 // materialize normally (a catchable double-cook beats a wrongful hold on a paid order). Mirrors
 // holdIfClosedAtMaterialize's CAS-claim so two concurrent passes can never double-hold.
+// §3 r6 (codex r6, the structural ruling): hold(X) = MAIN_PATH(X) OR NEW_PATH(X) — two independent lookups, OR-ed, so the
+// guard is a provable SUPERSET of main (207170e) with every extra hold verified.
+//
+// The sibling's CLIENT content, by PROVENANCE only (§3 r5): createOrder stamps a cash order from its text BEFORE appending
+// a reward's lines and records exactly what it appended (reward_text_appended). Known when it has no redemption (nothing
+// appended) or its text ends with the recorded suffix; otherwise UNKNOWN (an order written before this deploy, or text
+// that no longer ends with what was appended).
+function siblingClientText(sib) {
+  if (!sib || typeof sib.items_text !== 'string') return { known: false, reason: 'no_sibling_text' };
+  const suffix = typeof sib.reward_text_appended === 'string' && sib.reward_text_appended ? sib.reward_text_appended : null;
+  if (suffix) { const t = clientTextOf(sib.items_text, suffix); return t == null ? { known: false, reason: 'provenance_not_suffix' } : { known: true, text: t }; }
+  if (sib.redemption) return { known: false, reason: 'no_reward_provenance' };
+  return { known: true, text: sib.items_text };
+}
+const sameCart = (sib, text, ck) => {
+  const ssf = SCHED.normalizeScheduledFor(sib.scheduled_for);
+  return orderContentKey({ phone: sib.customer_phone, itemsText: text, orderType: sib.order_type, scheduledFor: Number.isFinite(ssf) ? ssf : null }) === ck;
+};
+const logRefused = (orderId, siblingId, path, reason) => { try { console.warn('duplicate_sibling_not_verified', JSON.stringify({ order_id: String(orderId), sibling_id: String(siblingId), path, reason })); } catch (_) {} };
+
+// MAIN_PATH — 207170e's lookup, kept as it was: the ONE stamp under the incoming order's VERBATIM key (its full text, as
+// stamped), main's fast-outs, main's liveness decision. It holds whenever main holds, with ONE exception: provenance
+// PROVES the sibling is another cart (its client content is known and differs) → refused, logged. Unknown = main.
+async function mainPathSibling(deps, orderId, order, args) {
+    const ck = orderContentKeyVerbatim(args);
+    if (!ck) return null;
+    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();
+    // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
+    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return null;
+    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();
+    const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides
+    if (!dec.collision) return null;
+    const c = siblingClientText(siblingOrder);
+    if (c.known && !sameCart(siblingOrder, c.text, orderContentKey(args))) { logRefused(orderId, stamp.order_id, 'main', 'sibling_content_mismatch'); return null; }
+    return dec;
+}
+
+// NEW_PATH — what §3 adds: the order-independent key and the rebuilt pre-§3 legacy key, EACH evaluated on its own (no
+// cross-key "latest wins" can hide another lookup's hit). It holds ONLY on a VERIFIED same cart: the sibling's client
+// content is known (no redemption, or provenance stripped exactly) and keys as this order's full text. Unknown or a
+// mismatch → no hold, logged.
+async function newPathSibling(deps, orderId, order, args) {
+  const ck = orderContentKey(args);
+  if (!ck) return null;
+  // the keys the card checkout's intake PERSISTED (warm snapshot) — trusted only when the persisted key is THIS content's;
+  // the legacy key is REBUILT from this order's own text, its own reward provenance and the persisted permutation
+  const persisted = typeof order.content_key === 'string' && order.content_key === ck;
+  const ownSuffix = typeof order.reward_text_appended === 'string' && order.reward_text_appended ? order.reward_text_appended : null;
+  let legacyKey = null, fallback = persisted ? null : (order.content_key ? 'stale_persisted_keys' : 'no_persisted_keys');
+  if (persisted && order.content_legacy_order != null) { legacyKey = legacyKeyByOrder(args, order.content_legacy_order, ownSuffix); if (!legacyKey) fallback = 'invalid_legacy_order'; }
+  else if (persisted) fallback = typeof order.content_key_legacy_reason === 'string' ? `intake_${order.content_key_legacy_reason}` : 'legacy_order_absent';   // r5 P2: never a silent fallback
+  if (fallback) { try { console.warn('content_key_legacy_unavailable', JSON.stringify({ order_id: String(orderId), reason: fallback })); } catch (_) {} }
+  const mainKey = orderContentKeyVerbatim(args);   // already MAIN_PATH's — not evaluated twice
+  for (const key of [...new Set([ck, legacyKey].filter((k) => typeof k === 'string' && k && k !== mainKey))]) {
+    const stamp = await readContentStampByKeys(deps.db, order.customer_phone, [key]);
+    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') continue;
+    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();
+    const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');
+    if (!dec.collision) continue;
+    const c = siblingClientText(siblingOrder);
+    if (!c.known) { logRefused(orderId, stamp.order_id, 'new', c.reason); continue; }
+    if (!sameCart(siblingOrder, c.text, ck)) { logRefused(orderId, stamp.order_id, 'new', 'sibling_content_mismatch'); continue; }
+    return dec;
+  }
+  return null;
+}
+
 async function holdIfDuplicateSibling(deps, orderId, order, now) {
   try {
     if (!deps || !deps.db || !order || !order.customer_phone) return false;
     // Already resolved (materialized returns earlier in the caller; defensive) → let the normal flow handle it.
     if (order.status === 'cancelled' || order.materialized_at || order.payment_status === 'manual_reconciliation') return false;
     const sf = SCHED.normalizeScheduledFor(order.scheduled_for);
-    const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
-    if (!ck) return false;
-    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();
-    // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
-    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;
-    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();
-    const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides
-    if (!dec.collision) return false;
+    const args = { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null };
+    // hold(X) = MAIN_PATH(X) OR NEW_PATH(X)
+    const dec = (await mainPathSibling(deps, orderId, order, args)) || (await newPathSibling(deps, orderId, order, args));
+    if (!dec) return false;
     // CAS-claim X → manual_reconciliation. ONLY the pass that transitions this order proceeds (didClaim); a
     // concurrent guard pass no-ops. NEVER refund, NEVER materialize; the dispatcher resolves in the panel.
     const orderRef = deps.db.ref(`orders/${orderId}`);

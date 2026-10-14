@@ -163,7 +163,7 @@
     "site": "renderMenu(); updateCart(); updateTotal();",
     "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
     "scope": "la-musa-orders/index.html<script@2>#restoreOrderForm",
-    "scopeSha": "16b229a19268aee891055f0dbeae0aad5828cbc8c68605559e7b90388ecb3c7d"
+    "scopeSha": "69229fdb090a6eceabc6ad529630d50f8ad4d7d3e87dcfeef52a64f2b2cf048f"
    },
    "guards": [
     {
@@ -202,7 +202,7 @@
     "site": "updateCart();",
     "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
     "scope": "la-musa-orders/index.html<script@2>#startAnotherOrder",
-    "scopeSha": "802b47e1ea67825abcbe70e6eccbcbeafb9e989c69bf303ee9a13d4001c6d63a"
+    "scopeSha": "0f024c882e9133e3de072494684ce59245b5e46775a4a317de464b15f12a9c7c"
    },
    "guards": [
     {
@@ -14395,7 +14395,7 @@
     "site": "renderMenu(); updateCart(); updateTotal();",
     "siteSha": "6630cac25bc5d73a9f0919210f5db616a6418b072f19b1e4a3b640416f9d2b7e",
     "scope": "xpizza-orders/index.html<script@2>#restoreOrderForm",
-    "scopeSha": "b4bac8d3c836c0cc8ce49b76b9c6af4c89c4859fd34d16131d69530f904e82e5"
+    "scopeSha": "4eeb06a52656e267460808e21de2db7034ba687c4047992185f77e849c2c48e3"
    },
    "guards": [
     {
@@ -14429,7 +14429,7 @@
     "site": "updateCart();",
     "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
     "scope": "xpizza-orders/index.html<script@2>#startAnotherOrder",
-    "scopeSha": "63a3ed4fa2deab4c7760b5cde71ff4798c27de5ebdc1f9802656c3ef278d669f"
+    "scopeSha": "4799181e38164484d90c7157988557fc79df0f6861175c44be7a6a27cab85e00"
    },
    "guards": [
     {

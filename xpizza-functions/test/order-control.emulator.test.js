@@ -60,6 +60,13 @@ require.cache[hc] = { id: hc, filename: hc, loaded: true, children: [], paths: [
 // the render-ON companion re-runs the cases with it on and asserts the exact delta (test/_render-delta.js)
 const RP = require('./_render-pin');
 const RD = require('./_render-delta');
+// §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key (bound to
+// the content the request persisted, else the declared unbound mode) and (the factura's item_order comes from the gate reader's cached snapshot — no new read)
+const SD = require('./_serial3-delta');
+let S3_KEYS = 0, S3_PROV = 0;   // §3 r3: card cases whose pending order's persisted content keys were checked
+const POST_OF = new WeakMap();
+const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)
+let S3_DIFF = 0;
 // R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
 // this run unless the test advances it, so the only catalog traffic set aside is the COLD load (test/_render-delta.js
 // makeColdOnly); a GATE / CTX re-read stays in every comparison. Replaces R1b's wall-time-bounded makeCacheFill.
@@ -222,7 +229,9 @@ async function seed(rid) {
   await publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
 }
+let LAST_SENT = null;   // §3 r2: the body the request actually POSTED — the stamp's real input (bound cases bind to it)
 function post(handler, body, headers = {}) {
+  LAST_SENT = body;
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
@@ -289,6 +298,8 @@ async function traced(oid, rid, request) {
   if (body) for (const k of ['poll_token', 'tracking_token', 'attempt_id']) if (typeof body[k] === 'string') body[k] = `<${k}>`;
   const out = { status: r.status, body, headers: r.headers || {}, ops, changed, raw: r.json };
   COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
+  POST_OF.set(out, post_);
+  SENT_OF.set(out, LAST_SENT);
   return out;
 }
 
@@ -490,8 +501,30 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         assert.deepStrictEqual(r.body, g.body, `🔴 ${key}: body changed`);
         assert.deepStrictEqual(r.headers, g.headers, `🔴 ${key}: headers changed`);
         checkD12(key, r.ops, g.ops);
-        assert.deepStrictEqual(stripControl(r.ops), goldOps(g.ops), `🔴 ${key}: the call sequence changed beyond the control read`);
-        assert.deepStrictEqual(r.changed, expectedChangedD12b(g.changed), `🔴 ${key}: the changed-path set changed (beyond D12b's declared tracking field)`);
+        const s3c = SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) });   // the content the route stamped (createOrder: posted; charge: posted + server reward lines)
+        // codex r2 P2 — the mode is DECLARED from what the case IS (a changed cart / a vanished order stamps content it does not persist)
+        const mode = /chang|VANISH/i.test(c.name) ? 'unbound' : 'bound';
+        const cs = SD.compareShape(stripControl(r.ops), goldOps(g.ops), { mode, content: s3c, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        if (JSON.stringify(stripControl(r.ops)) !== JSON.stringify(goldOps(g.ops))) S3_DIFF += 1;
+        assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${key}: the call sequence changed beyond the control read`);
+        const ch = SD.changedShape(r.changed, expectedChangedD12b(g.changed), { content: s3c, bound: cs.bound, route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: key });
+        // §3 r3 (codex r3 P1): a card request that wrote its pending order PERSISTED the content keys of the content it stamped
+        const post = POST_OF.get(r) || {};
+        if (c.path === 'card' && cs.bound && s3c && post.payment_method === 'online' && post.items_text === s3c.itemsText) {
+          S3_KEYS += 1;
+          assert.strictEqual(post.content_key, require('../order-dedup').orderContentKey(s3c), `🔴 ${key}: the pending order persists content_key = the stamped content's key`);
+          assert.ok((post.content_legacy_order != null) !== (typeof post.content_key_legacy_reason === 'string'), `🔴 ${key}: exactly one of content_legacy_order / content_key_legacy_reason (${JSON.stringify([post.content_legacy_order, post.content_key_legacy_reason])})`);
+          assert.ok(!('content_key_legacy' in post), `🔴 ${key}: no free-floating legacy key is stored (r4)`);
+          if (post.content_legacy_order != null) assert.ok(require('../order-dedup').legacyKeyByOrder(s3c, post.content_legacy_order, post.reward_text_appended || null), `🔴 ${key}: the persisted permutation is a valid permutation of the order's own lines`);
+        }
+        // §3 r5: a request that redeemed and wrote its order persisted EXACTLY what its server appended (provenance), on both routes
+        const sentB = SENT_OF.get(r) || {};
+        if (cs.bound && post.redemption && sentB.redeem && typeof sentB.items_text === 'string' && post.items_text !== sentB.items_text) {
+          S3_PROV += 1;
+          assert.strictEqual(typeof post.reward_text_appended, 'string', `🔴 ${key}: a redeemed order persists reward_text_appended`);
+          assert.strictEqual(post.items_text, sentB.items_text + post.reward_text_appended, `🔴 ${key}: reward_text_appended is EXACTLY the persisted text minus the posted one`);
+        }
+        assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${key}: the changed-path set changed (beyond D12b's declared tracking field)`);
         const reads = r.ops.filter(isControlRead);
         if (c.noControlRead) assert.strictEqual(reads.length, 0, `🔴 ${key}: an existing-order / :839 answer must read NO switch (§0.5)`);
         else assert.ok(reads.every((o) => o.op === 'once' && /^order_control\/[^/]+\/current$/.test(o.path)), `${key}: only reads of order_control/<rid>/current`);
@@ -695,6 +728,13 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
   } else {
     check(() => assert.deepStrictEqual(Object.keys(results).sort(), Object.keys(golden.cases).sort(), 'the same cases as the baseline'));
   }
+  // collected (not thrown) so it never masks the per-cell failures that would explain it
+  if (!CAPTURE) check(() => assert.ok(S3_DIFF > 0, 'non-vacuity: WITHOUT the §3 declared delta at least one UNCHANGED case differs from the baseline'));
+  if (!CAPTURE) check(() => assert.ok(S3_KEYS > 0, 'non-vacuity: at least one card case checked the persisted content keys (r3)'));
+  if (!CAPTURE) console.log(`  ✓ §3 r3 persisted content keys: ${S3_KEYS} card case(s)`);
+  if (!CAPTURE) check(() => assert.ok(S3_PROV > 0, 'non-vacuity: at least one redeemed case checked its reward provenance (r5)'));
+  if (!CAPTURE) console.log(`  ✓ §3 r5 reward provenance: ${S3_PROV} redeemed case(s), cash and card`);
+  if (!CAPTURE && S3_DIFF > 0) { console.log(`  ✓ §3 r1 declared delta: ${S3_DIFF} case(s) differ from the baseline only by it (content key bound to the POSTED content or the unbound mode)`); }
   if (!FAILS.length) ok(`${CAPTURE ? 'BASELINE' : 'CANDIDATE'}: ${Object.keys(results).length} real-handler cases (${CASES.length} cases + the scheduled sweep × ${Object.keys(STATES).length} switch states × both restaurants)` +
     (CAPTURE ? ' — the switch node is inert at e1aeb3f; every state behaves as today' : ` — ${tally.same} UNCHANGED (status, body, headers, call sequence minus ONLY the control read, changed paths == baseline; the existing-order / :839 answers read NO switch); ${tally.refused} REFUSED with the exact 423 / 503 (+ Retry-After 2), nothing written, reward holds as planned — where the baseline admitted`));
   if (!CAPTURE && !FAILS.length) ok(`render-ON companion (shipped render: ${RP.SHIPPED}; the baseline cells ran PINNED off): ${companion.on} cases with render ON + ${companion.ont} reward cases issued with render OFF, retried ON — cash and non-reward card byte-equal to the render-OFF run; ${companion.probed} reward card requests = the render-OFF trace + exactly the bound-reuse probe after the customer check (own hold reserved+released on every refused hold-release race, §0b.4); ${companion.bound} live render-ON reward checkouts answered by the bound reuse — the render-OFF reuse's status + body, read-only, the probe then nothing; MUTANT (drift at bound-reuse's classify): all ${companion.mut} refused hold-release races RED; catalog cache fill set aside on ${JSON.stringify(companion.fill.seen)} recorded requests (wall-time budget ${companion.fill.budget} per restaurant)`);

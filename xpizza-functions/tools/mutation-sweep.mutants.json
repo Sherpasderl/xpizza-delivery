@@ -1237,7 +1237,7 @@
     "slice": "b4",
     "label": "the serializer goes back to filtering the cart out of MENU",
     "file": "../xpizza-orders/index.html",
-    "from": "  return cartLines().map(line=>{\n    const p = line.record;\n    const instances = pizzaExtras[line.key] || {};",
+    "from": "  return serialLines().map(line=>{   // §3: the order's serialization — insertion order, pinned for a pending order\n    const p = line.record;\n    const instances = pizzaExtras[line.key] || {};",
     "to": "  return MENU.filter(p=>qty[p.id]>0).map(p=>{\n    const line = { key: String(p.id), qty: qty[p.id], extras: [] };\n    const instances = pizzaExtras[line.key] || {};",
     "command": [
       "node",
@@ -1359,7 +1359,7 @@
     "slice": "b4",
     "label": "la_musa: the serializer goes back to filtering the cart out of MENU",
     "file": "../la-musa-orders/index.html",
-    "from": "  return cartLines().map(line=>{\n    const p = line.record;\n    const itemExtras = pizzaExtras[line.key] || {};",
+    "from": "  return serialLines().map(line=>{   // §3: the order's serialization — insertion order, pinned for a pending order\n    const p = line.record;\n    const itemExtras = pizzaExtras[line.key] || {};",
     "to": "  return MENU.filter(p=>qty[p.id]>0).map(p=>{\n    const line = { key: String(p.id), qty: qty[p.id], extras: [] };\n    const itemExtras = pizzaExtras[line.key] || {};",
     "command": [
       "node",

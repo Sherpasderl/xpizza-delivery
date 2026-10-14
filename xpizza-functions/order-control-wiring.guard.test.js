@@ -23,7 +23,7 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
 // after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
 // (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
-const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(read('index.js'))))))));
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(read('index.js')))))))));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
@@ -97,7 +97,11 @@ for (const f of CAPTURED) {
 const { unapplyD12, FILES: D12_FILES } = require('./tools/d12-inverse');
 // D12b (brand display name) landed on top of D12: its exact inverse is reversed FIRST (newest first)
 const { unapplyD12b, FILES: D12B_FILES } = require('./tools/d12b-inverse');
-const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, read(f)) : read(f));
+// §3 serial3 (codex serialization r1) is the NEWEST change to a pinned module (materialize-guard.js): its exact inverse
+// (tools/serial3-inverse.js, proven by serial3-wiring.guard) is reversed before D12b's
+const { unapplySerial3Module, FILES: S3_FILES } = require('./tools/serial3-inverse');
+const s3Read = (f) => (S3_FILES.includes(f) ? unapplySerial3Module(f, read(f)) : read(f));
+const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, s3Read(f)) : s3Read(f));
 const pinned = [...CAPTURED, 'restaurant-config.js', 'scheduled-orders.js', 'createorder-classify.js', 'order-exists.js'].filter((f) => fs.existsSync(path.join(__dirname, f)));
 const diffed = pinned.filter((f) => {
   const now = D12_FILES.includes(f) ? unapplyD12(f, pinRead(f)) : pinRead(f);

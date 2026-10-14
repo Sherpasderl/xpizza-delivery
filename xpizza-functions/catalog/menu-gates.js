@@ -77,6 +77,17 @@ function withDeadline(promise, ms, label) {
 }
 
 // createGateReader({ getMenu, deadlineMs }) — getMenu(rid) returns a BUILT catalog ({items, structure}).
+// §3 r2: the dish names in menu order (structure.item_order → each item's display name); null when the snapshot cannot say
+function menuNamesOf(built) {
+  try {
+    const order = built && built.structure && built.structure.item_order;
+    if (!Array.isArray(order)) return null;
+    const byKey = new Map((built.items || []).map((it) => [it && it.key, it]));
+    const names = order.map((k) => { const it = byKey.get(k); return it && it.display && typeof it.display.name === 'string' ? it.display.name : null; });
+    return names.every((n) => typeof n === 'string' && n) ? Object.freeze(names) : null;
+  } catch (_) { return null; }
+}
+
 function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ_DEADLINE_MS, pointerTtlMs = POINTER_TTL_MS, nowMs = Date.now } = {}) {
   const cache = new Map();   // `${rid}::${versionId}` -> { weekend: Set, pickup: Set }
 
@@ -128,6 +139,13 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
       knownExtras: new Set((built.extras || []).map((e) => e && e.key).filter((k) => typeof k === 'string')),
       // 1D add-product B (rev 6): { launchers:Set<key>, parentOf:Map<variantKey,launcherKey> } from this same version.
       groups: groups.ok ? { launchers: groups.launchers, parentOf: groups.parentOf } : null,
+      // MENU-ORDERING §3 r1 (fiscal): the version's item_order, from the SAME cached snapshot — the factura puts its lines in
+      // the menu order of the version that priced the order (catalog/menu-order.js) without a read of its own
+      itemOrder: built.structure && Array.isArray(built.structure.item_order) ? Object.freeze(built.structure.item_order.slice()) : null,
+      snapshotVersion: versionId == null ? null : String(versionId),   // the version this snapshot was read FOR (getMenu(rid, versionId))
+      // §3 r2: the dish NAMES in menu order (item_order → each item's display name) — what a pre-§3 client serialized in,
+      // so the content-dedup guards can rebuild a legacy stamp's text from a cart of any line order (order-dedup.js)
+      menuNames: menuNamesOf(built),
     };
     if (cache.size >= MAX_CACHED_VERSIONS) cache.delete(cache.keys().next().value);   // bounded
     cache.set(key, gates);
@@ -213,6 +231,13 @@ function createGateReader({ getMenu, getVersionId = null, deadlineMs = GATE_READ
       }
     },
     getPickupOnlyKeys: async (rid, versionId) => (await gatesFor(rid, versionId)).pickup,
+    // §3 r1: the version's item_order (null when the snapshot could not be read — a static fallback carries none)
+    // §3 r2: the menu-ordered dish names of a snapshot ALREADY cached — for the version that priced an order, or for the
+    // version the gate reader currently holds as active (its pointer cache). Neither ever reads; null when not cached.
+    peekMenuNames: (rid, versionId) => { const g = cache.get(`${rid}::${versionId == null ? 'flat' : versionId}`); return g && Array.isArray(g.menuNames) ? g.menuNames : null; },
+    // §3 r1: the item_order of a snapshot ALREADY cached for (rid, versionId) — NEVER reads (the intake gates loaded it earlier
+    // in the request). Returns { itemOrder, versionId } — versionId = the version the snapshot was read for — or null.
+    peekItemOrder: (rid, versionId) => { const g = cache.get(`${rid}::${versionId == null ? 'flat' : versionId}`); return g && Array.isArray(g.itemOrder) ? { itemOrder: g.itemOrder, versionId: g.snapshotVersion } : null; },
     // 1D D4-a: a result ALREADY cached for (rid, versionId), or null. NEVER reads — the context's policy
     // shadow diagnostic compares against this only when it is already there (plan rev 9 step 10).
     peek: (restaurantId, versionId) => cache.get(`${restaurantId}::${versionId == null ? 'flat' : versionId}`) || null,
