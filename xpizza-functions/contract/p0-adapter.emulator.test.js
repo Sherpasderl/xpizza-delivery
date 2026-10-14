@@ -14,11 +14,12 @@ const { createFirebaseHost, appFor } = require('./rtdb-adapter');
 // the comparison CLIENT SDKs — BOTH, every run (codex r2 P2): the repo's firebase 11.10.0 (transitive) AND firebase 10.13.2,
 // the version production's pages load from the CDN. 10.13.2 lives SELF-CONTAINED in contract/sdk-10.13.2 (its own pinned
 // package-lock, so @firebase/app and @firebase/database pair exactly as shipped — inside the shared tree npm dedupes them
-// apart). It is PROVISIONED here (npm ci) when absent; a failure to provision is RED, never a skip.
+// apart). It is PROVISIONED (npm ci) when absent, before the guarded body runs; a failure to provision is RED, never a skip.
 const path = require('path');
 const SDK10 = path.join(__dirname, 'sdk-10.13.2');
 const SDK10_NM = path.join(SDK10, 'node_modules');
-// npm contained in the repository: local cache + logs, inherited npm config dropped (codex r3 P2) — contract/sdk-provision.js
+// npm contained in the repository: local cache + logs, inherited npm config dropped (codex r3 P2) — contract/sdk-provision.js.
+// B3: provisioned by the script's FIRST step, outside the egress guard; here (guarded) an absent SDK is RED, naming that step.
 require('./sdk-provision').provision(SDK10);
 const fromSdk10 = (m) => require(require.resolve(m, { paths: [SDK10_NM] }));
 const SDKS = [

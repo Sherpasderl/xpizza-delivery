@@ -11973,6 +11973,51 @@
     ]
   },
   {
+    "id": "r3p0-39",
+    "slice": "r3p0",
+    "file": "contract/sdk-provision.js",
+    "from": "  if (guarded) throw new Error(`🔴 R3-P0:SDK10",
+    "to": "  if (false) throw new Error(`🔴 R3-P0:SDK10",
+    "label": "B3: a guarded caller with the SDK absent launches npm (refused mid-install) instead of failing naming the pre-guard step",
+    "kills_with": [
+      "a guarded caller with the SDK absent did not fail naming the pre-guard step"
+    ],
+    "command": [
+      "node",
+      "contract/sdk-provision.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-40",
+    "slice": "r3p0",
+    "file": "contract/sdk-provision.js",
+    "from": "guarded = !!global.__R3_EGRESS_GUARD }",
+    "to": "guarded = false }",
+    "label": "B3: provision() no longer knows it runs under tools/egress-guard.js by default",
+    "kills_with": [
+      "the default did not refuse before npm"
+    ],
+    "command": [
+      "node",
+      "contract/sdk-provision.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-41",
+    "slice": "r3p0",
+    "file": "package.json",
+    "from": "\"test:r3-p0-adapter\": \"node contract/sdk-provision.js && node tools/emulator-run.js",
+    "to": "\"test:r3-p0-adapter\": \"node tools/emulator-run.js",
+    "label": "B3: test:r3-p0-adapter no longer provisions the SDK outside the guard (a fresh worktree goes red)",
+    "kills_with": [
+      "does not provision before the runner"
+    ],
+    "command": [
+      "node",
+      "contract/sdk-provision.test.js"
+    ]
+  },
+  {
     "id": "r3p1-01",
     "slice": "r3p1",
     "file": "contract/tracer.js",

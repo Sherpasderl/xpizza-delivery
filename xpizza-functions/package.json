@@ -68,7 +68,7 @@
     "test:pselfupdate-createorder-trace": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/pselfupdate-createorder-trace.emulator.test.js\"",
     "test:r3-p0-gate": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-gate.emulator.test.js\"",
     "test:r3-p0-third-brand": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-third-brand.emulator.test.js\"",
-    "test:r3-p0-adapter": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-adapter.emulator.test.js\"",
+    "test:r3-p0-adapter": "node contract/sdk-provision.js && node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-adapter.emulator.test.js\"",
     "test:r3-p0-pages": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node --experimental-vm-modules contract/p0-pages.emulator.test.js\"",
     "test:r3-p0-forms": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node contract/p0-forms.emulator.test.mjs\"",
     "test:r3-p0-observations": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node --experimental-vm-modules contract/p0-observations.emulator.test.js\"",

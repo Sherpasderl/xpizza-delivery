@@ -24,8 +24,13 @@ function npmArgs(dir) {
   return ['ci', '--no-audit', '--no-fund', '--cache', path.join(dir, '.npm-cache'), '--logs-dir', path.join(dir, '.npm-logs')];
 }
 
-function provision(dir, { baseEnv = process.env, spawn = spawnSync } = {}) {
+// B3 (advisor, 2026-10-14): the egress guard (tools/egress-guard.js) travels into every child, so `npm ci` from a GUARDED
+// process is refused and a fresh worktree went red. Provisioning therefore runs OUTSIDE the guard, as the first step of
+// test:r3-p0-adapter (`node contract/sdk-provision.js && node tools/emulator-run.js …`); the suite body stays guarded.
+// A guarded caller that finds the SDK absent fails HERE, naming the step, and never launches npm.
+function provision(dir, { baseEnv = process.env, spawn = spawnSync, guarded = !!global.__R3_EGRESS_GUARD } = {}) {
   if (fs.existsSync(path.join(dir, 'node_modules', 'firebase', 'package.json'))) return { provisioned: false };
+  if (guarded) throw new Error(`🔴 R3-P0:SDK10 ${path.basename(dir)} is not provisioned and this process runs under the egress guard, which refuses npm — run \`node contract/sdk-provision.js\` OUTSIDE the guard first (test:r3-p0-adapter does)`);
   fs.mkdirSync(path.join(dir, '.npm-cache'), { recursive: true });
   for (const f of ['empty-user-npmrc', 'empty-global-npmrc']) fs.writeFileSync(path.join(dir, '.npm-cache', f), '');
   const r = spawn('npm', npmArgs(dir), { cwd: dir, encoding: 'utf8', env: npmEnv(baseEnv, dir) });
@@ -33,4 +38,14 @@ function provision(dir, { baseEnv = process.env, spawn = spawnSync } = {}) {
   return { provisioned: true };
 }
 
-module.exports = { provision, npmEnv, npmArgs };
+const SDK10_DIR = path.join(__dirname, 'sdk-10.13.2');
+
+module.exports = { provision, npmEnv, npmArgs, SDK10_DIR };
+
+// CLI — the pre-guard step of test:r3-p0-adapter. Hermetic npm as above; a failure exits nonzero (never a skip).
+if (require.main === module) {
+  try {
+    const r = provision(SDK10_DIR);
+    console.log(`r3-sdk-provision: ${path.basename(SDK10_DIR)} ${r.provisioned ? 'provisioned (npm ci)' : 'already provisioned'}`);
+  } catch (e) { console.error(e && e.message || e); process.exit(1); }
+}
