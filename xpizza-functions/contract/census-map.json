@@ -561,6 +561,8 @@
     "index.js#detectSupersededCaptures": "payment"
   },
   "pageFunctionExemptions": {
+    "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
+    "la-musa-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
     "xpizza-orders/account.js#rewardsSubscribe": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
     "xpizza-orders/account.js#getRedeemQuoteTotalCents": "pre-order REWARD-REDEEM quote state (the server's reward quote / total_cents for the pay step and checkout) — not a persisted-order read; that amount is asserted where it is displayed: R14 MONEY / REWARD (renderStage2Summary) and R15 (codex r5 P2: corrected reason)",
     "xpizza-orders/account.js#redeemDishes": "pre-order REWARD-REDEEM quote state (the server's reward quote / total_cents for the pay step and checkout) — not a persisted-order read; that amount is asserted where it is displayed: R14 MONEY / REWARD (renderStage2Summary) and R15 (codex r5 P2: corrected reason)",

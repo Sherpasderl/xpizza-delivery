@@ -9,8 +9,8 @@
 //   CONTROL (reproduce the defect): today's literals — cash `order_conflict`, card `Order conflict` / `Order closed` —
 //   make the page MINT a fresh order id and resend: 2 requests, 2 distinct ids. Without this every "1 request" below
 //   would be vacuous.
-//   CANDIDATE: `order_exists`, for EVERY reason in the closed enum, on both paths → exactly 1 request, no new id; the card
-//   page shows the Spanish detail.
+//   CANDIDATE: `order_exists`, for EVERY reason in the closed enum, on both paths → exactly 1 request, no new id; G2: the
+//   recovery screen is shown and the server detail is never displayed.
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
 import { counter, settle, envelope, loadForm, res, BRAND, closeAll } from './form-harness.mjs';
@@ -93,15 +93,16 @@ started.forEach((s, i) => {
     mints += 1;
   } else {
     assert.strictEqual(s.sends.length, 1, `🔴 ${s.label}: order_exists must NOT trigger any resubmission (saw ${s.sends.length}: ${ids})`);
-    if (s.label.includes('/card/')) {
-      const err = s.w.document.getElementById('err3');
-      assert.ok(err && err.textContent.includes(OE.ORDER_EXISTS_DETAIL), `${s.label}: the card page shows the Spanish detail (${err && err.textContent})`);
-    }
+    // G2 (the ONE intended change vs D4-c5): both paths now show the recovery screen; the server detail is never displayed
+    const d = s.w.document;
+    assert.strictEqual(d.getElementById('order-exists-recovery').hidden, false, `${s.label}: the recovery screen is shown`);
+    assert.ok(!d.body.textContent.includes(OE.ORDER_EXISTS_DETAIL), `${s.label}: the server detail appears nowhere in the DOM`);
+    assert.notStrictEqual(d.getElementById('err3').style.display, 'block', `${s.label}: err3 is not used`);
     onces += 1;
   }
 });
 ok(`CONTROL: today's literals (cash order_conflict; card Order conflict / Order closed) make BOTH brands' pages mint a fresh id and resend — ${mints} runs, 2 requests / 2 distinct ids each`);
-ok(`order_exists × every reason of the closed enum × cash and card × both brands (+ a pending reward): exactly ONE request after every retry timer ran out — no mint, no resend (${onces} runs); the card page shows the Spanish detail`);
+ok(`order_exists × every reason of the closed enum × cash and card × both brands (+ a pending reward): exactly ONE request after every retry timer ran out — no mint, no resend (${onces} runs); both paths show the G2 recovery screen, never the server detail`);
 
 closeAll();
 console.log(`\norder-exists-client: OK (${count()})`);
