@@ -17,6 +17,7 @@ const MR = require('./manual-resolve');
 const C = require('./cancel-order');
 const { reverseEarnForOrder } = require('./rewards-earn');   // Rewards Phase A — earn clawback on cancel (idempotent, fail-open)
 const { reverseRedemptionForOrder } = require('./rewards-reserve');   // Phase B1 — redemption hold reversal on cancel (single helper, idempotent)
+const H0 = require('./superseded-capture');   // PLAN-H0 §4 — never auto-close over unresolved money on the order (read-only)
 
 // Idempotent, best-effort task-cancel + driver release (NON-money). onOrderCancelled is the durable backstop.
 async function cleanupTasksAndDriver(deps, orderId, order, now) {
@@ -103,6 +104,16 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
     return { status: 409, body: { ok: false, outcome: 'claim_lost', error: 'Cancelación en proceso por otro', order_id: orderId } };
   }
   const claimed = claimTx.snapshot.val();
+
+  // PLAN-H0 §4 — BEFORE B.6 sets any attempt flag: unaccounted paid money or an uncertain reversal on ANY of the order's
+  // attempts (the claim snapshot's current evidence keys + its active attempt, each read fresh) → staff resolve it in
+  // PixelPay; automation never voids/finalizes over it. Refusal leaves no cancellation flags behind.
+  const h0 = await H0.unresolvedMoneyOnOrder(db, orderId, claimed);
+  if (h0) {
+    await releaseCancelClaim(orderRef, claimId);
+    await audit('manual_review', { reason: 'unresolved_money_on_order', attempt_id: h0.attemptId, kind: h0.kind });
+    return { status: 409, body: { ok: false, outcome: 'manual_review', order_id: orderId } };
+  }
 
   // B.6 close BOTH capture-in-flight paths — attempt gets cancelling:true (confirmOnlinePayment) AND
   // cancel_pending:true (pixelpay-hosted-webhook.js:77) so a paid callback in this window is auto-voided.

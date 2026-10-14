@@ -1967,6 +1967,9 @@
   },
   "xpizza-track/sherpa-client.js#sfetch>anon@self": {
    "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#openOrderDetailModal>anon@self": {
+   "status": "pending"
   }
  }
 }

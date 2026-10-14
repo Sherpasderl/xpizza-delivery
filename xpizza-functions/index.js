@@ -111,6 +111,9 @@ const SCHED = require('./scheduled-orders');                              // Sch
 const { releaseOne: releaseScheduledCore, recoverStaleReleasing } = require('./scheduled-release-core');
 const { extractWebhookNudge, classifySweepCandidate } = require('./pixelpay-webhook');
 const { voidOrRefund } = require('./pixelpay-cancel');
+/* h0:begin require */
+const H0 = require('./superseded-capture');   // PLAN-H0 — detect + alert unaccounted card money / uncertain reversals (detective only)
+/* h0:end require */
 const { handleHostedCallback } = require('./pixelpay-hosted-webhook');
 const { getMessaging } = require('firebase-admin/messaging');
 // Factura (SAR fiscal document) — logic source of truth is xpizza-factura/src; the four
@@ -3039,8 +3042,34 @@ exports.reconcilePayments = onSchedule(
       }
       if (rel.released.length || rec.consumed.length) console.log(`reconcilePayments: redemption sweep — released ${rel.released.length}, consume-recovered ${rec.consumed.length}`);
     } catch (e) { console.error('reconcilePayments: redemption sweep failed', e && e.message); }
+    /* h0:begin reconcile-daily */
+    // PLAN-H0 — the daily full pass over the maps loaded above (no new enumeration read), budgeted against the REMAINING
+    // invocation time and in its own error boundary, so it can never prevent the reconciliation work above.
+    try {
+      const h0 = await H0.dailyPass(db, { orders, attempts, invocationStartedAt: now, now });
+      console.log(`reconcilePayments: superseded-capture daily — visited ${h0.visited}/${h0.total}, alerted ${h0.alerted}, redelivered ${h0.redelivered}${h0.outOfTime ? ' (budget reached; continues next run)' : ''}`);
+    } catch (e) { console.error('reconcilePayments: superseded-capture daily pass failed', e && e.message); }
+    /* h0:end reconcile-daily */
   }
 );
+
+/* h0:begin sweep-fn */
+// ============================================================
+// detectSupersededCaptures — PLAN-H0: the frequent detective sweep (every 10 min)
+// ============================================================
+// Card money the order does not account for (a capture on a rotated-away attempt) and reversals whose outcome is
+// uncertain are surfaced to staff as durable dispatcher alerts; nothing here moves money. Cursor-paged over the indexed
+// recent attempts (paid_at / uncertain_at), then the outstanding work items. The daily full pass runs at the end of
+// reconcilePayments. See superseded-capture.js.
+exports.detectSupersededCaptures = onSchedule(
+  { schedule: 'every 10 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const db = getDatabase();
+    const r = await H0.frequentPass(db, { now: Date.now() });
+    console.log(`detectSupersededCaptures: paid ${r.paid}, uncertain ${r.uncertain}, items ${r.items}`);
+  }
+);
+/* h0:end sweep-fn */
 
 // ============================================================
 // resolveManualReconciliation — Stage 4 sub-stage 3: audited manual resolver
@@ -3437,6 +3466,11 @@ exports.refundReconciler = onSchedule(
       // threshold as the CAS. Selector is the shared pure predicate so it can't drift from the CAS's freshness rule.
       if (!isReconcilerRetryable(a, now, 2 * 60 * 1000)) continue;
       const pixelpayOrderId = `${a.order_id}-${attemptId}`;
+      /* h0:begin reconciler-no-uuid */
+      // PLAN-H0 §4 — never call voidOrRefund without a uuid (its no-uuid branch reports 'refunded' without reversing anything):
+      // park the attempt for staff; the H0 sweep alerts it as reversal_uncertain.
+      if (!a.payment_uuid) { await H0.parkReconcilerNoUuid(db, attemptId, now); continue; }
+      /* h0:end reconciler-no-uuid */
       const r = await voidOrRefund(deps, { orderId: a.order_id, attemptId, pixelpayOrderId, paymentUuid: a.payment_uuid, reason: 'xpizza_refund_retry', now });
       retried++;
       if (!r.voided) {

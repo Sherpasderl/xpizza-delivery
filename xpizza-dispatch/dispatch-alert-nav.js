@@ -4,7 +4,7 @@
 import { isStalledAssignment } from './dispatch-stalled.js';
 
 // Alert types whose resolution lives on the ORDER (open its detail modal).
-const ORDER_TYPES = new Set(['no_drivers_available', 'no_response_takeover', 'assignment_strand', 'payment_aged_refund_pending']);
+const ORDER_TYPES = new Set(['no_drivers_available', 'no_response_takeover', 'assignment_strand', 'payment_aged_refund_pending', 'paid_superseded', 'reversal_uncertain']);   // PLAN-H0: + the two payment alerts
 // Alert types the dispatcher resolves in Caja → Reconciliación.
 const CAJA_TYPES = new Set(['payment_hosted_stale_no_callback', 'payment_reconcile_breaches']);
 

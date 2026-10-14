@@ -154,6 +154,12 @@ export function initDelivery(firebaseConfig) {
 }
 
 export function getDb() { return db; }
+
+// PLAN-H0 — open an order by id that is not in the live lists (e.g. cancelled / pending_payment, linked from a payment
+// alert). → { ok:true, order } (order null = absent) | { ok:false } (the read failed).
+export async function fetchOrderById(orderId) {
+  try { const s = await get(ref(db, `orders/${orderId}`)); return { ok: true, order: s.val() }; } catch (_) { return { ok: false }; }
+}
 export function getAuthInstance() { return auth; }
 
 // ============================================================

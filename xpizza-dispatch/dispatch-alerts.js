@@ -16,6 +16,8 @@ const REGISTRY = {
   payment_hosted_stale_no_callback:{ category: 'payment',     severity: 'amber',   iconId: 'i-card' },
   payment_reconcile_breaches:      { category: 'payment',     severity: 'neutral', iconId: 'i-card' },
   payment_aged_refund_pending:     { category: 'payment',     severity: 'neutral', iconId: 'i-card' },
+  paid_superseded:                 { category: 'payment',     severity: 'red',     iconId: 'i-card' },   // PLAN-H0
+  reversal_uncertain:              { category: 'payment',     severity: 'red',     iconId: 'i-card' },   // PLAN-H0
 };
 
 export function classifyAlert(alert) {

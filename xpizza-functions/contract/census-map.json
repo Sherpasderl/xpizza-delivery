@@ -545,7 +545,18 @@
     "catalog/menu-gates.js#redeemEligibleFor": "catalog",
     "catalog/menu-order.js#facturaInMenuOrder": "intake",
     "catalog/menu-order.js#facturaLinesInMenuOrder": "intake",
-    "catalog/menu-order.js#facturaLinesInMenuOrder>anon": "intake"
+    "catalog/menu-order.js#facturaLinesInMenuOrder>anon": "intake",
+    "superseded-capture.js#uncertainReversal": "payment",
+    "superseded-capture.js#accountedAttemptId": "payment",
+    "superseded-capture.js#classify": "payment",
+    "superseded-capture.js#evidenceVersion": "payment",
+    "superseded-capture.js#alertRecord": "payment",
+    "superseded-capture.js#recordEvidence": "payment",
+    "superseded-capture.js#pagedPass": "payment",
+    "superseded-capture.js#workItemPass": "payment",
+    "superseded-capture.js#frequentPass": "payment",
+    "superseded-capture.js#dailyPass": "payment",
+    "index.js#detectSupersededCaptures": "payment"
   },
   "pageFunctionExemptions": {
     "xpizza-orders/account.js#rewardsSubscribe": "account UI — profile / addresses / login / OTP state (customer identity), not persisted-order reads",
@@ -1105,6 +1116,10 @@
         "BRAND"
       ],
       "reason": "D12b: the restaurant's display name snapshotted on the order at intake; the pickup PLACE statement ('Recoger en <name>' via pickupLabel) and the brand label (reviewed at the R3 P0 rebase onto 445d85d)"
+    },
+    "paid_evidence": {
+      "class": "lifecycle",
+      "reason": "PLAN-H0 detective evidence (superseded-capture.js recordEvidence): card money on an attempt the order does not account for, or a reversal whose outcome is uncertain — staff bookkeeping surfaced as a durable dispatcher alert; read only to REFUSE automation (cancel guard, abandon). Not a contract fact: no displayed order fact derives from it"
     }
   },
   "opaqueWriteResolutions": [

@@ -20,6 +20,7 @@
  */
 const MR = require('./manual-resolve');
 const MG = require('./materialize-guard');
+const H0 = require('./superseded-capture');   // PLAN-H0 §4 — abandon never closes over money recorded on another attempt
 const { readLiveBrand } = require('./pickup-label');   // R3-FIX D12
 const { holdIfClosedAtMaterialize } = MG;   // paid-after-close re-check (Codex-on-diff)
 const { reverseRedemptionForOrder, settleRedemptionAtConfirm } = require('./rewards-reserve');   // Phase B1 — redemption reversal/settle on manual resolve (single helper, no-op for non-redeemed)
@@ -138,19 +139,19 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
 
   try {
     if (action === 'abandon') {
-      if (MR.hasPaidEvidence(order, attempt)) {
+      if (MR.hasPaidEvidence(order, attempt) || H0.hasEvidenceKeys(order)) {   // PLAN-H0 §4: + money recorded on another attempt
         await releaseClaim();
         return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar", no "Descartar".', payment_uuid_present: true } };
       }
       // Terminal write is a CAS (R3-#1): commit abandoned ONLY if still our claim AND paid_during_resolve !== true.
       const abTx = await orderRef.transaction((cur) => {
         if (cur === null) return null;                                  // null-first-safe (R1-#1): force server round-trip, don't abort
-        if (!cur || cur.resolving_claim_id !== claimId || cur.payment_status !== MR.resolvingStatus('abandon') || cur.paid_during_resolve === true) return;
+        if (!cur || cur.resolving_claim_id !== claimId || cur.payment_status !== MR.resolvingStatus('abandon') || cur.paid_during_resolve === true || H0.hasEvidenceKeys(cur)) return;
         return { ...cur, payment_status: 'abandoned', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null };
       });
       if (!abTx.committed) {
         const cur = abTx.snapshot.val() || {};
-        if (cur.paid_during_resolve === true) return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
+        if (cur.paid_during_resolve === true || H0.hasEvidenceKeys(cur)) return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
         return { status: 409, body: { error: 'No se pudo descartar (el estado cambió)', payment_status: cur.payment_status } };
       }
       if (attemptId) await db.ref(`payment_attempts/${attemptId}`).update({ hosted_state: 'abandoned', status: 'abandoned', abandoned_at: now });

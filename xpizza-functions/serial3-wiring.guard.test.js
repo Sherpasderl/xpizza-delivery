@@ -18,7 +18,7 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 
 // ── 1a. index.js ──
 {
-  const real = read('index.js');
+  const real = require('./tools/h0-inverse').unapplyH0Index(read('index.js'));   // PLAN-H0 (newer) is reversed FIRST
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplySerial3Index(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplySerial3Index(real), base, `🔴 index.js minus the serial3 blocks is not ${BASE}:index.js`);

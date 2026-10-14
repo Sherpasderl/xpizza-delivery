@@ -130,6 +130,19 @@ async function handleHostedCallback(deps, body, now) {
 // Auto-void a paid hosted charge for a cancelled order; never leaves money on a cancelled order.
 async function voidPaid(deps, { orderId, attemptId, hostedOrderId, uuid, amount, now, reason }) {
   const { db } = deps;
+  // PLAN-H0 §4 — a verified paid callback with NO payment uuid can never be reversed automatically, and must never read
+  // as 'refunded'. Park it durably for staff: the H0 sweep (superseded-capture.js) alerts it as reversal_uncertain.
+  if (!uuid) {
+    await db.ref().update({
+      [`payment_attempts/${attemptId}/status`]: 'manual_review',
+      [`payment_attempts/${attemptId}/hosted_callback_verified`]: true,
+      [`payment_attempts/${attemptId}/no_uuid_paid_callback`]: { at: now, hosted_order_id: hostedOrderId },
+      [`payment_attempts/${attemptId}/uncertain_at`]: now,
+      [`orders/${orderId}/status`]: 'cancelled',
+      [`orders/${orderId}/payment_status`]: 'manual_review',
+    });
+    return { code: 200, outcome: 'cancelled_no_uuid_manual_review' };
+  }
   let voided = false;
   try {
     const vr = await deps.voidOrRefund(deps, { orderId, attemptId, pixelpayOrderId: hostedOrderId, paymentUuid: uuid, reason, now });

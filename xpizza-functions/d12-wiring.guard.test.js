@@ -15,7 +15,10 @@ const stripComments = require('./tools/strip-comments');
 const { HUNKS, FILES, unapplyD12 } = require('./tools/d12-inverse');
 // D12b (brand display name) landed on top of D12: its exact inverse is reversed FIRST (newest first)
 const { unapplyD12b, FILES: D12B_FILES } = require('./tools/d12b-inverse');
-const readD12 = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, fs.readFileSync(path.join(__dirname, f), 'utf8')) : fs.readFileSync(path.join(__dirname, f), 'utf8'));
+// PLAN-H0 (newest; resolve-manual.js) is reversed FIRST, then D12b, so any byte outside the H0 / D12b / D12 seams still fails.
+const { unapplyH0Module, FILES: H0_FILES } = require('./tools/h0-inverse');
+const readRaw = (f) => { const src = fs.readFileSync(path.join(__dirname, f), 'utf8'); return H0_FILES.includes(f) ? unapplyH0Module(f, src) : src; };
+const readD12 = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, readRaw(f)) : readRaw(f));
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
