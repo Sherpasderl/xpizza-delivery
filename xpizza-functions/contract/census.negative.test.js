@@ -82,11 +82,59 @@ for (const [name, code, re] of [
   ['money-path-optional', "function shiftCashProbeO(o, uid) { return o?.courier_cash_exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeO/],
   ['money-path-destructure-default', "function shiftCashProbeD(o, uid) { const { courier_cash_exempt = false } = o; return courier_cash_exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeD/],
   ['money-path-destructure-nested', "function shiftCashProbeN(o, uid) { const { courier: { exempt } } = o; return exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier' .*shiftCashProbeN/],
-  ['second-bound-write', "createOrderApp.all(async (req, res) => { const heldUpdates = { ['orders/x']: record }; await db.ref().update(heldUpdates); });", /matches 2 write\(s\), reviewed for 1/],
+  // a bound opaque write is bound to its COUNT: a second write of the same shape is RED (B4 r1: re-pointed to a binding
+  // that survives provenance — the old createOrder `record` write now resolves through its builder)
+  ['second-bound-write', "exports.readyTimeGraduationMonitor = onSchedule({}, async () => { const updates = {}; for (const path in verdicts) updates[path] = 1; await db.ref().update(updates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));
   assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
   ok(`${name} (injected into index.js / createOrderApp.all): RED — ${p.filter((x) => re.test(x))[0].slice(0, 130)}`);
+}
+// B4 r1 (codex R3-B4 r1, advisor ruling: WRITE PROVENANCE). Each REAL writer codex probed, edited in memory to add a
+// `surcharge_cents` write the old shape-matcher missed, must turn the census RED; so must every synthetic shape below.
+{
+  const fsx = require('fs'); const pathx = require('path');
+  const REPO_FN = pathx.join(__dirname, '..');
+  const real = (file, from, to) => {
+    const code = fsx.readFileSync(pathx.join(REPO_FN, file), 'utf8');
+    assert.strictEqual(code.split(from).length - 1, 1, `premise — the probe anchor occurs exactly once in ${file}: ${from}`);
+    return { file: `xpizza-functions/${file}`, scope: 'functions', kind: 'fn', code: code.replace(from, to), lineOffset: 0, module: false, replace: true };
+  };
+  const NEW_S = /NEW order field written: 'surcharge_cents'/;
+  for (const [name, u, re] of [
+    ['real: createOrder record field before the multipath map (create-order-build.js:67)', real('create-order-build.js', '    orderRecord.lat = lat;\n', '    orderRecord.lat = lat;\n    orderRecord.surcharge_cents = 900;\n'), NEW_S],
+    ['real: helper mutates an ALIAS of updates[orders/…] (attachCustomerAttribution orderRec)', real('create-order-build.js', '  orderRec.customer_uid = customer_uid;\n', '  orderRec.customer_uid = customer_uid;\n  orderRec.surcharge_cents = 900;\n'), NEW_S],
+    ['real: chargeOnlineOrder pendingOrderRecord mutation → acquireHostedAttempt transaction spread (index.js:1813)', real('index.js', '    pendingOrderRecord.lat = lat;\n', '    pendingOrderRecord.lat = lat;\n    pendingOrderRecord.surcharge_cents = 900;\n'), NEW_S],
+    ['real: Object.assign(pendingOrderRecord, …) (index.js:1878)', real('index.js', 'Object.assign(pendingOrderRecord, hubSnapshot(id));', 'Object.assign(pendingOrderRecord, hubSnapshot(id), { surcharge_cents: 900 });'), NEW_S],
+    ['real: a builder RETURN reached through Object.assign → transaction (restaurant-config hubSnapshot)', real('restaurant-config.js', '  if (dn) snap.restaurant_display_name = dn;\n', '  if (dn) snap.restaurant_display_name = dn;\n  snap.surcharge_cents = 900;\n'), NEW_S],
+    ['real: a patch prop added after its literal, before .update(patch) (index.js:6398)', real('index.js', '    const patch = { release_at: Math.min(Number(order.release_at) || now, now) };\n', '    const patch = { release_at: Math.min(Number(order.release_at) || now, now) };\n    patch.surcharge_cents = 900;\n'), NEW_S],
+    ['real: .remove() of an order field (index.js:2749)', real('index.js', 'await db.ref(`orders/${orderId}/paid_strand_seen_at`).remove();', 'await db.ref(`orders/${orderId}/surcharge_cents`).remove();'), NEW_S],
+    ['real: Object.assign(updates[orders/…], {…}) in createOrder', real('index.js', '  if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;', '  if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical; Object.assign(updates[`orders/${orderId}`], { surcharge_cents: 900 });'), NEW_S],
+    ['synthetic: updates[computedPath] with a locally computed order path', asIndex("createOrderApp.all(async (req, res) => { const p = `orders/${id}`; const updates = {}; updates[p] = { surcharge_cents: 900 }; await db.ref().update(updates); });"), NEW_S],
+    ['synthetic: updates[<unresolvable path>] at the root → opaque', asIndex("createOrderApp.all(async (req, res) => { const updates = {}; updates[pathFor(id)] = { surcharge_cents: 900 }; await db.ref().update(updates); });"), /opaque order write unresolved: .*computed-key-at-root .*pathFor\(id\)/],
+    ['synthetic: Object.assign(updates[\'orders/x\'], {…})', asIndex("createOrderApp.all(async (req, res) => { const updates = { 'orders/x': {} }; Object.assign(updates['orders/x'], { surcharge_cents: 900 }); await db.ref().update(updates); });"), NEW_S],
+    ['synthetic: a ref PARAMETER resolved at its call sites', asIndex("async function stampProbe(orderRef) { await orderRef.update({ surcharge_cents: 900 }); }\ncreateOrderApp.all(async (req, res) => { await stampProbe(db.ref(`orders/${id}`)); });"), NEW_S],
+    ['synthetic: a DESTRUCTURED parameter spread into an order write', asIndex("function buildProbe({ fee }) { return { [`orders/${id}`]: { ...fee } }; }\ncreateOrderApp.all(async (req, res) => { await db.ref().update(buildProbe({ fee: { surcharge_cents: 900 } })); });"), NEW_S],
+    // P2a: ANY non-literal FIELD key is opaque, never a literal `surcharge_*`
+    ['dynamic field: concatenation', asIndex("createOrderApp.all(async (req, res) => { const updates = { 'orders/x': {} }; updates['orders/x']['surcharge_' + kind] = 1; await db.ref().update(updates); });"), /opaque order write unresolved: .*dynamic-field-segment .*orders\/x\/surcharge_\*/],
+    ['dynamic field: template in an object key', asIndex("createOrderApp.all(async (req, res) => { await db.ref(`orders/${id}`).update({ [`surcharge_${kind}`]: 1 }); });"), /opaque order write unresolved: .*dynamic-field-segment .*surcharge_\*/],
+    ['dynamic field: template in a ref path', asIndex("createOrderApp.all(async (req, res) => { await db.ref(`orders/${id}/surcharge_${kind}`).set(1); });"), /opaque order write unresolved: .*dynamic-field-segment .*orders\/\*\/surcharge_\*/],
+    // the explicit over-approximation: a multipath map that ESCAPES without a sink in view is recorded as written
+    ['escaped multipath map (returned, no sink in view)', asIndex("function zzEscapeProbe(id) { const m = {}; m[`orders/${id}`] = { surcharge_cents: 900 }; return m; }"), NEW_S],
+  ]) {
+    const p = problemsWith(u);
+    assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG provenance ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
+    ok(`provenance — ${name}: RED — ${p.filter((x) => re.test(x))[0].slice(0, 110)}`);
+  }
+  // P2b: a purely LOCAL object that never persists (no sink, never escapes) is QUIET — no false write finding
+  for (const [name, code] of [
+    ['local-only multipath object', "createOrderApp.all(async (req, res) => { const local = { 'orders/probe': {} }; local['orders/probe'].surcharge_cents = 1; });"],
+    ['local-only record object', "createOrderApp.all(async (req, res) => { const rec = {}; rec.surcharge_cents = 1; console.log(Object.keys(rec).length); });"],
+  ]) {
+    const p = problemsWith(asIndex(code));
+    assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG provenance ${name}: a local object that never persists was reported (${JSON.stringify(p.slice(0, 3))})`);
+    ok(`provenance — ${name}: QUIET (never reaches a write, never escapes)`);
+  }
 }
 // the sentinel AND the inventory both fire for a delivery fee on a template path (two independent nets)
 {

@@ -718,6 +718,18 @@
       "class": "pointer",
       "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
     },
+    "address_details": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
+    "address_detected": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
     "blocked_reason": {
       "class": "fact",
       "facts": [
@@ -745,6 +757,10 @@
       "facts": [
         "TENDER"
       ]
+    },
+    "charge_inputs_fp": {
+      "class": "pointer",
+      "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
     },
     "charged_at": {
       "class": "stamp",
@@ -790,15 +806,17 @@
       "class": "pointer",
       "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
     },
+    "desc_rebaja_cents": {
+      "class": "fact",
+      "facts": [
+        "BREAKDOWN"
+      ]
+    },
     "display_number": {
       "class": "fact",
       "facts": [
         "NUM"
       ]
-    },
-    "driver_location": {
-      "class": "lifecycle",
-      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
     },
     "duplicate_held_at": {
       "class": "stamp",
@@ -851,10 +869,6 @@
       "class": "stamp",
       "reason": "audit / notification timestamp — bookkeeping"
     },
-    "is_active_drop": {
-      "class": "lifecycle",
-      "reason": "lifecycle bookkeeping (reasons, holds, active-drop flag, driver location snapshot) — not a contract fact"
-    },
     "items": {
       "class": "fact",
       "facts": [
@@ -867,9 +881,27 @@
         "ITEMS"
       ]
     },
+    "lat": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
+    "lng": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
+    },
     "manual_refund_required_at": {
       "class": "stamp",
       "reason": "audit / notification timestamp — bookkeeping"
+    },
+    "maps_link": {
+      "class": "fact",
+      "facts": [
+        "PLACE"
+      ]
     },
     "materialized_at": {
       "class": "stamp",
@@ -953,6 +985,12 @@
       "class": "pointer",
       "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
     },
+    "pickup_time": {
+      "class": "fact",
+      "facts": [
+        "FULFIL"
+      ]
+    },
     "quote": {
       "class": "pointer",
       "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
@@ -1002,6 +1040,10 @@
     "releasing_since": {
       "class": "claim",
       "reason": "atomic-claim / resolution bookkeeping — state-machine internals (F-PAYLIFE derives from status + payment_status)"
+    },
+    "reorder_items": {
+      "class": "pointer",
+      "reason": "the reorder RECIPE carried on the pending order to materialize, which copies it into user_orders/{uid}.items at confirm (asserted S12 / S12b) — never read as an order fact"
     },
     "resolution": {
       "class": "claim",
@@ -1138,29 +1180,21 @@
   },
   "opaqueWriteResolutions": [
     {
-      "file": "xpizza-functions/create-order-build.js",
-      "fn": "buildCreateOrderUpdates",
-      "how": "spread-in-order-write",
-      "detail": "priceBreakdown",
-      "fields": [
-        "total_cents",
-        "subtotal_cents",
-        "tax_cents"
-      ],
-      "reason": "the `priceBreakdown` PARAMETER is orderBreakdownCents(...)'s { total_cents, subtotal_cents, tax_cents } (order-money.js) — passed in by createOrder",
+      "file": "xpizza-functions/index.js",
+      "fn": "readyTimeGraduationMonitor",
+      "how": "computed-key-at-root",
+      "detail": "path",
+      "fields": [],
+      "reason": "B4 r1 (provenance): `updates[path]` keys are ready-time-graduation.js computeGraduation verdict paths, built as `ready_time_graduation/${v}/${restaurant}/${source}/${bucket}` (ready-time-graduation.js ~191) — never under orders/; the one literal key is ready_time_graduation/_meta/active_config_hash",
       "count": 1
     },
     {
-      "file": "xpizza-functions/index.js",
-      "fn": "createOrderApp.all",
+      "file": "xpizza-functions/pixelpay-charge.js",
+      "fn": "acquireOnlineAttempt",
       "how": "opaque-order-object",
-      "fields": [
-        "status",
-        "scheduled_for",
-        "release_at"
-      ],
-      "reason": "heldUpdates = buildScheduledOrderRecord(...) (create-order-build.js:142-152): buildCreateOrderUpdates' order record (inventoried there) + status / scheduled_for / release_at — bound to THIS write (`db.ref().update(heldUpdates)` whose orders/<id> value is `record`)",
-      "detail": "record",
+      "detail": "pendingOrderRecord",
+      "fields": [],
+      "reason": "B4 r1 (provenance): the PARAMETER pendingOrderRecord has NO production call site (the direct-charge path is retired; only test/d4b-callseq calls it) — so no field is written in production. A new caller makes this write resolve at its call site, this resolution goes stale and the census is RED until reviewed",
       "count": 1
     }
   ],

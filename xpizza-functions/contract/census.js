@@ -165,12 +165,14 @@ function staticPath(n) {
   return null;
 }
 const normPath = (p) => String(p).replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
-const WRITE_METHODS = new Set(['set', 'update', 'push', 'setWithPriority', 'transaction']);
+const { writeInventory } = require('./write-provenance');
 // send boundaries (the server-side readers): callee name → R-site
 const SEND = { sendMessage: 'R9', sendScheduledSlotClosed: 'R9', sendPaidAfterCloseRefund: 'R9', sendDriverPush: 'R5', sendStaffPush: 'R6', batchUpdate: 'R12', append: 'R12' };
 
 function census({ explicit = [], extraUnits = [], keepPos = false } = {}) {   // keepPos: the P1 tracer needs each site's AST start
-  const units = [...sources(), ...extraUnits];
+  // an extra unit with `replace: true` stands in for the real file of that name (negatives that edit a REAL writer)
+  const replaced = new Set(extraUnits.filter((u) => u.replace).map((u) => u.file));
+  const units = [...sources().filter((u) => !replaced.has(u.file)), ...extraUnits];
   const parsed = units.map((u) => ({ u, ast: parseUnit(u) }));
   // ── projections, per scope, fixpoint ≤ 3 ──
   const aliases = new Map();   // scope → Map(alias → field)
@@ -247,187 +249,9 @@ function census({ explicit = [], extraUnits = [], keepPos = false } = {}) {   //
     });
   }
   const sentinel0 = [];
-  // ── WRITE INVENTORY (codex r1 P1-1): every field written onto orders/<id>, from AST ──────────────────────────────────
-  // sources: ref(...)/child(...) chains (through same-file variables) + set/update/push; multipath update keys;
-  // `updates[`orders/${id}…`] = …` assignments; template / concatenated paths; one-hop object literals and
-  // same-name builder returns. A spread or a non-static key in an order write is an OPAQUE WRITE (needs a decision).
-  const writes = []; const opaqueWrites = [];
+  // ── WRITE INVENTORY (codex r1 P1-1; B4 r1: by PROVENANCE) — every field written onto orders/<id>: contract/write-provenance.js ──
   const fnUnits = parsed.filter((x) => x.u.kind === 'fn');
-  const returnsByName = new Map();
-  const NODE_CODE = new WeakMap();   // node → its unit's source (a builder's object can live in another file)
-  for (const { u, ast } of fnUnits) walk(ast, (node) => { NODE_CODE.set(node, u.code); });
-  for (const { ast } of fnUnits) {
-    // a function's returned object(s): `return {…}`, or `return x` where x is a same-function object literal
-    const localObj = new Map();
-    walk(ast, (node, fn) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init && node.init.type === 'ObjectExpression') localObj.set(`${fn}::${node.id.name}`, node.init); });
-    walk(ast, (node, fn) => {
-      if (node.type !== 'ReturnStatement' || !node.argument) return;
-      const o = node.argument.type === 'ObjectExpression' ? node.argument : (node.argument.type === 'Identifier' ? localObj.get(`${fn}::${node.argument.name}`) : null);
-      if (o) { const l = returnsByName.get(fn) || []; l.push(o); returnsByName.set(fn, l); }
-    });
-  }
-  for (const { u, ast } of fnUnits) {
-    const inits = new Map();
-    walk(ast, (node) => { if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init) { const l = inits.get(node.id.name) || []; l.push(node.init); inits.set(node.id.name, l); } });
-    const refPathOf = (n, depth = 0) => {
-      if (!n || depth > 4) return null;
-      if (n.type === 'Identifier') { for (const i of inits.get(n.name) || []) { const r = refPathOf(i, depth + 1); if (r !== null) return r; } return null; }
-      if (n.type === 'AwaitExpression') return refPathOf(n.argument, depth + 1);
-      if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed) {
-        const m = n.callee.property.name;
-        if (m === 'ref') return n.arguments.length ? (staticPath(n.arguments[0]) === null ? null : normPath(staticPath(n.arguments[0]))) : '';
-        if (m === 'child') { const b = refPathOf(n.callee.object, depth + 1); const c = staticPath(n.arguments[0]); return b === null ? null : normPath(`${b}/${c === null ? '*' : c}`); }   // a dynamic child(id) is a '*' segment
-      }
-      return null;
-    };
-    const objOf = (n, depth = 0) => {
-      if (!n || depth > 3) return [];
-      if (n.type === 'ObjectExpression') return [n];
-      if (n.type === 'Identifier') return (inits.get(n.name) || []).flatMap((i) => objOf(i, depth + 1));
-      if (n.type === 'AwaitExpression') return objOf(n.argument, depth + 1);
-      if (n.type === 'ConditionalExpression') return [...objOf(n.consequent, depth + 1), ...objOf(n.alternate, depth + 1)];
-      if (n.type === 'LogicalExpression') return [...objOf(n.left, depth + 1), ...objOf(n.right, depth + 1)];
-      if (n.type === 'CallExpression') { const nm = n.callee.type === 'Identifier' ? n.callee.name : (n.callee.type === 'MemberExpression' && !n.callee.computed ? n.callee.property.name : null); return nm ? (returnsByName.get(nm) || []) : []; }
-      return [];
-    };
-    // attributed to the WRITE CALL / assignment being analysed (a builder's object may live in another file)
-    let AT = null;
-    const record = (fn, field, how, node) => writes.push({ file: u.file, fn, field, how, line: (AT || node).loc.start.line });
-    const opaqueW = (fn, how, node, detail) => opaqueWrites.push({ file: u.file, fn, how, line: (AT || node).loc.start.line, ...(detail ? { detail } : {}) });
-    const objFields = (fn, objs, node, how) => {
-      for (const o of objs) for (const p of o.properties) {
-        if (p.type === 'SpreadElement') {   // resolved where it can be: a literal, a conditional branch, a variable, a builder's return
-          const inner = objOf(p.argument);
-          if (inner.length) objFields(fn, inner, p, `${how}/spread`); else opaqueW(fn, 'spread-in-order-write', p, p.argument.type === 'Identifier' ? p.argument.name : u.code.slice(p.argument.start, p.argument.end).slice(0, 60));
-          continue;
-        }
-        if (p.computed) { const sp = staticPath(p.key); if (sp && !sp.includes('*') && !sp.includes('/')) record(fn, sp, how, p); else if (sp && sp.includes('/')) pathWrite(fn, sp, p.value, p, `${how}/multipath`); else opaqueW(fn, 'computed-key-in-order-write', p); continue; }
-        const k = p.key && (p.key.name || p.key.value); if (typeof k === 'string') record(fn, k, how, p);
-      }
-    };
-    // a write at a full path: orders → nothing; orders/<id> → the value object's keys; orders/<id>/<f>… → f
-    // the value expression's source — binds an opaque-write RESOLUTION to its exact write site (codex r2 P1-1)
-    const srcOf = (n) => (n ? (NODE_CODE.get(n) || u.code).slice(n.start, n.end).replace(/\s+/g, ' ').slice(0, 80) : '');
-    function pathWrite(fn, full, value, node, how, depth = 0) {
-      const p = normPath(full); const segs = p === '' ? [] : p.split('/');
-      // codex r2 P1-1: a write ABOVE an order (the root, or /orders itself) is an order write too — descend its object
-      if (segs.length === 0 || (segs[0] === 'orders' && segs.length === 1)) {
-        if (depth > 3) return;
-        const objs = objOf(value);
-        // codex r3 P1-1: an UNRESOLVED payload at the root or /orders can carry any order field → opaque (RED unless bound)
-        if (!objs.length) { opaqueW(fn, segs.length === 0 ? 'unresolved-root-write' : 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }
-        // codex r4 P1-1: spreads are followed RECURSIVELY (a spread of a spread of …) — an unresolved spread or a
-        // non-static key at ANY depth under the root / orders is opaque
-        const above = (props, sd, h) => {
-          for (const q of props) {
-            if (q.type === 'SpreadElement') {
-              const inner = sd < 6 ? objOf(q.argument) : [];
-              if (!inner.length) { opaqueW(fn, segs.length === 0 ? 'spread-at-root' : 'spread-above-orders', q, srcOf(q.argument)); continue; }
-              above(inner.flatMap((o) => o.properties), sd + 1, `${h}/spread`);
-              continue;
-            }
-            const k = q.computed ? staticPath(q.key) : (q.key && (q.key.name || q.key.value));
-            if (k === null || k === undefined) { opaqueW(fn, segs.length === 0 ? 'computed-key-at-root' : 'computed-key-above-orders', q, srcOf(q.key)); continue; }
-            if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree
-            pathWrite(fn, `${p}/${k}`, q.value, q, h, depth + 1);
-          }
-        };
-        above(objs.flatMap((o) => o.properties), 0, `${how}/above`);
-        return;
-      }
-      if (segs[0] !== 'orders') return;
-      if (segs.length === 2) { const objs = objOf(value); if (objs.length) objFields(fn, objs, node, how); else opaqueW(fn, 'opaque-order-object', node, srcOf(value)); return; }
-      if (segs[2] === '*' || segs[2] === '') opaqueW(fn, 'dynamic-field-segment', node, full); else record(fn, segs[2], how, node);
-    }
-    walk(ast, (node, fn) => {
-      // codex r5 P1-2, modular form: runTransaction(ref(db[, '' | '/' | 'orders']), …) — opaque, never analysed
-      if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'runTransaction' && node.arguments[0] && node.arguments[0].type === 'CallExpression' && node.arguments[0].callee.type === 'Identifier' && node.arguments[0].callee.name === 'ref') {
-        const ra = node.arguments[0].arguments; const rp = ra.length < 2 ? '' : staticPath(ra[1]);
-        if (rp !== null && (normPath(rp) === '' || normPath(rp) === 'orders')) { AT = node; opaqueW(fn, normPath(rp) === '' ? 'transaction-at-root' : 'transaction-above-orders', node, `${normPath(rp) || '/'}: ${srcOf(node.arguments[1])}`); }
-      }
-      if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed && WRITE_METHODS.has(node.callee.property.name)) {
-        AT = node;
-        const base = refPathOf(node.callee.object);
-        if (base === null) return;
-        const m = node.callee.property.name; const v = node.arguments[0];
-        const updObjs = m === 'update' && v ? (v.type === 'ObjectExpression' ? [v] : objOf(v)) : [];
-        if (m === 'update' && updObjs.length) {
-          // codex r4 P1-1: ONE recursive rule for every depth — a spread (conditional / variable / literal / builder) is
-          // resolved through its object(s) and its keys are paths under base; an unresolved spread or a non-static key
-          // at ANY depth under the root or /orders is an opaque write (RED unless bound), never skipped
-          const nb = normPath(base); const guarded = nb === '' || nb.startsWith('orders');
-          const upd = (props, sd, how) => {
-            for (const p of props) {
-              if (p.type === 'SpreadElement') {
-                const inner = sd < 6 ? objOf(p.argument) : [];
-                if (inner.length) upd(inner.flatMap((o) => o.properties), sd + 1, 'update/spread');
-                else if (guarded) opaqueW(fn, nb === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));
-                continue;
-              }
-              const key = p.computed ? staticPath(p.key) : (p.key && (p.key.name || p.key.value));
-              if (key === null || key === undefined) { if (guarded) opaqueW(fn, nb === '' ? 'computed-key-at-root' : 'computed-key-in-order-write', p, srcOf(p.key)); continue; }
-              pathWrite(fn, `${base}/${key}`, p.value, p, how);
-            }
-          };
-          upd(updObjs.flatMap((o) => o.properties), 0, 'update');
-          return;
-        }
-        if (m === 'transaction') {
-          // codex r5 P1-2: a transaction at the ROOT or on /orders can rewrite any order — its updater is NOT analysed: it is
-          // an OPAQUE write, RED unless explicitly bound (same binding as every opaque resolution)
-          if (normPath(base) === '' || normPath(base) === 'orders') { opaqueW(fn, normPath(base) === '' ? 'transaction-at-root' : 'transaction-above-orders', node, `${normPath(base) || '/'}: ${srcOf(v)}`); return; }
-          if (normPath(base).split('/')[0] !== 'orders') return;
-          const segs = normPath(base).split('/');
-          if (segs.length >= 3 && segs[2] !== '*') { record(fn, segs[2], 'transaction', node); return; }
-          // the updater on the ORDER node: its new fields = object-literal keys built from the current value (a spread of
-          // the param / a local copy is the existing order, not new fields) + `x.f = …` assignments on the param or a local
-          const upd = v && /Function/.test(v.type) ? v : null;
-          if (!upd) { opaqueW(fn, 'transaction-on-order', node, base); return; }
-          // an updater that DELEGATES (`(cur) => C.claimDecision(cur, …)`): the helper's returned object(s)
-          const delegate = upd.body.type === 'CallExpression' ? upd.body : null;
-          if (delegate) {
-            const nm = delegate.callee.type === 'Identifier' ? delegate.callee.name : (delegate.callee.type === 'MemberExpression' && !delegate.callee.computed ? delegate.callee.property.name : null);
-            const objs = nm ? (returnsByName.get(nm) || []) : [];
-            let n2 = 0;
-            for (const o of objs) for (const q of o.properties) { if (q.type === 'SpreadElement' || q.computed) continue; const k = q.key && (q.key.name || q.key.value); if (typeof k === 'string') { record(fn, k, `transaction-delegate:${nm}`, q); n2 += 1; } }
-            if (!n2) opaqueW(fn, 'transaction-on-order', node, `delegates to ${nm}`);
-            return;
-          }
-          const param = upd.params[0] && upd.params[0].type === 'Identifier' ? upd.params[0].name : null;
-          const locals = new Set(param ? [param] : []); let found = 0;
-          walk(upd.body, (x) => {
-            if (x.type === 'VariableDeclarator' && x.id.type === 'Identifier' && x.init && x.init.type === 'ObjectExpression') locals.add(x.id.name);
-            if (x.type === 'ObjectExpression') for (const q of x.properties) { if (q.type === 'SpreadElement' || q.computed) continue; const k = q.key && (q.key.name || q.key.value); if (typeof k === 'string') { record(fn, k, 'transaction-updater', q); found += 1; } }
-          });
-          walk(upd.body, (x) => {
-            if (x.type === 'AssignmentExpression' && x.left.type === 'MemberExpression' && !x.left.computed && x.left.object.type === 'Identifier' && locals.has(x.left.object.name)) { record(fn, x.left.property.name, 'transaction-updater', x); found += 1; }
-          });
-          if (!found) opaqueW(fn, 'transaction-on-order', node, base);
-          return;
-        }
-        pathWrite(fn, m === 'push' ? `${base}/*` : base, v, node, m);
-      }
-      if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression' && node.left.computed) {
-        AT = node;
-        const key = staticPath(node.left.property);
-        if (key && normPath(key).startsWith('orders/')) pathWrite(fn, key, node.right, node, 'multipath-assign');
-      }
-      // B4: a FIELD assigned onto a multipath entry after the fact — `updates[`orders/${id}`].f = v` (or `[…]['f']`, or
-      // deeper: `.f.g = v` writes f). The base is the innermost computed static key; what follows it names the path.
-      if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression') {
-        const chain = []; let x = node.left;
-        while (x.type === 'MemberExpression') { chain.unshift(x); x = x.object; }
-        const bi = chain.findIndex((m) => m.computed && (() => { const k = staticPath(m.property); return !!k && normPath(k).startsWith('orders'); })());
-        if (bi >= 0 && bi < chain.length - 1) {
-          AT = node;
-          const base = normPath(staticPath(chain[bi].property));
-          const nx = chain[bi + 1];
-          const seg = nx.computed ? staticPath(nx.property) : nx.property.name;
-          pathWrite(fn, `${base}/${seg === null || seg === undefined ? '*' : seg}`, chain.length === bi + 2 ? node.right : null, node, 'multipath-member-assign');
-        }
-      }
-    });
-  }
+  const { writes, opaqueWrites } = writeInventory({ parsed, walk, staticPath, normPath });
   for (const w of writes) if (SENTINEL.test(w.field)) sentinel0.push({ file: w.file, fn: w.fn, key: w.field, line: w.line, how: `write:${w.how}` });
 
   // ── SEND-BOUNDARY marking (codex r1 P1-2): a read that feeds a send call is a READER site ──────────────────────────

@@ -11550,10 +11550,10 @@
   {
     "id": "r3p0-05",
     "slice": "r3p0",
-    "file": "contract/census.js",
-    "from": "        if (key && normPath(key).startsWith('orders/')) pathWrite(fn, key, node.right, node, 'multipath-assign');",
-    "to": "        if (false) pathWrite(fn, key, node.right, node, 'multipath-assign');",
-    "label": "the write inventory stops seeing `updates[`orders/${id}`] = …` multipath assignments (codex r1 P1-1)",
+    "file": "contract/write-provenance.js",
+    "from": "        if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree",
+    "to": "        if (segs.length === 0) continue;      // a root write of another tree",
+    "label": "the write inventory stops seeing `updates[`orders/${id}`] = …` multipath assignments (codex r1 P1-1) — B4 r1: re-pointed to contract/write-provenance.js",
     "kills_with": "R3-CENSUS",
     "command": [
       "node",
@@ -11609,12 +11609,12 @@
   {
     "id": "r3p0-10",
     "slice": "r3p0",
-    "file": "contract/census.js",
-    "from": "        if (!objs.length) { opaqueW(fn, segs.length === 0 ? 'unresolved-root-write' : 'write-above-orders', node, `${p || '/'}: ${srcOf(value)}`); return; }",
-    "to": "        if (!objs.length) { return; }",
-    "label": "an unresolved payload written at the DB root / /orders is silently accepted again (codex r3 P1-1)",
+    "file": "contract/write-provenance.js",
+    "from": "      if (e.k === 'unresolved') { opaqueW(at, atRootOrOrders",
+    "to": "      if (e.k === 'unresolved') { continue; opaqueW(at, atRootOrOrders",
+    "label": "an unresolved payload written at the DB root / /orders is silently accepted again (codex r3 P1-1) — B4 r1: re-pointed to contract/write-provenance.js",
     "kills_with": [
-      "root-unresolved-payload"
+      "opaque-builder-object: the census stayed GREEN"
     ],
     "command": [
       "node",
@@ -11624,12 +11624,12 @@
   {
     "id": "r3p0-11",
     "slice": "r3p0",
-    "file": "contract/census.js",
-    "from": "                else if (guarded) opaqueW(fn, nb === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));",
-    "to": "                else if (guarded && sd === 0) opaqueW(fn, nb === '' ? 'spread-at-root' : 'spread-in-order-write', p, srcOf(p.argument));",
-    "label": "an unresolved spread NESTED inside a resolved spread under the root / orders is silently accepted (codex r4 P1-1)",
+    "file": "contract/write-provenance.js",
+    "from": "        opaqueW(at, atRootOrOrders ? (segs.length ? 'spread-in-order-write' : 'spread-at-root') : 'spread-in-order-write', e.arg.type === 'Identifier' ? e.arg.name : srcOf(e.arg).slice(0, 60));",
+    "to": "        if (!atRootOrOrders) opaqueW(at, atRootOrOrders ? (segs.length ? 'spread-in-order-write' : 'spread-at-root') : 'spread-in-order-write', e.arg.type === 'Identifier' ? e.arg.name : srcOf(e.arg).slice(0, 60));",
+    "label": "an unresolved spread NESTED inside a resolved spread under the root / orders is silently accepted (codex r4 P1-1) — B4 r1: re-pointed to contract/write-provenance.js",
     "kills_with": [
-      "root-nested-spread"
+      "root-spread: the census stayed GREEN"
     ],
     "command": [
       "node",
@@ -11670,12 +11670,12 @@
   {
     "id": "r3p0-16",
     "slice": "r3p0",
-    "file": "contract/census.js",
-    "from": "          if (normPath(base) === '' || normPath(base) === 'orders') { opaqueW(fn, normPath(base) === '' ? 'transaction-at-root' : 'transaction-above-orders', node, `${normPath(base) || '/'}: ${srcOf(v)}`); return; }",
-    "to": "          if (false) { return; }",
-    "label": "a ROOT / /orders transaction is skipped again (codex r5 P1-2)",
+    "file": "contract/write-provenance.js",
+    "from": "        if (segs.length === 0 || (segs[0] === 'orders' && segs.length === 1)) { opaqueW(node, segs.length ? 'transaction-above-orders' : 'transaction-at-root'",
+    "to": "        if (false) { opaqueW(node, segs.length ? 'transaction-above-orders' : 'transaction-at-root'",
+    "label": "a ROOT / /orders transaction is skipped again (codex r5 P1-2) — B4 r1: re-pointed to contract/write-provenance.js",
     "kills_with": [
-      "root-transaction"
+      "root-transaction: the census stayed GREEN"
     ],
     "command": [
       "node",
@@ -12020,27 +12020,132 @@
   {
     "id": "r3p0-42",
     "slice": "r3p0",
-    "file": "contract/census.js",
-    "from": "        if (bi >= 0 && bi < chain.length - 1) {",
-    "to": "        if (false) {",
-    "label": "B4: the write inventory no longer sees a field assigned onto a multipath order entry (createOrder's .redemption)",
+    "file": "contract/write-provenance.js",
+    "from": "          if (r && r.steps.length) r.binding.contribs.push({ id: ++CID, steps: r.steps, value: node.right, at: node });",
+    "to": "          if (false) r.binding.contribs.push({ id: ++CID, steps: r.steps, value: node.right, at: node });",
+    "label": "B4 r1: a field ASSIGNED onto a payload object (x.f = v) is not a contribution (createOrder orderRecord.lat …)",
     "kills_with": [
-      "'redemption' is no longer written"
+      "stale written-field entry: 'address_details' is no longer written"
     ],
     "command": [
       "node",
-      "contract/census.guard.test.js"
+      "contract/census.negative.test.js"
     ]
   },
   {
     "id": "r3p0-43",
     "slice": "r3p0",
-    "file": "contract/census.js",
-    "from": "          const nx = chain[bi + 1];",
-    "to": "          const nx = chain[chain.length - 1];",
-    "label": "B4: a deeper member assignment names its LEAF, not the order field it writes",
+    "file": "contract/write-provenance.js",
+    "from": "  for (let round = 0, moved = true; moved && round < 6; round++) {",
+    "to": "  for (let round = 0, moved = true; moved && round < 0; round++) {",
+    "label": "B4 r1: a helper mutating its PARAMETER no longer lands on the caller's argument (attachCustomerAttribution orderRec)",
     "kills_with": [
-      "multipath-member-assign-deep"
+      "helper mutates an ALIAS of updates[orders/…]"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-44",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    const calls = nm && IDENT.test(nm) ? (CALLS.get(nm) || [])",
+    "to": "    const calls = false ? (CALLS.get(nm) || [])",
+    "label": "B4 r1: a PARAMETER payload is never resolved at its call sites (acquireHostedAttempt's pendingOrderRecord spread)",
+    "kills_with": [
+      "acquireHostedAttempt opaque-order-object line 128 (pendingOrderRecord)"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-45",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        else if (segs[0] === 'orders' && segs.length >= 3) writeAt(nb, [], node, 'remove');",
+    "to": "        else if (false) writeAt(nb, [], node, 'remove');",
+    "label": "B4 r1: .remove() of an order field is not a write",
+    "kills_with": [
+      "real: .remove() of an order field"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-46",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "const dynamicField = (k) => k === null || k === undefined || k === '' || String(k).includes('*');",
+    "to": "const dynamicField = (k) => k === null || k === undefined || k === '';",
+    "label": "B4 r1 P2a: a partly dynamic field key ('surcharge_' + kind) reads as the literal field surcharge_*",
+    "kills_with": [
+      "dynamic field: concatenation: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-47",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (b.kind !== 'var' || b.consumed || !b.escapes) continue;",
+    "to": "    continue;",
+    "label": "B4 r1: an ESCAPING multipath map with no sink in view is dropped (the over-approximation is gone)",
+    "kills_with": [
+      "escaped multipath map (returned, no sink in view): the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-48",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (b.kind !== 'var' || b.consumed || !b.escapes) continue;",
+    "to": "    if (b.kind !== 'var' || b.consumed) continue;",
+    "label": "B4 r1 P2b: a purely LOCAL multipath object (never persisted, never escapes) is reported as a write",
+    "kills_with": [
+      "stats-api.js liveSummaries write-above-orders"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-49",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "          if (f.fnNode !== b.fnNode) continue;",
+    "to": "          continue;",
+    "label": "B4 r1: a builder's PARAMETER is not bound to the caller's argument when its return is evaluated",
+    "kills_with": [
+      "buildScheduledOrderRecord opaque-order-object"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-50",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      const nm = calleeName(n);\n      const fns = nm ? FUNCS.get(nm) || [] : [];",
+    "to": "      const nm = null;\n      const fns = nm ? FUNCS.get(nm) || [] : [];",
+    "label": "B4 r1: a builder CALL's return is never followed (hubSnapshot / buildCreateOrderUpdates)",
+    "kills_with": [
+      "delegates to claimDecision"
     ],
     "command": [
       "node",
