@@ -513,7 +513,9 @@ async function pageRun(dir, c, rid, first, { realResend = false, method = 'cash'
         if (c.path === 'card' && cs.bound && s3c && post.payment_method === 'online' && post.items_text === s3c.itemsText) {
           S3_KEYS += 1;
           assert.strictEqual(post.content_key, require('../order-dedup').orderContentKey(s3c), `🔴 ${key}: the pending order persists content_key = the stamped content's key`);
-          assert.ok((typeof post.content_key_legacy === 'string') !== (typeof post.content_key_legacy_reason === 'string'), `🔴 ${key}: exactly one of content_key_legacy / content_key_legacy_reason (${JSON.stringify([post.content_key_legacy, post.content_key_legacy_reason])})`);
+          assert.ok((post.content_legacy_order != null) !== (typeof post.content_key_legacy_reason === 'string'), `🔴 ${key}: exactly one of content_legacy_order / content_key_legacy_reason (${JSON.stringify([post.content_legacy_order, post.content_key_legacy_reason])})`);
+          assert.ok(!('content_key_legacy' in post), `🔴 ${key}: no free-floating legacy key is stored (r4)`);
+          if (post.content_legacy_order != null) assert.ok(require('../order-dedup').legacyKeyByOrder(s3c, post.content_legacy_order), `🔴 ${key}: the persisted permutation is a valid permutation of the order's own lines`);
         }
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${key}: the changed-path set changed (beyond D12b's declared tracking field)`);
         const reads = r.ops.filter(isControlRead);

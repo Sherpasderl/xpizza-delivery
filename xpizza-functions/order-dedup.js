@@ -81,19 +81,54 @@ function topLevelLines(s) {
   lines.push(s.slice(start));
   return lines;
 }
-function legacyItemsText(itemsText, menuNames) {
-  if (!Array.isArray(menuNames) || !menuNames.length) return null;
-  const s = String(itemsText == null ? '' : itemsText).trim();
-  const lines = topLevelLines(s); if (!lines) return null;
-  const at = new Map(menuNames.map((n, i) => [n, i]));
+// The order's top-level lines split into CLIENT lines and the SERVER-appended "… (Recompensa)" lines after them; null when
+// the text is not a shape either writer produces (unbalanced brackets, a client line after a server line).
+function splitLines(itemsText) {
+  const lines = topLevelLines(String(itemsText == null ? '' : itemsText).trim()); if (!lines) return null;
   const client = [], server = [];
-  for (const [i, line] of lines.entries()) {
+  for (const line of lines) {
     if (SERVER_LINE.test(line)) { server.push(line); continue; }
-    if (server.length) return null;   // a client line after a server-appended one is not a shape either writer produces
-    const m = LEGACY_LINE.exec(line); if (!m || !at.has(m[1])) return null;
-    client.push({ line, r: at.get(m[1]), i });
+    if (server.length) return null;
+    client.push(line);
   }
-  return client.sort((a, b) => (a.r - b.r) || (a.i - b.i)).map((x) => x.line).concat(server).join(' | ');
+  return { client, server };
+}
+// §3 r4 — the MENU-ORDER PERMUTATION of the order's own client lines: perm[k] = the index (in the order's text) of the
+// line a pre-§3 client would have written k-th. null when it cannot be rebuilt faithfully (no snapshot, a dish it does not name).
+function legacyOrderOf(itemsText, menuNames) {
+  if (!Array.isArray(menuNames) || !menuNames.length) return null;
+  const sp = splitLines(itemsText); if (!sp) return null;
+  const at = new Map(menuNames.map((n, i) => [n, i]));
+  const ranked = [];
+  for (const [i, line] of sp.client.entries()) {
+    const m = LEGACY_LINE.exec(line); if (!m || !at.has(m[1])) return null;
+    ranked.push({ r: at.get(m[1]), i });
+  }
+  return ranked.sort((a, b) => (a.r - b.r) || (a.i - b.i)).map((x) => x.i);
+}
+// the legacy text of THIS order's lines in the order `perm` gives — or null unless `perm` is a true permutation of them
+// (an array — or RTDB's dense index object — of every client-line index exactly once). A corrupted permutation can never
+// name another order's content: at worst it names this cart's lines in another order (a missed hold, never a false one).
+function legacyTextByOrder(itemsText, perm) {
+  const sp = splitLines(itemsText); if (!sp) return null;
+  const arr = Array.isArray(perm) ? perm
+    : (perm && typeof perm === 'object' && Object.keys(perm).every((k, i, ks) => k === String(i) && ks.length) ? Object.keys(perm).map((k) => perm[k]) : null);
+  const n = sp.client.length;
+  if (!arr || arr.length !== n || !n) return null;
+  const seen = new Set();
+  for (const i of arr) { if (!Number.isInteger(i) || i < 0 || i >= n || seen.has(i)) return null; seen.add(i); }
+  return arr.map((i) => sp.client[i]).concat(sp.server).join(' | ');
+}
+function legacyItemsText(itemsText, menuNames) {
+  const perm = legacyOrderOf(itemsText, menuNames);
+  return perm == null ? null : legacyTextByOrder(itemsText, perm);
+}
+// §3 r4 — what makes two orders the SAME cart for the duplicate guard: the order-independent key of their CLIENT lines
+// (phone, the lines without the server-appended reward lines, type, slot). A reward one order redeemed and the other did
+// not is not a different cart; any other difference is.
+function clientContentKey({ phone, itemsText, orderType, scheduledFor } = {}) {
+  const sp = splitLines(itemsText);
+  return orderContentKey({ phone, itemsText: sp ? sp.client.join(' | ') : itemsText, orderType, scheduledFor });
 }
 
 // The content stamp this order's content resolves to: the ORDER-INDEPENDENT key's, and — while stamps written before §3
@@ -125,18 +160,25 @@ async function readContentStampByKeys(db, phone, keys) {
 // §3 r3 — an order's content keys, computed ONCE at the card checkout's intake (where the catalog snapshot is warm) and
 // PERSISTED on the pending order, so the confirm-side duplicate guard — confirm / webhook / sweep / materialize run in
 // separate instances with a cold catalog cache — never needs menu names. `content_key` is the order-independent key;
-// `content_key_legacy` the pre-§3 verbatim key of this cart's MENU-ordered text. When that cannot be rebuilt (no cached
-// snapshot, a dish it does not name) it is absent, `content_key_legacy_reason` says why, and it is LOGGED with the
-// order_id; the guard then reads the incoming verbatim key (as readContentStamp does). {} when the content has no key.
+// `content_legacy_order` the MENU-ORDER PERMUTATION of the order's own client lines (r4: never a free-floating key — the
+// reader rebuilds the pre-§3 verbatim key from the order's OWN items_text and validates the permutation). When it cannot be
+// rebuilt (no cached snapshot, a dish it does not name) it is absent, `content_key_legacy_reason` says why, and it is
+// LOGGED with the order_id; the guard then reads the incoming verbatim key (as readContentStamp does). {} when no key.
 function contentKeysRecord({ phone, itemsText, orderType, scheduledFor } = {}, { menuNames = null, orderId = null, log = (...a) => console.warn(...a) } = {}) {
   const args = { phone, itemsText, orderType, scheduledFor };
   const content_key = orderContentKey(args);
   if (!content_key) return {};
-  const legacy = legacyItemsText(itemsText, menuNames);
-  if (legacy != null) return { content_key, content_key_legacy: contentKeyOf(phone, legacy, orderType, scheduledFor) };
+  const perm = legacyOrderOf(itemsText, menuNames);
+  if (perm != null) return { content_key, content_legacy_order: perm };
   const reason = Array.isArray(menuNames) ? 'unmatched_line' : 'no_menu_snapshot';
   try { log('content_key_legacy_unavailable', JSON.stringify({ order_id: orderId == null ? null : String(orderId), reason })); } catch (_) {}
   return { content_key, content_key_legacy_reason: reason };
 }
 
-module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, readContentStampByKeys, contentKeysRecord, isContentRetap, rateLimitKey };
+// the pre-§3 verbatim key of an order rebuilt from its OWN content + the persisted permutation; null when invalid
+function legacyKeyByOrder({ phone, itemsText, orderType, scheduledFor } = {}, perm) {
+  const t = legacyTextByOrder(itemsText, perm);
+  return t == null ? null : contentKeyOf(phone, t, orderType, scheduledFor);
+}
+
+module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, readContentStampByKeys, contentKeysRecord, legacyOrderOf, legacyKeyByOrder, clientContentKey, isContentRetap, rateLimitKey };

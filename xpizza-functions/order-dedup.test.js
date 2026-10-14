@@ -3,7 +3,7 @@
 // order-dedup — pure content-key + re-tap decision (Layer 2 content-aware phone rate limit).
 // Run: node order-dedup.test.js
 const assert = require('assert');
-const { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, isContentRetap } = require('./order-dedup');
+const { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, legacyOrderOf, legacyKeyByOrder, clientContentKey, contentKeysRecord, isContentRetap } = require('./order-dedup');
 
 const base = { phone: '+504 3367-2490', itemsText: '1x Pad Thai - Camarones (L414)', orderType: 'delivery', scheduledFor: null };
 const k = orderContentKey(base);
@@ -64,5 +64,26 @@ assert.equal(isContentRetap({ at: 1000 }, 1000 + 120000, 120000), false, 'at win
 assert.equal(isContentRetap({ at: 1000 }, 1000 + 121000, 120000), false, 'after window → count');
 assert.equal(isContentRetap({ at: 'x' }, 2000, 120000), false, 'non-finite at → count');
 assert.equal(isContentRetap({}, 2000, 120000), false, 'missing at → count');
+
+// §3 r4 — the persisted legacy context is the menu-order PERMUTATION of the order's own client lines; the reader rebuilds
+// the legacy key from the order's OWN text and accepts only a true permutation; the duplicate guard compares CLIENT lines
+{
+  const M = ['Carnivora', 'Crispy Bacon', 'Margherita', 'Pepperoni'];
+  const A = '2x Carnivora (L340) [Pizza 1: Mozzarella | Pizza 2: Pepperoni]', B = '1x Pepperoni (L307)', C = '1x Margherita (L250)';
+  const R = '1x Margherita (Recompensa)';
+  const a = (t) => ({ phone: '+50499112233', itemsText: t, orderType: 'pickup', scheduledFor: null });
+  assert.deepStrictEqual(legacyOrderOf(`${B} | ${C} | ${A}`, M), [2, 1, 0], 'the permutation that writes the order\'s own lines in menu order');
+  assert.deepStrictEqual(legacyOrderOf(`${B} | ${A} | ${R}`, M), [1, 0], 'server-appended lines are not permuted (they stay last)');
+  assert.strictEqual(legacyKeyByOrder(a(`${B} | ${A} | ${R}`), [1, 0]), orderContentKeyVerbatim(a(`${A} | ${B} | ${R}`)), 'rebuilt: client lines in menu order, server lines last');
+  assert.strictEqual(legacyKeyByOrder(a(`${B} | ${A}`), legacyOrderOf(`${B} | ${A}`, M)), orderContentKeyVerbatim(a(legacyItemsText(`${B} | ${A}`, M))), 'the rebuild equals the warm legacy text\'s key');
+  for (const bad of [[0], [0, 0], [0, 2], [-1, 0], [0.5, 1], ['1', '0'], null, 'ab', {}, { 0: 1 }, { 0: 1, 2: 0 }]) assert.strictEqual(legacyKeyByOrder(a(`${B} | ${A}`), bad), null, `not a permutation of the order's lines: ${JSON.stringify(bad)}`);
+  assert.strictEqual(legacyKeyByOrder(a(`${B} | ${A}`), { 0: 1, 1: 0 }), orderContentKeyVerbatim(a(`${A} | ${B}`)), 'RTDB\'s dense index object is accepted');
+  assert.strictEqual(legacyKeyByOrder(a(`${B} [ | ${A}`), [1, 0]), null, 'unbalanced text → no rebuild');
+  assert.deepStrictEqual(contentKeysRecord(a(`${B} | ${A}`), { menuNames: M }), { content_key: orderContentKey(a(`${B} | ${A}`)), content_legacy_order: [1, 0] }, 'the persisted record');
+  assert.strictEqual(clientContentKey(a(`${A} | ${B}`)), clientContentKey(a(`${B} | ${A} | ${R}`)), 'client content: order-independent and ignores the server reward lines');
+  assert.notStrictEqual(clientContentKey(a(`${A} | ${B}`)), clientContentKey(a(`${A} | ${C}`)), 'another line → another cart');
+  assert.notStrictEqual(clientContentKey(a(A)), clientContentKey(a(A.replace('Pizza 2: Pepperoni', 'Pizza 2: Mozzarella'))), 'other extras → another cart');
+  assert.notStrictEqual(clientContentKey(a(B)), clientContentKey({ ...a(B), phone: '+50499000000' }), 'another phone → another cart');
+}
 
 console.log('order-dedup: OK');

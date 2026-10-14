@@ -77,17 +77,18 @@ function compareShape(actualOps, goldenOps, { mode, content = null, route = '', 
 // the CHANGED-PATH set of the same request, under the same declared mode
 // §3 r3 (codex r3 P1): chargeOnlineOrder persists the content keys on the pending order it WRITES. Declared, and only there:
 // a BOUND charge request whose changed paths add `orders/<id>/content_key` (required) plus exactly one of
-// `content_key_legacy` / `content_key_legacy_reason`, none of them in the golden. Their VALUES are asserted by the suite
-// against the persisted order (content_key = the stamped content's key). Anywhere else these leaves stay RED.
-const KEY_LEAF = /^(orders\/[^/]+)\/(content_key|content_key_legacy|content_key_legacy_reason)$/;
+// `content_legacy_order` (r4: the menu-order permutation — RTDB stores it as index leaves `…/content_legacy_order/<i>`) /
+// `content_key_legacy_reason`, none of them in the golden. Their VALUES are asserted by the suite against the persisted
+// order (content_key = the stamped content's key). Anywhere else these leaves stay RED.
+const KEY_LEAF = /^(orders\/[^/]+)\/(content_key|content_key_legacy_reason|content_legacy_order(?:\/\d+)?)$/;
 function withoutPersistedKeys(actual, golden, route, label) {
   if (golden.some((p) => KEY_LEAF.test(p))) throw new Error(`🔴 serial3-delta ${label}: the golden already carries persisted content keys`);
   const added = actual.filter((p) => KEY_LEAF.test(p));
   if (!added.length) return actual;
   if (route !== 'chargeOnlineOrder') throw new Error(`🔴 serial3-delta ${label}: persisted content keys written on ${route || 'an undeclared route'}`);
-  const byOrder = new Map(); for (const p of added) { const [, o, f] = KEY_LEAF.exec(p); if (!byOrder.has(o)) byOrder.set(o, new Set()); byOrder.get(o).add(f); }
+  const byOrder = new Map(); for (const p of added) { const [, o, f] = KEY_LEAF.exec(p); if (!byOrder.has(o)) byOrder.set(o, new Set()); byOrder.get(o).add(f.replace(/\/\d+$/, '')); }
   for (const [o, f] of byOrder) {
-    if (!f.has('content_key') || f.size !== 2) throw new Error(`🔴 serial3-delta ${label}: ${o} persists ${[...f].sort().join(' + ')} — content_key + exactly one of content_key_legacy / content_key_legacy_reason`);
+    if (!f.has('content_key') || f.size !== 2) throw new Error(`🔴 serial3-delta ${label}: ${o} persists ${[...f].sort().join(' + ')} — content_key + exactly one of content_legacy_order / content_key_legacy_reason`);
   }
   return actual.filter((p) => !KEY_LEAF.test(p));
 }

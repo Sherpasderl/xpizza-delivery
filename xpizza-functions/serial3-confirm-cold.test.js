@@ -14,7 +14,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { holdIfDuplicateSibling } = require('./materialize-guard');
-const { orderContentKey, orderContentKeyVerbatim, contentKeysRecord, rateLimitKey } = require('./order-dedup');
+const { orderContentKey, orderContentKeyVerbatim, contentKeysRecord, legacyKeyByOrder, rateLimitKey } = require('./order-dedup');
 const { createGateReader } = require('./catalog/menu-gates');
 const { createPricingResolver } = require('./catalog/pricing-tables');
 const { buildCatalogV2 } = require('./catalog/form-menu-source');
@@ -82,15 +82,19 @@ function liftConfirmDeps(provided) {
     fields: { customer_phone: PHONE, items_text: t }, orderType: 'pickup', isScheduled: false, scheduledForRaw: NaN, restaurantId: 'x_pizza', pricingTables, orderId: 'X',
     contentKeysRecord, gateReader: () => reader, require });
   const confirmed = (rec) => ({ ...rec, payment_status: 'confirmed', status: 'pending_payment' });
-  const legacyCashSibling = () => ({ [leaf(orderContentKeyVerbatim(args(AB)))]: { at: Date.now() - 30000, order_id: 'Y', payment_method: 'cash' }, 'orders/Y': { status: 'preparing' } });
+  // the legacy cash sibling is a real order with its OWN (menu-order) content — the guard verifies it before any hold (r4)
+  const legacyCashSibling = (ytext = AB) => ({ [leaf(orderContentKeyVerbatim(args(AB)))]: { at: Date.now() - 30000, order_id: 'Y', payment_method: 'cash' },
+    'orders/Y': { order_id: 'Y', status: 'preparing', customer_phone: PHONE, items_text: ytext, order_type: 'pickup', payment_method: 'cash' } });
   const confirmDeps = liftConfirmDeps({ gateReader: () => cold, paymentAlert: async () => {} });
   const quiet = async (fn) => { const logs = []; const w = console.warn; console.warn = (...a) => logs.push(a.join(' ')); try { return { r: await fn(), logs }; } finally { console.warn = w; } };
 
   // 1. the record intake persists (warm)
   const recBA = intake(BA);
   assert.strictEqual(recBA.content_key, orderContentKey(args(BA)), 'intake persists the order-independent key');
-  assert.strictEqual(recBA.content_key_legacy, orderContentKeyVerbatim(args(AB)), 'intake persists the MENU-ORDER legacy key');
-  ok('chargeOnlineOrder\'s real block (warm reader) persists content_key + content_key_legacy (menu order) on the pending record');
+  assert.deepStrictEqual(recBA.content_legacy_order, [1, 0], 'intake persists the MENU-ORDER permutation of the order\'s own lines');
+  assert.ok(!('content_key_legacy' in recBA), 'no free-floating legacy key is stored (r4)');
+  assert.strictEqual(legacyKeyByOrder(args(BA), recBA.content_legacy_order), orderContentKeyVerbatim(args(AB)), '…from which the reader rebuilds the menu-order legacy key');
+  ok('chargeOnlineOrder\'s real block (warm reader) persists content_key + content_legacy_order (the menu-order permutation) on the pending record');
 
   // 2. the actual confirmDeps, COLD
   { const store = legacyCashSibling(); store['orders/X'] = confirmed(recBA);
@@ -122,6 +126,19 @@ function liftConfirmDeps(provided) {
     const store = legacyCashSibling(); store['orders/X'] = confirmed(rec);
     assert.strictEqual(await holdIfDuplicateSibling(confirmDeps(fakeDb(store)), 'X', confirmed(rec), 123), true, 'intake had no snapshot: a same-order legacy sibling is still found'); }
   ok('intake without a snapshot: content_key_legacy_reason persisted + logged; the guard reads the incoming verbatim key');
+
+  // 5. r4 (a): the actual confirmDeps, cold — a stamp pointing at an UNRELATED live cash order → NOT held, logged
+  { const store = legacyCashSibling('1x Margherita (L250)'); store['orders/X'] = confirmed(recBA);
+    const { r, logs } = await quiet(() => holdIfDuplicateSibling(confirmDeps(fakeDb(store)), 'X', confirmed(recBA), 123));
+    assert.strictEqual(r, false, '🔴 an unrelated live cash order behind the stamp → NOT held (the codex r4 false hold)');
+    assert.strictEqual(store['orders/X'].payment_status, 'confirmed', 'the paid order is untouched');
+    assert.ok(logs.some((l) => l.includes('"reason":"sibling_content_mismatch"') && l.includes('"sibling_id":"Y"')), 'logged'); }
+  // 6. r4 (b): a corrupted persisted permutation → today's behaviour, logged; never a false hold
+  { const bad = { ...recBA, content_legacy_order: [0, 0] }; const store = legacyCashSibling(); store['orders/X'] = confirmed(bad);
+    const { r, logs } = await quiet(() => holdIfDuplicateSibling(confirmDeps(fakeDb(store)), 'X', confirmed(bad), 123));
+    assert.strictEqual(r, false, 'a corrupted permutation → the permuted legacy sibling is not found (today\'s behaviour)');
+    assert.ok(logs.some((l) => l.includes('"reason":"invalid_legacy_order"')), 'logged'); }
+  ok('r4, through the ACTUAL confirmDeps cold: an unrelated sibling → not held + logged; a corrupted permutation → fallback + logged');
 
   console.log(`\nserial3-confirm-cold: OK (${n})`);
 })().catch((e) => { console.error('serial3-confirm-cold FAILED:', e); process.exit(1); });

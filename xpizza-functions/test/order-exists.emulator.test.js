@@ -492,6 +492,74 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     ? `BASE, composed with both brands' real pages: every covered refusal's real answer makes the page MINT a second order id and resend (${minted} page runs) — the defect, reproduced`
     : `CANDIDATE, composed with both brands' real pages: every covered refusal's real answer → exactly ONE request, no mint (${once} page runs); the terminal-safe controls still self-heal (${minted} page runs)`);
 
+  // ═════════ §3 r4 (codex r4 P2): END TO END — a real-shaped PRICED request through the FULL chargeOnlineOrder (acquireHostedAttempt
+  //           writes the pending record) → that persisted record → the ACTUAL confirmDeps (lifted verbatim, COLD gate reader) + the
+  //           real guard. The legacy cash sibling is stamped AFTER X's intake, as a createOrder instance still on the previous deploy
+  //           would (the mixed old/new window: only then is a legacy stamp the latest, so only then does the legacy key decide). ═════════
+  {
+    const OD = require('../order-dedup'); const { holdIfDuplicateSibling } = require('../materialize-guard'); const { createGateReader } = require('../catalog/menu-gates');
+    const srcIdx = fsys.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+    const CD = srcIdx.slice(srcIdx.indexOf('function confirmDeps(db) {'), srcIdx.indexOf('function runConfirm('));
+    let coldReads = 0;
+    const cold = createGateReader({ getVersionId: async () => { coldReads += 1; return null; }, getMenu: async () => { coldReads += 1; return null; } });
+    const scope = new Proxy({ gateReader: () => cold, paymentAlert: async () => {} }, { has: (t, k) => typeof k === 'string' && k !== 'confirmDeps' && !(k in globalThis), get: (t, k) => (k in t ? t[k] : () => {}) });
+    const confirmDeps = new Function('scope', `with (scope) { ${CD}\n return confirmDeps; }`)(scope);
+    const quiet = async (fn) => { const logs = []; const w = console.warn; console.warn = (...a) => logs.push(a.join(' ')); try { return { r: await fn(), logs }; } finally { console.warn = w; } };
+    const rid = 'x_pizza', snap = catalogSnapshot(rid);
+    const it = (k) => snap.items.find((i) => i.key === snap.structure.item_order[k]);
+    const A = it(0), B = it(3), Z = it(5);
+    const line = (d, q) => `${q}x ${d.display.name} (L${d.price})`;
+    const AB = `${line(A, 2)} | ${line(B, 1)}`, BA = `${line(B, 1)} | ${line(A, 2)}`;   // AB = menu order (a pre-§3 client)
+    const itemsBA = [{ name: B.display.name, qty: 1, price: B.price, extras: [] }, { name: A.display.name, qty: 2, price: A.price, extras: [] }];
+    const args = (phone, t) => ({ phone, itemsText: t, orderType: 'pickup', scheduledFor: null });
+    // X: the REAL writer, a priced [B,A] cart
+    const checkout = async (oid) => {
+      const phone = phoneFor();
+      await rtdb.ref('rate_limits').remove();
+      const r = await post(app.chargeOnlineOrder, { restaurant_id: rid, order_id: oid, customer_name: 'E2E', customer_phone: phone, customer_email: 'e2e@example.com', items_text: BA, order_type: 'pickup', payment_method: 'online', items: itemsBA }, { 'x-firebase-id-token': `u_${rid}`, ...H_EQ });   // a current-compat client (the suite arms the floor)
+      assert.strictEqual(r.status, 200, `premise — the priced checkout opens (${r.status} ${JSON.stringify(r.json)})`);
+      return (await rtdb.ref(`orders/${oid}`).get()).val();
+    };
+    // Y: a live CASH order stamped under the pre-§3 VERBATIM key of the MENU-ordered text, after X's intake
+    const legacySibling = async (rec, yid, ytext) => {
+      await rtdb.ref(`orders/${yid}`).set({ order_id: yid, status: 'preparing', customer_phone: rec.customer_phone, items_text: ytext, order_type: 'pickup', payment_method: 'cash', restaurant_id: rid });
+      await rtdb.ref(`recent_order_content/${OD.rateLimitKey(rec.customer_phone)}/${OD.orderContentKeyVerbatim(args(rec.customer_phone, AB))}`).set({ at: Date.now() + 1000, order_id: yid, payment_method: 'cash' });
+    };
+    const confirmAndGuard = async (oid) => { await rtdb.ref(`orders/${oid}/payment_status`).set('confirmed'); const rec = (await rtdb.ref(`orders/${oid}`).get()).val(); return quiet(() => holdIfDuplicateSibling(confirmDeps(rtdb), oid, rec, Date.now())); };
+
+    // 1. held
+    { const oid = 'e2e_r4_held';
+      const rec = await checkout(oid);
+      assert.strictEqual(rec.items_text, BA, 'premise — the persisted text is the posted [B,A]');
+      assert.strictEqual(rec.content_key, OD.orderContentKey(args(rec.customer_phone, BA)), '🔴 the REAL writer persisted content_key');
+      assert.deepStrictEqual(rec.content_legacy_order, [1, 0], '🔴 the REAL writer persisted the menu-order permutation ([B,A] → [A,B]) — a warm snapshot at intake, real-shaped priced lines');
+      assert.ok(!('content_key_legacy_reason' in rec) && !('content_key_legacy' in rec), 'no reason, no free-floating key');
+      await legacySibling(rec, 'e2e_r4_held_Y', AB);
+      const { r } = await confirmAndGuard(oid);
+      const after = (await rtdb.ref(`orders/${oid}`).get()).val();
+      assert.strictEqual(r, true, '🔴 END TO END: the persisted record through the ACTUAL confirmDeps (cold) + the real guard → HELD');
+      assert.strictEqual(after.payment_status, 'manual_reconciliation'); assert.strictEqual(after.sibling_order_id, 'e2e_r4_held_Y');
+      assert.strictEqual(coldReads, 0, 'the cold side made ZERO catalog reads'); }
+    // 2. (a) the stamp points at an UNRELATED live cash order → not held, logged
+    { const oid = 'e2e_r4_unrelated';
+      const rec = await checkout(oid);
+      await legacySibling(rec, 'e2e_r4_unrelated_Y', line(Z, 1));
+      const { r, logs } = await confirmAndGuard(oid);
+      assert.strictEqual(r, false, '🔴 an unrelated live cash sibling → NOT held');
+      assert.strictEqual((await rtdb.ref(`orders/${oid}/payment_status`).get()).val(), 'confirmed', 'the paid order is untouched');
+      assert.ok(logs.some((l) => l.includes('"reason":"sibling_content_mismatch"') && l.includes(`"order_id":"${oid}"`)), 'logged'); }
+    // 3. (b) a corrupted persisted permutation → today's behaviour + a log, never a false hold
+    { const oid = 'e2e_r4_corrupt';
+      await checkout(oid);
+      await rtdb.ref(`orders/${oid}/content_legacy_order`).set([0, 0]);
+      const rec = (await rtdb.ref(`orders/${oid}`).get()).val();
+      await legacySibling(rec, 'e2e_r4_corrupt_Y', AB);
+      const { r, logs } = await confirmAndGuard(oid);
+      assert.strictEqual(r, false, 'a corrupted permutation → the permuted legacy sibling is not found (today\'s behaviour)');
+      assert.ok(logs.some((l) => l.includes('"reason":"invalid_legacy_order"') && l.includes(`"order_id":"${oid}"`)), 'logged'); }
+    ok(`§3 r4 END TO END (x_pizza, priced "${BA}"): the full chargeOnlineOrder persisted content_key + content_legacy_order [1,0]; that record through the ACTUAL confirmDeps (cold, 0 catalog reads) + the real guard → HELD against a legacy [A,B] cash sibling; an unrelated sibling → not held + logged; a corrupted permutation → fallback + logged`);
+  }
+
   FINISHED = true;
   console.log(`\norder-exists(emulator): OK (${n})`);
   process.exit(0);

@@ -78,7 +78,12 @@ for (const [label, start, end, tag, recordUse] of [
   assert.ok(ch.indexOf('/* serial3:begin card-content-keys */') > ch.indexOf('const pendingOrderRecord = {') && ch.indexOf('/* serial3:begin card-content-keys */') < ch.indexOf('acquireHostedAttempt('), '…onto the pending record before it is written');
   const mg = read('materialize-guard.js');
   assert.ok(/const persisted = typeof order\.content_key === 'string' && order\.content_key === ck;/.test(mg), 'the materialize-side guard trusts the persisted keys only when they are THIS content\'s');
-  assert.ok(/const stamp = await readContentStampByKeys\(deps\.db, order\.customer_phone, \[ck, legacyKey\]\);/.test(mg) && !/menuNames/.test(mg), '…reads BOTH keys and never computes from menu names');
+  assert.ok(/const stamp = await readContentStampByKeys\(deps\.db, order\.customer_phone, \[ck, legacyKey \|\| orderContentKeyVerbatim\(args\)\]\);/.test(mg) && !/menuNames/.test(mg), '…reads BOTH keys and never computes from menu names');
+  // r4 (codex r4 P1): the legacy key is REBUILT from the order's own text + the persisted permutation (never a stored key),
+  // and a paid order is held only on a sibling whose OWN content verifies
+  assert.ok(/legacyKey = legacyKeyByOrder\(args, order\.content_legacy_order\)/.test(mg) && !/order\.content_key_legacy\b(?!_reason)/.test(mg), '…the legacy key is rebuilt from the order\'s own text + the permutation; no stored key is trusted');
+  const vAt = mg.indexOf('if (!sibKey || sibKey !== clientContentKey(args))'), dAt = mg.indexOf('if (!dec.collision) return false;'), cAt = mg.indexOf('const claim = await orderRef.transaction(', vAt);
+  assert.ok(dAt > 0 && vAt > dAt && cAt > vAt, '…and the sibling\'s OWN content is verified after the collision decision and BEFORE the hold\'s CAS');
   ok('wiring: the item_order is the PRICING version\'s menu_structure (module deadline); createOrder\'s prior stamp reads both keys; chargeOnlineOrder persists both and the materialize guard reads them (r3, no cold-cache dependency)');
 }
 console.log(`\nserial3-wiring.guard: OK (${n})`);
