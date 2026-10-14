@@ -267,18 +267,25 @@ function shiftOpen(uid, shiftId, hash) {
   await no('svc owning a delivery task CANNOT write the order status (order owner branch excludes the reserved id)', svc.ref('orders/oE3/status').set('delivered'));
   await no('svc owning a delivery task CANNOT stamp delivered_by_driver_uid', svc.ref('orders/oE3/delivered_by_driver_uid').set(SVC));
 
-  // P1-3: driver_tokens is BOUND to the shift rotation (same uid points at this hash in the SAME merged update)
-  await ok('svc CAN create a token BOUND to the rotation (drivers/<uid>/ingest_token_hash === hash in the same update)',
-    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'hashE1', 'driver_tokens/hashE1': { uid: D_EN, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null } }));
+  // P1-3/r2 P1-4: driver_tokens BOUND to the rotation — resulting uid/shift/hash + an ACTUAL rotation; delete needs a replacement.
+  const tok = (uid, shift) => ({ uid, shift_id: shift, device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null });
+  await ok('svc CAN create a token BOUND to the rotation (uid→hash + token.shift_id==driver.current_shift_id + actual rotation)',
+    svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftE', [`drivers/${D_EN}/ingest_token_hash`]: 'hashE1', 'driver_tokens/hashE1': tok(D_EN, 'shiftE') }));
   await no('svc CANNOT create an UNBOUND token (no matching drivers rotation in the update)',
-    svc.ref('driver_tokens/hashUnbound').set({ uid: D_EN, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null }));
-  await no('svc CANNOT mint a token for a DISPATCHER uid even if bound',
-    svc.ref().update({ [`drivers/${DISP}/ingest_token_hash`]: 'hashDisp', 'driver_tokens/hashDisp': { uid: DISP, shift_id: 'shiftE', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null } }));
-  await no('svc CANNOT delete a token the driver STILL points to (outside a rotation)', svc.ref('driver_tokens/hashE1').set(null));
-  await ok('svc CAN delete the prior token WITHIN a rotation (drivers now points to a NEW hash in the same update)',
-    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'hashE2', 'driver_tokens/hashE2': { uid: D_EN, shift_id: 'shiftE2', device_id: null, issued_at: NOW, expires_at: NOW + 1000, revoked_at: null }, 'driver_tokens/hashE1': null }));
+    svc.ref('driver_tokens/hashUnbound').set(tok(D_EN, 'shiftE')));
+  await no('svc CANNOT create a token whose shift_id ≠ the driver current_shift_id (hash matches, shift does not)',
+    svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftX', [`drivers/${D_EN}/ingest_token_hash`]: 'hashMis', 'driver_tokens/hashMis': tok(D_EN, 'shiftDIFFERENT') }));
+  await no('svc CANNOT create a token WITHOUT an actual rotation (driver already points at this hash)',
+    svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftE', [`drivers/${D_EN}/ingest_token_hash`]: 'hashE1', 'driver_tokens/hashE1': tok(D_EN, 'shiftE') }));
+  await no('svc CANNOT mint a token for a DISPATCHER uid even if otherwise bound',
+    svc.ref().update({ [`drivers/${DISP}/current_shift_id`]: 'shiftE', [`drivers/${DISP}/ingest_token_hash`]: 'hashDisp', 'driver_tokens/hashDisp': tok(DISP, 'shiftE') }));
+  await no('svc CANNOT delete a token the driver STILL points to (no replacement)', svc.ref('driver_tokens/hashE1').set(null));
+  await no('svc CANNOT delete the prior token when the driver clears ingest_token_hash to NULL (no replacement installed)',
+    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: null, 'driver_tokens/hashE1': null }));
+  await ok('svc CAN delete the prior token WITHIN a rotation (driver now points at a NEW non-null hash in the same update)',
+    svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftE2', [`drivers/${D_EN}/ingest_token_hash`]: 'hashE2', 'driver_tokens/hashE2': tok(D_EN, 'shiftE2'), 'driver_tokens/hashE1': null }));
   await no('svc CANNOT write a malformed token (missing uid/shift_id)',
-    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'hashBad', 'driver_tokens/hashBad': { device_id: 'x' } }));
+    svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftBad', [`drivers/${D_EN}/ingest_token_hash`]: 'hashBad', 'driver_tokens/hashBad': { device_id: 'x' } }));
 
   await env.cleanup();
   console.log(`\ndriver-eligibility-rules(emulator): OK (${n})`);
