@@ -10719,20 +10719,20 @@
     "site": "async (event) => {",
     "siteSha": "aa85036853cd2416894dadd037a212d6f61d98b9f6675af8c560ac681531d23b",
     "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
-    "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+    "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
      "text": "if (!newDriverId) return;",
-     "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+     "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
      "text": "if (oldDriverId === newDriverId) return; // no change",
-     "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+     "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
     },
     {
      "kind": "F",
@@ -10764,7 +10764,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
-      "xpizza-functions/index.js#functions": 7,
+      "xpizza-functions/index.js#functions": 8,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
      }
     }
@@ -11518,20 +11518,20 @@
     "site": "await sendDriverPush(db, newDriverId, {",
     "siteSha": "ae6050fe6e6046f8bb2e181b755b892ac931dbf798226bcefb6a83315261e599",
     "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
-    "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+    "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
      "text": "if (!newDriverId) return;",
-     "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+     "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#notifyDriverOnAssignment",
      "text": "if (oldDriverId === newDriverId) return; // no change",
-     "scopeSha": "f0ccbdd1f402b8540836238faf86beb2d0c1640dfff46e40790b4f4a11a3db5c"
+     "scopeSha": "e3d86b0ebaceee79aea3934246f19a7998764ff953f8716e46be915f35ea90d9"
     },
     {
      "kind": "F",
@@ -11563,7 +11563,7 @@
       "xpizza-dispatch-mobile/xpizza-delivery.js#xpizza-dispatch-mobile": 1,
       "xpizza-dispatch/xpizza-delivery.js#xpizza-dispatch": 1,
       "xpizza-driver/xpizza-delivery.js#xpizza-driver": 1,
-      "xpizza-functions/index.js#functions": 7,
+      "xpizza-functions/index.js#functions": 8,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1
      }
     }
