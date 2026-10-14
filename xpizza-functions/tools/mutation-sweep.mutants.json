@@ -13333,5 +13333,80 @@
       "run",
       "test:r3-p1a-journey"
     ]
+  },
+  {
+    "id": "r3p1-97",
+    "slice": "r3p1",
+    "file": "contract/scenario-state.js",
+    "from": "&& v.driver === 'none')) return unknown;",
+    "to": ")) return unknown;",
+    "label": "P1-c c1: the driver check establishes ANY expected driver state from \"no task carries a driver\" — an unassigned LP (driver ≠ none) reads as established, so the driver-board exclusion applies on evidence that cannot establish it",
+    "kills_with": [
+      "an unassigned LP was excluded on evidence that cannot establish it"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-98",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "const applies = (entry.appliesWhenAny || []).some((conj) => Object.entries(conj).every(",
+    "to": "const applies = (entry.appliesWhenAny || []).some((conj) => Object.entries(conj).some(",
+    "label": "P1-c c1: a conjunction is read as a disjunction — driver ∈ {assigned, reassigned} ∧ terminal = none applies at a never-assigned LP (terminal none alone)",
+    "kills_with": [
+      "evaluates as applies"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-99",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.json",
+    "from": "\"no-exec:xpizza-driver/xpizza-delivery.js#acceptTask\"",
+    "to": "\"no-exec:xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon\"",
+    "label": "P1-c c2: a driver action decided on the generic handler bundle instead of the action's own scope (any other card callback entering the bundle would decide accept)",
+    "kills_with": [
+      "(not the action's own scope)"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-100",
+    "slice": "r3p1",
+    "file": "contract/region-applicability.js",
+    "from": "const applies = (entry.appliesWhenAny || []).some((conj) =>",
+    "to": "const applies = (entry.appliesWhenAny || []).every((conj) =>",
+    "label": "P1-c c3: the condition list is read as a conjunction — terminal = delivered ∨ cancelled no longer applies at a delivered (not cancelled) LP, so the shift cash / cuadre would be excluded where it shows the order",
+    "kills_with": [
+      "evaluates as excluded-by-vector"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p1-101",
+    "slice": "r3p1",
+    "file": "driver-attribution.js",
+    "from": "await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });   // unconditional",
+    "to": "/* deletion dropped */",
+    "label": "codex P1-c r1 P2: the terminal-edge helper no longer deletes the task legs — a delivered order would stay on the driver board, so the board exclusions must go stale",
+    "kills_with": [
+      "guard text no longer in xpizza-functions/driver-attribution.js#captureDeliveryAttributionAndDelete"
+    ],
+    "command": [
+      "node",
+      "contract/applicability.guard.test.js"
+    ]
   }
 ]

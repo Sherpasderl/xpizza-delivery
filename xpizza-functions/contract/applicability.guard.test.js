@@ -3,7 +3,7 @@
 // (contract/region-applicability.js; DESIGN-R3-P1B.md rev 2). Every reviewed region entry is fresh (call site, scope,
 // guard / dispatch source, scenario bindings), well-formed (declared fields, in-domain values, contract authority, why
 // false excludes) and its reviewed cases evaluate as stated; the derived exclusions at S1 / x_pizza / new are EXACTLY the
-// frozen P1-a set (66 + int7 detailCtaTap = 67); no absence / display obligation is waived anywhere in P1; gate B agrees.
+// frozen P1-a set (66 + int7 detailCtaTap = 67) — P1-c's R4 / R5 entries are other readers; no absence / display obligation is waived anywhere in P1; gate B agrees.
 // Run: node contract/applicability.guard.test.js
 const assert = require('assert');
 const fs = require('fs');
@@ -316,4 +316,111 @@ window.__timer = () => setTimeout(() => openOrderDetailModal('o9'), 0);`;
   assert.ok(n === 61 && noUi.length === 0, FAIL(`dispatch entries ${n} (expected 61); entries still decided on UI events: ${noUi.slice(0, 3)}`));
 }
 ok('dispatch on EXECUTION (codex b3 r1): the real dispatch unit is probed line-preservingly; a detached .click(), a value= rewiring and a timer each ENTER the handler → required; probed + never entered → excluded; UI evidence alone never excludes; no entry is decided on UI events');
+{ // P1-c c1 (R4 driver board + R5 assignment push): the board entries are decided on getDriverOrders' filter, the
+  // atomic delivered writers and the server's terminal task delete; drift in any of them → stale; run evidence can
+  // establish only "never assigned" (an unassigned / delivered LP stays required)
+  const P = 'xpizza-driver/index.html<script@0>'; const D = 'xpizza-driver/xpizza-delivery.js'; const I = 'xpizza-functions/index.js';
+  const board = Object.entries(doc.regions).filter(([, e]) => e.group === 'driverBoard');
+  const push = [`${I}#notifyDriverOnAssignment@self`, `${I}#sendDriverPush@${I}#notifyDriverOnAssignment`];
+  assert.ok(board.length === 22 && board.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ driver: ['assigned', 'reassigned'], terminal: ['none'] }])) && push.every((k) => doc.regions[k] && doc.regions[k].group === 'driverPush'), FAIL(`driver board entries ${board.length} (expected 22) / assignment push entries missing`));
+  const units = require('./census').sources();
+  const edit = (file, from, to) => units.map((u) => { if (u.file !== file) return u; assert.strictEqual(u.code.split(from).length - 1, 1, FAIL(`probe text not exactly once in ${file}: ${from}`)); return { ...u, code: u.code.replace(from, to) }; });
+  // each distinct guard once per probe; a scope guard re-parses only its own unit (the R guards scan every unit)
+  const uniq = new Map(); for (const [, e] of board) for (const g of e.guards) uniq.set(JSON.stringify(g), g);
+  const ownUnit = (g, u) => u.filter((x) => g.scope.startsWith(`${x.file}#`) || g.scope.startsWith(`${x.file.replace(/<script@\d+>$/, '')}#`));
+  // F / K guards read the file: serve a whole-file unit's (edited) code, else the disk
+  const fileOf = (u) => (f) => { const x = u.find((y) => y.file === f); return x ? x.code : fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8'); };
+  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u, readFile: fileOf(u) })).map(([k]) => k)); return board.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
+  const base = staleIn(units); assert.strictEqual(base, 0, FAIL(`${base} driver board entries are stale on the real source`));
+  const drift = [
+    ['the assigned-driver filter removed', edit(D, 'if (t.assigned_driver_id !== driverId) return;\n    if (!grouped[t.order_id])', 'if (!grouped[t.order_id])')],
+    ['completed deliveries kept on the board', edit(P, 'const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders);', 'const orders = XPD.getDriverOrders(currentUser.uid, allTasks, allOrders, true);')],
+    ['the idle screen renders a payment row', edit(P, 'syncIdleStats();\n}', 'syncIdleStats(); paymentRowHtml(allOrders, escapeHtml);\n}')],
+    ['a new ORDER_STATUS.DELIVERED writer', units.map((u) => (u.file === 'xpizza-dispatch/index.html<script@0>' ? { ...u, code: u.code + '\nfunction __forceDelivered(id) { return { [\'orders/\' + id + \'/status\']: ORDER_STATUS.DELIVERED }; }' } : u))],
+    ['the server terminal task delete dropped', edit(I, 'await captureDeliveryAttributionAndDelete(db, orderId);', '')],
+    // codex P1-c r1 P2: the deletion INSIDE the helper, and the terminal-edge implementation
+    ['the helper\'s task deletion dropped', edit('xpizza-functions/driver-attribution.js', 'await db.ref().update({ [`tasks/${orderId}_pickup`]: null, [`tasks/${orderId}_delivery`]: null });', '')],
+    ['the terminal edge never fires', edit('xpizza-functions/tasks-retention.js', 'return !!terminalSet && terminalSet.has(after) && !terminalSet.has(before);', 'return false;')],
+    ['delivered dropped from the real-time terminal set', edit('xpizza-functions/tasks-retention.js', "const REALTIME_TERMINAL_STATUSES = new Set(['delivered', 'completed']);", "const REALTIME_TERMINAL_STATUSES = new Set(['completed']);")],
+  ];
+  for (const [what, u] of drift) { const k = what === 'the idle screen renders a payment row' ? board.filter(([id]) => /paymentRowHtml/.test(id)).length : board.length; const got = staleIn(u); assert.ok(got >= k, FAIL(`${what}: only ${got} of the driver board entries went stale`)); }
+  const pg = doc.regions[push[0]].guards.find((g) => g.kind === 'S' && g.text === 'if (!newDriverId) return;');
+  assert.ok(pg && !AP.guardStale(pg) && AP.guardStale(pg, { units: edit(I, 'if (!newDriverId) return;', 'if (!newDriverId && false) return;') }), FAIL('weakening the assignment push guard did not make it stale'));
+  // run evidence: never assigned (complete log + task records) → excluded; an assigned task → contradicted; unassigned /
+  // delivered LPs cannot be established by evidence (driver ≠ none) → required, never excluded
+  const r = `${D}#getDriverOrders@${P}#renderActiveAndQueue`; const id = board.find(([k]) => /paymentRowHtml@.*renderActiveCard$/.test(k))[0];
+  assert.ok(!doc.regions[r], FAIL('getDriverOrders itself (the filter) must stay REQUIRED'));
+  const ev = (st, tasks, events = [], action = st === 'delivered' ? 'completeDelivery' : 'create') => ({ persisted: { restaurant_id: 'x_pizza', status: st }, tasks, assignLog: { complete: true, events }, lpAction: { action, ack: true } });
+  const at = (S, lp) => ({ S, brand: 'x_pizza', lp });
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'new'), ev('new', { t_pickup: { assigned_driver_id: null } })).outcome, 'excluded', FAIL('never assigned did not exclude the board at S1/new'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'new'), ev('new', { t_pickup: { assigned_driver_id: 'd1' } })).outcome, 'contradicted', FAIL('an assigned task at S1/new did not contradict'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'new'), ev('new', {}, [{ before: null, after: 'd1' }])).outcome, 'contradicted', FAIL('assigned-then-cleared at S1/new did not contradict'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1t-c', 'unassigned'), ev('ready', {}, [], 'unassign')).outcome, 'required', FAIL('an unassigned LP was excluded on evidence that cannot establish it'));
+  assert.strictEqual(RA.runDecision(doc, id, at('S1', 'delivered'), ev('delivered', {})).outcome, 'required', FAIL('a delivered LP was excluded without driver evidence'));
+  assert.strictEqual(RA.staticDecision(doc, id, at('S1', 'assigned')).excluded, false, FAIL('the board was excluded at an assigned LP'));
+}
+ok('driver board (P1-c c1): 22 entries on driver ∈ {assigned, reassigned} ∧ terminal = none + 2 assignment-push entries; dropping the assigned-driver filter, keeping completed deliveries, an idle-screen payment row, a new DELIVERED writer, dropping the server terminal task delete, the helper\'s deletion itself (codex r1 P2), the terminal edge or delivered from its set → stale; weakening `if (!newDriverId) return;` → stale; getDriverOrders stays required; never assigned → excluded, assigned / assigned-then-cleared → contradicted, unassigned / delivered LPs → required');
+{ // P1-c c2 (R4 driver actions): decided on the ACTION's own execution (no-exec on xpizza-delivery.js#<fn>, never the
+  // generic handler bundle); where the action IS the LP's action (pickupComplete / completeDelivery) it stays required
+  const D = 'xpizza-driver/xpizza-delivery.js'; const P = 'xpizza-driver/index.html<script@0>';
+  const acts = Object.entries(doc.regions).filter(([, e]) => e.group === 'driver-action');
+  const want = { acceptTask: 1, pickupComplete: 1, completeTask: 2, acceptSecondOrder: 2, arriveAtRestaurant: 1 };
+  const got = {}; for (const [, e] of acts) { assert.strictEqual(e.context.length, 1, FAIL('a driver action entry has more than its own no-exec')); const m = /^no-exec:xpizza-driver\/xpizza-delivery\.js#(\w+)$/.exec(e.context[0]); assert.ok(m, FAIL(`driver action decided on ${e.context[0]} (not the action's own scope)`)); got[m[1]] = (got[m[1]] || 0) + 1; }
+  assert.deepStrictEqual(got, want, FAIL(`driver action entries by probe scope ${JSON.stringify(got)}`));
+  const exOf = (fn, entered) => ({ exec: { probed: [`${D}#${fn}`], entered: entered ? [`${D}#${fn}`] : [] } });
+  const ev = (st, action, x) => ({ persisted: { restaurant_id: 'x_pizza', status: st }, lpAction: { action, ack: true }, ...x });
+  const cT = `${D}#completeTask@${P}#attachActiveCardHandlers>anon`; const aT = `${D}#acceptTask@${P}#attachActiveCardHandlers>anon`;
+  const at = (S, lp) => ({ S, brand: 'x_pizza', lp });
+  // out_for_delivery LP (pickupComplete): completeTask probed + never entered → excluded; entered → required; unprobed → required
+  assert.strictEqual(RA.runDecision(doc, cT, at('S1', 'out_for_delivery'), ev('out_for_delivery', 'pickupComplete', exOf('completeTask', false))).outcome, 'excluded', FAIL('a probed, never-entered completeTask was not excluded'));
+  assert.strictEqual(RA.runDecision(doc, cT, at('S1', 'out_for_delivery'), ev('out_for_delivery', 'pickupComplete', exOf('completeTask', true))).outcome, 'required', FAIL('an entered completeTask was excluded'));
+  assert.strictEqual(RA.runDecision(doc, cT, at('S1', 'out_for_delivery'), ev('out_for_delivery', 'pickupComplete', exOf('acceptTask', false))).outcome, 'required', FAIL('completeTask excluded on a trace that never probed it'));
+  // the delivered LP IS completeTask's action → required even with no entry recorded (another surface may have completed it)
+  assert.strictEqual(RA.staticDecision(doc, cT, at('S1', 'delivered')).excluded, false, FAIL('completeTask was excluded at the completeDelivery LP'));
+  assert.strictEqual(RA.staticDecision(doc, `${D}#pickupComplete@${P}#attachActiveCardHandlers>anon`, at('S1', 'out_for_delivery')).excluded, false, FAIL('pickupComplete was excluded at the pickupComplete LP'));
+  // acceptTask: no LP is an accept → excluded only on its own execution evidence
+  assert.strictEqual(RA.runDecision(doc, aT, at('S1', 'new'), ev('new', 'create', exOf('acceptTask', false))).outcome, 'excluded', FAIL('a probed, never-entered acceptTask was not excluded'));
+  assert.strictEqual(RA.runDecision(doc, aT, at('S1', 'new'), ev('new', 'create', {})).outcome, 'required', FAIL('acceptTask excluded with no trace'));
+}
+ok('driver actions (P1-c c2): 7 entries decided on the action\'s OWN scope (acceptTask, pickupComplete, completeTask ×2, acceptSecondOrder ×2, arriveAtRestaurant), never the handler bundle; probed + never entered → excluded; entered / unprobed / no trace → required; completeTask at a completeDelivery LP and pickupComplete at a pickupComplete LP stay required');
+{ // P1-c c3 (codex P1-c r1 P1 fold): the shift AGGREGATES show a figure at every LP (zero deliveries is a figure) → stay
+  // REQUIRED; only per-delivery code (runs once per order shiftDeliveries lists — delivered_at, stamped only with the
+  // delivered status, or cancelled after it) is reviewed
+  const CH = 'xpizza-driver/cash-helpers.js'; const P = 'xpizza-driver/index.html<script@0>'; const DD = 'xpizza-driver/xpizza-delivery.js';
+  const per = Object.entries(doc.regions).filter(([, e]) => e.group === 'driverShiftDelivery');
+  assert.ok(per.length === 2 && per.every(([, e]) => JSON.stringify(e.appliesWhenAny) === JSON.stringify([{ terminal: ['delivered'] }, { cancelled: [true] }])), FAIL(`per-delivery shift entries ${per.length} (expected 2) / condition`));
+  const aggregates = [`${CH}#cuadreRecordPayload@${DD}#recordCuadre`, `${CH}#computeShiftCash@${P}#renderCuadreReceipt`, `${CH}#computeShiftCash@${P}#syncIdleStats`, `${CH}#shiftDeliveries@${CH}#computeShiftCash`, `${CH}#shiftDeliveries@${P}#renderHistoryModal`, `${P}#renderIdleState@${P}#renderActiveAndQueue`];
+  for (const r of aggregates) assert.ok(!doc.regions[r], FAIL(`${r}: a shift aggregate is excluded — it shows a figure (zero deliveries included) at every LP`));
+  // codex P1-c r1 P1 reproduction: a zero-delivery shift's cuadre is REAL output — execute the real cash helpers on no
+  // deliveries, mutate the zero cash to 1 inside the payload builder; the S1 / assigned CASH cell must stay required
+  const vm = require('vm'); const src = fs.readFileSync(path.join(__dirname, '..', '..', CH), 'utf8').replace(/^export /gm, '');
+  const load = (code) => { const ctx = {}; vm.runInNewContext(`${code}\nthis.computeShiftCash = computeShiftCash; this.cuadreRecordPayload = cuadreRecordPayload;`, ctx); return ctx; };
+  const real = load(src); const zero = real.cuadreRecordPayload(real.computeShiftCash({}, 'd1', 0, null));
+  assert.ok(zero.cash_owed === 0 && zero.cash_order_count === 0, FAIL('probe premise: a zero-delivery cuadre writes cash_owed 0'));
+  const from = 'cash_owed: num(c.cashOwed != null ? c.cashOwed : c.cash_owed),'; assert.strictEqual(src.split(from).length - 1, 1, FAIL('the cuadre payload probe text moved'));
+  const mut = load(src.replace(from, 'cash_owed: num(c.cashOwed != null ? c.cashOwed : c.cash_owed) || 1,'));
+  assert.strictEqual(mut.cuadreRecordPayload(mut.computeShiftCash({}, 'd1', 0, null)).cash_owed, 1, FAIL('probe premise: the mutated payload did not write 1'));
+  const cells = gateA({ scenarios: ['S1'], brands: ['x_pizza'], lps: ['assigned'] }).cells.filter((c) => c.R === 'R4' && c.fact === 'CASH' && (c.viaFrom || c.region) === aggregates[0]);
+  assert.ok(cells.length > 0 && cells.every((c) => !RA.staticDecision(doc, c.viaFrom || c.region, c).excluded), FAIL(`R3:R4:CASH:S1:x_pizza:assigned on the cuadre payload is excluded (${cells.length} cells) — a mutated zero-delivery cuadre would escape`));
+  const units = require('./census').sources();
+  const edit = (file, from2, to) => units.map((u) => { if (u.file !== file) return u; assert.strictEqual(u.code.split(from2).length - 1, 1, FAIL(`probe text not exactly once in ${file}: ${from2}`)); return { ...u, code: u.code.replace(from2, to) }; });
+  const uniq = new Map(); for (const [, e] of per) for (const g of e.guards) uniq.set(JSON.stringify(g), g);
+  const ownUnit = (g, u) => u.filter((x) => g.scope.startsWith(`${x.file}#`) || g.scope.startsWith(`${x.file.replace(/<script@\d+>$/, '')}#`));
+  const staleIn = (u) => { const st = new Set([...uniq].filter(([, g]) => AP.guardStale(g, { units: g.kind === 'S' ? ownUnit(g, u) : u })).map(([k]) => k)); return per.filter(([, e]) => e.guards.some((g) => st.has(JSON.stringify(g)))).length; };
+  assert.strictEqual(staleIn(units), 0, FAIL('per-delivery shift entries are stale on the real source'));
+  for (const [what, u] of [
+    ['shiftDeliveries lists undelivered orders', edit(CH, 'if (at == null || at < sinceMs) continue;', 'if (at != null && at < sinceMs) continue;')],
+    ['a new delivered_at writer', units.map((x) => (x.file === 'xpizza-dispatch/index.html<script@0>' ? { ...x, code: x.code + '\nfunction __stamp(id) { return { [\'orders/\' + id + \'/delivered_at\']: Date.now() }; }' } : x))],
+    ['computeShiftCash collects outside its delivered loop', edit(CH, 'for (const { order } of resolved.concat(legacyProvisional)) {', 'for (const { order } of resolved.concat(legacyProvisional, pending.map((id) => ({ order: ordersMap[id] })))) {')],
+  ]) { const got = staleIn(u); assert.ok(got === per.length, FAIL(`${what}: only ${got} of ${per.length} per-delivery entries went stale`)); }
+  const id = `${CH}#collectionFor@${CH}#computeShiftCash`; const e = doc.regions[id];
+  const v = SS.vectorOf('S1', 'x_pizza', 'out_for_delivery');
+  assert.strictEqual(RA.evaluate(e, { ...v, cancelled: true }).result, 'applies', FAIL('a cancelled (after delivery) order was excluded from the per-delivery collection'));
+  const ev = (st, x = {}) => ({ persisted: { restaurant_id: 'x_pizza', status: st, ...x }, lpAction: { action: 'pickupComplete', ack: true } });
+  const at = { S: 'S1', brand: 'x_pizza', lp: 'out_for_delivery' };
+  assert.strictEqual(RA.runDecision(doc, id, at, ev('out_for_delivery')).outcome, 'excluded', FAIL('a live, undelivered order was not excluded from the per-delivery collection'));
+  assert.strictEqual(RA.runDecision(doc, id, at, ev('cancelled', { cancelled_at: 1 })).outcome, 'contradicted', FAIL('a cancelled order at an out_for_delivery LP did not contradict'));
+  assert.strictEqual(RA.staticDecision(doc, id, { S: 'S1', brand: 'x_pizza', lp: 'cuadre' }).excluded, false, FAIL('the per-delivery collection was excluded at the cuadre LP'));
+}
+ok('driver shift (P1-c c3, codex r1 P1 fold): the 6 shift AGGREGATES (cuadre payload, receipt, idle stats + idle state, shiftDeliveries ×2) stay REQUIRED — a mutated zero-delivery cuadre (cash 0 → 1, real helpers) keeps R3:R4:CASH:S1:x_pizza:assigned required; 2 per-delivery entries on terminal = delivered ∨ cancelled; listing undelivered orders, a new delivered_at writer or collecting outside the delivered loop → stale; cancelled-after-delivery applies; live undelivered → excluded, cancelled → contradicted; the cuadre LP stays required');
 console.log(`\nr3-applicability guard: OK (${n})`);
