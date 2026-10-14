@@ -11551,7 +11551,7 @@
     "id": "r3p0-05",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "        if (segs.length === 0 && !String(k).startsWith('orders')) continue;      // a root write of another tree",
+    "from": "        else if (segs.length === 0) continue;      // a root write of another tree",
     "to": "        if (segs.length === 0) continue;      // a root write of another tree",
     "label": "the write inventory stops seeing `updates[`orders/${id}`] = …` multipath assignments (codex r1 P1-1) — B4 r1: re-pointed to contract/write-provenance.js",
     "kills_with": "R3-CENSUS",
@@ -12051,8 +12051,8 @@
     "id": "r3p0-44",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "    const calls = nm && IDENT.test(nm) ? (CALLS.get(nm) || [])",
-    "to": "    const calls = false ? (CALLS.get(nm) || [])",
+    "from": "    const calls = callsOf(s.b.fnNode).filter(",
+    "to": "    const calls = [].filter(",
     "label": "B4 r1: a PARAMETER payload is never resolved at its call sites (acquireHostedAttempt's pendingOrderRecord spread)",
     "kills_with": [
       "acquireHostedAttempt opaque-order-object line 128 (pendingOrderRecord)"
@@ -12141,11 +12141,146 @@
     "id": "r3p0-50",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "      const nm = calleeName(n);\n      const fns = nm ? FUNCS.get(nm) || [] : [];",
-    "to": "      const nm = null;\n      const fns = nm ? FUNCS.get(nm) || [] : [];",
+    "from": "      const fns = fnsFor(n);",
+    "to": "      const fns = [];",
     "label": "B4 r1: a builder CALL's return is never followed (hubSnapshot / buildCreateOrderUpdates)",
     "kills_with": [
-      "delegates to claimDecision"
+      "cancelOrderCore opaque-order-object line 101 (orders/*: C.claimDecision(cur, claimId, now))"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-51",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      if (b.heap) own.push({ k: 'unresolved', node: n, why: `escapes (${b.heap})` });",
+    "to": "      if (false) own.push({ k: 'unresolved', node: n, why: `escapes (${b.heap})` });",
+    "label": "B4 r2 P1-3: an object that escaped into the heap (constructor / array / untracked call) reads as fully resolved",
+    "kills_with": [
+      "the order record handed to a class instance that mutates this.rec: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-52",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];",
+    "to": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'ArrayExpression' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];",
+    "label": "B4 r2 P1-3: an ARRAY payload is empty provenance again",
+    "kills_with": [
+      "an ARRAY element pushed to /orders (charge handler): the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-53",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      if (b.currentOrder) return own;",
+    "to": "      if (false) return own;",
+    "label": "B4 r2 P1-1/P2-5: a transaction updater's parameter is no longer the current order (its spread / return is unresolved)",
+    "kills_with": [
+      "cancel-order-core.js finalize opaque-order-object line 45 (cur)"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-54",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "keysOf: x.computed ? keysOfInit(x.property) : null });",
+    "to": "keysOf: null });",
+    "label": "B4 r2 P1-2: a for-in key no longer ranges over its source's keys (graduation paths unresolved)",
+    "kills_with": [
+      "readyTimeGraduationMonitor computed-key-at-root line 5152 (path)"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-55",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (!b || depth > 4 || b.kind !== 'var' || b.inits.length !== 1) return id.name;",
+    "to": "    return id.name;",
+    "label": "B4 r2 P1-2: a call through a require-then-assign ALIAS is not a call site",
+    "kills_with": [
+      "acquireOnlineAttempt called through a require-then-assign ALIAS: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-56",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    opaqueW(node, 'function-escapes', name);",
+    "to": "    void name;",
+    "label": "B4 r2 P1-2: a function with a param sink referenced as a VALUE is silently accepted",
+    "kills_with": [
+      "acquireOnlineAttempt passed as a VALUE (callers out of view): the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-57",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        if (segs.length === 0 && couldBeOrders(String(k).split('/')[0])) {",
+    "to": "        if (segs.length === 0 && String(k).split('/')[0] === 'orders') {",
+    "label": "B4 r2: a root key with a dynamic FIRST segment is treated as another tree",
+    "kills_with": [
+      "a dynamic FIRST segment at the root could be orders: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-58",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    const all = FUNCS.get(nm) || [];\n    const c = call.callee;",
+    "to": "    const all = FUNCS.get(nm) || [];\n    return all; const c = call.callee;",
+    "label": "B4 r2: a call resolves to EVERY same-named function in any file (not its local / required module's)",
+    "kills_with": [
+      "acquireOnlineAttempt opaque-order-object line 92 (orders/*: c — escapes (via:paymentBindingConflict))"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-59",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        if (/^(Object|Array|String|Number)\\.prototype\\./.test(srcOf(c))) return null;   // Object.prototype.hasOwnProperty.call(x, k)",
+    "to": "        if (false) return null;   // Object.prototype.hasOwnProperty.call(x, k)",
+    "label": "B4 r2: Object.prototype.*.call(x) reads count as a heap escape",
+    "kills_with": [
+      "acquireOnlineAttempt opaque-order-object line 92 (orders/*: c — escapes (via:paymentBindingConflict))"
     ],
     "command": [
       "node",

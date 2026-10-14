@@ -82,9 +82,6 @@ for (const [name, code, re] of [
   ['money-path-optional', "function shiftCashProbeO(o, uid) { return o?.courier_cash_exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeO/],
   ['money-path-destructure-default', "function shiftCashProbeD(o, uid) { const { courier_cash_exempt = false } = o; return courier_cash_exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier_cash_exempt' .*shiftCashProbeD/],
   ['money-path-destructure-nested', "function shiftCashProbeN(o, uid) { const { courier: { exempt } } = o; return exempt ? 0 : o.total; }", /unregistered field read on a money path: 'courier' .*shiftCashProbeN/],
-  // a bound opaque write is bound to its COUNT: a second write of the same shape is RED (B4 r1: re-pointed to a binding
-  // that survives provenance — the old createOrder `record` write now resolves through its builder)
-  ['second-bound-write', "exports.readyTimeGraduationMonitor = onSchedule({}, async () => { const updates = {}; for (const path in verdicts) updates[path] = 1; await db.ref().update(updates); });", /matches 2 write\(s\), reviewed for 1/],
 ]) {
   const p = problemsWith(asIndex(code));
   assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
@@ -125,6 +122,50 @@ for (const [name, code, re] of [
     const p = problemsWith(u);
     assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG provenance ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
     ok(`provenance — ${name}: RED — ${p.filter((x) => re.test(x))[0].slice(0, 110)}`);
+  }
+  // B4 r2 (codex R3-B4 r2, advisor ruling: FAIL CLOSED — a value reaching a write is fully resolved or carries an OPAQUE
+  // marker; never an empty provenance). Each probe below must turn the census RED.
+  const DYN = /opaque order write unresolved: .*dynamic-field-segment/;
+  const OPQ = /opaque order write unresolved: /;
+  for (const [name, u, re] of [
+    ['r2 P1-1 real: delegated transaction return + a dynamic key (claim-order bindDecision)', real('claim-order.js', '  return { ...cur, customer_uid: uid };\n', "  return { ...cur, customer_uid: uid, ['surcharge_' + uid]: 900 };\n"), DYN],
+    ['r2 P1-1 real: delegated transaction return + an unresolved spread (claim-order bindDecision)', real('claim-order.js', '  return { ...cur, customer_uid: uid };\n', '  return { ...cur, customer_uid: uid, ...JSON.parse(\'{"surcharge_cents":900}\') };\n'), /opaque order write unresolved: .*spread-in-order-write/],
+    ['r2 P1-2 real: an order path added to the graduation verdicts before the root loop', real('index.js', '    for (const path in out.verdicts) updates[path] = out.verdicts[path];', "    out.verdicts['orders/probe/surcharge_cents'] = 900;\n    for (const path in out.verdicts) updates[path] = out.verdicts[path];"), NEW_S],
+    ['r2 P1-2 real: the graduation helper builds its path by a call (no longer a literal tree)', real('ready-time-graduation.js', '    const path = `ready_time_graduation/${s.g.v}/${s.g.restaurant}/${s.g.source}/${s.g.bucket_key}`;', "    const path = ['orders', s.g.restaurant, 'surcharge_cents'].join('/');"), /opaque order write unresolved: .*readyTimeGraduationMonitor computed-key-at-root/],
+    ['r2 P1-2 real: acquireOnlineAttempt called through a require-then-assign ALIAS', real('index.js', "chargeOnlineApp.all('*', async (req, res) => {\n", "const chargeProbe = require('./pixelpay-charge').acquireOnlineAttempt;\nchargeOnlineApp.all('*', async (req, res) => {\n  await chargeProbe(db, req.body.id, { surcharge_cents: 900 }, 'fp');\n"), NEW_S],
+    ['r2 P1-2 real: acquireOnlineAttempt passed as a VALUE (callers out of view)', real('index.js', "chargeOnlineApp.all('*', async (req, res) => {\n", "const attemptFns = [require('./pixelpay-charge').acquireOnlineAttempt];\nchargeOnlineApp.all('*', async (req, res) => {\n"), /opaque order write unresolved: .*function-escapes .*acquireOnlineAttempt/],
+    ['r2 P1-3 real: the order record handed to a class instance that mutates this.rec', real('create-order-build.js', '  updates[`orders/${orderId}`] = orderRecord;\n', '  updates[`orders/${orderId}`] = orderRecord;\n  class RecordProbe { constructor(r) { this.rec = r; } stamp() { this.rec.surcharge_cents = 900; } }\n  new RecordProbe(orderRecord).stamp();\n'), /opaque order write unresolved: .*orderRecord — escapes \(new\)/],
+    ['r2 P1-3 real: an ARRAY element pushed to /orders (charge handler)', real('index.js', "chargeOnlineApp.all('*', async (req, res) => {\n", "chargeOnlineApp.all('*', async (req, res) => {\n  const batchProbe = []; batchProbe.push({ surcharge_cents: 900 }); await db.ref('orders').push(batchProbe[0]);\n"), OPQ],
+    ['r2 P1-3 synthetic: a `this`-rooted payload', asIndex("class P { async go(db, id) { this.rec = {}; this.rec.surcharge_cents = 900; await db.ref(`orders/${id}`).set(this.rec); } }"), OPQ],
+    ['r2 P1-3 synthetic: an object passed to an untracked call before the write', asIndex("createOrderApp.all(async (req, res) => { const rec = { status: 'new' }; mysteryMutator(rec); await db.ref(`orders/${id}`).set(rec); });"), /opaque order write unresolved: .*rec — escapes \(call:mysteryMutator\)/],
+    ['r2 P1-3 synthetic: a dynamic FIRST segment at the root could be orders', asIndex("createOrderApp.all(async (req, res) => { const updates = {}; updates[`${tree}/x/surcharge_cents`] = 1; await db.ref().update(updates); });"), /opaque order write unresolved: .*computed-key-at-root/],
+    ['r2 P2-4: a constant-folded key IS the literal field (resolved provenance, recorded as written)', real('create-order-build.js', '    orderRecord.lat = lat;\n', "    orderRecord.lat = lat;\n    const feeKey = 'surcharge_' + 'cents';\n    orderRecord[feeKey] = 900;\n"), NEW_S],
+  ]) {
+    const p = problemsWith(u);
+    assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG fail-closed ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
+    ok(`fail-closed — ${name}: RED — ${p.filter((x) => re.test(x))[0].slice(0, 110)}`);
+  }
+  // a bound opaque write is bound to its COUNT: a second write of the same shape is RED (B4 r2: re-pointed to the one
+  // remaining binding — acquireOnlineAttempt's pendingOrderRecord, which has no production caller)
+  {
+    const p = problemsWith(real('pixelpay-charge.js', 'async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null) {\n', 'async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null) {\n  await db.ref(`orders/${orderId}`).set(pendingOrderRecord);\n'));
+    assert.ok(p.some((x) => /acquireOnlineAttempt opaque-order-object \(pendingOrderRecord\) matches 2 write\(s\), reviewed for 1/.test(x)), `🔴 R3-CENSUS-NEG second-bound-write: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
+    ok('second-bound-write: a second unresolved write of the bound shape → RED (the binding is bound to its count)');
+  }
+  // r2: a LOCAL call resolves to the local function, never to a same-named function of another file (whose parameter
+  // escaping would make this quiet write a false opaque)
+  {
+    const other = { file: 'xpizza-functions/zz-r3-negative-other.js', scope: 'functions', kind: 'fn', lineOffset: 0, module: false, code: 'function readProbe(r) { mysteryMutator(r); }\nmodule.exports = { readProbe };' };
+    const local = asIndex("function readProbe(r) { return !!r; }\ncreateOrderApp.all(async (req, res) => { const rec = { status: 'new' }; readProbe(rec); await db.ref(`orders/${id}`).set(rec); });");
+    const p = build({ extraUnits: [other, local] }).problems;
+    assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG fail-closed local-call: a local call was resolved to another file's same-named function (${JSON.stringify(p.slice(0, 3))})`);
+    ok('fail-closed — a local call binds to the LOCAL function (another file\'s same-named escaping helper does not apply): QUIET');
+  }
+  // r2 P2-5: an UNUSED local object literal inside a real transaction updater is QUIET (provenance runs to the return)
+  {
+    const p = problemsWith(real('pixelpay-hosted-charge.js', "      if (decided.kind === 'create') {\n", "      const localProbe = { surcharge_cents: 900 };\n      if (decided.kind === 'create') {\n"));
+    assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG fail-closed r2 P2-5: an unused local literal inside acquireHostedAttempt's updater was reported (${JSON.stringify(p.slice(0, 3))})`);
+    ok('fail-closed — r2 P2-5 real: an unused local literal inside the acquireHostedAttempt updater: QUIET');
   }
   // P2b: a purely LOCAL object that never persists (no sink, never escapes) is QUIET — no false write finding
   for (const [name, code] of [

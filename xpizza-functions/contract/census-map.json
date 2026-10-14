@@ -1180,15 +1180,6 @@
   },
   "opaqueWriteResolutions": [
     {
-      "file": "xpizza-functions/index.js",
-      "fn": "readyTimeGraduationMonitor",
-      "how": "computed-key-at-root",
-      "detail": "path",
-      "fields": [],
-      "reason": "B4 r1 (provenance): `updates[path]` keys are ready-time-graduation.js computeGraduation verdict paths, built as `ready_time_graduation/${v}/${restaurant}/${source}/${bucket}` (ready-time-graduation.js ~191) — never under orders/; the one literal key is ready_time_graduation/_meta/active_config_hash",
-      "count": 1
-    },
-    {
       "file": "xpizza-functions/pixelpay-charge.js",
       "fn": "acquireOnlineAttempt",
       "how": "opaque-order-object",

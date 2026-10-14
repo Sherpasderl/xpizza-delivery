@@ -41,7 +41,7 @@
   },
   "sendSites": 23,
   "fieldsWritten": 90,
-  "opaqueWrites": 2,
+  "opaqueWrites": 1,
   "opaque": 81,
   "projections": 113,
   "sentinel": 3,
@@ -39168,22 +39168,16 @@
    "key": "xpizza-functions/cancel-order-core.js#releaseCancelClaim#resolving_claimed_at#transaction-updater"
   },
   {
-   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#cancel_claim_id#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#cancel_claim_id#transaction-updater"
   },
   {
-   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_action#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_action#transaction-updater"
   },
   {
-   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_phase#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_phase#transaction-updater"
   },
   {
-   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_claimed_at#transaction-delegate:claimDecision"
-  },
-  {
-   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#payment_status#transaction-delegate:claimDecision"
-  },
-  {
-   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_claim_id#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/cancel-order-core.js#cancelOrderCore#resolving_claimed_at#transaction-updater"
   },
   {
    "key": "xpizza-functions/cancel-order-core.js#markSideEffectStarted#resolving_phase#transaction-updater"
@@ -39210,7 +39204,7 @@
    "key": "xpizza-functions/cancel-order-core.js#recoverStaleCancel#payment_status#transaction-updater"
   },
   {
-   "key": "xpizza-functions/claim-order.js#claimOrderCore#customer_uid#transaction-delegate:bindDecision"
+   "key": "xpizza-functions/claim-order.js#claimOrderCore#customer_uid#transaction-updater"
   },
   {
    "key": "xpizza-functions/driver-attribution.js#writeDeliveryAttribution#delivered_by_uid#transaction"
@@ -39471,9 +39465,6 @@
    "key": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize#charged_at#transaction-updater"
   },
   {
-   "key": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize#payment_reference#transaction-updater/spread"
-  },
-  {
    "key": "xpizza-functions/pixelpay-confirm.js#confirmAndMaterialize#payment_reference#transaction-updater"
   },
   {
@@ -39591,22 +39582,19 @@
    "key": "xpizza-functions/resolve-manual.js#confirmAndMaterializeFromManualClaim#delivery_task_id#update"
   },
   {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#cancel_claim_id#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#payment_status#transaction-updater"
   },
   {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_action#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_action#transaction-updater"
   },
   {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_phase#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_claim_id#transaction-updater"
   },
   {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_claimed_at#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_claimed_at#transaction-updater"
   },
   {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#payment_status#transaction-delegate:claimDecision"
-  },
-  {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_claim_id#transaction-delegate:claimDecision"
+   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_phase#transaction-updater"
   },
   {
    "key": "xpizza-functions/resolve-manual.js#releaseClaim#payment_status#transaction-updater"
@@ -39624,22 +39612,7 @@
    "key": "xpizza-functions/resolve-manual.js#releaseClaim#resolving_phase#transaction-updater"
   },
   {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#payment_status#transaction-updater"
-  },
-  {
    "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#status#transaction-updater"
-  },
-  {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_action#transaction-updater"
-  },
-  {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_claim_id#transaction-updater"
-  },
-  {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_claimed_at#transaction-updater"
-  },
-  {
-   "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#resolving_phase#transaction-updater"
   },
   {
    "key": "xpizza-functions/resolve-manual.js#resolveManualReconciliationCore#factura_status#set"
@@ -39694,9 +39667,6 @@
   },
   {
    "key": "xpizza-functions/resolve-manual.js#recoverStaleResolve#resolving_phase#transaction-updater"
-  },
-  {
-   "key": "xpizza-functions/resolve-manual.js#recoverStaleResolve#status#transaction-updater/spread"
   },
   {
    "key": "xpizza-functions/resolve-manual.js#recoverStaleResolve#status#transaction-updater"
@@ -39762,127 +39732,127 @@
    "key": "xpizza-functions/scheduled-release-core.js#recoverStaleReleasing#releasing_since#transaction-updater"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#order_id#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#order_id#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#customer_name#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#customer_name#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#customer_phone#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#customer_phone#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#items_text#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#items_text#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#total#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#total#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#total_cents#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#total_cents#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#subtotal_cents#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#subtotal_cents#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#tax_cents#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#tax_cents#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#desc_rebaja_cents#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#desc_rebaja_cents#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#earn_preview#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#earn_preview#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#summary_lines#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#summary_lines#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#redemption#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#redemption#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#charge_inputs_fp#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#charge_inputs_fp#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#notes#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#notes#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#payment_method#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#payment_method#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#payment_status#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#payment_status#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#order_type#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#order_type#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#status#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#status#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#created_at#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#created_at#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_id#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_id#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#factura_status#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#factura_status#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#cash_tendered_cents#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#cash_tendered_cents#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#items#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#items#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#factura_items#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#factura_items#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#razon_social#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#razon_social#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#rtn_cliente#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#rtn_cliente#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#customer_uid#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#customer_uid#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#reorder_items#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#reorder_items#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#lat#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#lat#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#lng#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#lng#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#address_detected#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#address_detected#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#address_details#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#address_details#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#maps_link#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#maps_link#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#pickup_time#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#pickup_time#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#scheduled_for#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#scheduled_for#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#release_at#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#release_at#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#hub_lat#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#hub_lat#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#hub_lng#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#hub_lng#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_name#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_name#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_phone#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_phone#transaction-updater/via:acquireHostedAttempt"
   },
   {
-   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_display_name#transaction-updater/spread/via:acquireHostedAttempt"
+   "key": "xpizza-functions/index.js#chargeOnlineApp.all#restaurant_display_name#transaction-updater/via:acquireHostedAttempt"
   }
  ],
  "fieldsWritten": [
@@ -40248,14 +40218,6 @@
   }
  ],
  "opaqueWrites": [
-  {
-   "file": "xpizza-functions/index.js",
-   "fn": "readyTimeGraduationMonitor",
-   "how": "computed-key-at-root",
-   "line": 5152,
-   "detail": "path",
-   "resolved": []
-  },
   {
    "file": "xpizza-functions/pixelpay-charge.js",
    "fn": "acquireOnlineAttempt",
