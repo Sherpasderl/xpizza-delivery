@@ -74,4 +74,16 @@ const noAmt = alertRecord('PZX-1', 'c3', { kind: 'reversal_uncertain', version: 
   assert.deepStrictEqual(failed.toast, [['No se pudo cargar el pedido — reintentá', 'error']], 'a read failure is not reported as absence');
   ok('openOrderDetailModal: loaded → render; not loaded → one fetch then render with its id; absent → "Pedido no encontrado"; read failure → retry message');
 }
+// ── 4. the × on a payment alert = durable dismissal on its evidence (ONE multi-path update); other alerts unchanged ──
+{
+  const { h0DismissUpdate } = await import('./dispatch-h0-dismiss.js');
+  const sup2 = alertRecord('PZX-1', 'a1a1', { kind: 'paid_superseded', version: 'v9', first_seen_at: 1 }, null, 7);
+  assert.deepStrictEqual(h0DismissUpdate('K1', sup2), { 'dispatcher_alerts/K1': null, 'orders/PZX-1/paid_evidence/a1a1/dismissed_kind': 'paid_superseded', 'orders/PZX-1/paid_evidence/a1a1/dismissed_version': 'v9' });
+  assert.strictEqual(h0DismissUpdate('K2', { type: 'no_drivers_available', order_id: 'X' }), null, 'any other alert → plain removal');
+  assert.strictEqual(h0DismissUpdate('K3', { ...sup2, version: null }), null, 'no version → plain removal (never a dismissal of an unknown version)');
+  const del = fs.readFileSync(path.join(__dirname, 'xpizza-delivery.js'), 'utf8');
+  assert.ok(/const u = h0DismissUpdate\(alertId, rec\);\n  if \(u\) \{ await fbUpdate\(ref\(db\), u\); return; \}/.test(del), 'dismissDispatcherAlert sends the H0 update atomically');
+  assert.ok(html.includes('XPD.dismissDispatcherAlert(id, latestAlerts[id])'), 'the × passes the alert record');
+  ok('the × on a payment alert writes {dismissed_kind, dismissed_version} on its evidence in ONE update with the removal; other alerts are removed as before');
+}
 console.log(`\ndispatch-h0-alerts: OK (${n})`);

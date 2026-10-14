@@ -72,7 +72,7 @@ const itemKey = (orderId, attemptId) => `${orderId}_${attemptId}`;
 // The dispatcher alert record (pure; the dispatch renderer is tested against exactly this shape). `order_id` is TOP-LEVEL:
 // alert-prune reads only detail.* → never pruned when the order is cancelled. RTDB drops nulls, so every optional
 // field is re-defaulted (a read-back evidence child lacks them).
-function alertRecord(orderId, attemptId, ev, order) {
+function alertRecord(orderId, attemptId, ev, order, fence = 0) {
   return {
     type: ev.kind,
     order_id: orderId,
@@ -84,6 +84,7 @@ function alertRecord(orderId, attemptId, ev, order) {
     created_at: ev.first_seen_at,
     version: ev.version == null ? null : ev.version,
     seq: Number(ev.seq) || 0,
+    fence: Number(fence) || 0,
   };
 }
 const alertKey = (kind, orderId, attemptId) => `${kind}_${orderId}_${attemptId}`;
@@ -97,21 +98,54 @@ async function readRefAttempt(db, order, attemptId, attempt) {
 
 const KINDS = ['paid_superseded', 'reversal_uncertain'];
 const seqOf = (x) => Number(x && x.seq) || 0;
+const fenceOf = (x) => Number(x && x.fence) || 0;
 const newGen = () => crypto.randomBytes(8).toString('hex');
+const LEASE_MS = 2 * 60 * 1000;                                   // ≫ one order's steps (seconds), < the 10 min cadence
+const LEASE_MARGIN_MS = 15 * 1000;                                // a writer stops this long before its lease expires
+const leaseRef = (db, orderId) => db.ref(`ops/superseded_lease/${orderId}`);
 
-// THE ONLY WRITER of evidence and of these alerts. Every step is guarded so that overlapping writers (and a stale one
-// resuming after any pause) can never leave the alert disagreeing with the evidence:
-//   0. the work item FIRST, stamped with this writer's own generation (a crash or failure from here on leaves it for
-//      the work-item pass);
-//   1. a FRESH read + classify (the commit-time re-check); not alertable → delete only MY item generation;
-//   2. evidence: a transaction, versioned; every version change bumps `seq`;
-//   3. the alert: a transaction that never replaces a newer `seq`;
-//   4. delivered: a CAS on version AND seq;
-//   5. lost the CAS → a newer generation owns the evidence: withdraw MY alert if it is still mine;
-//   then the item is deleted only if it still carries MY generation.
-// An already-delivered evidence child is checked against its alert and repaired (never resurrected once dismissed).
-// `hooks` (tests only) pause or fail the writer at named points.
-async function recordEvidence(db, { orderId, attemptId, now = Date.now(), hooks = null }) {
+// Durable staff dismissal (ruling B): the dispatch × records {dismissed_kind, dismissed_version} on the evidence child in
+// the same multi-path update that removes the alert. Absence of an alert node therefore means nothing; this does.
+const dismissedFor = (ev, kind, version) => !!ev && ev.dismissed_kind === kind && ev.dismissed_version === version;
+
+// Per-order LEASE + FENCING TOKEN (ruling A). The lease is a transaction on ops/superseded_lease/{orderId} = {gen, fence,
+// expires_at}. `fence` is strictly increasing across holders (max(clock, previous + 1)), so it survives the lease node
+// being released. Every write after the fresh re-read carries the fence, and the evidence and alert transactions refuse a
+// target that already holds a HIGHER fence: a paused writer whose lease expired is fenced out at its next write. Each
+// write also re-checks the holder's own clock against its expiry (minus a margin).
+async function acquireLease(db, orderId, gen, clock) {
+  let mine = null;
+  const t = clock();
+  const tx = await leaseRef(db, orderId).transaction((cur) => {
+    mine = null;
+    if (cur && Number(cur.expires_at) > t && cur.gen !== gen) return;            // held by a live writer → back off
+    const fence = Math.max(t, fenceOf(cur) + 1);
+    mine = { gen, fence, expires_at: t + LEASE_MS };
+    return mine;
+  });
+  return tx.committed && mine && tx.snapshot.val() && tx.snapshot.val().gen === gen ? mine : null;
+}
+async function releaseLease(db, orderId, gen) {
+  await leaseRef(db, orderId).transaction((cur) => {
+    if (cur === null) return null;                                               // null-first-safe
+    if (!cur || cur.gen !== gen) return;                                         // a newer holder keeps its lease
+    return { fence: fenceOf(cur) };                                              // keep the high-water fence, drop the hold
+  });
+}
+
+// THE ONLY WRITER of evidence and of these alerts (PLAN-H0; codex build r2 → structural ruling):
+//   0. the work item FIRST, stamped with this writer's generation (a crash or failure from here on leaves it for the
+//      work-item pass);
+//   1. the per-order LEASE (fence token); busy → the item stays for the next run;
+//   2. a FRESH read + classify AFTER acquiring; not alertable → release, delete only MY item generation;
+//   3. evidence: a fenced transaction (create / stamp the fence / replace-on-change with seq + 1; dismissal kept);
+//   4. a dismissed (kind, version) → delivered without an alert; delivered and unchanged → repair;
+//   5. the alert: a fenced transaction (never over a higher fence), then a CHECK-AFTER-WRITE re-read of the evidence —
+//      fenced out or dismissed meanwhile → withdraw MY alert;
+//   6. delivered: a CAS on fence + version + seq; then withdraw the other kind's alert (lower fence only);
+//   then release the lease and delete the item only if it still carries MY generation.
+// `hooks` (tests only) pause or fail the writer at named points; `clock` drives the lease (tests: a virtual clock).
+async function recordEvidence(db, { orderId, attemptId, now = Date.now(), clock = Date.now, hooks = null }) {
   if (!KEY_RX.test(String(orderId || '')) || !KEY_RX.test(String(attemptId || ''))) return { outcome: 'bad_key' };
   const hook = async (name) => { if (hooks && typeof hooks[name] === 'function') await hooks[name]({ orderId, attemptId }); };
   const itemRef = db.ref(`pending_paid_alerts/${itemKey(orderId, attemptId)}`);
@@ -121,28 +155,45 @@ async function recordEvidence(db, { orderId, attemptId, now = Date.now(), hooks 
   catch (e) { if (e && typeof e === 'object') e.h0BeforeItem = true; throw e; }
   await hook('afterItem');
 
-  // 1. fresh read + classify
+  // 1. the lease
+  const lease = await acquireLease(db, orderId, gen, clock);
+  if (!lease) return { outcome: 'lease_busy' };                                  // the item stays → retried next run
+  try {
+    return await underLease(db, { orderId, attemptId, now, clock, hook, itemRef, gen, lease });
+  } catch (e) {
+    try { await releaseLease(db, orderId, gen); } catch (_) { /* expiry frees it */ }
+    throw e;                                                                     // the item stays (MY generation) → retried
+  }
+}
+
+async function underLease(db, { orderId, attemptId, now, clock, hook, itemRef, gen, lease }) {
+  const fence = lease.fence;
+  const live = () => clock() < lease.expires_at - LEASE_MARGIN_MS;
+  const done = async (outcome, extra = {}) => {
+    await releaseLease(db, orderId, gen);
+    await deleteItemIfGen(itemRef, gen);
+    return { outcome, ...extra };
+  };
+  const fencedOut = async () => { await releaseLease(db, orderId, gen); return { outcome: 'fenced' }; };   // the item stays (the newer holder owns it)
+  await hook('afterLease');
+
+  // 2. fresh read + classify, AFTER the lease
   const [orderSnap, attemptSnap] = await Promise.all([
     db.ref(`orders/${orderId}`).once('value'),
     db.ref(`payment_attempts/${attemptId}`).once('value'),
   ]);
   const order = orderSnap.val();
   const attempt = attemptSnap.val();
-  if (!order) {                                                                  // advisor ruling: orphan → LOG ONLY
-    await deleteItemIfGen(itemRef, gen);
-    return { outcome: 'orphan' };
-  }
+  if (!order) return done('orphan');                                            // advisor ruling: orphan → LOG ONLY
   const refAttempt = await readRefAttempt(db, order, attemptId, attempt);
   const kind = classify(orderId, order, attemptId, attempt, refAttempt);
   await hook('afterClassify');
-  if (!kind) {
-    await deleteItemIfGen(itemRef, gen);
-    return { outcome: 'not_alertable' };
-  }
+  if (!kind) return done('not_alertable');
   const version = evidenceVersion(kind, attempt);
   await hook('beforeEvidence');
+  if (!live()) return fencedOut();
 
-  // 2. evidence: create / unchanged / replace-on-change (seq + 1)
+  // 3. evidence — fenced: never over a higher fence; stamps this fence even when unchanged
   const evRef = db.ref(`orders/${orderId}/paid_evidence/${attemptId}`);
   const payload = {
     kind, version,
@@ -152,51 +203,79 @@ async function recordEvidence(db, { orderId, attemptId, now = Date.now(), hooks 
     hosted_state: attempt.hosted_state || null,
   };
   const evTx = await evRef.transaction((cur) => {
-    if (!cur) return { ...payload, seq: 1, first_seen_at: now, alert_state: 'pending' };
-    if (cur.version === version) return;                                         // unchanged → no write
-    return { ...payload, seq: seqOf(cur) + 1, first_seen_at: cur.first_seen_at || now, last_changed_at: now, alert_state: 'pending' };
+    if (!cur) return { ...payload, seq: 1, first_seen_at: now, alert_state: 'pending', fence };
+    if (fenceOf(cur) > fence) return;                                            // a newer holder wrote it → fenced out
+    if (cur.version === version) return fenceOf(cur) === fence ? undefined : { ...cur, fence };
+    return { ...payload, seq: seqOf(cur) + 1, first_seen_at: cur.first_seen_at || now, last_changed_at: now, alert_state: 'pending', fence };
   });
   const ev = evTx.snapshot.val();
-  if (!ev) return { outcome: 'evidence_missing' };
+  if (!ev) return fencedOut();
+  if (fenceOf(ev) !== fence || ev.version !== version) return fencedOut();
   const seq = seqOf(ev);
+
+  // 4. dismissed by staff for exactly this (kind, version) → never re-alert; mark it delivered
+  if (dismissedFor(ev, ev.kind, ev.version)) {
+    await markDelivered(evRef, { fence, version, seq, now });
+    await removeAlertIf(db.ref(`dispatcher_alerts/${alertKey(ev.kind, orderId, attemptId)}`), (cur) => fenceOf(cur) < fence);   // a stale writer's leftover
+    await withdrawOtherKinds(db, orderId, attemptId, ev.kind, fence);
+    return done('dismissed');
+  }
   if (ev.alert_state !== 'pending') {                                            // delivered and unchanged
-    await repairAlert(db, orderId, attemptId, ev, order);
-    await deleteItemIfGen(itemRef, gen);
-    return { outcome: 'already_delivered' };
+    if (!live()) return fencedOut();
+    await repairAlert(db, orderId, attemptId, ev, order, fence);
+    return done('already_delivered');
   }
   await hook('beforeAlert');
+  if (!live()) return fencedOut();
 
-  // 3. the alert — never replaces a newer generation's alert
+  // 5. the alert — fenced; then check-after-write against the evidence
   const aRef = db.ref(`dispatcher_alerts/${alertKey(ev.kind, orderId, attemptId)}`);
-  const rec = alertRecord(orderId, attemptId, ev, order);
+  const rec = alertRecord(orderId, attemptId, ev, order, fence);
   try {
     await aRef.transaction((cur) => {
-      if (cur && seqOf(cur) > seq) return;                                       // a newer generation already alerted
+      if (cur && fenceOf(cur) > fence) return;                                   // a newer holder already alerted
       return rec;
     });
   } catch (e) {
+    await releaseLease(db, orderId, gen);
     await rescheduleItem(itemRef, now, gen);
     return { outcome: 'alert_failed' };
   }
+  await hook('afterAlert');
+  const recheck = (await evRef.once('value')).val();
+  if (!recheck || fenceOf(recheck) !== fence || recheck.version !== version || dismissedFor(recheck, ev.kind, version)) {
+    await removeAlertIf(aRef, (cur) => fenceOf(cur) === fence);                  // withdraw only MY alert
+    if (recheck && fenceOf(recheck) === fence && dismissedFor(recheck, ev.kind, version)) {
+      await markDelivered(evRef, { fence, version, seq, now });
+      return done('dismissed');
+    }
+    return fencedOut();
+  }
   await hook('beforeDelivered');
+  if (!live()) {                                                                 // past my lease AFTER placing my alert → withdraw it
+    await removeAlertIf(aRef, (cur) => fenceOf(cur) === fence);
+    return fencedOut();
+  }
 
-  // 4. delivered — only if the evidence still carries the version AND seq just alerted
+  // 6. delivered — a CAS on fence + version + seq
+  const after = await markDelivered(evRef, { fence, version, seq, now });
+  if (after && fenceOf(after) === fence && after.version === version && seqOf(after) === seq && after.alert_state === 'delivered') {
+    await withdrawOtherKinds(db, orderId, attemptId, ev.kind, fence);
+    return done('delivered', { kind: ev.kind });
+  }
+  // a newer holder owns the evidence → withdraw the alert this writer placed, if it is still this writer's
+  await removeAlertIf(aRef, (cur) => fenceOf(cur) === fence);
+  return fencedOut();
+}
+
+async function markDelivered(evRef, { fence, version, seq, now }) {
   const dTx = await evRef.transaction((cur) => {
     if (cur === null) return null;                                               // null-first-safe: force the server round-trip
-    if (!cur || cur.version !== ev.version || seqOf(cur) !== seq) return;
+    if (!cur || fenceOf(cur) !== fence || cur.version !== version || seqOf(cur) !== seq) return;
     if (cur.alert_state === 'delivered') return;
     return { ...cur, alert_state: 'delivered', alert_delivered_at: now };
   });
-  const after = dTx.snapshot.val();
-  if (after && after.version === ev.version && seqOf(after) === seq && after.alert_state === 'delivered') {
-    await withdrawOtherKinds(db, orderId, attemptId, ev.kind, seq);
-    await deleteItemIfGen(itemRef, gen);
-    return { outcome: 'delivered', kind: ev.kind };
-  }
-  // 5. a newer generation owns the evidence → withdraw the alert this writer placed, if it is still this writer's
-  await removeAlertIf(aRef, (cur) => seqOf(cur) === seq && cur.version === ev.version);
-  await deleteItemIfGen(itemRef, gen);
-  return { outcome: 'superseded_by_newer' };
+  return dTx.snapshot.val();
 }
 
 // Transactionally remove an alert only while `pred(cur)` holds (null-first-safe).
@@ -208,27 +287,31 @@ async function removeAlertIf(aRef, pred) {
   });
 }
 
-// An evidence child changes kind (e.g. paid_superseded → reversal_uncertain): the other kind's alert for the same
-// attempt is an older generation by construction — withdraw it once the newer one is delivered.
-async function withdrawOtherKinds(db, orderId, attemptId, kind, seq) {
+// An evidence child changes kind (e.g. paid_superseded → reversal_uncertain): the other kind's alert for the same attempt
+// is withdrawn once the newer one is delivered — only an alert from a LOWER fence (an older holder).
+async function withdrawOtherKinds(db, orderId, attemptId, kind, fence) {
   for (const k of KINDS) {
     if (k === kind) continue;
-    await removeAlertIf(db.ref(`dispatcher_alerts/${alertKey(k, orderId, attemptId)}`), (cur) => seqOf(cur) < seq);
+    await removeAlertIf(db.ref(`dispatcher_alerts/${alertKey(k, orderId, attemptId)}`), (cur) => fenceOf(cur) < fence);
   }
 }
 
-// Delivered evidence: if its alert is still present but shows an older generation, rewrite it from the evidence. An
-// ABSENT alert was dismissed by staff and stays dismissed.
-async function repairAlert(db, orderId, attemptId, ev, order) {
-  const seq = seqOf(ev);
-  await db.ref(`dispatcher_alerts/${alertKey(ev.kind, orderId, attemptId)}`).transaction((cur) => {
-    if (cur === null) return null;                                               // null-first-safe; absent = dismissed
-    if (!cur) return;
-    if (seqOf(cur) >= seq && cur.version === ev.version) return;                 // consistent
-    if (seqOf(cur) > seq) return;
-    return alertRecord(orderId, attemptId, ev, order);
-  });
-  await withdrawOtherKinds(db, orderId, attemptId, ev.kind, seq);
+// Delivered evidence: its alert must exist and show THIS evidence, unless staff dismissed this (kind, version) — ruling B:
+// an absent alert is (re)written; a dismissed one stays dismissed. Fenced: never over a higher fence.
+async function repairAlert(db, orderId, attemptId, ev, order, fence) {
+  const aRef = db.ref(`dispatcher_alerts/${alertKey(ev.kind, orderId, attemptId)}`);
+  if (dismissedFor(ev, ev.kind, ev.version)) {
+    await removeAlertIf(aRef, (cur) => fenceOf(cur) <= fence);
+  } else {
+    await aRef.transaction((cur) => {
+      if (cur && fenceOf(cur) > fence) return;
+      if (cur && cur.version === ev.version && seqOf(cur) === seqOf(ev) && fenceOf(cur) === fence) return;   // consistent
+      return alertRecord(orderId, attemptId, ev, order, fence);
+    });
+    const recheck = (await db.ref(`orders/${orderId}/paid_evidence/${attemptId}`).once('value')).val();
+    if (!recheck || fenceOf(recheck) !== fence || dismissedFor(recheck, ev.kind, ev.version)) await removeAlertIf(aRef, (cur) => fenceOf(cur) === fence);
+  }
+  await withdrawOtherKinds(db, orderId, attemptId, ev.kind, fence);
 }
 
 async function deleteItemIfGen(itemRef, gen) {
@@ -257,17 +340,33 @@ function looksAlertable(attempt) {
   return !!attempt && (verifiedPaid(attempt) || uncertainReversal(attempt));
 }
 
-async function pagedPass(db, { field, cursorName, now, log, hooks }) {
+// Ruling D — a LOW-WATER-MARK cursor. A candidate that failed before its work item existed (h0BeforeItem: nothing
+// durable owns it yet) HOLDS the persisted cursor at its position, while the SAME run continues past it to the later
+// candidates (re-processing them next run is idempotent: already_delivered / the lease). Never "advance and lose".
+// A candidate that pins the cursor for STUCK_LOUD_RUNS consecutive runs is logged loudly (console.error + count).
+const STUCK_LOUD_RUNS = 3;
+function stuckNext(prevStuck, failedKey) {
+  if (failedKey == null) return null;
+  const runs = (prevStuck && prevStuck.k === failedKey) ? (Number(prevStuck.runs) || 0) + 1 : 1;
+  return { k: failedKey, runs };
+}
+function reportStuck(stuck, label, err) {
+  if (stuck && stuck.runs >= STUCK_LOUD_RUNS) err(`superseded-capture: ${label} candidate ${stuck.k} has failed ${stuck.runs} consecutive runs — the cursor is held at it (low-water mark)`);
+}
+
+async function pagedPass(db, { field, cursorName, now, log, err = console.error, hooks, clock }) {
   const curRef = db.ref(`ops/superseded_sweep/${cursorName}`);
   let cur = (await curRef.once('value')).val();
   const floor = now - FREQUENT_WINDOW_MS;
+  const prevStuck = cur && cur.stuck;
   if (!cur || !Number.isFinite(cur.v) || cur.v < floor) cur = { v: floor, k: null };
   let q = db.ref('payment_attempts').orderByChild(field);
   q = cur.k ? q.startAt(cur.v, cur.k) : q.startAt(cur.v);
   const snap = await q.limitToFirst(PAGE + 1).once('value');
   const rows = [];
   snap.forEach((c) => { rows.push([c.key, c.val()]); });
-  let processed = 0, last = null;
+  let processed = 0, last = null, low = null, failedKey = null;
+  const mark = () => (low || last);
   for (const [attemptId, a] of rows) {
     if (cur.k && attemptId === cur.k && a && a[field] === cur.v) continue;      // startAt is inclusive — skip the cursor row
     if (processed >= PAGE) break;
@@ -277,21 +376,24 @@ async function pagedPass(db, { field, cursorName, now, log, hooks }) {
     try {
       if (!a || !a.order_id) { log(`superseded-capture: orphan attempt ${attemptId} (no order_id)`); continue; }
       if (looksAlertable(a)) {
-        const r = await recordEvidence(db, { orderId: a.order_id, attemptId, now, hooks });
+        const r = await recordEvidence(db, { orderId: a.order_id, attemptId, now, clock, hooks });
         if (r.outcome === 'orphan') log(`superseded-capture: orphan attempt ${attemptId} (order ${a.order_id} absent)`);
       }
     } catch (e) {
       log(`superseded-capture: ${field} candidate ${attemptId} failed: ${e && e.message}`);
-      // no work item was written for it → do NOT advance past it; the next run starts here again
-      if (e && e.h0BeforeItem) { last = prev; break; }
+      // no work item was written for it → hold the persisted cursor just before it (once), but keep going
+      if (e && e.h0BeforeItem && !low) { low = prev || { v: cur.v, k: cur.k }; failedKey = attemptId; }
     }
-    if (processed % CHECKPOINT_EVERY === 0 && last && Number.isFinite(last.v)) await curRef.set(last);
+    if (processed % CHECKPOINT_EVERY === 0 && mark() && Number.isFinite(mark().v)) await curRef.set(mark());
   }
-  if (last && Number.isFinite(last.v)) await curRef.set(last);
-  return { processed };
+  const stuck = stuckNext(prevStuck, failedKey);
+  reportStuck(stuck, field, err);
+  const m = mark();
+  if (m && Number.isFinite(m.v)) await curRef.set(stuck ? { ...m, stuck } : m);
+  return { processed, held: !!low };
 }
 
-async function workItemPass(db, { now, log, hooks }) {
+async function workItemPass(db, { now, log, hooks, clock }) {
   const snap = await db.ref('pending_paid_alerts').orderByChild('at').startAt(1).endAt(now).limitToFirst(ITEMS_PER_RUN).once('value');
   const items = [];
   snap.forEach((c) => { items.push([c.key, c.val()]); });
@@ -302,7 +404,7 @@ async function workItemPass(db, { now, log, hooks }) {
         await db.ref(`pending_paid_alerts/${key}`).transaction((c) => (c === null ? null : (!c || !c.order_id || !c.attempt_id) ? null : undefined));
         continue;
       }
-      await recordEvidence(db, { orderId: it.order_id, attemptId: it.attempt_id, now, hooks });   // its own generation-guarded cleanup
+      await recordEvidence(db, { orderId: it.order_id, attemptId: it.attempt_id, now, clock, hooks });   // its own generation-guarded cleanup
       done += 1;
     } catch (e) {
       log(`superseded-capture: work item ${key} failed: ${e && e.message}`);
@@ -314,10 +416,10 @@ async function workItemPass(db, { now, log, hooks }) {
 
 // The frequent pass (every 10 min): hosted captures (paid_at), the two guard-written uncertain states (uncertain_at),
 // then the outstanding work items (re-delivery, fair: oldest first, failures rescheduled into the future).
-async function frequentPass(db, { now = Date.now(), log = console.log, hooks = null } = {}) {
-  const paid = await pagedPass(db, { field: 'paid_at', cursorName: 'paid_cursor', now, log, hooks });
-  const unc = await pagedPass(db, { field: 'uncertain_at', cursorName: 'uncertain_cursor', now, log, hooks });
-  const items = await workItemPass(db, { now, log, hooks });
+async function frequentPass(db, { now = Date.now(), clock = Date.now, log = console.log, err = console.error, hooks = null } = {}) {
+  const paid = await pagedPass(db, { field: 'paid_at', cursorName: 'paid_cursor', now, log, err, hooks, clock });
+  const unc = await pagedPass(db, { field: 'uncertain_at', cursorName: 'uncertain_cursor', now, log, err, hooks, clock });
+  const items = await workItemPass(db, { now, log, hooks, clock });
   return { paid: paid.processed, uncertain: unc.processed, items: items.items };
 }
 
@@ -325,23 +427,26 @@ async function frequentPass(db, { now = Date.now(), log = console.log, hooks = n
 // Budgeted against the REMAINING invocation time minus the reserve AND a fixed SWEEP_CAP_MS from its own start, whichever
 // is sooner — checked before every candidate and every pending child. The cursor is checkpointed every CHECKPOINT_EVERY candidates and wraps,
 // so every attempt is visited within one full scan cycle even when earlier reconcile work eats the budget.
-async function dailyPass(db, { orders, attempts, invocationStartedAt, invocationBudgetMs = 300000, reserveMs = 20000, sweepCapMs = SWEEP_CAP_MS, now = Date.now(), clock = Date.now, log = console.log, hooks = null }) {
+async function dailyPass(db, { orders, attempts, invocationStartedAt, invocationBudgetMs = 300000, reserveMs = 20000, sweepCapMs = SWEEP_CAP_MS, now = Date.now(), clock = Date.now, log = console.log, err = console.error, hooks = null }) {
   const deadline = Math.min(invocationStartedAt + invocationBudgetMs - reserveMs, clock() + sweepCapMs);
   const curRef = db.ref('ops/superseded_sweep/daily_cursor');
   const ids = Object.keys(attempts || {}).sort();
   let startIdx = 0;
   const cur = (await curRef.once('value')).val();
-  if (cur && typeof cur.k === 'string') {
+  if (cur && typeof cur.from === 'string') {                                     // a low-water mark: start AT that id
+    const i = ids.findIndex((id) => id >= cur.from);
+    startIdx = i < 0 ? 0 : i;
+  } else if (cur && typeof cur.k === 'string') {
     const i = ids.findIndex((id) => id > cur.k);
     startIdx = i < 0 ? 0 : i;                                                    // wrap after the last id
   }
-  let visited = 0, alerted = 0, last = null, outOfTime = false;
+  let visited = 0, alerted = 0, last = null, low = null, outOfTime = false;
+  const mark = () => (low ? { from: low, at: now } : (last ? { k: last, at: now } : null));
   for (let n = 0; n < ids.length; n += 1) {
     if (clock() >= deadline) { outOfTime = true; break; }
     const attemptId = ids[(startIdx + n) % ids.length];
     const a = attempts[attemptId];
     visited += 1;
-    const prev = last;
     last = attemptId;
     try {
       const order = a && a.order_id ? (orders || {})[a.order_id] : null;
@@ -349,18 +454,21 @@ async function dailyPass(db, { orders, attempts, invocationStartedAt, invocation
       else if (order) {
         const refAttempt = typeof order.payment_reference === 'string' ? (attempts || {})[order.payment_reference] || null : null;
         if (classify(a.order_id, order, attemptId, a, refAttempt)) {           // a pre-filter; recordEvidence re-reads fresh
-          const r = await recordEvidence(db, { orderId: a.order_id, attemptId, now, hooks });
+          const r = await recordEvidence(db, { orderId: a.order_id, attemptId, now, clock, hooks });
           if (r.outcome === 'delivered') alerted += 1;
         }
       }
     } catch (e) {
       log(`superseded-capture: daily candidate ${attemptId} failed: ${e && e.message}`);
-      if (e && e.h0BeforeItem) { last = prev; outOfTime = true; break; }       // no work item for it → resume here next run
+      if (e && e.h0BeforeItem && !low) low = attemptId;                          // hold the cursor AT it; keep going
     }
-    if (visited % CHECKPOINT_EVERY === 0) await curRef.set({ k: last, at: now });
+    if (visited % CHECKPOINT_EVERY === 0 && mark()) await curRef.set(mark());
   }
-  if (last) await curRef.set({ k: last, at: now });
-  // re-deliver any evidence child still `pending` that the loaded orders map shows (even without a work item)
+  const stuck = stuckNext(cur && cur.stuck, low);
+  reportStuck(stuck, 'daily', err);
+  if (mark()) await curRef.set(stuck ? { ...mark(), stuck } : mark());
+  // re-deliver any evidence child still `pending` that the loaded orders map shows (even without a work item) —
+  // regardless of any scan failure above; only the deadline stops it
   let redelivered = 0;
   if (!outOfTime) {
     outer: for (const [orderId, o] of Object.entries(orders || {})) {
@@ -369,11 +477,11 @@ async function dailyPass(db, { orders, attempts, invocationStartedAt, invocation
       for (const [attemptId, e] of Object.entries(ev)) {
         if (!e || e.alert_state !== 'pending') continue;
         if (clock() >= deadline) { outOfTime = true; break outer; }             // checked per pending child
-        try { await recordEvidence(db, { orderId, attemptId, now, hooks }); redelivered += 1; } catch (err) { log(`superseded-capture: redeliver ${orderId}/${attemptId} failed: ${err && err.message}`); }
+        try { await recordEvidence(db, { orderId, attemptId, now, clock, hooks }); redelivered += 1; } catch (er) { log(`superseded-capture: redeliver ${orderId}/${attemptId} failed: ${er && er.message}`); }
       }
     }
   }
-  return { visited, alerted, redelivered, outOfTime, total: ids.length };
+  return { visited, alerted, redelivered, outOfTime, total: ids.length, held: !!low };
 }
 
 // READ-ONLY, for the cancel guard: from the claim snapshot (fresh at the claim), the candidates are the CURRENT evidence
@@ -391,9 +499,40 @@ async function unresolvedMoneyOnOrder(db, orderId, orderSnapshot) {
   const ref = orderSnapshot.payment_reference;
   let refAttempt = null;
   if (typeof ref === 'string' && KEY_RX.test(ref)) refAttempt = byId[ref] !== undefined ? byId[ref] : (await db.ref(`payment_attempts/${ref}`).once('value')).val();
+  const evs = (orderSnapshot.paid_evidence && typeof orderSnapshot.paid_evidence === 'object') ? orderSnapshot.paid_evidence : {};
   for (const id of valid) {
     const kind = classify(orderId, orderSnapshot, id, byId[id], refAttempt);
-    if (kind) return { attemptId: id, kind };
+    if (!kind) continue;
+    if (dismissedFor(evs[id], kind, evidenceVersion(kind, byId[id]))) continue;   // ruling C: staff handled exactly this state
+    return { attemptId: id, kind };
+  }
+  return null;
+}
+
+/* Ruling C — the staff manual path. The × on an H0 alert records {dismissed_kind, dismissed_version} on the evidence
+   (ruling B); staff use it once they have handled the money in PixelPay. An evidence child is RESOLVED for the guards
+   only while that dismissal names its stored (kind, version) — a changed money state is a new version and blocks again
+   (and re-alerts). Stored-only: for the abandon CAS, which cannot read attempts. */
+function evidenceResolved(child) {
+  return !!child && typeof child === 'object' && dismissedFor(child, child.kind, child.version);
+}
+function hasUnresolvedEvidenceKeys(order) {
+  if (!hasEvidenceKeys(order)) return false;
+  return Object.values(order.paid_evidence).some((c) => !evidenceResolved(c));
+}
+// The abandon pre-check, FRESH: each evidence key is resolved only if its stored dismissal still matches AND the attempt
+// read now is either no longer alertable or still in exactly the dismissed (kind, version). A read failure throws (the
+// caller refuses: fail closed).
+async function unresolvedEvidenceOnOrder(db, orderId, order) {
+  if (!hasEvidenceKeys(order)) return null;
+  const ids = Object.keys(order.paid_evidence);
+  for (const id of ids) {
+    const child = order.paid_evidence[id];
+    if (!evidenceResolved(child) || !KEY_RX.test(id)) return { attemptId: id, kind: child && child.kind };
+    const attempt = (await db.ref(`payment_attempts/${id}`).once('value')).val();
+    const refAttempt = await readRefAttempt(db, order, id, attempt);
+    const kind = classify(orderId, order, id, attempt, refAttempt);
+    if (kind && !dismissedFor(child, kind, evidenceVersion(kind, attempt))) return { attemptId: id, kind };
   }
   return null;
 }
@@ -411,6 +550,6 @@ function hasEvidenceKeys(order) {
 
 module.exports = {
   classify, uncertainReversal, verifiedPaid, accountedAttemptId, evidenceVersion,
-  recordEvidence, frequentPass, dailyPass, unresolvedMoneyOnOrder, hasEvidenceKeys, deleteItemIfGen, rescheduleItem, repairAlert, alertRecord, parkReconcilerNoUuid,
-  FREQUENT_WINDOW_MS, PAGE, ITEMS_PER_RUN, CHECKPOINT_EVERY, SWEEP_CAP_MS,
+  recordEvidence, frequentPass, dailyPass, unresolvedMoneyOnOrder, hasEvidenceKeys, hasUnresolvedEvidenceKeys, unresolvedEvidenceOnOrder, evidenceResolved, deleteItemIfGen, rescheduleItem, repairAlert, alertRecord, parkReconcilerNoUuid,
+  FREQUENT_WINDOW_MS, PAGE, ITEMS_PER_RUN, CHECKPOINT_EVERY, SWEEP_CAP_MS, LEASE_MS, LEASE_MARGIN_MS, STUCK_LOUD_RUNS, dismissedFor, acquireLease, releaseLease,
 };

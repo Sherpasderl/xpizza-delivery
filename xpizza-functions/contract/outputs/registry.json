@@ -1970,6 +1970,9 @@
   },
   "xpizza-dispatch/index.html<script@0>#openOrderDetailModal>anon@self": {
    "status": "pending"
+  },
+  "xpizza-dispatch/dispatch-h0-dismiss.js#h0DismissUpdate@xpizza-dispatch/xpizza-delivery.js#dismissDispatcherAlert": {
+   "status": "pending"
   }
  }
 }

@@ -139,20 +139,22 @@ async function resolveManualReconciliationCore(deps, { orderId, action, actor, n
 
   try {
     if (action === 'abandon') {
-      if (MR.hasPaidEvidence(order, attempt) || H0.hasEvidenceKeys(order)) {   // PLAN-H0 §4: + money recorded on another attempt
+      let h0Open = true;                                                // PLAN-H0 §4 + ruling C: unresolved money recorded on another attempt (fresh); a read failure refuses
+      try { h0Open = !!(await H0.unresolvedEvidenceOnOrder(db, orderId, order)); } catch (_) { h0Open = true; }
+      if (MR.hasPaidEvidence(order, attempt) || h0Open) {
         await releaseClaim();
         return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar", no "Descartar".', payment_uuid_present: true } };
       }
       // Terminal write is a CAS (R3-#1): commit abandoned ONLY if still our claim AND paid_during_resolve !== true.
       const abTx = await orderRef.transaction((cur) => {
         if (cur === null) return null;                                  // null-first-safe (R1-#1): force server round-trip, don't abort
-        if (!cur || cur.resolving_claim_id !== claimId || cur.payment_status !== MR.resolvingStatus('abandon') || cur.paid_during_resolve === true || H0.hasEvidenceKeys(cur)) return;
+        if (!cur || cur.resolving_claim_id !== claimId || cur.payment_status !== MR.resolvingStatus('abandon') || cur.paid_during_resolve === true || H0.hasUnresolvedEvidenceKeys(cur)) return;
         return { ...cur, payment_status: 'abandoned', status: 'cancelled', resolving_action: null, resolving_claim_id: null, resolving_claimed_at: null, resolving_phase: null };
       });
       if (!abTx.committed) {
         const cur = abTx.snapshot.val() || {};
         if (cur.paid_during_resolve === true) return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
-        if (H0.hasEvidenceKeys(cur)) {                                    // PLAN-H0 §4: still our pre-side-effect claim → release it, so "Reembolsar" can claim
+        if (H0.hasUnresolvedEvidenceKeys(cur)) {                          // PLAN-H0 §4: still our pre-side-effect claim → release it, so "Reembolsar" can claim
           if (cur.resolving_claim_id === claimId && cur.resolving_phase === MR.PHASE.CLAIMED) await releaseClaim();
           return { status: 409, body: { error: 'Se detectó un pago — usá "Reembolsar".', payment_uuid_present: true } };
         }

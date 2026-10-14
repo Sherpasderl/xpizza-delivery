@@ -76,4 +76,17 @@ const order = (over = {}) => ({ order_id: O, status: 'pending_payment', payment_
   assert.strictEqual(H0.hasEvidenceKeys({ paid_evidence: { A1: { kind: 'paid_superseded' } } }), true);
   ok('hasEvidenceKeys: only a non-empty paid_evidence counts');
 }
+// ── ruling C: an evidence child is resolved ONLY by a dismissal naming its stored (kind, version) ──
+{
+  const ev = (o = {}) => ({ kind: 'paid_superseded', version: 'v1', ...o });
+  assert.strictEqual(H0.evidenceResolved(ev()), false, 'not dismissed');
+  assert.strictEqual(H0.evidenceResolved(ev({ dismissed_kind: 'paid_superseded', dismissed_version: 'v1' })), true);
+  assert.strictEqual(H0.evidenceResolved(ev({ dismissed_kind: 'paid_superseded', dismissed_version: 'v0' })), false, 'an older version');
+  assert.strictEqual(H0.evidenceResolved(ev({ dismissed_kind: 'reversal_uncertain', dismissed_version: 'v1' })), false, 'another kind');
+  assert.strictEqual(H0.evidenceResolved({ dismissed_kind: 'paid_superseded', dismissed_version: 'v1' }), false, 'a dismissal-only child (no kind) is never resolved');
+  assert.strictEqual(H0.hasUnresolvedEvidenceKeys({ paid_evidence: { A: ev({ dismissed_kind: 'paid_superseded', dismissed_version: 'v1' }), B: ev() } }), true, 'one open child blocks');
+  assert.strictEqual(H0.hasUnresolvedEvidenceKeys({ paid_evidence: { A: ev({ dismissed_kind: 'paid_superseded', dismissed_version: 'v1' }) } }), false);
+  assert.strictEqual(H0.hasUnresolvedEvidenceKeys({}), false);
+  ok('evidenceResolved / hasUnresolvedEvidenceKeys: resolved only by a dismissal of exactly the stored (kind, version)');
+}
 console.log(`\nsuperseded-capture: OK (${n})`);

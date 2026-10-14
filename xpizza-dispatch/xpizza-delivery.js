@@ -14,6 +14,7 @@
  */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+import { h0DismissUpdate } from './dispatch-h0-dismiss.js?v=1';   // PLAN-H0
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -629,7 +630,10 @@ export function subscribeToDispatcherAlerts(callback) {
   return onValue(alertsRef, (snap) => callback(snap.val() || {}));
 }
 
-export async function dismissDispatcherAlert(alertId) {
+// PLAN-H0 (ruling B): a payment alert's × is durable dismissal on its evidence (dispatch-h0-dismiss.js).
+export async function dismissDispatcherAlert(alertId, rec = null) {
+  const u = h0DismissUpdate(alertId, rec);
+  if (u) { await fbUpdate(ref(db), u); return; }
   await remove(ref(db, `dispatcher_alerts/${alertId}`));
 }
 
