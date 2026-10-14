@@ -5902,10 +5902,13 @@ async function rollbackOrAlert(db, claim, orderId, ctx) {
 // (claimDelivery to null with expectCurrent=driverId); if that aborts, another writer owns the order now —
 // leave it untouched. Returns true iff we actually unassigned. On a post-CAS write failure, restores the
 // timed-out driver (consistent, no strand). Extends the universal-CAS discipline to the UNASSIGN paths.
-async function expectedIneligibleOrMain(e, db, svcDb, target, ctx) {   // S1a §3 (codex r3 P1-1 + r4 P1)
+async function expectedIneligibleOrMain(e, db, svcDb, target, ctx) {   // S1a §3 (codex r3 P1-1 + r4 P1 + r6 P2-1)
   if (svcDb === db) return false;   // flag-off: exactly main's error path (no read, no divergence)
-  try { return await isExpectedEligibilityDenial(e, db, target); }
-  catch (ce) { console.error(`${ctx}: eligibility classification failed (original denial: ${(e && (e.code || e.message)) || e}; classify error: ${(ce && ce.message) || ce}) — falling back to main's recovery`); return false; }
+  let ineligible;
+  try { ineligible = await isExpectedEligibilityDenial(e, db, target); }
+  catch (ce) { console.error(`${ctx}: eligibility classification unavailable (${(ce && ce.message) || ce}); original denial ${(e && (e.code || e.message)) || e} — falling back to main's rollback`); return false; }
+  if (e && e.svcReadTimeout) console.error(`${ctx}: classify_timeout carried — a denial-path ${e.svcReadTimeout.read} read timed out (mode=${e.svcReadTimeout.mode}); original denial ${(e && (e.code || e.message)) || e} — ${ineligible ? 'release (positively ineligible)' : 'main rollback'}`);
+  return ineligible;
 }
 async function releaseAndAlert(db, orderId, driverId) {   // S1a §3 (codex r3 P1-2)
   if (!(await releaseToSinAsignar(db, orderId, driverId))) return false;   // not ours to release (already null / re-owned) — no alert

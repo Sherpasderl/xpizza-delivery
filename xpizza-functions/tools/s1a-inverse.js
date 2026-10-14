@@ -143,10 +143,13 @@ const HUNKS = Object.freeze([
   // releaseToSinAsignar def.
   {
     was: "async function releaseToSinAsignar(db, orderId, driverId) {",
-    now: "async function expectedIneligibleOrMain(e, db, svcDb, target, ctx) {   // S1a §3 (codex r3 P1-1 + r4 P1)\n"
+    now: "async function expectedIneligibleOrMain(e, db, svcDb, target, ctx) {   // S1a §3 (codex r3 P1-1 + r4 P1 + r6 P2-1)\n"
        + "  if (svcDb === db) return false;   // flag-off: exactly main's error path (no read, no divergence)\n"
-       + "  try { return await isExpectedEligibilityDenial(e, db, target); }\n"
-       + "  catch (ce) { console.error(`${ctx}: eligibility classification failed (original denial: ${(e && (e.code || e.message)) || e}; classify error: ${(ce && ce.message) || ce}) — falling back to main's recovery`); return false; }\n"
+       + "  let ineligible;\n"
+       + "  try { ineligible = await isExpectedEligibilityDenial(e, db, target); }\n"
+       + "  catch (ce) { console.error(`${ctx}: eligibility classification unavailable (${(ce && ce.message) || ce}); original denial ${(e && (e.code || e.message)) || e} — falling back to main's rollback`); return false; }\n"
+       + "  if (e && e.svcReadTimeout) console.error(`${ctx}: classify_timeout carried — a denial-path ${e.svcReadTimeout.read} read timed out (mode=${e.svcReadTimeout.mode}); original denial ${(e && (e.code || e.message)) || e} — ${ineligible ? 'release (positively ineligible)' : 'main rollback'}`);\n"
+       + "  return ineligible;\n"
        + "}\n"
        + "async function releaseAndAlert(db, orderId, driverId) {   // S1a §3 (codex r3 P1-2)\n"
        + "  if (!(await releaseToSinAsignar(db, orderId, driverId))) return false;   // not ours to release (already null / re-owned) — no alert\n"

@@ -40,6 +40,15 @@ function _readOrTimeout(promise, ms, label) {
   const t = new Promise((_res, rej) => { timer = setTimeout(() => rej(new Error(`${label}_timeout`)), ms); });
   return Promise.race([promise.then((v) => { clearTimeout(timer); return v; }, (e) => { clearTimeout(timer); throw e; }), t]);
 }
+// codex r6 P2-1: carry read-timeout metadata on the ORIGINAL denial + log it, so a bounded recovery (main's rollback OR
+// a positive-evidence release) is never SILENT about a denial-path read that timed out. Only a *_timeout rejection is
+// noted; an ordinary (non-timeout) read failure still re-throws the original denial unchanged.
+function _noteReadTimeout(e, re, read, mode, site) {
+  if (!(e && typeof e === 'object') || !/_timeout$/.test(String(re && re.message))) return;
+  const m = mode === undefined ? 'unread' : (mode === null ? 'tolerant' : String(mode));
+  e.svcReadTimeout = { read, mode: m, site };
+  console.error(`svc-handle: classify_timeout — denial-path ${read} read timed out at ${site} (mode=${m}); original denial: ${(e && (e.code || e.message)) || e} — not bypassing`);
+}
 
 // Cached, single-flight, BOUNDED read. Fresh within the TTL → the cached value. Stale → re-establish within the latency
 // bound or DEFAULT (false) — a stale `true` is NEVER retained. A failed/timed-out refresh → DEFAULT + back off (no
@@ -88,10 +97,12 @@ async function svcWriteOrFallback(db, handle, doWrite, { site, target }) {
   catch (e) {
     if (!isPermissionDenied(e)) throw e;
     let mode;
-    try { mode = (await _readOrTimeout(db.ref(MODE_PATH).once('value'), READ_DEADLINE_MS, 'mode')).val(); } catch (_) { throw e; }   // mode read failed / hung → don't bypass
+    try { mode = (await _readOrTimeout(db.ref(MODE_PATH).once('value'), READ_DEADLINE_MS, 'mode')).val(); }
+    catch (re) { _noteReadTimeout(e, re, 'mode', undefined, site); throw e; }                 // mode read failed / hung → don't bypass
     if (mode === 'closed') throw e;                                                          // closed: eligibility refusal, propagate
     let expected;
-    try { expected = await isExpectedEligibilityDenial(e, db, target); } catch (_) { throw e; }   // account read failed → loud
+    try { expected = await isExpectedEligibilityDenial(e, db, target); }
+    catch (re) { _noteReadTimeout(e, re, 'account', mode, site); throw e; }                   // account read failed / hung → loud
     if (expected) throw e;                                                                   // explicitly suspended/deactivated → stays denied
     console.error(`svc-handle: UNEXPECTED denial in tolerant mode at ${site} (target ${target} is eligible) — falling back to the default handle + alert`, e && e.message);
     try { await _withTimeout(db.ref('dispatcher_alerts').push({ type: 'svc_handle_fallback', site, target: target || null, error: String((e && e.message) || e).slice(0, 200), created_at: Date.now() }), ALERT_TIMEOUT_MS, () => null); } catch (_) {}
