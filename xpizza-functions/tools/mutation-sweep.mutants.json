@@ -12025,7 +12025,8 @@
     "to": "    if (false) { r.binding.contribs.push({ id: ++CID, steps: r.steps, value: val, at }); return; }",
     "label": "B4 r1: a field ASSIGNED onto a payload object (x.f = v) is not a contribution (createOrder orderRecord.lat …)",
     "kills_with": [
-      "stale written-field entry: 'address_details' is no longer written"
+      "stale written-field entry: 'address_details' is no longer written",
+      "unmodelled-member-base line"
     ],
     "command": [
       "node",
@@ -12461,7 +12462,8 @@
     "to": "  const methodName = (m) => (!m.computed ? m.property.name : (false",
     "label": "B4 r4 P1-2: a literal bracket method (['update']) is not the method itself",
     "kills_with": [
-      "resolved-form ['update'] with a classified field: a modelled form did not resolve"
+      "resolved-form ['update'] with a classified field: a modelled form did not resolve",
+      "r5 P1-1 real: a literal-computed `db['ref'](…)` receiver"
     ],
     "command": [
       "node",
@@ -12503,8 +12505,8 @@
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
     "from": "    return [{ k: 'unresolved', node: n, why: `unmodelled-${n.type}` }];",
-    "to": "    return [];",
-    "label": "B4 r4 P1-3: the default branch of the expression dispatch answers EMPTY",
+    "to": "    return [EMPTY('unmodelled')];",
+    "label": "B4 r4 P1-3 / r5: the default branch of the expression dispatch claims a PROVEN empty (the choke point cannot see it)",
     "kills_with": [
       "semantic corpus: a write-reaching construct was SILENT",
       "an ARRAY element pushed to /orders (charge handler): the census stayed GREEN"
@@ -12519,10 +12521,11 @@
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
     "from": "    if (n.type === 'Unmodelled') return [{ k: 'unresolved', node: n.node, why: `unmodelled-${n.why}` }];",
-    "to": "    if (n.type === 'Unmodelled') return [];",
-    "label": "B4 r4: an UNMODELLED marker (compound assign / patterns) answers EMPTY",
+    "to": "    if (n.type === 'Unmodelled') return [EMPTY('unmodelled')];",
+    "label": "B4 r4 / r5: an UNMODELLED marker (compound assign / patterns) claims a PROVEN empty",
     "kills_with": [
-      "semantic corpus: a write-reaching construct was SILENT"
+      "semantic corpus: a write-reaching construct was SILENT",
+      "r5 P1-3 real: a for-of binding is UNMODELLED"
     ],
     "command": [
       "node",

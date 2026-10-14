@@ -225,6 +225,7 @@ for (const [name, code, re] of [
       ['property: computed literal', `${W}.update({ ['surcharge_cents']: 900 });`],
       ['property: computed dynamic', `${W}.update({ [req.k]: 900 });`],
       ['property: getter', `${W}.update({ get surcharge_cents() { return 900; } });`],
+      ['property: a getter BESIDE a plain field (codex r4: the filtered property)', `${W}.update({ status: 'new', get surcharge_cents() { return 900; } });`],
       ['property: method', `${W}.update({ surcharge_cents() { return 900; } });`],
       ['property: spread of a literal', `${W}.update({ ...${S} });`],
       ['property: spread of an unknown', `${W}.update({ ...req.body });`],
