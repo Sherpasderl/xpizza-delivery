@@ -259,7 +259,8 @@ async function traced(rid, oid, uid, phone) {
       assert.ok(floorCalls.every((e) => e.op === 'get'), `🔴 ${rid} ${k}: the floor path is only ever READ (got ${JSON.stringify(floorCalls)})`);
       assert.ok(floorCalls.length <= 1, `🔴 ${rid} ${k}: at most one floor read per request (cached) — got ${floorCalls.length}`);
       const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (switch cache warm)` });
-      const s3 = (ops, content, label) => SD.contentKeyDelta(ops, { content, route: 'chargeOnlineOrder', label });
+      // codex r2 P2: every d4b case is a charge that persists its own content → DECLARED bound (never inferred from the trace)
+      const s3 = (ops, content, label) => SD.compareShape(ops, [], { mode: 'bound', content, route: 'chargeOnlineOrder', label }).actual;
       assert.ok(CONTENT[rid][k], `${rid} ${k}: premise — the request persisted its order (the content-key delta is content-bound)`);
       assert.deepStrictEqual(s3(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), CONTENT[rid][k], `${rid} ${k}`), golden[rid][k], `🔴 ${rid} ${k}: the REAL handler's ordered DB call sequence differs from the frozen 717f97e trace`);
       if (JSON.stringify(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) !== JSON.stringify(golden[rid][k])) S3_DELTA_SEEN += 1;
@@ -271,7 +272,8 @@ async function traced(rid, oid, uid, phone) {
       const k = 'a_normal_fresh', rid = Object.keys(golden).find((r) => JSON.stringify(out[r][k]) !== JSON.stringify(golden[r][k])) || 'x_pizza';
       const rest = CTL.withoutControlRead(out[rid][k], rid, { expected: 0, label: `${rid} ${k} (sensitivity)` }).filter((e) => !isFloorRead(e) && !isExtrasModeRead(e));
       const wrong = { ...CONTENT[rid][k], itemsText: `${CONTENT[rid][k].itemsText} | 1x Otra (L1)` };
-      assert.notDeepStrictEqual(SD.contentKeyDelta(rest, { content: wrong, route: 'chargeOnlineOrder' }), golden[rid][k], '🔴 a corrupted (different-content) binding must leave the comparison RED');
+      let stillRed = false; try { stillRed = JSON.stringify(SD.compareShape(rest, golden[rid][k], { mode: 'bound', content: wrong, route: 'chargeOnlineOrder' }).actual) !== JSON.stringify(golden[rid][k]); } catch (_) { stillRed = true; }
+      assert.ok(stillRed, '🔴 a corrupted (different-content) binding must leave the comparison RED');
     }
     console.log(`  ✓ §3 r1 declared delta: ${S3_DELTA_SEEN} case(s) differ only by the order-independent content key (content-bound); a wrong binding stays red`);
     // NON-VACUOUS ALLOWLIST: one more fresh request after the floor cache has EXPIRED (one TTL since any earlier read) MUST
@@ -288,7 +290,7 @@ async function traced(rid, oid, uid, phone) {
       const ctlOpts = { expected: 1, label: 'x_pizza post-TTL a_normal_retry (switch cache cold)',
         anchor: ({ after }) => !!after && after.db === 'rtdb' && after.op === 'once' && after.path === 'orders/<oid>' };
       const rest = CTL.withoutControlRead(t.trace, 'x_pizza', ctlOpts);
-      assert.deepStrictEqual(SD.contentKeyDelta(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), { content: t.content, route: 'chargeOnlineOrder', label: 'post-TTL' }), golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
+      assert.deepStrictEqual(SD.compareShape(rest.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e)), [], { mode: 'bound', content: t.content, route: 'chargeOnlineOrder', label: 'post-TTL' }).actual, golden.x_pizza.a_normal_retry, '🔴 the post-TTL request, minus its floor GET and its switch read, equals the frozen golden');
       CTL.assertOtherRidRefused(t.trace, 'x_pizza', 'la_musa', ctlOpts);
       console.log(`  ✓ x_pizza post-TTL a_normal_retry: exactly 1 allowlisted floor GET + exactly 1 switch read (before the classifier's order read); the rest identical to the golden; a switch read on la_musa's path is refused`);
     }

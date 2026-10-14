@@ -61,18 +61,61 @@ function rateLimitKey(raw) {
   return require('crypto').createHash('sha256').update(String(raw)).digest('hex').slice(0, 32);
 }
 
+// §3 r2 — THE PRE-§3 TEXT OF THIS CART. A stamp written before §3 came from a client that serialized in MENU order, so
+// its verbatim key is the key of THIS cart's lines re-ordered into menu order — whatever order they arrive in now. The
+// client lines ("{n}x {name} (L{price}){extras}") are stably sorted by their dish's position in `menuNames` (the cached
+// catalog snapshot's names, in item_order); the lines the SERVER appends (a reward's "… (Recompensa)") stay last, in
+// order, exactly as they were appended then. null when it cannot be rebuilt faithfully: no snapshot, unbalanced
+// brackets, or a line whose dish the snapshot does not name.
+const LEGACY_LINE = /^\d+x (.+?) \(L\d+(?:\.\d+)?\)/;
+const SERVER_LINE = / \(Recompensa\)$/;
+function topLevelLines(s) {
+  const lines = []; let depth = 0, start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '[') depth++;
+    else if (c === ']') { depth--; if (depth < 0) return null; }
+    else if (depth === 0 && s.startsWith(' | ', i)) { lines.push(s.slice(start, i)); start = i + 3; i += 2; }
+  }
+  if (depth !== 0) return null;
+  lines.push(s.slice(start));
+  return lines;
+}
+function legacyItemsText(itemsText, menuNames) {
+  if (!Array.isArray(menuNames) || !menuNames.length) return null;
+  const s = String(itemsText == null ? '' : itemsText).trim();
+  const lines = topLevelLines(s); if (!lines) return null;
+  const at = new Map(menuNames.map((n, i) => [n, i]));
+  const client = [], server = [];
+  for (const [i, line] of lines.entries()) {
+    if (SERVER_LINE.test(line)) { server.push(line); continue; }
+    if (server.length) return null;   // a client line after a server-appended one is not a shape either writer produces
+    const m = LEGACY_LINE.exec(line); if (!m || !at.has(m[1])) return null;
+    client.push({ line, r: at.get(m[1]), i });
+  }
+  return client.sort((a, b) => (a.r - b.r) || (a.i - b.i)).map((x) => x.line).concat(server).join(' | ');
+}
+
 // The content stamp this order's content resolves to: the ORDER-INDEPENDENT key's, and — while stamps written before §3
-// can still be live — the VERBATIM key's; when both exist the LATEST `at` wins (exactly what one shared key gave before:
-// the last writer's stamp). A one-line cart has one key, so one read. Any read error THROWS — each caller already treats
-// an error as its own fail-safe (count normally / materialize normally).
-async function readContentStamp(db, { phone, itemsText, orderType, scheduledFor } = {}) {
+// can still be live — the LEGACY key's (the pre-§3 text of this cart, rebuilt in menu order from `menuNames`). When the
+// legacy text cannot be rebuilt (no cached snapshot, a dish it does not name), the incoming text's verbatim key is read
+// instead and that is LOGGED with the order_id. When several stamps exist the LATEST `at` wins (what one shared key gave
+// before: the last writer's stamp). Any read error THROWS — each caller already treats an error as its own fail-safe.
+async function readContentStamp(db, { phone, itemsText, orderType, scheduledFor } = {}, { menuNames = null, orderId = null, log = (...a) => console.warn(...a) } = {}) {
   const args = { phone, itemsText, orderType, scheduledFor };
   const base = `recent_order_content/${rateLimitKey(phone)}`;
-  const keys = [...new Set([orderContentKey(args), orderContentKeyVerbatim(args)])];
+  const legacy = legacyItemsText(itemsText, menuNames);
+  let legacyKey;
+  if (legacy != null) legacyKey = contentKeyOf(phone, legacy, orderType, scheduledFor);
+  else {
+    legacyKey = orderContentKeyVerbatim(args);
+    try { log('content_key_legacy_unavailable', JSON.stringify({ order_id: orderId == null ? null : String(orderId), reason: Array.isArray(menuNames) ? 'unmatched_line' : 'no_menu_snapshot' })); } catch (_) {}
+  }
+  const keys = [...new Set([orderContentKey(args), legacyKey])];
   const recs = (await Promise.all(keys.map((k) => db.ref(`${base}/${k}`).once('value').then((snap) => snap.val())))).filter((r) => r != null);
   if (!recs.length) return null;
   const at = (r) => (r && Number.isFinite(r.at) ? r.at : -Infinity);
   return recs.reduce((best, r) => (at(r) > at(best) ? r : best));
 }
 
-module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, readContentStamp, isContentRetap, rateLimitKey };
+module.exports = { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, readContentStamp, isContentRetap, rateLimitKey };

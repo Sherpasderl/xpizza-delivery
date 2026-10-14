@@ -49,7 +49,8 @@ const RD = require('./_render-delta');
 // §3 serialization r1 (codex): the DECLARED delta (test/_serial3-delta.js) — the order-independent content key, bound to the
 // content the request persisted where it did, else the declared unbound mode; (the factura's item_order comes from the gate reader's cached snapshot — no new read)
 const SD = require('./_serial3-delta');
-const POST_OF = new WeakMap();   // recorded result → the order record after the request (the content a stamp may bind to)
+const POST_OF = new WeakMap();
+const SENT_OF = new WeakMap();   // recorded result → the body the request POSTED (what the content stamp hashed)   // recorded result → the order record after the request (the content a stamp may bind to)
 let S3_BOUND = 0, S3_UNBOUND = 0, S3_DIFF = 0;
 // R1c — THE CATALOG CACHE CLOCK, installed BEFORE index.js loads (test/_catalog-clock.js): no catalog cache refills inside
 // this run unless the test advances it, so the only catalog traffic set aside is the COLD load (test/_render-delta.js
@@ -143,7 +144,9 @@ async function seed(rid) {
   await publishVersion(fs, rid, input, { expected: { activeVersionId: null }, mirror: makeRtdbMirror(rtdb) });
   await backfillIdentities(fs, rid, catalogSnapshot(rid), { captured: await getActivePointer(fs, rid) });
 }
+let LAST_SENT = null;   // §3 r2: the body the request actually POSTED — the stamp's real input (bound cases bind to it)
 function post(handler, body, headers = {}) {
+  LAST_SENT = body;
   return new Promise((resolve, reject) => {
     const w = express(); w.use(express.json()); w.use(handler);
     const s = http.createServer(w).listen(0, '127.0.0.1', async () => {
@@ -211,6 +214,7 @@ async function traced(c, rid, setupState) {
   const out = { status: r.status, body, ops, changed, raw: r.json };
   COLD_OF.set(out, cold);   // beside the result, not in it: the result's shape is what the goldens hold
   POST_OF.set(out, post_);
+  SENT_OF.set(out, LAST_SENT);
   return out;
 }
 
@@ -358,11 +362,15 @@ async function pageSends(dir, c, firstStatus, firstBody) {
         const g = golden.cases[key];
         assert.ok(g, `${L}: present in the frozen base trace`);
         assert.strictEqual(r.status, g.status, `🔴 ${L}: status changed (${g.status} → ${r.status})`);
-        const cs = SD.compareShape(r.ops, g.ops, { content: SD.contentOfOrder(POST_OF.get(r)), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
+        // codex r2 P2 — the mode is DECLARED from what the case IS: a refusal, a changed cart or a vanished order stamps content
+        // it does not persist (unbound); every other case is bound to the content it POSTED (the stamp's real input — e.g.
+        // ACQUIRE FAILS stamps its qty-2 cart although the order keeps qty 1)
+        const mode = (c.kind === 'refusal' || /chang|VANISH/i.test(c.name)) ? 'unbound' : 'bound';
+        const cs = SD.compareShape(r.ops, g.ops, { mode, content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', label: L });
         if (cs.bound) S3_BOUND += 1; else S3_UNBOUND += 1;
         if (JSON.stringify(r.ops) !== JSON.stringify(g.ops)) S3_DIFF += 1;
         assert.deepStrictEqual(cs.actual, cs.expected, `🔴 ${L}: the handler's database CALL SEQUENCE changed — a refusal must add no read and move no write`);
-        const ch = SD.changedShape(r.changed, g.changed, { content: SD.contentOfOrder(POST_OF.get(r)), bound: cs.bound });
+        const ch = SD.changedShape(r.changed, g.changed, { content: SD.stampContent({ route: c.path === 'card' ? 'chargeOnlineOrder' : 'createOrder', sent: SENT_OF.get(r), post: POST_OF.get(r) }), bound: cs.bound });
         assert.deepStrictEqual(ch.actual, ch.expected, `🔴 ${L}: the set of database paths the request changed is not the base's (cleanup / writes must be identical)`);
         if (c.kind === 'refusal') {
           assert.strictEqual(r.status, 409);

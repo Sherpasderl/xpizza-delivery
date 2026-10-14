@@ -258,7 +258,8 @@ async function holdIfDuplicateSibling(deps, orderId, order, now) {
     const sf = SCHED.normalizeScheduledFor(order.scheduled_for);
     const ck = orderContentKey({ phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
     if (!ck) return false;
-    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });
+    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null },
+      { menuNames: deps.menuNamesFor && order.restaurant_id ? deps.menuNamesFor(order.restaurant_id) : null, orderId });
     // fast-out before the sibling point-read (no stamp / self / non-cash → not our collision)
     if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;
     const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();

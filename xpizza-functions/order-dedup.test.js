@@ -3,7 +3,7 @@
 // order-dedup — pure content-key + re-tap decision (Layer 2 content-aware phone rate limit).
 // Run: node order-dedup.test.js
 const assert = require('assert');
-const { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, isContentRetap } = require('./order-dedup');
+const { orderContentKey, orderContentKeyVerbatim, canonicalItemsText, legacyItemsText, isContentRetap } = require('./order-dedup');
 
 const base = { phone: '+504 3367-2490', itemsText: '1x Pad Thai - Camarones (L414)', orderType: 'delivery', scheduledFor: null };
 const k = orderContentKey(base);
@@ -37,6 +37,23 @@ assert.equal(orderContentKey({}), orderContentKey({ phone: '', itemsText: '', or
   assert.equal(canonicalItemsText(`${B} | ${A}`), canonicalItemsText(`${A} | ${B}`), 'either order → the same canonical text');
   assert.equal(canonicalItemsText(null), '', 'null → empty');
   console.log('  ✓ §3: order-independent content key (lines at top level only; single-line keys unchanged; unbalanced → verbatim)');
+}
+
+// §3 r2 — the PRE-§3 text of a cart, rebuilt from any line order (old clients serialized in MENU order; the server
+// appends reward lines last)
+{
+  const menu = ['Carnivora', 'Crispy Bacon', 'Margherita', 'Pepperoni'];
+  const A = '2x Carnivora (L340) [Pizza 1: Mozzarella | Pizza 2: Pepperoni]', B = '1x Pepperoni (L307)', C = '1x Margherita (L299)', F = '1x Margherita (Recompensa)';
+  assert.equal(legacyItemsText(`${B} | ${A}`, menu), `${A} | ${B}`, 'client lines re-ordered into menu order');
+  assert.equal(legacyItemsText(`${B} | ${C} | ${A}`, menu), `${A} | ${C} | ${B}`, 'three lines, any order → menu order');
+  assert.equal(legacyItemsText(`${A} | ${B}`, menu), `${A} | ${B}`, 'already menu-ordered → unchanged');
+  assert.equal(legacyItemsText(`${B} | ${A} | ${F}`, menu), `${A} | ${B} | ${F}`, 'server-appended reward lines stay LAST, as appended');
+  assert.equal(legacyItemsText(A, menu), A, 'one line → itself (= the verbatim key, as before)');
+  assert.equal(legacyItemsText(`1x Unknown (L10) | ${A}`, menu), null, 'a dish the snapshot does not name → null (no guessing)');
+  assert.equal(legacyItemsText(`${F} | ${A}`, menu), null, 'a client line after a server line is not a real shape → null');
+  assert.equal(legacyItemsText(`${A} | ${B}`, null), null, 'no snapshot → null');
+  assert.equal(legacyItemsText('1x A (L1) [x | 1x B (L2)', menu), null, 'unbalanced brackets → null');
+  console.log('  ✓ §3 r2: legacy text = the cart re-ordered into menu order, reward lines last; anything not rebuildable → null');
 }
 
 // re-tap decision

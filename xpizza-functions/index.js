@@ -387,6 +387,9 @@ function menuOrderSource() {
   return _menuOrderSource;
 }
 const menuOrderVersionOf = (tables) => { const e = require('./catalog/pricing-tables').envelopeOf(tables); return e ? e.versionId : null; };
+// §3 r2: the dish names in that version's menu order (the gate reader's cached snapshot; never a read) — what a pre-§3 client
+// serialized in, so a legacy content stamp is found from a cart in any line order
+const menuNamesOf = (rid, tables) => gateReader().peekMenuNames(rid, menuOrderVersionOf(tables));
 /* serial3:end wiring */
 
 // ── Portal 2a Task 5 — the AVAILABILITY GATE reader ────────────────────────────────────────────
@@ -970,8 +973,10 @@ createOrderApp.all('*', async (req, res) => {
     if (fields.customer_phone && ck) {
       const cbase = db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}`);
       /* serial3:begin create-stamp */
-      // §3: the prior stamp under the order-independent key OR (a stamp from before §3) the verbatim key — latest wins
-      const rec = await readContentStamp(db, { phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null });
+      // §3: the prior stamp under the order-independent key OR (a stamp from before §3) the LEGACY key — this cart's text
+      // re-ordered into the pricing version's menu order (cached snapshot, no read) — latest wins
+      const rec = await readContentStamp(db, { phone: fields.customer_phone, itemsText: fields.items_text, orderType, scheduledFor: Number.isFinite(_sf) ? _sf : null },
+        { menuNames: menuNamesOf(restaurantId, pricingTables), orderId });
       /* serial3:end create-stamp */
       phoneRetap = isContentRetap(rec, Date.now(), CONTENT_DEDUP_WINDOW_MS);
       // F3 create-side (SECONDARY, NON-BLOCKING): the PRIOR stamp `rec` may hold a live ONLINE sibling X (same
@@ -2405,6 +2410,9 @@ function confirmDeps(db) {
       catch (_) { return Number((Number(totalCents) / 100).toFixed(2)); }
     },
     voidOrRefund,   // cancel-vs-confirm race guard (I8)
+    /* serial3:begin confirm-deps */
+    menuNamesFor: (rid) => gateReader().peekActiveMenuNames(rid),   // §3 r2: the duplicate guard's legacy key (cached, never a read)
+    /* serial3:end confirm-deps */
     alert: (kind, detail) => paymentAlert(db, kind, detail)
   };
 }

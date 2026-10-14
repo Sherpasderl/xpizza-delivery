@@ -1,6 +1,6 @@
 'use strict';
 // MENU-ORDERING §3, codex serialization r1 — wiring guard. Run: node serial3-wiring.guard.test.js
-//   1. PROOF: tools/serial3-inverse.js turns index.js back into its base BYTE-FOR-BYTE (7 delimited, byte-pinned blocks) and
+//   1. PROOF: tools/serial3-inverse.js turns index.js back into its base BYTE-FOR-BYTE (8 delimited, byte-pinned blocks) and
 //      the pinned materialize-guard.js back into its base (2 hunks). An edit inside a block / hunk, a missing or extra block
 //      and a byte outside are each detected.
 //   2. PLACEMENT: both factura sites (createOrder, chargeOnlineOrder) re-order the priced lines through
@@ -22,12 +22,12 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplySerial3Index(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplySerial3Index(real), base, `🔴 index.js minus the serial3 blocks is not ${BASE}:index.js`);
-  assert.strictEqual(BLOCKS.length, 7, '7 blocks');
+  assert.strictEqual(BLOCKS.length, 8, '8 blocks');
   assert.throws(() => unapplySerial3Index(real.replace('orderId, bodyItems: body.items, priced: facturaPricedBody', 'orderId, bodyItems: body.items, priced: facturaPricedBody ')), /pinned bytes/, 'an edit INSIDE a block');
-  assert.throws(() => unapplySerial3Index(real.replace('/* serial3:end wiring */', '')), /exactly 7/, 'a missing delimiter');
-  assert.throws(() => unapplySerial3Index(real.replace('exports.verifyOtp', '/* serial3:begin x */\n/* serial3:end x */\nexports.verifyOtp')), /exactly 7/, 'an eighth block');
+  assert.throws(() => unapplySerial3Index(real.replace('/* serial3:end wiring */', '')), /exactly 8/, 'a missing delimiter');
+  assert.throws(() => unapplySerial3Index(real.replace('exports.verifyOtp', '/* serial3:begin x */\n/* serial3:end x */\nexports.verifyOtp')), /exactly 8/, 'a ninth block');
   assert.notStrictEqual(unapplySerial3Index(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the blocks survives (the base pin catches it)');
-  ok(`index.js: unapplySerial3Index → ${BASE}:index.js byte-for-byte (7 blocks); an edit inside, a missing delimiter, an eighth block and a byte outside are each caught`);
+  ok(`index.js: unapplySerial3Index → ${BASE}:index.js byte-for-byte (8 blocks); an edit inside, a missing delimiter, a ninth block and a byte outside are each caught`);
 }
 // ── 1b. the pinned module ──
 {
@@ -65,8 +65,13 @@ for (const [label, start, end, tag, recordUse] of [
   const co = idx.slice(at(idx, 'createOrderApp.all('), at(idx, 'createOrderApp.use('));
   const stamp = co.slice(at(co, '/* serial3:begin create-stamp */'), at(co, '/* serial3:end create-stamp */'));
   assert.ok(/const rec = await readContentStamp\(db, \{ phone: fields\.customer_phone, itemsText: fields\.items_text, orderType,/.test(stamp), 'createOrder reads its prior content stamp under BOTH keys');
+  assert.ok(/\{ menuNames: menuNamesOf\(restaurantId, pricingTables\), orderId \}\);/.test(stamp), 'createOrder: the legacy key is rebuilt in the PRICING version\'s menu order (r2)');
+  assert.ok(/const menuNamesOf = \(rid, tables\) => gateReader\(\)\.peekMenuNames\(rid, menuOrderVersionOf\(tables\)\);/.test(wiring), 'menuNamesOf peeks the cached snapshot of the pricing version');
+  const cd = idx.slice(at(idx, 'function confirmDeps(db)'), at(idx, 'function runConfirm('));
+  assert.ok(/\/\* serial3:begin confirm-deps \*\/\n\s+menuNamesFor: \(rid\) => gateReader\(\)\.peekActiveMenuNames\(rid\),/.test(cd), 'confirmDeps (every materialize path) supplies menuNamesFor (cached, never a read)');
   const mg = read('materialize-guard.js');
   assert.ok(/const stamp = await readContentStamp\(deps\.db, \{ phone: order\.customer_phone, itemsText: order\.items_text, orderType: order\.order_type,/.test(mg), 'the materialize-side duplicate guard reads BOTH keys');
+  assert.ok(/\{ menuNames: deps\.menuNamesFor && order\.restaurant_id \? deps\.menuNamesFor\(order\.restaurant_id\) : null, orderId \}\);/.test(mg), '…with the legacy key rebuilt from deps.menuNamesFor (r2)');
   ok('wiring: the item_order is the PRICING version\'s menu_structure (module deadline); createOrder\'s prior stamp and the materialize guard read both content keys');
 }
 console.log(`\nserial3-wiring.guard: OK (${n})`);

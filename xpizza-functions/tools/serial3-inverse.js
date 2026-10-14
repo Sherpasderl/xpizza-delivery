@@ -1,13 +1,13 @@
 'use strict';
 // MENU-ORDERING §3, codex serialization r1 (order-independent content key + the factura's lines in menu order) — the slice's
-// test-only INVERSE. index.js carries 7 delimited, byte-pinned blocks `/* serial3:begin <id> */ … /* serial3:end <id> */`
+// test-only INVERSE. index.js carries 8 delimited, byte-pinned blocks `/* serial3:begin <id> */ … /* serial3:end <id> */`
 // (pure insertions, plus the createOrder content-stamp read and the two factura heads, which REPLACE one line each);
-// unapplySerial3Index swaps each back for its original bytes, so unapplySerial3Index(index.js) === 90fac9e:index.js
+// unapplySerial3Index swaps each back for its original bytes, so unapplySerial3Index(index.js) === 207170e:index.js
 // byte-for-byte (serial3-wiring.guard). Every index.js fold guard applies it FIRST (this is the newest index.js slice),
 // before the per-product-extras blocks. HUNKS are its exact edits in the PINNED materialize-guard.js (order-control-wiring
 // pins it vs e1aeb3f): unapplySerial3Module is applied first there, so any byte outside them still fails the pin.
 const crypto = require('crypto');
-const BASE = '90fac9e';
+const BASE = '207170e';
 const BLOCKS = [
   {
     "id": "require",
@@ -16,12 +16,12 @@ const BLOCKS = [
   },
   {
     "id": "wiring",
-    "sha": "c77b92ba33f9212a6b1eeeddb77bc749a83b6c359c5478c2e546ab605370fb53",
+    "sha": "6d39871cb1d160692bceed51722fa0eb0766f1db39d3db3a044d3e193c71083c",
     "original": ""
   },
   {
     "id": "create-stamp",
-    "sha": "c31f0ac73d27db1bc3f161d345924cc499791ac8f31138c2120ebe307787ebff",
+    "sha": "2f00d72660be284e637709da30bef84ccbb7b99eec0c098873db805f3da95d70",
     "original": "      const rec = (await cbase.child(ck).once('value')).val();\n"
   },
   {
@@ -42,6 +42,11 @@ const BLOCKS = [
   {
     "id": "factura-card-order",
     "sha": "4b45539a8ae87189c471d9efdb2c384493d6a44b34588b42e22aff81d61aaf96",
+    "original": ""
+  },
+  {
+    "id": "confirm-deps",
+    "sha": "24d66712cfc7763761d97131e5170e5198021a7c101e98b1cb4f3736a3a148e7",
     "original": ""
   }
 ];
@@ -67,7 +72,7 @@ const HUNKS = Object.freeze([
  },
  {
   "file": "materialize-guard.js",
-  "now": "    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null });\n",
+  "now": "    const stamp = await readContentStamp(deps.db, { phone: order.customer_phone, itemsText: order.items_text, orderType: order.order_type, scheduledFor: Number.isFinite(sf) ? sf : null },\n      { menuNames: deps.menuNamesFor && order.restaurant_id ? deps.menuNamesFor(order.restaurant_id) : null, orderId });\n",
   "was": "    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();\n"
  }
 ]);
