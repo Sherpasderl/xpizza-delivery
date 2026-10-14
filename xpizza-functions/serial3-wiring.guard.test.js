@@ -78,12 +78,23 @@ for (const [label, start, end, tag, recordUse] of [
   assert.ok(ch.indexOf('/* serial3:begin card-content-keys */') > ch.indexOf('const pendingOrderRecord = {') && ch.indexOf('/* serial3:begin card-content-keys */') < ch.indexOf('acquireHostedAttempt('), '…onto the pending record before it is written');
   const mg = read('materialize-guard.js');
   assert.ok(/const persisted = typeof order\.content_key === 'string' && order\.content_key === ck;/.test(mg), 'the materialize-side guard trusts the persisted keys only when they are THIS content\'s');
-  assert.ok(/const stamp = await readContentStampByKeys\(deps\.db, order\.customer_phone, \[ck, legacyKey \|\| orderContentKeyVerbatim\(args\)\]\);/.test(mg) && !/menuNames/.test(mg), '…reads BOTH keys and never computes from menu names');
-  // r4 (codex r4 P1): the legacy key is REBUILT from the order's own text + the persisted permutation (never a stored key),
-  // and a paid order is held only on a sibling whose OWN content verifies
-  assert.ok(/legacyKey = legacyKeyByOrder\(args, order\.content_legacy_order, ownSuffix\)/.test(mg) && !/order\.content_key_legacy\b(?!_reason)/.test(mg), '…the legacy key is rebuilt from the order\'s own text + the permutation; no stored key is trusted');
-  const vAt = mg.indexOf('if (!sibKey || sibKey !== ck) {'), dAt = mg.indexOf('if (!dec.collision) return false;'), cAt = mg.indexOf('const claim = await orderRef.transaction(', vAt);
-  assert.ok(dAt > 0 && vAt > dAt && cAt > vAt, '…and the sibling\'s OWN content is verified after the collision decision and BEFORE the hold\'s CAS');
+  // r6 (codex r6, the structural ruling): hold(X) = MAIN_PATH(X) OR NEW_PATH(X) — two functions, OR-ed, main's lookup kept
+  assert.ok(/const dec = \(await mainPathSibling\(deps, orderId, order, args\)\) \|\| \(await newPathSibling\(deps, orderId, order, args\)\);/.test(mg), 'the guard is MAIN_PATH OR NEW_PATH');
+  const mainFn = mg.slice(mg.indexOf('async function mainPathSibling('), mg.indexOf('async function newPathSibling('));
+  const baseMg = execFileSync('git', ['show', `${BASE}:xpizza-functions/materialize-guard.js`], { cwd: __dirname, encoding: 'utf8' });
+  for (const line of ["    const stamp = (await deps.db.ref(`recent_order_content/${rateLimitKey(order.customer_phone)}/${ck}`).once('value')).val();",
+    "    if (!stamp || !stamp.order_id || stamp.order_id === orderId || stamp.payment_method !== 'cash') return false;".replace('return false;', 'return null;'),
+    "    const siblingOrder = (await deps.db.ref(`orders/${stamp.order_id}`).once('value')).val();",
+    "    const dec = duplicateSiblingDecision(orderId, stamp, siblingOrder, 'cash');   // PIN 1: no 2-min gate — liveness of Y decides"]) {
+    assert.ok(mainFn.includes(line), `MAIN_PATH keeps main's lookup byte-recognisable: ${line.trim().slice(0, 60)}…`);
+    assert.ok(baseMg.includes(line.replace('return null;', 'return false;')), `…and that line IS main's (${BASE})`);
+  }
+  assert.ok(/const ck = orderContentKeyVerbatim\(args\);/.test(mainFn) && !/legacyKey|content_key|readContentStampByKeys/.test(mainFn), 'MAIN_PATH keys the incoming VERBATIM text (main\'s key) and nothing else');
+  assert.ok(/if \(c\.known && !sameCart\(siblingOrder, c\.text, orderContentKey\(args\)\)\) \{ logRefused\(orderId, stamp\.order_id, 'main', 'sibling_content_mismatch'\); return null; \}/.test(mainFn), 'MAIN_PATH refuses ONLY a PROVABLE mismatch (known client content), logged');
+  const newFn = mg.slice(mg.indexOf('async function newPathSibling('), mg.indexOf('async function holdIfDuplicateSibling('));
+  assert.ok(/const persisted = typeof order\.content_key === 'string' && order\.content_key === ck;/.test(newFn) && /legacyKey = legacyKeyByOrder\(args, order\.content_legacy_order, ownSuffix\)/.test(newFn) && !/order\.content_key_legacy\b(?!_reason)/.test(newFn), 'NEW_PATH: persisted keys trusted only for THIS content; the legacy key REBUILT (never stored)');
+  assert.ok(/const stamp = await readContentStampByKeys\(deps\.db, order\.customer_phone, \[key\]\);/.test(newFn) && !/menuNames/.test(mg), 'NEW_PATH evaluates EACH key on its own (no cross-key latest-wins), never from menu names');
+  assert.ok(/if \(!c\.known\) \{ logRefused\(orderId, stamp\.order_id, 'new', c\.reason\); continue; \}/.test(newFn) && /if \(!sameCart\(siblingOrder, c\.text, ck\)\) \{ logRefused\(orderId, stamp\.order_id, 'new', 'sibling_content_mismatch'\); continue; \}/.test(newFn), 'NEW_PATH holds ONLY on a VERIFIED same cart (unknown / mismatch → no hold, logged)');
   // r5 (codex r5 P1): server-appended reward text by PROVENANCE only — persisted where the server appends it, read exactly
   assert.ok(/const rewardSuffixOf = \(freeItems, itemsText\) => \{ const t = freeItems && freeItems\.length \? rewardAppendText\(freeItems\) : ''; return t && String\(itemsText\)\.endsWith\(t\) \? t : null; \};/.test(idx), 'the provenance is the server\'s OWN formatter output, persisted only when the text ends with it');
   // the pinned prepareRedemption appends with EXACTLY the template order-dedup.rewardAppendText uses (byte-identical)
@@ -97,7 +108,7 @@ for (const [label, start, end, tag, recordUse] of [
   }
   assert.ok(/if \(rewardSuffix\) pendingOrderRecord\.reward_text_appended = rewardSuffix;/.test(keys) && /orderId, suffix: rewardSuffix \}\)\);/.test(keys), 'chargeOnlineOrder persists it and builds the permutation over the CLIENT lines (provenance)');
   assert.ok(!/SERVER_LINE|\(Recompensa\)\\\$/.test(read('order-dedup.js')), 'order-dedup decides NOTHING by a "(Recompensa)" pattern');
-  assert.ok(/else if \(sibSuffix\) sibText = clientTextOf\(sib\.items_text, sibSuffix\);/.test(mg) && /else if \(sib\.redemption\) unverifiable = 'no_reward_provenance';/.test(mg), 'the guard strips the sibling\'s reward text by provenance only; a reward without provenance is unverifiable (today\'s behaviour, logged)');
+  assert.ok(/if \(suffix\) \{ const t = clientTextOf\(sib\.items_text, suffix\);/.test(mg) && /if \(sib\.redemption\) return \{ known: false, reason: 'no_reward_provenance' \};/.test(mg), 'the guard strips the sibling\'s reward text by provenance only; a reward without provenance is unverifiable (today\'s behaviour, logged)');
   assert.ok(/: 'legacy_order_absent';/.test(mg), 'r5 P2: an absent permutation is an explicit, logged fallback');
   ok('wiring: the item_order is the PRICING version\'s menu_structure (module deadline); createOrder\'s prior stamp reads both keys; chargeOnlineOrder persists both and the materialize guard reads them (r3, no cold-cache dependency)');
 }

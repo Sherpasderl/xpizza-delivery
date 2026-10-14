@@ -115,10 +115,11 @@ function liftConfirmDeps(provided) {
   { const old = { order_id: 'X', customer_phone: PHONE, items_text: AB, order_type: 'pickup', restaurant_id: 'x_pizza', payment_method: 'online' };
     const store = legacyCashSibling(); store['orders/X'] = confirmed(old);
     const { r, logs } = await quiet(() => holdIfDuplicateSibling(confirmDeps(fakeDb(store)), 'X', confirmed(old), 123));
-    assert.strictEqual(r, true, 'pre-deploy order, same order → still held (incoming verbatim)');
-    assert.ok(logs.some((l) => l.includes('content_key_legacy_unavailable') && l.includes('"order_id":"X"') && l.includes('"reason":"no_persisted_keys"')), 'the fallback is logged');
+    assert.strictEqual(r, true, 'pre-deploy order, same order → held by MAIN_PATH (incoming verbatim)'); void logs;
     const oldBA = { ...old, items_text: BA }; const store2 = legacyCashSibling(); store2['orders/X'] = confirmed(oldBA);
-    assert.strictEqual((await quiet(() => holdIfDuplicateSibling(confirmDeps(fakeDb(store2)), 'X', confirmed(oldBA), 123))).r, false, 'pre-deploy order, permuted → not found: today\'s behaviour (the logged, bounded transition gap)'); }
+    const q2 = await quiet(() => holdIfDuplicateSibling(confirmDeps(fakeDb(store2)), 'X', confirmed(oldBA), 123));
+    assert.strictEqual(q2.r, false, 'pre-deploy order, permuted → not found: today\'s behaviour (the logged, bounded transition gap)');
+    assert.ok(q2.logs.some((l) => l.includes('content_key_legacy_unavailable') && l.includes('"order_id":"X"') && l.includes('"reason":"no_persisted_keys"')), 'the NEW path\'s fallback is logged'); }
   ok('a pending order created before the deploy (no persisted keys) → today\'s behaviour, logged with the order_id');
 
   // 4. intake itself cold (no snapshot): the legacy key is absent + its reason, logged; same-order still held

@@ -140,14 +140,16 @@ const sibY = (extra = {}, content = {}) => ({ order_id: 'Y', customer_phone: PHO
     {
       const legacy = pathOf(orderContentKeyVerbatim(args(AB))), canon = pathOf(orderContentKey(args(AB)));
       const st1 = { [legacy]: { at: 1000, order_id: 'Y', payment_method: 'cash' }, [canon]: { at: 2000, order_id: 'X', payment_method: 'online' }, 'orders/Y': sibY({ status: 'new' }, { items_text: AB }), 'orders/X': order('X', AB) };
-      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(st1) }, 'X', order('X', AB), 123), false, 'the newer canonical stamp (X itself) wins over an older legacy one → no hold, as one shared key would have said');
+      // r6 (structural ruling): MAIN's lookup is its own path — X's text is already menu-ordered, so main's verbatim key IS the
+      // legacy key and 207170e itself holds on this state; a newer canonical self-stamp never shadows it
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(st1) }, 'X', order('X', AB), 123), true, 'MAIN_PATH (verbatim) holds even when the newer canonical stamp is X itself — never shadowed (codex r6 P1-B class)');
       const st2 = { [legacy]: { at: 3000, order_id: 'Y', payment_method: 'cash' }, [canon]: { at: 2000, order_id: 'X', payment_method: 'online' }, 'orders/Y': sibY({ status: 'new' }, { items_text: AB }), 'orders/X': order('X', AB) };
       assert.equal(await holdIfDuplicateSibling({ db: fakeDb(st2) }, 'X', order('X', AB), 123), true, 'a newer legacy stamp (cash Y) wins → hold');
       const one = { [pathOf(orderContentKey(args(B)))]: { at: 5, order_id: 'Y', payment_method: 'cash' } };
       const reads = []; const db = { ref: (p) => ({ once: async () => { reads.push(p); return { val: () => one[p] }; } }) };
       assert.deepStrictEqual(await readContentStamp(db, args(B)), one[pathOf(orderContentKey(args(B)))]);
       assert.equal(reads.length, 1, 'a one-line cart has ONE key (canonical === verbatim) → one read');
-      ok('§3: with both stamps present the LATEST `at` wins; a one-line cart costs one read');
+      ok('§3/r6: MAIN_PATH is never shadowed by a newer canonical self-stamp; a one-line cart costs one read');
     }
   }
 
@@ -214,17 +216,21 @@ const sibY = (extra = {}, content = {}) => ({ order_id: 'Y', customer_phone: PHO
         'orders/Y': sibY({ status: 'preparing', redemption: { model: 'add_free' }, reward_text_appended: RB }, { items_text: PAID + RB }),
         'orders/X': { ...orderX(), items_text: PAID, ...contentKeysRecord(a1(PAID), { menuNames: MENU }) } };
       assert.equal(await holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', store['orders/X'], 123), true, '🔴 r5 P1-B: online X + live cash Y with the same paid cart and a "[special" reward name → HELD (as on main)'); }
-    { // a redeemed sibling written BEFORE this deploy (no provenance) cannot be verified → today's behaviour (held), LOGGED
-      const store = { ...legacyStamp(`${AB}${RW}`), 'orders/X': order('X', BA) };
-      Object.assign(store['orders/Y'], { redemption: { model: 'add_free' } });
-      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123));
-      assert.equal(r, true, 'a pre-deploy redeemed sibling (no provenance) → today\'s behaviour: held');
-      assert.ok(logs.some((l) => l.includes('duplicate_sibling_unverifiable') && l.includes('"reason":"no_reward_provenance"') && l.includes('"sibling_id":"Y"')), 'logged'); }
+    { // a redeemed sibling written BEFORE this deploy (no provenance) cannot be verified. Found by MAIN's own lookup (X's
+      // verbatim key) → today's behaviour: held. Found ONLY by a §3 lookup (main would never follow it) → NOT held, logged (r6)
+      const viaMain = { ...legacyStamp(`${AB}${RW}`), 'orders/X': order('X', AB) };   // X = [A,B]: main's verbatim key IS the legacy key
+      Object.assign(viaMain['orders/Y'], { redemption: { model: 'add_free' } });
+      assert.equal(await holdIfDuplicateSibling({ db: fakeDb(viaMain) }, 'X', order('X', AB), 123), true, 'unverifiable via MAIN_PATH → today\'s behaviour: held');
+      const viaNew = { ...legacyStamp(`${AB}${RW}`), 'orders/X': order('X', BA) };    // X = [B,A]: only the rebuilt legacy key finds it
+      Object.assign(viaNew['orders/Y'], { redemption: { model: 'add_free' } });
+      const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(viaNew) }, 'X', order('X', BA), 123));
+      assert.equal(r, false, '🔴 r6: unverifiable via a §3 lookup only → NOT held (main never follows that pointer)');
+      assert.ok(logs.some((l) => l.includes('duplicate_sibling_not_verified') && l.includes('"path":"new"') && l.includes('"reason":"no_reward_provenance"')), 'logged'); }
     { // provenance recorded but the text no longer ends with it → not the content that was stamped → not held, logged
       const store = { ...legacyStamp(`${AB} | 1x Otra (Recompensa)`), 'orders/X': order('X', BA) };
       Object.assign(store['orders/Y'], { redemption: { model: 'add_free' }, reward_text_appended: RW });
       const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA), 123));
-      assert.equal(r, false, 'provenance that is not the text\'s suffix → not held'); assert.ok(logs.some((l) => l.includes('"reason":"sibling_content_mismatch"')), 'logged'); }
+      assert.equal(r, false, 'provenance that is not the text\'s suffix → not held'); assert.ok(logs.some((l) => l.includes('"reason":"provenance_not_suffix"')), 'logged'); }
     { // r5 P2: a valid canonical key with NO permutation and no reason → an explicit, logged fallback
       const noOrder = { content_key: orderContentKey(args(BA)) };
       const store = { ...legacyStamp(), 'orders/X': order('X', BA, noOrder) };
@@ -266,10 +272,11 @@ const sibY = (extra = {}, content = {}) => ({ order_id: 'Y', customer_phone: PHO
     // no keys / stale keys / intake-unavailable legacy (r3, unchanged)
     { const store = { ...legacyStamp(), 'orders/X': order('X', AB, {}) };
       const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', AB, {}), 123));
-      assert.equal(r, true, 'no persisted keys: a same-order legacy sibling is still found (incoming verbatim)');
-      assert.ok(logs.some((l) => l.includes('"reason":"no_persisted_keys"') && l.includes('"order_id":"X"')), 'logged');
+      assert.equal(r, true, 'no persisted keys: a same-order legacy sibling is found by MAIN_PATH (incoming verbatim)'); void logs;
       const store2 = { ...legacyStamp(), 'orders/X': order('X', BA, {}) };
-      assert.equal((await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store2) }, 'X', order('X', BA, {}), 123))).r, false, 'no keys + permuted → not found (the logged, bounded transition gap)'); }
+      const q2 = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store2) }, 'X', order('X', BA, {}), 123));
+      assert.equal(q2.r, false, 'no keys + permuted → not found (the logged, bounded transition gap)');
+      assert.ok(q2.logs.some((l) => l.includes('"reason":"no_persisted_keys"') && l.includes('"order_id":"X"')), 'the NEW path\'s fallback is logged'); }
     { const stale = keysOf('1x Margherita (L250)'); const store = { ...legacyStamp(), 'orders/X': order('X', BA, stale) };
       const { r, logs } = await quiet(() => holdIfDuplicateSibling({ db: fakeDb(store) }, 'X', order('X', BA, stale), 123));
       assert.equal(r, false, 'stale keys → not trusted'); assert.ok(logs.some((l) => l.includes('"reason":"stale_persisted_keys"')), 'logged'); }
