@@ -264,7 +264,9 @@ for (const [name, code, re] of [
     // surfaces iff its field is reported NEW, or an opaque is reported on its line
     const H = "chargeOnlineApp.all('*', async (req, res) => {\n";
     const at = fsx.readFileSync(pathx.join(REPO_FN, 'index.js'), 'utf8').split(H)[0].split('\n').length + 1;   // the first injected line
-    const block = corpus.map(([, code], i) => `  { ${code.replace(/surcharge_cents/g, `surcharge_${i}`).replace(/orders\/probe/g, `orders/probe${i}`).replace(/'orders'\)\.push/g, `'orders').push`)} }`).join('\n');
+    // every `z…` identifier is suffixed per construct: the walker scopes bindings per FUNCTION (a safe merge), so a shared
+    // name would let one construct's opaque surface another's write and mask a silent one
+    const block = corpus.map(([, code], i) => `  { ${code.replace(/\bz([a-z]+)\b/g, (_, n) => `z${n}${i}x`).replace(/surcharge_cents/g, `surcharge_${i}`).replace(/orders\/probe/g, `orders/probe${i}`).replace(/'orders'\)\.push/g, `'orders').push`)} }`).join('\n');
     const p = problemsWith(real('index.js', H, `${H}${block}\n`));
     const silent = [];
     corpus.forEach(([name], i) => {
@@ -280,6 +282,8 @@ for (const [name, code, re] of [
   // fields are QUIET — so a regression that turns them opaque is RED too
   for (const [name, code] of [
     ['||= of a classified field', "createOrderApp.all(async (req, res) => { const za = {}; za.status ||= 'new'; await db.ref(`orders/${id}`).update(za); });"],
+    ['||= of an object binding', "createOrderApp.all(async (req, res) => { let za = {}; za ||= { status: 'new' }; await db.ref(`orders/${id}`).update(za); });"],
+    ['??= of an object binding', "createOrderApp.all(async (req, res) => { let zb; zb ??= { status: 'new' }; await db.ref(`orders/${id}`).update(zb); });"],
     ["['update'] with a classified field", "createOrderApp.all(async (req, res) => { await db.ref(`orders/${id}`)['update']({ status: 'new' }); });"],
   ]) {
     const p = problemsWith(asIndex(code));

@@ -12205,7 +12205,7 @@
     "to": "keysOf: null });",
     "label": "B4 r2 P1-2: a for-in key no longer ranges over its source's keys (graduation paths unresolved)",
     "kills_with": [
-      "readyTimeGraduationMonitor computed-key-at-root line 5152 (path)"
+      "readyTimeGraduationMonitor computed-key-at-root line "
     ],
     "command": [
       "node",
@@ -12415,7 +12415,7 @@
     "to": "    if (false) {",
     "label": "B4 r3: a transaction RESULT's snapshot is not the committed value at its ref",
     "kills_with": [
-      "pixelpay-confirm.js confirmAndMaterialize opaque-order-object line 301 (orders/*: o)"
+      "pixelpay-confirm.js confirmAndMaterialize opaque-order-object line 301 (orders/*: o"
     ],
     "command": [
       "node",
@@ -12430,7 +12430,7 @@
     "to": "        const FLOWS = ['='];",
     "label": "B4 r4 P1-1: ||= / &&= / ??= are not modelled (a classified ||= turns opaque)",
     "kills_with": [
-      "resolved-form ||= of a classified field: a modelled form did not resolve"
+      "resolved-form ||= of an object binding: a modelled form did not resolve"
     ],
     "command": [
       "node",
@@ -12505,7 +12505,8 @@
     "to": "    return [];",
     "label": "B4 r4 P1-3: the default branch of the expression dispatch answers EMPTY",
     "kills_with": [
-      "semantic corpus: a write-reaching construct was SILENT"
+      "semantic corpus: a write-reaching construct was SILENT",
+      "an ARRAY element pushed to /orders (charge handler): the census stayed GREEN"
     ],
     "command": [
       "node",
