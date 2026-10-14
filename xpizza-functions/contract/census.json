@@ -40495,6 +40495,12 @@
    "key": "xpizza-functions/driver-attribution.js#writeDeliveryAttribution#delivered_by_name#set"
   },
   {
+   "key": "xpizza-functions/index.js#createOrderApp.all#redemption#multipath-member-assign"
+  },
+  {
+   "key": "xpizza-functions/index.js#createOrderApp.all#quote#multipath-member-assign"
+  },
+  {
    "key": "xpizza-functions/index.js#createOrderApp.all#display_number#update"
   },
   {
@@ -41129,6 +41135,10 @@
   {
    "field": "razon_social",
    "class": "fiscal"
+  },
+  {
+   "field": "redemption",
+   "class": "fact"
   },
   {
    "field": "refund_ref",

@@ -63,6 +63,12 @@ for (const [name, code, re] of [
   ['root-triple-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...{ ...newMoneyUpdates } } }); });", /opaque order write unresolved: .*spread-at-root .*newMoneyUpdates/],
   ['root-nested-resolved-field', "createOrderApp.all(async (req, res) => { await rtdb.ref().update({ ...{ ...{ ['orders/probe/surcharge_cents']: 900 } } }); });", /NEW order field written: 'surcharge_cents'/],
   ['orders-nested-spread', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').update({ ...{ ...newMoneyUpdates } }); });", /opaque order write unresolved: .*spread-in-order-write .*newMoneyUpdates/],
+  // B4: a field assigned onto a multipath entry AFTER the fact (createOrder's `.redemption = …` shape) — dot, literal
+  // bracket and deeper forms name the field; a dynamic field segment is opaque
+  ['multipath-member-assign', "createOrderApp.all(async (req, res) => { const updates = {}; updates[`orders/${id}`] = { status: 'new' }; updates[`orders/${id}`].surcharge_cents = 900; await rtdb.ref().update(updates); });", /NEW order field written: 'surcharge_cents'/],
+  ['multipath-member-assign-bracket', "createOrderApp.all(async (req, res) => { const updates = {}; updates[`orders/${id}`] = {}; updates[`orders/${id}`]['surcharge_cents'] = 900; await rtdb.ref().update(updates); });", /NEW order field written: 'surcharge_cents'/],
+  ['multipath-member-assign-deep', "createOrderApp.all(async (req, res) => { const held = {}; held['orders/' + id] = {}; held['orders/' + id].surcharge.cents = 900; await rtdb.ref().update(held); });", /NEW order field written: 'surcharge'/],
+  ['multipath-member-assign-dynamic', "createOrderApp.all(async (req, res) => { const updates = {}; updates[`orders/${id}`] = {}; updates[`orders/${id}`][feeField] = 900; await rtdb.ref().update(updates); });", /opaque order write unresolved: .*dynamic-field-segment/],
   // codex r5 P1-2: a transaction at the ROOT / on /orders is opaque (its updater is never analysed) — RED unless bound
   ['root-transaction', "createOrderApp.all(async (req, res) => { await rtdb.ref().transaction(root => ({ ...root, orders: { ...root.orders, probe: { ['service_charge_cents']: 900 } } })); });", /opaque order write unresolved: .*transaction-at-root/],
   ['orders-transaction', "createOrderApp.all(async (req, res) => { await rtdb.ref('orders').transaction((all) => all); });", /opaque order write unresolved: .*transaction-above-orders/],

@@ -12018,6 +12018,36 @@
     ]
   },
   {
+    "id": "r3p0-42",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "        if (bi >= 0 && bi < chain.length - 1) {",
+    "to": "        if (false) {",
+    "label": "B4: the write inventory no longer sees a field assigned onto a multipath order entry (createOrder's .redemption)",
+    "kills_with": [
+      "'redemption' is no longer written"
+    ],
+    "command": [
+      "node",
+      "contract/census.guard.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-43",
+    "slice": "r3p0",
+    "file": "contract/census.js",
+    "from": "          const nx = chain[bi + 1];",
+    "to": "          const nx = chain[chain.length - 1];",
+    "label": "B4: a deeper member assignment names its LEAF, not the order field it writes",
+    "kills_with": [
+      "multipath-member-assign-deep"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
     "id": "r3p1-01",
     "slice": "r3p1",
     "file": "contract/tracer.js",

@@ -412,6 +412,20 @@ function census({ explicit = [], extraUnits = [], keepPos = false } = {}) {   //
         const key = staticPath(node.left.property);
         if (key && normPath(key).startsWith('orders/')) pathWrite(fn, key, node.right, node, 'multipath-assign');
       }
+      // B4: a FIELD assigned onto a multipath entry after the fact — `updates[`orders/${id}`].f = v` (or `[…]['f']`, or
+      // deeper: `.f.g = v` writes f). The base is the innermost computed static key; what follows it names the path.
+      if (node.type === 'AssignmentExpression' && node.left.type === 'MemberExpression') {
+        const chain = []; let x = node.left;
+        while (x.type === 'MemberExpression') { chain.unshift(x); x = x.object; }
+        const bi = chain.findIndex((m) => m.computed && (() => { const k = staticPath(m.property); return !!k && normPath(k).startsWith('orders'); })());
+        if (bi >= 0 && bi < chain.length - 1) {
+          AT = node;
+          const base = normPath(staticPath(chain[bi].property));
+          const nx = chain[bi + 1];
+          const seg = nx.computed ? staticPath(nx.property) : nx.property.name;
+          pathWrite(fn, `${base}/${seg === null || seg === undefined ? '*' : seg}`, chain.length === bi + 2 ? node.right : null, node, 'multipath-member-assign');
+        }
+      }
     });
   }
   for (const w of writes) if (SENTINEL.test(w.field)) sentinel0.push({ file: w.file, fn: w.fn, key: w.field, line: w.line, how: `write:${w.how}` });

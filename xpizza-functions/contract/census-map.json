@@ -961,6 +961,12 @@
       "class": "fiscal",
       "reason": "factura buyer identity (RTN / razón social) — PROPOSED non-fact; flag: printed on the factura (R10)"
     },
+    "redemption": {
+      "class": "fact",
+      "facts": [
+        "REWARD"
+      ]
+    },
     "refund_ref": {
       "class": "fact",
       "facts": [
