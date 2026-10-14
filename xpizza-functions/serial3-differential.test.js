@@ -20,7 +20,7 @@ const OD = require('./order-dedup');
 const MG = require('./materialize-guard');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
-const BASE = '207170e';
+const BASE = 'f4e7815';
 const gitShow = (ref, f) => execFileSync('git', ['show', `${ref}:xpizza-functions/${f}`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 // ── MAIN, from git ──
 const OLD = path.join(__dirname, 'node_modules', `.serial3-main-${BASE}`);

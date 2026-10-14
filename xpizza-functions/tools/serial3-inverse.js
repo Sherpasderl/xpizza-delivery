@@ -2,12 +2,12 @@
 // MENU-ORDERING §3, codex serialization r1 (order-independent content key + the factura's lines in menu order) — the slice's
 // test-only INVERSE. index.js carries 10 delimited, byte-pinned blocks `/* serial3:begin <id> */ … /* serial3:end <id> */`
 // (pure insertions, plus the createOrder content-stamp read and the two factura heads, which REPLACE one line each);
-// unapplySerial3Index swaps each back for its original bytes, so unapplySerial3Index(index.js) === 207170e:index.js
+// unapplySerial3Index swaps each back for its original bytes, so unapplySerial3Index(index.js) === f4e7815:index.js
 // byte-for-byte (serial3-wiring.guard). Every index.js fold guard applies it FIRST (this is the newest index.js slice),
 // before the per-product-extras blocks. HUNKS are its exact edits in the PINNED materialize-guard.js (order-control-wiring
 // pins it vs e1aeb3f): unapplySerial3Module is applied first there, so any byte outside them still fails the pin.
 const crypto = require('crypto');
-const BASE = '207170e';
+const BASE = 'f4e7815';
 const BLOCKS = [
   {
     "id": "require",
