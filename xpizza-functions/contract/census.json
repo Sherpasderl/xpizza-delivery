@@ -10219,7 +10219,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseAndAlert#total#0",
-   "line": 5908,
+   "line": 5913,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10231,7 +10231,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#0",
-   "line": 5969,
+   "line": 5974,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10244,7 +10244,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#1",
-   "line": 5969,
+   "line": 5974,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10257,7 +10257,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_id#0",
-   "line": 5972,
+   "line": 5977,
    "kind": "projection",
    "facts": [
     "NUM"
@@ -10268,7 +10268,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_type#0",
-   "line": 5975,
+   "line": 5980,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -10278,7 +10278,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_type#1",
-   "line": 5975,
+   "line": 5980,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -10288,7 +10288,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#order_type#2",
-   "line": 5976,
+   "line": 5981,
    "kind": "member",
    "facts": [
     "FULFIL"
@@ -10298,7 +10298,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#2",
-   "line": 6016,
+   "line": 6021,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10311,7 +10311,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#3",
-   "line": 6017,
+   "line": 6022,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10324,7 +10324,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#status#4",
-   "line": 6020,
+   "line": 6025,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10337,7 +10337,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#total#0",
-   "line": 6033,
+   "line": 6038,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10349,7 +10349,7 @@
   },
   {
    "id": "xpizza-functions/index.js#autoAssignOnOrderCreate#total#1",
-   "line": 6051,
+   "line": 6056,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10361,7 +10361,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#0",
-   "line": 6141,
+   "line": 6146,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10374,32 +10374,6 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#1",
-   "line": 6176,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:dispatch",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#2",
-   "line": 6180,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:dispatch",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#3",
    "line": 6181,
    "kind": "member",
    "facts": [
@@ -10412,8 +10386,34 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#2",
+   "line": 6185,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:dispatch",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/index.js#monitorAssignmentTimeout#status#3",
+   "line": 6186,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:dispatch",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#total#0",
-   "line": 6206,
+   "line": 6211,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10425,7 +10425,7 @@
   },
   {
    "id": "xpizza-functions/index.js#monitorAssignmentTimeout#total#1",
-   "line": 6229,
+   "line": 6234,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -10437,7 +10437,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#0",
-   "line": 6325,
+   "line": 6330,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10450,7 +10450,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#1",
-   "line": 6378,
+   "line": 6383,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10463,7 +10463,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#2",
-   "line": 6378,
+   "line": 6383,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10476,7 +10476,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#order_id#0",
-   "line": 6379,
+   "line": 6384,
    "kind": "member",
    "facts": [
     "NUM"
@@ -10486,7 +10486,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#3",
-   "line": 6450,
+   "line": 6455,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10499,7 +10499,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#4",
-   "line": 6451,
+   "line": 6456,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10512,7 +10512,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sweepPendingOrders#status#5",
-   "line": 6457,
+   "line": 6462,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10525,7 +10525,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#0",
-   "line": 6541,
+   "line": 6546,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10538,7 +10538,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#1",
-   "line": 6544,
+   "line": 6549,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10551,7 +10551,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#order_id#0",
-   "line": 6545,
+   "line": 6550,
    "kind": "member",
    "facts": [
     "NUM"
@@ -10561,7 +10561,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#2",
-   "line": 6551,
+   "line": 6556,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10574,7 +10574,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#3",
-   "line": 6552,
+   "line": 6557,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10587,7 +10587,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#4",
-   "line": 6552,
+   "line": 6557,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10600,55 +10600,6 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#5",
-   "line": 6553,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:scheduling",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#releaseScheduledOrder#status#6",
-   "line": 6553,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:scheduling",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#releaseScheduledOrder#status#7",
-   "line": 6553,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:scheduling",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#releaseScheduledOrder#restaurant_id#0",
-   "line": 6556,
-   "kind": "member",
-   "facts": [
-    "BRAND"
-   ],
-   "rule": "server:scheduling",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#releaseScheduledOrder#status#8",
    "line": 6558,
    "kind": "member",
    "facts": [
@@ -10661,8 +10612,57 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/index.js#releaseScheduledOrder#status#6",
+   "line": 6558,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:scheduling",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/index.js#releaseScheduledOrder#status#7",
+   "line": 6558,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:scheduling",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/index.js#releaseScheduledOrder#restaurant_id#0",
+   "line": 6561,
+   "kind": "member",
+   "facts": [
+    "BRAND"
+   ],
+   "rule": "server:scheduling",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/index.js#releaseScheduledOrder#status#8",
+   "line": 6563,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:scheduling",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#release_at#0",
-   "line": 6565,
+   "line": 6570,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -10672,7 +10672,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#scheduled_blocked#0",
-   "line": 6566,
+   "line": 6571,
    "kind": "member",
    "facts": [
     "SCHED"
@@ -10682,7 +10682,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#9",
-   "line": 6574,
+   "line": 6579,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10695,7 +10695,7 @@
   },
   {
    "id": "xpizza-functions/index.js#releaseScheduledOrder#status#10",
-   "line": 6577,
+   "line": 6582,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10708,7 +10708,7 @@
   },
   {
    "id": "xpizza-functions/index.js#sendJson#status#0",
-   "line": 6665,
+   "line": 6670,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10721,7 +10721,7 @@
   },
   {
    "id": "xpizza-functions/index.js#getPublicMenu#status#0",
-   "line": 6693,
+   "line": 6698,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10734,7 +10734,7 @@
   },
   {
    "id": "xpizza-functions/index.js#getPublicMenu#status#1",
-   "line": 6714,
+   "line": 6719,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10747,7 +10747,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#0",
-   "line": 6724,
+   "line": 6729,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10760,7 +10760,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#1",
-   "line": 6726,
+   "line": 6731,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10773,7 +10773,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#restaurant_id#0",
-   "line": 6727,
+   "line": 6732,
    "kind": "destructure",
    "facts": [
     "BRAND"
@@ -10783,7 +10783,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#restaurant_id#1",
-   "line": 6728,
+   "line": 6733,
    "kind": "projection-destructure",
    "facts": [
     "BRAND"
@@ -10794,7 +10794,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#2",
-   "line": 6730,
+   "line": 6735,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10807,7 +10807,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#3",
-   "line": 6736,
+   "line": 6741,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10820,7 +10820,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#4",
-   "line": 6740,
+   "line": 6745,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10833,7 +10833,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#5",
-   "line": 6748,
+   "line": 6753,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10846,7 +10846,7 @@
   },
   {
    "id": "xpizza-functions/index.js#requestOtp#status#6",
-   "line": 6751,
+   "line": 6756,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10859,32 +10859,6 @@
   },
   {
    "id": "xpizza-functions/index.js#verifyOtp#status#0",
-   "line": 6761,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#verifyOtp#status#1",
-   "line": 6763,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#verifyOtp#status#2",
    "line": 6766,
    "kind": "member",
    "facts": [
@@ -10897,8 +10871,34 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/index.js#verifyOtp#status#1",
+   "line": 6768,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/index.js#verifyOtp#status#2",
+   "line": 6771,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/index.js#verifyOtp>anon#status#0",
-   "line": 6773,
+   "line": 6778,
    "kind": "projection",
    "facts": [
     "STATUS",
@@ -10912,7 +10912,7 @@
   },
   {
    "id": "xpizza-functions/index.js#verifyOtp#status#3",
-   "line": 6774,
+   "line": 6779,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10925,7 +10925,7 @@
   },
   {
    "id": "xpizza-functions/index.js#verifyOtp#restaurant_id#0",
-   "line": 6788,
+   "line": 6793,
    "kind": "projection",
    "facts": [
     "BRAND"
@@ -10936,7 +10936,7 @@
   },
   {
    "id": "xpizza-functions/index.js#verifyOtp#status#4",
-   "line": 6795,
+   "line": 6800,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10949,7 +10949,7 @@
   },
   {
    "id": "xpizza-functions/index.js#verifyOtp#status#5",
-   "line": 6798,
+   "line": 6803,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10962,7 +10962,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#0",
-   "line": 6830,
+   "line": 6835,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -10975,7 +10975,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#restaurant_id#0",
-   "line": 6837,
+   "line": 6842,
    "kind": "projection-destructure",
    "facts": [
     "BRAND"
@@ -10986,7 +10986,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#restaurant_id#1",
-   "line": 6837,
+   "line": 6842,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -10996,7 +10996,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#1",
-   "line": 6838,
+   "line": 6843,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11009,7 +11009,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#2",
-   "line": 6847,
+   "line": 6852,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11022,7 +11022,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#3",
-   "line": 6854,
+   "line": 6859,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11035,7 +11035,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#items#0",
-   "line": 6857,
+   "line": 6862,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11045,7 +11045,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#4",
-   "line": 6858,
+   "line": 6863,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11058,7 +11058,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#items#1",
-   "line": 6862,
+   "line": 6867,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11068,7 +11068,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#total#0",
-   "line": 6867,
+   "line": 6872,
    "kind": "destructure",
    "facts": [
     "MONEY",
@@ -11080,7 +11080,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#items#2",
-   "line": 6867,
+   "line": 6872,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11090,7 +11090,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#5",
-   "line": 6871,
+   "line": 6876,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11103,7 +11103,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#items#3",
-   "line": 6878,
+   "line": 6883,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11113,7 +11113,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#6",
-   "line": 6880,
+   "line": 6885,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11126,7 +11126,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#total_cents#0",
-   "line": 6881,
+   "line": 6886,
    "kind": "member",
    "facts": [
     "MONEY",
@@ -11138,7 +11138,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#subtotal_cents#0",
-   "line": 6881,
+   "line": 6886,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -11148,7 +11148,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#tax_cents#0",
-   "line": 6881,
+   "line": 6886,
    "kind": "member",
    "facts": [
     "BREAKDOWN"
@@ -11158,7 +11158,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteOrder#status#7",
-   "line": 6887,
+   "line": 6892,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11171,7 +11171,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#0",
-   "line": 6896,
+   "line": 6901,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11184,7 +11184,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#restaurant_id#0",
-   "line": 6903,
+   "line": 6908,
    "kind": "projection-destructure",
    "facts": [
     "BRAND"
@@ -11195,7 +11195,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#restaurant_id#1",
-   "line": 6903,
+   "line": 6908,
    "kind": "member",
    "facts": [
     "BRAND"
@@ -11205,7 +11205,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#1",
-   "line": 6904,
+   "line": 6909,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11218,7 +11218,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#2",
-   "line": 6924,
+   "line": 6929,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11231,7 +11231,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#items#0",
-   "line": 6930,
+   "line": 6935,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11241,7 +11241,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#redeem#0",
-   "line": 6930,
+   "line": 6935,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -11251,7 +11251,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#3",
-   "line": 6931,
+   "line": 6936,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11264,7 +11264,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#items#1",
-   "line": 6935,
+   "line": 6940,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11274,7 +11274,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#redeem#1",
-   "line": 6940,
+   "line": 6945,
    "kind": "member",
    "facts": [
     "REWARD"
@@ -11284,7 +11284,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#items#2",
-   "line": 6940,
+   "line": 6945,
    "kind": "member",
    "facts": [
     "ITEMS"
@@ -11294,7 +11294,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#4",
-   "line": 6941,
+   "line": 6946,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11307,7 +11307,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#5",
-   "line": 6941,
+   "line": 6946,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11320,7 +11320,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#6",
-   "line": 6942,
+   "line": 6947,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11333,7 +11333,7 @@
   },
   {
    "id": "xpizza-functions/index.js#quoteRedemption#status#7",
-   "line": 6945,
+   "line": 6950,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11346,32 +11346,6 @@
   },
   {
    "id": "xpizza-functions/index.js#deleteAccount#status#0",
-   "line": 6959,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#deleteAccount#status#1",
-   "line": 6961,
-   "kind": "member",
-   "facts": [
-    "STATUS",
-    "PAYLIFE",
-    "ACCT",
-    "FACTELIG"
-   ],
-   "rule": "server:infra",
-   "exempt": true
-  },
-  {
-   "id": "xpizza-functions/index.js#deleteAccount#status#2",
    "line": 6964,
    "kind": "member",
    "facts": [
@@ -11384,8 +11358,34 @@
    "exempt": true
   },
   {
+   "id": "xpizza-functions/index.js#deleteAccount#status#1",
+   "line": 6966,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
+   "id": "xpizza-functions/index.js#deleteAccount#status#2",
+   "line": 6969,
+   "kind": "member",
+   "facts": [
+    "STATUS",
+    "PAYLIFE",
+    "ACCT",
+    "FACTELIG"
+   ],
+   "rule": "server:infra",
+   "exempt": true
+  },
+  {
    "id": "xpizza-functions/index.js#deleteAccount#status#3",
-   "line": 6965,
+   "line": 6970,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11398,7 +11398,7 @@
   },
   {
    "id": "xpizza-functions/index.js#deleteAccount#status#4",
-   "line": 6971,
+   "line": 6976,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11411,7 +11411,7 @@
   },
   {
    "id": "xpizza-functions/index.js#deleteAccount#status#5",
-   "line": 6974,
+   "line": 6979,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -11424,7 +11424,7 @@
   },
   {
    "id": "xpizza-functions/index.js#reportClientVersion#status#0",
-   "line": 7028,
+   "line": 7033,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -37633,7 +37633,7 @@
    "file": "xpizza-functions/index.js",
    "fn": "sweepPendingOrders",
    "base": "orders",
-   "line": 6320,
+   "line": 6325,
    "how": "Object.keys",
    "rule": "server:payment"
   },
@@ -37641,7 +37641,7 @@
    "file": "xpizza-functions/index.js",
    "fn": "sweepPendingOrders",
    "base": "orders",
-   "line": 6325,
+   "line": 6330,
    "how": "computed",
    "rule": "server:payment"
   },
@@ -37649,7 +37649,7 @@
    "file": "xpizza-functions/index.js",
    "fn": "sweepPendingOrders",
    "base": "orders",
-   "line": 6413,
+   "line": 6418,
    "how": "Object.keys",
    "rule": "server:payment"
   },
@@ -37657,7 +37657,7 @@
    "file": "xpizza-functions/index.js",
    "fn": "sweepPendingOrders",
    "base": "orders",
-   "line": 6414,
+   "line": 6419,
    "how": "computed",
    "rule": "server:payment"
   },
@@ -38400,7 +38400,7 @@
    "file": "xpizza-functions/index.js",
    "alias": "detail",
    "field": "status",
-   "line": 6553,
+   "line": 6558,
    "round": 1
   },
   {
@@ -39215,13 +39215,13 @@
   },
   {
    "key": "xpizza-functions/index.js:autoAssignOnOrderCreate:sleep",
-   "line": 5984,
+   "line": 5989,
    "delay": "GRACE_PERIOD_MS",
    "class": "application-sleep"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:sleep",
-   "line": 6149,
+   "line": 6154,
    "delay": "ACCEPT_TIMEOUT_MS",
    "class": "application-sleep"
   },
@@ -39950,92 +39950,92 @@
   },
   {
    "key": "xpizza-functions/index.js:releaseAndAlert:ServerValue.TIMESTAMP",
-   "line": 5908,
+   "line": 5913,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:autoAssignOnOrderCreate:ServerValue.TIMESTAMP",
-   "line": 6034,
+   "line": 6039,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:autoAssignOnOrderCreate:ServerValue.TIMESTAMP",
-   "line": 6052,
+   "line": 6057,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:Date.now()",
-   "line": 6188,
+   "line": 6193,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:ServerValue.TIMESTAMP",
-   "line": 6208,
+   "line": 6213,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:monitorAssignmentTimeout:ServerValue.TIMESTAMP",
-   "line": 6230,
+   "line": 6235,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:sweepPendingOrders:Date.now()",
-   "line": 6298,
+   "line": 6303,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:sweepScheduledReleases:Date.now()",
-   "line": 6504,
+   "line": 6509,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:releaseScheduledOrder:Date.now()",
-   "line": 6549,
+   "line": 6554,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:releaseScheduledOrder:ServerValue.TIMESTAMP",
-   "line": 6576,
+   "line": 6581,
    "class": "persisted-stamp"
   },
   {
    "key": "xpizza-functions/index.js:requestOtp:Date.now()",
-   "line": 6731,
+   "line": 6736,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:verifyOtp:Date.now()",
-   "line": 6767,
+   "line": 6772,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:verifyOtp:Date.now()",
-   "line": 6782,
+   "line": 6787,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:quoteOrder:Date.now()",
-   "line": 6879,
+   "line": 6884,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:deleteAccount:Date.now()",
-   "line": 6969,
+   "line": 6974,
    "class": "business-sample"
   },
   {
    "key": "xpizza-functions/index.js:pruneInactiveAccounts:Date.now()",
-   "line": 6988,
+   "line": 6993,
    "class": "business-comparison"
   },
   {
    "key": "xpizza-functions/index.js:pruneInactiveAccounts:new Date()",
-   "line": 6991,
+   "line": 6996,
    "class": "display"
   },
   {
    "key": "xpizza-functions/index.js:rollupDailyStats:Date.now()",
-   "line": 7063,
+   "line": 7068,
    "class": "business-sample"
   },
   {

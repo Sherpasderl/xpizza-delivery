@@ -51,7 +51,7 @@ const HUNKS = Object.freeze([
   },
   {
     was: "    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.\n    const claim = await claimDelivery(db, orderId, chosen.driverId);\n",
-    now: "    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.\n    let claim;\n    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'autoAssign.claim', target: chosen.driverId }); }   // S1a §3\n    catch (e) { if (svcDb !== db && await isExpectedEligibilityDenial(e, db, chosen.driverId)) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }\n",
+    now: "    // Only a genuine race (another writer already claimed) makes it back off instead of double-assigning.\n    let claim;\n    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'autoAssign.claim', target: chosen.driverId }); }   // S1a §3\n    catch (e) { if (await expectedIneligibleOrMain(e, db, svcDb, chosen.driverId, 'autoAssign')) { console.warn(`autoAssign: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); leaving unassigned`); return; } throw e; }\n",
   },
   {
     was: "    const updates = buildAssignmentUpdates(orderId, chosen.driverId, 1, true, isStacked);\n    try {\n      await db.ref().update(updates);\n",
@@ -64,7 +64,7 @@ const HUNKS = Object.freeze([
   },
   {
     was: "    const claim = await claimDelivery(db, orderId, nextDriver.driverId, { expectCurrent: driverId });\n",
-    now: "    const svcDb = await pickHandle(db);   // S1a §3 (codex r2 P1-2) — re-select the handle AFTER the 60s wait\n    let claim;\n    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, nextDriver.driverId, { expectCurrent: driverId }), { site: 'timeout.claim', target: nextDriver.driverId }); }   // S1a §3\n    catch (e) { if (svcDb !== db && await isExpectedEligibilityDenial(e, db, nextDriver.driverId)) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim; releasing to SIN ASIGNAR`); await releaseAndAlert(db, orderId, driverId); return; } throw e; }\n",
+    now: "    const svcDb = await pickHandle(db);   // S1a §3 (codex r2 P1-2) — re-select the handle AFTER the 60s wait\n    let claim;\n    try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, nextDriver.driverId, { expectCurrent: driverId }), { site: 'timeout.claim', target: nextDriver.driverId }); }   // S1a §3\n    catch (e) { if (await expectedIneligibleOrMain(e, db, svcDb, nextDriver.driverId, 'timeout-monitor')) { console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} not eligible at reassign claim; releasing to SIN ASIGNAR`); await releaseAndAlert(db, orderId, driverId); return; } throw e; }\n",
   },
   {
     was: "    const reassignUpdates = buildAssignmentUpdates(orderId, nextDriver.driverId, attempts + 1, true);\n    try {\n      await db.ref().update(reassignUpdates);\n",
@@ -77,7 +77,7 @@ const HUNKS = Object.freeze([
   },
   {
     was: "      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.\n      const claim = await claimDelivery(db, orderId, chosen.driverId);\n",
-    now: "      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.\n      let claim;\n      try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'sweeper.claim', target: chosen.driverId }); }   // S1a §3\n      catch (e) { if (svcDb !== db && await isExpectedEligibilityDenial(e, db, chosen.driverId)) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }\n",
+    now: "      // notifyDriverOnAssignment (fires on pickup only). NULL-claim: a pending order's delivery is null.\n      let claim;\n      try { claim = await svcWriteOrFallback(db, svcDb, (h) => claimDelivery(h, orderId, chosen.driverId), { site: 'sweeper.claim', target: chosen.driverId }); }   // S1a §3\n      catch (e) { if (await expectedIneligibleOrMain(e, db, svcDb, chosen.driverId, 'sweepPending')) { console.warn(`sweepPending: ${orderId} — ${chosen.driverId} not eligible at claim (${e && (e.code || e.message)}); skipping`); continue; } throw e; }\n",
   },
   {
     was: "        updates[`tasks/${orderId}_delivery/retry_count`] = retryCount + 1;\n        updates[`tasks/${orderId}_delivery/last_swept`] = now;\n        await db.ref().update(updates);\n",
@@ -135,12 +135,20 @@ const HUNKS = Object.freeze([
        + "    } catch (e) { console.error('sweepPending: deactivated monitor failed', e && e.message); }\n"
        + "    // ---- OFFER PASS (gated, S3a kill-switch) ----\n",
   },
-  // (h) releaseAndAlert helper (§3 — codex r3 P1-2): CAS-release an order off a driver to SIN ASIGNAR, then (only on a
-  // REAL release) raise the dispatcher alert releaseToSinAsignar itself never pushes — so a reassignment denied by
-  // eligibility is visible + actionable instead of silently stranded. Anchored on the (pristine) releaseToSinAsignar def.
+  // (h) expectedIneligibleOrMain + releaseAndAlert helpers (§3 — codex r3 P1-2 + r4 P1): expectedIneligibleOrMain is the
+  // ONLY gate that makes the writers diverge from main — true ONLY when the flag is on (svcDb!==db) AND a FRESH account
+  // read POSITIVELY establishes ineligibility; flag-off and any classification THROW both fall back to main (never swallow
+  // the original denial into the classify error). releaseAndAlert CAS-releases an order off a driver to SIN ASIGNAR and,
+  // only on a REAL release, raises the dispatcher alert releaseToSinAsignar itself never pushes. Anchored on the (pristine)
+  // releaseToSinAsignar def.
   {
     was: "async function releaseToSinAsignar(db, orderId, driverId) {",
-    now: "async function releaseAndAlert(db, orderId, driverId) {   // S1a §3 (codex r3 P1-2)\n"
+    now: "async function expectedIneligibleOrMain(e, db, svcDb, target, ctx) {   // S1a §3 (codex r3 P1-1 + r4 P1)\n"
+       + "  if (svcDb === db) return false;   // flag-off: exactly main's error path (no read, no divergence)\n"
+       + "  try { return await isExpectedEligibilityDenial(e, db, target); }\n"
+       + "  catch (ce) { console.error(`${ctx}: eligibility classification failed (original denial: ${(e && (e.code || e.message)) || e}; classify error: ${(ce && ce.message) || ce}) — falling back to main's recovery`); return false; }\n"
+       + "}\n"
+       + "async function releaseAndAlert(db, orderId, driverId) {   // S1a §3 (codex r3 P1-2)\n"
        + "  if (!(await releaseToSinAsignar(db, orderId, driverId))) return false;   // not ours to release (already null / re-owned) — no alert\n"
        + "  const o = (await db.ref(`orders/${orderId}`).once('value')).val() || {};\n"
        + "  await db.ref('dispatcher_alerts').push({ type: 'no_drivers_available', order_id: orderId, customer_name: o.recipient_name || 'Cliente', total: o.total || null, created_at: ServerValue.TIMESTAMP });\n"
@@ -153,7 +161,7 @@ const HUNKS = Object.freeze([
   // arms no new timer, and evades mismatch healing) — release to SIN ASIGNAR + alert; ordinary rollback for other faults.
   {
     was: "    } catch (e) {\n      console.error(`timeout-monitor: reassignment write failed for ${orderId}`, e);\n      await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault)\n    }",
-    now: "    } catch (e) {\n      if (svcDb !== db && await isExpectedEligibilityDenial(e, db, nextDriver.driverId)) {   // S1a §3 (codex r3 P1-2) — ineligible between claim and finalize: release, never restore the expired owner\n        console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} became ineligible between claim and finalize; releasing to SIN ASIGNAR`);\n        await releaseAndAlert(db, orderId, nextDriver.driverId); return;\n      }\n      console.error(`timeout-monitor: reassignment write failed for ${orderId}`, e);\n      await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault)\n    }",
+    now: "    } catch (e) {\n      if (await expectedIneligibleOrMain(e, db, svcDb, nextDriver.driverId, 'timeout-monitor')) {   // S1a §3 (codex r3 P1-2 + r4 P1) — POSITIVELY ineligible between claim and finalize: release, never restore the expired owner\n        console.warn(`timeout-monitor: ${orderId} — ${nextDriver.driverId} became ineligible between claim and finalize; releasing to SIN ASIGNAR`);\n        await releaseAndAlert(db, orderId, nextDriver.driverId); return;\n      }\n      console.error(`timeout-monitor: reassignment write failed for ${orderId}`, e);\n      await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault; also the fall-back when eligibility can't be established — codex r4 P1)\n    }",
   },
 ]);
 
