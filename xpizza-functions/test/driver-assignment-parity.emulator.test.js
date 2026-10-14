@@ -18,7 +18,11 @@
  *     buildAssignmentUpdates lands on BOTH legs (matrix-asserted) for a normal, a stacked, and a sweeper finalize;
  *     the shift-open token rotation (create + bound prior-delete, with shift_id + delete NEGATIVES); a restoring
  *     (non-null) rollback that runs UNCONDITIONALLY and restores the prior owner;
- *   - the TIMEOUT reassign flow: svc replaces a timed-out owner via expectCurrent + finalizes to the next driver;
+ *   - the TIMEOUT reassign flow run through the LIFTED monitorAssignmentTimeout core (handle-select → claim → finalize
+ *     → the denial catches, release + alert): flag-ON eligible replacement (both legs land), flag-ON suspended at claim
+ *     and suspended-between-claim-and-finalize (release to SIN ASIGNAR + alert, never restoring the expired owner), and
+ *     flag-OFF (svcDb===db) claim + finalize denials that propagate / ordinary-rollback with ZERO account reads; plus a
+ *     dispatcher desktop/mobile assignment batch;
  *   - the REAL driver accept at the rules layer: first (lone), stacked (same-hub cascade), second (cross-hub owner
  *     write), and a NEGATIVE (a driver cannot accept another driver's task); plus the real completion batch;
  *   - a COLD transaction (the first claim on a fresh env) and an OFFLINE→reconnect delayed commit both land;
@@ -47,13 +51,36 @@ const NOW = 1_760_000_000_000;
 // as index.js:sweepPendingOrders does after the builder.
 function liftFn(name) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
-  const at = src.indexOf(`function ${name}(`); assert.notStrictEqual(at, -1, `lift ${name}`);
+  let at = src.indexOf(`function ${name}(`); assert.notStrictEqual(at, -1, `lift ${name}`);
+  if (src.slice(at - 6, at) === 'async ') at -= 6;   // keep the `async ` prefix, else an async body's await becomes a syntax error
   let i = src.indexOf('{', at), d = 0, end = i; for (; end < src.length; end++) { if (src[end] === '{') d++; else if (src[end] === '}') { d--; if (!d) break; } }
   return src.slice(at, end + 1);
 }
 // eslint-disable-next-line no-new-func
 const buildAssignmentUpdates = new Function('ServerValue', 'ACCEPT_TIMEOUT_MS', `${liftFn('buildAssignmentUpdates')}; return buildAssignmentUpdates;`)({ TIMESTAMP: NOW }, 60000);
 const sweeperFinalize = (orderId, driverId) => { const u = buildAssignmentUpdates(orderId, driverId, 1, true, false); u[`tasks/${orderId}_delivery/retry_count`] = 1; u[`tasks/${orderId}_delivery/last_swept`] = NOW; return u; };
+
+// codex r3 P1-4: LIFT the ACTUAL reassign core of monitorAssignmentTimeout (handle-select → claim → finalize → the
+// eligibility/ordinary denial catches) out of index.js and RUN it with the real svc-handle fns, claim helper and
+// release/alert helpers injected — so the flag-off short-circuit and the claim/finalize denial recovery are exercised
+// end-to-end against the real rules, not re-implemented. (The 60s sleep + pickEligibleDriver selection precede this
+// segment and are not under review; nextDriver is passed as the already-selected replacement.)
+const svcHandleLib = require('../lib/svc-handle');
+const { releaseDeliveryFromDriver } = require('../claim-delivery');
+function liftSegment(startNeedle, endNeedle) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+  const a = src.indexOf(startNeedle); assert.notStrictEqual(a, -1, 'seg start');
+  const b = src.indexOf(endNeedle, a); assert.notStrictEqual(b, -1, 'seg end');
+  return src.slice(a, b + endNeedle.length);
+}
+const REASSIGN_SEG = liftSegment(
+  '    const svcDb = await pickHandle(db);   // S1a §3 (codex r2 P1-2)',
+  "await rollbackOrAlert(db, claim, orderId, 'timeout-reassign');  // restore timed-out driver (alert on double-fault)\n    }");
+const reassignBody = [liftFn('buildAssignmentUpdates'), liftFn('releaseToSinAsignar'), liftFn('releaseAndAlert'), liftFn('rollbackOrAlert'), `return (async () => {\n${REASSIGN_SEG}\n})();`].join('\n');
+const REASSIGN_PARAMS = ['db', 'orderId', 'driverId', 'nextDriver', 'attempts', 'pickHandle', 'svcWriteOrFallback', 'claimDelivery', 'isExpectedEligibilityDenial', 'releaseDeliveryFromDriver', 'ServerValue', 'ACCEPT_TIMEOUT_MS', 'console'];
+// eslint-disable-next-line no-new-func
+const runReassignFn = new Function(...REASSIGN_PARAMS, reassignBody);
+const runReassign = (o) => runReassignFn(o.db, o.orderId, o.driverId, o.nextDriver, 1, o.pickHandle, o.svcWriteOrFallback || svcHandleLib.svcWriteOrFallback, claimDelivery, o.isExpectedEligibilityDenial, releaseDeliveryFromDriver, { TIMESTAMP: NOW }, 60000, console);
 
 (async () => {
   const { buildCompleteTaskUpdates } = await import(pathToFileURL(path.join(__dirname, '..', '..', 'xpizza-driver', 'driver-complete.js')).href);
@@ -140,12 +167,67 @@ const sweeperFinalize = (orderId, driverId) => { const u = buildAssignmentUpdate
   await env.withSecurityRulesDisabled(async (c) => { assert.equal((await c.database().ref('tasks/oP3_delivery/assigned_driver_id').get()).val(), D_EN, 'rollback restored the ORIGINAL owner'); });
   ok('TOLERANT: a restoring (non-null) rollback through the restricted handle runs UNCONDITIONALLY and restores the prior owner');
 
-  // ================= TIMEOUT reassign flow: svc replaces a timed-out owner (expectCurrent) + finalizes to the next driver =================
-  await seedOrder('oT1', { ownerDelivery: D_EN, status: 'assigned' });
-  const tclaim = await claimDelivery(svc, 'oT1', D_EN2, { expectCurrent: D_EN });   // the REAL reassign claim the monitor issues
-  assert.ok(tclaim.claimed, 'timeout reassign claim (expectCurrent) committed');
-  await assertSucceeds(svc.ref().update(buildAssignmentUpdates('oT1', D_EN2, 1, true, false)));
-  await assertBothLegs('oT1', D_EN2, 'assigned'); ok('TIMEOUT: svc replaces the timed-out owner via expectCurrent + finalizes to the NEXT driver on both legs (matrix-asserted)');
+  // ================= TIMEOUT reassign flow — the LIFTED monitorAssignmentTimeout core, run end-to-end (codex r3 P1-4) =================
+  const setAcct = (uid, patch) => env.withSecurityRulesDisabled((c) => c.database().ref(`driver_accounts/${uid}`).update(patch));
+  const legOf = async (oid, leg) => { let v; await env.withSecurityRulesDisabled(async (c) => { v = (await c.database().ref(`tasks/${oid}_${leg}`).get()).val() || {}; }); return v; };
+  const alertFor = async (oid) => { let hit; await env.withSecurityRulesDisabled(async (c) => { hit = Object.values((await c.database().ref('dispatcher_alerts').get()).val() || {}).some((a) => a && a.type === 'no_drivers_available' && a.order_id === oid); }); return hit; };
+  const seedReassign = async (oid) => { await seedOrder(oid, { ownerDelivery: D_EN, status: 'assigned' }); await env.withSecurityRulesDisabled((c) => c.database().ref(`tasks/${oid}_pickup/assigned_driver_id`).set(D_EN)); };
+
+  // (A) flag-ON, eligible replacement → claim+finalize land BOTH legs on the next driver (allowed transition)
+  await seedReassign('oT1');
+  await env.withSecurityRulesDisabled((c) => runReassign({ db: c.database(), orderId: 'oT1', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }));
+  await assertBothLegs('oT1', D_EN2, 'assigned'); ok('TIMEOUT (lifted handler, flag-ON): eligible replacement → claim+finalize land both legs on the next driver (allowed transition)');
+
+  // (B) flag-ON, replacement SUSPENDED at CLAIM → release to SIN ASIGNAR + alert (never stranded on the timed-out owner)
+  await setAcct(D_EN2, { enabled: false });
+  await seedReassign('oT2');
+  await env.withSecurityRulesDisabled((c) => runReassign({ db: c.database(), orderId: 'oT2', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial }));
+  { const d = await legOf('oT2', 'delivery'), p = await legOf('oT2', 'pickup');
+    assert.equal(d.assigned_driver_id ?? null, null, 'delivery released'); assert.equal(d.status, 'pending'); assert.equal(p.assigned_driver_id ?? null, null, 'pickup released');
+    assert.ok(await alertFor('oT2'), 'a no_drivers_available alert was raised'); }
+  ok('TIMEOUT (lifted handler, flag-ON): a SUSPENDED replacement at CLAIM → releases both legs to SIN ASIGNAR + raises an alert (denied transition)');
+  await setAcct(D_EN2, { enabled: true });
+
+  // (C) flag-ON, replacement SUSPENDED BETWEEN claim and finalize → release to SIN ASIGNAR + alert, NEVER restore the expired owner
+  await seedReassign('oT3');
+  await env.withSecurityRulesDisabled(async (c) => {
+    const bypass = c.database();
+    const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await bypass.ref(`driver_accounts/${D_EN2}/enabled`).set(false); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
+    await runReassign({ db: bypass, orderId: 'oT3', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: svcHandleLib.isExpectedEligibilityDenial });
+  });
+  { const d = await legOf('oT3', 'delivery'), p = await legOf('oT3', 'pickup');
+    assert.equal(d.assigned_driver_id ?? null, null, 'delivery released, NOT restored'); assert.notEqual(d.assigned_driver_id, D_EN, 'the EXPIRED owner was not restored'); assert.equal(p.assigned_driver_id ?? null, null);
+    assert.ok(await alertFor('oT3'), 'a no_drivers_available alert was raised'); }
+  ok('TIMEOUT (lifted handler, flag-ON): replacement SUSPENDED between claim and finalize → releases to SIN ASIGNAR + alert, never restores the expired owner');
+  await setAcct(D_EN2, { enabled: true });
+
+  // (D) flag-OFF (svcDb===db): a CLAIM denial propagates immediately — ZERO account reads, no release (byte-for-byte main)
+  await setAcct(D_EN2, { enabled: false });
+  await seedReassign('oT4');
+  { let reads = 0; const spyClass = async (...a) => { reads++; return svcHandleLib.isExpectedEligibilityDenial(...a); };
+    let threw = null; try { await runReassign({ db: svc, orderId: 'oT4', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, isExpectedEligibilityDenial: spyClass }); } catch (e) { threw = e; }
+    assert.ok(threw && /permission/i.test(String((threw && (threw.code || threw.message)) || threw)), 'the denial PROPAGATED');
+    assert.equal(reads, 0, 'ZERO account reads (classification short-circuited by svcDb===db)');
+    assert.equal((await legOf('oT4', 'delivery')).assigned_driver_id, D_EN, 'delivery NOT released — still on the original owner'); }
+  ok('TIMEOUT (lifted handler, flag-OFF): a claim denial propagates immediately — zero account reads, no release (byte-for-byte main)');
+  await setAcct(D_EN2, { enabled: true });
+
+  // (E) flag-OFF (svcDb===db): a FINALIZE denial takes the ORDINARY rollback path — zero account reads, no SIN ASIGNAR release
+  await seedReassign('oT5');
+  { let reads = 0; const spyClass = async (...a) => { reads++; return svcHandleLib.isExpectedEligibilityDenial(...a); };
+    const spyWrite = async (db, handle, fn, opts) => { if (opts.site === 'timeout.finalize') await env.withSecurityRulesDisabled((c) => c.database().ref(`driver_accounts/${D_EN2}/enabled`).set(false)); return svcHandleLib.svcWriteOrFallback(db, handle, fn, opts); };
+    await runReassign({ db: svc, orderId: 'oT5', driverId: D_EN, nextDriver: { driverId: D_EN2 }, pickHandle: async () => svc, svcWriteOrFallback: spyWrite, isExpectedEligibilityDenial: spyClass });
+    assert.equal(reads, 0, 'ZERO account reads (classification short-circuited by svcDb===db)');
+    assert.equal((await legOf('oT5', 'delivery')).assigned_driver_id, D_EN, 'ordinary rollback restored the owner — no SIN ASIGNAR release'); }
+  ok('TIMEOUT (lifted handler, flag-OFF): a finalize denial takes the ordinary rollback path — zero account reads, no SIN ASIGNAR release (byte-for-byte main)');
+  await setAcct(D_EN2, { enabled: true });
+
+  // DESKTOP/MOBILE manual assignment batch: a dispatcher writes the full assignment on both legs (ancestor grant + §2 eligibility)
+  await env.withSecurityRulesDisabled((c) => c.database().ref('dispatchers/disp-parity').set({ name: 'Disp' }));
+  const disp = env.authenticatedContext('disp-parity').database();
+  await seedOrder('oD1');
+  await assertSucceeds(disp.ref().update(buildAssignmentUpdates('oD1', D_EN, 1, true, false)));
+  await assertBothLegs('oD1', D_EN, 'assigned'); ok('DESKTOP/MOBILE: a dispatcher manual assignment batch lands both legs under the rules (ancestor grant, §2-eligible target)');
 
   // the REAL driver completion batch (both-leg + stamp) through the driver handle
   await seedOrder('oP2', { ownerDelivery: D_EN, status: 'assigned' });
