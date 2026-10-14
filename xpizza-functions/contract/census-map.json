@@ -67,7 +67,7 @@
     {
       "rule": "form-return",
       "file": "^(xpizza-orders|la-musa-orders)/",
-      "fn": "^(handlePaymentReturn|applyPollState)",
+      "fn": "^(handlePaymentReturn|applyPollState|clearPendingPayFor)",
       "map": "R16"
     },
     {

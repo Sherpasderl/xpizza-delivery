@@ -4479,10 +4479,24 @@ async function processPixelPay(){
 // stops); false for pending/unknown (caller keeps polling). SHARED by the poll loop AND the cancel-verify
 // single-check (N4) so both handle every terminal state identically — a future state added here is honored on
 // the cancel path too.
+// S2 — at a terminal return: remove the pending-payment stash only if it is THIS order's, or unusable as anyone's record.
+// Another order's stash (a newer checkout, possibly from another tab) is kept. An absent key is a no-op. The read is at
+// removal time, so a stash written by another tab before this branch runs is kept; the read→remove interleave itself is
+// not atomic (localStorage has no compare-and-delete) — an accepted residual.
+function clearPendingPayFor(orderId){
+  try{
+    const raw = localStorage.getItem('xpizza_pending_pay');
+    if(raw === null) return;                                              // absent → no-op
+    let s; try{ s = JSON.parse(raw); }catch(_){ s = undefined; }         // unparseable → removed below
+    const id = (s && typeof s === 'object') ? s.order_id : undefined;
+    if(typeof id === 'string' && id !== '' && id !== orderId) return;     // ANOTHER order's stash → keep
+    localStorage.removeItem('xpizza_pending_pay');                                     // this order's, or malformed → today's removal
+  }catch(_){}                                                            // storage unavailable → nothing (as today)
+}
 function applyPollState(st, j, orderId, stashedOrder){
   if(st==='scheduled_paid'){
     // Scheduled Orders: paid-and-HELD online order — show the "programado" confirmation, never "en cocina".
-    try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}
+    clearPendingPayFor(orderId);
     window.__scheduledFor = j.scheduled_for || window.__scheduledFor;
     if(stashedOrder && stashedOrder.order_id === orderId){
       currentOrder = stashedOrder; currentOrder.scheduled = true; currentOrder.scheduled_for = j.scheduled_for;
@@ -4493,7 +4507,7 @@ function applyPollState(st, j, orderId, stashedOrder){
     showPayReturn('paid'); return true;
   }
   if(st==='paid'){
-    try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}
+    clearPendingPayFor(orderId);
     // Rebuild the ORIGINAL confirmation page (order details + "Hacer otro pedido") from the
     // stashed order. CRITICAL: remove the full-screen "verificando" overlay afterwards, or it
     // stays on top (z-index 99999) and hides the confirmation. Only use the stash if it matches
@@ -4511,8 +4525,8 @@ function applyPollState(st, j, orderId, stashedOrder){
     }
     showPayReturn('paid'); return true;
   }
-  if(st==='closed_refunded'){ try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}; showPayReturn('closed_refunded'); return true; }   // paid-after-close auto-refund → honest terminal screen (no infinite "en proceso")
-  if(st==='scheduled_review'){ try{localStorage.removeItem('xpizza_pending_pay');}catch(_){}; showPayReturn('scheduled_review'); return true; }   // F2: paid SCHEDULED order, slot closed at confirm → held; honest terminal screen (no endless "Pago en proceso")
+  if(st==='closed_refunded'){ clearPendingPayFor(orderId); showPayReturn('closed_refunded'); return true; }   // paid-after-close auto-refund → honest terminal screen (no infinite "en proceso")
+  if(st==='scheduled_review'){ clearPendingPayFor(orderId); showPayReturn('scheduled_review'); return true; }   // F2: paid SCHEDULED order, slot closed at confirm → held; honest terminal screen (no endless "Pago en proceso")
   if(st==='failed'){ showPayReturn('failed'); return true; }
   if(st==='cancelled'){ showPayReturn('cancel'); return true; }
   if(st==='verifying'){ showPayReturn('verifying'); return true; }
