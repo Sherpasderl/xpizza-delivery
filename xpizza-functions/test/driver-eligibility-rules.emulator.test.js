@@ -284,6 +284,12 @@ function shiftOpen(uid, shiftId, hash) {
     svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: null, 'driver_tokens/hashE1': null }));
   await ok('svc CAN delete the prior token WITHIN a rotation (driver now points at a NEW non-null hash in the same update)',
     svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftE2', [`drivers/${D_EN}/ingest_token_hash`]: 'hashE2', 'driver_tokens/hashE2': tok(D_EN, 'shiftE2'), 'driver_tokens/hashE1': null }));
+  // codex r3 P1-3: delete must be bound to a REAL replacement — a resulting pointer that merely differs is not enough.
+  await no('svc CANNOT delete the live token while pointing the driver at a NONEXISTENT replacement (no token created)',
+    svc.ref().update({ [`drivers/${D_EN}/ingest_token_hash`]: 'no-such-token', 'driver_tokens/hashE2': null }));
+  await env.withSecurityRulesDisabled((ctx) => ctx.database().ref('driver_tokens/hashOrphan').set(tok(D_EN, 'shiftOld')));
+  await no('svc CANNOT delete an ORPHAN token with the driver pointer unchanged (old pointer never named it)',
+    svc.ref('driver_tokens/hashOrphan').set(null));
   await no('svc CANNOT write a malformed token (missing uid/shift_id)',
     svc.ref().update({ [`drivers/${D_EN}/current_shift_id`]: 'shiftBad', [`drivers/${D_EN}/ingest_token_hash`]: 'hashBad', 'driver_tokens/hashBad': { device_id: 'x' } }));
 
