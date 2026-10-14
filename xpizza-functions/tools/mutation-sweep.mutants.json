@@ -12175,6 +12175,7 @@
     "to": "    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'ArrayExpression' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [EMPTY('primitive')];",
     "label": "B4 r2 P1-3: an ARRAY payload is empty provenance again",
     "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT",
       "an ARRAY element pushed to /orders (charge handler): the census stayed GREEN"
     ],
     "command": [
@@ -12626,7 +12627,8 @@
     "to": "    if (false) {",
     "label": "B4 r5 P1-4: a conditional member-assignment base no longer lands on its branches",
     "kills_with": [
-      "r5 P1-4 real"
+      "r5 P1-4 real",
+      "catalog-context.js pricesFromObjects unmodelled-member-base"
     ],
     "command": [
       "node",

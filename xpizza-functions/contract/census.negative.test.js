@@ -250,6 +250,7 @@ for (const [name, code, re] of [
       // unhandled expression kinds (default-deny)
       ['unhandled: array element', `${W}.update([${S}][0]);`],
       ['unhandled: Array.of (codex r4 P1-3)', `${W}.update(Array.of(${S})[0]);`],
+      ['unhandled: an array AS the payload (written as index keys)', `${W}.set([${S}]);`],
       ['unhandled: sequence', `${W}.update((0, ${S}));`],
       ['unhandled: assignment expression', `let zt; ${W}.update((zt = ${S}));`],
       ['unhandled: optional chain', `const zw = { a: ${S} }; ${W}.update(zw?.a);`],
