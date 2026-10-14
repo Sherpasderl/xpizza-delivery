@@ -11551,8 +11551,8 @@
     "id": "r3p0-05",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "        else if (segs.length === 0) continue;      // a root write of another tree",
-    "to": "        if (segs.length === 0) continue;      // a root write of another tree",
+    "from": "        else if (segs.length === 0) continue;      // EMPTY-OK: a literal root key of another tree (first segment cannot spell orders) — a root write of another tree",
+    "to": "        if (segs.length === 0) continue;      // EMPTY-OK: a literal root key of another tree (first segment cannot spell orders) — a root write of another tree",
     "label": "the write inventory stops seeing `updates[`orders/${id}`] = …` multipath assignments (codex r1 P1-1) — B4 r1: re-pointed to contract/write-provenance.js",
     "kills_with": "R3-CENSUS",
     "command": [
@@ -12036,8 +12036,8 @@
     "id": "r3p0-43",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "  for (let round = 0, moved = true; moved && round < 6; round++) {",
-    "to": "  for (let round = 0, moved = true; moved && round < 0; round++) {",
+    "from": "          r.binding.contribs.push({ ...c, id: ++CID, root: c.root || c.id, steps: [...r.steps, ...c.steps], via: nm });",
+    "to": "          void r;",
     "label": "B4 r1: a helper mutating its PARAMETER no longer lands on the caller's argument (attachCustomerAttribution orderRec)",
     "kills_with": [
       "helper mutates an ALIAS of updates[orders/…]"
@@ -12186,8 +12186,8 @@
     "id": "r3p0-53",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "      if (b.currentOrder) return own;",
-    "to": "      if (false) return own;",
+    "from": "      if (b.currentOrder) return [{ k: 'current',",
+    "to": "      if (false) return [{ k: 'current',",
     "label": "B4 r2 P1-1/P2-5: a transaction updater's parameter is no longer the current order (its spread / return is unresolved)",
     "kills_with": [
       "cancel-order-core.js finalize opaque-order-object line 45 (cur)"
@@ -12276,11 +12276,146 @@
     "id": "r3p0-59",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "        if (/^(Object|Array|String|Number)\\.prototype\\./.test(srcOf(c))) return null;   // Object.prototype.hasOwnProperty.call(x, k)",
-    "to": "        if (false) return null;   // Object.prototype.hasOwnProperty.call(x, k)",
+    "from": "        if (/^(Object|Array|String|Number)\\.prototype\\./.test(srcOf(c))) return null;   // EMPTY-OK: Object.prototype.*.call(x, k) — a read — Object.prototype.hasOwnProperty.call(x, k)",
+    "to": "        if (false) return null;   // EMPTY-OK: Object.prototype.*.call(x, k) — a read — Object.prototype.hasOwnProperty.call(x, k)",
     "label": "B4 r2: Object.prototype.*.call(x) reads count as a heap escape",
     "kills_with": [
       "acquireOnlineAttempt opaque-order-object line 92 (orders/*: c — escapes (via:paymentBindingConflict))"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-60",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (n.type === 'LogicalExpression') return [...entriesOf(n.left, env, d, seen), ...entriesOf(n.right, env, d, seen)];",
+    "to": "    if (n.type === 'LogicalExpression') return entriesOf(n.left, env, d, seen);",
+    "label": "B4 r3 P1-1: `a || b` / `a && b` keeps only its left operand",
+    "kills_with": [
+      "`cur || {…}` in an updater (charge handler): the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-61",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "if (b && (b.kind === 'var' || b.kind === 'param')) b.inits.push(node.right);",
+    "to": "if (b && b.kind === 'var') b.inits.push(node.right);",
+    "label": "B4 r3 P1-1: a parameter REASSIGNMENT (cur = {…}) is ignored",
+    "kills_with": [
+      "the updater REASSIGNS its parameter and returns it: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-62",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (node.type === 'Identifier' && target !== node.name && sinkFns.has(target)) {",
+    "to": "    if (false) {",
+    "label": "B4 r3 P1-2: an ALIAS of a param-sink function escapes (call / apply / Promise) unseen",
+    "kills_with": [
+      "acquireOnlineAttempt through an alias `.call(…)`: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-63",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "          if (!(c.object.name === 'Object' && nm === 'assign')) return `call:${c.object.name}.${nm}`;",
+    "to": "          if (!(c.object.name === 'Object' && nm === 'assign')) return null;",
+    "label": "B4 r3 P1-3: Object.defineProperty / setPrototypeOf … on a tracked value is treated as pure",
+    "kills_with": [
+      "Object.defineProperty on the create-order record: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-64",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (depth > 24) return [{ k: 'unresolved', node: n, why: 'analysis-limit (depth > 24)' }];",
+    "to": "    if (depth > 24) return [];",
+    "label": "B4 r3 P1-4: hitting the analysis depth limit answers EMPTY provenance",
+    "kills_with": [
+      "hits the ANALYSIS LIMIT → opaque, never empty: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-65",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        if (normPath(e.path) === p && e.sig && e.sig === wsig) continue;",
+    "to": "        if (normPath(e.path) === p) continue;",
+    "label": "B4 r3: a snapshot of ANOTHER order (same path shape, other ref) spread into this one is accepted silently",
+    "kills_with": [
+      "a SNAPSHOT of another order spread into this order: the census stayed GREEN"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-66",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    else if (a.type === 'CallExpression') { for (const f of fnsFor(a))",
+    "to": "    else if (false) { for (const f of fnsFor(a))",
+    "label": "B4 r3: a ref path built by a function (statusPath(oid)) is not resolved",
+    "kills_with": [
+      "factura-helpers.js allocateFacturaNumber dynamic-root-path line 28 (*)"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-67",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "          && n.arguments[0].callee.object.name === 'JSON' && n.arguments[0].callee.property.name === 'stringify' && n.arguments[0].arguments.length === 1) return entriesOf(",
+    "to": "          && false) return entriesOf(",
+    "label": "B4 r3: a JSON deep clone loses its source's provenance",
+    "kills_with": [
+      "fail-closed json-clone: a deep clone of a resolved record was reported"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-68",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (o.type === 'MemberExpression' && !o.computed && o.property.name === 'snapshot') {",
+    "to": "    if (false) {",
+    "label": "B4 r3: a transaction RESULT's snapshot is not the committed value at its ref",
+    "kills_with": [
+      "pixelpay-confirm.js confirmAndMaterialize opaque-order-object line 301 (orders/*: o)"
     ],
     "command": [
       "node",

@@ -204,7 +204,14 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
 
   // ── heap escapes ───────────────────────────────────────────────────────────────────────────────────────────────
   // A pure library call reads its argument and keeps no reference that a later write could follow.
-  const PURE_OBJ = new Set(['console', 'JSON', 'Object', 'Math', 'Number', 'String', 'Array', 'Boolean', 'Date', 'Promise']);
+  // r3 P1-3: an EXPLICIT pure allowlist, per object — anything else on a tracked value is a possible mutator (heap escape).
+  // Object.assign is modelled (a contribution onto its target; its sources are read).
+  const PURE_STATIC = {
+    console: null,   // any method
+    JSON: null, Math: null, Number: null, String: null, Boolean: null, Date: null,
+    Object: new Set(['keys', 'values', 'entries', 'getOwnPropertyNames', 'getOwnPropertySymbols', 'getPrototypeOf', 'is', 'isFrozen', 'isSealed', 'isExtensible', 'hasOwn', 'freeze']),
+    Array: new Set(['isArray', 'from']),
+  };
   const PURE_FN = new Set(['String', 'Number', 'Boolean', 'parseInt', 'parseFloat', 'isFinite', 'isNaN', 'encodeURIComponent', 'decodeURIComponent', 'require']);
   const PURE_METHOD = new Set(['json', 'send', 'status', 'log', 'warn', 'error', 'info', 'includes', 'indexOf', 'has', 'get', 'then', 'catch', 'finally', 'toString', 'once', 'on', 'off', 'filter', 'map', 'some', 'every', 'find', 'reduce', 'forEach', 'equalTo', 'orderByChild', 'startAt', 'endAt', 'limitToFirst', 'limitToLast']);
   const pendingHeap = [];
@@ -212,7 +219,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   function heapEscape(id) {
     let x = id; let p = PARENT.get(x);
     while (p && ((p.type === 'ConditionalExpression' && p.test !== x) || p.type === 'LogicalExpression' || p.type === 'AwaitExpression' || p.type === 'ParenthesizedExpression')) { x = p; p = PARENT.get(x); }
-    if (!p) return null;
+    if (!p) return null;   // EMPTY-OK: no consumer — the value goes nowhere
     if (p.type === 'NewExpression' && p.arguments.includes(x)) return 'new';
     if (p.type === 'ArrayExpression') return 'array';
     if (p.type === 'AssignmentExpression' && p.right === x && p.left.type === 'MemberExpression' && !rootOf(p.left)) return 'stored-untracked';
@@ -220,26 +227,59 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       const c = p.callee;
       if (c.type === 'MemberExpression' && !c.computed) {
         const nm = c.property.name;
-        if (c.object.type === 'Identifier' && PURE_OBJ.has(c.object.name)) return null;
-        if (nm === 'assign' && c.object.type === 'Identifier' && c.object.name === 'Object') return null;
-        if (WRITE_METHODS.has(nm) && refPathOf(c.object) !== null) return null;      // a database write: the sink itself
-        if (PURE_METHOD.has(nm)) return null;
-        if (/^(Object|Array|String|Number)\.prototype\./.test(srcOf(c))) return null;   // Object.prototype.hasOwnProperty.call(x, k)
+        if (c.object.type === 'Identifier' && Object.prototype.hasOwnProperty.call(PURE_STATIC, c.object.name) && !resolve(c.object.name, c.object)) {
+          const ok = PURE_STATIC[c.object.name];
+          if (!ok || ok.has(nm)) return null;   // EMPTY-OK: an allowlisted pure static read (console / JSON / Math / … / Object.keys …)
+          if (!(c.object.name === 'Object' && nm === 'assign')) return `call:${c.object.name}.${nm}`;   // defineProperty, setPrototypeOf, …
+        }
+        if (nm === 'assign' && c.object.type === 'Identifier' && c.object.name === 'Object') return null;   // EMPTY-OK: Object.assign is modelled (its target's contribution; its sources are read)
+        if (WRITE_METHODS.has(nm) && refPathOf(c.object) !== null) return null;      // EMPTY-OK: a database write: the sink itself (its payload is analysed there) — a database write: the sink itself
+        if (PURE_METHOD.has(nm)) return null;   // EMPTY-OK: an allowlisted pure method read (json / send / log / includes / map …)
+        if (/^(Object|Array|String|Number)\.prototype\./.test(srcOf(c))) return null;   // EMPTY-OK: Object.prototype.*.call(x, k) — a read — Object.prototype.hasOwnProperty.call(x, k)
         if (COMMON.has(nm)) return `call:.${nm}`;
       }
-      if (c.type === 'Identifier' && PURE_FN.has(c.name)) return null;
+      if (c.type === 'Identifier' && PURE_FN.has(c.name)) return null;   // EMPTY-OK: an allowlisted pure global (String / Number / parseInt …)
       const fns = fnsFor(p);
       if (!fns.length) return `call:${srcOf(c).slice(0, 40)}`;
       return { pending: { fns, index: p.arguments.indexOf(x) } };     // our own function: escapes iff its param does
     }
-    return null;
+    return null;   // EMPTY-OK: any other consumer keeps the SAME object in view (a tracked store / object literal / return / await)
+  }
+
+  // a ref expression's SIGNATURE: the same ref (variable, or identical path expression) gives the same text
+  function refSig(n, depth = 0) {
+    if (!n || depth > 4) return null;   // EMPTY-OK: no ref signature → never equal to a write's → the snapshot is OPAQUE at writeAt
+    if (n.type === 'AwaitExpression') return refSig(n.argument, depth + 1);
+    if (n.type === 'Identifier') { const b = resolve(n.name, n); if (b && b.kind === 'var' && b.inits.length === 1) return refSig(b.inits[0], depth + 1); return b ? `param:${b.name}@${b.fnNode ? b.fnNode.start : 0}` : null; }
+    if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed) {
+      const m = n.callee.property.name;
+      if (m === 'ref') return `ref:${n.arguments[0] ? srcOf(n.arguments[0]).replace(/\s+/g, '') : ''}`;
+      if (m === 'child') { const b = refSig(n.callee.object, depth + 1); return b && `${b}/child:${srcOf(n.arguments[0]).replace(/\s+/g, '')}`; }
+    }
+    return null;   // EMPTY-OK: no ref signature → never equal → OPAQUE at writeAt
+  }
+  // a snapshot VALUE read from the database (`(await ref.once('value')).val()`, `snap.val()` with snap = await ref.get()):
+  // the ref it was read from, or null
+  function snapshotRef(callee, depth = 0) {
+    let o = callee; while (o && (o.type === 'AwaitExpression' || o.type === 'ParenthesizedExpression')) o = o.argument || o.expression;
+    if (!o || depth > 4) return null;   // EMPTY-OK: not a snapshot read → the caller falls through to UNRESOLVED
+    if (o.type === 'Identifier') { const b = resolve(o.name, o); return b && b.kind === 'var' && b.inits.length === 1 ? snapshotRef(b.inits[0], depth + 1) : null; }
+    if (o.type === 'CallExpression' && o.callee.type === 'MemberExpression' && !o.callee.computed && (o.callee.property.name === 'once' || o.callee.property.name === 'get')) return o.callee.object;
+    // a transaction RESULT's snapshot (`(await ref.transaction(fn)).snapshot`) is the committed value at that ref
+    if (o.type === 'MemberExpression' && !o.computed && o.property.name === 'snapshot') {
+      let t = o.object; while (t && (t.type === 'AwaitExpression' || t.type === 'ParenthesizedExpression')) t = t.argument || t.expression;
+      if (t && t.type === 'Identifier') { const b = resolve(t.name, t); t = b && b.kind === 'var' && b.inits.length === 1 ? b.inits[0] : null; while (t && t.type === 'AwaitExpression') t = t.argument; }
+      if (t && t.type === 'CallExpression' && t.callee.type === 'MemberExpression' && !t.callee.computed && t.callee.property.name === 'transaction') return t.callee.object;
+    }
+    return null;   // EMPTY-OK: not a snapshot read → the caller falls through to UNRESOLVED
   }
 
   // ── contributions + escapes ─────────────────────────────────────────────────────────────────────────────────────
   for (const { ast } of files) {
     walk(ast, (node, fn, parent) => {
       if (node.type === 'AssignmentExpression' && node.operator === '=') {
-        if (node.left.type === 'Identifier') { const b = resolve(node.left.name, node.left); if (b && b.kind === 'var') b.inits.push(node.right); }
+        // r3 P1-1: a REASSIGNMENT (`x = …`, a parameter included — `cur = { …cur, f }`) is a value it may hold
+        if (node.left.type === 'Identifier') { const b = resolve(node.left.name, node.left); if (b && (b.kind === 'var' || b.kind === 'param')) b.inits.push(node.right); }
         else if (node.left.type === 'MemberExpression') {
           const r = rootOf(node.left);
           if (r && r.steps.length) r.binding.contribs.push({ id: ++CID, steps: r.steps, value: node.right, at: node });
@@ -266,7 +306,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       }
     });
   }
-  for (let round = 0, moved = true; moved && round < 8; round++) {
+  for (let round = 0, moved = true; moved; round++) {
+    if (round > pendingHeap.length + 1) throw new Error('write-provenance: heap-escape fixpoint did not converge (analysis limit)');
     moved = false;
     for (const ph of pendingHeap) {
       if (ph.b.heap) continue;
@@ -278,7 +319,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     }
   }
   // a helper mutating its PARAMETER → the contribution lands on the caller's argument (fixpoint over helper chains)
-  for (let round = 0, moved = true; moved && round < 6; round++) {
+  for (let round = 0, moved = true; moved; round++) {
+    if (round > 64) throw new Error('write-provenance: parameter-contribution fixpoint did not converge (analysis limit)');
     moved = false;
     for (const b of allBindings) {
       if (b.kind !== 'param' || !b.contribs.length) continue;
@@ -290,7 +332,8 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
         const r = rootOf(arg); if (!r || r.binding === b) continue;            // a recursive self-call carries nothing new
         for (const c of b.contribs.slice()) {
           const key = `${call.start}@${FILE.get(call).file}#${c.root || c.id}`;
-          if (b.carried.has(key) || r.binding.contribs.length > 4000) continue;
+          if (b.carried.has(key)) continue;   // EMPTY-OK: already carried to this call site
+          if (r.binding.contribs.length > 4000) throw new Error(`write-provenance: contribution limit on ${r.binding.name} (analysis limit)`);
           b.carried.add(key);
           r.binding.contribs.push({ ...c, id: ++CID, root: c.root || c.id, steps: [...r.steps, ...c.steps], via: nm });
           moved = true;
@@ -315,7 +358,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       // a step keyed by a for-in variable stands for each key of its source (cartesian, bounded; unknown → null key)
       let variants = [c.steps];
       for (let i = 0; i < c.steps.length; i++) {
-        if (!c.steps[i].keysOf) continue;
+        if (!c.steps[i].keysOf) continue;   // EMPTY-OK: this step is a literal key (no for-in expansion needed)
         const ks = keysOfSource(c.steps[i].keysOf);
         variants = variants.flatMap((st) => ks.map((k) => st.map((x, j) => (j === i ? { ...x, key: k, keysOf: null } : x))));
         if (variants.length > 200) variants = [c.steps.map((x) => (x.keysOf ? { ...x, key: null, keysOf: null } : x))];
@@ -332,11 +375,13 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   }
   const MEMO = new Map(); const INPROG = new Set();
   function entriesOf(n, env = null, depth = 0, seen = new Set()) {
-    if (!n) return [];
+    if (!n) return [];   // EMPTY-OK: no expression (an absent value) writes no field
     if (n.type === 'Virtual') return n.entries;
     if (!env && MEMO.has(n)) return MEMO.get(n);
     const key = n;
-    if (INPROG.has(key) || depth > 12) return [];
+    // r3 P1-4: an analysis LIMIT is never an empty answer
+    if (depth > 24) return [{ k: 'unresolved', node: n, why: 'analysis-limit (depth > 24)' }];
+    if (INPROG.has(key)) return [];   // EMPTY-OK: a CYCLE — this node's entries are being computed by the frame that entered it
     INPROG.add(key);
     const r = entriesOf0(n, env, depth, seen);
     INPROG.delete(key);
@@ -355,27 +400,27 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
         : { k: 'prop', key: keyStatic(p.key, p.computed), keyNode: p.key, value: p.value, env }));
     }
     if (n.type === 'Identifier') {
-      if (n.name === 'undefined' || n.name === 'NaN' || n.name === 'Infinity') return [];   // primitives (an updater's abort)
+      if (n.name === 'undefined' || n.name === 'NaN' || n.name === 'Infinity') return [];   // EMPTY-OK: a primitive (an updater's abort) writes no field — primitives (an updater's abort)
       const b = resolve(n.name, n);
       if (!b || b.kind === 'fn') return [{ k: 'unresolved', node: n }];
       const sk = `${allBindings.indexOf(b)}@${env ? env.call.start : ''}`;
-      if (seen.has(sk)) return [];
+      if (seen.has(sk)) return [];   // EMPTY-OK: this binding's entries are already in this same evaluation (union — nothing is lost)
       seen.add(sk); b.consumed = true;
       const own = contribEntries(b, env);
       // r2 P1-3: an object that escaped into the heap may be mutated out of view → its provenance is incomplete
       if (b.heap) own.push({ k: 'unresolved', node: n, why: `escapes (${b.heap})` });
-      // r2 P1-1 / P2-5: a transaction updater's parameter IS the current value at the ref — spreading or returning it
-      // writes no new field; only what is assigned onto it (its contributions) is new
-      if (b.currentOrder) return own;
+      // r2 P1-1 / P2-5: a transaction updater's parameter IS the current value at the ref ({ k:'current' } — spreading or
+      // returning it writes no new field there); what is assigned onto it, or REASSIGNED to it (r3), is new
+      if (b.currentOrder) return [{ k: 'current', path: b.currentOrder.path, sig: b.currentOrder.sig, node: n }, ...b.inits.flatMap((i) => entriesOf(i, env, d, seen)), ...own];
       if (b.kind === 'param') {
         for (let f = env; f; f = f.parent) {
-          if (f.fnNode !== b.fnNode) continue;
+          if (f.fnNode !== b.fnNode) continue;   // EMPTY-OK: a frame of another function — keep looking
           const a = argOf(f.call, b);
-          let ents = a ? entriesOf(a, f.parent, d, seen) : [];
+          let ents = a ? entriesOf(a, f.parent, d, seen) : [];   // EMPTY-OK: an absent argument is undefined (no field)
           if (b.propKey) ents = selectKey(ents, b.propKey, f.call);
-          return [...ents, ...own];
+          return [...ents, ...b.inits.flatMap((i) => entriesOf(i, env, d, seen)), ...own];
         }
-        return [{ k: 'param', b, node: n }, ...own];
+        return [{ k: 'param', b, node: n }, ...b.inits.flatMap((i) => entriesOf(i, env, d, seen)), ...own];
       }
       const fromInits = b.inits.flatMap((i) => entriesOf(i, env, d, seen));
       return [...fromInits, ...own];
@@ -389,17 +434,24 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       return cur;
     }
     if (n.type === 'ConditionalExpression') return [...entriesOf(n.consequent, env, d, seen), ...entriesOf(n.alternate, env, d, seen)];
-    if (n.type === 'LogicalExpression') {
-      // `cur || order` inside an updater: the fallback is the caller's snapshot of the SAME order (reviewed: it only runs
-      // when the ref is empty) — the current value decides, as `cur` alone
-      if (n.left.type === 'Identifier') { const lb = resolve(n.left.name, n.left); if (lb && lb.currentOrder) return entriesOf(n.left, env, d, seen); }
-      return [...entriesOf(n.left, env, d, seen), ...entriesOf(n.right, env, d, seen)];
-    }
+    // r3 P1-1: `a || b`, `a && b`, `a ?? b` may be either operand — the UNION, always
+    if (n.type === 'LogicalExpression') return [...entriesOf(n.left, env, d, seen), ...entriesOf(n.right, env, d, seen)];
     if (n.type === 'AwaitExpression' || n.type === 'ParenthesizedExpression') return entriesOf(n.argument || n.expression, env, d, seen);
     if (n.type === 'CallExpression') {
       const c = n.callee;
       if (c.type === 'MemberExpression' && !c.computed && c.object.type === 'Identifier' && c.object.name === 'Object' && c.property.name === 'assign') {
         return n.arguments.flatMap((a) => entriesOf(a, env, d, seen));
+      }
+      // a deep CLONE (`JSON.parse(JSON.stringify(x))`, `structuredClone(x)`) has x's provenance
+      if (c.type === 'MemberExpression' && !c.computed && c.object.type === 'Identifier' && c.object.name === 'JSON' && c.property.name === 'parse' && n.arguments.length === 1
+          && n.arguments[0].type === 'CallExpression' && n.arguments[0].callee.type === 'MemberExpression' && !n.arguments[0].callee.computed && n.arguments[0].callee.object.type === 'Identifier'
+          && n.arguments[0].callee.object.name === 'JSON' && n.arguments[0].callee.property.name === 'stringify' && n.arguments[0].arguments.length === 1) return entriesOf(n.arguments[0].arguments[0], env, d, seen);
+      if (c.type === 'Identifier' && c.name === 'structuredClone' && !resolve(c.name, c) && n.arguments.length === 1) return entriesOf(n.arguments[0], env, d, seen);
+      // a database SNAPSHOT value: the persisted value at its ref ({ k:'current' }) — the same order it is written back to
+      // writes no new field; any other ref's snapshot is opaque at the write (writeAt)
+      if (c.type === 'MemberExpression' && !c.computed && c.property.name === 'val' && !n.arguments.length) {
+        const r = snapshotRef(c.object);
+        if (r) { const pth = refPathOf(r); return pth === null ? [{ k: 'unresolved', node: n }] : [{ k: 'current', path: normPath(pth), sig: refSig(r), node: n }]; }
       }
       const fns = fnsFor(n);
       const out = [];
@@ -409,7 +461,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     }
     // primitives write no field of their own; EVERYTHING else that is not modelled (arrays, `this`, `new`, …) is OPAQUE —
     // r2 ruling: a value reaching a write is fully resolved or carries an opaque marker, never empty provenance
-    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];
+    if (n.type === 'Literal' || n.type === 'TemplateLiteral' || n.type === 'UnaryExpression' || n.type === 'BinaryExpression') return [];   // EMPTY-OK: a primitive value writes no field of its own
     return [{ k: 'unresolved', node: n }];
   }
   // the entries of property `key` of an object given by its entries (absent → nothing; an unknown part → unresolved,
@@ -442,34 +494,40 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   const couldBeOrders = (seg) => new RegExp(`^${String(seg).replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`).test('orders');
 
   // a payload `entries` written at `base` (a static path shape); `at` is the write call (or the call site carrying it)
-  function writeAt(base, entries, at, how, depth = 0) {
+  function writeAt(base, entries, at, how, depth = 0, wsig = null) {
     const p = normPath(base); const segs = p === '' ? [] : p.split('/');
-    if (depth > 8) return;
+    if (depth > 8) { opaqueW(at, 'analysis-limit', `${p}: nesting > 8`); return; }
     const atRootOrOrders = segs.length === 0 || (segs[0] === 'orders' && segs.length === 1);
     if (!atRootOrOrders && segs[0] !== 'orders') { if (couldBeOrders(segs[0])) opaqueW(at, 'dynamic-root-path', p); return; }
     if (segs.length >= 3) { if (dynamicField(segs[2])) opaqueW(at, 'dynamic-field-segment', p); else record(at, segs[2], how); return; }
     const flat = expand(entries);
     for (const e of flat) {
-      if (e.k === 'param') { paramSinks.push({ b: e.b, base: p, at, how, shape: atRootOrOrders ? (segs.length ? 'write-above-orders' : 'unresolved-root-write') : 'opaque-order-object' }); continue; }
+      if (e.k === 'current') {
+        // the persisted value of THE SAME ref written back (same path shape AND same ref signature) adds no field
+        if (normPath(e.path) === p && e.sig && e.sig === wsig) continue;   // EMPTY-OK: the current value of this very ref
+        opaqueW(at, 'snapshot-spread', `${p || '/'}: the value of ${e.path} (${srcOf(e.node)})`);
+        continue;   // EMPTY-OK: accounted above: the current value of this very ref, or an opaque
+      }
+      if (e.k === 'param') { paramSinks.push({ b: e.b, base: p, at, how, wsig, shape: atRootOrOrders ? (segs.length ? 'write-above-orders' : 'unresolved-root-write') : 'opaque-order-object' }); continue; }
       if (e.k === 'unresolved') { opaqueW(at, atRootOrOrders ? (segs.length ? 'write-above-orders' : 'unresolved-root-write') : 'opaque-order-object', `${p || '/'}: ${e.node ? (srcOf(e.node) || ('<' + e.node.type + '>')) : '?'}${e.why ? ` — ${e.why}` : ''}`); continue; }
       if (e.k === 'spread-unresolved') {
         const pr = e.arg.type === 'Identifier' ? resolve(e.arg.name, e.arg) : null;
         const bound = (() => { for (let f = e.env; f; f = f.parent) if (pr && f.fnNode === pr.fnNode) return true; return false; })();
-        if (pr && pr.kind === 'param' && !bound) { paramSinks.push({ b: pr, base: p, at, how: `${how}/spread`, shape: atRootOrOrders ? (segs.length ? 'spread-in-order-write' : 'spread-at-root') : 'spread-in-order-write' }); continue; }
+        if (pr && pr.kind === 'param' && !bound) { paramSinks.push({ b: pr, base: p, at, wsig, how: `${how}/spread`, shape: atRootOrOrders ? (segs.length ? 'spread-in-order-write' : 'spread-at-root') : 'spread-in-order-write' }); continue; }
         opaqueW(at, atRootOrOrders ? (segs.length ? 'spread-in-order-write' : 'spread-at-root') : 'spread-in-order-write', e.arg.type === 'Identifier' ? e.arg.name : srcOf(e.arg).slice(0, 60));
-        continue;
+        continue;   // EMPTY-OK: accounted on the line above (param sink or opaque)
       }
       const k = e.key;
       if (atRootOrOrders) {
         if (k === null || k === undefined) { opaqueW(at, segs.length ? 'computed-key-in-order-write' : 'computed-key-at-root', srcOf(e.keyNode)); continue; }
         // a root key whose FIRST segment is dynamic could be `orders` → opaque; a literal other tree is not ours
         if (segs.length === 0 && couldBeOrders(String(k).split('/')[0])) { if (String(k).split('/')[0] !== 'orders') { opaqueW(at, 'computed-key-at-root', String(k)); continue; } }
-        else if (segs.length === 0) continue;      // a root write of another tree
-        writeAt(`${p}/${k}`, entriesOf(e.value, e.env), at, how, depth + 1);
-        continue;
+        else if (segs.length === 0) continue;      // EMPTY-OK: a literal root key of another tree (first segment cannot spell orders) — a root write of another tree
+        writeAt(`${p}/${k}`, entriesOf(e.value, e.env), at, how, depth + 1, null);
+        continue;   // EMPTY-OK: accounted on the line above (recursive writeAt)
       }
       // segs.length === 2: the order object — keys are fields, or sub-paths
-      if (k !== null && k !== undefined && String(k).includes('/')) { writeAt(`${p}/${k}`, entriesOf(e.value, e.env), at, how, depth + 1); continue; }
+      if (k !== null && k !== undefined && String(k).includes('/')) { writeAt(`${p}/${k}`, entriesOf(e.value, e.env), at, how, depth + 1, null); continue; }
       if (dynamicField(k)) { opaqueW(at, 'dynamic-field-segment', `${p}/${k === null || k === undefined ? `[${srcOf(e.keyNode)}]` : k}`); continue; }   // any non-literal FIELD key
       record(at, String(k), how);
     }
@@ -477,9 +535,10 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
 
   // the ref path a write call targets: ref(...) / child(...) chains, through same-scope variables
   function refPathOf(n, depth = 0) {
-    if (!n || depth > 4) return null;
+    if (!n) return null;   // EMPTY-OK: no receiver expression
+    if (depth > 4) return '*';   // r3 P1-4: an analysis limit is a fully DYNAMIC path (opaque at an order-capable write), never "not a ref"
     if (n.type === 'Identifier') {
-      const b = resolve(n.name, n); if (!b) return null;
+      const b = resolve(n.name, n); if (!b) return null;   // EMPTY-OK: an unbound global (e.g. a library namespace) is not a ref
       for (const i of b.inits) { const r = refPathOf(i, depth + 1); if (r !== null) return r; }
       // a REF PARAMETER (`finalize(orderRef, …)`): the ref each call site passes
       if (b.kind === 'param') {
@@ -489,15 +548,40 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
           const r = a ? refPathOf(a, depth + 1) : null; if (r !== null) return r;
         }
       }
-      return null;
+      return null;   // EMPTY-OK: not a ref shape (crypto hash / Firestore tx / Map …)
     }
     if (n.type === 'AwaitExpression') return refPathOf(n.argument, depth + 1);
     if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && !n.callee.computed) {
       const m = n.callee.property.name;
-      if (m === 'ref') return n.arguments.length ? (staticPath(n.arguments[0]) === null ? refKey(n.arguments[0]) : normPath(staticPath(n.arguments[0]))) : '';
+      // r3: a ref whose path cannot be resolved is a fully DYNAMIC path ('*' — could be orders → opaque at the write)
+      if (m === 'ref') return n.arguments.length ? pathOfExpr(n.arguments[0]) : '';
       if (m === 'child') { const b = refPathOf(n.callee.object, depth + 1); const c = staticPath(n.arguments[0]); return b === null ? null : normPath(`${b}/${c === null ? '*' : c}`); }
     }
-    return null;
+    return null;   // EMPTY-OK: not a ref shape (crypto hash / Firestore tx / Map …)
+  }
+  // r3: a PATH expression's static shape — a literal / template / concatenation, a const, a path BUILDER's return
+  // (`statusPath(oid)` → `orders/*/factura_status`), an object member (`decision.path`). Several shapes → the one that
+  // could be orders; anything unresolved → '*' (fully dynamic: opaque at an order-capable write)
+  function pathOfExpr(a, depth = 0) {
+    if (!a || depth > 6) return '*';
+    const sp = staticPath(a); if (sp !== null) return normPath(sp);
+    const shapes = [];
+    if (a.type === 'Identifier') { const k = refKey(a); if (k !== null) return k; const b = resolve(a.name, a); if (b && b.kind === 'var') for (const i of b.inits) shapes.push(pathOfExpr(i, depth + 1)); }
+    else if (a.type === 'CallExpression') { for (const f of fnsFor(a)) for (const r of RETURNS.get(f) || []) shapes.push(pathOfExpr(r, depth + 1)); }
+    else if (a.type === 'MemberExpression') {
+      const mc = memberChain(a);
+      if (mc && mc.steps.length) {
+        let cur = entriesOf(mc.root);
+        for (const st of mc.steps.slice(0, -1)) cur = selectKey(cur, st.key, a);
+        const last = mc.steps[mc.steps.length - 1].key;
+        const flat = expand(cur);
+        if (flat.every((e) => e.k === 'prop')) for (const e of flat) if (e.key === last) shapes.push(pathOfExpr(e.value, depth + 1));
+      }
+    }
+    const uniq = [...new Set(shapes)];
+    if (uniq.length === 1) return uniq[0];
+    if (!uniq.length) return '*';
+    return uniq.find((x) => couldBeOrders(x.split('/')[0])) ? '*' : uniq[0];
   }
   // a ref(path) whose path is a variable: its single const init (`const p = `orders/${id}``)
   function refKey(a) { if (a.type !== 'Identifier') return null; const k = keyStatic(a, true); return k === null ? null : normPath(k); }
@@ -506,49 +590,56 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
   for (const { ast } of files) walk(ast, (node) => {
     if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed && node.callee.property.name === 'transaction') {
       const upd = node.arguments[0];
-      if (upd && /Function/.test(upd.type) && upd.params[0] && upd.params[0].type === 'Identifier') { const b = (SCOPE.get(upd) || { vars: new Map() }).vars.get(upd.params[0].name); if (b) b.currentOrder = true; }
+      if (upd && /Function/.test(upd.type) && upd.params[0] && upd.params[0].type === 'Identifier') {
+        const b = (SCOPE.get(upd) || { vars: new Map() }).vars.get(upd.params[0].name);
+        const pth = refPathOf(node.callee.object);
+        if (b && pth !== null) b.currentOrder = { path: normPath(pth), sig: refSig(node.callee.object) };
+      }
     }
   });
 
   // ── sinks ───────────────────────────────────────────────────────────────────────────────────────────────────────
   for (const { ast } of files) {
-    walk(ast, (node) => {
+    walk(ast, function sinkVisit(node) {
       // codex r5 P1-2, modular form: runTransaction(ref(db[, '' | '/' | 'orders']), …) — opaque, never analysed
       if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'runTransaction' && node.arguments[0] && node.arguments[0].type === 'CallExpression' && node.arguments[0].callee.type === 'Identifier' && node.arguments[0].callee.name === 'ref') {
         const ra = node.arguments[0].arguments; const rp = ra.length < 2 ? '' : staticPath(ra[1]);
         if (rp !== null && (normPath(rp) === '' || normPath(rp) === 'orders')) opaqueW(node, normPath(rp) === '' ? 'transaction-at-root' : 'transaction-above-orders', `${normPath(rp) || '/'}: ${srcOf(node.arguments[1])}`);
       }
-      if (!(node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed && WRITE_METHODS.has(node.callee.property.name))) return;
+      if (!(node.type === 'CallExpression' && node.callee.type === 'MemberExpression' && !node.callee.computed && WRITE_METHODS.has(node.callee.property.name))) return;   // EMPTY-OK: not a write-method call
       const base = refPathOf(node.callee.object);
-      if (base === null) return;
+      // r3: a database-only write method on a receiver whose ref we cannot resolve fails CLOSED; set / push are also array /
+      // Map / response methods, so they count only on a receiver we can see is a ref
+      if (base === null) return;   // EMPTY-OK: the receiver is not a database ref we can see (crypto hashes, Firestore tx / batch, Maps); every `.ref(…)` resolves to a path or '*'
       const m = node.callee.property.name; const v = node.arguments[0];
       const nb = normPath(base); const segs = nb === '' ? [] : nb.split('/');
       if (m === 'remove') {
         if (segs.length === 0 || (segs[0] === 'orders' && segs.length === 1)) opaqueW(node, segs.length ? 'remove-above-orders' : 'remove-at-root', nb || '/');
         else if (segs[0] === 'orders' && segs.length >= 3) writeAt(nb, [], node, 'remove');
-        return;   // removing a whole order writes no field
+        return;   // EMPTY-OK: removing a whole order writes no field — removing a whole order writes no field
       }
       if (m === 'transaction') {
         // codex r5 P1-2: a transaction at the ROOT or on /orders can rewrite any order — OPAQUE, RED unless bound
         if (segs.length === 0 || (segs[0] === 'orders' && segs.length === 1)) { opaqueW(node, segs.length ? 'transaction-above-orders' : 'transaction-at-root', `${nb || '/'}: ${srcOf(v)}`); return; }
-        if (segs[0] !== 'orders') return;
-        if (segs.length >= 3) { writeAt(nb, [], node, 'transaction'); return; }
+        if (segs[0] !== 'orders') return;   // EMPTY-OK: a transaction on another tree
+        if (segs.length >= 3) { writeAt(nb, [], node, 'transaction'); return; }   // EMPTY-OK: accounted (writeAt of the field path)
         const upd = v && /Function/.test(v.type) ? v : null;
         if (!upd) { opaqueW(node, 'transaction-on-order', `${nb}: ${srcOf(v)}`); return; }
         // r2 P1-1 / P2-5: provenance to the updater's RETURN value(s), as everywhere else — the parameter is the current
         // order (marked before this pass); a delegated return (`(cur) => C.claimDecision(cur, …)`) is a builder call whose
         // parameter binds to `cur`; an unresolved part of the return stays OPAQUE beside the resolved fields
-        writeAt(nb, (RETURNS.get(upd) || []).flatMap((r) => entriesOf(r)), node, 'transaction-updater');
-        return;
+        writeAt(nb, (RETURNS.get(upd) || []).flatMap((r) => entriesOf(r)), node, 'transaction-updater', 0, refSig(node.callee.object));   // EMPTY-OK: no return = abort
+        return;   // EMPTY-OK: accounted (writeAt of the updater's returns)
       }
-      if (!v) return;
-      writeAt(m === 'push' ? `${nb}/*` : nb, entriesOf(v), node, m);
+      if (!v) return;   // EMPTY-OK: a write call with no payload argument
+      writeAt(m === 'push' ? `${nb}/*` : nb, entriesOf(v), node, m, 0, m === 'push' ? null : refSig(node.callee.object));
     });
   }
 
   // ── param sinks: resolved at every call site of the function (by name, across files), as a fixpoint ───────────────
   const sinkSeen = new Set();
-  for (let i = 0; i < paramSinks.length && i < 20000; i++) {
+  for (let i = 0; i < paramSinks.length; i++) {
+    if (i > 20000) throw new Error('write-provenance: parameter-sink limit (analysis limit)');
     const s = paramSinks[i];
     const nm = FN.get(s.b.fnNode);
     const sk = `${FILE.get(s.b.fnNode).file}:${s.b.fnNode.start}:${s.b.index}|${s.base}|${s.at.start}`;
@@ -560,7 +651,7 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
       const arg = call.arguments[s.b.index];
       let entries = arg ? entriesOf(arg) : entriesOf(s.b.fnNode.params[s.b.index].right);
       if (s.b.propKey) entries = selectKey(entries, s.b.propKey, call);
-      writeAt(s.base, entries, call, `${s.how}/via:${nm}`);
+      writeAt(s.base, entries, call, `${s.how}/via:${nm}`, 0, s.wsig);
     }
   }
 
@@ -575,26 +666,34 @@ function writeInventory({ parsed, walk, staticPath, normPath }) {
     return false;
   };
   const seenRef = new Set();
-  for (const { ast } of files) walk(ast, (node, fn, parent) => {
-    if (!parent) return;
+  for (const { ast } of files) walk(ast, function escapeVisit(node, fn, parent) {
+    if (!parent) return;   // EMPTY-OK: the program root is not a reference
     let name = null;
-    if (node.type === 'Identifier' && sinkFns.has(node.name)) {
-      if ((parent.type === 'CallExpression' && parent.callee === node) || (parent.type === 'MemberExpression' && parent.property === node && !parent.computed)) return;
-      if ((/Function/.test(parent.type) && (parent.id === node || parent.params.includes(node))) || (parent.type === 'VariableDeclarator' && parent.id === node)) return;
-      if (parent.type === 'Property' && (parent.key === node && !parent.computed && parent.value !== node)) return;
-      if (parent.type === 'Property' && PARENT.get(parent) && PARENT.get(parent).type === 'ObjectPattern') return;   // a destructured import
-      if (parent.type === 'VariableDeclarator' && parent.init === node) return;                                       // an alias we follow
-      if (parent.type === 'AssignmentExpression' && parent.left === node) return;
-      if (isExportSlot(node)) return;
-      const b = resolve(node.name, node); if (b && b.kind !== 'fn') return;                                           // another binding of that name
+    // r3 P1-2: an ALIAS (`const f = require('./m').g`, `const { g: f } = …`, `const f = g`) carries the function's identity
+    const target = node.type === 'Identifier' ? (() => { const b = resolve(node.name, node); return b && b.kind === 'var' ? aliasName(node) : node.name; })() : null;
+    if (node.type === 'Identifier' && target !== node.name && sinkFns.has(target)) {
+      if (parent.type === 'CallExpression' && parent.callee === node) return;   // EMPTY-OK: a direct call through the alias — a call site
+      if ((parent.type === 'VariableDeclarator' && parent.id === node) || (parent.type === 'Property' && PARENT.get(parent) && PARENT.get(parent).type === 'ObjectPattern')) return;   // EMPTY-OK: the alias's declaration
+      name = target;
+    } else if (node.type === 'Identifier' && sinkFns.has(node.name)) {
+      if ((parent.type === 'CallExpression' && parent.callee === node) || (parent.type === 'MemberExpression' && parent.property === node && !parent.computed)) return;   // EMPTY-OK: a direct call, or a member name — not a value reference
+      if ((/Function/.test(parent.type) && (parent.id === node || parent.params.includes(node))) || (parent.type === 'VariableDeclarator' && parent.id === node)) return;   // EMPTY-OK: the function's own declaration / a parameter
+      if (parent.type === 'Property' && (parent.key === node && !parent.computed && parent.value !== node)) return;   // EMPTY-OK: a property key, not a value
+      if (parent.type === 'Property' && PARENT.get(parent) && PARENT.get(parent).type === 'ObjectPattern') return;   // EMPTY-OK: a destructured import (the alias is followed) — a destructured import
+      if (parent.type === 'VariableDeclarator' && parent.init === node) return;                                       // EMPTY-OK: an alias declaration (its uses are checked) — an alias we follow
+      if (parent.type === 'AssignmentExpression' && parent.left === node) return;   // EMPTY-OK: an assignment target
+      if (isExportSlot(node)) return;   // EMPTY-OK: its own export slot (other modules' calls are matched by name)
+      const b = resolve(node.name, node);
+      const isAlias = b && b.kind === 'var' && b.inits.length === 1 && ['MemberExpression', 'Pick', 'Identifier'].includes(b.inits[0].type);
+      if (b && b.kind !== 'fn' && !isAlias) return;                                                                // EMPTY-OK: another binding of that name
       name = node.name;
     } else if (node.type === 'MemberExpression' && !node.computed && sinkFns.has(node.property.name)) {
-      if ((parent.type === 'CallExpression' && parent.callee === node) || (parent.type === 'VariableDeclarator' && parent.init === node)) return;
-      if (parent.type === 'AssignmentExpression' && parent.left === node) return;
+      if ((parent.type === 'CallExpression' && parent.callee === node) || (parent.type === 'VariableDeclarator' && parent.init === node)) return;   // EMPTY-OK: a direct call, or an alias declaration
+      if (parent.type === 'AssignmentExpression' && parent.left === node) return;   // EMPTY-OK: an assignment target
       name = node.property.name;
     }
-    if (!name) return;
-    const key = `${FILE.get(node).file}:${node.start}`; if (seenRef.has(key)) return; seenRef.add(key);
+    if (!name) return;   // EMPTY-OK: not a reference to a param-sink function
+    const key = `${FILE.get(node).file}:${node.start}`; if (seenRef.has(key)) return; seenRef.add(key);   // EMPTY-OK: already reported
     opaqueW(node, 'function-escapes', name);
   });
 

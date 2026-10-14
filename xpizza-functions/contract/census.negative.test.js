@@ -161,6 +161,61 @@ for (const [name, code, re] of [
     assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG fail-closed local-call: a local call was resolved to another file's same-named function (${JSON.stringify(p.slice(0, 3))})`);
     ok('fail-closed — a local call binds to the LOCAL function (another file\'s same-named escaping helper does not apply): QUIET');
   }
+  // B4 r3 (codex R3-B4 r3: 4 P1 "silent empty" holes) — each must turn the census RED
+  const H = "chargeOnlineApp.all('*', async (req, res) => {\n";
+  const deep = Array.from({ length: 16 }, (_, i) => (i === 0 ? 'function zzDeep0() { return { surcharge_cents: 900 }; }' : `function zzDeep${i}() { return zzDeep${i - 1}(); }`)).join('\n');
+  for (const [name, u, re] of [
+    ['r3 P1-1 real: `cur || {…}` in an updater (charge handler)', real('index.js', H, H + "  await db.ref('orders/probe').transaction((cur) => cur || { surcharge_cents: 900 });\n"), NEW_S],
+    ['r3 P1-1 real: `cur && {…}` in an updater (charge handler)', real('index.js', H, H + "  await db.ref('orders/probe').transaction((cur) => cur && { surcharge_cents: 900 });\n"), NEW_S],
+    ['r3 P1-1 real: the updater REASSIGNS its parameter and returns it', real('index.js', H, H + "  await db.ref('orders/probe').transaction((cur) => { cur = { surcharge_cents: 900 }; return cur; });\n"), NEW_S],
+    ['r3 P1-1 real: `cur = { ...cur, f }` before the bindDecision return', real('claim-order.js', '  return { ...cur, customer_uid: uid };\n', '  cur = { ...cur, surcharge_cents: 900 };\n  return { ...cur, customer_uid: uid };\n'), NEW_S],
+    ['r3 P1-2 real: acquireOnlineAttempt through an alias `.call(…)`', real('index.js', H, "const chargeProbe = require('./pixelpay-charge').acquireOnlineAttempt;\n" + H + "  await chargeProbe.call(null, db, req.body.id, { surcharge_cents: 900 }, 'fp');\n"), /opaque order write unresolved: .*function-escapes .*acquireOnlineAttempt/],
+    ['r3 P1-2 real: acquireOnlineAttempt alias escaping through Promise.resolve(alias).then', real('index.js', H, "const chargeProbe = require('./pixelpay-charge').acquireOnlineAttempt;\n" + H + "  await Promise.resolve(chargeProbe).then((f) => f(db, req.body.id, { surcharge_cents: 900 }, 'fp'));\n"), /opaque order write unresolved: .*function-escapes .*acquireOnlineAttempt/],
+    ['r3 P1-2 real: a destructured alias `.apply(…)`', real('index.js', H, "const { acquireOnlineAttempt: aoaProbe } = require('./pixelpay-charge');\n" + H + "  await aoaProbe.apply(null, [db, req.body.id, { surcharge_cents: 900 }, 'fp']);\n"), /opaque order write unresolved: .*function-escapes .*acquireOnlineAttempt/],
+    ['r3 P1-3 real: Object.defineProperty on the create-order record', real('create-order-build.js', '  updates[`orders/${orderId}`] = orderRecord;\n', "  Object.defineProperty(orderRecord, 'surcharge_cents', { value: 900, enumerable: true });\n  updates[`orders/${orderId}`] = orderRecord;\n"), /opaque order write unresolved: .*orderRecord — escapes \(call:Object\.defineProperty\)/],
+    ['r3 P1-3 synthetic: a fresh {} populated by Object.defineProperty, then .update()', asIndex("createOrderApp.all(async (req, res) => { const rec = {}; Object.defineProperty(rec, 'surcharge_cents', { value: 900, enumerable: true }); await db.ref(`orders/${id}`).update(rec); });"), /escapes \(call:Object\.defineProperty\)/],
+    ['r3 P1-4 real: a 16-deep builder chain into an order .update() (charge handler)', real('index.js', H, deep + '\n' + H + "  await db.ref('orders/probe').update(zzDeep15());\n"), /NEW order field written: 'surcharge_cents'|analysis-limit/],
+    ['r3 P1-4: a 60-deep builder chain hits the ANALYSIS LIMIT → opaque, never empty', asIndex(Array.from({ length: 60 }, (_, i) => (i === 0 ? 'function zzLim0() { return { surcharge_cents: 900 }; }' : `function zzLim${i}() { return zzLim${i - 1}(); }`)).join('\n') + "\ncreateOrderApp.all(async (req, res) => { await db.ref(`orders/${id}`).update(zzLim59()); });"), /opaque order write unresolved: .*analysis-limit/],
+    ['r3: a SNAPSHOT of another order spread into this order', asIndex("createOrderApp.all(async (req, res) => { const other = (await db.ref(`orders/${otherId}`).once('value')).val(); await db.ref(`orders/${id}`).set({ ...other }); });"), /opaque order write unresolved: .*snapshot-spread/],
+    ['r3 real: a PATH BUILDER now names another order field (factura statusPath)', real('factura/factura-helpers.js', 'const statusPath = (oid) => `orders/${oid}/factura_status`;', 'const statusPath = (oid) => `orders/${oid}/surcharge_cents`;'), NEW_S],
+  ]) {
+    const p = problemsWith(u);
+    assert.ok(p.some((x) => re.test(x)), `🔴 R3-CENSUS-NEG fail-closed ${name}: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
+    ok(`fail-closed — ${name}: RED — ${p.filter((x) => re.test(x))[0].slice(0, 110)}`);
+  }
+  // r3: a JSON deep clone keeps its source's provenance — a clone of a resolved, classified record is QUIET
+  {
+    const p = problemsWith(asIndex("createOrderApp.all(async (req, res) => { const rec = { status: 'new' }; await db.ref(`orders/${id}`).set(JSON.parse(JSON.stringify(rec))); });"));
+    assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG fail-closed json-clone: a deep clone of a resolved record was reported (${JSON.stringify(p.slice(0, 3))})`);
+    ok('fail-closed — a JSON deep clone of a resolved record keeps its provenance: QUIET');
+  }
+  // r3 STRUCTURAL CLOSURE: every place the provenance walker can answer "nothing" is either ACCOUNTED on that line (an
+  // opaque / a recorded field / a param sink / a pushed entry / a recursive write / a throw) or ANNOTATED `EMPTY-OK:`
+  // with why the empty answer is a proven resolved-empty. A new unannotated empty return is RED.
+  {
+    const acorn = require('acorn');
+    const WALKER = ['entriesOf', 'entriesOf0', 'selectKey', 'expand', 'contribEntries', 'keysOfSource', 'writeAt', 'pathOfExpr', 'refPathOf', 'heapEscape', 'snapshotRef', 'refSig', 'sinkVisit', 'escapeVisit'];
+    const ACCOUNTED = /EMPTY-OK:|opaqueW\(|record\(|paramSinks\.push\(|out\.push\(|writeAt\(|throw /;
+    const emptySites = (src) => {
+      const lines = src.split('\n'); const ast = acorn.parse(src, { ecmaVersion: 'latest', locations: true }); const found = new Set(); const sites = [];
+      (function rec(n, inFn) {
+        if (!n || typeof n.type !== 'string') return;
+        let f = inFn; if (/Function/.test(n.type) && n.id && WALKER.includes(n.id.name)) { f = n.id.name; found.add(f); }
+        if (f && ((n.type === 'ReturnStatement' && (!n.argument || (n.argument.type === 'Literal' && n.argument.value === null) || (n.argument.type === 'ArrayExpression' && !n.argument.elements.length))) || n.type === 'ContinueStatement')) sites.push({ fn: f, line: n.loc.start.line, text: lines[n.loc.start.line - 1] });
+        for (const k of Object.keys(n)) { if (k === 'loc') continue; const v = n[k]; if (Array.isArray(v)) v.forEach((c) => rec(c, f)); else if (v && typeof v === 'object' && typeof v.type === 'string') rec(v, f); }
+      })(ast, null);
+      return { found, sites, bad: sites.filter((x) => !ACCOUNTED.test(x.text)) };
+    };
+    const src = fsx.readFileSync(pathx.join(__dirname, 'write-provenance.js'), 'utf8');
+    const r = emptySites(src);
+    assert.deepStrictEqual(WALKER.filter((w) => !r.found.has(w)), [], 'premise — every walker function named in the audit exists');
+    assert.ok(r.sites.length >= 40, `premise — the audit sees the walker's empty sites (${r.sites.length})`);
+    assert.deepStrictEqual(r.bad.map((x) => `${x.fn}:${x.line} ${x.text.trim()}`), [], '🔴 R3-CENSUS-NEG empty-provenance audit: an empty answer in the walker is neither accounted nor annotated EMPTY-OK');
+    // the audit itself is sensitive: an unannotated `return [];` planted in entriesOf0 is RED
+    const planted = emptySites(src.replace("  function entriesOf0(n, env, depth, seen) {\n", "  function entriesOf0(n, env, depth, seen) {\n    if (n.type === 'ThisExpression') return [];\n"));
+    assert.ok(planted.bad.some((x) => x.fn === 'entriesOf0' && /ThisExpression/.test(x.text)), 'premise — a planted unannotated empty return is caught');
+    ok(`fail-closed — empty-provenance audit: all ${r.sites.length} empty-answer sites in ${WALKER.length} walker functions are accounted or annotated EMPTY-OK (a planted one is RED)`);
+  }
   // r2 P2-5: an UNUSED local object literal inside a real transaction updater is QUIET (provenance runs to the return)
   {
     const p = problemsWith(real('pixelpay-hosted-charge.js', "      if (decided.kind === 'create') {\n", "      const localProbe = { surcharge_cents: 900 };\n      if (decided.kind === 'create') {\n"));

@@ -39213,6 +39213,12 @@
    "key": "xpizza-functions/driver-attribution.js#writeDeliveryAttribution#delivered_by_name#set"
   },
   {
+   "key": "xpizza-functions/factura/factura-helpers.js#allocateFacturaNumber#factura_status#set"
+  },
+  {
+   "key": "xpizza-functions/factura/factura-helpers.js#voidFactura#factura_status#set"
+  },
+  {
    "key": "xpizza-functions/index.js#createOrderApp.all#order_id#update"
   },
   {
