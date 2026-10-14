@@ -99,6 +99,7 @@ async function svcWriteOrFallback(db, handle, doWrite, { site, target }) {
     let mode;
     try { mode = (await _readOrTimeout(db.ref(MODE_PATH).once('value'), READ_DEADLINE_MS, 'mode')).val(); }
     catch (re) { _noteReadTimeout(e, re, 'mode', undefined, site); throw e; }                 // mode read failed / hung → don't bypass
+    if (e && typeof e === 'object') e.svcMode = (mode === null ? 'tolerant' : String(mode));   // codex r7 P2-1: carry the KNOWN mode so a LATER classification timeout (e.g. closed) logs it
     if (mode === 'closed') throw e;                                                          // closed: eligibility refusal, propagate
     let expected;
     try { expected = await isExpectedEligibilityDenial(e, db, target); }

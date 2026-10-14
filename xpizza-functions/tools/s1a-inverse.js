@@ -147,7 +147,7 @@ const HUNKS = Object.freeze([
        + "  if (svcDb === db) return false;   // flag-off: exactly main's error path (no read, no divergence)\n"
        + "  let ineligible;\n"
        + "  try { ineligible = await isExpectedEligibilityDenial(e, db, target); }\n"
-       + "  catch (ce) { console.error(`${ctx}: eligibility classification unavailable (${(ce && ce.message) || ce}); original denial ${(e && (e.code || e.message)) || e} — falling back to main's rollback`); return false; }\n"
+       + "  catch (ce) { console.error(`${ctx}: eligibility classification unavailable (read=account, ${(ce && ce.message) || ce}, mode=${(e && e.svcMode) || 'unread'}); original denial ${(e && (e.code || e.message)) || e} — falling back to main's rollback`); return false; }\n"
        + "  if (e && e.svcReadTimeout) console.error(`${ctx}: classify_timeout carried — a denial-path ${e.svcReadTimeout.read} read timed out (mode=${e.svcReadTimeout.mode}); original denial ${(e && (e.code || e.message)) || e} — ${ineligible ? 'release (positively ineligible)' : 'main rollback'}`);\n"
        + "  return ineligible;\n"
        + "}\n"

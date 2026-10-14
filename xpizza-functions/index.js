@@ -5906,7 +5906,7 @@ async function expectedIneligibleOrMain(e, db, svcDb, target, ctx) {   // S1a §
   if (svcDb === db) return false;   // flag-off: exactly main's error path (no read, no divergence)
   let ineligible;
   try { ineligible = await isExpectedEligibilityDenial(e, db, target); }
-  catch (ce) { console.error(`${ctx}: eligibility classification unavailable (${(ce && ce.message) || ce}); original denial ${(e && (e.code || e.message)) || e} — falling back to main's rollback`); return false; }
+  catch (ce) { console.error(`${ctx}: eligibility classification unavailable (read=account, ${(ce && ce.message) || ce}, mode=${(e && e.svcMode) || 'unread'}); original denial ${(e && (e.code || e.message)) || e} — falling back to main's rollback`); return false; }
   if (e && e.svcReadTimeout) console.error(`${ctx}: classify_timeout carried — a denial-path ${e.svcReadTimeout.read} read timed out (mode=${e.svcReadTimeout.mode}); original denial ${(e && (e.code || e.message)) || e} — ${ineligible ? 'release (positively ineligible)' : 'main rollback'}`);
   return ineligible;
 }
