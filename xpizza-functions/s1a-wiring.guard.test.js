@@ -14,7 +14,7 @@ let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const BASE = 'c83f2f9';   // the rebase base (S2, atop G2+H0+serial3); S1a's edits are the only index.js delta on top of it
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
-const real = read('index.js');
+const real = require('./tools/a1-inverse').unapplyA1Index(read('index.js'));   // PLAN-A A-1 (newer) is reversed first
 
 // ── 1. the inverse reproduces the base byte-for-byte ──
 assert.strictEqual(unapplyS1aIndex(real), baseIdx, `🔴 index.js minus the S1a edits is not ${BASE}:index.js`);

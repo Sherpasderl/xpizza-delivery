@@ -20,6 +20,7 @@
 // post-commit recheck that compensates (purge the recreated node) — same as Phase A.
 const crypto = require('crypto');
 const { REDEMPTION_CONFIG_VERSION } = require('./rewards-redeem-config');
+const TV = require('./catalog/text-version');   // PLAN-A A8a step 1: the reservation's text-version provenance
 
 // Cash reservations have no hosted-checkout expiry; a cash order still 'reserved' this long after create with
 // no terminal state is treated as an orphan candidate by the sweep (policy — tune with ops).
@@ -80,10 +81,21 @@ async function alertIfUndercollateralized(db, { uid, rid, orderId, now }) {
    be reused by a canonical order, nor a canonical record by a legacy one. `selectedFormat` is that order's format; a
    FRESH reservation for a canonical order is written by canonicalBinding() (catalog/canonical-binding.js
    canonicalReservationFields — the ONE canonical reservation shape). A legacy order's record is never tagged. */
-async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null, canonicalBinding = null, selectedFormat = 'legacy' }) {
+/* PLAN-A A8a step 1 (codex A-r6 P1): a LEGACY-format reservation carries the text version of the order binding it holds
+   (`text_version`: 'a8' or ABSENT). The caller passes BOTH order-binding candidates — `orderFingerprint` (legacy, today's
+   bytes) and `a8OrderFingerprint` (the untruncated paid text) — plus its write mode. The record read INSIDE this
+   transaction selects ONE of them by its marker (absent → legacy exactly; 'a8' → a8; anything else →
+   binding_format_invalid); with no record, `writeMode` selects (A-1: always legacy → no marker). A released record
+   re-reserved keeps its marker state. The result carries `selected_text_version` so the caller composes the order with
+   the SAME binding. Canonical-format records are untouched by this (their binding does not hash the text).
+   PRECEDENCE (plan r6 ruling; codex A-1 build r1 P1-2): the EXISTING ORDER's marker > the reservation's marker > the request
+   write mode. `orderTextVersion` is the authoritative text version of the order this request binds to ('legacy' | 'a8'; null =
+   no existing order): a reservation whose marker differs from it is a conflict (no debit), and a fresh reservation takes it. */
+async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, orderFingerprint, configVersion, now, hostedExpiresAt = null, canonicalBinding = null, selectedFormat = 'legacy', a8OrderFingerprint = null, writeMode = TV.TEXT_LEGACY, orderTextVersion = null }) {
   try {
     if (!uid || !rid || !orderId || !(Number.isInteger(cost) && cost > 0)) return { ok: false, reason: 'bad_request' };
     if (!Number.isInteger(configVersion) || configVersion !== REDEMPTION_CONFIG_VERSION) return { ok: false, reason: 'config_version_mismatch' };
+    if (orderTextVersion !== null && orderTextVersion !== TV.TEXT_LEGACY && orderTextVersion !== TV.TEXT_A8) return { ok: false, reason: 'binding_format_invalid' };   // A8a: a malformed order marker never reserves
     if (await isDeleted(db, uid)) return { ok: false, reason: 'deleted' };
     const fp = bindingFp({ canonical, orderFingerprint, configVersion });
     const canon = once(canonicalBinding);
@@ -105,6 +117,15 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
         const fmt = formatOf(rec, 'fp_format');                    // the format of THIS record, read in THIS transaction
         if (!fmt.ok) { outcome = { ok: false, reason: 'binding_format_invalid' }; return; }
         let recFp = fp;
+        const tv = TV.textVersionOf(rec, TV.RESERVATION_FIELD);       // A8a: the text version of THIS record's binding, same txn
+        if (!tv.ok) { outcome = { ok: false, reason: 'binding_format_invalid' }; return; }
+        // A8a precedence: the existing order's text version wins — a reservation in another version is not this order's binding
+        if (fmt.format !== FORMAT_CANONICAL && orderTextVersion !== null && tv.version !== orderTextVersion) { outcome = { ok: false, reason: 'reservation_conflict' }; return; }
+        const recOrderFp = tv.version === TV.TEXT_A8 ? a8OrderFingerprint : orderFingerprint;
+        if (fmt.format !== FORMAT_CANONICAL && tv.version === TV.TEXT_A8) {
+          if (typeof recOrderFp !== 'string' || !recOrderFp) { outcome = { ok: false, reason: 'reservation_conflict' }; return; }
+          recFp = bindingFp({ canonical, orderFingerprint: recOrderFp, configVersion });
+        }
         if (fmt.format === FORMAT_CANONICAL) {
           const c = canon();
           if (!c || !c.ok) { outcome = { ok: false, reason: 'cart_unverifiable' }; return; }
@@ -112,19 +133,19 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
         }
         if (rec.fp !== recFp) { outcome = { ok: false, reason: 'reservation_conflict' }; return; }   // different order/reward → conflict, NO debit
         if (rec.state === 'reserved' || rec.state === 'held_paid' || rec.state === 'consumed') {   // active/progressing/terminal → idempotent, NO re-debit
-          outcome = { ok: true, action: 'reused', state: rec.state }; return;
+          outcome = { ok: true, action: 'reused', state: rec.state, ...selectedOf(tv.version) }; return;
         }
         if (rec.state !== 'released') { outcome = { ok: false, reason: 'reservation_conflict' }; return; }   // refunded/unknown → don't re-issue a hold
         // released → treat as NO active hold: re-reserve fresh (new available check + new debit)
         if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
         const seq = (Number(rec.seq) || 0) + 1;
-        outcome = { ok: true, action: 're_reserved', state: 'reserved' };
+        outcome = { ok: true, action: 're_reserved', state: 'reserved', ...selectedOf(tv.version) };
         if (fmt.format === FORMAT_CANONICAL) {
           // Q2: the canonical record keeps its format and its canonical binding — its stored canonical reward and
           // selected order binding are the ones the comparison above just matched.
-          return writeReserve(cur, orderId, rec, recFp, rec.canonical, rec.order_fingerprint, configVersion, cost, seq, now, hostedExpiresAt, rec.fp_format);
+          return writeReserve(cur, orderId, rec, recFp, rec.canonical, rec.order_fingerprint, configVersion, cost, seq, now, hostedExpiresAt, rec.fp_format, tv.version);   // A8a: marker presence/absence kept
         }
-        return writeReserve(cur, orderId, rec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt);
+        return writeReserve(cur, orderId, rec, recFp, canonical, recOrderFp, configVersion, cost, seq, now, hostedExpiresAt, undefined, tv.version);
       }
       // fresh reserve
       if (balance - reserved < cost) { outcome = { ok: false, reason: 'insufficient' }; return; }
@@ -135,7 +156,12 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
         outcome = { ok: true, action: 'created', state: 'reserved' };
         return writeReserve(cur, orderId, null, c.fp, c.canonical, c.order_fingerprint, configVersion, cost, 1, now, hostedExpiresAt, c.fp_format);
       }
-      outcome = { ok: true, action: 'created', state: 'reserved' };
+      // A8a: a fresh legacy-format record takes the EXISTING ORDER's text version when there is one, else THIS request's write
+      // mode (A-1: always legacy → byte-identical, no marker)
+      const freshA8 = (orderTextVersion !== null ? orderTextVersion : writeMode) === TV.TEXT_A8;
+      if (freshA8 && (typeof a8OrderFingerprint !== 'string' || !a8OrderFingerprint)) { outcome = { ok: false, reason: 'cart_unverifiable' }; return; }
+      outcome = { ok: true, action: 'created', state: 'reserved', ...selectedOf(freshA8 ? TV.TEXT_A8 : TV.TEXT_LEGACY) };
+      if (freshA8) return writeReserve(cur, orderId, null, bindingFp({ canonical, orderFingerprint: a8OrderFingerprint, configVersion }), canonical, a8OrderFingerprint, configVersion, cost, 1, now, hostedExpiresAt, undefined, TV.TEXT_A8);
       return writeReserve(cur, orderId, null, fp, canonical, orderFingerprint, configVersion, cost, 1, now, hostedExpiresAt);
     });
 
@@ -149,10 +175,13 @@ async function reserveRedemption(db, { uid, rid, orderId, cost, canonical, order
   } catch (e) { console.error(`reserveRedemption: failed ${orderId}`, e && e.message); return { ok: false, reason: 'error' }; }
 }
 
-function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt = null, carriedFormat = undefined) {
+// A8a: `textVersion` 'a8' → the record carries text_version:'a8'; legacy/undefined → NO field (absence preserved).
+const selectedOf = (version) => (version === TV.TEXT_A8 ? { selected_text_version: TV.TEXT_A8 } : {});
+function writeReserve(cur, orderId, prevRec, fp, canonical, orderFingerprint, configVersion, cost, seq, now, hostedExpiresAt = null, carriedFormat = undefined, textVersion = undefined) {
   const rec = {
     // 1D D4-b: present ONLY when re-reserving a record that already carried it (Q2); a legacy write is unchanged.
     ...(carriedFormat !== undefined ? { fp_format: carriedFormat } : {}),
+    ...TV.markerFields(textVersion, TV.RESERVATION_FIELD),
     state: 'reserved', cost, fp, canonical: canonical || null, order_fingerprint: orderFingerprint || null,
     // Online binds hosted_expires_at AT RESERVE (a deterministic nowTs + HOSTED_TTL bound) so an unattached
     // hold is sweep-visible as an ONLINE hold immediately — the online-expiry sweep reclaims it whether or not

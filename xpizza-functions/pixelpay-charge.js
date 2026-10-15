@@ -45,9 +45,12 @@ function centsToLempiras(cents) {
 // it moved under us we re-read and re-decide. `genId` is injectable for tests.
 /* 1D D4-b (§A.3): the same contract as the hosted path. NOTE: no production caller today; dormant code is kept
    correct anyway. `canonicalFp` is a lazy thunk, consulted only for a canonical-tagged record. */
-async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null) {
+/* PLAN-A A8a step 1: `textBinding` = { a8Fp, fresh } exactly as acquireHostedAttempt (default null → unchanged). */
+async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null, textBinding = null) {
   const { paymentBindingConflict, conflictOutcome, once, installFingerprint } = require('./catalog/canonical-binding');   // lazy: canonical-binding requires this module
   const canon = once(canonicalFp);
+  const a8 = once(textBinding && textBinding.a8Fp);
+  const freshFp = (textBinding && textBinding.fresh === 'a8') ? a8() : fingerprint;
   const orderRef = db.ref(`orders/${orderId}`);
 
   for (let i = 0; i < 6; i++) {
@@ -56,7 +59,7 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
     // Terminal reads that need no write.
     if (order) {
       if (order.payment_status === 'confirmed') return { outcome: 'already_paid' };
-      { const d = paymentBindingConflict(order, fingerprint, canon); if (d) return conflictOutcome(d); }   // advisory
+      { const d = paymentBindingConflict(order, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory
     }
 
     // Decide intent from the pre-read.
@@ -92,15 +95,16 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
     const tx = await orderRef.transaction((cur) => {
       if (decided.kind === 'create') {
         if (cur !== null) return;                       // exists on server → abort, re-decide
-        return { ...pendingOrderRecord, active_attempt_id: decided.newAaid, payment_fingerprint: fingerprint };
+        if (!freshFp) return;                           // A8a: an 'a8' fresh binding with no candidate → never a mixed record
+        return { ...pendingOrderRecord, active_attempt_id: decided.newAaid, payment_fingerprint: freshFp };
       }
       const c = cur || order;                           // non-create: avoid first-call-null abort
       if (!c) return;                                   // genuinely absent
       if (c.payment_status === 'confirmed') return c;
-      if (paymentBindingConflict(c, fingerprint, canon)) return c;     // the CAS: (format, fingerprint) on the record held
+      if (paymentBindingConflict(c, fingerprint, canon, a8)) return c;     // the CAS: (format, fingerprint) on the record held
       if (decided.kind === 'install') {
         if (c.active_attempt_id) return c;              // someone installed first → re-evaluate post-tx
-        const fill = c.payment_fingerprint || installFingerprint(c, fingerprint, canon);   // 1D D4-b: legacy record → `fingerprint`, unchanged
+        const fill = c.payment_fingerprint || installFingerprint(c, fingerprint, canon, a8);   // 1D D4-b: legacy record → `fingerprint`, unchanged
         if (!fill) return c;                                                              // canonical, uncomputable → no install (the re-read refuses)
         return { ...c, active_attempt_id: decided.newAaid, payment_fingerprint: fill };
       }
@@ -119,7 +123,7 @@ async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint
 
     const committed = tx.snapshot.val();
     if (committed.payment_status === 'confirmed') return { outcome: 'already_paid' };
-    { const d = paymentBindingConflict(committed, fingerprint, canon); if (d) return conflictOutcome(d); }   // advisory post-txn
+    { const d = paymentBindingConflict(committed, fingerprint, canon, a8); if (d) return conflictOutcome(d); }   // advisory post-txn
     const winner = committed.active_attempt_id;
 
     if (decided.kind === 'create' || decided.kind === 'install' || decided.kind === 'rotate') {

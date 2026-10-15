@@ -88,13 +88,20 @@ async function prepareRedemption(db, { redeem, items, restaurantId, itemsText, t
 }
 
 // Combined intake for the CASH path (createOrder): prepare + reserve (bound to the order fingerprint + set hash).
-async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now, tables, eligible = null, context = null }) {
+/* PLAN-A A8a step 1: `paidTextFull` (the untruncated sanitized paid text) builds the 'a8' candidate — the same reward
+   append over it — so the reservation's OWN text-version marker selects the binding (rewards-reserve); `writeMode` is the
+   request's (A-1: always legacy). The result carries `textVersion` and the SELECTED composed text, so the caller writes
+   the order with the binding the reservation holds. Absent `paidTextFull` → today's call exactly. */
+async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orderId, customerUid, itemsText, totalLempiras, schedExtra, now, tables, eligible = null, context = null, paidTextFull = null, writeMode = 'legacy' }) {
   requireTables('resolveRedemptionForOrder', restaurantId, tables);   // GRILL-FIX #2
   const prep = await prepareRedemption(db, { redeem, items, restaurantId, itemsText, totalLempiras, customerUid, tables, eligible });
   if (!prep.ok) return prep;
   const fp = orderFingerprint(orderId, prep.priced.total_cents, prep.itemsText, fingerprintExtra(schedExtra, prep.redemptionFp));   // bind hold to THIS order + redeemed set
+  const a8Text = typeof paidTextFull === 'string' ? `${paidTextFull}${prep.itemsText.slice(String(itemsText == null ? '' : itemsText).length)}` : null;
+  const a8Fp = a8Text != null ? orderFingerprint(orderId, prep.priced.total_cents, a8Text, fingerprintExtra(schedExtra, prep.redemptionFp)) : null;
   const rr = await reserveRedemption(db, { uid: customerUid, rid: restaurantId, orderId, cost: prep.redemption.cost,
     canonical: prep.canonical, orderFingerprint: fp, configVersion: REDEMPTION_CONFIG_VERSION, now,   // atomic Σ-cost debit, idempotent
+    ...(a8Fp != null ? { a8OrderFingerprint: a8Fp, writeMode } : {}),
     /* 1D D4-b §A.6: consulted only for a canonical-tagged reservation record. This path is reached only for a NEW
        order (an existing order_id returns at createOrder's idempotency check), so the order binding selected for
        this request is the legacy `fp` — a canonical record therefore conflicts, exactly as §A.6 specifies. */
@@ -106,7 +113,9 @@ async function resolveRedemptionForOrder(db, { redeem, items, restaurantId, orde
      resolved redemption the QUOTE path produced (prep.redemption), so the gate must bind the identical
      object here or the fingerprints cannot match. Both already exist on prep — this returns the fact
      rather than letting the charge side reconstruct a second copy of it. */
-  return { ok: true, canonical: prep.canonical, priced: prep.priced, itemsText: prep.itemsText,
+  const a8Selected = rr.selected_text_version === 'a8';
+  return { ok: true, canonical: prep.canonical, priced: prep.priced, itemsText: a8Selected ? a8Text : prep.itemsText,
+    ...(a8Selected ? { textVersion: 'a8' } : {}),
     redemption: prep.redemption, redemptionFp: prep.redemptionFp,
     ownsHold: (rr.action === 'created' || rr.action === 're_reserved'), freeName: prep.freeName, freeItems: prep.freeItems };
 }

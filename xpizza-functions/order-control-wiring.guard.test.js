@@ -23,7 +23,7 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 // D12b landed on top of D4-c2b: its ONE delimited, byte-pinned index.js block (tools/d12b-inverse.js unapplyD12bIndex) is reversed
 // after the WhatsApp-cancel block (tools/wacancel-inverse.js unapplyWaCancelIndex), which is reversed after the per-product extras blocks
 // (tools/extras-inverse.js unapplyExtrasIndex — the newest, reversed FIRST).
-const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(read('index.js')))))))))));
+const idx = require('./tools/addproduct-inverse').unapplyAddProduct(require('./tools/addproduct-b-inverse').unapplyAddProductB(require('./tools/stacked-tracker-inverse').unapplyStackedTracker(require('./tools/d4c2b-inverse').unapplyD4c2b(require('./tools/d12b-inverse').unapplyD12bIndex(require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(read('index.js'))))))))))));
 
 // ── 1. proof (i) ────────────────────────────────────────────────────────────────────────────────────────────────────
 const BASE = execFileSync('git', ['show', 'e1aeb3f:xpizza-functions/index.js'], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
@@ -103,7 +103,10 @@ const { unapplySerial3Module, FILES: S3_FILES } = require('./tools/serial3-inver
 // PLAN-H0 is the NEWEST change to pinned modules (pixelpay-hosted-webhook.js, cancel-order-core.js, resolve-manual.js): its exact
 // inverse (tools/h0-inverse.js, proven by h0-wiring.guard) is reversed FIRST, before serial3's.
 const { unapplyH0Module, FILES: H0_FILES } = require('./tools/h0-inverse');
-const h0Read = (f) => (H0_FILES.includes(f) ? unapplyH0Module(f, read(f)) : read(f));
+// PLAN-A A-1 landed after H0: its exact module inverse (tools/a1-inverse.js, proven by a1-wiring.guard) is reversed FIRST.
+const { unapplyA1Module, FILES: A1_FILES } = require('./tools/a1-inverse');
+const a1Read = (f) => (A1_FILES.includes(f) ? unapplyA1Module(f, read(f)) : read(f));
+const h0Read = (f) => (H0_FILES.includes(f) ? unapplyH0Module(f, a1Read(f)) : a1Read(f));
 const s3Read = (f) => (S3_FILES.includes(f) ? unapplySerial3Module(f, h0Read(f)) : h0Read(f));
 const pinRead = (f) => (D12B_FILES.includes(f) ? unapplyD12b(f, s3Read(f)) : s3Read(f));
 const pinned = [...CAPTURED, 'restaurant-config.js', 'scheduled-orders.js', 'createorder-classify.js', 'order-exists.js'].filter((f) => fs.existsSync(path.join(__dirname, f)));

@@ -148,7 +148,7 @@ for (const [name, code, re] of [
   // a bound opaque write is bound to its COUNT: a second write of the same shape is RED (B4 r2: re-pointed to the one
   // remaining binding — acquireOnlineAttempt's pendingOrderRecord, which has no production caller)
   {
-    const p = problemsWith(real('pixelpay-charge.js', 'async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null) {\n', 'async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null) {\n  await db.ref(`orders/${orderId}`).set(pendingOrderRecord);\n'));
+    const p = problemsWith(real('pixelpay-charge.js', 'async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null, textBinding = null) {\n', 'async function acquireOnlineAttempt(db, orderId, pendingOrderRecord, fingerprint, genId = genAttemptId, canonicalFp = null, textBinding = null) {\n  await db.ref(`orders/${orderId}`).set(pendingOrderRecord);\n'));
     assert.ok(p.some((x) => /acquireOnlineAttempt opaque-order-object \(pendingOrderRecord\) matches 2 write\(s\), reviewed for 1/.test(x)), `🔴 R3-CENSUS-NEG second-bound-write: the census stayed GREEN (problems: ${JSON.stringify(p.slice(0, 4))})`);
     ok('second-bound-write: a second unresolved write of the bound shape → RED (the binding is bound to its count)');
   }

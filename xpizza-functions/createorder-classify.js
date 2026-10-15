@@ -1,6 +1,9 @@
 'use strict';
 const { requireTables } = require('./catalog/pricing-tables');   // 1b-1b GRILL-FIX #1/#2
 const { formatOf, FORMAT_LEGACY, canonicalOrderFingerprint } = require('./catalog/canonical-binding');   // 1D D4-b
+/* a1:begin text-version-require */
+const TV = require('./catalog/text-version');   // PLAN-A A8a step 1
+/* a1:end text-version-require */
 
 // createorder-classify.js — hardens createOrder's idempotency branch so a re-submit of an EXISTING order_id
 // returns idempotent-200 ONLY when it is genuinely the SAME LIVE cash order; every other existing-order state
@@ -32,7 +35,12 @@ const LIVE_TERMINAL_STATUSES = new Set(['cancelled', 'pending_payment', 'deliver
    caller only because this record is tagged; `ok:false` REFUSES (`cart_unverifiable`), never null, never the
    legacy path. A malformed tag refuses (`binding_format_invalid`). An ABSENT payment_fingerprint skips case 4
    in every format (§A.4: absent fingerprint ≠ absent tag). */
-function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, incomingFp, { isPaymentStatusClosed, canonicalIncoming = null } = {}) {
+/* a1:begin classify-signature */
+/* PLAN-A A8a step 1: a legacy-format record marked 'a8' is compared ONLY against `a8Incoming` (the untruncated paid-text
+   fingerprint, computed by the caller only for such a record); absent → `incomingFp` exactly; a malformed marker → 409
+   binding_format_invalid. A null candidate keeps today's fail-open (case 4 skipped). */
+function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, incomingFp, { isPaymentStatusClosed, canonicalIncoming = null, a8Incoming = null } = {}) {
+/* a1:end classify-signature */
   if (!existing) return { action: '200' };                                             // caller only enters this on exists()
   if (!restaurantMatches) return { action: '409', reason: 'restaurant' };              // case 1 — order_id owned by another brand
   if (existing.payment_method !== paymentMethod) return { action: '409', reason: 'method' }; // case 2 — Miguel (online → cash)
@@ -43,6 +51,11 @@ function classifyExistingOrder(existing, { paymentMethod, restaurantMatches }, i
   if (closedByStatus || closedByPayment) return { action: '409', reason: 'closed' };   // case 3 — dead/paid/awaiting order
   const fmt = formatOf(existing, 'fp_format');
   if (!fmt.ok) return { action: '409', reason: 'binding_format_invalid' };
+  /* a1:begin classify-select */
+  const tv = TV.textVersionOf(existing, TV.ORDER_FIELD);
+  if (!tv.ok) return { action: '409', reason: 'binding_format_invalid' };
+  if (tv.version === TV.TEXT_A8) incomingFp = a8Incoming;
+  /* a1:end classify-select */
   if (fmt.format === FORMAT_LEGACY) {
     if (existing.payment_fingerprint && incomingFp && existing.payment_fingerprint !== incomingFp) {
       return { action: '409', reason: 'cart' };                                        // case 4 — same id, different cart

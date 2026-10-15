@@ -89,7 +89,10 @@ const { claimPrefillCore } = require('./claim-prefill');   // Track A — profil
 const { claimOrderCore } = require('./claim-order');       // claimOrder — retro-credit a guest order's earn (pure core; wrapper below)
 const { creditEarnForOrder, creditWelcome } = require('./rewards-earn');   // Rewards Phase A — earn engine (Admin-SDK writes only)
 const { shouldEarnOnStatus, earnPreview } = require('./rewards-core');     //   pure terminal-state gate + the reward-card earn_preview
-const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');   // Phase B1 intake (cash/online) + B2 read-only quote
+const { resolveRedemptionForOrder, prepareRedemption, quoteRedemptionCore } = require('./rewards-redeem-intake');
+/* a1:begin require */
+const TV = require('./catalog/text-version');   // PLAN-A A8a step 1: text-version provenance (writeMode hard-wired legacy in A-1)
+/* a1:end require */   // Phase B1 intake (cash/online) + B2 read-only quote
 const { classifyExistingOrder, computeIncomingFingerprint, computeCanonicalIncomingFingerprint } = require('./createorder-classify');   // F1: method/state/content-aware idempotent-return (no false "order placed")
 const OE = require('./order-exists');   // D4-c5 P1: every existing-order refusal → typed 409 order_exists (no form auto-mints on it)
 const OC = require('./order-control');   // D4-c4: "Pausar pedidos" — the per-restaurant pause switch (fresh intake only)
@@ -837,6 +840,9 @@ createOrderApp.all('*', async (req, res) => {
   // drift (a drift would false-409 every legit retry → double orders). Redemption uses prepareRedemption
   // (read-only — NEVER the reserve). Fail-open → null (case 4 skipped; a recompute failure never blocks a retry).
   const scheduledForRawEarly = SCHED.normalizeScheduledFor(body.scheduled_for);
+  /* a1:begin cash-paid-text-full */
+  const paidTextFull = sanitizeText(body.items_text, Infinity);   // PLAN-A A8a: the untruncated paid text, kept in memory (the 'a8' candidate's source)
+  /* a1:end cash-paid-text-full */
   const incomingFp = await computeIncomingFingerprint(
     { orderId, restaurantId, total, itemsText: fields.items_text, items: body.items, redeem: body.redeem,
       customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
@@ -859,9 +865,18 @@ createOrderApp.all('*', async (req, res) => {
             customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
           { orderBreakdownCents, prepareRedemption, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible, context: contextOfTables(pricingTables) })
         : null;
+      /* a1:begin cash-a8-incoming */
+      // PLAN-A A8a: ONLY a record marked 'a8' costs the untruncated recompute (from the same snapshot `ev`); unmarked → today's path
+      const a8Incoming = (ev && ev[TV.ORDER_FIELD] === TV.TEXT_A8)
+        ? await computeIncomingFingerprint(
+          { orderId, restaurantId, total, itemsText: paidTextFull, items: body.items, redeem: body.redeem,
+            customerUid: customer_uid, scheduledForRaw: scheduledForRawEarly, orderType },
+          { orderBreakdownCents, prepareRedemption, orderFingerprint, schedFingerprintExtra: SCHED.fingerprintExtra, db, tables: pricingTables, eligible: redeemEligible })
+        : null;
+      /* a1:end cash-a8-incoming */
       const cls = classifyExistingOrder(ev,
         { paymentMethod: fields.payment_method, restaurantMatches: sameRestaurant(ev.restaurant_id, restaurantId) },
-        incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation, canonicalIncoming });
+        incomingFp, { isPaymentStatusClosed: MR.isStatusChangeClosedToAutomation, canonicalIncoming, a8Incoming });
       if (cls.action === '409') {
         // D4-c5 P1: today's self-heal literal ONLY for a `closed` order provably terminal and money-free (from `ev`, no read)
         const oe = OE.decideCashExistingRefusal(cls.reason, ev);
@@ -1058,6 +1073,9 @@ createOrderApp.all('*', async (req, res) => {
   // Gated by redemption_enabled + a VERIFIED non-guest uid; the discount is ALWAYS server-computed; ALL-OR-
   // NOTHING (any failure → non-payable 409/401, no order written). No `redeem` in the body → today's behavior
   // byte-for-byte (B1 stays inert until B2 flips the flag on and starts sending `redeem`).
+  /* a1:begin cash-version-decl */
+  let cashTextVersion = TV.TEXT_LEGACY;   // PLAN-A A8a: legacy unless a retained 'a8' reservation selected otherwise
+  /* a1:end cash-version-decl */
   let redemptionCanonical = null;    // stamped onto the order when a reward is applied
   let redemptionPriced = null;       // discounted breakdown + factura lines (Task 4)
   let redemptionReserved = null;     // { uid, rid, orderId } ONLY if THIS call owns the hold → release on write failure
@@ -1068,12 +1086,14 @@ createOrderApp.all('*', async (req, res) => {
   if (body.redeem != null) {
     // cash has no scheduled fingerprint extra at this point (order_id + discounted total + items_text bind the
     // hold); the completion state consumes, cancel releases. See rewards-redeem-intake.resolveRedemptionForOrder.
+    const a1Cash = { paidTextFull, writeMode: TV.WRITE_MODE };   // PLAN-A A8a: the reservation's own marker selects the binding
     const rd = await resolveRedemptionForOrder(db, {
       redeem: body.redeem, items: body.items, restaurantId, orderId,
       customerUid: customer_uid, itemsText: fields.items_text, totalLempiras: total, schedExtra: '', now: Date.now(),
       tables: pricingTables,                                                            // 1b-1b: same guarded tables as the order total
       eligible: redeemEligible,                                                         // 2a: same catalog-authored allowlist as the fingerprint above
       context: contextOfTables(pricingTables),   // 1D D4-b
+      ...a1Cash,   // PLAN-A A8a
     });
     if (!rd.ok) return res.status(rd.status).json({ ...rd.body, order_id: orderId });   // ALL-OR-NOTHING: non-payable, no order
     fields.items_text = rd.itemsText;                                                   // La Musa free-item display line appended
@@ -1083,6 +1103,9 @@ createOrderApp.all('*', async (req, res) => {
     redemptionFreeItems = rd.freeItems || null;
     redemptionResolved = rd.redemption || null;   // 1C T4 — same computeRedemption output the issuer fingerprinted
     if (rd.ownsHold) redemptionReserved = { uid: customer_uid, rid: restaurantId, orderId };
+    /* a1:begin cash-selected-version */
+    if (rd.textVersion === TV.TEXT_A8) cashTextVersion = TV.TEXT_A8;   // a retained 'a8' reservation → the order carries its binding
+    /* a1:end cash-selected-version */
   }
   const effectiveTotal = redemptionPriced ? redemptionPriced.total_lempiras : total;   // discounted total (== total when no redeem)
 
@@ -1190,6 +1213,12 @@ createOrderApp.all('*', async (req, res) => {
         [_schedExtra, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
     } catch (_) { storeFp = incomingFp; }
   }
+  /* a1:begin cash-a8-store-fp */
+  if (cashTextVersion === TV.TEXT_A8 && redemptionCanonical && redemptionPriced) {   // the retained binding's text (fields.items_text is the a8 text)
+    const _schedExtraA8 = Number.isFinite(scheduledForRaw) ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '';
+    storeFp = orderFingerprint(orderId, redemptionPriced.total_cents, fields.items_text, [_schedExtraA8, `rf:${redemptionFingerprint(redemptionCanonical)}`].filter(Boolean).join('|'));
+  }
+  /* a1:end cash-a8-store-fp */
 
   // ── Scheduled Orders (§B): a cash/card order with a valid scheduled_for is written HELD — no tasks,
   // no tracking token, no order-received WhatsApp, no factura — and materializes only at release. The slot
@@ -1203,6 +1232,9 @@ createOrderApp.all('*', async (req, res) => {
     });
     attachCustomerAttribution(heldUpdates, orderId, customer_uid, { now, total: effectiveTotal, orderType, items_text: fields.items_text, restaurantId, items: body.items, tables: pricingTables });   // 2a: the recipe allowlist follows the catalog
     if (redemptionCanonical) heldUpdates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until release→completion)
+    /* a1:begin cash-marker-held */
+    Object.assign(heldUpdates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
+    /* a1:end cash-marker-held */
     /* serial3:begin cash-reward-provenance-held */
     if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) heldUpdates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
     /* serial3:end cash-reward-provenance-held */
@@ -1240,6 +1272,9 @@ createOrderApp.all('*', async (req, res) => {
   // so stamp has_profile from the resolved server customer_uid. Guest → omitted → order_tracking byte-identical.
   if (customer_uid && updates[`order_tracking/${trackingToken}`]) updates[`order_tracking/${trackingToken}`].has_profile = true;
   if (redemptionCanonical) updates[`orders/${orderId}`].redemption = redemptionCanonical;   // bind the reward to the order (reserved until completion consumes)
+  /* a1:begin cash-marker */
+  Object.assign(updates[`orders/${orderId}`], TV.markerFields(cashTextVersion));   // PLAN-A A8a: presence for 'a8' only, beside the fingerprint
+  /* a1:end cash-marker */
   /* serial3:begin cash-reward-provenance */
   if (redemptionCanonical && rewardSuffixOf(redemptionFreeItems, fields.items_text)) updates[`orders/${orderId}`].reward_text_appended = rewardSuffixOf(redemptionFreeItems, fields.items_text);   // §3 r5: what the server appended (provenance)
   /* serial3:end cash-reward-provenance */
@@ -1522,6 +1557,12 @@ chargeOnlineApp.all('*', async (req, res) => {
   let redemptionFreeItems = null, redemptionFp = '';   // v2: full free-item set (summary) + canonical-set hash (fingerprint fold-in)
   let redemptionResolved = null;   // 1C T5: the RESOLVED redemption the quote's token was issued over — the gate must bind this exact object (the cash path captures the same thing)
   let effTotal = total;
+  /* a1:begin card-paid-text */
+  // PLAN-A A8a: the untruncated paid text (the 'a8' candidate's source) and today's legacy paid text, BEFORE any reward append
+  const paidTextFullC = sanitizeText(body.items_text, Infinity);
+  const legacyPaidTextC = fields.items_text;
+  let cardTextVersion = TV.TEXT_LEGACY;   // legacy unless a retained 'a8' reservation selects otherwise (A-1: writeMode is legacy)
+  /* a1:end card-paid-text */
   /* 1D add-product B (codex PB-1 r1 P1-3; plan §0d.1) — BOUND REUSE, before any re-preparation: a reward order whose live
      checkout was issued under the render capability resumes from its BOUND snapshot (same charge inputs, same verified
      customer, a live URL by the existing classifier, the hold still this order's) — never re-priced, re-gated or re-checked
@@ -1628,7 +1669,10 @@ chargeOnlineApp.all('*', async (req, res) => {
       schedExtra: isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '' }));
     const ctlP = OC.orderControlFor(db, restaurantId);   // D4-c4: read alongside the classify below; decided at the pre-gate
     try {
-      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG);
+      /* a1:begin card-classify-a8 */
+      const a8FpG = () => orderFingerprint(orderId, totalCentsG, `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`, [isScheduledG ? SCHED.fingerprintExtra({ scheduled_for: schedForRawG, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));
+      /* a1:end card-classify-a8 */
+      clsG = await classifyHostedAttempt(db, orderId, fingerprintG, nowTs, canonicalFpG, a8FpG);
       clsForMenu = clsG;   // 1D add-product A
       orderBindingFormat = (clsG && clsG.bindingFormat === CB.FORMAT_CANONICAL) ? CB.FORMAT_CANONICAL : CB.FORMAT_LEGACY;   // classify's snapshot
     } catch (e) {
@@ -1793,6 +1837,10 @@ chargeOnlineApp.all('*', async (req, res) => {
   // redeemed, total_cents (discounted) + items_text (free line appended) make this fingerprint carry the reward
   // — the SAME fingerprint the reservation binds to (below), so hold ↔ order ↔ charge are one identity.
   const fingerprint = orderFingerprint(orderId, total_cents, fields.items_text, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));   // v2: + redeemed-SET hash (design-gate #2)
+  /* a1:begin card-a8-candidate */
+  const a8TextC = `${paidTextFullC}${fields.items_text.slice(legacyPaidTextC.length)}`;   // the same reward append over the untruncated paid text
+  const a8FingerprintC = orderFingerprint(orderId, total_cents, a8TextC, [isScheduled ? SCHED.fingerprintExtra({ scheduled_for: scheduledForRaw, order_type: orderType }) : '', redemptionFp ? `rf:${redemptionFp}` : ''].filter(Boolean).join('|'));
+  /* a1:end card-a8-candidate */
   // 1D D4-b §B.3: the CANONICAL counterpart of `fingerprint` — same inputs, items_text → the canonical digest. A lazy,
   // memoized thunk: only a canonical-tagged order or reservation record ever evaluates it.
   const canonicalChargeFp = CB.once(() => CB.canonicalOrderFingerprint({ orderId, totalCents: total_cents, items: body.items,
@@ -1909,7 +1957,7 @@ chargeOnlineApp.all('*', async (req, res) => {
      today's behaviour for any post-probe refusal — but never a reservation, wallet or order write). */
   if (classifyFailed) {
     const f = CB.formatOf(probeOrder, 'fp_format');
-    if (!f.ok) return res.status(409).json(OE.orderExistsBody('binding_format_invalid', orderId));
+    if (!f.ok || !TV.textVersionOf(probeOrder, TV.ORDER_FIELD).ok) return res.status(409).json(OE.orderExistsBody('binding_format_invalid', orderId));   // PLAN-A A8a: + a malformed text-version marker
     orderBindingFormat = f.format;
     if (orderBindingFormat === CB.FORMAT_CANONICAL) {
       const c = canonicalFpG();
@@ -1981,9 +2029,34 @@ chargeOnlineApp.all('*', async (req, res) => {
     const rr = await reserveRedemption(db, { uid: customer_uid, rid: restaurantId, orderId, cost: redemptionCost,
       canonical: redemptionCanonical, orderFingerprint: selectedOrder, configVersion: REDEMPTION_CONFIG_VERSION, now: nowTs, hostedExpiresAt: nowTs + HOSTED_TTL_MS,
       selectedFormat: orderBindingFormat,
-      canonicalBinding: () => CB.canonicalReservationFields({ redemption: redemptionResolved, context: contextOfTables(pricingTables), selectedOrderBinding: selectedOrder, configVersion: REDEMPTION_CONFIG_VERSION }) });
+      canonicalBinding: () => CB.canonicalReservationFields({ redemption: redemptionResolved, context: contextOfTables(pricingTables), selectedOrderBinding: selectedOrder, configVersion: REDEMPTION_CONFIG_VERSION }),
+      /* a1:begin card-reserve-candidates */
+      // the EXISTING order's text version (probeOrder, this request's snapshot) takes precedence over the reservation and the write mode
+      ...(orderBindingFormat === CB.FORMAT_LEGACY ? { a8OrderFingerprint: a8FingerprintC, writeMode: TV.WRITE_MODE,
+        orderTextVersion: probeOrder ? (TV.textVersionOf(probeOrder, TV.ORDER_FIELD).ok ? TV.textVersionOf(probeOrder, TV.ORDER_FIELD).version : 'invalid') : null } : {}),
+      /* a1:end card-reserve-candidates */
+    });
     if (!rr.ok) return res.status(409).json({ error: 'redemption_reserve_failed', reason: rr.reason, order_id: orderId });
     redemptionOwnsHold = (rr.action === 'created' || rr.action === 're_reserved');
+    /* a1:begin card-retained-a8 */
+    // PLAN-A A8a step 1 + Q4 (c): a RETAINED 'a8' reservation → the pending record carries ITS binding: the a8 text, the
+    // marker, and (recomputed HERE, only on this branch) the reward provenance, the §3 content keys and the content stamp.
+    if (rr.selected_text_version === TV.TEXT_A8) {
+      cardTextVersion = TV.TEXT_A8;
+      fields.items_text = a8TextC;
+      pendingOrderRecord.items_text = a8TextC;
+      Object.assign(pendingOrderRecord, TV.markerFields(TV.TEXT_A8));
+      const rsA8 = redemptionCanonical ? rewardSuffixOf(redemptionFreeItems, a8TextC) : null;
+      if (rsA8) pendingOrderRecord.reward_text_appended = rsA8; else delete pendingOrderRecord.reward_text_appended;
+      Object.assign(pendingOrderRecord, contentKeysRecord({ phone: fields.customer_phone, itemsText: a8TextC, orderType, scheduledFor: isScheduled ? scheduledForRaw : null },
+        { menuNames: menuNamesOf(restaurantId, pricingTables), orderId, suffix: rsA8 }));
+      try {
+        const _sfA8 = SCHED.normalizeScheduledFor(body.scheduled_for);
+        const ckA8 = orderContentKey({ phone: fields.customer_phone, itemsText: a8TextC, orderType, scheduledFor: Number.isFinite(_sfA8) ? _sfA8 : null });
+        if (fields.customer_phone && ckA8) await db.ref(`recent_order_content/${rateLimitKey(fields.customer_phone)}/${ckA8}`).set({ at: Date.now(), order_id: orderId, payment_method: fields.payment_method });
+      } catch (_) { /* best-effort, like the original stamp */ }
+    }
+    /* a1:end card-retained-a8 */
   }
   // Release THIS call's hold on a truly-ABANDONED acquire/hosted-create outcome — ONLY if we own the debit
   // (created/re_reserved). A 'reused' hold belongs to a prior in-flight attempt → NEVER release. in_progress /
@@ -1996,7 +2069,11 @@ chargeOnlineApp.all('*', async (req, res) => {
   let acq;
   try {
     /* extras:begin card-acquire */
-    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed, extrasArmed);   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
+    acq = await acquireHostedAttempt(db, orderId, pendingOrderRecord, fingerprint, nowTs, cartBlocked, undefined, undefined, canonicalChargeFp, floorBelow, controlArmed !== null, menuArmed, choiceArmed, extrasArmed,
+      /* a1:begin card-acquire-binding */
+      { a8Fp: () => a8FingerprintC, fresh: cardTextVersion },   // PLAN-A A8a: the a8 candidate (compared only against an 'a8' record) + this request's fresh version
+      /* a1:end card-acquire-binding */
+    );   // P-SELFUPDATE §5 (2): refuseFresh; D4-c4: the race guard; add-product A: the menu guard; per-product extras: the extras guard
     /* extras:end card-acquire */
   } catch (e) {
     console.error(`chargeOnlineOrder: hosted acquire failed for ${orderId}`, e.message);

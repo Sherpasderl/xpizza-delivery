@@ -379,6 +379,13 @@
         "window_start"
       ]
     },
+    "recent_order_lines": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "at"
+      ]
+    },
     "client_version_stats": {
       ".read": false,
       ".write": false

@@ -23,7 +23,7 @@ const baseOf = (f, at = BASE) => execFileSync('git', ['show', `${at}:xpizza-func
 
 // ── 1a. index.js ──
 {
-  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(read('index.js'))));   // the newer §3 serial3 blocks are reversed FIRST
+  const real = require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(read('index.js')))));   // the newer §3 serial3 blocks are reversed FIRST
   const base = baseOf('index.js', INDEX_BASE);
   assert.notStrictEqual(unapplyExtrasIndex(real), real, 'non-vacuity: the blocks are present and swapped back');
   assert.strictEqual(unapplyExtrasIndex(real), base, `🔴 index.js minus the extras blocks is not ${INDEX_BASE}:index.js`);
@@ -60,7 +60,7 @@ const at = (s, needle, from = 0) => s.indexOf(needle, from);
   const ch = idx.slice(at(idx, 'chargeOnlineApp.all('));
   const gd = at(ch, 'GI.chargeDecision('); const xc = at(ch, '/* extras:begin card */'); const reserve = at(ch, 'reserveRedemption('); const acq = at(ch, 'acquireHostedAttempt(db, orderId');
   assert.ok(gd > 0 && xc > gd && reserve > xc && acq > xc, `card: group decision (${gd}) < extras (${xc}) < reserve (${reserve}) < acquire (${acq})`);
-  assert.ok(/choiceArmed, extrasArmed\);/.test(ch), 'the extras guard reaches acquireHostedAttempt');
+  assert.ok(/choiceArmed, extrasArmed[,)]/.test(ch), 'the extras guard reaches acquireHostedAttempt');   // PLAN-A A-1 passes one more argument (textBinding) after it
   assert.ok(/acq\.reason === 'extra_not_allowed' \|\| acq\.reason === 'eligibility_unavailable'/.test(ch), 'the guard’s conflicts map to their typed refusals');
   const hc = read('pixelpay-hosted-charge.js');
   const reuseRet = at(hc, "return { outcome: 'reuse'"); const guard = at(hc, "if (extrasRefuseFresh === 'extra_not_allowed'"); const cas = at(hc, 'const tx = await orderRef.transaction(');

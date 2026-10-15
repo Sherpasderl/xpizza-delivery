@@ -27,6 +27,7 @@ const { redemptionFingerprint } = require('../rewards-redeem');
    functions are used, resolved at call time. */
 const orderFingerprint = (...a) => require('../pixelpay-charge').orderFingerprint(...a);
 const bindingFp = (...a) => require('../rewards-reserve').bindingFp(...a);
+const TV = require('./text-version');   // PLAN-A A8a step 1: the text-version provenance of a legacy-format binding
 
 const FORMAT_LEGACY = 'legacy';
 const FORMAT_CANONICAL = 'canonical';
@@ -233,10 +234,16 @@ function labelFor(kind, cid, context) {
 // null when nothing conflicts — including an ABSENT fingerprint (§A.4, today's `&&` guard) — else { reason }:
 // 'mismatch' (today's conflict) | 'binding_format_invalid' | 'cart_unverifiable'. `canonical` is a LAZY thunk
 // returning { ok, fp }: it runs only for a canonical-tagged record, so the legacy path does no extra work.
-function paymentBindingConflict(record, legacyFp, canonical) {
+/* PLAN-A A8a step 1: a LEGACY-format record is compared against the ONE candidate its text-version marker names (same
+   snapshot): absent → `legacyFp` (today, byte-identical); 'a8' → `a8Fp()` (a lazy thunk over the untruncated paid text);
+   any other present value → binding_format_invalid (fail closed, like fp_format). The canonical branch hashes the
+   canonical cart, not the text, so the marker does not select there; it is still validated. */
+function paymentBindingConflict(record, legacyFp, canonical, a8Fp = null) {
   if (!record) return null;
   const fmt = formatOf(record, 'fp_format');
   if (!fmt.ok) return { reason: 'binding_format_invalid' };   // a malformed tag refuses with or without a fingerprint
+  const tv = TV.textVersionOf(record, TV.ORDER_FIELD);
+  if (!tv.ok) return { reason: 'binding_format_invalid' };    // A8a: a malformed text-version marker refuses the same way
   if (!record.payment_fingerprint) {
     // §A.4: an absent fingerprint is not compared. But a CANONICAL record's missing fingerprint can only be filled
     // in its own format (installFingerprint) — if that cannot be computed, refuse BEFORE any write rather than let
@@ -245,17 +252,27 @@ function paymentBindingConflict(record, legacyFp, canonical) {
     if (fmt.format === FORMAT_CANONICAL) { const c = typeof canonical === 'function' ? canonical() : null; if (!c || !c.ok) return { reason: 'cart_unverifiable' }; }
     return null;
   }
-  if (fmt.format === FORMAT_LEGACY) return record.payment_fingerprint !== legacyFp ? { reason: 'mismatch' } : null;
+  if (fmt.format === FORMAT_LEGACY) return record.payment_fingerprint !== legacyCandidate(tv.version, legacyFp, a8Fp) ? { reason: 'mismatch' } : null;
   const c = typeof canonical === 'function' ? canonical() : null;
   if (!c || !c.ok) return { reason: 'cart_unverifiable' };
   return record.payment_fingerprint !== c.fp ? { reason: 'mismatch' } : null;
 }
 // The fingerprint the recovery INSTALL path writes into a record that has none (`c.payment_fingerprint || …`): the
 // legacy value for a legacy record (today's write, unchanged); the canonical value for a canonical-tagged record.
-function installFingerprint(record, legacyFp, canonical) {
+// A8a: a legacy-format record marked 'a8' is filled in ITS text version (never a legacy fp under an 'a8' marker).
+function installFingerprint(record, legacyFp, canonical, a8Fp = null) {
   const fmt = formatOf(record, 'fp_format');
   if (fmt.ok && fmt.format === FORMAT_CANONICAL) { const c = typeof canonical === 'function' ? canonical() : null; return c && c.ok ? c.fp : null; }
-  return legacyFp;
+  const tv = TV.textVersionOf(record, TV.ORDER_FIELD);
+  if (!tv.ok) return null;                                    // malformed marker → no install (the re-read refuses)
+  return legacyCandidate(tv.version, legacyFp, a8Fp);
+}
+// The legacy-format candidate a marker selects: absent → legacyFp exactly; 'a8' → the a8 thunk's value, or null when the
+// caller supplied none (a null never equals a stored fingerprint → today's conflict shape; never the legacy fp).
+function legacyCandidate(version, legacyFp, a8Fp) {
+  if (version !== TV.TEXT_A8) return legacyFp;
+  const v = typeof a8Fp === 'function' ? a8Fp() : null;
+  return typeof v === 'string' && v ? v : null;
 }
 // A legacy mismatch keeps today's exact result shape; anything else carries its typed reason.
 const conflictOutcome = (d, base = {}) => (d.reason === 'mismatch' ? { ...base, outcome: 'conflict' } : { ...base, outcome: 'conflict', reason: d.reason });

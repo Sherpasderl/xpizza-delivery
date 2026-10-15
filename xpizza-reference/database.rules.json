@@ -217,6 +217,7 @@
 
     "client_versions":       { ".read": false, ".write": false, "$app": { ".indexOn": ["last_seen"] } },
     "client_version_limits": { ".read": false, ".write": false, ".indexOn": ["window_start"] },
+    "recent_order_lines":    { ".read": false, ".write": false, ".indexOn": ["at"] },
     "client_version_stats":  { ".read": false, ".write": false },
     "platform_config":       { ".read": false, ".write": false },
 

@@ -181,8 +181,12 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
        resolved tables — so it is enumerated and pinned to its own call, not absorbed by relaxing the count. */
     assert.strictEqual((SRC.match(/computeCanonicalIncomingFingerprint\([\s\S]{0,700}?tables: pricingTables/g) || []).length, 1,
       'the canonical createOrder recompute (1D D4-b) prices from the SAME resolved pricingTables');
-    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 8,
-      'the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates + the 1 canonical createOrder recompute share the ONE resolved pricingTables');
+    /* PLAN-A A-1 added a NINTH: createOrder's 'a8' incoming fingerprint (computed only when the stored order is marked 'a8').
+       It prices exactly as the legacy recompute does, from the same resolved tables — enumerated and pinned to its own call. */
+    assert.strictEqual((SRC.match(/const a8Incoming = [\s\S]{0,500}?computeIncomingFingerprint\([\s\S]{0,700}?tables: pricingTables/g) || []).length, 1,
+      "the 'a8' createOrder recompute (PLAN-A A-1) prices from the SAME resolved pricingTables");
+    assert.strictEqual((SRC.match(/tables: pricingTables/g) || []).length, 9,
+      "the 3 redemption seams + the 2 reorder-attribution sites + the 2 confirmed-net gates + the 1 canonical + the 1 'a8' createOrder recompute share the ONE resolved pricingTables");
     assert.strictEqual((SRC.match(/attachCustomerAttribution\([^;]*?tables: pricingTables[^;]*?\);/g) || []).length, 2,
       'and 2 of the 5 are the attribution sites (reorder recipe), not extra redemption seams');
     // THE invariant: each order handler resolves the tables exactly once. Two resolves in one handler
@@ -201,7 +205,10 @@ process.on('exit', (c) => { if (c === 0 && !finished) { console.error('FATAL: re
     /* 1D D4-b: a FOURTH consumer — the canonical createOrder recompute must see the SAME allowlist as the legacy one
        (a different allowlist flips prep.ok and the fingerprint, the exact hazard above). Enumerated and pinned. */
     assert.ok(/computeCanonicalIncomingFingerprint\([\s\S]{0,700}?eligible: redeemEligible/.test(SRC), 'the canonical createOrder recompute (1D D4-b) receives the SAME redeemEligible');
-    assert.strictEqual((SRC.match(/eligible: redeemEligible/g) || []).length, 4, 'exactly 3 seams + the canonical createOrder recompute share the ONE resolved redeemEligible');
+    /* PLAN-A A-1: a FIFTH consumer — the 'a8' createOrder recompute (only for a record marked 'a8') must see the SAME
+       allowlist as the legacy one. Enumerated and pinned. */
+    assert.ok(/const a8Incoming = [\s\S]{0,500}?computeIncomingFingerprint\([\s\S]{0,700}?eligible: redeemEligible/.test(SRC), "the 'a8' createOrder recompute (PLAN-A A-1) receives the SAME redeemEligible");
+    assert.strictEqual((SRC.match(/eligible: redeemEligible/g) || []).length, 5, "exactly 3 seams + the canonical + the 'a8' createOrder recomputes share the ONE resolved redeemEligible");
     // and it must be resolved exactly twice in the file: once per order handler. A third resolve inside
     // a handler would be a second read that could disagree with the first.
     assert.strictEqual((SRC.match(/const redeemEligible = await gateReader\(\)\.redeemEligibleFor\(restaurantId\);/g) || []).length, 2,

@@ -21,6 +21,7 @@
 const { chargeInputsFingerprint } = require('./charge-inputs');
 const { classifyHostedAttempt } = require('../pixelpay-hosted-charge');
 const { canonicalJson } = require('./canonical-json');
+const TV = require('./text-version');   // PLAN-A A8a (codex A-1 build r1 P1-1): the probe is provenance-aware
 
 async function probeBoundReuse(db, { orderId, uid, rid, body, now }) {
   try {
@@ -32,7 +33,11 @@ async function probeBoundReuse(db, { orderId, uid, rid, body, now }) {
     if (order.restaurant_id !== rid || order.customer_uid !== uid) return null;
     if (order.charge_inputs_fp !== inputsFp) return null;
     if (!order.redemption || typeof order.payment_fingerprint !== 'string' || !order.payment_fingerprint || !order.active_attempt_id) return null;
-    const cls = await classifyHostedAttempt(db, orderId, order.payment_fingerprint, now);
+    // PLAN-A A8a: the order's OWN bound fingerprint is the candidate in its OWN text version — a live 'a8' checkout reuses like a
+    // legacy one; a malformed order marker never reuses (the classifier would refuse it too)
+    const ov = TV.textVersionOf(order, TV.ORDER_FIELD);
+    if (!ov.ok) return null;
+    const cls = await classifyHostedAttempt(db, orderId, order.payment_fingerprint, now, null, () => order.payment_fingerprint);
     if (!cls || cls.outcome !== 'reuse' || cls.bindingFormat) return null;   // a canonical-format binding (or a malformed tag) never reuses here
     const att = (await db.ref(`payment_attempts/${order.active_attempt_id}`).once('value')).val();
     if (!att || att.hosted_state !== 'created' || !(Number(att.hosted_expires_at) > now) || !att.hosted_checkout_url) return null;
@@ -40,6 +45,9 @@ async function probeBoundReuse(db, { orderId, uid, rid, body, now }) {
     // the hold is THIS order's: reserved, bound to the order's payment fingerprint AND its reward canonical (rewards-reserve
     // writeReserve: order_fingerprint + canonical); attached to the live attempt, or not yet attached (attach is best-effort)
     if (!hold || hold.state !== 'reserved' || hold.fp_format !== undefined) return null;
+    // PLAN-A A8a: the hold's text version is valid AND the order's (a malformed marker such as "bogus" → binding_format_invalid → never reuse)
+    const hv = TV.textVersionOf(hold, TV.RESERVATION_FIELD);
+    if (!hv.ok || hv.version !== ov.version) return null;
     if (hold.order_fingerprint !== order.payment_fingerprint || canonicalJson(hold.canonical === undefined ? null : hold.canonical) !== canonicalJson(order.redemption)) return null;
     if (hold.attempt_id != null && hold.attempt_id !== order.active_attempt_id) return null;
     return { outcome: 'reuse', attempt_id: order.active_attempt_id, checkout_url: att.hosted_checkout_url, poll_token: att.poll_token };

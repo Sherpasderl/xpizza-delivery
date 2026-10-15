@@ -369,6 +369,7 @@
     "index.js#cancelPaidOrder": "payment",
     "index.js#chargeOnlineApp.all": "intake",
     "index.js#chargeOnlineApp.all>anon": "intake",
+    "index.js#a8FpG": "intake",
     "index.js#chargeOnlineApp.use": "intake",
     "index.js#confirmOnlineApp.all": "intake",
     "index.js#confirmOnlineApp.use": "intake",
@@ -719,6 +720,10 @@
     "xpizza-portal/ventas-harness.mjs#constructor": "portal TEST harness (ventas-harness.mjs) — not production"
   },
   "writtenFields": {
+    "payment_fingerprint_text_version": {
+      "class": "pointer",
+      "reason": "PLAN-A A-1 (A8a): the binding's text-version marker beside payment_fingerprint ('a8' present only for an a8 binding) — bookkeeping that selects how the fingerprint's text is read, never displayed as an order fact"
+    },
     "active_attempt_id": {
       "class": "pointer",
       "reason": "pointer / token / binding — bookkeeping, never displayed as an order fact"
@@ -1200,6 +1205,24 @@
     }
   },
   "opaqueWriteResolutions": [
+    {
+      "file": "xpizza-functions/index.js",
+      "fn": "createOrderApp.all",
+      "how": "dynamic-field-segment",
+      "detail": "orders/*/[field]",
+      "fields": ["payment_fingerprint_text_version"],
+      "reason": "PLAN-A A-1 (A8a): Object.assign(<held|fresh order>, TV.markerFields(cashTextVersion)) — markerFields returns { payment_fingerprint_text_version: 'a8' } for an 'a8' binding and {} otherwise (catalog/text-version.js ORDER_FIELD), so the only field it can write is that marker. Two sites: the held (cash) order and the fresh pending order",
+      "count": 2
+    },
+    {
+      "file": "xpizza-functions/index.js",
+      "fn": "chargeOnlineApp.all",
+      "how": "dynamic-field-segment",
+      "detail": "orders/*/[field]",
+      "fields": ["payment_fingerprint_text_version"],
+      "reason": "PLAN-A A-1 (A8a): Object.assign(pendingOrderRecord, TV.markerFields(TV.TEXT_A8)) when the retained reservation selected 'a8' — the only field markerFields can write is the text-version marker (catalog/text-version.js ORDER_FIELD)",
+      "count": 1
+    },
     {
       "file": "xpizza-functions/pixelpay-charge.js",
       "fn": "acquireOnlineAttempt",
