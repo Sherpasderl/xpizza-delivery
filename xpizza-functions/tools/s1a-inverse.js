@@ -1,13 +1,13 @@
 'use strict';
 // S1a (PLAN-S1 §3/§6) — the slice's index.js INVERSE. Every index.js-reversing wiring guard applies
 // unapplyS1aIndex FIRST (newest-first, wrapping the read), then H0's inverse, then int10's serial3 inverse, then
-// extras, etc., to reach 34d935f and assert byte-for-byte. s1a-wiring.guard.test.js proves unapplyS1aIndex(index.js) === 34d935f:index.js exactly.
+// extras, etc., to reach c83f2f9 and assert byte-for-byte. s1a-wiring.guard.test.js proves unapplyS1aIndex(index.js) === c83f2f9:index.js exactly.
 //
-// ONE source of truth: the scratch apply step applied was→now (applyS1aIndex) to the pristine 34d935f:index.js to
-// produce the committed index.js, so unapplyS1aIndex (now→was) reproduces 34d935f byte-for-byte by construction.
-// (Rebased int7 90fac9e → int10 8f1e017 → H0 438a6c6 → G2 34d935f; serial3's and H0's index.js deltas are disjoint
-// from every S1a hunk, and G2 did not touch index.js, so the hunks are unchanged and remain byte-exact against the new base.)
-// Each hunk's `was` occurs exactly once in 34d935f and each `now` exactly once in the edited file.
+// ONE source of truth: the scratch apply step applied was→now (applyS1aIndex) to the pristine c83f2f9:index.js to
+// produce the committed index.js, so unapplyS1aIndex (now→was) reproduces c83f2f9 byte-for-byte by construction.
+// (Rebased int7 90fac9e → int10 8f1e017 → H0 438a6c6 → G2 34d935f → S2 c83f2f9; serial3's and H0's index.js deltas are
+// disjoint from every S1a hunk, and H0/G2/S2 did not touch index.js, so the hunks are unchanged and remain byte-exact against the new base.)
+// Each hunk's `was` occurs exactly once in c83f2f9 and each `now` exactly once in the edited file.
 const HUNKS = Object.freeze([
   // (a) requires — svc-assigner handle + the shared driver-callable hard-stop. Anchored on the VAPID comment that
   // FOLLOWS them (byte-identical in the live tree and in foldPortalSplit's output) — never on the lib/admin require,
