@@ -1,3 +1,5 @@
+const { execFileSync } = require('child_process');
+
 // Pure data + record builder for the one-time /driver_accounts backfill (S1a).
 // The uid list is OWNER-CONFIRMED (2026-10-13, verified read-only in prod) and EXPLICIT — it is NOT derived
 // from a /drivers scan (self-created /drivers data is not proof of staff membership). The executable tool
@@ -65,18 +67,51 @@ async function lookupAuthExistence(uids, { fetchImpl, accessToken, project = EXP
       body: JSON.stringify({ localId: uids }),
     },
   );
-  if (!res || res.ok !== true) {
+  // Require EXACTLY 200. Any other status — including a 2xx such as 202 — is an UNDETERMINED result and
+  // must ABORT, never be downgraded to "missing → skip".
+  if (!res || res.status !== 200) {
     const status = res && typeof res.status !== 'undefined' ? res.status : '??';
     let detail = '';
     try { detail = String(await res.text()).slice(0, 300); } catch (_) { /* best-effort */ }
-    // THROW — do not return. A caller must never read a Set out of a failed lookup.
+    // THROW — do not return. A caller must never read a Set out of a non-200 lookup.
     throw new Error(`accounts:lookup failed (HTTP ${status}) — ABORTING, not skipping (an undetermined lookup must not silently skip a real account): ${detail}`);
   }
   const data = await res.json();
-  return new Set((Array.isArray(data.users) ? data.users : []).map((u) => u.localId));
+  // Validate the shape — a malformed 200 is also undetermined → ABORT. A 200 with `users` ABSENT is the
+  // LEGITIMATE "none of these uids exist" result (empty set), NOT an error.
+  if (data === null || typeof data !== 'object') {
+    throw new Error('accounts:lookup returned a non-object body — ABORTING, not skipping.');
+  }
+  if (data.users !== undefined && !Array.isArray(data.users)) {
+    throw new Error('accounts:lookup `users` is present but not an array — ABORTING, not skipping.');
+  }
+  const users = Array.isArray(data.users) ? data.users : [];
+  for (const u of users) {
+    if (!u || typeof u.localId !== 'string') {
+      throw new Error('accounts:lookup returned a user entry without a string localId — ABORTING, not skipping.');
+    }
+  }
+  return new Set(users.map((u) => u.localId));
+}
+
+// Obtain a gcloud ADC access token for the REST accounts:lookup. FAIL CLOSED with a SANITIZED error: a failing
+// token command can echo a credential on its stdout/stderr, so its child output is NEVER surfaced (the thrown
+// error carries no stdout/stderr/child message). `execImpl` is injectable for tests; default runs gcloud.
+function getAdcAccessToken({ execImpl } = {}) {
+  const run = execImpl || (() => execFileSync('gcloud', ['auth', 'application-default', 'print-access-token'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+  let out;
+  try {
+    out = run();
+  } catch (_) {
+    // Swallow the child error entirely (it may contain a token on stdout/stderr) — throw a clean, static message.
+    throw new Error('REFUSING: could not obtain a gcloud ADC access token (try `gcloud auth application-default login`). [child output suppressed]');
+  }
+  const token = String(out || '').trim();
+  if (!token) throw new Error('REFUSING: gcloud returned an empty ADC access token.');
+  return token;
 }
 
 module.exports = {
   DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent,
-  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence,
+  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence, getAdcAccessToken,
 };

@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const {
   DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent,
-  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence,
+  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence, getAdcAccessToken,
 } = require('./driver-accounts-backfill.lib');
 
 let passed = 0;
@@ -17,6 +17,8 @@ function fakeFetch(response, { throwNetwork = false } = {}) {
 }
 const res200 = (users) => ({ ok: true, status: 200, json: async () => ({ users }), text: async () => JSON.stringify({ users }) });
 const res500 = () => ({ ok: false, status: 500, json: async () => ({}), text: async () => 'INTERNAL' });
+// status + raw body, for exact-200 and shape-validation cases.
+const resRaw = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
 
 (async () => {
   await t('exactly 6 driver accounts, all uids distinct and uid-shaped (28 chars)', () => {
@@ -96,6 +98,39 @@ const res500 = () => ({ ok: false, status: 500, json: async () => ({}), text: as
   await t('lookupAuthExistence: a thrown transport/network error propagates (fail closed, not skip)', async () => {
     const f = fakeFetch(res200([]), { throwNetwork: true });
     await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: f, accessToken: 'tok' }), /network down/);
+  });
+
+  // codex backfill-fix P2-1: require EXACTLY 200 and validate the body shape.
+  await t('lookupAuthExistence: a 200 with `users` ABSENT is the legitimate "none exist" empty set (not an error)', async () => {
+    const found = await lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, {})), accessToken: 'tok' });
+    assert.equal(found.size, 0);
+  });
+
+  await t('lookupAuthExistence: a 2xx that is NOT 200 (e.g. 202) ABORTS — exact-200 required', async () => {
+    await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(202, {})), accessToken: 'tok' }), /HTTP 202|ABORTING/);
+  });
+
+  await t('lookupAuthExistence: a 200 with a malformed body shape ABORTS (users not an array / entry without string localId)', async () => {
+    await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, { users: {} })), accessToken: 'tok' }), /not an array|ABORTING/);
+    await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, { users: [{}] })), accessToken: 'tok' }), /without a string localId|ABORTING/);
+    await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, null)), accessToken: 'tok' }), /non-object|ABORTING/);
+  });
+
+  // codex backfill-fix P2-2: the gcloud token failure must never leak the child's stdout/stderr (a credential).
+  await t('getAdcAccessToken: a failing token command NEVER leaks the child stdout/stderr into the thrown error', () => {
+    const SECRET = 'ya29.SYNTHETIC_TOKEN_MUST_NOT_LEAK';
+    const execImpl = () => { const e = new Error(`gcloud failed: ${SECRET}`); e.stdout = SECRET; e.stderr = SECRET; throw e; };
+    let caught;
+    try { getAdcAccessToken({ execImpl }); } catch (e) { caught = e; }
+    assert.ok(caught, 'must throw');
+    const serialized = `${caught.message}\n${caught.stack || ''}\n${JSON.stringify(Object.getOwnPropertyNames(caught).reduce((o, k) => (o[k] = caught[k], o), {}))}`;
+    assert.ok(!serialized.includes(SECRET), 'the synthetic token must not appear anywhere in the thrown error');
+    assert.match(caught.message, /child output suppressed|ADC access token/);
+  });
+
+  await t('getAdcAccessToken: an empty/whitespace token throws; a valid token is returned trimmed', () => {
+    assert.throws(() => getAdcAccessToken({ execImpl: () => '   \n' }), /empty/);
+    assert.equal(getAdcAccessToken({ execImpl: () => '  tok-123\n' }), 'tok-123');
   });
 
   console.log(`✓ driver-accounts-backfill: ${passed} tests passed`);

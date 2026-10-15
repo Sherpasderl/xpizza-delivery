@@ -10,13 +10,12 @@
  *   node scripts/backfill-driver-accounts.js            # dry run
  *   node scripts/backfill-driver-accounts.js --apply    # write (create-if-absent)
  */
-const { execFileSync } = require('child_process');
 const { initializeApp } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
 const {
   DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent,
-  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence,
+  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence, getAdcAccessToken,
 } = require('../driver-accounts-backfill.lib');
 
 (async () => {
@@ -56,7 +55,7 @@ const {
   // here and aborts the whole run — it is never counted as "missing → skip". EMULATOR: keep per-uid getUser.
   let authFound = null; // Set of existing uids (prod); null ⇒ use per-uid getUser (emulator)
   if (emuMode !== 'emulator') {
-    const accessToken = execFileSync('gcloud', ['auth', 'application-default', 'print-access-token'], { encoding: 'utf8' }).trim();
+    const accessToken = getAdcAccessToken();  // FAIL CLOSED + sanitized: never surfaces the child's stdout/stderr
     authFound = await lookupAuthExistence(DRIVER_BACKFILL.map((d) => d.uid), { fetchImpl: fetch, accessToken, project: EXPECTED_PROJECT });
   }
 
