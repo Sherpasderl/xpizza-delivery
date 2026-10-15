@@ -1203,6 +1203,15 @@
       "fields": [],
       "reason": "B4 r1 (provenance): the PARAMETER pendingOrderRecord has NO production call site (the direct-charge path is retired; only test/d4b-callseq calls it) — so no field is written in production. A new caller makes this write resolve at its call site, this resolution goes stale and the census is RED until reviewed",
       "count": 1
+    },
+    {
+      "file": "xpizza-functions/brands/brand-store.js",
+      "fn": "applyPublish",
+      "how": "dynamic-root-path",
+      "detail": "*",
+      "fields": [],
+      "reason": "F1: plan.row.path is always publicPath(brandId) = public/brands/<brandId> (planPublish is its only producer; brands-admin-core is the only caller) — the derived public brand projection, never /orders, so no order field is written. A new producer of the plan or a new path makes this resolution stale and the census RED until reviewed",
+      "count": 1
     }
   ],
   "moneyPathNonFactReads": {
