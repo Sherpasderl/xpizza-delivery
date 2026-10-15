@@ -27,7 +27,7 @@ function appFor(name, options = null) {
   try { return admin.app(name); } catch (_) { return admin.initializeApp({ ...admin.app().options, ...(options || {}) }, name); }
 }
 
-function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff_r3', email: 'staff@r3.test' }, claims = {}, callables = {}, fixture = (fn) => fn(), log = () => {}, options = null } = {}) {
+function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff_r3', email: 'staff@r3.test' }, claims = {}, callables = {}, fixture = (fn) => fn(), log = () => {}, options = null, initialLatch = null } = {}) {
   const app = appFor(`r3-${pageId}`, options);
   const db = app.database();
   const subs = []; let seq = 0; const getCalls = []; const callbackErrors = [];
@@ -67,10 +67,19 @@ function createFirebaseHost({ pageId = `page${++PAGE_SEQ}`, user = { uid: 'staff
   }
 
   // ── subscriptions ──
+  // TEST SEAM (initialLatch: a promise): every listen's data arrival is HELD until it resolves — for the page's listener
+  // AND the in-flight tracking alike, exactly as a slow network would — so a cell can prove settle() stays pending while a
+  // listen still awaits its initial snapshot, without depending on how fast the emulator answers
+  const latched = (a0) => (!initialLatch ? a0 : {
+    on: (kind, h, err) => a0.on(kind, (...xs) => { initialLatch.then(() => h(...xs)); }, err),
+    once: (kind, h, err) => (h ? a0.once(kind, (...xs) => { initialLatch.then(() => h(...xs)); }, err) : a0.once(kind).then((v) => initialLatch.then(() => v))),
+    off: (kind) => a0.off(kind),
+  });
   function subscribe(kind, q, cb, cancelCb, opts) {
-    const a = adminOf(q);
-    if (!a) throw new Error('r3-adapter: subscribe on a non-ref');
-    const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true, cb, aq: a };
+    const a0 = adminOf(q);
+    if (!a0) throw new Error('r3-adapter: subscribe on a non-ref');
+    const a = latched(a0);
+    const rec = { id: subs.length, kind, ...describe(q), delivered: 0, lastSeq: 0, active: true, cb, aq: a0 };
     subs.push(rec);
     // an exception thrown by the PAGE's callback is the page's error (a browser reports it and keeps running): recorded in
     // callbackErrors — which every page cell asserts empty — never rethrown into the SDK's event loop

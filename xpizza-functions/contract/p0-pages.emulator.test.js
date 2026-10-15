@@ -118,21 +118,26 @@ const ORDER_ROOTS = /^(orders|tasks|drivers|driver_cash|order_tracking)(\/|$)/;
   PAGES[5][2] = `https://xpizzatrack.netlify.app/${token}`; PAGES[5][3] = [`order_tracking/${token}`]; PAGES[5][4] = [Q(`order_tracking/${token}`)];
   ok(`real writers: createOrder pg_cash (HTTP 200) → auto-assigned to ${STAFF} by the real auto-assigner after advance(30 s); chargeOnlineOrder pg_pend stays pending_payment (S6)`);
 
-  // A listen awaiting its INITIAL snapshot is IN FLIGHT: settle() called immediately after boot — no subscription polling,
-  // no host.barrier() (which waits for initial snapshots itself, so the real-page cells below cannot reliably see this) —
-  // returns only after the first render; otherwise virtual time certifies a page that has not rendered its data yet. Runs
-  // BEFORE the real pages and 5 times, so this reason is judged here, deterministically, not by whichever page races first.
+  // A listen awaiting its INITIAL snapshot is IN FLIGHT. The snapshot is HELD behind a test latch (the adapter's
+  // initialLatch seam: data arrival is held for the page listener and the in-flight tracking alike, as a slow network
+  // would), so the check does not depend on how fast the emulator answers: while it is held, settle() must stay pending —
+  // otherwise virtual time certifies a page that has not rendered its data — and after release the first render is shown.
   {
     await rtdb.ref('__r3probe/initial').set({ v: 3 });
-    let good = 0; let last = null;
-    for (let i = 0; i < 5; i++) {
-      const host = createFirebaseHost({ pageId: `INITIAL${i}`, user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture });
-      const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js'; onValue(ref(getDatabase(), '__r3probe/initial'), (s) => { document.getElementById('app').textContent = 'v:' + s.val().v; });</script></body></html>`;
-      const p = await bootPage('xpizza-kitchen', { host, html });
-      try { const settled = await p.settle(); last = { settled, text: p.doc.getElementById('app').textContent }; if (settled && last.text === 'v:3') good += 1; } finally { p.close(); await host.close(); }
-    }
-    assert.strictEqual(good, 5, FAIL('INITIAL', `a listen awaiting its INITIAL snapshot was not in flight — settle() returned before the first render in ${5 - good}/5 runs (${JSON.stringify(last)})`));
-    ok('a listen awaiting its INITIAL snapshot is in flight: settle() (no barrier) returns only after the first render — 5/5');
+    let release; const initialLatch = new Promise((r) => { release = r; });
+    const host = createFirebaseHost({ pageId: 'INITIAL', user: { uid: STAFF, email: 'staff@r3.test' }, fixture: S.fixture, initialLatch });
+    const html = `<!doctype html><html><body><div id="app"></div><script type="module">import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js'; onValue(ref(getDatabase(), '__r3probe/initial'), (s) => { document.getElementById('app').textContent = 'v:' + s.val().v; });</script></body></html>`;
+    const p = await bootPage('xpizza-kitchen', { host, html });
+    try {
+      const sp = p.settle();
+      const early = await Promise.race([sp.then((v) => ({ returned: true, v })), new Promise((r) => setTimeout(() => r({ returned: false }), 1500))]);
+      assert.ok(!early.returned, FAIL('INITIAL', `a listen awaiting its INITIAL snapshot was not in flight — settle() returned (${JSON.stringify(early)}) while the snapshot was still HELD, text: ${JSON.stringify(p.doc.getElementById('app').textContent)}`));
+      assert.strictEqual(p.doc.getElementById('app').textContent, '', FAIL('INITIAL', 'premise — nothing rendered while the snapshot is held'));
+      release();
+      const settled = await sp;
+      assert.ok(settled && p.doc.getElementById('app').textContent === 'v:3', FAIL('INITIAL', `after release, settle() returned before the first render (${JSON.stringify({ settled, text: p.doc.getElementById('app').textContent })})`));
+    } finally { release(); p.close(); await host.close(); }
+    ok('a listen awaiting its INITIAL snapshot is in flight: with the snapshot HELD, settle() stays pending; after release it returns with the first render');
   }
 
   const OBS = {}; const SKEW = {};
