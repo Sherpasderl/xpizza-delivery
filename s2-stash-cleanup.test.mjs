@@ -93,9 +93,11 @@ async function returnPage(dir, { url, stored, tokens, states, onRequest, base = 
   if (stored !== undefined) { if (stored === null) w.localStorage.removeItem(KEY[dir]); else w.localStorage.setItem(KEY[dir], stored); }
   return { w, reqs, run: async () => { const r = await w.handlePaymentReturn(); await stageSettle(); return r; } };   // showStage cross-dissolves (170 ms)
 }
+const SERVER_TOTAL_CENTS = 31750;   // an explicit, non-zero server-confirmed total (wins over the stashed client total, #6)
 const body = (st, id) => (st === 'scheduled_paid' || st === 'scheduled_review'
-  ? { ok: true, state: st, scheduled_for: '2026-10-20T19:00', tracking_token: null, order_id: id }
-  : { ok: true, state: st, tracking_token: st === 'paid' ? 'TrkTok12345678' : null, order_id: id });
+  ? { ok: true, state: st, scheduled_for: '2026-10-20T19:00', tracking_token: null, order_id: id, total_cents: SERVER_TOTAL_CENTS }
+  : { ok: true, state: st, tracking_token: st === 'paid' ? 'TrkTok12345678' : null, order_id: id, total_cents: SERVER_TOTAL_CENTS });
+const receiptTotal = (w) => { const m = w.document.getElementById('s5').textContent.replace(/\s+/g, ' ').match(/Total\s*L\s*(\d+\.\d\d)/); return m ? m[1] : null; };
 const overlay = (w) => { const o = w.document.getElementById('pay-return-overlay'); return o ? o.textContent : ''; };
 const TITLE = { paid: '¡Pago confirmado!', scheduled_paid: '¡Pago confirmado!', closed_refunded: 'Te reembolsamos tu pago', scheduled_review: 'Pago recibido', cancel: 'Pago cancelado', failed: 'Pago no completado', pending_timeout: 'Pago en proceso' };
 const fullConfirmation = (w, stash) => {
@@ -127,6 +129,7 @@ for (const dir of Object.keys(BRAND)) {
       assert.strictEqual(p.w.localStorage.getItem(KEY[dir]), null, `${dir}/1b/${st}: A's own stash is removed`);
       if (st === 'paid' || st === 'scheduled_paid') {
         assert.ok(fullConfirmation(p.w, A.stash), `${dir}/1b/${st}: the FULL confirmation (receipt items) is rebuilt`);
+        assert.strictEqual(receiptTotal(p.w), (SERVER_TOTAL_CENTS / 100).toFixed(2), `${dir}/1b/${st}: the receipt TOTAL is exactly the server-confirmed L ${(SERVER_TOTAL_CENTS / 100).toFixed(2)} (codex S2 build r1 P2-1)`);
         await wait(300);
         const line = p.w.document.getElementById('order-id-display');
         if (st === 'scheduled_paid') assert.ok(!line || line.style.display === 'none', `${dir}/1b/${st}: the number line is HIDDEN for a scheduled confirmation (today)`);
@@ -152,8 +155,19 @@ for (const dir of Object.keys(BRAND)) {
     assert.strictEqual(await p.run(), true);
     assert.deepStrictEqual(p.reqs, [[A.id, A.t]], `${dir}/2a/${st}: the request pair is (A, tA)`);
     assert.strictEqual(p.w.localStorage.getItem(KEY[dir]), Bs.raw, `${dir}/2a/${st}: B (written during the check) is kept`);
-    if (st === 'paid' || st === 'scheduled_paid') assert.ok(fullConfirmation(p.w, A.stash), `${dir}/2a/${st}: A's full confirmation (captured at entry)`);
+    if (st === 'paid' || st === 'scheduled_paid') {
+      assert.ok(fullConfirmation(p.w, A.stash), `${dir}/2a/${st}: A's full confirmation (captured at entry)`);
+      assert.strictEqual(receiptTotal(p.w), (SERVER_TOTAL_CENTS / 100).toFixed(2), `${dir}/2a/${st}: the receipt TOTAL is exactly the server total`);
+    }
     else assert.ok(overlay(p.w).includes(TITLE[st]), `${dir}/2a/${st}: A's screen`);
+  }
+  for (const st of TERMINAL) { // (a') OWN order (codex S2 build r1 P2-2): A at entry, NO overwrite → verified terminal → A's stash REMOVED
+    const p = await returnPage(dir, { url: cancelUrl, stored: A.raw, tokens, states: () => body(st, A.id) });
+    assert.strictEqual(await p.run(), true);
+    assert.deepStrictEqual(p.reqs, [[A.id, A.t]], `${dir}/2a'/${st}: the pair (A, tA) from the stash`);
+    assert.strictEqual(p.w.localStorage.getItem(KEY[dir]), null, `${dir}/2a'/${st}: A's OWN stash is removed on the cancel return`);
+    if (st === 'paid' || st === 'scheduled_paid') assert.ok(fullConfirmation(p.w, A.stash), `${dir}/2a'/${st}: A's full confirmation`);
+    else assert.ok(overlay(p.w).includes(TITLE[st]), `${dir}/2a'/${st}: A's screen`);
   }
   { // (b) B at entry → (A, tB) → the server's token rejection → the cancel screen; B unchanged; one request
     const p = await returnPage(dir, { url: cancelUrl, stored: Bs.raw, tokens, states: () => body('paid', A.id) });
@@ -177,7 +191,16 @@ for (const dir of Object.keys(BRAND)) {
     failB.w.restoreOrderForm(); await settle();
     assert.strictEqual(failB.w.__resumeOrderId, Bs.id, `${dir}/3: "Volver a intentar" resumes B's id`);
     const pin = failB.w.eval('SERIAL.current()');
-    assert.ok(pin && pin.length === Bs.stash.order.items.length, `${dir}/3: B's serialization pin is resumed from B's items (${JSON.stringify(pin)})`);
+    // the EXACT pin (codex S2 build r1 P2-3): B's saved items, in their saved order, mapped to the restored lines' keys
+    const lines = failB.w.eval('resolvedCartLines()');
+    const keyOf = (it) => { const l = lines.find((x) => (x.record && x.record.name) === it.name); return l ? String(l.key) : null; };
+    const expectPin = Bs.stash.order.items.map(keyOf);
+    assert.ok(expectPin.length >= 2 && expectPin.every(Boolean), `${dir}/3: premise — B has ≥2 lines, each restored (${JSON.stringify(expectPin)})`);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(pin)), expectPin, `${dir}/3: B's resumed pin is EXACTLY B's saved order (identity + order)`);   // JSON: the page's realm
+    assert.ok(failB.w.buildOrder(), `${dir}/3: the resumed cart composes`);
+    const payload = failB.w.eval('currentOrder');
+    assert.strictEqual(payload.order_id, Bs.id, `${dir}/3: the resumed payload carries B's id`);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(payload.items.map((it) => [it.name, it.qty]))), Bs.stash.order.items.map((it) => [it.name, it.qty]), `${dir}/3: the resumed serialized payload is B's saved items, in order`);
   }
   ok(`${dir}: B afterwards (independent continuations) — B's complete return shows B's full confirmation and consumes the stash; B's failure → "Volver a intentar" resumes B's id and B's serialization pin`);
 
