@@ -29,4 +29,54 @@ function accountRecord(driver, now) {
 // writes land in PRODUCTION RTDB (or vice-versa). emuMode is emu-mixed-guard's return ('prod' | 'emulator').
 function authRtdbCoherent(emuMode, authEmuHostSet) { return (emuMode === 'emulator') === !!authEmuHostSet; }
 
-module.exports = { DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent };
+// PROD is xpizza-delivery (source of truth: .firebaserc default + the RTDB URL). The backfill reads Auth and
+// writes /driver_accounts ONLY here. See [[cutover-pin-gcp-project]] and driver-onboarding-runbook.
+const EXPECTED_PROJECT = 'xpizza-delivery';
+const RTDB_URL = `https://${EXPECTED_PROJECT}-default-rtdb.firebaseio.com`;
+
+// [[cutover-pin-gcp-project]] — never trust the ambient gcloud/GOOGLE_CLOUD_PROJECT for a prod write; it DRIFTS.
+// Validate (pure): throw if the ambient project is set to anything other than the expected one; return the
+// expected project so the caller pins it explicitly on initializeApp. An UNSET ambient is fine (ADC resolves it).
+function assertProject(env, expected = EXPECTED_PROJECT) {
+  const ambient = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || env.GCP_PROJECT || '';
+  if (ambient && ambient !== expected) {
+    throw new Error(`REFUSING: ambient GCP project '${ambient}' !== '${expected}'. The backfill writes ONLY to '${expected}'. Unset GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT / GCP_PROJECT, or set it to '${expected}'.`);
+  }
+  return expected;
+}
+
+// Verify Auth existence via the REST Identity Toolkit accounts:lookup (BATCH by localId), because
+// firebase-admin's getAuth().getUser FAILS under local user ADC ("identitytoolkit requires a quota project" —
+// firebase-admin 12 does not forward quota_project_id; the REST path sends an explicit X-Goog-User-Project header
+// that ADC DOES honor; see driver-onboarding-runbook). Returns a Set of the localIds that EXIST.
+//   FAIL CLOSED: a non-200 response — OR a thrown transport error — ABORTS (throws). It is NEVER downgraded to
+//   "this uid is missing → skip", because an UNDETERMINED lookup must not let a real, enabled account be silently
+//   skipped during --apply. Only a 200 whose `users` array omits a uid means that uid is genuinely absent.
+async function lookupAuthExistence(uids, { fetchImpl, accessToken, project = EXPECTED_PROJECT }) {
+  const res = await fetchImpl(
+    `https://identitytoolkit.googleapis.com/v1/projects/${project}/accounts:lookup`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'X-Goog-User-Project': project,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ localId: uids }),
+    },
+  );
+  if (!res || res.ok !== true) {
+    const status = res && typeof res.status !== 'undefined' ? res.status : '??';
+    let detail = '';
+    try { detail = String(await res.text()).slice(0, 300); } catch (_) { /* best-effort */ }
+    // THROW — do not return. A caller must never read a Set out of a failed lookup.
+    throw new Error(`accounts:lookup failed (HTTP ${status}) — ABORTING, not skipping (an undetermined lookup must not silently skip a real account): ${detail}`);
+  }
+  const data = await res.json();
+  return new Set((Array.isArray(data.users) ? data.users : []).map((u) => u.localId));
+}
+
+module.exports = {
+  DRIVER_BACKFILL, DISPATCHER_UID, accountRecord, authRtdbCoherent,
+  EXPECTED_PROJECT, RTDB_URL, assertProject, lookupAuthExistence,
+};
