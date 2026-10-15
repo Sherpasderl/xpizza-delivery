@@ -12505,8 +12505,8 @@
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
     "from": "    return [{ k: 'unresolved', node: n, why: `unmodelled-${n.type}` }];",
-    "to": "    return [EMPTY('unmodelled')];",
-    "label": "B4 r4 P1-3 / r5: the default branch of the expression dispatch claims a PROVEN empty (the choke point cannot see it)",
+    "to": "    return [EMPTY('primitive')];",
+    "label": "B4 r4 P1-3 / r5: the default branch of the expression dispatch claims a PROVEN empty (a reason on the proven list) (the choke point cannot see it)",
     "kills_with": [
       "semantic corpus: a write-reaching construct was SILENT",
       "an ARRAY element pushed to /orders (charge handler): the census stayed GREEN"
@@ -12521,8 +12521,8 @@
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
     "from": "    if (n.type === 'Unmodelled') return [{ k: 'unresolved', node: n.node, why: `unmodelled-${n.why}` }];",
-    "to": "    if (n.type === 'Unmodelled') return [EMPTY('unmodelled')];",
-    "label": "B4 r4 / r5: an UNMODELLED marker (compound assign / patterns) claims a PROVEN empty",
+    "to": "    if (n.type === 'Unmodelled') return [EMPTY('primitive')];",
+    "label": "B4 r4 / r5: an UNMODELLED marker (compound assign / patterns) claims a PROVEN empty (a reason on the proven list)",
     "kills_with": [
       "semantic corpus: a write-reaching construct was SILENT",
       "r5 P1-3 real: a for-of binding is UNMODELLED"
