@@ -379,6 +379,9 @@ for (const dir of Object.keys(BRAND)) {
 // later success NAVIGATES (card: window.location.href = checkout_url; cash: s5) ──
 for (const dir of Object.keys(BRAND)) for (const method of ['cash', 'card']) {
   const B = BRAND[dir]; const w = loadForm(dir);
+  // The forms' hard-coded delivery HOURS (isOpen) disable ASAP outside the shop's hours, so the real pay tap would never
+  // send after closing time; this cell is about the payment wrapper, not the hours → pin the page OPEN for this cell.
+  w.isOpen = () => true;
   let release; const gateP = new Promise((r) => { release = r; });
   const sent = [];
   w.__respond = (url, init) => {
