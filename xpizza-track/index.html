@@ -354,6 +354,7 @@
     </div>
   </div>
 
+  <script src="/status-view.js"></script>
   <script type="module">
     // X Pizza tracking — version: 1.0.0
     //
@@ -502,26 +503,11 @@
     // Compute simple ETA when driver is en route. We don't have GPS in
     // /order_tracking (privacy), so we use the picked_up_at timestamp + a
     // 12-min default for typical SPS distances. Refines if delivery_eta_min
-    // ever gets written by the cloud function.
+    // ever gets written by the cloud function. The decision lives in status-view.js (shared with the order forms, which
+    // also own the 12-hour clock formatter for delivered / collected times).
+    const { presentStatus } = window.StatusView;
     function computeEta(data) {
-      if (data.delivery_eta_min) return data.delivery_eta_min;
-      if (data.picked_up_at) {
-        const elapsedMin = (Date.now() - data.picked_up_at) / 60000;
-        const remaining = Math.max(1, Math.round(12 - elapsedMin));
-        return remaining;
-      }
-      return null;
-    }
-
-    // Shared 12-hour clock formatter for delivered/recogido timestamps. Returns "7:17 PM" by default (today's
-    // pickup-delivered copy — kept byte-equivalent); lower=true → lowercase "7:17 pm" (the delivery delivered sub).
-    function fmtTime(ts, lower) {
-      const t = new Date(ts);
-      const mm = String(t.getMinutes()).padStart(2, '0');
-      const h12 = (t.getHours() % 12) || 12;
-      let ap = t.getHours() >= 12 ? 'PM' : 'AM';
-      if (lower) ap = ap.toLowerCase();
-      return `${h12}:${mm} ${ap}`;
+      return presentStatus({ ...data, fallback_drive_min: 12, now: Date.now() }).etaMin;
     }
 
     // Per-restaurant branding (D2 mechanism, E2 real palette). x_pizza / legacy / absent restaurant_id
@@ -651,11 +637,6 @@
       // (inner scaleX fill + shimmer, both off under prefers-reduced-motion). The driver-card copy / no-map /
       // ETA / map LOGIC is the shipped core — only its DOM home moved into the unified headline (#driver-name /
       // #driver-eta are reused, so refreshDriverEta / setEtaText / the map plumbing are untouched).
-      const status = data.status || 'new';
-      const isPickup = data.order_type === 'pickup';
-      // D12b: the brand comes from the order's PUBLIC tracking record (restaurant_display_name, written by the server from
-      // the restaurant's own config) — never a per-brand literal. An older record without it gets neutral copy.
-      const brandName = (d) => (d && typeof d.restaurant_display_name === 'string' && d.restaurant_display_name.trim()) ? d.restaurant_display_name.trim() : null;
       const titleEl = document.getElementById('driver-name');    // the one big headline
       const subEl = document.getElementById('driver-eta');       // the one sub-line (also the live-ETA slot)
       const avatarEl = document.getElementById('driver-avatar');
@@ -685,114 +666,26 @@
         });
       };
 
-      // CANCELLED — unchanged copy; dim the bar, no progression, hide the live-updates line.
-      if (status === 'cancelled') {
-        paintSegbar(new Array(isPickup ? 3 : 5).fill('pending'));
-        segbarEl.style.opacity = '0.4';
-        titleEl.className = 'stitle danger';
-        titleEl.textContent = 'Pedido cancelado';
-        subEl.textContent = 'Si pagaste por adelantado, te contactaremos sobre el reembolso';
-        document.getElementById('updated-text').classList.add('hidden');
-        return;
-      }
-
-      if (isPickup) {
-        // PICKUP — 3 segments Recibido·Preparando·Listo; behaviour byte-equivalent to today.
-        if (status === 'ready' || status === 'delivered' || status === 'completed') {
-          paintSegbar(['done', 'done', 'done']);                 // terminal Listo → all green
-          titleEl.className = 'stitle success';
-          if (status === 'ready') {
-            titleEl.textContent = '¡Tu pedido está listo para recoger!';
-            const brand = brandName(data);
-            subEl.textContent = brand ? `Pasá por ${brand} a recogerlo` : 'Pasá por el restaurante a recogerlo';
-          } else {
-            titleEl.textContent = '¡Gracias por tu compra!';
-            // today's pickup-delivered copy, byte-equivalent — now via the shared fmtTime (uppercase default)
-            subEl.textContent = data.delivered_at ? `Recogido a las ${fmtTime(data.delivered_at)}` : 'Recogido';
-          }
-          document.getElementById('updated-text').classList.add('hidden');
-        } else if (status === 'preparing') {
-          paintSegbar(['done', { a: .55 }, 'pending']);
-          titleEl.textContent = 'Tu pedido se está preparando';
-          subEl.textContent = 'Te avisaremos cuando esté listo';
-        } else {   // new / unknown
-          paintSegbar([{ a: .5 }, 'pending', 'pending']);
-          titleEl.textContent = 'Recibimos tu pedido';
-          subEl.textContent = 'Estamos por empezar a preparar tu pedido';
-        }
-        return;
-      }
-
-      // DELIVERY — 5 segments.
-      if (status === 'new') {
-        paintSegbar([{ a: .5 }, 'pending', 'pending', 'pending', 'pending']);
-        titleEl.textContent = 'Recibimos tu pedido';
-        subEl.textContent = 'Estamos por empezar a preparar tu pedido';
-      } else if (status === 'preparing' || status === 'ready') {
-        paintSegbar(['done', { a: .55 }, 'pending', 'pending', 'pending']);
-        titleEl.textContent = 'Tu pedido se está preparando';
-        subEl.textContent = 'Te avisaremos cuando vaya en camino';
-      } else if (status === 'out_for_delivery') {
-        if (data.driver_name) {
-          const driverName = data.driver_name;
-          avatarEl.classList.remove('hidden');
-          avatarEl.textContent = driverName.charAt(0).toUpperCase();
-          // Active drop = this order is the driver's current live delivery (server-gated is_active_drop + a
-          // mirrored location). A stacked driver's WAITING order is out_for_delivery WITHOUT is_active_drop.
-          const isActiveDrop = !!(data.is_active_drop && data.driver_location
-            && Number.isFinite(data.driver_location.lat) && Number.isFinite(data.driver_location.lng));
-          // FUTURE close-hook seam: when a close-ETA signal lands, advance to the 4th segment (Llegando) +
-          // "{Driver} está llegando". Default OFF now, so the bar sits at En camino (3rd) in all 3 OFD
-          // sub-states — the visible upgrade is the MAP appearing, not a segment flip.
-          //   if (isActiveDrop && data.near_arrival === true) {
-          //     paintSegbar(['done','done','done',{ a: .72 },'pending']);
-          //     titleEl.textContent = driverName + ' está llegando'; subEl.className = 'ssub big';
-          //     etaIsActive = true; refreshDriverEta(data); updateDriverMap(data); return;
-          //   }
-          if (isActiveDrop) {
-            // Live map — the driver glides toward the customer pin, with a real tightening ETA (Phase B).
-            paintSegbar(['done', 'done', { a: .5 }, 'pending', 'pending']);
-            titleEl.textContent = driverName + ' está en camino';
-            subEl.className = 'ssub big';
-            etaIsActive = true;       // Fix C — arm ETA writes; a route callback that resolves after a flip is dropped
-            refreshDriverEta(data);   // throttled traffic-aware Directions ETA; falls back to 12-min on any failure
-            updateDriverMap(data);
-          } else if (data.is_active_drop === false) {
-            // EXPLICIT stacked waiting drop — the driver is finishing another delivery first. Locked copy,
-            // no map (they'd otherwise watch the driver visit someone else) and no naive countdown. The bar's
-            // active segment carries a smaller fill than an active drop (.35 vs .5) — behind another delivery,
-            // yet never a separate step the customer stares at. Auto-upgrades to the live map + tightening ETA
-            // via the onValue sub the moment they become the active drop (the ingest mirror flips is_active_drop).
-            paintSegbar(['done', 'done', { a: .35 }, 'pending', 'pending']);
-            titleEl.textContent = driverName + ' va en camino';
-            subEl.textContent = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
-          } else {
-            // Absent/unknown (the seconds between status→out_for_delivery and the first GPS mirror, on a
-            // single order) → today's NEUTRAL copy. Never the false "finishing another delivery"; no map.
-            paintSegbar(['done', 'done', { a: .5 }, 'pending', 'pending']);
-            titleEl.textContent = driverName + ' está en camino';
-            subEl.className = 'ssub big';
-            const eta = computeEta(data);
-            subEl.textContent = eta ? `Llega en ~${eta} min` : 'En ruta a tu dirección';
-          }
-        } else {
-          // No driver assigned yet — order is out but we have no name.
-          paintSegbar(['done', 'done', { a: .5 }, 'pending', 'pending']);
-          titleEl.textContent = 'Tu pedido va en camino';
-          subEl.textContent = 'Pronto llegará a tu dirección';
-        }
-      } else if (status === 'delivered' || status === 'completed') {
-        paintSegbar(['done', 'done', 'done', 'done', 'done']);
-        titleEl.className = 'stitle success';
-        titleEl.textContent = '¡Pedido entregado!';
-        // Delta 2 (owner): warm phrase + " · Entregado " + lowercase am/pm time (shared fmtTime); no time → warm phrase alone.
-        subEl.textContent = data.delivered_at ? `¡Buen provecho! · Entregado ${fmtTime(data.delivered_at, true)}` : '¡Buen provecho!';
-        document.getElementById('updated-text').classList.add('hidden');
+      // The DECISIONS (segments, headline, sub-line, avatar, which effects run) come from status-view.js — the same
+      // function the order forms' confirmation uses; the brand in the pickup copy is the record's restaurant_display_name
+      // (never a per-brand literal). The EFFECTS stay here: the DOM, the live map, the Directions ETA. CANCELLED dims the
+      // bar; terminal states hide the live-updates line. An ACTIVE drop (server-gated is_active_drop + a mirrored location)
+      // gets the live map + the throttled traffic-aware ETA (falls back to the 12-min computeEta); an explicit stacked
+      // waiting drop gets the locked copy, no map and no countdown.
+      const v = presentStatus({ ...data, fallback_drive_min: 12, now: Date.now() });
+      paintSegbar(v.segs);
+      segbarEl.style.opacity = v.barOpacity;
+      titleEl.className = v.titleClass;
+      titleEl.textContent = v.headline;
+      subEl.className = v.subClass;
+      if (v.avatar) { avatarEl.classList.remove('hidden'); avatarEl.textContent = v.avatar; }
+      if (v.updatedHidden) document.getElementById('updated-text').classList.add('hidden');
+      if (v.etaEligible) {
+        etaIsActive = true;       // Fix C — arm ETA writes; a route callback that resolves after a flip is dropped
+        refreshDriverEta(data);   // throttled traffic-aware Directions ETA; falls back to 12-min on any failure
+        if (v.mapEligible) updateDriverMap(data);
       } else {
-        // unknown status — assume just received
-        paintSegbar([{ a: .5 }, 'pending', 'pending', 'pending', 'pending']);
-        titleEl.textContent = 'Recibimos tu pedido';
-        subEl.textContent = 'Estamos por empezar a preparar tu pedido';
+        subEl.textContent = v.sub;
       }
     }
 

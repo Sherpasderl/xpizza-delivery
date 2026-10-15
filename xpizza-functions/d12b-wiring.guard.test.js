@@ -36,7 +36,7 @@ ok(`PROOF: unapplyD12b → ${BASE} byte-for-byte for ${FILES.length} modules (${
 // ── 1b. index.js (codex D12b r1 P2-2): ONE delimited, byte-pinned block — requestOtp's message ──
 {
   // the per-product extras blocks (the newest index.js slice), then the WhatsApp-cancel block, are reversed first, as in every fold guard
-  const real = require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(read('index.js'))))))));
+  const real = require('./tools/wacancel-inverse').unapplyWaCancelIndex(require('./tools/extras-inverse').unapplyExtrasIndex(require('./tools/serial3-inverse').unapplySerial3Index(require('./tools/h0-inverse').unapplyH0Index(require('./tools/s1a-inverse').unapplyS1aIndex(require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(require('./tools/s5-inverse').unapplyS5Index(read('index.js')))))))));
   const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 27 });
   assert.notStrictEqual(unapplyD12bIndex(real), real, 'non-vacuity: the d12b block is present and swapped back');
   assert.strictEqual(unapplyD12bIndex(real), baseIdx, `🔴 index.js minus the d12b block is not ${BASE}:index.js`);
@@ -54,13 +54,16 @@ assert.ok(mat.includes('pickupLabel(order.restaurant_display_name, live.display_
 for (const src of [cob, mat]) assert.ok(/\.\.\.\(trackBrand \? \{ restaurant_display_name: trackBrand \} : \{\}\)/.test(src), 'written only when it resolves (never undefined into RTDB)');
 ok('both builders write order_tracking.restaurant_display_name from the SAME resolution as the pickup line, only when it resolves');
 
-// ── 3. the tracker banner ──
+// ── 3. the tracker banner ── (S5: the banner's decision moved to status-view.js, shared with the order forms; the tracker
+//    applies presentStatus's sub-line verbatim)
 const html = read('../xpizza-track/index.html');
-const start = html.indexOf('const brandName = '); const end = html.indexOf("'Pasá por el restaurante a recogerlo'", start);
+assert.ok(html.includes('<script src="/status-view.js"></script>') && /const v = presentStatus\(\{ \.\.\.data,/.test(html) && html.includes('subEl.textContent = v.sub;'), 'premise: the tracker renders presentStatus\'s sub-line');
+const sv = read('../xpizza-track/status-view.js');
+const start = sv.indexOf('const brand = '); const end = sv.indexOf("'Pasá por el restaurante a recogerlo'", start);
 assert.ok(start > -1 && end > start, 'premise: the banner block');
-const block = html.slice(start, end + 40);
-assert.ok(/d\.restaurant_display_name/.test(block) && /brand \? `Pasá por \$\{brand\} a recogerlo` : 'Pasá por el restaurante a recogerlo'/.test(block), 'reads the public record; neutral fallback');
-assert.ok(!/X\.? ?Pizza|La Musa|restaurant_id/.test(block), '🔴 no rid → brand map and no brand-name fallback in the banner');
+const block = sv.slice(start, sv.indexOf('\n', start)) + '\n' + sv.slice(sv.lastIndexOf('\n', end), end + 40);
+assert.ok(/r\.restaurant_display_name/.test(block) && /brand \? `Pasá por \$\{brand\} a recogerlo` : 'Pasá por el restaurante a recogerlo'/.test(block), 'reads the public record; neutral fallback');
+assert.ok(!/X\.? ?Pizza|La Musa|restaurant_id/.test(stripComments(sv)), '🔴 no rid → brand map and no brand-name fallback in the shared status module');
 ok('the tracker banner reads the record\'s restaurant_display_name, falls back to NEUTRAL copy, and has no rid → brand map');
 
 console.log(`\nd12b-wiring.guard: OK (${n})`);

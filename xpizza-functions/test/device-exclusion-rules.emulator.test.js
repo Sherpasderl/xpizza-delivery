@@ -23,7 +23,7 @@ const RID = 'tb_centro';
 const BIND = { $uid: UID, $driver_id: UID, $restaurant_id: RID, $order_id: 'O1', $task_id: 'O1_delivery', $token: 'tok1',
   $alert_id: 'a1', $msg_id: 'm1', $shift_id: 's1', $hash: 'h1', $key: 'k1', $rid: RID };
 const PUBLIC = ['/config/rewards_public/redemption_live', '/public/brands', '/order_tracking/$token',
-  '/restaurants/$restaurant_id/item_availability', '/menus', '/menus/_meta'];
+  '/restaurants/$restaurant_id/item_availability', '/restaurants/$restaurant_id/public', '/menus', '/menus/_meta'];   // S5: the status screen's public restaurant facts
 
 function readLeaves(n, p = '', out = []) {
   for (const [k, v] of Object.entries(n)) {
@@ -137,6 +137,9 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     '/restaurants/$restaurant_id/identity/.write': [`restaurants/${RID}/identity`, IDENT],
     '/restaurants/$restaurant_id/kitchen_staff/$uid/.write': [`restaurants/${RID}/kitchen_staff/zz_new`, true],
     '/restaurants/$restaurant_id/item_availability/$key/.write': [`restaurants/${RID}/item_availability/k2`, { available: true, updated_at: 1 }],
+    '/restaurants/$restaurant_id/public/display_name/.write': [`restaurants/${RID}/public/display_name`, 'Centro'],   // S5 (dispatcher)
+    '/restaurants/$restaurant_id/public/branch_name/.write': [`restaurants/${RID}/public/branch_name`, 'Sucursal Centro'],
+    '/restaurants/$restaurant_id/public/prep_eta_min/.write': [`restaurants/${RID}/public/prep_eta_min`, 25],
     '/restaurants/$restaurant_id/availability_audit/$key/.write': [`restaurants/${RID}/availability_audit/k2`, { at: 2 }],
     '/menus/$rid/.write': [`menus/${RID}/b`, 2, { descendant: true }],
     '/user_profiles/$uid/.write': [`user_profiles/${UID}`, { name: 'Dev' }, { op: 'update' }],

@@ -16,7 +16,7 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const S2 = 'c83f2f9';
 const s2Idx = execFileSync('git', ['show', `${S2}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
 const s1aIdx = applyS1aIndex(s2Idx); // the S1a index.js layer S1b sits on (deterministic across rebases)
-const real = read('index.js');
+const real = require('./tools/s5-inverse').unapplyS5Index(read('index.js'));   // PLAN-S5 (newer) is reversed FIRST
 
 // 1. the inverses reproduce the S1a layer byte-for-byte. S1b restacks on A-1, so S1b is INNERMOST: strip the
 //    S1b blocks first, then A-1's, to reach the S1a index.js layer (both inverses proven byte-exact).

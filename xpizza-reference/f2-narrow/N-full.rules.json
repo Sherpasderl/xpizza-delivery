@@ -204,6 +204,9 @@
     "order_timelines": {
       ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && root.child('dispatchers').child(auth.uid).exists()",
       ".write": false,
+      ".indexOn": [
+        "new_at"
+      ],
       "$order_id": {
         ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && (root.child('dispatchers').child(auth.uid).exists() || (root.child('orders').child($order_id).child('restaurant_id').isString() && (root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists() || ((root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('identity').child('brand_id').isString() && root.child('restaurants').child(root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('identity').child('brand_id').val()).child('owners').child(auth.uid).exists()) || (!root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('identity').child('brand_id').exists() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('owners').child(auth.uid).exists())) || root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('managers').child(auth.uid).exists())) || (auth.uid !== 'svc-assigner' && (root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('orders').child($order_id).child('delivered_by_driver_uid').val() === auth.uid || root.child('orders').child($order_id).child('delivered_by_uid').val() === auth.uid)))"
       }
@@ -586,6 +589,25 @@
         "availability_reset_marker": {
           ".read": false,
           ".write": false
+        },
+        "public": {
+          ".read": true,
+          "display_name": {
+            ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          },
+          "branch_name": {
+            ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          },
+          "prep_eta_min": {
+            ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+            ".validate": "newData.isNumber() && newData.val() >= 5 && newData.val() <= 120"
+          },
+          "prep_stats": {},
+          "$other": {
+            ".validate": false
+          }
         }
       }
     },

@@ -4814,6 +4814,10 @@ exports.sendOrderStatusNotifications = onValueWritten(
       const trackingUpdates = { [`order_tracking/${trackingToken}/status`]: after };
       if (after === 'out_for_delivery') {
         trackingUpdates[`order_tracking/${trackingToken}/picked_up_at`] = ServerValue.TIMESTAMP;
+      /* s5:begin ready-at */
+      } else if (after === 'ready') {
+        trackingUpdates[`order_tracking/${trackingToken}/ready_at`] = ServerValue.TIMESTAMP;   // S5 §4.6: the forms' ready-stage window (a recall overwrites: the latest ready)
+      /* s5:end ready-at */
       } else if (after === 'delivered') {
         trackingUpdates[`order_tracking/${trackingToken}/delivered_at`] = ServerValue.TIMESTAMP;
       } else if (after === 'cancelled') {
@@ -7225,3 +7229,13 @@ exports.rollupDailyStats = onSchedule(
 
 // PORTAL SPEED P1: getSalesStats moved verbatim to portal/functions.js.
 exports.getSalesStats = portalFunctions.getSalesStats;
+
+/* s5:begin prep-stats */
+// S5 §5 — the daily measured-prep summary behind the order forms' arrival window (prep-stats.js): one bounded, paged
+// order_timelines query + two leaf reads per candidate → ONE multipath update of restaurants/{rid}/public/prep_stats.
+const { runPrepStats } = require('./prep-stats');
+exports.prepStatsDaily = onSchedule(
+  { schedule: 'every day 04:00', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 300, memory: '256MiB' },
+  async () => { await runPrepStats({ db: getDatabase(), nowMs: Date.now(), log: console }); },
+);
+/* s5:end prep-stats */

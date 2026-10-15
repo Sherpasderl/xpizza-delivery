@@ -160,7 +160,28 @@ const confirmation = {
       const unit = (n) => `${n} sello${n === 1 ? '' : 's'}`; const got = e.delta + (e.welcome || 0);
       return math.includes(unit(e.delta)) && (!e.welcome || math.includes(`${e.welcome} de bienvenida`)) && cap.startsWith(`${got} / ${e.goal}`) && on === got ? okv('shown', `${math} · ${cap}`) : bad(`earn card "${math}" / "${cap}" / ${on} on ≠ earn_preview ${JSON.stringify(e)}`);
     },
-    FULFIL: (s, f) => { const p = confirmation.parse(s); if (f.FULFIL.value !== 'delivery') return bad('P1-a: pickup is not in this slice'); return /Llegamos/.test(p.sub) && !/recog/i.test(p.text) && p.pay.some((r) => r.label === 'Ubicación') ? okv('shown', 'delivery copy + Ubicación') : bad(`delivery copy missing / pickup wording present ("${p.sub}")`); },
+    // S5 (ADVISOR 2026-10-15): delivery is judged by the "Detalles de entrega" card + no pickup wording + Ubicación. The live arrival
+    // line (#success-sub) is still asserted AT CAPTURE — non-empty and exactly ONE approved form: a delivery window "Llega H:MM – H:MM
+    // a./p. m.", the post-pickup "Llega en ~N min", the owner-approved overdue copy or the static fallback — but not for stability.
+    FULFIL: (s, f) => {
+      const p = confirmation.parse(s); if (f.FULFIL.value !== 'delivery') return bad('P1-a: pickup is not in this slice');
+      const det = squash((p.b.querySelector('#ls-details') || {}).textContent);
+      const forms = [/^Llega \d{1,2}:\d{2}( [ap]\. m\.)? – \d{1,2}:\d{2} [ap]\. m\.$/, /^Llega en ~\d+ min$/, /^Está tardando un poco más de lo normal\. Te dejaremos saber por WhatsApp en cuanto salga\.$/, /^Te avisaremos por WhatsApp en cuanto tu pedido salga\.$/];
+      const which = forms.filter((re) => re.test(p.sub)).length;
+      if (!p.sub || which !== 1) return bad(`the arrival line "${p.sub}" is not exactly one approved form`);
+      return /^Detalles de entrega/.test(det) && !/recog/i.test(p.text) && p.pay.some((r) => r.label === 'Ubicación') ? okv('shown', `delivery details + Ubicación; arrival "${p.sub}"`) : bad(`delivery details missing / pickup wording present ("${det}")`);
+    },
+    // S5: the live screen names the order's OWN store — the store label ("<display_name>[ · <branch>]", a declared live node, asserted
+    // at capture) and "Resumen del pedido · <display_name>" (stable) — from the public leaf / the tracking record, never another brand
+    BRAND: (s, f) => {
+      const p = confirmation.parse(s); const v = f.BRAND.value;
+      const label = squash((p.b.querySelector('#ls-store-label') || {}).textContent); const rec = squash((p.b.querySelector('#ls-receipt-store') || {}).textContent);
+      if (!v) return bad('no brand fact for the order');
+      // not connected (the live screen still shows the static fallback — e.g. no SDK): NO brand is named (never a wrong one); connected:
+      // both places name the order's own brand. (Like F-NUM's hidden line: an honest absence, never a stand-in.)
+      if (p.sub === 'Te avisaremos por WhatsApp en cuanto tu pedido salga.' && !label && !rec) return okv('not-shown', 'the live screen has not connected (static fallback) — no brand named');
+      return rec === `· ${v}` && (label === v || label.startsWith(`${v} · `)) ? okv('shown', `${label} / ${rec}`) : bad(`the confirmation names "${label}" / "${rec}", not the order's brand "${v}"`);
+    },
     SCHED: (s, f) => { const p = confirmation.parse(s); if (!f.SCHED.value.asap) return bad('P1-a: scheduled is not in this slice'); return /programad/i.test(p.text) ? bad('an ASAP order shows scheduled wording') : okv('shown', `ASAP ("${p.sub}")`); },
     PLACE: (s, f) => {
       const p = confirmation.parse(s); const loc = p.pay.find((r) => r.label === 'Ubicación'); const o = f._meta.persisted;

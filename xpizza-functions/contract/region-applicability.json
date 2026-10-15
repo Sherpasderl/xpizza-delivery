@@ -202,7 +202,7 @@
     "site": "updateCart();",
     "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
     "scope": "la-musa-orders/index.html<script@2>#startAnotherOrder",
-    "scopeSha": "0f024c882e9133e3de072494684ce59245b5e46775a4a317de464b15f12a9c7c"
+    "scopeSha": "a808731683e207557e8ff14c739d2086734ed716828a2481168efa1eb42c9d8f"
    },
    "guards": [
     {
@@ -5244,6 +5244,7 @@
      "kind": "R",
      "name": "delivered_at",
      "counts": {
+      "la-musa-orders/status-view.js#la-musa-orders": 5,
       "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
@@ -5260,7 +5261,8 @@
       "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
       "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
+      "xpizza-orders/status-view.js#xpizza-orders": 5,
+      "xpizza-track/status-view.js#xpizza-track": 5
      }
     },
     {
@@ -7351,6 +7353,7 @@
      "kind": "R",
      "name": "delivered_at",
      "counts": {
+      "la-musa-orders/status-view.js#la-musa-orders": 5,
       "xpizza-dashboard/index.html<script@0>#xpizza-dashboard": 8,
       "xpizza-dashboard/xpizza-delivery.js#xpizza-dashboard": 1,
       "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 5,
@@ -7367,7 +7370,8 @@
       "xpizza-kitchen/card-model.js#xpizza-kitchen": 1,
       "xpizza-kitchen/index.html<script@0>#xpizza-kitchen": 1,
       "xpizza-kitchen/xpizza-delivery.js#xpizza-kitchen": 1,
-      "xpizza-track/index.html<script@0>#xpizza-track": 4
+      "xpizza-orders/status-view.js#xpizza-orders": 5,
+      "xpizza-track/status-view.js#xpizza-track": 5
      }
     },
     {
@@ -12113,7 +12117,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     },
     {
      "kind": "F",
@@ -12164,7 +12168,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     },
     {
      "kind": "F",
@@ -12527,32 +12531,32 @@
     "site": "await whatsapp.sendMessage(order.customer_phone, body, restaurantId);",
     "siteSha": "de950982ac799734df60e476f575dc87f00303c69c8a3c049a2867439b7394c8",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+    "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'delivered') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "} else if (after === 'cancelled') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     },
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (!body) return;",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     }
    ],
    "cases": {
@@ -12679,7 +12683,7 @@
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     }
    ],
    "cases": {
@@ -12710,14 +12714,14 @@
     "site": "body = whatsapp.tplOutForDelivery({",
     "siteSha": "915ce8b4ba6ac92e28a0e2b083d95cc51ba0dd093677945be0e7d82b7b2aa9ee",
     "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
-    "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+    "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
    },
    "guards": [
     {
      "kind": "S",
      "scope": "xpizza-functions/index.js#sendOrderStatusNotifications",
      "text": "if (after === 'out_for_delivery') {",
-     "scopeSha": "49946d5e0e392f1a3f68794a1c2e0bd1e3e8a5768a85f2219feb48b855ba3319"
+     "scopeSha": "5bc1b485c84455b09ef2346dee46a523f4df19b41b7da2a3315efb63bf86ccf9"
     }
    ],
    "cases": {
@@ -14433,7 +14437,7 @@
     "site": "updateCart();",
     "siteSha": "10068015b94b75a60bba58f4ab1a367230d59d97b4dcfbd587860c5ea90115c6",
     "scope": "xpizza-orders/index.html<script@2>#startAnotherOrder",
-    "scopeSha": "4799181e38164484d90c7157988557fc79df0f6861175c44be7a6a27cab85e00"
+    "scopeSha": "dd2af073fb94e5068389f645f727c7b57058a066344b4518e1c769eed19fa52a"
    },
    "guards": [
     {

@@ -24,6 +24,7 @@ const PUBLIC = Object.freeze([
   '/public/brands/.read',
   '/order_tracking/$token/.read',
   '/restaurants/$restaurant_id/item_availability/.read',
+  '/restaurants/$restaurant_id/public/.read',   // S5: the live status screen's public restaurant facts (display name, branch, prep ETA / stats) — anonymous customers read it
   '/menus/.read',
   '/menus/_meta/.read',
 ]);

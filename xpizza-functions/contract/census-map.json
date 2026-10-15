@@ -65,6 +65,11 @@
    "map": "R15"
   },
   {
+   "rule": "form-confirmation-live",
+   "file": "^(xpizza-orders|la-musa-orders)/(form-live-status|status-view)\\.js$",
+   "map": "R15"
+  },
+  {
    "rule": "form-return",
    "file": "^(xpizza-orders|la-musa-orders)/",
    "fn": "^(handlePaymentReturn|applyPollState|clearPendingPayFor)",
@@ -226,7 +231,8 @@
   "infra": "client floor / version / health / auth (OTP, account deletion) / rate-limit / alert-pruning infrastructure — no order fact displayed",
   "fixtures": "test FIXTURE module (required only by *.test.js) — not production",
   "seed": "operator seed / publish script — not an order reader",
-  "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders"
+  "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders",
+  "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone"
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -574,7 +580,9 @@
   "access/_paged-fake.js#at>anon": "fixtures",
   "access/_paged-fake.js#update": "fixtures",
   "index.js#syncDriverAuthSweep": "infra",
-  "lib/driver-admin-ops.js#ownedNonterminalTasks": "dispatch"
+  "lib/driver-admin-ops.js#ownedNonterminalTasks": "dispatch",
+  "prep-stats.js#prepRowEligible": "prepstats",
+  "prep-stats.js#prepAggregate": "prepstats"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1363,12 +1371,9 @@
   "customer_uid@xpizza-functions/materialize.js#buildMaterializeUpdates": "reward attribution / reversal key (whose balance) — the REWARD outcome is asserted in S4 and S8 (P2), not an amount",
   "deliveryTask@xpizza-driver/index.html<script@0>#renderIncomingBanners>anon": "NOT an order field: the banner wrapper's task pair",
   "delivery_task_id@xpizza-functions/index.js#sendOrderStatusNotifications": "task routing id — not an amount",
-  "driver_location@xpizza-track/index.html<script@0>#render": "tracker live position — display only",
-  "driver_name@xpizza-track/index.html<script@0>#render": "tracker driver display name — display only",
   "has_profile@xpizza-track/index.html<script@0>#render": "tracker guest/profile copy switch — display only",
   "hora@xpizza-kitchen/card-model.js#completedTabVisible": "the KDS card's time anchor for tab visibility — display only",
   "id@xpizza-kitchen/card-model.js#completedTabVisible": "NOT an order field read for money: the KDS card id used for the local completed-tab set",
-  "is_active_drop@xpizza-track/index.html<script@0>#render": "tracker active-drop switch (map / ETA display) — display only",
   "length@xpizza-functions/pixelpay-hosted-webhook.js#handleHostedCallback": "NOT an order field: a string length (orderId.length)",
   "materialized_at@xpizza-functions/index.js#materializeOnConfirm": "payment / claim state-machine internal: it gates WHETHER a materialize / refund / abandon / recovery step runs; that money effect is asserted through the OUTCOME facts (status, payment_status, refund records) in S5–S10 (P2), never through this field",
   "materialized_at@xpizza-functions/materialize-guard.js#holdIfClosedAtMaterialize": "payment / claim state-machine internal: it gates WHETHER a materialize / refund / abandon / recovery step runs; that money effect is asserted through the OUTCOME facts (status, payment_status, refund records) in S5–S10 (P2), never through this field",
@@ -1439,7 +1444,9 @@
   "waze_link@la-musa-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only",
   "waze_link@xpizza-orders/index.html<script@2>#showSuccess": "a navigation link on the receipt — display only",
   "length@xpizza-dispatch/index.html<script@0>#alertContent": "NOT an order field: Array.prototype.length of a.order_ids (the list of affected order ids in the driver_deactivated alert) — a derived count for rendering, not a persisted order field (S1a §5/P1-8)",
-  "created_at@xpizza-functions/access/access-census-core.js#runAccessCensus>anon": "NOT a fact (PLATFORM F2 Q1): the owner access census only BUCKETS an order by its created_at day for the 14-day history-size report (info, never blocking). It selects no amount, collection or display; a wrong bucket only mis-counts the informational growth table (access-census-core.test cell 5)."
+  "created_at@xpizza-functions/access/access-census-core.js#runAccessCensus>anon": "NOT a fact (PLATFORM F2 Q1): the owner access census only BUCKETS an order by its created_at day for the 14-day history-size report (info, never blocking). It selects no amount, collection or display; a wrong bucket only mis-counts the informational growth table (access-census-core.test cell 5).",
+  "storeContactHref@xpizza-orders/index.html<script@2>#showSuccess": "NOT a fact: a METHOD lookup on the G2 module object (OrderExists.storeContactHref — the page's own WhatsApp contact link + this order's reference, for the S5 Ayuda chip); never an order field, an amount or a selector of money",
+  "storeContactHref@la-musa-orders/index.html<script@2>#showSuccess": "NOT a fact: a METHOD lookup on the G2 module object (OrderExists.storeContactHref — the page's own WhatsApp contact link + this order's reference, for the S5 Ayuda chip); never an order field, an amount or a selector of money"
  },
  "unreachableOnSurface": {
   "_doc": "P1-a (reviewed): a page function that NOTHING in its page scope references (no identifier, NS.member or inline HTML handler) cannot run on that surface — reachability is a FIXPOINT from top-level code, registered callbacks and inline HTML handlers, so a function referenced only by unreachable functions is unreachable too, so its order reads are not that surface's outputs. census.js marks them (over-approximating reachability); this list must EQUAL the marked set — a function that becomes referenced again makes its entry stale (RED: review its mapping); a new unreferenced one is RED until reviewed here.",

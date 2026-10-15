@@ -1156,6 +1156,50 @@ textarea{resize:none;height:80px;line-height:1.4}
 .bev-row.sold-out .bev-row-name,.bev-row.sold-out .bev-row-price{opacity:.5}
 .sold-out .qty-add-btn{pointer-events:none;opacity:.4}
 .sold-out .qty-overlay .qty-controls button:last-child,.sold-out .bev-row-actions .qty-controls button:last-child{pointer-events:none;opacity:.4}
+/* S5 — "Pedido recibido": the live status screen (form-live-status.js; status-view.js decides the status copy). The map leads and
+   the brand header hides on s5; an illustrated layer stands in until the page's Maps loader is ready (or for good if it never is). */
+body.s5-active .header{display:none}
+.ls-wrap{text-align:left}
+.ls-map{position:relative;height:260px;background:var(--surface);overflow:hidden}
+.ls-map-canvas{position:absolute;inset:0;opacity:0;transition:opacity .3s ease}
+.ls-map--live .ls-map-canvas{opacity:1}
+.ls-map--live .ls-art{display:none}
+.ls-art{position:absolute;inset:0}
+.ls-streets{position:absolute;inset:0;width:100%;height:100%}
+.ls-help{position:absolute;z-index:2;top:14px;right:14px;display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;border-radius:999px;background:var(--cream);color:var(--charcoal);font:600 14px var(--sans);text-decoration:none;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.ls-pin{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:4px}
+.ls-pin--store{left:62%;top:44%}
+.ls-pin--home{left:80%;top:68%}
+.ls-map--pickup .ls-pin--store{left:50%;top:58%}
+.ls-map--pickup .ls-pin--home,.ls-map--pickup .ls-route{display:none}
+.ls-label{background:var(--cream);color:var(--charcoal);font:600 13px var(--sans);padding:7px 11px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.14);white-space:nowrap}
+.ls-dot{width:14px;height:14px;border-radius:50%;background:var(--charcoal);border:3px solid var(--cream);box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.ls-home{width:30px;height:30px;border-radius:50%;background:var(--cream);display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.18);color:var(--charcoal)}
+.ls-sheet{position:relative;margin-top:-22px;background:var(--cream);border-radius:22px 22px 0 0;padding:10px 16px 28px;text-align:left}
+.ls-handle{width:40px;height:4px;border-radius:999px;background:var(--border2);margin:0 auto 14px}
+.ls-title{font:700 24px/1.2 var(--display);color:var(--charcoal);text-align:center}
+.ls-window{font:500 15px var(--sans);color:var(--muted);text-align:center;margin:6px 0 0}
+.ls-num{font:600 12px var(--sans);letter-spacing:.6px;color:var(--charcoal);text-align:center;margin-top:6px;text-transform:uppercase}
+.ls-num .order-id{font:inherit;color:inherit;letter-spacing:inherit;margin:0}
+.ls-num .order-num-pending,.ls-num .ord-wa{text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
+#order-id-display:empty+.ord-wa .ord-sep{display:none}
+.ls-seg{display:flex;gap:6px;margin:16px 0 8px}
+.ls-seg span{flex:1;height:6px;border-radius:999px;background:var(--border2)}
+.ls-seg span.done{background:var(--charcoal)}
+.ls-seg span.on{background:linear-gradient(90deg,var(--charcoal) calc(var(--p,.5)*100%),var(--border2) calc(var(--p,.5)*100%))}
+.ls-status{font:500 13px var(--sans);color:var(--muted);text-align:center;margin-bottom:16px}
+.ls-status:empty{margin-bottom:8px}
+.ls-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin:0 0 14px}
+.ls-card .k{font:500 12px var(--sans);color:var(--muted);letter-spacing:.3px}
+.ls-card .v{font:600 15px/1.4 var(--sans);color:var(--charcoal);margin-top:4px}
+.ls-card .n{font:400 13px/1.45 var(--sans);color:var(--muted);margin-top:4px}
+.ls-card .ls-go{display:flex;align-items:center;min-height:44px;margin-top:4px;font:600 14px var(--sans);color:var(--charcoal)}
+.ls-card .ls-go>span{text-decoration:underline}
+.ls-card .ls-go a{color:inherit;padding:13px 0}
+.ls-sheet .receipt-toggle{justify-content:flex-start}
+.ls-sheet .receipt-chev{margin-left:auto}
+.ls-store{font:500 13px var(--sans);color:var(--muted);margin:0 0 0 6px}
+.ls-again{text-align:center;margin-top:18px}
 </style>
 </head>
 <body class="s1-active">
@@ -1453,29 +1497,43 @@ textarea{resize:none;height:80px;line-height:1.4}
   </div>
 </div>
 
-<!-- ── STAGE 5: Success ── -->
+<!-- ── STAGE 5: Success — "Pedido recibido", the live status screen (S5; form-live-status.js) ── -->
 <div class="stage" id="s5">
-  <div style="padding:32px 16px 40px;text-align:center">
-    <div class="success-stamp"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--green)"><circle cx="12" cy="12" r="9"/><path d="m8.4 12 2.5 2.5 4.7-4.9"/></svg></div>
-    <div class="success-title">Pedido recibido</div>
-    <p class="success-sub" id="success-sub">Llegamos en aproximadamente <strong style="color:var(--charcoal)">30 minutos</strong>.</p>
-    <div class="order-id" id="order-id-display"></div>
-    <!-- REWARDS success (B2 Task 5) — filled by window.__ACCOUNT.renderSuccessRewards (logged-in earn badge / guest profile-claim card) --><div id="acct-success-rewards"></div>
-    <div class="receipt">
-      <button class="receipt-head receipt-toggle" id="receipt-toggle" type="button" aria-expanded="false" aria-controls="receipt-items" onclick="toggleReceiptSummary()">Resumen del pedido<span class="receipt-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
-      <div id="receipt-items" class="receipt-collapse"></div>
+  <div class="ls-wrap">
+    <div class="ls-map" id="ls-map">
+      <div class="ls-map-canvas" id="ls-map-canvas"></div>
+      <div class="ls-art" aria-hidden="true">
+        <svg class="ls-streets" viewBox="0 0 400 260" preserveAspectRatio="xMidYMid slice"><g stroke="var(--border2)" stroke-width="14" fill="none" stroke-linecap="round" opacity=".55"><path d="M-20 70 L420 40"/><path d="M-20 190 L420 165"/><path d="M90 -20 L130 280"/><path d="M290 -20 L250 280"/></g><g stroke="var(--border)" stroke-width="6" fill="none" opacity=".7"><path d="M-20 125 L420 100"/><path d="M190 -20 L200 280"/><path d="M350 -20 L330 280"/></g><path class="ls-route" d="M248 112 L250 165 L318 160" stroke="var(--charcoal)" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round" fill="none" opacity=".55"/></svg>
+        <div class="ls-pin ls-pin--store"><div class="ls-label" id="ls-store-label" hidden></div><div class="ls-dot"></div></div>
+        <div class="ls-pin ls-pin--home"><div class="ls-home"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></div></div>
+      </div>
+      <a class="ls-help" id="ls-help" href="#" target="_blank" rel="noopener" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>Ayuda</a>
     </div>
-    <div class="receipt">
-      <div class="receipt-head">Pago y entrega</div>
-      <div id="receipt-payment"></div>
-    </div>
-    <!-- Secondary CTA: customer can place another order without reloading
-         the page. Resets cart/address/payment but preserves name+phone
-         since they're the same person. -->
-    <div style="margin-top:28px;text-align:center">
-      <button onclick="startAnotherOrder()" style="background:none;border:none;color:var(--red);font-size:14px;font-weight:600;text-decoration:underline;cursor:pointer;padding:8px 16px;font-family:inherit">
-        Hacer otro pedido
-      </button>
+    <div class="ls-sheet">
+      <div class="ls-handle" aria-hidden="true"></div>
+      <div class="ls-title">Pedido recibido</div>
+      <p class="ls-window" id="success-sub" aria-live="polite">Te avisaremos por WhatsApp en cuanto tu pedido salga.</p>
+      <div class="ls-num"><span class="order-id" id="order-id-display"></span><span class="ord-wa"><span class="ord-sep"> · </span>Te avisamos por WhatsApp</span></div>
+      <div class="ls-seg" id="ls-seg" aria-hidden="true"></div>
+      <div class="ls-status" id="ls-status"></div>
+      <!-- REWARDS success (B2 Task 5) — filled by window.__ACCOUNT.renderSuccessRewards (logged-in earn badge / guest profile-claim card) --><div id="acct-success-rewards"></div>
+      <div class="ls-card" id="ls-details" hidden></div>
+      <div class="receipt">
+        <button class="receipt-head receipt-toggle" id="receipt-toggle" type="button" aria-expanded="false" aria-controls="receipt-items" onclick="toggleReceiptSummary()">Resumen del pedido<span class="ls-store" id="ls-receipt-store" hidden></span><span class="receipt-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>
+        <div id="receipt-items" class="receipt-collapse"></div>
+      </div>
+      <div class="receipt">
+        <div class="receipt-head">Pago y entrega</div>
+        <div id="receipt-payment"></div>
+      </div>
+      <!-- Secondary CTA: customer can place another order without reloading
+           the page. Resets cart/address/payment but preserves name+phone
+           since they're the same person. -->
+      <div class="ls-again">
+        <button onclick="startAnotherOrder()" style="background:none;border:none;color:var(--red);font-size:14px;font-weight:600;text-decoration:underline;cursor:pointer;padding:8px 16px;font-family:inherit">
+          Hacer otro pedido
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -1515,6 +1573,8 @@ textarea{resize:none;height:80px;line-height:1.4}
 <script src="form-order-number.js"></script>
 <script src="form-confirm-quote.js"></script>
 <script src="form-order-exists.js"></script>
+<script src="status-view.js"></script>   <!-- S5: the tracker's status decisions (same bytes) -->
+<script src="form-live-status.js"></script>   <!-- S5: the live "Pedido recibido" screen -->
 <script src="form-identity-strip.js"></script>
 <script src="form-cart.js"></script>
 <script src="form-serial-order.js"></script>
@@ -3549,6 +3609,7 @@ function _showStageSwap(id,pct,_t){
   document.querySelectorAll('.stage').forEach(s=>s.classList.remove('active','stage-out','stage-in'));
   _t.classList.add('active');
   document.body.classList.toggle('s1-active', id==='s1');   // pin the account chip only on paso 1
+  document.body.classList.toggle('s5-active', id==='s5');   // S5: the confirmation's map replaces the brand header
   document.getElementById('progress').style.width=pct+'%';
   window.scrollTo(0,0);
   if(!_prm()){ _t.classList.add('stage-in'); requestAnimationFrame(()=>requestAnimationFrame(()=>{ _t.classList.remove('stage-in'); })); }
@@ -4913,6 +4974,7 @@ async function submitOrder(paymentStatus){
 // belongs here. Anything order-specific (cart contents, location pin,
 // payment selection) gets cleared.
 function startAnotherOrder(){
+  try { window.FormLiveStatus && window.FormLiveStatus.resetLiveScreen(); } catch (_) {}   // S5: this confirmation's live status is over — its DOM (segbar, status, labels, map) too
   __orderNumber.stop();           // this confirmation is over: its number poll must never paint the next one
   window.__pendingOrder = null;   // Layer 1: next distinct order mints a fresh id
   SERIAL.clear();                 // §3: the order is done — the next one serializes in insertion order
@@ -5026,6 +5088,7 @@ const __orderNumber = (window.OrderNumber && typeof window.OrderNumber.createOrd
 // cache would otherwise show "asignando número…" forever, with nothing left to fill it. A number already shown stays.
 window.addEventListener('pagehide', () => {
   try { __orderNumber.stop(); } catch(_){}
+  try { window.FormLiveStatus && window.FormLiveStatus.stopAll(); } catch(_){}   // S5: no subscription or timer outlives the page
   if (__orderNumberState === 'pending') paintOrderNumber('hidden');
 });
 // The tracking token of a createOrder 200 ({ok, order_id, tracking_token}); a scheduled answer has none. Bounded, so a
@@ -5056,9 +5119,7 @@ function showSuccess(){
   document.getElementById('success-sub').innerHTML=
     (o.scheduled || window.__scheduledFor)
       ? ICON_CLOCK+'Pedido <strong>programado</strong> para '+schedFmt(o.scheduled_for || window.__scheduledFor)+'. Lo preparamos a tiempo para tu horario.'
-      : o.payment_method==='online'&&o.payment_status==='confirmed'
-        ? ICON_CHECK_CIRCLE+'Pago PixelPay confirmado. Tu pedido ya está en cocina. '+(o.order_type==='pickup'?'Estará listo para recoger en ~30 min.':'Llegamos en ~30 min.')   /* [display fix 4] pickup-aware */
-        : 'Te llegará una confirmación por WhatsApp. '+(o.order_type==='pickup'?'Estará listo para recoger en aproximadamente <strong>30 minutos</strong>.':'Llegamos en aproximadamente <strong>30 minutos</strong>.');
+      : 'Te avisaremos por WhatsApp en cuanto tu pedido salga.';   // S5: the arrival line's static fallback (form-live-status.js upgrades it; scheduled keeps its slot message)
 
   document.getElementById('receipt-items').innerHTML=
     o.items.map(i=>`
@@ -5147,6 +5208,33 @@ function showSuccess(){
       });
     }
   } catch (_) {}
+
+  // S5 — the details card, the Ayuda chip and the live status screen. Painted for every confirmation (scheduled too); only the
+  // LIVE part (form-live-status.js) is skipped for a scheduled one, so its slot message and hidden number stay as painted.
+  try {
+    const det = document.getElementById('ls-details'), map = document.getElementById('ls-map'), pickup = o.order_type === 'pickup';
+    if (map) map.classList.toggle('ls-map--pickup', pickup);
+    if (det) {
+      if (pickup) {
+        const ll = RESTAURANT_LAT + ',' + RESTAURANT_LNG;
+        det.innerHTML = '<div class="k">Recoger en</div><div class="v" id="ls-pickup-store" hidden></div><div class="ls-go"><span><a href="https://www.google.com/maps/dir/?api=1&destination=' + ll + '" target="_blank" rel="noopener">Cómo llegar · Maps</a> · <a href="https://waze.com/ul?ll=' + ll + '&navigate=yes" target="_blank" rel="noopener">Waze</a></span></div>';
+        det.hidden = false;
+      } else {
+        const note = [o.address_details, o.notes !== '—' ? o.notes : ''].filter(Boolean).map(escapeHtml).join(' · ');
+        det.innerHTML = '<div class="k">Detalles de entrega</div><div class="v">' + escapeHtml(o.address_detected || '') + '</div>' + (note ? '<div class="n">' + note + '</div>' : '');
+        det.hidden = !o.address_detected && !note;
+      }
+    }
+    const help = document.getElementById('ls-help');
+    const href = (window.OrderExists && typeof OrderExists.storeContactHref === 'function') ? OrderExists.storeContactHref(document, o.order_id || '') : null;
+    if (help) { if (href) help.setAttribute('href', href); help.hidden = !href; }
+  } catch (_) {}
+  if (!(o.scheduled || window.__scheduledFor)) {
+    try { window.FormLiveStatus && window.FormLiveStatus.start({ token: __tok, orderType: o.order_type, store: { lat: RESTAURANT_LAT, lng: RESTAURANT_LNG },
+      dest: (o.order_type === 'delivery' && typeof o.lat === 'number' && typeof o.lng === 'number') ? { lat: o.lat, lng: o.lng } : null, anchorFallbackMs: Date.now() }); } catch (_) {}
+  } else {
+    try { window.FormLiveStatus && window.FormLiveStatus.resetLiveScreen(); } catch (_) {}   // never a live line on a scheduled confirmation — nor a previous order's segbar, status or map
+  }
 }
 
 /* ═══════════════════════════════════════════════════

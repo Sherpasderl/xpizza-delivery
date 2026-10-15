@@ -38,7 +38,9 @@ assert(!('.read' in rid) && !('.write' in rid), 'FAIL: .read/.write key present 
 //     new grant site, allow-list its subtree here on purpose — a grant anywhere else still fails CI.
 // P-SELFUPDATE §5 added client_floor: a kitchen-member READ grant (the KDS reads the per-restaurant floor it is held to);
 // its .write is an explicit false (only the owner CLI, via the Admin SDK, writes it).
-const GRANT_SUBTREES = new Set(['identity', 'kitchen_staff', 'item_availability', 'availability_audit', 'client_floor']);
+// S5 added public: a public READ (the order forms' confirmation reads the store label + prep stats) with per-LEAF dispatcher
+// writes — never a .write at public itself (a grant cascades: it would make the server-only prep_stats client-writable).
+const GRANT_SUBTREES = new Set(['identity', 'kitchen_staff', 'item_availability', 'availability_audit', 'client_floor', 'public']);
 (function walk(node, segs) {
   if (node === null || typeof node !== 'object') return;
   for (const [k, v] of Object.entries(node)) {
@@ -55,5 +57,24 @@ const GRANT_SUBTREES = new Set(['identity', 'kitchen_staff', 'item_availability'
     }
   }
 })(r, []);
+
+// (4) S5 — the public leaf: exactly the four named children + a rejecting $other; NO .write at public; prep_stats carries no
+//     grant at any depth (server-only: the admin SDK bypasses rules); each writable leaf is validated.
+{
+  const pub = rid.public;
+  assert(pub && pub['.read'] === true, 'FAIL: /restaurants/$restaurant_id/public must be publicly readable');
+  assert(!('.write' in pub), 'FAIL: a .write at public cascades to prep_stats — writes must sit on the individual leaves');
+  assert.deepStrictEqual(Object.keys(pub).filter((k) => !k.startsWith('.')).sort(), ['$other', 'branch_name', 'display_name', 'prep_eta_min', 'prep_stats'], 'FAIL: public holds exactly display_name / branch_name / prep_eta_min / prep_stats (+ $other)');
+  assert.strictEqual(pub.$other['.validate'], false, 'FAIL: unknown public children must be rejected');
+  (function noGrant(node, at) {
+    for (const [k, v] of Object.entries(node || {})) {
+      if ((k === '.read' || k === '.write') && v !== false) assert.fail(`FAIL: a grant under public/prep_stats (${at}) — prep_stats is server-only`);
+      if (v && typeof v === 'object') noGrant(v, `${at}/${k}`);
+    }
+  })(pub.prep_stats, 'prep_stats');
+  for (const leaf of ['display_name', 'branch_name', 'prep_eta_min']) {
+    assert(/root\.child\('dispatchers'\)\.child\(auth\.uid\)\.exists\(\)/.test(pub[leaf]['.write'] || '') && pub[leaf]['.validate'], `FAIL: public/${leaf} is dispatcher-written and validated`);
+  }
+}
 
 console.log('restaurants-rules.guard: OK (invariant holds — no ancestor grant; grants only in allow-listed subtrees)');

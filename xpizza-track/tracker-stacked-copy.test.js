@@ -15,8 +15,9 @@ const path = require('path');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-// ── Slice the render status section: from the real outer `const status` to the render-closing brace ──
-const START = 'const status = data.status || \'new\';';
+// ── Slice the render status section: from the real outer `const titleEl` to the render-closing brace ──
+// (S5: the decisions moved to status-view.js — the slice runs against the REAL presentStatus, required below)
+const START = 'const titleEl = document.getElementById(\'driver-name\');';
 const END = '\n    }\n\n    // Collapsible';   // the render-closing `    }` (excluded from the body)
 const a = html.indexOf(START);
 assert.ok(a !== -1, 'slice START present (render status section found)');
@@ -24,10 +25,9 @@ const b = html.indexOf(END, a);
 assert.ok(b !== -1, 'slice END present (render close found)');
 const slice = html.slice(a, b);   // a valid function body (render\'s own `    }` excluded)
 
-// Pull the REAL fmtTime helper so the executed render uses it (not a test re-implementation).
-const fa = html.indexOf('function fmtTime(');
-assert.ok(fa !== -1, 'fmtTime helper present');
-const fmtTimeSrc = html.slice(fa, html.indexOf('\n    }', fa) + '\n    }'.length);
+// The REAL shared decision module (status-view.js, which also owns the 12-hour clock formatter) — not a re-implementation.
+const { presentStatus } = require('./status-view.js');
+assert.ok(html.includes('<script src="/status-view.js"></script>'), 'the tracker loads status-view.js');
 
 const OWNER_WAITING = 'Tu repartidor tiene una parada rápida en camino a la tuya, luego va directo hacia vos.';
 assert.ok(!html.includes('está terminando una entrega que queda en camino'), 'superseded stacked copy gone');
@@ -67,10 +67,10 @@ function render(data) {
   const requestAnimationFrame = (fn) => fn();   // run synchronously so fill --p is set when we inspect
   // eslint-disable-next-line no-new-func
   const fn = new Function('data', 'document', 'hideDriverMap', 'refreshDriverEta', 'updateDriverMap',
-    'computeEta', 'requestAnimationFrame',
-    `${fmtTimeSrc}\nlet etaIsActive = false; ${slice}; return etaIsActive;`);
+    'computeEta', 'requestAnimationFrame', 'presentStatus',
+    `let etaIsActive = false; ${slice}; return etaIsActive;`);
   // Early-return branches (cancelled / pickup) return undefined; normalize to the boolean etaIsActive they left.
-  const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, computeEta, requestAnimationFrame) ?? false;
+  const etaIsActive = fn(data, document, hideDriverMap, refreshDriverEta, updateDriverMap, computeEta, requestAnimationFrame, presentStatus) ?? false;
   const segbar = reg['segbar'] || mkEl('segbar');
   const title = reg['driver-name'] || mkEl('driver-name');
   const sub = reg['driver-eta'] || mkEl('driver-eta');
@@ -141,11 +141,11 @@ assert.ok(r.avatarShown); ok('OFD stacked: avatar shown');
 assert.equal(r.segs[3], 'pending'); assert.equal(r.segs[4], 'pending'); ok('OFD stacked: never advances to Llegando (segs 4-5 pending)');
 
 // OFD NEUTRAL (no is_active_drop) → ETA fallback, no map
-r = render({ status: 'out_for_delivery', driver_name: 'Elmer', __eta: 8 });
+r = render({ status: 'out_for_delivery', driver_name: 'Elmer', delivery_eta_min: 8 });
 assert.deepEqual(segClasses(r), ['done', 'done', 'active', 'pending', 'pending']); assert.equal(activeFill(r), .5); ok('OFD neutral: seg3 active(.5)');
 assert.equal(r.title, 'Elmer está en camino'); assert.equal(r.sub, 'Llega en ~8 min'); assert.ok(r.subBig); ok('OFD neutral: ETA sub big');
 assert.equal(r.calls.updateDriverMap, 0); ok('OFD neutral: no map yet');
-r = render({ status: 'out_for_delivery', driver_name: 'Elmer', __eta: null });
+r = render({ status: 'out_for_delivery', driver_name: 'Elmer' });
 assert.equal(r.sub, 'En ruta a tu dirección'); ok('OFD neutral (no eta): "En ruta a tu dirección"');
 
 // OFD no driver yet

@@ -601,7 +601,8 @@
         "FULFIL",
         "SCHED",
         "census:PLACE",
-        "census:NUM"
+        "census:NUM",
+        "BRAND"
       ],
       "shows": {
         "S15": [
@@ -764,6 +765,38 @@
     {
       "site": "xpizza-functions/stats/stats-build.js#addSale#delivered_at#0",
       "reason": "stats uses delivered_at as the SALE TIME anchor (which day/hour a delivered order counts in) — not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "xpizza-orders/status-view.js#presentStatus#delivered_at#0",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "xpizza-orders/status-view.js#presentStatus#delivered_at#1",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "xpizza-orders/status-view.js#presentStatus#delivered_at#2",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "xpizza-orders/status-view.js#presentStatus#delivered_at#3",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "la-musa-orders/status-view.js#presentStatus#delivered_at#0",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "la-musa-orders/status-view.js#presentStatus#delivered_at#1",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "la-musa-orders/status-view.js#presentStatus#delivered_at#2",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
+    },
+    {
+      "site": "la-musa-orders/status-view.js#presentStatus#delivered_at#3",
+      "reason": "S5: the confirmation reads delivered_at ONLY for the delivered / collected TIME line of status-view.js presentStatus (\"¡Buen provecho! · Entregado 7:25 pm\" / \"Recogido a las …\") — the tracker's own copy; not a driver-attribution or cash assertion"
     }
   ],
   "unsitedFacts": {

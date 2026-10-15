@@ -1971,9 +1971,6 @@
   "xpizza-track/index.html#render@xpizza-track/index.html<script@0>#<top>>anon": {
    "status": "pending"
   },
-  "xpizza-track/index.html<script@0>#brandName@xpizza-track/index.html<script@0>#render": {
-   "status": "pending"
-  },
   "xpizza-track/index.html<script@0>#refreshDriverEta@xpizza-track/index.html<script@0>#render": {
    "status": "pending"
   },
@@ -2018,6 +2015,228 @@
   },
   "xpizza-orders/index.html<script@2>#clearPendingPayFor@xpizza-orders/index.html<script@2>#applyPollState~4": {
    "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#arrivalFor@la-musa-orders/form-live-status.js#liveRender": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#draw@self": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveOnSnap@la-musa-orders/form-live-status.js#start>anon>anon>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#livePaintLabel@la-musa-orders/form-live-status.js#liveOnSnap": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#livePaintLabel@la-musa-orders/form-live-status.js#liveReadPublic>anon>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#livePaintLabel@la-musa-orders/form-live-status.js#start>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveOnSnap": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveReadPublic>anon>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveReadPublic>anon>anon~2": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveRender>anon>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveRender>anon>anon~2": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveRequestDrive>anon>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#liveTick>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRender@la-musa-orders/form-live-status.js#start>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#stageOf@la-musa-orders/form-live-status.js#liveRender": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#stageOf@la-musa-orders/form-live-status.js#liveRender>anon>anon": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#start@la-musa-orders/index.html<script@2>#showSuccess": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#start@la-musa-orders/index.html<script@2>#showSuccess~2": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#start@la-musa-orders/sherpa-client.js#create": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#statusLineOf@la-musa-orders/form-live-status.js#liveRender": {
+   "status": "pending"
+  },
+  "la-musa-orders/status-view.js#presentStatus@la-musa-orders/form-live-status.js#livePresent": {
+   "status": "pending"
+  },
+  "xpizza-orders/form-live-status.js#arrivalFor@xpizza-orders/form-live-status.js#liveRender": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the arrival line text of #s5 (window / ETA / overdue / fallback)"
+  },
+  "xpizza-orders/form-live-status.js#draw@self": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live map's pin overlays inside #s5"
+  },
+  "xpizza-orders/form-live-status.js#liveOnSnap@xpizza-orders/form-live-status.js#start>anon>anon>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the order_tracking/<token> snapshot handler of the live screen (#s5)"
+  },
+  "xpizza-orders/form-live-status.js#livePaintLabel@xpizza-orders/form-live-status.js#liveOnSnap": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the store label of #s5 (map pin, Recoger en, Resumen del pedido · <store>) from the public leaf / the tracking record"
+  },
+  "xpizza-orders/form-live-status.js#livePaintLabel@xpizza-orders/form-live-status.js#liveReadPublic>anon>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the store label of #s5 (map pin, Recoger en, Resumen del pedido · <store>) from the public leaf / the tracking record"
+  },
+  "xpizza-orders/form-live-status.js#livePaintLabel@xpizza-orders/form-live-status.js#start>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the store label of #s5 (map pin, Recoger en, Resumen del pedido · <store>) from the public leaf / the tracking record"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveOnSnap": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveReadPublic>anon>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveReadPublic>anon>anon~2": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveRender>anon>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveRender>anon>anon~2": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveRequestDrive>anon>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#liveTick>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#liveRender@xpizza-orders/form-live-status.js#start>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the live screen repaints the arrival line / segbar / status line of #s5 (snapshot, public leaf, Directions, deadlineTimer, etaTimer)"
+  },
+  "xpizza-orders/form-live-status.js#stageOf@xpizza-orders/form-live-status.js#liveRender": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: which ladder stage the #s5 arrival line shows"
+  },
+  "xpizza-orders/form-live-status.js#stageOf@xpizza-orders/form-live-status.js#liveRender>anon>anon": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: which ladder stage the #s5 arrival line shows"
+  },
+  "xpizza-orders/form-live-status.js#start@xpizza-orders/index.html<script@2>#showSuccess": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: showSuccess hands the confirmation token to the live screen (form-live-status.js start) — it paints only inside #s5 (the arrival line, segbar, status line, store label), which form.confirmation reads whole"
+  },
+  "xpizza-orders/form-live-status.js#start@xpizza-orders/index.html<script@2>#showSuccess~2": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: showSuccess hands the confirmation token to the live screen (form-live-status.js start) — it paints only inside #s5 (the arrival line, segbar, status line, store label), which form.confirmation reads whole"
+  },
+  "xpizza-orders/form-live-status.js#start@xpizza-orders/sherpa-client.js#create": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: a NAME-RESOLVED over-approximation — sherpa-client.js create() calls its OWN start(); it never reaches FormLiveStatus.start. Reviewed onto the confirmation so it is never an unreviewed pending in the enforced slice"
+  },
+  "xpizza-orders/form-live-status.js#statusLineOf@xpizza-orders/form-live-status.js#liveRender": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the #s5 status line under the segbar (the tracker's own copy)"
+  },
+  "xpizza-orders/status-view.js#presentStatus@xpizza-orders/form-live-status.js#livePresent": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: status-view.js decides the #s5 segbar + status copy (the tracker's decisions, same bytes)"
+  },
+  "xpizza-track/status-view.js#presentStatus@xpizza-track/index.html<script@0>#computeEta": {
+   "status": "pending"
+  },
+  "xpizza-track/status-view.js#presentStatus@xpizza-track/index.html<script@0>#render": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRequestDrive@la-musa-orders/form-live-status.js#liveReconcileDrive": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#liveRequestDrive@la-musa-orders/form-live-status.js#liveReconcileDrive~2": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#resetLiveScreen@la-musa-orders/form-live-status.js#start": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#resetLiveScreen@la-musa-orders/index.html<script@2>#showSuccess": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#resetLiveScreen@la-musa-orders/index.html<script@2>#startAnotherOrder": {
+   "status": "pending"
+  },
+  "la-musa-orders/form-live-status.js#stageOf@la-musa-orders/form-live-status.js#liveReconcileDrive": {
+   "status": "pending"
+  },
+  "xpizza-orders/form-live-status.js#liveRequestDrive@xpizza-orders/form-live-status.js#liveReconcileDrive": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the drive estimate (≤ 2 Directions per confirmation, reconciled against the current stage) that moves the #s5 arrival window"
+  },
+  "xpizza-orders/form-live-status.js#liveRequestDrive@xpizza-orders/form-live-status.js#liveReconcileDrive~2": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: the drive estimate (≤ 2 Directions per confirmation, reconciled against the current stage) that moves the #s5 arrival window"
+  },
+  "xpizza-orders/form-live-status.js#resetLiveScreen@xpizza-orders/form-live-status.js#start": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5 (codex r1 P1): clears the #s5 live nodes (segbar, status line, store labels, live map) so a previous confirmation never leaks into the next"
+  },
+  "xpizza-orders/form-live-status.js#resetLiveScreen@xpizza-orders/index.html<script@2>#showSuccess": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5 (codex r1 P1): clears the #s5 live nodes (segbar, status line, store labels, live map) so a previous confirmation never leaks into the next"
+  },
+  "xpizza-orders/form-live-status.js#resetLiveScreen@xpizza-orders/index.html<script@2>#startAnotherOrder": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5 (codex r1 P1): clears the #s5 live nodes (segbar, status line, store labels, live map) so a previous confirmation never leaks into the next"
+  },
+  "xpizza-orders/form-live-status.js#stageOf@xpizza-orders/form-live-status.js#liveReconcileDrive": {
+   "status": "via",
+   "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
+   "reason": "S5: which ladder stage the #s5 arrival line shows"
   }
  }
 }

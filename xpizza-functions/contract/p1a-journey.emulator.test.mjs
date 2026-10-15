@@ -89,6 +89,25 @@ const RAT = require('./ratchet');
 const SCEN = JSON.parse(fsx.readFileSync(AP.SCENARIOS, 'utf8')); const S1 = SCEN.scenarios.S1;
 // C1: every step settles with its page's DECLARED horizon (contract/timer-bounds.json, guarded by timer-bounds.guard)
 const TB = JSON.parse(fsx.readFileSync(new URL('./timer-bounds.json', import.meta.url), 'utf8'));
+// ADVISOR 2026-10-15 (S5 timers): the confirmation's LIVE nodes — the only #s5 parts a reviewed S5 timer (form-live-status.js:
+// deadlineTimer / etaTimer, reachesAsserted:false) may change after the horizon. Declared in timer-bounds.json by id, EXACTLY these
+// four; only their text / children are blanked for the stability recapture — their presence and position stay compared, and every
+// other #s5 node (the order line, ORDEN #, the incentive card, Detalles de entrega, the map container) stays byte-stable.
+const FORM_LIVE_EXPECT = ['#ls-seg', '#ls-status', '#ls-store-label', '#success-sub'];
+const FORM_LIVE_PROTECTED = ['order-id-display', 'acct-success-rewards', 'ls-details', 'receipt-items', 'receipt-payment', 'ls-map'];
+const formLiveSels = (tb) => [...new Set([...(tb.sites || []), ...(tb.chains || [])].filter((x) => /^xpizza-orders\/form-live-status\.js#/.test(x.key) && x.reachesAsserted === false).flatMap((x) => x.mayChangeSelectors || []))].sort();
+function formLiveProblems(sels, s5) {
+  const p = [];
+  if (JSON.stringify(sels) !== JSON.stringify(FORM_LIVE_EXPECT)) p.push(`the declared live set ${JSON.stringify(sels)} ≠ exactly ${JSON.stringify(FORM_LIVE_EXPECT)}`);
+  for (const sel of sels) {
+    if (!/^#[A-Za-z0-9_-]+$/.test(sel)) { p.push(`${sel}: not a single id selector (no classes, wildcards or combinators)`); continue; }
+    const hits = s5 ? s5.querySelectorAll(sel) : [];
+    if (hits.length !== 1) { p.push(`${sel}: matches ${hits.length} element(s) inside #s5 (exactly one required)`); continue; }
+    for (const id of FORM_LIVE_PROTECTED) if (hits[0].querySelector(`#${id}`) || hits[0].id === id) p.push(`${sel}: is (or is an ancestor of) the asserted #${id}`);
+  }
+  return p;
+}
+const confirmationSteady = (doc, html, sels) => { const t = doc.createElement('template'); t.innerHTML = html; for (const sel of sels) for (const e of t.content.querySelectorAll(sel)) e.textContent = ''; return t.innerHTML; };
 // the confirmation steps use the page's reviewed horizon EXCEPTION (the order-number poll, ≤ 45 s); every other step the standard
 const HORIZON = { form: TB.pages['xpizza-orders'].horizonMs, formConfirmation: TB.pages['xpizza-orders'].exception.horizonMs, kds: TB.pages['xpizza-kitchen'].horizonMs };
 const SLICE = { scenarios: ['S1'], brands: ['x_pizza'], lps: ['new'], readers: ['R1', 'R9', 'R13', 'R14', 'R15'] };
@@ -333,11 +352,28 @@ try {
     await settled(form, fhost, HORIZON.formConfirmation, 'stability.form');
     await settled(kds, khost, HORIZON.kds, 'stability.kds');
     const fresh = { ...snaps, 'form.confirmation': OBSERVABLES['form.confirmation'].capture({ doc }), 'kds.ticket': { ...ticket2, ...OBSERVABLES['kds.ticket'].captureScheduled({ doc: kds.doc }) }, 'wa.orderReceived': OBSERVABLES['wa.orderReceived'].capture({ sends: SENT, phone: persisted.customer_phone }) };
-    assert.strictEqual(fresh['form.confirmation'].html, snaps['form.confirmation'].html, FAIL('stability', 'the confirmation changed after a further settle() horizon'));
+    const LIVE = formLiveSels(TB); const liveP = formLiveProblems(LIVE, doc.getElementById('s5'));
+    assert.deepStrictEqual(liveP, [], FAIL('stability', `the declared live confirmation nodes: ${liveP.join(' | ')}`));
+    assert.strictEqual(confirmationSteady(doc, fresh['form.confirmation'].html, LIVE), confirmationSteady(doc, snaps['form.confirmation'].html, LIVE), FAIL('stability', `the confirmation changed after a further settle() horizon beyond its declared live nodes (${LIVE.join(', ')})`));
+    // the ADVISOR's sensitivity cells (2026-10-15): a change to a NON-declared #s5 node is caught; a change to a declared one is not;
+    // a declaration widened to an ancestor / a class / an extra node is refused
+    {
+      const base = snaps['form.confirmation'].html; const steadyBase = confirmationSteady(doc, base, LIVE);
+      const mutate = (sel, text) => { const t = doc.createElement('template'); t.innerHTML = base; const e = t.content.querySelector(sel); assert.ok(e, FAIL('negative', `premise: ${sel} is in the captured #s5`)); e.textContent = text; return t.innerHTML; };
+      for (const sel of ['#order-id-display', '#acct-success-rewards', '#ls-details']) assert.notStrictEqual(confirmationSteady(doc, mutate(sel, 'Orden #999'), LIVE), steadyBase, FAIL('negative', `a late change to the NON-declared ${sel} was masked by the blanking`));
+      for (const sel of LIVE) assert.strictEqual(confirmationSteady(doc, mutate(sel, 'Está tardando un poco más de lo normal.'), LIVE), steadyBase, FAIL('negative', `a change to the declared ${sel} was not blanked`));
+      const s5n = doc.getElementById('s5');
+      // each structural check ALSO in isolation (the exact-set check bypassed — 2e's note): a class selector, a 0-match id, an ancestor of a protected node
+      const iso = (sels) => formLiveProblems(sels, s5n).filter((x) => !/the declared live set/.test(x));
+      assert.ok(iso(['.ls-window']).some((x) => /not a single id selector/.test(x)), FAIL('negative', 'a class selector passed the id-only check'));
+      assert.ok(iso(['#no-such-node']).some((x) => /matches 0 element/.test(x)), FAIL('negative', 'a 0-match selector passed the one-match check'));
+      assert.ok(iso(['#ls-map']).some((x) => /is \(or is an ancestor of\) the asserted #ls-map/.test(x)), FAIL('negative', 'a protected node passed the ancestor check'));
+      for (const wide of [[...LIVE, '.ls-sheet'], LIVE.map((x) => (x === '#ls-store-label' ? '#ls-map' : x)), LIVE.map((x) => (x === '#ls-status' ? '#s5 *' : x)), [...LIVE, '#order-id-display']]) assert.ok(formLiveProblems([...wide].sort(), s5n).length > 0, FAIL('negative', `a widened live declaration ${JSON.stringify(wide)} was accepted`));
+    }
     assert.strictEqual(SENT.length, 1, FAIL('stability', `the WhatsApp send multiplicity changed: ${SENT.length}`));
     const re = run(fresh, { ...evidence, kdsActions: kdsActions() });
     assert.strictEqual(re.red.length, 0, FAIL('stability', `recompare after settle(E): ${re.red.map(formatFailure).join(' | ')}`));
-    ok(`stability: after a further horizon on both pages (scheduler drained), fresh confirmation / KDS / WhatsApp captures recompare green; confirmation byte-identical, the KDS ticket unchanged, exactly one send`);
+    ok(`stability: after a further horizon on both pages (scheduler drained), fresh confirmation / KDS / WhatsApp captures recompare green; the confirmation byte-identical outside its ${LIVE.length} declared live nodes (ADVISOR 2026-10-15: a late change to the order line / incentive card / details card is caught, a widened declaration is refused), the KDS ticket unchanged, exactly one send`);
   }
   // codex P1-b mech r2 P1, on the LIVE KDS: a stray hold gesture (pointer down → up on the ticket header, released before
   // the threshold, no write) is OBSERVED by the recorder → every hold-dependent exclusion is REQUIRED (its pending

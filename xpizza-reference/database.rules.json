@@ -129,7 +129,7 @@
     },
 
     "order_events":     { ".read": false, ".write": false },
-    "order_timelines":  { ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true", ".write": false },
+    "order_timelines":  { ".read": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true", ".write": false, ".indexOn": ["new_at"] },
     "order_predictions":{ ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()", ".write": false },
     "prediction_logs":  { ".read": false, ".write": false, ".indexOn": ["v1-hier-ringmed-30/new_at"] },
     "ready_time_config":{ ".read": false, ".write": false },
@@ -313,6 +313,15 @@
         "availability_reset_marker": {
           ".read": false,
           ".write": false
+        },
+
+        "public": {
+          ".read": true,
+          "display_name": { ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()", ".validate": "newData.isString() && newData.val().length <= 60" },
+          "branch_name":  { ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()", ".validate": "newData.isString() && newData.val().length <= 60" },
+          "prep_eta_min": { ".write": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()", ".validate": "newData.isNumber() && newData.val() >= 5 && newData.val() <= 120" },
+          "prep_stats":   { },
+          "$other":       { ".validate": false }
         }
       }
     },
