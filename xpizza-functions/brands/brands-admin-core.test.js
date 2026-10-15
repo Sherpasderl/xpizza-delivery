@@ -42,6 +42,24 @@ const run = async (db, op, id, apply) => { const lines = []; const code = await 
   assert.strictEqual(r.code, 1); assert.ok(JSON.parse(r.out).findings.length > 0); assert.strictEqual(writes(db), 0, 'status never writes');
   ok('status: consistent → exit 0; a finding → exit 1; never writes (even with --apply)');
 
+  // codex build r1 P2 — status never fails open on a malformed /brands root or an invalid brand
+  const unbranded = { leg_a: { identity: ident() } };   // no identity claims a brand, so an empty /brands is consistent
+  db = fakeRtdb({ restaurants: unbranded });
+  r = await run(db, 'status', undefined, false);
+  assert.strictEqual(r.code, 0, `absent /brands = empty, OK\n${r.out}`); assert.deepStrictEqual(JSON.parse(r.out).findings, []);
+  for (const [label, root] of [['false', false], ['42', 42], ['a numeric-key array', [TB]], ['a string', 'x']]) {
+    db = fakeRtdb({ restaurants: unbranded, brands: root });
+    r = await run(db, 'status', undefined, false);
+    assert.strictEqual(r.code, 1, `/brands = ${label} → non-zero exit\n${r.out}`);
+    assert.ok(JSON.parse(r.out).findings.some((f) => f.code === 'brands_root_invalid'), `/brands = ${label} → a brands_root_invalid finding`);
+  }
+  db = fakeRtdb({ restaurants: seedState().restaurants, brands: { tb_brand: TB, bad_b: { name: 'Bad' } } });
+  r = await run(db, 'status', undefined, false);
+  assert.strictEqual(r.code, 1, 'one invalid brand → non-zero exit');
+  assert.strictEqual(JSON.parse(r.out).brands.bad_b.valid, false);
+  assert.ok(JSON.parse(r.out).findings.some((f) => f.code === 'brand_invalid' && f.brandId === 'bad_b'), 'the invalid brand is a finding');
+  ok('status: absent /brands → exit 0; scalar / array root → brands_root_invalid, exit 1; any valid:false brand → finding, exit 1');
+
   db = fakeRtdb(seedState());
   assert.strictEqual((await run(db, 'seed-legacy', 'nobody', true)).code, 1, 'refused seed → exit 1');
   assert.strictEqual((await run(db, 'publish', 'nobody', true)).code, 1, 'refused publish → exit 1');

@@ -7,8 +7,13 @@ const S = require('./brand-store');
 
 async function runBrandsAdmin({ rtdb, op, id, apply, nowMs, log }) {
   if (op === 'status') {
-    const brands = (await S.readNode(rtdb, 'brands')) || {};
-    const findings = checkMembership(brands, await S.readIdentities(rtdb));
+    // Never fail open: absent (null) is an empty /brands; any other non-plain-object root (a scalar, or an array — RTDB returns a
+    // 0..n-keyed map as one) is itself a finding. An invalid brand inside a valid root is checkMembership's brand_invalid finding.
+    const root = await S.readNode(rtdb, 'brands');
+    const rootOk = root === null || (typeof root === 'object' && !Array.isArray(root));
+    const brands = rootOk && root !== null ? root : {};
+    const findings = rootOk ? [] : [{ code: 'brands_root_invalid', type: Array.isArray(root) ? 'array' : typeof root }];
+    findings.push(...checkMembership(brands, await S.readIdentities(rtdb)));
     const summary = Object.fromEntries(Object.keys(brands).sort().map((b) => {
       const st = brands[b] && brands[b].activation && brands[b].activation.state;
       return [b, { state: st === undefined ? null : st, valid: validateBrand(b, brands[b]).ok }];
