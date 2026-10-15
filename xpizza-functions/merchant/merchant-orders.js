@@ -1,0 +1,116 @@
+'use strict';
+// H1a T4 — the order-action runner behind merchantAccept / MoreTime / Ready / Handed / Reject, plus merchantOrderState.
+// Dependencies are injected ({db, resolveBrand, now, HttpsError}) so the interleavings are unit-testable; index.js wires them.
+//
+// Flow: validate → surface === 'handheld' (else failed-precondition) → authorizeHandheld → receipt pre-check (a matching
+// receipt returns its stored result BEFORE any mutable read, so a lost-response replay never turns into driver_assigned)
+// → más tiempo only: a fresh delivery-task read that fails CLOSED (missing / malformed / unreadable = assigned)
+// → ONE runTransaction(orders/{oid}) over the pure applyAction → the result.
+// Gate, auth and input problems THROW HttpsError; business outcomes (stale_state, op_conflict, …) are RETURNED.
+const crypto = require('crypto');
+const V = require('./merchant-validate');
+const { surfaceOf } = require('./merchant-gate');
+const { authorizeHandheld } = require('./merchant-scope');
+const { applyAction } = require('./merchant-transitions');
+
+const AUTH_CODE = { unauthenticated: 'unauthenticated', forbidden: 'permission-denied', unavailable: 'unavailable' };
+
+function canonical(v) {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(',')}}`;
+  return JSON.stringify(v === undefined ? null : v);
+}
+const hashOf = (payload) => crypto.createHash('sha256').update(canonical(payload)).digest('hex');
+
+// Validate the request into { rid, oid, op_id, payload } or throw invalid-argument.
+function parse(action, data, HttpsError) {
+  const d = data || {};
+  const bad = (what) => { throw new HttpsError('invalid-argument', `bad ${what}`); };
+  const rid = V.vRid(d.rid) || bad('rid');
+  const oid = V.vOid(d.oid) || bad('oid');
+  const op_id = V.vOpId(d.op_id) || bad('op_id');
+  let payload;
+  switch (action) {
+    case 'accept': { const n = V.vPrep(d.prep_min); if (n === null) bad('prep_min'); payload = { prep_min: n }; break; }
+    case 'more': { const a = V.vAdd(d.add_min); if (a === null) bad('add_min'); payload = { add_min: a }; break; }
+    case 'ready': case 'handed': payload = {}; break;
+    case 'reject': {
+      const reason = V.vReason(d.reason) || bad('reason');
+      const note = V.vNote(d.note); if (note === undefined) bad('note');
+      const gone_items = V.vItems(d.gone_items); if (gone_items === undefined) bad('gone_items');
+      payload = { reason, note, gone_items };
+      break;
+    }
+    default: bad('action');
+  }
+  return { rid, oid, op_id, payload };
+}
+
+async function gateAndAuth({ db, resolveBrand, HttpsError }, auth, rid) {
+  if (!auth || !auth.uid) throw new HttpsError('unauthenticated', 'sign in');
+  let surface;
+  try { surface = await surfaceOf(db, rid); } catch (_) { throw new HttpsError('unavailable', 'surface unreadable'); }
+  if (surface !== 'handheld') throw new HttpsError('failed-precondition', 'not_enabled');
+  const a = await authorizeHandheld(db, auth, rid, { resolveBrand });
+  if (!a.ok) throw new HttpsError(AUTH_CODE[a.code] || 'permission-denied', a.code);
+  return a.uid;
+}
+
+async function readVal(db, path) { return (await db.ref(path).once('value')).val(); }
+
+// true unless the delivery task is a readable object whose assigned_driver_id is null/absent (fail closed).
+async function driverAssigned(db, oid) {
+  try {
+    const t = await readVal(db, `tasks/${oid}_delivery`);
+    if (!t || typeof t !== 'object' || Array.isArray(t)) return true;
+    return t.assigned_driver_id != null;
+  } catch (_) { return true; }
+}
+
+async function runOrderAction(deps, auth, action, data) {
+  const { db, now, HttpsError } = deps;
+  if (!auth || !auth.uid) throw new HttpsError('unauthenticated', 'sign in');
+  const { rid, oid, op_id, payload } = parse(action, data, HttpsError);
+  const uid = await gateAndAuth(deps, auth, rid);
+  const payloadHash = hashOf(payload);
+
+  let prior;
+  try { prior = await readVal(db, `orders/${oid}/handheld_ops/${op_id}`); } catch (_) { throw new HttpsError('unavailable', 'receipt unreadable'); }
+  if (prior) {
+    return (prior.by === uid && prior.action === action && prior.payload_hash === payloadHash) ? prior.result : { ok: false, code: 'op_conflict' };
+  }
+  if (action === 'more') {
+    let type;
+    try { type = await readVal(db, `orders/${oid}/order_type`); } catch (_) { throw new HttpsError('unavailable', 'order unreadable'); }
+    if (type !== 'pickup' && await driverAssigned(db, oid)) return { ok: false, code: 'driver_assigned' };
+  }
+
+  let outcome = null;
+  const nowMs = now();
+  await db.ref(`orders/${oid}`).transaction((node) => {
+    if (node === null) { outcome = { ok: false, code: 'not_found' }; return null; }   // null-first safe — see note below
+    const r = applyAction(node, { action, op_id, rid, payload }, { uid, nowMs, payloadHash });
+    outcome = r.commit ? r.result : r.abort;
+    return r.commit ? r.commit : undefined;
+  });
+  return outcome;
+}
+// Null-first safety (same discipline as cancel-order.js claimDecision, a679797): the Admin SDK's first optimistic call can pass
+// null for an EXISTING node when nothing is cached. Aborting there would end the transaction locally and falsely report
+// not_found. Returning null instead proposes "no node": for a truly absent order that commits as a no-op (and not_found
+// stands); for an existing order the server rejects the stale hash and re-runs the handler with the real value, which
+// overwrites `outcome`. The emulator suite (T4) exercises this against a cold cache.
+
+async function orderState(deps, auth, data) {
+  const { db, HttpsError } = deps;
+  const d = data || {};
+  const rid = V.vRid(d.rid); const oid = V.vOid(d.oid);
+  if (!rid || !oid) throw new HttpsError('invalid-argument', 'bad rid/oid');
+  await gateAndAuth(deps, auth, rid);
+  let o;
+  try { o = await readVal(db, `orders/${oid}`); } catch (_) { throw new HttpsError('unavailable', 'order unreadable'); }
+  if (!o || o.restaurant_id !== rid || typeof o.routing_reason !== 'string') throw new HttpsError('failed-precondition', 'not_served');
+  return { driver_assigned: o.order_type === 'pickup' ? false : await driverAssigned(db, oid) };
+}
+
+module.exports = { runOrderAction, orderState, hashOf, canonical };
