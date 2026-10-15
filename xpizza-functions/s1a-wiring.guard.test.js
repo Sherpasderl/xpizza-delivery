@@ -9,12 +9,13 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { HUNKS, applyS1aIndex, unapplyS1aIndex } = require('./tools/s1a-inverse');
+const { unapplyS1bIndex } = require('./tools/s1b-inverse');   // S1b sits ON TOP of S1a — strip it FIRST (newest-first)
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const BASE = 'c83f2f9';   // the rebase base (S2, atop G2+H0+serial3); S1a's edits are the only index.js delta on top of it
 const baseIdx = execFileSync('git', ['show', `${BASE}:xpizza-functions/index.js`], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 28 });
-const real = require('./tools/a1-inverse').unapplyA1Index(read('index.js'));   // PLAN-A A-1 (newer) is reversed first
+const real = require('./tools/a1-inverse').unapplyA1Index(require('./tools/s1b-inverse').unapplyS1bIndex(read('index.js')));   // PLAN-A A-1 (newer) is reversed first
 
 // ── 1. the inverse reproduces the base byte-for-byte ──
 assert.strictEqual(unapplyS1aIndex(real), baseIdx, `🔴 index.js minus the S1a edits is not ${BASE}:index.js`);

@@ -11,10 +11,17 @@
 //
 // Pure logic with INJECTED deps (db, auth, HttpsError) so it is unit-testable and constructs no Admin app itself.
 // S1b's submitDriverProfile wraps this same helper (the coverage guard asserts every driver callable calls it).
+//
+// S1b (§1.1a) EXTENDS this as a strict SUPERSET: in addition to the S1a checks it enforces the account's monotonic
+// revocation cutoff `revoke_after` (ms). Auth revocation is eventual (the projection sweep runs revokeRefreshTokens
+// after the fact), so a session minted BEFORE the cutoff must be refused here immediately — even after a reactivation
+// has cleared `deactivated` and re-enabled Auth. An absent `revoke_after` is inert (no new rejection), so accounts
+// that were never deactivated behave exactly as in S1a.
 async function assertDriverCallerActive(uid, authToken, { db, auth, HttpsError }) {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
-  const [deactSnap, user] = await Promise.all([
+  const [deactSnap, revokeAfterSnap, user] = await Promise.all([
     db.ref(`driver_accounts/${uid}/deactivated`).once('value'),
+    db.ref(`driver_accounts/${uid}/revoke_after`).once('value'),
     auth.getUser(uid),
   ]);
   if (deactSnap.val() === true) throw new HttpsError('permission-denied', 'Tu cuenta está desactivada.');
@@ -22,6 +29,12 @@ async function assertDriverCallerActive(uid, authToken, { db, auth, HttpsError }
   const validAfterMs = user && user.tokensValidAfterTime ? Date.parse(user.tokensValidAfterTime) : 0;
   const authTimeMs = authToken && authToken.auth_time ? authToken.auth_time * 1000 : 0;
   if (validAfterMs && authTimeMs && authTimeMs < validAfterMs) {
+    throw new HttpsError('permission-denied', 'Sesión expirada, iniciá sesión de nuevo.');
+  }
+  // S1b §1.1a — the persisted cutoff survives reactivation (it is never lowered/cleared) and is honored before the
+  // delayed Auth revoke lands. Absent cutoff ⇒ falsy ⇒ no rejection.
+  const revokeAfterMs = revokeAfterSnap.val();
+  if (revokeAfterMs && authTimeMs && authTimeMs < revokeAfterMs) {
     throw new HttpsError('permission-denied', 'Sesión expirada, iniciá sesión de nuevo.');
   }
 }

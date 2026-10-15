@@ -565,6 +565,18 @@
   "xpizza-dispatch/index.html<script@0>#agedOrd@xpizza-dispatch/index.html<script@0>#renderPedidosTab>anon~2": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#draRenderDeactivate@xpizza-dispatch/index.html<script@0>#draRender": {
+   "status": "pending"
+  },
+  "xpizza-dispatch/index.html<script@0>#cashAttestDisplay@xpizza-dispatch/index.html<script@0>#draRenderDeactivate": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate@xpizza-dispatch-mobile/index.html<script@0>#mdraRender": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#mdraCashDisplay@xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#alertContent@xpizza-dispatch/index.html<script@0>#rowHtml": {
    "status": "pending"
   },

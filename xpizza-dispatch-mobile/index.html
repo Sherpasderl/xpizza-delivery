@@ -437,7 +437,8 @@ import { pushSupport } from './push-support.js';
 import { createGlideEngine } from './driver-glide.js';   // bundled verbatim from xpizza-dispatch (parity test)
 // DB helpers: the ONE direct write (own push subscription) plus a READ of /.info/connected for the
 // liveness pill. Same firebase-database module the SDK imports (v10.13.2, browser-deduped).
-import { ref, set, onValue, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+import { ref, set, onValue, off as fbOff, get as fbGet, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+import { getFunctions as mdraGetFunctions, httpsCallable as mdraHttpsCallable } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js';   // S1b — driver-admin onCall v2 (same wire the driver app uses)
 // P-SELFUPDATE CP2 (codex CP2 r1 B4): this page's one direct SDK write is counted until acknowledged, like XPD's
 const sherpaTracked = (p) => { try { const S = window.SherpaClient; if (S && typeof S.trackWrite === 'function') S.trackWrite(p); } catch (_) {} return p; };
 
@@ -1075,12 +1076,14 @@ function renderDriversTab(){
     || String(a.name || '').localeCompare(String(b.name || ''));
   const on = all.filter(([, d]) => d.status !== XPD.DRIVER_STATUS.OFF_SHIFT).sort(byLiveName);
   const off = all.filter(([, d]) => d.status === XPD.DRIVER_STATUS.OFF_SHIFT).sort(byLiveName);
-  $('pane').innerHTML = (on.length || off.length)
+  const adminBar = `<div style="display:flex;justify-content:flex-end;margin:0 0 8px"><button class="mdra-open" id="mdra-open" type="button">Administrar repartidores</button></div>`;
+  $('pane').innerHTML = adminBar + ((on.length || off.length)
     ? `<div class="sec">En turno<span class="n num">${on.length}</span></div>
        <div class="panel">${on.map(([u, d]) => driverRow(u, d)).join('') || '<div class="empty" style="padding:24px"><p>Nadie en turno.</p></div>'}</div>
        <div class="sec">Fuera de turno<span class="n num">${off.length}</span></div>
        <div class="panel">${off.map(([u, d]) => driverRow(u, d)).join('') || '<div class="empty" style="padding:24px"><p>Nadie fuera de turno.</p></div>'}</div>`
-    : `<div class="empty"><b>Sin repartidores</b><p>Todavía no hay repartidores registrados.</p></div>`;
+    : `<div class="empty"><b>Sin repartidores</b><p>Todavía no hay repartidores registrados.</p></div>`);
+  $('mdra-open')?.addEventListener('click', mdraOpen);
 }
 
 // ── tabs ──
@@ -1653,6 +1656,165 @@ function clearFocus(){
 }
 
 $('ver-todos').addEventListener('click', () => { clearFocus(); if (mapReady) { map.setZoom(13); renderDrivers(); } });
+
+// ===========================================================================
+// S1b — Administrar repartidores (mobile). Same record-is-truth model + the
+// SAME pure derivation helpers as the desktop panel; a full-screen sheet.
+// ===========================================================================
+function mdraDeriveState(rec) {
+  if (!rec || typeof rec !== 'object') return 'unknown';
+  if (rec.onboarding_state === 'void') return 'void';
+  if (rec.deactivated === true) return 'deactivated';
+  const approved = rec.approved_at != null || rec.grandfathered === true;
+  if (rec.onboarding_state === 'active') { if (rec.enabled === true) return 'active'; if (rec.enabled === false) return approved ? 'suspended' : 'unknown'; return 'unknown'; }
+  if (rec.onboarding_state === 'pending') return 'pending';
+  if (rec.onboarding_state === 'profile_submitted') return 'profile_submitted';
+  return 'unknown';
+}
+function mdraActions(state) {
+  switch (state) {
+    case 'active': return ['suspend', 'deactivate'];
+    case 'profile_submitted': return ['approve'];
+    case 'pending': return ['reinvite'];
+    case 'suspended': return ['reactivate', 'deactivate'];
+    case 'deactivated': return ['reactivate'];
+    default: return [];
+  }
+}
+function mdraPill(state) {
+  const m = { active: ['ok', 'Activo'], pending: ['pend', 'Pendiente'], profile_submitted: ['pend', 'Perfil enviado'], suspended: ['susp', 'Suspendido'], deactivated: ['dead', 'Desactivado'], void: ['unk', 'Anulado'], unknown: ['unk', 'Estado desconocido'] };
+  return m[state] || m.unknown;
+}
+function mdraName(uid, rec) { return (rec && rec.profile && rec.profile.name) || (rec && rec.name) || ('Repartidor ' + String(uid || '').slice(0, 6)); }
+function mdraLatestCuadre(shifts) { if (!shifts || typeof shifts !== 'object') return null; let b = null; for (const k of Object.keys(shifts)) { const c = shifts[k] && shifts[k].cuadre; if (c && typeof c === 'object' && Number.isFinite(c.closed_at) && (!b || c.closed_at > b.closed_at)) b = c; } return b; }
+function mdraCashDisplay(cuadre, err) {
+  if (err) return { available: false, text: 'Cuadre no disponible' };
+  if (!cuadre) return { available: false, text: 'Sin cuadre registrado' };
+  const owed = cuadre.cash_owed; if (!Number.isFinite(owed) || owed < 0 || !Number.isFinite(cuadre.closed_at)) return { available: false, text: 'Cuadre no disponible' };
+  const tag = cuadre.needs_dispatch_review === true ? ' · revisión pendiente' : (cuadre.provisional === true ? ' · provisional' : (cuadre.provisional === undefined ? ' · heredado' : ''));
+  return { available: true, text: 'L ' + owed.toLocaleString('es-HN') + tag };
+}
+function mdraBlockers(p) { const r = []; if (p && p.openShift) r.push('open_shift'); if (p && p.openOrders && p.openOrders.length) r.push('open_tasks'); if (!(p && p.cashAttested === true)) r.push('cash'); return r; }
+
+const MDRA = { recs: {}, filter: 'all', unsub: null, cashUnsub: null, cash: undefined, cashErr: null, view: 'list', sel: null, attested: false };
+
+function mdraEnsure() {
+  if ($('mdra-sheet')) return;
+  const st = document.createElement('style');
+  st.textContent = `#mdra-sheet{position:fixed;inset:0;z-index:999;background:var(--bg,#1c2027);display:none;flex-direction:column;overflow:auto}
+  #mdra-sheet.open{display:flex}
+  .mdra-open{background:var(--surface-2,#2d323a);border:1px solid var(--border,rgba(255,255,255,.12));color:var(--text,#f2f4f6);font-size:12px;font-weight:600;padding:7px 12px;border-radius:9px}
+  .mdra-top{display:flex;align-items:center;gap:10px;padding:16px;border-bottom:1px solid var(--border-soft,rgba(255,255,255,.07));position:sticky;top:0;background:var(--bg,#1c2027)}
+  .mdra-top b{font-size:16px} .mdra-x{margin-left:auto;background:none;border:none;color:var(--text-dim,#9b9993);font-size:20px}
+  .mdra-b{padding:14px 16px 40px} .mdra-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .mdra-chip{font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--border,rgba(255,255,255,.12));background:var(--surface-2,#2d323a);color:var(--text-soft,#a9aba9)}
+  .mdra-chip.on{background:var(--primary-soft,rgba(166,160,240,.16));border-color:var(--primary,#a6a0f0);color:var(--text,#f2f4f6)}
+  .mdra-row{display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--border-soft,rgba(255,255,255,.07));border-radius:11px;background:var(--surface-2,#2d323a);margin-bottom:8px}
+  .mdra-row.mut{opacity:.55} .mdra-who{flex:1;min-width:0} .mdra-nm{font-size:14px;font-weight:600} .mdra-mt{font-size:12px;color:var(--text-dim,#9b9993)}
+  .mdra-pill{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px}
+  .mdra-pill.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0)} .mdra-pill.pend{background:var(--warn-soft,rgba(231,189,134,.16));color:var(--warn,#e7bd86)}
+  .mdra-pill.susp{background:var(--surface-3,#3b4048);color:var(--text-soft,#a9aba9)} .mdra-pill.dead{background:var(--accent-soft,rgba(236,154,161,.16));color:var(--accent,#ec9aa1)} .mdra-pill.unk{background:var(--surface-3,#3b4048);color:var(--text-dim,#9b9993)}
+  .mdra-act{font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid var(--border,rgba(255,255,255,.12));background:var(--surface-3,#3b4048);color:var(--text,#f2f4f6);margin-left:6px}
+  .mdra-act.pri{background:var(--primary,#a6a0f0);color:var(--primary-fg,#201c48);border-color:transparent} .mdra-act.ok{background:var(--success-soft,rgba(127,200,160,.16));color:var(--success,#7fc8a0);border-color:transparent}
+  .mdra-act.danger{background:var(--accent-solid,#cc3a45);color:#fff;border-color:transparent} .mdra-act.warn{background:var(--warn,#e7bd86);color:var(--warn-fg,#5a3c10);border-color:transparent} .mdra-act[disabled]{opacity:.45}
+  .mdra-full{width:100%;margin:8px 0 0} .mdra-field{display:flex;flex-direction:column;gap:5px;margin-bottom:11px} .mdra-field input{background:var(--surface,#262a31);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:9px;padding:11px;color:var(--text,#f2f4f6);font-size:15px}
+  .mdra-inset{background:var(--surface,#262a31);border:1px solid var(--border-soft,rgba(255,255,255,.07));border-radius:11px;padding:13px;margin:11px 0}
+  .mdra-check{display:flex;align-items:center;gap:10px;font-size:14px;margin-top:10px} .mdra-box{width:22px;height:22px;border-radius:6px;border:1.5px solid var(--border,rgba(255,255,255,.12));display:grid;place-items:center;color:transparent} .mdra-check.on .mdra-box{background:var(--success,#7fc8a0);color:#10331e;border-color:transparent}
+  .mdra-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim,#9b9993)} .mdra-owner{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--warn,#e7bd86)} .mdra-mut-t{font-size:12px;color:var(--text-dim,#9b9993)}
+  .mdra-cond{display:flex;gap:9px;margin-bottom:9px} .mdra-ci{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px} .mdra-ci.bad{background:var(--accent-solid,#cc3a45)} .mdra-ci.good{background:var(--success,#7fc8a0)}
+  .mdra-back{background:none;border:none;color:var(--text-dim,#9b9993);font-size:13px;margin-bottom:12px}`;
+  document.head.appendChild(st);
+  const sheet = document.createElement('div');
+  sheet.id = 'mdra-sheet';
+  sheet.innerHTML = `<div class="mdra-top"><b>Administrar repartidores</b><button class="mdra-x" id="mdra-x" aria-label="Cerrar"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div class="mdra-b" id="mdra-body"></div>`;
+  document.body.appendChild(sheet);
+  $('mdra-x').addEventListener('click', mdraClose);
+}
+async function mdraCall(name, data) {
+  // v2 onCall via the Firebase SDK (same as the driver app) — resolves endpoint/CORS/App Check + FunctionsError mapping.
+  const auth = XPD.getAuthInstance && XPD.getAuthInstance();
+  if (!auth || !auth.currentUser) throw Object.assign(new Error('No hay sesión'), { code: 'unauthenticated' });
+  const res = await mdraHttpsCallable(mdraGetFunctions(auth.app, 'us-central1'), name)(data || {});
+  return res.data || {};
+}
+function mdraOpen() {
+  mdraEnsure(); MDRA.view = 'list'; MDRA.sel = null; $('mdra-sheet').classList.add('open');
+  MDRA.unsub = onValue(ref(XPD.getDb(), 'driver_accounts'), (s) => { MDRA.recs = s.val() || {}; mdraRender(); }, () => { MDRA.recs = {}; mdraRender(); });
+  MDRA.cashUnsub = XPD.subscribeToDriverCash((c) => { MDRA.cash = c || {}; MDRA.cashErr = null; if (MDRA.view === 'deactivate') mdraRender(); }, (err) => { MDRA.cashErr = err || { __error: true }; if (MDRA.view === 'deactivate') mdraRender(); });
+  mdraRender();
+}
+function mdraClose() {
+  $('mdra-sheet')?.classList.remove('open');
+  try { if (MDRA.unsub) MDRA.unsub(); else fbOff(ref(XPD.getDb(), 'driver_accounts')); } catch (_) {}
+  try { if (MDRA.cashUnsub) MDRA.cashUnsub(); } catch (_) {}
+  MDRA.unsub = null; MDRA.cashUnsub = null; MDRA.cash = undefined; MDRA.cashErr = null;
+}
+function mdraRowHtml(uid, rec) {
+  const st = mdraDeriveState(rec); const [pc, pl] = mdraPill(st); const acts = mdraActions(st);
+  const ACT = { approve: ['ok', 'Aprobar'], reinvite: ['', 'Reenviar'], reactivate: ['ok', 'Reactivar'], suspend: ['warn', 'Suspender'], deactivate: ['danger', 'Desactivar'] };
+  const actHtml = acts.map((a) => `<button class="mdra-act ${ACT[a][0]}" data-mact="${a}" data-uid="${escapeHtml(uid)}">${ACT[a][1]}</button>`).join('');
+  return `<div class="mdra-row${st === 'void' || st === 'unknown' ? ' mut' : ''}"><div class="mdra-who"><div class="mdra-nm">${escapeHtml(mdraName(uid, rec))}</div><div class="mdra-mt"><span class="mdra-pill ${pc}">${escapeHtml(pl)}</span></div></div>${actHtml}</div>`;
+}
+function mdraRender() {
+  mdraEnsure(); const body = $('mdra-body'); if (!body) return;
+  if (MDRA.view === 'invite') return mdraInvite(body);
+  if (MDRA.view === 'deactivate') return mdraDeactivate(body);
+  const recs = MDRA.recs || {}; const uids = Object.keys(recs);
+  const match = (s) => MDRA.filter === 'all' ? true : (MDRA.filter === 'pending' ? (s === 'pending' || s === 'profile_submitted') : s === MDRA.filter);
+  const cc = { all: uids.length, pending: 0, active: 0, suspended: 0, deactivated: 0 };
+  uids.forEach((u) => { const s = mdraDeriveState(recs[u]); if (s === 'pending' || s === 'profile_submitted') cc.pending++; else if (cc[s] !== undefined) cc[s]++; });
+  const chips = [['all', 'Todos', cc.all], ['pending', 'Pendientes', cc.pending], ['active', 'Activos', cc.active], ['suspended', 'Suspendidos', cc.suspended], ['deactivated', 'Desactivados', cc.deactivated]]
+    .map(([k, l, n]) => `<button class="mdra-chip ${MDRA.filter === k ? 'on' : ''}" data-mfilter="${k}">${l} · ${n}</button>`).join('');
+  const rows = uids.filter((u) => match(mdraDeriveState(recs[u]))).sort((a, b) => mdraName(a, recs[a]).localeCompare(mdraName(b, recs[b]))).map((u) => mdraRowHtml(u, recs[u])).join('')
+    || `<div class="empty" style="padding:28px"><p>${uids.length ? 'Sin repartidores en este filtro.' : 'No hay repartidores registrados.'}</p></div>`;
+  body.innerHTML = `<button class="mdra-act pri" id="mdra-inv" style="margin-bottom:12px">+ Invitar</button><div class="mdra-chips">${chips}</div>${rows}`;
+  $('mdra-inv').addEventListener('click', () => { MDRA.view = 'invite'; mdraRender(); });
+  body.querySelectorAll('[data-mfilter]').forEach((el) => el.addEventListener('click', () => { MDRA.filter = el.getAttribute('data-mfilter'); mdraRender(); }));
+  body.querySelectorAll('[data-mact]').forEach((el) => el.addEventListener('click', () => mdraAction(el.getAttribute('data-mact'), el.getAttribute('data-uid'))));
+}
+async function mdraAction(act, uid) {
+  try {
+    if (act === 'approve') { await mdraCall('approveDriver', { uid }); }
+    else if (act === 'reinvite') { const r = await mdraCall('inviteDriver', { uid }); mdraLink(r.link); return; }
+    else if (act === 'suspend') { await mdraCall('setDriverSuspended', { uid }); }
+    else if (act === 'reactivate') { await mdraCall('reactivate', { uid }); }
+    else if (act === 'deactivate') { MDRA.view = 'deactivate'; MDRA.sel = uid; MDRA.attested = false; mdraRender(); return; }
+    mdraRender();
+  } catch (e) { mdraErr(e); }
+}
+function mdraInvite(body) {
+  body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-field"><span class="mdra-lbl">Nombre</span><input id="mdra-n"></div><div class="mdra-field"><span class="mdra-lbl">Teléfono</span><input id="mdra-p"></div><div class="mdra-field"><span class="mdra-lbl">Email</span><input id="mdra-e" type="email"></div><button class="mdra-act pri mdra-full" id="mdra-cr">Crear invitación</button>`;
+  $('mdra-bk').addEventListener('click', () => { MDRA.view = 'list'; mdraRender(); });
+  $('mdra-cr').addEventListener('click', async () => { try { const r = await mdraCall('inviteDriver', { name: $('mdra-n').value, phone: $('mdra-p').value, email: $('mdra-e').value }); MDRA.view = 'list'; mdraLink(r.link); } catch (e) { mdraErr(e); } });
+}
+function mdraLink(link) {
+  const body = $('mdra-body'); MDRA.view = 'list'; if (!link) { mdraRender(); return; }
+  body.innerHTML = `<div class="mdra-inset"><span class="mdra-lbl" style="color:var(--success,#7fc8a0)">Enlace de contraseña</span><div style="font-family:monospace;word-break:break-all;margin:9px 0;font-size:13px">${escapeHtml(link)}</div><div class="mdra-mut-t">Se muestra una sola vez · compartilo ahora.</div></div><button class="mdra-act ok mdra-full" id="mdra-wa">Enviar por WhatsApp</button><button class="mdra-act mdra-full" id="mdra-cp">Copiar</button><button class="mdra-act mdra-full" id="mdra-dn">Listo</button>`;
+  $('mdra-cp').addEventListener('click', () => { try { navigator.clipboard.writeText(link); } catch (_) {} });
+  $('mdra-wa').addEventListener('click', () => { try { window.open('https://wa.me/?text=' + encodeURIComponent(link), '_blank'); } catch (_) {} });
+  $('mdra-dn').addEventListener('click', () => { MDRA.view = 'list'; mdraRender(); });
+}
+async function mdraDeactivate(body) {
+  const uid = MDRA.sel; const rec = MDRA.recs[uid] || {};
+  let openShift = false, openOrders = [];
+  try {
+    const d = (await fbGet(ref(XPD.getDb(), `drivers/${uid}`))).val() || {}; openShift = d.active === true || (d.current_shift_id != null);
+    const tasks = (await fbGet(ref(XPD.getDb(), 'tasks'))).val() || {}; const set = new Set();
+    for (const t of Object.keys(tasks)) { const x = tasks[t]; if (x && x.assigned_driver_id === uid && x.status !== 'completed' && x.status !== 'cancelled') set.add(x.order_id || t); }
+    openOrders = [...set];
+  } catch (_) {}
+  const cuadre = (MDRA.cash && !MDRA.cashErr) ? mdraLatestCuadre(MDRA.cash[uid]) : null; const cash = mdraCashDisplay(cuadre, MDRA.cashErr);
+  const blockers = mdraBlockers({ openShift, openOrders, cashAttested: MDRA.attested === true }); const hard = openShift || openOrders.length > 0;
+  const cond = ['open_shift', 'open_tasks'].map((r) => { const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b></div></div>`; }).join('');
+  body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div style="font-size:16px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(mdraName(uid, rec))}</div>`
+    + (hard ? `<div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">Todavía no se puede desactivar</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
+    + `<div class="mdra-inset"><div style="display:flex;align-items:center"><span class="mdra-lbl">Efectivo</span><span class="mdra-owner" style="margin-left:auto">Decisión del dueño</span></div><label class="mdra-check ${MDRA.attested ? 'on' : ''}" id="mdra-ck"><span class="mdra-box"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></span><span>Sin efectivo pendiente</span></label><div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span class="mdra-lbl">Último cuadre</span><span style="color:${cash.available ? 'var(--text,#f2f4f6)' : 'var(--text-dim,#9b9993)'}">${escapeHtml(cash.text)}</span></div><div class="mdra-mut-t" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`
+    + `<button class="mdra-act danger mdra-full" id="mdra-go" ${blockers.length ? 'disabled' : ''}>Desactivar cuenta</button>`;
+  $('mdra-bk').addEventListener('click', () => { MDRA.view = 'list'; MDRA.sel = null; mdraRender(); });
+  $('mdra-ck').addEventListener('click', () => { MDRA.attested = !MDRA.attested; mdraRender(); });
+  $('mdra-go').addEventListener('click', async () => { try { await mdraCall('setDriverDeactivated', { uid, cash_attested: MDRA.attested === true }); MDRA.view = 'list'; MDRA.sel = null; mdraRender(); } catch (e) { mdraErr(e); } });
+}
+function mdraErr(e) { try { alert((e && e.message) || 'Error'); } catch (_) {} }
 
 renderLive();
 </script>

@@ -341,7 +341,7 @@
       }
     },
     "driver_accounts": {
-      ".read": false,
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
       "$uid": {
         ".read": "auth != null && auth.token.handheld !== true && (auth.uid === $uid || root.child('dispatchers').child(auth.uid).exists())",
         ".write": false,
@@ -353,15 +353,83 @@
           ".validate": "newData.isBoolean()"
         },
         "onboarding_state": {
-          ".validate": "newData.val() === 'pending' || newData.val() === 'profile_submitted' || newData.val() === 'active'"
+          ".validate": "newData.val() === 'pending' || newData.val() === 'profile_submitted' || newData.val() === 'active' || newData.val() === 'void'"
         },
         "grandfathered": {
           ".validate": "newData.isBoolean()"
         },
         "note": {
           ".validate": "newData.isString()"
+        },
+        "version": {
+          ".validate": "newData.isNumber()"
+        },
+        "revoke_after": {
+          ".validate": "newData.isNumber()"
+        },
+        "suspended_at": {
+          ".validate": "newData.isNumber()"
+        },
+        "approved_at": {
+          ".validate": "newData.isNumber()"
+        },
+        "invited_at": {
+          ".validate": "newData.isNumber()"
+        },
+        "updated_at": {
+          ".validate": "newData.isNumber()"
+        },
+        "email": {
+          ".validate": "newData.isString()"
+        },
+        "name": {
+          ".validate": "newData.isString()"
+        },
+        "phone": {
+          ".validate": "newData.isString()"
+        },
+        "invited_by": {
+          ".validate": "newData.isString()"
+        },
+        "approved_by": {
+          ".validate": "newData.isString()"
+        },
+        "profile": {
+          "name": {
+            ".validate": "newData.isString()"
+          },
+          "phone": {
+            ".validate": "newData.isString()"
+          },
+          "vehicle": {
+            ".validate": "newData.isString()"
+          },
+          "plate": {
+            ".validate": "newData.isString()"
+          },
+          "submitted_at": {
+            ".validate": "newData.isNumber()"
+          }
+        },
+        "last_op": {
+          "type": {
+            ".validate": "newData.isString()"
+          },
+          "actor_uid": {
+            ".validate": "newData.isString()"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "cash_confirmed": {
+            ".validate": "newData.isBoolean()"
+          }
         }
       }
+    },
+    "driver_account_ops": {
+      ".read": "auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()",
+      ".write": false
     },
     "client_versions": {
       ".read": false,

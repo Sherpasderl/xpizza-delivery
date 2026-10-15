@@ -170,6 +170,9 @@ const { ACTIVE_MODEL_VERSIONS } = require('./ready-time-predict');   // active m
 require('./lib/admin');   // PORTAL SPEED P1: the ONE Admin app — initializeApp moved verbatim to lib/admin.js (shared with portal/functions.js)
 const { pickHandle, svcWriteOrFallback, isExpectedEligibilityDenial } = require('./lib/svc-handle');   // S1a §3 — flag-gated ownership/shift writer handle + tolerant-mode fallback
 const { assertDriverCallerActive } = require('./lib/driver-callable-guard');   // S1a §6 — the shared driver-callable hard-stop
+/* s1b:begin require */
+const adminOps = require('./lib/driver-admin-ops');   // S1b — driver-account admin operations (record = source of truth; Auth derived)
+/* s1b:end require */
 
 // VAPID config for Web Push (set via .env, deployed as runtime env vars)
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
@@ -4390,6 +4393,76 @@ exports.endDriverShift = onCall({ region: 'us-central1' }, async (request) => {
   return { ok: true };
 });
 
+/* s1b:begin callables */
+// ============================================================================
+// S1b — driver-account administration (behind config/driver_admin_enabled).
+// Six callables: thin onCall wrappers that call the authorization gate INLINE
+// then delegate to lib/driver-admin-ops.js. The record is the source of truth;
+// Auth is a derived projection reconciled by syncDriverAuthSweep below.
+//   • submitDriverProfile — the ONE driver-gated callable (shared driver guard).
+//   • invite/approve/suspend/deactivate/reactivate — dispatcher-gated.
+// ============================================================================
+exports.inviteDriver = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid; const db = getDatabase(); const auth = getAuth();
+  await adminOps.assertAdminEnabled(db, HttpsError);
+  await adminOps.assertDispatcherCaller(uid, request.auth?.token, { db, auth, HttpsError });   // S1b §2.0 dispatcher gate
+  return adminOps.inviteDriver(
+    { name: request.data?.name, phone: request.data?.phone, email: request.data?.email, uid: request.data?.uid, actorUid: uid },
+    { db, auth, HttpsError, now: Date.now() });
+});
+
+exports.submitDriverProfile = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+  if (request.auth?.token?.customer === true) throw new HttpsError('permission-denied', 'Solo repartidores.');
+  const db = getDatabase(); const auth = getAuth();
+  await adminOps.assertAdminEnabled(db, HttpsError);
+  await assertDriverCallerActive(uid, request.auth?.token, { db, auth, HttpsError });   // S1b §2.2 shared driver guard
+  return adminOps.submitDriverProfile(
+    { uid, name: request.data?.name, phone: request.data?.phone, vehicle: request.data?.vehicle, plate: request.data?.plate },
+    { db, auth, HttpsError, now: Date.now() });
+});
+
+exports.approveDriver = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid; const db = getDatabase(); const auth = getAuth();
+  await adminOps.assertAdminEnabled(db, HttpsError);
+  await adminOps.assertDispatcherCaller(uid, request.auth?.token, { db, auth, HttpsError });   // S1b §2.0 dispatcher gate
+  return adminOps.approveDriver({ uid: request.data?.uid, actorUid: uid }, { db, auth, HttpsError, now: Date.now() });
+});
+
+exports.setDriverSuspended = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid; const db = getDatabase(); const auth = getAuth();
+  await adminOps.assertAdminEnabled(db, HttpsError);
+  await adminOps.assertDispatcherCaller(uid, request.auth?.token, { db, auth, HttpsError });   // S1b §2.0 dispatcher gate
+  return adminOps.setDriverSuspended({ uid: request.data?.uid, actorUid: uid }, { db, auth, HttpsError, now: Date.now() });
+});
+
+exports.setDriverDeactivated = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid; const db = getDatabase(); const auth = getAuth();
+  await adminOps.assertAdminEnabled(db, HttpsError);
+  await adminOps.assertDispatcherCaller(uid, request.auth?.token, { db, auth, HttpsError });   // S1b §2.0 dispatcher gate
+  return adminOps.setDriverDeactivated(
+    { uid: request.data?.uid, actorUid: uid, cashAttested: request.data?.cash_attested === true },
+    { db, auth, HttpsError, now: Date.now() });
+});
+
+exports.reactivate = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid; const db = getDatabase(); const auth = getAuth();
+  await adminOps.assertAdminEnabled(db, HttpsError);
+  await adminOps.assertDispatcherCaller(uid, request.auth?.token, { db, auth, HttpsError });   // S1b §2.0 dispatcher gate
+  return adminOps.reactivate({ uid: request.data?.uid, actorUid: uid }, { db, auth, HttpsError, now: Date.now() });
+});
+
+// Auth-sync sweep — ALL accounts (small count), every 15 min, runs regardless of the kill switch so a crashed
+// transition's Auth drift always converges (N3). Reconciles disabled⟺deactivated and the revoke_after cutoff.
+exports.syncDriverAuthSweep = onSchedule(
+  { schedule: 'every 15 minutes', timeZone: 'America/Tegucigalpa', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async () => {
+    const out = await adminOps.sweepAuthSync({ db: getDatabase(), auth: getAuth(), now: Date.now() });
+    console.log(`syncDriverAuthSweep: total=${out.total} synced=${out.synced} errors=${out.errors}`);
+  }
+);
+/* s1b:end callables */
 // ingestDriverLocation — native uploader POSTs { locations: [{ ts, lat, lng,
 // accuracy?, heading?, speed? }] } with Authorization: Bearer <opaque token>.
 // Token -> uid (hash lookup), freshness + shift-binding checks, batch ordering

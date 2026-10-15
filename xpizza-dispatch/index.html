@@ -2377,7 +2377,7 @@
     <div class="col right panel" id="right-rail">
       <div class="rail-resize" id="rail-resize-right" title="Ajustar ancho del panel"></div>
       <div class="rail-inner">
-        <div class="phead"><h2>Repartidores</h2><span class="n" id="roster-drv-n">0 en turno</span><button class="phead-collapse" id="roster-collapse" title="Ocultar Repartidores" aria-label="Ocultar el panel Repartidores"><svg class="ic sm"><use href="#i-collapse-r"/></svg></button></div>
+        <div class="phead"><h2>Repartidores</h2><span class="n" id="roster-drv-n">0 en turno</span><button class="phead-admin" id="dra-open" title="Administrar repartidores" aria-label="Administrar repartidores"><svg class="ic sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></button><button class="phead-collapse" id="roster-collapse" title="Ocultar Repartidores" aria-label="Ocultar el panel Repartidores"><svg class="ic sm"><use href="#i-collapse-r"/></svg></button></div>
         <div class="pbody">
           <div class="tree-group" id="drivers-live-group">
             <div class="tree-group-header toggleable" id="drivers-live-toggle">
@@ -2497,6 +2497,75 @@
   </div>
 </div>
 
+<!-- S1b — Administrar repartidores (driver-account admin). Opens from the Repartidores rail; separate overlay so the live board stays clean. Behind config/driver_admin_enabled server-side. -->
+<style id="dra-style">
+  .phead-admin { background:none; border:none; color:var(--text-dim); cursor:pointer; padding:3px; margin-left:4px; border-radius:7px; display:inline-flex; }
+  .phead-admin:hover { color:var(--text); background:var(--hover); }
+  .dra-panel { width:min(560px,94vw); max-height:88vh; display:flex; flex-direction:column; text-align:left; }
+  .dra-head { display:flex; align-items:center; gap:10px; padding:16px 18px 12px; border-bottom:1px solid var(--border-soft); }
+  .dra-head h3 { margin:0; font-size:15px; font-weight:700; letter-spacing:-.01em; color:var(--text); }
+  .dra-head .dra-sub { font-size:11px; color:var(--text-dim); margin-left:auto; }
+  .dra-body { padding:14px 18px 18px; overflow:auto; }
+  .dra-filters { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .dra-chip { font-size:11px; padding:4px 9px; border-radius:999px; border:1px solid var(--border); background:var(--surface-2); color:var(--text-soft); cursor:pointer; }
+  .dra-chip.on { background:var(--primary-soft); border-color:var(--primary); color:var(--text); }
+  .dra-row { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; border:1px solid var(--border-soft); background:var(--surface-2); margin-bottom:7px; }
+  .dra-row.dra-muted { opacity:.55; }
+  .dra-av { width:30px; height:30px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; font-size:12px; font-weight:700; background:var(--surface-3); color:var(--text-soft); }
+  .dra-who { min-width:0; flex:1; }
+  .dra-nm { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dra-mt { font-size:11px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dra-end { display:flex; align-items:center; gap:7px; flex:0 0 auto; }
+  .dra-pill { font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:999px; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+  .dra-pill .dot { width:6px; height:6px; border-radius:50%; }
+  .dra-pill.ok { background:var(--success-soft); color:var(--success); } .dra-pill.ok .dot { background:var(--success); }
+  .dra-pill.pend { background:var(--warn-soft); color:var(--warn); } .dra-pill.pend .dot { background:var(--warn); }
+  .dra-pill.susp { background:var(--surface-3); color:var(--text-soft); } .dra-pill.susp .dot { background:var(--text-dim); }
+  .dra-pill.dead { background:var(--accent-soft); color:var(--accent); } .dra-pill.dead .dot { background:var(--accent-solid); }
+  .dra-pill.unk { background:var(--surface-3); color:var(--text-dim); }
+  .dra-act { font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:8px; border:1px solid var(--border); background:var(--surface-3); color:var(--text); cursor:pointer; }
+  .dra-act.pri { background:var(--btn-pri-bg); color:var(--btn-pri-fg); border-color:transparent; }
+  .dra-act.ok { background:var(--success-soft); color:var(--success); border-color:transparent; }
+  .dra-act.warn { background:var(--btn-warn-bg); color:var(--btn-warn-fg); border-color:transparent; }
+  .dra-act.danger { background:var(--accent-solid); color:#fff; border-color:transparent; }
+  .dra-act.ghost { background:transparent; }
+  .dra-act[disabled] { opacity:.45; cursor:not-allowed; }
+  .dra-kebab { background:none; border:none; color:var(--text-dim); cursor:pointer; padding:4px; border-radius:6px; }
+  .dra-kebab:hover { background:var(--hover); color:var(--text); }
+  .dra-menu { display:flex; gap:6px; }
+  .dra-inset { background:var(--surface); border:1px solid var(--border-soft); border-radius:10px; padding:11px 12px; margin:10px 0; }
+  .dra-inset.warn { background:var(--warn-soft); border-color:transparent; }
+  .dra-inset.danger { background:var(--accent-soft); border-color:transparent; }
+  .dra-inset.ok { background:var(--success-soft); border-color:transparent; }
+  .dra-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); }
+  .dra-field { display:flex; flex-direction:column; gap:4px; margin-bottom:9px; }
+  .dra-field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-size:13px; }
+  .dra-cond { display:flex; gap:8px; align-items:flex-start; margin-bottom:9px; }
+  .dra-ci { width:17px; height:17px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; color:#fff; }
+  .dra-ci.bad { background:var(--accent-solid); } .dra-ci.good { background:var(--success); }
+  .dra-ct b { font-size:12.5px; color:var(--text); } .dra-ct .fix { display:block; font-size:11px; color:var(--text-dim); }
+  .dra-check { display:flex; align-items:center; gap:9px; cursor:pointer; font-size:13px; color:var(--text); margin-top:9px; }
+  .dra-box { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--border); display:grid; place-items:center; color:transparent; }
+  .dra-check.on .dra-box { background:var(--success); border-color:var(--success); color:#10331e; }
+  .dra-owner { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--warn); }
+  .dra-muted-txt { font-size:11px; color:var(--text-dim); }
+  .dra-mono { font-family:'IBM Plex Mono',ui-monospace,monospace; }
+  .dra-btnrow { display:flex; gap:8px; margin-top:12px; }
+  .dra-full { width:100%; justify-content:center; }
+  .dra-back { font-size:11.5px; color:var(--text-dim); background:none; border:none; cursor:pointer; padding:0; margin-bottom:10px; }
+  .dra-empty { text-align:center; padding:28px 10px; color:var(--text-dim); font-size:13px; }
+</style>
+<div class="overlay-bg hidden" id="dra-overlay" role="dialog" aria-modal="true" aria-labelledby="dra-title">
+  <div class="picker-panel dra-panel">
+    <div class="dra-head">
+      <h3 id="dra-title">Administrar repartidores</h3>
+      <span class="dra-sub">solo despacho</span>
+      <button class="dra-kebab" id="dra-close" aria-label="Cerrar"><svg class="ic sm"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="dra-body" id="dra-body"></div>
+  </div>
+</div>
+
 <!-- Task 12: read-only Comms thread sheet (floating glass over the board; populated by renderCommsThread) -->
 <div class="comms-scrim" id="comms-scrim"></div>
 <div class="comms-sheet" id="comms-sheet" role="dialog" aria-modal="true" aria-label="Conversación con cliente"></div>
@@ -2552,6 +2621,8 @@
 
 <script type="module">
 import * as XPD from './xpizza-delivery.js?v=22';
+import { ref as draRef, onValue as draOnValue, off as draOff, get as draGet } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';   // S1b — driver-accounts subscription + deactivate pre-check reads
+import { getFunctions as draGetFunctions, httpsCallable as draHttpsCallable } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js';   // S1b — call the driver-admin onCall v2 functions (same wire the driver app uses)
 import { createGlideEngine } from './driver-glide.js?v=2';
 import { etaEligible, projectArrival, relativeEta, clockTime, dueForRefresh, distanceMeters } from './driver-eta.js?v=1';
 // ── Dispatch Phase-1 pure modules (Torre de Control redesign) ──
@@ -5908,6 +5979,282 @@ $('rail-toggle-right').addEventListener('click', () => togRail('right-open'));
 // F6 #3: in-panel collapse control on the Repartidores header — same mechanism as the topbar toggle (togRail),
 // just a discoverable affordance in the panel. Re-expand via the topbar rail-toggle (the collapsed panel is 0-width).
 $('roster-collapse')?.addEventListener('click', () => togRail('right-open'));
+
+// ===========================================================================
+// S1b — Administrar repartidores (driver-account admin). The record at
+// /driver_accounts/{uid} is the source of truth; this panel renders it and
+// invokes the admin callables. PURE helpers below are unit-lifted by
+// dispatch-driver-admin.test.js — keep them standalone (deps via args/escapeHtml).
+// ===========================================================================
+function deriveDriverAcctState(rec) {
+  if (!rec || typeof rec !== 'object') return 'unknown';
+  if (rec.onboarding_state === 'void') return 'void';
+  if (rec.deactivated === true) return 'deactivated';
+  const approved = rec.approved_at != null || rec.grandfathered === true;
+  if (rec.onboarding_state === 'active') {
+    if (rec.enabled === true) return 'active';
+    if (rec.enabled === false) return approved ? 'suspended' : 'unknown';
+    return 'unknown';
+  }
+  if (rec.onboarding_state === 'pending') return 'pending';
+  if (rec.onboarding_state === 'profile_submitted') return 'profile_submitted';
+  return 'unknown';
+}
+function driverRowActions(state) {
+  switch (state) {
+    case 'active': return ['suspend', 'deactivate'];
+    case 'profile_submitted': return ['approve'];
+    case 'pending': return ['reinvite'];
+    case 'suspended': return ['reactivate', 'deactivate'];
+    case 'deactivated': return ['reactivate'];
+    default: return []; // void, unknown → NO actions (never a destructive control)
+  }
+}
+function driverAcctStatePill(state) {
+  switch (state) {
+    case 'active': return { cls: 'ok', label: 'Activo', dot: true };
+    case 'pending': return { cls: 'pend', label: 'Pendiente', dot: false };
+    case 'profile_submitted': return { cls: 'pend', label: 'Perfil enviado', dot: false };
+    case 'suspended': return { cls: 'susp', label: 'Suspendido', dot: true };
+    case 'deactivated': return { cls: 'dead', label: 'Desactivado', dot: true };
+    case 'void': return { cls: 'unk', label: 'Anulado', dot: false };
+    default: return { cls: 'unk', label: 'Estado desconocido', dot: false };
+  }
+}
+function driverAcctDisplayName(uid, rec, nameHint) {
+  const n = (rec && rec.profile && rec.profile.name) || (rec && rec.name) || nameHint;
+  return n || ('Repartidor ' + String(uid || '').slice(0, 6));
+}
+function driverAcctMeta(state, rec) {
+  if (state === 'pending') return 'invitada · enlace enviado';
+  if (state === 'profile_submitted') return 'perfil enviado';
+  if (state === 'suspended') return 'termina trabajo en curso';
+  if (state === 'deactivated') return 'sin acceso';
+  if (state === 'void') return 'registro anulado';
+  if (state === 'unknown') return 'registro incompleto';
+  const v = rec && rec.profile && rec.profile.vehicle;
+  return v ? String(v).toLowerCase() : 'activo';
+}
+function latestCuadre(driverShifts) {
+  if (!driverShifts || typeof driverShifts !== 'object') return null;
+  let best = null;
+  for (const k of Object.keys(driverShifts)) {
+    const c = driverShifts[k] && driverShifts[k].cuadre;
+    if (c && typeof c === 'object' && Number.isFinite(c.closed_at) && (!best || c.closed_at > best.closed_at)) best = c;
+  }
+  return best;
+}
+function cashAttestDisplay(cuadre, err) {
+  // Informational ONLY — never gates the attestation checkbox. Unavailable data is NEVER shown as a clean L 0.00.
+  if (err) return { available: false, tone: 'error', text: 'Cuadre no disponible' };
+  if (!cuadre) return { available: false, tone: 'none', text: 'Sin cuadre registrado' };
+  const owed = cuadre.cash_owed;
+  if (!Number.isFinite(owed) || owed < 0 || !Number.isFinite(cuadre.closed_at)) return { available: false, tone: 'error', text: 'Cuadre no disponible' };
+  const when = new Date(cuadre.closed_at).toLocaleString('es-HN', { hour: '2-digit', minute: '2-digit' });
+  const money = 'L ' + owed.toLocaleString('es-HN');
+  let kind = 'final';
+  if (cuadre.needs_dispatch_review === true) kind = 'review';
+  else if (cuadre.provisional === true) kind = 'provisional';
+  else if (cuadre.provisional === undefined) kind = 'heredado';
+  const tag = kind === 'final' ? '' : (kind === 'review' ? ' · revisión pendiente' : (kind === 'provisional' ? ' · provisional' : ' · heredado'));
+  return { available: true, tone: kind, text: money + tag + ' · ' + when };
+}
+function deactivateBlockers(precheck) {
+  const r = [];
+  if (precheck && precheck.openShift) r.push('open_shift');
+  if (precheck && precheck.openOrders && precheck.openOrders.length) r.push('open_tasks');
+  if (!(precheck && precheck.cashAttested === true)) r.push('cash');
+  return r;
+}
+function deactivateReasonLabel(reason, n) {
+  if (reason === 'open_shift') return { t: 'Turno abierto', fix: 'Cerrá el turno primero' };
+  if (reason === 'open_tasks') return { t: (n || 0) + ' entrega(s) en curso', fix: 'Reasigná las entregas pendientes' };
+  if (reason === 'cash') return { t: 'Efectivo sin confirmar', fix: 'Confirmá el cuadre al desactivar' };
+  return { t: reason, fix: '' };
+}
+function driverAcctRowHtml(uid, rec, nameHint) {
+  const state = deriveDriverAcctState(rec);
+  const pill = driverAcctStatePill(state);
+  const name = driverAcctDisplayName(uid, rec, nameHint);
+  const acts = driverRowActions(state);
+  const dotHtml = pill.dot ? '<span class="dot"></span>' : '';
+  const ACT = { approve: ['ok', 'Aprobar'], reinvite: ['ghost', 'Reenviar'], reactivate: ['ok', 'Reactivar'], suspend: ['warn', 'Suspender'], deactivate: ['danger', 'Desactivar'] };
+  let actHtml = '';
+  if (acts.length === 1) { const [c, l] = ACT[acts[0]]; actHtml = `<button class="dra-act ${c}" data-act="${acts[0]}" data-uid="${escapeHtml(uid)}">${l}</button>`; }
+  else if (acts.length > 1) { actHtml = '<div class="dra-menu">' + acts.map((a) => { const [c, l] = ACT[a]; return `<button class="dra-act ${c}" data-act="${a}" data-uid="${escapeHtml(uid)}">${l}</button>`; }).join('') + '</div>'; }
+  const muted = (state === 'void' || state === 'unknown') ? ' dra-muted' : '';
+  const initial = escapeHtml((name || '?').trim().charAt(0).toUpperCase() || '?');
+  return `<div class="dra-row${muted}" data-uid="${escapeHtml(uid)}" data-state="${state}">`
+    + `<span class="dra-av">${initial}</span>`
+    + `<div class="dra-who"><div class="dra-nm">${escapeHtml(name)}</div><div class="dra-mt">${escapeHtml(driverAcctMeta(state, rec))}</div></div>`
+    + `<div class="dra-end"><span class="dra-pill ${pill.cls}">${dotHtml}${escapeHtml(pill.label)}</span>${actHtml}</div>`
+    + `</div>`;
+}
+function driverAcctCounts(recs) {
+  const c = { all: 0, pending: 0, active: 0, suspended: 0, deactivated: 0 };
+  for (const uid of Object.keys(recs || {})) {
+    const s = deriveDriverAcctState(recs[uid]); c.all++;
+    if (s === 'pending' || s === 'profile_submitted') c.pending++;
+    else if (s === 'active') c.active++;
+    else if (s === 'suspended') c.suspended++;
+    else if (s === 'deactivated') c.deactivated++;
+  }
+  return c;
+}
+function driverAcctMatchesFilter(state, filter) {
+  if (filter === 'all') return true;
+  if (filter === 'pending') return state === 'pending' || state === 'profile_submitted';
+  return state === filter;
+}
+
+// ---- wiring (not lifted) ----
+const DRA = { recs: {}, filter: 'all', acctUnsub: null, cash: undefined, cashErr: null, cashUnsub: null, view: 'list', selUid: null };
+
+async function callDriverAdmin(name, data) {
+  // v2 onCall — use the Firebase SDK's httpsCallable (same as the driver app at native-location.js:60): it resolves
+  // the endpoint, handles CORS/App Check, serializes the callable protocol, and throws a FunctionsError carrying
+  // .code ('functions/failed-precondition'), .message and .details (the server's structured reasons).
+  const auth = XPD.getAuthInstance && XPD.getAuthInstance();
+  if (!auth || !auth.currentUser) throw Object.assign(new Error('No hay sesión de despacho'), { code: 'unauthenticated' });
+  const res = await draHttpsCallable(draGetFunctions(auth.app, 'us-central1'), name)(data || {});
+  return res.data || {};
+}
+
+function draOpen() {
+  const ov = $('dra-overlay'); if (!ov) return;
+  ov.classList.remove('hidden');
+  DRA.view = 'list'; DRA.selUid = null;
+  // subscribe to /driver_accounts (dispatcher-readable). Kill-switch-off / permission ⇒ empty-state.
+  const accRef = draRef(XPD.getDb(), 'driver_accounts');
+  DRA.acctUnsub = draOnValue(accRef, (snap) => { DRA.recs = snap.val() || {}; draRender(); }, () => { DRA.recs = {}; DRA.acctErr = true; draRender(); });
+  // last-cuadre figures (read-only, informational). Honor the onError path (never crash on a cash read failure).
+  DRA.cashUnsub = XPD.subscribeToDriverCash((c) => { DRA.cash = c || {}; DRA.cashErr = null; if (DRA.view === 'deactivate') draRender(); }, (err) => { DRA.cashErr = err || { __error: true }; if (DRA.view === 'deactivate') draRender(); });
+  draRender();
+}
+function draClose() {
+  const ov = $('dra-overlay'); if (ov) ov.classList.add('hidden');
+  // listener cleanup — unsubscribe the accounts listener AND the per-driver cuadre subscription
+  try { if (DRA.acctUnsub) DRA.acctUnsub(); else draOff(draRef(XPD.getDb(), 'driver_accounts')); } catch (_) {}
+  try { if (DRA.cashUnsub) DRA.cashUnsub(); } catch (_) {}
+  DRA.acctUnsub = null; DRA.cashUnsub = null; DRA.cash = undefined; DRA.cashErr = null; DRA.acctErr = false;
+}
+function draRender() {
+  const body = $('dra-body'); if (!body) return;
+  if (DRA.view === 'invite') return draRenderInvite(body);
+  if (DRA.view === 'deactivate') return draRenderDeactivate(body);
+  // LIST (sections A/B)
+  const recs = DRA.recs || {};
+  const uids = Object.keys(recs);
+  if (!uids.length) { body.innerHTML = `<div class="dra-empty">No hay repartidores registrados todavía.<br><button class="dra-act pri" id="dra-invite-btn" style="margin-top:14px">Invitar repartidor</button></div>`; $('dra-invite-btn')?.addEventListener('click', () => { DRA.view = 'invite'; draRender(); }); return; }
+  const c = driverAcctCounts(recs);
+  const chips = [['all', 'Todos', c.all], ['pending', 'Pendientes', c.pending], ['active', 'Activos', c.active], ['suspended', 'Suspendidos', c.suspended], ['deactivated', 'Desactivados', c.deactivated]];
+  const chipHtml = chips.map(([k, l, n]) => `<button class="dra-chip ${DRA.filter === k ? 'on' : ''}" data-filter="${k}">${l} · ${n}</button>`).join('');
+  const rows = uids
+    .filter((uid) => driverAcctMatchesFilter(deriveDriverAcctState(recs[uid]), DRA.filter))
+    .sort((a, b) => driverAcctDisplayName(a, recs[a], null).localeCompare(driverAcctDisplayName(b, recs[b], null)))
+    .map((uid) => driverAcctRowHtml(uid, recs[uid], (typeof allDrivers !== 'undefined' && allDrivers[uid] && allDrivers[uid].name) || null))
+    .join('') || `<div class="dra-empty">Sin repartidores en este filtro.</div>`;
+  body.innerHTML = `<div style="display:flex;align-items:center;margin-bottom:12px"><button class="dra-act pri" id="dra-invite-btn">+ Invitar</button></div>`
+    + `<div class="dra-filters">${chipHtml}</div><div id="dra-rows">${rows}</div>`;
+  $('dra-invite-btn')?.addEventListener('click', () => { DRA.view = 'invite'; draRender(); });
+  body.querySelectorAll('.dra-chip').forEach((el) => el.addEventListener('click', () => { DRA.filter = el.getAttribute('data-filter'); draRender(); }));
+  body.querySelectorAll('.dra-act[data-act]').forEach((el) => el.addEventListener('click', () => draAction(el.getAttribute('data-act'), el.getAttribute('data-uid'))));
+}
+async function draAction(act, uid) {
+  try {
+    if (act === 'approve') { await callDriverAdmin('approveDriver', { uid }); draToast('Repartidor activado'); }
+    else if (act === 'reinvite') { const r = await callDriverAdmin('inviteDriver', { uid }); draShowLink(r.link); }
+    else if (act === 'suspend') { if (await draConfirm('Suspender repartidor', 'Deja de recibir pedidos nuevos; termina lo que ya tiene. Reversible.', 'Suspender', 'warn')) { await callDriverAdmin('setDriverSuspended', { uid }); draToast('Suspendido'); } }
+    else if (act === 'reactivate') { if (await draConfirm('Reactivar repartidor', 'La cuenta vuelve a activa y puede recibir pedidos otra vez.', 'Reactivar', 'ok')) { await callDriverAdmin('reactivate', { uid }); draToast('Reactivado'); } }
+    else if (act === 'deactivate') { DRA.view = 'deactivate'; DRA.selUid = uid; DRA.cashAttested = false; draRender(); }
+  } catch (e) { draError(e); }
+}
+function draRenderInvite(body) {
+  body.innerHTML = `<button class="dra-back" id="dra-back">← Volver</button>`
+    + `<div class="dra-field"><span class="dra-lbl">Nombre</span><input id="dra-i-name" autocomplete="off"></div>`
+    + `<div class="dra-field"><span class="dra-lbl">Teléfono (WhatsApp)</span><input id="dra-i-phone" autocomplete="off"></div>`
+    + `<div class="dra-field"><span class="dra-lbl">Email</span><input id="dra-i-email" type="email" autocomplete="off"></div>`
+    + `<button class="dra-act pri dra-full" id="dra-i-create">Crear invitación</button>`;
+  $('dra-back')?.addEventListener('click', () => { DRA.view = 'list'; draRender(); });
+  $('dra-i-create')?.addEventListener('click', async () => {
+    try { const r = await callDriverAdmin('inviteDriver', { name: $('dra-i-name').value, phone: $('dra-i-phone').value, email: $('dra-i-email').value }); draShowLink(r.link); DRA.view = 'list'; }
+    catch (e) { draError(e); }
+  });
+}
+function draShowLink(link) {
+  // one-time display; never logged. Copy: no fabricated expiry (owner default).
+  const body = $('dra-body'); if (!body || !link) { DRA.view = 'list'; draRender(); return; }
+  DRA.view = 'list';
+  body.innerHTML = `<div class="dra-inset ok"><span class="dra-lbl" style="color:var(--success)">Enlace de contraseña</span>`
+    + `<div class="dra-mono" style="margin:8px 0;word-break:break-all;font-size:12px;color:var(--text-soft)">${escapeHtml(link)}</div>`
+    + `<div class="dra-muted-txt">Se muestra una sola vez · compartilo ahora.</div></div>`
+    + `<div class="dra-btnrow"><button class="dra-act ok" id="dra-wa" style="flex:1">Enviar por WhatsApp</button><button class="dra-act ghost" id="dra-copy">Copiar</button></div>`
+    + `<button class="dra-act ghost dra-full" id="dra-link-done" style="margin-top:10px">Listo</button>`;
+  $('dra-copy')?.addEventListener('click', () => { try { navigator.clipboard.writeText(link); draToast('Copiado'); } catch (_) {} });
+  $('dra-wa')?.addEventListener('click', () => { try { window.open('https://wa.me/?text=' + encodeURIComponent(link), '_blank'); } catch (_) {} });
+  $('dra-link-done')?.addEventListener('click', () => { DRA.view = 'list'; draRender(); });
+}
+async function draRenderDeactivate(body) {
+  const uid = DRA.selUid; const rec = DRA.recs[uid] || {};
+  const name = driverAcctDisplayName(uid, rec, (typeof allDrivers !== 'undefined' && allDrivers[uid] && allDrivers[uid].name) || null);
+  // live pre-check reads (the callable re-validates authoritatively)
+  let openShift = false, openOrders = [];
+  try {
+    const d = (await draGet(draRef(XPD.getDb(), `drivers/${uid}`))).val() || {};
+    openShift = d.active === true || (d.current_shift_id !== undefined && d.current_shift_id !== null);
+    const tasks = (await draGet(draRef(XPD.getDb(), 'tasks'))).val() || {};
+    const set = new Set();
+    for (const tid of Object.keys(tasks)) { const t = tasks[tid]; if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled') set.add(t.order_id || tid); }
+    openOrders = [...set];
+  } catch (_) { /* pre-check best-effort; server is authority */ }
+  const cuadre = (DRA.cash && !DRA.cashErr) ? latestCuadre(DRA.cash[uid]) : null;
+  const cash = cashAttestDisplay(cuadre, DRA.cashErr);
+  const blockers = deactivateBlockers({ openShift, openOrders, cashAttested: DRA.cashAttested === true });
+  const hardBlocked = openShift || openOrders.length > 0;
+  let condHtml = '';
+  for (const r of ['open_shift', 'open_tasks']) {
+    const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length);
+    const lab = deactivateReasonLabel(r, openOrders.length);
+    condHtml += `<div class="dra-cond"><span class="dra-ci ${bad ? 'bad' : 'good'}"><svg class="ic sm"><use href="#i-${bad ? 'close' : 'check'}"/></svg></span><div class="dra-ct"><b>${bad ? escapeHtml(lab.t) : (r === 'open_shift' ? 'Sin turno abierto' : 'Sin entregas en curso')}</b>${bad ? `<span class="fix">${escapeHtml(lab.fix)}</span>` : ''}</div></div>`;
+  }
+  const cashRow = `<div class="dra-inset"><div style="display:flex;align-items:center;gap:8px"><span class="dra-lbl">Efectivo</span><span class="dra-owner" style="margin-left:auto">Decisión del dueño</span></div>`
+    + `<label class="dra-check ${DRA.cashAttested ? 'on' : ''}" id="dra-cash-check"><span class="dra-box"><svg class="ic sm"><use href="#i-check"/></svg></span><span>Sin efectivo pendiente</span></label>`
+    + `<div style="display:flex;justify-content:space-between;margin-top:9px;font-size:12px"><span class="dra-lbl">Último cuadre</span><span class="dra-mono" style="color:${cash.available ? 'var(--text)' : 'var(--text-dim)'}">${escapeHtml(cash.text)}</span></div>`
+    + `<div class="dra-muted-txt" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`;
+  const canDeactivate = blockers.length === 0;
+  body.innerHTML = `<button class="dra-back" id="dra-back">← Volver</button>`
+    + `<div style="font-size:14px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(name)}</div>`
+    + (hardBlocked ? `<div class="dra-inset warn"><p style="font-size:13px;font-weight:700;margin:0 0 9px">Todavía no se puede desactivar</p>${condHtml}</div>` : `<div style="margin-bottom:4px">${condHtml}</div>`)
+    + cashRow
+    + `<button class="dra-act danger dra-full" id="dra-deact-btn" ${canDeactivate ? '' : 'disabled'}>Desactivar cuenta</button>`
+    + `<div class="dra-muted-txt" style="text-align:center;margin-top:8px">Bloquea el acceso (reglas + Auth + tokens revocados). No borra el registro.</div>`;
+  $('dra-back')?.addEventListener('click', () => { DRA.view = 'list'; DRA.selUid = null; draRender(); });
+  $('dra-cash-check')?.addEventListener('click', () => { DRA.cashAttested = !DRA.cashAttested; draRender(); });
+  $('dra-deact-btn')?.addEventListener('click', async () => {
+    try { await callDriverAdmin('setDriverDeactivated', { uid, cash_attested: DRA.cashAttested === true }); draToast('Cuenta desactivada'); DRA.view = 'list'; DRA.selUid = null; draRender(); }
+    catch (e) { draError(e); }
+  });
+}
+function draConfirm(title, msg, label, tone) {
+  return new Promise((resolve) => {
+    const body = $('dra-body'); const prev = body.innerHTML;
+    body.innerHTML = `<div style="font-size:14px;font-weight:700;margin-bottom:8px">${escapeHtml(title)}</div><div class="dra-inset ${tone === 'warn' ? 'warn' : 'ok'}"><p class="dra-muted-txt" style="margin:0">${escapeHtml(msg)}</p></div><div class="dra-btnrow"><button class="dra-act ${tone}" id="dra-cfm" style="flex:1">${escapeHtml(label)}</button><button class="dra-act ghost" id="dra-cxl">Cancelar</button></div>`;
+    $('dra-cfm')?.addEventListener('click', () => resolve(true));
+    $('dra-cxl')?.addEventListener('click', () => { body.innerHTML = prev; draRender(); resolve(false); });
+  });
+}
+function draError(e) {
+  let msg = (e && e.message) || 'Error';
+  if (e && e.code === 'FAILED_PRECONDITION' && e.details && Array.isArray(e.details.reasons)) {
+    msg = 'No se puede todavía: ' + e.details.reasons.map((r) => deactivateReasonLabel(r, (e.details.open_orders || []).length).t).join(', ');
+  }
+  draToast(msg);
+}
+function draToast(m) { try { (window.showToast || console.log)(m); } catch (_) {} }
+
+$('dra-open')?.addEventListener('click', draOpen);
+$('dra-close')?.addEventListener('click', draClose);
+$('dra-overlay')?.addEventListener('click', (e) => { if (e.target && e.target.id === 'dra-overlay') draClose(); });
 // D4: alerts bell → the Torre exceptions live in the left rail (#torre-list). Open it + scroll them into view.
 $('alerts-bell')?.addEventListener('click', () => {
   if (!$('app').classList.contains('left-open')) togRail('left-open');

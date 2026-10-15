@@ -14307,5 +14307,210 @@
       "node",
       "contract/applicability.guard.test.js"
     ]
+  },
+  {
+    "id": "s1b-01",
+    "slice": "s1b",
+    "label": "premature eligibility: invite creates pending enabled:TRUE",
+    "file": "lib/driver-admin-ops.js",
+    "from": "enabled: false, deactivated: false, onboarding_state: 'pending',",
+    "to": "enabled: true, deactivated: false, onboarding_state: 'pending',",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-02",
+    "slice": "s1b",
+    "label": "reactivate CLEARS the monotonic revoke_after",
+    "file": "lib/driver-admin-ops.js",
+    "from": "suspended_at: null, last_op: lastOp('reactivate', actorUid, deps.now) };",
+    "to": "suspended_at: null, revoke_after: null, last_op: lastOp('reactivate', actorUid, deps.now) };",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-03",
+    "slice": "s1b",
+    "label": "invite createUser omits the pre-allocated uid (random uid)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "await auth.createUser({ uid, email, disabled: true });",
+    "to": "await auth.createUser({ email, disabled: true });",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-04",
+    "slice": "s1b",
+    "label": "dual-role check disabled (dispatcher/kitchen branch returns false)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (disp.exists() || kitchen.exists()) return true;",
+    "to": "if (disp.exists() || kitchen.exists()) return false;",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-05",
+    "slice": "s1b",
+    "label": "dual-role skips cross-brand kitchen_staff",
+    "file": "lib/driver-admin-ops.js",
+    "from": "restaurants.forEach((r) => { if (r.child(`kitchen_staff/${uid}`).exists()) shared = true; });",
+    "to": "restaurants.forEach((r) => { if (false) shared = true; });",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-06",
+    "slice": "s1b",
+    "label": "reconciler enables an email-MISMATCHED identity (skips void)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (provisioned && normEmail(user.email) !== normEmail(rec.email)) {",
+    "to": "if (false && normEmail(user.email) !== normEmail(rec.email)) {",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-07",
+    "slice": "s1b",
+    "label": "reconciler provisions/voids a grandfathered (no-email) record",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!provisioned) return; // legacy/grandfathered w/o email: never provision, never void",
+    "to": "if (false) return; // legacy/grandfathered w/o email: never provision, never void",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-08",
+    "slice": "s1b",
+    "label": "sweep does NOT skip void records (enables them)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (rec.onboarding_state === 'void') return; // skip quietly, never throw/enable",
+    "to": "if (false) return; // skip quietly, never throw/enable",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-10",
+    "slice": "s1b",
+    "label": "guard drops the revoke_after cutoff check",
+    "file": "lib/driver-callable-guard.js",
+    "from": "if (revokeAfterMs && authTimeMs && authTimeMs < revokeAfterMs) {",
+    "to": "if (false && authTimeMs && authTimeMs < revokeAfterMs) {",
+    "command": [
+      "node",
+      "lib/driver-callable-guard.test.js"
+    ]
+  },
+  {
+    "id": "s1b-11",
+    "slice": "s1b",
+    "label": "kill switch bypassed (admin-disabled no longer refuses)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (snap.val() !== true) throw new HttpsError('failed-precondition', 'La administración de repartidores está deshabilitada.');",
+    "to": "if (false) throw new HttpsError('failed-precondition', 'La administración de repartidores está deshabilitada.');",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-12",
+    "slice": "s1b",
+    "label": "deactivate cash attestation precondition skipped",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (params.cashAttested !== true) reasons.push('cash');",
+    "to": "if (false) reasons.push('cash');",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-13",
+    "slice": "s1b",
+    "label": "deactivate open-shift precondition skipped",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (drv.active === true || (drv.current_shift_id !== undefined && drv.current_shift_id !== null)) reasons.push('open_shift');",
+    "to": "if (false) reasons.push('open_shift');",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-14",
+    "slice": "s1b",
+    "label": "deactivate owned-nonterminal-task precondition skipped",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (openOrders.length) reasons.push('open_tasks');",
+    "to": "if (false) reasons.push('open_tasks');",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-15",
+    "slice": "s1b",
+    "label": "version CAS: transition does NOT bump version",
+    "file": "lib/driver-admin-ops.js",
+    "from": "return Object.assign({}, cur, patch, { version: norm.version + 1, updated_at: now });",
+    "to": "return Object.assign({}, cur, patch, { version: norm.version, updated_at: now });",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-17",
+    "slice": "s1b",
+    "label": "deactivate skips the must-be-suspended precondition",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!(rec0.enabled === false && rec0.deactivated !== true && previouslyApproved(rec0))) {",
+    "to": "if (false) {",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-18",
+    "slice": "s1b",
+    "label": "previouslyApproved drops the grandfathered clause",
+    "file": "lib/driver-admin-ops.js",
+    "from": "function previouslyApproved(r) { return r.approved_at != null || r.grandfathered === true; }",
+    "to": "function previouslyApproved(r) { return r.approved_at != null; }",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-16",
+    "slice": "s1b",
+    "label": "rules: dispatcher collection .read on /driver_accounts removed",
+    "file": "../xpizza-reference/database.rules.json",
+    "from": "\"driver_accounts\": {\n      \".read\": \"auth != null && root.child('dispatchers').child(auth.uid).exists()\",",
+    "to": "\"driver_accounts\": {\n      \".read\": false,",
+    "command": [
+      "npm",
+      "run",
+      "test:s1b-rules"
+    ]
   }
 ]
