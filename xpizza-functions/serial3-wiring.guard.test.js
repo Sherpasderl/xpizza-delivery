@@ -22,16 +22,16 @@ const baseOf = (f) => execFileSync('git', ['show', `${BASE}:xpizza-functions/${f
 // own delta back to BASE. S1a's hunks are disjoint from every serial3 block (reversal order is immaterial).
 const { unapplyS1aIndex } = require('./tools/s1a-inverse');
 {
-  const real = require('./tools/h0-inverse').unapplyH0Index(read('index.js'));   // PLAN-H0 (newer) is reversed FIRST
+  const real = require('./tools/h0-inverse').unapplyH0Index(unapplyS1aIndex(read('index.js')));   // S1a (newest) reverses FIRST, then PLAN-H0 — leaving the serial3 layer
   const base = baseOf('index.js');
   assert.notStrictEqual(unapplySerial3Index(real), real, 'non-vacuity: the blocks are present and swapped back');
-  assert.strictEqual(unapplySerial3Index(unapplyS1aIndex(real)), base, `🔴 index.js minus the serial3 blocks (and the S1a layer) is not ${BASE}:index.js`);
+  assert.strictEqual(unapplySerial3Index(real), base, `🔴 index.js minus the serial3 blocks (after the S1a + H0 layers are reversed first) is not ${BASE}:index.js`);
   assert.strictEqual(BLOCKS.length, 10, '10 blocks');
   assert.throws(() => unapplySerial3Index(real.replace('orderId, bodyItems: body.items, priced: facturaPricedBody', 'orderId, bodyItems: body.items, priced: facturaPricedBody ')), /pinned bytes/, 'an edit INSIDE a block');
   assert.throws(() => unapplySerial3Index(real.replace('/* serial3:end wiring */', '')), /exactly 10/, 'a missing delimiter');
   assert.throws(() => unapplySerial3Index(real.replace('exports.verifyOtp', '/* serial3:begin x */\n/* serial3:end x */\nexports.verifyOtp')), /exactly 10/, 'an eleventh block');
-  assert.notStrictEqual(unapplySerial3Index(unapplyS1aIndex(real.replace('exports.verifyOtp', 'exports.verifyOtP'))), base, 'a byte OUTSIDE the blocks survives (the base pin catches it)');
-  ok(`index.js: unapplySerial3Index(unapplyS1aIndex(·)) → ${BASE}:index.js byte-for-byte (10 blocks); an edit inside, a missing delimiter, an eleventh block and a byte outside are each caught`);
+  assert.notStrictEqual(unapplySerial3Index(real.replace('exports.verifyOtp', 'exports.verifyOtP')), base, 'a byte OUTSIDE the blocks survives (the base pin catches it)');
+  ok(`index.js: unapplySerial3Index(unapplyH0Index(unapplyS1aIndex(·))) → ${BASE}:index.js byte-for-byte (10 blocks); an edit inside, a missing delimiter, an eleventh block and a byte outside are each caught`);
 }
 // ── 1b. the pinned module ──
 {
