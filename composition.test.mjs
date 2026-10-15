@@ -73,6 +73,30 @@ for (const rid of ['x_pizza', 'la_musa']) {
 
   const freshStore = () => { const s = createConfirmQuote({}); s.store(issued, SIG); return s; };
 
+  // (2 runs FIRST, ahead of the matrix: it is the dedicated pin for the overcharge row, so a dropped ceiling must die
+  // HERE, on its own message — the matrix also catches it, but as 'the gate declined', which names no money outcome.)
+  // ── 2. 🔴 THE EXPIRED ROW IS THE ONE THAT OVERCHARGED. Asserted on its own, with the expiry proven.
+  {
+    const expiredTok = signQuoteToken({
+      rid, customer_id: null, cart_fingerprint: cartFingerprint(normalizeCartForFingerprint(items, rid), null),
+      net_total_cents: quotedNet, components: {}, redemption_ref: null,
+      issued_at: 1, expires_at: 2, quote_id: 'expired',
+    }, SECRET);
+    assert.strictEqual(verifyQuoteToken(expiredTok, SECRET, Date.now()).reason, 'expired',
+      `${rid}: non-vacuity — the token really is EXPIRED, not merely old-looking`);
+
+    const s = createConfirmQuote({}); s.store({ quote_token: expiredTok }, SIG);
+    const dearer = movedTables(rid, items, 40);
+    const serverNow = computeServerNet({ items, rid, tables: dearer }).net_total_cents;
+    assert.ok(serverNow > quotedNet, `${rid}: premise — the server now wants more`);
+    const { body, result } = compose({ rid, items, tables: dearer, store: s, cartSig: SIG, shownCents: quotedNet });
+    assert.strictEqual(body.expected_net_cents, quotedNet, `${rid}: the ceiling rode alongside the expired token`);
+    assert.strictEqual(result.action, 'refuse_increase',
+      `${rid}: 🔴 THE OVERCHARGE ROW — an expired token with a ceiling must refuse, not charge ${serverNow}`);
+    assert.strictEqual(result.chargeNet, serverNow, `${rid}: …reporting the server's number`);
+    ok(`${rid}: an expired token + a risen price refuses through the REAL client→adapter→gate chain`);
+  }
+
   // ── 1. 🔴 THE MATRIX: never charged more than confirmed, whatever the token is worth ──────────
   {
     const expiredTok = signQuoteToken({
@@ -164,28 +188,6 @@ for (const rid of ['x_pizza', 'la_musa']) {
     }
     assert.strictEqual(rows, 24, `${rid}: non-vacuity — the full matrix ran (${rows})`);
     ok(`${rid}: ${rows} composed rows — the charge is the server's net and never above the confirmation`);
-  }
-
-  // ── 2. 🔴 THE EXPIRED ROW IS THE ONE THAT OVERCHARGED. Asserted on its own, with the expiry proven.
-  {
-    const expiredTok = signQuoteToken({
-      rid, customer_id: null, cart_fingerprint: cartFingerprint(normalizeCartForFingerprint(items, rid), null),
-      net_total_cents: quotedNet, components: {}, redemption_ref: null,
-      issued_at: 1, expires_at: 2, quote_id: 'expired',
-    }, SECRET);
-    assert.strictEqual(verifyQuoteToken(expiredTok, SECRET, Date.now()).reason, 'expired',
-      `${rid}: non-vacuity — the token really is EXPIRED, not merely old-looking`);
-
-    const s = createConfirmQuote({}); s.store({ quote_token: expiredTok }, SIG);
-    const dearer = movedTables(rid, items, 40);
-    const serverNow = computeServerNet({ items, rid, tables: dearer }).net_total_cents;
-    assert.ok(serverNow > quotedNet, `${rid}: premise — the server now wants more`);
-    const { body, result } = compose({ rid, items, tables: dearer, store: s, cartSig: SIG, shownCents: quotedNet });
-    assert.strictEqual(body.expected_net_cents, quotedNet, `${rid}: the ceiling rode alongside the expired token`);
-    assert.strictEqual(result.action, 'refuse_increase',
-      `${rid}: 🔴 THE OVERCHARGE ROW — an expired token with a ceiling must refuse, not charge ${serverNow}`);
-    assert.strictEqual(result.chargeNet, serverNow, `${rid}: …reporting the server's number`);
-    ok(`${rid}: an expired token + a risen price refuses through the REAL client→adapter→gate chain`);
   }
 
   // ── 3. 🔴 THE FIELD NAMES ARE THE CONTRACT. A rename on either side must be visible here. ──────
