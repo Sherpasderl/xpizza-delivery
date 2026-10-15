@@ -67,6 +67,8 @@ const D = {
   ...Object.fromEntries(['backfill-identities', 'backfill-snapshot', 'bootstrap-identity', 'client-floor', 'client-version-report',
     'draft-drift-report', 'identity-display-name', 'verify-first-group', 'menus-divergence-report', 'migrate-catalog-display', 'order-control', 'preflight-pointers', 'publish-version',
     'rollback-version', 'seed-catalog', 'seed-owner', 'seed-source-store', 'stats-rollup', 'verify-catalog',
+    // PLATFORM F1 — the brands owner CLI: requireProject({ requireFlag: true }) before any client
+    'brands-admin',
     // D4-c2b operator CLIs — requireProject({ requireFlag: true }): --project mandatory, an inherited project variable alone refuses
     'ack-identity-finding', 'record-evidence-boundary',
     // per-product extras gate 0: the READ-ONLY live export (active version + public menu) for the advisor's parity run
@@ -93,6 +95,7 @@ const D = {
   [F('rtdb-init.test.js')]: 'unit: proven loopback-only, off-band (emulator-endpoint.test cell 8)',
   [F('stats/stats-volume.test.js')]: 'unit: a named app over catalog/firestore-fake — no network',
   [F('stats/stats-job.test.js')]: 'unit: initializeApp appears in a source string under test', [F('catalog/project-guard.test.js')]: 'unit: drives require-project refusals (no data I/O)',
+  [F('tools/brands-admin.test.js')]: 'unit: drives the brands CLI into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/identity-display-name.test.js')]: 'unit: drives the CLI\'s require-project refusals (no data I/O); its spawned CLI is pointed at a dead loopback RTDB port with void credentials',
   [F('catalog/identity-integrity-guards.test.js')]: 'unit: drives the two c2b prod CLIs into require-project refusals — dead-port hosts, no credential (no data I/O)',
   [F('tools/verify-first-group.test.js')]: 'unit: drives the CLI\'s require-project + argument refusals before any client (no data I/O); its spawned CLI points at a dead loopback RTDB port with void credentials',
