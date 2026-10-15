@@ -14479,9 +14479,9 @@
   {
     "id": "s1b-17",
     "slice": "s1b",
-    "label": "deactivate skips the must-be-suspended precondition",
+    "label": "deactivate skips the whole must-be-suspended precondition (P1-7)",
     "file": "lib/driver-admin-ops.js",
-    "from": "if (!(rec0.enabled === false && rec0.deactivated !== true && previouslyApproved(rec0))) {",
+    "from": "if (!(rec0.enabled === false && rec0.deactivated !== true && rec0.onboarding_state === 'active' && previouslyApproved(rec0))) {",
     "to": "if (false) {",
     "command": [
       "node",
@@ -14511,6 +14511,150 @@
       "npm",
       "run",
       "test:s1b-rules"
+    ]
+  },
+  {
+    "id": "s1b-19",
+    "slice": "s1b",
+    "label": "cold-cache null aborts instead of retry (P1-1)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (cur === null) return null; // null-first-safe: force a server round-trip, don't abort on a cold null",
+    "to": "if (cur === null) return; // null-first-safe: force a server round-trip, don't abort on a cold null",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-20",
+    "slice": "s1b",
+    "label": "version CAS comparison removed (P1-2)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (norm.version !== expectedVersion) { thrown = new HttpsError('aborted', 'El estado del repartidor cambió, reintentá.'); return; }",
+    "to": "if (false) { thrown = new HttpsError('aborted', 'El estado del repartidor cambió, reintentá.'); return; }",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-21",
+    "slice": "s1b",
+    "label": "transient Auth error treated as missing (P1-3)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!(e && e.code === 'auth/user-not-found')) throw e;\n    if (!provisioned) return; // legacy/grandfathered w/o email: never provision, never void",
+    "to": "if (false) throw e;\n    if (!provisioned) return; // legacy/grandfathered w/o email: never provision, never void",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-22",
+    "slice": "s1b",
+    "label": "re-invite identity check removed (P1-4)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!authUser || authUser.uid !== params.uid) {",
+    "to": "if (false) {",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-23",
+    "slice": "s1b",
+    "label": "revoke_after not monotonic (P1-5)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "return { deactivated: true, revoke_after: Math.max(r.revoke_after || 0, now), last_op: lastOp('deactivate', actorUid, now, { cash_confirmed: true }) };",
+    "to": "return { deactivated: true, revoke_after: now, last_op: lastOp('deactivate', actorUid, now, { cash_confirmed: true }) };",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-24",
+    "slice": "s1b",
+    "label": "void leaves enabled untouched (P1-6)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "return Object.assign({}, cur, { onboarding_state: 'void', enabled: false, version: v + 1, updated_at: now });",
+    "to": "return Object.assign({}, cur, { onboarding_state: 'void', version: v + 1, updated_at: now });",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-25",
+    "slice": "s1b",
+    "label": "shape validation (enabled boolean) removed (P1-7)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (typeof cur.enabled !== 'boolean') throw new HttpsError('failed-precondition', 'Registro inválido.');",
+    "to": "if (false) throw new HttpsError('failed-precondition', 'Registro inválido.');",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-26",
+    "slice": "s1b",
+    "label": "deactivate drops the onboarding_state active requirement (P1-7)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!(rec0.enabled === false && rec0.deactivated !== true && rec0.onboarding_state === 'active' && previouslyApproved(rec0))) {",
+    "to": "if (!(rec0.enabled === false && rec0.deactivated !== true && previouslyApproved(rec0))) {",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-27",
+    "slice": "s1b",
+    "label": "reactivate no longer excludes void-deactivated (P1-7)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "const isDeactivated = r.deactivated === true && r.onboarding_state === 'active';",
+    "to": "const isDeactivated = r.deactivated === true;",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-28",
+    "slice": "s1b",
+    "label": "dual-role drops the /kitchen/{uid} check (mutant-gap)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (disp.exists() || kitchen.exists()) return true;",
+    "to": "if (disp.exists()) return true;",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-29",
+    "slice": "s1b",
+    "label": "suspend drops the last_op stamp (mutant-gap)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "return { enabled: false, suspended_at: deps.now, last_op: lastOp('suspend', actorUid, deps.now) };",
+    "to": "return { enabled: false, suspended_at: deps.now };",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-30",
+    "slice": "s1b",
+    "label": "withLangEs no longer pins lang=es (Spanish reset page)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "  if (/[?&]lang=/.test(link)) return link.replace(/([?&]lang=)[^&]*/, '$1es');\n  return link + (link.indexOf('?') >= 0 ? '&' : '?') + 'lang=es';",
+    "to": "  return link;",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
     ]
   }
 ]

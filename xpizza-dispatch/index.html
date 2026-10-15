@@ -2542,7 +2542,7 @@
   .dra-field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; color:var(--text); font-size:13px; }
   .dra-cond { display:flex; gap:8px; align-items:flex-start; margin-bottom:9px; }
   .dra-ci { width:17px; height:17px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; color:#fff; }
-  .dra-ci.bad { background:var(--accent-solid); } .dra-ci.good { background:var(--success); }
+  .dra-ci.bad { background:var(--accent-solid); } .dra-ci.good { background:var(--success); } .dra-ci.unk { background:var(--warn); color:var(--warn-fg,#5a3c10); }
   .dra-ct b { font-size:12.5px; color:var(--text); } .dra-ct .fix { display:block; font-size:11px; color:var(--text-dim); }
   .dra-check { display:flex; align-items:center; gap:9px; cursor:pointer; font-size:13px; color:var(--text); margin-top:9px; }
   .dra-box { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--border); display:grid; place-items:center; color:transparent; }
@@ -6002,7 +6002,7 @@ function deriveDriverAcctState(rec) {
 }
 function driverRowActions(state) {
   switch (state) {
-    case 'active': return ['suspend', 'deactivate'];
+    case 'active': return ['suspend'];                 // deactivate is NOT legal from active — suspend first (transition table)
     case 'profile_submitted': return ['approve'];
     case 'pending': return ['reinvite'];
     case 'suspended': return ['reactivate', 'deactivate'];
@@ -6022,7 +6022,9 @@ function driverAcctStatePill(state) {
   }
 }
 function driverAcctDisplayName(uid, rec, nameHint) {
-  const n = (rec && rec.profile && rec.profile.name) || (rec && rec.name) || nameHint;
+  // type-safe: a malformed (non-string) name must never crash sort/render — fall through to the next candidate.
+  const str = (v) => (typeof v === 'string' && v.trim()) ? v.trim() : '';
+  const n = str(rec && rec.profile && rec.profile.name) || str(rec && rec.name) || str(nameHint);
   return n || ('Repartidor ' + String(uid || '').slice(0, 6));
 }
 function driverAcctMeta(state, rec) {
@@ -6049,7 +6051,14 @@ function cashAttestDisplay(cuadre, err) {
   if (err) return { available: false, tone: 'error', text: 'Cuadre no disponible' };
   if (!cuadre) return { available: false, tone: 'none', text: 'Sin cuadre registrado' };
   const owed = cuadre.cash_owed;
-  if (!Number.isFinite(owed) || owed < 0 || !Number.isFinite(cuadre.closed_at)) return { available: false, tone: 'error', text: 'Cuadre no disponible' };
+  // Reuse renderCashBar's STRICT validity: money + count finite ≥ 0, and the flags/counts well-typed. A malformed
+  // provisional/review flag or count must NOT render as a clean final L 0 — it is unavailable.
+  const nn = (x) => Number.isFinite(x) && x >= 0;
+  const valid = nn(owed) && Number.isFinite(cuadre.closed_at) && nn(cuadre.cash_order_count)
+    && (cuadre.legacy_provisional_count === undefined || nn(cuadre.legacy_provisional_count))
+    && (cuadre.provisional === undefined || typeof cuadre.provisional === 'boolean')
+    && (cuadre.needs_dispatch_review === undefined || typeof cuadre.needs_dispatch_review === 'boolean');
+  if (!valid) return { available: false, tone: 'error', text: 'Cuadre no disponible' };
   const when = new Date(cuadre.closed_at).toLocaleString('es-HN', { hour: '2-digit', minute: '2-digit' });
   const money = 'L ' + owed.toLocaleString('es-HN');
   let kind = 'final';
@@ -6108,7 +6117,10 @@ function driverAcctMatchesFilter(state, filter) {
 }
 
 // ---- wiring (not lifted) ----
-const DRA = { recs: {}, filter: 'all', acctUnsub: null, cash: undefined, cashErr: null, cashUnsub: null, view: 'list', selUid: null };
+// view ∈ list | invite | invited (one-time link) | deactivate. dialogOpen = a transient confirm is up.
+// A live snapshot refreshes list DATA but must NOT re-render over an open sub-view / dialog / the one-time link.
+const DRA = { recs: {}, filter: 'all', acctUnsub: null, cash: undefined, cashErr: null, cashUnsub: null, view: 'list', selUid: null, acctErr: false, link: null, dialogOpen: false };
+function draListLive() { return DRA.view === 'list' && !DRA.dialogOpen; }
 
 async function callDriverAdmin(name, data) {
   // v2 onCall — use the Firebase SDK's httpsCallable (same as the driver app at native-location.js:60): it resolves
@@ -6126,7 +6138,8 @@ function draOpen() {
   DRA.view = 'list'; DRA.selUid = null;
   // subscribe to /driver_accounts (dispatcher-readable). Kill-switch-off / permission ⇒ empty-state.
   const accRef = draRef(XPD.getDb(), 'driver_accounts');
-  DRA.acctUnsub = draOnValue(accRef, (snap) => { DRA.recs = snap.val() || {}; draRender(); }, () => { DRA.recs = {}; DRA.acctErr = true; draRender(); });
+  // snapshot refreshes list DATA; it re-renders ONLY when the list is the live view (never clobbers a sub-view/link).
+  DRA.acctUnsub = draOnValue(accRef, (snap) => { DRA.recs = snap.val() || {}; DRA.acctErr = false; if (draListLive()) draRender(); }, () => { DRA.recs = {}; DRA.acctErr = true; if (draListLive()) draRender(); });
   // last-cuadre figures (read-only, informational). Honor the onError path (never crash on a cash read failure).
   DRA.cashUnsub = XPD.subscribeToDriverCash((c) => { DRA.cash = c || {}; DRA.cashErr = null; if (DRA.view === 'deactivate') draRender(); }, (err) => { DRA.cashErr = err || { __error: true }; if (DRA.view === 'deactivate') draRender(); });
   draRender();
@@ -6141,10 +6154,13 @@ function draClose() {
 function draRender() {
   const body = $('dra-body'); if (!body) return;
   if (DRA.view === 'invite') return draRenderInvite(body);
+  if (DRA.view === 'invited') return draRenderLink(body);
   if (DRA.view === 'deactivate') return draRenderDeactivate(body);
   // LIST (sections A/B)
   const recs = DRA.recs || {};
   const uids = Object.keys(recs);
+  // a FAILED /driver_accounts read is UNKNOWN — show an error state, never the empty "no drivers" message.
+  if (DRA.acctErr) { body.innerHTML = `<div class="dra-empty">No se pudieron cargar los repartidores.<br><button class="dra-act ghost" id="dra-retry" style="margin-top:14px">Reintentar</button></div>`; $('dra-retry')?.addEventListener('click', () => { draClose(); draOpen(); }); return; }
   if (!uids.length) { body.innerHTML = `<div class="dra-empty">No hay repartidores registrados todavía.<br><button class="dra-act pri" id="dra-invite-btn" style="margin-top:14px">Invitar repartidor</button></div>`; $('dra-invite-btn')?.addEventListener('click', () => { DRA.view = 'invite'; draRender(); }); return; }
   const c = driverAcctCounts(recs);
   const chips = [['all', 'Todos', c.all], ['pending', 'Pendientes', c.pending], ['active', 'Activos', c.active], ['suspended', 'Suspendidos', c.suspended], ['deactivated', 'Desactivados', c.deactivated]];
@@ -6162,12 +6178,12 @@ function draRender() {
 }
 async function draAction(act, uid) {
   try {
-    if (act === 'approve') { await callDriverAdmin('approveDriver', { uid }); draToast('Repartidor activado'); }
-    else if (act === 'reinvite') { const r = await callDriverAdmin('inviteDriver', { uid }); draShowLink(r.link); }
-    else if (act === 'suspend') { if (await draConfirm('Suspender repartidor', 'Deja de recibir pedidos nuevos; termina lo que ya tiene. Reversible.', 'Suspender', 'warn')) { await callDriverAdmin('setDriverSuspended', { uid }); draToast('Suspendido'); } }
-    else if (act === 'reactivate') { if (await draConfirm('Reactivar repartidor', 'La cuenta vuelve a activa y puede recibir pedidos otra vez.', 'Reactivar', 'ok')) { await callDriverAdmin('reactivate', { uid }); draToast('Reactivado'); } }
+    if (act === 'approve') { await callDriverAdmin('approveDriver', { uid }); draToast('Repartidor activado'); DRA.view = 'list'; draRender(); }
+    else if (act === 'reinvite') { const rc = DRA.recs[uid] || {}; const r = await callDriverAdmin('inviteDriver', { uid }); draShowLink(r.link, (rc.profile && rc.profile.name) || rc.name || ''); }
+    else if (act === 'suspend') { if (await draConfirm('Suspender repartidor', 'Deja de recibir pedidos nuevos; termina lo que ya tiene. Reversible.', 'Suspender', 'warn')) { await callDriverAdmin('setDriverSuspended', { uid }); draToast('Suspendido'); } DRA.view = 'list'; draRender(); }
+    else if (act === 'reactivate') { if (await draConfirm('Reactivar repartidor', 'La cuenta vuelve a activa y puede recibir pedidos otra vez.', 'Reactivar', 'ok')) { await callDriverAdmin('reactivate', { uid }); draToast('Reactivado'); } DRA.view = 'list'; draRender(); }
     else if (act === 'deactivate') { DRA.view = 'deactivate'; DRA.selUid = uid; DRA.cashAttested = false; draRender(); }
-  } catch (e) { draError(e); }
+  } catch (e) { draError(e); DRA.view = 'list'; draRender(); }
 }
 function draRenderInvite(body) {
   body.innerHTML = `<button class="dra-back" id="dra-back">← Volver</button>`
@@ -6177,28 +6193,38 @@ function draRenderInvite(body) {
     + `<button class="dra-act pri dra-full" id="dra-i-create">Crear invitación</button>`;
   $('dra-back')?.addEventListener('click', () => { DRA.view = 'list'; draRender(); });
   $('dra-i-create')?.addEventListener('click', async () => {
-    try { const r = await callDriverAdmin('inviteDriver', { name: $('dra-i-name').value, phone: $('dra-i-phone').value, email: $('dra-i-email').value }); draShowLink(r.link); DRA.view = 'list'; }
+    try { const nm = $('dra-i-name').value; const r = await callDriverAdmin('inviteDriver', { name: nm, phone: $('dra-i-phone').value, email: $('dra-i-email').value }); draShowLink(r.link, nm); DRA.view = 'list'; }
     catch (e) { draError(e); }
   });
 }
-function draShowLink(link) {
-  // one-time display; never logged. Copy: no fabricated expiry (owner default).
-  const body = $('dra-body'); if (!body || !link) { DRA.view = 'list'; draRender(); return; }
-  DRA.view = 'list';
+function draShowLink(link, name) {
+  // one-time display; never logged. Its own explicit view so a live /driver_accounts snapshot can't erase it.
+  if (!link) { DRA.view = 'list'; DRA.link = null; DRA.inviteName = null; draRender(); return; }
+  DRA.link = link; DRA.inviteName = (name || '').trim() || null; DRA.view = 'invited'; draRenderLink($('dra-body'));
+}
+function draRenderLink(body) {
+  const link = DRA.link;
+  if (!body || !link) { DRA.view = 'list'; DRA.link = null; draRender(); return; }
   body.innerHTML = `<div class="dra-inset ok"><span class="dra-lbl" style="color:var(--success)">Enlace de contraseña</span>`
     + `<div class="dra-mono" style="margin:8px 0;word-break:break-all;font-size:12px;color:var(--text-soft)">${escapeHtml(link)}</div>`
     + `<div class="dra-muted-txt">Se muestra una sola vez · compartilo ahora.</div></div>`
     + `<div class="dra-btnrow"><button class="dra-act ok" id="dra-wa" style="flex:1">Enviar por WhatsApp</button><button class="dra-act ghost" id="dra-copy">Copiar</button></div>`
     + `<button class="dra-act ghost dra-full" id="dra-link-done" style="margin-top:10px">Listo</button>`;
   $('dra-copy')?.addEventListener('click', () => { try { navigator.clipboard.writeText(link); draToast('Copiado'); } catch (_) {} });
-  $('dra-wa')?.addEventListener('click', () => { try { window.open('https://wa.me/?text=' + encodeURIComponent(link), '_blank'); } catch (_) {} });
-  $('dra-link-done')?.addEventListener('click', () => { DRA.view = 'list'; draRender(); });
+  $('dra-wa')?.addEventListener('click', () => { try { const hola = DRA.inviteName ? ('Hola ' + DRA.inviteName + ', ') : 'Hola, '; const txt = hola + 'creá tu contraseña para la app de repartidores con este enlace. Es de un solo uso: ' + link; window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank'); } catch (_) {} });
+  $('dra-link-done')?.addEventListener('click', () => { DRA.view = 'list'; DRA.link = null; draRender(); });
 }
 async function draRenderDeactivate(body) {
   const uid = DRA.selUid; const rec = DRA.recs[uid] || {};
   const name = driverAcctDisplayName(uid, rec, (typeof allDrivers !== 'undefined' && allDrivers[uid] && allDrivers[uid].name) || null);
-  // live pre-check reads (the callable re-validates authoritatively)
-  let openShift = false, openOrders = [];
+  const back = () => { DRA.view = 'list'; DRA.selUid = null; draRender(); };
+  // GUARD 1 — deactivation is legal ONLY from the suspended state (transition table). Anything else: refuse here.
+  if (deriveDriverAcctState(rec) !== 'suspended') {
+    body.innerHTML = `<button class="dra-back" id="dra-back">← Volver</button><div class="dra-inset warn"><p style="font-size:13px;font-weight:700;margin:0 0 6px">Primero suspendé al repartidor</p><p class="dra-muted-txt" style="margin:0">Solo se puede desactivar una cuenta ya suspendida.</p></div><button class="dra-act danger dra-full" disabled>Desactivar cuenta</button>`;
+    $('dra-back')?.addEventListener('click', back); return;
+  }
+  // live pre-check reads (the callable re-validates authoritatively). A READ FAILURE is UNKNOWN, never "clear".
+  let openShift = false, openOrders = [], dualRole = false, precheckErr = false;
   try {
     const d = (await draGet(draRef(XPD.getDb(), `drivers/${uid}`))).val() || {};
     openShift = d.active === true || (d.current_shift_id !== undefined && d.current_shift_id !== null);
@@ -6206,13 +6232,20 @@ async function draRenderDeactivate(body) {
     const set = new Set();
     for (const tid of Object.keys(tasks)) { const t = tasks[tid]; if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled') set.add(t.order_id || tid); }
     openOrders = [...set];
-  } catch (_) { /* pre-check best-effort; server is authority */ }
+    // cheap client dual-role check (the callable also refuses cross-brand kitchen_staff authoritatively)
+    const disp = await draGet(draRef(XPD.getDb(), `dispatchers/${uid}`));
+    const kit = await draGet(draRef(XPD.getDb(), `kitchen/${uid}`));
+    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists());
+  } catch (_) { precheckErr = true; /* UNKNOWN — do not present as clear, do not enable */ }
+  // a navigation during the pending reads supersedes this render — never clobber a later view (P2-9).
+  if (DRA.view !== 'deactivate' || DRA.selUid !== uid) return;
   const cuadre = (DRA.cash && !DRA.cashErr) ? latestCuadre(DRA.cash[uid]) : null;
   const cash = cashAttestDisplay(cuadre, DRA.cashErr);
   const blockers = deactivateBlockers({ openShift, openOrders, cashAttested: DRA.cashAttested === true });
   const hardBlocked = openShift || openOrders.length > 0;
   let condHtml = '';
   for (const r of ['open_shift', 'open_tasks']) {
+    if (precheckErr) { condHtml += `<div class="dra-cond"><span class="dra-ci unk"><svg class="ic sm"><use href="#i-alert"/></svg></span><div class="dra-ct"><b>${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b><span class="fix">No se pudo verificar — reintentá</span></div></div>`; continue; }
     const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length);
     const lab = deactivateReasonLabel(r, openOrders.length);
     condHtml += `<div class="dra-cond"><span class="dra-ci ${bad ? 'bad' : 'good'}"><svg class="ic sm"><use href="#i-${bad ? 'close' : 'check'}"/></svg></span><div class="dra-ct"><b>${bad ? escapeHtml(lab.t) : (r === 'open_shift' ? 'Sin turno abierto' : 'Sin entregas en curso')}</b>${bad ? `<span class="fix">${escapeHtml(lab.fix)}</span>` : ''}</div></div>`;
@@ -6221,14 +6254,17 @@ async function draRenderDeactivate(body) {
     + `<label class="dra-check ${DRA.cashAttested ? 'on' : ''}" id="dra-cash-check"><span class="dra-box"><svg class="ic sm"><use href="#i-check"/></svg></span><span>Sin efectivo pendiente</span></label>`
     + `<div style="display:flex;justify-content:space-between;margin-top:9px;font-size:12px"><span class="dra-lbl">Último cuadre</span><span class="dra-mono" style="color:${cash.available ? 'var(--text)' : 'var(--text-dim)'}">${escapeHtml(cash.text)}</span></div>`
     + `<div class="dra-muted-txt" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`;
-  const canDeactivate = blockers.length === 0;
+  // Enable ONLY when everything is positively clear: no read error, not dual-role, no blockers.
+  const canDeactivate = !precheckErr && !dualRole && blockers.length === 0;
+  const dualHtml = dualRole ? `<div class="dra-inset danger"><p style="font-size:13px;font-weight:700;margin:0 0 6px;color:var(--accent)">Cuenta con doble rol</p><p class="dra-muted-txt" style="margin:0">Esta identidad también es de despacho o cocina. Separá las identidades antes de desactivar.</p></div>` : '';
   body.innerHTML = `<button class="dra-back" id="dra-back">← Volver</button>`
     + `<div style="font-size:14px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(name)}</div>`
-    + (hardBlocked ? `<div class="dra-inset warn"><p style="font-size:13px;font-weight:700;margin:0 0 9px">Todavía no se puede desactivar</p>${condHtml}</div>` : `<div style="margin-bottom:4px">${condHtml}</div>`)
+    + dualHtml
+    + ((hardBlocked || precheckErr) ? `<div class="dra-inset warn"><p style="font-size:13px;font-weight:700;margin:0 0 9px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</p>${condHtml}</div>` : `<div style="margin-bottom:4px">${condHtml}</div>`)
     + cashRow
     + `<button class="dra-act danger dra-full" id="dra-deact-btn" ${canDeactivate ? '' : 'disabled'}>Desactivar cuenta</button>`
     + `<div class="dra-muted-txt" style="text-align:center;margin-top:8px">Bloquea el acceso (reglas + Auth + tokens revocados). No borra el registro.</div>`;
-  $('dra-back')?.addEventListener('click', () => { DRA.view = 'list'; DRA.selUid = null; draRender(); });
+  $('dra-back')?.addEventListener('click', back);
   $('dra-cash-check')?.addEventListener('click', () => { DRA.cashAttested = !DRA.cashAttested; draRender(); });
   $('dra-deact-btn')?.addEventListener('click', async () => {
     try { await callDriverAdmin('setDriverDeactivated', { uid, cash_attested: DRA.cashAttested === true }); draToast('Cuenta desactivada'); DRA.view = 'list'; DRA.selUid = null; draRender(); }
@@ -6237,20 +6273,24 @@ async function draRenderDeactivate(body) {
 }
 function draConfirm(title, msg, label, tone) {
   return new Promise((resolve) => {
-    const body = $('dra-body'); const prev = body.innerHTML;
+    const body = $('dra-body');
+    DRA.dialogOpen = true;   // suppress live-snapshot re-renders while the confirm is up
+    const done = (v) => { DRA.dialogOpen = false; resolve(v); };
     body.innerHTML = `<div style="font-size:14px;font-weight:700;margin-bottom:8px">${escapeHtml(title)}</div><div class="dra-inset ${tone === 'warn' ? 'warn' : 'ok'}"><p class="dra-muted-txt" style="margin:0">${escapeHtml(msg)}</p></div><div class="dra-btnrow"><button class="dra-act ${tone}" id="dra-cfm" style="flex:1">${escapeHtml(label)}</button><button class="dra-act ghost" id="dra-cxl">Cancelar</button></div>`;
-    $('dra-cfm')?.addEventListener('click', () => resolve(true));
-    $('dra-cxl')?.addEventListener('click', () => { body.innerHTML = prev; draRender(); resolve(false); });
+    $('dra-cfm')?.addEventListener('click', () => done(true));
+    $('dra-cxl')?.addEventListener('click', () => done(false));
   });
 }
 function draError(e) {
   let msg = (e && e.message) || 'Error';
-  if (e && e.code === 'FAILED_PRECONDITION' && e.details && Array.isArray(e.details.reasons)) {
+  const code = (e && e.code) || '';
+  // httpsCallable throws a FunctionsError with code 'functions/failed-precondition' and the server's details.
+  if ((code === 'functions/failed-precondition' || code === 'failed-precondition') && e.details && Array.isArray(e.details.reasons)) {
     msg = 'No se puede todavía: ' + e.details.reasons.map((r) => deactivateReasonLabel(r, (e.details.open_orders || []).length).t).join(', ');
   }
-  draToast(msg);
+  draToast(msg, true);
 }
-function draToast(m) { try { (window.showToast || console.log)(m); } catch (_) {} }
+function draToast(m, bad) { try { toast(m, bad ? 'error' : 'success'); } catch (_) { try { console.log(m); } catch (_) {} } }
 
 $('dra-open')?.addEventListener('click', draOpen);
 $('dra-close')?.addEventListener('click', draClose);

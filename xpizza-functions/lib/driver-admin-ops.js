@@ -15,6 +15,14 @@ const TERMINAL = new Set(['completed', 'cancelled']);
 const MAXLEN = 120;
 
 function normEmail(e) { return String(e == null ? '' : e).trim().toLowerCase(); }
+// Force the Firebase hosted password-reset page to render in Spanish by pinning lang=es on the action link
+// (the Admin SDK's generatePasswordResetLink takes no locale; the Auth email-template language is a separate
+// console backstop). Replaces an existing lang= rather than duplicating it.
+function withLangEs(link) {
+  if (!link) return link;
+  if (/[?&]lang=/.test(link)) return link.replace(/([?&]lang=)[^&]*/, '$1es');
+  return link + (link.indexOf('?') >= 0 ? '&' : '?') + 'lang=es';
+}
 function normalize(cur) {
   const r = cur || {};
   return Object.assign({}, r, {
@@ -25,6 +33,20 @@ function normalize(cur) {
 }
 function previouslyApproved(r) { return r.approved_at != null || r.grandfathered === true; }
 function lastOp(type, actorUid, now, extra) { return Object.assign({ type, actor_uid: actorUid, at: now }, extra || {}); }
+
+const ONBOARDING_STATES = new Set(['pending', 'profile_submitted', 'active', 'void']);
+// Validate the record SHAPE before any transition (codex r1 P1-7). Absent `version`/`deactivated` are the approved
+// legacy omissions (normalized); a malformed boolean/number/enum, or an absent record, is REFUSED — never silently
+// defaulted into a legitimate-looking state. Returns the normalized record.
+function validateShape(cur, HttpsError) {
+  if (cur === null || cur === undefined) throw new HttpsError('failed-precondition', 'No existe la cuenta del repartidor.');
+  if (typeof cur !== 'object') throw new HttpsError('failed-precondition', 'Registro inválido.');
+  if (typeof cur.enabled !== 'boolean') throw new HttpsError('failed-precondition', 'Registro inválido.');
+  if (cur.deactivated !== undefined && typeof cur.deactivated !== 'boolean') throw new HttpsError('failed-precondition', 'Registro inválido.');
+  if (cur.version !== undefined && typeof cur.version !== 'number') throw new HttpsError('failed-precondition', 'Registro inválido.');
+  if (!ONBOARDING_STATES.has(cur.onboarding_state)) throw new HttpsError('failed-precondition', 'Registro inválido.');
+  return normalize(cur);
+}
 
 function reqStr(v, label, HttpsError) {
   if (typeof v !== 'string' || !v.trim() || v.length > MAXLEN) {
@@ -84,13 +106,15 @@ async function ownedNonterminalTasks(uid, db) {
 // ---------------------------------------------------------------------------
 // Auth projection — the derived side (findings 4/5/6/7, N2)
 // ---------------------------------------------------------------------------
-// CAS set onboarding_state 'void'. Commit only if version unchanged; a losing CAS is skipped quietly. Never throws.
+// CAS set onboarding_state 'void' AND enabled:false (codex r1 P1-6 — a void account must be ineligible for work;
+// S1a rules key on enabled/deactivated, not onboarding_state). Commit only if version unchanged; a losing CAS is
+// skipped quietly. Cold-cache null is retried (never aborted on a stale null — codex r1 P1-1). Never throws.
 async function voidAccount(uid, expectedVersion, { db, now }) {
   await db.ref(`driver_accounts/${uid}`).transaction((cur) => {
-    if (cur === null) return; // nothing to void
+    if (cur === null) return null; // null-first-safe: force a server round-trip, do not abort on a cold null
     const v = typeof cur.version === 'number' ? cur.version : 0;
     if (expectedVersion != null && v !== expectedVersion) return; // lost CAS → skip, retry next sweep
-    return Object.assign({}, cur, { onboarding_state: 'void', version: v + 1, updated_at: now });
+    return Object.assign({}, cur, { onboarding_state: 'void', enabled: false, version: v + 1, updated_at: now });
   });
 }
 
@@ -106,18 +130,27 @@ async function syncAuthToAccount(uid, { db, auth, now }) {
   let user = null;
   try {
     user = await auth.getUser(uid);
-  } catch (notFound) {
+  } catch (e) {
+    // codex r1 P1-3 — ONLY user-not-found is "missing"; a transient error (outage/timeout) must leave the record
+    // untouched and retry on a later sweep, NEVER void.
+    if (!(e && e.code === 'auth/user-not-found')) throw e;
     if (!provisioned) return; // legacy/grandfathered w/o email: never provision, never void
     try {
       await auth.createUser({ uid, email: rec.email, disabled: true });
       user = await auth.getUser(uid);
-    } catch (collision) {
-      try { user = await auth.getUser(uid); } // re-read by uid and classify below
-      catch (stillMissing) { await voidAccount(uid, normalize(rec).version, { db, now }); return; } // email taken by another uid → void
+    } catch (ce) {
+      // Only a genuine uid/email collision is grounds to void; a transient createUser failure rethrows.
+      if (!(ce && (ce.code === 'auth/uid-already-exists' || ce.code === 'auth/email-already-exists'))) throw ce;
+      try {
+        user = await auth.getUser(uid); // our uid now exists (a concurrent creator, or the lost-response case) → classify below
+      } catch (e2) {
+        if (e2 && e2.code === 'auth/user-not-found') { await voidAccount(uid, normalize(rec).version, { db, now }); return; } // email belongs to a DIFFERENT uid
+        throw e2; // transient → retry later, never void
+      }
     }
   }
   if (provisioned && normEmail(user.email) !== normEmail(rec.email)) {
-    await voidAccount(uid, normalize(rec).version, { db, now }); return; // existing ≠ persisted identity → void
+    await voidAccount(uid, normalize(rec).version, { db, now }); return; // existing ≠ persisted identity → void (and now enabled:false)
   }
   const want = rec.deactivated === true;
   if (user.disabled !== want) await auth.updateUser(uid, { disabled: want });
@@ -142,21 +175,33 @@ async function sweepAuthSync({ db, auth, now }) {
 // ---------------------------------------------------------------------------
 // The CAS transition core (optimistic `version`)
 // ---------------------------------------------------------------------------
-// Admin-SDK transaction reflects true server state (always online — same pattern as the S1a backfill). `cur===null`
-// means the account is genuinely absent → abort. buildPatch(normalizedCur) returns the field patch or throws an
-// HttpsError (aborts the transaction; we re-throw it). Always bumps version and stamps updated_at.
-async function casTransition(uid, { db, HttpsError, now }, buildPatch) {
+// Optimistic version CAS, cold-cache-safe (codex r1 P1-1/P1-2). The EXPECTED version is captured at read time — via
+// a server once() here, or passed by the caller (deactivate captures it BEFORE its external precondition reads) —
+// and enforced INSIDE the transaction on EVERY transition, so stale intent aborts even across a retry. The Node
+// Admin transaction's first callback can see `null` for an existing, uncached record, so a `null` is NEVER treated
+// as absence inside the transaction: we return it unchanged to force a server round-trip (the documented pattern);
+// genuine absence is established by the once() read and by a committed-null result. buildPatch(normalizedCur) returns
+// the field patch or throws an HttpsError. Always bumps version and stamps updated_at.
+async function casTransition(uid, { db, HttpsError, now }, buildPatch, opts) {
+  const ref = db.ref(`driver_accounts/${uid}`);
+  let expectedVersion = opts && opts.expectedVersion;
+  if (expectedVersion === undefined) {
+    expectedVersion = validateShape((await ref.once('value')).val(), HttpsError).version; // throws if absent/malformed
+  }
   let thrown = null;
-  const res = await db.ref(`driver_accounts/${uid}`).transaction((cur) => {
+  const res = await ref.transaction((cur) => {
     thrown = null;
-    if (cur === null) { thrown = new HttpsError('failed-precondition', 'No existe la cuenta del repartidor.'); return; }
-    const norm = normalize(cur);
+    if (cur === null) return null; // null-first-safe: force a server round-trip, don't abort on a cold null
+    let norm;
+    try { norm = validateShape(cur, HttpsError); } catch (e) { thrown = e; return; } // malformed → abort + throw
+    if (norm.version !== expectedVersion) { thrown = new HttpsError('aborted', 'El estado del repartidor cambió, reintentá.'); return; }
     let patch;
     try { patch = buildPatch(norm); } catch (e) { thrown = e; return; }
     return Object.assign({}, cur, patch, { version: norm.version + 1, updated_at: now });
   });
   if (thrown) throw thrown;
   if (!res.committed) throw new HttpsError('aborted', 'El estado del repartidor cambió, reintentá.');
+  if (res.snapshot.val() === null) throw new HttpsError('failed-precondition', 'No existe la cuenta del repartidor.'); // genuinely absent
   return res.snapshot.val();
 }
 
@@ -173,7 +218,15 @@ async function inviteDriver(params, deps) {
     if (!rec.invited_by || !(rec.onboarding_state === 'pending' || rec.onboarding_state === 'profile_submitted')) {
       throw new HttpsError('failed-precondition', 'Solo se puede reinvitar un registro pendiente creado por despacho.');
     }
-    const link = await auth.generatePasswordResetLink(normEmail(rec.email));
+    // codex r1 P1-4 — verify the email's CURRENT Auth uid is this record before minting a link, or the reset link
+    // would target whoever owns the email now (identity drift / a lost-create orphan). Mismatch/missing → refuse.
+    const email = normEmail(rec.email);
+    let authUser = null;
+    try { authUser = await auth.getUserByEmail(email); } catch (e) { if (!(e && e.code === 'auth/user-not-found')) throw e; }
+    if (!authUser || authUser.uid !== params.uid) {
+      throw new HttpsError('failed-precondition', 'La cuenta de autenticación no coincide con el registro — revisá la invitación.');
+    }
+    const link = withLangEs(await auth.generatePasswordResetLink(email));
     appendOpLog(db, params.uid, lastOp('invite', actorUid, now, { reinvite: true }));
     return { ok: true, uid: params.uid, link }; // link NEVER persisted/logged (bearer credential)
   }
@@ -191,7 +244,7 @@ async function inviteDriver(params, deps) {
     const rec = (await db.ref(`driver_accounts/${existing.uid}`).once('value')).val();
     if (rec && rec.invited_by && normEmail(rec.email) === email &&
         (rec.onboarding_state === 'pending' || rec.onboarding_state === 'profile_submitted')) {
-      const link = await auth.generatePasswordResetLink(email); // re-invite the proven pending record
+      const link = withLangEs(await auth.generatePasswordResetLink(email)); // re-invite the proven pending record
       appendOpLog(db, existing.uid, lastOp('invite', actorUid, now, { reinvite: true }));
       return { ok: true, uid: existing.uid, link };
     }
@@ -211,7 +264,7 @@ async function inviteDriver(params, deps) {
     throw new HttpsError('already-exists', 'Ese correo ya tiene cuenta.');
   }
   await syncAuthToAccount(uid, deps); // converge: pending (not deactivated) ⇒ Auth enabled, driver can sign in
-  const link = await auth.generatePasswordResetLink(email);
+  const link = withLangEs(await auth.generatePasswordResetLink(email));
   appendOpLog(db, uid, lastOp('invite', actorUid, now));
   return { ok: true, uid, link };
 }
@@ -261,10 +314,11 @@ async function setDriverDeactivated(params, deps) {
   const { db, HttpsError, now } = deps; const uid = params.uid; const actorUid = params.actorUid;
   if (await isSharedIdentity(uid, db)) throw new HttpsError('failed-precondition', 'Cuenta con doble rol — separá las identidades antes de desactivar.');
 
-  const rec0 = normalize((await db.ref(`driver_accounts/${uid}`).once('value')).val());
-  if (!rec0 || rec0.onboarding_state === undefined) throw new HttpsError('failed-precondition', 'No existe la cuenta del repartidor.');
-  if (rec0.onboarding_state === 'void') throw new HttpsError('failed-precondition', 'Registro inválido.');
-  if (!(rec0.enabled === false && rec0.deactivated !== true && previouslyApproved(rec0))) {
+  // Validate shape + the EXACT legal source state: a SUSPENDED account = enabled:false & onboarding_state:'active'
+  // & not deactivated & previously-approved (codex r1 P1-7 — a malformed/void/wrong-state record is refused, not
+  // defaulted). Capture the version BEFORE the external precondition reads so a reactivate/suspend during them aborts.
+  const rec0 = validateShape((await db.ref(`driver_accounts/${uid}`).once('value')).val(), HttpsError);
+  if (!(rec0.enabled === false && rec0.deactivated !== true && rec0.onboarding_state === 'active' && previouslyApproved(rec0))) {
     throw new HttpsError('failed-precondition', 'Primero suspendé al repartidor.');
   }
   const v = rec0.version;
@@ -279,9 +333,9 @@ async function setDriverDeactivated(params, deps) {
   if (reasons.length) throw new HttpsError('failed-precondition', 'No se puede desactivar todavía.', { reasons, open_orders: openOrders });
 
   await casTransition(uid, deps, (r) => {
-    if (r.version !== v || !(r.enabled === false && r.deactivated !== true)) throw new HttpsError('aborted', 'El estado del repartidor cambió, reintentá.');
-    return { deactivated: true, revoke_after: now, last_op: lastOp('deactivate', actorUid, now, { cash_confirmed: true }) };
-  });
+    if (!(r.enabled === false && r.deactivated !== true && r.onboarding_state === 'active')) throw new HttpsError('aborted', 'El estado del repartidor cambió, reintentá.');
+    return { deactivated: true, revoke_after: Math.max(r.revoke_after || 0, now), last_op: lastOp('deactivate', actorUid, now, { cash_confirmed: true }) };
+  }, { expectedVersion: v });
   await syncAuthToAccount(uid, deps); // disable + revoke (revoke_after = now)
   appendOpLog(db, uid, lastOp('deactivate', actorUid, now, { cash_confirmed: true }));
   return { ok: true };
@@ -290,8 +344,10 @@ async function setDriverDeactivated(params, deps) {
 async function reactivate(params, deps) {
   const { db, HttpsError } = deps; const uid = params.uid; const actorUid = params.actorUid;
   await casTransition(uid, deps, (r) => {
+    // codex r1 P1-7 — require onboarding_state:'active' (a void record has 'void' and is excluded; malformed is
+    // refused by validateShape). Legal from SUSPENDED (enabled:false, not deactivated) or DEACTIVATED, previously approved.
     const isSuspended = r.enabled === false && r.deactivated !== true && r.onboarding_state === 'active';
-    const isDeactivated = r.deactivated === true;
+    const isDeactivated = r.deactivated === true && r.onboarding_state === 'active';
     if (!((isSuspended || isDeactivated) && previouslyApproved(r))) throw new HttpsError('failed-precondition', 'Solo se puede reactivar una cuenta suspendida o desactivada.');
     return { enabled: true, deactivated: false, onboarding_state: 'active', suspended_at: null, last_op: lastOp('reactivate', actorUid, deps.now) };
     // NB: revoke_after is intentionally NOT touched (monotonic — a pre-deactivation session stays fenced).
@@ -308,7 +364,7 @@ function appendOpLog(db, uid, entry) {
 
 module.exports = {
   ADMIN_FLAG,
-  normEmail, normalize, previouslyApproved, lastOp,
+  normEmail, normalize, previouslyApproved, lastOp, validateShape, withLangEs,
   assertAdminEnabled, assertDispatcherCaller, isSharedIdentity, ownedNonterminalTasks,
   voidAccount, syncAuthToAccount, sweepAuthSync, casTransition,
   inviteDriver, submitDriverProfile, approveDriver, setDriverSuspended, setDriverDeactivated, reactivate,

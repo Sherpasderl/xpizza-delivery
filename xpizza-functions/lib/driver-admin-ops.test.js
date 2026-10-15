@@ -334,5 +334,137 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
     assert.equal(auth._users.v.disabled, true, 'void account must NOT be enabled by the reconciler');
   });
 
+  // ========================================================================
+  // codex r1 reproductions (P1-1..7) + mutant-gap coverage (P2-14)
+  // ========================================================================
+
+  // P1-1 — cold-cache null: the Admin transaction's first callback sees null for an EXISTING record. casTransition
+  // must NOT treat that as absence (return null → retry with server data), and the transition must still commit.
+  await t('P1-1: cold-cache null-first transaction still commits (existing record not rejected)', async () => {
+    const real = { enabled: false, onboarding_state: 'profile_submitted', email: 'c@c.hn', invited_by: 'disp1', version: 2 };
+    let txnCalls = 0;
+    const db = {
+      ref: (p) => ({
+        once: async () => ({ val: () => (p === 'driver_accounts/c' ? real : null) }),
+        transaction: async (fn) => {
+          // 1st callback: null (cold cache). Per the null-first-safe pattern fn returns null → SDK round-trips.
+          const first = fn(null); assert.equal(first, null, 'null-first must return null (force round-trip), not abort');
+          const next = fn(JSON.parse(JSON.stringify(real))); // 2nd callback: real server data
+          if (next === undefined) return { committed: false, snapshot: { val: () => real } };
+          Object.assign(real, next); txnCalls++;
+          return { committed: true, snapshot: { val: () => real } };
+        },
+      }),
+    };
+    await ops.approveDriver({ uid: 'c', actorUid: 'disp1' }, { db, auth: makeAuth({ c: { email: 'c@c.hn', disabled: true } }, () => clockNow), HttpsError, now: clockNow });
+    assert.equal(real.onboarding_state, 'active'); assert.equal(real.enabled, true); assert.equal(txnCalls, 1);
+  });
+
+  // P1-2 — version CAS on a NON-deactivate transition: a concurrent bump between the read and the commit aborts.
+  await t('P1-2: a stale suspend (version advanced by a concurrent op) aborts', async () => {
+    const rec = { enabled: true, onboarding_state: 'active', approved_at: 1, version: 1 };
+    const db = {
+      ref: (p) => ({
+        once: async () => ({ val: () => (p === 'driver_accounts/d' ? rec : (p === 'dispatchers/d' || p === 'kitchen/d' ? null : (p === 'restaurants' ? {} : null))), exists: () => false, forEach: () => {} }),
+        transaction: async (fn) => { rec.version = 3; const next = fn(JSON.parse(JSON.stringify(rec))); if (next === undefined) return { committed: false, snapshot: { val: () => rec } }; Object.assign(rec, next); return { committed: true, snapshot: { val: () => rec } }; },
+      }),
+    };
+    await rejects(ops.setDriverSuspended({ uid: 'd', actorUid: 'disp1' }, { db, auth: makeAuth({}, () => clockNow), HttpsError, now: clockNow }), 'aborted', /cambió/);
+    assert.equal(rec.enabled, true, 'suspend did not apply');
+  });
+
+  // P1-3 — a TRANSIENT Auth error never voids; the record is left for a later retry.
+  await t('P1-3: transient getUser error → rethrow, record NOT voided', async () => {
+    const db = makeDb({ driver_accounts: { p: { enabled: false, onboarding_state: 'pending', email: 'p@c.hn', version: 0 } } });
+    const auth = { getUser: async () => { const e = new Error('backend'); e.code = 'auth/internal-error'; throw e; } };
+    await assert.rejects(ops.syncAuthToAccount('p', { db, auth, now: clockNow }), /backend/);
+    assert.notEqual(db._get('driver_accounts/p').onboarding_state, 'void');
+  });
+  await t('P1-3: transient createUser error → rethrow, record NOT voided', async () => {
+    const db = makeDb({ driver_accounts: { p: { enabled: false, onboarding_state: 'pending', email: 'p@c.hn', version: 0 } } });
+    const auth = {
+      getUser: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; },
+      createUser: async () => { const e = new Error('quota'); e.code = 'auth/internal-error'; throw e; },
+    };
+    await assert.rejects(ops.syncAuthToAccount('p', { db, auth, now: clockNow }), /quota/);
+    assert.notEqual(db._get('driver_accounts/p').onboarding_state, 'void');
+  });
+
+  // P1-3/P2-14 — concurrent creator starting from a MISSING user → recovery (not void).
+  await t('P1-3: createUser email-collision then our uid now exists with same email → recovery (converge, not void)', async () => {
+    const db = makeDb({ driver_accounts: { p: { enabled: false, onboarding_state: 'pending', email: 'p@c.hn', version: 0 } } });
+    let created = false;
+    const auth = {
+      getUser: async (u) => { if (!created) { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; } return { uid: u, email: 'p@c.hn', disabled: true }; },
+      createUser: async () => { created = true; const e = new Error('dup'); e.code = 'auth/email-already-exists'; throw e; }, // a concurrent creator won the race
+      updateUser: async () => {}, revokeRefreshTokens: async () => {},
+    };
+    await ops.syncAuthToAccount('p', { db, auth, now: clockNow });
+    assert.notEqual(db._get('driver_accounts/p').onboarding_state, 'void');
+  });
+
+  // P1-4 — a UID re-invite whose email now belongs to a DIFFERENT uid is refused (no link for another identity).
+  await t('P1-4: re-invite refused when the email maps to a different Auth uid', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { up: { enabled: false, onboarding_state: 'pending', email: 'p@c.hn', invited_by: 'disp1', version: 0 } } }));
+    const auth = makeAuth({ other: { email: 'p@c.hn' } }, () => clockNow); // email belongs to 'other', not 'up'
+    await rejects(ops.inviteDriver({ uid: 'up', actorUid: 'disp1' }, depsFor(db, auth)), 'failed-precondition', /no coincide/);
+  });
+
+  // P1-5 — revoke_after is monotonic: a deactivate with now < existing cutoff keeps the larger.
+  await t('P1-5: deactivate never lowers revoke_after (max of existing, now)', async () => {
+    const FUTURE = NOW + 1_000_000;
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { d: { enabled: false, deactivated: false, onboarding_state: 'active', email: 'd@c.hn', approved_at: 1, suspended_at: 1, revoke_after: FUTURE, version: 3 } }, drivers: { d: {} }, tasks: {} }));
+    await ops.setDriverDeactivated({ uid: 'd', actorUid: 'disp1', cashAttested: true }, depsFor(db, makeAuth({ d: { email: 'd@c.hn', disabled: false } }, () => clockNow)));
+    assert.equal(db._get('driver_accounts/d').revoke_after, FUTURE, 'kept the larger (future) cutoff, not now');
+  });
+
+  // P1-6 — a void (email mismatch) makes the record ineligible: enabled:false.
+  await t('P1-6: email-mismatch void sets enabled:false (never leaves an active eligible void)', async () => {
+    const db = makeDb({ driver_accounts: { p: { enabled: true, onboarding_state: 'active', email: 'want@c.hn', version: 2 } } });
+    const auth = makeAuth({ p: { email: 'other@c.hn', disabled: false } }, () => clockNow);
+    await ops.syncAuthToAccount('p', { db, auth, now: clockNow });
+    const rec = db._get('driver_accounts/p');
+    assert.equal(rec.onboarding_state, 'void'); assert.equal(rec.enabled, false, 'void must be ineligible');
+  });
+
+  // P1-7 — malformed shape and wrong source state are refused by destructive transitions.
+  await t('P1-7: malformed record (enabled not boolean) → suspend refused "Registro inválido"', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { m: { enabled: 'yes', onboarding_state: 'active', version: 1 } } }));
+    await rejects(ops.setDriverSuspended({ uid: 'm', actorUid: 'disp1' }, depsFor(db, makeAuth({}, () => clockNow))), 'failed-precondition', /inválido/);
+  });
+  await t('P1-7: deactivate requires onboarding_state active (a profile_submitted enabled:false record is refused)', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { d: { enabled: false, deactivated: false, onboarding_state: 'profile_submitted', grandfathered: true, version: 1 } }, drivers: { d: {} }, tasks: {} }));
+    await rejects(ops.setDriverDeactivated({ uid: 'd', actorUid: 'disp1', cashAttested: true }, depsFor(db, makeAuth({ d: { email: 'd@c.hn' } }, () => clockNow))), 'failed-precondition', /suspend/);
+  });
+  await t('P1-7: reactivate on a voided-deactivated record (deactivated:true, onboarding:void) is refused', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { v: { enabled: false, deactivated: true, onboarding_state: 'void', approved_at: 1, version: 2 } } }));
+    await rejects(ops.reactivate({ uid: 'v', actorUid: 'disp1' }, depsFor(db, makeAuth({}, () => clockNow))), 'failed-precondition');
+  });
+
+  // P2-14 mutant-gap — the /kitchen/{uid} dual-role read specifically, and the suspend last_op stamp.
+  await t('mutant-gap: dual-role via /kitchen/{uid} specifically → suspend refused', async () => {
+    const db = makeDb(Object.assign(seedBase(), { kitchen: { k: true }, driver_accounts: { k: { enabled: true, onboarding_state: 'active', version: 1 } } }));
+    await rejects(ops.setDriverSuspended({ uid: 'k', actorUid: 'disp1' }, depsFor(db, makeAuth({}, () => clockNow))), 'failed-precondition', /cocina/);
+  });
+  await t('mutant-gap: suspend stamps last_op {type:suspend, actor}', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { a: { enabled: true, onboarding_state: 'active', approved_at: 1, version: 2 } } }));
+    await ops.setDriverSuspended({ uid: 'a', actorUid: 'disp1' }, depsFor(db, makeAuth({ a: { email: 'a@c.hn', disabled: false } }, () => clockNow)));
+    const lo = db._get('driver_accounts/a').last_op;
+    assert.equal(lo.type, 'suspend'); assert.equal(lo.actor_uid, 'disp1');
+  });
+
+  // Owner add-on — the reset link forces the Firebase hosted page to Spanish (lang=es).
+  await t('invite: the returned reset link carries lang=es (Spanish hosted reset page)', async () => {
+    const db = makeDb(seedBase()); const auth = makeAuth({ disp1: { email: 'd@x' } }, () => clockNow);
+    const r = await ops.inviteDriver({ name: 'M', phone: 'p', email: 'm@c.hn', actorUid: 'disp1' }, depsFor(db, auth));
+    assert.match(r.link, /[?&]lang=es(&|$)/, 'reset link must pin lang=es');
+  });
+  await t('withLangEs: appends when absent, replaces an existing lang, no-ops on empty', async () => {
+    assert.match(ops.withLangEs('https://x/action?oobCode=A'), /[?&]lang=es$/);
+    assert.equal(ops.withLangEs('https://x/action?oobCode=A&lang=en'), 'https://x/action?oobCode=A&lang=es');
+    assert.equal(ops.withLangEs('https://x/action'), 'https://x/action?lang=es');
+    assert.equal(ops.withLangEs(''), '');
+  });
+
   console.log(`\ndriver-admin-ops: ${passed} tests passed`);
 })().catch((e) => { console.error('driver-admin-ops FAILED:', e && e.stack || e); process.exit(1); });

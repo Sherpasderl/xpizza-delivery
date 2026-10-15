@@ -1673,7 +1673,7 @@ function mdraDeriveState(rec) {
 }
 function mdraActions(state) {
   switch (state) {
-    case 'active': return ['suspend', 'deactivate'];
+    case 'active': return ['suspend'];                 // deactivate only from suspended (transition table)
     case 'profile_submitted': return ['approve'];
     case 'pending': return ['reinvite'];
     case 'suspended': return ['reactivate', 'deactivate'];
@@ -1685,18 +1685,32 @@ function mdraPill(state) {
   const m = { active: ['ok', 'Activo'], pending: ['pend', 'Pendiente'], profile_submitted: ['pend', 'Perfil enviado'], suspended: ['susp', 'Suspendido'], deactivated: ['dead', 'Desactivado'], void: ['unk', 'Anulado'], unknown: ['unk', 'Estado desconocido'] };
   return m[state] || m.unknown;
 }
-function mdraName(uid, rec) { return (rec && rec.profile && rec.profile.name) || (rec && rec.name) || ('Repartidor ' + String(uid || '').slice(0, 6)); }
+function mdraName(uid, rec) {
+  // type-safe + grandfathered fallback: a backfill record has no profile/name, so fall back to the roster name.
+  const str = (v) => (typeof v === 'string' && v.trim()) ? v.trim() : '';
+  const roster = (typeof STORE !== 'undefined' && STORE.drivers && STORE.drivers[uid]) ? STORE.drivers[uid].name : null;
+  return str(rec && rec.profile && rec.profile.name) || str(rec && rec.name) || str(roster) || ('Repartidor ' + String(uid || '').slice(0, 6));
+}
 function mdraLatestCuadre(shifts) { if (!shifts || typeof shifts !== 'object') return null; let b = null; for (const k of Object.keys(shifts)) { const c = shifts[k] && shifts[k].cuadre; if (c && typeof c === 'object' && Number.isFinite(c.closed_at) && (!b || c.closed_at > b.closed_at)) b = c; } return b; }
 function mdraCashDisplay(cuadre, err) {
   if (err) return { available: false, text: 'Cuadre no disponible' };
   if (!cuadre) return { available: false, text: 'Sin cuadre registrado' };
-  const owed = cuadre.cash_owed; if (!Number.isFinite(owed) || owed < 0 || !Number.isFinite(cuadre.closed_at)) return { available: false, text: 'Cuadre no disponible' };
+  const owed = cuadre.cash_owed; const nn = (x) => Number.isFinite(x) && x >= 0;
+  // STRICT (same as the cash bar): malformed flags/counts → unavailable, never a clean final L 0.
+  const valid = nn(owed) && Number.isFinite(cuadre.closed_at) && nn(cuadre.cash_order_count)
+    && (cuadre.legacy_provisional_count === undefined || nn(cuadre.legacy_provisional_count))
+    && (cuadre.provisional === undefined || typeof cuadre.provisional === 'boolean')
+    && (cuadre.needs_dispatch_review === undefined || typeof cuadre.needs_dispatch_review === 'boolean');
+  if (!valid) return { available: false, text: 'Cuadre no disponible' };
   const tag = cuadre.needs_dispatch_review === true ? ' · revisión pendiente' : (cuadre.provisional === true ? ' · provisional' : (cuadre.provisional === undefined ? ' · heredado' : ''));
   return { available: true, text: 'L ' + owed.toLocaleString('es-HN') + tag };
 }
 function mdraBlockers(p) { const r = []; if (p && p.openShift) r.push('open_shift'); if (p && p.openOrders && p.openOrders.length) r.push('open_tasks'); if (!(p && p.cashAttested === true)) r.push('cash'); return r; }
 
-const MDRA = { recs: {}, filter: 'all', unsub: null, cashUnsub: null, cash: undefined, cashErr: null, view: 'list', sel: null, attested: false };
+// view ∈ list | invite | invited | deactivate. dialogOpen = a confirm is up. A live snapshot refreshes list DATA
+// but must NOT re-render over a sub-view / dialog / the one-time link.
+const MDRA = { recs: {}, filter: 'all', unsub: null, cashUnsub: null, cash: undefined, cashErr: null, view: 'list', sel: null, attested: false, acctErr: false, link: null, dialogOpen: false };
+function mdraListLive() { return MDRA.view === 'list' && !MDRA.dialogOpen; }
 
 function mdraEnsure() {
   if ($('mdra-sheet')) return;
@@ -1739,7 +1753,7 @@ async function mdraCall(name, data) {
 }
 function mdraOpen() {
   mdraEnsure(); MDRA.view = 'list'; MDRA.sel = null; $('mdra-sheet').classList.add('open');
-  MDRA.unsub = onValue(ref(XPD.getDb(), 'driver_accounts'), (s) => { MDRA.recs = s.val() || {}; mdraRender(); }, () => { MDRA.recs = {}; mdraRender(); });
+  MDRA.unsub = onValue(ref(XPD.getDb(), 'driver_accounts'), (s) => { MDRA.recs = s.val() || {}; MDRA.acctErr = false; if (mdraListLive()) mdraRender(); }, () => { MDRA.recs = {}; MDRA.acctErr = true; if (mdraListLive()) mdraRender(); });
   MDRA.cashUnsub = XPD.subscribeToDriverCash((c) => { MDRA.cash = c || {}; MDRA.cashErr = null; if (MDRA.view === 'deactivate') mdraRender(); }, (err) => { MDRA.cashErr = err || { __error: true }; if (MDRA.view === 'deactivate') mdraRender(); });
   mdraRender();
 }
@@ -1758,7 +1772,9 @@ function mdraRowHtml(uid, rec) {
 function mdraRender() {
   mdraEnsure(); const body = $('mdra-body'); if (!body) return;
   if (MDRA.view === 'invite') return mdraInvite(body);
+  if (MDRA.view === 'invited') return mdraRenderLink(body);
   if (MDRA.view === 'deactivate') return mdraDeactivate(body);
+  if (MDRA.acctErr) { body.innerHTML = `<div class="empty" style="padding:28px"><p>No se pudieron cargar los repartidores.</p><button class="mdra-act" id="mdra-retry" style="margin-top:12px">Reintentar</button></div>`; $('mdra-retry')?.addEventListener('click', () => { mdraClose(); mdraOpen(); }); return; }
   const recs = MDRA.recs || {}; const uids = Object.keys(recs);
   const match = (s) => MDRA.filter === 'all' ? true : (MDRA.filter === 'pending' ? (s === 'pending' || s === 'profile_submitted') : s === MDRA.filter);
   const cc = { all: uids.length, pending: 0, active: 0, suspended: 0, deactivated: 0 };
@@ -1772,49 +1788,82 @@ function mdraRender() {
   body.querySelectorAll('[data-mfilter]').forEach((el) => el.addEventListener('click', () => { MDRA.filter = el.getAttribute('data-mfilter'); mdraRender(); }));
   body.querySelectorAll('[data-mact]').forEach((el) => el.addEventListener('click', () => mdraAction(el.getAttribute('data-mact'), el.getAttribute('data-uid'))));
 }
+function mdraConfirm(title, msg, label, tone) {
+  return new Promise((resolve) => {
+    const body = $('mdra-body'); MDRA.dialogOpen = true;
+    const done = (v) => { MDRA.dialogOpen = false; resolve(v); };
+    body.innerHTML = `<div style="font-size:16px;font-weight:700;margin-bottom:8px">${escapeHtml(title)}</div><div class="mdra-inset"><p class="mdra-mut-t" style="margin:0">${escapeHtml(msg)}</p></div><button class="mdra-act ${tone} mdra-full" id="mdra-cfm">${escapeHtml(label)}</button><button class="mdra-act mdra-full" id="mdra-cxl">Cancelar</button>`;
+    $('mdra-cfm').addEventListener('click', () => done(true));
+    $('mdra-cxl').addEventListener('click', () => done(false));
+  });
+}
 async function mdraAction(act, uid) {
   try {
     if (act === 'approve') { await mdraCall('approveDriver', { uid }); }
-    else if (act === 'reinvite') { const r = await mdraCall('inviteDriver', { uid }); mdraLink(r.link); return; }
-    else if (act === 'suspend') { await mdraCall('setDriverSuspended', { uid }); }
-    else if (act === 'reactivate') { await mdraCall('reactivate', { uid }); }
+    else if (act === 'reinvite') { const rc = MDRA.recs[uid] || {}; const r = await mdraCall('inviteDriver', { uid }); mdraLink(r.link, (rc.profile && rc.profile.name) || rc.name || (STORE.drivers[uid] || {}).name || ''); return; }
+    else if (act === 'suspend') { if (!(await mdraConfirm('Suspender repartidor', 'Deja de recibir pedidos nuevos; termina lo que ya tiene. Reversible.', 'Suspender', 'warn'))) { MDRA.view = 'list'; mdraRender(); return; } await mdraCall('setDriverSuspended', { uid }); toast('Suspendido'); }
+    else if (act === 'reactivate') { if (!(await mdraConfirm('Reactivar repartidor', 'La cuenta vuelve a activa y puede recibir pedidos otra vez.', 'Reactivar', 'ok'))) { MDRA.view = 'list'; mdraRender(); return; } await mdraCall('reactivate', { uid }); toast('Reactivado'); }
     else if (act === 'deactivate') { MDRA.view = 'deactivate'; MDRA.sel = uid; MDRA.attested = false; mdraRender(); return; }
-    mdraRender();
-  } catch (e) { mdraErr(e); }
+    MDRA.view = 'list'; mdraRender();
+  } catch (e) { mdraErr(e); MDRA.view = 'list'; mdraRender(); }
 }
 function mdraInvite(body) {
   body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-field"><span class="mdra-lbl">Nombre</span><input id="mdra-n"></div><div class="mdra-field"><span class="mdra-lbl">Teléfono</span><input id="mdra-p"></div><div class="mdra-field"><span class="mdra-lbl">Email</span><input id="mdra-e" type="email"></div><button class="mdra-act pri mdra-full" id="mdra-cr">Crear invitación</button>`;
   $('mdra-bk').addEventListener('click', () => { MDRA.view = 'list'; mdraRender(); });
-  $('mdra-cr').addEventListener('click', async () => { try { const r = await mdraCall('inviteDriver', { name: $('mdra-n').value, phone: $('mdra-p').value, email: $('mdra-e').value }); MDRA.view = 'list'; mdraLink(r.link); } catch (e) { mdraErr(e); } });
+  $('mdra-cr').addEventListener('click', async () => { try { const nm = $('mdra-n').value; const r = await mdraCall('inviteDriver', { name: nm, phone: $('mdra-p').value, email: $('mdra-e').value }); MDRA.view = 'list'; mdraLink(r.link, nm); } catch (e) { mdraErr(e); } });
 }
-function mdraLink(link) {
-  const body = $('mdra-body'); MDRA.view = 'list'; if (!link) { mdraRender(); return; }
+function mdraLink(link, name) {
+  if (!link) { MDRA.view = 'list'; MDRA.link = null; MDRA.inviteName = null; mdraRender(); return; }
+  MDRA.link = link; MDRA.inviteName = (name || '').trim() || null; MDRA.view = 'invited'; mdraRenderLink($('mdra-body'));
+}
+function mdraRenderLink(body) {
+  const link = MDRA.link; if (!body || !link) { MDRA.view = 'list'; MDRA.link = null; mdraRender(); return; }
   body.innerHTML = `<div class="mdra-inset"><span class="mdra-lbl" style="color:var(--success,#7fc8a0)">Enlace de contraseña</span><div style="font-family:monospace;word-break:break-all;margin:9px 0;font-size:13px">${escapeHtml(link)}</div><div class="mdra-mut-t">Se muestra una sola vez · compartilo ahora.</div></div><button class="mdra-act ok mdra-full" id="mdra-wa">Enviar por WhatsApp</button><button class="mdra-act mdra-full" id="mdra-cp">Copiar</button><button class="mdra-act mdra-full" id="mdra-dn">Listo</button>`;
   $('mdra-cp').addEventListener('click', () => { try { navigator.clipboard.writeText(link); } catch (_) {} });
-  $('mdra-wa').addEventListener('click', () => { try { window.open('https://wa.me/?text=' + encodeURIComponent(link), '_blank'); } catch (_) {} });
-  $('mdra-dn').addEventListener('click', () => { MDRA.view = 'list'; mdraRender(); });
+  $('mdra-wa').addEventListener('click', () => { try { const hola = MDRA.inviteName ? ('Hola ' + MDRA.inviteName + ', ') : 'Hola, '; const txt = hola + 'creá tu contraseña para la app de repartidores con este enlace. Es de un solo uso: ' + link; window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank'); } catch (_) {} });
+  $('mdra-dn').addEventListener('click', () => { MDRA.view = 'list'; MDRA.link = null; mdraRender(); });
 }
 async function mdraDeactivate(body) {
   const uid = MDRA.sel; const rec = MDRA.recs[uid] || {};
-  let openShift = false, openOrders = [];
+  const back = () => { MDRA.view = 'list'; MDRA.sel = null; mdraRender(); };
+  if (mdraDeriveState(rec) !== 'suspended') {
+    body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">Primero suspendé al repartidor</b><p class="mdra-mut-t" style="margin:6px 0 0">Solo se puede desactivar una cuenta ya suspendida.</p></div><button class="mdra-act danger mdra-full" disabled>Desactivar cuenta</button>`;
+    $('mdra-bk').addEventListener('click', back); return;
+  }
+  let openShift = false, openOrders = [], dualRole = false, precheckErr = false;
   try {
     const d = (await fbGet(ref(XPD.getDb(), `drivers/${uid}`))).val() || {}; openShift = d.active === true || (d.current_shift_id != null);
     const tasks = (await fbGet(ref(XPD.getDb(), 'tasks'))).val() || {}; const set = new Set();
     for (const t of Object.keys(tasks)) { const x = tasks[t]; if (x && x.assigned_driver_id === uid && x.status !== 'completed' && x.status !== 'cancelled') set.add(x.order_id || t); }
     openOrders = [...set];
-  } catch (_) {}
+    const disp = await fbGet(ref(XPD.getDb(), `dispatchers/${uid}`)); const kit = await fbGet(ref(XPD.getDb(), `kitchen/${uid}`));
+    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists());
+  } catch (_) { precheckErr = true; }
+  if (MDRA.view !== 'deactivate' || MDRA.sel !== uid) return;   // superseded by a navigation during the pending reads (P2-9)
   const cuadre = (MDRA.cash && !MDRA.cashErr) ? mdraLatestCuadre(MDRA.cash[uid]) : null; const cash = mdraCashDisplay(cuadre, MDRA.cashErr);
   const blockers = mdraBlockers({ openShift, openOrders, cashAttested: MDRA.attested === true }); const hard = openShift || openOrders.length > 0;
-  const cond = ['open_shift', 'open_tasks'].map((r) => { const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b></div></div>`; }).join('');
+  const cond = ['open_shift', 'open_tasks'].map((r) => {
+    if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:var(--warn,#e7bd86);color:#5a3c10"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
+    const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b></div></div>`; }).join('');
+  const canDo = !precheckErr && !dualRole && blockers.length === 0;
+  const dualHtml = dualRole ? `<div class="mdra-inset" style="background:var(--accent-soft,rgba(236,154,161,.16))"><b style="font-size:13px;color:var(--accent,#ec9aa1)">Cuenta con doble rol</b><p class="mdra-mut-t" style="margin:6px 0 0">También es de despacho o cocina. Separá las identidades antes de desactivar.</p></div>` : '';
   body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div style="font-size:16px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(mdraName(uid, rec))}</div>`
-    + (hard ? `<div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">Todavía no se puede desactivar</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
+    + dualHtml
+    + ((hard || precheckErr) ? `<div class="mdra-inset" style="background:var(--warn-soft,rgba(231,189,134,.16))"><b style="font-size:13px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</b><div style="margin-top:9px">${cond}</div></div>` : `<div>${cond}</div>`)
     + `<div class="mdra-inset"><div style="display:flex;align-items:center"><span class="mdra-lbl">Efectivo</span><span class="mdra-owner" style="margin-left:auto">Decisión del dueño</span></div><label class="mdra-check ${MDRA.attested ? 'on' : ''}" id="mdra-ck"><span class="mdra-box"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></span><span>Sin efectivo pendiente</span></label><div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span class="mdra-lbl">Último cuadre</span><span style="color:${cash.available ? 'var(--text,#f2f4f6)' : 'var(--text-dim,#9b9993)'}">${escapeHtml(cash.text)}</span></div><div class="mdra-mut-t" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`
-    + `<button class="mdra-act danger mdra-full" id="mdra-go" ${blockers.length ? 'disabled' : ''}>Desactivar cuenta</button>`;
-  $('mdra-bk').addEventListener('click', () => { MDRA.view = 'list'; MDRA.sel = null; mdraRender(); });
+    + `<button class="mdra-act danger mdra-full" id="mdra-go" ${canDo ? '' : 'disabled'}>Desactivar cuenta</button>`;
+  $('mdra-bk').addEventListener('click', back);
   $('mdra-ck').addEventListener('click', () => { MDRA.attested = !MDRA.attested; mdraRender(); });
-  $('mdra-go').addEventListener('click', async () => { try { await mdraCall('setDriverDeactivated', { uid, cash_attested: MDRA.attested === true }); MDRA.view = 'list'; MDRA.sel = null; mdraRender(); } catch (e) { mdraErr(e); } });
+  $('mdra-go').addEventListener('click', async () => { try { await mdraCall('setDriverDeactivated', { uid, cash_attested: MDRA.attested === true }); toast('Cuenta desactivada'); MDRA.view = 'list'; MDRA.sel = null; mdraRender(); } catch (e) { mdraErr(e); } });
 }
-function mdraErr(e) { try { alert((e && e.message) || 'Error'); } catch (_) {} }
+function mdraErr(e) {
+  let msg = (e && e.message) || 'Error'; const code = (e && e.code) || '';
+  if ((code === 'functions/failed-precondition' || code === 'failed-precondition') && e.details && Array.isArray(e.details.reasons)) {
+    const lab = { open_shift: 'turno abierto', open_tasks: 'entregas en curso', cash: 'efectivo sin confirmar' };
+    msg = 'No se puede todavía: ' + e.details.reasons.map((r) => lab[r] || r).join(', ');
+  }
+  try { toast(msg, true); } catch (_) { try { console.log(msg); } catch (_) {} }
+}
 
 renderLive();
 </script>

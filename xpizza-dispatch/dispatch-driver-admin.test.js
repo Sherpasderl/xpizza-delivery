@@ -37,7 +37,7 @@ assert.strictEqual(H.deriveDriverAcctState({ foo: 1 }), 'unknown');
 ok('state precedence incl. grandfathered-suspended, void, and malformed→unknown');
 
 // ── 2. per-row action mapping ──
-assert.deepStrictEqual(H.driverRowActions('active'), ['suspend', 'deactivate']);
+assert.deepStrictEqual(H.driverRowActions('active'), ['suspend']);  // deactivate only from suspended (transition table)
 assert.deepStrictEqual(H.driverRowActions('profile_submitted'), ['approve']);
 assert.deepStrictEqual(H.driverRowActions('pending'), ['reinvite']);
 assert.deepStrictEqual(H.driverRowActions('suspended'), ['reactivate', 'deactivate']);
@@ -54,9 +54,11 @@ for (const rec of [{ onboarding_state: 'void' }, { foo: 1 }, null]) {
 }
 {
   const activeRow = H.driverAcctRowHtml('u1', { enabled: true, onboarding_state: 'active' }, null);
-  assert.ok(/data-act="suspend"/.test(activeRow) && /data-act="deactivate"/.test(activeRow), 'active row offers suspend + deactivate');
+  assert.ok(/data-act="suspend"/.test(activeRow) && !/data-act="deactivate"/.test(activeRow), 'active row offers suspend only (deactivate requires suspended first)');
+  const suspRow = H.driverAcctRowHtml('u2', { enabled: false, onboarding_state: 'active', approved_at: 1 }, null);
+  assert.ok(/data-act="deactivate"/.test(suspRow) && /data-act="reactivate"/.test(suspRow), 'suspended row offers reactivate + deactivate');
 }
-ok('void/unknown rows render no destructive actions; active row does');
+ok('void/unknown rows render no destructive actions; active row offers suspend only; suspended offers deactivate');
 
 // ── 4. cash-attest display: unavailable is NEVER a clean L 0.00, and never auto-satisfies ──
 assert.deepStrictEqual(H.cashAttestDisplay(null, { __error: true }).available, false);
@@ -66,11 +68,14 @@ assert.strictEqual(absent.available, false);
 assert.ok(!/L\s*0/.test(absent.text), 'absent cuadre is NOT rendered as L 0.00');
 const malformed = H.cashAttestDisplay({ cash_owed: 'x', closed_at: 1 }, null);
 assert.strictEqual(malformed.available, false); assert.strictEqual(malformed.text, 'Cuadre no disponible');
-const finalC = H.cashAttestDisplay({ cash_owed: 0, closed_at: Date.now(), provisional: false }, null);
+const finalC = H.cashAttestDisplay({ cash_owed: 0, cash_order_count: 0, closed_at: Date.now(), provisional: false }, null);
 assert.strictEqual(finalC.available, true); assert.ok(/L 0/.test(finalC.text), 'a GENUINE final zero cuadre may show L 0');
-const provC = H.cashAttestDisplay({ cash_owed: 150, closed_at: Date.now(), provisional: true }, null);
+const provC = H.cashAttestDisplay({ cash_owed: 150, cash_order_count: 1, closed_at: Date.now(), provisional: true }, null);
 assert.ok(/provisional/.test(provC.text));
-ok('cash display: error/absent/malformed → "no disponible" (never L 0.00); genuine final → L figure');
+// malformed FLAGS with a clean amount must NOT read as a final L 0 (P2-11)
+const badFlag = H.cashAttestDisplay({ cash_owed: 0, cash_order_count: 1, closed_at: Date.now(), provisional: 'yes' }, null);
+assert.strictEqual(badFlag.available, false); assert.ok(!/L\s*0/.test(badFlag.text), 'malformed provisional flag ⇒ unavailable, never a clean L 0');
+ok('cash display: error/absent/malformed-amount/malformed-flags → "no disponible" (never L 0.00); genuine final → L figure');
 
 // ── 5. deactivate blockers are gated by the CHECKBOX, independent of the (informational) cash figure ──
 assert.deepStrictEqual(H.deactivateBlockers({ openShift: false, openOrders: [], cashAttested: true }), []);
@@ -100,5 +105,16 @@ ok('counts + filter matching');
   assert.ok(/&lt;img/.test(row), 'escaped form present');
 }
 ok('driver-supplied text is escaped (no raw HTML injected)');
+
+// ── 9. malformed display fields must NOT crash the row/list (P2-12) ──
+{
+  assert.doesNotThrow(() => H.driverAcctDisplayName('u9', { name: 42 }, null), 'non-string name must not throw');
+  assert.strictEqual(typeof H.driverAcctDisplayName('u9', { name: 42 }, null), 'string', 'display name is always a string');
+  assert.doesNotThrow(() => H.driverAcctRowHtml('u9', { enabled: true, onboarding_state: 'active', name: 42 }, null), 'a numeric name must not crash the row renderer');
+  const r = H.driverAcctRowHtml('u9', { enabled: true, onboarding_state: 'active', name: 42 }, null);
+  assert.ok(/Repartidor u9/.test(r), 'malformed name falls back to the neutral uid label');
+  assert.doesNotThrow(() => H.driverAcctDisplayName('u9', { profile: { name: {} } }, [1, 2]), 'object/array name+hint must not throw');
+}
+ok('malformed display fields render neutrally, never throw (P2-12)');
 
 console.log(`\nAll ${pass} driver-admin render/logic tests passed.`);
