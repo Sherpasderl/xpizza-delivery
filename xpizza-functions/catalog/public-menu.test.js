@@ -309,9 +309,10 @@ async function seeded(rid, over = {}) {
        dropped it stayed green (mutant b1-07). Served with no identity — each brand's registry rows removed, the
        state of a brand before its backfill, where the overlay serves every record exactly as it was — the two
        brands' bodies are equal byte for byte, and the etags must still differ. */
-    for (const p of [...twinDb._raw.keys()]) if (/^restaurants\/(x_pizza|x_pizza_two)\/identity\//.test(p)) twinDb._raw.delete(p);
-    const bare1 = await buildPublicMenu(twinDb, 'x_pizza', { known, ...active });
-    const bare2 = await buildPublicMenu(twinDb, CLONE, { known: new Set([...known, CLONE]), ...active });
+    const [TWIN_A, TWIN_B] = [one.rid, two.rid];   // the pair above, by its own ids — no brand named here
+    for (const p of [...twinDb._raw.keys()]) if ([TWIN_A, TWIN_B].some((r) => p.startsWith(`restaurants/${r}/identity/`))) twinDb._raw.delete(p);
+    const bare1 = await buildPublicMenu(twinDb, TWIN_A, { known, ...active });
+    const bare2 = await buildPublicMenu(twinDb, TWIN_B, { known: new Set([...known, TWIN_B]), ...active });
     assert.strictEqual(JSON.stringify(bare2.body), JSON.stringify(bare1.body),
       'premise: with no identity applied, the two restaurants serve a byte-identical body');
     assert.ok(!bare1.body.dishes.some((d) => d.dish_id), 'premise: no identity was applied');
