@@ -12056,7 +12056,7 @@
     "to": "    const calls = [].filter(",
     "label": "B4 r1: a PARAMETER payload is never resolved at its call sites (acquireHostedAttempt's pendingOrderRecord spread)",
     "kills_with": [
-      "acquireHostedAttempt opaque-order-object line 128 (pendingOrderRecord)"
+      "acquireHostedAttempt opaque-order-object line "
     ],
     "command": [
       "node",
@@ -12146,7 +12146,7 @@
     "to": "      const fns = [];",
     "label": "B4 r1: a builder CALL's return is never followed (hubSnapshot / buildCreateOrderUpdates)",
     "kills_with": [
-      "cancelOrderCore opaque-order-object line 101 (orders/*: C.claimDecision(cur, claimId, now))"
+      "cancelOrderCore opaque-order-object line "
     ],
     "command": [
       "node",
@@ -12192,7 +12192,7 @@
     "to": "      if (false) return [{ k: 'current',",
     "label": "B4 r2 P1-1/P2-5: a transaction updater's parameter is no longer the current order (its spread / return is unresolved)",
     "kills_with": [
-      "cancel-order-core.js finalize opaque-order-object line 45 (cur)"
+      "cancel-order-core.js finalize opaque-order-object line "
     ],
     "command": [
       "node",
@@ -12267,7 +12267,7 @@
     "to": "    const all = FUNCS.get(nm) || [];\n    return all; const c = call.callee;",
     "label": "B4 r2: a call resolves to EVERY same-named function in any file (not its local / required module's)",
     "kills_with": [
-      "acquireOnlineAttempt opaque-order-object line 92 (orders/*: c — escapes (via:paymentBindingConflict))"
+      "(orders/*: c — escapes (via:paymentBindingConflict))"
     ],
     "command": [
       "node",
@@ -12282,7 +12282,7 @@
     "to": "        if (false) return null;   // EMPTY-OK: Object.prototype.*.call(x, k) — a read — Object.prototype.hasOwnProperty.call(x, k)",
     "label": "B4 r2: Object.prototype.*.call(x) reads count as a heap escape",
     "kills_with": [
-      "acquireOnlineAttempt opaque-order-object line 92 (orders/*: c — escapes (via:paymentBindingConflict))"
+      "(orders/*: c — escapes (via:paymentBindingConflict))"
     ],
     "command": [
       "node",
@@ -12387,7 +12387,7 @@
     "to": "    else if (false) { for (const f of fnsFor(a))",
     "label": "B4 r3: a ref path built by a function (statusPath(oid)) is not resolved",
     "kills_with": [
-      "factura-helpers.js allocateFacturaNumber dynamic-root-path line 28 (*)"
+      "factura-helpers.js allocateFacturaNumber dynamic-root-path line "
     ],
     "command": [
       "node",
@@ -12417,7 +12417,7 @@
     "to": "    if (false) {",
     "label": "B4 r3: a transaction RESULT's snapshot is not the committed value at its ref",
     "kills_with": [
-      "pixelpay-confirm.js confirmAndMaterialize opaque-order-object line 301 (orders/*: o"
+      "pixelpay-confirm.js confirmAndMaterialize opaque-order-object line "
     ],
     "command": [
       "node",
