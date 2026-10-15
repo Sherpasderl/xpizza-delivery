@@ -682,7 +682,14 @@
     "label": "the etag drops the rid (two brands collide on one cache key)",
     "file": "catalog/public-menu.js",
     "from": "    .update(`${restaurantId} ${representationVersion} ${canonicalJson(body)}`)",
-    "to": "    .update(`${representationVersion} ${canonicalJson(body)}`)"
+    "to": "    .update(`${representationVersion} ${canonicalJson(body)}`)",
+    "kills_with": [
+      "two restaurants serving a byte-identical body share an etag"
+    ],
+    "command": [
+      "node",
+      "catalog/public-menu.test.js"
+    ]
   },
   {
     "id": "b1-08",

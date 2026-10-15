@@ -304,7 +304,20 @@ async function seeded(rid, over = {}) {
       '🔴 …and their identities are NOT shared — an id is per-merchant, so one brand can never resolve the other\'s object');
     assert.notStrictEqual(two.etag, one.etag,
       '🔴 two restaurants with the same menu share an etag — anything keyed by etag alone would serve one brand the other\'s menu');
-    ok(`etag: stable across builds, moves on a display-only change, and separates two restaurants serving an IDENTICAL menu (${a.etag.slice(1, 13)}…)`);
+    /* 🔴 …AND WITH THE BODIES BYTE-IDENTICAL, so the rid is the ONLY thing that can separate the etags. Above, the
+       per-merchant ids make the bodies differ, so the etags would differ with or without the rid — a hash that
+       dropped it stayed green (mutant b1-07). Served with no identity — each brand's registry rows removed, the
+       state of a brand before its backfill, where the overlay serves every record exactly as it was — the two
+       brands' bodies are equal byte for byte, and the etags must still differ. */
+    for (const p of [...twinDb._raw.keys()]) if (/^restaurants\/(x_pizza|x_pizza_two)\/identity\//.test(p)) twinDb._raw.delete(p);
+    const bare1 = await buildPublicMenu(twinDb, 'x_pizza', { known, ...active });
+    const bare2 = await buildPublicMenu(twinDb, CLONE, { known: new Set([...known, CLONE]), ...active });
+    assert.strictEqual(JSON.stringify(bare2.body), JSON.stringify(bare1.body),
+      'premise: with no identity applied, the two restaurants serve a byte-identical body');
+    assert.ok(!bare1.body.dishes.some((d) => d.dish_id), 'premise: no identity was applied');
+    assert.notStrictEqual(bare2.etag, bare1.etag,
+      '🔴 two restaurants serving a byte-identical body share an etag — the rid is not in it');
+    ok(`etag: stable across builds, moves on a display-only change, and separates two restaurants serving an IDENTICAL menu — with and without identity (${a.etag.slice(1, 13)}…)`);
   }
   {
     // 🔴 THE ETAG COVERS THE REPRESENTATION, NOT JUST 1A's CONTENT HASH. Those are different claims:
