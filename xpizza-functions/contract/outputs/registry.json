@@ -1973,6 +1973,30 @@
   },
   "xpizza-dispatch/dispatch-h0-dismiss.js#h0DismissUpdate@xpizza-dispatch/xpizza-delivery.js#dismissDispatcherAlert": {
    "status": "pending"
+  },
+  "la-musa-orders/index.html<script@2>#clearPendingPayFor@la-musa-orders/index.html<script@2>#applyPollState": {
+   "status": "pending"
+  },
+  "la-musa-orders/index.html<script@2>#clearPendingPayFor@la-musa-orders/index.html<script@2>#applyPollState~2": {
+   "status": "pending"
+  },
+  "la-musa-orders/index.html<script@2>#clearPendingPayFor@la-musa-orders/index.html<script@2>#applyPollState~3": {
+   "status": "pending"
+  },
+  "la-musa-orders/index.html<script@2>#clearPendingPayFor@la-musa-orders/index.html<script@2>#applyPollState~4": {
+   "status": "pending"
+  },
+  "xpizza-orders/index.html<script@2>#clearPendingPayFor@xpizza-orders/index.html<script@2>#applyPollState": {
+   "status": "pending"
+  },
+  "xpizza-orders/index.html<script@2>#clearPendingPayFor@xpizza-orders/index.html<script@2>#applyPollState~2": {
+   "status": "pending"
+  },
+  "xpizza-orders/index.html<script@2>#clearPendingPayFor@xpizza-orders/index.html<script@2>#applyPollState~3": {
+   "status": "pending"
+  },
+  "xpizza-orders/index.html<script@2>#clearPendingPayFor@xpizza-orders/index.html<script@2>#applyPollState~4": {
+   "status": "pending"
   }
  }
 }

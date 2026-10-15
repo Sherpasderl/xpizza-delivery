@@ -309,7 +309,7 @@
     "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
     "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
     "scope": "la-musa-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "73922848e404fc31dbbd87c34bb26a13c5500111991588a9357a54720998326a"
+    "scopeSha": "ef053f1d29ce0226507af3cf559e98f567e3598e67aa88d716f538ddfdfb3dfe"
    },
    "guards": [
     {
@@ -344,7 +344,7 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "la-musa-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "73922848e404fc31dbbd87c34bb26a13c5500111991588a9357a54720998326a"
+    "scopeSha": "ef053f1d29ce0226507af3cf559e98f567e3598e67aa88d716f538ddfdfb3dfe"
    },
    "guards": [
     {
@@ -14190,7 +14190,7 @@
     "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
     "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
+    "scopeSha": "7bb4a563f5fa3e685f40b90b78acf6bbd65322933cce3026bcac48c2f4195f29"
    },
    "guards": [
     {
@@ -14225,7 +14225,7 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
+    "scopeSha": "7bb4a563f5fa3e685f40b90b78acf6bbd65322933cce3026bcac48c2f4195f29"
    },
    "guards": [
     {
@@ -14565,7 +14565,7 @@
     "site": "try{ showSuccess(); const ov=document.getElementById('pay-return-overlay'); if(ov) ov.remove(); return true; }catch(_){}",
     "siteSha": "eb2a42f1bd551895790cb0a6b571a8737395b8233677a743950fc51eea33c57e",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
+    "scopeSha": "7bb4a563f5fa3e685f40b90b78acf6bbd65322933cce3026bcac48c2f4195f29"
    },
    "guards": [
     {
@@ -14600,7 +14600,7 @@
     "site": "showSuccess();",
     "siteSha": "a3807040d5a082ca502c64a32469852330ec49343b5911e4705c800cfe2c4822",
     "scope": "xpizza-orders/index.html<script@2>#applyPollState",
-    "scopeSha": "61a2c1d62fce92f75fe2a87199c80b1d0804e42a1c3c372fdad4398eaba05cf7"
+    "scopeSha": "7bb4a563f5fa3e685f40b90b78acf6bbd65322933cce3026bcac48c2f4195f29"
    },
    "guards": [
     {
