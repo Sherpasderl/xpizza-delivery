@@ -12551,8 +12551,8 @@
     "id": "r3p0-77",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "    const r = Array.isArray(r0) && r0.length ? r0 : [",
-    "to": "    const r = Array.isArray(r0) ? r0 : [",
+    "from": "    const r = r1.length ? r1 : [",
+    "to": "    const r = r1.length >= 0 ? r1 : [",
     "label": "B4 r5 (a): the choke point lets an EMPTY answer through as absence",
     "kills_with": [
       "r5 (a) typed empty"
@@ -12596,8 +12596,8 @@
     "id": "r3p0-80",
     "slice": "r3p0",
     "file": "contract/write-provenance.js",
-    "from": "      return ps.length ? ps.reduce(mergePaths) : null;",
-    "to": "      return null;",
+    "from": "      return ps.length ? ps.reduce(mergePaths) : null;\n    }",
+    "to": "      return null;\n    }",
     "label": "B4 r5 P1-1: a conditional / logical receiver no longer resolves to the union of its branches",
     "kills_with": [
       "r5 P1-1 real: a conditional receiver"
@@ -12722,6 +12722,142 @@
     "label": "B4 r5: a pushed child ref no longer resolves (a modelled form regresses to opaque)",
     "kills_with": [
       "resolved-form pushed child receiver: a modelled form did not resolve"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-89",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      try { return bindingEntries(n, b, env, d, seen); } finally { seen.delete(sk); }",
+    "to": "      return bindingEntries(n, b, env, d, seen);",
+    "label": "B4 r6 P1-1: the binding path is a visited SET again (a sibling revisit reads as a cycle)",
+    "kills_with": [
+      "resolved-form a binding revisited by siblings (not a cycle): a modelled form did not resolve"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-90",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (INPROG.has(key)) return [{ k: 'unresolved', node: n, why: 'cycle (re-entered through a recursive frame)' }];",
+    "to": "    if (INPROG.has(key)) return [EMPTY('primitive')];",
+    "label": "B4 r6 P1-1: a recursive frame's re-entry claims a proven empty",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-91",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    if (spreadUpTo(call, b.index)) return unmodelled('spread-argument', call, FILE.get(call));",
+    "to": "    if (false) return unmodelled('spread-argument', call, FILE.get(call));",
+    "label": "B4 r6 P1-2: a spread argument reads as an absent argument",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-92",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      if (ps.length) return ps.reduce(mergePaths);",
+    "to": "      if (false) return ps.reduce(mergePaths);",
+    "label": "B4 r6 P1-3: a helper-returned ref is not resolved through the call (a modelled form regresses to opaque)",
+    "kills_with": [
+      "resolved-form helper-returned order ref: a modelled form did not resolve",
+      "context-writer.js fullWrite unresolved-ref-receiver"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-93",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "      return ps.length ? ps.reduce(mergePaths) : null;   // none: not a ref shape",
+    "to": "      return ps.length ? ps[0] : null;   // none: not a ref shape",
+    "label": "B4 r6 P1-4: a ref binding / parameter takes its FIRST path",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-94",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "    return uniq.reduce(mergePaths);   // r6: the union (segment-wise), never the first",
+    "to": "    return uniq[0];   // r6: the union (segment-wise), never the first",
+    "label": "B4 r6 P1-3/4: a path parameter takes its FIRST caller's path",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-95",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "        if (p.type === 'Property' && !p.computed && (p.key.name === '__proto__' || p.key.value === '__proto__')) return",
+    "to": "        if (false) return",
+    "label": "B4 r6 P2: a __proto__ key is an own property (inherited lookups read as absent)",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-96",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "if (s.b.propKey) { entries = selectKey(entries, s.b.propKey, call); if (!entries.length) entries = [{ k: 'unresolved', node: call, why: 'no-provenance-param-property' }]; }",
+    "to": "if (s.b.propKey) { entries = selectKey(entries, s.b.propKey, call); }",
+    "label": "B4 r6 P2: the parameter-sink property selection bypasses the choke point",
+    "kills_with": [
+      "r6 P2: a parameter-sink property selection passes the choke point"
+    ],
+    "command": [
+      "node",
+      "contract/census.negative.test.js"
+    ]
+  },
+  {
+    "id": "r3p0-97",
+    "slice": "r3p0",
+    "file": "contract/write-provenance.js",
+    "from": "c.arguments.length > s.b.index || spreadUpTo(c, s.b.index) ||",
+    "to": "c.arguments.length > s.b.index ||",
+    "label": "B4 r6 P1-2: a spread call of a parameter sink is skipped",
+    "kills_with": [
+      "semantic corpus: a write-reaching construct was SILENT"
     ],
     "command": [
       "node",

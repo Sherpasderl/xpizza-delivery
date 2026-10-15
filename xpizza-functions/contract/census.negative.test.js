@@ -187,6 +187,7 @@ for (const [name, code, re] of [
     ['r5 (c) real: a catch parameter is UNMODELLED (opaque)', real('index.js', H, H + "  try { throw { surcharge_cents: 900 }; } catch (r5probeErr) { await db.ref('orders/probe').update(r5probeErr); }\n"), /opaque order write unresolved: .*unmodelled-catch-param/],
     ['r5 (d) real: an unfollowable member-assignment base is an OPAQUE write on its function', real('index.js', H, H + "  const r5probeRec = {};\n  ({ o: r5probeRec }).o.surcharge_cents = 900;\n  await db.ref('orders/probe').update(r5probeRec);\n"), /opaque order write unresolved: .*chargeOnlineApp.* unmodelled-member-base/],
     ['r5 (b) real: a write on a REF-LIKE receiver that does not resolve is an OPAQUE write', real('index.js', H, H + "  await db[req.m]('orders/probe').update({ surcharge_cents: 900 });\n"), /opaque order write unresolved: .*unresolved-ref-receiver/],
+    ['r6 P2: a parameter-sink property selection passes the choke point (a missing property is opaque)', asIndex("async function zzk({ payload }) { await db.ref(`orders/${id}`).update(payload); }\ncreateOrderApp.all(async (req, res) => { await zzk({}); });"), /opaque order write unresolved: .*no-provenance-param-property/],
     ['r5 (a) typed empty: a MISSING property of a resolved object is opaque, never absence', asIndex("createOrderApp.all(async (req, res) => { const zw = { a: 1 }; await db.ref(`orders/${id}`).update(zw.b); });"), /opaque order write unresolved: .*no-provenance-MemberExpression/],
   ]) {
     const p = problemsWith(u);
@@ -291,6 +292,18 @@ for (const [name, code, re] of [
       ['member base: logical', `const zr = {}; (req.x || zr).surcharge_cents = 900; ${W}.update(zr);`],
       ['member base: sequence', `const zr = {}; (0, zr).surcharge_cents = 900; ${W}.update(zr);`],
       ['member base: object literal (unfollowable)', `const zr = {}; ({ o: zr }).o.surcharge_cents = 900; ${W}.update(zr);`],
+      // r6 (codex R3-B4 r6): cycles, spread arguments, helper-returned / multi-path refs, inherited properties
+      ['cycle: a binding revisited for another property (codex r6 P1-1)', `const zsrc = { a: {}, b: ${S} }; const { a: za } = zsrc; const { b: zb = {} } = zsrc; ${W}.update(Object.assign({}, za, zb));`],
+      ['cycle: a recursive builder frame (codex r6 P1-1)', `function zrec(n, x) { return n ? zrec(0, ${S}) : x; } ${W}.update(zrec(1, {}));`],
+      ['argument: a spread before the parameter (codex r6 P1-2)', `function zsec(a, b) { return b; } ${W}.update(zsec(...[0, ${S}]));`],
+      ['argument: a spread into a parameter sink beside a plain call', `async function zsk(a, v) { await db.ref('orders/probe').update(v); } await zsk(0, { status: 'x' }); await zsk(...[0, ${S}]);`],
+      ['receiver: a helper-returned ref (codex r6 P1-3)', `function zrf() { return db.ref('orders/probe'); } await zrf().update(${S});`],
+      ['receiver: a helper with a default path parameter (codex r6 P1-3)', `function zrp(p = 'orders/probe') { return db.ref(p); } await zrp().update(${S});`],
+      ['receiver: a path parameter, two callers', `function zpp(p) { return db.ref(p); } await zpp('other/probe').update({ x: 1 }); await zpp('orders/probe').update(${S});`],
+      ['receiver: a ref binding reassigned (codex r6 P1-4)', `let zr = db.ref('other/probe'); zr = db.ref('orders/probe'); await zr.update(${S});`],
+      ['receiver: a ref parameter, two callers (codex r6 P1-4)', `async function zw(r, v) { await r.update(v); } await zw(db.ref('other/probe'), { x: 1 }); await zw(db.ref('orders/probe'), ${S});`],
+      ['property: inherited via __proto__ into a parameter sink (codex r6 P2)', `async function zk({ payload }) { await db.ref('orders/probe').update(payload); } await zk({ __proto__: { payload: ${S} } });`],
+      ['property: inherited via __proto__ under a default (codex r6 P2)', `const { payload: zr = {} } = { __proto__: { payload: ${S} } }; ${W}.update(zr);`],
     ];
     // ONE census build: construct i is one line of its own block, writing field `surcharge_<i>` at `orders/probe<i>` — it
     // surfaces iff its field is reported NEW, or an opaque is reported on its line
@@ -323,6 +336,10 @@ for (const [name, code, re] of [
     ['ternary member base', "createOrderApp.all(async (req, res) => { const za = {}; (req.x ? za : za).status = 'new'; await db.ref(`orders/${id}`).update(za); });"],
     ['destructuring default over a missing key', "createOrderApp.all(async (req, res) => { const { p: za = { status: 'new' } } = {}; await db.ref(`orders/${id}`).update(za); });"],
     ['declared, then assigned', "createOrderApp.all(async (req, res) => { let za; za = { status: 'new' }; await db.ref(`orders/${id}`).update(za); });"],
+    ['helper-returned order ref', "createOrderApp.all(async (req, res) => { function zr() { return db.ref(`orders/${id}`); } await zr().update({ status: 'new' }); });"],
+    ['a path parameter with a default', "createOrderApp.all(async (req, res) => { function zp(p = `orders/${id}`) { return db.ref(p); } await zp().update({ status: 'new' }); });"],
+    ['ref binding reassigned between order paths', "createOrderApp.all(async (req, res) => { let zr = db.ref(`orders/${a}`); zr = db.ref(`orders/${b}`); await zr.update({ status: 'new' }); });"],
+    ['a binding revisited by siblings (not a cycle)', "createOrderApp.all(async (req, res) => { const zs = { a: { status: 'new' } }; const { a: za } = zs; const { a: zb } = zs; await db.ref(`orders/${id}`).update(Object.assign({}, za, zb)); });"],
   ]) {
     const p = problemsWith(asIndex(code));
     assert.deepStrictEqual(p, [], `🔴 R3-CENSUS-NEG resolved-form ${name}: a modelled form did not resolve (${JSON.stringify(p.slice(0, 3))})`);
