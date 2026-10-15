@@ -122,6 +122,7 @@
     "test:order-control": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/order-control.emulator.test.js\"",
     "test:order-control-cli": "node tools/emulator-run.js --only firestore,database --project xpizza-delivery \"node test/order-control-cli.emulator.test.js\"",
     "measure:order-control-latency": "node tools/emulator-run.js --only firestore,database --project demo-xpizza \"node test/order-control-latency.measure.js\"",
+    "test:h0-dismiss-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/h0-dismiss-rules.emulator.test.js\"",
     "test:order-control-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/order-control-rules.emulator.test.js\"",
     "test:c2a-evidence": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/c2a-evidence.emulator.test.js\"",
     "test:c2a-evidence-rules": "node tools/emulator-run.js --only firestore --project demo-xpizza \"node test/c2a-evidence-rules.emulator.test.js\"",
