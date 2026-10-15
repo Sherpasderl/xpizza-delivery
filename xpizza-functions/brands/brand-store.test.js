@@ -2,7 +2,7 @@
 // PLATFORM F1 — brand store over an in-memory fake RTDB (PLAN-F1 r2 §1). Run: node brands/brand-store.test.js
 const assert = require('assert');
 const S = require('./brand-store');
-const { fakeRtdb } = require('./_fake-rtdb');
+const { fakeRtdb } = require('../test/_fake-rtdb');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ident = (over = {}) => ({ name: 'Leg', display_name: 'Leg. Brand', hub_lat: 15.5, hub_lng: -88, phone: '+504', whatsapp_instance: 'i', whatsapp_enabled: true,

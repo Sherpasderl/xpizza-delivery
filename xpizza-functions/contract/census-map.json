@@ -240,6 +240,8 @@
     "cancel-order.js#isReconcilerRetryable": "payment",
     "cancel-order.js#reversedPaymentStatus": "payment",
     "cancel-order.js#shouldVoid": "payment",
+    "brands/brand-model.js#validateBranchIdentity": "catalog",
+    "brands/brand-projection.js#buildPublicBrand": "catalog",
     "catalog/add-product-io.js#syncKds": "catalog",
     "catalog/add-product.js#allocateAdditions": "catalog",
     "catalog/add-product.js#classifyItems": "catalog",

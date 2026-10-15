@@ -2,7 +2,7 @@
 // PLATFORM F1 — the brands CLI core: exit codes and WRITE COUNTS (zero writes without --apply). Run: node brands/brands-admin-core.test.js
 const assert = require('assert');
 const { runBrandsAdmin } = require('./brands-admin-core');
-const { fakeRtdb } = require('./_fake-rtdb');
+const { fakeRtdb } = require('../test/_fake-rtdb');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const ident = (over = {}) => ({ name: 'Leg', hub_lat: 15.5, hub_lng: -88, phone: '+504', whatsapp_instance: 'i', whatsapp_enabled: true,
