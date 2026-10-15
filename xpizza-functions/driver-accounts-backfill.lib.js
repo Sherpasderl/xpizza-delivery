@@ -79,7 +79,10 @@ async function lookupAuthExistence(uids, { fetchImpl, accessToken, project = EXP
   const data = await res.json();
   // Validate the shape — a malformed 200 is also undetermined → ABORT. A 200 with `users` ABSENT is the
   // LEGITIMATE "none of these uids exist" result (empty set), NOT an error.
-  if (data === null || typeof data !== 'object') {
+  // NB: a top-level ARRAY is also `typeof 'object'` and non-null — reject it explicitly, else a 200 body of
+  // [] or [{}] would slip through with `users` undefined and read as an empty set ("missing"). Only a plain
+  // object is a valid lookup body.
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('accounts:lookup returned a non-object body — ABORTING, not skipping.');
   }
   if (data.users !== undefined && !Array.isArray(data.users)) {

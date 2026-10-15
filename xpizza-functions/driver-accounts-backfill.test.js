@@ -116,6 +116,17 @@ const resRaw = (status, body) => ({ ok: status >= 200 && status < 300, status, j
     await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, null)), accessToken: 'tok' }), /non-object|ABORTING/);
   });
 
+  // codex r2: a top-level ARRAY body is `typeof 'object'` — it must NOT slip through as an empty set ("missing").
+  await t('lookupAuthExistence: a 200 whose body is a top-level ARRAY ([] or [{}]) ABORTS, never an empty "missing" set', async () => {
+    await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, [])), accessToken: 'tok' }), /non-object|ABORTING/);
+    await assert.rejects(() => lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, [{}])), accessToken: 'tok' }), /non-object|ABORTING/);
+  });
+
+  await t('lookupAuthExistence: {} and {users:[]} stay LEGITIMATE empty results (none exist)', async () => {
+    assert.equal((await lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, {})), accessToken: 'tok' })).size, 0);
+    assert.equal((await lookupAuthExistence(['a'], { fetchImpl: fakeFetch(resRaw(200, { users: [] })), accessToken: 'tok' })).size, 0);
+  });
+
   // codex backfill-fix P2-2: the gcloud token failure must never leak the child's stdout/stderr (a credential).
   await t('getAdcAccessToken: a failing token command NEVER leaks the child stdout/stderr into the thrown error', () => {
     const SECRET = 'ya29.SYNTHETIC_TOKEN_MUST_NOT_LEAK';
