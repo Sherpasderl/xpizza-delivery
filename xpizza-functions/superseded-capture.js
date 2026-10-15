@@ -485,12 +485,13 @@ async function dailyPass(db, { orders, attempts, invocationStartedAt, invocation
 }
 
 // READ-ONLY, for the cancel guard: from the claim snapshot (fresh at the claim), the candidates are the CURRENT evidence
-// keys plus the active attempt; each is read FRESH and classified. → null, or { attemptId, kind } for the first
-// unresolved one.
+// keys; each is read FRESH and classified. → null, or { attemptId, kind } for the first unresolved one.
+// EVIDENCE-DRIVEN ONLY (codex build r3 P1; advisor ruling): the candidates are the persisted paid_evidence keys of the
+// claim snapshot (read after the claim, so evidence written mid-cancel is caught) — never the active attempt on its own.
+// An order with NO paid_evidence → a strict no-op: the cancel behaves byte-identically to 8f1e017.
 async function unresolvedMoneyOnOrder(db, orderId, orderSnapshot) {
   if (!orderSnapshot) return null;
   const ids = new Set(Object.keys((orderSnapshot.paid_evidence && typeof orderSnapshot.paid_evidence === 'object') ? orderSnapshot.paid_evidence : {}));
-  if (orderSnapshot.active_attempt_id) ids.add(orderSnapshot.active_attempt_id);
   const valid = [...ids].filter((id) => KEY_RX.test(id));
   if (!valid.length) return null;
   const reads = await Promise.all(valid.map((id) => db.ref(`payment_attempts/${id}`).once('value')));

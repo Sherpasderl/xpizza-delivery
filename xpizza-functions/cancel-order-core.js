@@ -106,7 +106,7 @@ async function cancelOrderCore(deps, { orderId, actor, reason, now, claimId }) {
   const claimed = claimTx.snapshot.val();
 
   // PLAN-H0 §4 — BEFORE B.6 sets any attempt flag: unaccounted paid money or an uncertain reversal on ANY of the order's
-  // attempts (the claim snapshot's current evidence keys + its active attempt, each read fresh) → staff resolve it in
+  // attempts (the claim snapshot's persisted paid_evidence keys, each read fresh; no evidence → a no-op) → staff resolve it in
   // PixelPay; automation never voids/finalizes over it. Refusal leaves no cancellation flags behind.
   let h0;
   try { h0 = await H0.unresolvedMoneyOnOrder(db, orderId, claimed); }

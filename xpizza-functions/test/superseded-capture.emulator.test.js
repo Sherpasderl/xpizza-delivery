@@ -908,6 +908,53 @@ const itemsOf = async () => (await val('pending_paid_alerts')) || {};
     ok('ruling C (OWNER: × = handled manually): the × writes ONLY the alert removal + the two dismissal fields; then cancel and abandon proceed with NO further sweep; a new version re-blocks AND re-alerts; a × on a STALE version never unlocks the newer one (cancel, abandon CAS) and the removed alert is repaired');
   }
 
+  // ── 23. codex build r3 P1: the cancel guard is EVIDENCE-DRIVEN ONLY — with NO paid_evidence it is a strict no-op, and the
+  // cancel is byte-identical to 8f1e017 (response, DB state, provider calls). The base core is the REAL 8f1e017 source,
+  // restored byte-exact through the H0 inverse (tools/h0-inverse.js) into a temporary module beside the real one. ──
+  {
+    const fsx = require('fs'); const pathx = require('path');
+    const INV = require('../tools/h0-inverse');
+    const realPath = pathx.join(__dirname, '..', 'cancel-order-core.js');
+    const basePath = pathx.join(__dirname, '..', '.cancel-order-core.base-8f1e017.tmp.js');
+    fsx.writeFileSync(basePath, INV.unapplyH0Module('cancel-order-core.js', fsx.readFileSync(realPath, 'utf8')));
+    let baseCore;
+    try { baseCore = require(basePath).cancelOrderCore; } finally { fsx.unlinkSync(basePath); }
+    assert.ok(typeof baseCore === 'function' && baseCore !== cancelOrderCore, 'premise: the 8f1e017 core is loaded separately');
+    const normalize = (v) => JSON.parse(JSON.stringify(v, (k, x) => {
+      if (x && typeof x === 'object' && !Array.isArray(x) && (k === 'payment_audit' || k === 'dispatcher_alerts')) { const o = {}; Object.keys(x).sort().forEach((kk, i) => { o[`#${i}`] = x[kk]; }); return o; }
+      return x;
+    }));
+    const STATES = {
+      // (a) a cash/pending order whose active attempt is manual_review with NO uuid (no paid_evidence)
+      a: { order: { order_id: 'PZXDIFFA', restaurant_id: 'x_pizza', status: 'new', payment_status: 'pending', payment_method: 'cash', order_type: 'pickup', total: 299, active_attempt_id: A1 },
+           attempt: { order_id: 'PZXDIFFA', status: 'manual_review' } },
+      // (b) confirmed + captured with a uuid, the attempt status manual_review (no paid_evidence)
+      b: { order: { order_id: 'PZXDIFFB', restaurant_id: 'x_pizza', status: 'new', payment_status: 'confirmed', payment_method: 'online', order_type: 'pickup', total: 299, active_attempt_id: A1 },
+           attempt: { order_id: 'PZXDIFFB', status: 'manual_review', hosted_state: 'paid', hosted_callback_verified: true, payment_uuid: 'U-diff', paid_amount_cents: 29900, captured_at: T0 } },
+    };
+    for (const [tag, st] of Object.entries(STATES)) {
+      const run = async (core) => {
+        await clearAll();
+        await db.ref(`orders/${st.order.order_id}`).set(st.order);
+        await db.ref(`payment_attempts/${A1}`).set(st.attempt);
+        let provider = 0, helper = 0;
+        const deps = { db, alert: async () => {}, serverTimestamp: 1,
+          voidOrRefund: (d, a) => { helper += 1; return voidOrRefund({ ...d, client: { voidTransaction: async () => { provider += 1; return { ok: true }; } } }, a); } };
+        const r = await core(deps, { orderId: st.order.order_id, actor: 'D', reason: 'diff', now: T0 + 1000, claimId: `C-${tag}` });
+        return { r, db: normalize(await val('/')), provider, helper };
+      };
+      const base = await run(baseCore);
+      const now = await run(cancelOrderCore);
+      assert.deepStrictEqual(now.r, base.r, `(${tag}) the response is identical to 8f1e017 (${JSON.stringify(base.r.body)})`);
+      assert.deepStrictEqual(now.db, base.db, `(${tag}) the DB state is identical to 8f1e017`);
+      assert.strictEqual(now.provider, base.provider, `(${tag}) the provider calls are identical to 8f1e017 (${base.provider})`);
+      assert.strictEqual(now.helper, base.helper, `(${tag}) the reversal-helper calls are identical`);
+      if (tag === 'a') assert.ok(base.r.status === 200, `premise (a): 8f1e017 cancels (${JSON.stringify(base.r.body)})`);
+      if (tag === 'b') assert.ok(base.r.status === 200 && base.provider === 1, `premise (b): 8f1e017 voids once (${JSON.stringify(base.r.body)}, ${base.provider})`);
+    }
+    ok('cancel guard EVIDENCE-DRIVEN ONLY (codex build r3 P1): with no paid_evidence — (a) a cash/pending order whose active attempt is manual_review without a uuid, (b) a confirmed+captured order with a uuid and a manual_review attempt — the response, the full DB state and the provider/helper calls equal the REAL 8f1e017 core (restored through the H0 inverse)');
+  }
+
   console.log(`\nsuperseded-capture emulator: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('superseded-capture emulator FAILED:', e); process.exit(1); });
