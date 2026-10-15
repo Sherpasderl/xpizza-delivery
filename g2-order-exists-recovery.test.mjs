@@ -17,7 +17,9 @@
 //   8  the two copies are byte-identical
 import assert from 'node:assert';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync, rmSync, rmdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { counter, settle, stageSettle, envelope, loadForm, res, serve, BRAND, closeAll } from './form-harness.mjs';
 
 const require = createRequire(new URL('./xpizza-functions/x.js', import.meta.url));
@@ -287,6 +289,138 @@ for (const dir of Object.keys(BRAND)) {
     ok(`${dir}: a page with no contact line (a third brand) → the screen renders and the contact button is hidden (computed display:none)`);
   }
 }
+
+// ── 9. (codex build r1 P2-1) a RESUMED order: the stash restored through SERIAL.resume with a saved order DIFFERENT from the
+// restored insertion order, an extra and a reward → refused → Back → resend: the saved order and the pin are kept ──
+// The PRE-§3 page (git 03bc399) serialized in MENU order, so its stash's saved order DIFFERS from the cart's insertion
+// order — the realistic resumed-order case (cart-serial-order.test.mjs §4 uses the same page). Removed on exit.
+const OLD_SHA = '03bc399';
+const ROOT = fileURLToPath(new URL('./', import.meta.url));
+const OLD_DIR = 'node_modules/.g2-old-client';
+function materializeOld(dir) {
+  const files = execFileSync('git', ['-C', ROOT, 'ls-tree', '--name-only', OLD_SHA, `${dir}/`], { encoding: 'utf8' }).split('\n').filter((f) => /\.(html|js)$/.test(f));
+  assert.ok(files.includes(`${dir}/index.html`), `premise: ${OLD_SHA} has ${dir}/index.html`);
+  mkdirSync(`${ROOT}${OLD_DIR}/${dir}`, { recursive: true });
+  for (const f of files) writeFileSync(`${ROOT}${OLD_DIR}/${f}`, execFileSync('git', ['-C', ROOT, 'show', `${OLD_SHA}:${f}`]));
+}
+process.on('exit', () => { try { rmSync(`${ROOT}${OLD_DIR}`, { recursive: true, force: true }); } catch (_) {} try { rmdirSync(`${ROOT}node_modules`); } catch (_) {} });
+const SER = { 'xpizza-orders': { X: 2, Y: 19, extra: (w) => w.toggleDetailExtra('e4', 2, 0) }, 'la-musa-orders': { X: 'dimsum_01', Y: 'dimsum_03', extra: (w) => w.chgDetailExtra('rice_white', 'dimsum_01', 1) } };
+const STASHKEY = STASH;
+async function realCheckoutStash(dir) {
+  const B = BRAND[dir]; const C = SER[dir];
+  materializeOld(dir);
+  const w = loadForm(`${OLD_DIR}/${dir}`); await settle();   // the stash is written by the PRE-§3 page itself
+  const menu = B.menu(w); await serve(w, envelope(B.rid, menu));
+  w.__respond = (url, init) => {
+    if (url.includes('/menu/')) return res(envelope(B.rid, menu));
+    if (url.includes('quoteRedemption')) return res({ ok: true, total_cents: 1, net_total_cents: 1, savings_cents: 0, free_items: [], remaining: 0, total_cost: 0 });
+    if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 1, net_total_cents: 1 });
+    if (url.includes('chargeOnlineOrder')) { const b = JSON.parse((init && init.body) || '{}'); return res({ ok: true, checkout_url: 'https://pay.test/c', order_id: b.order_id, poll_token: 'tokRES_123456' }); }
+    return new Promise(() => {});
+  };
+  w.chg(C.Y, 1); await settle(); w.chg(C.X, 1); await settle(); C.extra(w); await settle();   // insertion order: Y, then X (+ its extra)
+  try { w.localStorage.setItem(dir === 'xpizza-orders' ? 'xpizza_acct' : 'lamusa_acct', JSON.stringify({ uid: 'u-test', name: 'Cliente Prueba' })); } catch (_) {}
+  w.__ACCOUNT = Object.assign({}, w.__ACCOUNT, { customerIdToken: () => Promise.resolve('test-id-token') });
+  w.__ACCOUNT.restoreRedeem({ type: 'points_ala_carte', items: [{ id: 'rw1', qty: 1, name: 'Premio' }] }, null, null);
+  await w.__ACCOUNT.requoteRedeem(w.redeemCartItems()); await settle();
+  w.requestServerQuote(); await settle();
+  w.selectPay('online'); assert.ok(w.buildOrder());
+  const p = w.processPixelPay(); if (p && p.catch) p.catch(() => {});
+  for (let i = 0; i < 40 && !w.localStorage.getItem(STASHKEY[dir]); i++) await new Promise((r) => setTimeout(r, 25));
+  const raw = w.localStorage.getItem(STASHKEY[dir]); assert.ok(raw, `${dir}: premise — the real checkout stashed`);
+  return { raw, stash: JSON.parse(raw), menu };
+}
+for (const dir of Object.keys(BRAND)) {
+  const B = BRAND[dir];
+  const { raw, stash, menu } = await realCheckoutStash(dir);
+  const savedNames = stash.order.items.map((it) => it.name);
+  assert.ok(stash.order.redeem, `${dir}: premise — the stashed order carries the reward`);
+  assert.ok(stash.order.items.some((it) => (Array.isArray(it.extras) && it.extras.length) || (Array.isArray(it.options) && it.options.length)), `${dir}: premise — the stashed order carries the extra`);
+  for (const method of ['cash', 'card']) {
+    const w = loadForm(dir); await settle();
+    await serve(w, envelope(B.rid, menu));
+    const sent = [];
+    w.__respond = (url, init) => {
+      if (url.includes('/menu/')) return res(envelope(B.rid, menu));
+      if (url.includes('paymentStatus')) return res({ ok: true, state: 'pending' });   // a genuine cancel → "Pago cancelado"
+      if (url.includes('quoteRedemption')) return res({ ok: true, total_cents: 1, net_total_cents: 1, savings_cents: 0, free_items: [], remaining: 0, total_cost: 0 });
+      if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 1, net_total_cents: 1 });
+      if (CHARGE_RE.test(url)) { const b = JSON.parse((init && init.body) || '{}'); sent.push({ url, body: b }); return rej(409, OE.orderExistsBody('cart', b.order_id)); }
+      return new Promise(() => {});
+    };
+    w.localStorage.setItem(STASHKEY[dir], raw);
+    try { w.localStorage.setItem(dir === 'xpizza-orders' ? 'xpizza_acct' : 'lamusa_acct', JSON.stringify({ uid: 'u-test', name: 'Cliente Prueba' })); } catch (_) {}   // the same signed-in customer returns
+    w.history.replaceState({}, '', `/?pay=cancel&order=${encodeURIComponent(stash.order_id)}`);
+    await w.handlePaymentReturn(); await stageSettle();
+    w.__ACCOUNT = Object.assign({}, w.__ACCOUNT, { customerIdToken: () => Promise.resolve('test-id-token'), getRedeemQuoteTotalCents: () => 1, redeemQuoteMatches: () => true });
+    w.restoreOrderForm(); await settle(); await stageSettle();   // "Volver a intentar" → the cart restored + SERIAL.resume on the saved items
+    const pin0 = JSON.stringify(w.eval('SERIAL.current()'));
+    const resumedId = w.__resumeOrderId;
+    assert.strictEqual(resumedId, stash.order_id, `${dir}/${method}: premise — the stash's id is resumed`);
+    const insertionKeys = w.eval('resolvedCartLines()').map((l) => String(l.key));
+    const pinKeys = JSON.parse(pin0);
+    assert.ok(Array.isArray(pinKeys) && pinKeys.length === insertionKeys.length, `${dir}/${method}: premise — the resume pinned every line (${pin0})`);
+    assert.notDeepStrictEqual(pinKeys, insertionKeys, `${dir}/${method}: premise — the RESUMED pin (${pinKeys}) DIFFERS from the restored insertion order (${insertionKeys}), so a re-mint would change the wire`);
+    await send(w, method);
+    assert.ok(view(w).block, `${dir}/${method}: premise — refused`);
+    await back(w);
+    await send(w, method);
+    assert.strictEqual(sent.length, 2, `${dir}/${method}: two sends`);
+    assert.deepStrictEqual(sent[0].body.items.map((it) => it.name), savedNames, `${dir}/${method}: the first send serializes the SAVED order (SERIAL.resume)`);
+    assert.deepStrictEqual(sent[1].body.items, sent[0].body.items, `${dir}/${method}: after Back the resend keeps the saved order (no re-mint of the pin)`);
+    assert.strictEqual(sent[1].body.order_id, resumedId, `${dir}/${method}: the resumed id is kept`);
+    assert.ok(sent[1].body.redeem, `${dir}/${method}: the reward is still on the wire`);
+    assert.strictEqual(JSON.stringify(w.eval('SERIAL.current()')), pin0, `${dir}/${method}: the serialization pin is unchanged`);
+  }
+  ok(`${dir}: a RESUMED order (a real checkout stash written by the PRE-§3 page 03bc399, menu-ordered → cancel return → "Volver a intentar" → SERIAL.resume; saved order ≠ restored insertion order; an extra + a reward) → refused → Back → resend keeps the saved order, the id, the reward and the pin — cash and card`);
+}
+
+// ── 10. (codex build r1 P2-2) the REAL processPayment() wrapper: locked while pending, unlocked after the refusal, and a
+// later success NAVIGATES (card: window.location.href = checkout_url; cash: s5) ──
+for (const dir of Object.keys(BRAND)) for (const method of ['cash', 'card']) {
+  const B = BRAND[dir]; const w = loadForm(dir);
+  let release; const gateP = new Promise((r) => { release = r; });
+  const sent = [];
+  w.__respond = (url, init) => {
+    if (url.includes('/menu/')) return res(envelope(B.rid, { dishes: [], extras: [] }));
+    if (url.includes('quoteOrder')) return res({ ok: true, total_cents: 1, net_total_cents: 1 });
+    if (CHARGE_RE.test(url)) {
+      const b = JSON.parse((init && init.body) || '{}'); sent.push(b);
+      if (sent.length === 1) return gateP.then(() => rej(409, OE.orderExistsBody('cart', b.order_id)));
+      return okFor(url, b);
+    }
+    return new Promise(() => {});
+  };
+  await settle();
+  const d = w.liveMenuGlobalGet('MENU').find((x) => x.price > 0 && !x.variantOf && !(w.itemIsLauncher && w.itemIsLauncher(x)));
+  w.chg(d.id, 1); w.requestServerQuote(); await settle();
+  const g = (id) => w.document.getElementById(id);
+  for (const [id, v] of [['cname', 'Cliente Prueba'], ['cphone', '98765432'], ['cemail', 'c@t.hn']]) if (g(id)) g(id).value = v;
+  if (typeof w.setOrderType === 'function') w.setOrderType('pickup');
+  w.selectPay(method === 'card' ? 'online' : 'cash');
+  const p1 = w.processPayment(); if (p1 && p1.catch) p1.catch(() => {});
+  await settle(); await settle();
+  assert.strictEqual(sent.length, 1, `${dir}/${method}: premise — the send is in flight`);
+  assert.ok(w.__paySubmitting === true && g('btn-pay').disabled === true, `${dir}/${method}: LOCKED while pending (__paySubmitting + the pay button disabled)`);
+  const again = w.processPayment(); if (again && again.catch) again.catch(() => {});
+  await settle();
+  assert.strictEqual(sent.length, 1, `${dir}/${method}: a re-tap while pending sends nothing`);
+  release(); await p1; await stageSettle();
+  assert.ok(view(w).block, `${dir}/${method}: the refusal shows the recovery screen`);
+  assert.ok(w.__paySubmitting === false && g('btn-pay').disabled === false && w.eval('orderSubmitting') === false, `${dir}/${method}: UNLOCKED after the refusal`);
+  await back(w);
+  const navBefore = w.__jsdomErrors.filter((m) => /navigation/i.test(m)).length;
+  const p2 = w.processPayment(); if (p2 && p2.catch) p2.catch(() => {});
+  await p2; await settle(); await stageSettle();
+  assert.strictEqual(sent.length, 2, `${dir}/${method}: the later send went out`);
+  if (method === 'card') {
+    const nav = w.__jsdomErrors.filter((m) => /navigation/i.test(m)).length;
+    assert.strictEqual(nav, navBefore + 1, `${dir}/card: the success NAVIGATES (window.location.href = checkout_url; jsdom reports the navigation)`);
+    assert.ok(JSON.parse(w.localStorage.getItem(STASH[dir]) || 'null'), `${dir}/card: …after stashing the order`);
+  } else assert.strictEqual(view(w).stage, 's5', `${dir}/cash: the success shows the confirmation (s5)`);
+  assert.ok(!view(w).block, `${dir}/${method}: no recovery screen after the success`);
+}
+ok('the REAL processPayment() wrapper (codex build r1 P2-2), both brands × cash/card: LOCKED while pending (and a re-tap sends nothing), UNLOCKED after the order_exists refusal, and a later success NAVIGATES (card: location.href → the checkout, after the stash; cash: s5)');
 
 clearTimeout(WATCHDOG);
 closeAll();
