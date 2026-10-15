@@ -16,7 +16,10 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isText = (v, max) => typeof v === 'string' && v.length >= 1 && v.length <= max && v.trim() === v;
-const isBrandId = (s) => typeof s === 'string' && ID.test(s) && s !== UNKNOWN;
+// Reserved: 'unknown' (a value), JS prototype names (never a lookup key), and all-digit ids (RTDB returns 0..n keyed maps as arrays)
+const RESERVED = new Set([UNKNOWN, '__proto__', 'constructor', 'prototype', 'hasownproperty']);
+const isBrandId = (s) => typeof s === 'string' && ID.test(s) && !RESERVED.has(s) && !/^\d+$/.test(s);
+const own = (o, k) => isObj(o) && Object.prototype.hasOwnProperty.call(o, k);
 const isTime = (v) => typeof v === 'string' && HHMM.test(v);   // the type FIRST: a regex coerces an array to a string
 const res = (errors) => (errors.length ? { ok: false, errors } : { ok: true });
 
@@ -86,7 +89,7 @@ function validateBranchIdentity(rid, id, brandId) {
 // VALID legacy singleton, else 'unknown'. An explicit id is not checked against its brand record here — the router does that.
 function brandIdOf(rid, identity, brands) {
   if (identity && identity.brand_id !== undefined) return isBrandId(identity.brand_id) ? identity.brand_id : UNKNOWN;
-  const b = isObj(brands) ? brands[rid] : undefined;
+  const b = own(brands, rid) ? brands[rid] : undefined;
   if (b && validateBrand(rid, b).ok && b.activation.state === 'legacy') return rid;
   return UNKNOWN;
 }
@@ -101,7 +104,7 @@ function checkMembership(brands, identities) {
     const v = validateBrand(b, rec);
     if (!v.ok) { out.push({ code: 'brand_invalid', brandId: b, errors: v.errors }); continue; }
     for (const rid of Object.keys(rec.locations)) {
-      const id = I[rid];
+      const id = own(I, rid) ? I[rid] : undefined;
       if (!isObj(id)) { out.push({ code: 'identity_missing', brandId: b, rid }); continue; }
       const legacyOk = rec.activation.state === 'legacy' && id.brand_id === undefined;
       if (!legacyOk && id.brand_id !== b) out.push({ code: 'brand_id_mismatch', brandId: b, rid });
@@ -109,9 +112,9 @@ function checkMembership(brands, identities) {
   }
   for (const [rid, id] of Object.entries(I)) {
     if (!isObj(id) || id.brand_id === undefined) continue;
-    const rec = B[id.brand_id];
+    const rec = own(B, id.brand_id) ? B[id.brand_id] : undefined;
     if (!isObj(rec)) out.push({ code: 'brand_missing', brandId: String(id.brand_id), rid });
-    else if (!(isObj(rec.locations) && rec.locations[rid])) out.push({ code: 'not_listed', brandId: id.brand_id, rid });
+    else if (!own(rec.locations, rid)) out.push({ code: 'not_listed', brandId: id.brand_id, rid });
   }
   const key = (f) => `${f.code}\u0000${f.brandId || ''}\u0000${f.rid || ''}`;
   return out.sort((x, y) => (key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : 0));

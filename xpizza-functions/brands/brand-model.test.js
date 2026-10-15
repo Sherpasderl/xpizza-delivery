@@ -85,4 +85,16 @@ assert.deepStrictEqual(codes({ tb_brand: TB, leg_a: legacy('leg_a') }, { leg_a: 
   ['brand_id_mismatch:leg_a:leg_a', 'brand_missing:zz:leg_a', 'identity_missing:tb_brand:tb_norte'], 'sorted by code, brandId, rid');
 ok('checkMembership: both directions, retired included, invalid brand → one finding, sorted');
 
+// ── review fix: prototype keys and all-digit ids never fail open ──
+for (const s of ['__proto__', 'constructor', 'prototype', 'hasownproperty', '0', '123'])
+  assert.strictEqual(M.isBrandId(s), false, `isBrandId refuses ${s}`);
+assert.strictEqual(M.isBrandId('tb_1'), true, 'a slug with digits is still an id');
+assert.strictEqual(M.validateBrand('0', { ...legacy('0') }).ok, false, "an all-digit brand id (RTDB would return /brands as an array) is invalid");
+assert.deepStrictEqual(codes({ tb_brand: TB }, { tb_centro: ids.tb_centro, tb_norte: ids.tb_norte, constructor: branch('tb_brand') }), ['not_listed:tb_brand:constructor'],
+  'a claimant keyed "constructor" is not found through the prototype of locations');
+assert.deepStrictEqual(codes({ tb_brand: TB }, { tb_centro: ids.tb_centro, tb_norte: ids.tb_norte, x: branch('constructor') }), ['brand_missing:constructor:x'],
+  'a brand_id "constructor" is not found through the prototype of brands');
+assert.strictEqual(M.brandIdOf('constructor', ident(), {}), M.UNKNOWN, 'brandIdOf never resolves a prototype key as a legacy brand');
+ok('prototype keys and all-digit ids are refused; lookups are own-property only');
+
 console.log(`brand-model: OK (${n})`);

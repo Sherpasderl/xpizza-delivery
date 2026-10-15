@@ -26,7 +26,9 @@ const ident = (over = {}) => ({ name: 'Leg', display_name: 'Leg. Brand', hub_lat
   for (const [args, why] of [
     [{ rid: 'Bad', identity: ident() }, 'bad rid'], [{ rid: 'unknown', identity: ident() }, 'reserved rid'], [{ rid: 'leg_a', identity: null }, 'missing identity'],
     [{ rid: 'leg_a', identity: ident({ active: 'x' }) }, 'identity not routing-valid'], [{ rid: 'leg_a', identity: ident({ brand_id: 'other' }) }, 'foreign brand_id'],
-    [{ rid: 'leg_a', identity: ident(), existing: { ...p.row.to, locations: { leg_a: 'member', b: 'member' } } }, 'a different existing record'],
+    [{ rid: 'leg_a', identity: ident(), existing: { ...p.row.to, locations: { leg_a: 'member', b: 'member' } } }, 'a different existing record (invalid)'],
+    [{ rid: 'leg_a', identity: ident(), existing: { ...p.row.to, name: 'Renamed' } }, 'a VALID existing legacy record with a different name'],
+    [{ rid: 'leg_a', identity: ident(), existing: { ...p.row.to, active: false } }, 'a VALID existing legacy record with a different active'],
     [{ rid: 'leg_a', identity: ident({ display_name: undefined, name: ' Leg' }) }, 'generated name padded (validateBrand; isRoutingValid accepts it)'],
     [{ rid: 'leg_a', identity: ident({ display_name: undefined, name: 'x'.repeat(81) }) }, 'generated name 81 chars'],
   ]) assert.strictEqual(S.planSeedLegacy({ existing: null, nowMs: 1, ...args }).ok, false, why);
