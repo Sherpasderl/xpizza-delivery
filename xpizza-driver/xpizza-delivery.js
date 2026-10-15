@@ -309,6 +309,46 @@ export async function endShift(driverId) {
   return (res && res.data) || {};
 }
 
+// ============================================================
+// S1b COMPANION — read-once account state + the one driver callable (PLAN-S1b §10).
+// The app READS /driver_accounts/{uid} (self) and config/driver_admin_enabled ONCE per cycle (boot/resume/
+// reconnect/after-submit/pull-to-refresh) via get() — NO live subscription. It NEVER writes the account node.
+// ============================================================
+
+// Read the S1b enablement flag ONCE. Strict: only a literal boolean true enables the companion; anything else
+// (absent/false/other-type) is false. A read error is the CALLER's to treat as disabled (today's path).
+export async function readDriverAdminFlag() {
+  const snap = await get(ref(db, 'config/driver_admin_enabled'));
+  return snap.val() === true;
+}
+
+// Read the caller's OWN account node ONCE. Returns the raw value (object | null). The self-read stays permitted
+// even for a deactivated caller (S1a rules), so this is how E2 initializes for a deactivated persisted session.
+export async function readOwnAccount(uid) {
+  const snap = await get(ref(db, `driver_accounts/${uid}`));
+  return snap.exists() ? snap.val() : null;
+}
+
+// Fire cb() on each RTDB RECONNECT (a .info/connected false->true edge) so the companion can re-read ONCE.
+// This observes connection META only — it does NOT watch account/flag state — so it stays within the read-once
+// model (the app already observes .info/connected for diagnostics). Returns the unsubscribe handle.
+export function onReconnect(cb) {
+  let was = null;
+  return onValue(ref(db, '.info/connected'), (s) => {
+    const c = s.val() === true;
+    if (was === false && c) { try { cb(); } catch (_) { /* never propagate */ } }
+    was = c;
+  }, () => {});
+}
+
+// The one driver-gated callable (PLAN-S1b §10.1): submit the profile (pending -> profile_submitted). uid is fixed
+// server-side from the auth context. Returns the callable result data ({ ok: true } on success); throws HttpsError
+// (unauthenticated / permission-denied / failed-precondition / invalid-argument) — the caller reconciles.
+export async function submitDriverProfile(fields) {
+  const res = await httpsCallable(getFunctions(app, FUNCTIONS_REGION), 'submitDriverProfile')(fields);
+  return (res && res.data) || {};
+}
+
 /**
  * Record the clock-out cash cuadre (the driver↔office handoff artifact).
  * cash_owed = Σ order.total for cash deliveries this shift, derived by computeShiftCash from the DURABLE

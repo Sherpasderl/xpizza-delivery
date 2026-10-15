@@ -1030,6 +1030,8 @@
     <div class="greeting">HOLA, <span id="off-driver-name">—</span></div>
     <div class="greeting-sub">Activa el interruptor de arriba para empezar tu turno.</div>
     <div id="notif-banner-offshift" class="notif-banner hidden" style="margin: 16px 0;"></div>
+    <!-- S1b companion: suspended inline notice (shown only when flag on + account active&enabled===false). -->
+    <div class="companion-suspended-notice hidden" style="margin:14px 0;padding:11px 13px;border-radius:12px;background:#F6ECD9;color:#8A5A09;font-weight:700;font-size:13px;line-height:1.35;text-align:left;">Despacho pausó tu cuenta. Podés terminar lo que tenés, pero no vas a recibir pedidos nuevos.</div>
     <button class="text-link" id="signout-btn">Cerrar sesión</button>
     <div class="version-tag" data-version-display></div>
   </div>
@@ -1071,6 +1073,8 @@
 
   <main id="onshift-content">
     <div id="notif-banner-onshift" class="notif-banner hidden"></div>
+    <!-- S1b companion: suspended inline notice (shown only when flag on + account active&enabled===false). -->
+    <div class="companion-suspended-notice hidden" style="margin:0 0 12px;padding:11px 13px;border-radius:12px;background:#F6ECD9;color:#8A5A09;font-weight:700;font-size:13px;line-height:1.35;text-align:left;">Despacho pausó tu cuenta. Podés terminar lo que tenés, pero no vas a recibir pedidos nuevos.</div>
 
     <!-- Idle / returning state -->
     <div id="idle-state" class="hidden">
@@ -1106,6 +1110,31 @@
     </div>
   </main>
 </div>
+
+<!-- ======================================================== -->
+<!-- S1b COMPANION full-screen (onboarding A3–A6 / "Esperando aprobación" / "Activado" / E2 deactivated / -->
+<!-- neutral hold). Filled by companionRender(); shown ONLY when config/driver_admin_enabled read === true. -->
+<!-- ======================================================== -->
+<style>
+  #screen-companion { background:#F4F2EE; color:#15181E; }
+  #screen-companion .co-title { font-weight:800; font-size:20px; letter-spacing:-.01em; }
+  #screen-companion .co-sub { color:#5A6473; font-size:13px; font-weight:600; line-height:1.4; }
+  #screen-companion .co-card { background:#fff; border:1px solid #E6E3DD; border-radius:14px; padding:13px; }
+  #screen-companion .co-lbl { font-size:11px; font-weight:800; letter-spacing:.03em; color:#8A93A3; text-transform:uppercase; margin-bottom:5px; }
+  #screen-companion .co-field { width:100%; box-sizing:border-box; background:#fff; border:1px solid #D7D3CB; border-radius:12px; padding:13px; font-size:15px; font-weight:600; }
+  #screen-companion .co-seg { display:flex; background:#EEF0F2; border-radius:11px; padding:4px; gap:4px; }
+  #screen-companion .co-seg div { flex:1; text-align:center; font-size:14px; font-weight:700; padding:11px 0; border-radius:8px; color:#5A6473; }
+  #screen-companion .co-seg div.on { background:#fff; color:#15181E; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  #screen-companion .co-ck { display:flex; align-items:center; gap:11px; font-size:13px; font-weight:700; }
+  #screen-companion .co-box { width:24px; height:24px; border-radius:7px; border:2px solid #CFCCC3; flex:0 0 auto; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px; }
+  #screen-companion .co-box.on { background:#1E7F4F; border-color:#1E7F4F; }
+  #screen-companion .co-chip-wait { display:inline-block; margin:0 auto; font-weight:700; font-size:12px; padding:6px 12px; border-radius:999px; background:#F6ECD9; color:#8A5A09; }
+  #screen-companion .co-badge-ok { display:inline-block; margin:0 auto; font-weight:700; font-size:12px; padding:6px 12px; border-radius:999px; background:#E3F2E9; color:#1E7F4F; }
+  #screen-companion .co-chip-dark { display:inline-block; font-weight:700; font-size:12px; padding:5px 10px; border-radius:999px; background:#15181E; color:#fff; }
+  #screen-companion .co-note-warn { text-align:center; font-size:12px; font-weight:800; color:#8A5A09; background:#F6ECD9; padding:10px; border-radius:11px; letter-spacing:.02em; }
+  #screen-companion .big-btn { width:100%; }
+</style>
+<div id="screen-companion" class="hidden" style="height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch;"></div>
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
@@ -1154,6 +1183,7 @@ import { startNativeTracking, stopNativeTracking, pingNativeLocation, disableLin
 import { computeVuelto, vueltoSuggestions, computeShiftCash, shiftDeliveries, collectionFor, paymentRowHtml, queuePayHtml, BLOCKED_CLOSE_TEXT, resolveCompleteErrorMessage } from './cash-helpers.js';
 import { brandMeta, driverGreeting } from './brand-helpers.js';
 import { displayOrderLabel } from './order-helpers.js';
+import { makeCompanionController } from './onboarding-helpers.js';   // controller owns companion state + the pure decision
 
 // ============================================================
 // System version (bumped each release)
@@ -1256,6 +1286,15 @@ let initialAssignmentsLoaded = false;  // true after the first tasks snapshot
 let soundOn = true;
 let toastTimer = null;
 
+// ---- S1b companion (read-once; ENTIRELY inert unless config/driver_admin_enabled read === strict true) ----
+// All flag/account/session state + the read-once sequencing + the pure decision live in the controller
+// (makeCompanionController, onboarding-helpers.js). The host keeps only DOM-side bits.
+let companion = null;              // the controller instance, built lazily on first login (companionEnsure)
+let companionSuspended = false;    // mirrors decide().suspended for the inline-notice toggle (reset each render)
+let companionStep = 'profile';     // onboarding sub-step (DOM-only): 'profile' | 'checklist' | 'practice'
+let companionActivatedTimer = null;
+const companionDraftKey = (uid) => `sherpa_driver_onboarding_draft_${uid}`;
+
 const $ = (id) => document.getElementById(id);
 
 // ============================================================
@@ -1273,7 +1312,7 @@ function toast(msg, kind = '') {
 // Screen routing
 // ============================================================
 function showScreen(name) {
-  ['config', 'login', 'offshift', 'onshift'].forEach(s => {
+  ['config', 'login', 'offshift', 'onshift', 'companion'].forEach(s => {
     $(`screen-${s}`).classList.toggle('hidden', s !== name);
   });
   // Refresh notification banner state on screen change
@@ -1288,6 +1327,207 @@ function showScreen(name) {
   }
 }
 
+// ============================================================
+// S1b COMPANION (read-once model — PLAN-S1b-companion-driverapp-BUILD.md). All of this is INERT unless a
+// get() of config/driver_admin_enabled returns strict true. The server is the sole authority; the UI reacts.
+// ============================================================
+
+// Build the read-once controller (onboarding-helpers.js) once, wiring it to the real DOM + SDK. The controller
+// owns state + sequencing + the pure decision; the host (these functions) owns all DOM.
+function companionEnsure() {
+  if (companion) return companion;
+  companion = makeCompanionController({
+    getUid: () => currentUser && currentUser.uid,
+    readFlag: () => XPD.readDriverAdminFlag(),
+    readAccount: (uid) => XPD.readOwnAccount(uid),
+    submit: (fields) => XPD.submitDriverProfile(fields),
+    clearDraft: () => { if (currentUser) companionClearDraft(currentUser.uid); },   // draft only lives while onboarding
+    localTeardown: () => companionLocalTeardown(),
+    signOut: () => XPD.signOutUser(),
+    rerender: () => render(),
+  });
+  return companion;
+}
+
+function companionSyncSuspendedNotice() {
+  document.querySelectorAll('.companion-suspended-notice').forEach(el => el.classList.toggle('hidden', !companionSuspended));
+}
+
+// LOCAL-ONLY teardown for the deactivation sign-out. unregisterDriverPushToken / stopNativeTracking are guarded
+// by assertDriverCallerActive and REJECT a deactivated caller, so every server-callable here is best-effort and
+// swallowed — it must never block the sign-out. Server-side token deletion is the dispatch lane's.
+async function companionLocalTeardown() {
+  try { cleanupShift(); } catch (_) { /* local */ }
+  if (isNative()) { try { await unregisterNativePush(XPD.getAuthInstance().app); } catch (_) { /* guarded; ignore */ } }
+}
+
+// (c) a denied RTDB write requests a one-shot refresh; E2 fires ONLY if that fresh read confirms deactivated.
+// Guarded here (in the callee, not at the call site) so it can NEVER throw into the delivery-write catch and
+// replace the original error's _userMessage (2e review) — and so the call site's scope sha is unaffected.
+function companionOnWriteDenied(err) { try { if (companion) companion.onWriteDenied(err); } catch (_) { /* the (c) trigger must never clobber the delivery error */ } }
+
+// The "Activado" transient — shown ONLY on an observed profile_submitted→active&&enabled transition.
+function companionShowActivatedTransient() {
+  if (companionActivatedTimer) return;   // already showing — don't flicker or reset the timer on repeated renders
+  $('screen-companion').innerHTML = companionShellHtml(`
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center">
+      <div class="co-badge-ok">Activado por despacho</div>
+      <div class="co-title">¡Listo!</div>
+      <div class="co-sub">Ya podés entrar en turno y recibir pedidos.</div>
+    </div>`, '');
+  showScreen('companion');
+  companionActivatedTimer = setTimeout(() => {
+    companionActivatedTimer = null;
+    if (companion) companion.consumeApprovalTransition();   // observed once → the next render routes to the app
+    render();                                                // → row 6 = normal app via the real shift state
+  }, 2200);
+}
+
+// A minimal on-brand shell: the companion screens share the app's card/button styles.
+function companionShellHtml(body, footer) {
+  return `<div style="min-height:100%;display:flex;flex-direction:column;padding:24px 20px;gap:14px;box-sizing:border-box">${body}${footer || ''}</div>`;
+}
+
+function companionRenderE2() {
+  $('screen-companion').innerHTML = companionShellHtml(`
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center">
+      <div class="co-title" style="color:#8a241d">Cuenta desactivada</div>
+      <div class="co-sub" style="color:#7a3a35">Despacho desactivó tu cuenta. Contactalos para reactivarla.</div>
+      <div class="co-card" style="text-align:left"><div class="co-sub" style="color:#7a3a35">No podés recibir ni completar pedidos. Despacho puede reactivarte cuando corresponda.</div></div>
+    </div>
+    <button class="big-btn primary" id="co-e2-signout" style="background:#B4322A">Cerrar sesión</button>`, '');
+  const btn = $('co-e2-signout');
+  if (btn) btn.addEventListener('click', () => { if (companion) companion.clearDeactReason(); showScreen('login'); });
+}
+
+// Render the onboarding / waiting / neutral-hold full-screens into #screen-companion, then show it.
+function companionRenderScreen(decision, acct) {
+  if (decision === 'waiting') {
+    $('screen-companion').innerHTML = companionShellHtml(`
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center">
+        <div class="co-chip-wait">Esperando aprobación</div>
+        <div class="co-title">Perfil enviado</div>
+        <div class="co-sub">Despacho revisa tu cuenta. Te avisamos cuando puedas entrar en turno.</div>
+      </div>`,
+      `<button class="big-btn" id="co-refresh" style="background:#fff;color:#15181E;border:1.5px solid #D7D3CB">Actualizar</button>`);
+    const r = $('co-refresh'); if (r) r.addEventListener('click', () => { if (companion) companion.refresh(); });
+  } else if (decision === 'neutral-hold') {
+    $('screen-companion').innerHTML = companionShellHtml(`
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center">
+        <div class="co-title">Estamos preparando tu cuenta</div>
+        <div class="co-sub">Si esto sigue así, contactá a despacho.</div>
+      </div>`,
+      `<button class="big-btn" id="co-refresh" style="background:#fff;color:#15181E;border:1.5px solid #D7D3CB">Actualizar</button>`);
+    const r = $('co-refresh'); if (r) r.addEventListener('click', () => { if (companion) companion.refresh(); });
+  } else { // 'onboarding'
+    companionRenderOnboarding();
+  }
+  showScreen('companion');
+}
+
+// ---- onboarding draft (uid-scoped, best-effort storage; restored on same-uid reload, cleared on uid change) ----
+function companionReadDraft() {
+  if (!currentUser) return {};
+  try { return JSON.parse(localStorage.getItem(companionDraftKey(currentUser.uid)) || '{}') || {}; } catch (_) { return {}; }
+}
+function companionWriteDraft(patch) {
+  if (!currentUser) return;
+  const d = { ...companionReadDraft(), ...patch };
+  try { localStorage.setItem(companionDraftKey(currentUser.uid), JSON.stringify(d)); } catch (_) { /* storage unavailable: in-memory only this session */ }
+  return d;
+}
+function companionClearDraft(uid) { try { localStorage.removeItem(companionDraftKey(uid)); } catch (_) {} }
+
+function companionRenderOnboarding() {
+  const d = companionReadDraft();
+  const el = $('screen-companion');
+  if (companionStep === 'profile') {
+    const veh = d.vehicle || 'moto';
+    el.innerHTML = companionShellHtml(`
+      <div class="co-title">Completá tu perfil</div>
+      <div><div class="co-lbl">Nombre</div><input class="co-field" id="co-name" value="${escapeHtml(d.name || '')}" placeholder="Tu nombre"></div>
+      <div><div class="co-lbl">Teléfono</div><input class="co-field" id="co-phone" value="${escapeHtml(d.phone || '')}" placeholder="+504 ...."></div>
+      <div><div class="co-lbl">Vehículo</div>
+        <div class="co-seg" id="co-veh">
+          <div data-v="moto" class="${veh === 'moto' ? 'on' : ''}">Moto</div>
+          <div data-v="carro" class="${veh === 'carro' ? 'on' : ''}">Carro</div>
+          <div data-v="bici" class="${veh === 'bici' ? 'on' : ''}">Bici</div>
+        </div></div>
+      <div><div class="co-lbl">Placa</div><input class="co-field" id="co-plate" value="${escapeHtml(d.plate || '')}" placeholder="ABC 1234"></div>
+      <div class="co-card" style="display:flex;align-items:center;gap:11px"><div style="font-weight:700;font-size:13px">Foto del repartidor</div><div class="co-sub" style="margin-left:auto">Próximamente</div></div>
+      <div style="flex:1"></div>`,
+      `<button class="big-btn primary" id="co-save">Guardar perfil</button>`);
+    let vehicle = veh;
+    el.querySelectorAll('#co-veh div').forEach(x => x.addEventListener('click', () => {
+      vehicle = x.getAttribute('data-v');
+      el.querySelectorAll('#co-veh div').forEach(y => y.classList.toggle('on', y === x));
+    }));
+    $('co-save').addEventListener('click', () => {
+      companionWriteDraft({ name: $('co-name').value.trim(), phone: $('co-phone').value.trim(), vehicle, plate: $('co-plate').value.trim() });
+      companionStep = 'checklist';
+      companionRenderOnboarding();
+    });
+  } else if (companionStep === 'checklist') {
+    const ck = (on) => on ? 'on' : '';
+    el.innerHTML = companionShellHtml(`
+      <div class="co-title">Listo para repartir</div>
+      <div class="co-sub">Terminá estos pasos para pedir tu aprobación.</div>
+      <div class="co-card co-ck"><span class="co-box on">✓</span>Perfil completo</div>
+      <label class="co-card co-ck"><span class="co-box ${ck(d.ackPerms)}" id="co-bx-perms">${d.ackPerms ? '✓' : ''}</span>Permisos y batería (ubicación + "sin restricción")</label>
+      <label class="co-card co-ck"><span class="co-box ${ck(d.ackCash)}" id="co-bx-cash">${d.ackCash ? '✓' : ''}</span>Reglas de efectivo + cambio inicial (entregás 100% · llevás sencillo)</label>
+      <div class="co-card co-ck" id="co-practice-row"><span class="co-box ${ck(d.practiceDone)}">${d.practiceDone ? '✓' : ''}</span>Pedido de práctica${d.practiceDone ? '' : ' <span class="co-sub" style="margin-left:auto">Abrir →</span>'}</div>
+      <div style="flex:1"></div>`,
+      `<button class="big-btn primary" id="co-request" ${(d.ackPerms && d.ackCash && d.practiceDone) ? '' : 'disabled'}>Pedir aprobación</button>`);
+    $('co-bx-perms').closest('label').addEventListener('click', () => { const n = companionWriteDraft({ ackPerms: !companionReadDraft().ackPerms }); companionRenderOnboarding(); void n; });
+    $('co-bx-cash').closest('label').addEventListener('click', () => { companionWriteDraft({ ackCash: !companionReadDraft().ackCash }); companionRenderOnboarding(); });
+    if (!d.practiceDone) $('co-practice-row').addEventListener('click', () => { companionStep = 'practice'; companionRenderOnboarding(); });
+    const req = $('co-request'); if (req && !req.disabled) req.addEventListener('click', () => companionSubmit());
+  } else { // 'practice'
+    // Guided practice — writes NOTHING real; brand-agnostic (a synthetic order with no brand → neutral greeting).
+    const steps = [
+      'Deslizá "Llegué al restaurante" para avisar que estás recogiendo el pedido.',
+      'Confirmá los productos del pedido antes de salir.',
+      'Seguí la ruta hasta la dirección del cliente.',
+      `Al llegar, saludá: "${driverGreeting({})}"`,
+      'Entregá el pedido y cobrá si es efectivo (entregás el 100%).',
+      'Deslizá "Entregado" para cerrar el pedido.',
+    ];
+    const i = Math.min(d.practiceStep || 0, steps.length - 1);
+    el.innerHTML = companionShellHtml(`
+      <div class="co-note-warn">Esto NO es un pedido real · práctica</div>
+      <div class="co-card" style="border:2px solid #15181E">
+        <div class="co-chip-dark">Paso ${i + 1} de ${steps.length}</div>
+        <div class="co-sub" style="margin-top:8px;color:#15181E;font-weight:600">${escapeHtml(steps[i])}</div>
+      </div>
+      <div style="flex:1"></div>`,
+      `<button class="big-btn primary" id="co-practice-next">${i + 1 < steps.length ? 'Siguiente' : 'Terminé la práctica'}</button>
+       <button class="big-btn" id="co-practice-exit" style="background:#fff;color:#15181E;border:1.5px solid #D7D3CB">Salir de la práctica</button>`);
+    $('co-practice-next').addEventListener('click', () => {
+      if (i + 1 < steps.length) { companionWriteDraft({ practiceStep: i + 1 }); companionRenderOnboarding(); }
+      else { companionWriteDraft({ practiceDone: true, practiceStep: 0 }); companionStep = 'checklist'; companionRenderOnboarding(); }
+    });
+    $('co-practice-exit').addEventListener('click', () => { companionStep = 'checklist'; companionRenderOnboarding(); });
+  }
+  showScreen('companion');
+}
+
+// Submit the staged profile at "Pedir aprobación" (A4). One in-flight; reconcile on a FRESH read.
+async function companionSubmit() {
+  if (!companion) return;
+  const d = companionReadDraft();
+  const fields = { name: d.name || '', phone: d.phone || '', vehicle: d.vehicle || '', plate: d.plate || '' };
+  $('screen-companion').innerHTML = companionShellHtml(`<div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="co-sub">Enviando…</div></div>`, '');
+  showScreen('companion');
+  const outcome = await companion.submit(fields);   // one in-flight + fresh-read reconcile + session safety in the controller
+  if (outcome === undefined) return;                 // superseded by a new session (NEW-3) — drop silently
+  if (outcome === 'deactivated') { companionRenderE2(); showScreen('companion'); return; }  // teardown+sign-out already ran
+  if (outcome === 'reauth') { toast('Tu sesión expiró. Volvé a entrar.', 'error'); companionStep = 'checklist'; companionRenderOnboarding(); return; }
+  if (outcome === 'field-error') { toast('Revisá los datos del perfil.', 'error'); companionStep = 'profile'; companionRenderOnboarding(); return; }
+  if (outcome === 'retry') { toast('No se pudo enviar. Intentá de nuevo.', 'error'); companionStep = 'checklist'; companionRenderOnboarding(); return; }
+  if (outcome === 'app') { render(); return; }
+  companionRenderScreen('waiting');   // 'waiting' or 'recoverable-wait' — the refreshable waiting screen
+}
+
 
 // ============================================================
 // Boot
@@ -1300,9 +1540,15 @@ async function boot() {
     currentUser = user;
     if (!user) {
       cleanupShift();
+      // S1b companion: if THIS session signed itself out on a confirmed deactivation, keep E2 on screen
+      // (do not bounce to login). The E2 "Cerrar sesión" button clears the reason and shows login.
+      if (companion && companion.onLogout()) { companionRenderE2(); showScreen('companion'); return; }
       showScreen('login');
       return;
     }
+
+    // S1b companion: mint a fresh session + reset per-session companion state (NEW-3 async-session safety).
+    companionEnsure().resetSession();
 
     // Ensure driver profile exists (creates one with email-based name if missing)
     const guessName = user.email.split('@')[0].replace(/[^a-zA-Z]/g, '') || 'Driver';
@@ -1327,7 +1573,17 @@ async function boot() {
 
     // Subscribe to live state
     subscribeToFirebase();
+
+    // S1b companion read-once: now that the legacy boot has SETTLED (profile + native push + subscriptions),
+    // read the flag + account once. Running it here (not racing boot) guarantees any E2 sign-out can't be
+    // undone by the still-running boot continuation (§0.3). Inert unless the flag reads strict true.
+    companion.refresh();
   });
+
+  // S1b companion read-once triggers: resume (WebView visibility→visible) + RTDB reconnect. Each re-reads ONCE
+  // and is inert when the flag is off (companionRefresh reads the flag first and bails) or before login.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && companion) companion.refresh(); });
+  XPD.onReconnect(() => { if (companion) companion.refresh(); });
 }
 
 function subscribeToFirebase() {
@@ -2063,6 +2319,21 @@ function stopKeepAlive() {
 function render() {
   if (!currentUser) return;
 
+  // --- S1b companion precedence (INERT unless the controller's flag read returned strict true) ---
+  // The controller owns the decision (companion.decide() is PURE); the host applies it. When the flag is not
+  // (yet) true, decide() returns 'legacy' and everything below runs exactly as today (byte-identical).
+  companionSuspended = false;
+  if (companion) {
+    const r = companion.decide();
+    companionSuspended = !!r.suspended;
+    if (r.action === 'deactivate') { companionRenderE2(); showScreen('companion'); companion.triggerDeactivate(); return; }
+    if (r.action === 'show') { companionRenderScreen(r.view); return; }
+    if (r.action === 'activated') { companionShowActivatedTransient(); return; }
+    // 'legacy' (optionally with suspended) falls through to the existing render below
+  }
+  companionSyncSuspendedNotice();
+  // --- existing render() (unchanged) ---
+
   const name = driverState?.name || currentUser.email.split('@')[0];
 
   // Optimistic override wins while a shift transition is in flight; otherwise RTDB is truth.
@@ -2498,6 +2769,7 @@ function attachActiveCardHandlers(o) {
         // (codex core r3 P1): it always settles within ROLE_LOOKUP_TIMEOUT_MS, then we rethrow so the slider resets.
         err._userMessage = await resolveCompleteErrorMessage(
           err, actingUid, currentUser && currentUser.uid, XPD.isActingDispatcher);
+        companionOnWriteDenied(err);   // S1b trigger (c): a denied write → one-shot refresh → E2 only if that read confirms deactivated
         throw err;
       }
       toast('¡Entregado!', 'success');

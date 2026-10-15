@@ -14716,5 +14716,89 @@
       "node",
       "lib/driver-admin-ops.test.js"
     ]
+  },
+  {
+    "id": "s1bc-01",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "flagEnabled !== true",
+    "to": "flagEnabled === true",
+    "label": "companion flag gate inverted -> flag-off no longer forces legacy (byte-identical broken)",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-helpers.test.js"
+    ]
+  },
+  {
+    "id": "s1bc-02",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "acct.deactivated === true",
+    "to": "!acct.enabled",
+    "label": "deactivated-wins replaced by !enabled -> a suspended (enabled:false) driver wrongly signs out",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-helpers.test.js"
+    ]
+  },
+  {
+    "id": "s1bc-03",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "const deactivated = val.deactivated === true;",
+    "to": "const deactivated = val.deactivated;",
+    "label": "deactivated made truthy (not strict true) -> a non-true truthy value signs the driver out",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-helpers.test.js"
+    ]
+  },
+  {
+    "id": "s1bc-04",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "if (meta === 'unresolved' || meta === 'error') return 'legacy';",
+    "to": "if (meta === 'unresolved' || meta === 'error') return 'neutral-hold';",
+    "label": "read error converted into a hold instead of today's UI (row 1 broken)",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-helpers.test.js"
+    ]
+  },
+  {
+    "id": "s1bc-05",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "prev.state === 'profile_submitted'",
+    "to": "prev.state === 'active'",
+    "label": "approval transient would also fire on suspension removal (suspended->active exception reintroduced)",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-helpers.test.js"
+    ]
+  },
+  {
+    "id": "s1bc-06",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "const tag = S.tag, seq = ++S.seq;",
+    "to": "const tag = S.tag, seq = S.seq;",
+    "label": "refresh coalescing removed -> an older read can overwrite a newer one",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-controller.test.js"
+    ]
+  },
+  {
+    "id": "s1bc-07",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "from": "S.tag = {};",
+    "to": "S.tag = S.tag;",
+    "label": "session identity not reset -> a previous session async result applies to the new driver (NEW-3)",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-controller.test.js"
+    ]
   }
 ]
