@@ -26,6 +26,14 @@ function makeEnv(over = {}) {
 }
 const mk = (over) => { const { env, calls } = makeEnv(over); const c = makeCompanionController(env); c.resetSession(); return { c, env, calls }; };
 
+// Suite-level deadline (codex r3 survivor b): a hung `await` (e.g. the flag-read deadline removed) would otherwise
+// suspend this IIFE and let node exit 0 with the suite incomplete — a silent pass. This pending timer keeps the
+// event loop alive so such a hang becomes a loud exit(1) instead; it is cleared the instant the suite completes.
+const SUITE_DEADLINE = setTimeout(() => {
+  console.error('✗ controller suite did not complete within its deadline — a read/await hung (e.g. the flag-read deadline was removed)');
+  process.exit(1);
+}, 5000);
+
 (async () => {
   // ---- flag gate ----
   await t('flag false / absent / read-error / read-timeout ⇒ legacy; account never read', async () => {
@@ -130,6 +138,39 @@ const mk = (over) => { const { env, calls } = makeEnv(over); const c = makeCompa
     c.consumeApprovalTransition(); assert.equal(c.decide().action, 'legacy');
   });
 
+  // ---- codex r3 #1: logout invalidates a pending submit (never resurfaces a screen over login) ----
+  await t('invalidateSession discards a pending submit (logout cannot resurface a screen)', async () => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const { c } = mk({ submit: async () => { await gate; return { ok: true }; } });
+    const p = c.submit({ name: 'n' });            // in flight
+    c.invalidateSession();                         // driver logs out mid-flight
+    release();
+    assert.equal(await p, undefined, 'a submit from the ended session is dropped');
+  });
+
+  // ---- codex r3 survivor (a): a stale previous-session submit must not clear the NEW session's in-flight lock ----
+  await t("a stale previous-session submit does not clear the new session's in-flight lock", async () => {
+    let release; const gate = new Promise((r) => { release = r; });
+    const { c, env } = mk({ submit: async () => { await gate; return { ok: true }; } });
+    const pA = c.submit({ name: 'n' });            // A in flight (captures tag_A, sets submitInFlight)
+    c.resetSession(); env.uid = 'B';               // B logs in → new tag; A is now stale
+    c._state.submitInFlight = true;                // B has started its OWN submit
+    release();
+    assert.equal(await pA, undefined, 'A discarded under B');
+    assert.equal(c._state.submitInFlight, true, "A must NOT clear B's in-flight lock");
+  });
+
+  // ---- codex r3 survivor (b): the flag-read deadline must BOUND a hung read (removing it must FAIL, not hang) ----
+  await t('a hung flag read resolves to legacy within the deadline (the deadline must exist)', async () => {
+    const { c } = mk({ readFlag: () => new Promise(() => {}), flagDeadlineMs: 20 });   // never resolves
+    let timer;
+    const watchdog = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('refresh never settled — flag deadline missing')), 500); });
+    await Promise.race([c.refresh(), watchdog]);
+    clearTimeout(timer);                            // refresh won the race → cancel the watchdog (no late unhandled rejection)
+    assert.equal(c.decide().action, 'legacy', 'hung flag read ⇒ legacy');
+    assert.equal(c._state.flag, false, 'flag resolved false by the deadline');
+  });
+
   // ---- resetSession ----
   await t('resetSession clears flag/account/session', async () => {
     const { c } = mk();
@@ -140,5 +181,6 @@ const mk = (over) => { const { env, calls } = makeEnv(over); const c = makeCompa
     assert.equal(c.decide().action, 'legacy');
   });
 
+  clearTimeout(SUITE_DEADLINE);   // suite completed — stand down the hang watchdog
   console.log(`✓ onboarding-controller: ${passed} tests passed`);
 })().catch((e) => { console.error(e && e.message ? e.message : e); process.exit(1); });

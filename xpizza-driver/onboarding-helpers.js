@@ -114,6 +114,13 @@ function makeCompanionController(env) {
     S.lastValid = null; S.prevValid = null; S.submitInFlight = false;
     return S.tag;
   }
+  // Logout (onAuth null) ENDS the session: mint a new identity so any pending submit/refresh captured under the
+  // old session is discarded (returns undefined) instead of resurfacing a screen over the login UI (codex r3 #1).
+  function invalidateSession() { S.tag = {}; S.submitInFlight = false; return S.tag; }
+  // The flag as last READ was strict false. The host honors this for a submit outcome WITHOUT a new read: a
+  // completed flag-off read means legacy only — never E2/companion — even if the callable returned deactivation
+  // (codex r3 #2 / "takes effect at the next read"). `null` (never read) is NOT off, so it never forces legacy.
+  function isFlagOff() { return S.flag === false; }
   function effective() {
     if (S.account.meta === 'valid') return S.account;
     if ((S.account.meta === 'error' || S.account.meta === 'unresolved') && S.lastValid) return S.lastValid;
@@ -182,7 +189,7 @@ function makeCompanionController(env) {
   // (the transition is observed exactly once; the next render routes to the normal app).
   function consumeApprovalTransition() { S.prevValid = S.lastValid; }
 
-  return { resetSession, refresh, submit, consumeApprovalTransition, decide, _state: S };
+  return { resetSession, invalidateSession, isFlagOff, refresh, submit, consumeApprovalTransition, decide, _state: S };
 }
 
 export {

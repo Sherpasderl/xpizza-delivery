@@ -14793,8 +14793,8 @@
     "id": "s1bc-07",
     "slice": "s1bc",
     "file": "../xpizza-driver/onboarding-helpers.js",
-    "from": "S.tag = {};",
-    "to": "S.tag = S.tag;",
+    "from": "S.tag = {}; S.seq = 0;",
+    "to": "S.tag = S.tag; S.seq = 0;",
     "label": "session identity not reset -> a previous session async result applies to the new driver (NEW-3)",
     "command": [
       "node",
@@ -14848,5 +14848,65 @@
     "from": "if (code === 'permission-denied' && /desactivada/i.test(errorMessage || '')) return 'deactivated';",
     "to": "if (code === 'permission-denied') return 'deactivated';",
     "label": "submit maps ANY permission-denied to deactivated (should require the explicit \"desactivada\" message) — over-triggers E2"
+  },
+  {
+    "id": "s1bc-15",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-controller.test.js"
+    ],
+    "from": "function invalidateSession() { S.tag = {}; S.submitInFlight = false; return S.tag; }",
+    "to": "function invalidateSession() { S.submitInFlight = false; return S.tag; }",
+    "label": "logout (invalidateSession) does not mint a new session id -> a pending submit still applies / resurfaces over login (codex r3 #1)"
+  },
+  {
+    "id": "s1bc-16",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-controller.test.js"
+    ],
+    "from": "if (S.tag !== tag) return undefined;   // a new session began while in flight — do NOT touch B's state / apply A's result\n    S.submitInFlight = false;",
+    "to": "S.submitInFlight = false;\n    if (S.tag !== tag) return undefined;   // a new session began while in flight — do NOT touch B's state / apply A's result",
+    "label": "a stale A submit clears the in-flight lock BEFORE the session check -> A wipes B's lock (codex r3 survivor a)"
+  },
+  {
+    "id": "s1bc-17",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-controller.test.js"
+    ],
+    "from": "return Promise.race([\n      Promise.resolve().then(() => env.readFlag()).catch(() => false),\n      new Promise((r) => setTimeout(() => r(false), ms)),\n    ]);",
+    "to": "return Promise.resolve().then(() => env.readFlag()).catch(() => false);",
+    "label": "flag-read deadline removed -> a hung flag read never resolves to legacy (codex r3 survivor b)"
+  },
+  {
+    "id": "s1bc-18",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/index.html",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-host.test.js"
+    ],
+    "from": "if (companion.isFlagOff()) { render(); return; }",
+    "to": "if (false) { render(); return; }",
+    "label": "a completed flag-OFF read no longer governs the submit outcome -> E2 shown despite flag false (codex r3 #2)"
+  },
+  {
+    "id": "s1bc-19",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/index.html",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-host.test.js"
+    ],
+    "from": "companionDraft = d;",
+    "to": "companionDraft = companionDraft;",
+    "label": "onboarding draft not kept in memory -> a failed storage write blocks checklist ticks / practice progress (codex r3 #4)"
   }
 ]

@@ -44,7 +44,7 @@ function makeDom() {
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // Build a runnable module of the lifted host fns, with externals injected and `companionStep`/`companion` local.
-function buildHost({ dom, XPD, currentUser, controller, store }) {
+function buildHost({ dom, XPD, currentUser, controller, store, storageThrows = false }) {
   const body = [
     liftFn('companionShellHtml'), liftFn('companionReadDraft'), liftFn('companionWriteDraft'),
     liftFn('companionClearDraft'), liftFn('companionRenderScreen'), liftFn('companionRenderE2'),
@@ -52,23 +52,25 @@ function buildHost({ dom, XPD, currentUser, controller, store }) {
   ].join('\n');
   const localStorage = {
     getItem: (k) => (k in store ? store[k] : null),
-    setItem: (k, v) => { store[k] = String(v); },
+    setItem: (k, v) => { if (storageThrows) throw new Error('quota exceeded'); store[k] = String(v); },
     removeItem: (k) => { delete store[k]; },
   };
   const fn = new Function(
-    '$', 'escapeHtml', 'showScreen', 'toast', 'driverGreeting', 'XPD', 'currentUser', 'companion',
+    '$', 'escapeHtml', 'showScreen', 'toast', 'driverGreeting', 'render', 'XPD', 'currentUser', 'companion',
     'localStorage', 'allTasks', 'companionDraftKey', '__out',
-    `let companionStep = 'profile';\n${body}\n` +
+    `let companionStep = 'profile'; let companionDraft = null;\n${body}\n` +
     'return { companionRenderOnboarding, companionSubmit, companionRenderE2, companionHasHeldWork, ' +
+    'companionReadDraft, companionWriteDraft, ' +
     'getStep: () => companionStep, setStep: (s) => { companionStep = s; }, ' +
     'getScreenHtml: () => $("screen-companion").innerHTML };',
   );
   const showScreenCalls = [];
   const toastCalls = [];
+  const renderCalls = [];
   const api = fn(dom.$, escapeHtml, (n) => showScreenCalls.push(n), (m, k) => toastCalls.push([m, k]),
-    driverGreeting, XPD, currentUser, controller,
+    driverGreeting, () => renderCalls.push(1), XPD, currentUser, controller,
     localStorage, {}, (uid) => `sherpa_driver_onboarding_draft_${uid}`, {});
-  api.showScreenCalls = showScreenCalls; api.toastCalls = toastCalls;
+  api.showScreenCalls = showScreenCalls; api.toastCalls = toastCalls; api.renderCalls = renderCalls;
   return api;
 }
 
@@ -150,6 +152,32 @@ t('a submit that returns an explicit deactivation message shows E2 and does not 
   await host.companionSubmit();
   assert.ok(dom.$('screen-companion').innerHTML.includes('Cuenta desactivada'), 'explicit deactivation → E2 shown');
   assert.equal(xpd.calls.signOut, 0, 'no automatic sign-out on submit deactivation');
+});
+
+// ---- codex r3 #2: a completed FLAG-OFF read governs the submit outcome (legacy only, never E2) ----
+t('a submit outcome is forced to legacy (no E2) when the last read confirmed the flag OFF', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' };
+  const xpd = makeXPD({ submit: () => { throw { code: 'functions/permission-denied', message: 'Tu cuenta está desactivada.' }; } });
+  xpd.readDriverAdminFlag = async () => false;          // the flag reads OFF
+  const ctl = makeCtl(xpd, user);
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: ctl, store: {} });
+  await ctl.refresh();                                   // completed flag-off read → controller.isFlagOff() === true
+  await host.companionSubmit();                          // callable returns an explicit deactivation
+  assert.ok(!host.getScreenHtml().includes('Cuenta desactivada'), 'flag-off must NOT show E2');
+  assert.ok(host.renderCalls.length >= 1, 'flag-off falls through to the legacy render');
+});
+
+// ---- codex r3 #4: onboarding progress advances through the REAL handlers even when localStorage writes fail ----
+t('checklist acknowledgments advance through the REAL handlers even when localStorage.setItem throws', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD(); const store = {};
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store, storageThrows: true });
+  host.setStep('checklist'); host.companionRenderOnboarding();
+  dom.$('co-bx-perms').closest('label').click();        // RUN the real perms-ack handler (writes draft + re-renders)
+  dom.$('co-bx-cash').closest('label').click();         // RUN the real cash-ack handler
+  const d = host.companionReadDraft();
+  assert.equal(d.ackPerms, true, 'perms ack retained in-memory despite the storage failure');
+  assert.equal(d.ackCash, true, 'cash ack retained in-memory despite the storage failure');
+  assert.equal(store['sherpa_driver_onboarding_draft_A'], undefined, 'nothing was persisted (storage threw)');
 });
 
 await Promise.all(_pending).catch((e) => { console.error(e && e.message ? e.message : e); process.exit(1); });

@@ -1294,11 +1294,14 @@ let companionSuspended = false;    // mirrors decide().suspended for the inline-
 let companionNeutralNotice = false; // P1-8: a one-shot toast fired when a malformed account coincides with held work
 let companionStep = 'profile';     // onboarding sub-step (DOM-only): 'profile' | 'checklist' | 'practice'
 let companionActivatedTimer = null;
-// Per-session boot-settlement barrier (P1-1): the companion's reads/sign-out wait for the legacy boot to settle
-// (success OR failure), so a resume/reconnect can't act mid-boot and a sign-out can't be undone by the boot
-// continuation. Reset on each login.
+// Per-session boot-settlement barrier (P1-1): the companion's reads wait for the legacy boot to settle (success
+// OR failure), so a resume/reconnect can't act mid-boot. The barrier's resolver is a LOCAL const per onAuth login
+// (codex r3 #3), so an earlier session's boot finishing can't resolve a newer session's barrier.
 let companionBootBarrier = Promise.resolve();
-let companionBootSettle = null;
+// Per-session AUTHORITATIVE in-memory onboarding draft (codex r3 #4): checklist ticks + the practice step live
+// here so onboarding progress survives a localStorage failure; localStorage is best-effort persistence for a
+// same-uid reload. Reset to null on every auth transition (logout / uid change) so a draft never leaks sessions.
+let companionDraft = null;
 const companionDraftKey = (uid) => `sherpa_driver_onboarding_draft_${uid}`;
 
 const $ = (id) => document.getElementById(id);
@@ -1426,20 +1429,27 @@ function companionRenderScreen(decision) {
   showScreen('companion');
 }
 
-// ---- onboarding draft (uid-scoped localStorage; restored on same-uid reload, cleared on logout/uid change).
-// SIMPLE (codex r2 §6): no in-memory layer — if storage fails the form just keeps what's typed in the DOM
-// (the profile step does not rebuild while it's already on screen, §P2-12 guard in companionRenderOnboarding). ----
+// ---- onboarding draft: a PER-SESSION in-memory var is authoritative (codex r3 #4), so checklist ticks and the
+// practice step advance even when a localStorage write fails; localStorage is best-effort persistence for a
+// same-uid reload. `companionDraft` is reset to null on every auth transition (logout/uid change) so a draft
+// never leaks across sessions, and companionClearDraft drops it when the account leaves 'pending'. ----
 function companionReadDraft() {
   if (!currentUser) return {};
-  try { return JSON.parse(localStorage.getItem(companionDraftKey(currentUser.uid)) || '{}') || {}; } catch (_) { return {}; }
+  if (companionDraft) return companionDraft;                         // authoritative in-memory copy for this session
+  // First read this session: restore from localStorage (same-uid reload), else start empty.
+  let restored = {};
+  try { restored = JSON.parse(localStorage.getItem(companionDraftKey(currentUser.uid)) || '{}') || {}; } catch (_) { restored = {}; }
+  companionDraft = restored;
+  return companionDraft;
 }
 function companionWriteDraft(patch) {
   if (!currentUser) return {};
   const d = { ...companionReadDraft(), ...patch };
-  try { localStorage.setItem(companionDraftKey(currentUser.uid), JSON.stringify(d)); } catch (_) { /* storage unavailable: DOM keeps the typed values */ }
+  companionDraft = d;                                                // authoritative: onboarding progress survives a storage failure
+  try { localStorage.setItem(companionDraftKey(currentUser.uid), JSON.stringify(d)); } catch (_) { /* best-effort persistence only */ }
   return d;
 }
-function companionClearDraft(uid) { try { localStorage.removeItem(companionDraftKey(uid)); } catch (_) {} }
+function companionClearDraft(uid) { companionDraft = null; try { localStorage.removeItem(companionDraftKey(uid)); } catch (_) {} }
 
 function companionRenderOnboarding() {
   const d = companionReadDraft();
@@ -1536,6 +1546,7 @@ async function companionSubmit() {
   showScreen('companion');
   const outcome = await companion.submit(fields);
   if (outcome === undefined) return;                                                             // in-flight / stale session — dropped
+  if (companion.isFlagOff()) { render(); return; }                                               // a completed flag-OFF read governs: legacy only, never E2/companion (no extra read) — codex r3 #2
   if (outcome === 'deactivated') { companionRenderE2(); showScreen('companion'); return; }        // explicit denial → SHOW E2 (driver signs out from it)
   if (outcome === 'reauth') { toast('Tu sesión expiró. Volvé a entrar.', 'error'); await XPD.signOutUser(); return; }
   if (outcome === 'field-error') { toast('Revisá los datos del perfil.', 'error'); companionStep = 'profile'; companionRenderOnboarding(); return; }
@@ -1555,7 +1566,9 @@ async function boot() {
 
   XPD.onAuth(async (user) => {
     currentUser = user;
+    companionDraft = null;                              // drop the previous session's in-memory draft on ANY auth transition (logout / uid change) — codex r3 #4
     if (!user) {
+      if (companion) companion.invalidateSession();     // a pending submit from the signed-out session must not resurface a screen over login — codex r3 #1
       cleanupShift();
       showScreen('login');
       return;
@@ -1566,7 +1579,8 @@ async function boot() {
     companionEnsure().resetSession();
     companionStep = 'profile';
     if (companionActivatedTimer) { clearTimeout(companionActivatedTimer); companionActivatedTimer = null; }
-    companionBootBarrier = new Promise((r) => { companionBootSettle = r; });
+    let bootSettle;                                            // LOCAL to this onAuth login (codex r3 #3) — a later login can't clobber or resolve this session's barrier
+    companionBootBarrier = new Promise((r) => { bootSettle = r; });
 
     // The legacy boot runs inside try/finally so the barrier ALWAYS resolves — a rejected ensureDriverProfile()
     // (denied for a deactivated persisted session) must not stop the companion read + E2 (P1-1). A resume/
@@ -1598,7 +1612,7 @@ async function boot() {
     } catch (e) {
       console.error('driver boot continuation failed (companion still reads after settle)', e);
     } finally {
-      if (companionBootSettle) companionBootSettle();   // barrier resolves whether boot succeeded or failed
+      if (bootSettle) bootSettle();   // barrier resolves whether boot succeeded or failed (this session's resolver only)
     }
 
     // S1b companion read-once: runs after the boot barrier settles (the controller's refresh awaits it), so any
