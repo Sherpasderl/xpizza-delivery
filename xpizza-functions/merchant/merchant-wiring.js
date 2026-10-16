@@ -41,6 +41,7 @@ module.exports = {
   merchantPairDevice: call(D.pairDevice),
   merchantRevokeDevice: call(D.revokeDevice),
   merchantHeartbeat: call(D.heartbeat),
+  merchantMyLocations: call(D.myLocations),
   merchantPublishRejectIntent: onValueWritten({ ref: '/orders/{orderId}/reject_intent', region: REGION, retry: true },
     (event) => R.publishFromIntent(deps(), event.params.orderId)),
   merchantClearOnDecline: onValueWritten({ ref: '/merchant_requests/{rid}/{orderId}', region: REGION, retry: true },

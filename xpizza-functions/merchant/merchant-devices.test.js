@@ -80,3 +80,26 @@ test('heartbeat: registered unrevoked device only', async () => {
   db.put('restaurants/tb_centro/handhelds/hh_tb_centro_a/revoked', true);
   await rejectsCode(D.heartbeat(deps(db, fakeAuth()), { uid: 'hh_tb_centro_a', token: { handheld: true, rid: 'tb_centro' } }, { rid: 'tb_centro' }), 'permission-denied');
 });
+
+test('myLocations: owner → every member location of their brand; manager → only theirs; retired excluded; devices/customers refused', async () => {
+  const db = createFakeDb({
+    brands: { tb: { name: 'TB', active: true, locations: { tb_centro: 'member', tb_norte: 'member', tb_viejo: 'retired' } }, zz: { locations: { zz_1: 'member' } } },
+    restaurants: {
+      tb: { owners: { own_tb: true } },
+      tb_centro: { managers: { mgr_c: true }, identity: { location_name: 'Centro' } },
+      tb_norte: { identity: { location_name: 'Norte' } },
+      zz_1: { managers: { mgr_c: true }, identity: { location_name: 'Uno' } },
+    },
+  });
+  const d = deps(db, fakeAuth());
+  assert.deepStrictEqual(await D.myLocations(d, human('own_tb'), {}), [
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro' }, { rid: 'tb_norte', brand_id: 'tb', location_name: 'Norte' }]);
+  assert.deepStrictEqual(await D.myLocations(d, human('mgr_c'), {}), [
+    { rid: 'tb_centro', brand_id: 'tb', location_name: 'Centro' }, { rid: 'zz_1', brand_id: 'zz', location_name: 'Uno' }]);
+  assert.deepStrictEqual(await D.myLocations(d, human('nobody'), {}), []);
+  await rejectsCode(D.myLocations(d, { uid: 'hh_x', token: { handheld: true, rid: 'tb_centro' } }, {}), 'permission-denied');
+  await rejectsCode(D.myLocations(d, human('own_tb', { customer: true }), {}), 'permission-denied');
+  await rejectsCode(D.myLocations(d, null, {}), 'unauthenticated');
+  const broken = createFakeDb({}); broken.failReads.add('brands');
+  await rejectsCode(D.myLocations(deps(broken, fakeAuth()), human('own_tb'), {}), 'unavailable');
+});

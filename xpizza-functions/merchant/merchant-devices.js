@@ -65,4 +65,31 @@ async function heartbeat(deps, auth, data) {
   return { ok: true };
 }
 
-module.exports = { pairDevice, revokeDevice, heartbeat };
+// merchantMyLocations (advisor O-2): the locations a HUMAN may pair a device for — every member location of a brand they own,
+// plus each member location they manage. Retired locations are excluded. Reads /brands (small) and per-candidate owner /
+// manager / location_name nodes; never /orders. Devices and customers are refused; a read failure is `unavailable`.
+async function myLocations(deps, auth, _data) {
+  const { db, HttpsError } = deps;
+  if (!auth || !auth.uid) throw new HttpsError('unauthenticated', 'sign in');
+  const t = auth.token || {};
+  if (t.customer === true || t.handheld === true) throw new HttpsError('permission-denied', 'forbidden');
+  const val = async (p) => (await db.ref(p).once('value')).val();
+  const out = [];
+  try {
+    const brands = (await val('brands')) || {};
+    for (const b of Object.keys(brands).sort()) {
+      const locs = isObj(brands[b]) && isObj(brands[b].locations) ? brands[b].locations : {};
+      const members = Object.keys(locs).filter((rid) => locs[rid] === 'member' && V.vRid(rid)).sort();
+      if (!members.length) continue;
+      const owner = (await val(`restaurants/${b}/owners/${auth.uid}`)) != null;
+      for (const rid of members) {
+        if (!owner && (await val(`restaurants/${rid}/managers/${auth.uid}`)) == null) continue;
+        const name = await val(`restaurants/${rid}/identity/location_name`);
+        out.push({ rid, brand_id: b, location_name: typeof name === 'string' ? name : null });
+      }
+    }
+  } catch (_) { throw new HttpsError('unavailable', 'locations unreadable'); }
+  return out;
+}
+
+module.exports = { pairDevice, revokeDevice, heartbeat, myLocations };

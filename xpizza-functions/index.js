@@ -7256,6 +7256,7 @@ exports.merchantSetAvailability = merchantFunctions.merchantSetAvailability;
 exports.merchantPairDevice = merchantFunctions.merchantPairDevice;
 exports.merchantRevokeDevice = merchantFunctions.merchantRevokeDevice;
 exports.merchantHeartbeat = merchantFunctions.merchantHeartbeat;
+exports.merchantMyLocations = merchantFunctions.merchantMyLocations;
 exports.merchantPublishRejectIntent = merchantFunctions.merchantPublishRejectIntent;
 exports.merchantClearOnDecline = merchantFunctions.merchantClearOnDecline;
 /* h1:end */
