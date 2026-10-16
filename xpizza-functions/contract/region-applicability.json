@@ -10030,7 +10030,7 @@
     "site": "const p = XPD.acceptTask(currentUser.uid, o.pickupTask.id);",
     "siteSha": "656e0bf9f6b48da30c1722f2db6335bceabdc420a6db2036ab0d9a919f54786a",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "355c3f0037291d071c8f5c342bb07d8a7b39c2c27790b6b0aa27f4cfbb83bbae"
+    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
    },
    "guards": [
     {
@@ -10139,7 +10139,7 @@
     "site": "const p = XPD.completeTask(actingUid, o.deliveryTask.id);",
     "siteSha": "3ed443e0e56b3d96567038aec540e76074280e71a9308031c4459aa8d5b5038e",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "355c3f0037291d071c8f5c342bb07d8a7b39c2c27790b6b0aa27f4cfbb83bbae"
+    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
    },
    "guards": [
     {
@@ -10218,7 +10218,7 @@
     "site": "await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);",
     "siteSha": "9e794452016d96cf9a83d2e669db4b893545fcaa3d4a6e609b5a65f1d952a271",
     "scope": "xpizza-driver/index.html<script@0>#attachActiveCardHandlers>anon",
-    "scopeSha": "355c3f0037291d071c8f5c342bb07d8a7b39c2c27790b6b0aa27f4cfbb83bbae"
+    "scopeSha": "7b74e414dee09206c10327d09e44ff24e42c44d3618515cbfa59b1f8dc3c1145"
    },
    "guards": [
     {

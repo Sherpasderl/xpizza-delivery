@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {
   classifyAccount, companionDecision, isApprovalTransition,
-  reconcileAfterSubmit, isDeactivatedDenial, sessionCurrent, isLatestRefresh,
+  classifySubmitOutcome, isDeactivatedDenial, sessionCurrent, isLatestRefresh,
 } from './onboarding-helpers.js';
 
 let passed = 0;
@@ -69,24 +69,18 @@ t('approval transient: only observed profile_submitted → active&&enabled; not 
   assert.equal(isApprovalTransition({ meta: 'error' }, V('active', true)), false);
 });
 
-// ---- reconcileAfterSubmit ----
-t('submit: ok shows waiting immediately; a fresh active read routes to app', () => {
-  assert.equal(reconcileAfterSubmit({ ok: true, freshMeta: 'valid', freshRec: V('profile_submitted', false) }), 'waiting');
-  assert.equal(reconcileAfterSubmit({ ok: true, freshMeta: 'valid', freshRec: V('active', true) }), 'app');
-  assert.equal(reconcileAfterSubmit({ ok: true, freshMeta: 'error' }), 'waiting');   // ack now, next read decides
+// ---- classifySubmitOutcome (simplified — no account read; any later read decides) ----
+t('submit outcome: ok → ok; an explicit deactivation message → deactivated (E2, no sign-out)', () => {
+  assert.equal(classifySubmitOutcome(true, null, null), 'ok');
+  assert.equal(classifySubmitOutcome(false, 'functions/permission-denied', 'Tu cuenta está desactivada.'), 'deactivated');
+  assert.equal(classifySubmitOutcome(false, 'permission-denied', 'Tu cuenta está desactivada.'), 'deactivated');   // bare too
 });
-t('submit: error mappings + reconcile from the FRESH read', () => {
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'permission-denied', errorMessage: 'Tu cuenta está desactivada.' }), 'deactivated');
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'unauthenticated' }), 'reauth');
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'invalid-argument' }), 'field-error');
-  // lost-response commit: the callable errored but the server already moved to profile_submitted
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'failed-precondition', freshMeta: 'valid', freshRec: V('profile_submitted', false) }), 'waiting');
-  // fresh pending → allow resubmit
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'aborted', freshMeta: 'valid', freshRec: V('pending', false) }), 'retry');
-});
-t('submit: a STALE/unavailable read never grants retry — recoverable-wait instead (codex r2 #5)', () => {
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'unavailable', freshMeta: 'error' }), 'recoverable-wait');
-  assert.equal(reconcileAfterSubmit({ ok: false, errorCode: 'deadline-exceeded', freshMeta: 'unresolved' }), 'recoverable-wait');
+t('submit outcome: real functions/ error codes map correctly', () => {
+  assert.equal(classifySubmitOutcome(false, 'functions/invalid-argument', 'bad'), 'field-error');
+  assert.equal(classifySubmitOutcome(false, 'functions/permission-denied', 'Tu sesión expiró.'), 'reauth');   // non-deactivation denial
+  assert.equal(classifySubmitOutcome(false, 'functions/unauthenticated', ''), 'reauth');
+  assert.equal(classifySubmitOutcome(false, 'functions/unavailable', ''), 'error');
+  assert.equal(classifySubmitOutcome(false, 'functions/deadline-exceeded', ''), 'error');
 });
 
 // ---- isDeactivatedDenial ----

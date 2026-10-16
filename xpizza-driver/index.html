@@ -1300,7 +1300,6 @@ let companionActivatedTimer = null;
 let companionBootBarrier = Promise.resolve();
 let companionBootSettle = null;
 const companionDraftKey = (uid) => `sherpa_driver_onboarding_draft_${uid}`;
-let companionMemDraft = {};        // in-memory draft fallback when localStorage is unavailable (P2-11), keyed by uid
 
 const $ = (id) => document.getElementById(id);
 
@@ -1349,8 +1348,6 @@ function companionEnsure() {
     readAccount: (uid) => XPD.readOwnAccount(uid),
     submit: (fields) => XPD.submitDriverProfile(fields),
     clearDraft: () => { if (currentUser) companionClearDraft(currentUser.uid); },   // draft only lives while onboarding
-    localTeardown: () => companionLocalTeardown(),
-    signOut: () => XPD.signOutUser(),
     bootSettled: () => companionBootBarrier,   // P1-1: resolves when this session's legacy boot settles
     rerender: () => render(),
   });
@@ -1360,23 +1357,6 @@ function companionEnsure() {
 function companionSyncSuspendedNotice() {
   document.querySelectorAll('.companion-suspended-notice').forEach(el => el.classList.toggle('hidden', !companionSuspended));
 }
-
-// LOCAL-ONLY teardown for the deactivation sign-out. unregisterDriverPushToken / stopNativeTracking are guarded
-// by assertDriverCallerActive and REJECT a deactivated caller, so every server-callable here is best-effort and
-// swallowed — it must never block the sign-out. Server-side token deletion is the dispatch lane's.
-function companionLocalTeardown() {
-  // LOCAL cleanup completes SYNCHRONOUSLY and never awaits a server call (P2-9): unregisterNativePush awaits a
-  // guarded callable that rejects a deactivated caller — a STALLED request would otherwise delay the sign-out,
-  // so it is fired DETACHED (fire-and-forget), never awaited. The returned promise resolves immediately.
-  try { cleanupShift(); } catch (_) { /* local */ }
-  if (isNative()) { try { Promise.resolve(unregisterNativePush(XPD.getAuthInstance().app)).catch(() => {}); } catch (_) { /* detached best-effort */ } }
-  return Promise.resolve();
-}
-
-// (c) a denied RTDB write requests a one-shot refresh; E2 fires ONLY if that fresh read confirms deactivated.
-// Guarded here (in the callee, not at the call site) so it can NEVER throw into the delivery-write catch and
-// replace the original error's _userMessage (2e review) — and so the call site's scope sha is unaffected.
-function companionOnWriteDenied(err) { try { if (companion) companion.onWriteDenied(err); } catch (_) { /* the (c) trigger must never clobber the delivery error */ } }
 
 // The "Activado" transient — shown ONLY on an observed profile_submitted→active&&enabled transition.
 function companionShowActivatedTransient() {
@@ -1409,7 +1389,8 @@ function companionRenderE2() {
     </div>
     <button class="big-btn primary" id="co-e2-signout" style="background:#B4322A">Cerrar sesión</button>`, '');
   const btn = $('co-e2-signout');
-  if (btn) btn.addEventListener('click', () => { if (companion) companion.clearDeactReason(); showScreen('login'); });
+  // The DRIVER taps this — there is NO automatic sign-out. Signing out here routes onAuth(null) → login as usual.
+  if (btn) btn.addEventListener('click', async () => { try { await XPD.signOutUser(); } catch (_) { showScreen('login'); } });
 }
 
 // Does the driver have HELD operational work (a non-terminal task assigned to them)? Used so a neutral hold
@@ -1420,11 +1401,9 @@ function companionHasHeldWork() {
   return Object.values(allTasks || {}).some((t) => t && t.assigned_driver_id === currentUser.uid && !TERMINAL[t.status]);
 }
 
-// Render the submitting / waiting / neutral-hold / onboarding full-screens into #screen-companion, then show it.
+// Render the waiting / neutral-hold / onboarding full-screens into #screen-companion, then show it.
 function companionRenderScreen(decision) {
-  if (decision === 'submitting') {
-    $('screen-companion').innerHTML = companionShellHtml(`<div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="co-sub">Enviando…</div></div>`, '');
-  } else if (decision === 'waiting') {
+  if (decision === 'waiting') {
     $('screen-companion').innerHTML = companionShellHtml(`
       <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;text-align:center">
         <div class="co-chip-wait">Esperando aprobación</div>
@@ -1447,30 +1426,29 @@ function companionRenderScreen(decision) {
   showScreen('companion');
 }
 
-// ---- onboarding draft (uid-scoped; localStorage with an IN-MEMORY fallback — P2-11 — so acknowledgments and
-// practice progress survive even when storage is unavailable; restored on same-uid reload, cleared on uid change) ----
+// ---- onboarding draft (uid-scoped localStorage; restored on same-uid reload, cleared on logout/uid change).
+// SIMPLE (codex r2 §6): no in-memory layer — if storage fails the form just keeps what's typed in the DOM
+// (the profile step does not rebuild while it's already on screen, §P2-12 guard in companionRenderOnboarding). ----
 function companionReadDraft() {
   if (!currentUser) return {};
-  const mem = companionMemDraft[currentUser.uid];
-  try {
-    const raw = localStorage.getItem(companionDraftKey(currentUser.uid));
-    if (raw != null) return JSON.parse(raw) || {};
-  } catch (_) { /* fall back to memory */ }
-  return mem ? { ...mem } : {};
+  try { return JSON.parse(localStorage.getItem(companionDraftKey(currentUser.uid)) || '{}') || {}; } catch (_) { return {}; }
 }
 function companionWriteDraft(patch) {
   if (!currentUser) return {};
   const d = { ...companionReadDraft(), ...patch };
-  companionMemDraft[currentUser.uid] = d;   // in-memory mirror (authoritative when storage is unavailable)
-  try { localStorage.setItem(companionDraftKey(currentUser.uid), JSON.stringify(d)); } catch (_) { /* storage unavailable: in-memory only */ }
+  try { localStorage.setItem(companionDraftKey(currentUser.uid), JSON.stringify(d)); } catch (_) { /* storage unavailable: DOM keeps the typed values */ }
   return d;
 }
-function companionClearDraft(uid) { delete companionMemDraft[uid]; try { localStorage.removeItem(companionDraftKey(uid)); } catch (_) {} }
+function companionClearDraft(uid) { try { localStorage.removeItem(companionDraftKey(uid)); } catch (_) {} }
 
 function companionRenderOnboarding() {
   const d = companionReadDraft();
   const el = $('screen-companion');
   if (companionStep === 'profile') {
+    // P2-12 / §6: if the profile form is ALREADY on screen (a subscription/render re-entered while the driver is
+    // typing), don't rebuild it — that would wipe unsaved input, and it's how typed values survive even if
+    // localStorage is unavailable. Only build it when it isn't already showing (first entry / step change).
+    if ($('co-name') && !$('screen-companion').classList.contains('hidden')) { showScreen('companion'); return; }
     const veh = d.vehicle || 'moto';
     el.innerHTML = companionShellHtml(`
       <div class="co-title">Completá tu perfil</div>
@@ -1548,17 +1526,23 @@ function companionRenderOnboarding() {
 // Submit the staged profile at "Pedir aprobación" (A4). The CONTROLLER owns the barrier (submitState), the
 // coalesced fresh-read reconcile and the session/flag safety + rerenders for the screen states; the host only
 // maps the two outcomes that need a host action (re-auth and a field error).
+// "Pedir aprobación" (A4). One submit in flight (controller); success → show waiting + do the ONE after-submit
+// read, which (like any later read) decides the final screen. No auto sign-out: an explicit deactivation shows E2.
 async function companionSubmit() {
   if (!companion) return;
   const d = companionReadDraft();
   const fields = { name: d.name || '', phone: d.phone || '', vehicle: d.vehicle || '', plate: d.plate || '' };
-  // The controller sets submitState='submitting' + rerenders → decide()→'submitting' shows "Enviando…".
+  $('screen-companion').innerHTML = companionShellHtml(`<div style="flex:1;display:flex;align-items:center;justify-content:center"><div class="co-sub">Enviando…</div></div>`, '');
+  showScreen('companion');
   const outcome = await companion.submit(fields);
-  if (outcome === 'reauth') { toast('Tu sesión expiró. Volvé a entrar.', 'error'); await XPD.signOutUser(); return; }   // P1-3: real re-auth
+  if (outcome === undefined) return;                                                             // in-flight / stale session — dropped
+  if (outcome === 'deactivated') { companionRenderE2(); showScreen('companion'); return; }        // explicit denial → SHOW E2 (driver signs out from it)
+  if (outcome === 'reauth') { toast('Tu sesión expiró. Volvé a entrar.', 'error'); await XPD.signOutUser(); return; }
   if (outcome === 'field-error') { toast('Revisá los datos del perfil.', 'error'); companionStep = 'profile'; companionRenderOnboarding(); return; }
-  if (outcome === 'retry') { toast('No se pudo enviar. Intentá de nuevo.', 'error'); return; }   // controller set submitState='retry' → decide()→onboarding already rendered
-  // deactivated / waiting / recoverable-wait / app / flag-off / undefined: the controller already rerendered
-  // (or signed out → onAuth(null)→E2). Nothing more for the host to do.
+  if (outcome === 'error') toast('No se pudo enviar. Intentá de nuevo.', 'error');
+  // 'ok' or 'error' → show waiting and let the ONE after-submit read decide the final screen (waiting/app/onboarding).
+  companionRenderScreen('waiting');
+  companion.refresh();
 }
 
 
@@ -1573,9 +1557,6 @@ async function boot() {
     currentUser = user;
     if (!user) {
       cleanupShift();
-      // S1b companion: if THIS session signed itself out on a confirmed deactivation, keep E2 on screen
-      // (do not bounce to login). The E2 "Cerrar sesión" button clears the reason and shows login.
-      if (companion && companion.onLogout()) { companionRenderE2(); showScreen('companion'); return; }
       showScreen('login');
       return;
     }
@@ -1878,7 +1859,6 @@ async function handleStartShift() {
     $('duty-toggle-off').classList.remove('on');
     render();
     toast('Error al iniciar turno', 'error');
-    companionOnWriteDenied(e);   // S1b trigger (c): a deactivated clock-in denial → one-shot refresh → E2 if confirmed
   }
 }
 
@@ -1998,7 +1978,6 @@ async function finalizeEndShift() {
     optimisticShift = null;
     render();
     toast('Error al terminar turno', 'error');
-    companionOnWriteDenied(e);   // S1b trigger (c): a deactivated clock-out denial → one-shot refresh → E2 if confirmed
   }
 }
 
@@ -2232,7 +2211,6 @@ function startGpsStream() {
         });
       } catch (e) {
         console.warn('location update failed:', e);
-        companionOnWriteDenied(e);   // S1b trigger (c): a denied location write → one-shot refresh → E2 only if confirmed deactivated
       }
     },
     (err) => {
@@ -2375,7 +2353,7 @@ function render() {
   if (companion) {
     const r = companion.decide();
     companionSuspended = !!r.suspended;
-    if (r.action === 'deactivate') { companionRenderE2(); showScreen('companion'); companion.triggerDeactivate(); return; }
+    if (r.action === 'deactivate') { companionRenderE2(); showScreen('companion'); return; }   // SHOW E2 only — the driver signs out from it; no automatic sign-out
     if (r.action === 'show') {
       // P1-8 / §3 row 7: a malformed/void account must NOT obstruct held work — a driver mid-delivery keeps
       // today's operational screen + a one-shot notice; only a driver with no held work sees the full hold.
@@ -2801,14 +2779,13 @@ function attachActiveCardHandlers(o) {
         () => { clearTimeout(_diagPending); XPD.emitDiag({ type: 'accept_result', taskId: _diagTaskId, latencyMs: Date.now() - _diagT0 }); },
         (e) => { clearTimeout(_diagPending); XPD.emitDiag({ type: 'accept_err', taskId: _diagTaskId, err: String((e && e.message) || e) }); }
       );
-      try { await p; } catch (err) { companionOnWriteDenied(err); throw err; }   // S1b trigger (c)
+      await p;
       toast('Aceptado', 'success');
     });
   }
   if ($('btn-pickup')) {
     attachSlideConfirm('btn-pickup', async () => {
-      try { await XPD.pickupComplete(currentUser.uid, o.pickupTask.id); }
-      catch (err) { companionOnWriteDenied(err); throw err; }                    // S1b trigger (c)
+      await XPD.pickupComplete(currentUser.uid, o.pickupTask.id);
       toast('En camino al cliente', 'success');
     });
   }
@@ -2832,7 +2809,6 @@ function attachActiveCardHandlers(o) {
         // (codex core r3 P1): it always settles within ROLE_LOOKUP_TIMEOUT_MS, then we rethrow so the slider resets.
         err._userMessage = await resolveCompleteErrorMessage(
           err, actingUid, currentUser && currentUser.uid, XPD.isActingDispatcher);
-        companionOnWriteDenied(err);   // S1b trigger (c): a denied write → one-shot refresh → E2 only if that read confirms deactivated
         throw err;
       }
       toast('¡Entregado!', 'success');

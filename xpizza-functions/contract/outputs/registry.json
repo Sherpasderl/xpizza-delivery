@@ -967,6 +967,9 @@
   "xpizza-driver/index.html<script@0>#detectNewAssignments@xpizza-driver/index.html<script@0>#subscribeToFirebase>anon": {
    "status": "pending"
   },
+  "xpizza-driver/index.html<script@0>#companionHasHeldWork>anon@self": {
+   "status": "pending"
+  },
   "xpizza-driver/index.html<script@0>#renderActiveCard>anon@self": {
    "status": "pending"
   },

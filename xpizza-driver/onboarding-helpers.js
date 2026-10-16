@@ -61,29 +61,17 @@ function isApprovalTransition(prev, next) {
 // the `functions/` prefix so comparisons work against both the prefixed real codes and bare ones (P1-3).
 function normalizeCode(code) { return String(code || '').replace(/^functions\//, ''); }
 
-// Submit reconciliation (§5). Decides the next UI from the callable outcome + a FRESH post-submit read.
-// A stale PRE-request snapshot must never be passed here — only a fresh read. Returns:
-//   'deactivated' | 'reauth' | 'field-error' | 'waiting' | 'app' | 'retry' | 'recoverable-wait'
-function reconcileAfterSubmit(outcome) {
-  const { ok, errorMessage, freshMeta, freshRec } = outcome;
-  const errorCode = normalizeCode(outcome.errorCode);
-  if (!ok) {
-    if (errorCode === 'permission-denied' && /desactivada/i.test(errorMessage || '')) return 'deactivated';
-    if (errorCode === 'permission-denied') return 'reauth';   // non-deactivation denial (e.g. revoked/expired session)
-    if (errorCode === 'unauthenticated') return 'reauth';
-    if (errorCode === 'invalid-argument') return 'field-error';
-  }
-  // Reconcile from the FRESH read for both success and the remaining errors.
-  if (freshMeta === 'valid' && freshRec) {
-    if (freshRec.deactivated === true) return 'deactivated';
-    if (freshRec.state === 'profile_submitted') return 'waiting';   // includes a lost-response commit
-    if (freshRec.state === 'active') return 'app';
-    if (freshRec.state === 'pending') return ok ? 'waiting' : 'retry'; // ok+still-pending = ack now; error+fresh-pending = resubmit
-  }
-  // Acknowledged submission with no reconcilable read yet -> show waiting optimistically (next read decides).
-  if (ok) return 'waiting';
-  // Could not confirm (read failed) -> recoverable waiting with pull-to-refresh, never a dead-end or false retry.
-  return 'recoverable-wait';
+// Map a submitDriverProfile callable outcome to a host action (SIMPLIFIED — codex r2 §5: no account read here;
+// one submit in flight, success → waiting, and ANY later read decides the final screen). An explicit
+// deactivation message → 'deactivated' (the host shows E2; there is NO automatic sign-out). Returns:
+//   'ok' | 'deactivated' | 'reauth' | 'field-error' | 'error'
+function classifySubmitOutcome(ok, errorCode, errorMessage) {
+  if (ok) return 'ok';
+  const code = normalizeCode(errorCode);
+  if (code === 'permission-denied' && /desactivada/i.test(errorMessage || '')) return 'deactivated';
+  if (code === 'permission-denied' || code === 'unauthenticated') return 'reauth';
+  if (code === 'invalid-argument') return 'field-error';
+  return 'error';
 }
 
 // A callable/denial surfaces E2 ONLY when it positively identifies deactivation (the Spanish guard message).
@@ -98,34 +86,32 @@ function sessionCurrent(capturedTag, currentTag) { return capturedTag != null &&
 function isLatestRefresh(capturedSeq, latestSeq) { return capturedSeq === latestSeq; }
 
 // ============================================================================
-// Read-once companion CONTROLLER — the single source of truth for the orchestration (flag/account state,
-// read-once sequencing, async-session safety, E2 teardown, submit reconciliation). PURE of DOM/Firebase:
-// every side effect goes through the injected `env`. index.html builds `env` from the real DOM + SDK; tests
-// build it from fakes. `decide()` is pure and is what render() calls synchronously.
+// Read-once companion CONTROLLER (SIMPLIFIED — codex r2: NO automatic sign-out, no teardown, no submit barrier,
+// no write-denied re-read). The server is the sole authority (S1a rules + guard + Auth disable/revoke); the UI
+// only SHOWS the state. PURE of DOM/Firebase — every side effect goes through `env`. `decide()` is pure and is
+// what render() calls synchronously.
 //   env = {
-//     getUid()         -> uid | null
-//     readFlag()       -> Promise<boolean>     (throws on read error)
-//     readAccount(uid) -> Promise<rawValue>    (throws on read error)
-//     submit(fields)   -> Promise<{ok}>        (throws HttpsError-shaped {code,message})
-//     clearDraft()     -> void     (optional; called when the account leaves 'pending')
-//     localTeardown()  -> void|Promise  (LOCAL-only; must not block — the host fires server calls detached)
-//     signOut()        -> Promise
-//     bootSettled()    -> Promise  (resolves when THIS session's legacy boot has settled, success OR failure — P1-1)
-//     rerender()       -> void     (the host's render(); it calls decide() synchronously and shows the screen)
-//     flagDeadlineMs   -> number   (optional; default 3000 — the flag read's deadline, P1-5)
+//     getUid()       -> uid | null
+//     readFlag()     -> Promise<boolean>
+//     readAccount(uid) -> Promise<rawValue>
+//     submit(fields) -> Promise<{ok}>   (throws HttpsError-shaped {code,message})
+//     clearDraft()   -> void     (optional; called when the account leaves 'pending')
+//     bootSettled()  -> Promise  (resolves when THIS session's legacy boot has settled, success OR failure — P1-1)
+//     rerender()     -> void     (the host's render())
+//     flagDeadlineMs -> number   (optional; default 3000)
 //   }
-// The HOST owns ALL DOM. The controller owns state + read-once sequencing + the PURE decision. render() calls
-// decide(); refresh()/submit() update state then rerender(). triggerDeactivate() does teardown+sign-out only.
+// Flag + account are read at boot/resume/reconnect/pull-to-refresh and once after submit; a flag change takes
+// effect at the NEXT read (no mid-flight re-evaluation). E2 is shown (never a programmatic sign-out) from a
+// confirmed deactivated READ (decide) or an explicit callable deactivation MESSAGE (submit → 'deactivated').
 // ============================================================================
 const FLAG_READ_DEADLINE_MS = 3000;
 function makeCompanionController(env) {
   const S = { flag: null, account: { meta: 'unresolved' }, lastValid: null, prevValid: null,
-    tag: null, seq: 0, tornDown: false, deactReason: false, submitInFlight: false, submitState: null };
+    tag: null, seq: 0, submitInFlight: false };
 
   function resetSession() {
     S.tag = {}; S.seq = 0; S.flag = null; S.account = { meta: 'unresolved' };
-    S.lastValid = null; S.prevValid = null; S.tornDown = false; S.submitInFlight = false;
-    S.submitState = null; S.deactReason = false;   // P2-10: a new login clears the deactivation reason + submit barrier
+    S.lastValid = null; S.prevValid = null; S.submitInFlight = false;
     return S.tag;
   }
   function effective() {
@@ -133,8 +119,8 @@ function makeCompanionController(env) {
     if ((S.account.meta === 'error' || S.account.meta === 'unresolved') && S.lastValid) return S.lastValid;
     return S.account;
   }
-  // The flag read, bounded by a deadline (P1-5): a slow/hung read resolves false (disabled) rather than retaining
-  // the previous enabled state; a late real value loses the race and is ignored.
+  // The flag read, bounded by a deadline: a slow/hung read resolves false (today's code) rather than retaining
+  // a stale enabled state; a late real value loses the race.
   function readFlagBounded() {
     const ms = env.flagDeadlineMs || FLAG_READ_DEADLINE_MS;
     return Promise.race([
@@ -143,99 +129,60 @@ function makeCompanionController(env) {
     ]);
   }
   // PURE decision — render() calls this synchronously. Returns an action descriptor; never a side effect.
-  //   action: 'legacy' (today's render; `suspended` overlays the inline notice) | 'deactivate' | 'activated'
-  //           | 'show' with view ∈ 'onboarding'|'waiting'|'submitting'|'neutral-hold'
+  //   action: 'legacy' (today's render; `suspended` overlays the inline notice) | 'deactivate' (SHOW E2, no
+  //           sign-out) | 'activated' | 'show' with view ∈ 'onboarding'|'waiting'|'neutral-hold'
   function decide() {
     if (S.flag !== true) return { action: 'legacy', suspended: false };          // inert ⇒ byte-identical
     const acct = effective();
     const d = companionDecision(true, acct);
-    // Terminal account states win outright (a fresh read supersedes any submit barrier).
     if (d === 'deactivated') return { action: 'deactivate', suspended: false };
     if (d === 'suspended') return { action: 'legacy', suspended: true };
     if (d === 'app') return isApprovalTransition(S.prevValid, acct) ? { action: 'activated', suspended: false } : { action: 'legacy', suspended: false };
     if (d === 'waiting') return { action: 'show', view: 'waiting', suspended: false };     // profile_submitted
     if (d === 'neutral-hold') return { action: 'show', view: 'neutral-hold', suspended: false };
-    // Here d is 'onboarding' (pending) or 'legacy' (unresolved/error with no last-valid). A submission barrier
-    // (P1-7) persists across ordinary renders so a subscription update or a transient read error can't drop an
-    // acknowledged submission back to the checklist without a fresh confirming read.
-    if (S.submitState === 'submitting') return { action: 'show', view: 'submitting', suspended: false };
-    if (S.submitState === 'waiting' || S.submitState === 'recoverable-wait') return { action: 'show', view: 'waiting', suspended: false };
-    if (d === 'onboarding') return { action: 'show', view: 'onboarding', suspended: false };   // null or 'retry' → allow (re)submit
-    return { action: 'legacy', suspended: false };
+    if (d === 'onboarding') return { action: 'show', view: 'onboarding', suspended: false };
+    return { action: 'legacy', suspended: false };   // unresolved/error with no last-valid → today's UI
   }
   async function refresh() {
     if (!env.getUid()) return;
     const tag = S.tag, seq = ++S.seq;
     if (env.bootSettled) { try { await env.bootSettled(); } catch (_) { /* boot failed — still proceed */ } }   // P1-1
-    if (S.tag !== tag || S.seq !== seq) return;                 // NEW-3: discard stale/superseded
+    if (S.tag !== tag || S.seq !== seq) return;                 // async-session safety: discard stale/superseded
     let flag = false;
     try { flag = await readFlagBounded(); } catch (_) { flag = false; }
-    if (S.tag !== tag || S.seq !== seq) return;                 // NEW-3
-    if (flag !== true) { S.flag = false; S.submitState = null; env.rerender(); return; }   // flag off ⇒ legacy; no pending companion action survives (P1-5)
+    if (S.tag !== tag || S.seq !== seq) return;
+    if (flag !== true) { S.flag = false; env.rerender(); return; }   // flag off ⇒ today's code
     let meta = 'error', cls = null;
     try { cls = classifyAccount(await env.readAccount(env.getUid())); meta = cls.meta; } catch (_) { meta = 'error'; }
-    if (S.tag !== tag || S.seq !== seq) return;                 // NEW-3
+    if (S.tag !== tag || S.seq !== seq) return;
     S.flag = true;
     if (meta === 'valid') {
       if (S.lastValid) S.prevValid = S.lastValid;
       S.lastValid = cls; S.account = cls;
-      if (cls.state !== 'pending') { S.submitState = null; if (env.clearDraft) env.clearDraft(); }   // the real transition supersedes the submit barrier
+      if (cls.state !== 'pending' && env.clearDraft) env.clearDraft();
     } else { S.account = { meta }; }
     env.rerender();
   }
-  // Single-shot teardown + sign-out (no DOM). Session- AND flag-guarded (P1-2/P1-5): a stale teardown after B
-  // logs in, or a flag that flipped off mid-teardown, must NEVER sign out.
-  async function triggerDeactivate() {
-    if (S.tornDown || S.flag !== true) return;
-    const tag = S.tag;
-    S.tornDown = true; S.deactReason = true;
-    try { await env.localTeardown(); } catch (_) { /* best-effort, non-blocking */ }
-    if (S.tag !== tag || S.flag !== true) return;   // B logged in OR flag off during teardown → do NOT sign out
-    try { await env.signOut(); } catch (_) { /* onLogout() still routes to E2 via deactReason */ }
-  }
-  function onWriteDenied(err) {
-    if (S.flag !== true) return undefined;
-    const c = String((err && (err.code || err.message)) || '');
-    if (/permission_denied|permission-denied/i.test(c)) return refresh();   // one-shot re-read; E2 only if it confirms
-    return undefined;
-  }
-  // Returns the reconciled outcome ('deactivated'|'reauth'|'field-error'|'retry'|'waiting'|'app'|'recoverable-wait'
-  // |'flag-off'|undefined if superseded). The barrier/waiting eligibility is held in S.submitState (P1-7); the
-  // confirming read participates in S.seq so it shares ONE ordering with refresh (P1-6).
+  // One submit in flight; success → the host shows waiting + does the one after-submit read, which (like any
+  // later read) decides the final screen. No account read / reconcile / flag re-check here (codex r2 §5). A new
+  // session beginning mid-flight discards the result (never applied to B). Returns the host action:
+  //   'ok' | 'deactivated' | 'reauth' | 'field-error' | 'error' | undefined (dropped: in-flight or stale session)
   async function submit(fields) {
     if (S.submitInFlight) return undefined;
-    S.submitInFlight = true; S.submitState = 'submitting';
-    const tag = S.tag, seq = ++S.seq;
-    env.rerender();                                   // show "Enviando…" immediately (via decide → 'submitting')
+    S.submitInFlight = true;
+    const tag = S.tag;
     let ok = false, errorCode = null, errorMessage = null;
     try { const res = await env.submit(fields); ok = !!(res && res.ok); }
     catch (e) { errorCode = (e && e.code) || ''; errorMessage = (e && e.message) || ''; }
-    if (S.tag !== tag) return undefined;                                   // new session — do NOT touch current state (P1-2)
-    if (S.seq !== seq) { S.submitState = null; return undefined; }         // superseded by a refresh (same session) — drop
-    if (ok) { S.submitState = 'waiting'; env.rerender(); }                 // acknowledge success IMMEDIATELY (P1-7), before the read
-    let freshMeta = 'error', freshRec = null;
-    try { const c = classifyAccount(await env.readAccount(env.getUid())); freshMeta = c.meta; freshRec = c; } catch (_) { freshMeta = 'error'; }
-    if (S.tag !== tag) return undefined;                                   // new session (P1-2)
-    if (S.seq !== seq) { S.submitState = null; return undefined; }         // superseded
+    if (S.tag !== tag) return undefined;   // a new session began while in flight — do NOT touch B's state / apply A's result
     S.submitInFlight = false;
-    if (freshMeta === 'valid') { if (S.lastValid) S.prevValid = S.lastValid; S.lastValid = freshRec; S.account = freshRec; if (freshRec.state !== 'pending' && env.clearDraft) env.clearDraft(); }
-    const outcome = reconcileAfterSubmit({ ok, errorCode, errorMessage, freshMeta, freshRec });
-    if (S.flag !== true) { S.submitState = null; env.rerender(); return 'flag-off'; }   // flag flipped off mid-submit → never act under flag-off (P1-5)
-    if (outcome === 'deactivated') { S.submitState = null; await triggerDeactivate(); env.rerender(); return 'deactivated'; }
-    if (outcome === 'waiting') S.submitState = 'waiting';
-    else if (outcome === 'recoverable-wait') S.submitState = 'recoverable-wait';
-    else if (outcome === 'retry') S.submitState = 'retry';                 // decide() → onboarding, allowing resubmit
-    else S.submitState = null;                                            // 'app' / 'reauth' / 'field-error' — barrier cleared; host handles reauth/field
-    env.rerender();
-    return outcome;
+    return classifySubmitOutcome(ok, errorCode, errorMessage);
   }
-  function onLogout() { return S.deactReason === true; }   // host shows E2 if true, else login
-  function clearDeactReason() { S.deactReason = false; }
   // After the "Activado" transient is shown, advance prevValid so decide() stops returning 'activated'
   // (the transition is observed exactly once; the next render routes to the normal app).
   function consumeApprovalTransition() { S.prevValid = S.lastValid; }
 
-  return { resetSession, refresh, submit, onWriteDenied, onLogout, clearDeactReason, triggerDeactivate, consumeApprovalTransition, decide, _state: S };
+  return { resetSession, refresh, submit, consumeApprovalTransition, decide, _state: S };
 }
 
 export {
@@ -243,7 +190,7 @@ export {
   classifyAccount,
   companionDecision,
   isApprovalTransition,
-  reconcileAfterSubmit,
+  classifySubmitOutcome,
   isDeactivatedDenial,
   sessionCurrent,
   isLatestRefresh,

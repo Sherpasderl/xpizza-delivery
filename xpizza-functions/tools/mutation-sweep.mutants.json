@@ -14814,42 +14814,6 @@
     "label": "refresh skips the boot barrier -> the companion acts/sign-outs before boot settles (P1-1)"
   },
   {
-    "id": "s1bc-09",
-    "slice": "s1bc",
-    "file": "../xpizza-driver/onboarding-helpers.js",
-    "command": [
-      "node",
-      "../xpizza-driver/onboarding-controller.test.js"
-    ],
-    "from": "if (/permission_denied|permission-denied/i.test(c)) return refresh();",
-    "to": "if (/permission_denied|permission-denied/i.test(c)) return triggerDeactivate();",
-    "label": "a bare write denial signs out directly instead of re-reading (bare-denial deactivation, §4c)"
-  },
-  {
-    "id": "s1bc-10",
-    "slice": "s1bc",
-    "file": "../xpizza-driver/onboarding-helpers.js",
-    "command": [
-      "node",
-      "../xpizza-driver/onboarding-controller.test.js"
-    ],
-    "from": "if (S.flag !== true) { S.submitState = null; env.rerender(); return 'flag-off'; }",
-    "to": "if (false) { S.submitState = null; env.rerender(); return 'flag-off'; }",
-    "label": "submit no longer rechecks the flag -> a deactivated outcome signs out under flag-off (P1-5)"
-  },
-  {
-    "id": "s1bc-11",
-    "slice": "s1bc",
-    "file": "../xpizza-driver/onboarding-helpers.js",
-    "command": [
-      "node",
-      "../xpizza-driver/onboarding-controller.test.js"
-    ],
-    "from": "if (S.tag !== tag || S.flag !== true) return;   // B logged in OR flag off during teardown → do NOT sign out",
-    "to": "if (false) return;   // B logged in OR flag off during teardown → do NOT sign out",
-    "label": "triggerDeactivate drops the post-teardown session/flag guard -> a stale teardown signs out B (P1-2)"
-  },
-  {
     "id": "s1bc-12",
     "slice": "s1bc",
     "file": "../xpizza-driver/index.html",
@@ -14872,5 +14836,17 @@
     "from": "companionWriteDraft({ practiceDone: true, practiceStep: 0 });",
     "to": "XPD.completeTask('x','y'); companionWriteDraft({ practiceDone: true, practiceStep: 0 });",
     "label": "the practice flow calls a real operational writer (operational practice write)"
+  },
+  {
+    "id": "s1bc-14",
+    "slice": "s1bc",
+    "file": "../xpizza-driver/onboarding-helpers.js",
+    "command": [
+      "node",
+      "../xpizza-driver/onboarding-helpers.test.js"
+    ],
+    "from": "if (code === 'permission-denied' && /desactivada/i.test(errorMessage || '')) return 'deactivated';",
+    "to": "if (code === 'permission-denied') return 'deactivated';",
+    "label": "submit maps ANY permission-denied to deactivated (should require the explicit \"desactivada\" message) — over-triggers E2"
   }
 ]

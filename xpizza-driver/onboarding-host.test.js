@@ -1,90 +1,156 @@
-// run: `node onboarding-host.test.js` (no framework, repo idiom). Asserts the REAL shipped index.html companion
-// HANDLERS (lifted from source by brace-matching) behave per the plan, and executes the real brand-helpers for
-// the practice greeting. Covers the host-level behaviors codex r1 flagged (A3 stages ≠ submits; practice is
-// inert + neutral; the §4(c) hook is wired at every operational write/callable denial).
+// run: `node onboarding-host.test.js` (no framework, repo idiom). EXECUTES the REAL shipped index.html companion
+// handlers (lifted by brace-matching and run via `new Function`, the repo idiom) against a fake DOM + fake
+// Firebase + the REAL controller — no source-grep assertions. Proves the host behaviors codex flagged:
+// A3 "Guardar perfil" stages (never submits); the practice flow calls no operational writer + is brand-neutral;
+// E2 is a plain screen with NO automatic sign-out (the driver taps "Cerrar sesión").
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { driverGreeting, brandMeta } from './brand-helpers.js';
+import { driverGreeting } from './brand-helpers.js';
+import { makeCompanionController } from './onboarding-helpers.js';
 
-const HTML = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8');
-let passed = 0;
-function t(name, fn) { fn(); passed++; }
+const SCRIPT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8')
+  .match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 
-// Lift a brace-matched block that begins at the first occurrence of `startMarker`.
-function liftBlock(src, startMarker) {
-  const i = src.indexOf(startMarker);
-  assert.notEqual(i, -1, `marker not found: ${startMarker}`);
-  let depth = 0, started = false;
-  for (let j = i; j < src.length; j++) {
-    const ch = src[j];
-    if (ch === '{') { depth++; started = true; }
-    else if (ch === '}') { depth--; if (started && depth === 0) return src.slice(i, j + 1); }
+// Lift a brace-matched `function <name>(` definition from the module source.
+function liftFn(name) {
+  let start = SCRIPT.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `function ${name} not found`);
+  if (SCRIPT.slice(start - 6, start) === 'async ') start -= 6;   // keep the `async ` prefix (liftFn gotcha)
+  let depth = 0, seen = false;
+  for (let i = start; i < SCRIPT.length; i++) {
+    if (SCRIPT[i] === '{') { depth++; seen = true; }
+    else if (SCRIPT[i] === '}') { depth--; if (seen && depth === 0) return SCRIPT.slice(start, i + 1); }
   }
-  throw new Error(`unbalanced block from ${startMarker}`);
+  throw new Error(`unbalanced ${name}`);
 }
-// The whole module <script> (the handlers live here).
-const SCRIPT = HTML.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 
-// ---- A3 "Guardar perfil" STAGES, never submits (codex r1 P2-13 mutant: A3 submission) ----
-t('A3 "Guardar perfil" stages the fields + advances to the checklist, and does NOT submit', () => {
-  const save = liftBlock(SCRIPT, "$('co-save').addEventListener('click', () => {");
-  assert.match(save, /companionWriteDraft\(/, 'co-save must stage the fields');
-  assert.match(save, /companionStep = 'checklist'/, 'co-save must advance to the checklist');
-  assert.doesNotMatch(save, /companionSubmit|submitDriverProfile/, 'co-save must NEVER submit (submit is "Pedir aprobación" only)');
+// A minimal fake DOM. Elements "exist" only after an innerHTML writes them (ids scanned from the markup), so
+// $('co-name') is null before the form renders — matching a real DOM, so the profile-preserve guard behaves.
+function makeDom() {
+  const els = {};
+  const exists = new Set(['screen-companion']);
+  const mkEl = (id) => ({ value: '', _text: '', _html: '', _h: {},
+    get innerHTML() { return this._html; },
+    set innerHTML(v) { this._html = String(v); if (id === 'screen-companion') { exists.clear(); exists.add('screen-companion'); for (const m of String(v).matchAll(/id="([\w-]+)"/g)) exists.add(m[1]); } },
+    addEventListener(ev, fn) { this._h[ev] = fn; }, click() { return this._h.click && this._h.click(); },
+    classList: { toggle() {}, contains() { return false; }, add() {}, remove() {} },
+    closest() { return this; }, querySelectorAll() { return []; }, getAttribute() { return null; },
+    set textContent(v) { this._text = v; }, get textContent() { return this._text; } });
+  const $ = (id) => (exists.has(id) ? (els[id] || (els[id] = mkEl(id))) : null);
+  return { $, els, exists };
+}
+const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Build a runnable module of the lifted host fns, with externals injected and `companionStep`/`companion` local.
+function buildHost({ dom, XPD, currentUser, controller, store }) {
+  const body = [
+    liftFn('companionShellHtml'), liftFn('companionReadDraft'), liftFn('companionWriteDraft'),
+    liftFn('companionClearDraft'), liftFn('companionRenderScreen'), liftFn('companionRenderE2'),
+    liftFn('companionRenderOnboarding'), liftFn('companionHasHeldWork'), liftFn('companionSubmit'),
+  ].join('\n');
+  const localStorage = {
+    getItem: (k) => (k in store ? store[k] : null),
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; },
+  };
+  const fn = new Function(
+    '$', 'escapeHtml', 'showScreen', 'toast', 'driverGreeting', 'XPD', 'currentUser', 'companion',
+    'localStorage', 'allTasks', 'companionDraftKey', '__out',
+    `let companionStep = 'profile';\n${body}\n` +
+    'return { companionRenderOnboarding, companionSubmit, companionRenderE2, companionHasHeldWork, ' +
+    'getStep: () => companionStep, setStep: (s) => { companionStep = s; }, ' +
+    'getScreenHtml: () => $("screen-companion").innerHTML };',
+  );
+  const showScreenCalls = [];
+  const toastCalls = [];
+  const api = fn(dom.$, escapeHtml, (n) => showScreenCalls.push(n), (m, k) => toastCalls.push([m, k]),
+    driverGreeting, XPD, currentUser, controller,
+    localStorage, {}, (uid) => `sherpa_driver_onboarding_draft_${uid}`, {});
+  api.showScreenCalls = showScreenCalls; api.toastCalls = toastCalls;
+  return api;
+}
+
+let passed = 0;
+const _pending = [];
+const tick = () => new Promise((r) => setTimeout(r, 0));
+function t(name, fn) { _pending.push(Promise.resolve().then(fn).then(() => { passed++; }, (e) => { console.error(`✗ ${name}`); throw e; })); }
+const makeXPD = (over = {}) => {
+  const calls = { submit: 0, signOut: 0, complete: 0, accept: 0, pickup: 0 };
+  return { calls,
+    submitDriverProfile: async (f) => { calls.submit++; calls.submitFields = f; return (over.submit ? over.submit(f) : { ok: true }); },
+    signOutUser: async () => { calls.signOut++; },
+    completeTask: async () => { calls.complete++; }, acceptTask: async () => { calls.accept++; }, pickupComplete: async () => { calls.pickup++; },
+    readOwnAccount: async () => (over.account !== undefined ? over.account : { onboarding_state: 'pending', enabled: false }),
+    readDriverAdminFlag: async () => true };
+};
+const makeCtl = (xpd, currentUser) => makeCompanionController({
+  getUid: () => currentUser.uid, readFlag: () => xpd.readDriverAdminFlag(), readAccount: (u) => xpd.readOwnAccount(u),
+  submit: (f) => xpd.submitDriverProfile(f), clearDraft: () => {}, bootSettled: async () => {}, rerender: () => {},
 });
 
-// ---- "Pedir aprobación" (A4) is the ONLY submit ----
-t('the only submit call is "Pedir aprobación" wired to companionSubmit', () => {
-  // companionSubmit is invoked exactly once as a handler, from the request button.
-  const calls = (SCRIPT.match(/companionSubmit\(\)/g) || []).length;
-  assert.ok(calls >= 1, 'companionSubmit must be wired');
-  assert.match(SCRIPT, /id="co-request"[^]*?companionSubmit|co-request'\)[^]*?companionSubmit/, 'companionSubmit is driven by the Pedir aprobación button');
+// ---- A3 "Guardar perfil" STAGES, never submits ----
+t('A3 "Guardar perfil" writes the draft + advances to the checklist, and does NOT call submitDriverProfile', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'elmer@x.hn' }; const xpd = makeXPD(); const store = {};
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
+  host.setStep('profile'); host.companionRenderOnboarding();
+  dom.$('co-name').value = 'Elmer Padilla'; dom.$('co-phone').value = '+504 9'; dom.$('co-plate').value = 'ABC 1234';
+  dom.$('co-save').click(); await tick();               // RUN the real co-save handler (+ settle any mutated submit)
+  const draft = JSON.parse(store[`sherpa_driver_onboarding_draft_A`]);
+  assert.equal(draft.name, 'Elmer Padilla');            // staged to the draft
+  assert.equal(host.getStep(), 'checklist');            // advanced
+  assert.equal(xpd.calls.submit, 0, 'Guardar perfil must NOT submit');
 });
 
-// ---- A5 practice writes NOTHING operational (codex r1 P2-13 mutant: operational practice write) ----
-t('the practice renderer uses the neutral greeting and calls NO operational writer/callable', () => {
-  const practice = liftBlock(SCRIPT, 'function companionRenderOnboarding(');
-  // the practice branch builds a synthetic order and uses driverGreeting; it must not touch any real write path
-  assert.match(practice, /driverGreeting\(\{\}\)/, 'practice greeting comes from a NO-BRAND synthetic order (neutral)');
-  for (const writer of ['acceptTask', 'completeTask', 'pickupComplete', 'updateDriverLocation', 'submitDriverProfile', 'startShift', 'endShift', 'XPD.set', 'runTransaction']) {
-    assert.ok(!practice.includes(writer), `practice must not call ${writer}`);
-  }
+// ---- "Pedir aprobación" (A4) is the submit path ----
+t('"Pedir aprobación" runs companionSubmit → submitDriverProfile is called once', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD(); const store = {};
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
+  await host.companionSubmit();                         // RUN the real submit handler
+  assert.equal(xpd.calls.submit, 1, 'Pedir aprobación submits exactly once');
 });
 
-// ---- the practice greeting is actually neutral (executes the real brand-helpers) ----
-t('driverGreeting({}) is the neutral greeting; a named third brand keeps its label (brand-agnostic)', () => {
-  assert.equal(driverGreeting({}), 'Hola, soy su repartidor.');
-  // a THIRD brand with a server display name keeps it (not discarded) + neutral styling class
-  const third = { restaurant_display_name: 'Taquería Lupe', restaurant_id: 'taqueria_lupe' };
-  assert.equal(driverGreeting(third), 'Hola, soy su repartidor de Taquería Lupe.');
-  assert.equal(brandMeta(third).label, 'Taquería Lupe');
-  assert.equal(brandMeta(third).cls, 'neutral');
+// ---- A5 practice is brand-neutral and calls NO operational writer ----
+t('the practice flow renders the neutral greeting and, through its final "done" step, calls NO operational writer', async () => {
+  const user = { uid: 'A', email: 'e@x.hn' };
+  // (a) the greeting step renders the neutral no-brand greeting
+  let dom = makeDom(); let xpd = makeXPD();
+  let host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store: { [`sherpa_driver_onboarding_draft_A`]: JSON.stringify({ practiceStep: 3 }) } });
+  host.setStep('practice'); host.companionRenderOnboarding();
+  assert.ok(host.getScreenHtml().includes('Hola, soy su repartidor.'), 'practice greeting is the neutral driverGreeting({})');
+  // (b) advancing through the LAST step's "Terminé la práctica" runs the done branch — it must write no real order
+  dom = makeDom(); xpd = makeXPD();
+  host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store: { [`sherpa_driver_onboarding_draft_A`]: JSON.stringify({ practiceStep: 5 }) } });
+  host.setStep('practice'); host.companionRenderOnboarding();
+  dom.$('co-practice-next').click(); await tick();      // RUN the final practice step (the done branch)
+  assert.equal(xpd.calls.complete, 0, 'practice must never complete a real task');
+  assert.equal(xpd.calls.accept, 0); assert.equal(xpd.calls.pickup, 0); assert.equal(xpd.calls.submit, 0);
 });
 
-// ---- §4(c): the one-shot-refresh hook is wired at EVERY operational write/callable denial (P1-4) ----
-t('companionOnWriteDenied is wired at accept, pickup, complete, location, startShift and endShift denials', () => {
-  const n = (SCRIPT.match(/companionOnWriteDenied\(/g) || []).length;
-  // 1 definition + 6 call sites (accept, pickup, complete, location, startShift, endShift)
-  assert.ok(n >= 7, `expected the hook wired at ≥6 sites (+1 def), saw ${n}`);
-  for (const near of ['acceptTask', 'pickupComplete', 'completeTask']) {
-    const blk = liftBlock(SCRIPT, 'function attachActiveCardHandlers');
-    assert.ok(blk.includes('companionOnWriteDenied'), `attachActiveCardHandlers wires the hook (covers ${near})`);
-  }
+// ---- E2 is a plain screen with NO automatic sign-out; the DRIVER taps "Cerrar sesión" ----
+t('companionRenderE2 shows E2 WITHOUT signing out; tapping "Cerrar sesión" signs out', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' }; const xpd = makeXPD(); const store = {};
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
+  host.companionRenderE2();
+  const html = dom.$('screen-companion').innerHTML;
+  assert.ok(html.includes('Cuenta desactivada'), 'E2 copy shown');
+  assert.equal(xpd.calls.signOut, 0, 'E2 must NOT auto sign-out');
+  await dom.$('co-e2-signout').click();                 // the DRIVER taps it
+  await Promise.resolve();
+  assert.equal(xpd.calls.signOut, 1, 'tapping Cerrar sesión signs out');
 });
 
-// ---- E2 sign-out teardown never AWAITS the guarded server call (P2-9) ----
-t('companionLocalTeardown fires the push-unregister detached (never awaited before sign-out)', () => {
-  const td = liftBlock(SCRIPT, 'function companionLocalTeardown(');
-  assert.doesNotMatch(td, /await\s+unregisterNativePush/, 'must NOT await the guarded callable');
-  assert.match(td, /unregisterNativePush/, 'still fires it best-effort (detached)');
+// ---- submit explicit deactivation → shows E2, still NO auto sign-out ----
+t('a submit that returns an explicit deactivation message shows E2 and does not auto sign-out', async () => {
+  const dom = makeDom(); const user = { uid: 'A', email: 'e@x.hn' };
+  const xpd = makeXPD({ submit: () => { throw { code: 'functions/permission-denied', message: 'Tu cuenta está desactivada.' }; } });
+  const store = {};
+  const host = buildHost({ dom, XPD: xpd, currentUser: user, controller: makeCtl(xpd, user), store });
+  await host.companionSubmit();
+  assert.ok(dom.$('screen-companion').innerHTML.includes('Cuenta desactivada'), 'explicit deactivation → E2 shown');
+  assert.equal(xpd.calls.signOut, 0, 'no automatic sign-out on submit deactivation');
 });
 
-// ---- the boot runs in try/finally so the barrier always settles (P1-1) ----
-t('the onAuth boot wraps the continuation in try/finally and resolves the boot barrier in finally', () => {
-  assert.match(SCRIPT, /companionBootBarrier = new Promise/, 'a per-session boot barrier is created on login');
-  assert.match(SCRIPT, /finally\s*\{\s*if \(companionBootSettle\) companionBootSettle\(\);/, 'the barrier resolves in finally (success OR failure)');
-});
-
+await Promise.all(_pending).catch((e) => { console.error(e && e.message ? e.message : e); process.exit(1); });
 console.log(`✓ onboarding-host: ${passed} tests passed`);
