@@ -14505,7 +14505,7 @@
     "slice": "s1b",
     "label": "rules: dispatcher collection .read on /driver_accounts removed",
     "file": "../xpizza-reference/database.rules.json",
-    "from": "\"driver_accounts\": {\n      \".read\": \"auth != null && root.child('dispatchers').child(auth.uid).exists()\",",
+    "from": "\"driver_accounts\": {\n      \".read\": \"auth != null && auth.token.handheld !== true && root.child('dispatchers').child(auth.uid).exists()\",",
     "to": "\"driver_accounts\": {\n      \".read\": false,",
     "command": [
       "npm",

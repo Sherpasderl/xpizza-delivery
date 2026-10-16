@@ -57,7 +57,7 @@ var XPD = {
 function _ref(db, p){ return { path: p }; }
 function _onValue(r, cb, err){ var s={cb:cb,err:err}; H.accSubs.push(s); cb({ val: () => H.accData }); return () => { H.unsub++; var i=H.accSubs.indexOf(s); if(i>=0) H.accSubs.splice(i,1); }; }
 function _off(){}
-function _get(r){ return new Promise((res,rej)=>{ setTimeout(()=>{ if(H.getFail){ rej(new Error('read fail')); return; } var v=H.getData[r.path]; res({ val: ()=> (v===undefined?null:v), exists: ()=> v!==undefined && v!==null }); }, H.getDelay); }); }
+function _get(r){ return new Promise((res,rej)=>{ setTimeout(()=>{ if(H.getFail){ rej(new Error('read fail')); return; } if(r.path==='restaurants'){ var pe=new Error('permission-denied'); pe.code='PERMISSION_DENIED'; rej(pe); return; } /* shipped rules: a dispatcher CANNOT read the /restaurants collection — so restoring the old client dual-role read throws here, disabling Desactivar (codex r4 #1 discrimination) */ var v=H.getData[r.path]; res({ val: ()=> (v===undefined?null:v), exists: ()=> v!==undefined && v!==null }); }, H.getDelay); }); }
 function _getFunctions(app, region){ return { app:app, region:region }; }
 function _httpsCallable(fns, name){ return (data) => { H.calls.push({ name:name, data:data }); if(H.call==='fail'){ var e=new Error('mapped-fail'); e.code='functions/failed-precondition'; e.details={ reasons:['cash'], open_orders:[] }; return Promise.reject(e); } if(H.call==='dual'){ var e2=new Error('Cuenta con doble rol — separá las identidades antes de desactivar.'); e2.code='functions/failed-precondition'; return Promise.reject(e2); } return Promise.resolve({ data:{ ok:true, link: (name==='inviteDriver' ? 'https://reset/LINK' : undefined) } }); }; }
 var draRef=_ref, draOnValue=_onValue, draOff=_off, draGet=_get, draGetFunctions=_getFunctions, draHttpsCallable=_httpsCallable;
@@ -303,6 +303,7 @@ function runChrome(fileUrl) {
     assert.strictEqual(m.callAfterConfirm, true, 'mobile: the suspend callable IS invoked after the confirmation is accepted');
     assert.strictEqual(m.mConfirmDialogOpen, true, 'mobile: a confirmation sets dialogOpen');
     assert.strictEqual(m.mDialogClearedOnClose, true, 'mobile: closing DURING a confirmation resets dialogOpen');
+    assert.strictEqual(m.dualBtnEnabled, true, 'mobile: Desactivar is enabled for a clear driver (no rules-denied /restaurants read — restoring it would disable the button)');
     assert.ok(/doble rol|despacho o cocina/i.test(m.dualMsg), `mobile: a dual-role SERVER refusal surfaces a clear message (${m.dualMsg})`);
     assert.strictEqual(m.cashUnavailable, true, 'mobile: a malformed cuadre flag renders "Cuadre no disponible", never a clean L0');
     assert.strictEqual(m.navSafe, true, 'mobile: navigating away during pending reads is not overwritten by the stale deactivate render');
