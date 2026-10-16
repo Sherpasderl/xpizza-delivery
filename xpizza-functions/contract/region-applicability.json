@@ -514,7 +514,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -533,8 +533,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -580,7 +580,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -599,8 +599,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -736,7 +736,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -755,8 +755,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -924,7 +924,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -943,8 +943,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -990,7 +990,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -1009,8 +1009,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -1056,7 +1056,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -1075,8 +1075,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -1124,7 +1124,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "K",
@@ -1144,8 +1144,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -1236,7 +1236,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "S",
@@ -1255,8 +1255,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -1304,7 +1304,7 @@
      "kind": "K",
      "file": "xpizza-dispatch-mobile/index.html",
      "text": "openPicker(",
-     "count": 2
+     "count": 3
     },
     {
      "kind": "K",
@@ -1324,8 +1324,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     },
     {
@@ -2434,13 +2434,14 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "openPicker(",
-     "count": 7
+     "count": 8
     },
     {
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#openPicker",
      "callers": [
       "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon",
       "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
       "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
       "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
@@ -2450,8 +2451,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
    ],
@@ -2484,13 +2485,14 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "openPicker(",
-     "count": 7
+     "count": 8
     },
     {
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#openPicker",
      "callers": [
       "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon",
       "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
       "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
       "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
@@ -2500,8 +2502,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
    ],
@@ -2863,13 +2865,14 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "openPicker(",
-     "count": 7
+     "count": 8
     },
     {
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#openPicker",
      "callers": [
       "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon",
       "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
       "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
       "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
@@ -2879,8 +2882,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
    ],
@@ -2913,13 +2916,14 @@
      "kind": "K",
      "file": "xpizza-dispatch/index.html",
      "text": "openPicker(",
-     "count": 7
+     "count": 8
     },
     {
      "kind": "C",
      "output": "xpizza-dispatch/index.html<script@0>#openPicker",
      "callers": [
       "xpizza-dispatch/index.html<script@0>#action",
+      "xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon",
       "xpizza-dispatch/index.html<script@0>#renderDriversSection>anon>anon",
       "xpizza-dispatch/index.html<script@0>#renderOrderDetailModal>anon",
       "xpizza-dispatch/index.html<script@0>#wireColaHandlers>anon>anon"
@@ -2929,8 +2933,8 @@
      "kind": "R",
      "name": "openPicker",
      "counts": {
-      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 2,
-      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 8
+      "xpizza-dispatch-mobile/index.html<script@0>#xpizza-dispatch-mobile": 4,
+      "xpizza-dispatch/index.html<script@0>#xpizza-dispatch": 11
      }
     }
    ],

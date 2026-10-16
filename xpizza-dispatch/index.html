@@ -6150,6 +6150,9 @@ function draClose() {
   try { if (DRA.acctUnsub) DRA.acctUnsub(); else draOff(draRef(XPD.getDb(), 'driver_accounts')); } catch (_) {}
   try { if (DRA.cashUnsub) DRA.cashUnsub(); } catch (_) {}
   DRA.acctUnsub = null; DRA.cashUnsub = null; DRA.cash = undefined; DRA.cashErr = null; DRA.acctErr = false;
+  // reset the view model so a close DURING a confirm/sub-view can't leave dialogOpen:true and suppress the next
+  // open's live updates (#9). Reopen always starts on a clean list.
+  DRA.view = 'list'; DRA.dialogOpen = false; DRA.selUid = null; DRA.link = null; DRA.inviteName = null;
 }
 function draRender() {
   const body = $('dra-body'); if (!body) return;
@@ -6193,7 +6196,7 @@ function draRenderInvite(body) {
     + `<button class="dra-act pri dra-full" id="dra-i-create">Crear invitación</button>`;
   $('dra-back')?.addEventListener('click', () => { DRA.view = 'list'; draRender(); });
   $('dra-i-create')?.addEventListener('click', async () => {
-    try { const nm = $('dra-i-name').value; const r = await callDriverAdmin('inviteDriver', { name: nm, phone: $('dra-i-phone').value, email: $('dra-i-email').value }); draShowLink(r.link, nm); DRA.view = 'list'; }
+    try { const nm = $('dra-i-name').value; const r = await callDriverAdmin('inviteDriver', { name: nm, phone: $('dra-i-phone').value, email: $('dra-i-email').value }); draShowLink(r.link, nm); /* draShowLink owns the view ('invited') — do NOT set 'list' here or a snapshot erases the one-time link (#9) */ }
     catch (e) { draError(e); }
   });
 }
@@ -6232,10 +6235,14 @@ async function draRenderDeactivate(body) {
     const set = new Set();
     for (const tid of Object.keys(tasks)) { const t = tasks[tid]; if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled') set.add(t.order_id || tid); }
     openOrders = [...set];
-    // cheap client dual-role check (the callable also refuses cross-brand kitchen_staff authoritatively)
+    // client dual-role check — mirrors the server isSharedIdentity set exactly: /dispatchers + /kitchen + ANY
+    // /restaurants/{rid}/kitchen_staff/{uid} (cross-brand). The callable re-checks authoritatively.
     const disp = await draGet(draRef(XPD.getDb(), `dispatchers/${uid}`));
     const kit = await draGet(draRef(XPD.getDb(), `kitchen/${uid}`));
-    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists());
+    const rests = (await draGet(draRef(XPD.getDb(), 'restaurants'))).val() || {};
+    let ksShared = false;
+    for (const rid of Object.keys(rests)) { const rr = rests[rid]; if (rr && rr.kitchen_staff && rr.kitchen_staff[uid]) { ksShared = true; break; } }
+    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists()) || ksShared;
   } catch (_) { precheckErr = true; /* UNKNOWN — do not present as clear, do not enable */ }
   // a navigation during the pending reads supersedes this render — never clobber a later view (P2-9).
   if (DRA.view !== 'deactivate' || DRA.selUid !== uid) return;
@@ -6248,7 +6255,12 @@ async function draRenderDeactivate(body) {
     if (precheckErr) { condHtml += `<div class="dra-cond"><span class="dra-ci unk"><svg class="ic sm"><use href="#i-alert"/></svg></span><div class="dra-ct"><b>${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b><span class="fix">No se pudo verificar — reintentá</span></div></div>`; continue; }
     const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length);
     const lab = deactivateReasonLabel(r, openOrders.length);
-    condHtml += `<div class="dra-cond"><span class="dra-ci ${bad ? 'bad' : 'good'}"><svg class="ic sm"><use href="#i-${bad ? 'close' : 'check'}"/></svg></span><div class="dra-ct"><b>${bad ? escapeHtml(lab.t) : (r === 'open_shift' ? 'Sin turno abierto' : 'Sin entregas en curso')}</b>${bad ? `<span class="fix">${escapeHtml(lab.fix)}</span>` : ''}</div></div>`;
+    // "Reasignar" (open_tasks) is a LIVE remedy → openPicker; "Ver turno" (open_shift) stays instructive text.
+    let fixHtml = '';
+    if (bad) fixHtml = (r === 'open_tasks' && openOrders.length)
+      ? `<button class="fix" id="dra-reasignar" data-oid="${escapeHtml(String(openOrders[0]))}" style="background:none;border:none;padding:0;color:var(--primary);text-decoration:underline;cursor:pointer;font:inherit">Reasignar</button>`
+      : `<span class="fix">${escapeHtml(lab.fix)}</span>`;
+    condHtml += `<div class="dra-cond"><span class="dra-ci ${bad ? 'bad' : 'good'}"><svg class="ic sm"><use href="#i-${bad ? 'close' : 'check'}"/></svg></span><div class="dra-ct"><b>${bad ? escapeHtml(lab.t) : (r === 'open_shift' ? 'Sin turno abierto' : 'Sin entregas en curso')}</b>${fixHtml}</div></div>`;
   }
   const cashRow = `<div class="dra-inset"><div style="display:flex;align-items:center;gap:8px"><span class="dra-lbl">Efectivo</span><span class="dra-owner" style="margin-left:auto">Decisión del dueño</span></div>`
     + `<label class="dra-check ${DRA.cashAttested ? 'on' : ''}" id="dra-cash-check"><span class="dra-box"><svg class="ic sm"><use href="#i-check"/></svg></span><span>Sin efectivo pendiente</span></label>`
@@ -6265,6 +6277,7 @@ async function draRenderDeactivate(body) {
     + `<button class="dra-act danger dra-full" id="dra-deact-btn" ${canDeactivate ? '' : 'disabled'}>Desactivar cuenta</button>`
     + `<div class="dra-muted-txt" style="text-align:center;margin-top:8px">Bloquea el acceso (reglas + Auth + tokens revocados). No borra el registro.</div>`;
   $('dra-back')?.addEventListener('click', back);
+  $('dra-reasignar')?.addEventListener('click', (ev) => { const oid = ev.currentTarget.dataset.oid; draClose(); if (oid && typeof openPicker === 'function') openPicker(oid, true); });
   $('dra-cash-check')?.addEventListener('click', () => { DRA.cashAttested = !DRA.cashAttested; draRender(); });
   $('dra-deact-btn')?.addEventListener('click', async () => {
     try { await callDriverAdmin('setDriverDeactivated', { uid, cash_attested: DRA.cashAttested === true }); draToast('Cuenta desactivada'); DRA.view = 'list'; DRA.selUid = null; draRender(); }

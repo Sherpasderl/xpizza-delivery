@@ -577,6 +577,12 @@
   "xpizza-dispatch-mobile/index.html<script@0>#mdraCashDisplay@xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate": {
    "status": "pending"
   },
+  "xpizza-dispatch/index.html<script@0>#openPicker@xpizza-dispatch/index.html<script@0>#draRenderDeactivate>anon": {
+   "status": "pending"
+  },
+  "xpizza-dispatch-mobile/index.html<script@0>#openPicker@xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate>anon": {
+   "status": "pending"
+  },
   "xpizza-dispatch/index.html<script@0>#alertContent@xpizza-dispatch/index.html<script@0>#rowHtml": {
    "status": "pending"
   },

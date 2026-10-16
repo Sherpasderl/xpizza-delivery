@@ -292,17 +292,18 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
   });
 
   // ---- N2: revocation survives reactivation (record-driven) ----
-  await t('N2: deactivate→(crash: no sync)→reactivate→sweep → revoke_after persists and session is revoked', async () => {
-    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { d: { enabled: false, deactivated: false, onboarding_state: 'active', email: 'd@c.hn', approved_at: 1, suspended_at: 1, version: 2 } }, drivers: { d: {} }, tasks: {} }));
+  await t('N2: deactivate+reactivate BOTH crash before their sync → the SWEEP performs the revoke', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { d: { enabled: false, deactivated: false, onboarding_state: 'active', email: 'd@c.hn', approved_at: 1, suspended_at: 1, version: 2 } } }));
     const auth = makeAuth({ d: { email: 'd@c.hn', disabled: false, tokensValidAfterTime: undefined } }, () => clockNow);
-    // deactivate commits the record; simulate crash BEFORE sync by not letting sync run (stub it out via direct casTransition)
-    await ops.casTransition('d', depsFor(db, auth), (r) => ({ deactivated: true, revoke_after: NOW, last_op: ops.lastOp('deactivate', 'disp1', NOW, { cash_confirmed: true }) }));
-    // reactivate (dispatcher) — clears deactivated, must NOT clear revoke_after
-    await ops.reactivate({ uid: 'd', actorUid: 'disp1' }, depsFor(db, auth));
-    assert.equal(db._get('driver_accounts/d').revoke_after, NOW, 'revoke_after survived reactivation');
-    // now the sweep runs → revokes the old session (tokensValidAfterTime < revoke_after)
+    // deactivate commits the record (revoke_after:=NOW) — crash BEFORE its sync (drive the raw CAS, not the op).
+    await ops.casTransition('d', depsFor(db, auth), (r) => ({ deactivated: true, revoke_after: NOW, last_op: ops.lastOp('deactivate', 'disp1', NOW, { cash_confirmed: true }) }), { expectedVersion: 2 });
+    // reactivate commits (clears deactivated; keeps revoke_after) — ALSO crash before ITS sync (raw CAS).
+    await ops.casTransition('d', depsFor(db, auth), (r) => ({ enabled: true, deactivated: false, onboarding_state: 'active', suspended_at: null, last_op: ops.lastOp('reactivate', 'disp1', NOW) }), { expectedVersion: 3 });
+    assert.equal(db._get('driver_accounts/d').revoke_after, NOW, 'revoke_after survived reactivation (monotonic)');
+    assert.ok(!auth._users.d.tokensValidAfterTime, 'NOT revoked yet — both transition syncs crashed');
+    // ONLY now does the sweep run → it must do the revoke (old session auth_time 0 < revoke_after NOW).
     await ops.sweepAuthSync({ db, auth, now: clockNow });
-    assert.ok(auth._users.d.tokensValidAfterTime, 'old session revoked by sweep via revoke_after');
+    assert.ok(auth._users.d.tokensValidAfterTime, 'the SWEEP performed the revoke');
   });
 
   // ---- N3: sweep covers all accounts, converges after delay ----
@@ -464,6 +465,74 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
     assert.equal(ops.withLangEs('https://x/action?oobCode=A&lang=en'), 'https://x/action?oobCode=A&lang=es');
     assert.equal(ops.withLangEs('https://x/action'), 'https://x/action?lang=es');
     assert.equal(ops.withLangEs(''), '');
+  });
+
+  // ===== codex r2 remaining defects =====
+
+  // #3 — new-invite must NOT void on a transient createUser error; the record stays pending and a later sweep resumes.
+  await t('#3: new-invite transient createUser error → record stays pending (not void), rethrows', async () => {
+    const db = makeDb(seedBase());
+    const auth = {
+      getUser: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; },
+      getUserByEmail: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; },
+      createUser: async () => { const e = new Error('backend down'); e.code = 'auth/internal-error'; throw e; },
+    };
+    await assert.rejects(ops.inviteDriver({ name: 'M', phone: 'p', email: 'm@c.hn', actorUid: 'disp1' }, { db, auth, HttpsError, now: clockNow }), /backend down/);
+    const recs = db._get('driver_accounts') || {};
+    const only = Object.values(recs)[0];
+    assert.ok(only && only.onboarding_state === 'pending', 'record persisted as pending, NOT void');
+  });
+  await t('#3: new-invite genuine email collision (race) → void + already-exists', async () => {
+    const db = makeDb(seedBase());
+    const auth = {
+      getUser: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; }, // our fresh uid absent, and re-read still absent
+      getUserByEmail: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; }, // free at dup-check time
+      createUser: async () => { const e = new Error('dup'); e.code = 'auth/email-already-exists'; throw e; }, // taken by a racing creator (different uid)
+    };
+    await rejects(ops.inviteDriver({ name: 'M', phone: 'p', email: 'm@c.hn', actorUid: 'disp1' }, { db, auth, HttpsError, now: clockNow }), 'already-exists');
+    const only = Object.values(db._get('driver_accounts') || {})[0];
+    assert.equal(only.onboarding_state, 'void'); assert.equal(only.enabled, false);
+  });
+
+  // #4 — re-invite on a recoverable pending record whose Auth user is MISSING resumes provisioning (not refuse).
+  await t('#4: re-invite with a missing Auth user on a recoverable pending record → resumes provisioning + returns link', async () => {
+    const db = makeDb(Object.assign(seedBase(), { driver_accounts: { up: { enabled: false, onboarding_state: 'pending', email: 'p@c.hn', invited_by: 'disp1', version: 0 } } }));
+    let created = null;
+    const auth = {
+      getUserByEmail: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; }, // no Auth user for the email
+      getUser: async (u) => { if (!created) { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; } return created; },
+      createUser: async ({ uid, email }) => { created = { uid, email, disabled: true }; return created; },
+      updateUser: async () => {}, revokeRefreshTokens: async () => {},
+      generatePasswordResetLink: async (em) => `https://reset/${em}?code=X`,
+    };
+    const r = await ops.inviteDriver({ uid: 'up', actorUid: 'disp1' }, { db, auth, HttpsError, now: clockNow });
+    assert.equal(r.ok, true); assert.match(r.link, /reset/); assert.ok(created && created.uid === 'up', 'provisioning resumed at the record uid');
+    assert.notEqual(db._get('driver_accounts/up').onboarding_state, 'void');
+  });
+
+  // #7 — version must be a nonnegative SAFE integer.
+  for (const [bad, label] of [[-1, '-1'], [1.5, '1.5'], [9007199254740992, '2^53']]) {
+    await t(`#7: a record with version ${label} → destructive transition refused "Registro inválido"`, async () => {
+      const db = makeDb(Object.assign(seedBase(), { driver_accounts: { d: { enabled: true, onboarding_state: 'active', approved_at: 1, version: bad } } }));
+      await rejects(ops.setDriverSuspended({ uid: 'd', actorUid: 'disp1' }, depsFor(db, makeAuth({}, () => clockNow))), 'failed-precondition', /inválido/);
+    });
+  }
+
+  // #14 — the expected version is captured ONCE and PERSISTS across transaction retries (not recaptured per callback).
+  await t('#14: version persists across a multi-callback transaction retry → a bumped retry aborts', async () => {
+    const v1 = { enabled: true, onboarding_state: 'active', approved_at: 1, version: 1 };
+    const v2 = Object.assign({}, v1, { version: 2 }); // a concurrent writer bumped it between callbacks
+    const db = {
+      ref: (p) => ({
+        once: async () => ({ val: () => (p === 'driver_accounts/d' ? v1 : (p === 'restaurants' ? {} : null)), exists: () => false, forEach: () => {} }),
+        transaction: async (fn) => {
+          fn(JSON.parse(JSON.stringify(v1)));              // 1st callback: matches expected (v1)
+          const next = fn(JSON.parse(JSON.stringify(v2))); // RETRY callback: server had v2
+          return next === undefined ? { committed: false, snapshot: { val: () => v2 } } : { committed: true, snapshot: { val: () => Object.assign(v2, next) } };
+        },
+      }),
+    };
+    await rejects(ops.setDriverSuspended({ uid: 'd', actorUid: 'disp1' }, { db, auth: makeAuth({}, () => clockNow), HttpsError, now: clockNow }), 'aborted', /cambió/);
   });
 
   console.log(`\ndriver-admin-ops: ${passed} tests passed`);

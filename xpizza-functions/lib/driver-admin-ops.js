@@ -43,7 +43,7 @@ function validateShape(cur, HttpsError) {
   if (typeof cur !== 'object') throw new HttpsError('failed-precondition', 'Registro inválido.');
   if (typeof cur.enabled !== 'boolean') throw new HttpsError('failed-precondition', 'Registro inválido.');
   if (cur.deactivated !== undefined && typeof cur.deactivated !== 'boolean') throw new HttpsError('failed-precondition', 'Registro inválido.');
-  if (cur.version !== undefined && typeof cur.version !== 'number') throw new HttpsError('failed-precondition', 'Registro inválido.');
+  if (cur.version !== undefined && !(Number.isSafeInteger(cur.version) && cur.version >= 0)) throw new HttpsError('failed-precondition', 'Registro inválido.'); // codex r2 #7 — reject -1, 1.5, 2^53
   if (!ONBOARDING_STATES.has(cur.onboarding_state)) throw new HttpsError('failed-precondition', 'Registro inválido.');
   return normalize(cur);
 }
@@ -218,13 +218,19 @@ async function inviteDriver(params, deps) {
     if (!rec.invited_by || !(rec.onboarding_state === 'pending' || rec.onboarding_state === 'profile_submitted')) {
       throw new HttpsError('failed-precondition', 'Solo se puede reinvitar un registro pendiente creado por despacho.');
     }
-    // codex r1 P1-4 — verify the email's CURRENT Auth uid is this record before minting a link, or the reset link
-    // would target whoever owns the email now (identity drift / a lost-create orphan). Mismatch/missing → refuse.
+    // codex r1 P1-4 / r2 #4 — before minting a link: a DIFFERENT identity owning this email is refused (the link
+    // would target them); a MISSING Auth user on this recoverable pending record RESUMES provisioning (the single
+    // classifier recreates it at this uid+email) rather than refusing. Only an unrecoverable collision refuses.
     const email = normEmail(rec.email);
     let authUser = null;
     try { authUser = await auth.getUserByEmail(email); } catch (e) { if (!(e && e.code === 'auth/user-not-found')) throw e; }
-    if (!authUser || authUser.uid !== params.uid) {
+    if (authUser && authUser.uid !== params.uid) {
       throw new HttpsError('failed-precondition', 'La cuenta de autenticación no coincide con el registro — revisá la invitación.');
+    }
+    if (!authUser) { // missing Auth user → resume provisioning via the reconciler (createUser at this uid+email)
+      await syncAuthToAccount(params.uid, deps);
+      const rec2 = (await db.ref(`driver_accounts/${params.uid}`).once('value')).val();
+      if (!rec2 || rec2.onboarding_state === 'void') throw new HttpsError('failed-precondition', 'La cuenta de autenticación no coincide con el registro — revisá la invitación.');
     }
     const link = withLangEs(await auth.generatePasswordResetLink(email));
     appendOpLog(db, params.uid, lastOp('invite', actorUid, now, { reinvite: true }));
@@ -257,13 +263,13 @@ async function inviteDriver(params, deps) {
     email, name, phone, invited_by: actorUid, invited_at: now, grandfathered: false,
     version: 0, last_op: lastOp('invite', actorUid, now), updated_at: now,
   }); // persist the record BEFORE createUser (durable, resumable by the reconciler)
-  try {
-    await auth.createUser({ uid, email, disabled: true });
-  } catch (e) {
-    await voidAccount(uid, 0, { db, now }); // uid/email collision for a different identity → void, never enable
-    throw new HttpsError('already-exists', 'Ese correo ya tiene cuenta.');
-  }
-  await syncAuthToAccount(uid, deps); // converge: pending (not deactivated) ⇒ Auth enabled, driver can sign in
+  // codex r2 #3 — provision through the SINGLE classifier/reconciler (same as the sweep): it creates the Auth user
+  // at this exact uid+email, and handles every failure mode correctly — a transient createUser error RETHROWS
+  // (record stays pending; a later sweep/retry resumes), a genuine uid/email collision VOIDS, and a concurrent
+  // creator / lost-response with a matching uid+email is RECOVERED. Never an unconditional void.
+  await syncAuthToAccount(uid, deps);
+  const after = (await db.ref(`driver_accounts/${uid}`).once('value')).val();
+  if (!after || after.onboarding_state === 'void') throw new HttpsError('already-exists', 'Ese correo ya tiene cuenta.');
   const link = withLangEs(await auth.generatePasswordResetLink(email));
   appendOpLog(db, uid, lastOp('invite', actorUid, now));
   return { ok: true, uid, link };

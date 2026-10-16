@@ -14335,10 +14335,10 @@
   {
     "id": "s1b-03",
     "slice": "s1b",
-    "label": "invite createUser omits the pre-allocated uid (random uid)",
+    "label": "reconciler createUser omits the pre-allocated uid (random uid)",
     "file": "lib/driver-admin-ops.js",
-    "from": "await auth.createUser({ uid, email, disabled: true });",
-    "to": "await auth.createUser({ email, disabled: true });",
+    "from": "await auth.createUser({ uid, email: rec.email, disabled: true });",
+    "to": "await auth.createUser({ email: rec.email, disabled: true });",
     "command": [
       "node",
       "lib/driver-admin-ops.test.js"
@@ -14552,9 +14552,9 @@
   {
     "id": "s1b-22",
     "slice": "s1b",
-    "label": "re-invite identity check removed (P1-4)",
+    "label": "re-invite identity check removed (codex r1 P1-4)",
     "file": "lib/driver-admin-ops.js",
-    "from": "if (!authUser || authUser.uid !== params.uid) {",
+    "from": "if (authUser && authUser.uid !== params.uid) {",
     "to": "if (false) {",
     "command": [
       "node",
@@ -14652,6 +14652,54 @@
     "file": "lib/driver-admin-ops.js",
     "from": "  if (/[?&]lang=/.test(link)) return link.replace(/([?&]lang=)[^&]*/, '$1es');\n  return link + (link.indexOf('?') >= 0 ? '&' : '?') + 'lang=es';",
     "to": "  return link;",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-31",
+    "slice": "s1b",
+    "label": "token revocation removed from the shared reconciler/sweep (codex r2 #14)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (rec.revoke_after && validAfterMs < rec.revoke_after) await auth.revokeRefreshTokens(uid);",
+    "to": "if (false && validAfterMs < rec.revoke_after) await auth.revokeRefreshTokens(uid);",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-32",
+    "slice": "s1b",
+    "label": "version no longer required to be a nonnegative safe integer (codex r2 #7)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (cur.version !== undefined && !(Number.isSafeInteger(cur.version) && cur.version >= 0)) throw new HttpsError('failed-precondition', 'Registro inválido.'); // codex r2 #7 — reject -1, 1.5, 2^53",
+    "to": "if (cur.version !== undefined && false) throw new HttpsError('failed-precondition', 'Registro inválido.'); // codex r2 #7 — reject -1, 1.5, 2^53",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-33",
+    "slice": "s1b",
+    "label": "new-invite no longer detects the collision void (codex r2 #3)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!after || after.onboarding_state === 'void') throw new HttpsError('already-exists', 'Ese correo ya tiene cuenta.');",
+    "to": "if (false) throw new HttpsError('already-exists', 'Ese correo ya tiene cuenta.');",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
+  },
+  {
+    "id": "s1b-34",
+    "slice": "s1b",
+    "label": "re-invite no longer resumes provisioning on a missing Auth user (codex r2 #4)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!authUser) { // missing Auth user → resume provisioning via the reconciler (createUser at this uid+email)",
+    "to": "if (false) { // missing Auth user → resume provisioning via the reconciler (createUser at this uid+email)",
     "command": [
       "node",
       "lib/driver-admin-ops.test.js"

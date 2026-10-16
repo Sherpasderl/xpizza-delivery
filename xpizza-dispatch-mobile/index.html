@@ -1761,7 +1761,9 @@ function mdraClose() {
   $('mdra-sheet')?.classList.remove('open');
   try { if (MDRA.unsub) MDRA.unsub(); else fbOff(ref(XPD.getDb(), 'driver_accounts')); } catch (_) {}
   try { if (MDRA.cashUnsub) MDRA.cashUnsub(); } catch (_) {}
-  MDRA.unsub = null; MDRA.cashUnsub = null; MDRA.cash = undefined; MDRA.cashErr = null;
+  MDRA.unsub = null; MDRA.cashUnsub = null; MDRA.cash = undefined; MDRA.cashErr = null; MDRA.acctErr = false;
+  // reset the view model so closing during a confirm/sub-view can't strand dialogOpen:true (#9).
+  MDRA.view = 'list'; MDRA.dialogOpen = false; MDRA.sel = null; MDRA.link = null; MDRA.inviteName = null;
 }
 function mdraRowHtml(uid, rec) {
   const st = mdraDeriveState(rec); const [pc, pl] = mdraPill(st); const acts = mdraActions(st);
@@ -1837,14 +1839,17 @@ async function mdraDeactivate(body) {
     for (const t of Object.keys(tasks)) { const x = tasks[t]; if (x && x.assigned_driver_id === uid && x.status !== 'completed' && x.status !== 'cancelled') set.add(x.order_id || t); }
     openOrders = [...set];
     const disp = await fbGet(ref(XPD.getDb(), `dispatchers/${uid}`)); const kit = await fbGet(ref(XPD.getDb(), `kitchen/${uid}`));
-    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists());
+    const rests = (await fbGet(ref(XPD.getDb(), 'restaurants'))).val() || {};
+    let ksShared = false;
+    for (const rid of Object.keys(rests)) { const rr = rests[rid]; if (rr && rr.kitchen_staff && rr.kitchen_staff[uid]) { ksShared = true; break; } }
+    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists()) || ksShared;
   } catch (_) { precheckErr = true; }
   if (MDRA.view !== 'deactivate' || MDRA.sel !== uid) return;   // superseded by a navigation during the pending reads (P2-9)
   const cuadre = (MDRA.cash && !MDRA.cashErr) ? mdraLatestCuadre(MDRA.cash[uid]) : null; const cash = mdraCashDisplay(cuadre, MDRA.cashErr);
   const blockers = mdraBlockers({ openShift, openOrders, cashAttested: MDRA.attested === true }); const hard = openShift || openOrders.length > 0;
   const cond = ['open_shift', 'open_tasks'].map((r) => {
     if (precheckErr) return `<div class="mdra-cond"><span class="mdra-ci" style="background:var(--warn,#e7bd86);color:#5a3c10"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 8v4M12 16h.01"/></svg></span><div><b style="font-size:13px">${r === 'open_shift' ? 'Turno: desconocido' : 'Entregas: desconocido'}</b></div></div>`;
-    const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b></div></div>`; }).join('');
+    const bad = (r === 'open_shift' && openShift) || (r === 'open_tasks' && openOrders.length); const t = r === 'open_shift' ? (bad ? 'Turno abierto' : 'Sin turno abierto') : (bad ? `${openOrders.length} entrega(s) en curso` : 'Sin entregas en curso'); const fix = (bad && r === 'open_tasks' && openOrders.length) ? `<button id="mdra-reasignar" data-oid="${escapeHtml(String(openOrders[0]))}" style="background:none;border:none;padding:0;color:var(--primary,#a6a0f0);text-decoration:underline;font:inherit;cursor:pointer">Reasignar</button>` : ''; return `<div class="mdra-cond"><span class="mdra-ci ${bad ? 'bad' : 'good'}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="${bad ? 'M6 6l12 12M18 6L6 18' : 'M4 12l5 5L20 6'}"/></svg></span><div><b style="font-size:13px">${escapeHtml(t)}</b>${fix}</div></div>`; }).join('');
   const canDo = !precheckErr && !dualRole && blockers.length === 0;
   const dualHtml = dualRole ? `<div class="mdra-inset" style="background:var(--accent-soft,rgba(236,154,161,.16))"><b style="font-size:13px;color:var(--accent,#ec9aa1)">Cuenta con doble rol</b><p class="mdra-mut-t" style="margin:6px 0 0">También es de despacho o cocina. Separá las identidades antes de desactivar.</p></div>` : '';
   body.innerHTML = `<button class="mdra-back" id="mdra-bk">← Volver</button><div style="font-size:16px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(mdraName(uid, rec))}</div>`
@@ -1853,6 +1858,7 @@ async function mdraDeactivate(body) {
     + `<div class="mdra-inset"><div style="display:flex;align-items:center"><span class="mdra-lbl">Efectivo</span><span class="mdra-owner" style="margin-left:auto">Decisión del dueño</span></div><label class="mdra-check ${MDRA.attested ? 'on' : ''}" id="mdra-ck"><span class="mdra-box"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></span><span>Sin efectivo pendiente</span></label><div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px"><span class="mdra-lbl">Último cuadre</span><span style="color:${cash.available ? 'var(--text,#f2f4f6)' : 'var(--text-dim,#9b9993)'}">${escapeHtml(cash.text)}</span></div><div class="mdra-mut-t" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`
     + `<button class="mdra-act danger mdra-full" id="mdra-go" ${canDo ? '' : 'disabled'}>Desactivar cuenta</button>`;
   $('mdra-bk').addEventListener('click', back);
+  $('mdra-reasignar')?.addEventListener('click', (ev) => { const oid = ev.currentTarget.dataset.oid; mdraClose(); if (oid && typeof openPicker === 'function') openPicker(oid); });
   $('mdra-ck').addEventListener('click', () => { MDRA.attested = !MDRA.attested; mdraRender(); });
   $('mdra-go').addEventListener('click', async () => { try { await mdraCall('setDriverDeactivated', { uid, cash_attested: MDRA.attested === true }); toast('Cuenta desactivada'); MDRA.view = 'list'; MDRA.sel = null; mdraRender(); } catch (e) { mdraErr(e); } });
 }

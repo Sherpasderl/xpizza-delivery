@@ -24563,7 +24563,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#draRenderDeactivate#status#0",
-   "line": 6233,
+   "line": 6236,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -24576,7 +24576,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#draRenderDeactivate#status#1",
-   "line": 6233,
+   "line": 6236,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -24589,7 +24589,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#draRenderDeactivate#order_id#0",
-   "line": 6233,
+   "line": 6236,
    "kind": "member",
    "facts": [
     "NUM"
@@ -24599,7 +24599,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lat#0",
-   "line": 6569,
+   "line": 6582,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24609,7 +24609,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lng#0",
-   "line": 6569,
+   "line": 6582,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24619,7 +24619,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lat#1",
-   "line": 6571,
+   "line": 6584,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24629,7 +24629,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lng#1",
-   "line": 6571,
+   "line": 6584,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24639,7 +24639,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lat#2",
-   "line": 6571,
+   "line": 6584,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24649,7 +24649,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lng#2",
-   "line": 6571,
+   "line": 6584,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24659,7 +24659,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lat#3",
-   "line": 6574,
+   "line": 6587,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24669,7 +24669,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lng#3",
-   "line": 6574,
+   "line": 6587,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24679,7 +24679,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lat#4",
-   "line": 6574,
+   "line": 6587,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -24689,7 +24689,7 @@
   },
   {
    "id": "xpizza-dispatch/index.html<script@0>#<top>>anon#lng#4",
-   "line": 6574,
+   "line": 6587,
    "kind": "member",
    "facts": [
     "PLACE"
@@ -26820,7 +26820,7 @@
   },
   {
    "id": "xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate#status#0",
-   "line": 1837,
+   "line": 1839,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -26833,7 +26833,7 @@
   },
   {
    "id": "xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate#status#1",
-   "line": 1837,
+   "line": 1839,
    "kind": "member",
    "facts": [
     "STATUS",
@@ -26846,7 +26846,7 @@
   },
   {
    "id": "xpizza-dispatch-mobile/index.html<script@0>#mdraDeactivate#order_id#0",
-   "line": 1837,
+   "line": 1839,
    "kind": "member",
    "facts": [
     "NUM"
@@ -39522,7 +39522,7 @@
    "file": "xpizza-functions/lib/driver-admin-ops.js",
    "fn": "<top>",
    "key": "normEmail",
-   "line": 367,
+   "line": 373,
    "how": "object-key",
    "exempt": true
   },
