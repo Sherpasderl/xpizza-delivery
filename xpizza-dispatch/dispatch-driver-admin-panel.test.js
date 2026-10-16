@@ -44,7 +44,7 @@ var escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&
 function $(id){ return document.getElementById(id); }
 var allDrivers = {};
 var STORE = { drivers: {} };
-var H = { accData:{}, accSubs:[], cashSubs:[], unsub:0, getData:{}, getDelay:0, getFail:false, call:'ok', toasts:[], picked:[], waUrl:'' };
+var H = { accData:{}, accSubs:[], cashSubs:[], unsub:0, getData:{}, getDelay:0, getFail:false, call:'ok', toasts:[], picked:[], waUrl:'', calls:[] };
 window.H = H;
 function toast(m, k){ H.toasts.push({ m: m, k: k }); var el=document.getElementById('toast-live'); if(el){ el.textContent=String(m); el.setAttribute('data-kind', k||''); } }
 function openPicker(oid, reassign){ H.picked.push({ oid: oid, reassign: !!reassign }); }
@@ -59,7 +59,7 @@ function _onValue(r, cb, err){ var s={cb:cb,err:err}; H.accSubs.push(s); cb({ va
 function _off(){}
 function _get(r){ return new Promise((res,rej)=>{ setTimeout(()=>{ if(H.getFail){ rej(new Error('read fail')); return; } var v=H.getData[r.path]; res({ val: ()=> (v===undefined?null:v), exists: ()=> v!==undefined && v!==null }); }, H.getDelay); }); }
 function _getFunctions(app, region){ return { app:app, region:region }; }
-function _httpsCallable(fns, name){ return (data) => { if(H.call==='fail'){ var e=new Error('mapped-fail'); e.code='functions/failed-precondition'; e.details={ reasons:['cash'], open_orders:[] }; return Promise.reject(e); } return Promise.resolve({ data:{ ok:true, link: (name==='inviteDriver' ? 'https://reset/LINK' : undefined) } }); }; }
+function _httpsCallable(fns, name){ return (data) => { H.calls.push({ name:name, data:data }); if(H.call==='fail'){ var e=new Error('mapped-fail'); e.code='functions/failed-precondition'; e.details={ reasons:['cash'], open_orders:[] }; return Promise.reject(e); } if(H.call==='dual'){ var e2=new Error('Cuenta con doble rol — separá las identidades antes de desactivar.'); e2.code='functions/failed-precondition'; return Promise.reject(e2); } return Promise.resolve({ data:{ ok:true, link: (name==='inviteDriver' ? 'https://reset/LINK' : undefined) } }); }; }
 var draRef=_ref, draOnValue=_onValue, draOff=_off, draGet=_get, draGetFunctions=_getFunctions, draHttpsCallable=_httpsCallable;
 var ref=_ref, onValue=_onValue, fbOff=_off, fbGet=_get, serverTimestamp=()=>0, mdraGetFunctions=_getFunctions, mdraHttpsCallable=_httpsCallable;
 var flush = () => new Promise(r=>setTimeout(r,0));
@@ -109,8 +109,23 @@ ${draJs}
  res.toastText = $('toast-live').textContent||'';
  H.call='ok';
 
- // (d) PENDING READS: 5 sequential 40ms reads (incl. the restaurants dual-role read). Navigate away, then WAIT
- // PAST all of them (>200ms) and assert the stale deactivate render never painted.
+ // DUAL-ROLE: no client /restaurants read anymore (codex r3). The button is enabled for a clear driver; the SERVER
+ // refuses a shared identity and the message surfaces via draError.
+ H.call='dual'; H.toasts=[]; $('toast-live').textContent='';
+ draAction('deactivate','u2'); await settle(140); DRA.cashAttested=true; draRender(); await settle(80);
+ var dbtn=$('dra-deact-btn'); res.dualBtnEnabled = !!(dbtn && !dbtn.disabled);
+ if(dbtn && !dbtn.disabled) dbtn.click(); await flush(); await flush();
+ res.dualMsg = $('toast-live').textContent||'';
+ H.call='ok'; DRA.view='list'; DRA.selUid=null; DRA.cashAttested=false; draRender();
+
+ // CLOSE DURING A CONFIRMATION resets dialogOpen (so the next open isn't suppressed).
+ draAction('suspend','u1'); await flush();
+ res.confirmDialogOpen = DRA.dialogOpen===true;
+ draClose();
+ res.dialogClearedOnClose = DRA.dialogOpen===false;
+ draOpen(); await flush();
+
+ // (d) PENDING READS: sequential reads. Navigate away, then WAIT PAST all of them and assert the stale render never painted.
  H.getDelay=40; DRA.view='list'; draRender();
  draAction('deactivate','u2'); await flush();
  DRA.view='list'; DRA.selUid=null; draRender();
@@ -191,6 +206,23 @@ ${mdraJs}
  res.reactivateConfirms = !!document.getElementById('mdra-cfm') && MDRA.dialogOpen===true;
  if(document.getElementById('mdra-cxl')) document.getElementById('mdra-cxl').click(); await flush();
 
+ // confirm-before-call: the callable is invoked ONLY after the confirmation is accepted
+ H.calls=[]; MDRA.view='list'; mdraRender();
+ var sbtn=document.querySelector('#mdra-body [data-mact="suspend"]'); if(sbtn) sbtn.click(); await flush();
+ res.noCallBeforeConfirm = !H.calls.some(c=>c.name==='setDriverSuspended') && MDRA.dialogOpen===true;
+ if($('mdra-cfm')) $('mdra-cfm').click(); await flush(); await flush();
+ res.callAfterConfirm = H.calls.some(c=>c.name==='setDriverSuspended');
+ // close DURING a confirmation resets dialogOpen
+ MDRA.view='list'; mdraRender();
+ var sbtn2=document.querySelector('#mdra-body [data-mact="suspend"]'); if(sbtn2) sbtn2.click(); await flush();
+ res.mConfirmDialogOpen = MDRA.dialogOpen===true;
+ mdraClose(); res.mDialogClearedOnClose = MDRA.dialogOpen===false; mdraOpen(); await flush();
+ // dual-role: server refuses; the message surfaces via mdraErr (no client /restaurants read)
+ H.call='dual'; $('toast-live').textContent='';
+ mdraAction('deactivate','u2'); await settle(140); MDRA.attested=true; mdraRender(); await settle(80);
+ var gb=$('mdra-go'); res.dualBtnEnabled = !!(gb && !gb.disabled); if(gb && !gb.disabled) gb.click(); await flush(); await flush();
+ res.dualMsg = $('toast-live').textContent||''; H.call='ok'; MDRA.view='list'; MDRA.attested=false; mdraRender();
+
  // malformed cash → "no disponible", never a clean L0
  MDRA.view='list'; mdraRender();
  H.getDelay=40; mdraAction('deactivate','u2'); await settle(360);
@@ -245,6 +277,10 @@ function runChrome(fileUrl) {
     assert.ok(d.toastText && /efectivo|no se puede|todav/i.test(d.toastText), `desktop: a callable failure shows mapped reason TEXT in the toast (${d.toastText})`);
     assert.strictEqual(d.navSafe, true, 'desktop: after ALL pending reads finish, the stale deactivate render did NOT overwrite the list');
     assert.strictEqual(d.reasignar, true, 'desktop: "Reasignar" is a live remedy → openPicker(orderId, true)');
+    assert.strictEqual(d.dualBtnEnabled, true, 'desktop: the Desactivar button is enabled for a clear driver (no client /restaurants read)');
+    assert.ok(/doble rol|despacho o cocina/i.test(d.dualMsg), `desktop: a dual-role SERVER refusal surfaces a clear message (${d.dualMsg})`);
+    assert.strictEqual(d.confirmDialogOpen, true, 'desktop: a confirmation sets dialogOpen');
+    assert.strictEqual(d.dialogClearedOnClose, true, 'desktop: closing DURING a confirmation resets dialogOpen');
     assert.strictEqual(d.errState, true, 'desktop: a failed accounts read shows an error state, never "No hay repartidores"');
     assert.strictEqual(d.accSubsAfterClose, 0, 'desktop: close removes the account listener');
     assert.strictEqual(d.cashSubsAfterClose, 0, 'desktop: close removes the cash listener');
@@ -263,6 +299,11 @@ function runChrome(fileUrl) {
     assert.strictEqual(m.suspendConfirms, true, 'mobile: suspend shows a confirmation screen (desktop parity), not an immediate call');
     assert.strictEqual(m.dialogClearedOnCancel, true, 'mobile: cancelling a confirmation clears dialogOpen');
     assert.strictEqual(m.reactivateConfirms, true, 'mobile: reactivate shows a confirmation screen, not an immediate call');
+    assert.strictEqual(m.noCallBeforeConfirm, true, 'mobile: the suspend callable is NOT invoked before the confirmation is accepted');
+    assert.strictEqual(m.callAfterConfirm, true, 'mobile: the suspend callable IS invoked after the confirmation is accepted');
+    assert.strictEqual(m.mConfirmDialogOpen, true, 'mobile: a confirmation sets dialogOpen');
+    assert.strictEqual(m.mDialogClearedOnClose, true, 'mobile: closing DURING a confirmation resets dialogOpen');
+    assert.ok(/doble rol|despacho o cocina/i.test(m.dualMsg), `mobile: a dual-role SERVER refusal surfaces a clear message (${m.dualMsg})`);
     assert.strictEqual(m.cashUnavailable, true, 'mobile: a malformed cuadre flag renders "Cuadre no disponible", never a clean L0');
     assert.strictEqual(m.navSafe, true, 'mobile: navigating away during pending reads is not overwritten by the stale deactivate render');
     assert.strictEqual(m.accSubsAfterClose, 0, 'mobile: close removes the account listener');

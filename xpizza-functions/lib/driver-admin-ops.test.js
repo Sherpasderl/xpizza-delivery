@@ -470,17 +470,26 @@ const rejects = (p, code, re) => assert.rejects(p, (e) => e.code === code && (!r
   // ===== codex r2 remaining defects =====
 
   // #3 — new-invite must NOT void on a transient createUser error; the record stays pending and a later sweep resumes.
-  await t('#3: new-invite transient createUser error → record stays pending (not void), rethrows', async () => {
+  await t('#3/#14: new-invite createUser SUCCEEDS but the response is LOST → stays pending + identity created; a later sweep RECOVERS (never void)', async () => {
     const db = makeDb(seedBase());
+    const users = {}; let createdUid = null;
     const auth = {
-      getUser: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; },
+      getUser: async (u) => { if (!users[u]) { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; } return users[u]; },
       getUserByEmail: async () => { const e = new Error('nf'); e.code = 'auth/user-not-found'; throw e; },
-      createUser: async () => { const e = new Error('backend down'); e.code = 'auth/internal-error'; throw e; },
+      // the SERVER creates the identity, then the client's response is lost (a transient error surfaces).
+      createUser: async ({ uid, email, disabled }) => { users[uid] = { uid, email, disabled: !!disabled, tokensValidAfterTime: undefined }; createdUid = uid; const e = new Error('timeout'); e.code = 'auth/internal-error'; throw e; },
+      updateUser: async (u, p) => { Object.assign(users[u], p); },
+      revokeRefreshTokens: async (u) => { users[u].tokensValidAfterTime = new Date(clockNow).toUTCString(); },
+      generatePasswordResetLink: async (em) => `https://reset/${em}`,
     };
-    await assert.rejects(ops.inviteDriver({ name: 'M', phone: 'p', email: 'm@c.hn', actorUid: 'disp1' }, { db, auth, HttpsError, now: clockNow }), /backend down/);
-    const recs = db._get('driver_accounts') || {};
-    const only = Object.values(recs)[0];
-    assert.ok(only && only.onboarding_state === 'pending', 'record persisted as pending, NOT void');
+    await assert.rejects(ops.inviteDriver({ name: 'M', phone: 'p', email: 'm@c.hn', actorUid: 'disp1' }, { db, auth, HttpsError, now: clockNow }), /timeout/);
+    const uid = Object.keys(db._get('driver_accounts'))[0];
+    assert.equal(db._get('driver_accounts/' + uid).onboarding_state, 'pending', 'record is pending, NOT void');
+    assert.ok(createdUid === uid && users[uid], 'the identity WAS created server-side (lost response)');
+    // RECOVERY: a later sweep sees the now-existing user with the matching email → converges, never voids.
+    await ops.sweepAuthSync({ db, auth, now: clockNow });
+    assert.equal(db._get('driver_accounts/' + uid).onboarding_state, 'pending', 'still NOT void after recovery');
+    assert.equal(users[uid].disabled, false, 'recovery converged Auth to enabled (pending, not deactivated)');
   });
   await t('#3: new-invite genuine email collision (race) → void + already-exists', async () => {
     const db = makeDb(seedBase());

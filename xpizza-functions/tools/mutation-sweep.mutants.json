@@ -14704,5 +14704,17 @@
       "node",
       "lib/driver-admin-ops.test.js"
     ]
+  },
+  {
+    "id": "s1b-35",
+    "slice": "s1b",
+    "label": "reconciler voids on a TRANSIENT createUser error / lost response (codex r3 #14)",
+    "file": "lib/driver-admin-ops.js",
+    "from": "if (!(ce && (ce.code === 'auth/uid-already-exists' || ce.code === 'auth/email-already-exists'))) throw ce;",
+    "to": "if (!(ce && (ce.code === 'auth/uid-already-exists' || ce.code === 'auth/email-already-exists'))) { await voidAccount(uid, normalize(rec).version, { db, now }); return; }",
+    "command": [
+      "node",
+      "lib/driver-admin-ops.test.js"
+    ]
   }
 ]

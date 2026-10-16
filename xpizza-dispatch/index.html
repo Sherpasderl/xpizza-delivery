@@ -6227,7 +6227,7 @@ async function draRenderDeactivate(body) {
     $('dra-back')?.addEventListener('click', back); return;
   }
   // live pre-check reads (the callable re-validates authoritatively). A READ FAILURE is UNKNOWN, never "clear".
-  let openShift = false, openOrders = [], dualRole = false, precheckErr = false;
+  let openShift = false, openOrders = [], precheckErr = false;
   try {
     const d = (await draGet(draRef(XPD.getDb(), `drivers/${uid}`))).val() || {};
     openShift = d.active === true || (d.current_shift_id !== undefined && d.current_shift_id !== null);
@@ -6235,14 +6235,9 @@ async function draRenderDeactivate(body) {
     const set = new Set();
     for (const tid of Object.keys(tasks)) { const t = tasks[tid]; if (t && t.assigned_driver_id === uid && t.status !== 'completed' && t.status !== 'cancelled') set.add(t.order_id || tid); }
     openOrders = [...set];
-    // client dual-role check — mirrors the server isSharedIdentity set exactly: /dispatchers + /kitchen + ANY
-    // /restaurants/{rid}/kitchen_staff/{uid} (cross-brand). The callable re-checks authoritatively.
-    const disp = await draGet(draRef(XPD.getDb(), `dispatchers/${uid}`));
-    const kit = await draGet(draRef(XPD.getDb(), `kitchen/${uid}`));
-    const rests = (await draGet(draRef(XPD.getDb(), 'restaurants'))).val() || {};
-    let ksShared = false;
-    for (const rid of Object.keys(rests)) { const rr = rests[rid]; if (rr && rr.kitchen_staff && rr.kitchen_staff[uid]) { ksShared = true; break; } }
-    dualRole = (disp && disp.exists && disp.exists()) || (kit && kit.exists && kit.exists()) || ksShared;
+    // NO client dual-role read: /restaurants is NOT dispatcher-readable (codex r3 — reading it was rules-denied and
+    // blocked EVERY deactivation). The server callable is the sole authority on dual-role (/dispatchers + /kitchen +
+    // restaurants/*/kitchen_staff via Admin); its failed-precondition refusal surfaces as a clear message via draError.
   } catch (_) { precheckErr = true; /* UNKNOWN — do not present as clear, do not enable */ }
   // a navigation during the pending reads supersedes this render — never clobber a later view (P2-9).
   if (DRA.view !== 'deactivate' || DRA.selUid !== uid) return;
@@ -6266,12 +6261,11 @@ async function draRenderDeactivate(body) {
     + `<label class="dra-check ${DRA.cashAttested ? 'on' : ''}" id="dra-cash-check"><span class="dra-box"><svg class="ic sm"><use href="#i-check"/></svg></span><span>Sin efectivo pendiente</span></label>`
     + `<div style="display:flex;justify-content:space-between;margin-top:9px;font-size:12px"><span class="dra-lbl">Último cuadre</span><span class="dra-mono" style="color:${cash.available ? 'var(--text)' : 'var(--text-dim)'}">${escapeHtml(cash.text)}</span></div>`
     + `<div class="dra-muted-txt" style="margin-top:7px">Solo confirmación; no registra monto.</div></div>`;
-  // Enable ONLY when everything is positively clear: no read error, not dual-role, no blockers.
-  const canDeactivate = !precheckErr && !dualRole && blockers.length === 0;
-  const dualHtml = dualRole ? `<div class="dra-inset danger"><p style="font-size:13px;font-weight:700;margin:0 0 6px;color:var(--accent)">Cuenta con doble rol</p><p class="dra-muted-txt" style="margin:0">Esta identidad también es de despacho o cocina. Separá las identidades antes de desactivar.</p></div>` : '';
+  // Enable ONLY when everything is positively clear: no read error, no blockers. Dual-role is the server's call —
+  // its refusal surfaces via draError (codex r3 — the client /restaurants read is rules-denied).
+  const canDeactivate = !precheckErr && blockers.length === 0;
   body.innerHTML = `<button class="dra-back" id="dra-back">← Volver</button>`
     + `<div style="font-size:14px;font-weight:700;margin-bottom:10px">Desactivar a ${escapeHtml(name)}</div>`
-    + dualHtml
     + ((hardBlocked || precheckErr) ? `<div class="dra-inset warn"><p style="font-size:13px;font-weight:700;margin:0 0 9px">${precheckErr ? 'No se pudo verificar el estado' : 'Todavía no se puede desactivar'}</p>${condHtml}</div>` : `<div style="margin-bottom:4px">${condHtml}</div>`)
     + cashRow
     + `<button class="dra-act danger dra-full" id="dra-deact-btn" ${canDeactivate ? '' : 'disabled'}>Desactivar cuenta</button>`
