@@ -56,6 +56,9 @@ const D = {
   [F('deploy/check-seed-readiness.js')]: 'harness', [F('deploy/emu-seed.js')]: 'harness', [F('tools/menus-identity-publish.js')]: 'harness',
   [F('test/portal-emulator-workers.probe.js')]: 'harness', [F('test/_kds-writer-worker.js')]: 'harness', [F('test/emu-isolation.proof.js')]: 'harness',
   [F('test/measure-identity-fence.js')]: 'harness',
+  // H1a gate G-1: the handheld isolation ACCEPTANCE check A1 runs before enabling pairing (expected red until F2(c)) —
+  // `_emulator-required('database')` is its first statement, so it is driven like every harness; it is not in the gate chain
+  [F('test/merchant-isolation.g1.js')]: 'harness',
   // D4-c2b: the monitor's fresh-process child and the §8 latency measure — `_emulator-required('database', 'firestore')` is the
   // first statement of each, before index.js is loaded (driven below like every harness)
   [F('test/_c2b-monitor-child.js')]: 'harness', [F('test/c2b-latency.measure.js')]: 'harness',
