@@ -62,6 +62,9 @@ const REAL_NOW = Date.now.bind(Date);
 let WALL_OFFSET = 0;
 Date.now = () => REAL_NOW() + WALL_OFFSET;
 const CLOCK = require('./_catalog-clock').install();
+// the request-path CONFIG readers (client floor, extras mode; 30 s TTLs on the wall clock) are WARMED right before every recorded
+// request, recorder off — a TTL that expired mid-suite under load re-read inside a random case's recording (test/_config-warm.js)
+const CFG = require('./_config-warm').install();
 const FILL = RD.makeColdOnly(['x_pizza', 'la_musa'], CLOCK);
 const COLD_OF = new WeakMap();   // recorded result → the rids its request cold-loaded (CLOCK.coldSince)   // from before the first recorded request: the floor's wall-time budget covers the whole run
 const app = require('../index.js');
@@ -190,6 +193,7 @@ async function traced(c, rid, setupState) {
   // right before the request. It was left to timing: the case's setup warmed it, and under load setup + the tree read
   // outran the 10 s TTL, so the handler re-read order_control/<rid>/current — one call the pre-c4 golden never had.
   await CTL.controlWarm(rtdb, rid);
+  await CFG.warm();   // the client floor + extras mode caches: freshly read, OUTSIDE the recording (test/_config-warm.js)
   const mark = CLOCK.loads().length;   // R1c: which rids THIS request cold-loads — observed, not inferred from the trace's shape
   REC = [];
   const r = await c.request(rid, setupState);
@@ -560,6 +564,7 @@ async function pageSends(dir, c, firstStatus, firstBody) {
     ok(`§3 r4 END TO END (x_pizza, priced "${BA}"): the full chargeOnlineOrder persisted content_key + content_legacy_order [1,0]; that record through the ACTUAL confirmDeps (cold, 0 catalog reads) + the real guard → HELD against a legacy [A,B] cash sibling; an unrelated sibling → not held + logged; a corrupted permutation → fallback + logged`);
   }
 
+  { const b = CFG.built(); assert.ok(b.floor === 1 && b.extras === 1, `🔴 config-warm premise: the live client-floor / extras-mode readers were built through the hook exactly once each (${JSON.stringify(b)})`); ok(`config warm: the client floor + extras mode readers (1 each, hooked) were freshly read before every recorded request`); }
   FINISHED = true;
   console.log(`\norder-exists(emulator): OK (${n})`);
   process.exit(0);
