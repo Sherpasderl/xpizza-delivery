@@ -5,7 +5,7 @@
  *   location is order_surface === 'handheld'. Unchanged: kds/absent surfaces, orders with no restaurant_id (legacy), and
  *   dispatcher-only writers. A dual-role (kitchen + dispatcher) identity's stale write still PASSES (the order-level dispatcher
  *   grant cascades) — the evidence for BC1: A1 must refuse the switch while merchant-gate.dualRoleConflicts() is non-empty.
- *   handhelds / order_surface / merchant_requests: server-only writes; scoped reads.
+ *   handhelds / order_surface: server-only (read + write). merchant_requests: server-only writes, dispatcher reads.
  */
 require('./_emulator-required')('database');
 
@@ -72,12 +72,11 @@ const order = (rid, status = 'new') => ({ order_id: 'x', status, payment_method:
     await no(`${who} CANNOT write merchant_requests`, db.ref('merchant_requests/tb_norte/o_norte/state').set('done'));
     await no(`${who} CANNOT write through a ROOT multi-path update`, db.ref().update({ 'restaurants/tb_norte/order_surface': 'kds', 'merchant_requests/tb_norte/o_norte': null }));
   }
-  await ok('dispatcher reads the device registry', disp.ref('restaurants/tb_norte/handhelds').get());
-  await ok('manager of the location reads its device registry', mgr.ref('restaurants/tb_norte/handhelds').get());
-  for (const [who, db] of [['kitchen', kitchen], ['device', device], ['driver', driver], ['customer', cust], ['anon', anon]]) await no(`${who} CANNOT read the device registry`, db.ref('restaurants/tb_norte/handhelds').get());
-  await no('manager of tb_norte CANNOT read tb_centro handhelds', mgr.ref('restaurants/tb_centro/handhelds').get());
-  await ok('dispatcher reads order_surface', disp.ref('restaurants/tb_norte/order_surface').get());
-  await no('manager CANNOT read order_surface', mgr.ref('restaurants/tb_norte/order_surface').get());
+  // handhelds + order_surface are SERVER-ONLY for reads too (restaurants-rules.guard allow-list; clients use callables)
+  for (const [who, db] of [['dispatcher', disp], ['manager', mgr], ['kitchen', kitchen], ['device', device], ['driver', driver], ['customer', cust], ['anon', anon]]) {
+    await no(`${who} CANNOT read the device registry`, db.ref('restaurants/tb_norte/handhelds').get());
+    await no(`${who} CANNOT read order_surface`, db.ref('restaurants/tb_norte/order_surface').get());
+  }
   await ok('dispatcher reads merchant_requests', disp.ref('merchant_requests/tb_norte').get());
   for (const [who, db] of [['manager', mgr], ['kitchen', kitchen], ['device', device], ['customer', cust], ['anon', anon]]) await no(`${who} CANNOT read merchant_requests`, db.ref('merchant_requests/tb_norte').get());
 
