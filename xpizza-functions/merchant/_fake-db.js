@@ -25,7 +25,7 @@ function createFakeDb(initial = {}) {
   }
   function guard(path) { for (const p of failReads) if (String(path).startsWith(p)) throw new Error(`injected read failure: ${path}`); }
 
-  function ref(path) {
+  function ref(path = "") {
     return {
       async once() { guard(path); const v = get(path); return { val: () => v, exists: () => v !== null }; },
       async set(v) { put(path, v); },

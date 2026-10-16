@@ -113,4 +113,4 @@ async function orderState(deps, auth, data) {
   return { driver_assigned: o.order_type === 'pickup' ? false : await driverAssigned(db, oid) };
 }
 
-module.exports = { runOrderAction, orderState, hashOf, canonical };
+module.exports = { runOrderAction, orderState, gateAndAuth, hashOf, canonical };
