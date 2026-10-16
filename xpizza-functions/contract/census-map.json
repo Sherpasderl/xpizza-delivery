@@ -232,7 +232,8 @@
   "fixtures": "test FIXTURE module (required only by *.test.js) — not production",
   "seed": "operator seed / publish script — not an order reader",
   "access": "owner ACCESS-CENSUS / kitchen-roster CLI (PLATFORM F2 Q1) — read-only audit of order ownership, KDS parity, attribution counts and history size; no customer or staff surface, never a writer of /orders",
-  "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone"
+  "prepstats": "S5 daily prep summary (prepStatsDaily) — reads order_timelines + exactly two order leaves per candidate (restaurant_id, customer_phone) for ATTRIBUTION and the ready-time EXCLUSIONS only; publishes per restaurant × bucket aggregates {median_min, p80_min, n} — never an order fact, an amount or a phone",
+  "merchant": "merchant HANDHELD writer (H1a, PLAN-H1a r2) — device-scoped order transitions on orders/{oid} (status CAS + prep + handheld_answered + handheld_ops receipts + reject_intent in ONE transaction), the reject-request publisher / decline clear, busy / pause / agotado; its reads only GATE its own writes (status, restaurant_id, routing_reason, order_type, prep) — no customer display; persisted outputs covered as writer evidence (census writtenFields / opaqueWriteResolutions). PROPOSED by the handheld session for 2e review (D6)."
  },
  "serverFunctions": {
   "alert-prune.js#alertOrderIds": "infra",
@@ -584,7 +585,13 @@
   "prep-stats.js#prepRowEligible": "prepstats",
   "prep-stats.js#prepAggregate": "prepstats",
   "access/kds-filter-pre-f2.mjs#filterLiveOrders": "access",
-  "access/kds-filter-pre-f2.mjs#filterScheduledOrders": "access"
+  "access/kds-filter-pre-f2.mjs#filterScheduledOrders": "access",
+  "merchant/merchant-transitions.js#applyAction": "merchant",
+  "merchant/merchant-transitions.js#stale": "merchant",
+  "merchant/merchant-orders.js#orderState": "merchant",
+  "merchant/merchant-reject.js#publishFromIntent": "merchant",
+  "merchant/merchant-reject.js#declineClear": "merchant",
+  "merchant/merchant-devices.js#onlyKeys": "merchant"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
@@ -1218,6 +1225,22 @@
   "paid_evidence": {
    "class": "lifecycle",
    "reason": "PLAN-H0 detective evidence (superseded-capture.js recordEvidence): card money on an attempt the order does not account for, or a reversal whose outcome is uncertain — staff bookkeeping surfaced as a durable dispatcher alert; read only to REFUSE automation (cancel guard, abandon). Not a contract fact: no displayed order fact derives from it"
+  },
+  "handheld_answered": {
+   "class": "claim",
+   "reason": "the handheld's answer marker {kind: accepted|reject_requested, at, by, op_id} — stops the no-answer clock; state-machine bookkeeping, never displayed as an order fact (PLAN-H1a C-6)"
+  },
+  "handheld_ops": {
+   "class": "claim",
+   "reason": "per-operation receipts {action, payload_hash, by, at, result} for replay idempotence (PLAN-H1a C-6) — bookkeeping, never displayed"
+  },
+  "prep": {
+   "class": "lifecycle",
+   "reason": "the handheld's prep commitment {committed_min, extra_min, accepted_at, ready_at, ready_marked_at?} (PLAN-multi-location §7.4, PLAN-H1a C-5) — read by C2 dispatch/ETA and the handheld; PROPOSED non-fact for now (the customer ETA it feeds becomes a contract fact with C2/U1) — 2e review"
+  },
+  "reject_intent": {
+   "class": "claim",
+   "reason": "the handheld's reject request {type, reason, note?, gone_items[], op_id, by, at} — published to merchant_requests for dispatch; the optional note is STAFF free text shown only to dispatch, never to the customer (PLAN-H1a C-6/C-7)"
   }
  },
  "opaqueWriteResolutions": [
@@ -1259,6 +1282,33 @@
    "detail": "*",
    "fields": [],
    "reason": "F1: plan.row.path is always publicPath(brandId) = public/brands/<brandId> (planPublish is its only producer; brands-admin-core is the only caller) — the derived public brand projection, never /orders, so no order field is written. A new producer of the plan or a new path makes this resolution stale and the census RED until reviewed",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/merchant/merchant-orders.js",
+   "fn": "runOrderAction",
+   "how": "transaction-on-order",
+   "detail": "delegates to txnUpdate",
+   "fields": [
+    "status",
+    "prep",
+    "handheld_answered",
+    "reject_intent",
+    "handheld_ops"
+   ],
+   "reason": "txnUpdate → applyAction (merchant/merchant-transitions.js): the committed node is the live order spread with status (accept → preparing, ready → ready, handed → completed), prep, handheld_answered, reject_intent and handheld_ops — nothing else (PLAN-H1a C-5/C-6; merchant-transitions.test.js)",
+   "count": 1
+  },
+  {
+   "file": "xpizza-functions/merchant/merchant-reject.js",
+   "fn": "clearOnDecline",
+   "how": "transaction-on-order",
+   "detail": "delegates to declineClear",
+   "fields": [
+    "reject_intent",
+    "handheld_answered"
+   ],
+   "reason": "declineClear (merchant-reject.js): after a dispatch decline, REMOVES reject_intent and handheld_answered when they still carry the declined op_id (BC2) — the rest of the order is carried through unchanged",
    "count": 1
   }
  ],

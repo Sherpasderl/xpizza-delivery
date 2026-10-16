@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const V = require('./merchant-validate');
 const { surfaceOf } = require('./merchant-gate');
 const { authorizeHandheld } = require('./merchant-scope');
-const { applyAction } = require('./merchant-transitions');
+const { txnUpdate } = require('./merchant-transitions');
 
 const AUTH_CODE = { unauthenticated: 'unauthenticated', forbidden: 'permission-denied', unavailable: 'unavailable' };
 
@@ -85,21 +85,13 @@ async function runOrderAction(deps, auth, action, data) {
     if (type !== 'pickup' && await driverAssigned(db, oid)) return { ok: false, code: 'driver_assigned' };
   }
 
-  let outcome = null;
-  const nowMs = now();
-  await db.ref(`orders/${oid}`).transaction((node) => {
-    if (node === null) { outcome = { ok: false, code: 'not_found' }; return null; }   // null-first safe — see note below
-    const r = applyAction(node, { action, op_id, rid, payload }, { uid, nowMs, payloadHash });
-    outcome = r.commit ? r.result : r.abort;
-    return r.commit ? r.commit : undefined;
-  });
-  return outcome;
+  const box = { outcome: null };
+  const req = { action, op_id, rid, payload };
+  const ctx = { uid, nowMs: now(), payloadHash };
+  await db.ref(`orders/${oid}`).transaction((node) => txnUpdate(node, req, ctx, box));
+  return box.outcome;
 }
-// Null-first safety (same discipline as cancel-order.js claimDecision, a679797): the Admin SDK's first optimistic call can pass
-// null for an EXISTING node when nothing is cached. Aborting there would end the transaction locally and falsely report
-// not_found. Returning null instead proposes "no node": for a truly absent order that commits as a no-op (and not_found
-// stands); for an existing order the server rejects the stale hash and re-runs the handler with the real value, which
-// overwrites `outcome`. The emulator suite (T4) exercises this against a cold cache.
+// The updater (merchant-transitions.txnUpdate) is null-first safe; see its comment.
 
 async function orderState(deps, auth, data) {
   const { db, HttpsError } = deps;

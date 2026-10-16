@@ -68,4 +68,15 @@ function applyAction(node, req, ctx) {
   return { commit: next, result };
 }
 
-module.exports = { applyAction };
+// The runTransaction(orders/{oid}) updater, as a delegating call (so the R3 census follows it to a reviewed field list:
+// census-map opaqueWriteResolutions → status / prep / handheld_answered / reject_intent / handheld_ops). Null-first safe
+// (same discipline as cancel-order.js claimDecision): null proposes "no node" — a no-op for a truly absent order, and the
+// server re-runs us with the real value for an existing one. `box.outcome` carries the result out of the transaction.
+function txnUpdate(node, req, ctx, box) {
+  if (node === null) { box.outcome = { ok: false, code: 'not_found' }; return null; }
+  const r = applyAction(node, req, ctx);
+  box.outcome = r.commit ? r.result : r.abort;
+  return r.commit ? r.commit : undefined;
+}
+
+module.exports = { applyAction, txnUpdate };

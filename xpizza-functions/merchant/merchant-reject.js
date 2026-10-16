@@ -49,15 +49,19 @@ async function clearOnDecline({ db }, rid, oid) {
   const req = await readVal(db, `merchant_requests/${rid}/${oid}`);
   if (!isObj(req) || req.state !== 'declined') return { ok: true, cleared: false };
   const opId = req.op_id;
-  const tx = await db.ref(`orders/${oid}`).transaction((node) => {
-    if (node === null) return null;
-    if (!isObj(node) || node.restaurant_id !== rid) return undefined;
-    if (!isObj(node.reject_intent) || node.reject_intent.op_id !== opId) return undefined;   // a newer intent: leave it
-    const { reject_intent, ...rest } = node; void reject_intent;
-    if (isObj(rest.handheld_answered) && rest.handheld_answered.op_id === opId) delete rest.handheld_answered;
-    return rest;
-  });
+  const tx = await db.ref(`orders/${oid}`).transaction((node) => declineClear(node, rid, opId));
   return { ok: true, cleared: !!tx.committed };
 }
 
-module.exports = { publishFromIntent, resolveRejectRequest, clearOnDecline };
+// The decline-clear updater on orders/{oid} (a delegating call, so the R3 census resolves its fields: reject_intent and
+// handheld_answered, both REMOVED). Null-first safe; aborts unless the order is this location's and still carries opId.
+function declineClear(node, rid, opId) {
+  if (node === null) return null;
+  if (!isObj(node) || node.restaurant_id !== rid) return undefined;
+  if (!isObj(node.reject_intent) || node.reject_intent.op_id !== opId) return undefined;   // a newer intent: leave it
+  const { reject_intent, ...rest } = node; void reject_intent;
+  if (isObj(rest.handheld_answered) && rest.handheld_answered.op_id === opId) delete rest.handheld_answered;
+  return rest;
+}
+
+module.exports = { publishFromIntent, resolveRejectRequest, clearOnDecline, declineClear };

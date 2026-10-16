@@ -7239,3 +7239,23 @@ exports.prepStatsDaily = onSchedule(
   async () => { await runPrepStats({ db: getDatabase(), nowMs: Date.now(), log: console }); },
 );
 /* s5:end prep-stats */
+
+/* h1:begin */
+// H1a (PLAN-H1a r2) — the SUNMI merchant handheld: device-scoped, atomic, idempotent order actions; busy / pause / agotado;
+// device pairing + revocation; the reject-request publisher. DARK until A1 sets the gates (merchant/merchant-gate.js).
+const merchantFunctions = require('./merchant/merchant-wiring');
+exports.merchantAccept = merchantFunctions.merchantAccept;
+exports.merchantMoreTime = merchantFunctions.merchantMoreTime;
+exports.merchantReady = merchantFunctions.merchantReady;
+exports.merchantHanded = merchantFunctions.merchantHanded;
+exports.merchantReject = merchantFunctions.merchantReject;
+exports.merchantOrderState = merchantFunctions.merchantOrderState;
+exports.merchantSetBusy = merchantFunctions.merchantSetBusy;
+exports.merchantSetPause = merchantFunctions.merchantSetPause;
+exports.merchantSetAvailability = merchantFunctions.merchantSetAvailability;
+exports.merchantPairDevice = merchantFunctions.merchantPairDevice;
+exports.merchantRevokeDevice = merchantFunctions.merchantRevokeDevice;
+exports.merchantHeartbeat = merchantFunctions.merchantHeartbeat;
+exports.merchantPublishRejectIntent = merchantFunctions.merchantPublishRejectIntent;
+exports.merchantClearOnDecline = merchantFunctions.merchantClearOnDecline;
+/* h1:end */
