@@ -38,7 +38,7 @@ test('copy: every text node of the screen template is prototype / board text or 
 
 test('copy: every Spanish string literal the modules can show is prototype / board text or approved', () => {
   const TECH = new Set(['Equipo de la sucursal']);    // the device LABEL sent to merchantPairDevice (shown in the portal, not here)
-  const files = ['model.js', 'app.js', 'api.js', 'setup.js', 'bridge.js', 'copy.js'];
+  const files = ['model.js', 'view.js', 'app.js', 'api.js', 'setup.js', 'bridge.js', 'copy.js'];
   const unknown = [];
   for (const f of files) {
     const src = read(`./${f}`).replace(/\/\/.*$/gm, '').replace(/throw new Error\([^)]*\)/g, '').replace(/console\.\w+\([^)]*\)/g, '');

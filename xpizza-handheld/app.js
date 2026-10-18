@@ -12,6 +12,7 @@ import { createEta, googleRoute } from './eta.js';
 import { startPairing, createSessionStore, hashPin, createPinGate, signOut } from './setup.js';
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
 import { COPY, BOARD } from './copy.js';
+import { buildVM, WA_TEXT } from './view.js';
 import { FIREBASE_CONFIG, FUNCTIONS_REGION, MAPS_KEY } from './config.js';
 import { initializeApp } from './vendor/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signInWithCustomToken, signOut as fbSignOut, onAuthStateChanged } from './vendor/firebase-auth.js';
@@ -19,9 +20,6 @@ import { getDatabase, ref, query, orderByChild, equalTo, onChildAdded, onChildCh
 import { getFunctions, httpsCallable } from './vendor/firebase-functions.js';
 
 const MIN = 60000;
-const REASONS = [['agotado', 'Se acabó un producto'], ['saturada', 'Cocina saturada'], ['cerrando', 'Estamos por cerrar'], ['otro', 'Otro motivo']];
-const WA = [['agotado', 'Se acabó un producto'], ['pregunta', 'Tenemos una pregunta'], ['propio', 'Escribir mi propio mensaje']];
-const WA_TEXT = { agotado: 'Se nos acabó un producto: ¿te lo podemos cambiar por otro?', pregunta: 'Tenemos una pregunta sobre tu pedido.', propio: '' };
 
 // ── platform ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const fb = initializeApp(FIREBASE_CONFIG);
@@ -118,158 +116,13 @@ function watchEta(oid) {
 let stopEta = () => {};
 const driverOf = (oid) => M.driverInfo(S.driver[oid], S.eta[oid]);
 
-// ── the view model (the prototype's renderVals, on real data) ─────────────────────────────────────────────────────────────────
+// ── the live context for view.js ──
 function vm() {
-  const t = now();
-  const off = !online();
-  const ctl = S.feed.control;
-  const pill = M.pill({ offline: off, control: ctl, nowMs: t });
-  const busyOn = pill.mode === 'busy'; const pausedOn = pill.mode === 'paused';
-  const orders = viewOrders();
-  const q = M.queues(orders);
-  const unopened = q.nuevos.filter((o) => !o.handheld_answered && !S.opened[o.id]);
-  const main = S.phase === 'main';
-  const alertOrder = main && S.view !== 'detail' ? unopened[0] || null : null;
-  const cur = S.cur ? orders[S.cur] || null : null;
-  const b = base();
-  const chips = b === null ? [] : M.chips(b);
-  const chosen = chips.find((c) => c.delta === S.delta) || chips[1];
-  const brandName = (S.feed.brand && typeof S.feed.brand.name === 'string' && S.feed.brand.name) || '';
-  const loc = (sess && sess.location_name) || '';
-  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k) => (k === '' ? { blank: true, real: false }
-    : k === 'del' ? { blank: false, real: true, label: 'Borrar', size: '16px', press: () => set({ pinEntry: S.pinEntry.slice(0, -1) }) }
-      : { blank: false, real: true, label: k, size: '22px', press: () => pinPress(k) }));
-  const isKeypad = S.phase === 'pin' || (main && S.view === 'pinPrompt');
-  const st = S.status || {};
-  const d = cur ? detail(cur, t, off, b) : { items: [] };
-  const goneNames = cur ? M.orderView(cur).items.map((i) => i.name).filter((n) => S.gone[n]) : [];
-  const strip = alertOrder ? M.ladderStrip(alertOrder) : null;
-  const age = alertOrder && Number.isFinite(t) ? Math.max(0, Math.floor((t - alertOrder.created_at) / MIN)) : null;
-  const agotados = availability();
-  const curView = cur ? M.orderView(cur) : null;
-  return {
-    isLogin: S.phase === 'login', isBranch: S.phase === 'branch', isChecks: S.phase === 'checks', isKeypad, isPinPrompt: main && S.view === 'pinPrompt',
-    loginErr: S.loginErr, loginBtnCls: S.working ? 'dis' : '', goBranch: doLogin,
-    noBranches: S.pairing && S.pairing.screen === 'none', noBranchesText: S.pairing && S.pairing.copy, pairErr: S.pairErr,
-    hasBranches: !!(S.pairing && S.pairing.rows && S.pairing.rows.length), pairBtnCls: S.working || !S.sel ? 'dis' : '',
-    branches: (S.pairing && S.pairing.rows || []).map((r) => ({ name: r.location_name || r.rid, addr: '', cls: S.sel && S.sel.rid === r.rid ? 'on' : '', pick: () => set({ sel: r }) })),
-    useBranchLabel: S.sel ? `Usar ${S.sel.location_name || S.sel.rid}` : '', goChecks: doPair,
-    notifText: st.notifications ? 'Activadas' : '—', notifColor: st.notifications ? '#17633D' : '#9A1C12',
-    volText: st.alarmVolumeMax ? 'Máximo' : '—', volColor: st.alarmVolumeMax ? '#17633D' : '#9A1C12',
-    batteryText: st.batteryExempt ? 'Apagado para esta app' : 'Tiene que estar apagado para esta app',
-    batteryPending: !st.batteryExempt, batteryOk: !!st.batteryExempt, fixBattery: refreshStatus,
-    browserNote: st.note || '', checksBlocked: !!st.blocked, checksBtnCls: st.blocked ? 'dis' : '',
-    testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); },
-    goPinCreate: () => { if (!st.blocked) set({ phase: 'pin', pinEntry: '', pinFirst: null, pinErr: '' }); },
-    keypadTitle: S.phase === 'pin' ? (S.pinFirst ? COPY.pinRepeat : 'Creá el PIN del encargado') : 'PIN del encargado',
-    keypadSub: S.phase === 'pin' ? 'Protege cambiar de sucursal y cerrar sesión. Para aceptar pedidos no hace falta.' : 'Para entrar a los ajustes del equipo.',
-    pinDots: [0, 1, 2, 3].map((i) => ({ cls: i < S.pinEntry.length ? 'f' : '' })), pinErrText: S.pinErr, keys,
-    forgotPin: () => doSignOut('olvide_pin'),
-    isMain: main && !isKeypad, topIsList: S.view === 'list', topIsBack: S.view !== 'list',
-    brandName, loc, pillCls: pill.cls, pillLabel: pill.label, pillRing: pill.ring, pillDot: !pill.ring, pillRingOff: pill.ringOff, pillRingAria: pill.ringAria,
-    openStatus: () => set({ sheet: 'status' }),
-    bannerOff: off, bannerPause: !off && pausedOn, bannerBusy: !off && !pausedOn && busyOn, pauseText: pill.pauseText, busyText: pill.busyText,
-    resume: () => control('merchantSetPause', { op: 'resume' }), clearBusy: () => control('merchantSetBusy', { clear: true }),
-    isList: S.view === 'list', isDetail: S.view === 'detail' && !!cur, isAgotados: S.view === 'agotados', isSettings: S.view === 'settings',
-    goList: () => { stopEta(); set({ view: 'list', cur: null, pinEntry: '', pinErr: '' }); },
-    tabN: S.tab === 'n' ? 'on' : '', tabP: S.tab === 'p' ? 'on' : '', tabL: S.tab === 'l' ? 'on' : '',
-    cN: S.feed.loaded ? q.nuevos.length : '–', cP: S.feed.loaded ? q.prep.length : '–', cL: S.feed.loaded ? q.listos.length : '–',
-    goN: () => set({ tab: 'n' }), goP: () => set({ tab: 'p' }), goL: () => set({ tab: 'l' }),
-    showN: S.tab === 'n', showP: S.tab === 'p', showL: S.tab === 'l',
-    emptyN: S.feed.loaded && !q.nuevos.length, emptyP: S.feed.loaded && !q.prep.length, emptyL: S.feed.loaded && !q.listos.length,
-    newCards: q.nuevos.map((o) => ({ ...M.newCard(o, { nowMs: t, opened: !!S.opened[o.id] }), open: () => openOrder(o.id) })),
-    prepCards: q.prep.map((o) => ({ ...M.prepCard(o, { nowMs: t, driver: driverOf(o.id), pending: o._pending, entered: S.entered === o.id }), open: () => openOrder(o.id) })),
-    readyCards: q.listos.map((o) => ({ ...M.readyCard(o, { nowMs: t, driver: driverOf(o.id), pending: o._pending, entered: S.entered === o.id }), handed: () => handed(o.id) })),
-    d, chips: chips.map((c) => ({ label: c.label, cls: (c.delta === S.delta ? 'on' : '') + (c.dis ? ' dis' : ''), pick: () => { if (!c.dis) set({ delta: c.delta }); } })),
-    acceptLabel: chosen ? M.acceptLabel(chosen.value) : 'Aceptar',
-    busyExplain: busyOn && b !== null, busyExplainText: busyOn && b !== null ? M.busyExplain(b - pill.busyAdd, pill.busyAdd) : '',
-    openReject: () => set({ sheet: 'reject' }),
-    shReject: S.sheet === 'reject', shItems: S.sheet === 'items', shMore: S.sheet === 'more', shWA: S.sheet === 'wa', shStatus: S.sheet === 'status',
-    shBusy: S.sheet === 'busy', shPause: S.sheet === 'pause', shBranch: false, shLogout: S.sheet === 'logout',
-    reasons: REASONS.map(([k, l]) => ({ label: l, cls: S.reason === k ? 'on' : '', pick: () => set({ reason: k }) })),
-    isOtro: S.reason === 'otro', isAgotadoReason: S.reason === 'agotado', isOtherReason: S.reason !== 'agotado',
-    rejBtnCls: S.reason && !S.rejecting[S.cur] ? '' : 'dis', confirmReject: () => doReject(goneNames),
-    toItems: () => set({ sheet: 'items', gone: {} }),
-    rejItems: curView ? curView.items.map((i) => ({ label: i.name, cls: S.gone[i.name] ? 'on' : '', pick: () => set({ gone: { ...S.gone, [i.name]: !S.gone[i.name] } }) })) : [],
-    itemsBtnCls: goneNames.length ? '' : 'dis', closeSheet: () => set({ sheet: null }),
-    openMore: () => set({ sheet: 'more', moreSel: 5 }),
-    moreChips: cur ? M.moreChips(cur).map((c) => ({ label: c.label, cls: (S.moreSel === c.value ? 'on' : '') + (c.dis ? ' dis' : ''), pick: () => { if (!c.dis) set({ moreSel: c.value }); } })) : [],
-    newReadyAt: cur && cur.prep && Number.isFinite(cur.prep.ready_at) ? M.fmt(cur.prep.ready_at + S.moreSel * MIN) : '',
-    moveLabel: cur && cur.prep && Number.isFinite(cur.prep.ready_at) ? `Mover a las ${M.fmt(cur.prep.ready_at + S.moreSel * MIN)}` : '',
-    confirmMore: doMore, openWA: () => set({ sheet: 'wa', waSel: 'agotado' }),
-    waTitle: curView ? `Escribile a ${curView.cust.split(' ')[0]}` : '',
-    waOpts: WA.map(([k, l]) => ({ label: l, cls: S.waSel === k ? 'on' : '', pick: () => set({ waSel: k }) })),
-    waText: curView ? `Hola ${curView.cust.split(' ')[0]}, te escribimos de ${brandName} por tu pedido #${curView.num}. ${WA_TEXT[S.waSel]}` : '',
-    sendWA: () => openWhatsApp(cur, curView, brandName),
-    statusTitle: `Estado de ${loc}`, stOpenCls: pill.mode === 'open' ? 'on' : '', stBusyCls: busyOn ? 'on' : '', stPauseCls: pausedOn ? 'on' : '',
-    setOpen: () => { if (busyOn) control('merchantSetBusy', { clear: true }); if (pausedOn) control('merchantSetPause', { op: 'resume' }); set({ sheet: null }); },
-    toBusy: () => set({ sheet: 'busy' }), toPause: () => set({ sheet: 'pause' }),
-    goAgotados: () => set({ view: 'agotados', sheet: null, cur: null }),
-    goPinPrompt: () => set({ view: 'pinPrompt', sheet: null, pinEntry: '', pinErr: '', cur: null }),
-    busyAddChips: [10, 15, 20].map((v) => ({ label: `+${v} min`, cls: S.busyAdd === v ? 'on' : '', pick: () => set({ busyAdd: v }) })),
-    busyDurChips: [30, 60, 90].map((v) => ({ label: v === 30 ? '30 min' : (v === 60 ? '1 hora' : '1 h 30'), cls: S.busyDur === v ? 'on' : '', pick: () => set({ busyDur: v }) })),
-    busyUntilLine: Number.isFinite(t) ? `Se apaga solo a las ${M.fmt(t + S.busyDur * MIN)}.` : '',
-    confirmBusy: () => { control('merchantSetBusy', { add_min: S.busyAdd, dur_min: S.busyDur }); set({ sheet: null }); },
-    pauseDurChips: [30, 60, 0].map((v) => ({ label: v === 0 ? 'Hasta reanudar' : (v === 30 ? '30 min' : '1 hora'), cls: S.pauseDur === v ? 'on' : '', pick: () => set({ pauseDur: v }) })),
-    pauseReasonChips: ['Cocina llena', 'Falta personal', 'Problema técnico', 'Otro'].map((v) => ({ label: v, cls: S.pauseReason === v ? 'on' : '', pick: () => set({ pauseReason: v }) })),
-    pauseBtnLabel: S.pauseDur === 0 ? 'Pausar hasta reanudar' : (Number.isFinite(t) ? `Pausar hasta las ${M.fmt(t + S.pauseDur * MIN)}` : 'Pausar'),
-    confirmPause: () => { control('merchantSetPause', { op: 'pause', dur_min: S.pauseDur === 0 ? null : S.pauseDur, reason: S.pauseReason }); set({ sheet: null }); },
-    agotadosSub: `Lo que marqués acá no se puede pedir en ${loc}. El menú y los precios son de la marca.`,
-    agotadosCount: String(agotados.filter((m) => m.out).length), menuRows: agotados,
-    openBranchSheet: () => set({ sheet: 'logout' }), askLogout: () => set({ sheet: 'logout' }), doLogout: () => doSignOut('cerrar_sesion'),
-    alertOn: !!alertOrder,
-    alertHead: unopened.length > 1 ? `${unopened.length} pedidos nuevos` : 'Pedido nuevo',
-    alertAge: age === null ? '' : `hace ${age} min`,
-    alertAgeBg: strip ? '#fff' : 'rgba(255,255,255,.18)', alertAgeFg: strip ? '#9A1C12' : '#fff',
-    alertNum: alertOrder ? `#${M.orderView(alertOrder).num}` : '',
-    alertSub: alertOrder ? alertSubOf(M.orderView(alertOrder)) : '',
-    alertLine1: strip ? 'Tocá «Ver pedido» para decidir' : 'Suena a todo volumen hasta que lo abrás',
-    alertCls: strip && strip.tone === 'red' ? 'fast' : '', alertStrip: !!strip,
-    stripBg: strip && strip.tone === 'red' ? '#B42318' : '#F6E7C8', stripFg: strip && strip.tone === 'red' ? '#fff' : '#5A3605', stripText: strip ? strip.text : '',
-    alertLine2: strip ? (strip.tone === 'red' ? 'Reanudá la sucursal desde la banda negra cuando estés listo' : 'A los 5 min sin respuesta pausamos la sucursal') : '',
-    openAlert: () => { if (alertOrder) openOrder(alertOrder.id); },
-    hasToast: !!S.toast, toastMsg: S.toast ? S.toast.msg : '', toastUndo: !!(S.toast && S.toast.undo), undoReady,
-  };
-}
-
-// the alert's sub line, as the prototype: «Entrega · 4 productos · L 485»
-function alertSubOf(v) {
-  const total = v.payLine ? v.payLine.split(' · ')[0] : '';
-  return [v.isDelivery ? 'Entrega' : 'Pickup', v.qty + ' productos', total].filter(Boolean).join(' · ');
-}
-
-function detail(cur, t, off, b) {
-  const v = M.orderView(cur);
-  const isNew = cur.status === 'new'; const isPrep = cur.status === 'preparing'; const isReady = cur.status === 'ready';
-  const drv = driverOf(cur.id);
-  const rm = cur.prep && Number.isFinite(cur.prep.ready_at) ? cur.prep.ready_at : null;
-  const lt = M.lateTag(rm !== null && Number.isFinite(t) ? Math.ceil((rm - t) / MIN) || 0 : null);
-  const realAt = cur.prep && Number.isFinite(cur.prep.ready_marked_at) ? cur.prep.ready_marked_at : null;
-  const dv = M.driverView(cur, drv, t);
-  const info = M.detailInfo(cur, { offline: off, driver: drv });
-  const rs = M.rejectState(cur);
-  return {
-    title: v.title, cust: v.cust, initial: v.initial, items: v.items, note: v.note, hasNote: v.hasNote, payLine: v.payLine,
-    isNew: isNew && !rs, isPrep, isActive: isPrep || isReady, isDelivery: v.isDelivery, showTime: isPrep || isReady,
-    timeLine: isReady ? `Listo a las ${M.fmt(realAt)}` : `Listo a las ${M.fmt(rm)}`,
-    tag: isReady ? (realAt !== null && rm !== null ? (realAt <= rm ? 'A tiempo' : `Con ${Math.ceil((realAt - rm) / MIN)} min de atraso`) : '') : lt.label,
-    tagCls: isReady ? '' : lt.cls, driverName: dv.name, driverSub: dv.sub,
-    showWA: !off && !!phoneOf(cur), canMore: M.canMore(cur, drv.assigned, off) && !cur._pending, info, hasInfo: !!info,
-    accept: () => doAccept(cur, b), ready: () => doReady(cur),
-  };
-}
-
-function availability() {
-  const man = Array.isArray(S.feed.menu) ? S.feed.menu : [];
-  const flags = S.feed.availability || {};
-  const enc = (raw) => encodeURIComponent(String(raw)).replace(/\./g, '%2E');   // the KDS/server availKey, byte-identical rule
-  const rows = man.filter((m) => m && m.key != null).map((m) => {
-    const f = flags[enc(m.key)]; const out = !!(f && f.available === false);
-    const name = m.label != null ? String(m.label) : String(m.key);
-    return { name, out, lbl: out ? 'Agotado' : 'Disponible', swCls: out ? 'off' : '', aria: `${name}${out ? ': agotado. Activar' : ': disponible. Marcar agotado'}`,
-      toggle: () => control('merchantSetAvailability', { item_key_raw: String(m.key), available: out }) };
+  return buildVM(S, {
+    now: now(), online: online(), orders: viewOrders(), base: base(), sess, driverOf, set,
+    act: { doLogin, doPair, refreshStatus, pinPress, doSignOut, control, openOrder, handed, doReject, doMore, openWhatsApp, undoReady, doAccept, doReady, phoneOf,
+      testAlert: () => { sound.unlock(); bridge.alarm.start(['__prueba__']); setTimeout(() => bridge.alarm.stop(), 2500); toast('Sonando la alerta de prueba a todo volumen…'); } },
   });
-  return rows.sort((a, b2) => Number(b2.out) - Number(a.out));
 }
 
 // ── actions ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
