@@ -24,14 +24,14 @@ assert.ok(BANNED_REQUIRE.test("require('../cancel-order-core')") && BANNED_NAME.
 // A-R1: exactly ONE call of the injected core, in merchant-reject.js; merchant-wiring only passes it through.
 const code = (f) => fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\/\/.*$/gm, '');
 const CALL = /\bcancelCore\s*\(/g;
-const callSites = files.flatMap((f) => (code(f).match(CALL) || []).map(() => f));
-assert.deepStrictEqual(callSites, ['merchant-reject.js'], `🔴 the injected cancel core must be called exactly once, in merchant-reject.js (found: ${callSites.join(', ') || 'none'})`);
-for (const f of files) if (f !== 'merchant-reject.js' && f !== 'merchant-wiring.js') assert.ok(!/\bcancelCore\b/.test(code(f)), `🔴 merchant/${f} touches cancelCore`);
+const callSites = files.filter((f) => f !== 'merchant-core-binding.js').flatMap((f) => (code(f).match(CALL) || []).map(() => f));
+assert.deepStrictEqual(callSites.filter((f) => f !== 'merchant-wiring.js'), ['merchant-reject.js'], `🔴 the injected cancel core must be called exactly once, in merchant-reject.js (found: ${callSites.join(', ') || 'none'})`);
+for (const f of files) if (!['merchant-reject.js', 'merchant-wiring.js', 'merchant-core-binding.js'].includes(f)) assert.ok(!/\bcancelCore\b/.test(code(f)), `🔴 merchant/${f} touches cancelCore`);
 assert.strictEqual(('x cancelCore(a) cancelCore (b)'.match(CALL) || []).length, 2, 'sensitivity: the call pattern counts calls');
 // The binding lives ONLY in index.js's h1 block.
 const idx = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 const block = idx.slice(idx.indexOf('/* h1:begin */'), idx.indexOf('/* h1:end */'));
-assert.strictEqual((block.match(/cancelCore: \(args\) => cancelOrderCore\(cancelDeps\(getDatabase\(\)\), args\)/g) || []).length, 1, 'the h1 block binds the existing core exactly once');
-assert.strictEqual((idx.match(/cancelCore:/g) || []).length, 1, 'no other cancelCore binding in index.js');
+assert.strictEqual((block.match(/bindCancelCore\(\(args\) => cancelOrderCore\(cancelDeps\(getDatabase\(\)\), args\)\)/g) || []).length, 1, 'the h1 block binds the existing core exactly once');
+assert.strictEqual((idx.match(/bindCancelCore/g) || []).length, 1, 'no other cancel-core binding in index.js');
 console.log('merchant-no-money.guard: injected core called once (merchant-reject.js), bound once (h1 block)');
 console.log(`merchant-no-money.guard: OK (${n} modules clean)`);

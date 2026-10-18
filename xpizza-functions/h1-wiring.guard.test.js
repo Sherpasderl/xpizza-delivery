@@ -51,12 +51,15 @@ assert.strictEqual(real.split('merchantHooks.').length - 1, 5, 'merchantHooks is
 ok('A-R1: five hunks, each exactly once; removed / duplicated / edited hunks are each caught');
 
 const lines = block.split('\n').slice(1, -1).filter((l) => l && !l.startsWith('//'));
-assert.strictEqual(lines[0], "const merchantFunctions = require('./merchant/merchant-wiring')({ cancelCore: (args) => cancelOrderCore(cancelDeps(getDatabase()), args) });");
-assert.strictEqual(lines[1], "const merchantHooks = require('./merchant/merchant-hooks');");
-const wiring = require('./merchant/merchant-wiring')({ cancelCore: async () => ({}) });
-assert.throws(() => require('./merchant/merchant-wiring')({}), /cancelCore must be injected/, 'the factory refuses without the core');
+assert.strictEqual(lines[0], "require('./merchant/merchant-core-binding').bindCancelCore((args) => cancelOrderCore(cancelDeps(getDatabase()), args));");
+assert.strictEqual(lines[1], "const merchantFunctions = require('./merchant/merchant-wiring');", 'a PLAIN require (runtime-vs-source discovery resolves the names through it)');
+assert.strictEqual(lines[2], "const merchantHooks = require('./merchant/merchant-hooks');");
+const wiring = require('./merchant/merchant-wiring');
+const B = require('./merchant/merchant-core-binding');
+assert.throws(() => B.cancelCore(), /not bound/, 'unbound core refuses');
+assert.throws(() => B.bindCancelCore(null), /must be a function/);
 const names = Object.keys(wiring).sort();
-assert.deepStrictEqual(lines.slice(2).slice().sort(), names.map((k) => `exports.${k} = merchantFunctions.${k};`).sort(), 'exactly one re-export per merchant-wiring function, nothing else');
+assert.deepStrictEqual(lines.slice(3).slice().sort(), names.map((k) => `exports.${k} = merchantFunctions.${k};`).sort(), 'exactly one re-export per merchant-wiring function, nothing else');
 for (const k of names) assert.ok(/^merchant[A-Z]/.test(k) && !/driver/i.test(k), `name ${k}: merchant-prefixed, never "Driver" (driver-callable guard)`);
 assert.ok(!names.includes('merchantPublishRejectIntent') && !names.includes('merchantClearOnDecline'), 'A-R1 dropped the reject triggers');
 ok(`the block injects the existing cancel core, loads the hooks, and only re-exports merchant-wiring by name (${names.length} functions)`);

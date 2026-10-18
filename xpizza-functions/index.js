@@ -7243,7 +7243,8 @@ exports.prepStatsDaily = onSchedule(
 /* h1:begin */
 // H1a (PLAN-H1a r2) — the SUNMI merchant handheld: device-scoped, atomic, idempotent order actions; busy / pause / agotado;
 // device pairing + revocation; reject → the existing cancel core (A-R1). DARK until A1 sets the gates (merchant/merchant-gate.js).
-const merchantFunctions = require('./merchant/merchant-wiring')({ cancelCore: (args) => cancelOrderCore(cancelDeps(getDatabase()), args) });
+require('./merchant/merchant-core-binding').bindCancelCore((args) => cancelOrderCore(cancelDeps(getDatabase()), args));
+const merchantFunctions = require('./merchant/merchant-wiring');
 const merchantHooks = require('./merchant/merchant-hooks');
 exports.merchantAccept = merchantFunctions.merchantAccept;
 exports.merchantMoreTime = merchantFunctions.merchantMoreTime;
