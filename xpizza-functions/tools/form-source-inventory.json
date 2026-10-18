@@ -890,6 +890,7 @@
     "xpizza-dispatch-mobile/parity.test.mjs",
     "xpizza-dispatch-mobile/payment-line.test.mjs",
     "xpizza-dispatch-mobile/readonly.test.mjs",
+    "xpizza-dispatch-mobile/sw-precache.test.mjs",
     "xpizza-dispatch/dispatch-driver-admin-panel.test.js",
     "xpizza-functions/contract/applicability.guard.test.js",
     "xpizza-functions/contract/binary-blindness.guard.test.js",

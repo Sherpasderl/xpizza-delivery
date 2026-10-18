@@ -14,6 +14,7 @@
  */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+import { h0DismissUpdate } from './dispatch-h0-dismiss.js?v=1';   // PLAN-H0
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -154,6 +155,12 @@ export function initDelivery(firebaseConfig) {
 }
 
 export function getDb() { return db; }
+
+// PLAN-H0 — open an order by id that is not in the live lists (e.g. cancelled / pending_payment, linked from a payment
+// alert). → { ok:true, order } (order null = absent) | { ok:false } (the read failed).
+export async function fetchOrderById(orderId) {
+  try { const s = await get(ref(db, `orders/${orderId}`)); return { ok: true, order: s.val() }; } catch (_) { return { ok: false }; }
+}
 export function getAuthInstance() { return auth; }
 
 // ============================================================
@@ -524,11 +531,18 @@ export function subscribeToTasks(callback) {
   return onValue(tasksRef, (snap) => callback(snap.val() || {}));
 }
 
-// Read-only: driver_cash/{driverId}/{shiftId}/cuadre/{cash_owed,cash_order_count,closed_at}
-// (dispatcher-readable per database.rules.json). Cash bar aggregation only — never written.
-export function subscribeToDriverCash(callback) {
+// Read-only: driver_cash/{driverId}/{shiftId}/cuadre/{cash_owed,cash_order_count,closed_at,provisional,…}
+// (dispatcher-readable per the /driver_cash parent .read grant in database.rules.json). Cash bar aggregation only,
+// never written. `onError` is REQUIRED for correctness: if the parent .read is denied (permission) or the read
+// otherwise fails, onValue's success callback NEVER fires — without an error callback the bar would sit at its last
+// value (or an empty L0), hiding the failure. onError lets the caller render an explicit error state instead.
+export function subscribeToDriverCash(callback, onError) {
   const cashRef = ref(db, 'driver_cash');
-  return onValue(cashRef, (snap) => callback(snap.val() || {}));
+  return onValue(
+    cashRef,
+    (snap) => callback(snap.val() || {}),
+    (err) => { if (onError) onError(err); },
+  );
 }
 
 // Read-only: HELD scheduled/releasing orders — these are excluded from the live feed by
@@ -616,7 +630,10 @@ export function subscribeToDispatcherAlerts(callback) {
   return onValue(alertsRef, (snap) => callback(snap.val() || {}));
 }
 
-export async function dismissDispatcherAlert(alertId) {
+// PLAN-H0 (ruling B): a payment alert's × is durable dismissal on its evidence (dispatch-h0-dismiss.js).
+export async function dismissDispatcherAlert(alertId, rec = null) {
+  const u = h0DismissUpdate(alertId, rec);
+  if (u) { await fbUpdate(ref(db), u); return; }
   await remove(ref(db, `dispatcher_alerts/${alertId}`));
 }
 

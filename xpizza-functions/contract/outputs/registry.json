@@ -1992,6 +1992,9 @@
   "xpizza-dispatch/dispatch-h0-dismiss.js#h0DismissUpdate@xpizza-dispatch/xpizza-delivery.js#dismissDispatcherAlert": {
    "status": "pending"
   },
+  "xpizza-dispatch-mobile/dispatch-h0-dismiss.js#h0DismissUpdate@xpizza-dispatch-mobile/xpizza-delivery.js#dismissDispatcherAlert": {
+   "status": "pending"
+  },
   "la-musa-orders/index.html<script@2>#clearPendingPayFor@la-musa-orders/index.html<script@2>#applyPollState": {
    "status": "pending"
   },
