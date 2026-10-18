@@ -139,7 +139,7 @@
         ".write": "auth != null && auth.token.handheld !== true && auth.token.customer !== true && root.child('dispatchers').child(auth.uid).exists()",
         ".validate": "((root.child('dispatchers').child(auth.uid).exists() && auth.token.customer !== true) || !data.child('delivered_by_driver_uid').exists() || newData.child('delivered_by_driver_uid').val() === data.child('delivered_by_driver_uid').val()) && (!data.child('restaurant_id').exists() || newData.child('restaurant_id').val() === data.child('restaurant_id').val()) && (!data.child('brand_id').exists() || newData.child('brand_id').val() === data.child('brand_id').val())",
         "status": {
-          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || (root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists()) || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'"
+          ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || (root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists()) || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner' && !((root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('kitchen_staff').child(auth.uid).exists()) && root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('order_surface').val() === 'handheld')"
         },
         "picked_up_at": {
           ".write": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'"
@@ -551,6 +551,14 @@
             }
           }
         },
+        "handhelds": {
+          ".read": false,
+          ".write": false
+        },
+        "order_surface": {
+          ".read": false,
+          ".write": false
+        },
         "kitchen_staff": {
           ".read": "auth != null && auth.token.handheld !== true && (root.child('dispatchers').child(auth.uid).exists() || root.child('restaurants').child($restaurant_id).child('kitchen_staff').child(auth.uid).exists())",
           "$uid": {
@@ -707,6 +715,10 @@
       ".write": false
     },
     "phone_index": {
+      ".read": false,
+      ".write": false
+    },
+    "merchant_reject_notices": {
       ".read": false,
       ".write": false
     },

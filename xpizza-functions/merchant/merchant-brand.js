@@ -2,10 +2,7 @@
 // H1a — the ONE place the handheld derives a location's brand: F1's pure brandIdOf (brands/brand-model.js, PLAN-multi-location
 // §1.2) over one identity read and one /brands/{rid} read. No other derivation exists here, honouring F1's "only brandOf" rule.
 //
-// REBASE STEP: F1 (brands/brand-model.js) is not on this branch's base. The repo's dependency walkers refuse an import they
-// cannot resolve (catalog/source-store, identity-public-contract) and any non-literal one, so this base wires NO F1 module:
-// resolveBrand returns 'unknown', which every merchant authorizer refuses — the handheld stays closed. On the rebase onto a
-// main that contains F1, the single line below becomes:  makeResolveBrand(require('../brands/brand-model'))
+// F1 is wired: an unresolvable location is 'unknown', which every merchant authorizer refuses — the handheld stays closed.
 
 function makeResolveBrand(f1) {
   return async function resolveBrand(db, rid) {
@@ -16,6 +13,6 @@ function makeResolveBrand(f1) {
   };
 }
 
-const resolveBrand = makeResolveBrand(null);
+const resolveBrand = makeResolveBrand(require('../brands/brand-model'));
 
 module.exports = { makeResolveBrand, resolveBrand };

@@ -36,11 +36,14 @@ const DEVICE_ALTERNATIVES = Object.freeze([Object.freeze({ leaf: '/orders/.read'
 const SVC_TASK_READ_LEAVES = Object.freeze(['assigned_driver_id']);
 const SVC_READ = `${Q0} && auth.uid === 'svc-assigner'`;
 
+// H1a (PLAN-H1a BC1): the KDS is dark at a handheld location — a kitchen status write there is refused. Its kitchen test is the
+// same expression as the grant's, so the narrowing below rewrites BOTH (replaceAll): the denial follows the narrowed grant.
+const H1A_DARK_KDS = " && !(root.child('kitchen').child(auth.uid).exists() && root.child('orders').child($order_id).child('restaurant_id').isString() && root.child('restaurants').child(root.child('orders').child($order_id).child('restaurant_id').val()).child('order_surface').val() === 'handheld')";
 // the pinned SOURCE of every changed leaf (on base = main + Q0 + Q1 indexes)
 const SRC = {
   '/orders/.read': `${G}`,
   '/orders/$order_id/.read': ABSENT,
-  '/orders/$order_id/status/.write': `${Q0} && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'`,
+  '/orders/$order_id/status/.write': `${Q0} && (root.child('dispatchers').child(auth.uid).exists() || root.child('kitchen').child(auth.uid).exists() || root.child('tasks').child($order_id + '_delivery').child('assigned_driver_id').val() === auth.uid || root.child('tasks').child($order_id + '_pickup').child('assigned_driver_id').val() === auth.uid) && !(newData.val() === 'cancelled' && root.child('orders').child($order_id).child('payment_method').val() === 'online' && (root.child('orders').child($order_id).child('payment_status').val() === 'confirmed' || root.child('orders').child($order_id).child('payment_status').val() === 'pending')) && root.child('driver_accounts').child(auth.uid).child('deactivated').val() !== true && auth.uid !== 'svc-assigner'${H1A_DARK_KDS}`,
   '/tasks/.read': `${G}`,
   '/tasks/$task_id/.read': ABSENT,
   ...Object.fromEntries(SVC_TASK_READ_LEAVES.map((l) => [`/tasks/$task_id/${l}/.read`, ABSENT])),
@@ -57,7 +60,7 @@ function target(variant) {
   return {
     '/orders/.read': `${G} && (${DISP} || ${LOC_QUERY(full)} || ${HIST_QUERY})${full ? ` || (${DEVICE})` : ''}`,
     '/orders/$order_id/.read': `${G} && ((data.child('restaurant_id').isString() && ${scope("data.child('restaurant_id').val()", full)}) || ${driverOrder('data')})`,
-    '/orders/$order_id/status/.write': SRC['/orders/$order_id/status/.write'].replace("root.child('kitchen').child(auth.uid).exists()", KITCHEN_OF_ORDER),
+    '/orders/$order_id/status/.write': SRC['/orders/$order_id/status/.write'].replaceAll("root.child('kitchen').child(auth.uid).exists()", KITCHEN_OF_ORDER),
     '/tasks/.read': `${G} && (${DISP} || (query.orderByChild === 'assigned_driver_id' && query.equalTo === auth.uid && auth.uid !== 'svc-assigner'))`,
     '/tasks/$task_id/.read': `${G} && auth.uid !== 'svc-assigner' && data.child('assigned_driver_id').val() === auth.uid`,
     ...Object.fromEntries(SVC_TASK_READ_LEAVES.map((l) => [`/tasks/$task_id/${l}/.read`, SVC_READ])),

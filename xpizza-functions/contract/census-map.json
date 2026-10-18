@@ -1289,21 +1289,6 @@
    "fields": [],
    "reason": "F1: plan.row.path is always publicPath(brandId) = public/brands/<brandId> (planPublish is its only producer; brands-admin-core is the only caller) — the derived public brand projection, never /orders, so no order field is written. A new producer of the plan or a new path makes this resolution stale and the census RED until reviewed",
    "count": 1
-  },
-  {
-   "file": "xpizza-functions/merchant/merchant-orders.js",
-   "fn": "runOrderActionDetailed",
-   "how": "transaction-on-order",
-   "detail": "delegates to txnUpdate",
-   "fields": [
-    "status",
-    "prep",
-    "handheld_answered",
-    "reject_intent",
-    "handheld_ops"
-   ],
-   "reason": "txnUpdate → applyAction (merchant/merchant-transitions.js): the committed node is the live order spread with status (accept → preparing, ready → ready, handed → completed), prep, handheld_answered, reject_intent and handheld_ops — nothing else (PLAN-H1a C-5/C-6; merchant-transitions.test.js)",
-   "count": 1
   }
  ],
  "moneyPathNonFactReads": {

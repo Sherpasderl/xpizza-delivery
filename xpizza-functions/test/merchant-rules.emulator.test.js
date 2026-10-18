@@ -80,6 +80,21 @@ const order = (rid, status = 'new') => ({ order_id: 'x', status, payment_method:
   for (const [who, db] of [['dispatcher', disp], ['manager', mgr], ['kitchen', kitchen], ['device', device], ['driver', driver], ['customer', cust], ['anon', anon]]) await no(`${who} CANNOT read merchant_reject_notices`, db.ref('merchant_reject_notices/o_norte').get());
 
   await env.cleanup();
+
+  // ── BC1 under F2's NARROWED rules (tools/f2-narrow-rules.js): the kitchen grant becomes the order location's kitchen_staff;
+  //    the dark-KDS denial must follow it, or a handheld location's own kitchen staff could write status. Committed artifacts.
+  for (const variant of ['N-human', 'N-full']) {
+    const rules = fs.readFileSync(path.join(__dirname, '..', '..', 'xpizza-reference', 'f2-narrow', `${variant}.rules.json`), 'utf8');
+    const nenv = await initializeTestEnvironment({ projectId: 'demo-xpizza', database: { rules } });
+    await nenv.withSecurityRulesDisabled(async (ctx) => ctx.database().ref().set({
+      restaurants: { tb_norte: { order_surface: 'handheld', kitchen_staff: { [KITCHEN]: true } }, tb_centro: { order_surface: 'kds', kitchen_staff: { [KITCHEN]: true } } },
+      orders: { o_norte: order('tb_norte', 'preparing'), o_centro: order('tb_centro') },
+    }));
+    const ks = nenv.authenticatedContext(KITCHEN).database();
+    await no(`${variant}: the handheld location's OWN kitchen_staff CANNOT write status there (dark KDS follows the narrowed grant)`, ks.ref('orders/o_norte/status').set('ready'));
+    await ok(`${variant}: kitchen_staff status write at a kds-surface location: allowed`, ks.ref('orders/o_centro/status').set('preparing'));
+    await nenv.cleanup();
+  }
   console.log(`\nmerchant-rules: OK (${n})`);
   process.exit(0);
 })().catch((e) => { console.error('merchant-rules FAILED:', e && e.stack || e); process.exit(1); });
