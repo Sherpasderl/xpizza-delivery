@@ -2,7 +2,7 @@
   "schema": 1,
   "generations": {
     "orders": 2,
-    "kitchen": 1,
+    "kitchen": 2,
     "dispatch": 1,
     "dispatch-mobile": 1,
     "portal": 1,
