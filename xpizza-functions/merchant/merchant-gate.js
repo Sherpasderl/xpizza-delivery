@@ -28,4 +28,12 @@ function dualRoleConflicts(kitchenUids, dispatcherUids) {
   return [...new Set(kitchenUids || [])].filter((u) => d.has(u)).sort();
 }
 
-module.exports = { pairingEnabled, surfaceOf, dualRoleConflicts };
+// A-R1 (advisor ruling, P1-3) — automatic assignment skips an order a handheld rejected, or one a cancel currently claims
+// (a dispatch cancel's transient claim included — intended). Never set on legacy orders' handheld_answered.
+function heldByReject(order) {
+  if (!order || typeof order !== 'object') return false;
+  const a = order.handheld_answered;
+  return !!(a && typeof a === 'object' && a.kind === 'rejected') || !!order.cancel_claim_id;
+}
+
+module.exports = { pairingEnabled, surfaceOf, dualRoleConflicts, heldByReject };

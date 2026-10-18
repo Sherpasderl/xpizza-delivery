@@ -154,6 +154,8 @@
     "test:driver-assignment-parity": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/driver-assignment-parity.emulator.test.js\"",
     "test:s1b-rules": "node tools/emulator-run.js --only database \"node test/s1b-driver-accounts-rules.emulator.test.js\"",
     "test:merchant": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant.emulator.test.js\"",
-    "test:merchant-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-rules.emulator.test.js\""
+    "test:merchant-rules": "npm run sync:rules && node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-rules.emulator.test.js\"",
+    "test:merchant-reject": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-reject.emulator.test.js\"",
+    "test:merchant-assign-hold": "node tools/emulator-run.js --only database --project demo-xpizza \"node test/merchant-assign-hold.emulator.test.js\""
   }
 }

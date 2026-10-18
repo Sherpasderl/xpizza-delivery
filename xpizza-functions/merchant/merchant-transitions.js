@@ -57,7 +57,7 @@ function applyAction(node, req, ctx) {
       if (node.status !== 'new') return stale();
       if (node.handheld_answered) return fail('already_requested');
       next = { ...node,
-        handheld_answered: { kind: 'reject_requested', at: t, by, op_id: op },
+        handheld_answered: { kind: 'rejected', at: t, by, op_id: op },
         reject_intent: { type: 'reject', reason: p.reason, note: p.note == null ? null : p.note, gone_items: Array.isArray(p.gone_items) ? p.gone_items.slice() : [], op_id: op, by, at: t } };
       break;
     default:
@@ -76,6 +76,7 @@ function txnUpdate(node, req, ctx, box) {
   if (node === null) { box.outcome = { ok: false, code: 'not_found' }; return null; }
   const r = applyAction(node, req, ctx);
   box.outcome = r.commit ? r.result : r.abort;
+  box.committed = !!r.commit;
   return r.commit ? r.commit : undefined;
 }
 

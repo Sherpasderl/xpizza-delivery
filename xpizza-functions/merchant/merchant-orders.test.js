@@ -98,12 +98,22 @@ test('with the brand in rollback (activation off) a served order still gets list
   assert.strictEqual((await call(db, 'handed', { rid: 'tb_norte', oid: 'o1', op_id: 'op_off00003' })).status, 'completed');
 });
 
-test('reject commits the intent on the order (no request write here — the trigger publishes it)', async () => {
+test('reject commits the intent + rejected marker on the order; status stays new (the cancel runs in merchant-reject)', async () => {
   const db = createFakeDb(world());
   const r = await call(db, 'reject', { rid: 'tb_norte', oid: 'o1', reason: 'agotado', gone_items: ['Pollo frito 3 piezas'], op_id: 'op_rej00001' });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(db.get('orders/o1/reject_intent/op_id'), 'op_rej00001');
-  assert.strictEqual(db.get('merchant_requests'), null);
+  assert.strictEqual(db.get('orders/o1/handheld_answered/kind'), 'rejected');
+  assert.strictEqual(db.get('orders/o1/status'), 'new');
+});
+
+test('runOrderActionDetailed: fresh only for the call that committed; replay and abort are not fresh', async () => {
+  const db = createFakeDb(world());
+  const data = { rid: 'tb_norte', oid: 'o1', prep_min: 20, op_id: 'op_fresh001' };
+  assert.strictEqual((await M.runOrderActionDetailed(deps(db), dev(), 'accept', data)).fresh, true);
+  assert.strictEqual((await M.runOrderActionDetailed(deps(db), dev(), 'accept', data)).fresh, false);
+  const lost = await M.runOrderActionDetailed(deps(db), dev(), 'accept', { ...data, op_id: 'op_fresh002' });
+  assert.deepStrictEqual([lost.fresh, lost.outcome.code], [false, 'stale_state']);
 });
 
 test('unauthenticated → unauthenticated; revoked device → permission-denied', async () => {

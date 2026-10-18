@@ -5,7 +5,8 @@
  *      not_found). A truly absent order → not_found and NO node is created.
  *   2. Two devices accept concurrently → exactly one preparing; the other stale_state.
  *   3. Replay of the same op returns the stored result; the node is byte-identical.
- *   4. Reject → intent on the order → publisher writes an open request → decline (conditional on op) → clear.
+ *   4. Reject → the intent + rejected marker commit on the order (status stays new). The cancel itself (A-R1) runs through
+ *      the real cancel core in test/merchant-reject.emulator.test.js.
  *   5. Concurrent pause (CLI-shaped transaction) + busy on the same node → both survive, one event row.
  */
 require('./_emulator-required')('database');
@@ -15,7 +16,6 @@ const assert = require('assert');
 require('../lib/admin');
 const { getDatabase, ServerValue } = require('firebase-admin/database');
 const O = require('../merchant/merchant-orders');
-const R = require('../merchant/merchant-reject');
 const C = require('../merchant/merchant-control');
 
 class HttpsError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
@@ -63,19 +63,12 @@ let n = 0; const ok = (l) => console.log(`  ok ${++n} ${l}`);
   assert.strictEqual(JSON.stringify((await db.ref('orders/o1').once('value')).val()), before);
   ok('replay of the same op returns the stored result; the node is byte-identical');
 
-  // 4. reject → publish → decline → clear
+  // 4. reject → intent + marker on the order (A-R1's cancel is covered by merchant-reject.emulator.test.js)
   const rj = await O.runOrderAction(deps(), dev('hh_a'), 'reject', { rid: 'tb_norte', oid: 'o3', reason: 'saturada', op_id: 'op_reject01' });
   assert.strictEqual(rj.ok, true);
-  await R.publishFromIntent(deps(), 'o3');
-  assert.strictEqual((await db.ref('merchant_requests/tb_norte/o3/state').once('value')).val(), 'open');
-  assert.deepStrictEqual(await R.resolveRejectRequest(deps(), 'tb_norte', 'o3', 'op_wrong001', 'declined', 'disp'), { ok: false, code: 'stale' });
-  assert.deepStrictEqual(await R.resolveRejectRequest(deps(), 'tb_norte', 'o3', 'op_reject01', 'declined', 'disp'), { ok: true });
-  await R.clearOnDecline(deps(), 'tb_norte', 'o3');
   const o3 = (await db.ref('orders/o3').once('value')).val();
-  assert.strictEqual(o3.reject_intent, undefined); assert.strictEqual(o3.handheld_answered, undefined); assert.strictEqual(o3.status, 'new');
-  await R.publishFromIntent(deps(), 'o3');   // intent gone → nothing re-opened
-  assert.strictEqual((await db.ref('merchant_requests/tb_norte/o3/state').once('value')).val(), 'declined');
-  ok('reject → open request → op-conditional decline → order cleared (actionable again); a later publish re-opens nothing');
+  assert.deepStrictEqual([o3.status, o3.handheld_answered.kind, o3.reject_intent.op_id], ['new', 'rejected', 'op_reject01']);
+  ok('reject → intent + rejected marker + receipt in one commit on a real RTDB; status stays new');
 
   // 5. concurrent pause + busy
   const [p] = await Promise.all([

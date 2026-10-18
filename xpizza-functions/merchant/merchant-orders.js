@@ -67,7 +67,9 @@ async function driverAssigned(db, oid) {
   } catch (_) { return true; }
 }
 
-async function runOrderAction(deps, auth, action, data) {
+// { outcome, fresh }: fresh = THIS call committed the order transaction (false for a receipt replay or an abort). A-R1's
+// runReject runs the cancel core only on a fresh reject, so a replay never re-executes it.
+async function runOrderActionDetailed(deps, auth, action, data) {
   const { db, now, HttpsError } = deps;
   if (!auth || !auth.uid) throw new HttpsError('unauthenticated', 'sign in');
   const { rid, oid, op_id, payload } = parse(action, data, HttpsError);
@@ -77,19 +79,22 @@ async function runOrderAction(deps, auth, action, data) {
   let prior;
   try { prior = await readVal(db, `orders/${oid}/handheld_ops/${op_id}`); } catch (_) { throw new HttpsError('unavailable', 'receipt unreadable'); }
   if (prior) {
-    return (prior.by === uid && prior.action === action && prior.payload_hash === payloadHash) ? prior.result : { ok: false, code: 'op_conflict' };
+    return { fresh: false, outcome: (prior.by === uid && prior.action === action && prior.payload_hash === payloadHash) ? prior.result : { ok: false, code: 'op_conflict' } };
   }
   if (action === 'more') {
     let type;
     try { type = await readVal(db, `orders/${oid}/order_type`); } catch (_) { throw new HttpsError('unavailable', 'order unreadable'); }
-    if (type !== 'pickup' && await driverAssigned(db, oid)) return { ok: false, code: 'driver_assigned' };
+    if (type !== 'pickup' && await driverAssigned(db, oid)) return { fresh: false, outcome: { ok: false, code: 'driver_assigned' } };
   }
 
-  const box = { outcome: null };
+  const box = { outcome: null, committed: false };
   const req = { action, op_id, rid, payload };
   const ctx = { uid, nowMs: now(), payloadHash };
-  await db.ref(`orders/${oid}`).transaction((node) => txnUpdate(node, req, ctx, box));
-  return box.outcome;
+  const tx = await db.ref(`orders/${oid}`).transaction((node) => txnUpdate(node, req, ctx, box));
+  return { fresh: !!(tx && tx.committed && box.committed), outcome: box.outcome };
+}
+async function runOrderAction(deps, auth, action, data) {
+  return (await runOrderActionDetailed(deps, auth, action, data)).outcome;
 }
 // The updater (merchant-transitions.txnUpdate) is null-first safe; see its comment.
 
@@ -105,4 +110,4 @@ async function orderState(deps, auth, data) {
   return { driver_assigned: o.order_type === 'pickup' ? false : await driverAssigned(db, oid) };
 }
 
-module.exports = { runOrderAction, orderState, gateAndAuth, hashOf, canonical };
+module.exports = { runOrderAction, runOrderActionDetailed, orderState, gateAndAuth, hashOf, canonical };

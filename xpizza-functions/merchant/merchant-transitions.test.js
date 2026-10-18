@@ -89,7 +89,7 @@ test('reject: intent + marker + receipt in one commit; order stays new; second r
   const r = applyAction(order(), req('reject', { reason: 'agotado', note: null, gone_items: ['Pollo frito 3 piezas'] }, 'op_rej00001'), ctx());
   assert.strictEqual(r.commit.status, 'new');
   assert.deepStrictEqual(r.commit.reject_intent, { type: 'reject', reason: 'agotado', note: null, gone_items: ['Pollo frito 3 piezas'], op_id: 'op_rej00001', by: 'hh_n1', at: T0 });
-  assert.strictEqual(r.commit.handheld_answered.kind, 'reject_requested');
+  assert.strictEqual(r.commit.handheld_answered.kind, 'rejected');
   assert.ok(r.commit.handheld_ops.op_rej00001);
   assert.strictEqual(code(applyAction(r.commit, req('reject', { reason: 'otro' }, 'op_rej00002'), ctx('hh_n1', 'z'))), 'already_requested');
 });

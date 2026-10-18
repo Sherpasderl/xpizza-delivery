@@ -5,7 +5,7 @@
  *   location is order_surface === 'handheld'. Unchanged: kds/absent surfaces, orders with no restaurant_id (legacy), and
  *   dispatcher-only writers. A dual-role (kitchen + dispatcher) identity's stale write still PASSES (the order-level dispatcher
  *   grant cascades) — the evidence for BC1: A1 must refuse the switch while merchant-gate.dualRoleConflicts() is non-empty.
- *   handhelds / order_surface: server-only (read + write). merchant_requests: server-only writes, dispatcher reads.
+ *   handhelds / order_surface: server-only (read + write). merchant_reject_notices (A-R1 repair markers): server-only read + write.
  */
 require('./_emulator-required')('database');
 
@@ -41,7 +41,7 @@ const order = (rid, status = 'new') => ({ order_id: 'x', status, payment_method:
         o_plain: order('tb_sur'),                    // no surface node at all
         o_legacy: order(null),                       // legacy: no restaurant_id
       },
-      merchant_requests: { tb_norte: { o_norte: { type: 'reject', state: 'open', op_id: 'op1' } } },
+      merchant_reject_notices: { o_norte: { stranded: 1 } },
     });
   });
   await seed();
@@ -69,16 +69,15 @@ const order = (rid, status = 'new') => ({ order_id: 'x', status, payment_method:
   for (const [who, db] of [['dispatcher', disp], ['manager', mgr], ['kitchen', kitchen], ['device', device], ['driver', driver], ['customer', cust], ['anon', anon]]) {
     await no(`${who} CANNOT write restaurants/tb_norte/handhelds/x`, db.ref(`restaurants/tb_norte/handhelds/${DEVICE}/revoked`).set(false));
     await no(`${who} CANNOT write restaurants/tb_norte/order_surface`, db.ref('restaurants/tb_norte/order_surface').set('kds'));
-    await no(`${who} CANNOT write merchant_requests`, db.ref('merchant_requests/tb_norte/o_norte/state').set('done'));
-    await no(`${who} CANNOT write through a ROOT multi-path update`, db.ref().update({ 'restaurants/tb_norte/order_surface': 'kds', 'merchant_requests/tb_norte/o_norte': null }));
+    await no(`${who} CANNOT write merchant_reject_notices`, db.ref('merchant_reject_notices/o_norte/stranded').set(null));
+    await no(`${who} CANNOT write through a ROOT multi-path update`, db.ref().update({ 'restaurants/tb_norte/order_surface': 'kds', 'merchant_reject_notices/o_norte': null }));
   }
   // handhelds + order_surface are SERVER-ONLY for reads too (restaurants-rules.guard allow-list; clients use callables)
   for (const [who, db] of [['dispatcher', disp], ['manager', mgr], ['kitchen', kitchen], ['device', device], ['driver', driver], ['customer', cust], ['anon', anon]]) {
     await no(`${who} CANNOT read the device registry`, db.ref('restaurants/tb_norte/handhelds').get());
     await no(`${who} CANNOT read order_surface`, db.ref('restaurants/tb_norte/order_surface').get());
   }
-  await ok('dispatcher reads merchant_requests', disp.ref('merchant_requests/tb_norte').get());
-  for (const [who, db] of [['manager', mgr], ['kitchen', kitchen], ['device', device], ['customer', cust], ['anon', anon]]) await no(`${who} CANNOT read merchant_requests`, db.ref('merchant_requests/tb_norte').get());
+  for (const [who, db] of [['dispatcher', disp], ['manager', mgr], ['kitchen', kitchen], ['device', device], ['driver', driver], ['customer', cust], ['anon', anon]]) await no(`${who} CANNOT read merchant_reject_notices`, db.ref('merchant_reject_notices/o_norte').get());
 
   await env.cleanup();
   console.log(`\nmerchant-rules: OK (${n})`);

@@ -1,5 +1,6 @@
 'use strict';
-// H1a (PLAN-H1a r2 T8) — the handheld's index.js footprint is ONE delimited block, nothing else. Run: node h1-wiring.guard.test.js
+// H1a (PLAN-H1a r2 T8 + A-R1) — the handheld's index.js footprint is ONE delimited block plus A-R1's five one-line hunks,
+// nothing else. Run: node h1-wiring.guard.test.js
 //   1. unapplyH1Index(index.js) === the pre-H1a index.js. The base is the parent of the commit that introduced the block
 //      (found with git log -S), or HEAD's index.js while the block is still uncommitted.
 //   2. Sensitivity: a byte inside the block, a missing delimiter, a second block and a byte outside are each caught.
@@ -8,7 +9,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { unapplyH1Index, BEGIN, END } = require('./tools/h1-inverse');
+const { unapplyH1Index, BEGIN, END, INDEX_HUNKS } = require('./tools/h1-inverse');
 
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
 const real = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
@@ -33,12 +34,31 @@ const outside = real.replace('exports.getSalesStats = portalFunctions.getSalesSt
 assert.notStrictEqual(unapplyH1Index(outside), base, 'a byte OUTSIDE the block survives the inverse and fails the base pin');
 ok('sensitivity: missing begin, missing end, a second block and a byte outside are each caught');
 
+// A-R1 hunks: each occurs exactly once; a missing or duplicated hunk, or a byte changed inside one, is caught.
+assert.strictEqual(INDEX_HUNKS.length, 5, 'A-R1 adds exactly five index.js hunks');
+for (const [i, h] of INDEX_HUNKS.entries()) {
+  assert.strictEqual(real.split(h.now).length - 1, 1, `hunk ${i} present exactly once`);
+  assert.ok(h.now.includes('// h1 A-R1'), `hunk ${i} carries its marker`);
+  assert.throws(() => unapplyH1Index(real.replace(h.now, h.was)), /occurs 0 times/, `hunk ${i} removed → caught`);
+  assert.throws(() => unapplyH1Index(real.replace(h.now, h.now + h.now)), /occurs 2 times/, `hunk ${i} duplicated → caught`);
+  const mutated = real.replace(h.now, h.now.replace('heldByReject', 'heldByRejct').replace('safeRejectRepair', 'safeRejectRepar'));
+  assert.notStrictEqual(mutated, real);
+  assert.throws(() => unapplyH1Index(mutated), /occurs 0 times/, `hunk ${i} edited → caught`);
+}
+const marked = real.split('\n').filter((l) => l.includes('h1 A-R1'));
+assert.strictEqual(marked.length, 5, 'exactly five A-R1-marked lines in index.js (no stray hook call)');
+assert.strictEqual(real.split('merchantHooks.').length - 1, 5, 'merchantHooks is called only from the five hunks');
+ok('A-R1: five hunks, each exactly once; removed / duplicated / edited hunks are each caught');
+
 const lines = block.split('\n').slice(1, -1).filter((l) => l && !l.startsWith('//'));
-assert.strictEqual(lines[0], "const merchantFunctions = require('./merchant/merchant-wiring');");
-const wiring = require('./merchant/merchant-wiring');
+assert.strictEqual(lines[0], "const merchantFunctions = require('./merchant/merchant-wiring')({ cancelCore: (args) => cancelOrderCore(cancelDeps(getDatabase()), args) });");
+assert.strictEqual(lines[1], "const merchantHooks = require('./merchant/merchant-hooks');");
+const wiring = require('./merchant/merchant-wiring')({ cancelCore: async () => ({}) });
+assert.throws(() => require('./merchant/merchant-wiring')({}), /cancelCore must be injected/, 'the factory refuses without the core');
 const names = Object.keys(wiring).sort();
-assert.deepStrictEqual(lines.slice(1).slice().sort(), names.map((k) => `exports.${k} = merchantFunctions.${k};`).sort(), 'exactly one re-export per merchant-wiring function, nothing else');
+assert.deepStrictEqual(lines.slice(2).slice().sort(), names.map((k) => `exports.${k} = merchantFunctions.${k};`).sort(), 'exactly one re-export per merchant-wiring function, nothing else');
 for (const k of names) assert.ok(/^merchant[A-Z]/.test(k) && !/driver/i.test(k), `name ${k}: merchant-prefixed, never "Driver" (driver-callable guard)`);
-ok(`the block only re-exports merchant-wiring by name (${names.length} functions); no name contains "Driver"`);
+assert.ok(!names.includes('merchantPublishRejectIntent') && !names.includes('merchantClearOnDecline'), 'A-R1 dropped the reject triggers');
+ok(`the block injects the existing cancel core, loads the hooks, and only re-exports merchant-wiring by name (${names.length} functions)`);
 
 console.log(`\nh1-wiring.guard: OK (${n})`);

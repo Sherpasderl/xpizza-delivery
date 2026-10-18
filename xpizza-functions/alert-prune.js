@@ -26,8 +26,12 @@ function alertOrderIds(alert) {
 // refunding_paid_after_close, AND a normally-materialized order — is kept: a materialized order can
 // still be a live breach (e.g. confirmed_without_verified_payment), so we NEVER auto-nuke on
 // materialization (money-integrity alerts must survive) — narrower than the plan's Task-8 wording.
-function orderStillFlagged(order) {
+// H1a A-R1: a handheld-reject notice (payment_handheld_reject_*) is KEPT while its order's refund is still pending, even
+// though the order is cancelled — checked BEFORE the cancelled return. Every other alert is unchanged.
+function orderStillFlagged(order, alert) {
   if (!order) return false;
+  const handheldReject = !!alert && typeof alert.type === 'string' && alert.type.startsWith('payment_handheld_reject_');
+  if (handheldReject && order.payment_status === 'refund_pending') return true;
   if (order.status === 'cancelled') return false;
   if (order.payment_status === 'refunded' || order.payment_status === 'abandoned') return false;
   return true;
@@ -40,7 +44,7 @@ function alertsToPrune(alerts, orders) {
   for (const [key, alert] of Object.entries(alerts || {})) {
     const ids = alertOrderIds(alert);
     if (ids.length === 0) continue;
-    if (ids.every((id) => !orderStillFlagged((orders || {})[id]))) prune.push(key);
+    if (ids.every((id) => !orderStillFlagged((orders || {})[id], alert))) prune.push(key);
   }
   return prune;
 }

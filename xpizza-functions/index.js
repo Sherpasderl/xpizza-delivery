@@ -3983,7 +3983,7 @@ exports.sweepStuckOrders = onSchedule(
       } else if (action === 'clear') {
         await db.ref(`staff_push_alerted/${orderId}`).remove();   // recovered/terminal → drop the marker
       }
-    }
+    } await merchantHooks.safeRejectRepair(db, orders, now);   // h1 A-R1 — never throws; after the existing loop, same snapshot
   }
 );
 
@@ -6179,7 +6179,7 @@ exports.autoAssignOnOrderCreate = onValueWritten(
       console.log(`autoAssign: ${orderId} status is '${orderNow.status}' (not auto-assignable), skipping`);
       return;
     }
-    if (pickup.status === 'cancelled') {
+    if (merchantHooks.heldByReject(orderNow)) { console.log(`autoAssign: ${orderId} held (handheld reject / cancel claim), skipping`); return; } if (pickup.status === 'cancelled') {   // h1 A-R1
       console.log(`autoAssign: ${orderId} pickup task is cancelled, skipping`);
       return;
     }
@@ -6353,7 +6353,7 @@ exports.monitorAssignmentTimeout = onValueWritten(
     // Decide: try one more driver, or escalate to dispatcher?
     const attempts = task.assignment_attempts || 1;
 
-    if (attempts >= MAX_ATTEMPTS_BEFORE_TAKEOVER) {
+    if (attempts >= MAX_ATTEMPTS_BEFORE_TAKEOVER || merchantHooks.heldByReject(orderForTimeout)) {   // h1 A-R1: a held order → takeover, never a reassign
       // Two strikes — human takeover. Unassign and alert.
       console.warn(`timeout-monitor: ${taskId} has ${attempts} attempts, escalating to dispatcher`);
       const orderSnap = await db.ref(`orders/${orderId}`).once('value');
@@ -6574,7 +6574,7 @@ exports.sweepPendingOrders = onSchedule(
 
     for (const orderId of Object.keys(orders)) {
       const order = orders[orderId];
-      if (!sweepDecision(order, tasks, now, opts).sweep) continue;
+      if (!sweepDecision(order, tasks, now, opts).sweep || merchantHooks.heldByReject(order)) continue;   // h1 A-R1
 
       // Best currently-eligible driver — normal ranking (fewest orders → priority → nearest), no dibs.
       const { hubLat, hubLng } = resolveAssignHub(order);
@@ -6610,7 +6610,7 @@ exports.sweepPendingOrders = onSchedule(
         const delNow = delNowSnap.val();
         const pickupNow = pickupNowSnap.val();
         const stillOurs = !!delNow && delNow.assigned_driver_id === chosen.driverId && delNow.status !== 'cancelled';
-        const stillSweepable = !!orderNow && AUTO_ASSIGNABLE_STATUSES.has(orderNow.status);
+        const stillSweepable = !!orderNow && AUTO_ASSIGNABLE_STATUSES.has(orderNow.status) && !merchantHooks.heldByReject(orderNow);   // h1 A-R1
         // Finding 2 (cancel-revival): also require a FRESH pickup that is still unassigned and not cancelled.
         // cancelOrder() flips both task statuses to 'cancelled' but does NOT touch delivery/assigned_driver_id,
         // so our claim survives a cancel — without this guard the unconditional finalize would REVIVE both
@@ -7242,8 +7242,9 @@ exports.prepStatsDaily = onSchedule(
 
 /* h1:begin */
 // H1a (PLAN-H1a r2) — the SUNMI merchant handheld: device-scoped, atomic, idempotent order actions; busy / pause / agotado;
-// device pairing + revocation; the reject-request publisher. DARK until A1 sets the gates (merchant/merchant-gate.js).
-const merchantFunctions = require('./merchant/merchant-wiring');
+// device pairing + revocation; reject → the existing cancel core (A-R1). DARK until A1 sets the gates (merchant/merchant-gate.js).
+const merchantFunctions = require('./merchant/merchant-wiring')({ cancelCore: (args) => cancelOrderCore(cancelDeps(getDatabase()), args) });
+const merchantHooks = require('./merchant/merchant-hooks');
 exports.merchantAccept = merchantFunctions.merchantAccept;
 exports.merchantMoreTime = merchantFunctions.merchantMoreTime;
 exports.merchantReady = merchantFunctions.merchantReady;
@@ -7257,6 +7258,4 @@ exports.merchantPairDevice = merchantFunctions.merchantPairDevice;
 exports.merchantRevokeDevice = merchantFunctions.merchantRevokeDevice;
 exports.merchantHeartbeat = merchantFunctions.merchantHeartbeat;
 exports.merchantMyLocations = merchantFunctions.merchantMyLocations;
-exports.merchantPublishRejectIntent = merchantFunctions.merchantPublishRejectIntent;
-exports.merchantClearOnDecline = merchantFunctions.merchantClearOnDecline;
 /* h1:end */

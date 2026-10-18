@@ -40,4 +40,20 @@ assert.strictEqual(orderStillFlagged({ status: 'new', payment_status: 'confirmed
 assert.deepStrictEqual(alertsToPrune({}, {}), []); ok('no alerts → []');
 assert.deepStrictEqual(alertsToPrune(null, null), []); ok('null-safe → []');
 
+// H1a A-R1: payment_handheld_reject_* alerts survive a cancelled order while its refund is pending — and only then.
+{
+  const hr = { type: 'payment_handheld_reject_refund_pending', detail: { orderId: 'R1' } };
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }, hr), true); ok('handheld reject + cancelled + refund_pending → KEEP');
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refunded' }, hr), false); ok('handheld reject + cancelled + refunded → dismiss');
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled' }, { type: 'payment_handheld_reject_stranded' }), false); ok('handheld reject + cancelled (no refund pending) → dismiss');
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }, { type: 'payment_paid_after_close' }), false); ok('a NON-handheld alert on cancelled + refund_pending → dismiss, as before');
+  assert.strictEqual(orderStillFlagged({ status: 'cancelled', payment_status: 'refund_pending' }), false); ok('no alert argument → unchanged behaviour');
+  const prune = alertsToPrune({
+    k1: hr,
+    k2: { type: 'payment_handheld_reject_manual_review', detail: { orderId: 'R2' } },
+    k3: { type: 'payment_paid_after_close', detail: { orderId: 'R1' } },
+  }, { R1: { status: 'cancelled', payment_status: 'refund_pending' }, R2: { status: 'cancelled', payment_status: 'refunded' } }).sort();
+  assert.deepStrictEqual(prune, ['k2', 'k3']); ok('alertsToPrune passes the alert through: the refund-pending handheld notice is kept, the rest pruned');
+}
+
 console.log(`\n${n} passed`);

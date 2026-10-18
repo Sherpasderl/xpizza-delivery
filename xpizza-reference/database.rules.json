@@ -373,7 +373,7 @@
     "otp":          { ".read": false, ".write": false },
     "otp_ip":       { ".read": false, ".write": false },
     "phone_index":  { ".read": false, ".write": false },
-    "merchant_requests": { ".read": "auth != null && root.child('dispatchers').child(auth.uid).exists()", ".write": false },
+    "merchant_reject_notices": { ".read": false, ".write": false },
     "deleted_uids": { ".read": false, ".write": false }
   }
 }

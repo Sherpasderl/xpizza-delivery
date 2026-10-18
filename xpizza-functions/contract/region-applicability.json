@@ -10676,7 +10676,7 @@
     "site": "await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });",
     "siteSha": "e6465b2c76f41d4192520d361551391a2f3319842e1aac7916e7a95ac5a41249",
     "scope": "xpizza-functions/index.js#sweepStuckOrders",
-    "scopeSha": "2753d92b4254c6a2c34ae2bed5344290e7497d1bccc9b99ea225226e0d55ca11"
+    "scopeSha": "16cb5dee702fd337b0f936d9f9bf5f21bc519b03d08a8e4f20763bec2dfb51cd"
    },
    "guards": [
     {
@@ -11925,7 +11925,7 @@
     "site": "await fanoutStaffPush(db, { ...formatStuck(order, result), tag: `stuck:${orderId}`, data: { orderId } });",
     "siteSha": "e6465b2c76f41d4192520d361551391a2f3319842e1aac7916e7a95ac5a41249",
     "scope": "xpizza-functions/index.js#sweepStuckOrders",
-    "scopeSha": "2753d92b4254c6a2c34ae2bed5344290e7497d1bccc9b99ea225226e0d55ca11"
+    "scopeSha": "16cb5dee702fd337b0f936d9f9bf5f21bc519b03d08a8e4f20763bec2dfb51cd"
    },
    "guards": [
     {
@@ -11993,7 +11993,7 @@
     "site": "const result = isStuck(order, deliveryTask, now, thresholds);",
     "siteSha": "f6d8218d4480062d2a58f64f1fc06cb934b9822b602893eff9aa6eabb1d12976",
     "scope": "xpizza-functions/index.js#sweepStuckOrders",
-    "scopeSha": "2753d92b4254c6a2c34ae2bed5344290e7497d1bccc9b99ea225226e0d55ca11"
+    "scopeSha": "16cb5dee702fd337b0f936d9f9bf5f21bc519b03d08a8e4f20763bec2dfb51cd"
    },
    "guards": [
     {
