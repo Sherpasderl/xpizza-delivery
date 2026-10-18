@@ -80,7 +80,9 @@ function body(oid, name, method) {
 // pending_payment window). Exact multiset over orders / tasks / drivers / driver_cash / order_tracking.
 const Q = (path, constraints = []) => `value:${path}${constraints.length ? JSON.stringify(constraints) : ''}`;
 const PAGES = [
-  ['R1', 'xpizza-kitchen', 'https://xpizzakitchen.netlify.app/', ['orders', 'menus/x_pizza'], [Q('orders'), Q('orders')]],
+  // F2 Q2 (PLAN-F2-query-rules §2; reviewed with 2e): the KDS reads its location's orders through ONE location query — the live
+  // view and Programados both on orderByChild('restaurant_id').equalTo(<this KDS's rid>) — never the whole /orders collection
+  ['R1', 'xpizza-kitchen', 'https://xpizzakitchen.netlify.app/', ['orders', 'menus/x_pizza'], [Q('orders', [['orderByChild', 'restaurant_id'], ['equalTo', 'x_pizza']]), Q('orders', [['orderByChild', 'restaurant_id'], ['equalTo', 'x_pizza']])]],
   ['R2', 'xpizza-dispatch', 'https://xpizzadispatch.netlify.app/', ['orders', 'tasks', 'drivers', 'driver_cash'], [Q('drivers'), Q('tasks'), Q('orders'), Q('driver_cash'), Q('orders'), Q('orders', [['orderByChild', 'status'], ['equalTo', 'pending_payment']])]],
   ['R3', 'xpizza-dispatch-mobile', 'https://xpizzadispatchlite.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('orders'), Q('orders'), Q('drivers'), Q('tasks')]],
   ['R4', 'xpizza-driver', 'https://xpizzadriver.netlify.app/', ['orders', 'tasks', 'drivers'], [Q('drivers'), Q('tasks'), Q('orders')]],
