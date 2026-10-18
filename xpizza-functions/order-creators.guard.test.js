@@ -30,7 +30,9 @@ const BUILDERS = new Set(['buildCreateOrderUpdates', 'buildScheduledOrderRecord'
 // ── A: creation sinks from the R3 write inventory ──
 const census = JSON.parse(fs.readFileSync(path.join(__dirname, 'contract', 'census.json'), 'utf8'));
 const fields = new Map();
-for (const w of census.writes) { const [file, fn, field] = w.key.split('#'); const s = `${file}#${fn}`; if (!fields.has(s)) fields.set(s, new Set()); fields.get(s).add(field); }
+// NB (2e): B4b — a .transaction() on a FULLY dynamic first path segment is not inventoried (R3 known limitation); a creator
+// written that way would escape check A until B4b lands.
+for (const w of census.writes) { assert.strictEqual(w.key.split('#').length, 4, `write key ${w.key} is exactly file#fn#field#how`); const [file, fn, field] = w.key.split('#'); const s = `${file}#${fn}`; if (!fields.has(s)) fields.set(s, new Set()); fields.get(s).add(field); }
 const creators = [...fields].filter(([, f]) => f.has('order_id') || f.has('created_at')).map(([s]) => s).sort();
 assert.deepStrictEqual(creators, ['xpizza-functions/index.js#chargeOnlineApp.all', 'xpizza-functions/index.js#createOrderApp.all'], `creation sinks: ${creators.join(', ')}`);
 for (const c of creators) assert.ok(fields.get(c).has('restaurant_id'), `${c} writes restaurant_id`);

@@ -2237,6 +2237,11 @@
    "status": "via",
    "target": "xpizza-orders/index.html#showSuccess@xpizza-orders/index.html<script@2>#submitOrder~2",
    "reason": "S5: which ladder stage the #s5 arrival line shows"
+  },
+  "xpizza-kitchen/index.html<script@0>#startOrdersSubscription>anon>anon@self": {
+   "status": "via",
+   "target": "xpizza-kitchen/index.html<script@0>#renderTicket@self",
+   "reason": "F2 Q2: the cancelled-orders-in-view filter (estado) selects the per-order cancel-ack listeners → an archived / recalled cancelado ticket moves between tabs on the live board"
   }
  }
 }
