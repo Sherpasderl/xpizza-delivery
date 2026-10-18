@@ -172,6 +172,19 @@ test('codex r2 P2: freshness is judged on the clock read AFTER the reads (a slow
   assert.deepStrictEqual([r.driver_location, r.pickup_location, r.driver_first_name], [null, null, 'Ana'], '60 s at the start, 91 s when judged');
 });
 
+test('codex r3 P2: a slow DELIVERY-task read (driverAssigned, after the driver read) crossing 90 s → both locations null', async () => {
+  const db = createFakeDb(world());
+  db.put('tasks/o1_pickup', { assigned_driver_id: 'drv', status: 'assigned', destination_lat: 15.49, destination_lng: -88.01 });
+  db.put('tasks/o1_delivery', { assigned_driver_id: 'drv', status: 'assigned' });
+  db.put('drivers/drv', { name: 'Ana', status: 'assigned', current_task_id: 'o1_pickup', lat: 15.5, lng: -88.02, last_ping: T0 - 89000 });
+  let t = T0;
+  const slow = { ...db, ref: (p) => { const r = db.ref(p); return p === 'tasks/o1_delivery' ? { ...r, once: async (...a) => { const v = await r.once(...a); t += 2000; return v; } } : r; } };
+  const r = await M.orderState({ db: slow, resolveBrand, now: () => t, HttpsError }, dev(), { rid: 'tb_norte', oid: 'o1' });
+  assert.deepStrictEqual([r.driver_location, r.pickup_location, r.driver_assigned], [null, null, true], '89 s before the delivery read, 91 s when judged');
+  const fast = await M.orderState(deps(db, T0), dev(), { rid: 'tb_norte', oid: 'o1' });
+  assert.ok(fast.driver_location && fast.pickup_location, 'the control: 89 s with no delay → both present');
+});
+
 test('unauthenticated → unauthenticated; revoked device → permission-denied', async () => {
   const db = createFakeDb(world());
   await throwsCode(call(db, 'accept', { rid: 'tb_norte', oid: 'o1', prep_min: 20, op_id: 'op_u0000001' }, null), 'unauthenticated');

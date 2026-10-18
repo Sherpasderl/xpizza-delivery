@@ -73,28 +73,30 @@ async function driverAssigned(db, oid) {
 const STALE_PING_MS = 90 * 1000;                                   // = index.js STALE_PING_MS / dispatch STALE_PING_THRESHOLD_S
 const PICKUP_OPEN = new Set(['assigned', 'accepted', 'in_progress']);
 const NO_DRIVER = Object.freeze({ driver_first_name: null, driver_at_restaurant: false, driver_location: null, pickup_location: null });
-async function pickupDriver(db, oid, now) {
+// READ phase only: returns finish(nowMs) → the fields. orderState calls finish with ONE clock taken after EVERY read (codex r3 P2).
+const noDriver = () => NO_DRIVER;
+async function pickupDriver(db, oid) {
   try {
     const pickup = await readVal(db, `tasks/${oid}_pickup`);
     const id = pickup && typeof pickup === 'object' ? pickup.assigned_driver_id : null;
-    if (typeof id !== 'string' || !id || !PICKUP_OPEN.has(pickup.status)) return NO_DRIVER;
+    if (typeof id !== 'string' || !id || !PICKUP_OPEN.has(pickup.status)) return noDriver;
     const d = await readVal(db, `drivers/${id}`);
-    if (!d || typeof d !== 'object' || Array.isArray(d)) return NO_DRIVER;
-    const first = typeof d.name === 'string' ? (d.name.trim().split(/\s+/)[0] || null) : null;
-    const onThisPickup = d.current_task_id === `${oid}_pickup`;
-    const nowMs = now();                              // codex r2 P2: the clock is read AFTER the reads, never before them
-    const fresh = typeof d.last_ping === 'number' && Number.isFinite(d.last_ping) && nowMs - d.last_ping >= 0 && nowMs - d.last_ping <= STALE_PING_MS;
-    const coords = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-    const location = fresh && coords(d.lat, d.lng) ? { lat: d.lat, lng: d.lng, at: d.last_ping } : null;
-    // advisor: the ETA destination = THIS order's own pickup hub (the task's destination), only together with a live location
-    const dest = location && coords(pickup.destination_lat, pickup.destination_lng) ? { lat: pickup.destination_lat, lng: pickup.destination_lng } : null;
-    return {
-      driver_first_name: first ? first.slice(0, 40) : null,
-      driver_at_restaurant: d.status === 'at_restaurant' && onThisPickup,
-      driver_location: location,
-      pickup_location: dest,
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return noDriver;
+    return (nowMs) => {
+      const first = typeof d.name === 'string' ? (d.name.trim().split(/\s+/)[0] || null) : null;
+      const fresh = typeof d.last_ping === 'number' && Number.isFinite(d.last_ping) && nowMs - d.last_ping >= 0 && nowMs - d.last_ping <= STALE_PING_MS;
+      const coords = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+      const location = fresh && coords(d.lat, d.lng) ? { lat: d.lat, lng: d.lng, at: d.last_ping } : null;
+      // advisor: the ETA destination = THIS order's own pickup hub (the task's destination), only together with a live location
+      const dest = location && coords(pickup.destination_lat, pickup.destination_lng) ? { lat: pickup.destination_lat, lng: pickup.destination_lng } : null;
+      return {
+        driver_first_name: first ? first.slice(0, 40) : null,
+        driver_at_restaurant: d.status === 'at_restaurant' && d.current_task_id === `${oid}_pickup`,
+        driver_location: location,
+        pickup_location: dest,
+      };
     };
-  } catch (_) { return NO_DRIVER; }
+  } catch (_) { return noDriver; }
 }
 
 // { outcome, fresh }: fresh = THIS call committed the order transaction (false for a receipt replay or an abort). A-R1's
@@ -142,8 +144,10 @@ async function orderState(deps, auth, data) {
   let base = null;
   try { base = V.vPrepBase(await readVal(db, `restaurants/${rid}/identity/prep_default_min`)); } catch (_) { base = null; }
   const pickupOrder = o.order_type === 'pickup';
-  const driver = pickupOrder ? NO_DRIVER : await pickupDriver(db, oid, deps.now);
-  return { driver_assigned: pickupOrder ? false : await driverAssigned(db, oid), prep_default_min: base, ...driver };
+  const finish = pickupOrder ? noDriver : await pickupDriver(db, oid);
+  const assigned = pickupOrder ? false : await driverAssigned(db, oid);
+  const nowMs = deps.now();                           // codex r2/r3 P2: ONE clock, after EVERY read above
+  return { driver_assigned: assigned, prep_default_min: base, ...finish(nowMs) };
 }
 
 module.exports = { runOrderAction, runOrderActionDetailed, orderState, gateAndAuth, hashOf, canonical };

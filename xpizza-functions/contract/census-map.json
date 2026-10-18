@@ -597,7 +597,8 @@
   "index.js#autoAssignOnOrderCreate>anon": "dispatch",
   "index.js#monitorAssignmentTimeout>anon": "dispatch",
   "merchant/merchant-orders.js#pickupDriver": "merchant",
-  "merchant/merchant-hooks.js#releaseHeld>anon": "dispatch"
+  "merchant/merchant-hooks.js#releaseHeld>anon": "dispatch",
+  "merchant/merchant-orders.js#pickupDriver>anon": "merchant"
  },
  "pageFunctionExemptions": {
   "xpizza-orders/form-order-exists.js#renderOrderExists": "G2 order_exists recovery screen — reads ONLY body.order_id of the typed 409 order_exists refusal: the client's OWN request id echoed by the server, used for the #ABCD reference (orderRef) and the WhatsApp prefill; never an amount, never a persisted-order fact (no persisted order exists for this request); the server detail is never read",
