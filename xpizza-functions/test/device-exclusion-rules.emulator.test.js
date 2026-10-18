@@ -41,10 +41,11 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
     await db.ref().update({
       [`dispatchers/${UID}`]: true, [`kitchen/${UID}`]: true,
       [`restaurants/${RID}/kitchen_staff/${UID}`]: true, [`restaurants/${RID}/identity/name`]: 'Centro',
-      [`restaurants/${RID}/client_floor/kitchen`]: 1, [`restaurants/${RID}/availability_audit/k1`]: { at: 1 },
+      [`restaurants/${RID}/availability_audit/k1`]: { at: 1 },
       [`restaurants/${RID}/item_availability/k1`]: { available: true },
-      [`driver_accounts/${UID}`]: { role: 'driver' }, [`drivers/${UID}`]: { name: 'Dev Person', status: 'offline' },
+      [`driver_accounts/${UID}`]: { role: 'driver' }, [`drivers/${UID}`]: { name: 'Dev Person', status: 'off_shift', ingest_token_hash: 'h1', current_shift_id: 's1' },
       [`driver_cash/${UID}/s1/total`]: 1,
+      'orders/O3': { order_id: 'O3', status: 'delivered', restaurant_id: RID, payment_method: 'cash', delivered_by_driver_uid: 'other-drv' },
       'orders/O1': { order_id: 'O1', status: 'ready', restaurant_id: RID, payment_method: 'cash', pickup_task_id: 'O1_pickup', delivery_task_id: 'O1_delivery' },
       'tasks/O1_delivery': { order_id: 'O1', type: 'delivery', status: 'accepted', assigned_driver_id: UID },
       'tasks/O1_pickup': { order_id: 'O1', type: 'pickup', status: 'accepted', assigned_driver_id: UID },
@@ -53,7 +54,8 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
       'menus/tb_centro': { a: 1 }, 'menus/_meta': { v: 1 }, 'kds_cancel_acks/O1': { at: 1, by: UID },
       'order_control/tb_centro/current': { paused: false }, 'dispatcher_alerts/a1': { at: 1 }, 'incoming_messages/m1': { at: 1 },
       'order_predictions/O1': { m: 1 }, 'ready_time_graduation/x': 1,
-      [`staff_push/${UID}/t`]: { token: 'x' }, [`user_profiles/${UID}`]: { phone: '1' }, [`user_orders/${UID}/O1`]: true, [`user_rewards/${UID}/b`]: 1,
+      [`staff_push/${UID}/t`]: { token: 'x' }, [`user_profiles/${UID}`]: { phone: '50499998888', phone_hash: 'ph_dev', created_at: 1700000000000, last_login: 1700000000000 },
+      'drivers/drv-t': { name: 'Token Driver', status: 'off_shift', ingest_token_hash: 'h0', current_shift_id: 's1' }, [`user_orders/${UID}/O1`]: true, [`user_rewards/${UID}/b`]: 1,
     });
   });
   const human = env.authenticatedContext(UID, {}).database();
@@ -82,31 +84,87 @@ const bind = (p) => p.split('/').map((s) => (s.startsWith('$') ? BIND[s] : s)).j
   for (const p of PUBLIC) await assertSucceeds(device.ref(bind(p)).once('value'));
   pass(`${PUBLIC.length} pinned public reads: open to a device token`);
 
-  // ── own-uid and role-gated WRITES: human allowed, device denied ──
-  const W = [
-    ['own staff_push', `staff_push/${UID}/t2`, { token: 'y' }],
-    ['dispatcher: kitchen roster', `kitchen/zz_new`, true],
-    ['dispatcher: kitchen_staff', `restaurants/${RID}/kitchen_staff/zz_new`, true],
-    ['dispatcher: alert', 'dispatcher_alerts/a2', { at: 2 }],
-    ['dispatcher: incoming message', 'incoming_messages/m2', { at: 2 }],
-    ['dispatcher: tracking', 'order_tracking/tok2', { status: 'new' }],
-    ['dispatcher: config', 'config/y', 2],
-    ['dispatcher: menus', `menus/${RID}/b`, 2],
-    ['kitchen: cancel ack', 'kds_cancel_acks/O1', { at: 2, by: UID }],
-    ['dispatcher/kitchen: order status', 'orders/O1/status', 'out_for_delivery'],
-  ];
-  const humanWriteDenied = [];
-  for (const [label, p, v] of W) {
-    try { await assertSucceeds(human.ref(p).set(v)); } catch (e) { humanWriteDenied.push(`${label} (${p})`); continue; }
-    await assertFails(device.ref(p).set(v));
+  // ── WRITES (codex Q0 r1 P2-2/P2-3): every non-public .write leaf, DERIVED from the rules, has a case. Per case the DEVICE
+  //    attempt runs FIRST against the same state and the SAME value, then the control (human = the same uid without the claim,
+  //    or the svc-assigner identity for its leaves) must succeed — so a device denial can only come from the exclusion.
+  const T = (o) => ({ order_id: o.split('_')[0], type: o.endsWith('_pickup') ? 'pickup' : 'delivery', status: 'pending' });
+  const IDENT = { name: 'Centro', hub_lat: 15.5, hub_lng: -88, phone: '+504', whatsapp_instance: 'i', whatsapp_enabled: false, delivery_radius_km: 5, hours: { sun: { open: true, start: '12:00', end: '19:45' } }, active: true, version: 2 };
+  const SVC = 'svc';
+  const WRITE_CASES = {
+    '/dispatchers/$uid/.write': ['dispatchers/zz_new', true],
+    '/drivers/$driver_id/.write': [`drivers/${UID}/name`, 'Dev Person 2', { descendant: true }],
+    '/drivers/$driver_id/status/.write': [`drivers/${UID}/status`, 'available', SVC],
+    '/drivers/$driver_id/active/.write': [`drivers/${UID}/active`, false, SVC],
+    '/drivers/$driver_id/shift_started_at/.write': [`drivers/${UID}/shift_started_at`, 2, SVC],
+    '/drivers/$driver_id/last_ping/.write': [`drivers/${UID}/last_ping`, 2, SVC],
+    '/drivers/$driver_id/current_task_id/.write': [`drivers/${UID}/current_task_id`, 'O1_delivery', SVC],
+    '/drivers/$driver_id/location_source/.write': [`drivers/${UID}/location_source`, 'gps', SVC],
+    '/drivers/$driver_id/current_shift_id/.write': [`drivers/${UID}/current_shift_id`, 's1', SVC],
+    '/drivers/$driver_id/current_hub_lat/.write': [`drivers/${UID}/current_hub_lat`, 15.5, SVC],
+    '/drivers/$driver_id/current_hub_lng/.write': [`drivers/${UID}/current_hub_lng`, -88, SVC],
+    '/drivers/$driver_id/current_restaurant_id/.write': [`drivers/${UID}/current_restaurant_id`, RID, SVC],
+    '/drivers/$driver_id/current_hub_task_id/.write': [`drivers/${UID}/current_hub_task_id`, 'O1_pickup', SVC],
+    '/drivers/$driver_id/ingest_token_hash/.write': [`drivers/${UID}/ingest_token_hash`, 'h1', SVC],
+    '/staff_push/$uid/.write': [`staff_push/${UID}/t2`, { token: 'y' }, { descendant: true }],
+    '/tasks/$task_id/.write': ['tasks/O9_pickup', T('O9_pickup')],
+    '/tasks/$task_id/status/.write': ['tasks/O1_delivery/status', 'accepted', SVC],
+    '/tasks/$task_id/assigned_driver_id/.write': ['tasks/O1_delivery/assigned_driver_id', UID, SVC],
+    '/tasks/$task_id/assigned_at/.write': ['tasks/O1_delivery/assigned_at', 2, SVC],
+    '/tasks/$task_id/accepted_at/.write': ['tasks/O1_delivery/accepted_at', 2, SVC],
+    '/tasks/$task_id/assignment_deadline/.write': ['tasks/O1_delivery/assignment_deadline', 2, SVC],
+    '/tasks/$task_id/assignment_attempts/.write': ['tasks/O1_delivery/assignment_attempts', 1, SVC],
+    '/tasks/$task_id/auto_assigned/.write': ['tasks/O1_delivery/auto_assigned', true, SVC],
+    '/tasks/$task_id/half_claim_since/.write': ['tasks/O1_delivery/half_claim_since', 2, SVC],
+    '/tasks/$task_id/retry_count/.write': ['tasks/O1_delivery/retry_count', 1, SVC],
+    '/tasks/$task_id/last_swept/.write': ['tasks/O1_delivery/last_swept', 2, SVC],
+    '/orders/$order_id/.write': ['orders/O1/notes', 'n', { descendant: true }],
+    '/orders/$order_id/status/.write': ['orders/O1/status', 'out_for_delivery'],
+    '/orders/$order_id/picked_up_at/.write': ['orders/O1/picked_up_at', 2],
+    '/orders/$order_id/delivered_at/.write': ['orders/O1/delivered_at', 2],
+    '/orders/$order_id/delivered_by_driver_uid/.write': ['orders/O3/delivered_by_driver_uid', UID],
+    '/config/.write': ['config/y', 2, { descendant: true }],
+    '/dispatcher_alerts/$alert_id/.write': ['dispatcher_alerts/a2', { at: 2 }, { descendant: true }],
+    '/order_tracking/$token/.write': ['order_tracking/tok2', { status: 'new' }, { descendant: true }],
+    '/incoming_messages/$msg_id/.write': ['incoming_messages/m2', { at: 2 }, { descendant: true }],
+    '/kitchen/$uid/.write': ['kitchen/zz_new', true],
+    '/kds_cancel_acks/$order_id/.write': ['kds_cancel_acks/O1', { at: 2, by: UID }],
+    '/driver_cash/$driver_id/$shift_id/cuadre/.write': [`driver_cash/${UID}/s1/cuadre`, { cash_owed: 0, cash_order_count: 0, closed_at: 1 }],
+    // a token ROTATION is one multi-path update (the rule checks the new driver hash and that the uid is not a dispatcher)
+    '/driver_tokens/$hash/.write': ['', { 'drivers/drv-t/ingest_token_hash': 'h2', 'driver_tokens/h2': { uid: 'drv-t', shift_id: 's1' } }, { svc: true, op: 'update' }],
+    '/restaurants/$restaurant_id/identity/.write': [`restaurants/${RID}/identity`, IDENT],
+    '/restaurants/$restaurant_id/kitchen_staff/$uid/.write': [`restaurants/${RID}/kitchen_staff/zz_new`, true],
+    '/restaurants/$restaurant_id/item_availability/$key/.write': [`restaurants/${RID}/item_availability/k2`, { available: true, updated_at: 1 }],
+    '/restaurants/$restaurant_id/availability_audit/$key/.write': [`restaurants/${RID}/availability_audit/k2`, { at: 2 }],
+    '/menus/$rid/.write': [`menus/${RID}/b`, 2, { descendant: true }],
+    '/user_profiles/$uid/.write': [`user_profiles/${UID}`, { name: 'Dev' }, { op: 'update' }],
+  };
+  const writeLeaves = [];
+  (function walkW(node, p) {
+    for (const [k, v] of Object.entries(node)) {
+      if (k === '.write' && v !== false) writeLeaves.push(`${p}/.write`);
+      else if (v && typeof v === 'object' && !k.startsWith('.')) walkW(v, `${p}/${k}`);
+    }
+  })(RULES, '');
+  assert.deepStrictEqual(writeLeaves.filter((l) => !WRITE_CASES[l]).sort(), [], 'every non-false .write leaf in the rules has a case (a new write leaf must add one)');
+  assert.deepStrictEqual(Object.keys(WRITE_CASES).filter((l) => !writeLeaves.includes(l)).sort(), [], 'no stale case (each names a real write leaf)');
+  const controlFailed = []; let descendants = 0;
+  for (const leaf of writeLeaves) {
+    const [p, v, opt] = WRITE_CASES[leaf];
+    const svc = opt === SVC || !!(opt && opt.svc);
+    const dev = svc ? svcDevice : device;
+    const ctl = svc ? svcHuman : human;
+    const at = (db) => (p === '' ? db.ref() : db.ref(p));
+    const op = (db) => (opt && opt.op === 'update' ? at(db).update(v) : at(db).set(v));
+    await assertFails(op(dev));                                              // device FIRST, same state, same value
+    try { await assertSucceeds(op(ctl)); } catch (e) { controlFailed.push(`${leaf} (${p}): ${String(e.message || e).slice(0, 80)}`); continue; }
+    if (opt && opt.descendant) {
+      await assertFails(dev.ref(`${p}/zz_desc`).set(1));
+      await assertSucceeds(ctl.ref(`${p}/zz_desc`).set(1));
+      descendants += 1;
+    }
   }
-  assert.deepStrictEqual(humanWriteDenied, [], `human write controls must pass: ${humanWriteDenied.join('; ')}`);
-  pass(`${W.length} own-uid / role-gated writes: the human control writes each; the device token (same uid + roles) is DENIED`);
-
-  // ── svc-assigner identity: the service keeps its leaves; a device claim on that uid is denied ──
-  await assertSucceeds(svcHuman.ref(`drivers/${UID}/status`).set('available'));
-  await assertFails(svcDevice.ref(`drivers/${UID}/status`).set('offline'));
-  pass('svc-assigner leaf write: the service identity is allowed; the same uid carrying a device claim is DENIED');
+  assert.deepStrictEqual(controlFailed, [], `every control write must succeed (else its device cell is vacuous):\n  ${controlFailed.join('\n  ')}`);
+  pass(`${writeLeaves.length} write leaves (derived from the rules; each with a case): the DEVICE attempt — same uid + roles (or the svc identity + claim), same state, same value — is DENIED, then the control succeeds; ${descendants} inherited-descendant writes likewise`);
 
   await env.cleanup();
   console.log(`device-exclusion-rules.emulator: OK (${n})`);

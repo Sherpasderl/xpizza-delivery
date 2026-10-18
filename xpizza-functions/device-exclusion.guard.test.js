@@ -10,6 +10,8 @@
  *   (iii) DEVICE — the exact (path, alternative) is on the pinned DEVICE list and its chain begins `auth.token.handheld === true`
  *                  (empty until Q6 compiles the device query clause in).
  * `false` grants nothing. Anything else fails — finding the exclusion "somewhere" in a compound expression is not enough.
+ * A TERNARY (`?:` outside quotes) is REJECTED outright (codex Q0 r1 P2-1): `x && EXCL && c ? a : b` parses as `(x && EXCL && c) ? a : b`,
+ * so the exclusion would only guard the condition. Grants must be written without `?:`.
  */
 const fs = require('fs');
 const path = require('path');
@@ -79,16 +81,28 @@ function leavesOf(rules) {
   })(rules, '');
   return out;
 }
+// a `?` outside quotes (RTDB's only use of `?` is the ternary operator)
+function hasTernary(expr) {
+  let q = null;
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (q) { if (c === '\\') { i++; continue; } if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    if (c === '?') return true;
+  }
+  return false;
+}
 // every violation of the contract (empty = compliant)
-function violations(rules) {
+function violations(rules, device = DEVICE) {
   const bad = [];
   for (const { leaf, value } of leavesOf(rules)) {
     if (value === false) continue;
     if (PUBLIC.includes(leaf)) { if (value !== true) bad.push(`${leaf}: a PUBLIC leaf must be exactly true`); continue; }
     if (typeof value !== 'string') { bad.push(`${leaf}: non-string grant ${JSON.stringify(value)} (public leaves must be pinned)`); continue; }
+    if (hasTernary(value)) { bad.push(`${leaf}: a ternary ?: is not allowed in a grant (the exclusion would only guard its condition)`); continue; }
     for (const a of alternatives(value)) {
       if (a.conj.includes(EXCL)) continue;
-      const dev = DEVICE.find((d) => d.leaf === leaf && d.alternative === a.text);
+      const dev = device.find((d) => d.leaf === leaf && d.alternative === a.text);
       if (dev && a.conj[0] === 'auth.token.handheld === true') continue;
       bad.push(`${leaf}: alternative lacks the device exclusion — ${a.text.slice(0, 140)}`);
     }
@@ -116,7 +130,9 @@ assert.strictEqual(violations(R({ '.read': `auth != null && (${EXCL} || a)` })).
 assert.strictEqual(violations(R({ '.read': true })).length, 1, 'an unpinned true grant fails');
 assert.deepStrictEqual(violations(R({ '.read': false, '.write': false })), []);
 assert.strictEqual(violations(R({ '.read': 'auth.token.handheld === true && query.orderByChild === \'restaurant_id\'' })).length, 1, 'a device alternative must be pinned');
-ok('contract: unguarded human alternative / top-level || escape / nested exclusion / unpinned true / unpinned device alternative each fail');
+assert.strictEqual(violations(R({ '.read': `auth != null && ${EXCL} && false ? false : true` })).length, 1, 'codex Q0 r1: a device-permitting ternary is rejected');
+assert.strictEqual(violations(R({ '.read': `auth != null && ${EXCL} && x === 'a?b'` })).length, 0, 'a ? inside quotes is not a ternary');
+ok('contract: unguarded human alternative / top-level || escape / nested exclusion / unpinned true / unpinned device alternative / a ternary each fail');
 
 // ── the real rules ──
 const CANON = path.join(__dirname, '..', 'xpizza-reference', 'database.rules.json');
@@ -142,4 +158,4 @@ if (base) {
 } else console.log(`  · base ${BASE} unavailable (shallow clone) — non-vacuity cell skipped`);
 
 console.log(`device-exclusion.guard: OK (${n})`);
-module.exports = { alternatives, violations };
+module.exports = { alternatives, violations, hasTernary, EXCL, PUBLIC };
