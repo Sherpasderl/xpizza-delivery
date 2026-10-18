@@ -14,5 +14,5 @@ if (base !== null) assert.strictEqual(copy.slice(4).join('\n'), base, `kds-filte
 else console.log(`  · ${BASE} unavailable (shallow clone) — byte pin skipped`);
 const root = path.join(__dirname, '..', '..');
 const importers = execFileSync('git', ['grep', '-l', 'kds-filter-pre-f2', '--', '*.js', '*.mjs', '*.html'], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean).sort();
-assert.deepStrictEqual(importers, ['xpizza-functions/access/access-census-core.js', 'xpizza-functions/access/access-census-core.test.js', 'xpizza-functions/access/kds-filter-pre-f2.guard.test.js', 'xpizza-functions/access/kds-filter-pre-f2.mjs', 'xpizza-functions/tools/access-census.js'], `only the census references the frozen filter (${importers.join(', ')})`);
-console.log('kds-filter-pre-f2.guard: OK (byte pin to the deployed pre-F2 KDS filter; referenced only by the access census)');
+assert.deepStrictEqual(importers, ['xpizza-functions/access/access-census-core.js', 'xpizza-functions/access/access-census-core.test.js', 'xpizza-functions/access/kds-filter-pre-f2.guard.test.js', 'xpizza-functions/access/kds-filter-pre-f2.mjs', 'xpizza-functions/test/kds-feed-parity.emulator.test.mjs', 'xpizza-functions/test/kds-legacy-intake-parity.emulator.test.js', 'xpizza-functions/tools/access-census.js'], `only the census (and the two Q2 parity tests, as their baseline) references the frozen filter (${importers.join(', ')})`);
+console.log('kds-filter-pre-f2.guard: OK (byte pin to the deployed pre-F2 KDS filter; referenced only by the access census + the Q2 parity tests)');
