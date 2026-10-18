@@ -65,9 +65,9 @@ function buildEnv() {
   };
   const win = { matchMedia: () => ({ matches: false }), CSS: { escape: (s) => s } };
   const XPD = { resolveReconciliation: (...a) => { resolveCalls.push(a); return new Promise((res, rej) => { xpd = { res, rej }; }); } };
-  const api = new Function('$', 'document', 'window', 'CSS', 'toast', 'XPD', 'displayOrderLabel', 'focusTrapTarget',
+  const api = new Function('$', 'document', 'window', 'CSS', 'toast', 'XPD', 'displayOrderLabel', 'focusTrapTarget', 'reconciliationOrders',
     `${reconSuccessLine}\n${pickerFocusSrc}\n${promptBlock}\n${resolveSrc}\n; return { resolveReconciliationAction, reconNotePrompt };`
-  )(getEl, doc, win, win.CSS, (m, t) => toasts.push([m, t]), XPD, (x) => String(x), () => null);
+  )(getEl, doc, win, win.CSS, (m, t) => toasts.push([m, t]), XPD, (x) => String(x), () => null, {});
   const ov = getEl('recon-note-overlay'), input = getEl('recon-note-input');
   return {
     ...api, toasts, resolveCalls, opener,

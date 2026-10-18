@@ -1316,13 +1316,24 @@ function openPicker(orderId){
     ? group(free, 'Disponibles', 'var(--mint-ink)') + group(busy, 'En entrega', 'var(--sky-ink)') + offNote
     : `<div class="empty"><b>No hay repartidores en turno</b><p>${hiddenOff ? `${hiddenOff} está${hiddenOff === 1 ? '' : 'n'} fuera de turno. Alguien tiene que entrar antes de poder asignar.` : 'Nadie está registrado todavía.'}</p></div>`;
 
+  // "Quitar repartidor" — reassign mode only (an order already has a driver). Takes the order off its
+  // driver back to the unassigned queue via the unassignOrder callable. A removal, not a driver pick, so it
+  // sits in its own panel above the lists and stays available even with zero eligible drivers (body === empty).
+  const removeBlock = pickerIsReassign ? `
+    <div class="panel" style="margin-top:14px">
+      <button class="row" type="button" data-unassign="${escapeHtml(orderId)}">
+        <span class="av empty"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M17 11h6"/></svg></span>
+        <span class="m"><b>Quitar repartidor</b><s>Dejar este pedido sin asignar</s></span>
+      </button>
+    </div>` : '';
+
   openSheet(`
     <div class="sh-nav">
       <button class="back" type="button" data-detail="${escapeHtml(orderId)}" data-back="1" aria-label="Atrás">${IC_BACK}</button>
       <h2 id="sheet-title" class="sh-h rd">Elegir repartidor</h2>
     </div>
     <div class="sh-s" style="margin-left:4px">${escapeHtml(order.customer_name || 'Cliente')}, ${escapeHtml(order.address_detected || order.address_details || '—')}</div>
-    ${body}
+    ${removeBlock}${body}
   `);
 }
 
@@ -1390,6 +1401,56 @@ async function commitAssign(orderId, driverId){
   }
 }
 
+// ── "Quitar repartidor" (unassign) — reassign-only; mirrors the reassign confirm flow, destination = Sin asignar ──
+function openUnassignConfirm(orderId){
+  const order = STORE.orders[orderId] || STORE.scheduled[orderId] || {};
+  const fromD = pickerFromDriver ? (STORE.drivers[pickerFromDriver] || {}) : null;
+  const initial = (n) => escapeHtml(String(n || '?').charAt(0).toUpperCase());
+  const fromName = escapeHtml(String((fromD && fromD.name) || 'el repartidor').split(' ')[0]);
+  openSheet(`
+    <div class="sh-nav">
+      <button class="back" type="button" data-pick="${escapeHtml(orderId)}" data-back="1" aria-label="Atrás">${IC_BACK}</button>
+      <h2 id="sheet-title" class="sh-h rd">Quitar repartidor</h2>
+    </div>
+    <div class="flow">
+      <div>${fromD
+        ? `<div class="big rd" style="background:${driverColorVar(fromD)}">${initial(fromD.name)}</div><b>${fromName}</b><s>ahora</s>`
+        : `<div class="big empty">${IC_PLUS}</div><b>Sin asignar</b><s>&nbsp;</s>`}</div>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--ink3)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+      <div><div class="big empty">${IC_PLUS}</div><b>Sin asignar</b><s>vuelve a la cola</s></div>
+    </div>
+    <div class="warn"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="var(--lilac-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:1px" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg><p>Se quita el pedido <b>${escapeHtml(displayLabel(orderId, order))}</b> de ${fromName} y vuelve a la cola, sin repartidor. Las dos patas quedan sin asignar.</p></div>
+    <button class="btn btn-d" id="unassign-yes" type="button" data-unassign-commit="${escapeHtml(orderId)}">Quitar repartidor</button>
+    <button class="btn btn-g" type="button" data-pick="${escapeHtml(orderId)}" data-back="1">Cancelar</button>
+  `);
+}
+
+let unassignBusy = false;
+async function commitUnassign(orderId){
+  if (unassignBusy) return;                         // one request per confirm (defensive; the button is also disabled)
+  unassignBusy = true;
+  const btn = $('unassign-yes');
+  if (btn) { btn.disabled = true; btn.textContent = 'Quitando…'; }
+  // FAIL-SAFE: success ONLY on res.ok === true; the two no-op copies ONLY on an explicit known reason; everything
+  // else (unknown/missing reason, non-boolean ok, null, non-object, throw) falls to the error toast. NOT assignOrder.
+  let res;
+  try { res = await XPD.unassignOrder(orderId, pickerFromDriver); }
+  catch { res = null; }
+  try {
+    if (res && res.ok === true) {
+      toast('Pedido ' + displayLabel(orderId, STORE.orders[orderId] || {}) + ' sin asignar — de vuelta en la cola');
+      closeSheet();
+    } else if (res && res.ok === false && res.reason === 'reassigned') {
+      toast('Ese pedido ya tiene otro repartidor'); closeSheet();
+    } else if (res && res.ok === false && res.reason === 'not_assigned') {
+      toast('Ese pedido ya no estaba asignado'); closeSheet();
+    } else {
+      toast('No se pudo quitar — reintentá', true);
+      if (btn) { btn.disabled = false; btn.textContent = 'Quitar repartidor'; }
+    }
+  } finally { unassignBusy = false; }
+}
+
 // ── settings ──
 function openSettings(){
   const sup = currentPushSupport();
@@ -1414,7 +1475,7 @@ function openSettings(){
 
 // ── delegated events ──
 document.addEventListener('click', (e) => {
-  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back]');
+  const el = e.target.closest?.('[data-toggle],[data-detail],[data-pick],[data-choose],[data-commit],[data-unassign],[data-unassign-commit],[data-close],[data-chip],[data-tab],[data-settheme],[data-push],[data-signout],[data-drvfocus],[data-donetoggle],[data-map],[data-back]');
   if (!el) return;
   const ds = el.dataset;
 
@@ -1439,6 +1500,8 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (ds.commit){ commitAssign(ds.order, ds.commit); return; }
+  if (ds.unassign){ sheetDir = 'push'; openUnassignConfirm(ds.unassign); return; }
+  if (ds.unassignCommit){ commitUnassign(ds.unassignCommit); return; }
   if (ds.close){ closeSheet(); return; }
   if (ds.settheme){
     theme = ds.settheme;
