@@ -15,6 +15,11 @@
 //
 // Uses only modules that exist at 717f97e, and the same external stubs as test/d4b-readers.emulator.test.js.
 require('./_emulator-required')('database', 'firestore');
+// A CONTROLLED CLOCK (as test/pselfupdate-mirror-trace's, 3e34706c), installed BEFORE index.js loads so every per-instance
+// cache captures it. It is at real time (offset 0) for every recorded request; only the render-ON companion's warm-ups run ahead.
+const REAL_NOW = Date.now.bind(Date);
+let CLOCK_OFFSET = 0;
+Date.now = () => REAL_NOW() + CLOCK_OFFSET;
 
 const assert = require('assert');
 const http = require('http');
@@ -309,7 +314,21 @@ async function traced(rid, oid, uid, phone) {
         return { off: RD.normOps(off.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))), on: RD.normOps(on.trace.filter((e) => !isFloorRead(e) && !isExtrasModeRead(e))) };
       };
       let W = 0;   // each warm-up its own phone: the duplicate-order guard keys on phone + content
-      const warm = async (rid, uid, tag) => { await rtdb.ref('rate_limits').remove(); W += 1; await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm_${tag}`, `9935${String(W).padStart(4, '0')}`), { 'x-firebase-id-token': uid }); await CTL.controlWarm(rtdb, rid); };
+      // DETERMINISTIC warm (gate flake on A-1 87275fbf, 2026-10-18 — the class 3e34706c fixed in pselfupdate-mirror-trace): the warm
+      // request runs with the clock pushed past EVERY TTL (the 45 s catalog pointer / menu-gates / context caches, the 60 s verifier
+      // observation), so IT refreshes every cache — at a moment ahead of the pair — and no recorded side can cross a TTL boundary.
+      // The clock is put back before the pair, so the pair runs on real time exactly as before (the 120 s content-dedup window and
+      // every stamp it compares keep today's ages). A real wait putting the boundary between the warm-up and the OFF recording
+      // reproduced the gate's exact diff on base 3e34706c and on A-1.
+      const warm = async (rid, uid, tag) => {
+        await rtdb.ref('rate_limits').remove(); W += 1;
+        CLOCK_OFFSET += 61000;
+        try {
+          await post(app.chargeOnlineOrder, bodyFor(rid, `trace_${rid}_warm_${tag}`, `9935${String(W).padStart(4, '0')}`), { 'x-firebase-id-token': uid });
+          await CTL.controlWarm(rtdb, rid);
+          await Q.quiescent();   // its background refills land (still ahead) before the pair
+        } finally { CLOCK_OFFSET -= 61000; }
+      };
       const at = (rid, oid, uid, phone) => async () => { await CTL.controlWarm(rtdb, rid); return traced(rid, oid, uid, phone); };
       for (const rid of ['x_pizza', 'la_musa']) {
         const uid = `u_trace_${rid}`;
