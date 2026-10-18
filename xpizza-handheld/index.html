@@ -19,13 +19,15 @@
      - checks: C-2 browser note + board A3 blocked line
      - top bar: the brand name from /public/brands (no literal)
      - reject: the note input gets an id (its text survives re-renders)
+     - every block that can shift between renders (top bar, banners, tabs, bodies, sheets, alert, toast) carries a data-key, so the
+       patcher keeps it — scroll, focus and typing survive a banner appearing (codex H1b r2 P2-4); rendering is unchanged
      - agotados: the switch's button is a 52×48 transparent hit area around the unchanged visual switch (codex H1b r1 P2-15, ≥ 48 px)
 -->
 <div class="phone" id="app" aria-live="polite"></div>
 <template id="screen">
 
     <sc-if value="{{isLogin}}" hint-placeholder-val="{{ false }}">
-      <div class="body" style="padding-top:26px">
+      <div class="body" data-key="body-isLogin-1" style="padding-top:26px">
         <div style="width:48px;height:48px;border-radius:14px;background:#15181E;display:flex;align-items:center;justify-content:center;margin-top:14px;flex:0 0 auto"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></div>
         <div style="font-weight:800;font-size:24px;letter-spacing:-.02em;margin-top:6px">Configurá este equipo</div>
         <div class="shS" style="font-size:15px">Iniciá sesión con la cuenta del dueño o encargado. Se hace una sola vez.</div>
@@ -41,7 +43,7 @@
     </sc-if>
 
     <sc-if value="{{isBranch}}" hint-placeholder-val="{{ false }}">
-      <div class="body" style="padding-top:26px">
+      <div class="body" data-key="body-isBranch-2" style="padding-top:26px">
         <div style="font-weight:800;font-size:24px;letter-spacing:-.02em">Elegí la sucursal</div>
         <sc-if value="{{noBranches}}"><div class="info">{{noBranchesText}}</div></sc-if>
         <sc-if value="{{pairErr}}"><div class="info" role="alert">{{pairErr}}</div></sc-if>
@@ -55,7 +57,7 @@
     </sc-if>
 
     <sc-if value="{{isChecks}}" hint-placeholder-val="{{ false }}">
-      <div class="body" style="padding-top:26px">
+      <div class="body" data-key="body-isChecks-3" style="padding-top:26px">
         <div style="font-weight:800;font-size:24px;letter-spacing:-.02em;line-height:1.15">Que no se pierda ningún pedido</div>
         <div class="shS" style="font-size:15px">Revisamos el sonido y que el equipo siga despierto.</div>
         <div class="card" style="padding:2px 14px">
@@ -76,9 +78,9 @@
 
     <sc-if value="{{isKeypad}}" hint-placeholder-val="{{ false }}">
       <sc-if value="{{isPinPrompt}}" hint-placeholder-val="{{ false }}">
-        <div class="top"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+        <div class="top" data-key="top-isPinPrompt-4"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
       </sc-if>
-      <div class="body" style="align-items:center;text-align:center;padding-top:14px">
+      <div class="body" data-key="body-pillDot-5" style="align-items:center;text-align:center;padding-top:14px">
         <div style="font-weight:800;font-size:22px;margin-top:8px">{{keypadTitle}}</div>
         <div class="shS" style="font-size:15px;max-width:280px">{{keypadSub}}</div>
         <div style="display:flex;gap:16px;margin:16px 0 10px">
@@ -99,23 +101,23 @@
 
     <sc-if value="{{isMain}}" hint-placeholder-val="{{ true }}">
       <sc-if value="{{topIsList}}" hint-placeholder-val="{{ true }}">
-        <div class="top"><div><div class="loc">{{brandName}}</div><div class="locsub">{{loc}}</div></div><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+        <div class="top" data-key="top-topIsList-6"><div><div class="loc">{{brandName}}</div><div class="locsub">{{loc}}</div></div><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
       </sc-if>
       <sc-if value="{{topIsBack}}" hint-placeholder-val="{{ false }}">
-        <div class="top"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
+        <div class="top" data-key="top-topIsBack-7"><button class="icb" aria-label="Volver" onClick="{{goList}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15181E" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><button class="pill {{pillCls}}" onClick="{{openStatus}}"><sc-if value="{{pillRing}}" hint-placeholder-val="{{ false }}"><svg class="pring" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="{{pillRingAria}}"><circle cx="9" cy="9" r="6.5" fill="none" stroke="rgba(107,65,6,.25)" stroke-width="2.6"></circle><circle class="arc" cx="9" cy="9" r="6.5" fill="none" stroke="#6B4106" stroke-width="2.6" stroke-dasharray="40.84" stroke-dashoffset="{{pillRingOff}}" transform="rotate(-90 9 9)"></circle></svg></sc-if><sc-if value="{{pillDot}}" hint-placeholder-val="{{ true }}"><span class="pd"></span></sc-if>{{pillLabel}}</button></div>
       </sc-if>
 
-      <sc-if value="{{bannerOff}}" hint-placeholder-val="{{ false }}"><div class="banner off"><span>Sin conexión. Los pedidos nuevos pueden no llegar. Reintentando…</span></div></sc-if>
-      <sc-if value="{{bannerPause}}" hint-placeholder-val="{{ false }}"><div class="banner pz"><span>{{pauseText}}</span><button class="bq" onClick="{{resume}}">Reanudar</button></div></sc-if>
-      <sc-if value="{{bannerBusy}}" hint-placeholder-val="{{ false }}"><div class="banner busy"><span class="k">{{busyText}}</span><button class="bq" onClick="{{clearBusy}}">Quitar</button></div></sc-if>
+      <sc-if value="{{bannerOff}}" hint-placeholder-val="{{ false }}"><div class="banner off" data-key="banner-bannerOff-8"><span>Sin conexión. Los pedidos nuevos pueden no llegar. Reintentando…</span></div></sc-if>
+      <sc-if value="{{bannerPause}}" hint-placeholder-val="{{ false }}"><div class="banner pz" data-key="banner-bannerPause-9"><span>{{pauseText}}</span><button class="bq" onClick="{{resume}}">Reanudar</button></div></sc-if>
+      <sc-if value="{{bannerBusy}}" hint-placeholder-val="{{ false }}"><div class="banner busy" data-key="banner-bannerBusy-10"><span class="k">{{busyText}}</span><button class="bq" onClick="{{clearBusy}}">Quitar</button></div></sc-if>
 
       <sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
-        <div class="tabs">
+        <div class="tabs" data-key="tabs-isList-11">
           <button class="tab {{tabN}}" onClick="{{goN}}">Nuevos <span class="cnt k">{{cN}}</span></button>
           <button class="tab {{tabP}}" onClick="{{goP}}">En prep. <span class="cnt k">{{cP}}</span></button>
           <button class="tab {{tabL}}" onClick="{{goL}}">Listos <span class="cnt k">{{cL}}</span></button>
         </div>
-        <div class="body">
+        <div class="body" data-key="body-isList-12">
           <sc-if value="{{showN}}" hint-placeholder-val="{{ true }}">
             <sc-for list="{{newCards}}" as="o" hint-placeholder-count="1">
               <button class="oc" onClick="{{o.open}}"><span class="row1"><span class="oid k">{{o.title}}</span><span class="tag {{o.tagCls}} k">{{o.tag}}</span></span><span style="display:flex;align-items:center;gap:10px;width:100%"><svg class="cring" width="34" height="34" viewBox="0 0 32 32" role="img" aria-label="{{o.ringAria}}" style="flex:0 0 auto"><circle cx="16" cy="16" r="13" fill="none" stroke="#E6E3DD" stroke-width="4"></circle><circle class="arc" cx="16" cy="16" r="13" fill="none" stroke="{{o.ringColor}}" stroke-width="4" stroke-linecap="round" stroke-dasharray="81.68" stroke-dashoffset="{{o.ringOff}}" transform="rotate(-90 16 16)"></circle><circle cx="23.6" cy="26.5" r="2.2" fill="#15181E"></circle></svg><span style="display:flex;flex-direction:column;gap:2px"><span class="osub k">{{o.sub}}</span><span class="ladder k">{{o.ladder}}</span></span></span></button>
@@ -140,7 +142,7 @@
       </sc-if>
 
       <sc-if value="{{isDetail}}" hint-placeholder-val="{{ false }}">
-        <div class="body">
+        <div class="body" data-key="body-isDetail-13">
           <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
             <div style="font-size:23px;font-weight:800" class="k">{{d.title}}</div>
             <div style="font-size:15px;font-weight:700;color:#4F5968">{{d.cust}}</div>
@@ -181,7 +183,7 @@
       </sc-if>
 
       <sc-if value="{{isAgotados}}" hint-placeholder-val="{{ false }}">
-        <div class="body" style="padding-top:12px">
+        <div class="body" data-key="body-isAgotados-14" style="padding-top:12px">
           <div style="font-size:21px;font-weight:800">Productos agotados</div>
           <div class="shS">{{agotadosSub}}</div>
           <sc-for list="{{menuRows}}" as="m" hint-placeholder-count="6">
@@ -191,7 +193,7 @@
       </sc-if>
 
       <sc-if value="{{isSettings}}" hint-placeholder-val="{{ false }}">
-        <div class="body" style="padding-top:6px">
+        <div class="body" data-key="body-isSettings-15" style="padding-top:6px">
           <div style="font-size:22px;font-weight:800">Ajustes del equipo</div>
           <div class="card" style="padding:2px 14px;flex:0 0 auto">
             <button class="srow" onClick="{{testAlert}}"><span>Probar la alerta</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F5968" stroke-width="2.2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
@@ -207,7 +209,7 @@
     </sc-if>
 
     <sc-if value="{{shReject}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shReject-16"><div class="sh">
         <div class="grab"></div>
         <div class="shT">¿Por qué lo rechazás?</div>
         <sc-for list="{{reasons}}" as="r" hint-placeholder-count="4"><button class="opt {{r.cls}}" onClick="{{r.pick}}"><span>{{r.label}}</span><span class="rad"></span></button></sc-for>
@@ -219,7 +221,7 @@
     </sc-if>
 
     <sc-if value="{{shItems}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shItems-17"><div class="sh">
         <div class="grab"></div>
         <div class="shT">¿Qué se acabó?</div>
         <div class="shS">Lo marcamos agotado en esta sucursal hasta que lo reactivés.</div>
@@ -230,7 +232,7 @@
     </sc-if>
 
     <sc-if value="{{shMore}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shMore-18"><div class="sh">
         <div class="grab"></div>
         <div class="shT">¿Cuánto tiempo más?</div>
         <div style="display:flex;gap:6px"><sc-for list="{{moreChips}}" as="m" hint-placeholder-count="3"><button class="tchip k {{m.cls}}" onClick="{{m.pick}}">{{m.label}}</button></sc-for></div>
@@ -242,7 +244,7 @@
     </sc-if>
 
     <sc-if value="{{shWA}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shWA-19"><div class="sh">
         <div class="grab"></div>
         <div class="shT">{{waTitle}}</div>
         <sc-for list="{{waOpts}}" as="w" hint-placeholder-count="3"><button class="opt {{w.cls}}" onClick="{{w.pick}}"><span>{{w.label}}</span><span class="rad"></span></button></sc-for>
@@ -253,7 +255,7 @@
     </sc-if>
 
     <sc-if value="{{shStatus}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shStatus-20"><div class="sh">
         <div class="grab"></div>
         <div class="shT">{{statusTitle}}</div>
         <button class="st {{stOpenCls}}" onClick="{{setOpen}}"><span class="sd" style="background:#1E7F4F"></span><span style="flex:1"><span style="display:block;font-weight:800;font-size:16px">Abierto</span><span style="display:block;font-size:13.5px;font-weight:600;color:#4F5968">Recibiendo pedidos con la hora normal</span></span></button>
@@ -265,7 +267,7 @@
     </sc-if>
 
     <sc-if value="{{shBusy}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shBusy-21"><div class="sh">
         <div class="grab"></div>
         <div class="shT">Modo ocupado</div>
         <div class="shS">Los pedidos siguen entrando. A cada uno le sumamos tiempo y el cliente ve la hora real.</div>
@@ -280,7 +282,7 @@
     </sc-if>
 
     <sc-if value="{{shPause}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shPause-22"><div class="sh">
         <div class="grab"></div>
         <div class="shT">Pausar pedidos</div>
         <div class="shS">No entran pedidos nuevos. Los que ya tenés siguen igual.</div>
@@ -294,7 +296,7 @@
     </sc-if>
 
     <sc-if value="{{shBranch}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shBranch-23"><div class="sh">
         <div class="grab"></div>
         <div class="shT">Cambiar de sucursal</div>
         <div class="shS">El equipo dejará de recibir los pedidos de la sucursal actual.</div>
@@ -304,7 +306,7 @@
     </sc-if>
 
     <sc-if value="{{shLogout}}" hint-placeholder-val="{{ false }}">
-      <div class="scrim"><div class="sh">
+      <div class="scrim" data-key="scrim-shLogout-24"><div class="sh">
         <div class="grab"></div>
         <div class="shT">¿Cerrar sesión?</div>
         <div class="shS">Este equipo dejará de recibir pedidos hasta que alguien inicie sesión de nuevo.</div>
@@ -314,7 +316,7 @@
     </sc-if>
 
     <sc-if value="{{alertOn}}" hint-placeholder-val="{{ false }}">
-      <div class="alert {{alertCls}}">
+      <div class="alert {{alertCls}}" data-key="alert-alertOn-25">
         <sc-if value="{{alertStrip}}" hint-placeholder-val="{{ false }}"><div class="astrip" style="background:{{stripBg}};color:{{stripFg}}" role="status"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>{{stripText}}</span></div></sc-if>
         <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:16px;font-weight:800">{{alertHead}}</span><span style="font-size:13.5px;font-weight:800;background:{{alertAgeBg}};color:{{alertAgeFg}};border-radius:999px;padding:4px 10px" class="k">{{alertAge}}</span></div>
         <div style="font-size:64px;font-weight:800;letter-spacing:-.03em;line-height:1;margin-top:6px" class="k">{{alertNum}}</div>
@@ -329,7 +331,7 @@
     </sc-if>
 
     <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
-      <div class="toast"><span style="display:flex;align-items:center;gap:10px"><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><span class="pop"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#1E7F4F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if><span>{{toastMsg}}</span></span><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><button class="undo" onClick="{{undoReady}}">Deshacer</button><span class="drain"></span></sc-if></div>
+      <div class="toast" data-key="toast-hasToast-26"><span style="display:flex;align-items:center;gap:10px"><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><span class="pop"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#1E7F4F"></circle><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></sc-if><span>{{toastMsg}}</span></span><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><button class="undo" onClick="{{undoReady}}">Deshacer</button><span class="drain"></span></sc-if></div>
     </sc-if>
   </template>
 <script type="module" src="app.js"></script>

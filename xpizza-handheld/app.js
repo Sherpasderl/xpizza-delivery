@@ -14,6 +14,7 @@ import { startPairing, createSessionStore, hashPin, createPinGate, signOut } fro
 import { createBridge, webAudioSound, NATIVE_PLUGIN } from './bridge.js';
 import { COPY, BOARD } from './copy.js';
 import { buildVM, WA_TEXT } from './view.js';
+import { decideBoot, createAuthWatch } from './boot.js';
 import { FIREBASE_CONFIG, FUNCTIONS_REGION, MAPS_KEY } from './config.js';
 import { initializeApp } from './vendor/firebase-app.js';
 import { getAuth, initializeAuth, inMemoryPersistence, signInWithEmailAndPassword, signInWithCustomToken, signOut as fbSignOut, onAuthStateChanged } from './vendor/firebase-auth.js';
@@ -224,7 +225,9 @@ async function doLogin() {
 const pairingAuth = {
   signInHuman: (e, p) => signInWithEmailAndPassword(humanAuth, e, p),
   signOut: () => fbSignOut(humanAuth),
-  signInWithToken: async (tk) => (await signInWithCustomToken(auth, tk)).user,
+  // codex H1b r2 P1-2: the expected device uid is armed BEFORE the sign-in, so its notification counts even if it lands before
+  // doPair assigns the session, and any later null is a loss
+  signInWithToken: async (tk, uid) => { authWatch.expect(uid); return (await signInWithCustomToken(auth, tk)).user; },
 };
 // logout: the device identity (and any lingering human session)
 const deviceAuth = { signOut: async () => { await fbSignOut(auth); try { await fbSignOut(humanAuth); } catch (_) { /* none */ } } };
@@ -259,6 +262,7 @@ let signingOut = false;
 async function doSignOut(reason) {
   if (signingOut) return;
   signingOut = true;
+  authWatch.clear();
   try {
     if (api) api.stop();
     stopEta(); stopEta = () => {};
@@ -273,6 +277,7 @@ async function doSignOut(reason) {
 
 // ── main (paired) ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 function startMain() {
+  if (feeds) return;                                  // codex H1b r2 P1-1: never a second feed / queue for the same session
   queue = createQueue({ storage, partition: { uid: sess.uid, rid: sess.rid }, session });
   undo = createUndo({ queue, session, makeTimer: () => makeTimer() });
   api = createApi({ call, queue, isOnline: online, rid: sess.rid, onAuthLost: () => doSignOut('session_lost') });
@@ -341,24 +346,20 @@ bridge.onResume(() => { undo && undo.onResume(); if (online() && api) api.flush(
 // A paired device (session + PIN) opens straight onto the list — also offline at a cold start (the banner shows until the feed's
 // first snapshot). An invalid identity is caught where it already is: online, the feed's permission error → sessionLost →
 // re-pair; an Auth user that is a DIFFERENT uid signs out at once. A device paired but without a PIN resumes at the checks.
-// codex H1b r1 P1-4: the native-missing guard runs on EVERY boot — a persisted pairing inside a native shell whose plugin is missing
-// (or whose checks fail) opens the checks screen, never a silent list. The browser stub is never blocked.
-// codex H1b r1 P1-3: the Auth observer stays subscribed: once the device user has been seen, losing it (or a different uid) tears the
-// session down. A null at a cold start (never seen — e.g. offline before Auth restores) is left to the feed's permission signal.
-const saved = store.load();
-let bootDecided = false; let seenDevice = false;
-if (saved && pinGate.record()) {
-  bridge.status().then((st) => {
-    bootDecided = true; sess = saved;
-    if (st.native && st.blocked) set({ status: st, phase: 'checks' }); else { S.status = st; startMain(); }
-  });
-}
-onAuthStateChanged(auth, (u) => {
-  if (u && sess && u.uid === sess.uid) seenDevice = true;
-  if (sess && u && u.uid !== sess.uid) { doSignOut('session_lost'); return; }
-  if (sess && !u && seenDevice) { doSignOut('session_lost'); return; }
-  if (S.phase !== 'boot' || bootDecided) return;
-  if (saved && u && u.uid === saved.uid) { bootDecided = true; sess = saved; refreshStatus().then(() => set({ phase: 'checks' })); return; }
-  if (!(saved && pinGate.record())) { bootDecided = true; set({ phase: 'login' }); }
-});
+// codex H1b r2 P1-1: boot is ONE serialized decision (boot.js decideBoot): it awaits BOTH the bridge status (the native-missing
+// guard, on every boot) and the FIRST Auth state, then routes exactly once. Late duplicates never re-route.
+// codex H1b r1 P1-3 / r2 P1-2: the Auth observer stays subscribed and only feeds the watch (boot.js createAuthWatch).
+const authWatch = createAuthWatch({ onLoss: () => doSignOut('session_lost') });
+let firstAuth; const firstAuthP = new Promise((r) => { firstAuth = r; });
+let authCalls = 0;
+onAuthStateChanged(auth, (u) => { if (authCalls++ === 0) firstAuth(u); authWatch.observe(u); });
+(async function boot() {
+  const saved = store.load();
+  const d = await decideBoot({ saved, hasPin: !!pinGate.record(), statusP: bridge.status(), firstAuthP });
+  if (d.signOut) { sess = saved; authWatch.expect(saved.uid); await doSignOut('session_lost'); return; }
+  if (d.route === 'login') { set({ phase: 'login' }); return; }
+  sess = saved; authWatch.expect(saved.uid);
+  if (d.route === 'checks') { set({ status: d.status, phase: 'checks' }); return; }
+  S.status = d.status; startMain();
+})();
 render();

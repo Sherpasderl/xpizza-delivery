@@ -57,7 +57,9 @@ export function createApi({ call, queue, isOnline, rid, newOpId = () => crypto.r
           if (stopped) return;
           const again = await once();
           if (stopped) return;
-          if (classify(again).class === 'ok' && typeof again.state === 'string' && again.state !== 'pending') onResolved(again.state);
+          const c2 = classify(again);
+          if (c2.class === 'auth') { authLost(); return; }   // codex H1b r2 P2-3: the retry's auth loss tears down too
+          if (c2.class === 'ok' && typeof again.state === 'string' && again.state !== 'pending') onResolved(again.state);
         }, REJECT_RETRY_MS);
         timers.add(h);
       }

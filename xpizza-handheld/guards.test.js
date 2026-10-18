@@ -36,44 +36,21 @@ test('copy: every text node of the screen template is prototype / board text or 
   assert.ok(parts.length > 60, `the template carries the prototype's copy (${parts.length} fragments)`);
 });
 
-// A small JS string-literal tokenizer (codex H1b r1 P2-14): comments skipped, '…' "…" and `…${…}…` (nested) collected, regex
-// literals skipped — a URL inside a template literal or a quote inside a regex no longer derails it.
+// codex H1b r2 P2-6: the string literals come from a REAL parser (acorn, already a dependency of xpizza-functions) — no hand
+// tokenizer to fool with regex-literal contexts or escapes. String values arrive DECODED ("\n" is a newline), template literals give
+// their cooked quasis with \u0000 at each ${…}.
+import { createRequire } from 'node:module';
+const acorn = createRequire(new URL('../xpizza-functions/package.json', import.meta.url))('acorn');
 export function stringLiterals(src) {
-  const out = []; let i = 0; let prev = '';
-  const isRegexStart = () => /^$|[(,=:[!&|?{};+\-*%<>~^]$/.test(prev) || /\b(return|typeof|case|in|of)$/.test(prev);
-  function readString(q) {                            // i at the opening quote
-    let buf = ''; i++;
-    while (i < src.length) {
-      const c = src[i];
-      if (c === '\\') { buf += src[i + 1] === undefined ? '' : src[i + 1]; i += 2; continue; }
-      if (c === q) { i++; return buf; }
-      if (q === '`' && c === '$' && src[i + 1] === '{') {
-        buf += '\u0000'; i += 2; let depth = 1;
-        while (i < src.length && depth > 0) {
-          const d = src[i];
-          if (d === "'" || d === '"' || d === '`') { out.push(readString(d)); continue; }
-          if (d === '{') depth++; else if (d === '}') depth--;
-          i++;
-        }
-        continue;
-      }
-      buf += c; i++;
-    }
-    return buf;
-  }
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
-    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2); i = i < 0 ? src.length : i + 2; continue; }
-    if (c === "'" || c === '"' || c === '`') { out.push(readString(c)); prev = 'x'; continue; }
-    if (c === '/' && isRegexStart()) {
-      i++; let cls = false;
-      while (i < src.length) { const d = src[i]; if (d === '\\') { i += 2; continue; } if (d === '[') cls = true; else if (d === ']') cls = false; else if (d === '/' && !cls) break; i++; }
-      i++; while (/[a-z]/i.test(src[i] || '')) i++; prev = 'x'; continue;
-    }
-    if (!/\s/.test(c)) prev = (/[\w$]/.test(c) ? (prev + c).slice(-8) : c);
-    i++;
-  }
+  const out = [];
+  const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module' });
+  (function walk(n) {
+    if (!n || typeof n !== 'object') return;
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (n.type === 'Literal' && typeof n.value === 'string') out.push(n.value);
+    if (n.type === 'TemplateLiteral') out.push(n.quasis.map((q) => (q.value.cooked == null ? q.value.raw : q.value.cooked)).join('\u0000'));
+    for (const [k, v] of Object.entries(n)) if (k !== 'type' && v && typeof v === 'object') walk(v);
+  }(ast));
   return out;
 }
 
@@ -94,9 +71,13 @@ test('copy: every Spanish string literal the modules can show is prototype / boa
   assert.deepEqual(unknown, []);
 });
 
-test('the literal scanner sees double quotes, template pieces, and ignores comments and regexes (P2-14)', () => {
+test('the literal scanner is a real parser: double quotes, template pieces, decoded escapes; regex contexts and comments cannot hide a string (r1 P2-14, r2 P2-6)', () => {
   const lits = stringLiterals(`const a = "Texto nunca aprobado"; // 'comentario'\nconst b = \`x \${'adentro'} y\`; const r = /["']/g; /* "no" */ const c = 'fin';`);
-  assert.deepEqual(lits, ['Texto nunca aprobado', 'adentro', 'x \u0000 y', 'fin']);
+  assert.deepEqual(lits.sort(), ['Texto nunca aprobado', 'adentro', 'fin', 'x \u0000 y'].sort());
+  // codex r2 reproductions: a regex STATEMENT after ')' and escaped newlines
+  const tricky = stringLiterals(`if (x) /["']/g.test(x); toast("Texto nunca aprobado"); toast("Texto\\nnunca\\naprobado");`);
+  assert.ok(tricky.includes('Texto nunca aprobado'), 'the string after a regex statement is seen');
+  assert.ok(tricky.includes('Texto\nnunca\naprobado'), 'escapes are decoded — the phrase detector sees real whitespace');
 });
 
 test('no restaurant / brand literal in any shipped file (spec copies, vendor and the platform config excepted)', () => {
@@ -150,6 +131,6 @@ test('codex H1b r1 P1-2: the human who pairs signs in on a SEPARATE in-memory Au
   assert.match(src, /const humanAuth = initializeAuth\(humanApp, \{ persistence: inMemoryPersistence \}\);/);
   assert.match(src, /signInHuman: \(e, p\) => signInWithEmailAndPassword\(humanAuth, e, p\)/, 'human email/password only on the in-memory app');
   assert.ok(!/signInWithEmailAndPassword\(auth\b/.test(src), 'never on the persistent device app');
-  assert.match(src, /signInWithToken: async \(tk\) => \(await signInWithCustomToken\(auth, tk\)\)\.user/, 'the device custom token on the default (persistent) app');
+  assert.match(src, /signInWithToken: async \(tk, uid\) => \{ authWatch\.expect\(uid\); return \(await signInWithCustomToken\(auth, tk\)\)\.user; \}/, 'the device custom token on the default (persistent) app, the watch armed first');
   assert.match(src, /startPairing\(\{ auth: pairingAuth, call: humanCall, store \}/, 'pairing callables run as the in-memory human');
 });

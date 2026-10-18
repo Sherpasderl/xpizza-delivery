@@ -152,3 +152,13 @@ test('codex H1b r1 P1-3: every auth-class result reports onAuthLost — automati
   await r.api.direct('merchantHeartbeat', {});
   assert.equal(r.lost.length, 4, 'nothing reported after stop');
 });
+
+test('codex H1b r2 P2-3: a BC2 retry that comes back unauthenticated reports onAuthLost', async () => {
+  let n = 0;
+  const r = rig({ responses: { merchantReject: () => (++n === 1 ? { ok: true, state: 'pending' } : Object.assign(new Error('x'), { code: 'functions/unauthenticated' })) } });
+  const resolved = [];
+  await r.api.reject('o1', { reason: 'saturada' }, { onResolved: (st) => resolved.push(st) });
+  assert.equal(r.lost.length, 0);
+  await r.timers[0].fn(); await tick();
+  assert.deepEqual([r.lost.length, resolved], [1, []]);
+});

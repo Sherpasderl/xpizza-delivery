@@ -104,6 +104,36 @@ try {
   })()`);
   assert.deepEqual(m, { identical: true, textPatched: true, scrollKept: true, inputKept: true, attrSet: true, attrRemoved: true, appended: true, removed: true, replaced: true });
   console.log('  ok morph: identity kept, scroll + typing survive, attributes / children / tags patched');
+
+  // 3. codex H1b r2 P2-4 — the REAL template + view + patcher: the offline banner appearing must not replace the reject sheet's input
+  //    (typing + focus kept) nor the list body (scroll kept)
+  await open(`${base}/review/h1b/harness.html?side=build&state=empty`);
+  const k = await ev(`(async () => {
+    const { morph } = await import('/xpizza-handheld/morph.js');
+    const { compile } = await import('/xpizza-handheld/tmpl.js');
+    const { buildVM } = await import('/xpizza-handheld/view.js');
+    const { fixture } = await import('/review/h1b/fixtures.js');
+    const html = await (await fetch('/xpizza-handheld/index.html')).text();
+    const tpl = compile(html.slice(html.indexOf('<template id="screen">') + 22, html.indexOf('</template>')));
+    const app = document.getElementById('app'); app.innerHTML = '';
+    const draw = (state, online) => { const { S, ctx } = fixture(state, { online }); morph(app, tpl.render(buildVM(S, ctx)).html); };
+    const out = {};
+    draw('rejectOtro', true);
+    const note = document.getElementById('rejnote'); note.focus(); note.value = 'se fue la luz';
+    draw('rejectOtro', false);                         // the offline banner appears ABOVE the content
+    out.bannerShown = app.innerText.includes('Sin conexión');
+    out.noteKept = document.getElementById('rejnote') === note && note.value === 'se fue la luz' && document.activeElement === note;
+    draw('listLong', true);
+    const body = app.querySelector('[data-key^="body-isList"]'); body.scrollTop = 400; const top = body.scrollTop;
+    draw('listLong', false);
+    out.scrolled = top > 0;
+    out.bodyKept = app.querySelector('[data-key^="body-isList"]') === body && body.scrollTop === top;
+    draw('listLong', true);                            // and back
+    out.backKept = app.querySelector('[data-key^="body-isList"]') === body && body.scrollTop === top;
+    return out;
+  })()`);
+  assert.deepEqual(k, { bannerShown: true, noteKept: true, scrolled: true, bodyKept: true, backKept: true });
+  console.log('  ok real template: the banner toggling keeps #rejnote (text + focus) and the list body (scroll)');
   console.log('test:browser: OK');
   code = 0;
 } catch (e) {

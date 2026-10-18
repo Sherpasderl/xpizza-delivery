@@ -49,7 +49,7 @@ export async function startPairing({ auth, call, store }, { email, password }) {
     if (!isObj(res) || typeof res.custom_token !== 'string') return { ok: false, screen: 'branch', error: 'error' };
     await auth.signOut();                             // the human leaves BEFORE the device identity arrives
     let dev;
-    try { dev = await auth.signInWithToken(res.custom_token); } catch (_) { return { ok: false, screen: 'branch', error: 'token_exchange' }; }
+    try { dev = await auth.signInWithToken(res.custom_token, res.uid); } catch (_) { return { ok: false, screen: 'branch', error: 'token_exchange' }; }
     const session = { uid: (dev && dev.uid) || res.uid, rid: sel.rid, brand_id: sel.brand_id, location_name: sel.location_name || null,
       prep_default_min: validBase(sel.prep_default_min) ? sel.prep_default_min : null };
     store.save(session);

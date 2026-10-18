@@ -197,12 +197,20 @@ async function feedCase(label, fn, { mayBeRed = true } = {}) {
     assert.ok(stN.loaded);
     assert.deepStrictEqual(Object.keys(stN.orders).sort(), ['o1', 'o2', 'os']);
   });
-  await feedCase('F1 another location\'s query is denied', async () => {
-    let lost = false;
-    const f = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte')), rid: 'tb_centro', brandId: 'tb', onState: (s) => { if (s.sessionLost) lost = true; } });
-    await until(() => lost);
+  await feedCase('F1 another location\'s query is denied — and its order is NEVER delivered', async () => {
+    // codex H1b r2 P2-5: not just "some listener lost the session" — the tb_centro ORDERS QUERY itself must be refused, and no
+    // tb_centro order may ever reach the feed state, whatever the other listeners do
+    let lost = false; let leaked = false; const deniedX = new Set();
+    const f = startFeeds({ rtdb: adapter(deviceDb(DEV_N, 'tb_norte'), deniedX), rid: 'tb_centro', brandId: 'tb', onState: (s) => {
+      if (s.sessionLost) lost = true;
+      if (s.orders && s.orders.oc) leaked = true;
+    } });
+    await until(() => deniedX.has('orders?restaurant_id=tb_centro'), 4000);
+    await until(() => false, 300);                      // give a leaking delivery time to land
     f.stop();
-    assert.ok(lost, 'a tb_norte device read tb_centro');
+    assert.ok(!leaked, 'a tb_norte device RECEIVED tb_centro order oc');
+    assert.ok(deniedX.has('orders?restaurant_id=tb_centro'), `the cross-location orders query itself was not refused (denied: ${[...deniedX].join(', ')})`);
+    assert.ok(lost);
   }, { mayBeRed: false });
   await feedCase('F3 feed transitions new → preparing → ready through the real callables', async () => {
     if (!stN || stN.sessionLost || !stN.loaded) throw missingGrantError('no feed for F3', deniedN);

@@ -14,7 +14,7 @@ function fakes({ rows = [row('tb_norte')], pairFails = null, tokenFails = false 
     auth: {
       signInHuman: async (email) => { log.push(['signInHuman', email]); },
       signOut: async () => { log.push(['signOut']); },
-      signInWithToken: async (t) => { log.push(['signInWithToken', t]); if (tokenFails) throw new Error('auth/invalid-custom-token'); return { uid: 'hh_tb_norte_r4nd' }; },
+      signInWithToken: async (t, uid) => { log.push(['signInWithToken', t]); log.push(['expectedUid', uid]); if (tokenFails) throw new Error('auth/invalid-custom-token'); return { uid: 'hh_tb_norte_r4nd' }; },
     },
     call: async (name, data) => {
       log.push([name, data]);
@@ -47,6 +47,7 @@ test('ONE location → the picker is skipped; SEVERAL → the picker; only the S
   assert.deepEqual(pairs, [['merchantPairDevice', { rid: 'tb_centro', label: 'Mostrador' }]], 'never per location');
   const order = many.log.map((l) => l[0]).filter((n) => ['merchantPairDevice', 'signOut', 'signInWithToken'].includes(n));
   assert.deepEqual(order, ['merchantPairDevice', 'signOut', 'signInWithToken'], 'the human is signed out, then the device signs in');
+  assert.deepEqual(many.log.find((l) => l[0] === 'expectedUid'), ['expectedUid', 'hh_tb_norte_r4nd'], 'the server-chosen uid is handed to the sign-in (the auth watch arms on it first)');
   assert.deepEqual(store.load(), { uid: 'hh_tb_norte_r4nd', rid: 'tb_centro', brand_id: 'tb', location_name: 'centro', prep_default_min: 18 });
 });
 
