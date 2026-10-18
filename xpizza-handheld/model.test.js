@@ -150,6 +150,8 @@ test('rejectState: from persisted state only', () => {
   assert.equal(M.rejectState(order('o', { handheld_answered: rej, reject_outcome: out('cancelled') })), 'cancelled');
   assert.equal(M.rejectState(order('o', { handheld_answered: rej, reject_outcome: out('refund_pending') })), 'cancelled');
   assert.equal(M.rejectState(order('o', { handheld_answered: rej, reject_outcome: out('manual_review') })), 'manual');
+  assert.equal(M.rejectState(order('o', { handheld_answered: rej, reject_outcome: out('not_cancelable') })), 'manual', 'H1a r1 P2-4: Despacho finishes it');
+  assert.equal(M.rejectState(order('o', { handheld_answered: rej, reject_outcome: out('referred_recon') })), 'manual');
   assert.equal(M.rejectState(order('o', { handheld_answered: rej })), 'cancelling');
   assert.equal(M.rejectState(order('o', { handheld_answered: rej, reject_outcome: out('weird') })), 'cancelling');
   assert.equal(M.rejectState(order('o', { reject_outcome: out('cancelled') })), null, 'an outcome without a rejected answer → null');
@@ -163,45 +165,57 @@ test('alarmSet: sorted ids of new orders with no handheld_answered', () => {
   assert.deepEqual(M.alarmSet({}), []);
 });
 
-test('prepCard / readyCard / driverView: real first name or a nameless fallback; at-restaurant; never an ETA', () => {
-  const none = { assigned: false, firstName: null, atRestaurant: false };
-  const named = { assigned: true, firstName: 'Ana', atRestaurant: false };
-  const nameless = { assigned: true, firstName: null, atRestaurant: false };
-  const here = { assigned: true, firstName: 'Ana', atRestaurant: true };
-  const c = M.prepCard(order('o', { status: 'preparing', prep: fullPrep(T, 20) }), { nowMs: T + 17 * MIN, driver: none });
+test('prepCard / readyCard / driverView: real first name or a nameless fallback; at-restaurant; ETA only when computed', () => {
+  const none = { assigned: false, firstName: null, atRestaurant: false, etaMs: null };
+  const named = { assigned: true, firstName: 'Ana', atRestaurant: false, etaMs: null };
+  const eta = { assigned: true, firstName: 'Ana', atRestaurant: false, etaMs: T + 22 * MIN };   // arrives 7:42
+  const nameless = { assigned: true, firstName: null, atRestaurant: false, etaMs: T + 22 * MIN };
+  const here = { assigned: true, firstName: 'Ana', atRestaurant: true, etaMs: T + 22 * MIN };
+  const prep = order('o', { status: 'preparing', prep: fullPrep(T, 20) });
+  const c = M.prepCard(prep, { nowMs: T + 17 * MIN, driver: none });
   assert.deepEqual(pick(c, ['time', 'tag', 'tagCls', 'tmColor', 'driver']), { time: '7:40', tag: 'Faltan 3 min', tagCls: 'soon', tmColor: '#15181E', driver: 'Repartidor programado' });
-  const late = M.prepCard(order('o', { status: 'preparing', prep: fullPrep(T, 20) }), { nowMs: T + 23 * MIN, driver: named });
-  assert.deepEqual(pick(late, ['tag', 'tmColor', 'driver']), { tag: 'Atrasado 3 min', tmColor: '#9A1C12', driver: 'Ana asignado' });
-  assert.equal(M.prepCard(order('o', { status: 'preparing', prep: fullPrep(T, 20) }), { nowMs: T, driver: nameless }).driver, 'Repartidor asignado');
-  assert.equal(M.prepCard(order('o', { status: 'preparing', prep: fullPrep(T, 20) }), { nowMs: T, driver: here }).driver, 'Ana está en el local');
+  const late = M.prepCard(prep, { nowMs: T + 23 * MIN, driver: named });
+  assert.deepEqual(pick(late, ['tag', 'tmColor', 'driver']), { tag: 'Atrasado 3 min', tmColor: '#9A1C12', driver: 'Ana asignado' }, 'no ETA → the name only, never a guessed time');
+  assert.equal(M.prepCard(prep, { nowMs: T, driver: eta }).driver, 'Ana asignado · llega 7:42');
+  assert.equal(M.prepCard(prep, { nowMs: T, driver: nameless }).driver, 'Repartidor asignado · llega 7:42');
+  assert.equal(M.prepCard(prep, { nowMs: T, driver: here }).driver, 'Ana está en el local');
   assert.equal(M.prepCard(order('o', { status: 'preparing', order_type: 'pickup', prep: fullPrep(T, 20) }), { nowMs: T }).driver, 'El cliente pasa a recoger');
   assert.deepEqual(pick(M.prepCard(order('o', { status: 'preparing' }), { nowMs: T }), ['time', 'tag', 'driver']), { time: '--', tag: '--', driver: 'Repartidor programado' }, 'no driver info → unassigned');
-  const r = M.readyCard(order('o', { status: 'ready', prep: { ready_marked_at: T + 5 * MIN } }), { driver: none });
-  assert.deepEqual(pick(r, ['tag', 'line', 'lineCls', 'isPickup']), { tag: 'Listo 7:25', line: 'Buscando repartidor ahora', lineCls: '', isPickup: false });
-  assert.deepEqual(pick(M.readyCard(order('o', { status: 'ready', prep: { ready_marked_at: T } }), { driver: named }), ['line', 'lineCls']), { line: 'Ana asignado', lineCls: 'ok' });
-  assert.equal(M.readyCard(order('o', { status: 'ready', prep: { ready_marked_at: T } }), { driver: here }).line, 'Ana está en el local');
-  assert.equal(M.readyCard(order('o', { status: 'ready', order_type: 'pickup', prep: { ready_marked_at: T } }), {}).line, 'Esperando al cliente');
+  const rdy = (o = {}) => order('o', { status: 'ready', prep: { ready_marked_at: T + 5 * MIN }, ...o });
+  assert.deepEqual(pick(M.readyCard(rdy(), { nowMs: T + 5 * MIN, driver: none }), ['tag', 'line', 'lineCls', 'isPickup']), { tag: 'Listo 7:25', line: 'Buscando repartidor ahora', lineCls: '', isPickup: false });
+  assert.deepEqual(pick(M.readyCard(rdy(), { nowMs: T + 19 * MIN, driver: eta }), ['line', 'lineCls']), { line: 'Ana llega en 3 min', lineCls: 'ok' });
+  assert.equal(M.readyCard(rdy(), { nowMs: T + 22 * MIN + 1, driver: eta }).line, 'Ana llega en 1 min', 'a passed ETA never shows 0 or negative');
+  assert.equal(M.readyCard(rdy(), { nowMs: T, driver: named }).line, 'Ana asignado');
+  assert.equal(M.readyCard(rdy(), { nowMs: T, driver: here }).line, 'Ana está en el local');
+  assert.equal(M.readyCard(rdy({ order_type: 'pickup' }), {}).line, 'Esperando al cliente');
   // detail
-  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), none), { name: 'Repartidor programado', sub: '' });
-  assert.deepEqual(M.driverView(order('o', { status: 'ready' }), none), { name: 'Buscando repartidor', sub: 'Lo pedimos ahora mismo' });
-  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), named), { name: 'Ana', sub: '' });
-  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), nameless), { name: 'Repartidor asignado', sub: '' });
-  assert.deepEqual(M.driverView(order('o', { status: 'ready' }), here), { name: 'Ana', sub: 'Ana está en el local' });
+  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), none, T), { name: 'Repartidor programado', sub: '' });
+  assert.deepEqual(M.driverView(order('o', { status: 'ready' }), none, T), { name: 'Buscando repartidor', sub: 'Lo pedimos ahora mismo' });
+  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), named, T), { name: 'Ana', sub: '' });
+  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), eta, T), { name: 'Ana', sub: 'Asignado · llega 7:42' });
+  assert.deepEqual(M.driverView(order('o', { status: 'ready' }), eta, T + 19 * MIN), { name: 'Ana', sub: 'En camino · llega en 3 min' });
+  assert.deepEqual(M.driverView(order('o', { status: 'preparing' }), nameless, T), { name: 'Repartidor asignado', sub: 'Asignado · llega 7:42' });
+  assert.deepEqual(M.driverView(order('o', { status: 'ready' }), here, T), { name: 'Ana', sub: 'Ana está en el local' });
   // detail info line (Más tiempo locked)
   const prepO = order('o', { status: 'preparing', prep: fullPrep(T, 20, 0) });
   assert.equal(M.detailInfo(prepO, { offline: false, driver: named }), 'Ana ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.');
-  assert.equal(M.detailInfo(prepO, { offline: false, driver: nameless }), 'El repartidor ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.');
+  assert.equal(M.detailInfo(prepO, { offline: false, driver: { ...nameless, etaMs: null } }), 'El repartidor ya va en camino: la hora ya no se puede mover. Si te atrasás, avisale a Despacho.');
   assert.equal(M.detailInfo(prepO, { offline: true, driver: none }), 'Sin conexión no se puede pedir más tiempo ni escribirle al cliente. «Listo» se guarda y se envía al volver.');
   assert.equal(M.detailInfo(order('o', { status: 'preparing', prep: fullPrep(T, 20, 30) }), { offline: false, driver: none }), 'Ya sumaste 30 min. Para más tiempo, hablá con Despacho.');
   assert.equal(M.detailInfo(order('o', { status: 'ready' }), { offline: true, driver: none }), 'Sin conexión. Se envía al volver.');
   assert.equal(M.detailInfo(prepO, { offline: false, driver: none }), '');
 });
 
-test('driverInfo: normalizes merchantOrderState fail-closed (unknown → unassigned / null / false)', () => {
-  assert.deepEqual(M.driverInfo({ driver_assigned: true, driver_first_name: 'Ana', driver_at_restaurant: true }), { assigned: true, firstName: 'Ana', atRestaurant: true });
-  assert.deepEqual(M.driverInfo({ driver_assigned: true, driver_first_name: '  ', driver_at_restaurant: 'yes' }), { assigned: true, firstName: null, atRestaurant: false });
-  assert.deepEqual(M.driverInfo({ driver_assigned: 'x', driver_first_name: 'Ana', driver_at_restaurant: true }), { assigned: false, firstName: null, atRestaurant: false });
-  assert.deepEqual(M.driverInfo(null), { assigned: false, firstName: null, atRestaurant: false });
+test('driverInfo: normalizes merchantOrderState fail-closed (unknown → unassigned / null / false); ETA is supplied separately', () => {
+  const loc = { lat: 15.5, lng: -88.02, at: T };
+  assert.deepEqual(M.driverInfo({ driver_assigned: true, driver_first_name: 'Ana', driver_at_restaurant: true, driver_location: loc }, T + 9 * MIN),
+    { assigned: true, firstName: 'Ana', atRestaurant: true, location: loc, etaMs: T + 9 * MIN });
+  assert.deepEqual(M.driverInfo({ driver_assigned: true, driver_first_name: '  ', driver_at_restaurant: 'yes', driver_location: { lat: 'x' } }),
+    { assigned: true, firstName: null, atRestaurant: false, location: null, etaMs: null });
+  assert.deepEqual(M.driverInfo({ driver_assigned: 'x', driver_first_name: 'Ana', driver_at_restaurant: true, driver_location: loc }, T),
+    { assigned: false, firstName: null, atRestaurant: false, location: null, etaMs: null }, 'not assigned → nothing else is believed');
+  assert.deepEqual(M.driverInfo(null), { assigned: false, firstName: null, atRestaurant: false, location: null, etaMs: null });
+  assert.equal(M.driverInfo({ driver_assigned: true, driver_first_name: 'Ana' }, NaN).etaMs, null);
 });
 
 test('brand-agnostic: model.js carries no restaurant or brand literal', async () => {

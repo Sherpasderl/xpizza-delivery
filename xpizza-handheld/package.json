@@ -1,0 +1,7 @@
+{
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "TZ=America/Tegucigalpa node --test *.test.js"
+  }
+}
