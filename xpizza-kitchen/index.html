@@ -1646,7 +1646,8 @@ const completedSet = new Set(JSON.parse(localStorage.getItem('xpizza_kds_complet
 // (subscribed in the init). A cancelled order has no server terminal flag, so this is what makes "Archivar"
 // sync across a 2-device kitchen (vs the per-device completedSet overlay). Populated live; {} until the sub fires.
 let cancelAcks = {};
-let cancelAcksLoaded = false;   // true once the kds_cancel_acks sub has delivered the authoritative server state — gates the reconcile so a local bump is never dropped before we know the server's acks (incl. on load)
+// F2 Q2: readiness is PER ORDER (cancelAckSet.isAbsent / isReady), replacing the old one-shot cancelAcksLoaded flag.
+let cancelAckSet = null;          // XPD.createKdsCancelAcks(...) — one listener per eligible cancelled order
 const pendingAcks = new Set();  // orderIds whose writeCancelAck (this device's Archivar) hasn't echoed back yet — their optimistic completedSet bump is preserved until the echo confirms (so the instant move still feels instant)
 (function migrateLegacyCompleted() {
   try {
@@ -2668,10 +2669,11 @@ function paintOffPageLate() {
 // purge — delivered/listo bumps carry no ack and are untouched); never acts before the authoritative acks are
 // loaded, nor on an id whose own Archivar write is still in flight (the optimistic move stays instant).
 function reconcileCancelBumps(orders) {
-  if (!cancelAcksLoaded) return;
+  if (!cancelAckSet) return;
   let changed = false;
   for (const id of [...completedSet]) {
     if (cancelAcks[id] || pendingAcks.has(id)) continue;               // server ack present, or our write in flight → keep
+    if (!cancelAckSet.isAbsent(id)) continue;                          // F2 Q2: drop ONLY on a CONFIRMED absence for THIS id (never while unread / errored)
     const o = orders.find(x => x.id === id) || allOrders.find(x => x.id === id);
     if (o && o.estado === KDS_STATUS.CANCELADO) {                      // cancelled only — the only bumps an ack governs
       completedSet.delete(id); delete completedStamp[id]; changed = true;
@@ -2995,12 +2997,15 @@ function startOrdersSubscription() {
   window.__readyNudge?.teardown?.();   // teardown before (re)subscribing (restart path)
   // KDS cancelados cross-device ack: the shared server truth for archived cancelados. Keep it live alongside
   // the orders sub; a change re-renders so an Archivar/Recuperar on ANY device moves the ticket on ALL devices.
-  cancelAcksUnsubscribe = XPD.subscribeCancelAcks((m) => {
-    cancelAcks = m || {};
-    cancelAcksLoaded = true;                                  // we now hold the AUTHORITATIVE server acks
+  // F2 Q2: one listener per ELIGIBLE cancelled order (the cancelled orders in the feed — Open AND Completed), per-id readiness.
+  const ackSet = XPD.createKdsCancelAcks(() => {
+    if (cancelAckSet !== ackSet) return;                      // a callback from a torn-down set (restart path) is ignored
+    cancelAcks = ackSet.acks();
     for (const id of Object.keys(cancelAcks)) pendingAcks.delete(id);   // our pending Archivar is confirmed by its own echo
     renderCurrentTab();                                       // render() reconciles any now-stale local cancel bumps (e.g. another device recalled)
   });
+  cancelAckSet = ackSet;
+  cancelAcksUnsubscribe = () => { ackSet.teardown(); if (cancelAckSet === ackSet) cancelAckSet = null; };
   // Programados: read-only second onValue on the same /orders ref (reuses the sync; no new network read).
   // Keeps the scheduled set in memory, drives the calendar-glyph accent cue live, and re-renders the
   // screen if it's open. Never writes.
@@ -3030,6 +3035,8 @@ function startOrdersSubscription() {
     const nowCancelMs = Date.now();
     const visibleOrders = orders.filter(o => !isStaleCancelled(o, nowCancelMs, CANCELLED_STALE_MS));
     allOrders = visibleOrders;
+    // F2 Q2: the cancel-ack listeners follow the cancelled orders in view (both tabs); an order leaving the window detaches.
+    try { cancelAckSet?.setIds(visibleOrders.filter(o => o.estado === KDS_STATUS.CANCELADO).map(o => o.id)); } catch (e) { console.warn('cancel-ack setIds failed', e); }
     // Render the FULL live set — render() splits Open vs Completed by deriveTab (completed = locally
     // bumped OR delivered). checkForNewOrders still fires on the Open pool only.
     render(visibleOrders);

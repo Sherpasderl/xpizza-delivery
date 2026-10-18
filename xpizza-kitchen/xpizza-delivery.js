@@ -30,8 +30,12 @@ import {
   remove as fbRemove,
   runTransaction as fbRunTransaction,
   serverTimestamp,
-  off
+  off,
+  query,
+  orderByChild,
+  equalTo
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js';
+import { createCancelAckSet } from './cancel-ack-set.js';
 
 // P-SELFUPDATE CP2 (codex CP2 r1 B4): EVERY SDK write is counted from issue until the server ACKNOWLEDGES it (the SDK's
 // promise settles) — a stalled connection keeps it outstanding, so the self-update never reloads over a pending write.
@@ -562,18 +566,23 @@ export function subscribeToTasks(callback) {
   return onValue(tasksRef, (snap) => callback(snap.val() || {}));
 }
 
+// PLATFORM F2 Q2 (PLAN-F2-query-rules §2): the KDS feed is ONE location query — orderByChild('restaurant_id').equalTo(this KDS's
+// rid) — instead of the whole /orders collection. It is the query shape the narrowed rules authorize (Q4), and the exact filters
+// below apply the same predicate, so query and filter can never disagree. Both views read the same query.
+export function kdsOrdersQuery() {
+  return query(ref(db, 'orders'), orderByChild('restaurant_id'), equalTo(KDS_RESTAURANT_ID));
+}
+
 export function subscribeToOrders(callback) {
-  const ordersRef = ref(db, 'orders');
   // Filter out non-live (e.g. unpaid pending_payment) orders centrally so no
   // reader ever shows an unpaid online order as a real order.
-  return onValue(ordersRef, (snap) => callback(filterLiveOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
+  return onValue(kdsOrdersQuery(), (snap) => callback(filterLiveOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
 }
 
 // Programados view (read-only): the scheduled/held orders for this KDS. A SECOND onValue on the SAME
-// `orders` ref → reuses the sync subscribeToOrders already opened (no new network read). Never writes.
+// location query → reuses the sync subscribeToOrders already opened (no new network read). Never writes.
 export function subscribeScheduledOrders(callback) {
-  const ordersRef = ref(db, 'orders');
-  return onValue(ordersRef, (snap) => callback(filterScheduledOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
+  return onValue(kdsOrdersQuery(), (snap) => callback(filterScheduledOrders(snap.val() || {}, KDS_RESTAURANT_ID)));
 }
 
 // ── Ready-Time Phase-1 Step 2: the KDS overdue nudge (READ-ONLY, additive) ──
@@ -609,8 +618,13 @@ export function subscribeItemAvailability(rid, callback) {
 // localStorage "Archivar" ack never synced → cancelados returned to Abiertos on reopen on a 2-device kitchen.
 // kds_cancel_acks/{orderId} = { at, by } is the shared SERVER truth. Kitchen-role read+write only (RTDB rule).
 // Never touches /orders (the "KDS writes ONLY status via setOrderStatus" invariant is preserved).
-export function subscribeCancelAcks(callback) {
-  return onValue(ref(db, 'kds_cancel_acks'), (snap) => callback(snap.val() || {}));
+// PLATFORM F2 Q2: ONE listener per ELIGIBLE cancelled order (kds_cancel_acks/{orderId}) instead of the whole collection, with
+// PER-ID readiness (cancel-ack-set.js). The page calls set.setIds(<the cancelled orders in view>) as its feed changes.
+export function createKdsCancelAcks(onChange) {
+  return createCancelAckSet({
+    listen: (orderId, onVal, onErr) => onValue(ref(db, `kds_cancel_acks/${orderId}`), (snap) => onVal(snap.val()), onErr),
+    onChange,
+  });
 }
 // Archive ack — the acking device also keeps its local completedSet overlay (instant optimistic move).
 export function writeCancelAck(orderId) {

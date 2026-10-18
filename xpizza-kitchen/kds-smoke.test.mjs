@@ -11,6 +11,7 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createCancelAckSet } from './cancel-ack-set.js';
 
 const dir = fileURLToPath(new URL('./', import.meta.url));
 let n = 0; const ok = (l) => console.log(`  ✓ ${++n} ${l}`);
@@ -74,7 +75,20 @@ const XPD = {
   subscribeItemAvailability(rid, cb) { XPD._flagsRid = rid; XPD._flagsCb = cb; return () => { XPD._flagsUnsub = true; }; },
   setItemAvailability(rid, rawKey, available, uid) { availCalls.push({ rid, rawKey, available, uid }); return new Promise((res, rej) => { resolveAvail = () => res(); rejectAvail = () => rej(new Error('denied')); }); },
   // KDS cancelados cross-device ack — drive via XPD._cancelAcksCb; write/remove are spied in `calls`.
-  subscribeCancelAcks(cb) { XPD._cancelAcksCb = cb; cb({}); return () => { XPD._cancelAcksUnsub = true; }; },
+  // F2 Q2: per-order listeners over the REAL cancel-ack set; XPD._cancelAcksCb(map) sets the SERVER state and delivers each live
+  // listener its own entry (as onValue would) — a newly attached listener gets the current state immediately.
+  createKdsCancelAcks(onChange) {
+    const live = new Map();
+    XPD._ackServer = XPD._ackServer || {};
+    XPD._cancelAcksCb = (m) => { XPD._ackServer = m || {}; for (const [id, h] of live) h(XPD._ackServer[id] || null); };
+    const set = createCancelAckSet({
+      listen: (id, onVal) => { live.set(id, onVal); queueMicrotask(() => { if (live.get(id) === onVal) onVal(XPD._ackServer[id] || null); }); return () => { if (live.get(id) === onVal) live.delete(id); }; },
+      onChange,
+    });
+    const teardown = set.teardown;
+    set.teardown = () => { XPD._cancelAcksUnsub = true; teardown(); };
+    return set;
+  },
   writeCancelAck(id) { calls.push({ fn: 'writeCancelAck', id }); return Promise.resolve(); },
   removeCancelAck(id) { calls.push({ fn: 'removeCancelAck', id }); return Promise.resolve(); },
 };
